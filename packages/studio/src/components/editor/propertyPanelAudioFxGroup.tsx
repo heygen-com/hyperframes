@@ -54,6 +54,7 @@ import {
   resolveAudioGroups,
 } from "@hyperframes/core/audio-groups";
 import { useFxLevelling } from "./useFxLevelling.js";
+import { isCarveVoiceElement } from "./useFxCarveGrouping.js";
 
 function auditionSpan(startRaw: string | undefined, durationRaw: string | undefined) {
   const start = Number.parseFloat(startRaw ?? "");
@@ -70,8 +71,9 @@ function auditionSpansFor(element: DomEditSelection): AuditionSpan[] {
   if (element.tagName?.toLowerCase() !== HF_AUDIO_GROUP_TAG || !element.id) return [];
   const doc = element.element?.ownerDocument;
   if (!doc) return [];
-  return [...doc.querySelectorAll(`audio[${HF_AUDIO_GROUP_ATTR}]`)]
+  return [...doc.querySelectorAll(`[${HF_AUDIO_GROUP_ATTR}]`)]
     .filter((member) => member.getAttribute(HF_AUDIO_GROUP_ATTR) === element.id)
+    .filter(isCarveVoiceElement)
     .flatMap((member) => {
       const span = auditionSpan(
         member.getAttribute("data-start") ?? undefined,

@@ -6,6 +6,7 @@ import {
   AudioMeterStrip,
   TimelineHistoryButtons,
   TimelineToolbar,
+  useAudioMetersVisible as exportedAudioMetersVisible,
   useClipboard,
   usePlayerStore,
   type UseClipboardOptions,
@@ -49,6 +50,12 @@ describe("timeline chrome package exports, outside Studio's shell", () => {
     const root = mountReactHarness(<AudioMeterStrip previewIframeRef={{ current: null }} />);
     expect(document.querySelector('[data-testid="audio-meter-strip"]')).not.toBeNull();
     await act(async () => root.unmount());
+  });
+
+  it("exports the meter visibility store a host toggles", () => {
+    expect(exportedAudioMetersVisible).toBe(useAudioMetersVisible);
+    exportedAudioMetersVisible.getState().setVisible(true);
+    expect(useAudioMetersVisible.getState().visible).toBe(true);
   });
 
   it("runs the clipboard with no DOM edit session", async () => {

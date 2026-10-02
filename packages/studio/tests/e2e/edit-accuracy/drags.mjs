@@ -5,7 +5,7 @@ const MOVE = { do: "drag", gesture: "move", by: [90, 60] };
 const BACK = { do: "drag", gesture: "move", by: [-70, 50] };
 const UP = { do: "drag", gesture: "move", by: [60, -80] };
 
-const PATHS = ["zigzag", "circle", "flick", "pause", "edge"];
+const PATHS = ["zigzag", "circle", "flick", "pause", "edge", "stray"];
 
 /** Each sequence's steps; a drag names its element (A is #target, B is #other) and its screen-px path. */
 const SEQUENCES = {

@@ -21,7 +21,7 @@ export function escapeHtmlAttribute(value: string): string {
 }
 
 /** Reverse escapeHtmlAttribute so callers get the original value. */
-function unescapeHtmlAttribute(value: string): string {
+export function unescapeHtmlAttribute(value: string): string {
   return value
     .replace(/&quot;/g, '"')
     .replace(/&lt;/g, "<")

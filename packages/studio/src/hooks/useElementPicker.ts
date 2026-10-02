@@ -97,6 +97,8 @@ export function useElementPicker(
     setPickedElement(null);
   }, []);
 
+  const windowsThatWerePrimary = useRef(new WeakSet<MessageEventSource>());
+
   // Listen for picker messages from the iframe
   useMountEffect(() => {
     // One guard per message field, then one branch per message type.
@@ -105,10 +107,16 @@ export function useElementPicker(
       const data = e.data;
       if (data?.source !== "hf-preview") return;
       if (!acceptStudioRuntimeMessage(data)) return;
-      // Accept events from either the primary iframe or the active override
+      // The primary frame, the active override, or a primary frame a reload just swapped out.
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;
-      if (e.source !== activeIframe.contentWindow && e.source !== iframeRef.current?.contentWindow)
+      if (!e.source) return;
+      if (e.source === iframeRef.current?.contentWindow)
+        windowsThatWerePrimary.current.add(e.source);
+      else if (
+        e.source !== activeIframe.contentWindow &&
+        !windowsThatWerePrimary.current.has(e.source)
+      )
         return;
 
       if (data.type === "element-picked" && data.elementInfo) {

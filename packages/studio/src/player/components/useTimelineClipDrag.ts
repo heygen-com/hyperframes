@@ -27,6 +27,8 @@ import type {
   BlockedClipState,
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
+import { dropMisalignedTrimPartners, linkedGestureKeys } from "./audioClipLink";
+import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import {
   mountTimelineClipDragGestureLifecycle,
@@ -65,6 +67,7 @@ interface UseTimelineClipDragInput {
   ) => Promise<void> | void;
   onResizeElements?: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
+  onLinkEdit?: TimelineEditCallbacks["onLinkEdit"];
   /** Seeks the preview; a trim shows the frame at its dragged edge. */
   onSeek?: (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => void;
   setShowPopover: (show: boolean) => void;
@@ -95,6 +98,7 @@ export function useTimelineClipDrag({
   onResizeElement,
   onResizeElements,
   onBlockedEditAttempt,
+  onLinkEdit,
   onSeek,
   setShowPopover,
   setRangeSelectionRef,
@@ -220,6 +224,13 @@ export function useTimelineClipDrag({
         return;
       }
       beginGesture("drag", next.pointerId);
+      gestureSelectedKeysRef.current = linkedGestureKeys(
+        gestureSelectedKeysRef.current,
+        next.element,
+        elementsRef.current,
+        next.altKey === true,
+        isLinkedSelectionOn(),
+      );
       publishDraggedClip(next);
     },
     [beginGesture, publishDraggedClip],
@@ -231,6 +242,18 @@ export function useTimelineClipDrag({
         return;
       }
       beginGesture("resize", next.pointerId);
+      gestureSelectedKeysRef.current = dropMisalignedTrimPartners(
+        linkedGestureKeys(
+          gestureSelectedKeysRef.current,
+          next.element,
+          elementsRef.current,
+          next.altKey === true,
+          isLinkedSelectionOn(),
+        ),
+        next.element,
+        elementsRef.current,
+        next.edge,
+      );
       publishResizingClip(next);
     },
     [beginGesture, publishResizingClip],
@@ -249,6 +272,8 @@ export function useTimelineClipDrag({
   onMoveElementsRef.current = onMoveElements;
   const onBlockedEditAttemptRef = useRef(onBlockedEditAttempt);
   onBlockedEditAttemptRef.current = onBlockedEditAttempt;
+  const onLinkEditRef = useRef(onLinkEdit);
+  onLinkEditRef.current = onLinkEdit;
   const onResizeElementRef = useRef(onResizeElement);
   onResizeElementRef.current = onResizeElement;
   const onResizeElementsRef = useRef(onResizeElements);
@@ -304,6 +329,8 @@ export function useTimelineClipDrag({
         scroll: scrollRef.current,
         pps: ppsRef.current,
         buildSnapTargets,
+        elements: elementsRef.current,
+        gestureKeys: gestureSelectedKeysRef.current,
       });
       trimSeekOriginRef.current ??= usePlayerStore.getState().currentTime;
       const setResizeState = (v: ResizePreviewResult) => {
@@ -422,6 +449,7 @@ export function useTimelineClipDrag({
       refreshAfterLaneMoveRef,
       readZIndexRef,
       onBlockedEditAttemptRef,
+      onLinkEditRef,
       onResizeElementsRef,
       onResizeElementRef,
       onMoveElementsRef,

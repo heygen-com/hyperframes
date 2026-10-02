@@ -14,9 +14,12 @@ import {
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import {
   applyUndoRestoreToPreview,
+  readUndoNestedFiles,
   showRestoreInPlace,
   type RestoreFiles,
 } from "../utils/gsapUndoRestore";
+import { settleNestedReads } from "../utils/gsapSoftReload";
+import { readProjectFileContent } from "../utils/studioFileHistory";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 
@@ -204,12 +207,24 @@ export function usePreviewPersistence({
       // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
       // falling back to reloadPreview for anything structural (split/delete undo),
       // multi-file, sub-comp, or a permanent soft-reload failure.
+      const projectId = usePlayerStore.getState().timelineProjectId;
+      const nestedFiles = await settleNestedReads(
+        projectId
+          ? readUndoNestedFiles(
+              previewIframeRef.current,
+              activeCompPathRef.current,
+              restore.files,
+              (path) => readProjectFileContent(projectId, path),
+            )
+          : null,
+      );
       const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
         activeCompPathRef.current,
         restore.files,
         usePlayerStore.getState().currentTime,
         reloadPreview,
+        nestedFiles,
       );
       if (strategy === "full") {
         usePlayerStore.getState().setSelectedElementId(null);

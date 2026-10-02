@@ -2,12 +2,15 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   addStudioPendingEditFlushListener,
+  beginStudioPendingEdit,
   flushStudioPendingEdits,
   hasStudioPendingEdits,
+  revertNewestStudioPendingEdit,
   trackStudioPendingEdit,
   trackedStudioEdit,
 } from "./studioPendingEdits";
 import { StudioFileConflictError } from "./studioSaveDiagnostics";
+import { revertNewestStudioPendingEdit as hostRevert } from "../index";
 
 describe("studio pending edit flush", () => {
   it("waits for mounted panels to persist pending local edits", async () => {
@@ -209,5 +212,86 @@ describe("trackedStudioEdit", () => {
     await expect(saved).rejects.toThrow("The save failed.");
     await expect(drain).resolves.toEqual({ status: "failed", error: failure });
     expect(hasStudioPendingEdits()).toBe(false);
+  });
+});
+
+describe("a pending edit undo can paint back", () => {
+  const shown: string[] = [];
+  const edit = (name: string) =>
+    beginStudioPendingEdit(() => {
+      shown.push(`${name} undone`);
+      return () => shown.push(`${name} again`);
+    });
+
+  it("paints back only the newest edit, once, and shows it again on request", () => {
+    shown.length = 0;
+    const first = edit("first");
+    const second = edit("second");
+    const again = revertNewestStudioPendingEdit();
+    expect(shown).toEqual(["second undone"]);
+    expect(second.reverted()).toBe(true);
+    expect(first.reverted()).toBe(false);
+    expect(revertNewestStudioPendingEdit()).toBeNull();
+    again!();
+    expect(shown).toEqual(["second undone", "second again"]);
+    first.settle();
+    second.settle();
+  });
+
+  it("paints nothing when the newest edit has no revert", async () => {
+    shown.length = 0;
+    const move = edit("move");
+    let saved!: () => void;
+    trackStudioPendingEdit(new Promise<void>((resolve) => (saved = resolve)));
+    expect(revertNewestStudioPendingEdit()).toBeNull();
+    expect(shown).toEqual([]);
+    saved();
+    move.settle();
+    await flushStudioPendingEdits();
+  });
+
+  it("counts what the edit starts inside adopt as that edit, not a newer one", async () => {
+    shown.length = 0;
+    const move = edit("move");
+    let saved!: () => void;
+    const save = move.adopt(() =>
+      trackStudioPendingEdit(new Promise<void>((resolve) => (saved = resolve))),
+    );
+    move.settle(save);
+    revertNewestStudioPendingEdit();
+    expect(shown).toEqual(["move undone"]);
+    saved();
+    await expect(flushStudioPendingEdits()).resolves.toEqual({ status: "clean" });
+    expect(hasStudioPendingEdits()).toBe(false);
+  });
+});
+
+describe("a pending edit whose start throws", () => {
+  it("ends, so undo and export never wait on it", async () => {
+    const edit = beginStudioPendingEdit(null);
+    expect(() =>
+      edit.adopt(() => {
+        throw new Error("The commit threw.");
+      }),
+    ).toThrow("The commit threw.");
+    await expect(flushStudioPendingEdits()).resolves.toEqual({ status: "clean" });
+    expect(hasStudioPendingEdits()).toBe(false);
+  });
+});
+
+describe("the package's public revert", () => {
+  it("lets a host's own undo key paint a still-saving move back at once", async () => {
+    let left = "120px";
+    const edit = beginStudioPendingEdit(() => ((left = "0px"), () => void (left = "120px")));
+    try {
+      const putBack = hostRevert();
+      expect(left).toBe("0px");
+      expect(hostRevert()).toBeNull();
+      putBack?.();
+      expect(left).toBe("120px");
+    } finally {
+      edit.settle();
+      await flushStudioPendingEdits();
+    }
   });
 });

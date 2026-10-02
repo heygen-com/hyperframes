@@ -12,6 +12,8 @@ import { SILENT_CHANNEL } from "../../utils/audioMeterMath";
 import {
   AudioMeterStrip,
   type AudioMeterStripProps,
+  CLIP_LATCH_PEAK,
+  stepClipLatch,
   evictGoneMeterState,
   followMeterHook,
   stepAndPaintStrips,
@@ -414,5 +416,56 @@ describe("stepAndPaintStrips", () => {
     expect(loudMask.style.height).toBe("0%");
     expect(restMask.style.height).toBe("50%");
     expect(state.has("loud")).toBe(true);
+  });
+});
+
+describe("CLIP light", () => {
+  const hookAt = (peak: number) => ({
+    start: vi.fn(),
+    stop: vi.fn(),
+    read: vi.fn(() => ({ master: { l: peak, r: 0 }, groups: {} })),
+  });
+
+  it("latches at the -1 dBFS export ceiling, stays lit when the level drops, and resets on click", () => {
+    usePlayerStore.setState({ elements: [clip({})] });
+    const hook = hookAt(1);
+    setHook(hook);
+    const { host } = mount();
+    const light = host.querySelector<HTMLElement>("[data-testid=meter-clip-light]");
+    expect(light?.dataset.lit).toBe("false");
+    tick();
+    expect(light?.dataset.lit).toBe("true");
+    hook.read.mockReturnValue({ master: { l: 0.1, r: 0.1 }, groups: {} });
+    tick();
+    expect(light?.dataset.lit).toBe("true");
+    act(() => light?.click());
+    expect(light?.dataset.lit).toBe("false");
+    tick();
+    expect(light?.dataset.lit).toBe("false");
+  });
+
+  it("stays dark in the red band just under the ceiling", () => {
+    usePlayerStore.setState({ elements: [clip({})] });
+    setHook(hookAt(10 ** (-1.2 / 20)));
+    const { host } = mount();
+    tick();
+    expect(host.querySelector<HTMLElement>("[data-testid=meter-clip-light]")?.dataset.lit).toBe(
+      "false",
+    );
+  });
+});
+
+describe("stepClipLatch", () => {
+  it("lights exactly at -1 dBFS on either channel, not below", () => {
+    expect(CLIP_LATCH_PEAK).toBeCloseTo(0.891251, 6);
+    expect(stepClipLatch(false, { l: CLIP_LATCH_PEAK, r: 0 })).toBe(true);
+    expect(stepClipLatch(false, { l: 0, r: CLIP_LATCH_PEAK })).toBe(true);
+    expect(stepClipLatch(false, { l: CLIP_LATCH_PEAK - 1e-6, r: 0 })).toBe(false);
+    expect(stepClipLatch(false, undefined)).toBe(false);
+  });
+
+  it("holds once lit, whatever comes next", () => {
+    expect(stepClipLatch(true, { l: 0, r: 0 })).toBe(true);
+    expect(stepClipLatch(true, undefined)).toBe(true);
   });
 });

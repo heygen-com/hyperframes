@@ -170,9 +170,10 @@ describe("applyUndoRestoreToPreview", () => {
 
   describe("an undo that re-runs a changed script matches a fresh load of the restored file", () => {
     const script = (extra: string) => `window.__timelines["root"]=gsap.timeline();${extra}`;
+    const root = (body: string) => `<div data-composition-id="root">${body}</div>`;
     const undoScriptEdit = (live: string, authored: string, edit: string) => {
       const { iframe, contentWindow, doc } = buildLiveIframe(
-        `${live}<script>${script(edit)}</script>`,
+        `${root(live)}<script>${script(edit)}</script>`,
       );
       const clearProps = (targets: HTMLElement[]) =>
         targets.forEach((t) => t.removeAttribute("style"));
@@ -180,8 +181,8 @@ describe("applyUndoRestoreToPreview", () => {
       for (const el of doc.querySelectorAll("[style*=transform]")) Object.assign(el, { _gsap: {} });
       const files = {
         [ROOT]: {
-          previous: wrap(`${authored}<script>${script(edit)}</script>`),
-          restored: wrap(`${authored}<script>${script("")}</script>`),
+          previous: wrap(`${root(authored)}<script>${script(edit)}</script>`),
+          restored: wrap(`${root(authored)}<script>${script("")}</script>`),
         },
       };
       expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");

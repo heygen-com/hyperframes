@@ -54,6 +54,19 @@ describe("collectCarveCandidates", () => {
   });
 });
 
+describe("collectCarveCandidates with video", () => {
+  it("offers an ungrouped audible video, not a muted one", () => {
+    const doc = previewDoc(`
+      <video id="a-roll"></video>
+      <video id="b-roll" muted></video>
+      <audio id="bed"></audio>
+    `);
+    const others = Array.from(doc.querySelectorAll("video[id]"));
+    const ids = collectCarveCandidates(doc, others, () => true, "bed").map((c) => c.id);
+    expect(ids).toEqual(["a-roll"]);
+  });
+});
+
 describe("carverAgainst", () => {
   // The far-end guard has to see through a GROUP source. A plural carve names a
   // group — that is what the lint rule pushes authors toward — so matching raw

@@ -54,13 +54,16 @@ describe("scoreTeleport", () => {
     expect(scoreTeleport("move", jumped)).toMatchObject({ pass: false, frame: 4 });
   });
 
+  // The pointer-up as the sampler records it, the moment it happens: frame(px) puts the pointer at px + 50.
+  const upAt = (t, px) => ({ t, up: [px + 50, 50] });
   // The next element's selection click: its press painted before any frame showed this drag's pointer-up.
   const clickElsewhere = (bx) => [
-    { ...frame(240, true, bx), ups: 1 },
-    { ...frame(240, false, bx), ups: 2 },
-    { ...frame(260, false, bx), ups: 2 },
+    upAt(50.5, 50),
+    frame(240, true, bx),
+    upAt(240.5, 240),
+    frame(260, false, bx),
   ];
-  const held = drag.slice(0, -1).map((f) => ({ ...f, ups: 0 }));
+  const held = drag.slice(0, -1);
 
   it("ends a drag at its pointer-up, so the pointer travelling on to the next element fails nothing", () => {
     expect(scoreTeleport("move", [...held, ...clickElsewhere(50)])).toMatchObject({
@@ -72,10 +75,27 @@ describe("scoreTeleport", () => {
   it("still catches the box jumping after that pointer-up", () => {
     const r = scoreTeleport("move", [
       ...held,
-      ...clickElsewhere(50).slice(0, 1),
-      ...clickElsewhere(150).slice(1),
+      ...clickElsewhere(50).slice(0, 2),
+      frame(260, false, 150),
     ]);
     expect(r).toMatchObject({ pass: false, max: 100 });
+  });
+
+  it("ends the drag at a pointer-up even when no frame painted while the button was held", () => {
+    const unseen = (bx) => [
+      frame(0, false),
+      upAt(1, 50),
+      frame(120, false, bx),
+      frame(200, false, bx),
+    ];
+    expect(scoreTeleport("move", unseen(50)).pass).toBe(true);
+    expect(scoreTeleport("move", unseen(0))).toMatchObject({ pass: false, max: 50 });
+  });
+
+  it("fails a box that keeps following the pointer after release", () => {
+    const after = [60, 70, 80].map((x) => frame(x, false));
+    const r = scoreTeleport("move", [...held, upAt(50.5, 50), ...after]);
+    expect(r).toMatchObject({ kind: "off", pass: false, max: 30 });
   });
 
   it("catches a mid-drag snap back to where the drag started, on the pointer's own path", () => {
@@ -185,7 +205,7 @@ describe("quadOf", () => {
 });
 
 describe("frameSamplerScript", () => {
-  it("counts the pointer as down only while its button is held, and counts each release", () => {
+  it("counts the pointer as down only while its button is held, and records each release as it happens", () => {
     const on = {};
     const window = { addEventListener: (type, f) => (on[type] = f) };
     window.top = window;
@@ -196,15 +216,22 @@ describe("frameSamplerScript", () => {
         observe() {}
       },
       requestAnimationFrame: () => 0,
+      performance: { now: () => 0 },
     };
     runInNewContext(frameSamplerScript, page);
     const rec = window.__editBenchFrames;
-    on.pointerdown({ clientX: 1, clientY: 1, buttons: 1 });
-    on.pointermove({ clientX: 2, clientY: 1, buttons: 1 });
-    expect(rec).toMatchObject({ down: true, ups: 0 });
-    on.pointerup({ clientX: 2, clientY: 1, buttons: 0 });
-    on.pointermove({ clientX: 90, clientY: 1, buttons: 0 });
-    expect(rec).toMatchObject({ down: false, ups: 1, pointer: [90, 1] });
+    rec.on = true;
+    on.pointerdown({ clientX: 1, clientY: 1, buttons: 1, isTrusted: true });
+    on.pointermove({ clientX: 2, clientY: 1, buttons: 1, isTrusted: true });
+    expect(rec).toMatchObject({ down: true });
+    on.pointerup({ clientX: 2, clientY: 1, buttons: 0, isTrusted: true });
+    on.pointermove({ clientX: 90, clientY: 1, buttons: 0, isTrusted: true });
+    expect(rec).toMatchObject({ down: false, pointer: [90, 1] });
+    expect(rec.samples.map((x) => x.up)).toEqual([[2, 1]]);
+    on.pointermove({ clientX: 5, clientY: 5, buttons: 0, isTrusted: false });
+    expect(rec, "the bench's own stray move is not the pointer").toMatchObject({
+      pointer: [90, 1],
+    });
   });
 
   it("runs beside a page script that declares the same names, and leaves them alone", () => {

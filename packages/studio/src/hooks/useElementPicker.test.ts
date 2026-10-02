@@ -19,6 +19,22 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+// The runtime's element-picked message, posted by `from`.
+const picked = (from: Window | null, selector: string) =>
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: from,
+        data: {
+          source: "hf-preview",
+          type: "element-picked",
+          elementInfo: { selector, tagName: "h1" },
+          ...runtimeProtocolMetadata(30),
+        },
+      }),
+    );
+  });
+
 // The preview page: the saved markup plus what the runtime adds to it.
 function mountPreview(mounted = ""): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
@@ -61,19 +77,7 @@ function mountPicker(
   }
   root = createRoot(document.createElement("div"));
   act(() => root?.render(React.createElement(Harness)));
-  act(() => {
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        source: iframe.contentWindow,
-        data: {
-          source: "hf-preview",
-          type: "element-picked",
-          elementInfo: { selector, tagName: "h1" },
-          ...runtimeProtocolMetadata(30),
-        },
-      }),
-    );
-  });
+  picked(iframe.contentWindow, selector);
   const picker = () => api as ReturnType<typeof useElementPicker>;
   return {
     picker,
@@ -168,5 +172,50 @@ describe("an edit to a picked element without an id", () => {
     const { picker, synced } = mountPicker({ "index.html": "<div>other</div>" });
     act(() => picker().setStyle("color", "red"));
     expect(synced).toEqual([]);
+  });
+});
+
+describe("a pick across a reload that swaps the preview frame", () => {
+  function mountSwapping() {
+    const live = mountPreview();
+    const ref: { current: HTMLIFrameElement | null } = { current: live };
+    let api: ReturnType<typeof useElementPicker> | null = null;
+    function Harness() {
+      api = useElementPicker(ref);
+      return null;
+    }
+    root = createRoot(document.createElement("div"));
+    act(() => root?.render(React.createElement(Harness)));
+    return { live, ref, picker: () => api as ReturnType<typeof useElementPicker> };
+  }
+
+  it("keeps a pick posted by the frame it was made in after a new frame took its place", () => {
+    const { live, ref, picker } = mountSwapping();
+    picked(live.contentWindow, "h1");
+    act(() => picker().clearPick());
+    // The reload promotes its frame before the old frame's pick message is handled.
+    const old = live.contentWindow;
+    ref.current = mountPreview();
+    live.remove();
+    picked(old, "h1.next");
+    expect(picker().pickedElement?.selector).toBe("h1.next");
+  });
+
+  it("does not keep trusting a zoomed frame once the zoom is gone", () => {
+    const { picker } = mountSwapping();
+    const zoom = mountPreview();
+    act(() => picker().setActiveIframe(zoom));
+    picked(zoom.contentWindow, "h1");
+    expect(picker().pickedElement?.selector).toBe("h1");
+    act(() => picker().setActiveIframe(null));
+    picked(zoom.contentWindow, "h1.late");
+    expect(picker().pickedElement?.selector).toBe("h1");
+  });
+
+  it("still ignores a frame it never showed", () => {
+    const { picker } = mountSwapping();
+    const stranger = mountPreview();
+    picked(stranger.contentWindow, "h1");
+    expect(picker().pickedElement).toBeNull();
   });
 });

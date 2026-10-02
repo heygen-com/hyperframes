@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -79,13 +79,13 @@ jobs:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
       # timeouts before any real CI work starts.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Reject accidental file deletions
         if: github.event_name == 'pull_request'
         run: node scripts/check-no-main-deletions.mjs --base origin/main
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
           token: ""
@@ -206,15 +206,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
-      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Build BeginFrame contract image
         # A hung bun install (Dockerfile.test, run 35468046055) would
         # otherwise eat the whole job timeout instead of failing at this step.
         timeout-minutes: 10
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: packages/gcp-cloud-run/Dockerfile
@@ -236,7 +236,7 @@ jobs:
         run: |
           echo "::error::Change detection did not succeed, so this required check cannot pass."
           exit 1
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -265,7 +265,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
           fetch-depth: 0
@@ -288,7 +288,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -341,7 +341,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Full history so `--base origin/main` can diff against the merge
           # base on stacked PRs, not just the shallow tip.
@@ -399,7 +399,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -423,7 +423,7 @@ jobs:
         run: |
           echo "::error::Change detection did not succeed, so this required check cannot pass."
           exit 1
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -443,7 +443,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
           fetch-depth: 0
@@ -467,7 +467,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -489,7 +489,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
           fetch-depth: 0
@@ -557,7 +557,7 @@ jobs:
       matrix:
         lane: [unit, integration]
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -589,7 +589,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -622,7 +622,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -645,7 +645,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -661,7 +661,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Verify skills-manifest.json matches skills/
         run: bun packages/cli/scripts/gen-skills-manifest.ts --check
@@ -678,7 +678,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Lint SKILL.md files across skills/, .claude/skills/, .agents/skills/
         run: bun scripts/lint-skills.ts
@@ -692,7 +692,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -716,7 +716,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -736,7 +736,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the sdk's @hyperframes/parsers + core subpath
@@ -758,7 +758,7 @@ jobs:
         run: |
           echo "::error::Change detection did not succeed, so this required check cannot pass."
           exit 1
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -779,7 +779,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -825,7 +825,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -848,6 +848,8 @@ jobs:
             packages/studio/data/projects/studio-open
           cp -R packages/studio/tests/e2e/fixtures/fade-handles \
             packages/studio/data/projects/fade-handles
+          cp -R packages/studio/tests/e2e/fixtures/inline-text-caret \
+            packages/studio/data/projects/inline-text-caret
       - name: Read the base branch's work-count ceilings
         # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
         if: github.event_name == 'pull_request'
@@ -956,7 +958,7 @@ jobs:
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
             packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
             /tmp/base-perf-ceilings.json
-      - name: Measure the fade handle tabs on a narrow clip
+      - name: Measure the fade handle tabs and click every Renders select
         if: success() || failure()
         run: |
           set -euo pipefail
@@ -971,8 +973,31 @@ jobs:
             echo "FAIL: studio dev server did not start on port 5316"
             exit 1
           fi
+          # Both checks run even when the first fails.
+          rc=0
           STUDIO_URL="http://localhost:5316/#project/fade-handles" \
-            node packages/studio/tests/e2e/fade-handles.mjs
+            node packages/studio/tests/e2e/fade-handles.mjs || rc=1
+          STUDIO_URL="http://localhost:5316/#project/fade-handles?tab=renders" \
+            node packages/studio/tests/e2e/render-selects.mjs || rc=1
+          exit "$rc"
+      - name: Measure the caret of a text edited in place
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          NODE_ENV=production bun run --cwd packages/studio dev -- --port 5317 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5317/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          if ! curl -sf "http://localhost:5317/" >/dev/null 2>&1; then
+            echo "FAIL: studio dev server did not start on port 5317"
+            exit 1
+          fi
+          STUDIO_URL="http://localhost:5317/#project/inline-text-caret" \
+            EVIDENCE_DIR=/tmp/inline-text-caret \
+            node packages/studio/tests/e2e/inline-text-caret.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -983,11 +1008,12 @@ jobs:
           path: |
             /tmp/timeline-gate-*.json
             /tmp/studio-open-counts.json
+            /tmp/inline-text-caret/*.png
           if-no-files-found: error
 
   # Manual editing accuracy in the built Studio, gated against the base branch's baseline.json.
   studio-edit-accuracy:
-    name: "Studio: edit accuracy (${{ matrix.shard }}/12)"
+    name: "Studio: edit accuracy (${{ matrix.shard }}/20)"
     needs: [changes, build]
     if: github.event_name == 'pull_request' && needs.changes.outputs.edit_accuracy == 'true'
     runs-on: ubuntu-latest
@@ -995,9 +1021,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -1020,7 +1046,7 @@ jobs:
         run: |
           set -euo pipefail
           bench() { bun run --cwd packages/studio test:edit-accuracy -- --grid full --jobs 2 "$@"; }
-          bench --shard "${{ matrix.shard }}/12" --out /tmp/edit-accuracy/run1
+          bench --shard "${{ matrix.shard }}/20" --out /tmp/edit-accuracy/run1
           mapfile -t FLIPPED < <(node packages/studio/tests/e2e/edit-accuracy/ratchet.mjs flipped \
             /tmp/base-edit-accuracy.json /tmp/edit-accuracy/run1/results.json)
           if (( ${#FLIPPED[@]} > 0 )); then
@@ -1045,7 +1071,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -1093,7 +1119,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -1165,7 +1191,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -1290,7 +1316,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Check file sizes (max 600 lines)
@@ -1352,7 +1378,7 @@ jobs:
         with:
           types: ${{ env.PR_TITLE_TYPES }}
       - if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - if: github.event_name == 'workflow_dispatch'
@@ -1361,7 +1387,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       - if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: amannn/action-semantic-pull-request
           ref: e32d7e603df1aa1ba07e981f2a23455dee596825 # v5

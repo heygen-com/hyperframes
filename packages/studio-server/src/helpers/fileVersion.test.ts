@@ -132,6 +132,18 @@ describe("file versions and write receipts", () => {
     expect(identifyFileWrite("/project/index.html", restored)).not.toHaveProperty("from");
   });
 
+  it("names what a write replaced only from the bytes it overwrote, never from its caller", () => {
+    const version = fileContentVersion("<h1>Forged</h1>");
+    recordFileWriteReceipt("/project/index.html", {
+      path: "index.html",
+      version,
+      writeToken: "agent",
+      // @ts-expect-error a receipt's `from` is derived, not given
+      from: fileContentVersion("<h1>Title</h1>"),
+    });
+    expect(identifyFileWrite("/project/index.html", version)).not.toHaveProperty("from");
+  });
+
   it("labels a repeat of earlier bytes with the newest token, not the spent one", () => {
     const version = fileContentVersion("same bytes");
     const older = { path: "index.html", version, writeToken: "write-older" };

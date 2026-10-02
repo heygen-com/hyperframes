@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LIMIT_PX, entry, writeReport } from "./report.mjs";
 
-const GATED_PX = ["tracking", "pressJump", "drop", "reload", "render"];
+const GATED_PX = ["tracking", "pressJump", "drop", "reload", "render", "renderKey"];
 const LISTED = 30;
 
 /** Passes every gated metric; an unsettled preview fails the metrics it fed, all of them gated. */
@@ -22,6 +22,10 @@ export const accurate = (e) =>
   e.teleport !== false &&
   // A text case's edit opened, and its word saved and shown (and a word selected, for select).
   e.text !== false &&
+  // Keyframed cases: other keyframes unchanged, no stray CSS, and a measured second render.
+  e.keys !== false &&
+  e.css !== false &&
+  e.renderKey !== null &&
   GATED_PX.every((m) => !(e[m] > LIMIT_PX));
 
 /** Cases whose verdict here differs from the base branch, either way: each is re-run twice before the gate. */
@@ -35,6 +39,8 @@ const summary = (e) =>
 
 /** The gate's verdict on one case's runs: it passes when fewer than half fail. */
 const passes = (entries) => entries.filter((e) => !accurate(e)).length * 2 < entries.length;
+/** Reported, never gated: most runs had no extra dropped frame and no frame over the work budget. */
+const mostlySmooth = (entries) => entries.filter((e) => e.smooth).length * 2 > entries.length;
 
 /** One run per case that agrees with the gate's verdict, so a banked baseline.json matches the gate. */
 export function bankable(runs) {
@@ -50,8 +56,8 @@ export function bankable(runs) {
  * The fixing PR deletes its own ids here and re-banks them in the same PR.
  */
 export const QUARANTINED = {
-  "sequndo-none-px-r0-root-z100": "part C (#4807 stack)",
-  "seqrepeat-none-px-r0-nested-z100": "part C (#4807 stack)",
+  // A redo or undo write waits behind preview videos holding all of Chrome's connections to the host.
+  "seqnudge-none-pct-r0-nested-z100": "#4889",
 };
 
 /** Every run of every case: each shard's run plus the re-runs of the cases it flipped. */
@@ -78,6 +84,7 @@ export function gate(base, head, runs, quarantine = QUARANTINED) {
       ([id, e]) => !Object.hasOwn(quarantine, id) && accurate(e),
     ).length,
     headPassing: passing.length,
+    headSmooth: passing.filter((c) => mostlySmooth(c.entries)).length,
     regressed: cases.filter((c) => c.basePassed && !c.passed).map((c) => c.id),
     unstable: cases
       .filter((c) => new Set(c.entries.map(accurate)).size > 1)
@@ -113,7 +120,7 @@ const list = (title, ids) =>
 export function comment(g) {
   return [
     "<!-- edit-accuracy -->",
-    `### Edit accuracy: ${g.headPassing} passing here, ${g.basePassing} on the base branch`,
+    `### Edit accuracy: accurate ${g.headPassing} (base branch ${g.basePassing}), smooth ${g.headSmooth} of those`,
     "",
     g.ok ? "The gate passes." : `The gate fails: ${g.reasons.join("; ")}.`,
     "Smoothness is reported in the artifact, not gated. A case fails only if it fails 2 of 3 runs.",

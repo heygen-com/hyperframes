@@ -15,6 +15,7 @@ import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
 import { buildMissingCompositionElements } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
   syncManifestTimeline,
@@ -196,8 +197,10 @@ export function useTimelineSyncCallbacks({
       // at the authored root `data-duration` so a runtime that measures only the
       // furthest clip end (shorter than the authored window) can't leave a stale,
       // too-short total in the transport (the "0:44/0:40" bug).
+      const fps = acceptedRuntimeMessageFps(data);
+      useLinkedClipPreferences.getState().setCompositionFps(fps);
       const newDuration = resolveTimelineTotalDuration({
-        manifestDurationSeconds: data.durationInFrames / acceptedRuntimeMessageFps(data),
+        manifestDurationSeconds: data.durationInFrames / fps,
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
       });
       syncManifestTimeline(

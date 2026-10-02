@@ -206,6 +206,32 @@ export const SPEED_PRESETS = [
       [1, 0.3],
     ],
   },
+  {
+    id: "ramp-in",
+    label: "Ramp in",
+    points: [
+      [0, 0.5],
+      [1, 1],
+    ],
+  },
+  {
+    id: "ramp-out",
+    label: "Ramp out",
+    points: [
+      [0, 1],
+      [1, 0.5],
+    ],
+  },
+  {
+    id: "slowmo-middle",
+    label: "Slow-mo middle",
+    points: [
+      [0, 1],
+      [1 / 3, 0.35],
+      [2 / 3, 0.35],
+      [1, 1],
+    ],
+  },
 ] as const satisfies readonly RatePreset[];
 
 export type SpeedPresetId = (typeof SPEED_PRESETS)[number]["id"];

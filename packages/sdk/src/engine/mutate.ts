@@ -17,6 +17,8 @@ import type {
   JsonPatchOp,
 } from "../types.js";
 import type { ParsedDocument } from "./model.js";
+import { MEDIA_LINK_ATTR, linkScopeOf } from "@hyperframes/core/media-link";
+import { idsToUnlink, linkedPartnerIds } from "./linkedTiming.js";
 import {
   resolveScoped,
   escapeHfId,
@@ -276,6 +278,118 @@ function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undef
   }
 }
 
+const concatResults = (a: MutationResult, b: MutationResult): MutationResult => ({
+  forward: [...a.forward, ...b.forward],
+  inverse: [...a.inverse, ...b.inverse],
+});
+
+/**
+ * Timing edits apply to link partners too (start/duration; each keeps its own
+ * track). `linked: false` edits the targets alone and unlinks them.
+ */
+function applySetTiming(
+  parsed: ParsedDocument,
+  op: Extract<EditOp, { type: "setTiming" }>,
+): MutationResult {
+  const ids = targets(op.target);
+  const timing = { start: op.start, duration: op.duration, trackIndex: op.trackIndex };
+  if (op.linked === false) {
+    const unlink = idsToUnlink(parsed.document, ids);
+    const own = handleSetTiming(parsed, ids, timing);
+    return concatResults(own, handleSetAttribute(parsed, unlink, MEDIA_LINK_ATTR, null));
+  }
+  const plan = planLinkedTiming(parsed, ids, timing);
+  if (plan.refusal) throw new Error(plan.refusal);
+  let result = handleSetTiming(parsed, ids, timing);
+  for (const partner of plan.partners) {
+    result = concatResults(result, handleSetTiming(parsed, [partner.id], partner.timing));
+  }
+  return result;
+}
+
+type PartnerEdit = { id: HfId; timing: { start?: number; duration?: number } };
+
+function planLinkedTiming(
+  parsed: ParsedDocument,
+  ids: HfId[],
+  timing: { start?: number; duration?: number },
+): { partners: PartnerEdit[]; refusal: string | null } {
+  if (timing.start === undefined && timing.duration === undefined) {
+    return { partners: [], refusal: null };
+  }
+  const grabbedFor = grabbedBaselines(parsed, ids);
+  const partners: PartnerEdit[] = [];
+  for (const id of linkedPartnerIds(parsed.document, ids)) {
+    const el = resolveScoped(parsed.document, id);
+    const grabbed = el ? grabbedFor(el) : undefined;
+    if (!el || !grabbed) continue;
+    const partnerEdit = partnerTiming(grabbed, readClipTiming(el), timing);
+    if (partnerEdit.duration !== undefined && partnerEdit.duration <= 0) {
+      const tag = el.tagName.toLowerCase();
+      return {
+        partners: [],
+        refusal: `Linked ${tag} would start after the new end — unlink or trim the ${tag} first.`,
+      };
+    }
+    partners.push({ id, timing: partnerEdit });
+  }
+  return { partners, refusal: null };
+}
+
+type ClipWindow = { start: number | null; duration: number | null };
+
+function grabbedBaselines(
+  parsed: ParsedDocument,
+  ids: HfId[],
+): (partner: Element) => ClipWindow | undefined {
+  const byScope = new Map<Element | null, Map<string, ClipWindow>>();
+  for (const id of ids) {
+    const el = resolveScoped(parsed.document, id);
+    const link = el?.getAttribute(MEDIA_LINK_ATTR);
+    if (!el || !link) continue;
+    const byLink = byScope.get(linkScopeOf(el)) ?? new Map<string, ClipWindow>();
+    byLink.set(link, readClipTiming(el));
+    byScope.set(linkScopeOf(el), byLink);
+  }
+  return (partner) => {
+    const link = partner.getAttribute(MEDIA_LINK_ATTR);
+    return link ? byScope.get(linkScopeOf(partner))?.get(link) : undefined;
+  };
+}
+const ALIGN_EPSILON_S = 1e-3;
+
+/**
+ * A partner follows the edit without resyncing: a start change shifts it by the
+ * same delta (keeping any offset); a duration change carries over only when the
+ * partner's end sat at the edited clip's end.
+ */
+function partnerTiming(
+  grabbed: ClipWindow,
+  partner: ClipWindow,
+  edit: { start?: number; duration?: number },
+): { start?: number; duration?: number } {
+  const timing: { start?: number; duration?: number } = {};
+  const [gStart, pStart] = [grabbed.start ?? 0, partner.start ?? 0];
+  if (edit.start !== undefined) timing.start = pStart + (edit.start - gStart);
+  const duration = partnerDuration(grabbed, partner, edit, timing.start ?? pStart);
+  if (duration !== undefined) timing.duration = duration;
+  return timing;
+}
+
+function partnerDuration(
+  grabbed: ClipWindow,
+  partner: ClipWindow,
+  edit: { start?: number; duration?: number },
+  partnerStart: number,
+): number | undefined {
+  if (edit.duration === undefined) return undefined;
+  const grabbedStart = grabbed.start ?? 0;
+  const grabbedEnd = grabbedStart + (grabbed.duration ?? 0);
+  const partnerEnd = (partner.start ?? 0) + (partner.duration ?? 0);
+  if (Math.abs(partnerEnd - grabbedEnd) >= ALIGN_EPSILON_S) return undefined;
+  return (edit.start ?? grabbedStart) + edit.duration - partnerStart;
+}
+
 export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
   const gsap = applyGsapOp(parsed, op);
   if (gsap !== undefined) return gsap;
@@ -287,11 +401,7 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
     case "setAttribute":
       return handleSetAttribute(parsed, targets(op.target), op.name, op.value);
     case "setTiming":
-      return handleSetTiming(parsed, targets(op.target), {
-        start: op.start,
-        duration: op.duration,
-        trackIndex: op.trackIndex,
-      });
+      return applySetTiming(parsed, op);
     case "setHold":
       return handleSetHold(parsed, targets(op.target), op.hold);
     case "moveElement":
@@ -1637,7 +1747,11 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           `Element(s) not found: ${missing.join(", ")}.`,
           "Verify the id against comp.getElements() or comp.find().",
         );
-      return CAN_OK;
+      const refusal =
+        op.type === "setTiming" && op.linked !== false
+          ? planLinkedTiming(parsed, ids, op).refusal
+          : null;
+      return refusal ? canErr("E_LINKED_PARTNER_CROSSED", refusal) : CAN_OK;
     }
     case "addElement": {
       if (op.parent !== null && resolveScoped(parsed.document, op.parent) === null)

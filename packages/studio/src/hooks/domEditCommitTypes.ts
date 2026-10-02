@@ -56,6 +56,7 @@ export type PersistDomEditOperations = (
     skipRefresh?: boolean;
     deferRender?: boolean;
     importedFont?: ImportedFontAsset;
+    prepareContent?: (html: string, sourceFile: string) => string;
     shouldSave?: () => boolean;
   },
 ) => Promise<DomEditPersistOutcome | undefined>;

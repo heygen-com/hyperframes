@@ -13,6 +13,7 @@ import {
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
+import { findLinkedClipFindings } from "./linkedClips";
 
 /**
  * Does the GSAP call that names `#id` also set `volume` in the same call?
@@ -831,6 +832,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // audio_group_carve_attr
   findAudioGroupCarveAttrFindings,
+  findLinkedClipFindings,
 ];
 
 /**
@@ -993,7 +995,7 @@ const AUDIO_GROUP_TIMING_ATTRS = ["data-start", "data-duration", "data-track-ind
 /**
  * A bus nobody joined does nothing, silently.
  *
- * `resolveAudioGroups` builds groups from the MEMBERS (`audio[data-audio-group]`)
+ * `resolveAudioGroups` builds groups from the MEMBERS (audio or audible video)
  * and only then looks for a matching `<hf-audio-group>` element, so a bus whose
  * id no clip names is dropped entirely — its fader, FX chain and automation
  * never reach preview or render, and nothing says so. One typo is enough:
@@ -1004,7 +1006,7 @@ const AUDIO_GROUP_TIMING_ATTRS = ["data-start", "data-duration", "data-track-ind
 function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFinding[] {
   const memberGroupIds = new Set(
     ctx.tags
-      .filter((tag) => tag.name === "audio")
+      .filter((tag) => tag.name === "audio" || (tag.name === "video" && isAudibleVideoTag(tag.raw)))
       .map((tag) => readAttr(tag.raw, "data-audio-group"))
       .filter((id): id is string => Boolean(id)),
   );

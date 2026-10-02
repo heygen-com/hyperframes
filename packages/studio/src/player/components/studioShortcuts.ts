@@ -4,6 +4,7 @@ export const STUDIO_PLAIN_KEYS = {
   split: "s",
   record: "r",
   addKeyframe: "k",
+  audioGain: "g",
 } as const;
 
 export interface ShortcutHint {
@@ -51,6 +52,7 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: "⌘V", label: "Paste element" },
       { key: "⌘X", label: "Cut element" },
       { key: hintKey(STUDIO_PLAIN_KEYS.split), label: "Split clip at playhead" },
+      { key: hintKey(STUDIO_PLAIN_KEYS.audioGain), label: "Audio Gain for clips with sound" },
       { key: "⇧Click", label: "Razor tool: split all tracks" },
       { key: "[", label: "Select clips starting before the playhead" },
       { key: "]", label: "Select clips running at or after the playhead" },

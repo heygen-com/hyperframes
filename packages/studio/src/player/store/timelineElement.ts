@@ -83,6 +83,9 @@ export interface TimelineElement {
   /** The owning group's serialized `data-fx-chain`, when set — resolved once per parse. */
   audioGroupFxChain?: string;
   audioGroupAutomation?: string;
+  link?: string;
+  compositionScope?: string;
+  syncOrigin?: string;
   /**
    * Master start of the composition this row runs in, which its tweens and its
    * `data-start` are local to; 0 at the root. Writes go through toAuthoredStart.
@@ -114,6 +117,15 @@ export function toAuthoredStart(element: RowClock, masterTime: number): number {
 /** A master-time position on the clock this row's tweens run on. */
 export function toCompositionTime(element: RowClock, masterTime: number): number {
   return masterTime - (element.parentCompositionStart ?? 0);
+}
+
+type CompositionScoped = Pick<TimelineElement, "sourceFile" | "compositionScope">;
+
+export function sameCompositionScope(a: CompositionScoped, b: CompositionScoped): boolean {
+  return (
+    (a.sourceFile ?? "") === (b.sourceFile ?? "") &&
+    (a.compositionScope ?? "") === (b.compositionScope ?? "")
+  );
 }
 
 /**

@@ -6,10 +6,15 @@ import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
   DomEditPersistUnsafeValueError,
+  DomEditPersistPreparedWriteError,
   DomEditPersistUnresolvableError,
   warnDomEditPersistNoOp,
 } from "./domEditPersistFailure";
-import { formatUnsafeFieldList, postPatchElement } from "./useDomEditCommitsHelpers";
+import {
+  formatUnsafeFieldList,
+  postPatchElement,
+  writePreparedContent,
+} from "./useDomEditCommitsHelpers";
 import { importedFontFaceCssFor } from "../utils/studioFontHelpers";
 import { countStudioManualEditSave } from "../components/editor/manualEditsDom";
 import type { CutoverResult } from "../utils/sdkCutover";
@@ -108,9 +113,9 @@ export function useDomEditPersist({
         });
       }
 
-      // An imported font takes the server patch, which writes its @font-face with the edit; the SDK
-      // serializes only the patched DOM. The SDK re-reads in the file queue; this read is its fallback.
-      if (onTrySdkPersist && !font) {
+      // An imported font or prepareContent takes the server patch; the SDK serializes only the patched
+      // DOM. The SDK re-reads in the file queue; this read is its fallback.
+      if (onTrySdkPersist && !font && !options?.prepareContent) {
         const originalContent = await readTarget();
         if (originalContent === null) return;
         const cutover = await onTrySdkPersist(selection, operations, originalContent, targetPath, {
@@ -134,7 +139,9 @@ export function useDomEditPersist({
         coalesceKey: options?.coalesceKey,
         coalesceMs: options?.coalesceMs,
       };
-      // Read, server patch and history hold the file's queue, so no save lands between them.
+      const prepare = options?.prepareContent;
+      let preparedWriteFailed = false;
+      // Read, server patch, follow-up write and history hold the file's queue, so no save lands between them.
       const saved = await serializeStudioFileMutations(writeProjectFile, [targetPath], async () => {
         const originalContent = await readTarget();
         if (originalContent === null) return null;
@@ -143,7 +150,17 @@ export function useDomEditPersist({
 
         const patchedContent =
           typeof patchData.content === "string" ? patchData.content : originalContent;
-        const finalContent = patchedContent;
+        const prepared = prepare
+          ? await writePreparedContent(
+              targetPath,
+              patchedContent,
+              prepare,
+              writeProjectFile,
+              showToast,
+            )
+          : { content: patchedContent, failed: false };
+        preparedWriteFailed = prepared.failed;
+        const finalContent = prepared.content;
 
         await editHistory.recordEdit({
           ...history,
@@ -181,7 +198,7 @@ export function useDomEditPersist({
       if (!options?.skipRefresh) {
         reloadPreview();
       }
-      return completePersistence(
+      const outcome = completePersistence(
         finalContent === patchedContent &&
           typeof patchData.path === "string" &&
           typeof patchData.version === "string"
@@ -189,6 +206,8 @@ export function useDomEditPersist({
           : undefined,
         true,
       );
+      if (preparedWriteFailed) throw new DomEditPersistPreparedWriteError(targetPath);
+      return outcome;
     },
     [
       activeCompPath,

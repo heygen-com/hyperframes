@@ -31,6 +31,11 @@ export {
   liveTime,
   formatTime,
 } from "./player";
+export { usePreviewIframeStore } from "./player/store/previewIframeStore";
+export {
+  openAudioGainDialog,
+  useAudioGainDialogStore,
+} from "./player/components/audioGainDialogStore";
 export type {
   PlayerHandle,
   PlayerHandleElement,
@@ -143,6 +148,7 @@ export type {
 // A host's own waitForPendingDomEditSaves must also call this, or undo/redo
 // can race a write still in flight (see useTrackPendingTimelineEdit.ts).
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
+export { revertNewestStudioPendingEdit } from "./utils/studioPendingEdits";
 export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,
@@ -175,6 +181,7 @@ export { TimelineHistoryButtons } from "./components/TimelineHistoryButtons";
 export type { TimelineHistoryButtonsProps } from "./components/TimelineHistoryButtons";
 export { AudioMeterStrip } from "./components/nle/AudioMeterStrip";
 export type { AudioMeterStripProps } from "./components/nle/AudioMeterStrip";
+export { useAudioMetersVisible } from "./utils/audioMeterVisibility";
 export { useClipboard } from "./hooks/useClipboard";
 export type { UseClipboardOptions } from "./hooks/useClipboard";
 

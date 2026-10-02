@@ -391,3 +391,34 @@ describe("TimelineToolbar add beat", () => {
     act(() => root.unmount());
   });
 });
+
+describe("TimelineToolbar Linked Selection", () => {
+  it("is on by default, first among the editing toggles, and persists a click", async () => {
+    const { useLinkedClipPreferences } = await import("../utils/linkedClipPreferences");
+    const { host } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Linked Selection"]');
+    expect(button?.getAttribute("aria-pressed")).toBe("true");
+    const snapping = host.querySelector('button[aria-label="Toggle timeline snapping"]');
+    expect(snapping && button?.compareDocumentPosition(snapping)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    act(() => button?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(button?.getAttribute("aria-pressed")).toBe("false");
+    expect(readStudioUiPreferences().linkedSelectionEnabled).toBe(false);
+    act(() => useLinkedClipPreferences.getState().setLinkedSelection(true));
+  });
+
+  it("right-click toggles the out-of-sync indicator preference", async () => {
+    const { useLinkedClipPreferences } = await import("../utils/linkedClipPreferences");
+    const { host } = renderToolbar();
+    const button = host.querySelector('button[aria-label="Linked Selection"]');
+    act(() => button?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })));
+    const item = document.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]');
+    expect(item?.textContent).toContain("Show out-of-sync indicators");
+    expect(item?.getAttribute("aria-checked")).toBe("true");
+    act(() => item?.click());
+    expect(useLinkedClipPreferences.getState().syncIndicatorsVisible).toBe(false);
+    expect(readStudioUiPreferences().syncIndicatorsVisible).toBe(false);
+    act(() => useLinkedClipPreferences.getState().setSyncIndicatorsVisible(true));
+  });
+});

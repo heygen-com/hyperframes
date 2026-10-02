@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { applyInlineStyle } from "./inlineTextStyleRange";
 import { readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRead";
 import { parseCssColor, toHexColor } from "./colorValue";
@@ -69,10 +70,10 @@ export function InlineTextToolbar({
     [session, refresh],
   );
 
-  if (!placement) return null;
+  if (!placement || !iframe) return null;
   const styles = placement.styles;
 
-  return (
+  return createPortal(
     <div
       data-inline-text-toolbar="true"
       role="toolbar"
@@ -89,8 +90,8 @@ export function InlineTextToolbar({
       // The default, because a press anywhere in Studio moves the focus, and
       // moving it out of the text collapses the selection being styled.
       //
-      // The propagation, because this renders inside the canvas overlay: a
-      // press that reaches the canvas is read as a click on the composition,
+      // The propagation, because React bubbles it through the canvas overlay
+      // that renders this bar: a press that reaches the canvas is read as a click on the composition,
       // which deselects the element and commits the edit out from under the
       // button that was just pressed.
       onPointerDown={swallow}
@@ -147,7 +148,8 @@ export function InlineTextToolbar({
         on={styles["text-decoration-line"] === "underline"}
         onToggle={(on) => apply({ "text-decoration-line": on ? "underline" : null })}
       />
-    </div>
+    </div>,
+    iframe.ownerDocument.body,
   );
 }
 

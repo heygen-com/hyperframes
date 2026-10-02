@@ -12,6 +12,7 @@ import {
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
+import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
 export interface SourceMutationTarget {
@@ -699,4 +700,18 @@ export function unwrapElementsFromHtml(
     members,
     groupCenter,
   };
+}
+
+/** After a cut, give each linked group's right halves their own `data-link` and `data-sync-origin`. */
+export function relinkSplitHalvesInHtml(source: string, rightHalfIds: readonly string[]): string {
+  const { document, wrappedFragment } = parseSourceDocument(source);
+  const carriesPairing = (id: string) => {
+    const el = document.getElementById(id);
+    return Boolean(el?.hasAttribute("data-link") || el?.hasAttribute("data-sync-origin"));
+  };
+  if (!rightHalfIds.some(carriesPairing)) {
+    return source;
+  }
+  relinkSplitHalves(document, rightHalfIds);
+  return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }

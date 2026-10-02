@@ -117,7 +117,6 @@
   --timeline-clip-audio-bg-hover: oklch(0.49 0.12 300);
   --timeline-clip-audio-bg-dragging: oklch(0.42 0.12 300 / 0.96);
   --timeline-clip-audio-muted-bg: rgb(72, 74, 78);
-  --timeline-audio-link: light-dark(#626d66, #a0aaa4);
   --timeline-clip-selection: light-dark(#0f766e, rgba(255, 255, 255, 0.85));
   --timeline-clip-selection-highlight: rgb(255 255 255 / 0.55);
   --timeline-clip-radius: 8px;

@@ -4,8 +4,11 @@ import { usePlayerStore } from "../player";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 import { trackStudioRazorSplit } from "../telemetry/events";
 import { canSplitElementAt, selectSplittableElements } from "../utils/timelineElementSplit";
+import { linkedMembersOf } from "../player/components/audioClipLink";
+import { isLinkedSelectionOn } from "../utils/linkedClipPreferences";
 import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
 import type { RecordEditInput } from "./timelineEditingHelpers";
+import { useFreezeFrame } from "./useFreezeFrame";
 
 interface UseRazorSplitOptions {
   projectId: string | null;
@@ -102,7 +105,16 @@ export function useRazorSplit({
       }
       if (!canSplitElementAt(element, splitTime)) return;
       try {
-        const result = await runCut([element], splitTime, "single");
+        const members = linkedMembersOf(
+          element,
+          usePlayerStore.getState().elements,
+          isLinkedSelectionOn(),
+        );
+        const result = await runCut(
+          members.filter((member) => canSplitElementAt(member, splitTime)),
+          splitTime,
+          "single",
+        );
         if (!result) return;
         if (result.syncFailed) return;
         showToast(`Split ${getTimelineElementLabel(element)} at ${splitTime.toFixed(2)}s`, "info");
@@ -135,5 +147,17 @@ export function useRazorSplit({
     [isRecordingRef, runCut, showToast],
   );
 
-  return { handleRazorSplit, handleRazorSplitAll };
+  const handleFreezeFrame = useFreezeFrame({
+    projectId,
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    observeProjectFileVersion,
+    recordEdit,
+    reloadPreview,
+    forceReloadSdkSession,
+    isRecordingRef,
+  });
+
+  return { handleRazorSplit, handleRazorSplitAll, handleFreezeFrame };
 }

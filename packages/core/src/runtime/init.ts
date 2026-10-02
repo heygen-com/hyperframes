@@ -136,6 +136,7 @@ import {
   isMediaElement,
   isVideoElement,
 } from "./domRealm";
+import { audibleVideoNeedsWebAudio, isAudibleVideoElement } from "../audibleVideo";
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -331,7 +332,15 @@ function pageAnimationsForOnePass(): () => Animation[] {
 
 // A `<video>` joins only for a gain `el.volume` cannot express: capture is a one-way door.
 const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
-  isAudioElement(el) || (isVideoElement(el) && Number.parseFloat(el.dataset.volume ?? "") > 1);
+  isAudioElement(el) ||
+  (isVideoElement(el) &&
+    isAudibleVideoElement(el) &&
+    audibleVideoNeedsWebAudio({
+      volume: Number.parseFloat(el.dataset.volume ?? ""),
+      fxChain: el.getAttribute("data-fx-chain"),
+      automation: el.getAttribute("data-automation"),
+      audioGroup: el.getAttribute("data-audio-group"),
+    }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
@@ -2589,8 +2598,8 @@ export function initSandboxRuntimeModular(): void {
   // sync with a `data-hidden` toggle made mid-playback.
   const groupHiddenLast = new WeakMap<Element, boolean>();
   const groupHasUncapturedMember = (groupId: string, currentTime: number): boolean => {
-    for (const el of document.querySelectorAll("audio[data-start]")) {
-      if (!isMediaElement(el) || audioGroupOf(el) !== groupId) continue;
+    for (const el of webAudioMediaIn(document)) {
+      if (audioGroupOf(el) !== groupId) continue;
       if (webAudio.routesElement(el) || isSilencedByHidden(el)) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
       const duration = parseStrictFiniteTimingNumber(el.dataset.duration);
@@ -4801,8 +4810,6 @@ export function initSandboxRuntimeModular(): void {
       // that existed before (#3458).
       const route = classifyWebAudioMediaRoute(rawEl);
       reportWebAudioMediaRoute(rawEl, route);
-      // Decoded buffers cannot follow a rate curve without shifting pitch; the media element can.
-      if (typeof readElementRateSpec(rawEl) !== "number") continue;
       // The cross-origin verdict's BEST outcome is decode, since a CDN that
       // sends `Access-Control-Allow-Origin` (the author just never wrote the
       // `crossorigin` attribute) decodes fine and keeps the whole FX graph.
@@ -4823,6 +4830,8 @@ export function initSandboxRuntimeModular(): void {
         // A video's picture must keep playing from the element, so it has no decode fallback.
         if (scheduled || !isAudioElement(rawEl) || !clock.isPlaying() || replacedByNewerPass)
           return;
+        // Decoded buffers cannot follow a rate curve without shifting pitch; the media element can.
+        if (typeof readElementRateSpec(rawEl) !== "number") return;
         const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
         // Deliberately the FX/automation pair and NOT
         // `nativeUnexpressibleProcessing()`, which this route's diagnostic uses.

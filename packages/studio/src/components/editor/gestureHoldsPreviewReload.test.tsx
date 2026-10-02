@@ -66,8 +66,24 @@ const byId = (iframe: HTMLIFrameElement | null, id: string) =>
   iframe!.contentDocument!.getElementById(id) as HTMLElement;
 const api = (): TimelinePlayerApi => player.getApi();
 
-function pointer(target: Element, type: string, x: number, y: number) {
-  const init = { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: x, clientY: y };
+function pointer(
+  target: Element,
+  type: string,
+  x: number,
+  y: number,
+  extra: PointerEventInit = {},
+) {
+  const buttons = type === "pointerdown" || type === "pointermove" ? 1 : 0;
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    buttons,
+    pointerId: 1,
+    clientX: x,
+    clientY: y,
+    ...extra,
+  };
   act(() => void target.dispatchEvent(new PointerEvent(type, init)));
 }
 
@@ -250,6 +266,27 @@ describe("a reload during a drag", () => {
     expect(await paintShadow(api, fresh)).toBeGreaterThan(requested);
     expect(byId(fresh, "title").style.getPropertyValue("translate")).toBe("40px 20px");
   });
+});
+
+describe("a drag moves only with its own pointer pressed", () => {
+  it.each([
+    ["no button held, as Chromium sends after a layout change", { buttons: 0 }],
+    ["another pointer", { pointerId: 2 }],
+  ])(
+    "a move with %s at a fixed point leaves the drop where the pointer let go",
+    async (_, stray) => {
+      const { live, overlay, box } = mountEditor(false);
+      pointer(box, "pointerdown", 150, 150);
+      pointer(overlay, "pointermove", 170, 160);
+      pointer(overlay, "pointermove", 20, 20, stray);
+      pointer(overlay, "pointermove", 190, 170);
+      pointer(overlay, "pointermove", 20, 20, stray);
+      expect(byId(live, "title").style.getPropertyValue("translate")).toBe("40px 20px");
+      pointer(overlay, "pointerup", 190, 170);
+      await settle();
+      expect(file.title).toBe("translate: 40px 20px");
+    },
+  );
 });
 
 type Editor = ReturnType<typeof mountEditor>;

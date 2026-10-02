@@ -7,6 +7,7 @@ import {
   buildTextFieldChildLocator,
   readHfId,
   liveLayerElement,
+  domEditSelectionToFacts,
 } from "./domEditingLayers";
 import type { DomEditTextField } from "./domEditingTypes";
 
@@ -330,5 +331,25 @@ describe("liveLayerElement", () => {
       liveLayerElement({ ...layer, sourceFile: "compositions/strip.html" }, document, "index.html")
         .textContent,
     ).toBe("strip");
+  });
+});
+
+describe("domEditSelectionToFacts hasAudio", () => {
+  async function factsFor(html: string) {
+    document.body.innerHTML = html;
+    const node = document.body.firstElementChild;
+    if (!(node instanceof HTMLElement)) throw new Error("expected element");
+    const selection = await resolveDomEditSelection(node, opts);
+    document.body.innerHTML = "";
+    if (!selection) throw new Error("expected selection");
+    return domEditSelectionToFacts(selection);
+  }
+
+  it("is true for an unmuted video, false for muted or data-has-audio=false", async () => {
+    expect((await factsFor(`<video id="v1"></video>`)).hasAudio).toBe(true);
+    expect((await factsFor(`<video id="v2" data-has-audio="true"></video>`)).hasAudio).toBe(true);
+    expect((await factsFor(`<video id="v3" muted></video>`)).hasAudio).toBe(false);
+    expect((await factsFor(`<video id="v4" data-has-audio="false"></video>`)).hasAudio).toBe(false);
+    expect((await factsFor(`<div id="d1"></div>`)).hasAudio).toBe(false);
   });
 });

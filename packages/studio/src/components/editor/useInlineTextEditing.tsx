@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { InlineTextCaret } from "./InlineTextCaret";
 import { InlineTextToolbar } from "./InlineTextToolbar";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import { useInlineTextEdit } from "../../hooks/useInlineTextEdit";
@@ -110,10 +111,16 @@ export function useInlineTextEditing(
   return {
     editing: inlineText.session !== null,
     toolbar: (
-      <InlineTextToolbar
-        session={inlineText.session}
-        iframe={actions?.previewIframeRef?.current ?? null}
-      />
+      <>
+        <InlineTextToolbar
+          session={inlineText.session}
+          iframe={actions?.previewIframeRef?.current ?? null}
+        />
+        <InlineTextCaret
+          session={inlineText.session}
+          iframe={actions?.previewIframeRef?.current ?? null}
+        />
+      </>
     ),
     handleKeyDown,
     startFromPress: (event) => {

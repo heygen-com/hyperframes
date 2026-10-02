@@ -242,20 +242,44 @@ const previewFrames = (page) =>
     .filter((u) => u.includes("/preview"))
     .join(" ");
 
-/** Measures once the preview frames and the box have held still for STILL_MS; Studio updates both after a save. */
+/** A hidden preview holding the target is a shadow reload not yet promoted: the visible frame is about to go stale. */
+async function hiddenTarget(page, selector = "#target") {
+  for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
+    const host = await f.frameElement().catch(() => null);
+    const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
+    if (shown === false && (await f.$(selector).catch(() => null))) return true;
+  }
+  return false;
+}
+
+// Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
+export const swapPending = (ctx) => Boolean(ctx.keys) && hiddenTarget(ctx.page, ctx.selector);
+
+/** Restart the stillness window: a pending swap, a changed set of preview frames, or the box moved. */
+export const unsettledBy = (start, now) =>
+  start.pending ||
+  now.pending ||
+  now.frames !== start.frames ||
+  quadDistance(now.m.visible, start.m.visible) >= 0.01;
+
+/** Measures once the shown preview and the box have held still for STILL_MS; Studio updates both after a save. */
 // fallow-ignore-next-line complexity
 export async function settled(ctx, timeout = 15_000) {
   const deadline = Date.now() + timeout;
-  let start = { m: await measure(ctx), frames: previewFrames(ctx.page) };
+  const read = async () => ({
+    m: await measure(ctx),
+    frames: previewFrames(ctx.page),
+    pending: await swapPending(ctx),
+  });
+  let start = await read();
   let now = start;
   // Compared with the window's first read, so a drift too slow to show read to read still restarts it.
-  for (let since = Date.now(); Date.now() - since < STILL_MS; ) {
+  for (let since = Date.now(); start.pending || Date.now() - since < STILL_MS; ) {
     // A preview that never holds still is a Studio defect: the metrics it feeds fail, the rest still count.
     if (Date.now() > deadline) return { ...now.m, unsettled: true };
     await nextFrame(ctx.page);
-    now = { m: await measure(ctx), frames: previewFrames(ctx.page) };
-    if (now.frames !== start.frames || quadDistance(now.m.visible, start.m.visible) >= 0.01)
-      [start, since] = [now, Date.now()];
+    now = await read();
+    if (unsettledBy(start, now)) [start, since] = [now, Date.now()];
   }
   return now.m;
 }
@@ -268,15 +292,89 @@ export async function openStudio(ctx) {
   let seek = null;
   for (const deadline = Date.now() + 30_000; Date.now() < deadline; await sleep(250)) {
     seek = await ctx.page
-      .evaluate((time) => window.__editBench.call("studio_seek", { time }), PLAYHEAD)
+      .evaluate((time) => window.__editBench.call("studio_seek", { time }), ctx.playhead)
       .catch(String);
-    if (seek?.ok && seek.duration > 0 && seek.playhead === PLAYHEAD && (await findTarget(ctx.page)))
+    if (
+      seek?.ok &&
+      seek.duration > 0 &&
+      seek.playhead === ctx.playhead &&
+      (await findTarget(ctx.page))
+    )
       break;
     seek = null;
   }
   if (!seek) throw new Error("studio never reported a seekable composition");
   await sleep(1000);
   return settled(ctx);
+}
+
+async function seekTo(ctx, time) {
+  const seek = await ctx.page.evaluate(
+    (t) => window.__editBench.call("studio_seek", { time: t }),
+    time,
+  );
+  if (!seek?.ok || seek.playhead !== time)
+    throw new Error(`studio_seek ${time}: ${JSON.stringify(seek)}`);
+  return settled(ctx);
+}
+
+/** Each GSAP-animated property's value at every other keyframe time (and the box there), then back to the playhead. */
+async function readKeyframes(ctx, keys, withBox = false) {
+  const at = {};
+  for (const time of keys.times) {
+    const m = await seekTo(ctx, time);
+    const values = await ctx.handles.target.evaluate((el, props) => {
+      const gsap = el.ownerDocument.defaultView.gsap;
+      return Object.fromEntries(props.map((p) => [p, Number.parseFloat(gsap.getProperty(el, p))]));
+    }, keys.props);
+    at[time] = { values, ...(withBox && { visible: m.visible }) };
+  }
+  await seekTo(ctx, ctx.playhead);
+  return at;
+}
+
+// GSAP's own numbers (px, deg, scale): an untouched keyframe reads back exactly.
+const KEY_TOLERANCE = 0.01;
+
+/** The largest change of an animated value at a keyframe the edit was not on; NaN (unreadable) fails. */
+export function keyframeDrift(before, after) {
+  let worst = { diff: 0, time: null, prop: null };
+  for (const [time, b] of Object.entries(before))
+    for (const [prop, v] of Object.entries(b.values)) {
+      const diff = Math.abs(after[time].values[prop] - v);
+      if (!(diff <= worst.diff)) worst = { diff, time: Number(time), prop };
+    }
+  return { ...worst, pass: worst.diff <= KEY_TOLERANCE };
+}
+
+const declarations = (text = "") =>
+  Object.fromEntries(
+    text
+      .split(";")
+      .map((d) => d.split(":"))
+      .filter((d) => d.length > 1)
+      .map(([k, ...v]) => [k.trim(), v.join(":").trim()]),
+  );
+const capture = (re, text = "") => re.exec(text)?.[1];
+const targetCss = (html) => ({
+  rule: declarations(capture(/#target\s*\{([^}]*)\}/, html)),
+  inline: declarations(capture(/\bstyle="([^"]*)"/, capture(/(<[^>]*\bid="target"[^>]*>)/, html))),
+});
+
+/** Plain CSS the edit wrote for a property GSAP animates: it would override or fight the timeline. */
+export function strayCss(original, saved, props) {
+  const changed = (a, b, file, where) =>
+    props
+      .filter((p) => a[p] !== b[p])
+      .map((p) => `${file} ${where} ${p}: ${a[p] ?? "-"} -> ${b[p] ?? "-"}`);
+  const stray = Object.keys(original).flatMap((file) => {
+    const [a, b] = [targetCss(original[file]), targetCss(saved[file])];
+    return [
+      ...changed(a.rule, b.rule, file, "rule"),
+      ...changed(a.inline, b.inline, file, "inline"),
+    ];
+  });
+  return { pass: stray.length === 0, stray };
 }
 
 /** Puppeteer presses one key at a time: hold the modifiers around the last key. */
@@ -570,7 +668,30 @@ export async function controlDrag(browser, gesture) {
   }
 }
 
-/** `route`, given the press point, replaces the gesture's straight path; a `{ pause }` entry holds still. */
+/** The move Chromium resends at the last known point after a layout change: no button, capture kept. A CDP move
+ * with no button ends the capture instead, so it goes to the captured box (the mouse is pointer 1). */
+async function strayMove(page, [x, y]) {
+  const sent = await page.evaluate(
+    ([clientX, clientY]) =>
+      document.querySelector("[data-dom-edit-selection-box]")?.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true,
+          buttons: 0,
+          clientX,
+          clientY,
+        }),
+      ),
+    [x, y],
+  );
+  if (sent === undefined) throw new Error("no selection box to send the stray move to");
+  await nextFrame(page);
+}
+
+/** `route`, given the press point, replaces the gesture's straight path.
+ * `{ pause }` holds still; `{ stray }`: see strayMove. */
 // fallow-ignore-next-line complexity
 export async function pointerGesture(ctx, gesture, pre, route) {
   const press = await handlePoint(ctx, pre, gesture);
@@ -594,6 +715,10 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   for (const p of g.path) {
     if (p.pause) {
       await sleep(p.pause);
+      continue;
+    }
+    if (p.stray) {
+      await strayMove(ctx.page, p.stray);
       continue;
     }
     await ctx.page.mouse.move(p[0], p[1]);
@@ -645,7 +770,14 @@ async function nudgeGesture(ctx, pre) {
 export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
-  const ctx = { page, dir, files, handles: null };
+  const ctx = {
+    page,
+    dir,
+    files,
+    handles: null,
+    playhead: spec.playhead ?? PLAYHEAD,
+    keys: spec.keys,
+  };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
   evidence.shots = {};
@@ -659,10 +791,12 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
     let pre = await openStudio(ctx);
     await disableSnap(page);
     const zoom = await setZoom(ctx, spec.zoom, pre.map.toScreen(centre(pre.visible)));
+    // The animated values at the other keyframes, read before anything is selected or edited.
+    const keysBefore = spec.keys && (await readKeyframes(ctx, spec.keys));
     pre = await settled(ctx);
     await selectTarget(ctx, pre);
     pre = await settled(ctx);
-    return await drive({ ctx, page, pre, zoom, shoot, consoleErrors });
+    return await drive({ ctx, page, pre, zoom, shoot, consoleErrors, keysBefore });
   } catch (error) {
     await shoot("error").catch(() => undefined);
     throw error;
@@ -680,7 +814,7 @@ export async function runCase(args) {
 // fallow-ignore-next-line complexity
 async function measureCase(
   { spec, dir, files, evidence },
-  { ctx, page, pre, zoom, shoot, consoleErrors },
+  { ctx, page, pre, zoom, shoot, consoleErrors, keysBefore },
   control,
 ) {
   const original = readFiles(dir, files);
@@ -726,6 +860,8 @@ async function measureCase(
   await page.reload();
   const reloaded = await openStudio(ctx);
   await shoot("reloaded");
+  // From the saved file: the other keyframes keep their values, and no animated property gets plain CSS.
+  const keysAfter = spec.keys && (await readKeyframes(ctx, spec.keys, true));
   const quads = Object.fromEntries(
     Object.entries({ pre, committed, undone, redone, reloaded }).filter(([, m]) => m),
   );
@@ -766,6 +902,11 @@ async function measureCase(
     smooth: { ...drive.smooth, control },
     unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
     reloaded,
+    ...(spec.keys && {
+      keys: keyframeDrift(keysBefore, keysAfter),
+      css: strayCss(original, readFiles(dir, files), spec.keys.css),
+      keyRender: { time: spec.keys.render, visible: keysAfter[spec.keys.render].visible },
+    }),
     diag: {
       ...drive.diag,
       consoleErrors: consoleErrors.slice(0, 5),

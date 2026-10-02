@@ -23,11 +23,12 @@
 import { applyFaststart, muxVideoWithAudio, packageHls } from "@hyperframes/engine";
 import { extname } from "node:path";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
-import { padOrTrimAudioToVideoFrameCount } from "../audioPadTrim.js";
+import { AAC_DELIVERY_TRUE_PEAK_DBFS, padOrTrimAudioToVideoFrameCount } from "../audioPadTrim.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { DEFAULT_HLS_SEGMENT_SECONDS } from "../hlsConfig.js";
 import type { RenderOutputFormat } from "../renderFormat.js";
 import { updateJobStatus } from "../shared.js";
+import { defaultLogger } from "../../../logger.js";
 
 export interface AssembleStageInput {
   job: RenderJob;
@@ -53,6 +54,16 @@ export interface AssembleStageInput {
 export interface AssembleStageResult {
   /** Wall-clock ms for the assemble phase. */
   assembleMs: number;
+}
+
+function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number | undefined): void {
+  if (audioLoweredDb === undefined) return;
+  job.audioLoweredDb = audioLoweredDb;
+  const ceiling = `−${Math.abs(AAC_DELIVERY_TRUE_PEAK_DBFS)} dBTP`;
+  (job.config.logger ?? defaultLogger).info(
+    `Audio lowered by ${audioLoweredDb.toFixed(1)} dB to stay under ${ceiling}`,
+    { audioLoweredDb },
+  );
 }
 
 export async function runAssembleStage(input: AssembleStageInput): Promise<AssembleStageResult> {
@@ -88,6 +99,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
     if (!normalizeResult.success) {
       throw encoderFailureError("Audio duration normalization failed", normalizeResult);
     }
+    recordLimiterAttenuation(job, normalizeResult.audioLoweredDb);
     if (isHls) {
       await runHlsPackaging(input, normalizeResult.outputPath);
     } else {

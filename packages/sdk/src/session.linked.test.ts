@@ -1,0 +1,251 @@
+import { describe, expect, it } from "vitest";
+import { openComposition } from "./session.js";
+
+const LINKED_HTML = `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px" data-duration="10">
+  <video data-hf-id="hf-talk" src="talk.mp4" muted data-link="lk-1" data-start="2" data-duration="6" data-track-index="0"></video>
+  <audio data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="2" data-duration="6" data-track-index="2"></audio>
+  <audio data-hf-id="hf-music" src="bgm.mp3" data-start="0" data-duration="10" data-track-index="3"></audio>
+</div>
+`.trim();
+
+function attr(html: string, hfId: string, name: string): string | null {
+  const tag = new RegExp(`<[^>]*data-hf-id="${hfId}"[^>]*>`).exec(html)?.[0] ?? "";
+  return new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
+}
+
+describe("setTiming on linked clips", () => {
+  it("moves link partners by default, each keeping its own track", async () => {
+    const comp = await openComposition(LINKED_HTML);
+    comp.setTiming("hf-talk", { start: 3, trackIndex: 1 });
+    const html = comp.serialize();
+    expect(attr(html, "hf-talk", "data-start")).toBe("3");
+    expect(attr(html, "hf-talk-audio", "data-start")).toBe("3");
+    expect(attr(html, "hf-talk", "data-track-index")).toBe("1");
+    expect(attr(html, "hf-talk-audio", "data-track-index")).toBe("2");
+    expect(attr(html, "hf-music", "data-start")).toBe("0");
+  });
+
+  it("trims partners to the same duration, and one undo reverts both", async () => {
+    const comp = await openComposition(LINKED_HTML);
+    comp.setTiming("hf-talk-audio", { duration: 4 });
+    expect(attr(comp.serialize(), "hf-talk", "data-duration")).toBe("4");
+    comp.undo();
+    const html = comp.serialize();
+    expect(attr(html, "hf-talk", "data-duration")).toBe("6");
+    expect(attr(html, "hf-talk-audio", "data-duration")).toBe("6");
+  });
+
+  it("moves a misaligned pair by the same delta, preserving the offset", async () => {
+    const html = LINKED_HTML.replace(
+      'src="talk.mp4" data-link="lk-1" data-start="2"',
+      'src="talk.mp4" data-link="lk-1" data-start="3"',
+    );
+    const comp = await openComposition(html);
+    comp.setTiming("hf-talk", { start: 5 });
+    const out = comp.serialize();
+    expect(attr(out, "hf-talk", "data-start")).toBe("5");
+    expect(attr(out, "hf-talk-audio", "data-start")).toBe("6");
+  });
+
+  it("keeps a common end when partners start at different times", async () => {
+    const offset = LINKED_HTML.replace(
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="2" data-duration="6"',
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="3" data-duration="5"',
+    );
+    const comp = await openComposition(offset);
+    comp.setTiming("hf-talk", { duration: 4 });
+    const html = comp.serialize();
+    expect(attr(html, "hf-talk", "data-duration")).toBe("4");
+    expect(attr(html, "hf-talk-audio", "data-start")).toBe("3");
+    expect(attr(html, "hf-talk-audio", "data-duration")).toBe("3");
+  });
+
+  it("{ linked: false } edits one member and unlinks the pair", async () => {
+    const comp = await openComposition(LINKED_HTML);
+    comp.setTiming("hf-talk", { start: 5 }, { linked: false });
+    const html = comp.serialize();
+    expect(attr(html, "hf-talk", "data-start")).toBe("5");
+    expect(attr(html, "hf-talk-audio", "data-start")).toBe("2");
+    expect(attr(html, "hf-talk", "data-link")).toBeNull();
+    expect(attr(html, "hf-talk-audio", "data-link")).toBeNull();
+    comp.undo();
+    expect(attr(comp.serialize(), "hf-talk", "data-link")).toBe("lk-1");
+  });
+
+  it("a batch naming both members stays in sync", async () => {
+    const comp = await openComposition(LINKED_HTML);
+    comp.setElementTiming({ "hf-talk": { start: 4 }, "hf-talk-audio": { start: 4 } });
+    const html = comp.serialize();
+    expect(attr(html, "hf-talk", "data-start")).toBe("4");
+    expect(attr(html, "hf-talk-audio", "data-start")).toBe("4");
+  });
+
+  it.each([
+    'data-composition-id="child" data-composition-file="child.html"',
+    'data-composition-file="child.html"',
+  ])("keeps a link group inside its own composition (host %s)", async (host) => {
+    const comp = await openComposition(
+      `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px" data-duration="10">
+  <video data-hf-id="hf-v" src="talk.mp4" muted data-link="lk-1" data-start="0" data-duration="4" data-track-index="0"></video>
+  <audio data-hf-id="hf-a" src="talk.mp4" data-link="lk-1" data-start="0" data-duration="4" data-track-index="1"></audio>
+  <div data-hf-id="hf-host" ${host} data-start="0" data-duration="10" data-track-index="2">
+    <video data-hf-id="hf-cv" src="b.mp4" muted data-link="lk-1" data-start="0" data-duration="4" data-track-index="0"></video>
+    <audio data-hf-id="hf-ca" src="b.mp4" data-link="lk-1" data-start="0" data-duration="4" data-track-index="1"></audio>
+  </div>
+</div>`.trim(),
+    );
+    comp.setTiming("hf-v", { start: 2 });
+    let html = comp.serialize();
+    expect(attr(html, "hf-a", "data-start")).toBe("2");
+    expect(attr(html, "hf-cv", "data-start")).toBe("0");
+    expect(attr(html, "hf-ca", "data-start")).toBe("0");
+    comp.setTiming("hf-host/hf-cv", { start: 1 });
+    html = comp.serialize();
+    expect(attr(html, "hf-ca", "data-start")).toBe("1");
+    expect(attr(html, "hf-v", "data-start")).toBe("2");
+    expect(attr(html, "hf-a", "data-start")).toBe("2");
+  });
+
+  it("keeps a link group inside an inline composition that reuses the id", async () => {
+    const comp = await openComposition(
+      `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px" data-duration="10">
+  <video data-hf-id="hf-v" src="talk.mp4" muted data-link="lk-1" data-start="0" data-duration="4" data-track-index="0"></video>
+  <audio data-hf-id="hf-a" src="talk.mp4" data-link="lk-1" data-start="0" data-duration="4" data-track-index="1"></audio>
+  <div data-hf-id="hf-child" data-composition-id="child" data-start="0" data-duration="10" data-track-index="2">
+    <video data-hf-id="hf-cv" src="b.mp4" muted data-link="lk-1" data-start="5" data-duration="4" data-track-index="0"></video>
+    <audio data-hf-id="hf-ca" src="b.mp4" data-link="lk-1" data-start="5" data-duration="4" data-track-index="1"></audio>
+  </div>
+</div>`.trim(),
+    );
+    comp.setTiming("hf-v", { start: 2 });
+    let html = comp.serialize();
+    expect(attr(html, "hf-a", "data-start")).toBe("2");
+    expect(attr(html, "hf-cv", "data-start")).toBe("5");
+    expect(attr(html, "hf-ca", "data-start")).toBe("5");
+    comp.setTiming("hf-cv", { start: 6 });
+    html = comp.serialize();
+    expect(attr(html, "hf-ca", "data-start")).toBe("6");
+    expect(attr(html, "hf-v", "data-start")).toBe("2");
+    comp.setTiming("hf-ca", { start: 7 }, { linked: false });
+    html = comp.serialize();
+    expect(attr(html, "hf-cv", "data-link")).toBeNull();
+    expect(attr(html, "hf-v", "data-link")).toBe("lk-1");
+    expect(attr(html, "hf-a", "data-link")).toBe("lk-1");
+  });
+
+  it("refuses to edit a link partner whose id also names a root clip", async () => {
+    const html = `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px" data-duration="10">
+  <audio data-hf-id="hf-a" src="bgm.mp3" data-start="0" data-duration="10" data-track-index="1"></audio>
+  <div data-hf-id="hf-child" data-composition-id="child" data-start="0" data-duration="10" data-track-index="2">
+    <video data-hf-id="hf-cv" src="b.mp4" muted data-link="lk-1" data-start="5" data-duration="4" data-track-index="0"></video>
+    <audio data-hf-id="hf-a" src="b.mp4" data-link="lk-1" data-start="5" data-duration="4" data-track-index="1"></audio>
+  </div>
+</div>`.trim();
+    const comp = await openComposition(html);
+    expect(() => comp.setTiming("hf-cv", { start: 2 })).toThrow(/not uniquely addressable/);
+    expect(() => comp.setTiming("hf-cv", { start: 2 }, { linked: false })).toThrow(
+      /not uniquely addressable/,
+    );
+    expect(comp.serialize()).toBe((await openComposition(html)).serialize());
+  });
+
+  describe("a duration edit whose new end would cross a linked partner's start", () => {
+    const OFFSET_HTML = LINKED_HTML.replace(
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="2" data-duration="6"',
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="3" data-duration="5"',
+    );
+
+    it.each([1, 0.5])("refuses duration %s atomically, before any mutation", async (duration) => {
+      const comp = await openComposition(OFFSET_HTML);
+      comp.setTiming("hf-music", { start: 1 });
+      const before = comp.serialize();
+      expect(comp.can({ type: "setTiming", target: "hf-talk", duration })).toMatchObject({
+        ok: false,
+        code: "E_LINKED_PARTNER_CROSSED",
+      });
+      expect(() => comp.setTiming("hf-talk", { duration })).toThrow(
+        /linked audio would start after the new end/i,
+      );
+      expect(comp.serialize()).toBe(before);
+      comp.undo();
+      expect(attr(comp.serialize(), "hf-music", "data-start")).toBe("0");
+      expect(comp.canUndo()).toBe(false);
+    });
+
+    it("trims the partner to the shared end while that end stays after its start", async () => {
+      const comp = await openComposition(OFFSET_HTML);
+      expect(comp.can({ type: "setTiming", target: "hf-talk", duration: 1.5 }).ok).toBe(true);
+      comp.setTiming("hf-talk", { duration: 1.5 });
+      const html = comp.serialize();
+      expect(attr(html, "hf-talk", "data-duration")).toBe("1.5");
+      expect(attr(html, "hf-talk-audio", "data-start")).toBe("3");
+      expect(attr(html, "hf-talk-audio", "data-duration")).toBe("0.5");
+    });
+
+    it("allows the same edit once the pair is unlinked", async () => {
+      const comp = await openComposition(OFFSET_HTML);
+      comp.setTiming("hf-talk", { duration: 0.5 }, { linked: false });
+      const html = comp.serialize();
+      expect(attr(html, "hf-talk", "data-duration")).toBe("0.5");
+      expect(attr(html, "hf-talk-audio", "data-duration")).toBe("5");
+    });
+  });
+
+  describe.each([
+    { host: 'data-composition-id="child" data-composition-file="child.html"', cv: "hf-host/hf-cv" },
+    { host: 'data-composition-id="child"', cv: "hf-cv" },
+  ])(
+    "one edit naming linked clips in two compositions that reuse a link id ($host)",
+    ({ host, cv }) => {
+      const TWO_SCOPES_HTML = `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px" data-duration="10">
+  <video data-hf-id="hf-v" src="talk.mp4" muted data-link="lk-1" data-start="2" data-duration="6" data-track-index="0"></video>
+  <audio data-hf-id="hf-a" src="talk.mp4" data-link="lk-1" data-start="2" data-duration="6" data-track-index="1"></audio>
+  <div data-hf-id="hf-host" ${host} data-start="0" data-duration="10" data-track-index="2">
+    <video data-hf-id="hf-cv" src="b.mp4" muted data-link="lk-1" data-start="0" data-duration="4" data-track-index="0"></video>
+    <audio data-hf-id="hf-ca" src="b.mp4" data-link="lk-1" data-start="0" data-duration="4" data-track-index="1"></audio>
+  </div>
+</div>`.trim();
+
+      it("trims each audio against its own video's baseline", async () => {
+        const comp = await openComposition(TWO_SCOPES_HTML);
+        comp.dispatch({ type: "setTiming", target: ["hf-v", cv], duration: 0.5 });
+        const html = comp.serialize();
+        expect([attr(html, "hf-v", "data-start"), attr(html, "hf-v", "data-duration")]).toEqual([
+          "2",
+          "0.5",
+        ]);
+        expect([attr(html, "hf-a", "data-start"), attr(html, "hf-a", "data-duration")]).toEqual([
+          "2",
+          "0.5",
+        ]);
+        expect([attr(html, "hf-cv", "data-start"), attr(html, "hf-cv", "data-duration")]).toEqual([
+          "0",
+          "0.5",
+        ]);
+        expect([attr(html, "hf-ca", "data-start"), attr(html, "hf-ca", "data-duration")]).toEqual([
+          "0",
+          "0.5",
+        ]);
+      });
+
+      it("refuses against the scoped baseline when one scope's audio would cross its video's end", async () => {
+        const crossing = TWO_SCOPES_HTML.replace(
+          'data-hf-id="hf-a" src="talk.mp4" data-link="lk-1" data-start="2" data-duration="6"',
+          'data-hf-id="hf-a" src="talk.mp4" data-link="lk-1" data-start="3" data-duration="5"',
+        );
+        const comp = await openComposition(crossing);
+        const before = comp.serialize();
+        const op = { type: "setTiming" as const, target: ["hf-v", cv], duration: 0.5 };
+        expect(comp.can(op)).toMatchObject({ ok: false, code: "E_LINKED_PARTNER_CROSSED" });
+        expect(() => comp.dispatch(op)).toThrow(/linked audio would start after the new end/i);
+        expect(comp.serialize()).toBe(before);
+        expect(comp.canUndo()).toBe(false);
+      });
+    },
+  );
+});

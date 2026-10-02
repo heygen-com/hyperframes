@@ -5,6 +5,7 @@ import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext
 import { slugifyDesignInput } from "../../utils/designInputTracking";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
+import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
@@ -289,10 +290,12 @@ export function PropertyPanelFlat({
   const showMotionEffects = gsapEffectHandlers !== null && !audioSelection;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
+  const linkedSpeed = useLinkedSpeedCommit(element, forwardedProps.onSetAttributeBatch);
   const volumeAutomation = useVolumeAutomation(
     element,
     currentTime,
     onSetAttributeQuiet ?? onSetAttributeLive,
+    linkedSpeed,
   );
 
   // The group this clip belongs to, if any — the Audio FX summary reads
@@ -505,7 +508,7 @@ export function PropertyPanelFlat({
           element={element}
           styles={styles}
           onSetStyle={onSetStyle}
-          onSetAttribute={onSetAttribute}
+          onSetAttribute={withLinkedPlaybackRate(onSetAttribute, linkedSpeed)}
           {...volumeAutomation}
         />
       ),

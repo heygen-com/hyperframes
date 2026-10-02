@@ -55,6 +55,7 @@ vi.mock("@hyperframes/engine", () => ({
   buildChromeArgs: () => [],
   killTrackedProcesses: () => {},
   closeBrowserPool: () => engineState.closeBrowserPool(),
+  getSystemTotalMb: () => 0,
 }));
 vi.mock("../browser/gpuPolicy.js", () => ({
   resolveCaptureBrowserGpuMode: async () => "software",
@@ -290,6 +291,19 @@ describe("createStudioServer shutdown", () => {
       jobId,
     };
   }
+
+  it("hands the limiter's audioLoweredDb to the job state and the render sidecar", async () => {
+    producerState.executeRenderJob = async (job) => {
+      if (typeof job === "object" && job !== null) Reflect.set(job, "audioLoweredDb", 1.44);
+    };
+    const outputPath = join(mkdtempSync(join(tmpdir(), "hf-lowered-")), "out.mp4");
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender(startRenderOpts("job-lowered", outputPath));
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), { timeout: 5_000 });
+    expect(state.audioLoweredDb).toBe(1.44);
+    const meta = JSON.parse(readFileSync(outputPath.replace(/\.mp4$/, ".meta.json"), "utf8"));
+    expect(meta.audioLoweredDb).toBe(1.44);
+  });
 
   it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {
     const events: string[] = [];

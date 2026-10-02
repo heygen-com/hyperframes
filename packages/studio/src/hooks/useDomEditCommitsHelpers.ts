@@ -197,3 +197,24 @@ export async function postPatchElement(
   }
   return (await response.json()) as PatchElementResponse;
 }
+
+export async function writePreparedContent(
+  targetPath: string,
+  patchedContent: string,
+  prepare: (html: string, sourceFile: string) => string,
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
+  showToast: ShowToast,
+): Promise<{ content: string; failed: boolean }> {
+  const preparedContent = prepare(patchedContent, targetPath);
+  if (preparedContent === patchedContent) return { content: patchedContent, failed: false };
+  try {
+    await writeProjectFile(targetPath, preparedContent, patchedContent);
+    return { content: preparedContent, failed: false };
+  } catch (error) {
+    showToast(
+      `Saved, but couldn't finish updating ${targetPath}: ${getErrorDetail(error)}`,
+      "error",
+    );
+    return { content: patchedContent, failed: true };
+  }
+}

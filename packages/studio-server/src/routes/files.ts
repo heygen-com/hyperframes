@@ -83,6 +83,7 @@ import {
   patchElementInHtml,
   probeElementInSource,
   splitElementInHtml,
+  relinkSplitHalvesInHtml,
   wrapElementsInHtml,
   unwrapElementsFromHtml,
   isHTMLElement,
@@ -2163,6 +2164,7 @@ async function foldAtomicCutFile(
   let after = before;
   let splitCount = 0;
   const skippedSelectors = new Set<string>();
+  const rightHalfIds: string[] = [];
   const respond = (data: unknown, status?: number) =>
     status ? c.json(data, status) : c.json(data);
 
@@ -2204,6 +2206,7 @@ async function foldAtomicCutFile(
     }
     after = split.html;
     splitCount++;
+    rightHalfIds.push(split.newId);
 
     if (!cut.originalId) continue;
     const block = extractGsapScriptBlock(after);
@@ -2235,6 +2238,7 @@ async function foldAtomicCutFile(
     }
   }
 
+  after = relinkSplitHalvesInHtml(after, rightHalfIds);
   return {
     path: file.path,
     absPath,

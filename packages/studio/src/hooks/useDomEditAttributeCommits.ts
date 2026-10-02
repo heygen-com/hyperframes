@@ -6,7 +6,10 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import type { CommitDomAttributeBatch, PersistDomEditOperations } from "./domEditCommitTypes";
-import { reportDomEditPersistFailure } from "./domEditPersistFailure";
+import {
+  DomEditPersistPreparedWriteError,
+  reportDomEditPersistFailure,
+} from "./domEditPersistFailure";
 import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRunner";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
@@ -277,7 +280,8 @@ export function useDomEditAttributeCommits({
             skipRefresh: options.skipRefresh,
             prepareContent: options.prepareContent,
           }),
-        shouldRevert: () => isLatestCommit(),
+        shouldRevert: (error) =>
+          isLatestCommit() && !(error instanceof DomEditPersistPreparedWriteError),
         revert: () => {
           if (!captured) return;
           for (const entry of entries) {

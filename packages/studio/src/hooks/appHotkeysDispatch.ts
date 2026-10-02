@@ -9,6 +9,8 @@ import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
+import { openAudioGainDialog } from "../player/components/audioGainDialogStore";
+import type { LinkShortcutCallbacks } from "./linkShortcuts";
 
 // Extracted from useAppHotkeys.ts to keep it under the studio 600-line cap,
 // following useTimelineDeleteOps's precedent. Pure functions, no hooks — the
@@ -29,7 +31,7 @@ function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () 
   return false;
 }
 
-export interface HotkeyCallbacks {
+export interface HotkeyCallbacks extends LinkShortcutCallbacks {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (
@@ -186,6 +188,14 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
         cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
         return;
       }
+    }
+  }
+
+  // Only with a sound clip selected, so bare G still reaches the canvas grid toggle otherwise.
+  if (key === STUDIO_PLAIN_KEYS.audioGain && !event.shiftKey && !event.altKey) {
+    if (!cb.readOnlyPreview && openAudioGainDialog()) {
+      event.preventDefault();
+      return;
     }
   }
 

@@ -32,7 +32,6 @@ type OverlayStateInputs = Omit<
 
 export type TimelineOverlaysStateResult = {
   overlays: TimelineOverlaysState;
-  shiftClickClipRef: ReturnType<typeof useTimelineRangeSelection>["shiftClickClipRef"];
   marqueeRect: ReturnType<typeof useTimelineRangeSelection>["marqueeRect"];
   isScrubbing: ReturnType<typeof useTimelineRangeSelection>["isScrubbing"];
   handlePointerDown: ReturnType<typeof useTimelineRangeSelection>["handlePointerDown"];
@@ -55,7 +54,6 @@ export function useTimelineOverlaysState({
   const {
     rangeSelection,
     setRangeSelection,
-    shiftClickClipRef,
     marqueeRect,
     isScrubbing,
     handlePointerDown,
@@ -86,7 +84,6 @@ export function useTimelineOverlaysState({
       onCloseAllTrackGaps: gap.closeAllTrackGaps,
       onHoverGapAction: gap.setHoveredGapAction,
     },
-    shiftClickClipRef,
     marqueeRect,
     isScrubbing,
     handlePointerDown,

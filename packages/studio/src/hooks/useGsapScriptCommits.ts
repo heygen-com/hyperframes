@@ -3,7 +3,12 @@ import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mu
 import { readProjectFileContent as readSharedProjectFileContent } from "../utils/studioFileHistory";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
-import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
+import {
+  applySoftReload,
+  extractGsapScriptText,
+  readNestedFiles,
+  settleNestedReads,
+} from "../utils/gsapSoftReload";
 import type { SoftReloadResult } from "../utils/gsapSoftReload";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
@@ -142,9 +147,10 @@ function refreshMutationPreview(
   options: CommitMutationOptions,
   reloadPreview: () => void,
   onCacheInvalidate: () => void,
+  nestedFiles?: Map<string, string> | null,
 ): void {
   options.beforeReload?.();
-  applyPreviewSync(iframe, result, options, reloadPreview);
+  applyPreviewSync(iframe, result, options, reloadPreview, nestedFiles);
   onCacheInvalidate();
 }
 
@@ -168,6 +174,7 @@ function syncCommittedGsapMutation({
   forceReloadSdkSession,
   reloadPreview,
   onCacheInvalidate,
+  nestedFiles,
 }: {
   iframe: HTMLIFrameElement | null;
   selection: DomEditSelection;
@@ -179,6 +186,7 @@ function syncCommittedGsapMutation({
   forceReloadSdkSession?: () => void;
   reloadPreview: () => void;
   onCacheInvalidate: () => void;
+  nestedFiles?: Map<string, string> | null;
 }): void {
   if (result.after != null) onFileContentChanged?.(targetPath, result.after);
   // Server wrote the file; the in-memory SDK doc is now stale. Resync it so a
@@ -196,7 +204,7 @@ function syncCommittedGsapMutation({
       iframe?.contentDocument,
     );
   }
-  refreshMutationPreview(iframe, result, options, reloadPreview, onCacheInvalidate);
+  refreshMutationPreview(iframe, result, options, reloadPreview, onCacheInvalidate, nestedFiles);
 }
 
 /**
@@ -219,6 +227,7 @@ function softReloadOrEscalate(
   reloadPreview: () => void,
   origin: "preview_sync" | "sdk_refresh",
   authoredHtml?: string,
+  nestedFiles?: Map<string, string> | null,
 ): void {
   // Seek the rebuilt timeline to the studio's own authoritative scrub position,
   // not the iframe's raw `__player.getTime()` — see the comment in
@@ -228,6 +237,7 @@ function softReloadOrEscalate(
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime,
     authoredHtml,
+    nestedFiles,
   });
   if (result === "applied") return;
   trackStudioEvent("gsap_soft_reload_outcome", {
@@ -252,6 +262,7 @@ export function applyPreviewSync(
   result: MutationResult,
   options: CommitMutationOptions,
   reloadPreview: () => void,
+  nestedFiles?: Map<string, string> | null,
 ): void {
   const patches = instantPatchesFor(options);
   let needsFallback = options.previewFallbackLatch?.pending === true;
@@ -297,6 +308,7 @@ export function applyPreviewSync(
       reloadPreview,
       "preview_sync",
       result.after ?? undefined,
+      nestedFiles,
     );
   } else {
     reloadPreview();
@@ -349,6 +361,13 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       return;
     }
     await recordMutationEdit(targetPath, result, options);
+    const nestedFiles = await settleNestedReads(
+      result.scriptText
+        ? readNestedFiles(previewIframeRef.current, result.scriptText, (path) =>
+            readSharedProjectFileContent(projectId, path),
+          )
+        : null,
+    );
     // The durable mutation belongs to the project captured when it was queued.
     // A later project must never receive its file state or preview refresh.
     if (!isActiveCommitTarget(projectIdRef, activeCompPathRef, projectId, compositionPath)) return;
@@ -363,6 +382,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       forceReloadSdkSession,
       reloadPreview,
       onCacheInvalidate,
+      nestedFiles,
     });
   }, [projectIdRef, previewIframeRef, reloadPreview, onCacheInvalidate, onFileContentChanged, forceReloadSdkSession, recordMutationEdit]);
 

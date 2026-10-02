@@ -119,6 +119,7 @@ export function startGroupDrag(
     e.currentTarget.setPointerCapture(e.pointerId);
     opts.rafPausedRef.current = true;
     opts.groupGestureRef.current = {
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       originItems: items,
@@ -265,6 +266,7 @@ export function startGesture(
       kind,
       mode,
       selection: sel,
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       centerX,
