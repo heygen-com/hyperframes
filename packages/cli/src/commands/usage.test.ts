@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 
 const fixtureTiers: Record<string, string> = {
@@ -89,25 +88,14 @@ it.each(
       const originalAuth = JSON.stringify(auth);
       writeFileSync(join(profile, path), originalAuth);
       const requests = join(profile, "requests.jsonl");
-      const preload = join(profile, "transport.mjs");
-      writeFileSync(
-        preload,
-        `
-import { appendFileSync } from "node:fs";
-globalThis.fetch = async (url, options) => {
-  appendFileSync(${JSON.stringify(requests)}, JSON.stringify(String(url)) + "\\n");
-  const settings = ${JSON.stringify(harness)} === "grok" && String(url) === "https://cli-chat-proxy.grok.com/v1/settings";
-  if (String(url) !== ${JSON.stringify(url)} && !settings) throw new Error("unexpected network request");
-  if (options.headers.Authorization !== "Bearer fixture-token") throw new Error("wrong credential");
-  if (${JSON.stringify(harness)} === "codex" && options.headers["ChatGPT-Account-Id"] !== "fixture-account") throw new Error("missing account header");
-  if (${JSON.stringify(harness)} === "grok" && options.headers["X-XAI-Token-Auth"] !== "xai-grok-cli") throw new Error("missing Grok header");
-  if (settings && ${JSON.stringify(settingsFail)}) return new Response("unavailable", {status:503});
-  return new Response(settings ? JSON.stringify({subscription_tier_display:"SuperGrok"}) : ${JSON.stringify(JSON.stringify(response))});
-};
-`,
-      );
       const env: NodeJS.ProcessEnv = {
         ...process.env,
+        HF_USAGE_FORBID_REQUESTS: "false",
+        HF_USAGE_REQUESTS: requests,
+        HF_USAGE_HARNESS: harness,
+        HF_USAGE_URL: url,
+        HF_USAGE_RESPONSE: JSON.stringify(response),
+        HF_USAGE_SETTINGS_FAIL: String(settingsFail),
         CLAUDE_CONFIG_DIR: profile,
         CODEX_HOME: profile,
         GROK_AUTH_PATH: join(profile, path),
@@ -127,7 +115,7 @@ globalThis.fetch = async (url, options) => {
           "--import",
           "tsx",
           "--import",
-          pathToFileURL(preload).href,
+          new URL("./fixtures/usage-transport.mjs", import.meta.url).href,
           resolve("src/cli.ts"),
           "usage",
           "--harness",
@@ -201,19 +189,14 @@ it.each([
       const authFile = join(profile, "auth.json");
       const originalAuth = JSON.stringify(auth);
       writeFileSync(authFile, originalAuth);
-      const preload = join(profile, "transport.mjs");
       const requests = join(profile, "requests.jsonl");
-      writeFileSync(
-        preload,
-        `import {writeFileSync} from "node:fs"; globalThis.fetch = async () => {writeFileSync(${JSON.stringify(requests)}, "unexpected"); throw new Error("unexpected network request");};`,
-      );
       const stdout = execFileSync(
         process.execPath,
         [
           "--import",
           "tsx",
           "--import",
-          pathToFileURL(preload).href,
+          new URL("./fixtures/usage-transport.mjs", import.meta.url).href,
           resolve("src/cli.ts"),
           "usage",
           "--harness",
@@ -221,7 +204,13 @@ it.each([
           "--json",
         ],
         {
-          env: { ...process.env, CODEX_HOME: profile, GROK_AUTH_PATH: authFile },
+          env: {
+            ...process.env,
+            HF_USAGE_REQUESTS: requests,
+            HF_USAGE_FORBID_REQUESTS: "true",
+            CODEX_HOME: profile,
+            GROK_AUTH_PATH: authFile,
+          },
           encoding: "utf8",
           timeout: 15000,
         },
