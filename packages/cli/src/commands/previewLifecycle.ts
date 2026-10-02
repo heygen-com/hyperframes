@@ -589,7 +589,7 @@ export async function stopBackgroundPreview(
   startPort: number,
   dependencies: LifecycleDependencies = {},
 ): Promise<boolean> {
-  const { scan, stateHome, saved, scanStart, scanned } = await readPreviewLifecycleState(
+  const { stateHome, saved, scanStart, scanned } = await readPreviewLifecycleState(
     projectDir,
     startPort,
     dependencies,
