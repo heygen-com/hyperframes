@@ -293,6 +293,12 @@
       "import": "./src/runtime/clipTree.ts",
       "types": "./src/runtime/clipTree.ts"
     },
+    "./runtime/dom-realm": {
+      "bun": "./src/runtime/domRealm.ts",
+      "node": "./dist/runtime/domRealm.js",
+      "import": "./src/runtime/domRealm.ts",
+      "types": "./src/runtime/domRealm.ts"
+    },
     "./runtime/custom-ease": {
       "bun": "./src/runtime/customEase.ts",
       "node": "./dist/runtime/customEase.js",
@@ -666,6 +672,10 @@
       "./runtime/clipTree": {
         "import": "./dist/runtime/clipTree.js",
         "types": "./dist/runtime/clipTree.d.ts"
+      },
+      "./runtime/dom-realm": {
+        "import": "./dist/runtime/domRealm.js",
+        "types": "./dist/runtime/domRealm.d.ts"
       },
       "./runtime/custom-ease": {
         "import": "./dist/runtime/customEase.js",

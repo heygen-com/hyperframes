@@ -13,6 +13,7 @@ import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
+import { isHtmlElement, isImageElement, isMediaElement } from "@hyperframes/core/runtime/dom-realm";
 import { elementVolume } from "./storedVolume";
 import {
   type AttrReader,
@@ -143,11 +144,6 @@ export function furthestClipEndFromSource(source: string): number {
 // DOM element type guards
 // ---------------------------------------------------------------------------
 
-function isHtmlElement(el: Element): el is HTMLElement {
-  const HtmlElementCtor = el.ownerDocument.defaultView?.HTMLElement ?? globalThis.HTMLElement;
-  return typeof HtmlElementCtor !== "undefined" && el instanceof HtmlElementCtor;
-}
-
 function isCompositionHost(el: Element): boolean {
   return (
     el.hasAttribute("data-composition-id") ||
@@ -157,16 +153,11 @@ function isCompositionHost(el: Element): boolean {
 }
 
 export function resolveMediaElement(el: Element): HTMLMediaElement | HTMLImageElement | null {
-  const win = el.ownerDocument.defaultView ?? window;
-  const MediaElementCtor = win.HTMLMediaElement ?? globalThis.HTMLMediaElement;
-  const ImageElementCtor = win.HTMLImageElement ?? globalThis.HTMLImageElement;
-  if (el instanceof MediaElementCtor || el instanceof ImageElementCtor) return el;
+  if (isMediaElement(el) || isImageElement(el)) return el;
   // A composition's media belongs to its own timeline, not the clip's: its length would cap a trim.
   if (isCompositionHost(el)) return null;
   const candidate = el.querySelector("video, audio, img");
-  return candidate instanceof MediaElementCtor || candidate instanceof ImageElementCtor
-    ? candidate
-    : null;
+  return isMediaElement(candidate) || isImageElement(candidate) ? candidate : null;
 }
 
 /** The in-point as playback reads it, and the attribute holding it; empty when neither is authored. */
@@ -266,9 +257,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   const src = mediaEl.getAttribute("src");
   if (src) entry.src = src;
 
-  const win = mediaEl.ownerDocument.defaultView ?? window;
-  const MediaElementCtor = win.HTMLMediaElement ?? globalThis.HTMLMediaElement;
-  if (typeof MediaElementCtor === "undefined" || !(mediaEl instanceof MediaElementCtor)) return;
+  if (!isMediaElement(mediaEl)) return;
 
   const sourceDurationAttr =
     el.getAttribute("data-source-duration") ?? mediaEl.getAttribute("data-source-duration");
