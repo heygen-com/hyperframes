@@ -24,7 +24,7 @@ export function readTimelineText(el: Element): TimelineText | undefined {
     fontFamily: style["font-family"],
     fontWeight: style["font-weight"],
     color: style.color,
-    background: background && (parseCssColor(background)?.alpha ?? 0) > 0 ? background : undefined,
+    background: background && parseCssColor(background)?.alpha === 1 ? background : undefined,
   };
 }
 

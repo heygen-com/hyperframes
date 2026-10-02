@@ -87,6 +87,10 @@ describe("readTimelineText", () => {
       background: "rgb(230, 57, 70)",
     });
     expect(readTimelineText(layer(`<div>Go</div>`))?.background).toBeUndefined();
+    expect(
+      readTimelineText(layer(`<div style="background-color: rgba(255, 255, 255, 0.01)">Go</div>`))
+        ?.background,
+    ).toBeUndefined();
   });
 
   it("tells a text change apart from an identical re-read", () => {
