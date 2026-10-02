@@ -40,7 +40,10 @@ export function getTimelineScrollTopForGeometryChange(
   previous: TimelineRowGeometry,
   next: TimelineRowGeometry,
   scrollTop: number,
+  dragging = false,
 ): number {
+  // A live drag owns scrollTop through edge auto-scroll; at the top, a row added above stays in view.
+  if (dragging || scrollTop <= 0) return scrollTop;
   const anchor = previous.getRowPositionFromY(scrollTop + RULER_H);
   if (anchor.row < 0 || anchor.row >= previous.rowKeys.length) return scrollTop;
   const anchorKey = previous.rowKeys[anchor.row];
