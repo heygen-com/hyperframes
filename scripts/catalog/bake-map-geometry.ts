@@ -157,6 +157,8 @@ function loadAtlas(url: string): Promise<Atlas> {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+// fitSize differs in the last float digits across CPUs; rounding keeps --check portable.
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
 /**
  * Simplification collapses the smallest islands to a ring of one or two distinct
@@ -175,8 +177,8 @@ export function readProjection(spec: BlockSpec, projection: GeoProjection): Bake
   const [tx, ty] = projection.translate();
   const baked: BakedProjection = {
     type: spec.projectionType,
-    scale: projection.scale(),
-    translate: [tx, ty],
+    scale: round6(projection.scale()),
+    translate: [round6(tx), round6(ty)],
   };
   if (spec.projectionType === "geoConicConformal") {
     const [cx, cy] = projection.center();

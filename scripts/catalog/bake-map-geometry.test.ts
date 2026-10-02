@@ -91,6 +91,9 @@ describe("bakeAtlas", () => {
     expect(baked.projection.type).toBe("geoAlbersUsa");
     expect(baked.projection.scale).toBeGreaterThan(0);
     expect(readProjection(spec, projection).translate).toHaveLength(2);
+    const decimals = (n: number) => String(n).split(".")[1]?.length ?? 0;
+    expect(decimals(baked.projection.scale)).toBeLessThanOrEqual(6);
+    for (const n of baked.projection.translate) expect(decimals(n)).toBeLessThanOrEqual(6);
   });
 
   it("keeps the shared border identical on both sides", () => {
