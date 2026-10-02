@@ -109,4 +109,16 @@ describe("useTimelineLinkEditing", () => {
     expect(recordEdit.mock.calls[0]?.[0].label).toBe("Unlink clips");
     unmount();
   });
+
+  it("unlink leaves nothing selected, so a later trim moves only the grabbed clip", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ content: SOURCE }), { status: 200 }),
+    );
+    const { api, unmount } = await renderLinkEditing();
+    usePlayerStore.getState().setSelection(["talk", "talk-audio"], "talk");
+    await act(async () => api.handleLinkEdit({ kind: "unlink", elements: [video, audio] }));
+    expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
+    unmount();
+  });
 });

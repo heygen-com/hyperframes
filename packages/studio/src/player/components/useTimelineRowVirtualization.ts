@@ -120,6 +120,7 @@ export function useTimelineRowVirtualization({
         previousGeometry,
         rowGeometry,
         scroll.scrollTop,
+        draggedRowKey !== undefined,
       );
       if (nextScrollTop !== scroll.scrollTop) {
         scroll.scrollTop = nextScrollTop;
@@ -127,7 +128,7 @@ export function useTimelineRowVirtualization({
       }
     }
     previousLayoutRef.current = rowGeometry;
-  }, [lastScrollLeftRef, rowGeometry, scrollRef, sessionEpoch, syncScrollViewport]);
+  }, [draggedRowKey, lastScrollLeftRef, rowGeometry, scrollRef, sessionEpoch, syncScrollViewport]);
 
   return {
     enabled,

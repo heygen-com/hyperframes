@@ -76,11 +76,12 @@ Each video segment keeps its sound: the sound stays on the clip (`data-has-audio
 ></audio>
 ```
 
+- **Link offer.** Studio offers Link for exactly one video and one audio, neither already linked; their timing and source file don't matter. A linked pair that is offset moves together (the offset is kept), and a trim carries to the partner only when its edge sits at the same time. Merge back needs the same file and an in-sync pair.
 - **Keep members in sync.** Every member needs the same `data-start`, `data-duration`, `data-media-start` (absent = 0) and `data-playback-rate` (absent = 1). Track index, volume, fades and FX may differ. When you retime one member by hand, retime all of them, or `lint` warns `linked_clips_out_of_sync`.
 - **Unlink** by removing `data-link` from every member. Removing it from one leaves the other alone with the id, which `lint` flags as `linked_clip_orphan`.
 - The render ignores `data-link`: an out-of-sync pair still plays exactly what its timings say.
 - Prefer a single `<video data-has-audio="true">` for footage with sound. Link only when the sound needs its own clip (its own track, volume or FX); to undo a detach, move the audio attributes back onto the video and delete the `<audio>`.
-- **Sync origin.** `data-sync-origin="<id>"` marks a video and an audio from one source file; Detach and Link write it, and Unlink keeps it. When the pair drifts (their source-zero points, `data-start − data-media-start / data-playback-rate`, differ), Studio shows a red offset in frames on both halves with Move into Sync / Slip into Sync, `hyperframes timeline` prints `out-of-sync=±Nf`, and the SDK offers `syncOffset`, `moveIntoSync` and `slipIntoSync`. Leave it alone when retiming by hand; remove it only when the clips are no longer one source.
+- **Sync origin.** `data-sync-origin="<id>"` marks a video and an audio from one source file; Detach writes it, Link writes it only for a pair from one source file, and Unlink keeps it. When the pair drifts (their source-zero points, `data-start − data-media-start / data-playback-rate`, differ), Studio shows a red offset in frames on both halves with Move into Sync / Slip into Sync, `hyperframes timeline` prints `out-of-sync=±Nf`, and the SDK offers `syncOffset`, `moveIntoSync` and `slipIntoSync`. Leave it alone when retiming by hand; remove it only when the clips are no longer one source.
 - `@hyperframes/sdk` `setTiming` applies to link partners by default; pass `{ linked: false }` to edit one member, which unlinks it.
 
 ## Relative Timing

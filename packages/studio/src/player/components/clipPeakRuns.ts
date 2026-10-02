@@ -48,6 +48,17 @@ export function clipPeakRuns(
   return { runs, peakDbfs: runs.length > 0 ? 20 * Math.log10(loudest) : null };
 }
 
+export function clipSourcePeak(map: PeakMap, window: ClipSourceWindow): number | null {
+  if (!(window.sourceSpan > 0) || !(map.binSeconds > 0)) return null;
+  const first = Math.max(0, Math.floor(window.mediaStart / map.binSeconds));
+  const last = Math.min(
+    map.bins.length,
+    Math.ceil((window.mediaStart + window.sourceSpan) / map.binSeconds),
+  );
+  if (last <= first) return null;
+  return map.bins.slice(first, last).reduce((loudest, bin) => Math.max(loudest, bin), 0);
+}
+
 export function isPeakMap(value: unknown): value is PeakMap {
   if (typeof value !== "object" || value === null) return false;
   const bins: unknown = Reflect.get(value, "bins");

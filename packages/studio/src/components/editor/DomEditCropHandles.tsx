@@ -17,6 +17,7 @@ import { buildInsetClipPathSides, type ClipPathInsetSides } from "./clipPathHelp
 import { readCropFollowingResize } from "./cropResize";
 import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
 import { CropPresetBar } from "./CropPresetBar";
+import { movesGesture } from "./domEditOverlayGestures";
 
 interface CropGestureState {
   edge: CropEdge | "move";
@@ -188,7 +189,7 @@ export function DomEditCropHandles({
 
   const updateCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture || !movesGesture(gesture, event)) return;
     event.preventDefault();
     event.stopPropagation();
     const local = rotateDeltaIntoFrame(

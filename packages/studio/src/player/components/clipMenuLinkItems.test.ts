@@ -48,6 +48,51 @@ describe("resolveLinkMenuItems", () => {
     expect(labels(audio, [video, audio], ["talk", "talk-audio"])[0]).toBe("Link to video");
   });
 
+  it("offers Link to the lone same-file partner on another track when one clip is right-clicked", () => {
+    const video = clip("talk", "video", { track: 0 });
+    const audio = clip("talk-audio", "audio", { track: 1, start: 2 });
+    expect(labels(audio, [video, audio], ["talk-audio"])[0]).toBe("Link to video");
+    expect(labels(video, [video, audio])[0]).toBe("Link to audio");
+  });
+
+  it("dispatches the convenience link with the clip and its partner", () => {
+    const onLinkEdit = vi.fn();
+    const video = clip("talk", "video", { track: 0 });
+    const audio = clip("talk-audio", "audio", { track: 1 });
+    const [link] = resolveLinkMenuItems({
+      element: audio,
+      elements: [video, audio],
+      selectedKeys: new Set(["talk-audio"]),
+      onLinkEdit,
+    });
+    link?.run();
+    expect(onLinkEdit).toHaveBeenCalledWith({ kind: "link", elements: [audio, video] });
+  });
+
+  it("offers no convenience Link when the partner is ambiguous, linked, another file or the same track", () => {
+    const audio = clip("talk-audio", "audio", { track: 1 });
+    const video = clip("talk", "video", { track: 0 });
+    const twin = clip("talk-2", "video", { track: 2 });
+    expect(labels(audio, [video, twin, audio], ["talk-audio"])).not.toContain("Link to video");
+    const linked = clip("talk", "video", { track: 0, link: "lk-9" });
+    expect(labels(audio, [linked, audio], ["talk-audio"])).not.toContain("Link to video");
+    const other = clip("other", "video", { track: 0, src: "other.mp4" });
+    expect(labels(audio, [other, audio], ["talk-audio"])).not.toContain("Link to video");
+    const sameTrack = clip("talk", "video", { track: 1 });
+    expect(labels(audio, [sameTrack, audio], ["talk-audio"])).not.toContain("Link to video");
+  });
+
+  it("offers no convenience Link while other clips are also selected", () => {
+    const audio = clip("talk-audio", "audio", { track: 1 });
+    const video = clip("talk", "video", { track: 0 });
+    const title = clip("title", "div", { track: 2 });
+    expect(
+      labels(audio, [video, audio, title], ["talk-audio", "title"]).some((l) =>
+        l.startsWith("Link"),
+      ),
+    ).toBe(false);
+  });
+
   it("names the audio partner when unlinking from the video side", () => {
     const video = clip("talk", "video", { muted: true, link: "lk-1" });
     const audio = clip("talk-audio", "audio", { link: "lk-1" });
@@ -86,5 +131,44 @@ describe("resolveLinkMenuItems", () => {
       onLinkEdit,
     })[0]?.run();
     expect(onLinkEdit).toHaveBeenCalledWith({ kind: "detach", element: talk });
+  });
+
+  it("offers Link for a trimmed audio and its video (timing does not matter)", () => {
+    const video = clip("talk", "video", { muted: true });
+    const audio = clip("talk-audio", "audio", { start: 1, duration: 2, playbackStart: 1 });
+    expect(labels(video, [video, audio], ["talk", "talk-audio"])[0]).toBe("Link to audio");
+  });
+
+  it("offers Link for a pair of different files", () => {
+    const video = clip("talk", "video", { muted: true });
+    const music = clip("bgm", "audio", { src: "bgm.mp3" });
+    expect(labels(music, [video, music], ["talk", "bgm"])).toEqual(["Link to video"]);
+  });
+
+  it("offers no Link when one selected clip is already linked elsewhere", () => {
+    const video = clip("talk", "video", { muted: true, link: "lk-9" });
+    const audio = clip("bgm", "audio", { src: "bgm.mp3" });
+    const partner = clip("talk-audio", "audio", { link: "lk-9" });
+    expect(labels(audio, [video, audio, partner], ["talk", "bgm"])).toEqual([]);
+  });
+
+  it("disables Merge back with a tooltip while the pair is out of sync", () => {
+    const video = clip("talk", "video", { muted: true, link: "lk-1" });
+    const audio = clip("talk-audio", "audio", { link: "lk-1", start: 0.5 });
+    const merge = resolveLinkMenuItems({
+      element: audio,
+      elements: [video, audio],
+      selectedKeys: new Set(),
+      onLinkEdit: vi.fn(),
+    }).find((item) => item.label === "Merge audio back into video");
+    expect(merge?.disabledReason).toBe("Move into Sync first");
+    const synced = clip("talk-audio", "audio", { link: "lk-1" });
+    const enabled = resolveLinkMenuItems({
+      element: synced,
+      elements: [video, synced],
+      selectedKeys: new Set(),
+      onLinkEdit: vi.fn(),
+    }).find((item) => item.label === "Merge audio back into video");
+    expect(enabled?.disabledReason).toBeUndefined();
   });
 });

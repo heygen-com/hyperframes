@@ -82,6 +82,7 @@ function mountMarquee<T>(extra: Partial<MarqueeGesturesDeps<T>> = {}) {
       clientX: x,
       clientY: y,
       pointerId: 7,
+      buttons: 1,
       shiftKey,
       currentTarget: overlay,
     }) as unknown as PointerEvent<HTMLDivElement>;

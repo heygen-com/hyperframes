@@ -61,11 +61,6 @@ export interface TimelineLaneBaseProps {
   setResizingClip: (v: ResizingClipState | null) => void;
   setDraggedClip: (v: DraggedClipState | null) => void;
   setSelectedElementId: (id: string | null) => void;
-  shiftClickClipRef: React.RefObject<{
-    element: TimelineElement;
-    anchorX: number;
-    anchorY: number;
-  } | null>;
   getPreviewElement: (element: TimelineElement) => TimelineElement;
   getTrackStyle: (tag: string) => TrackVisualStyle;
   keyframeCache?: Map<string, KeyframeCacheEntry>;

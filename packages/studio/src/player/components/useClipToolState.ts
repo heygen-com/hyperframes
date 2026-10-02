@@ -11,14 +11,11 @@ import { committedClipPath } from "../../components/editor/cropPresetStore";
 import { isAudibleVideoNode } from "../lib/timelineElementHelpers";
 import type { ClipToolState } from "./clipToolAttrs";
 
-const LINK_ATTR = "data-link";
-
 const WATCHED_ATTRS = [
   HF_AUDIO_FX_ATTR,
   HF_AUDIO_AUTOMATION_ATTR,
   HF_AUDIO_CARVE_ATTR,
   HF_COLOR_GRADING_ATTR,
-  LINK_ATTR,
   "data-volume",
   "data-has-audio",
   "muted",
@@ -42,7 +39,6 @@ function toolStateFromNode(node: Element): ClipToolState {
     colorGrading: node.getAttribute(HF_COLOR_GRADING_ATTR),
     clipPath: committedClipPath(node),
     carve: node.getAttribute(HF_AUDIO_CARVE_ATTR),
-    link: node.getAttribute(LINK_ATTR),
   };
 }
 
@@ -58,7 +54,6 @@ function toolStateFromElement(el: TimelineElement): ClipToolState {
     colorGrading: null,
     clipPath: null,
     carve: null,
-    link: null,
   };
 }
 

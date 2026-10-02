@@ -1,18 +1,10 @@
-import { formatAudioGain } from "@hyperframes/core/audio-gain";
 import type { TimelineElement } from "../store/timelineElement";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { usePlayerStore } from "../store/playerStore";
 import { useLivePreviewIframe } from "../store/previewIframeStore";
-import {
-  clipHasSound,
-  normalizeToastText,
-  requestNormalizePlan,
-  throwUnlessSaved,
-  TimelineSaveError,
-  VOLUME_LANE_REFUSAL,
-  volumeLaneOwnsGain,
-} from "./clipMenuNormalize";
+import { clipHasSound, throwUnlessSaved, TimelineSaveError } from "./clipMenuNormalize";
+import { openAudioGainDialog } from "./audioGainDialogStore";
 import { offersDuck, readBedCarve, setDuckUnderVoice, type DuckOutcome } from "./clipMenuDuck";
 
 const ITEM_CLASS =
@@ -25,13 +17,13 @@ const DUCK_TOAST: Record<DuckOutcome, string> = {
   aborted: "Could not group the voices to duck under.",
 };
 
-/** Normalize loudness (one-shot) or Duck under voice (toggle), placed separately in the sound group. */
+/** Audio Gain… (opens the G dialog) or Duck under voice (toggle), placed separately in the sound group. */
 export function ClipMenuAudioItems({
   part,
   element,
   onClose,
 }: {
-  part: "normalize" | "duck";
+  part: "gain" | "duck";
   element: TimelineElement;
   onClose: () => void;
 }) {
@@ -47,28 +39,6 @@ export function ClipMenuAudioItems({
   if (!clipHasSound(element) || !projectId || !showToast || !onSetElementAttributeQuiet) {
     return null;
   }
-
-  const normalize = async () => {
-    onClose();
-    if (volumeLaneOwnsGain(element)) {
-      showToast(VOLUME_LANE_REFUSAL, "error");
-      return;
-    }
-    try {
-      const plan = await requestNormalizePlan(projectId, element);
-      throwUnlessSaved(
-        await onSetElementAttributeQuiet(
-          element,
-          "data-volume",
-          formatAudioGain(plan.volume),
-          "Normalize loudness",
-        ),
-      );
-      showToast(normalizeToastText(plan), "info");
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), "error");
-    }
-  };
 
   const toggleDuck = async () => {
     onClose();
@@ -93,10 +63,19 @@ export function ClipMenuAudioItems({
     showToast(DUCK_TOAST[outcome], outcome === "aborted" ? "error" : "info");
   };
 
-  if (part === "normalize") {
+  if (part === "gain") {
     return (
-      <button type="button" role="menuitem" className={ITEM_CLASS} onClick={() => void normalize()}>
-        <span>Normalize loudness</span>
+      <button
+        type="button"
+        role="menuitem"
+        className={ITEM_CLASS}
+        onClick={() => {
+          onClose();
+          openAudioGainDialog(element);
+        }}
+      >
+        <span>Audio Gain…</span>
+        <span className="text-neutral-500 text-[10px] ml-3">G</span>
       </button>
     );
   }

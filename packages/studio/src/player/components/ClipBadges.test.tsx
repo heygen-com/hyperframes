@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { usePreviewIframeStore } from "../store/previewIframeStore";
 import { ClipBadges } from "./ClipBadges";
@@ -54,29 +54,53 @@ function mountPreview(html: string): Document {
 }
 
 describe("ClipBadges", () => {
-  it("renders nothing for an untouched clip", () => {
+  it("shows a grey fx badge and no volume on an untouched clip", () => {
     render(talk);
-    expect(document.querySelector("[data-testid='clip-badges']")).toBeNull();
+    expect(labels()).toEqual(["fx:fx"]);
+    const fx = document.querySelector("[data-badge='fx']");
+    expect(fx?.getAttribute("data-fx-active")).toBe("false");
+    expect(fx?.getAttribute("title")).toBe("No effects");
   });
 
   it("falls back to the store's volume without a preview", () => {
     render({ ...talk, volume: 1.8 });
-    expect(labels()).toEqual(["volume:180%"]);
+    expect(labels()).toEqual(["volume:180%", "fx:fx"]);
   });
 
-  it("reads the live node and follows an agent's attribute edit", async () => {
+  it("lights the fx badge from the live node, lists the effects, and shows no link badge", async () => {
     const doc = mountPreview(
       `<video id="talk" data-has-audio="true" data-link="talk-pair" style="clip-path: inset(10px)"></video>`,
     );
     render(talk);
-    expect(labels()).toEqual(["link:🔗", "crop:Crop"]);
+    const fx = () => document.querySelector("[data-badge='fx']");
+    expect(labels()).toEqual(["fx:fx"]);
+    expect(fx()?.getAttribute("data-fx-active")).toBe("true");
+    expect(fx()?.getAttribute("title")).toBe("Crop");
     const node = doc.getElementById("talk");
     await act(async () => {
       node?.setAttribute("data-color-grading", '{"preset":"warm-daylight","intensity":1}');
       node?.setAttribute("data-volume", "0.6");
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(labels()).toEqual(["link:🔗", "look:Warm daylight", "crop:Crop", "more:+1"]);
-    expect(document.querySelector("[data-badge='more']")?.getAttribute("title")).toBe("60%");
+    expect(labels()).toEqual(["volume:60%", "fx:fx"]);
+    expect(fx()?.getAttribute("title")).toBe("Look: Warm daylight · Crop");
+  });
+
+  it("opens the clip menu from the fx badge without reaching the clip", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const onOpenMenu = vi.fn();
+    const onClipClick = vi.fn();
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <div onClick={onClipClick}>
+          <ClipBadges el={talk} onOpenMenu={onOpenMenu} />
+        </div>,
+      ),
+    );
+    act(() => document.querySelector<HTMLElement>("[data-badge='fx']")?.click());
+    expect(onOpenMenu).toHaveBeenCalledTimes(1);
+    expect(onClipClick).not.toHaveBeenCalled();
   });
 });

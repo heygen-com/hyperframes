@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clipPeakRuns } from "./clipPeakRuns";
+import { clipPeakRuns, clipSourcePeak } from "./clipPeakRuns";
 
 const map = (bins: number[]) => ({ binSeconds: 1, bins });
 
@@ -34,5 +34,18 @@ describe("clipPeakRuns", () => {
   it("is empty for a muted clip or an empty window", () => {
     expect(clipPeakRuns(map([1]), { mediaStart: 0, sourceSpan: 1 }, 0).runs).toEqual([]);
     expect(clipPeakRuns(map([1]), { mediaStart: 0, sourceSpan: 0 }, 1).runs).toEqual([]);
+  });
+});
+
+describe("clipSourcePeak", () => {
+  it("is the loudest bin inside the played source window only", () => {
+    const bins = map([0.9, 0.2, 0.4, 0.3, 1]);
+    expect(clipSourcePeak(bins, { mediaStart: 1, sourceSpan: 3 })).toBe(0.4);
+    expect(clipSourcePeak(bins, { mediaStart: 0, sourceSpan: 5 })).toBe(1);
+  });
+
+  it("is null for an empty window or one past the file's end", () => {
+    expect(clipSourcePeak(map([0.5]), { mediaStart: 0, sourceSpan: 0 })).toBeNull();
+    expect(clipSourcePeak(map([0.5]), { mediaStart: 4, sourceSpan: 2 })).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ import {
   mergeAudioInSource,
   pickDetachedAudioTrack,
   setLinkInSource,
+  sharesSourceFile,
 } from "../components/editor/mediaLinkEdits";
 
 export interface LinkEditPlan {
@@ -92,7 +93,11 @@ export function planLinkEdit(
       const targets = targetsOf(edit.elements);
       const anchor = edit.elements[0];
       if (!targets || !anchor) return null;
-      return { label: "Link clips", anchor, transform: (s) => linkInSource(s, targets) };
+      return {
+        label: "Link clips",
+        anchor,
+        transform: (s) => linkInSource(s, targets, { syncOrigin: sharesSourceFile(edit.elements) }),
+      };
     }
     case "detach": {
       const target = buildPatchTarget(edit.element);

@@ -10,6 +10,7 @@ import {
   pickDetachedAudioTrack,
   removeElementInSource,
   setLinkInSource,
+  sharesSourceFile,
 } from "./mediaLinkEdits";
 
 const automation = JSON.stringify({
@@ -192,6 +193,15 @@ describe("linkInSource", () => {
   });
 });
 
+describe("linkInSource without a sync origin", () => {
+  it("writes only data-link", () => {
+    const src = '<video id="v"></video><audio id="a"></audio>';
+    expect(linkInSource(src, [{ id: "v" }, { id: "a" }], { syncOrigin: false })).toBe(
+      '<video id="v" data-link="lk-1"></video><audio id="a" data-link="lk-1"></audio>',
+    );
+  });
+});
+
 describe("setLinkInSource", () => {
   it("writes and removes data-link on every target", () => {
     const src = '<video id="v"></video><audio id="a"></audio>';
@@ -248,9 +258,12 @@ describe("predicates", () => {
     expect(findMergePair(v, [v, el("a", "audio", { src: "other.mp4" })])).toBeNull();
   });
 
-  it("links exactly one video and one audio of the same file and timing", () => {
+  it("links exactly one unlinked video and one audio, whatever their timing or file", () => {
     expect(canLinkPair([el("v", "video"), el("a", "audio")])).toBe(true);
-    expect(canLinkPair([el("v", "video"), el("a", "audio", { start: 3 })])).toBe(false);
+    expect(canLinkPair([el("v", "video"), el("a", "audio", { start: 3, duration: 2 })])).toBe(true);
+    expect(canLinkPair([el("v", "video"), el("a", "audio", { src: "other.mp3" })])).toBe(true);
+    expect(canLinkPair([el("v", "video", { link: "x" }), el("a", "audio")])).toBe(false);
+    expect(canLinkPair([el("v", "video"), el("a", "audio", { link: "y" })])).toBe(false);
     expect(canLinkPair([el("v", "video"), el("w", "video")])).toBe(false);
     expect(canLinkPair([el("v", "video", { link: "x" }), el("a", "audio", { link: "x" })])).toBe(
       false,
@@ -266,16 +279,16 @@ describe("predicates compare the whole asset path", () => {
     const v = el("v", "video", { muted: true, ...one });
     const a = el("a", "audio", two);
     expect(findMergePair(v, [v, a])).toBeNull();
-    expect(canLinkPair([el("v", "video", one), el("a", "audio", two)])).toBe(false);
+    expect(sharesSourceFile([el("v", "video", one), el("a", "audio", two)])).toBe(false);
   });
 
   it("resolves each src against its own source file, and links only inside one", () => {
     const v = el("v", "video", { src: "../assets/talk.mp4", sourceFile: "scenes/a.html" });
     const a = el("a", "audio", { src: "./assets/talk.mp4", sourceFile: "index.html" });
     expect(canLinkPair([v, a])).toBe(false);
-    expect(
-      canLinkPair([v, { ...a, src: "../assets/./talk.mp4", sourceFile: "scenes/a.html" }]),
-    ).toBe(true);
+    expect(sharesSourceFile([v, a])).toBe(false);
+    const sameFileAudio = { ...a, src: "../assets/./talk.mp4", sourceFile: "scenes/a.html" };
+    expect(sharesSourceFile([v, sameFileAudio])).toBe(true);
   });
 
   it("does not take a same-id link from another source file as the merge partner", () => {

@@ -14,6 +14,7 @@ import { rendersWaveform } from "./AudioWaveform";
 import { ClipBadges } from "./ClipBadges";
 import { linkLabelColor } from "./linkLabelColor";
 import { OutOfSyncBadge } from "./OutOfSyncBadge";
+import { clipSpeedSuffix } from "./clipToolAttrs";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -68,7 +69,7 @@ export const TimelineClip = memo(function TimelineClip({
   const leftPx = el.start * pps;
   const widthPx = Math.max(el.duration * pps, 4);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
-  const displayLabel = el.label || el.id || el.tag;
+  const displayLabel = `${el.label || el.id || el.tag}${clipSpeedSuffix(el.playbackRate, el.automation)}`;
   const isAudioClip = isAudioTimelineElement(el);
   const ladder = clipWidthLadder(widthPx);
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
@@ -210,7 +211,7 @@ export const TimelineClip = memo(function TimelineClip({
         </div>
       )}
       {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
-      {ladder === "labeled" && !isGestureActor && <ClipBadges el={el} />}
+      {ladder === "labeled" && !isGestureActor && <ClipBadges el={el} onOpenMenu={onContextMenu} />}
       {!isGestureActor && el.syncOrigin && <OutOfSyncBadge el={el} />}
       {showDefaultText && (
         <span className="timeline-clip__timecode">

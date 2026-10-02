@@ -122,6 +122,12 @@ export interface TimelineEditCallbacks {
     value: string | null,
     label: string,
   ) => Promise<TimelineEditOutcome | void>;
+  /** One attribute on several clips, saved as one undo step. */
+  onSetElementsAttributeQuiet?: (
+    edits: ReadonlyArray<{ element: TimelineElement; value: string | null }>,
+    attr: string,
+    label: string,
+  ) => Promise<TimelineEditOutcome | void>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onLinkEdit?: (edit: TimelineLinkEdit) => Promise<void> | void;
   onDeleteElementOnly?: (element: TimelineElement) => Promise<void> | void;

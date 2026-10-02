@@ -83,7 +83,13 @@ interface RenderLanesOptions {
   hoveredClip?: string | null;
   renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
   snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
+  withoutSelectHandler?: boolean;
 }
+
+const selectHandlerFor = (
+  options: RenderLanesOptions,
+  handler: (element: TimelineElement | null) => void,
+) => (options.withoutSelectHandler ? undefined : handler);
 
 function renderLanes(options: RenderLanesOptions = {}): {
   host: HTMLDivElement;
@@ -163,7 +169,6 @@ function renderLanes(options: RenderLanesOptions = {}): {
           setResizingClip={vi.fn()}
           setDraggedClip={vi.fn()}
           setSelectedElementId={setSelectedElementId}
-          shiftClickClipRef={createRef()}
           getPreviewElement={(el) => el}
           getTrackStyle={getTrackStyle}
           gsapAnimations={gsapAnimations}
@@ -174,7 +179,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           onTogglePropertyGroupKeyframe={vi.fn()}
           onResizeElement={vi.fn()}
           onMoveElement={vi.fn()}
-          onSelectElement={onSelectElement}
+          onSelectElement={selectHandlerFor(next, onSelectElement)}
           onRazorSplit={vi.fn()}
           onRazorSplitAll={vi.fn()}
         />,
@@ -437,6 +442,44 @@ describe("TimelineLanes selection", () => {
 
     expect(view.setSelectedElementId).toHaveBeenCalledWith(selected.id);
     expect(view.onSelectElement).toHaveBeenCalledWith(selected);
+    act(() => view.root.unmount());
+  });
+
+  it.each([["shiftKey"], ["metaKey"], ["ctrlKey"]])(
+    "%s-click adds a clip to the selection instead of replacing it",
+    (modifier) => {
+      const first = element("clip-a", TRACK_A);
+      const second = element("clip-b", TRACK_B);
+      usePlayerStore.getState().setElements([first, second]);
+      usePlayerStore.getState().setSelection([first.id], first.id);
+      const view = renderLanes({ elements: [first, second] });
+      const clipB = view.host.querySelector('[data-el-id="clip-b"]');
+      const click = (init: MouseEventInit) =>
+        act(() => clipB?.dispatchEvent(new MouseEvent("click", { bubbles: true, ...init })));
+
+      click({ [modifier]: true });
+      expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
+      expect(view.setSelectedElementId).not.toHaveBeenCalled();
+      expect(view.onSelectElement).toHaveBeenLastCalledWith(second);
+
+      click({ [modifier]: true });
+      expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a"]));
+      expect(view.onSelectElement).toHaveBeenLastCalledWith(first);
+      act(() => view.root.unmount());
+    },
+  );
+  it("Cmd-click adds a clip in a host that passes no onSelectElement", () => {
+    const first = element("clip-a", TRACK_A);
+    const second = element("clip-b", TRACK_B);
+    usePlayerStore.getState().setElements([first, second]);
+    usePlayerStore.getState().setSelection([first.id], first.id);
+    const view = renderLanes({ elements: [first, second], withoutSelectHandler: true });
+    act(() =>
+      view.host
+        .querySelector('[data-el-id="clip-b"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })),
+    );
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
     act(() => view.root.unmount());
   });
 });

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHappyDomRootHarness } from "./testRootHarness";
 import { ClipMenuAudioItems } from "./clipMenuAudioItems";
 import type { TimelineElement } from "../store/timelineElement";
+import { useAudioGainDialogStore } from "./audioGainDialogStore";
 
 const showToast = vi.fn();
 const setQuiet = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => {});
@@ -27,7 +28,7 @@ vi.mock("../../contexts/TimelineEditContext", () => ({
 
 const harness = createHappyDomRootHarness();
 
-function render(element: TimelineElement, part: "normalize" | "duck" = "normalize") {
+function render(element: TimelineElement, part: "gain" | "duck" = "gain") {
   const host = document.createElement("div");
   document.body.appendChild(host);
   act(() =>
@@ -39,7 +40,6 @@ function render(element: TimelineElement, part: "normalize" | "duck" = "normaliz
 }
 
 const base = { start: 0, duration: 4, track: 0 };
-const plan = { targetLufs: -16, projectedLufs: -16, volume: 2, changeDb: 6, limitedBy: null };
 const clickItem = async (host: HTMLElement, label: string) => {
   const button = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(label));
   await act(async () => button?.click());
@@ -95,12 +95,8 @@ describe("ClipMenuAudioItems", () => {
     });
   });
 
-  it("normalizes a video with sound by writing data-volume as one edit", async () => {
-    const plan = { targetLufs: -16, projectedLufs: -16, volume: 2, changeDb: 6, limitedBy: null };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ plan })),
-    );
+  it("Audio Gain… opens the G dialog for the clicked clip", async () => {
+    useAudioGainDialogStore.getState().close();
     const element: TimelineElement = {
       ...base,
       id: "a-roll",
@@ -110,42 +106,12 @@ describe("ClipMenuAudioItems", () => {
     };
     const host = render(element);
     const button = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Normalize loudness"),
+      b.textContent?.includes("Audio Gain…"),
     );
+    expect(button?.textContent).toBe("Audio Gain…G");
     await act(async () => button?.click());
-    await vi.waitFor(() => expect(setQuiet).toHaveBeenCalled());
-    expect(setQuiet).toHaveBeenCalledWith(element, "data-volume", "2", "Normalize loudness");
-    expect(showToast).toHaveBeenCalledWith("Normalized to −16 LUFS (+6.0 dB)", "info");
-    vi.unstubAllGlobals();
-  });
-
-  it("refuses to normalize a clip whose volume lane owns its gain", async () => {
-    const fetchSpy = vi.fn(async () => Response.json({ plan }));
-    vi.stubGlobal("fetch", fetchSpy);
-    const automation = JSON.stringify({
-      version: 1,
-      lanes: [{ target: "volume", points: [{ t: 0, v: 0.25 }] }],
-    });
-    const host = render({ ...base, id: "vo", tag: "audio", src: "vo.mp3", automation });
-    await clickItem(host, "Normalize loudness");
-    await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("volume is automated"), "error");
-    expect(setQuiet).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
-  });
-
-  it("reports a failed save instead of claiming the clip was normalized", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ plan })),
-    );
-    setQuiet.mockResolvedValue({ status: "failed", reason: "disk full" });
-    const host = render({ ...base, id: "vo", tag: "audio", src: "vo.mp3" });
-    await clickItem(host, "Normalize loudness");
-    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith("disk full", "error"));
-    expect(showToast).not.toHaveBeenCalledWith(expect.stringContaining("Normalized"), "info");
-    vi.unstubAllGlobals();
+    expect(useAudioGainDialogStore.getState().targetKeys).toEqual(["a-roll"]);
+    expect(host.textContent).not.toContain("Normalize loudness");
   });
 
   it("stops ducking at the first refused save and says why", async () => {

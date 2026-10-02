@@ -1,6 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import {
-  buildClipRangeSelection,
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
   type TimelineRangeSelection,
@@ -149,11 +148,6 @@ export function useTimelineRangeSelection({
   // rendering). Drives the playhead head's filled-vs-hollow state.
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [rangeSelection, setRangeSelection] = useState<TimelineRangeSelection | null>(null);
-  const shiftClickClipRef = useRef<{
-    element: TimelineElement;
-    anchorX: number;
-    anchorY: number;
-  } | null>(null);
 
   const seekRafRef = useRef(0);
   const pendingClientXRef = useRef(0);
@@ -322,7 +316,6 @@ export function useTimelineRangeSelection({
         beginRangeSelection(e);
         return;
       }
-      shiftClickClipRef.current = null;
       if ((e.target as HTMLElement).closest("[data-clip]")) return;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       activePointerIdRef.current = e.pointerId;
@@ -427,13 +420,7 @@ export function useTimelineRangeSelection({
   // clip range), otherwise clear it.
   const finishRangeSelection = useCallback(() => {
     isRangeSelecting.current = false;
-    const pendingShiftClick = shiftClickClipRef.current;
-    shiftClickClipRef.current = null;
     setRangeSelection((prev) => {
-      if (prev && pendingShiftClick && Math.abs(prev.end - prev.start) <= 0.2) {
-        setShowPopover(true);
-        return buildClipRangeSelection(pendingShiftClick.element, pendingShiftClick);
-      }
       if (prev && Math.abs(prev.end - prev.start) > 0.2) {
         setShowPopover(true);
         return prev;
@@ -589,7 +576,6 @@ export function useTimelineRangeSelection({
   return {
     rangeSelection,
     setRangeSelection,
-    shiftClickClipRef,
     marqueeRect,
     isScrubbing,
     handlePointerDown,

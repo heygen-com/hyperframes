@@ -84,7 +84,7 @@ describe("ClipContextMenu order", () => {
     const expected = [
       "Split at 2.00s",
       "Freeze frame",
-      "Normalize loudness",
+      "Audio Gain…",
       "Voice",
       "Detach audio",
       "Unlink from audio",

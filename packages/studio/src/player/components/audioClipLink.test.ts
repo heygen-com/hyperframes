@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   audioPillFlags,
   expandToLinkedMembers,
+  dropMisalignedTrimPartners,
   linkedGestureKeys,
   linkedMembersOf,
   mediaAssetIdentity,
@@ -204,6 +205,53 @@ describe("selectClipWithLinks", () => {
   });
 });
 
+describe("toggleClipWithLinks", () => {
+  const clips = [
+    { id: "talk", tag: "video", start: 0, duration: 4, track: 0, link: "lk-1" },
+    { id: "talk-audio", tag: "audio", start: 0, duration: 4, track: 1, link: "lk-1" },
+    { id: "title", tag: "div", start: 0, duration: 4, track: 2 },
+    { id: "music", tag: "audio", start: 0, duration: 4, track: 3 },
+  ];
+
+  async function store() {
+    const { usePlayerStore } = await import("../store/playerStore");
+    const { toggleClipWithLinks } = await import("./timelineLinkSelection");
+    usePlayerStore.getState().setElements(clips);
+    usePlayerStore.getState().setSelection(["title"], "title");
+    return { usePlayerStore, toggle: toggleClipWithLinks };
+  }
+
+  it("adds an unlinked clip to the selection and makes it primary", async () => {
+    const { usePlayerStore, toggle } = await store();
+    expect(toggle("music", false)?.id).toBe("music");
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["title", "music"]));
+    expect(usePlayerStore.getState().selectedElementId).toBe("music");
+  });
+
+  it("adding a linked clip adds its partner too", async () => {
+    const { usePlayerStore, toggle } = await store();
+    toggle("talk-audio", false);
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(
+      new Set(["title", "talk", "talk-audio"]),
+    );
+  });
+
+  it("toggling a selected clip removes it and its partner, keeping the rest", async () => {
+    const { usePlayerStore, toggle } = await store();
+    toggle("talk", false);
+    expect(toggle("talk", false)?.id).toBe("title");
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["title"]));
+    expect(toggle("title", false)).toBeNull();
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set());
+  });
+
+  it("Alt adds only the clicked member of a linked pair", async () => {
+    const { usePlayerStore, toggle } = await store();
+    toggle("talk", true);
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["title", "talk"]));
+  });
+});
+
 describe("Linked Selection off", () => {
   const linkedPair = [
     { id: "talk", tag: "video", start: 0, duration: 4, track: 0, link: "lk-1" },
@@ -227,5 +275,17 @@ describe("Linked Selection off", () => {
     } finally {
       useLinkedClipPreferences.getState().setLinkedSelection(true);
     }
+  });
+});
+
+describe("dropMisalignedTrimPartners", () => {
+  const v = { id: "v", link: "lk", start: 2, duration: 6 };
+  const a = { id: "a", link: "lk", start: 3, duration: 5 };
+  const keys = new Set(["v", "a"]);
+  it("keeps a partner whose grabbed edge is at the same time", () => {
+    expect(dropMisalignedTrimPartners(keys, v, [v, a], "end")).toEqual(keys);
+  });
+  it("trims only the grabbed clip when the partner's edge is elsewhere", () => {
+    expect(dropMisalignedTrimPartners(keys, v, [v, a], "start")).toEqual(new Set(["v"]));
   });
 });

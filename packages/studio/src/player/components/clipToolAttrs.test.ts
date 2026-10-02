@@ -5,11 +5,12 @@ import {
   activeLook,
   activeVoicePreset,
   chainWithVoicePreset,
+  clipSpeedSuffix,
   hasCrop,
   isDucked,
+  clipVolumeBadge,
   lookAttrValue,
-  readClipBadges,
-  splitVisibleBadges,
+  readClipEffects,
   type ClipToolState,
 } from "./clipToolAttrs";
 
@@ -98,7 +99,6 @@ const baseState: ClipToolState = {
   colorGrading: null,
   clipPath: null,
   carve: null,
-  link: null,
 };
 
 const rampAutomation = JSON.stringify({
@@ -114,48 +114,64 @@ const rampAutomation = JSON.stringify({
   ],
 });
 
-describe("readClipBadges", () => {
-  it("shows nothing for a plain clip at 100%", () => {
-    expect(readClipBadges(baseState)).toEqual([]);
+describe("readClipEffects", () => {
+  it("lists nothing for a plain clip, so the fx badge stays grey", () => {
+    expect(readClipEffects(baseState)).toEqual([]);
+    expect(readClipEffects({ ...baseState, automation: rampAutomation, volume: 1.8 })).toEqual([]);
   });
 
-  it("lists every applied tool in the wireframe's order", () => {
-    const labels = readClipBadges({
-      ...baseState,
-      volume: 1.8,
-      fxChain: chainWithVoicePreset(null, "voice-clean"),
-      automation: rampAutomation,
-      colorGrading: lookAttrValue("warm-daylight"),
-      clipPath: "inset(0px 20px)",
-      carve: "{}",
-      link: "talk",
-    }).map((b) => b.label);
-    expect(labels).toEqual([
-      "Linked",
-      "Warm daylight",
-      "Voice: Clean",
-      "Ramp",
-      "Crop",
-      "Ducked",
-      "180%",
+  it("lists every applied effect in the tooltip's order", () => {
+    expect(
+      readClipEffects({
+        ...baseState,
+        fxChain: chainWithVoicePreset(null, "voice-clean"),
+        colorGrading: lookAttrValue("warm-daylight"),
+        clipPath: "inset(0px 20px)",
+        carve: "{}",
+      }),
+    ).toEqual(["Look: Warm daylight", "Voice: Clean", "Crop", "Ducked"]);
+  });
+
+  it("names a hand-added effect and skips disabled and carve-generated nodes", () => {
+    const chain = serializeAudioFxChain({
+      version: 1,
+      nodes: [
+        { id: "a", type: "highpass", enabled: true, params: { frequency: 80 } },
+        { id: "b", type: "gain", enabled: false, params: {} },
+        { id: "c", type: "gain", enabled: true, fromCarve: true, params: {} },
+      ],
+    });
+    const effects = readClipEffects({ ...baseState, fxChain: chain });
+    expect(effects).toHaveLength(1);
+    expect(effects[0]).not.toBe("highpass");
+  });
+
+  it("reads a hand-made grading without a menu preset as a Look", () => {
+    expect(readClipEffects({ ...baseState, colorGrading: '{"adjust":{"contrast":0.2}}' })).toEqual([
+      "Look",
     ]);
   });
+});
 
-  it("badges a muted audio clip but not muted b-roll", () => {
-    expect(readClipBadges({ ...baseState, tag: "audio", muted: true })[0]?.label).toBe("Muted");
-    expect(readClipBadges({ ...baseState, hasSound: false, muted: true })).toEqual([]);
+describe("clipVolumeBadge", () => {
+  it("shows volume off 100% and Muted only on a clip with sound", () => {
+    expect(clipVolumeBadge({ ...baseState, volume: 1.8 })).toBe("180%");
+    expect(clipVolumeBadge(baseState)).toBeNull();
+    expect(clipVolumeBadge({ ...baseState, tag: "audio", muted: true })).toBe("Muted");
+    expect(clipVolumeBadge({ ...baseState, hasSound: false, muted: true })).toBeNull();
+  });
+});
+
+describe("clipSpeedSuffix", () => {
+  it("shows a constant speed as a percentage and hides 100%", () => {
+    expect(clipSpeedSuffix(1.5, null)).toBe(" [150%]");
+    expect(clipSpeedSuffix(0.35, null)).toBe(" [35%]");
+    expect(clipSpeedSuffix(1, null)).toBe("");
+    expect(clipSpeedSuffix(undefined, null)).toBe("");
   });
 
-  it("caps at two visible badges plus the link badge", () => {
-    const badges = readClipBadges({
-      ...baseState,
-      link: "talk",
-      colorGrading: lookAttrValue("mono-clean"),
-      clipPath: "inset(5px)",
-      volume: 0.6,
-    });
-    const { visible, hidden } = splitVisibleBadges(badges);
-    expect(visible.map((b) => b.label)).toEqual(["Linked", "Mono", "Crop"]);
-    expect(hidden.map((b) => b.label)).toEqual(["60%"]);
+  it("shows a rate lane as a ramp, whatever the base rate", () => {
+    expect(clipSpeedSuffix(2, rampAutomation)).toBe(" [ramp]");
+    expect(clipSpeedSuffix(1, rampAutomation)).toBe(" [ramp]");
   });
 });

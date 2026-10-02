@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../player";
+import { clipSyncState } from "../player/components/clipSync";
 import { clipsToUnlink, planLinkEdit } from "./timelineLinkEditPlan";
 
 const clip = (id: string, tag: string, extra: Partial<TimelineElement> = {}): TimelineElement => ({
@@ -109,5 +110,32 @@ describe("planLinkEdit into sync", () => {
         '<audio id="talk-audio" data-playback-start="0"></audio>',
       ) ?? "";
     expect(html).toBe('<audio id="talk-audio" data-playback-start="0.5"></audio>');
+  });
+});
+
+describe("link edit plan", () => {
+  const PAIR =
+    '<div><video id="talk" src="talk.mp4" muted data-start="2" data-duration="6"></video><audio id="a" src="%SRC%" data-start="3" data-duration="3" data-media-start="1"></audio></div>';
+  const linkPlan = (src: string, audioEl: TimelineElement) => {
+    const v = clip("talk", "video", { muted: true });
+    const plan = planLinkEdit({ kind: "link", elements: [v, audioEl] }, [v, audioEl]);
+    return plan?.transform(PAIR.replace("%SRC%", src)) ?? "";
+  };
+
+  it("links a trimmed same-file audio with a sync origin that shows a nonzero offset", () => {
+    const trimmed = clip("a", "audio", { start: 3, duration: 3, playbackStart: 0 });
+    const out = linkPlan("talk.mp4", trimmed);
+    expect(out).toMatch(/<video[^>]*data-link="lk-1"[^>]*data-sync-origin="lk-1"/);
+    expect(out).toMatch(/<audio[^>]*data-link="lk-1"[^>]*data-sync-origin="lk-1"/);
+    const v = clip("talk", "video", { muted: true, syncOrigin: "lk-1" });
+    const a = { ...trimmed, syncOrigin: "lk-1" };
+    expect(clipSyncState(a, [v, a], 30)?.frames).toBe(30);
+  });
+
+  it("links different files without a sync origin", () => {
+    const music = clip("a", "audio", { src: "bgm.mp3" });
+    const out = linkPlan("bgm.mp3", music);
+    expect(out).toContain('data-link="lk-1"');
+    expect(out).not.toContain("data-sync-origin");
   });
 });

@@ -1,5 +1,10 @@
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
-import { MEDIA_LINK_ATTR, SYNC_ORIGIN_ATTR, mintLinkId } from "@hyperframes/core/media-link";
+import {
+  MEDIA_LINK_ATTR,
+  SYNC_ORIGIN_ATTR,
+  mintLinkId,
+  sourceZeroTime,
+} from "@hyperframes/core/media-link";
 import { sameCompositionScope, type TimelineElement } from "../../player/store/timelineElement";
 import { mediaAssetIdentity, sharesLinkGroup } from "../../player/components/audioClipLink";
 import {
@@ -62,14 +67,17 @@ export function setLinkInSource(
   );
 }
 
-/** Link the targets under one freshly minted id, which is also their sync origin. */
-export function linkInSource(source: string, targets: readonly PatchTarget[]): string {
+/** Link the targets under one fresh id, also their sync origin when they share a source file. */
+export function linkInSource(
+  source: string,
+  targets: readonly PatchTarget[],
+  options: { syncOrigin: boolean } = { syncOrigin: true },
+): string {
   const linkId = mintLinkIdForSource(source);
-  return targets.reduce(
-    (html, target) =>
-      applyOps(html, target, [dataOp(LINK_PROPERTY, linkId), dataOp(SYNC_ORIGIN_PROPERTY, linkId)]),
-    source,
-  );
+  const ops = options.syncOrigin
+    ? [dataOp(LINK_PROPERTY, linkId), dataOp(SYNC_ORIGIN_PROPERTY, linkId)]
+    : [dataOp(LINK_PROPERTY, linkId)];
+  return targets.reduce((html, target) => applyOps(html, target, ops), source);
 }
 
 /** Remove one element (open tag through its matching close tag) and its line's indentation. */
@@ -242,15 +250,28 @@ export function findMergePair<T extends TimedElement>(
   return video.muted === true ? { video, audio } : null;
 }
 
-/** Exactly one video and one audio, same file, identical timing, not already linked together. */
+/** One video and one audio in one composition, neither linked: timing and file don't matter. */
 export function canLinkPair(selected: readonly TimedElement[]): boolean {
   if (selected.length !== 2) return false;
   const [a, b] = selected;
-  if (!a || !b) return false;
+  if (!a || !b || a.link || b.link) return false;
   const tags = new Set([tagOf(a), tagOf(b)]);
-  if (!tags.has("video") || !tags.has("audio")) return false;
-  if (sharesLinkGroup(a, b)) return false;
-  return sameAssetInScope(a, b) && hasIdenticalTiming(a, b);
+  return tags.has("video") && tags.has("audio") && sameCompositionScope(a, b);
+}
+
+export function sharesSourceFile(selected: readonly TimedElement[]): boolean {
+  const [a, b] = selected;
+  return selected.length === 2 && !!a && !!b && sameAssetInScope(a, b);
+}
+
+export function isPairInSync(a: TimedElement, b: TimedElement): boolean {
+  const timing = (el: TimedElement) => ({
+    start: el.start,
+    mediaStart: el.playbackStart ?? 0,
+    playbackRate: el.playbackRate ?? 1,
+  });
+  const [x, y] = [timing(a), timing(b)];
+  return near(x.playbackRate, y.playbackRate) && near(sourceZeroTime(x), sourceZeroTime(y));
 }
 
 type TrackedElement = Pick<TimelineElement, "tag" | "track" | "start" | "duration"> & {

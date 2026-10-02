@@ -38,6 +38,7 @@ import {
   ROTATED_SNAP_BYPASS_DEGREES,
   hasDomEditRotationChanged,
   lockDragToDominantAxis,
+  movesGesture,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
@@ -131,6 +132,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     if (!blockedMove && !g && !groupG) {
       opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
     }
+    const held = g ?? groupG;
+    if (held && !movesGesture(held, e)) return;
 
     if (blockedMove) {
       const dx = e.clientX - blockedMove.startX;

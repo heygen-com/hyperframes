@@ -49,6 +49,10 @@ export function withLinkPartners(selection: readonly TimelineElement[]): Timelin
   return [...selection, ...elements.filter((el) => keys.has(keyOf(el)) && !known.has(keyOf(el)))];
 }
 
+function clearSelectionOnUnlink(edit: TimelineLinkEdit): void {
+  if (edit.kind === "unlink") usePlayerStore.getState().clearSelection();
+}
+
 export function useTimelineLinkEditing({
   projectIdRef,
   activeCompPath,
@@ -71,6 +75,7 @@ export function useTimelineLinkEditing({
       const pid = projectIdRef.current;
       const plan = planLinkEdit(edit, usePlayerStore.getState().elements);
       if (!pid || !plan) return;
+      clearSelectionOnUnlink(edit);
       const path = plan.anchor.sourceFile || activeCompPath || "index.html";
       pendingTimelineEditPathRef.current.add(path);
       const queued = editQueueRef.current.then(() =>

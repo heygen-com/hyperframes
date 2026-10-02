@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core/color-grading";
 import type { TimelineElement } from "../store/playerStore";
@@ -30,6 +30,47 @@ const ROW_CLASS =
 const DISABLED_ROW_CLASS =
   "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none text-neutral-600 cursor-not-allowed";
 const SUBMENU_WIDTH = 170;
+const HOVER_PREVIEW_DELAY_MS = 80;
+
+interface HoverPreview {
+  apply: (id: string | null) => void;
+  clear: () => void;
+}
+
+function useHoverPreview(preview: HoverPreview | undefined) {
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeRef = useRef(false);
+
+  const cancelTimer = () => {
+    if (timerRef.current === null) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+  };
+  const end = () => {
+    cancelTimer();
+    if (!activeRef.current) return;
+    activeRef.current = false;
+    previewRef.current?.clear();
+  };
+  const settle = () => {
+    cancelTimer();
+    activeRef.current = false;
+  };
+  const start = (id: string | null) => {
+    if (!previewRef.current) return;
+    cancelTimer();
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      activeRef.current = true;
+      previewRef.current?.apply(id);
+    }, HOVER_PREVIEW_DELAY_MS);
+  };
+
+  useEffect(() => end, []);
+  return { start, end, settle };
+}
 
 interface ChoiceSection {
   heading?: string;
@@ -48,22 +89,36 @@ function ChoiceSubmenu({
   sections,
   activeId,
   onPick,
+  preview,
 }: {
   label: string;
   sections: readonly ChoiceSection[];
   activeId: string | null;
   onPick: (id: string | null) => void;
+  preview?: HoverPreview;
 }) {
   const [open, setOpen] = useState(false);
   const [flipLeft, setFlipLeft] = useState(false);
   const rowRef = useRef<HTMLButtonElement | null>(null);
   const submenuRef = useRef<HTMLDivElement | null>(null);
+  const hover = useHoverPreview(preview);
+  const openingFocusRef = useRef(false);
+
+  const hideSubmenu = () => {
+    hover.end();
+    setOpen(false);
+  };
 
   const show = (focusFirst: boolean) => {
     const rect = rowRef.current?.getBoundingClientRect();
     setFlipLeft(rect ? rect.right + SUBMENU_WIDTH > window.innerWidth : false);
     setOpen(true);
-    if (focusFirst) requestAnimationFrame(() => focusSibling(submenuRef.current, 1));
+    if (!focusFirst) return;
+    openingFocusRef.current = true;
+    requestAnimationFrame(() => {
+      focusSibling(submenuRef.current, 1);
+      openingFocusRef.current = false;
+    });
   };
 
   const onSubmenuKeyDown = (event: KeyboardEvent) => {
@@ -74,7 +129,7 @@ function ChoiceSubmenu({
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
       event.stopPropagation();
-      setOpen(false);
+      hideSubmenu();
       rowRef.current?.focus();
     }
   };
@@ -86,7 +141,15 @@ function ChoiceSubmenu({
       role="menuitemradio"
       aria-checked={activeId === id}
       className={ROW_CLASS}
-      onClick={() => onPick(id)}
+      onClick={() => {
+        hover.settle();
+        onPick(id);
+      }}
+      onMouseEnter={() => hover.start(id)}
+      onFocus={() => {
+        if (openingFocusRef.current) openingFocusRef.current = false;
+        else hover.start(id);
+      }}
     >
       <span className="flex items-center gap-1.5">
         <span aria-hidden="true" className="w-3 text-center">
@@ -98,7 +161,7 @@ function ChoiceSubmenu({
   );
 
   return (
-    <div className="relative" onMouseEnter={() => show(false)} onMouseLeave={() => setOpen(false)}>
+    <div className="relative" onMouseEnter={() => show(false)} onMouseLeave={hideSubmenu}>
       <button
         ref={rowRef}
         type="button"
@@ -182,7 +245,8 @@ export function ClipMenuToolItems(props: ClipMenuToolItemsProps) {
 }
 
 function ClipMenuAttributeItems({ group, element, onClose }: ClipMenuToolItemsProps) {
-  const { onSetElementAttributeQuiet } = useTimelineEditContextOptional();
+  const { onSetElementAttributeQuiet, onSetElementAttributeLive, onRevertElementAttributeLive } =
+    useTimelineEditContextOptional();
   const state = useClipToolState(element);
   const openCropBar = useCropPresetBarStore((s) => s.open);
   if (!onSetElementAttributeQuiet) return null;
@@ -209,6 +273,14 @@ function ClipMenuAttributeItems({ group, element, onClose }: ClipMenuToolItemsPr
   }
 
   if (!isPictureClip(state.tag)) return null;
+  const lookPreview =
+    onSetElementAttributeLive && onRevertElementAttributeLive
+      ? {
+          apply: (id: string | null) =>
+            onSetElementAttributeLive(element, HF_COLOR_GRADING_ATTR, lookAttrValue(id)),
+          clear: () => onRevertElementAttributeLive(element, HF_COLOR_GRADING_ATTR),
+        }
+      : undefined;
   return (
     <>
       <ChoiceSubmenu
@@ -216,6 +288,7 @@ function ClipMenuAttributeItems({ group, element, onClose }: ClipMenuToolItemsPr
         sections={LOOK_SECTIONS}
         activeId={activeLook(state.colorGrading)}
         onPick={(id) => write(HF_COLOR_GRADING_ATTR, lookAttrValue(id), "Look")}
+        preview={lookPreview}
       />
       <button
         type="button"

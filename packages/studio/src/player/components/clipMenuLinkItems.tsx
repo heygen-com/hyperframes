@@ -2,12 +2,19 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import type { TimelineLinkEdit } from "./timelineCallbacks";
 import { linkedMembersOf } from "./audioClipLink";
-import { canDetachAudio, canLinkPair, findMergePair } from "../../components/editor/mediaLinkEdits";
+import {
+  canDetachAudio,
+  canLinkPair,
+  findMergePair,
+  isPairInSync,
+  sharesSourceFile,
+} from "../../components/editor/mediaLinkEdits";
 
 interface LinkMenuItem {
   label: string;
   shortcut?: string;
   destructive?: boolean;
+  disabledReason?: string;
   run: () => void;
 }
 
@@ -15,12 +22,48 @@ const keyOf = (el: TimelineElement) => el.key ?? el.id;
 
 const tagOf = (el: TimelineElement) => el.tag.trim().toLowerCase();
 
+function loneSameFilePartner(
+  element: TimelineElement,
+  elements: readonly TimelineElement[],
+): TimelineElement | null {
+  const opposite = { video: "audio", audio: "video" }[tagOf(element)];
+  if (!opposite || element.link) return null;
+  const candidates = elements.filter(
+    (el) =>
+      !el.link &&
+      tagOf(el) === opposite &&
+      el.track !== element.track &&
+      sharesSourceFile([element, el]),
+  );
+  return candidates.length === 1 ? (candidates[0] ?? null) : null;
+}
+
 function partnerSuffix(element: TimelineElement, others: readonly TimelineElement[]): string {
   const partners = others.filter((el) => keyOf(el) !== keyOf(element));
   const [partner] = partners;
   if (partners.length !== 1 || !partner) return "";
   const pair = [tagOf(element), tagOf(partner)].sort().join("+");
   return pair === "audio+video" ? ` ${tagOf(partner)}` : "";
+}
+
+function linkItem(
+  element: TimelineElement,
+  elements: readonly TimelineElement[],
+  selected: TimelineElement[],
+  selectedKeys: ReadonlySet<string>,
+  onLinkEdit: (edit: TimelineLinkEdit) => unknown,
+): LinkMenuItem | null {
+  const selectedPair = canLinkPair(selected) && selectedKeys.has(keyOf(element));
+  const soleSelection = selected.every((el) => keyOf(el) === keyOf(element));
+  const partner = !selectedPair && soleSelection ? loneSameFilePartner(element, elements) : null;
+  const linkPair = selectedPair ? selected : partner ? [element, partner] : null;
+  if (!linkPair) return null;
+  const suffix = partnerSuffix(element, linkPair);
+  return {
+    label: `Link${suffix && ` to${suffix}`}`,
+    ...(selectedPair ? { shortcut: "⌘L" } : {}),
+    run: () => onLinkEdit({ kind: "link", elements: linkPair }),
+  };
 }
 
 /** The link-model items for a clip, in wireframe order (detach · unlink/link · merge · delete-one). */
@@ -50,17 +93,15 @@ export function resolveLinkMenuItems(input: {
       shortcut: "⌘L",
       run: () => onLinkEdit({ kind: "unlink", elements: members }),
     });
-  } else if (canLinkPair(selected) && selectedKeys.has(keyOf(element))) {
-    items.push({
-      label: `Link${partnerSuffix(element, selected) && ` to${partnerSuffix(element, selected)}`}`,
-      shortcut: "⌘L",
-      run: () => onLinkEdit({ kind: "link", elements: selected }),
-    });
+  } else {
+    const link = linkItem(element, elements, selected, selectedKeys, onLinkEdit);
+    if (link) items.push(link);
   }
   const pair = findMergePair(element, elements);
   if (pair) {
     items.push({
       label: "Merge audio back into video",
+      disabledReason: isPairInSync(pair.video, pair.audio) ? undefined : "Move into Sync first",
       run: () => onLinkEdit({ kind: "merge", ...pair }),
     });
   }
@@ -102,8 +143,12 @@ export function ClipMenuLinkItems({
           key={item.label}
           type="button"
           role="menuitem"
-          className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden cursor-pointer hover:bg-neutral-800 focus-visible:bg-neutral-800 ${
-            item.destructive ? "text-red-400" : "text-neutral-300"
+          disabled={item.disabledReason !== undefined}
+          title={item.disabledReason}
+          className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden ${
+            item.disabledReason !== undefined
+              ? "text-neutral-600 cursor-not-allowed"
+              : `cursor-pointer hover:bg-neutral-800 focus-visible:bg-neutral-800 ${item.destructive ? "text-red-400" : "text-neutral-300"}`
           }`}
           onClick={() => {
             item.run();

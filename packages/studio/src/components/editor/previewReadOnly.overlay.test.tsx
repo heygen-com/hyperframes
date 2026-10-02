@@ -105,7 +105,14 @@ function fixture(
 }
 
 const fire = (target: Element, type: string, init: MouseEventInit = {}) => {
-  const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, ...init });
+  const buttons = type === "pointerdown" || type === "pointermove" ? 1 : 0;
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    buttons,
+    ...init,
+  });
   act(() => {
     target.dispatchEvent(event);
   });

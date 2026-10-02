@@ -35,6 +35,19 @@ function makeEl(id: string, clip: string): HTMLElement {
   return el;
 }
 
+/** Presses at the first x, moves through the rest with their buttons, and lets go where the last held move was. */
+function dragCropRight(handle: HTMLElement, pointerId: number, points: [number, number][]) {
+  const [[start], ...moves] = points;
+  const release = moves.filter(([, buttons]) => buttons & 1).at(-1)?.[0] ?? start;
+  const send = (type: string, clientX: number, buttons: number) =>
+    handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId, buttons, clientX }));
+  act(() => {
+    send("pointerdown", start, 1);
+    for (const [x, buttons] of moves) send("pointermove", x, buttons);
+    send("pointerup", release, 0);
+  });
+}
+
 function render(
   el: HTMLElement,
   onStyleCommit: (property: string, value: string) => Promise<unknown> | void = () => undefined,
@@ -111,7 +124,14 @@ describe("DomEditCropHandles clip lift", () => {
     ] as const) {
       const at = { clientX: 100 + d * c.dx, clientY: 50 + d * c.dy };
       act(() =>
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, ...at })),
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 3,
+            ...at,
+          }),
+        ),
       );
     }
     expect(onStyleCommit).not.toHaveBeenCalled();
@@ -121,16 +141,23 @@ describe("DomEditCropHandles clip lift", () => {
     const onStyleCommit = vi.fn();
     render(makeEl("a", "inset(10px)"), onStyleCommit);
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    act(() => {
-      for (const [type, clientX] of [
-        ["pointerdown", 100],
-        ["pointermove", 90],
-        ["pointermove", 80],
-        ["pointerup", 80],
-      ] as const) {
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 4, clientX }));
-      }
-    });
+    dragCropRight(handle, 4, [
+      [100, 1],
+      [90, 1],
+      [80, 1],
+    ]);
+    expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
+  });
+
+  it("commits where the pointer let go, not at a buttonless move back at the press point", () => {
+    const onStyleCommit = vi.fn();
+    render(makeEl("a", "inset(10px)"), onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
+    dragCropRight(handle, 6, [
+      [100, 1],
+      [80, 1],
+      [100, 0],
+    ]);
     expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
   });
 
@@ -138,16 +165,11 @@ describe("DomEditCropHandles clip lift", () => {
     const a = makeEl("a", "");
     const { root } = render(a, (property, value) => void a.style.setProperty(property, value));
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    act(() => {
-      for (const [type, clientX] of [
-        ["pointerdown", 100],
-        ["pointermove", 90],
-        ["pointermove", 80],
-        ["pointerup", 80],
-      ] as const) {
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 5, clientX }));
-      }
-    });
+    dragCropRight(handle, 5, [
+      [100, 1],
+      [90, 1],
+      [80, 1],
+    ]);
     await act(async () => undefined);
     act(() => root.unmount());
     expect(a.style.getPropertyValue("clip-path")).toBe("inset(0px 20px 0px 0px)");
@@ -163,7 +185,14 @@ describe("DomEditCropHandles clip lift", () => {
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
     const press = (type: string, clientX: number) =>
       act(() =>
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX })),
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 1,
+            clientX,
+          }),
+        ),
       );
     press("pointerdown", 100);
     press("pointermove", 80);
