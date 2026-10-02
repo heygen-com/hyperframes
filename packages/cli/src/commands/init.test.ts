@@ -91,7 +91,7 @@ describe("hyperframes init flag rename", () => {
     try {
       const res = runInit([target, "--example", "--non-interactive"]);
       expect(res.status).toBe(1);
-      expect(res.stderr).toContain("--example requires a value");
+      expect(res.stderr).toContain("Missing value for --example");
       expect(existsSync(target)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
