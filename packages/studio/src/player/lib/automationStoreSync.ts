@@ -25,11 +25,11 @@ import {
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
 import {
-  elementVolume,
   getTimelineElementIdentity,
-  parseStoredVolume,
   previewElementFinder,
+  resolveMediaElement,
 } from "./timelineElementHelpers";
+import { elementVolume, parseStoredVolume } from "./storedVolume";
 
 /**
  * Re-read every element's automation, FX-chain, fade and volume attributes from the preview
@@ -60,7 +60,7 @@ function syncedFields(doc: Document, element: TimelineElement, node: Element) {
     fxChain: node.getAttribute(HF_AUDIO_FX_ATTR) ?? undefined,
     fadeIn: storedFade(fades.fadeIn),
     fadeOut: storedFade(fades.fadeOut),
-    volume: elementVolume(node),
+    volume: elementVolume(node, resolveMediaElement(node) ?? node),
     audioGroupAutomation: group?.automation,
     audioGroupFxChain: group?.fxChain,
   };
