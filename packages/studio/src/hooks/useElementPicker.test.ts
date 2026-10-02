@@ -201,6 +201,17 @@ describe("a pick across a reload that swaps the preview frame", () => {
     expect(picker().pickedElement?.selector).toBe("h1.next");
   });
 
+  it("does not keep trusting a zoomed frame once the zoom is gone", () => {
+    const { picker } = mountSwapping();
+    const zoom = mountPreview();
+    act(() => picker().setActiveIframe(zoom));
+    picked(zoom.contentWindow, "h1");
+    expect(picker().pickedElement?.selector).toBe("h1");
+    act(() => picker().setActiveIframe(null));
+    picked(zoom.contentWindow, "h1.late");
+    expect(picker().pickedElement?.selector).toBe("h1");
+  });
+
   it("still ignores a frame it never showed", () => {
     const { picker } = mountSwapping();
     const stranger = mountPreview();
