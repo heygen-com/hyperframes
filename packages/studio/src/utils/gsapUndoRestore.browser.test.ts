@@ -12,6 +12,8 @@ import { writeFixture } from "../../tests/e2e/edit-accuracy/grid.mjs";
 
 const require = createRequire(import.meta.url);
 const CROP = "inset(0px 40px 0px 0px)";
+// Real Chrome on a loaded Windows runner exceeds Vitest's 5s test and 10s hook defaults.
+const CHROME_MS = 60_000;
 let browser: Browser;
 let undoBundle: string;
 
@@ -37,9 +39,9 @@ beforeAll(async () => {
   });
   undoBundle = (Array.isArray(out) ? out[0]! : (out as { output: [{ code: string }] })).output[0]
     .code;
-}, 60_000);
+}, CHROME_MS);
 
-afterAll(() => browser?.close());
+afterAll(() => browser?.close(), CHROME_MS);
 
 it.each([
   { gsap: "hold", placement: "px", rotation: 0 },
@@ -91,4 +93,4 @@ it.each([
   expect(outcome).toBe("soft");
   expect(await box()).toEqual(before);
   await page.close();
-});
+}, CHROME_MS);
