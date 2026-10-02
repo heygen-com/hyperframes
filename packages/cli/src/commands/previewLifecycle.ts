@@ -13,7 +13,12 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { scanActiveServers, type ActiveServer } from "../server/portUtils.js";
+import {
+  activeServerOnPort,
+  MAX_PORT_SCAN,
+  scanActiveServers,
+  type ActiveServer,
+} from "../server/portUtils.js";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js";
 import { terminateProcessTree } from "../utils/processTree.js";
@@ -62,6 +67,7 @@ interface LifecycleDependencies {
   isDescendant?: (childPid: number, ancestorPid: number) => boolean;
   identity?: (pid: number) => string | null;
   isSignalable?: (pid: number) => boolean;
+  probe?: (port: number) => Promise<ActiveServer | null>;
   stateHome?: string;
   forceNew?: boolean;
   browserGpuMode?: BrowserGpuMode;
@@ -469,7 +475,13 @@ function reuseExistingPreview(
 ): Extract<BackgroundPreviewResult, { type: "reused" }> | null {
   if (!reusableExisting || dependencies.forceNew) return null;
   const unmet = unmetPreferredPort(reusableExisting.port, dependencies.preferredPort);
-  if (unmet !== undefined) throw new PreviewServerPortMismatchError(unmet, candidates);
+  if (unmet !== undefined) {
+    throw new PreviewServerPortMismatchError(
+      unmet,
+      candidates,
+      ` To start one on port ${unmet} instead, add --force-new or run --stop first.`,
+    );
+  }
   return {
     type: "reused",
     port: reusableExisting.port,
@@ -483,11 +495,20 @@ export async function startBackgroundPreview(
   startPort: number,
   dependencies: LifecycleDependencies = {},
 ): Promise<BackgroundPreviewResult> {
-  const { scan, stateHome, saved, scanned } = await readPreviewLifecycleState(
+  const { scan, stateHome, saved, scanStart, scanned } = await readPreviewLifecycleState(
     projectDir,
     startPort,
     dependencies,
   );
+  const preferred = dependencies.preferredPort;
+  // The scan only covers scanStart..+MAX_PORT_SCAN-1; an explicit --port outside it is probed directly.
+  if (
+    preferred !== undefined &&
+    (preferred < scanStart || preferred >= scanStart + MAX_PORT_SCAN)
+  ) {
+    const onPreferred = await (dependencies.probe ?? activeServerOnPort)(preferred);
+    if (onPreferred) scanned.push(onPreferred);
+  }
   // Always inspect a saved custom port first. `--force-new --port <new>` must
   // replace that owned server before recording the replacement, otherwise the
   // single per-project ownership record would orphan the old listener.

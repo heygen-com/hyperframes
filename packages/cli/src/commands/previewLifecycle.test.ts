@@ -560,6 +560,31 @@ describe("background preview lifecycle", () => {
 
     expect(failure).toBeInstanceOf(PreviewServerPortMismatchError);
     expect(failure).toMatchObject({ requestedPort: 3004, ports: [3002, 3003] });
+    expect((failure as Error).message).toContain("add --force-new or run --stop first");
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("reuses a same-project server on an explicit port outside the saved port's scan window", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const owned = { ...server, port: 3002 };
+    const farSibling = { ...server, port: 3500, pid: "5555" };
+    writePreviewSession(
+      { pid: 4321, port: owned.port, projectDir, logPath: "/tmp/preview.log" },
+      stateHome,
+    );
+    const spawn = vi.fn();
+    const probe = vi.fn(async (port: number) => (port === farSibling.port ? farSibling : null));
+
+    const result = await startBackgroundPreview(projectDir, farSibling.port, {
+      scan: async () => [owned],
+      probe,
+      spawn,
+      stateHome,
+      preferredPort: farSibling.port,
+    });
+
+    expect(result).toMatchObject({ type: "reused", port: farSibling.port, pid: 5555 });
+    expect(probe).toHaveBeenCalledExactlyOnceWith(farSibling.port);
     expect(spawn).not.toHaveBeenCalled();
   });
 
