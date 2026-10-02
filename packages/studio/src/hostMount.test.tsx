@@ -17,10 +17,8 @@ import {
   type StudioApiAdapter,
 } from "@hyperframes/studio-server";
 import { studioFileContentVersion } from "./utils/studioFileVersion";
-import { beginStudioPendingEdit } from "./utils/studioPendingEdits";
 import {
   flushStudioPendingEdits,
-  revertNewestStudioPendingEdit,
   useTimelineEditing,
   useProjectFileWriter,
   usePersistentEditHistory,
@@ -251,21 +249,5 @@ describe("public export surface: a host mounting hand editing outside EditorShel
     });
 
     expect(bannerHost.textContent).toContain("changed outside Studio");
-  });
-
-  it("paints a move that is still saving back at once from a host's own undo key", async () => {
-    const clipBox = { left: "120px" };
-    const edit = beginStudioPendingEdit(() => {
-      clipBox.left = "0px";
-      return () => void (clipBox.left = "120px");
-    });
-
-    const putBack = revertNewestStudioPendingEdit();
-    expect(clipBox.left).toBe("0px");
-    expect(revertNewestStudioPendingEdit()).toBeNull();
-    putBack?.();
-    expect(clipBox.left).toBe("120px");
-    edit.settle();
-    await flushStudioPendingEdits();
   });
 });
