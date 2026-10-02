@@ -291,6 +291,20 @@ function useDisplayRowHeights(
   );
 }
 
+function insertPreviewTrack(trackOrder: number[], preview: number) {
+  const result: number[] = [];
+  let inserted = false;
+  for (const key of trackOrder) {
+    if (!inserted && Number.isInteger(key) && key > preview) {
+      result.push(preview);
+      inserted = true;
+    }
+    result.push(key);
+  }
+  if (!inserted) result.push(preview);
+  return result;
+}
+
 function useDisplayTrackOrder(draggedClip: DraggedClipState | null, trackOrder: number[]) {
   const started = draggedClip?.started === true;
   const insertRow = draggedClip?.insertRow ?? null;
@@ -309,18 +323,7 @@ function useDisplayTrackOrder(draggedClip: DraggedClipState | null, trackOrder: 
     // moment a clip drags onto a brand-new track. Insert the new preview
     // track only relative to other REAL (integer) tracks, leaving any
     // fractional group-anchor keys exactly where grouping placed them.
-    const preview = previewTrack;
-    const result: number[] = [];
-    let inserted = false;
-    for (const key of trackOrder) {
-      if (!inserted && Number.isInteger(key) && key > preview) {
-        result.push(preview);
-        inserted = true;
-      }
-      result.push(key);
-    }
-    if (!inserted) result.push(preview);
-    return result;
+    return insertPreviewTrack(trackOrder, previewTrack);
   }, [started, insertRow, previewTrack, trackOrder]);
 }
 

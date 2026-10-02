@@ -7,7 +7,11 @@ import {
   type DragPreviewContext,
 } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
-import { commitDraggedClipMove, persistMoveEdits } from "./timelineClipDragCommit";
+import {
+  commitDraggedClipMove,
+  persistMoveEdits,
+  type TimelineMoveEdit,
+} from "./timelineClipDragCommit";
 import {
   LANE_H,
   RULER_H,
@@ -569,6 +573,23 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
 });
 
 describe("computeDragPreview — a group move keeps its shape", () => {
+  function commitPreview(
+    ghost: DraggedClipState,
+    elements: TimelineElement[],
+    selectedKeys: ReadonlySet<string>,
+  ) {
+    const onMoveElements = vi.fn<(edits: TimelineMoveEdit[]) => void>();
+    commitDraggedClipMove(ghost, {
+      elements,
+      trackOrder: [0, 1, 2],
+      updateElement: vi.fn(),
+      onMoveElement: vi.fn(),
+      onMoveElements,
+      selectedKeys,
+    });
+    return onMoveElements.mock.calls[0][0];
+  }
+
   it("never bumps the grabbed clip further left than the group's 0 limit", () => {
     const a = clip("a", 1, 0.5, 1, 1);
     const b = clip("b", 2, 7, 2, 1);
@@ -582,19 +603,7 @@ describe("computeDragPreview — a group move keeps its shape", () => {
       selectedKeys,
     });
     expect(ghost).toMatchObject({ previewTrack: 0, insertRow: null, previewStart: 10 });
-    const onMoveElements = vi.fn();
-    commitDraggedClipMove(ghost, {
-      elements,
-      trackOrder: [0, 1, 2],
-      updateElement: vi.fn(),
-      onMoveElement: vi.fn(),
-      onMoveElements,
-      selectedKeys,
-    });
-    const edits = onMoveElements.mock.calls[0][0] as Array<{
-      element: TimelineElement;
-      updates: { start: number };
-    }>;
+    const edits = commitPreview(ghost, elements, selectedKeys);
     const moved = Object.fromEntries(
       edits.map((e) => [e.element.id, e.updates.start - e.element.start]),
     );
@@ -614,19 +623,7 @@ describe("computeDragPreview — a group move keeps its shape", () => {
       ...ctx(undefined, elements),
       selectedKeys,
     });
-    const onMoveElements = vi.fn();
-    commitDraggedClipMove(ghost, {
-      elements,
-      trackOrder: [0, 1, 2],
-      updateElement: vi.fn(),
-      onMoveElement: vi.fn(),
-      onMoveElements,
-      selectedKeys,
-    });
-    const edits = onMoveElements.mock.calls[0][0] as Array<{
-      element: TimelineElement;
-      updates: { start: number; track: number };
-    }>;
+    const edits = commitPreview(ghost, elements, selectedKeys);
     return Object.fromEntries(edits.map((e) => [e.element.id, e.updates]));
   }
 

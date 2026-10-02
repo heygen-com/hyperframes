@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Timeline } from "./Timeline";
+import {
+  mountThreeTrackTimeline as mountThreeTracks,
+  dragTimelineFixtureAsset,
+  pointerTimelineFixture as pointer,
+} from "./timelineMountFixtures";
 import { installTimelineMountEnv } from "./timelineMountTestEnv";
-import { usePlayerStore } from "../store/playerStore";
 import { CLIP_Y, TRACK_H, getTimelineRowTop } from "./timelineLayout";
-import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
-import type { TimelineProps } from "./TimelineTypes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,32 +20,6 @@ afterEach(() => {
 
 const GHOST_MID = getTimelineRowTop(3) + TRACK_H / 2;
 const ROW1_MID = getTimelineRowTop(1) + TRACK_H / 2;
-
-async function mountThreeTracks(props: TimelineProps = {}) {
-  usePlayerStore.setState({
-    duration: 10,
-    currentTime: 0,
-    timelineReady: true,
-    gsapAnimations: new Map(),
-    selectedElementId: null,
-    selectedElementIds: new Set(),
-    elements: [0, 1, 2].map((track) => ({
-      id: `c${track}`,
-      key: `c${track}`,
-      domId: `c${track}`,
-      tag: "div",
-      start: 0,
-      duration: 2,
-      track,
-    })),
-  });
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  await act(async () => root.render(<Timeline {...props} />));
-  const ghost = () => host.querySelector<HTMLElement>('[data-testid="timeline-ghost-lane"]');
-  return { host, root, ghost };
-}
 
 describe("Timeline ghost lane", () => {
   it("draws one empty track below the last with a drop hint", async () => {
@@ -70,22 +44,8 @@ describe("Timeline ghost lane", () => {
     const onAssetDrop = vi.fn();
     const { host, root, ghost } = await mountThreeTracks({ onAssetDrop });
     const viewport = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]")!;
-    const drag = (type: string, clientY: number) => {
-      const event = new Event(type, { bubbles: true, cancelable: true });
-      Object.defineProperties(event, {
-        clientX: { value: 400 },
-        clientY: { value: clientY },
-        dataTransfer: {
-          value: {
-            types: [TIMELINE_ASSET_MIME],
-            files: [],
-            dropEffect: "none",
-            getData: (mime: string) => (mime === TIMELINE_ASSET_MIME ? '{"path":"a.png"}' : ""),
-          },
-        },
-      });
-      act(() => void viewport.dispatchEvent(event));
-    };
+    const drag = (type: string, clientY: number) =>
+      dragTimelineFixtureAsset(viewport, type, clientY);
     drag("dragover", ROW1_MID);
     expect(ghost()?.dataset.active).toBeUndefined();
     drag("dragover", GHOST_MID);
@@ -100,19 +60,6 @@ describe("Timeline ghost lane", () => {
       onMoveElement: vi.fn(),
       onResizeElement: vi.fn(),
     });
-    const pointer = (target: EventTarget, type: string, clientY: number) =>
-      act(
-        () =>
-          void target.dispatchEvent(
-            new PointerEvent(type, {
-              bubbles: true,
-              button: 0,
-              pointerId: 1,
-              clientX: 400,
-              clientY,
-            }),
-          ),
-      );
     const clipMid = getTimelineRowTop(track) + TRACK_H / 2;
     pointer(host.querySelector(`[data-clip][data-el-id="c${track}"]`)!, "pointerdown", clipMid);
     pointer(window, "pointermove", ROW1_MID);

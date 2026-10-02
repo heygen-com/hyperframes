@@ -1,4 +1,5 @@
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
+import { timelineAudioRow, isInsertAllowedForZone } from "./timelineCollision";
 
 export function timelineTrackOrderChanged(
   previous: readonly number[],
@@ -12,6 +13,33 @@ export interface TimelineTrackInsertLayout {
   trackOrder: number[];
   topologyRows: number[];
   groupTracks: ReadonlyMap<number, readonly number[]>;
+}
+
+export function keyboardPickupInsertRow(
+  row: number,
+  allowed: ReadonlySet<number> | undefined,
+): number {
+  while (row > 0 && allowed && !allowed.has(row)) row--;
+  return row;
+}
+
+export function nextKeyboardInsertRow(input: {
+  current: number;
+  step: -1 | 1;
+  order: number[];
+  layout: TimelineTrackInsertLayout | undefined;
+  audioTracks: ReadonlySet<number>;
+  isAudio: boolean;
+}): number | null {
+  const { current, step, order, layout, audioTracks, isAudio } = input;
+  let row = Math.max(0, Math.min(order.length, current + step));
+  const allowed = layout?.allowedRows;
+  while (allowed?.has(row) === false) {
+    row += step;
+    if (row < 0 || row > order.length) return null;
+  }
+  const audioRow = timelineAudioRow(order, audioTracks, layout?.groupTracks);
+  return isInsertAllowedForZone(row, audioRow, isAudio, allowed) ? row : null;
 }
 
 /** Groups own one contiguous insertion block, including their collapsed members. */

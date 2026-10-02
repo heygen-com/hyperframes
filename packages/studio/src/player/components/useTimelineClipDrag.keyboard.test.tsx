@@ -96,6 +96,12 @@ function mount(order = [0, 1, 2]) {
   };
 }
 
+function expectCanceledPickup(view: ReturnType<typeof mount>) {
+  expect(view.drag).toBeNull();
+  expect(view.onMoveElements).not.toHaveBeenCalled();
+  expect(usePlayerStore.getState().elements).toEqual(view.elements);
+}
+
 it("cancels pickup when collapsing a group changes the displayed seam", () => {
   const view = mount([0, 0.5, 1, 3, 2, 4]);
   view.key(" ");
@@ -104,8 +110,7 @@ it("cancels pickup when collapsing a group changes the displayed seam", () => {
   view.changeOrder([0, 0.5, 2, 4]);
   expect(view.drag).toBeNull();
   view.key("Enter");
-  expect(view.onMoveElements).not.toHaveBeenCalled();
-  expect(usePlayerStore.getState().elements).toEqual(view.elements);
+  expectCanceledPickup(view);
   act(() => view.root.unmount());
 });
 
@@ -137,9 +142,7 @@ it("Escape cancels the opened lane without moving a clip or adding a track", () 
   view.key("ArrowDown");
   expect(view.drag?.insertRow).toBe(2);
   view.key("Escape");
-  expect(view.drag).toBeNull();
-  expect(view.onMoveElements).not.toHaveBeenCalled();
-  expect(usePlayerStore.getState().elements).toEqual(view.elements);
+  expectCanceledPickup(view);
   act(() => view.root.unmount());
 });
 

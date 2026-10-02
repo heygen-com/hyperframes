@@ -119,6 +119,22 @@ export function resolveNearestFreeStart(
   return clear ? origin : best;
 }
 
+function groupHeaderAim(
+  input: Parameters<typeof resolveZoneDropPlacement>[0],
+):
+  | { kind: "ordinary" | "member"; track: number }
+  | { kind: "origin"; track: number; start: number } {
+  const members = input.groupTracks?.get(input.desiredTrack);
+  if (!members) return { kind: "ordinary", track: input.desiredTrack };
+  const memberTracks = new Set(members);
+  const member = input.order.find(
+    (track) => memberTracks.has(track) && input.audioTracks.has(track) === input.isAudio,
+  );
+  if (member !== undefined) return { kind: "member", track: member };
+  if (!input.origin) throw new Error("Group-header drop requires the clip origin");
+  return { kind: "origin", ...input.origin };
+}
+
 // A deliberate seam opens a track; other aims land at the nearest free time on a row of the clip's kind.
 export function resolveZoneDropPlacement(input: {
   order: number[];
@@ -148,23 +164,12 @@ export function resolveZoneDropPlacement(input: {
     return { track: desiredTrack, insertRow: deliberateInsertRow, start };
   }
 
-  const members = input.groupTracks?.get(desiredTrack);
-  let aim = desiredTrack;
-  if (members) {
-    const memberTracks = new Set(members);
-    const member = order.find(
-      (track) => memberTracks.has(track) && audioTracks.has(track) === isAudio,
-    );
-    if (member === undefined) {
-      if (!input.origin) throw new Error("Group-header drop requires the clip origin");
-      return { ...input.origin, insertRow: null };
-    }
-    aim = member;
-  }
+  const aim = groupHeaderAim(input);
+  if (aim.kind === "origin") return { track: aim.track, start: aim.start, insertRow: null };
   const firstVisibleAudioRow = order.findIndex((track) => audioTracks.has(track));
-  const desired = members
-    ? aim
-    : clampTrackToZone(aim, order, isAudio ? firstVisibleAudioRow : audioRow, isAudio);
+  const zoneBoundary = isAudio ? firstVisibleAudioRow : audioRow;
+  const desired =
+    aim.kind === "member" ? aim.track : clampTrackToZone(aim.track, order, zoneBoundary, isAudio);
   const zoneTracks = order.filter(
     (t) => !input.groupTracks?.has(t) && audioTracks.has(t) === isAudio,
   );

@@ -31,14 +31,19 @@ import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 import { dropMisalignedTrimPartners, linkedGestureKeys } from "./audioClipLink";
 import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 import { useTimelineClipCapabilities } from "./timelineReadOnly";
-import { isInsertAllowedForZone, timelineAudioRow } from "./timelineCollision";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
-import { timelineKeyboardEventTarget } from "./useTimelineKeyboardActor";
+import {
+  handleClipPickupKeyboardEvent,
+  scrollKeyboardInsertRow,
+  timelineKeyboardEventTarget,
+} from "./useTimelineKeyboardActor";
 import {
   timelineTrackOrderChanged,
+  nextKeyboardInsertRow,
+  keyboardPickupInsertRow,
   type TimelineTrackInsertLayout,
 } from "./timelineTrackInsertLayout";
-import { RULER_H, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
+import type { TimelineRowGeometry } from "./timelineLayout";
 import {
   mountTimelineClipDragGestureLifecycle,
   type TimelineGestureKind,
@@ -498,58 +503,62 @@ export function useTimelineClipDrag({
   );
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const drag = draggedClipRef.current;
-      const viewport = scrollRef.current;
-      if (drag?.pointerId === null) {
-        if (!["ArrowUp", "ArrowDown", "Enter", " ", "Escape"].includes(event.key)) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        if (event.key === "Escape") cancelGestureRef.current();
-        else if (event.key === "Enter" && !event.repeat) commitGestureRef.current();
-        else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-          const order = trackOrderRef.current;
-          const step = event.key === "ArrowUp" ? -1 : 1;
-          let row = Math.max(0, Math.min(order.length, (drag.insertRow ?? 0) + step));
-          const allowed = trackInsertLayoutRef?.current?.allowedRows;
-          while (allowed && !allowed.has(row) && row >= 0 && row <= order.length) row += step;
-          if (row < 0 || row > order.length) return;
-          const audioTracks = getTimelineElementIndexes(elementsRef.current).audioTracks;
-          const audioRow = timelineAudioRow(
-            order,
-            audioTracks,
-            trackInsertLayoutRef?.current?.groupTracks,
-          );
-          if (!isInsertAllowedForZone(row, audioRow, audioTracks.has(drag.element.track), allowed))
-            return;
-          publishDraggedClip({ ...drag, insertRow: row });
-          if (viewport && rowGeometryRef) {
-            const top = rowGeometryRef.current.getRowTop(row);
-            if (top < viewport.scrollTop + RULER_H) viewport.scrollTop = Math.max(0, top - RULER_H);
-            else if (top + TRACK_H > viewport.scrollTop + viewport.clientHeight)
-              viewport.scrollTop = top + TRACK_H - viewport.clientHeight;
-          }
-        }
-        if (event.key === "Escape" || event.key === "Enter") {
+    const movePickup = (drag: DraggedClipState, step: -1 | 1, viewport: HTMLDivElement | null) => {
+      const audioTracks = getTimelineElementIndexes(elementsRef.current).audioTracks;
+      const row = nextKeyboardInsertRow({
+        current: drag.insertRow ?? 0,
+        step,
+        order: trackOrderRef.current,
+        layout: trackInsertLayoutRef?.current,
+        audioTracks,
+        isAudio: audioTracks.has(drag.element.track),
+      });
+      if (row === null) return;
+      publishDraggedClip({ ...drag, insertRow: row });
+      if (viewport && rowGeometryRef)
+        scrollKeyboardInsertRow(viewport, rowGeometryRef.current, row);
+    };
+    const activePickup = (
+      event: KeyboardEvent,
+      drag: DraggedClipState,
+      viewport: HTMLDivElement | null,
+    ) => {
+      handleClipPickupKeyboardEvent(event, {
+        move: (step) => movePickup(drag, step, viewport),
+        commit: commitGestureRef.current,
+        cancel: cancelGestureRef.current,
+        focus: () =>
           usePlayerStore
             .getState()
-            .requestTimelineFocus(timelineClipFocusId(drag.element.key ?? drag.element.id));
-        }
-        return;
-      }
-      if (drag || resizingClipRef.current || event.key !== " " || event.repeat || !viewport) return;
+            .requestTimelineFocus(timelineClipFocusId(drag.element.key ?? drag.element.id)),
+      });
+    };
+    const pickup = (event: KeyboardEvent, viewport: HTMLDivElement) => {
       const target = timelineKeyboardEventTarget(event.target, viewport);
-      if (!target || !onMoveElementRef.current) return;
-      const element = elementsRef.current.find((el) => (el.key ?? el.id) === target.dataset.elId);
+      const key = target?.dataset.elId;
+      if (key === undefined || !onMoveElementRef.current) return;
+      const element = getTimelineElementIndexes(elementsRef.current).byKey.get(key);
       if (!element || !getClipCapabilities(element).canMove) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       setShowPopover(false);
       setRangeSelectionRef.current?.(null);
-      let row = trackOrderRef.current.indexOf(element.track);
-      const allowed = trackInsertLayoutRef?.current?.allowedRows;
-      while (row > 0 && allowed && !allowed.has(row)) row--;
+      const row = keyboardPickupInsertRow(
+        trackOrderRef.current.indexOf(element.track),
+        trackInsertLayoutRef?.current?.allowedRows,
+      );
       setDraggedClip(createKeyboardClipDrag(element, row, viewport.scrollLeft, viewport.scrollTop));
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const drag = draggedClipRef.current;
+      const viewport = scrollRef.current;
+      if (drag) {
+        if (drag.pointerId === null) activePickup(event, drag, viewport);
+        return;
+      }
+      if (resizingClipRef.current) return;
+      if (event.key !== " " || event.repeat) return;
+      if (viewport) pickup(event, viewport);
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);

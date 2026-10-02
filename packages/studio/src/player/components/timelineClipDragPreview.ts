@@ -110,6 +110,21 @@ function resolveDragMaxStart(scroll: HTMLDivElement | null, pps: number, duratio
 
 const INSERT_SEAM_PX = CLIP_Y;
 
+function physicalInsertRow(
+  rowFloat: number,
+  y: number,
+  ctx: Pick<DragPreviewContext, "trackOrder" | "allowedInsertRows">,
+  geometry: TimelineRowGeometry,
+) {
+  const boundary = Math.round(rowFloat);
+  const nearSeam = Math.abs(y - geometry.getRowTop(boundary)) <= INSERT_SEAM_PX;
+  const row = nearSeam
+    ? Math.max(0, Math.min(ctx.trackOrder.length, boundary))
+    : resolveInsertRow(rowFloat, ctx.trackOrder.length);
+  if (row !== null && ctx.allowedInsertRows && !ctx.allowedInsertRows.has(row)) return null;
+  return row;
+}
+
 function dragRowAim(
   drag: DraggedClipState,
   clientY: number,
@@ -124,14 +139,7 @@ function dragRowAim(
     if (y > top + TRACK_H) y -= TRACK_H;
   }
   const rowFloat = geometry.getRowFromY(y);
-  const boundary = Math.round(rowFloat);
-  const nearSeam = Math.abs(y - geometry.getRowTop(boundary)) <= INSERT_SEAM_PX;
-  let insertRow = nearSeam
-    ? Math.max(0, Math.min(ctx.trackOrder.length, boundary))
-    : resolveInsertRow(rowFloat, ctx.trackOrder.length);
-  if (insertRow !== null && ctx.allowedInsertRows && !ctx.allowedInsertRows.has(insertRow))
-    insertRow = null;
-  return { rowFloat, insertRow };
+  return { rowFloat, insertRow: physicalInsertRow(rowFloat, y, ctx, geometry) };
 }
 
 /** The drop decision for the pointer's row (see resolveZoneDropPlacement). */

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import type { TimelineRowGeometry } from "./timelineLayout";
+import { RULER_H, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
 import {
   isTimelineNavigationKey,
   locateTimelineLogicalTarget,
@@ -15,6 +15,81 @@ interface TimelineKeyboardActorInput {
   scrollRef: RefObject<HTMLDivElement | null>;
   onToggleRow: (target: TimelineLogicalRow) => void;
   onDrillDown?: (element: TimelineElement) => void;
+}
+
+type ClipPickupAction =
+  | { kind: "move"; step: -1 | 1 }
+  | { kind: "commit" }
+  | { kind: "cancel" }
+  | { kind: "focus" }
+  | { kind: "consume" };
+
+function clipPickupKeyboardAction(event: {
+  key: string;
+  repeat: boolean;
+}): ClipPickupAction | null {
+  switch (event.key) {
+    case "ArrowUp":
+      return { kind: "move", step: -1 };
+    case "ArrowDown":
+      return { kind: "move", step: 1 };
+    case "Enter":
+      return { kind: event.repeat ? "focus" : "commit" };
+    case "Escape":
+      return { kind: "cancel" };
+    case " ":
+      return { kind: "consume" };
+    default:
+      return null;
+  }
+}
+
+export function handleClipPickupKeyboardEvent(
+  event: globalThis.KeyboardEvent,
+  actions: {
+    move: (step: -1 | 1) => void;
+    commit: () => void;
+    cancel: () => void;
+    focus: () => void;
+  },
+): void {
+  const action = clipPickupKeyboardAction(event);
+  if (!action) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  switch (action.kind) {
+    case "move":
+      actions.move(action.step);
+      break;
+    case "commit":
+      actions.commit();
+      actions.focus();
+      break;
+    case "cancel":
+      actions.cancel();
+      actions.focus();
+      break;
+    case "focus":
+      actions.focus();
+      break;
+    case "consume":
+      break;
+    default: {
+      const unreachable: never = action;
+      throw new Error(`Unknown pickup action: ${unreachable}`);
+    }
+  }
+}
+
+export function scrollKeyboardInsertRow(
+  viewport: HTMLDivElement,
+  geometry: TimelineRowGeometry,
+  row: number,
+): void {
+  const top = geometry.getRowTop(row);
+  if (top < viewport.scrollTop + RULER_H) viewport.scrollTop = Math.max(0, top - RULER_H);
+  else if (top + TRACK_H > viewport.scrollTop + viewport.clientHeight)
+    viewport.scrollTop = top + TRACK_H - viewport.clientHeight;
 }
 
 export function timelineKeyboardEventTarget(

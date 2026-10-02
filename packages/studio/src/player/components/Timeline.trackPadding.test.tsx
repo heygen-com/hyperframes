@@ -7,7 +7,11 @@ import { Timeline } from "./Timeline";
 import { installTimelineMountEnv } from "./timelineMountTestEnv";
 import { usePlayerStore } from "../store/playerStore";
 import { CLIP_Y, RULER_H, TRACK_H, TRACKS_BOTTOM_PAD, TRACKS_TOP_PAD } from "./timelineLayout";
-import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
+import {
+  mountThreeTrackTimeline,
+  dragTimelineFixtureAsset,
+  pointerTimelineFixture as pointer,
+} from "./timelineMountFixtures";
 import type { TimelineProps } from "./TimelineTypes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -59,29 +63,7 @@ describe("Timeline trackPadding", () => {
   const hostPads = { top: 0, bottom: TRACK_H };
 
   async function mountThreeTracks(props: TimelineProps = {}) {
-    usePlayerStore.setState({
-      duration: 10,
-      currentTime: 0,
-      timelineReady: true,
-      gsapAnimations: new Map(),
-      selectedElementId: null,
-      selectedElementIds: new Set(),
-      elements: [0, 1, 2].map((track) => ({
-        id: `c${track}`,
-        key: `c${track}`,
-        domId: `c${track}`,
-        tag: "div",
-        start: 0,
-        duration: 2,
-        track,
-      })),
-    });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    await act(async () => root.render(<Timeline trackPadding={hostPads} {...props} />));
-    const viewport = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]")!;
-    return { host, root, viewport };
+    return mountThreeTrackTimeline({ trackPadding: hostPads, ...props });
   }
 
   const top = (el: Element | null | undefined) => (el as HTMLElement | null)?.style.top;
@@ -94,22 +76,8 @@ describe("Timeline trackPadding", () => {
       `${RULER_H + TRACK_H + CLIP_Y}px`,
     );
 
-    const drag = (type: string, clientY: number) => {
-      const event = new Event(type, { bubbles: true, cancelable: true });
-      Object.defineProperties(event, {
-        clientX: { value: 400 },
-        clientY: { value: clientY },
-        dataTransfer: {
-          value: {
-            types: [TIMELINE_ASSET_MIME],
-            files: [],
-            dropEffect: "none",
-            getData: (mime: string) => (mime === TIMELINE_ASSET_MIME ? '{"path":"a.png"}' : ""),
-          },
-        },
-      });
-      act(() => void viewport.dispatchEvent(event));
-    };
+    const drag = (type: string, clientY: number) =>
+      dragTimelineFixtureAsset(viewport, type, clientY);
     drag("dragover", ROW1_MID);
     expect(top(host.querySelector('[data-testid="timeline-drop-preview"]'))).toBe(
       `${RULER_H + TRACK_H + CLIP_Y}px`,
@@ -128,19 +96,6 @@ describe("Timeline trackPadding", () => {
       onMoveElement: vi.fn(),
       onResizeElement: vi.fn(),
     });
-    const pointer = (target: EventTarget, type: string, clientY: number) =>
-      act(
-        () =>
-          void target.dispatchEvent(
-            new PointerEvent(type, {
-              bubbles: true,
-              button: 0,
-              pointerId: 1,
-              clientX: 400,
-              clientY,
-            }),
-          ),
-      );
     const clip = host.querySelector('[data-clip][data-el-id="c0"]')!;
     pointer(clip, "pointerdown", RULER_H + TRACK_H / 2);
     pointer(window, "pointermove", ROW1_MID);

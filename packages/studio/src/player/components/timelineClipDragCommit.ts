@@ -89,6 +89,17 @@ const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
 
+function moveStoreUpdates(edit: TimelineMoveEdit) {
+  const writtenTrack =
+    edit.persistTrack ??
+    (edit.updates.track !== edit.element.track ? edit.updates.track : undefined);
+  const { audioGroup, ...timing } = edit.updates;
+  return {
+    timing: writtenTrack == null ? timing : { ...timing, authoredTrack: writtenTrack },
+    detach: audioGroup === null,
+  };
+}
+
 /**
  * Optimistically apply + persist a batch of moves with rollback on failure.
  *
@@ -149,16 +160,14 @@ export function persistMoveEdits(
   // any reload resolves authored tracks from what the file now says, not stale
   // pre-edit data. Pure time-moves leave authoredTrack untouched.
   const applyEdit = (e: TimelineMoveEdit, reassert = false) => {
-    const writtenTrack =
-      e.persistTrack ?? (e.updates.track !== e.element.track ? e.updates.track : undefined);
-    const { audioGroup, ...timing } = e.updates;
+    const { timing, detach } = moveStoreUpdates(e);
     const key = keyOf(e.element);
     const updates: Partial<TimelineElement> = {};
     if (!reassert || isLatestTimelineOptimisticGesture(updateElement, revision, key)) {
-      Object.assign(updates, timing, writtenTrack == null ? {} : { authoredTrack: writtenTrack });
+      Object.assign(updates, timing);
     }
     if (
-      audioGroup === null &&
+      detach &&
       (!reassert ||
         isLatestTimelineOptimisticGesture(updateElement, membershipRevision, key, "membership"))
     ) {

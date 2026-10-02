@@ -46,23 +46,22 @@ export const TimelineGestureOverlay = memo(function TimelineGestureOverlay({
   renderClipContent,
   renderClipOverlay,
 }: TimelineGestureOverlayProps) {
-  const element =
-    drag?.started === true
-      ? getRenderedTimelineElement({
-          element: drag.element,
-          draggedElementId: drag.element.key ?? drag.element.id,
-          previewStart: drag.previewStart,
-          previewTrack: drag.previewTrack,
-        })
-      : null;
-  let position = drag ? getTimelineDragOverlayPosition(drag, scrollRef.current) : null;
-  const insertRow = drag?.started === true ? drag.insertRow : null;
-  if (drag && insertRow !== null)
+  if (!drag?.started)
+    return <div data-timeline-gesture-overlay className="absolute inset-0 pointer-events-none" />;
+  const element = getRenderedTimelineElement({
+    element: drag.element,
+    draggedElementId: drag.element.key ?? drag.element.id,
+    previewStart: drag.previewStart,
+    previewTrack: drag.previewTrack,
+  });
+  let position = getTimelineDragOverlayPosition(drag, scrollRef.current);
+  const insertRow = drag.insertRow;
+  if (insertRow !== null)
     position = {
       left: contentOrigin + drag.previewStart * pixelsPerSecond,
       top: rowGeometry.getRowTop(insertRow) + CLIP_Y,
     };
-  const clipWidth = Math.max((element?.duration ?? 0) * pixelsPerSecond, 4);
+  const clipWidth = Math.max(element.duration * pixelsPerSecond, 4);
   const viewport = scrollRef.current;
   let labelLeft = clipWidth + 10;
   if (
@@ -72,11 +71,11 @@ export const TimelineGestureOverlay = memo(function TimelineGestureOverlay({
   ) {
     labelLeft = -100;
     if (position.left + labelLeft < viewport.scrollLeft + contentOrigin)
-      labelLeft = Math.max(0, Math.min(clipWidth - 100, drag?.pointerOffsetX ?? 0));
+      labelLeft = Math.max(0, Math.min(clipWidth - 100, drag.pointerOffsetX));
   }
   return (
     <div data-timeline-gesture-overlay className="absolute inset-0 pointer-events-none">
-      {element && position && (
+      {position && (
         <div
           data-timeline-gesture-actor={element.key ?? element.id}
           className="absolute"
