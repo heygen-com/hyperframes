@@ -3,14 +3,14 @@
 // `skills add --global --agent claude-code universal --copy` writes REAL files
 // to two global stores: the Claude store (~/.claude/skills — what Claude Code
 // reads, at global priority) and the shared universal store (~/.agents/skills,
-// which Cursor/Codex/… read in PROJECT scope and the .agents-family agents read
-// globally). But every other agent reads its OWN global dir (~/.cursor/skills,
+// which Cursor/… read in PROJECT scope and Codex, Pi and the .agents-family
+// agents read globally). But every other agent reads its OWN global dir (~/.cursor/skills,
 // goose → ~/.config/goose/skills, …), which upstream's --global does NOT
 // populate.
 //
 // So we mirror the canonical Claude store into each of those per-agent dirs, but
 // only for agents the machine actually has (their marker dir exists). Agents
-// that already consume the universal ~/.agents/skills store globally (Pi) are
+// that already consume the universal ~/.agents/skills store globally (Pi, Codex) are
 // skipped: their universal copy is authoritative and a per-agent copy would
 // collide with it (#3294). On Unix
 // each skill is a relative symlink back into the store (one source of truth,
@@ -239,13 +239,22 @@ function mirrorInto(
 }
 
 /**
- * Unlink symlinks an earlier mirror left in `targetDir` (they resolve to the same source skill).
- * Real dirs and Windows copies carry no ownership proof, so they stay.
+ * Unlink symlinks an earlier mirror left in `targetDir` (they resolve to the same source skill),
+ * only where the universal store holds that skill. Real dirs and Windows copies stay.
  */
-function removeMirrorLinks(targetDir: string, source: string, skills: string[]): void {
+function removeMirrorLinks(
+  targetDir: string,
+  source: string,
+  universalStore: string,
+  skills: string[],
+  safety: () => MirrorSkipReason | null,
+): MirrorSkipReason | null {
+  const unsafe = safety();
+  if (unsafe) return unsafe;
   for (const skill of skills) {
     const targetSkill = join(targetDir, skill);
     try {
+      if (!existsSync(join(universalStore, skill, "SKILL.md"))) continue;
       if (!lstatSync(targetSkill).isSymbolicLink()) continue;
       if (realpathSync(targetSkill) !== realpathSync(join(source, skill))) continue;
       unlinkSync(targetSkill);
@@ -253,6 +262,7 @@ function removeMirrorLinks(targetDir: string, source: string, skills: string[]):
       // absent or dangling: nothing of ours to remove
     }
   }
+  return null;
 }
 
 /**
@@ -303,7 +313,10 @@ export function mirrorGlobalSkills(opts: {
     if (targetDir === source || targetDir === universalStore) continue; // install-owned
     if (UNIVERSAL_STORE_READERS.has(agent)) {
       // Already reads the universal store (#3294); drop links an older version mirrored here.
-      removeMirrorLinks(targetDir, source, skills);
+      const skipReason = removeMirrorLinks(targetDir, source, universalStore, skills, () =>
+        targetSafety(targetDir, resolvedProtectedPaths),
+      );
+      if (skipReason) skipped.push({ agent, dir: targetDir, reason: skipReason });
       continue;
     }
     if (!existsSync(dirname(targetDir))) continue; // agent not installed (no marker)

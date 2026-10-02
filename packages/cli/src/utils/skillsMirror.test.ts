@@ -37,6 +37,15 @@ function seedStore(home: string, skills: string[]): void {
   }
 }
 
+/** Seed skill bundles in the universal ~/.agents/skills store. */
+function seedUniversal(home: string, skills: string[]): void {
+  for (const name of skills) {
+    const dir = join(home, ".agents", "skills", name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "SKILL.md"), `# ${name}\n`, "utf8");
+  }
+}
+
 /** Pretend an agent is installed by creating its marker dir. */
 function installMarker(home: string, marker: string): void {
   mkdirSync(join(home, ...marker.split("/")), { recursive: true });
@@ -300,6 +309,7 @@ describe("mirrorGlobalSkills", () => {
     const userCopy = join(home, "my-media-use");
     mkdirSync(userCopy);
     symlinkSync(userCopy, join(codexSkills, "media-use"));
+    seedUniversal(home, ["hyperframes", "media-use"]);
 
     mirrorGlobalSkills({ skills: ["hyperframes", "media-use"], home, platform: "linux", env: ENV });
 
@@ -308,6 +318,40 @@ describe("mirrorGlobalSkills", () => {
     expect(existsSync(join(codexSkills, ".system"))).toBe(true);
     expect(existsSync(join(codexSkills, "my-skill"))).toBe(true);
     expect(existsSync(join(home, ".claude", "skills", "hyperframes", "SKILL.md"))).toBe(true);
+  });
+
+  it("keeps a Codex link when the universal store lacks that skill", () => {
+    const home = makeHome();
+    seedStore(home, ["hyperframes"]);
+    const codexLink = join(home, ".codex", "skills", "hyperframes");
+    mkdirSync(join(home, ".codex", "skills"), { recursive: true });
+    symlinkSync(join("..", "..", ".claude", "skills", "hyperframes"), codexLink);
+
+    mirrorGlobalSkills({ skills: ["hyperframes"], home, platform: "linux", env: ENV });
+
+    expect(lstatSync(codexLink).isSymbolicLink()).toBe(true);
+  });
+
+  it("never unlinks through a Codex dir that aliases the Claude store", () => {
+    const home = makeHome();
+    const checkout = join(home, "checkout", "hyperframes");
+    mkdirSync(checkout, { recursive: true });
+    writeFileSync(join(checkout, "SKILL.md"), "# checkout\n", "utf8");
+    mkdirSync(join(home, ".claude", "skills"), { recursive: true });
+    symlinkSync(checkout, join(home, ".claude", "skills", "hyperframes"));
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    symlinkSync(join("..", ".claude", "skills"), join(home, ".codex", "skills"));
+    seedUniversal(home, ["hyperframes"]);
+
+    const { skipped } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
+
+    expect(lstatSync(join(home, ".claude", "skills", "hyperframes")).isSymbolicLink()).toBe(true);
+    expect(skipped).toContainEqual(expect.objectContaining({ agent: "codex" }));
   });
 
   // Pi natively discovers BOTH ~/.pi/agent/skills and the universal
