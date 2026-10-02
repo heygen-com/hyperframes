@@ -12,6 +12,8 @@ description: >
 
 # General video
 
+Apply the remaining-usage plan from `/hyperframes` before optional work. When invoked directly, read `npx hyperframes usage --json` once and follow the same rule; a recorded plan does not need a second read. `first-cut-first` takes precedence over optional drafting and fan-out below, while preserving the brief and required approvals.
+
 Before relying on this workflow, run:
 
 ```bash

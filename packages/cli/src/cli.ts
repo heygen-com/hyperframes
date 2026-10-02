@@ -168,6 +168,7 @@ const commandLoaders = {
   browser: () => import("./commands/browser.js").then((m) => m.default),
   "remove-background": () => import("./commands/remove-background.js").then((m) => m.default),
   transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
+  usage: () => import("./commands/usage.js").then((m) => m.default),
   models: () => import("./commands/models.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
@@ -246,7 +247,13 @@ let telemetryReady: Promise<void> = Promise.resolve();
 // `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
 // skips the per-command wrapper (no duplicate cli_command, no first-run notice
 // printed into a skill's captured output).
-if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
+if (
+  !isHelp &&
+  command !== "telemetry" &&
+  command !== "events" &&
+  command !== "usage" &&
+  command !== "unknown"
+) {
   telemetryReady = import("./telemetry/index.js").then((mod) => {
     _flushSync = mod.flushSync;
     _trackCliError = mod.trackCliError;
@@ -273,7 +280,8 @@ if (
   command !== "upgrade" &&
   command !== "events" &&
   command !== "telemetry" &&
-  command !== "skills"
+  command !== "skills" &&
+  command !== "usage"
 ) {
   // Report any completed auto-install from the previous run first, before
   // kicking off the next check — so the user sees "updated to vX" once and
