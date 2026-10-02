@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
 import type { ArgsDef, CommandDef } from "citty";
 import { CliUsageError } from "./commandResult.js";
+import { isTextFile } from "./textFile.js";
 
 // citty binds each declared positional in order and leaves the rest in `args._`, where they were
 // silently dropped (`render ./proj out.mp4` rendered to the default path). Reject them up front.
@@ -51,8 +51,9 @@ export function resolveExtraPositionals(
   if (extra.length === 0) return;
   const last = positionals.at(-1)?.[0];
   const words = given.slice(positionals.length - 1);
-  // A first word naming a file (`tts script.txt extra`) is a path, not free text: reject the rest.
-  if (parsed && last && JOINS_EXTRA_POSITIONALS.has(path) && !existsSync(words[0]!)) {
+  // `tts script.txt extra` reads the file, so its first word is a path, not free text.
+  const ttsFile = path === "tts" && isTextFile(words[0]!);
+  if (parsed && last && JOINS_EXTRA_POSITIONALS.has(path) && !ttsFile) {
     parsed[last] = words.join(" ");
     return;
   }

@@ -1,8 +1,9 @@
 import { failCommand } from "../utils/commandResult.js";
+import { isTextFile } from "../utils/textFile.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 export const examples: Example[] = [
   ["Generate speech from text", 'hyperframes tts "Welcome to HyperFrames"'],
@@ -20,7 +21,7 @@ export const examples: Example[] = [
   ["Read text from a file", "hyperframes tts script.txt"],
   ["List available voices", "hyperframes tts --list"],
 ];
-import { resolve, extname } from "node:path";
+import { resolve } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
@@ -97,10 +98,8 @@ export default defineCommand({
     }
 
     let text: string;
-    const maybeFile = resolve(input);
-
-    if (existsSync(maybeFile) && extname(maybeFile).toLowerCase() === ".txt") {
-      text = readFileSync(maybeFile, "utf-8").trim();
+    if (isTextFile(input)) {
+      text = readFileSync(resolve(input), "utf-8").trim();
       if (!text) {
         console.error(c.error("File is empty."));
         failCommand();

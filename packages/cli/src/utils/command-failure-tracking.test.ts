@@ -186,6 +186,13 @@ describe("trackCommandFailures: extra positionals", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("still joins catalog words when the first one names a folder", async () => {
+    const run = vi.fn();
+    const folder = mkdtempSync(join(tmpdir(), "hf-join-"));
+    await runCommand(await wrap(leaf("catalog", run)), { rawArgs: [folder, "player"] });
+    expect(run.mock.calls[0]![0].args.dir).toBe(`${folder} player`);
+  });
+
   it.each(["catalog", "tts"])(
     "joins %s's trailing words into its last positional",
     async (name) => {
