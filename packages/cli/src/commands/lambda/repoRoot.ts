@@ -17,7 +17,7 @@ export function repoRoot(): string {
   if (override) {
     if (existsSync(resolve(override, "packages", "aws-lambda", "package.json"))) return override;
     throw new Error(
-      `[hyperframes lambda] HYPERFRAMES_REPO_ROOT=${override} is not a hyperframes checkout ` +
+      "[hyperframes lambda] HYPERFRAMES_REPO_ROOT is not a hyperframes checkout " +
         "(no packages/aws-lambda/package.json there). Point it at the repo root, or unset it.",
     );
   }

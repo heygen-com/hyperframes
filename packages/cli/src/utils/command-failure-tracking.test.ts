@@ -1,9 +1,10 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand, type CommandDef } from "citty";
 import { CliUsageError } from "./commandResult.js";
+import { resolveExtraPositionals } from "./reject-extra-positionals.js";
 
 const trackCommandFailure = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
@@ -140,6 +141,12 @@ describe("trackCommandFailures: extra positionals", () => {
   const wrap = (cmd: CommandDef) => trackCommandFailures(() => Promise.resolve(cmd))();
   let errorSpy: ReturnType<typeof vi.spyOn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
+  const tempDirs: string[] = [];
+  const tempDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-join-"));
+    tempDirs.push(dir);
+    return dir;
+  };
 
   beforeEach(() => {
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -149,6 +156,45 @@ describe("trackCommandFailures: extra positionals", () => {
   afterEach(() => {
     errorSpy.mockRestore();
     logSpy.mockRestore();
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("throws a presented error whose message carries a count, never the arguments", async () => {
+    const error = await runCommand(await wrap(leaf("render")), {
+      rawArgs: ["./proj", "secret-launch", "Jane"],
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CliUsageError);
+    expect((error as CliUsageError).result.presented).toBe(true);
+    expect((error as Error).message).toBe("2 unexpected extra arguments for hyperframes render");
+  });
+
+  it("labels a required positional <NAME> and an optional one [NAME]", async () => {
+    const cmd = {
+      meta: { name: "keyframes" },
+      args: { file: { type: "positional" }, at: { type: "positional", required: false } },
+      run: vi.fn(),
+    };
+    await expect(
+      runCommand(await wrap(cmd as CommandDef), { rawArgs: ["a", "b", "c"] }),
+    ).rejects.toThrow(CliUsageError);
+    expect(errorSpy.mock.calls.flat().join("\n")).toContain(
+      "Usage: hyperframes keyframes <FILE> [AT]",
+    );
+  });
+
+  it.each([
+    ["figma asset", () => import("../commands/figma/asset.js")],
+    [
+      "skills update",
+      async () => ({
+        default: (await import("../commands/skills.js")).default.subCommands!.update,
+      }),
+    ],
+  ])("lets the real %s command read several positionals", async (path, load) => {
+    const def = (await (load as () => Promise<{ default: unknown }>)()).default;
+    const cmd = (typeof def === "function" ? await def() : def) as CommandDef;
+    const parsed: Record<string, unknown> = { _: ["one", "two", "three"] };
+    expect(() => resolveExtraPositionals(cmd, path as string, parsed, [])).not.toThrow();
   });
 
   it("rejects a leaf's extra positional, naming it and the usage line, before run()", async () => {
@@ -178,17 +224,18 @@ describe("trackCommandFailures: extra positionals", () => {
 
   it("rejects instead of joining when the first word names a file", async () => {
     const run = vi.fn();
-    const file = join(mkdtempSync(join(tmpdir(), "hf-join-")), "script.txt");
+    const file = join(tempDir(), "script.txt");
     writeFileSync(file, "hello");
     await expect(
       runCommand(await wrap(leaf("tts", run)), { rawArgs: [file, "extra"] }),
-    ).rejects.toThrow(/extra argument for hyperframes tts: extra/);
+    ).rejects.toThrow(CliUsageError);
+    expect(errorSpy.mock.calls.flat().join("\n")).toContain("hyperframes tts: extra");
     expect(run).not.toHaveBeenCalled();
   });
 
   it("still joins catalog words when the first one names a folder", async () => {
     const run = vi.fn();
-    const folder = mkdtempSync(join(tmpdir(), "hf-join-"));
+    const folder = tempDir();
     await runCommand(await wrap(leaf("catalog", run)), { rawArgs: [folder, "player"] });
     expect(run.mock.calls[0]![0].args.dir).toBe(`${folder} player`);
   });
@@ -227,7 +274,10 @@ describe("trackCommandFailures: extra positionals", () => {
       run: vi.fn(),
     } as CommandDef;
     await expect(runCommand(await wrap(group), { rawArgs: ["get", "id1", "id2"] })).rejects.toThrow(
-      /hyperframes cloud get: id2\nUsage: hyperframes cloud get \[DIR\]/,
+      CliUsageError,
+    );
+    expect(errorSpy.mock.calls.flat().join("\n")).toContain(
+      "hyperframes cloud get: id2\nUsage: hyperframes cloud get [DIR]",
     );
   });
 

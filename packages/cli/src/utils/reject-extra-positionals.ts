@@ -65,5 +65,11 @@ export function resolveExtraPositionals(
   if (parsed?.json === true || rawArgs.some((tok) => tok === "--json" || tok === "--json=true"))
     console.log(JSON.stringify({ ok: false, error: message }));
   else console.error(message);
-  throw new CliUsageError(message, { presented: true });
+  // Telemetry reads the thrown message: the command path and a count, never the arguments.
+  throw new CliUsageError(
+    `${extra.length} unexpected extra argument${plural} for hyperframes ${path}`,
+    {
+      presented: true,
+    },
+  );
 }

@@ -28,6 +28,7 @@ describe("repoRoot", () => {
   it("throws on a HYPERFRAMES_REPO_ROOT that is not a checkout instead of ignoring it", () => {
     const root = tempDir();
     vi.stubEnv("HYPERFRAMES_REPO_ROOT", root);
-    expect(() => repoRoot()).toThrow(`HYPERFRAMES_REPO_ROOT=${root} is not a hyperframes checkout`);
+    expect(() => repoRoot()).toThrow("HYPERFRAMES_REPO_ROOT is not a hyperframes checkout");
+    expect(() => repoRoot()).not.toThrow(root);
   });
 });
