@@ -17,6 +17,7 @@
         overflow: hidden;
       }
       #demo {
+        position: relative;
         width: 1920px;
         height: 1080px;
         display: grid;
@@ -48,8 +49,12 @@
         background: #a1a1aa;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
       }
+      /* Pinned to the frame bottom, clear of the sign at its widest swing. */
       .swing-label {
-        margin-top: 8px;
+        position: absolute;
+        bottom: 160px;
+        left: 50%;
+        transform: translateX(-50%);
         font-size: 11px;
         font-weight: 500;
         letter-spacing: 0.08em;
@@ -86,8 +91,8 @@
       data-height="1080"
       data-duration="5"
     >
+      <div class="swing-label">Pendulum Swing</div>
       <div class="demo-frame">
-        <div class="swing-label">Pendulum Swing</div>
         <div class="swing-rig">
           <div class="swing-hook"></div>
           <div
