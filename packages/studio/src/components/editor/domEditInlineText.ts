@@ -56,13 +56,16 @@ export function canEditElementTextInline(element: HTMLElement | null): boolean {
 function hasOnlyFormattingChildren(element: HTMLElement): boolean {
   for (const child of Array.from(element.children)) {
     if (!isRichTextFormattingTag(child.tagName)) return false;
-    // Not instanceof: the preview's nodes can carry another window's prototypes.
-    if (child.namespaceURI !== "http://www.w3.org/1999/xhtml") return false;
+    if (!isHtmlFromAnyWindow(child)) return false;
     // Formatting nests, and a structural child hidden inside a span is still
     // structural.
     if (!hasOnlyFormattingChildren(child as HTMLElement)) return false;
   }
   return true;
+}
+
+function isHtmlFromAnyWindow(node: Element): boolean {
+  return node.namespaceURI === "http://www.w3.org/1999/xhtml";
 }
 
 /** Where and when a press landed, for recognising the next one as a pair. */
