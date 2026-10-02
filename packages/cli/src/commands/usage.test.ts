@@ -53,7 +53,7 @@ it.each([
       const requests = join(profile, "requests.jsonl");
       const preload = join(profile, "transport.mjs");
       writeFileSync(
-        pathToFileURL(preload).href,
+        preload,
         `
 import { appendFileSync } from "node:fs";
 globalThis.fetch = async (url, options) => {
@@ -157,7 +157,7 @@ it.each([
       const preload = join(profile, "transport.mjs");
       const requests = join(profile, "requests.jsonl");
       writeFileSync(
-        pathToFileURL(preload).href,
+        preload,
         `import {writeFileSync} from "node:fs"; globalThis.fetch = async () => {writeFileSync(${JSON.stringify(requests)}, "unexpected"); throw new Error("unexpected network request");};`,
       );
       const stdout = execFileSync(
