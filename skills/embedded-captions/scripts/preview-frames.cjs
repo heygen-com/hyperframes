@@ -40,6 +40,7 @@ function withPreviewGsapSri(html, gsapSource) {
 }
 
 const HF_ROOTS = [
+  process.argv[2] && path.resolve(process.argv[2]), // project-owned helper dependencies
   process.env.HYPERFRAMES_ROOT,
   path.resolve(__dirname, "../../.."),
   path.join(os.homedir(), "Downloads", "hyperframes"),
@@ -82,7 +83,9 @@ for (const r of HF_ROOTS) {
   }
 }
 if (require.main === module && (!puppeteer || !sharp)) {
-  console.error("[preview] need puppeteer+sharp — set HYPERFRAMES_ROOT");
+  console.error(
+    "[preview] need puppeteer+sharp — install project dependencies per embedded-captions SKILL.md Runtime prerequisites",
+  );
   process.exit(0);
 }
 

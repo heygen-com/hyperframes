@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, vi } from "vitest";
-import { applyUndoRestoreToPreview, diffSoftReloadableRestore } from "./gsapUndoRestore";
+import {
+  applyUndoRestoreToPreview,
+  diffSoftReloadableRestore,
+  showRestoreInPlace,
+} from "./gsapUndoRestore";
+import { applyPatch } from "./sourcePatcher";
+import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
+import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
 
 // ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
 
@@ -161,6 +168,56 @@ describe("applyUndoRestoreToPreview", () => {
     },
   );
 
+  describe("an undo that re-runs a changed script matches a fresh load of the restored file", () => {
+    const script = (extra: string) => `window.__timelines["root"]=gsap.timeline();${extra}`;
+    const root = (body: string) => `<div data-composition-id="root">${body}</div>`;
+    const undoScriptEdit = (live: string, authored: string, edit: string) => {
+      const { iframe, contentWindow, doc } = buildLiveIframe(
+        `${root(live)}<script>${script(edit)}</script>`,
+      );
+      const clearProps = (targets: HTMLElement[]) =>
+        targets.forEach((t) => t.removeAttribute("style"));
+      Object.assign(contentWindow.gsap, { set: clearProps });
+      for (const el of doc.querySelectorAll("[style*=transform]")) Object.assign(el, { _gsap: {} });
+      const files = {
+        [ROOT]: {
+          previous: wrap(`${root(authored)}<script>${script(edit)}</script>`),
+          restored: wrap(`${root(authored)}<script>${script("")}</script>`),
+        },
+      };
+      expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+      return doc;
+    };
+
+    it("drops the size marks a resize left on the live element", () => {
+      const doc = undoScriptEdit(
+        `<div id="a" data-hf-studio-box-size="true" style="width: 502px; --hf-studio-width: 502px; --hf-studio-height: 334px">t</div>`,
+        `<div id="a" style="width: 300px">t</div>`,
+        `tl.set("#a",{width:502,height:334},0);`,
+      );
+      expect(doc.getElementById("a")!.hasAttribute("data-hf-studio-box-size")).toBe(false);
+      expect(doc.getElementById("a")!.getAttribute("style")).toBe("width: 300px");
+    });
+
+    it("keeps the authored inline rotation of an element GSAP moved", () => {
+      const doc = undoScriptEdit(
+        `<div id="r" style="left: 10px; transform: translate(116px, 72px) rotate(20deg)">t</div>`,
+        `<div id="r" style="left: 10px; transform: rotate(20deg)">t</div>`,
+        `gsap.set("#r",{x:116,y:72});`,
+      );
+      expect(doc.getElementById("r")!.style.transform).toBe("rotate(20deg)");
+    });
+
+    it("drops the translate mask GSAP wrote over a stylesheet translate", () => {
+      const doc = undoScriptEdit(
+        `<h1 id="t" style="opacity: 0.5; translate: none; transform: translate(116px, -113px)">t</h1>`,
+        `<h1 id="t">t</h1>`,
+        `gsap.set("#t",{x:116,y:-113});`,
+      );
+      expect(doc.getElementById("t")!.style.getPropertyValue("translate")).toBe("");
+    });
+  });
+
   it("full-reloads without partially restoring when any changed live target is missing", () => {
     const { iframe, doc } = buildLiveIframe(`<div id="a" style="z-index: 8">a</div>`);
     const reloadPreview = vi.fn();
@@ -232,6 +289,25 @@ describe("applyUndoRestoreToPreview", () => {
     );
   });
 
+  it("full-reloads a style restore on a GSAP-parsed element when the file has two scripts", () => {
+    const scripts = [
+      `<script>window.__timelines["root"]=gsap.timeline().to("#a",{x:1});</script>`,
+      `<script>window.__timelines["captions"]=gsap.timeline().to("#a",{y:1});</script>`,
+    ].join("");
+    const { iframe, doc } = buildLiveIframe(`<div id="a" style="z-index: 8">t</div>${scripts}`);
+    Object.assign(doc.getElementById("a")!, { _gsap: {} });
+    const reloadPreview = vi.fn();
+    const files = {
+      [ROOT]: {
+        previous: wrap(`<div id="a" style="z-index: 8">t</div>${scripts}`),
+        restored: wrap(`<div id="a" style="z-index: 3">t</div>${scripts}`),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
   it("full-reloads a multi-file restore", () => {
     const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
     const reloadPreview = vi.fn();
@@ -259,11 +335,233 @@ describe("applyUndoRestoreToPreview", () => {
     expect(reloadPreview).toHaveBeenCalledTimes(1);
   });
 
+  it("blanks a restored scene's live hash before reloading, so the scene swap takes it", () => {
+    const { iframe, doc } = buildLiveIframe(
+      `<div data-hf-scene="scene0" data-composition-file="scenes/intro.html"><h1>Rep0</h1></div>` +
+        `<div data-hf-scene="scene1" data-composition-file="scenes/outro.html"></div>`,
+    );
+    const meta = doc.createElement("meta");
+    meta.name = "hf-scene-parts";
+    meta.content = JSON.stringify({ shared: "s", scenes: { scene0: "h0", scene1: "h1" } });
+    doc.head.append(meta);
+    let partsAtReload: unknown;
+    const reloadPreview = vi.fn(() => (partsAtReload = JSON.parse(meta.content)));
+    const files = {
+      "scenes/intro.html": { previous: "<h1>Rep0</h1>", restored: "<h1>Alpha</h1>" },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(partsAtReload).toEqual({ shared: "s", scenes: { scene0: "", scene1: "h1" } });
+
+    const withRoot = {
+      ...files,
+      [ROOT]: { previous: wrap("<p>b</p>"), restored: wrap("<p>a</p>") },
+    };
+    applyUndoRestoreToPreview(iframe, ROOT, withRoot, 3, reloadPreview);
+    // A restored page outside every scene forces the full reload, never a partial swap.
+    expect(partsAtReload).toEqual({ shared: "", scenes: { scene0: "", scene1: "h1" } });
+  });
+
+  it("leaves the scene hashes alone on a soft restore, so the next edit can still swap", () => {
+    const { iframe, doc } = buildLiveIframe(`<div id="a" style="color: red">t</div>`);
+    const meta = doc.createElement("meta");
+    meta.name = "hf-scene-parts";
+    meta.content = JSON.stringify({ shared: "s", scenes: { scene0: "h0" } });
+    doc.head.append(meta);
+    const files = {
+      [ROOT]: {
+        previous: wrap(`<div id="a" style="color: red">t</div>`),
+        restored: wrap(`<div id="a" style="color: blue">t</div>`),
+      },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+    expect(JSON.parse(meta.content)).toEqual({ shared: "s", scenes: { scene0: "h0" } });
+  });
+
+  it.each([
+    ["a restored stylesheet leaves the shared hash", "styles.css", '{"shared":"s","scenes":{}}'],
+    ["an unreadable manifest still reloads", "scenes/intro.html", "not json"],
+  ])("%s", (_name, path, content) => {
+    const { iframe, doc } = buildLiveIframe(`<div id="a">t</div>`);
+    const meta = doc.createElement("meta");
+    meta.name = "hf-scene-parts";
+    meta.content = content;
+    doc.head.append(meta);
+    const reloadPreview = vi.fn();
+    const files = { [path]: { previous: "a", restored: "b" } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(meta.content).toBe(content);
+  });
+
+  const SUB = "compositions/sub.html";
+  const sub = (style: string, rootAttrs = "") =>
+    `<template id="sub-template"><div data-hf-id="hf-root" id="sub" data-composition-id="sub"${rootAttrs}><div ${style} data-hf-id="hf-t" id="target"></div></div></template>`;
+  const host = (style: string) =>
+    `<div data-composition-file="${SUB}" data-hf-id="hf-host"><div data-hf-inner-root="true" data-hf-authored-id="sub" data-hf-id="hf-root"><div data-hf-id="hf-t" id="target" ${style}></div></div></div>`;
+
+  it("restores a sub-composition file in place, on every host that inlines it", () => {
+    const { iframe, doc } = buildLiveIframe(
+      host(`style="clip-path: inset(0px 40px 0px 0px);"`) +
+        host(`style="clip-path: inset(0px 40px 0px 0px);"`),
+    );
+    const reloadPreview = vi.fn();
+    const files = {
+      [SUB]: { previous: sub(`style="clip-path: inset(0px 40px 0px 0px)"`), restored: sub("") },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("soft");
+    expect(reloadPreview).not.toHaveBeenCalled();
+    const targets = [...doc.querySelectorAll('[data-hf-id="hf-t"]')];
+    expect(targets.map((el) => el.getAttribute("style"))).toEqual([null, null]);
+  });
+
+  it("full-reloads a sub-composition restore that changes the file's own root", () => {
+    const { iframe } = buildLiveIframe(host(""));
+    const reloadPreview = vi.fn();
+    const files = { [SUB]: { previous: sub("", ' data-width="10"'), restored: sub("") } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("full-reloads a sub-composition restore whose file has a GSAP script", () => {
+    const { iframe, doc } = buildLiveIframe(host(`style="clip-path: inset(0px 40px 0px 0px);"`));
+    const reloadPreview = vi.fn();
+    const script = `<script>gsap.timeline().to("#target", { x: 10 });</script>`;
+    const scripted = (style: string) =>
+      sub(style).replace("</div></template>", `${script}</div></template>`);
+    const files = {
+      [SUB]: {
+        previous: scripted(`style="clip-path: inset(0px 40px 0px 0px)"`),
+        restored: scripted(""),
+      },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(doc.querySelector('[data-hf-id="hf-t"]')?.getAttribute("style")).toContain("clip-path");
+  });
+
   it("full-reloads when the restore touches a sub-comp, not the active comp", () => {
     const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
     const reloadPreview = vi.fn();
     const files = { "scenes/intro.html": { previous: "a", restored: "b" } };
     expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
     expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("an undo that lands while the layer is being dragged", () => {
+  const ROOT = "index.html";
+  const undone = `<div id="a" style="width: 120px; translate: 90px 60px" data-start="2" data-hf-studio-original-inline-translate="">t</div>`;
+  const restored = wrap(`<div id="a" style="width: 100px" data-start="1">t</div>`);
+  const files = { [ROOT]: { previous: wrap(undone), restored } };
+  const saveDrop = (el: HTMLElement, file: string) =>
+    writePlainMove(el, { x: 20, y: 110 }).reduce((html, op) => applyPatch(html, "a", op), file);
+
+  function dragging(drag: boolean) {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    if (drag) beginStudioManualEditGesture(el, "move");
+    if (drag) writeTranslatePx(el, { x: 70, y: 110 });
+    else el.style.setProperty("opacity", "0.5");
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+    return el;
+  }
+
+  it("keeps the translate the drag is drawing and reverts the rest", () => {
+    const el = dragging(true);
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
+    expect(el.style.getPropertyValue("width")).toBe("100px");
+    expect(el.getAttribute("data-start")).toBe("1");
+    expect(el.hasAttribute("data-hf-studio-manual-edit-gesture")).toBe(true);
+  });
+
+  it("saves the drop onto the undone file, the same bytes as dragging the undone layer", () => {
+    const el = dragging(true);
+    const fresh = new DOMParser().parseFromString(restored, "text/html").getElementById("a")!;
+
+    const saved = saveDrop(el, restored);
+
+    expect(saved).toBe(saveDrop(fresh, restored));
+    expect(saved).toContain("width: 100px; translate: 20px 110px");
+    expect(saved).not.toContain("120px");
+  });
+
+  it("keeps the box where it is when the press has not moved it yet", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "move");
+
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+
+    expect(el.style.getPropertyValue("translate")).toBe("90px 60px");
+    expect(el.style.getPropertyValue("width")).toBe("100px");
+  });
+
+  it("reverts the translate under a gesture that draws nothing, such as a text edit", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "edit");
+
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+
+    expect(el.style.getPropertyValue("translate")).toBe("");
+    expect(el.hasAttribute("data-hf-studio-manual-edit-gesture")).toBe(true);
+  });
+
+  it("keeps the drag's translate when the undo is shown in place", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "move");
+    writeTranslatePx(el, { x: 70, y: 110 });
+
+    expect(showRestoreInPlace(iframe, ROOT, files, 3)).not.toBeNull();
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
+    expect(el.style.getPropertyValue("width")).toBe("100px");
+  });
+
+  it("keeps a drag that started after the undo was shown when the undo is put back", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    const putBack = showRestoreInPlace(iframe, ROOT, files, 3)!;
+    beginStudioManualEditGesture(el, "move");
+    writeTranslatePx(el, { x: 70, y: 110 });
+
+    putBack(3);
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
+    expect(el.style.getPropertyValue("width")).toBe("120px");
+  });
+
+  it("keeps the drag's translate when the undo re-runs a GSAP script", () => {
+    const script = (extra: string) =>
+      `<script>window.__timelines["root"]=gsap.timeline();${extra}</script>`;
+    const layer = `<div id="a" data-hf-studio-path-offset="true" style="translate: 40px 30px">t</div>`;
+    const { iframe, contentWindow, doc } = buildLiveIframe(
+      `${layer}${script("tl.set('#b',{x:1});")}`,
+    );
+    Object.assign(contentWindow.gsap, { set: () => {} });
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "move");
+    writeTranslatePx(el, { x: 70, y: 110 });
+    const scripted = {
+      [ROOT]: {
+        previous: wrap(`<div id="a">t</div>${script("tl.set('#b',{x:1});")}`),
+        restored: wrap(`<div id="a">t</div>${script("")}`),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, scripted, 3, vi.fn())).toBe("soft");
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
+  });
+
+  it("restores a layer no gesture is drawing exactly as before", () => {
+    const el = dragging(false);
+    const want = new DOMParser().parseFromString(restored, "text/html").getElementById("a")!;
+
+    expect(el.getAttributeNames().map((n) => [n, el.getAttribute(n)])).toEqual(
+      want.getAttributeNames().map((n) => [n, want.getAttribute(n)]),
+    );
   });
 });

@@ -13,6 +13,7 @@ import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
 import { fontToDataUri } from "./fontCompression.js";
+import { authoredGoogleFontStylesheets, withPageText } from "./authoredGoogleFonts.js";
 
 type FontFaceSpec = {
   weight: string;
@@ -46,6 +47,15 @@ export const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
   "fangsong",
   "-apple-system",
   "blinkmacsystemfont",
+]);
+
+// Keywords valid as a whole font-family value; they name no font.
+const CSS_WIDE_KEYWORDS: ReadonlySet<string> = new Set([
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "revert-layer",
 ]);
 
 /**
@@ -96,7 +106,22 @@ export function parseFontFamilyValue(value: string): string[] {
     .filter((piece) => piece.length > 0);
 }
 
-function systemPrimaryReplacement(value: string, deterministicPrimary: string): string | null {
+function systemPrimaryReplacement(
+  value: string,
+  deterministicPrimary: string,
+  customProperties: ReadonlyMap<string, string>,
+): string | null {
+  const variable = primaryCssVariable(value);
+  if (variable) {
+    if (customProperties.get(variable.name) || variable.fallback === null) return null;
+    // Rewrite the fallback in place so a property defined at runtime still wins.
+    const fallback = systemPrimaryReplacement(
+      variable.fallback,
+      deterministicPrimary,
+      customProperties,
+    );
+    return fallback ? `var(${variable.name}, ${fallback})${variable.rest}` : null;
+  }
   const families = parseFontFamilyValue(value);
   if (families.length === 0) return null;
   if (!GENERIC_FAMILIES.has(normalizeFamilyName(families[0]!))) return null;
@@ -116,11 +141,13 @@ function isFontFaceDeclaration(decl: Declaration): boolean {
   return parent?.type === "atrule" && (parent as AtRule).name.toLowerCase() === "font-face";
 }
 
-function normalizeCssDeclarations(root: postcss.Root, deterministicPrimary: string): boolean {
+type PrimaryReplacer = (value: string) => string | null;
+
+function normalizeCssDeclarations(root: postcss.Root, replacePrimary: PrimaryReplacer): boolean {
   let changed = false;
   root.walkDecls((decl) => {
     if (decl.prop.startsWith("--")) {
-      const replacement = systemPrimaryReplacement(decl.value, deterministicPrimary);
+      const replacement = replacePrimary(decl.value);
       if (!replacement) return;
       decl.value = replacement;
       changed = true;
@@ -131,7 +158,7 @@ function normalizeCssDeclarations(root: postcss.Root, deterministicPrimary: stri
     if (isFontFaceDeclaration(decl)) {
       return;
     }
-    const replacement = systemPrimaryReplacement(decl.value, deterministicPrimary);
+    const replacement = replacePrimary(decl.value);
     if (!replacement) return;
     decl.value = replacement;
     changed = true;
@@ -140,20 +167,20 @@ function normalizeCssDeclarations(root: postcss.Root, deterministicPrimary: stri
   return changed;
 }
 
-function normalizeCssFontFamilyDeclarations(css: string, deterministicPrimary: string): string {
+function normalizeCssFontFamilyDeclarations(css: string, replacePrimary: PrimaryReplacer): string {
   const root = parseCssRoot(css);
   if (!root) return css;
-  const changed = normalizeCssDeclarations(root, deterministicPrimary);
+  const changed = normalizeCssDeclarations(root, replacePrimary);
   return changed ? root.toString() : css;
 }
 
-function normalizeInlineStyleAttribute(style: string, deterministicPrimary: string): string {
+function normalizeInlineStyleAttribute(style: string, replacePrimary: PrimaryReplacer): string {
   const root = parseCssRoot(`*{${style}}`);
   if (!root) return style;
   const rule = root.first;
   if (rule?.type !== "rule") return style;
   const before = rule.toString();
-  normalizeCssDeclarations(root, deterministicPrimary);
+  normalizeCssDeclarations(root, replacePrimary);
   if (rule.toString() === before) return style;
   const serialized = ((rule as Rule).nodes ?? []).map((node) => node.toString()).join("; ");
   return serialized.endsWith(";") ? serialized : `${serialized};`;
@@ -171,11 +198,14 @@ export function normalizeSystemFontPrimaryFamilies(
   deterministicPrimary = "Inter",
 ): string {
   const { document } = parseHTML(html);
+  const customProperties = collectFontFamilyCustomProperties(html);
+  const replacePrimary: PrimaryReplacer = (value) =>
+    systemPrimaryReplacement(value, deterministicPrimary, customProperties);
   let changed = false;
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
     const current = styleEl.textContent ?? "";
-    const next = normalizeCssFontFamilyDeclarations(current, deterministicPrimary);
+    const next = normalizeCssFontFamilyDeclarations(current, replacePrimary);
     if (next === current) continue;
     styleEl.textContent = next;
     changed = true;
@@ -183,7 +213,7 @@ export function normalizeSystemFontPrimaryFamilies(
 
   for (const el of Array.from(document.querySelectorAll("[style]"))) {
     const current = el.getAttribute("style") ?? "";
-    const next = normalizeInlineStyleAttribute(current, deterministicPrimary);
+    const next = normalizeInlineStyleAttribute(current, replacePrimary);
     if (next === current) continue;
     el.setAttribute("style", next);
     changed = true;
@@ -191,7 +221,7 @@ export function normalizeSystemFontPrimaryFamilies(
 
   for (const el of Array.from(document.querySelectorAll("[data-font-family]"))) {
     const current = el.getAttribute("data-font-family") ?? "";
-    const next = systemPrimaryReplacement(current, deterministicPrimary);
+    const next = replacePrimary(current);
     if (!next) continue;
     el.setAttribute("data-font-family", next);
     changed = true;
@@ -269,7 +299,9 @@ export function collectFontFamilyCustomProperties(html: string): Map<string, str
   return customProperties;
 }
 
-function primaryCssVariableName(value: string): string | null {
+function primaryCssVariable(
+  value: string,
+): { name: string; fallback: string | null; rest: string } | null {
   const trimmed = value.trim();
   if (!trimmed.toLowerCase().startsWith("var(")) return null;
 
@@ -284,27 +316,60 @@ function primaryCssVariableName(value: string): string | null {
     depth -= 1;
     if (depth !== 0) continue;
 
-    const varExpression = trimmed.slice(0, index + 1);
-    const inner = varExpression.slice(4, -1).trim();
+    const inner = trimmed.slice(4, index).trim();
     const commaIndex = inner.indexOf(",");
-    const variableName = (commaIndex === -1 ? inner : inner.slice(0, commaIndex)).trim();
-    return /^--[A-Za-z0-9_-]+$/.test(variableName) ? variableName : null;
+    const name = (commaIndex === -1 ? inner : inner.slice(0, commaIndex)).trim();
+    if (!/^--[A-Za-z0-9_-]+$/.test(name)) return null;
+    return {
+      name,
+      fallback: commaIndex === -1 ? null : inner.slice(commaIndex + 1),
+      rest: trimmed.slice(index + 1),
+    };
   }
 
   return null;
+}
+
+/**
+ * `optional`: reached only through a var() fallback or a chain of var()s; not-found is skipped
+ * and a transient failure warns instead of throwing.
+ */
+type ResolvedFamily = { family: string; optional: boolean };
+
+// Deep enough for real alias chains; stops `--a: var(--b); --b: var(--a)` cycles.
+const MAX_CSS_VARIABLE_DEPTH = 8;
+
+function resolveDeclaredFamilies(
+  declaration: string,
+  customProperties: ReadonlyMap<string, string>,
+  optional = false,
+  depth = 0,
+): ResolvedFamily[] {
+  const tag = (families: string[]) => families.map((family) => ({ family, optional }));
+  const families = parseFontFamilyValue(declaration);
+  const variable = depth < MAX_CSS_VARIABLE_DEPTH ? primaryCssVariable(declaration) : null;
+  if (!variable) return tag(families);
+
+  const resolved = customProperties.get(variable.name);
+  // An undefined property uses the var() fallback, as the browser does.
+  const source = resolved || variable.fallback;
+  if (source === null) return tag(families);
+  const primary = resolveDeclaredFamilies(
+    source,
+    customProperties,
+    !resolved || depth > 0,
+    depth + 1,
+  );
+  // An empty substitution makes the declaration invalid, so the browser inherits instead.
+  if (primary.length === 0) return [];
+  return [...primary, ...tag(families.slice(1))];
 }
 
 export function resolveFontFamilyDeclarationFamilies(
   declaration: string,
   customProperties: ReadonlyMap<string, string>,
 ): string[] {
-  const families = parseFontFamilyValue(declaration);
-  const variableName = primaryCssVariableName(declaration);
-  if (!variableName) return families;
-
-  const resolved = customProperties.get(variableName);
-  if (!resolved) return families;
-  return [...parseFontFamilyValue(resolved), ...families.slice(1)];
+  return resolveDeclaredFamilies(declaration, customProperties).map(({ family }) => family);
 }
 
 /**
@@ -462,18 +527,23 @@ function extractExistingFontFaces(html: string): Set<string> {
   return families;
 }
 
-function extractRequestedFontFamilies(html: string): Map<string, string> {
-  const requested = new Map<string, string>();
+function isFetchableFamilyName(normalized: string): boolean {
+  if (!normalized || normalized.startsWith("var(")) return false;
+  return !GENERIC_FAMILIES.has(normalized) && !CSS_WIDE_KEYWORDS.has(normalized);
+}
+
+function extractRequestedFontFamilies(html: string): Map<string, ResolvedFamily> {
+  const requested = new Map<string, ResolvedFamily>();
   const customProperties = collectFontFamilyCustomProperties(html);
   for (const { declaration } of iterateFontFamilyDeclarations(html)) {
-    for (const originalCase of resolveFontFamilyDeclarationFamilies(
-      declaration,
-      customProperties,
-    )) {
-      const normalized = originalCase.toLowerCase();
-      if (!normalized || GENERIC_FAMILIES.has(normalized)) continue;
-      if (normalized.startsWith("var(")) continue;
-      if (!requested.has(normalized)) requested.set(normalized, originalCase);
+    for (const { family, optional } of resolveDeclaredFamilies(declaration, customProperties)) {
+      const normalized = family.toLowerCase();
+      if (!isFetchableFamilyName(normalized)) continue;
+      const seen = requested.get(normalized);
+      requested.set(normalized, {
+        family: seen?.family ?? family,
+        optional: (seen?.optional ?? true) && optional,
+      });
     }
   }
   return requested;
@@ -597,9 +667,339 @@ function partitionWeightRuns(
   return runs;
 }
 
-async function buildFontFaceCss(
-  requestedFamilies: Map<string, string>,
+// Path 1: pre-bundled fonts via FONT_ALIASES — emit embedded faces,
+// then fetch from Google Fonts to fill missing weights and character subsets.
+async function bundledFamilyFaceRules(
+  canonical: CanonicalFontSpec,
+  normalizedFamily: string,
+  emitFamily: string,
+  optional: boolean,
   options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<string[]> {
+  const rules: string[] = [];
+  const coveredWeights = new Set<string>();
+  const bundledRules: string[] = [];
+  for (const face of canonical.faces) {
+    const style = face.style || "normal";
+    const src = fontDataUri(canonical.packageName, face.weight, style);
+    bundledRules.push(
+      buildFontFaceRule(emitFamily, src, face.weight, style, BUNDLED_SUBSET_UNICODE_RANGE),
+    );
+    coveredWeights.add(coverageKey(face.weight, style));
+  }
+
+  // Fetch all weights from Google Fonts and add any that aren't
+  // already covered by the embedded bundle. This ensures that
+  // compositions requesting e.g. wght@200 get that weight even
+  // if the bundle only ships 400/700/900. Query the CANONICAL
+  // family, not the authored one: for a cross-typeface alias
+  // (helvetica → inter) the authored name is a different typeface,
+  // so supplementing from it would mix two typefaces under one
+  // font-family. The faces are still emitted under
+  // `emitFamily` so the authored CSS keeps matching.
+  const canonicalFamily = resolveAliasDisplayName(normalizedFamily);
+  const googleFaces = canonicalFamily
+    ? await fetchFamilyFaces(canonicalFamily, optional, options, fontText)
+    : [];
+
+  // Bundled weights only cover Latin. Keep other subsets (including
+  // text= responses without a range), even for weights already embedded.
+  const supplementary = googleFaces.filter(
+    (face) =>
+      !coveredWeights.has(coverageKey(face.weight, face.style)) ||
+      !isBundledSubsetRange(face.unicodeRange),
+  );
+  const runs = groupFacesBySource(supplementary).flatMap((group) =>
+    partitionWeightRuns(group, coveredWeights),
+  );
+  // Overlapping `unicode-range` rules resolve last-defined-first, so a run
+  // is emitted where its first face appeared in the response rather than
+  // grouped by source. Collapsing must not reorder the faces.
+  const firstAppearance = (run: readonly GoogleFontFace[]): number =>
+    Math.min(...run.map((face) => supplementary.indexOf(face)));
+  for (const run of [...runs].sort((a, b) => firstAppearance(a) - firstAppearance(b))) {
+    const first = run[0];
+    const last = run[run.length - 1];
+    if (!first || !last) continue;
+    const weight = run.length > 1 ? `${first.weight} ${last.weight}` : first.weight;
+    rules.push(
+      buildFontFaceRule(emitFamily, first.dataUri, weight, first.style, first.unicodeRange),
+    );
+  }
+  // Broader or text-subset responses can overlap Latin. Emit the bundle
+  // last so existing Latin glyphs keep their deterministic bundled source.
+  rules.push(...bundledRules);
+  return rules;
+}
+
+// Path 2: fetch from Google Fonts (with local cache)
+async function googleFamilyFaceRules(
+  lookupFamily: string,
+  emitFamily: string,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<string[] | null> {
+  const googleFaces = await fetchFamilyFaces(lookupFamily, optional, options, fontText);
+  if (googleFaces.length === 0) return null;
+  return googleFaces.map((face) =>
+    buildFontFaceRule(emitFamily, face.dataUri, face.weight, face.style, face.unicodeRange),
+  );
+}
+
+// Path 3: locate font on the local filesystem, compress, and embed.
+async function systemFamilyFaceRules(
+  lookupFamily: string,
+  emitFamily: string,
+): Promise<string[] | null> {
+  const variants = locateSystemFontVariants(lookupFamily);
+  if (variants.length === 0) return null;
+  const rules: string[] = [];
+  let totalBytes = 0;
+  for (const variant of variants) {
+    const fontBuffer = readFileSync(variant.path);
+    totalBytes += fontBuffer.length;
+    const dataUri = await fontToDataUri(fontBuffer, variant.format);
+    rules.push(buildFontFaceRule(emitFamily, dataUri, variant.weight, variant.style));
+  }
+  if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
+    defaultLogger.warn(
+      `[Compiler] System font "${lookupFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${variants.length} variant(s)) — embedding anyway. Consider font subsetting for production.`,
+    );
+  }
+  defaultLogger.info(
+    `[Compiler] Embedded system font "${lookupFamily}" — ${variants.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,
+  );
+  return rules;
+}
+
+/** Faces of `lookupFamily` named `emitFamily`, or `null` when no path resolves it. */
+async function resolveFamilyFaceRules(
+  normalizedFamily: string,
+  lookupFamily: string,
+  emitFamily: string,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<string[] | null> {
+  const canonicalKey = FONT_ALIASES[normalizedFamily];
+  if (canonicalKey) {
+    const canonical = CANONICAL_FONTS[canonicalKey];
+    if (!canonical) return [];
+    return bundledFamilyFaceRules(
+      canonical,
+      normalizedFamily,
+      emitFamily,
+      optional,
+      options,
+      fontText,
+    );
+  }
+  return (
+    (await googleFamilyFaceRules(lookupFamily, emitFamily, optional, options, fontText)) ??
+    (options.allowSystemFontCapture && !pageNamedThisFile(lookupFamily, options)
+      ? await systemFamilyFaceRules(lookupFamily, emitFamily)
+      : null)
+  );
+}
+
+/** Named by a Google Fonts stylesheet URL or by the document's own top-level @font-face rules. */
+type DeclaredFontFamily = {
+  family: string;
+  fontFaceRules: AtRule[];
+};
+
+type DeclaredFontFamilies = ReadonlyMap<string, DeclaredFontFamily>;
+
+// css2 repeats `family=Name:axes`; the legacy css API packs `family=Name:400|Other`.
+function googleFontsUrlFamilies(rawUrl: string): string[] {
+  let url: URL;
+  try {
+    // A relative href resolves onto the placeholder host and is rejected below.
+    url = new URL(rawUrl.trim(), "https://document.invalid/");
+  } catch {
+    return [];
+  }
+  if (url.hostname !== "fonts.googleapis.com") return [];
+  if (url.pathname !== "/css" && url.pathname !== "/css2") return [];
+  return url.searchParams
+    .getAll("family")
+    .flatMap((value) => value.split("|"))
+    .map((entry) => (entry.split(":", 1)[0] ?? "").trim())
+    .filter((family) => family.length > 0);
+}
+
+function importRuleUrl(params: string): string | null {
+  const trimmed = params.trim();
+  if (trimmed.toLowerCase().startsWith("url(")) {
+    const close = trimmed.indexOf(")");
+    if (close < 0 || !isUnconditionalMedia(trimmed.slice(close + 1))) return null;
+    return trimmed.slice(4, close).trim().replace(/^['"]/, "").replace(/['"]$/, "");
+  }
+  const quote = trimmed[0];
+  if (quote !== '"' && quote !== "'") return null;
+  const end = trimmed.indexOf(quote, 1);
+  return end > 0 && isUnconditionalMedia(trimmed.slice(end + 1)) ? trimmed.slice(1, end) : null;
+}
+
+function fontFaceRuleFamily(rule: AtRule): string | undefined {
+  let family: string | undefined;
+  rule.walkDecls((decl) => {
+    if (decl.prop.toLowerCase() === "font-family") family = parseFontFamilyValue(decl.value)[0];
+  });
+  return family;
+}
+
+function isUnconditionalMedia(media: string | null): boolean {
+  const normalized = (media ?? "").trim().toLowerCase();
+  return normalized === "" || normalized === "all";
+}
+
+function isUnconditionalStylesheet(element: {
+  getAttribute(name: string): string | null;
+  hasAttribute(name: string): boolean;
+}): boolean {
+  const type = (element.getAttribute("type") ?? "").trim().toLowerCase();
+  return (
+    isUnconditionalMedia(element.getAttribute("media")) &&
+    (type === "" || type === "text/css") &&
+    !(element.getAttribute("title") ?? "").trim() &&
+    !element.hasAttribute("disabled")
+  );
+}
+
+type DeclaredFontRegister = (family: string, fontFaceRule?: AtRule) => void;
+
+function declareStyleFontFamilies(
+  styleEl: {
+    textContent: string | null;
+    getAttribute(name: string): string | null;
+    hasAttribute(name: string): boolean;
+  },
+  register: DeclaredFontRegister,
+): void {
+  if (!isUnconditionalStylesheet(styleEl)) return;
+  const root = parseCssRoot(styleEl.textContent ?? "");
+  if (!root) return;
+  root.walkAtRules((atRule) => {
+    if (atRule.parent?.type !== "root") return;
+    const name = atRule.name.toLowerCase();
+    if (name === "import") {
+      const url = importRuleUrl(atRule.params);
+      if (url) for (const family of googleFontsUrlFamilies(url)) register(family);
+      return;
+    }
+    if (name !== "font-face") return;
+    const family = fontFaceRuleFamily(atRule);
+    if (family) register(family, atRule);
+  });
+}
+
+function declareLinkedFontFamilies(
+  link: {
+    getAttribute(name: string): string | null;
+    hasAttribute(name: string): boolean;
+  },
+  register: DeclaredFontRegister,
+): void {
+  const rel = (link.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
+  if (!rel.includes("stylesheet") || rel.includes("alternate") || !isUnconditionalStylesheet(link))
+    return;
+  for (const family of googleFontsUrlFamilies(link.getAttribute("href") ?? "")) register(family);
+}
+
+function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
+  const { document } = parseHTML(html);
+  const declared = new Map<string, DeclaredFontFamily>();
+  const register: DeclaredFontRegister = (family, fontFaceRule) => {
+    const key = normalizeFamilyName(family);
+    if (!key || GENERIC_FAMILIES.has(key)) return;
+    let entry = declared.get(key);
+    if (!entry) {
+      entry = { family, fontFaceRules: [] };
+      declared.set(key, entry);
+    }
+    if (fontFaceRule) entry.fontFaceRules.push(fontFaceRule);
+  };
+
+  for (const styleEl of Array.from(document.querySelectorAll("style"))) {
+    declareStyleFontFamilies(styleEl, register);
+  }
+  for (const link of Array.from(document.querySelectorAll("link[href]"))) {
+    declareLinkedFontFamilies(link, register);
+  }
+  return declared;
+}
+
+// `+` too: fetchGoogleFont already reads it as the URL-encoded space.
+function familySpellingKey(family: string): string {
+  return family.toLowerCase().replace(/[\s_+-]+/g, "");
+}
+
+function findDeclaredFamilyAlias(
+  authoredFamily: string,
+  declaredFamilies: DeclaredFontFamilies,
+): DeclaredFontFamily | null {
+  // Declared verbatim yet unresolved: substituting a near-spelling would be a guess.
+  if (declaredFamilies.has(normalizeFamilyName(authoredFamily))) return null;
+  const key = familySpellingKey(authoredFamily);
+  if (!key) return null;
+  let match: DeclaredFontFamily | null = null;
+  for (const entry of declaredFamilies.values()) {
+    if (familySpellingKey(entry.family) !== key) continue;
+    // Two declared families collapse to the same key; picking one is a guess.
+    if (match) return null;
+    match = entry;
+  }
+  return match;
+}
+
+// Emits under the authored name instead of rewriting usages, as FONT_ALIASES does,
+// so script-assigned and var()-indirected usages match too.
+async function resolveDeclaredFamilyAlias(
+  authoredFamily: string,
+  declaredFamilies: DeclaredFontFamilies,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<string[] | null> {
+  const declared = findDeclaredFamilyAlias(authoredFamily, declaredFamilies);
+  if (!declared) return null;
+
+  let rules: string[] | null;
+  if (declared.fontFaceRules.length > 0) {
+    // The document's own faces win, as they would had the family been spelled as declared.
+    rules = declared.fontFaceRules.map((rule) => {
+      const renamed = rule.clone();
+      renamed.walkDecls((decl) => {
+        if (decl.prop.toLowerCase() === "font-family") decl.value = `"${authoredFamily}"`;
+      });
+      return renamed.toString();
+    });
+  } else {
+    rules = await resolveFamilyFaceRules(
+      normalizeFamilyName(declared.family),
+      declared.family,
+      authoredFamily,
+      optional,
+      options,
+      fontText,
+    );
+  }
+  if (!rules) return null;
+
+  defaultLogger.warn(
+    `[Compiler] font-family "${authoredFamily}" is not a known family; resolved it to "${declared.family}", ` +
+      `which this document declares. Correct the authored font-family to "${declared.family}".`,
+  );
+  return rules;
+}
+
+async function buildFontFaceCss(
+  requestedFamilies: Map<string, ResolvedFamily>,
+  options: InternalFontFetchOptions,
+  declaredFamilies: () => DeclaredFontFamilies,
   fontText?: string,
 ): Promise<{
   css: string;
@@ -608,121 +1008,32 @@ async function buildFontFaceCss(
   const rules: string[] = [];
   const unresolved: string[] = [];
 
-  for (const [normalizedFamily, originalCaseFamily] of requestedFamilies) {
-    // Path 1: pre-bundled fonts via FONT_ALIASES — emit embedded faces,
-    // then fetch from Google Fonts to fill missing weights and character subsets.
-    const canonicalKey = FONT_ALIASES[normalizedFamily];
-    if (canonicalKey) {
-      const canonical = CANONICAL_FONTS[canonicalKey];
-      if (!canonical) continue;
-
-      const coveredWeights = new Set<string>();
-      const bundledRules: string[] = [];
-      for (const face of canonical.faces) {
-        const style = face.style || "normal";
-        const src = fontDataUri(canonical.packageName, face.weight, style);
-        bundledRules.push(
-          buildFontFaceRule(
-            originalCaseFamily,
-            src,
-            face.weight,
-            style,
-            BUNDLED_SUBSET_UNICODE_RANGE,
-          ),
-        );
-        coveredWeights.add(coverageKey(face.weight, style));
-      }
-
-      // Fetch all weights from Google Fonts and add any that aren't
-      // already covered by the embedded bundle. This ensures that
-      // compositions requesting e.g. wght@200 get that weight even
-      // if the bundle only ships 400/700/900. Query the CANONICAL
-      // family, not the authored one: for a cross-typeface alias
-      // (helvetica → inter) the authored name is a different typeface,
-      // so supplementing from it would mix two typefaces under one
-      // font-family. The faces are still emitted under
-      // `originalCaseFamily` so the authored CSS keeps matching.
-      const canonicalFamily = resolveAliasDisplayName(normalizedFamily);
-      const googleFaces = canonicalFamily
-        ? await fetchGoogleFont(canonicalFamily, options, fontText)
-        : [];
-
-      // Bundled weights only cover Latin. Keep other subsets (including
-      // text= responses without a range), even for weights already embedded.
-      const supplementary = googleFaces.filter(
-        (face) =>
-          !coveredWeights.has(coverageKey(face.weight, face.style)) ||
-          !isBundledSubsetRange(face.unicodeRange),
-      );
-      const runs = groupFacesBySource(supplementary).flatMap((group) =>
-        partitionWeightRuns(group, coveredWeights),
-      );
-      // Overlapping `unicode-range` rules resolve last-defined-first, so a run
-      // is emitted where its first face appeared in the response rather than
-      // grouped by source. Collapsing must not reorder the faces.
-      const firstAppearance = (run: readonly GoogleFontFace[]): number =>
-        Math.min(...run.map((face) => supplementary.indexOf(face)));
-      for (const run of [...runs].sort((a, b) => firstAppearance(a) - firstAppearance(b))) {
-        const first = run[0];
-        const last = run[run.length - 1];
-        if (!first || !last) continue;
-        const weight = run.length > 1 ? `${first.weight} ${last.weight}` : first.weight;
-        rules.push(
-          buildFontFaceRule(
-            originalCaseFamily,
-            first.dataUri,
-            weight,
-            first.style,
-            first.unicodeRange,
-          ),
-        );
-      }
-      // Broader or text-subset responses can overlap Latin. Emit the bundle
-      // last so existing Latin glyphs keep their deterministic bundled source.
-      rules.push(...bundledRules);
+  // Required families fetch first, so optional ones cannot spend the shared fetch budget before them.
+  const requiredFirst = [...requestedFamilies].sort(
+    ([, a], [, b]) => Number(a.optional) - Number(b.optional),
+  );
+  for (const [normalizedFamily, { family: originalCaseFamily, optional }] of requiredFirst) {
+    const familyRules =
+      (await resolveFamilyFaceRules(
+        normalizedFamily,
+        originalCaseFamily,
+        originalCaseFamily,
+        optional,
+        options,
+        fontText,
+      )) ??
+      // Last, so a family that already resolves keeps exactly the faces it had.
+      (await resolveDeclaredFamilyAlias(
+        originalCaseFamily,
+        declaredFamilies(),
+        optional,
+        options,
+        fontText,
+      ));
+    if (familyRules) {
+      rules.push(...familyRules);
       continue;
     }
-
-    // Path 2: fetch from Google Fonts (with local cache)
-    const googleFaces = await fetchGoogleFont(originalCaseFamily, options, fontText);
-    if (googleFaces.length > 0) {
-      for (const face of googleFaces) {
-        rules.push(
-          buildFontFaceRule(
-            originalCaseFamily,
-            face.dataUri,
-            face.weight,
-            face.style,
-            face.unicodeRange,
-          ),
-        );
-      }
-      continue;
-    }
-
-    // Path 3: locate font on the local filesystem, compress, and embed.
-    if (options.allowSystemFontCapture) {
-      const variants = locateSystemFontVariants(originalCaseFamily);
-      if (variants.length > 0) {
-        let totalBytes = 0;
-        for (const variant of variants) {
-          const fontBuffer = readFileSync(variant.path);
-          totalBytes += fontBuffer.length;
-          const dataUri = await fontToDataUri(fontBuffer, variant.format);
-          rules.push(buildFontFaceRule(originalCaseFamily, dataUri, variant.weight, variant.style));
-        }
-        if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
-          defaultLogger.warn(
-            `[Compiler] System font "${originalCaseFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${variants.length} variant(s)) — embedding anyway. Consider font subsetting for production.`,
-          );
-        }
-        defaultLogger.info(
-          `[Compiler] Embedded system font "${originalCaseFamily}" — ${variants.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,
-        );
-        continue;
-      }
-    }
-
     // No path resolved
     unresolved.push(originalCaseFamily);
   }
@@ -850,6 +1161,8 @@ export class FontFetchError extends Error {
   readonly familyName: string;
   readonly url: string;
   readonly cause?: unknown;
+  /** Unlike `message`, holds no URLs: safe for callers that must not echo resolver output. */
+  readonly unresolvedFamilies: readonly string[];
 
   constructor(
     familyName: string,
@@ -857,6 +1170,7 @@ export class FontFetchError extends Error {
     message: string,
     cause?: unknown,
     code: FontFetchErrorCode = FONT_FETCH_FAILED,
+    unresolvedFamilies: readonly string[] = [],
   ) {
     super(message);
     this.name = "FontFetchError";
@@ -864,6 +1178,7 @@ export class FontFetchError extends Error {
     this.familyName = familyName;
     this.url = url;
     this.cause = cause;
+    this.unresolvedFamilies = unresolvedFamilies;
   }
 }
 
@@ -904,6 +1219,8 @@ interface InternalFontFetchOptions {
   abortSignal?: AbortSignal;
   retryPolicy: FontFetchRetryPolicy;
   retryDeadlineMs: number;
+  /** Google stylesheet URL the page already wrote, keyed by normalized family name. */
+  authoredStylesheets: ReadonlyMap<string, readonly string[]>;
 }
 
 /**
@@ -1118,12 +1435,73 @@ async function ensureWoff2DataUri(
   return `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
 }
 
+// Per-process cache for Google Fonts CSS lookups, keyed by request URL —
+// repeat compiles of the same family reuse one network round trip. A
+// rejected lookup evicts itself so a later call still retries.
+const googleFontCssCache = new Map<string, Promise<{ ok: true; body: string } | { ok: false }>>();
+
+/** Test-only reset — the cache is otherwise process-lifetime, shared across calls. */
+export function _clearGoogleFontCssCacheForTests(): void {
+  googleFontCssCache.clear();
+}
+
+/** Rejects with `signal`'s own abort reason without cancelling `promise` itself. */
+function raceAgainstAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(callerAbortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(callerAbortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+function fetchGoogleFontCss(
+  url: string,
+  familyName: string,
+  options: InternalFontFetchOptions,
+): Promise<{ ok: true; body: string } | { ok: false }> {
+  // Retries decide the outcome, so only callers with the same mode and attempt count share an entry.
+  const mode = options.failClosedFontFetch ? `closed${options.retryPolicy.maxAttempts}` : "open";
+  const key = `${mode}:${url}`;
+  let shared = googleFontCssCache.get(key);
+  if (!shared) {
+    // The shared fetch must not carry any one caller's abortSignal, or that
+    // caller cancelling would fail the lookup for every other waiter.
+    shared = fetchFontResource(
+      url,
+      { headers: { "User-Agent": WOFF2_USER_AGENT } },
+      (response) => response.text(),
+      familyName,
+      "Google Fonts CSS",
+      { ...options, abortSignal: undefined },
+    ).then((result) => {
+      if (result.ok) return { ok: true as const, body: result.body };
+      // A transient status must not stick for the process lifetime.
+      if (isRetryableFontFetchStatus(result.response.status)) googleFontCssCache.delete(key);
+      return { ok: false as const };
+    });
+    googleFontCssCache.set(key, shared);
+    shared.catch(() => googleFontCssCache.delete(key));
+  }
+  return raceAgainstAbort(shared, options.abortSignal);
+}
+
+function pageNamedThisFile(familyName: string, options: InternalFontFetchOptions): boolean {
+  return options.authoredStylesheets.has(normalizeFamilyName(familyName.replace(/\+/g, " ")));
+}
+
+function declaredFaceFamily(block: string): string | undefined {
+  const found = /font-family:\s*['"]([^'"]+)['"]/i.exec(block);
+  return found?.[1];
+}
+
+// fallow-ignore-next-line complexity
 async function fetchGoogleFont(
   familyName: string,
   options: InternalFontFetchOptions,
   fontText?: string,
 ): Promise<GoogleFontFace[]> {
-  const slug = fontSlug(familyName);
   // Agents sometimes copy the `family=` value from a Google Fonts URL into
   // CSS, where `+` remains a literal character instead of being decoded as a
   // space. Resolve that URL-style spelling through the canonical Google family
@@ -1132,30 +1510,40 @@ async function fetchGoogleFont(
   const googleFamilyName = familyName.replace(/\+/g, " ");
   const encodedFamily = encodeURIComponent(googleFamilyName);
   const textParam = fontText ? `&text=${encodeURIComponent(fontText)}` : "";
-  const url = `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700${textParam}`;
+  // Bundled families need the full supplement, including italics a page's
+  // link may omit. Other families need the authored URL to preserve axes
+  // such as optical size instead of replacing them with a weight-only face.
+  const normalizedFamily = normalizeFamilyName(googleFamilyName);
+  const authoredStylesheet = FONT_ALIASES[normalizedFamily]
+    ? undefined
+    : options.authoredStylesheets.get(normalizedFamily);
+  // `text=` asks Google for only the characters on the page. A CJK family
+  // without it is a hundred files, and the compile's font budget is 20s.
+  const urls = authoredStylesheet
+    ? authoredStylesheet.map((url) => withPageText(url, fontText))
+    : [
+        `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700${textParam}`,
+      ];
+  const faces: GoogleFontFace[] = [];
+  for (const url of urls) {
+    faces.push(...(await fetchGoogleFontStylesheet(googleFamilyName, url, options)));
+  }
+  return faces;
+}
 
-  let cssText: string;
+async function readGoogleFontStylesheet(
+  familyName: string,
+  url: string,
+  options: InternalFontFetchOptions,
+): Promise<string | null> {
   try {
-    const cssResult = await fetchFontResource(
-      url,
-      { headers: { "User-Agent": WOFF2_USER_AGENT } },
-      (response) => response.text(),
-      familyName,
-      "Google Fonts CSS",
-      options,
-    );
+    const cssResult = await fetchGoogleFontCss(url, familyName, options);
     if (!cssResult.ok) {
-      // 4xx is a *deterministic* answer from Google Fonts that this
-      // family is not served (e.g. HTTP 400 for "Segoe UI", "Arial",
-      // "Futura" — names absent from Google's catalog) or is misnamed.
-      // The render falls back to embedded faces / the composition's
-      // font-family chain; we return [] in both modes. 5xx (and other
-      // transient upstream failures) could return faces on retry, which
-      // would break the byte-identical-retry contract distributed
-      // renders rely on — those still fail closed when requested.
-      return [];
+      // Missing families are deterministic; transient failures follow the
+      // caller's retry and fail-closed policy.
+      return null;
     }
-    cssText = cssResult.body;
+    return cssResult.body;
   } catch (err) {
     // Rethrow typed error untouched. Network / DNS / fetch-throws are
     // non-deterministic infrastructure failures — wrapped when failClosed
@@ -1165,25 +1553,52 @@ async function fetchGoogleFont(
     if (options.failClosedFontFetch) {
       throw fontFetchError(familyName, url, "Google Fonts CSS", { error: err });
     }
-    return [];
+    return null;
   }
+}
+
+type GoogleFontSource = Omit<GoogleFontFace, "dataUri"> & { url: string };
+
+function parseGoogleFontSource(
+  match: RegExpMatchArray,
+  familyName: string,
+): GoogleFontSource | null {
+  const declared = declaredFaceFamily(match[0]);
+  if (declared && normalizeFamilyName(declared) !== normalizeFamilyName(familyName)) return null;
+  const url = match[3];
+  if (!url) return null;
+  return {
+    style: match[1] || "normal",
+    weight: (match[2] || "400").replace(/\s+/g, " "),
+    url,
+    unicodeRange: match[4]?.trim() || undefined,
+  };
+}
+
+async function fetchGoogleFontStylesheet(
+  familyName: string,
+  url: string,
+  options: InternalFontFetchOptions,
+): Promise<GoogleFontFace[]> {
+  const slug = fontSlug(familyName);
+  const cssText = await readGoogleFontStylesheet(familyName, url, options);
+  if (!cssText) return [];
 
   // Parse @font-face blocks from the CSS response. The optional trailing
   // capture grabs each face's `unicode-range` (Google emits it after `src`)
   // so the injected face only claims the codepoints the subset actually
   // covers — without it the face would advertise full coverage it lacks.
+  // A variable face is `font-weight: 400 900`: one file for every weight in
+  // the span. Keeping only the first number leaves 600/700/800 on the network.
   const faceRegex =
-    /@font-face\s*\{[^}]*font-style:\s*(normal|italic)[^}]*font-weight:\s*(\d+)[^}]*src:\s*url\(([^)]+)\)\s*format\(['"]woff2['"]\)(?:[^}]*?unicode-range:\s*([^;}]+))?[^}]*\}/gi;
+    /@font-face\s*\{[^}]*font-style:\s*(normal|italic|oblique(?:\s+-?\d+(?:\.\d+)?deg){0,2})\s*;[^}]*font-weight:\s*(\d+(?:\s+\d+)?)[^}]*src:\s*url\(([^)]+)\)\s*format\(['"]woff2['"]\)(?:[^}]*?unicode-range:\s*([^;}]+))?[^}]*\}/gi;
 
   const faces: GoogleFontFace[] = [];
 
   for (const match of cssText.matchAll(faceRegex)) {
-    const style = match[1] || "normal";
-    const weight = match[2] || "400";
-    const woff2Url = match[3] || "";
-    const unicodeRange = match[4]?.trim() || undefined;
-
-    if (!woff2Url) continue;
+    const source = parseGoogleFontSource(match, familyName);
+    if (!source) continue;
+    const { weight, style, unicodeRange, url: woff2Url } = source;
 
     const cachePath = cachedWoff2Path(slug, weight, style, subsetToken(woff2Url));
     const dataUri = await ensureWoff2DataUri(
@@ -1206,6 +1621,30 @@ async function fetchGoogleFont(
   return faces;
 }
 
+/** An optional family gets one retry on a transient failure, then renders its fallback with a warning. */
+async function fetchFamilyFaces(
+  familyName: string,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<GoogleFontFace[]> {
+  if (!optional) return fetchGoogleFont(familyName, options, fontText);
+  const maxAttempts = Math.min(options.retryPolicy.maxAttempts, 2);
+  try {
+    return await fetchGoogleFont(
+      familyName,
+      { ...options, retryPolicy: { ...options.retryPolicy, maxAttempts } },
+      fontText,
+    );
+  } catch (err) {
+    if (!(err instanceof FontFetchUnavailableError)) throw err;
+    defaultLogger.warn(
+      `[Compiler] Optional font "${familyName}" is unavailable, rendering its fallback: ${err.message}`,
+    );
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -1213,7 +1652,7 @@ async function fetchGoogleFont(
  */
 export interface InjectDeterministicFontFacesOptions {
   /**
-   * When `true`, exhausted transient fetch failures throw
+   * When `true`, exhausted transient fetch failures of a required family throw
    * {@link FontFetchUnavailableError} with code `FONT_FETCH_UNAVAILABLE`;
    * deterministic resolution failures retain `FONT_FETCH_FAILED`.
    *
@@ -1404,6 +1843,17 @@ function resolveFontFetchRetryPolicy(
   };
 }
 
+/**
+ * Last in document order: a stylesheet declared after the deterministic faces would win the
+ * cascade for the same family whenever it had loaded, so early frames could differ between renders.
+ */
+function placeAfterEveryStylesheet(document: Document, head: Element, styleEl: Element): void {
+  const stylesheets = document.querySelectorAll("style, link[rel~=stylesheet]");
+  const lastStylesheet = stylesheets[stylesheets.length - 1];
+  if (lastStylesheet) lastStylesheet.after(styleEl);
+  else head.appendChild(styleEl);
+}
+
 export async function injectDeterministicFontFaces(
   html: string,
   options: InjectDeterministicFontFacesOptions = {},
@@ -1419,15 +1869,16 @@ export async function injectDeterministicFontFaces(
     abortSignal: options.abortSignal,
     retryPolicy,
     retryDeadlineMs: Date.now() + retryPolicy.maxElapsedMs,
+    authoredStylesheets: authoredGoogleFontStylesheets(html),
   };
 
   const existingFaces = extractExistingFontFaces(html);
   const requestedFamilies = extractRequestedFontFamilies(html);
-  const pendingFamilies = new Map<string, string>();
+  const pendingFamilies = new Map<string, ResolvedFamily>();
 
-  for (const [normalizedFamily, originalCaseFamily] of requestedFamilies) {
+  for (const [normalizedFamily, requested] of requestedFamilies) {
     if (!existingFaces.has(normalizedFamily)) {
-      pendingFamilies.set(normalizedFamily, originalCaseFamily);
+      pendingFamilies.set(normalizedFamily, requested);
     }
   }
 
@@ -1435,17 +1886,26 @@ export async function injectDeterministicFontFaces(
     return html;
   }
 
+  let declaredFamilies: DeclaredFontFamilies | undefined;
   const { css, unresolved } = await buildFontFaceCss(
     pendingFamilies,
     fetchOptions,
+    () => (declaredFamilies ??= collectDeclaredFontFamilies(html)),
     extractGoogleFontsText(html),
   );
-  if (unresolved.length > 0 && options.failClosedFontFetch) {
+  // An optional family that no source serves, or that stayed unavailable, is tolerated.
+  const required = unresolved.filter(
+    (family) => !pendingFamilies.get(family.toLowerCase())?.optional,
+  );
+  if (required.length > 0 && options.failClosedFontFetch) {
     throw new FontFetchError(
-      unresolved.join(", "),
+      required.join(", "),
       "",
-      `[Compiler] Unresolved fonts in fail-closed mode: ${unresolved.join(", ")}. ` +
+      `[Compiler] Unresolved fonts in fail-closed mode: ${required.join(", ")}. ` +
         `Distributed renders require all fonts to be resolvable.`,
+      undefined,
+      FONT_FETCH_FAILED,
+      unresolved,
     );
   }
   if (!css) {
@@ -1464,7 +1924,7 @@ export async function injectDeterministicFontFaces(
   const styleEl = document.createElement("style");
   styleEl.setAttribute("data-hyperframes-deterministic-fonts", "true");
   styleEl.textContent = css;
-  head.insertBefore(styleEl, head.firstChild);
+  placeAfterEveryStylesheet(document, head, styleEl);
 
   defaultLogger.info(
     `[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`,

@@ -38,8 +38,8 @@ function PropertyGroupNavigation({
   // target is met with a centered transparent ::before overlay instead of a
   // bigger box; focus-visible matches every other control in this header.
   const CHEVRON_BUTTON_CLASS =
-    "relative h-5 w-3 border-0 bg-transparent p-0 text-white/55 hover:text-white disabled:text-white/15 " +
-    "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] " +
+    "relative h-5 w-3 border-0 bg-transparent p-0 text-text-2 hover:text-text-0 disabled:text-text-off " +
+    "focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-ring " +
     "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 " +
     "before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
   const seekTo = (keyframe: { percentage: number } | null) => {
@@ -120,7 +120,7 @@ export function PropertyGroupHeaderRow({
       tabIndex={rovingTargetId === timelinePropertyRowId(elementId, lane.group) ? 0 : -1}
       data-property-group={lane.group}
       data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
-      className="absolute left-0 flex items-center gap-1 overflow-hidden px-1.5 text-[10px] text-white/65"
+      className="absolute left-0 flex items-center gap-1 overflow-hidden px-1.5 text-[10px] text-text-2"
       style={{
         top: getTimelineLaneTop(laneIndex),
         // The header column narrows to contentOrigin whenever that is under
@@ -134,12 +134,12 @@ export function PropertyGroupHeaderRow({
       {/* Tree connector: vertical spine (top-half on the last lane) + branch tick. */}
       <span className="relative h-full w-3 shrink-0" aria-hidden="true">
         <span
-          className="absolute left-1.5 top-0 w-px bg-white/15"
+          className="absolute left-1.5 top-0 w-px bg-text-0/15"
           style={{ height: isLastLane ? "50%" : "100%" }}
         />
-        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-white/15" />
+        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-text-0/15" />
       </span>
-      <span className="w-[46px] shrink-0 truncate text-white" title={label}>
+      <span className="w-[46px] shrink-0 truncate text-text-0" title={label}>
         {label}
       </span>
       <PropertyGroupNavigation
@@ -154,7 +154,7 @@ export function PropertyGroupHeaderRow({
           aria-label={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
           title={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
           // h-6 w-6 = the 24x24 WCAG 2.2 minimum target; the ◆ glyph stays 11px.
-          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-[#3CE6AC] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-accent-ink focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-ring"
           onClick={(event) => {
             // Same as the disclosure caret and the eye: a control in the label
             // column owns its click, it does not also hit the track row behind it.
@@ -168,7 +168,7 @@ export function PropertyGroupHeaderRow({
         </button>
       </PropertyGroupNavigation>
       <span
-        className="min-w-0 flex-1 truncate text-right tabular-nums text-white/45"
+        className="min-w-0 flex-1 truncate text-right tabular-nums text-text-muted"
         title={valueReadout(lane.group, values)}
       >
         {valueReadout(lane.group, values)}
@@ -231,7 +231,7 @@ export function AutomationLaneHeaderRow({
     <div
       data-automation-lane-label={label}
       data-timeline-lane-top={top}
-      className="absolute left-0 flex items-center gap-1 overflow-hidden px-1.5 text-[10px] text-white/65"
+      className="absolute left-0 flex items-center gap-1 overflow-hidden px-1.5 text-[10px] text-text-2"
       style={{
         top,
         width: columnWidth,
@@ -243,10 +243,10 @@ export function AutomationLaneHeaderRow({
           tick at the name's own height. */}
       <span className="relative h-full w-3 shrink-0" aria-hidden="true">
         <span
-          className="absolute left-1.5 top-0 w-px bg-white/15"
+          className="absolute left-1.5 top-0 w-px bg-text-0/15"
           style={{ height: isLastLane ? "50%" : "100%" }}
         />
-        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-white/15" />
+        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-text-0/15" />
       </span>
       {/* Two lines: what the effect is, then which knob the envelope drives. On
           one line a band's own name was the first thing truncated in a column this
@@ -262,7 +262,7 @@ export function AutomationLaneHeaderRow({
         aria-label={onReveal ? `Show ${label} in the effect rack` : undefined}
         title={onReveal ? `Show ${label} in the effect rack` : label}
         disabled={!onReveal}
-        className="flex min-w-0 flex-1 flex-col justify-center rounded border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+        className="flex min-w-0 flex-1 flex-col justify-center rounded-sm border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-text-0 focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-ring"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           // The label column owns its click; it does not also fall through to
@@ -271,13 +271,13 @@ export function AutomationLaneHeaderRow({
           onReveal?.();
         }}
       >
-        <span data-automation-lane-name="" className="truncate font-mono text-[9px] text-white/70">
+        <span data-automation-lane-name="" className="truncate font-mono text-[9px] text-text-2">
           {name}
         </span>
         {param ? (
           <span
             data-automation-lane-param=""
-            className="truncate font-mono text-[9px] text-white/40"
+            className="truncate font-mono text-[9px] text-text-muted"
           >
             {param}
           </span>
@@ -285,7 +285,7 @@ export function AutomationLaneHeaderRow({
         {alsoAutomatedBy ? (
           <span
             data-automation-lane-also=""
-            className="truncate text-[9px] text-[#F5C542]/80"
+            className="truncate text-[9px] text-warning-ink"
             title={`${alsoAutomatedBy} is also fading this — the two multiply.`}
           >
             {alsoAutomatedBy} is also fading this.
@@ -311,7 +311,7 @@ export function AutomationLaneHeaderRow({
           aria-label={`Remove ${label} automation`}
           title={`Remove ${label} automation`}
           // h-6 w-6 is the 24x24 WCAG 2.2 target; the glyph stays small.
-          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-white/35 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-text-muted hover:text-text-0 focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-ring"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             // A control in the label column owns its click; it does not also hit

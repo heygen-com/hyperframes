@@ -9,9 +9,9 @@ vi.mock("./client", () => ({
 
 const {
   trackStudioSessionStart,
+  trackPreviewFirstFrame,
   trackStudioRenderStart,
   trackStudioRazorSplit,
-  trackStudioExpandedClipEdit,
   trackStudioKeyframeLaneExpand,
   trackStudioSegmentEaseEdit,
   trackStudioFeedback,
@@ -32,6 +32,23 @@ describe("studio telemetry events", () => {
   it("trackStudioSessionStart preserves false for has_project (scratch open)", () => {
     trackStudioSessionStart({ has_project: false });
     expect(trackEvent).toHaveBeenCalledWith("studio_session_start", { has_project: false });
+  });
+
+  it("trackPreviewFirstFrame emits timing, composition duration, and version", () => {
+    trackPreviewFirstFrame({
+      duration_ms: 842,
+      composition_seconds: 12.5,
+      clip_count: 8,
+      media_clip_count: 5,
+      studio_version: "0.8.56",
+    });
+    expect(trackEvent).toHaveBeenCalledWith("preview_first_frame", {
+      duration_ms: 842,
+      composition_seconds: 12.5,
+      clip_count: 8,
+      media_clip_count: 5,
+      studio_version: "0.8.56",
+    });
   });
 
   it("trackStudioRenderStart emits 'studio_render_start' with all render opts", () => {
@@ -87,11 +104,6 @@ describe("studio telemetry events", () => {
   it("trackStudioRazorSplit emits 'studio_razor_split' with mode and count", () => {
     trackStudioRazorSplit({ mode: "all", count: 3 });
     expect(trackEvent).toHaveBeenCalledWith("studio_razor_split", { mode: "all", count: 3 });
-  });
-
-  it("trackStudioExpandedClipEdit emits 'studio_expanded_clip_edit' with action", () => {
-    trackStudioExpandedClipEdit({ action: "resize" });
-    expect(trackEvent).toHaveBeenCalledWith("studio_expanded_clip_edit", { action: "resize" });
   });
 
   it("trackStudioKeyframeLaneExpand emits 'studio_keyframe_lane_expand' with expanded", () => {

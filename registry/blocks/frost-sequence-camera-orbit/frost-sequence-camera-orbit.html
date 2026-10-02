@@ -1,0 +1,3321 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Frost Sequence Rig</title>
+    <script src="assets/gsap-3.14.2.min.js"></script>
+    <script>
+      // frost.js reads its asset base when it loads; beside this file when mounted.
+      if (typeof __hyperframes !== "undefined" && __hyperframes.assetUrl)
+        window.__frostAssetBase = __hyperframes.assetUrl("assets/");
+    </script>
+    <script src="assets/frost.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        background: #030303;
+      }
+      #frost-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #030303;
+      }
+      #frost-stage {
+        position: absolute;
+        inset: 0;
+        background: #030303;
+      }
+      #frost-stage canvas {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+      #frost-build-status {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        z-index: 5;
+        padding: 10px 14px;
+        background: #000b;
+        color: #eee;
+        font: 16px system-ui;
+      }
+      #frost-stage.nogpu {
+        background: radial-gradient(ellipse 78% 78% at 50% 150%, #2a2a2a, #050505 70%, #030303);
+      }
+      /* the motion checker needs a moving layout box on every frame: a background-coloured 1.5 px plate */
+      #frost-plate {
+        position: absolute;
+        left: 0;
+        top: 1078px;
+        width: 1.5px;
+        height: 1.5px;
+        background: #030303;
+        pointer-events: none;
+      }
+      #frost-root {
+        pointer-events: none;
+      }
+      #frost-root > .clip {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        background: transparent;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-b4of"
+      id="frost-root"
+      data-composition-variables='[{"id":"headline1","type":"string","label":"First text (| = line break)","default":"Hard to|break.","maxLength":60},{"id":"headline2","type":"string","label":"Second text (| = line break)","default":"Easy to|remember.","maxLength":60},{"id":"logoUrl","type":"string","label":"Logo SVG asset path (upload in Assets, then paste path)","default":"assets/logo.svg","maxLength":200},{"id":"assemblyMode","type":"enum","label":"Assembly response","default":"hybrid","options":[{"value":"physical","label":"Physical attraction (100 = full strength)"},{"value":"directed","label":"Direct progress (100 = assembled)"},{"value":"hybrid","label":"Hybrid progress + physical flight"}]},{"id":"materialBaseColor","type":"color","label":"Base color","default":"#ffffff","materialSection":"Base","materialScope":"object"},{"id":"baseRoughness","type":"number","label":"Base roughness","default":0.31,"min":0,"max":0.5,"step":0.005,"materialSection":"Base","materialScope":"object"},{"id":"materialTransmission","type":"boolean","label":"Transmission","default":true,"materialSection":"Transmission","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"materialBacklight","type":"number","label":"Backlight through ice","default":0.27,"min":0,"max":2,"step":0.01,"materialSection":"Transmission","materialScope":"object"},{"id":"ior","type":"number","label":"Index of refraction","default":1.675,"min":1,"max":2,"step":0.005,"materialSection":"Transmission","materialScope":"object"},{"id":"thicknessScale","type":"number","label":"Thickness scale","default":2.04,"min":0.1,"max":3,"step":0.01,"materialSection":"Transmission","materialScope":"object"},{"id":"materialAbsorption","type":"boolean","label":"Absorption / tint","default":true,"materialSection":"Absorption / tint","materialScope":"object","materialToggle":true,"materialRequires":["materialTransmission"],"description":"Switch off to remove this feature without losing its settings."},{"id":"attenuationColor","type":"color","label":"Attenuation colour (white = no absorption, clear glass)","default":"#d5f4ff","materialSection":"Absorption / tint","materialScope":"object"},{"id":"attenuationDistance","type":"number","label":"Attenuation distance","default":6.54,"min":0.05,"max":12,"step":0.01,"materialSection":"Absorption / tint","materialScope":"object"},{"id":"materialDispersion","type":"boolean","label":"Dispersion","default":false,"materialSection":"Dispersion","materialScope":"object","materialToggle":true,"materialRequires":["materialTransmission"],"description":"Switch off to remove this feature without losing its settings."},{"id":"dispersion","type":"number","label":"Dispersion (0 = off; on/off reloads)","default":0.12,"min":0,"max":0.3,"step":0.005,"materialSection":"Dispersion","materialScope":"object"},{"id":"materialReflections","type":"boolean","label":"Reflections","default":true,"materialSection":"Reflections","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"envIntensity","type":"number","label":"Environment intensity","default":2.04,"min":0,"max":3,"step":0.01,"materialSection":"Reflections","materialScope":"object"},{"id":"specularIntensity","type":"number","label":"Specular intensity","default":1.44,"min":0,"max":2,"step":0.01,"materialSection":"Reflections","materialScope":"object"},{"id":"materialFrost","type":"boolean","label":"Frost","default":true,"materialSection":"Frost","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"materialInteriorFrost","type":"number","label":"Uniform frost","default":0,"min":0,"max":1,"step":0.01,"materialSection":"Frost","materialScope":"object"},{"id":"frostScale","type":"number","label":"Scale","default":0.7,"min":0.2,"max":6,"step":0.05,"materialSection":"Frost","materialScope":"object"},{"id":"frostThreshold","type":"number","label":"Threshold (1 = no frost, clear glass)","default":0.62,"min":0,"max":1,"step":0.01,"materialSection":"Frost","materialScope":"object"},{"id":"frostSoftness","type":"number","label":"Softness","default":0.24,"min":0.01,"max":1,"step":0.01,"materialSection":"Frost","materialScope":"object"},{"id":"frostRoughness","type":"number","label":"Roughness","default":0.73,"min":0,"max":1,"step":0.01,"materialSection":"Frost","materialScope":"object"},{"id":"frostDiffuse","type":"number","label":"Diffuse (how much light frosted areas catch)","default":0.11,"min":0,"max":1,"step":0.01,"materialSection":"Frost","materialScope":"object"},{"id":"materialSurfaceBumps","type":"boolean","label":"Object surface bumps / crack notches","default":false,"materialSection":"Surface bumps","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Disable crystal, grain, micro, ripple and crack normal perturbations and crack notches on the solid. Preserves their settings and the shard finish."},{"id":"materialCrystals","type":"boolean","label":"Crystal bumps","default":true,"materialSection":"Crystal bumps","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"crystalBump","type":"number","label":"Crystal bump","default":0.01,"min":0,"max":1,"step":0.01,"materialSection":"Crystal bumps","materialScope":"object"},{"id":"crystalScale","type":"number","label":"Crystal scale","default":4,"min":4,"max":80,"step":1,"materialSection":"Crystal bumps","materialScope":"object"},{"id":"materialGrain","type":"boolean","label":"Grain bumps","default":true,"materialSection":"Grain bumps","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"materialGrainAmount","type":"number","label":"Grain strength","default":0.47,"min":0,"max":2,"step":0.01,"materialSection":"Grain bumps","materialScope":"object"},{"id":"materialGrainScale","type":"number","label":"Grain scale","default":150,"min":1,"max":150,"step":1,"materialSection":"Grain bumps","materialScope":"object"},{"id":"materialCutNormals","type":"boolean","label":"Fracture normals","default":true,"materialSection":"Fracture normals","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"materialMicro","type":"boolean","label":"Micro bumps","default":true,"materialSection":"Micro bumps","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"microBump","type":"number","label":"Micro bump","default":0.445,"min":0,"max":1,"step":0.005,"materialSection":"Micro bumps","materialScope":"object"},{"id":"microScale","type":"number","label":"Micro scale","default":10,"min":10,"max":200,"step":1,"materialSection":"Micro bumps","materialScope":"object"},{"id":"microCoverage","type":"number","label":"Micro coverage","default":0.25,"min":0,"max":1,"step":0.01,"materialSection":"Micro bumps","materialScope":"object"},{"id":"bumpMaskScale","type":"number","label":"Mask scale","default":1.45,"min":0.1,"max":6,"step":0.05,"materialSection":"Micro bumps","materialScope":"object"},{"id":"materialRipples","type":"boolean","label":"Ripples","default":true,"materialSection":"Ripples","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"rippleBump","type":"number","label":"Ripple bump","default":0.22,"min":0,"max":1,"step":0.01,"materialSection":"Ripples","materialScope":"object"},{"id":"rippleScale","type":"number","label":"Ripple scale","default":23,"min":2,"max":30,"step":0.5,"materialSection":"Ripples","materialScope":"object"},{"id":"materialSmudges","type":"boolean","label":"Smudges","default":true,"materialSection":"Smudges","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"smudgeAmount","type":"number","label":"Amount","default":0.78,"min":0,"max":1,"step":0.01,"materialSection":"Smudges","materialScope":"object"},{"id":"smudgeCoverage","type":"number","label":"Coverage","default":0.58,"min":0,"max":1,"step":0.01,"materialSection":"Smudges","materialScope":"object"},{"id":"smudgeMaskScale","type":"number","label":"Mask scale","default":1.85,"min":0.1,"max":6,"step":0.05,"materialSection":"Smudges","materialScope":"object"},{"id":"smudgeAnisotropy","type":"number","label":"Anisotropy","default":16.5,"min":1,"max":20,"step":0.5,"materialSection":"Smudges","materialScope":"object"},{"id":"smudgeRoughness","type":"number","label":"Roughness","default":0.75,"min":0,"max":1,"step":0.01,"materialSection":"Smudges","materialScope":"object"},{"id":"smudgeWhiteness","type":"number","label":"Whiteness","default":0.035,"min":0,"max":0.5,"step":0.005,"materialSection":"Smudges","materialScope":"object"},{"id":"smudgeScale","type":"number","label":"Scale","default":1.3,"min":0.5,"max":10,"step":0.1,"materialSection":"Smudges","materialScope":"object"},{"id":"materialCracks","type":"boolean","label":"Cracks","default":true,"materialSection":"Cracks","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"crackLargeScale","type":"number","label":"Large scale","default":2.45,"min":0.3,"max":8,"step":0.05,"materialSection":"Cracks","materialScope":"object"},{"id":"crackWarp","type":"number","label":"Warp","default":0.22,"min":0,"max":1.5,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"crackCoverage","type":"number","label":"Coverage","default":0.19,"min":0,"max":1,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"crackRegionScale","type":"number","label":"Region scale","default":1.8,"min":0.1,"max":4,"step":0.05,"materialSection":"Cracks","materialScope":"object"},{"id":"crackRegionCoverage","type":"number","label":"Region coverage","default":0.6,"min":0,"max":1,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"veinScale","type":"number","label":"Vein scale","default":8,"min":1,"max":20,"step":0.25,"materialSection":"Cracks","materialScope":"object"},{"id":"veinContrast","type":"number","label":"Vein contrast","default":0.55,"min":0,"max":1,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"crackWidth","type":"number","label":"Width","default":0.0025,"min":0.0005,"max":0.02,"step":0.0005,"materialSection":"Cracks","materialScope":"object"},{"id":"crackBrightness","type":"number","label":"Brightness","default":0.65,"min":0,"max":3,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"crackDarkness","type":"number","label":"Darkness","default":0.69,"min":0,"max":1,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"crackRefraction","type":"number","label":"Refraction","default":0.076,"min":0,"max":0.1,"step":0.001,"materialSection":"Cracks","materialScope":"object"},{"id":"crackSurfaceStrength","type":"number","label":"Surface strength","default":0.16,"min":0,"max":1,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"fineScale","type":"number","label":"Fine scale","default":18.4,"min":2,"max":20,"step":0.1,"materialSection":"Cracks","materialScope":"object"},{"id":"fineAmount","type":"number","label":"Fine amount","default":0.52,"min":0,"max":1,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"fineCoverage","type":"number","label":"Fine coverage","default":1,"min":0,"max":1,"step":0.01,"materialSection":"Cracks","materialScope":"object"},{"id":"materialScatter","type":"boolean","label":"Internal scattering","default":true,"materialSection":"Internal scattering","materialScope":"object","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"materialInclusionScale","type":"number","label":"Inclusion scale","default":0.05,"min":0.05,"max":3,"step":0.01,"materialSection":"Internal scattering","materialScope":"object"},{"id":"materialInclusionAmount","type":"number","label":"Photographic inclusions","default":2,"min":0,"max":2,"step":0.01,"materialSection":"Internal scattering","materialScope":"object"},{"id":"interiorScatter","type":"number","label":"Interior scatter","default":0.09,"min":0,"max":1,"step":0.01,"materialSection":"Internal scattering","materialScope":"object"},{"id":"materialClearcoat","type":"boolean","label":"Clearcoat","default":true,"materialSection":"Clearcoat","materialScope":"object","materialToggle":true,"materialRequires":["materialReflections"],"description":"Switch off to remove this feature without losing its settings."},{"id":"clearcoat","type":"number","label":"Clearcoat","default":0,"min":0,"max":1,"step":0.01,"materialSection":"Clearcoat","materialScope":"object"},{"id":"clearcoatRoughness","type":"number","label":"Clearcoat roughness","default":0,"min":0,"max":1,"step":0.005,"materialSection":"Clearcoat","materialScope":"object"},{"id":"materialShardNormals","type":"boolean","label":"Shard normals","default":true,"materialSection":"Shard normals","materialScope":"shards","materialToggle":true,"materialRequires":[],"description":"Switch off to remove this feature without losing its settings."},{"id":"spriteNormal","type":"number","label":"Sprite normal strength","default":0.15,"min":0,"max":2.5,"step":0.05,"materialSection":"Shard normals","materialScope":"shards"},{"id":"materialShardFrost","type":"boolean","label":"Shard frost","default":true,"materialSection":"Shard frost","materialScope":"shards","materialToggle":true,"materialRequires":[],"description":"Uses the shared material settings from Logo & text. This switch enables them on shards."},{"id":"materialShardTransmission","type":"boolean","label":"Shard transparency","default":true,"materialSection":"Shard transparency","materialScope":"shards","materialToggle":true,"materialRequires":[],"description":"Uses the shared material settings from Logo & text. This switch enables them on shards."},{"id":"spriteSeeThrough","type":"number","label":"See-through (0 = off; on/off reloads)","default":1,"min":0,"max":1,"step":0.01,"materialSection":"Shard transparency","materialScope":"shards"},{"id":"materialShardReflections","type":"boolean","label":"Shard reflections","default":true,"materialSection":"Shard reflections","materialScope":"shards","materialToggle":true,"materialRequires":[],"description":"Uses the shared material settings from Logo & text. This switch enables them on shards."},{"id":"minPixelSize","type":"number","label":"Minimum pixel size","default":0.25,"min":0,"max":4,"step":0.05,"materialSection":"Shard shape","materialScope":"shards"},{"id":"grainSizeMultiplier","type":"number","label":"Grain size multiplier","default":1.05,"min":0.2,"max":4,"step":0.05,"materialSection":"Shard shape","materialScope":"shards"},{"id":"spriteSize","type":"number","label":"Sprite size","default":1.9,"min":0.3,"max":4,"step":0.05,"materialSection":"Shard shape","materialScope":"shards"},{"id":"spriteTilt","type":"number","label":"Sprite tilt","default":12,"min":0,"max":70,"step":1,"unit":"deg","materialSection":"Shard shape","materialScope":"shards"},{"id":"spriteAlphaCut","type":"number","label":"Alpha cut","default":0.6,"min":0.05,"max":0.6,"step":0.01,"materialSection":"Shard shape","materialScope":"shards"},{"id":"fontWeight","type":"enum","label":"Type - Weight (Geist)","default":"600","options":[{"value":"400","label":"Regular 400"},{"value":"600","label":"SemiBold 600"},{"value":"700","label":"Bold 700"}]},{"id":"letterSpacing","type":"number","label":"Type - Letter spacing","default":0.01,"min":-0.1,"max":0.4,"step":0.005,"unit":"em"},{"id":"shardAmount","type":"number","label":"Shards - Visible fraction of the broken volume (Powder amount)","default":0.44,"min":0.02,"max":1,"step":0.01},{"id":"strayDust","type":"number","label":"Shards - Ambient dust motes around the object (the experiment had 40)","default":24,"min":0,"max":200,"step":1},{"id":"sliceRadius","type":"number","label":"Break - First (diagonal) slice radius","default":0.6,"min":0.05,"max":1.5,"step":0.01},{"id":"sliceStrength","type":"number","label":"Break - First slice strength","default":21.5,"min":1,"max":40,"step":0.5},{"id":"finalEjectBoost","type":"number","label":"Break - Last break: eject speed and speed cap multiplier","default":2.5,"min":1,"max":6,"step":0.1},{"id":"shatterRadius","type":"number","label":"Break - Follow-up slice radius (sets their spacing too)","default":0.45,"min":0.1,"max":1.5,"step":0.01},{"id":"shatterStrength","type":"number","label":"Break - Follow-up slice strength","default":32.5,"min":1,"max":40,"step":0.5},{"id":"cutThreshold","type":"number","label":"Tune break - Cut threshold (surface gone above this erosion)","default":0.3,"min":0.3,"max":0.98,"step":0.01},{"id":"cutSoftness","type":"number","label":"Tune break - Cut softness","default":0.19,"min":0.005,"max":0.3,"step":0.005},{"id":"edgeWidth","type":"number","label":"Tune break - Crumbly edge band width","default":0.19,"min":0.05,"max":0.8,"step":0.01},{"id":"edgeInset","type":"number","label":"Tune break - Edge inset","default":0,"min":0,"max":0.3,"step":0.005},{"id":"brushSoftness","type":"number","label":"Tune break - Brush softness (edge falloff of a slice)","default":0.15,"min":0.02,"max":1,"step":0.01},{"id":"brushNoise","type":"number","label":"Tune break - Brush noise (ragged boundary)","default":0.4,"min":0,"max":1,"step":0.01},{"id":"crumbleRate","type":"number","label":"Tune break - Crumble rate along cracks (high = the whole shape goes at once)","default":4.3,"min":0,"max":6,"step":0.05},{"id":"crumbleCrackBias","type":"number","label":"Tune break - Crumble crack bias","default":5.1,"min":0,"max":6,"step":0.05},{"id":"crumbleDuration","type":"number","label":"Tune break - Crumble duration after a stroke","default":0.35,"min":0,"max":2,"step":0.01},{"id":"ejectSpeed","type":"number","label":"Flight - Eject speed","default":0.91,"min":0,"max":4,"step":0.01},{"id":"ejectSpread","type":"number","label":"Flight - Eject spread along the normal","default":0.48,"min":0,"max":3,"step":0.01},{"id":"ejectTurbulence","type":"number","label":"Flight - Eject turbulence","default":4,"min":0,"max":4,"step":0.01},{"id":"drag","type":"number","label":"Flight - Drag (speed decays by this per second)","default":0,"min":0,"max":8,"step":0.01},{"id":"gravity","type":"number","label":"Flight - Gravity (0 = shards never fall)","default":0,"min":0,"max":2,"step":0.005},{"id":"turbulence","type":"number","label":"Flight - Turbulence strength (curl noise)","default":4,"min":0,"max":4,"step":0.01},{"id":"turbulenceScale","type":"number","label":"Flight - Turbulence scale","default":2.65,"min":0.2,"max":8,"step":0.05},{"id":"turbulenceDecay","type":"number","label":"Flight - Turbulence decay with age (low = keeps swirling)","default":3.65,"min":0.05,"max":4,"step":0.01},{"id":"clumpCohesion","type":"number","label":"Flight - Clump cohesion (shards orbit a leader; 0 = none)","default":0.9,"min":0,"max":10,"step":0.05},{"id":"followObject","type":"number","label":"Flight - Shards follow the object motion for (s; 30 = whole flight)","default":30,"min":0,"max":30,"step":0.5,"unit":"s"},{"id":"settleTime","type":"number","label":"Flight - Settle time (velocity is killed after this; 12 = never)","default":2.2,"min":0.3,"max":12,"step":0.05},{"id":"settledDrift","type":"number","label":"Flight - Organic drift once settled (curl noise)","default":1,"min":0,"max":1,"step":0.005},{"id":"maxSpeed","type":"number","label":"Flight - Speed cap","default":26.3,"min":1,"max":40,"step":0.1},{"id":"repelStrength","type":"number","label":"Flight - Push out of the solid shape while it breaks","default":30,"min":0,"max":30,"step":0.1},{"id":"repelRange","type":"number","label":"Flight - Push range outside the surface","default":0.97,"min":0.02,"max":2,"step":0.01},{"id":"repelRadial","type":"number","label":"Flight - Push away from the shape centre (clears pockets and the hole)","default":17.5,"min":0,"max":60,"step":0.5},{"id":"repelRadialRange","type":"number","label":"Flight - Radial push range (object radii)","default":3.3,"min":1,"max":4,"step":0.05},{"id":"tumble","type":"number","label":"Flight - Tumble rate","default":1.05,"min":0,"max":12,"step":0.05},{"id":"returnGroupStagger","type":"number","label":"Assembly - Regional delay (seconds)","default":1.35,"min":0,"max":1.5,"step":0.05,"unit":"s"},{"id":"returnGroupScale","type":"number","label":"Assembly - Region / noise size","default":2.55,"min":0.1,"max":3,"step":0.05,"description":"Larger values form broader connected patches. Noise is evaluated only on retarget."},{"id":"returnGroupSeed","type":"number","label":"Return - Group timing seed","default":60765,"min":0,"max":65535,"step":1},{"id":"formSpread","type":"number","label":"Return - Wave spread (nearest shards leave first, seconds)","default":0,"min":0,"max":4,"step":0.05,"unit":"s"},{"id":"waveReach","type":"number","label":"Return - Distance over which the wave spreads","default":10,"min":0.2,"max":10,"step":0.1},{"id":"formJitter","type":"number","label":"Return - Per-shard stagger (random delay up to this)","default":2.8,"min":0,"max":3,"step":0.05,"unit":"s"},{"id":"formFill","type":"number","label":"Return - Fill-in rate for voxels no shard returns to","default":3,"min":0.05,"max":3,"step":0.05},{"id":"returnSpring","type":"number","label":"Return - Spring stiffness","default":29.9,"min":0.5,"max":40,"step":0.1},{"id":"returnDamping","type":"number","label":"Return - Spring damping","default":1.34,"min":0.2,"max":2,"step":0.01},{"id":"returnRamp","type":"number","label":"Return - Spring ramp-in (seconds until it pulls at full strength)","default":0.45,"min":0,"max":3,"step":0.05},{"id":"returnMaxSpeed","type":"number","label":"Return - Speed cap on the way home","default":60,"min":1,"max":60,"step":0.5},{"id":"alignToSurface","type":"number","label":"Return - Shards turn to lie on the surface (0 = keep tumbling)","default":1,"min":0,"max":1,"step":0.01},{"id":"alignCurve","type":"number","label":"Return - Alignment curve over the flight home (1 linear, higher = later)","default":3.75,"min":0.2,"max":4,"step":0.05},{"id":"healRate","type":"number","label":"Return - Neighbour heal rate","default":3,"min":0.02,"max":3,"step":0.01},{"id":"cellRestore","type":"number","label":"Return - Cell restore rate","default":60,"min":0,"max":60,"step":0.5},{"id":"landedFade","type":"number","label":"Return - Landed shard fade","default":1.65,"min":0,"max":2,"step":0.01},{"id":"refrostTime","type":"number","label":"Return - Refrost time","default":10.6,"min":0.2,"max":12,"step":0.1},{"id":"keyColor","type":"color","label":"Light - Key colour","default":"#f0f7ff"},{"id":"keyIntensity","type":"number","label":"Light - Key intensity","default":5.05,"min":0,"max":12,"step":0.05},{"id":"keyElevation","type":"number","label":"Light - Key elevation","default":42,"min":10,"max":89,"step":0.5,"unit":"deg"},{"id":"keyAzimuth","type":"number","label":"Light - Key azimuth","default":-38,"min":-90,"max":90,"step":0.5,"unit":"deg"},{"id":"keySize","type":"number","label":"Light - Key size (softbox)","default":1.25,"min":0.2,"max":3,"step":0.01},{"id":"fill","type":"number","label":"Light - Fill intensity (hemisphere, diffuse only: barely shows on clear ice)","default":0.18,"min":0,"max":1.5,"step":0.005},{"id":"fillColor","type":"color","label":"Light - Fill sky colour","default":"#cadde9"},{"id":"fillGroundColor","type":"color","label":"Light - Fill ground colour","default":"#172635"},{"id":"rim","type":"number","label":"Light - Rim spot intensity","default":2.5,"min":0,"max":5,"step":0.01},{"id":"rimColor","type":"color","label":"Light - Rim colour","default":"#d9f1ff"},{"id":"rimElevation","type":"number","label":"Light - Rim elevation (0 = straight behind)","default":20,"min":0,"max":89,"step":0.5,"unit":"deg"},{"id":"swayAmplitude","type":"number","label":"Light - Key sway amplitude","default":0,"min":0,"max":0.15,"step":0.001},{"id":"swayPeriod","type":"number","label":"Light - Key sway period","default":35,"min":2,"max":40,"step":0.5,"unit":"s"},{"id":"envSoftbox","type":"number","label":"Light - Environment softbox (the main light on glass)","default":1.1,"min":0,"max":3,"step":0.01},{"id":"envRim","type":"number","label":"Light - Environment rim strip","default":1.4,"min":0,"max":3,"step":0.01},{"id":"envFill","type":"number","label":"Light - Environment front fill","default":0.22,"min":0,"max":1,"step":0.005},{"id":"backdropTop","type":"color","label":"Backdrop - Top colour","default":"#050505"},{"id":"backdropMid","type":"color","label":"Backdrop - Mid colour","default":"#050505"},{"id":"backdropBottom","type":"color","label":"Backdrop - Bottom colour","default":"#050505"},{"id":"backdropCenterX","type":"number","label":"Backdrop - Bloom centre X","default":0.73,"min":0,"max":1,"step":0.005},{"id":"backdropCenterY","type":"number","label":"Backdrop - Bloom centre Y","default":0.22,"min":0,"max":2,"step":0.005},{"id":"backdropRadius","type":"number","label":"Backdrop - Bloom radius","default":0.8,"min":0.1,"max":2,"step":0.005},{"id":"backdropFalloff","type":"number","label":"Backdrop - Bloom falloff","default":0.85,"min":0.5,"max":6,"step":0.01},{"id":"backdropNoise","type":"number","label":"Backdrop - Dither noise","default":0,"min":0,"max":3,"step":0.05},{"id":"bloomThreshold","type":"number","label":"Post - Bloom threshold","default":3,"min":0,"max":3,"step":0.01},{"id":"bloomIntensity","type":"number","label":"Post - Bloom intensity","default":0.04,"min":0,"max":1.5,"step":0.005},{"id":"bloomRadius","type":"number","label":"Post - Bloom radius","default":1,"min":0,"max":1,"step":0.005},{"id":"monochrome","type":"number","label":"Post - Monochrome","default":0.04,"min":0,"max":1,"step":0.01},{"id":"tonemap","type":"enum","label":"Post - Tonemap","default":"aces","options":[{"value":"agx","label":"AgX"},{"value":"aces","label":"ACES"},{"value":"neutral","label":"Neutral"},{"value":"linear","label":"Linear"}]},{"id":"exposure","type":"number","label":"Post - Exposure","default":1,"min":0.1,"max":4,"step":0.01},{"id":"contrast","type":"number","label":"Post - Contrast","default":1.03,"min":0.6,"max":1.6,"step":0.005},{"id":"blackLift","type":"number","label":"Post - Black lift","default":0,"min":0,"max":0.1,"step":0.001},{"id":"vignetteStrength","type":"number","label":"Post - Vignette strength","default":0.14,"min":0,"max":1,"step":0.005},{"id":"vignetteSoftness","type":"number","label":"Post - Vignette softness","default":1.2,"min":0.1,"max":1.5,"step":0.005},{"id":"vignetteRadius","type":"number","label":"Post - Vignette radius","default":1.2,"min":0.2,"max":1.6,"step":0.005},{"id":"grainStrength","type":"number","label":"Post - Film grain","default":0,"min":0,"max":0.15,"step":0.001},{"id":"quality","type":"enum","label":"Performance - Quality profile","default":"full","options":[{"value":"full","label":"Full (baked look; needs a real GPU)"},{"value":"lite","label":"Lite (the source ?lite profile for software WebGPU)"}]},{"id":"upscaler","type":"enum","label":"Performance - Upscaler","default":"fsr1","options":[{"value":"fsr1","label":"FSR 1 (TRAA + EASU/RCAS)"},{"value":"taau","label":"TAAU"},{"value":"bilinear","label":"Bilinear"},{"value":"native","label":"Native (no upscale)"}]},{"id":"renderScale","type":"number","label":"Performance - Scene resolution scale (upscaled to 1080p)","default":1,"min":0.35,"max":1,"step":0.05},{"id":"shapeResolution","type":"enum","label":"Shape voxel resolution","default":"256","options":[{"value":"128","label":"128 — draft"},{"value":"256","label":"256 — high"},{"value":"384","label":"384 — ultra"}],"description":"Resolution of the logo and text distance fields. Rebuilds shapes; higher values increase startup time and memory. Independent of breakup resolution."},{"id":"erosionResolution","type":"enum","label":"Performance - Erosion field resolution (voxels per axis)","default":"96","options":[{"value":"64","label":"64"},{"value":"96","label":"96"},{"value":"128","label":"128"},{"value":"192","label":"192 (baked)"}]},{"id":"particleCount","type":"enum","label":"Performance - Powder particles","default":"100k","options":[{"value":"100k","label":"100k (baked)"},{"value":"250k","label":"250k"},{"value":"500k","label":"500k"},{"value":"1M","label":"1M"}]},{"id":"logoMeshDetail","type":"number","label":"Shape - Logo mesh detail (1-4; higher = finer surface)","default":2,"min":1,"max":4,"step":1},{"id":"deformStrength","type":"number","label":"Geometry - Ice deformation strength (0 = original)","default":0,"min":0,"max":0.08,"step":0.001},{"id":"deformScale","type":"number","label":"Geometry - Noise feature size (larger = broader)","default":0.41,"min":0.001,"max":0.5,"step":0.001},{"id":"deformSeed","type":"number","label":"Geometry - Deformation seed","default":7,"min":0,"max":65535,"step":1},{"id":"rimAzimuth","type":"number","label":"Light - Rim azimuth","default":-146,"min":-180,"max":180,"step":1},{"id":"rimAngle","type":"number","label":"Light - Rim beam angle","default":26,"min":10,"max":89,"step":1},{"id":"rimSize","type":"number","label":"Light - Rim reflection size","default":0.45,"min":0.1,"max":3,"step":0.05},{"id":"fillReflectionStrength","type":"number","label":"Light - Fill reflection strength","default":0.3,"min":0,"max":2,"step":0.01},{"id":"accentCoolIntensity","type":"number","label":"Studio Cool accent - intensity","default":3.71,"min":0,"max":4,"step":0.01},{"id":"accentCoolReflection","type":"number","label":"Studio Cool accent - reflection","default":2.31,"min":0,"max":3,"step":0.01},{"id":"accentCoolElevation","type":"number","label":"Studio Cool accent - elevation","default":63,"min":-85,"max":85,"step":1},{"id":"accentCoolAzimuth","type":"number","label":"Studio Cool accent - azimuth","default":22,"min":-180,"max":180,"step":1},{"id":"accentCoolSize","type":"number","label":"Studio Cool accent - size","default":2.65,"min":0.1,"max":3,"step":0.05},{"id":"accentCoolColor","type":"color","label":"Studio Cool accent - color","default":"#ff5900"},{"id":"accentWarmIntensity","type":"number","label":"Studio Warm accent - intensity","default":2.99,"min":0,"max":4,"step":0.01},{"id":"accentWarmReflection","type":"number","label":"Studio Warm accent - reflection","default":0.34,"min":0,"max":3,"step":0.01},{"id":"accentWarmElevation","type":"number","label":"Studio Warm accent - elevation","default":30,"min":-85,"max":85,"step":1},{"id":"accentWarmAzimuth","type":"number","label":"Studio Warm accent - azimuth","default":-30,"min":-180,"max":180,"step":1},{"id":"accentWarmSize","type":"number","label":"Studio Warm accent - size","default":1.2,"min":0.1,"max":3,"step":0.05},{"id":"accentWarmColor","type":"color","label":"Studio Warm accent - color","default":"#75aaff"},{"id":"returnNoiseAmount","type":"enum","label":"Assembly - Regional pattern","default":"2","options":[{"value":"2","label":"Travelling seam + organic spread"},{"value":"1","label":"Smooth noise regions"},{"value":"0","label":"Original cell groups"}]},{"id":"assemblyFrontDuration","type":"number","label":"Assembly - Growth duration (seconds)","default":3.2,"min":0,"max":6,"step":0.05},{"id":"assemblyOriginX","type":"number","label":"Assembly - Growth start X","default":-0.65,"min":-1,"max":1,"step":0.01},{"id":"assemblyOriginY","type":"number","label":"Assembly - Growth start Y","default":0.55,"min":-1,"max":1,"step":0.01},{"id":"assemblyAngle","type":"number","label":"Assembly - Seam direction (degrees)","default":-35,"min":-180,"max":180,"step":1},{"id":"assemblySpread","type":"number","label":"Assembly - Outward spread vs seam travel","default":0.65,"min":0,"max":1,"step":0.01},{"id":"assemblyFrontNoise","type":"number","label":"Assembly - Growth edge irregularity","default":0.35,"min":0,"max":1,"step":0.01},{"id":"assemblySpeedVariation","type":"number","label":"Assembly - Return speed variation","default":0.65,"min":0,"max":1,"step":0.01},{"id":"assemblyBend","type":"number","label":"Assembly - Approach path bend","default":1.2,"min":0,"max":3,"step":0.05},{"id":"assemblySwirl","type":"number","label":"Assembly - Approach twist","default":1.1,"min":0,"max":3,"step":0.05},{"id":"assemblyLandingVariation","type":"number","label":"Assembly - Landing transition variation","default":0.8,"min":0,"max":1,"step":0.01},{"id":"rendererProfile","type":"enum","label":"Renderer experiment (reload required)","default":"studio","options":[{"value":"original","label":"Original glass + GPU startup"},{"value":"lookup","label":"Original glass + material lookup"},{"value":"mesh","label":"Mesh surface + original glass"},{"value":"studio","label":"Studio glass approximation"},{"value":"matcap","label":"Matcap glass approximation"}]},{"id":"textWidth","type":"number","label":"Type - Headline block width (the mark is 2.6 wide)","default":6.5,"min":1.2,"max":9,"step":0.05},{"id":"textLineHeight","type":"number","label":"Type - Line height","default":0.95,"min":0.7,"max":1.4,"step":0.01,"unit":"em"},{"id":"textDepth","type":"number","label":"Type - Extrusion depth (fraction of the font size)","default":0.16,"min":0.05,"max":0.8,"step":0.01},{"id":"textBevel","type":"number","label":"Type - Bevel (fraction of the font size)","default":0.04,"min":0,"max":0.12,"step":0.005},{"id":"textCorner","type":"number","label":"Type - Corner rounding (fraction of the font size)","default":0.008,"min":0,"max":0.06,"step":0.002},{"id":"textMeshDetail","type":"number","label":"Type - Text mesh detail (1-4; higher = smoother deformation)","default":4,"min":1,"max":4,"step":1}]'
+      data-composition-id="frost-sequence-rig"
+      data-start="0"
+      data-duration="22.5"
+      data-width="1920"
+      data-height="1080"
+      data-requires-webgpu=""
+    >
+      <div
+        data-hf-id="hf-5a64"
+        id="logo-position"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="1"
+        data-name="Logo · Position XYZ"
+        aria-label="Logo · Position XYZ"
+      ></div>
+      <div
+        data-hf-id="hf-fjc6"
+        id="logo-rotation"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="2"
+        data-name="Logo · Rotation XYZ"
+        aria-label="Logo · Rotation XYZ"
+      ></div>
+      <div
+        data-hf-id="hf-speh"
+        id="logo-breakup"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="3"
+        data-name="Logo · Breakup %"
+        aria-label="Logo · Breakup %"
+      ></div>
+      <div
+        data-hf-id="hf-k8ny"
+        id="logo-assembly"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="4"
+        data-name="Logo · Assembly %"
+        aria-label="Logo · Assembly %"
+      ></div>
+      <div
+        data-hf-id="hf-uxt2"
+        id="headline1-position"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="5"
+        data-name="First text · Position XYZ"
+        aria-label="First text · Position XYZ"
+      ></div>
+      <div
+        data-hf-id="hf-y4rq"
+        id="headline1-rotation"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="6"
+        data-name="First text · Rotation XYZ"
+        aria-label="First text · Rotation XYZ"
+      ></div>
+      <div
+        data-hf-id="hf-35xb"
+        id="headline1-breakup"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="7"
+        data-name="First text · Breakup %"
+        aria-label="First text · Breakup %"
+      ></div>
+      <div
+        data-hf-id="hf-4hde"
+        id="headline1-assembly"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="8"
+        data-name="First text · Assembly %"
+        aria-label="First text · Assembly %"
+      ></div>
+      <div
+        data-hf-id="hf-tyaz"
+        id="headline2-position"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="9"
+        data-name="Second text · Position XYZ"
+        aria-label="Second text · Position XYZ"
+      ></div>
+      <div
+        data-hf-id="hf-2lbw"
+        id="headline2-rotation"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="10"
+        data-name="Second text · Rotation XYZ"
+        aria-label="Second text · Rotation XYZ"
+      ></div>
+      <div
+        data-hf-id="hf-xk1d"
+        id="headline2-breakup"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="11"
+        data-name="Second text · Breakup %"
+        aria-label="Second text · Breakup %"
+      ></div>
+      <div
+        data-hf-id="hf-9dhs"
+        id="headline2-assembly"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="12"
+        data-name="Second text · Assembly %"
+        aria-label="Second text · Assembly %"
+      ></div>
+      <div
+        data-hf-id="hf-b04i"
+        id="camera-orbit"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="14"
+        data-name="Camera · Orbit Y"
+        aria-label="Camera · Orbit Y"
+      ></div>
+      <div
+        data-hf-id="hf-flyz"
+        id="scene-fade"
+        class="clip"
+        data-start="0"
+        data-duration="22.5"
+        data-track-index="13"
+        data-name="Scene · Fade out %"
+        aria-label="Scene · Fade out %"
+      ></div>
+    </div>
+    <script>
+      (() => {
+        "use strict";
+        // Studio reruns composition scripts in the same document after timeline edits.
+        window.__frostInstance?.dispose();
+        const W = 1920,
+          H = 1080;
+        const schema = [
+          {
+            id: "materialBaseColor",
+            type: "color",
+            label: "Base color",
+            default: "#ffffff",
+            materialSection: "Base",
+            materialScope: "object",
+          },
+          {
+            id: "baseRoughness",
+            type: "number",
+            label: "Base roughness",
+            default: 0.31,
+            min: 0,
+            max: 0.5,
+            step: 0.005,
+            materialSection: "Base",
+            materialScope: "object",
+          },
+          {
+            id: "materialTransmission",
+            type: "boolean",
+            label: "Transmission",
+            default: true,
+            materialSection: "Transmission",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "materialBacklight",
+            type: "number",
+            label: "Backlight through ice",
+            default: 0.27,
+            min: 0,
+            max: 2,
+            step: 0.01,
+            materialSection: "Transmission",
+            materialScope: "object",
+          },
+          {
+            id: "ior",
+            type: "number",
+            label: "Index of refraction",
+            default: 1.675,
+            min: 1,
+            max: 2,
+            step: 0.005,
+            materialSection: "Transmission",
+            materialScope: "object",
+          },
+          {
+            id: "thicknessScale",
+            type: "number",
+            label: "Thickness scale",
+            default: 2.04,
+            min: 0.1,
+            max: 3,
+            step: 0.01,
+            materialSection: "Transmission",
+            materialScope: "object",
+          },
+          {
+            id: "materialAbsorption",
+            type: "boolean",
+            label: "Absorption / tint",
+            default: true,
+            materialSection: "Absorption / tint",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: ["materialTransmission"],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "attenuationColor",
+            type: "color",
+            label: "Attenuation colour (white = no absorption, clear glass)",
+            default: "#d5f4ff",
+            materialSection: "Absorption / tint",
+            materialScope: "object",
+          },
+          {
+            id: "attenuationDistance",
+            type: "number",
+            label: "Attenuation distance",
+            default: 6.54,
+            min: 0.05,
+            max: 12,
+            step: 0.01,
+            materialSection: "Absorption / tint",
+            materialScope: "object",
+          },
+          {
+            id: "materialDispersion",
+            type: "boolean",
+            label: "Dispersion",
+            default: false,
+            materialSection: "Dispersion",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: ["materialTransmission"],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "dispersion",
+            type: "number",
+            label: "Dispersion (0 = off; on/off reloads)",
+            default: 0.12,
+            min: 0,
+            max: 0.3,
+            step: 0.005,
+            materialSection: "Dispersion",
+            materialScope: "object",
+          },
+          {
+            id: "materialReflections",
+            type: "boolean",
+            label: "Reflections",
+            default: true,
+            materialSection: "Reflections",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "envIntensity",
+            type: "number",
+            label: "Environment intensity",
+            default: 2.04,
+            min: 0,
+            max: 3,
+            step: 0.01,
+            materialSection: "Reflections",
+            materialScope: "object",
+          },
+          {
+            id: "specularIntensity",
+            type: "number",
+            label: "Specular intensity",
+            default: 1.44,
+            min: 0,
+            max: 2,
+            step: 0.01,
+            materialSection: "Reflections",
+            materialScope: "object",
+          },
+          {
+            id: "materialFrost",
+            type: "boolean",
+            label: "Frost",
+            default: true,
+            materialSection: "Frost",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "materialInteriorFrost",
+            type: "number",
+            label: "Uniform frost",
+            default: 0,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Frost",
+            materialScope: "object",
+          },
+          {
+            id: "frostScale",
+            type: "number",
+            label: "Scale",
+            default: 0.7,
+            min: 0.2,
+            max: 6,
+            step: 0.05,
+            materialSection: "Frost",
+            materialScope: "object",
+          },
+          {
+            id: "frostThreshold",
+            type: "number",
+            label: "Threshold (1 = no frost, clear glass)",
+            default: 0.62,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Frost",
+            materialScope: "object",
+          },
+          {
+            id: "frostSoftness",
+            type: "number",
+            label: "Softness",
+            default: 0.24,
+            min: 0.01,
+            max: 1,
+            step: 0.01,
+            materialSection: "Frost",
+            materialScope: "object",
+          },
+          {
+            id: "frostRoughness",
+            type: "number",
+            label: "Roughness",
+            default: 0.73,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Frost",
+            materialScope: "object",
+          },
+          {
+            id: "frostDiffuse",
+            type: "number",
+            label: "Diffuse (how much light frosted areas catch)",
+            default: 0.11,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Frost",
+            materialScope: "object",
+          },
+          {
+            id: "materialSurfaceBumps",
+            type: "boolean",
+            label: "Object surface bumps / crack notches",
+            default: false,
+            materialSection: "Surface bumps",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description:
+              "Disable crystal, grain, micro, ripple and crack normal perturbations and crack notches on the solid. Preserves their settings and the shard finish.",
+          },
+          {
+            id: "materialCrystals",
+            type: "boolean",
+            label: "Crystal bumps",
+            default: true,
+            materialSection: "Crystal bumps",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "crystalBump",
+            type: "number",
+            label: "Crystal bump",
+            default: 0.01,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Crystal bumps",
+            materialScope: "object",
+          },
+          {
+            id: "crystalScale",
+            type: "number",
+            label: "Crystal scale",
+            default: 4,
+            min: 4,
+            max: 80,
+            step: 1,
+            materialSection: "Crystal bumps",
+            materialScope: "object",
+          },
+          {
+            id: "materialGrain",
+            type: "boolean",
+            label: "Grain bumps",
+            default: true,
+            materialSection: "Grain bumps",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "materialGrainAmount",
+            type: "number",
+            label: "Grain strength",
+            default: 0.47,
+            min: 0,
+            max: 2,
+            step: 0.01,
+            materialSection: "Grain bumps",
+            materialScope: "object",
+          },
+          {
+            id: "materialGrainScale",
+            type: "number",
+            label: "Grain scale",
+            default: 150,
+            min: 1,
+            max: 150,
+            step: 1,
+            materialSection: "Grain bumps",
+            materialScope: "object",
+          },
+          {
+            id: "materialCutNormals",
+            type: "boolean",
+            label: "Fracture normals",
+            default: true,
+            materialSection: "Fracture normals",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "materialMicro",
+            type: "boolean",
+            label: "Micro bumps",
+            default: true,
+            materialSection: "Micro bumps",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "microBump",
+            type: "number",
+            label: "Micro bump",
+            default: 0.445,
+            min: 0,
+            max: 1,
+            step: 0.005,
+            materialSection: "Micro bumps",
+            materialScope: "object",
+          },
+          {
+            id: "microScale",
+            type: "number",
+            label: "Micro scale",
+            default: 10,
+            min: 10,
+            max: 200,
+            step: 1,
+            materialSection: "Micro bumps",
+            materialScope: "object",
+          },
+          {
+            id: "microCoverage",
+            type: "number",
+            label: "Micro coverage",
+            default: 0.25,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Micro bumps",
+            materialScope: "object",
+          },
+          {
+            id: "bumpMaskScale",
+            type: "number",
+            label: "Mask scale",
+            default: 1.45,
+            min: 0.1,
+            max: 6,
+            step: 0.05,
+            materialSection: "Micro bumps",
+            materialScope: "object",
+          },
+          {
+            id: "materialRipples",
+            type: "boolean",
+            label: "Ripples",
+            default: true,
+            materialSection: "Ripples",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "rippleBump",
+            type: "number",
+            label: "Ripple bump",
+            default: 0.22,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Ripples",
+            materialScope: "object",
+          },
+          {
+            id: "rippleScale",
+            type: "number",
+            label: "Ripple scale",
+            default: 23,
+            min: 2,
+            max: 30,
+            step: 0.5,
+            materialSection: "Ripples",
+            materialScope: "object",
+          },
+          {
+            id: "materialSmudges",
+            type: "boolean",
+            label: "Smudges",
+            default: true,
+            materialSection: "Smudges",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "smudgeAmount",
+            type: "number",
+            label: "Amount",
+            default: 0.78,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Smudges",
+            materialScope: "object",
+          },
+          {
+            id: "smudgeCoverage",
+            type: "number",
+            label: "Coverage",
+            default: 0.58,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Smudges",
+            materialScope: "object",
+          },
+          {
+            id: "smudgeMaskScale",
+            type: "number",
+            label: "Mask scale",
+            default: 1.85,
+            min: 0.1,
+            max: 6,
+            step: 0.05,
+            materialSection: "Smudges",
+            materialScope: "object",
+          },
+          {
+            id: "smudgeAnisotropy",
+            type: "number",
+            label: "Anisotropy",
+            default: 16.5,
+            min: 1,
+            max: 20,
+            step: 0.5,
+            materialSection: "Smudges",
+            materialScope: "object",
+          },
+          {
+            id: "smudgeRoughness",
+            type: "number",
+            label: "Roughness",
+            default: 0.75,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Smudges",
+            materialScope: "object",
+          },
+          {
+            id: "smudgeWhiteness",
+            type: "number",
+            label: "Whiteness",
+            default: 0.035,
+            min: 0,
+            max: 0.5,
+            step: 0.005,
+            materialSection: "Smudges",
+            materialScope: "object",
+          },
+          {
+            id: "smudgeScale",
+            type: "number",
+            label: "Scale",
+            default: 1.3,
+            min: 0.5,
+            max: 10,
+            step: 0.1,
+            materialSection: "Smudges",
+            materialScope: "object",
+          },
+          {
+            id: "materialCracks",
+            type: "boolean",
+            label: "Cracks",
+            default: true,
+            materialSection: "Cracks",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "crackLargeScale",
+            type: "number",
+            label: "Large scale",
+            default: 2.45,
+            min: 0.3,
+            max: 8,
+            step: 0.05,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackWarp",
+            type: "number",
+            label: "Warp",
+            default: 0.22,
+            min: 0,
+            max: 1.5,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackCoverage",
+            type: "number",
+            label: "Coverage",
+            default: 0.19,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackRegionScale",
+            type: "number",
+            label: "Region scale",
+            default: 1.8,
+            min: 0.1,
+            max: 4,
+            step: 0.05,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackRegionCoverage",
+            type: "number",
+            label: "Region coverage",
+            default: 0.6,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "veinScale",
+            type: "number",
+            label: "Vein scale",
+            default: 8,
+            min: 1,
+            max: 20,
+            step: 0.25,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "veinContrast",
+            type: "number",
+            label: "Vein contrast",
+            default: 0.55,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackWidth",
+            type: "number",
+            label: "Width",
+            default: 0.0025,
+            min: 0.0005,
+            max: 0.02,
+            step: 0.0005,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackBrightness",
+            type: "number",
+            label: "Brightness",
+            default: 0.65,
+            min: 0,
+            max: 3,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackDarkness",
+            type: "number",
+            label: "Darkness",
+            default: 0.69,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackRefraction",
+            type: "number",
+            label: "Refraction",
+            default: 0.076,
+            min: 0,
+            max: 0.1,
+            step: 0.001,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "crackSurfaceStrength",
+            type: "number",
+            label: "Surface strength",
+            default: 0.16,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "fineScale",
+            type: "number",
+            label: "Fine scale",
+            default: 18.4,
+            min: 2,
+            max: 20,
+            step: 0.1,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "fineAmount",
+            type: "number",
+            label: "Fine amount",
+            default: 0.52,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "fineCoverage",
+            type: "number",
+            label: "Fine coverage",
+            default: 1,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Cracks",
+            materialScope: "object",
+          },
+          {
+            id: "materialScatter",
+            type: "boolean",
+            label: "Internal scattering",
+            default: true,
+            materialSection: "Internal scattering",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "materialInclusionScale",
+            type: "number",
+            label: "Inclusion scale",
+            default: 0.05,
+            min: 0.05,
+            max: 3,
+            step: 0.01,
+            materialSection: "Internal scattering",
+            materialScope: "object",
+          },
+          {
+            id: "materialInclusionAmount",
+            type: "number",
+            label: "Photographic inclusions",
+            default: 2,
+            min: 0,
+            max: 2,
+            step: 0.01,
+            materialSection: "Internal scattering",
+            materialScope: "object",
+          },
+          {
+            id: "interiorScatter",
+            type: "number",
+            label: "Interior scatter",
+            default: 0.09,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Internal scattering",
+            materialScope: "object",
+          },
+          {
+            id: "materialClearcoat",
+            type: "boolean",
+            label: "Clearcoat",
+            default: true,
+            materialSection: "Clearcoat",
+            materialScope: "object",
+            materialToggle: true,
+            materialRequires: ["materialReflections"],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "clearcoat",
+            type: "number",
+            label: "Clearcoat",
+            default: 0,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Clearcoat",
+            materialScope: "object",
+          },
+          {
+            id: "clearcoatRoughness",
+            type: "number",
+            label: "Clearcoat roughness",
+            default: 0,
+            min: 0,
+            max: 1,
+            step: 0.005,
+            materialSection: "Clearcoat",
+            materialScope: "object",
+          },
+          {
+            id: "materialShardNormals",
+            type: "boolean",
+            label: "Shard normals",
+            default: true,
+            materialSection: "Shard normals",
+            materialScope: "shards",
+            materialToggle: true,
+            materialRequires: [],
+            description: "Switch off to remove this feature without losing its settings.",
+          },
+          {
+            id: "spriteNormal",
+            type: "number",
+            label: "Sprite normal strength",
+            default: 0.15,
+            min: 0,
+            max: 2.5,
+            step: 0.05,
+            materialSection: "Shard normals",
+            materialScope: "shards",
+          },
+          {
+            id: "materialShardFrost",
+            type: "boolean",
+            label: "Shard frost",
+            default: true,
+            materialSection: "Shard frost",
+            materialScope: "shards",
+            materialToggle: true,
+            materialRequires: [],
+            description:
+              "Uses the shared material settings from Logo & text. This switch enables them on shards.",
+          },
+          {
+            id: "materialShardTransmission",
+            type: "boolean",
+            label: "Shard transparency",
+            default: true,
+            materialSection: "Shard transparency",
+            materialScope: "shards",
+            materialToggle: true,
+            materialRequires: [],
+            description:
+              "Uses the shared material settings from Logo & text. This switch enables them on shards.",
+          },
+          {
+            id: "spriteSeeThrough",
+            type: "number",
+            label: "See-through (0 = off; on/off reloads)",
+            default: 1,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            materialSection: "Shard transparency",
+            materialScope: "shards",
+          },
+          {
+            id: "materialShardReflections",
+            type: "boolean",
+            label: "Shard reflections",
+            default: true,
+            materialSection: "Shard reflections",
+            materialScope: "shards",
+            materialToggle: true,
+            materialRequires: [],
+            description:
+              "Uses the shared material settings from Logo & text. This switch enables them on shards.",
+          },
+          {
+            id: "minPixelSize",
+            type: "number",
+            label: "Minimum pixel size",
+            default: 0.25,
+            min: 0,
+            max: 4,
+            step: 0.05,
+            materialSection: "Shard shape",
+            materialScope: "shards",
+          },
+          {
+            id: "grainSizeMultiplier",
+            type: "number",
+            label: "Grain size multiplier",
+            default: 1.05,
+            min: 0.2,
+            max: 4,
+            step: 0.05,
+            materialSection: "Shard shape",
+            materialScope: "shards",
+          },
+          {
+            id: "spriteSize",
+            type: "number",
+            label: "Sprite size",
+            default: 1.9,
+            min: 0.3,
+            max: 4,
+            step: 0.05,
+            materialSection: "Shard shape",
+            materialScope: "shards",
+          },
+          {
+            id: "spriteTilt",
+            type: "number",
+            label: "Sprite tilt",
+            default: 12,
+            min: 0,
+            max: 70,
+            step: 1,
+            unit: "deg",
+            materialSection: "Shard shape",
+            materialScope: "shards",
+          },
+          {
+            id: "spriteAlphaCut",
+            type: "number",
+            label: "Alpha cut",
+            default: 0.6,
+            min: 0.05,
+            max: 0.6,
+            step: 0.01,
+            materialSection: "Shard shape",
+            materialScope: "shards",
+          },
+          {
+            id: "headline1",
+            type: "string",
+            label: "Copy - Headline 1 (| = line break)",
+            default: "Hard to|break.",
+            maxLength: 60,
+          },
+          {
+            id: "headline2",
+            type: "string",
+            label: "Copy - Headline 2 (| = line break)",
+            default: "Easy to|remember.",
+            maxLength: 60,
+          },
+          {
+            id: "textWidth",
+            type: "number",
+            label: "Type - Headline block width (the mark is 2.6 wide)",
+            default: 6.5,
+            min: 1.2,
+            max: 9,
+            step: 0.05,
+          },
+          {
+            id: "fontWeight",
+            type: "enum",
+            label: "Type - Weight (Geist)",
+            default: "600",
+            options: [
+              { value: "400", label: "Regular 400" },
+              { value: "600", label: "SemiBold 600" },
+              { value: "700", label: "Bold 700" },
+            ],
+          },
+          {
+            id: "letterSpacing",
+            type: "number",
+            label: "Type - Letter spacing",
+            default: 0.01,
+            min: -0.1,
+            max: 0.4,
+            step: 0.005,
+            unit: "em",
+          },
+          {
+            id: "textLineHeight",
+            type: "number",
+            label: "Type - Line height",
+            default: 0.95,
+            min: 0.7,
+            max: 1.4,
+            step: 0.01,
+            unit: "em",
+          },
+          {
+            id: "textDepth",
+            type: "number",
+            label: "Type - Extrusion depth (fraction of the font size)",
+            default: 0.16,
+            min: 0.05,
+            max: 0.8,
+            step: 0.01,
+          },
+          {
+            id: "textBevel",
+            type: "number",
+            label: "Type - Bevel (fraction of the font size)",
+            default: 0.04,
+            min: 0,
+            max: 0.12,
+            step: 0.005,
+          },
+          {
+            id: "textCorner",
+            type: "number",
+            label: "Type - Corner rounding (fraction of the font size)",
+            default: 0.008,
+            min: 0,
+            max: 0.06,
+            step: 0.002,
+          },
+          {
+            id: "textMeshDetail",
+            type: "number",
+            label: "Type - Text mesh detail (1-4; higher = smoother deformation)",
+            default: 4,
+            min: 1,
+            max: 4,
+            step: 1,
+          },
+          {
+            id: "logoBreakAt",
+            type: "number",
+            label: "Timing - Mark breaks",
+            default: 1.5,
+            min: 0.3,
+            max: 4,
+            step: 0.1,
+            unit: "s",
+          },
+          {
+            id: "formHeadline1At",
+            type: "number",
+            label: "Timing - Shards form headline 1",
+            default: 3.8,
+            min: 2,
+            max: 10,
+            step: 0.1,
+            unit: "s",
+          },
+          {
+            id: "headline1BreakAt",
+            type: "number",
+            label: "Timing - Headline 1 breaks",
+            default: 10.375,
+            min: 6,
+            max: 18,
+            step: 0.025,
+            unit: "s",
+          },
+          {
+            id: "formHeadline2At",
+            type: "number",
+            label: "Timing - Shards form headline 2",
+            default: 12.675,
+            min: 9,
+            max: 22,
+            step: 0.025,
+            unit: "s",
+          },
+          {
+            id: "headline2BreakAt",
+            type: "number",
+            label: "Timing - Headline 2 breaks",
+            default: 18.5,
+            min: 15,
+            max: 27,
+            step: 0.025,
+            unit: "s",
+          },
+          {
+            id: "fadeOutAt",
+            type: "number",
+            label: "Timing - Shards fade to empty",
+            default: 22,
+            min: 17,
+            max: 29.5,
+            step: 0.025,
+            unit: "s",
+          },
+          {
+            id: "turnYaw",
+            type: "number",
+            label: "Motion - Mark turn (yaw)",
+            default: 180,
+            min: -360,
+            max: 360,
+            step: 5,
+            unit: "deg",
+          },
+          {
+            id: "turnPitch",
+            type: "number",
+            label: "Motion - Mark tilt toward the camera (pitch)",
+            default: -41,
+            min: -90,
+            max: 90,
+            step: 1,
+            unit: "deg",
+          },
+          {
+            id: "approach",
+            type: "number",
+            label: "Motion - How close the mark comes",
+            default: 7,
+            min: 0,
+            max: 7,
+            step: 0.1,
+          },
+          {
+            id: "turnYaw2",
+            type: "number",
+            label: "Motion - Headline 1 turn (yaw; same sign as the mark turn keeps one direction)",
+            default: 160,
+            min: -360,
+            max: 360,
+            step: 5,
+            unit: "deg",
+          },
+          {
+            id: "turnPitch2",
+            type: "number",
+            label: "Motion - Headline 1 tilt (pitch)",
+            default: 35,
+            min: -90,
+            max: 90,
+            step: 1,
+            unit: "deg",
+          },
+          {
+            id: "retreat",
+            type: "number",
+            label: "Motion - How far headline 1 backs off",
+            default: 3.5,
+            min: 0,
+            max: 8,
+            step: 0.1,
+          },
+          {
+            id: "zoomIn",
+            type: "number",
+            label: "Motion - Extra approach for the last break (shards fly past the camera)",
+            default: 5,
+            min: 0,
+            max: 8,
+            step: 0.1,
+          },
+          {
+            id: "finalYaw",
+            type: "number",
+            label: "Motion - Last break turn (yaw)",
+            default: 40,
+            min: -180,
+            max: 180,
+            step: 5,
+            unit: "deg",
+          },
+          {
+            id: "finalPitch",
+            type: "number",
+            label: "Motion - Last break tilt (pitch)",
+            default: -20,
+            min: -90,
+            max: 90,
+            step: 1,
+            unit: "deg",
+          },
+          {
+            id: "driftYaw",
+            type: "number",
+            label: "Motion - Constant slow turn (never stands still)",
+            default: 2,
+            min: -30,
+            max: 30,
+            step: 0.5,
+            unit: "deg/s",
+          },
+          {
+            id: "driftSway",
+            type: "number",
+            label: "Motion - Slow tilt sway and depth bob amplitude",
+            default: 4,
+            min: 0,
+            max: 20,
+            step: 0.5,
+            unit: "deg",
+          },
+          {
+            id: "idleYaw",
+            type: "number",
+            label: "Motion - Idle turn back and forth while a headline holds (amplitude)",
+            default: 6,
+            min: 0,
+            max: 40,
+            step: 0.5,
+            unit: "deg",
+          },
+          {
+            id: "shardAmount",
+            type: "number",
+            label: "Shards - Visible fraction of the broken volume (Powder amount)",
+            default: 0.44,
+            min: 0.02,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "strayDust",
+            type: "number",
+            label: "Shards - Ambient dust motes around the object (the experiment had 40)",
+            default: 24,
+            min: 0,
+            max: 200,
+            step: 1,
+          },
+          {
+            id: "sliceRadius",
+            type: "number",
+            label: "Break - First (diagonal) slice radius",
+            default: 0.6,
+            min: 0.05,
+            max: 1.5,
+            step: 0.01,
+          },
+          {
+            id: "sliceStrength",
+            type: "number",
+            label: "Break - First slice strength",
+            default: 21.5,
+            min: 1,
+            max: 40,
+            step: 0.5,
+          },
+          {
+            id: "breakDuration",
+            type: "number",
+            label: "Break - Time for the follow-up slices to cross the shape",
+            default: 2,
+            min: 0.4,
+            max: 4,
+            step: 0.1,
+            unit: "s",
+          },
+          {
+            id: "finalEjectBoost",
+            type: "number",
+            label: "Break - Last break: eject speed and speed cap multiplier",
+            default: 2.5,
+            min: 1,
+            max: 6,
+            step: 0.1,
+          },
+          {
+            id: "shatterRadius",
+            type: "number",
+            label: "Break - Follow-up slice radius (sets their spacing too)",
+            default: 0.45,
+            min: 0.1,
+            max: 1.5,
+            step: 0.01,
+          },
+          {
+            id: "shatterStrength",
+            type: "number",
+            label: "Break - Follow-up slice strength",
+            default: 32.5,
+            min: 1,
+            max: 40,
+            step: 0.5,
+          },
+          {
+            id: "cutThreshold",
+            type: "number",
+            label: "Tune break - Cut threshold (surface gone above this erosion)",
+            default: 0.3,
+            min: 0.3,
+            max: 0.98,
+            step: 0.01,
+          },
+          {
+            id: "cutSoftness",
+            type: "number",
+            label: "Tune break - Cut softness",
+            default: 0.19,
+            min: 0.005,
+            max: 0.3,
+            step: 0.005,
+          },
+          {
+            id: "edgeWidth",
+            type: "number",
+            label: "Tune break - Crumbly edge band width",
+            default: 0.19,
+            min: 0.05,
+            max: 0.8,
+            step: 0.01,
+          },
+          {
+            id: "edgeInset",
+            type: "number",
+            label: "Tune break - Edge inset",
+            default: 0,
+            min: 0,
+            max: 0.3,
+            step: 0.005,
+          },
+          {
+            id: "brushSoftness",
+            type: "number",
+            label: "Tune break - Brush softness (edge falloff of a slice)",
+            default: 0.15,
+            min: 0.02,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "brushNoise",
+            type: "number",
+            label: "Tune break - Brush noise (ragged boundary)",
+            default: 0.4,
+            min: 0,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "crumbleRate",
+            type: "number",
+            label: "Tune break - Crumble rate along cracks (high = the whole shape goes at once)",
+            default: 4.3,
+            min: 0,
+            max: 6,
+            step: 0.05,
+          },
+          {
+            id: "crumbleCrackBias",
+            type: "number",
+            label: "Tune break - Crumble crack bias",
+            default: 5.1,
+            min: 0,
+            max: 6,
+            step: 0.05,
+          },
+          {
+            id: "crumbleDuration",
+            type: "number",
+            label: "Tune break - Crumble duration after a stroke",
+            default: 0.35,
+            min: 0,
+            max: 2,
+            step: 0.01,
+          },
+          {
+            id: "ejectSpeed",
+            type: "number",
+            label: "Flight - Eject speed",
+            default: 0.91,
+            min: 0,
+            max: 4,
+            step: 0.01,
+          },
+          {
+            id: "ejectSpread",
+            type: "number",
+            label: "Flight - Eject spread along the normal",
+            default: 0.48,
+            min: 0,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "ejectTurbulence",
+            type: "number",
+            label: "Flight - Eject turbulence",
+            default: 4,
+            min: 0,
+            max: 4,
+            step: 0.01,
+          },
+          {
+            id: "drag",
+            type: "number",
+            label: "Flight - Drag (speed decays by this per second)",
+            default: 0,
+            min: 0,
+            max: 8,
+            step: 0.01,
+          },
+          {
+            id: "gravity",
+            type: "number",
+            label: "Flight - Gravity (0 = shards never fall)",
+            default: 0,
+            min: 0,
+            max: 2,
+            step: 0.005,
+          },
+          {
+            id: "turbulence",
+            type: "number",
+            label: "Flight - Turbulence strength (curl noise)",
+            default: 4,
+            min: 0,
+            max: 4,
+            step: 0.01,
+          },
+          {
+            id: "turbulenceScale",
+            type: "number",
+            label: "Flight - Turbulence scale",
+            default: 2.65,
+            min: 0.2,
+            max: 8,
+            step: 0.05,
+          },
+          {
+            id: "turbulenceDecay",
+            type: "number",
+            label: "Flight - Turbulence decay with age (low = keeps swirling)",
+            default: 3.65,
+            min: 0.05,
+            max: 4,
+            step: 0.01,
+          },
+          {
+            id: "clumpCohesion",
+            type: "number",
+            label: "Flight - Clump cohesion (shards orbit a leader; 0 = none)",
+            default: 0.9,
+            min: 0,
+            max: 10,
+            step: 0.05,
+          },
+          {
+            id: "followObject",
+            type: "number",
+            label: "Flight - Shards follow the object motion for (s; 30 = whole flight)",
+            default: 30,
+            min: 0,
+            max: 30,
+            step: 0.5,
+            unit: "s",
+          },
+          {
+            id: "settleTime",
+            type: "number",
+            label: "Flight - Settle time (velocity is killed after this; 12 = never)",
+            default: 2.2,
+            min: 0.3,
+            max: 12,
+            step: 0.05,
+          },
+          {
+            id: "settledDrift",
+            type: "number",
+            label: "Flight - Organic drift once settled (curl noise)",
+            default: 1,
+            min: 0,
+            max: 1,
+            step: 0.005,
+          },
+          {
+            id: "maxSpeed",
+            type: "number",
+            label: "Flight - Speed cap",
+            default: 26.3,
+            min: 1,
+            max: 40,
+            step: 0.1,
+          },
+          {
+            id: "repelStrength",
+            type: "number",
+            label: "Flight - Push out of the solid shape while it breaks",
+            default: 30,
+            min: 0,
+            max: 30,
+            step: 0.1,
+          },
+          {
+            id: "repelRange",
+            type: "number",
+            label: "Flight - Push range outside the surface",
+            default: 0.97,
+            min: 0.02,
+            max: 2,
+            step: 0.01,
+          },
+          {
+            id: "repelRadial",
+            type: "number",
+            label: "Flight - Push away from the shape centre (clears pockets and the hole)",
+            default: 17.5,
+            min: 0,
+            max: 60,
+            step: 0.5,
+          },
+          {
+            id: "repelRadialRange",
+            type: "number",
+            label: "Flight - Radial push range (object radii)",
+            default: 3.3,
+            min: 1,
+            max: 4,
+            step: 0.05,
+          },
+          {
+            id: "tumble",
+            type: "number",
+            label: "Flight - Tumble rate",
+            default: 1.05,
+            min: 0,
+            max: 12,
+            step: 0.05,
+          },
+          {
+            id: "returnGroupStagger",
+            type: "number",
+            label: "Assembly - Regional delay (seconds)",
+            default: 1.35,
+            min: 0,
+            max: 1.5,
+            step: 0.05,
+            unit: "s",
+          },
+          {
+            id: "returnGroupScale",
+            type: "number",
+            label: "Assembly - Region / noise size",
+            default: 2.55,
+            min: 0.1,
+            max: 3,
+            step: 0.05,
+            description:
+              "Larger values form broader connected patches. Noise is evaluated only on retarget.",
+          },
+          {
+            id: "returnGroupSeed",
+            type: "number",
+            label: "Return - Group timing seed",
+            default: 60765,
+            min: 0,
+            max: 65535,
+            step: 1,
+          },
+          {
+            id: "formSpread",
+            type: "number",
+            label: "Return - Wave spread (nearest shards leave first, seconds)",
+            default: 0,
+            min: 0,
+            max: 4,
+            step: 0.05,
+            unit: "s",
+          },
+          {
+            id: "waveReach",
+            type: "number",
+            label: "Return - Distance over which the wave spreads",
+            default: 10,
+            min: 0.2,
+            max: 10,
+            step: 0.1,
+          },
+          {
+            id: "formJitter",
+            type: "number",
+            label: "Return - Per-shard stagger (random delay up to this)",
+            default: 2.8,
+            min: 0,
+            max: 3,
+            step: 0.05,
+            unit: "s",
+          },
+          {
+            id: "formFill",
+            type: "number",
+            label: "Return - Fill-in rate for voxels no shard returns to",
+            default: 3,
+            min: 0.05,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "returnSpring",
+            type: "number",
+            label: "Return - Spring stiffness",
+            default: 29.9,
+            min: 0.5,
+            max: 40,
+            step: 0.1,
+          },
+          {
+            id: "returnDamping",
+            type: "number",
+            label: "Return - Spring damping",
+            default: 1.34,
+            min: 0.2,
+            max: 2,
+            step: 0.01,
+          },
+          {
+            id: "returnRamp",
+            type: "number",
+            label: "Return - Spring ramp-in (seconds until it pulls at full strength)",
+            default: 0.45,
+            min: 0,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "returnMaxSpeed",
+            type: "number",
+            label: "Return - Speed cap on the way home",
+            default: 60,
+            min: 1,
+            max: 60,
+            step: 0.5,
+          },
+          {
+            id: "alignToSurface",
+            type: "number",
+            label: "Return - Shards turn to lie on the surface (0 = keep tumbling)",
+            default: 1,
+            min: 0,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "alignCurve",
+            type: "number",
+            label: "Return - Alignment curve over the flight home (1 linear, higher = later)",
+            default: 3.75,
+            min: 0.2,
+            max: 4,
+            step: 0.05,
+          },
+          {
+            id: "healRate",
+            type: "number",
+            label: "Return - Neighbour heal rate",
+            default: 3,
+            min: 0.02,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "cellRestore",
+            type: "number",
+            label: "Return - Cell restore rate",
+            default: 60,
+            min: 0,
+            max: 60,
+            step: 0.5,
+          },
+          {
+            id: "landedFade",
+            type: "number",
+            label: "Return - Landed shard fade",
+            default: 1.65,
+            min: 0,
+            max: 2,
+            step: 0.01,
+          },
+          {
+            id: "refrostTime",
+            type: "number",
+            label: "Return - Refrost time",
+            default: 10.6,
+            min: 0.2,
+            max: 12,
+            step: 0.1,
+          },
+          { id: "keyColor", type: "color", label: "Light - Key colour", default: "#f0f7ff" },
+          {
+            id: "keyIntensity",
+            type: "number",
+            label: "Light - Key intensity",
+            default: 5.05,
+            min: 0,
+            max: 12,
+            step: 0.05,
+          },
+          {
+            id: "keyElevation",
+            type: "number",
+            label: "Light - Key elevation",
+            default: 42,
+            min: 10,
+            max: 89,
+            step: 0.5,
+            unit: "deg",
+          },
+          {
+            id: "keyAzimuth",
+            type: "number",
+            label: "Light - Key azimuth",
+            default: -38,
+            min: -90,
+            max: 90,
+            step: 0.5,
+            unit: "deg",
+          },
+          {
+            id: "keySize",
+            type: "number",
+            label: "Light - Key size (softbox)",
+            default: 1.25,
+            min: 0.2,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "fill",
+            type: "number",
+            label: "Light - Fill intensity (hemisphere, diffuse only: barely shows on clear ice)",
+            default: 0.18,
+            min: 0,
+            max: 1.5,
+            step: 0.005,
+          },
+          { id: "fillColor", type: "color", label: "Light - Fill sky colour", default: "#cadde9" },
+          {
+            id: "fillGroundColor",
+            type: "color",
+            label: "Light - Fill ground colour",
+            default: "#172635",
+          },
+          {
+            id: "rim",
+            type: "number",
+            label: "Light - Rim spot intensity",
+            default: 2.5,
+            min: 0,
+            max: 5,
+            step: 0.01,
+          },
+          { id: "rimColor", type: "color", label: "Light - Rim colour", default: "#d9f1ff" },
+          {
+            id: "rimElevation",
+            type: "number",
+            label: "Light - Rim elevation (0 = straight behind)",
+            default: 20,
+            min: 0,
+            max: 89,
+            step: 0.5,
+            unit: "deg",
+          },
+          {
+            id: "swayAmplitude",
+            type: "number",
+            label: "Light - Key sway amplitude",
+            default: 0,
+            min: 0,
+            max: 0.15,
+            step: 0.001,
+          },
+          {
+            id: "swayPeriod",
+            type: "number",
+            label: "Light - Key sway period",
+            default: 35,
+            min: 2,
+            max: 40,
+            step: 0.5,
+            unit: "s",
+          },
+          {
+            id: "envSoftbox",
+            type: "number",
+            label: "Light - Environment softbox (the main light on glass)",
+            default: 1.1,
+            min: 0,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "envRim",
+            type: "number",
+            label: "Light - Environment rim strip",
+            default: 1.4,
+            min: 0,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "envFill",
+            type: "number",
+            label: "Light - Environment front fill",
+            default: 0.22,
+            min: 0,
+            max: 1,
+            step: 0.005,
+          },
+          { id: "backdropTop", type: "color", label: "Backdrop - Top colour", default: "#050505" },
+          { id: "backdropMid", type: "color", label: "Backdrop - Mid colour", default: "#050505" },
+          {
+            id: "backdropBottom",
+            type: "color",
+            label: "Backdrop - Bottom colour",
+            default: "#050505",
+          },
+          {
+            id: "backdropCenterX",
+            type: "number",
+            label: "Backdrop - Bloom centre X",
+            default: 0.73,
+            min: 0,
+            max: 1,
+            step: 0.005,
+          },
+          {
+            id: "backdropCenterY",
+            type: "number",
+            label: "Backdrop - Bloom centre Y",
+            default: 0.22,
+            min: 0,
+            max: 2,
+            step: 0.005,
+          },
+          {
+            id: "backdropRadius",
+            type: "number",
+            label: "Backdrop - Bloom radius",
+            default: 0.8,
+            min: 0.1,
+            max: 2,
+            step: 0.005,
+          },
+          {
+            id: "backdropFalloff",
+            type: "number",
+            label: "Backdrop - Bloom falloff",
+            default: 0.85,
+            min: 0.5,
+            max: 6,
+            step: 0.01,
+          },
+          {
+            id: "backdropNoise",
+            type: "number",
+            label: "Backdrop - Dither noise",
+            default: 0,
+            min: 0,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "bloomThreshold",
+            type: "number",
+            label: "Post - Bloom threshold",
+            default: 3,
+            min: 0,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "bloomIntensity",
+            type: "number",
+            label: "Post - Bloom intensity",
+            default: 0.04,
+            min: 0,
+            max: 1.5,
+            step: 0.005,
+          },
+          {
+            id: "bloomRadius",
+            type: "number",
+            label: "Post - Bloom radius",
+            default: 1,
+            min: 0,
+            max: 1,
+            step: 0.005,
+          },
+          {
+            id: "monochrome",
+            type: "number",
+            label: "Post - Monochrome",
+            default: 0.04,
+            min: 0,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "tonemap",
+            type: "enum",
+            label: "Post - Tonemap",
+            default: "aces",
+            options: [
+              { value: "agx", label: "AgX" },
+              { value: "aces", label: "ACES" },
+              { value: "neutral", label: "Neutral" },
+              { value: "linear", label: "Linear" },
+            ],
+          },
+          {
+            id: "exposure",
+            type: "number",
+            label: "Post - Exposure",
+            default: 1,
+            min: 0.1,
+            max: 4,
+            step: 0.01,
+          },
+          {
+            id: "contrast",
+            type: "number",
+            label: "Post - Contrast",
+            default: 1.03,
+            min: 0.6,
+            max: 1.6,
+            step: 0.005,
+          },
+          {
+            id: "blackLift",
+            type: "number",
+            label: "Post - Black lift",
+            default: 0,
+            min: 0,
+            max: 0.1,
+            step: 0.001,
+          },
+          {
+            id: "vignetteStrength",
+            type: "number",
+            label: "Post - Vignette strength",
+            default: 0.14,
+            min: 0,
+            max: 1,
+            step: 0.005,
+          },
+          {
+            id: "vignetteSoftness",
+            type: "number",
+            label: "Post - Vignette softness",
+            default: 1.2,
+            min: 0.1,
+            max: 1.5,
+            step: 0.005,
+          },
+          {
+            id: "vignetteRadius",
+            type: "number",
+            label: "Post - Vignette radius",
+            default: 1.2,
+            min: 0.2,
+            max: 1.6,
+            step: 0.005,
+          },
+          {
+            id: "grainStrength",
+            type: "number",
+            label: "Post - Film grain",
+            default: 0,
+            min: 0,
+            max: 0.15,
+            step: 0.001,
+          },
+          {
+            id: "quality",
+            type: "enum",
+            label: "Performance - Quality profile",
+            default: "full",
+            options: [
+              { value: "full", label: "Full (baked look; needs a real GPU)" },
+              { value: "lite", label: "Lite (the source ?lite profile for software WebGPU)" },
+            ],
+          },
+          {
+            id: "upscaler",
+            type: "enum",
+            label: "Performance - Upscaler",
+            default: "fsr1",
+            options: [
+              { value: "fsr1", label: "FSR 1 (TRAA + EASU/RCAS)" },
+              { value: "taau", label: "TAAU" },
+              { value: "bilinear", label: "Bilinear" },
+              { value: "native", label: "Native (no upscale)" },
+            ],
+          },
+          {
+            id: "renderScale",
+            type: "number",
+            label: "Performance - Scene resolution scale (upscaled to 1080p)",
+            default: 1,
+            min: 0.35,
+            max: 1,
+            step: 0.05,
+          },
+          {
+            id: "shapeResolution",
+            type: "enum",
+            label: "Shape voxel resolution",
+            default: "256",
+            options: [
+              { value: "128", label: "128 \u2014 draft" },
+              { value: "256", label: "256 \u2014 high" },
+              { value: "384", label: "384 \u2014 ultra" },
+            ],
+            description:
+              "Resolution of the logo and text distance fields. Rebuilds shapes; higher values increase startup time and memory. Independent of breakup resolution.",
+          },
+          {
+            id: "erosionResolution",
+            type: "enum",
+            label: "Performance - Erosion field resolution (voxels per axis)",
+            default: "96",
+            options: [
+              { value: "64", label: "64" },
+              { value: "96", label: "96" },
+              { value: "128", label: "128" },
+              { value: "192", label: "192 (baked)" },
+            ],
+          },
+          {
+            id: "particleCount",
+            type: "enum",
+            label: "Performance - Powder particles",
+            default: "100k",
+            options: [
+              { value: "100k", label: "100k (baked)" },
+              { value: "250k", label: "250k" },
+              { value: "500k", label: "500k" },
+              { value: "1M", label: "1M" },
+            ],
+          },
+          {
+            id: "logoMeshDetail",
+            type: "number",
+            label: "Shape - Logo mesh detail (1-4; higher = finer surface)",
+            default: 2,
+            min: 1,
+            max: 4,
+            step: 1,
+          },
+          {
+            id: "logoUrl",
+            type: "string",
+            label: "Shape - SVG to extrude as the ice mark",
+            default: "assets/logo.svg",
+            maxLength: 200,
+          },
+          {
+            id: "deformStrength",
+            type: "number",
+            label: "Geometry - Ice deformation strength (0 = original)",
+            default: 0,
+            min: 0,
+            max: 0.08,
+            step: 0.001,
+          },
+          {
+            id: "deformScale",
+            type: "number",
+            label: "Geometry - Noise feature size (larger = broader)",
+            default: 0.41,
+            min: 0.001,
+            max: 0.5,
+            step: 0.001,
+          },
+          {
+            id: "deformSeed",
+            type: "number",
+            label: "Geometry - Deformation seed",
+            default: 7,
+            min: 0,
+            max: 65535,
+            step: 1,
+          },
+          {
+            id: "cameraMode",
+            type: "enum",
+            label: "Camera - Camera source",
+            default: "original",
+            options: [
+              { value: "original", label: "Original approved camera" },
+              { value: "authored", label: "Motion workspace track" },
+            ],
+          },
+          {
+            id: "cameraTrack",
+            type: "string",
+            label: "Camera - Motion track JSON (version 1)",
+            default: "",
+            maxLength: 48000,
+          },
+          {
+            id: "rimAzimuth",
+            type: "number",
+            label: "Light - Rim azimuth",
+            default: -146,
+            min: -180,
+            max: 180,
+            step: 1,
+          },
+          {
+            id: "rimAngle",
+            type: "number",
+            label: "Light - Rim beam angle",
+            default: 26,
+            min: 10,
+            max: 89,
+            step: 1,
+          },
+          {
+            id: "rimSize",
+            type: "number",
+            label: "Light - Rim reflection size",
+            default: 0.45,
+            min: 0.1,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "fillReflectionStrength",
+            type: "number",
+            label: "Light - Fill reflection strength",
+            default: 0.3,
+            min: 0,
+            max: 2,
+            step: 0.01,
+          },
+          {
+            id: "accentCoolIntensity",
+            type: "number",
+            label: "Studio Cool accent - intensity",
+            default: 3.71,
+            min: 0,
+            max: 4,
+            step: 0.01,
+          },
+          {
+            id: "accentCoolReflection",
+            type: "number",
+            label: "Studio Cool accent - reflection",
+            default: 2.31,
+            min: 0,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "accentCoolElevation",
+            type: "number",
+            label: "Studio Cool accent - elevation",
+            default: 63,
+            min: -85,
+            max: 85,
+            step: 1,
+          },
+          {
+            id: "accentCoolAzimuth",
+            type: "number",
+            label: "Studio Cool accent - azimuth",
+            default: 22,
+            min: -180,
+            max: 180,
+            step: 1,
+          },
+          {
+            id: "accentCoolSize",
+            type: "number",
+            label: "Studio Cool accent - size",
+            default: 2.65,
+            min: 0.1,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "accentCoolColor",
+            type: "color",
+            label: "Studio Cool accent - color",
+            default: "#ff5900",
+          },
+          {
+            id: "accentWarmIntensity",
+            type: "number",
+            label: "Studio Warm accent - intensity",
+            default: 2.99,
+            min: 0,
+            max: 4,
+            step: 0.01,
+          },
+          {
+            id: "accentWarmReflection",
+            type: "number",
+            label: "Studio Warm accent - reflection",
+            default: 0.34,
+            min: 0,
+            max: 3,
+            step: 0.01,
+          },
+          {
+            id: "accentWarmElevation",
+            type: "number",
+            label: "Studio Warm accent - elevation",
+            default: 30,
+            min: -85,
+            max: 85,
+            step: 1,
+          },
+          {
+            id: "accentWarmAzimuth",
+            type: "number",
+            label: "Studio Warm accent - azimuth",
+            default: -30,
+            min: -180,
+            max: 180,
+            step: 1,
+          },
+          {
+            id: "accentWarmSize",
+            type: "number",
+            label: "Studio Warm accent - size",
+            default: 1.2,
+            min: 0.1,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "accentWarmColor",
+            type: "color",
+            label: "Studio Warm accent - color",
+            default: "#75aaff",
+          },
+          {
+            id: "returnNoiseAmount",
+            type: "enum",
+            label: "Assembly - Regional pattern",
+            default: "2",
+            options: [
+              { value: "2", label: "Travelling seam + organic spread" },
+              { value: "1", label: "Smooth noise regions" },
+              { value: "0", label: "Original cell groups" },
+            ],
+          },
+          {
+            id: "assemblyFrontDuration",
+            type: "number",
+            label: "Assembly - Growth duration (seconds)",
+            default: 3.2,
+            min: 0,
+            max: 6,
+            step: 0.05,
+          },
+          {
+            id: "assemblyOriginX",
+            type: "number",
+            label: "Assembly - Growth start X",
+            default: -0.65,
+            min: -1,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "assemblyOriginY",
+            type: "number",
+            label: "Assembly - Growth start Y",
+            default: 0.55,
+            min: -1,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "assemblyAngle",
+            type: "number",
+            label: "Assembly - Seam direction (degrees)",
+            default: -35,
+            min: -180,
+            max: 180,
+            step: 1,
+          },
+          {
+            id: "assemblySpread",
+            type: "number",
+            label: "Assembly - Outward spread vs seam travel",
+            default: 0.65,
+            min: 0,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "assemblyFrontNoise",
+            type: "number",
+            label: "Assembly - Growth edge irregularity",
+            default: 0.35,
+            min: 0,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "assemblySpeedVariation",
+            type: "number",
+            label: "Assembly - Return speed variation",
+            default: 0.65,
+            min: 0,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "assemblyBend",
+            type: "number",
+            label: "Assembly - Approach path bend",
+            default: 1.2,
+            min: 0,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "assemblySwirl",
+            type: "number",
+            label: "Assembly - Approach twist",
+            default: 1.1,
+            min: 0,
+            max: 3,
+            step: 0.05,
+          },
+          {
+            id: "assemblyLandingVariation",
+            type: "number",
+            label: "Assembly - Landing transition variation",
+            default: 0.8,
+            min: 0,
+            max: 1,
+            step: 0.01,
+          },
+          {
+            id: "rendererProfile",
+            type: "enum",
+            label: "Renderer experiment (reload required)",
+            default: "studio",
+            options: [
+              { value: "original", label: "Original glass + GPU startup" },
+              { value: "lookup", label: "Original glass + material lookup" },
+              { value: "mesh", label: "Mesh surface + original glass" },
+              { value: "studio", label: "Studio glass approximation" },
+              { value: "matcap", label: "Matcap glass approximation" },
+            ],
+          },
+        ];
+        const rigSchema = JSON.parse(
+          document.getElementById("frost-root").getAttribute("data-composition-variables"),
+        );
+        const defaults = Object.fromEntries(
+          [...schema, ...rigSchema].map((v) => [v.id, v.default]),
+        );
+        const values = {
+          ...defaults,
+          ...(window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {}),
+        };
+        // The default logo ships beside this file; a logo the user sets is their project's path.
+        if (values.logoUrl === defaults.logoUrl && window.__frostAssetBase)
+          values.logoUrl = window.__frostAssetBase + "logo.svg";
+        window.Frost.setRendererProfile(values.rendererProfile);
+        console.info("[Frost renderer]", JSON.stringify(window.__rewrite));
+        const matcapKeys = [
+          "ior",
+          "thicknessScale",
+          "attenuationColor",
+          "attenuationDistance",
+          "materialBacklight",
+          "keyColor",
+          "keyElevation",
+          "keyAzimuth",
+          "keySize",
+          "envSoftbox",
+          "envRim",
+          "envFill",
+          "rimColor",
+          "rimElevation",
+          "rimAzimuth",
+          "rimSize",
+          "accentCoolColor",
+          "accentCoolReflection",
+          "accentCoolElevation",
+          "accentCoolAzimuth",
+          "accentCoolSize",
+          "accentWarmColor",
+          "accentWarmReflection",
+          "accentWarmElevation",
+          "accentWarmAzimuth",
+          "accentWarmSize",
+        ];
+        const matcapSignature = (v) => JSON.stringify(matcapKeys.map((k) => v[k]));
+        const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+        // The GPU surface is an implementation detail; only the logo's authored controls belong on the timeline.
+        const surfaceHost = document.getElementById("frost-root");
+        const surfaceRoot = surfaceHost.shadowRoot || surfaceHost.attachShadow({ mode: "open" });
+        surfaceRoot.replaceChildren();
+        const surfaceStyle = document.createElement("style");
+        surfaceStyle.textContent =
+          "#frost-stage{position:absolute;inset:0;background:#030303}canvas{position:absolute;inset:0;width:1920px;height:1080px;display:block}#frost-build-status{position:absolute;top:16px;right:16px;z-index:5;color:#eee;font:16px system-ui}";
+        surfaceRoot.appendChild(surfaceStyle);
+        const stage = document.createElement("div");
+        stage.id = "frost-stage";
+        surfaceRoot.appendChild(stage);
+        surfaceRoot.appendChild(document.createElement("slot"));
+        stage.dataset.build = window.Frost.REVIEW_BUILD;
+        const buildStatus = document.createElement("span");
+        buildStatus.id = "frost-build-status";
+        buildStatus.setAttribute("data-hf-ignore", "");
+        stage.appendChild(buildStatus);
+        const TUNE_IDS = Object.keys(window.Frost.TUNABLES);
+        function optionsFrom(values) {
+          const num = (key, a, b) =>
+            Number.isFinite(Number(values[key])) ? clamp(Number(values[key]), a, b) : defaults[key];
+          const str = (key, max) =>
+            String(values[key] ?? defaults[key])
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, max);
+          const pick = (key, options) =>
+            options.includes(String(values[key])) ? String(values[key]) : defaults[key];
+          const lines = (key) =>
+            str(key, 60)
+              .split("|")
+              .map((s) => s.trim())
+              .filter(Boolean);
+          const breakDuration = num("breakDuration", 0.4, 4);
+          // beats: each far enough after the previous one for a break to finish before the next form
+          const raw = {
+            logoBreak: num("logoBreakAt", 0.3, 4),
+            form1: num("formHeadline1At", 2, 10),
+            break1: num("headline1BreakAt", 6, 18),
+            form2: num("formHeadline2At", 9, 22),
+            break2: num("headline2BreakAt", 15, 27),
+            fadeOut: num("fadeOutAt", 17, 29.5),
+          };
+          const schedule = window.Frost.resolveSchedule(raw, breakDuration);
+          const hex = (key) => {
+            const v = String(values[key] ?? "")
+              .trim()
+              .toLowerCase();
+            return /^#[0-9a-f]{3}$/.test(v)
+              ? "#" +
+                  v
+                    .slice(1)
+                    .split("")
+                    .map((ch) => ch + ch)
+                    .join("")
+              : /^#[0-9a-f]{6}$/.test(v)
+                ? v
+                : defaults[key];
+          };
+          const tune = {};
+          for (const id of TUNE_IDS) {
+            const e = schema.find((v) => v.id === id);
+            if (!e) continue;
+            tune[id] =
+              e.type === "boolean"
+                ? values[id] === true || values[id] === 1 || values[id] === "true"
+                : e.type === "number"
+                  ? num(id, e.min, e.max)
+                  : e.type === "color"
+                    ? hex(id)
+                    : e.type === "enum"
+                      ? pick(
+                          id,
+                          e.options.map((x) => x.value),
+                        )
+                      : str(id, 64);
+          }
+          return {
+            cameraMode: pick("cameraMode", ["original", "authored"]),
+            cameraTrack: window.Frost.parseTrack(values.cameraTrack || ""),
+            headlines: [lines("headline1"), lines("headline2")],
+            text: {
+              width: num("textWidth", 1.2, 9),
+              lineHeight: num("textLineHeight", 0.7, 1.4),
+              depth: num("textDepth", 0.05, 0.8),
+              bevel: num("textBevel", 0, 0.12),
+              corner: num("textCorner", 0, 0.06),
+              meshDetail: Math.round(num("textMeshDetail", 1, 4)),
+              weight: Number(pick("fontWeight", ["400", "600", "700"])),
+              letterSpacing: num("letterSpacing", -0.1, 0.4),
+            },
+            schedule,
+            deformation: {
+              strength: num("deformStrength", 0, 0.08),
+              scale: window.Frost.validateDeformationScale(
+                Number(values.deformScale ?? defaults.deformScale),
+              ),
+              seed: Math.round(num("deformSeed", 0, 65535)),
+            },
+            pose: {
+              turnYaw: num("turnYaw", -360, 360),
+              turnPitch: num("turnPitch", -90, 90),
+              approach: num("approach", 0, 7),
+              turnYaw2: num("turnYaw2", -360, 360),
+              turnPitch2: num("turnPitch2", -90, 90),
+              retreat: num("retreat", 0, 8),
+              zoomIn: num("zoomIn", 0, 8),
+              finalYaw: num("finalYaw", -180, 180),
+              finalPitch: num("finalPitch", -90, 90),
+              driftYaw: num("driftYaw", -30, 30),
+              driftSway: num("driftSway", 0, 20),
+              idleYaw: num("idleYaw", 0, 40),
+            },
+            shards: {
+              amount: num("shardAmount", 0.02, 1),
+              formSpread: num("formSpread", 0, 4),
+              formFill: num("formFill", 0.05, 3),
+              sliceRadius: num("sliceRadius", 0.05, 1.5),
+              sliceStrength: num("sliceStrength", 1, 40),
+              shatterRadius: num("shatterRadius", 0.1, 1.5),
+              shatterStrength: num("shatterStrength", 1, 40),
+              breakDuration,
+              strayDust: num("strayDust", 0, 200),
+              followObject: num("followObject", 0, 30),
+              finalEjectBoost: num("finalEjectBoost", 1, 6),
+            },
+            tune,
+            quality: values.quality === "lite" ? "lite" : "full",
+            upscaler: pick("upscaler", ["fsr1", "taau", "bilinear", "native"]),
+            renderScale: num("renderScale", 0.35, 1),
+            shapeResolution: pick("shapeResolution", ["128", "256", "384"]),
+            erosionResolution: pick("erosionResolution", ["64", "96", "128", "192"]),
+            particleCount: pick("particleCount", ["100k", "250k", "500k", "1M"]),
+            logoUrl: str("logoUrl", 200) || defaults.logoUrl,
+            logoMeshDetail: Math.round(num("logoMeshDetail", 1, 4)),
+          };
+        }
+        let opts;
+        try {
+          opts = optionsFrom(values);
+        } catch (error) {
+          buildStatus.textContent = error.message;
+          stage.dataset.state = "invalid-settings";
+          window.__frostConfigError = error.message;
+          return;
+        }
+        const schedule = opts.schedule;
+        const DURATION = 22.5;
+        const canvas = document.createElement("canvas");
+        canvas.width = W;
+        canvas.height = H;
+        stage.appendChild(canvas);
+        // Native 3D Depth is an editable scalar adapter on the two progress controllers.
+        // Their Depth values mean 0–100% progress, never rendered object depth.
+        // Explicit keyframes make Studio's 3D inspector record edits at the playhead.
+        const timeline = gsap.timeline({ paused: true });
+        timeline.to(
+          "#logo-position",
+          {
+            keyframes: {
+              "0%": { x: 0, y: 0, z: 0 },
+              "100%": { x: 0, y: 0, z: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#logo-rotation",
+          {
+            keyframes: {
+              "0%": { rotationX: 0, rotationY: 0, rotationZ: 0 },
+              "100%": { rotationX: 0, rotationY: 0, rotationZ: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline1-position",
+          {
+            keyframes: {
+              "0%": { x: 0, y: 0, z: 0 },
+              "100%": { x: 0, y: 0, z: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline1-rotation",
+          {
+            keyframes: {
+              "0%": { rotationX: 0, rotationY: 0, rotationZ: 0 },
+              "100%": { rotationX: 0, rotationY: 0, rotationZ: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline2-position",
+          {
+            keyframes: {
+              "0%": { x: 0, y: 0, z: 0 },
+              "100%": { x: 0, y: 0, z: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline2-rotation",
+          {
+            keyframes: {
+              "0%": { rotationX: 0, rotationY: 0, rotationZ: 0 },
+              "100%": { rotationX: 0, rotationY: 0, rotationZ: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#logo-breakup",
+          {
+            keyframes: {
+              "0%": { z: 0, ease: "none" },
+              "6.222222222222222%": { z: 0, ease: "none" },
+              "10.666666666666666%": { z: 100, ease: "power1.in" },
+              "100%": { z: 100, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#logo-assembly",
+          {
+            keyframes: {
+              "0%": { z: 0, ease: "none" },
+              "100%": { z: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline1-breakup",
+          {
+            keyframes: {
+              "0%": { z: 0, ease: "none" },
+              "45.33333333333333%": { z: 0, ease: "none" },
+              "49.77777777777778%": { z: 100, ease: "power1.in" },
+              "100%": { z: 100, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline1-assembly",
+          {
+            keyframes: {
+              "0%": { z: 0, ease: "none" },
+              "19.555555555555557%": { z: 0, ease: "none" },
+              "33.33333333333333%": { z: 100, ease: "sine.inOut" },
+              "100%": { z: 100, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline2-breakup",
+          {
+            keyframes: {
+              "0%": { z: 0, ease: "none" },
+              "86.66666666666667%": { z: 0, ease: "none" },
+              "91.55555555555556%": { z: 100, ease: "power1.in" },
+              "100%": { z: 100, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#headline2-assembly",
+          {
+            keyframes: {
+              "0%": { z: 0, ease: "none" },
+              "58.666666666666664%": { z: 0, ease: "none" },
+              "74.66666666666667%": { z: 100, ease: "sine.inOut" },
+              "100%": { z: 100, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#scene-fade",
+          {
+            keyframes: {
+              "0%": { z: 0, ease: "none" },
+              "93.33333333333333%": { z: 0, ease: "none" },
+              "100%": { z: 100, ease: "sine.inOut" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        timeline.to(
+          "#camera-orbit",
+          {
+            keyframes: {
+              "0%": { rotationX: 0, rotationY: 0, rotationZ: 0, ease: "none" },
+              "5.555555555555555%": { rotationX: 0, rotationY: -20, rotationZ: 0, ease: "none" },
+              "7.6923076923076925%": {
+                rotationX: 0,
+                rotationY: -31.39736,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "9.82905982905983%": {
+                rotationX: 0,
+                rotationY: -49.403732,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "11.965811965811966%": {
+                rotationX: 0,
+                rotationY: -72.817478,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "14.102564102564102%": {
+                rotationX: 0,
+                rotationY: -100.436959,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "16.23931623931624%": {
+                rotationX: 0,
+                rotationY: -131.060537,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "18.37606837606838%": {
+                rotationX: 0,
+                rotationY: -163.486573,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "20.51282051282051%": {
+                rotationX: 0,
+                rotationY: -196.513427,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "22.64957264957265%": {
+                rotationX: 0,
+                rotationY: -228.939463,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "24.786324786324784%": {
+                rotationX: 0,
+                rotationY: -259.563041,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "26.923076923076927%": {
+                rotationX: 0,
+                rotationY: -287.182522,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "29.059829059829056%": {
+                rotationX: 0,
+                rotationY: -310.596268,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "31.196581196581196%": {
+                rotationX: 0,
+                rotationY: -328.60264,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "33.33333333333333%": { rotationX: 0, rotationY: -340, rotationZ: 0, ease: "none" },
+              "44.44444444444444%": { rotationX: 0, rotationY: -380, rotationZ: 0, ease: "none" },
+              "46.6031746031746%": {
+                rotationX: 0,
+                rotationY: -390.850146,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "48.76190476190476%": {
+                rotationX: 0,
+                rotationY: -407.241983,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "50.920634920634924%": {
+                rotationX: 0,
+                rotationY: -428.251895,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "53.07936507936508%": {
+                rotationX: 0,
+                rotationY: -452.956268,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "55.23809523809524%": {
+                rotationX: 0,
+                rotationY: -480.431487,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "57.3968253968254%": {
+                rotationX: 0,
+                rotationY: -509.753936,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "59.555555555555564%": { rotationX: 0, rotationY: -540, rotationZ: 0, ease: "none" },
+              "61.71428571428572%": {
+                rotationX: 0,
+                rotationY: -570.246064,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "63.87301587301587%": {
+                rotationX: 0,
+                rotationY: -599.568513,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "66.03174603174602%": {
+                rotationX: 0,
+                rotationY: -627.043732,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "68.19047619047619%": {
+                rotationX: 0,
+                rotationY: -651.748105,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "70.34920634920636%": {
+                rotationX: 0,
+                rotationY: -672.758017,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "72.50793650793652%": {
+                rotationX: 0,
+                rotationY: -689.149854,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "74.66666666666667%": { rotationX: 0, rotationY: -700, rotationZ: 0, ease: "none" },
+              "85.77777777777779%": { rotationX: 0, rotationY: -740, rotationZ: 0, ease: "none" },
+              "87.80952380952381%": {
+                rotationX: 0,
+                rotationY: -754.178426,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "89.84126984126985%": {
+                rotationX: 0,
+                rotationY: -780.349854,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "91.87301587301587%": {
+                rotationX: 0,
+                rotationY: -815.91137,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "93.90476190476191%": {
+                rotationX: 0,
+                rotationY: -858.260058,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "95.93650793650794%": {
+                rotationX: 0,
+                rotationY: -904.793003,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "97.96825396825398%": {
+                rotationX: 0,
+                rotationY: -952.907289,
+                rotationZ: 0,
+                ease: "none",
+              },
+              "100%": { rotationX: 0, rotationY: -1000, rotationZ: 0, ease: "none" },
+            },
+            duration: 22.5,
+            ease: "none",
+          },
+          0,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["frost-sequence-rig"] = timeline;
+        const activeTimeline = () => window.__timelines["frost-sequence-rig"] || timeline;
+        function rigRevision() {
+          const clean = (v) =>
+            Array.isArray(v)
+              ? v.map(clean)
+              : v && typeof v === "object"
+                ? Object.fromEntries(
+                    Object.entries(v)
+                      .filter(
+                        ([k, v]) =>
+                          !k.startsWith("_") &&
+                          typeof v !== "function" &&
+                          ![
+                            "parent",
+                            "callbackScope",
+                            "scrollTrigger",
+                            "onUpdateParams",
+                            "onStartParams",
+                            "onCompleteParams",
+                          ].includes(k),
+                      )
+                      .map(([k, v]) => [k, clean(v)]),
+                  )
+                : v;
+          return JSON.stringify(
+            activeTimeline()
+              .getChildren(false, true, false)
+              .map((t) => [t.startTime(), t.duration(), clean(t.vars)]),
+          );
+        }
+        function sampleRig(t) {
+          const active = activeTimeline(),
+            saved = active.totalTime();
+          active.totalTime(t, true);
+          const get = (id, k) => Number.parseFloat(gsap.getProperty("#" + id, k)) || 0;
+          const objects = ["logo", "headline1", "headline2"].map((id) => ({
+            x: get(id + "-position", "x") / 100,
+            y: -get(id + "-position", "y") / 100,
+            z: get(id + "-position", "z") / 100,
+            rx: get(id + "-rotation", "rotationX"),
+            ry: get(id + "-rotation", "rotationY"),
+            rz: get(id + "-rotation", "rotationZ"),
+            breakup: get(id + "-breakup", "z"),
+            assembly: get(id + "-assembly", "z"),
+          }));
+          // Do not replace a visible solid. Incoming assembly takes over the existing
+          // cloud once the outgoing object has fully broken. No particle reset.
+          let target = 0;
+          for (let k = 1; k < objects.length; k++)
+            if (objects[k].assembly > 0 && objects[k - 1].breakup >= 99.999 && target === k - 1)
+              target = k;
+          const result = {
+            ...objects[target],
+            target,
+            fade: get("scene-fade", "z"),
+            cameraYaw: get("camera-orbit", "rotationY"),
+            objects,
+          };
+          active.totalTime(saved, true);
+          return result;
+        }
+        // Opt-in Studio-only preview quality. Standalone/capture always keeps full quality.
+        let previewPixelRatio;
+        try {
+          if (
+            window.parent !== window &&
+            new URLSearchParams(location.search).get("__hf_shader_loading") === "player"
+          ) {
+            const quality = new URLSearchParams(window.parent.location.search).get("frostPreview");
+            if (quality === "half") previewPixelRatio = 1;
+            if (quality === "quarter") previewPixelRatio = 0.5;
+          }
+        } catch {} // Cross-origin embedding retains full quality.
+        stage.dataset.previewQuality =
+          previewPixelRatio === undefined ? "full" : String(previewPixelRatio / 2);
+        const frost = window.Frost.create({
+          canvas,
+          width: W,
+          height: H,
+          ...opts,
+          previewPixelRatio,
+          rig: { duration: DURATION, mode: values.assemblyMode, sequence: true, sample: sampleRig },
+          fontUrl: (window.__frostAssetBase || "assets/") + "fonts/Geist-Bold.ttf",
+          onProgress: (msg) => {
+            stage.dataset.state = msg;
+            buildStatus.textContent = "Building Frost · " + msg;
+            (window.__frostLog = window.__frostLog || []).push([msg]);
+          },
+        });
+
+        window.__hf = window.__hf || {};
+        window.__hf.buildReady = window.__hf.buildReady || {};
+        window.__hf.buildReady.frost = frost.ready;
+
+        let lastTime = 0,
+          disposed = false,
+          renderFailed = false,
+          revision = rigRevision();
+        function describeRenderError(err) {
+          if (err instanceof Error) return err.message;
+          // A loader's rejected promise is often the raw DOM Event from an
+          // onerror, not an Error, so the failed target is the real reason.
+          if (err && typeof err === "object" && "type" in err) {
+            const source = err.target && (err.target.src || err.target.href);
+            return source ? `failed to load ${source}` : `${err.type} event`;
+          }
+          return String(err);
+        }
+        function showRenderError(err) {
+          if (disposed || renderFailed) return;
+          renderFailed = true;
+          const message = describeRenderError(err);
+          console.error("Frost initialization/render failed:", err);
+          window.__frostRuntimeError = message;
+          stage.dataset.state = "render-error";
+          stage.dataset.busy = "false";
+          buildStatus.hidden = false;
+          buildStatus.textContent = "Frost failed: " + message;
+        }
+        function renderAt(time) {
+          if (disposed || renderFailed) return;
+          const nextRevision = rigRevision();
+          if (nextRevision !== revision) {
+            revision = nextRevision;
+            stage.dataset.revisions = String(Number(stage.dataset.revisions || 0) + 1);
+            frost.invalidate();
+          }
+          lastTime = clamp(time, 0, DURATION);
+          canvas.style.opacity = String(1 - clamp(sampleRig(lastTime).fade / 100));
+          frost.renderAt(lastTime);
+          stage.dataset.requestedTime = lastTime.toFixed(4);
+          stage.dataset.busy = "true";
+          const requested = lastTime;
+          frost
+            .waitForGpu()
+            .then(() => {
+              if (disposed || requested !== lastTime) return;
+              stage.dataset.time = requested.toFixed(4);
+              stage.dataset.rigSample = JSON.stringify(sampleRig(requested));
+              stage.dataset.busy = "false";
+            })
+            .catch(showRenderError);
+        }
+        frost.ready
+          .then(() => {
+            buildStatus.hidden = true;
+            if (!disposed) renderAt(lastTime);
+          })
+          .catch((err) => {
+            showRenderError(err);
+          });
+
+        timeline.eventCallback("onUpdate", () => renderAt(timeline.time()));
+        window.__logoRig = { sample: sampleRig, mode: values.assemblyMode };
+
+        function seek(event) {
+          const d = event && event.detail;
+          if (!d || typeof d.time !== "number") return;
+          const time = clamp(d.time, 0, DURATION);
+          activeTimeline().totalTime(time, true);
+          renderAt(time);
+          // async renderer: hold the capture until the GPU queue has drained (and until the scene has loaded)
+          if (typeof d.waitUntil === "function") d.waitUntil(frost.waitForGpu());
+        }
+        window.addEventListener("hf-seek", seek);
+        window.__frostRendererProfile = values.rendererProfile;
+        window.__frostReady = frost.ready.then(async () => {
+          if (disposed) return;
+          const world = frost.world,
+            camera = world.camera;
+          // Capture the approved camera framing, then orbit that view around the fixed object.
+          world.rig.update(camera, world.objectGroup, 0, 0);
+          const base = camera.position.clone(),
+            aim = world.rig.lookAt.clone();
+          const pivot = world.motionGroup.position.clone();
+          const rotate = (out, source, angle) => {
+            const x = source.x - pivot.x,
+              z = source.z - pivot.z,
+              c = Math.cos(angle),
+              s = Math.sin(angle);
+            out.set(pivot.x + c * x + s * z, source.y, pivot.z - s * x + c * z);
+          };
+          world.onCameraTransform = (t) => {
+            const angle = (sampleRig(t).cameraYaw * Math.PI) / 180;
+            rotate(camera.position, base, angle);
+            rotate(world.rig.lookAt, aim, angle);
+            camera.lookAt(world.rig.lookAt);
+            camera.updateMatrixWorld(true);
+          };
+          frost.invalidate();
+          renderAt(lastTime);
+          await frost.waitForGpu();
+        });
+        window.__frost = {
+          renderAt,
+          schedule,
+          duration: DURATION,
+          poseAt: (t) => frost.poseAt(t),
+          get world() {
+            return frost.world;
+          },
+          get shape() {
+            return frost.shape;
+          },
+          waitForGpu: () => frost.waitForGpu(),
+        };
+        window.__frostInstance = {
+          dispose() {
+            if (disposed) return;
+            disposed = true;
+            canvasResize.disconnect();
+            timeline.kill();
+            window.removeEventListener("hf-seek", seek);
+            frost.dispose();
+            canvas.remove();
+          },
+          applyVariables() {
+            return "rebuild";
+          },
+        };
+        // Studio can resize the drawing buffer after initialization; resizing clears its pixels.
+        // Redraw even when the paused playhead has not changed.
+        let canvasSize = canvas.width + "x" + canvas.height;
+        const canvasResize = new MutationObserver(() => {
+          const size = canvas.width + "x" + canvas.height;
+          if (size === canvasSize) return;
+          canvasSize = size;
+          if (!disposed) frost.redraw();
+        });
+        canvasResize.observe(canvas, { attributes: true, attributeFilter: ["width", "height"] });
+        renderAt(0);
+      })();
+    </script>
+  </body>
+</html>

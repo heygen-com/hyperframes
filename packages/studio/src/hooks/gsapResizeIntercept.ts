@@ -5,7 +5,7 @@
  * frame can't jump. Split from gsapRuntimeBridge, which owns the shared
  * group-tween resolution used by the drag/resize/rotate intercepts.
  */
-import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { clearStudioBoxSize } from "../components/editor/manualEdits";
 import {
@@ -14,7 +14,6 @@ import {
 } from "../components/editor/manualEditsTypes";
 import { setElementGsapPosition, setElementGsapScale } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
-import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import {
   commitStaticGsapPosition,
@@ -32,16 +31,14 @@ import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { isInstantHold, selectorFromSelection, writeTargetSelector } from "./gsapShared";
-import { roundTo3 } from "../utils/rounding";
+import { roundTo3, roundToLayoutPx } from "../utils/rounding";
 import { resolveGroupTween } from "./gsapRuntimeBridge";
 import { logResize } from "../utils/resizeDebug";
-import {
-  animationWritesAnyProperty,
-  directEditOutcomeForProperties,
-  type GsapEditOutcome,
-} from "./gsapEditOutcome";
+import { animationWritesAnyProperty, type GsapEditOutcome } from "./gsapEditOutcome";
+import { preflightGsapResizeIntercept, resizeRoute } from "./gsapResizePreflight";
 
 const IDENTITY_ONE_PROPS = new Set(["opacity", "autoAlpha", "scale", "scaleX", "scaleY"]);
+const SIZE_PROPS = new Set(["width", "height"]);
 
 /** Build identity (zero / one) values for each property in `source`. */
 function synthesizeIdentityProps(
@@ -103,17 +100,12 @@ export async function tryGsapResizeIntercept(
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<GsapEditOutcome> {
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
-  const allKnownAnimations = [...animations, ...fetchedAnimations];
-  // If the element already has a scale-group tween, resize should modify scale
-  // (the user is resizing something whose visual size is driven by scale).
-  // Otherwise, use the size group (width/height).
-  const hasScaleGroup = allKnownAnimations.some((a) => a.propertyGroup === "scale");
-  const resizeGroup: PropertyGroupName = hasScaleGroup ? "scale" : "size";
-  const resizeProperties =
-    resizeGroup === "scale" ? new Set(["scale", "scaleX", "scaleY"]) : new Set(["width", "height"]);
-  const editability = directEditOutcomeForProperties(allKnownAnimations, resizeProperties);
-  if (editability.status === "blocked") return editability;
-  const workingAnimations = animations.length > 0 ? animations : fetchedAnimations;
+  const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
+  if (outcome.status === "blocked") return outcome;
+  const { allKnownAnimations, resizeGroup, resizeProperties, workingAnimations } = resizeRoute(
+    animations,
+    fetchedAnimations,
+  );
   // The initial ownership fetch already supplied the complete parse. Only retain
   // the fetch callback when a legacy mixed tween may be split and must then be
   // re-read; otherwise resolveGroupTween would perform the same network read twice.
@@ -132,21 +124,18 @@ export async function tryGsapResizeIntercept(
     resolved?.anim && animationWritesAnyProperty(resolved.anim, resizeProperties)
       ? resolved.anim
       : null;
-  const liveSelector = selectorFromSelection(selection);
-  const hasLiveResizeTween = liveSelector
-    ? hasNonHoldTweenForElement(iframe, liveSelector, undefined, [...resizeProperties])
-    : false;
-  if (!anim && hasLiveResizeTween) {
-    return { status: "blocked", reason: "source-uneditable" };
-  }
   logResize("intercept-enter", {
-    hasScaleGroup,
+    hasScaleGroup: resizeGroup === "scale",
     resizeGroup,
     animMethod: anim?.method ?? null,
     animId: anim?.id ?? null,
     size,
   });
   if (!anim || isInstantHold(anim)) {
+    const scriptWritesSize = allKnownAnimations.some((a) =>
+      animationWritesAnyProperty(a, SIZE_PROPS),
+    );
+    if (!scriptWritesSize) return { status: "element-size" };
     const sel = selectorFromSelection(selection) ?? writeTargetSelector(selection);
     if (!sel) return { status: "blocked", reason: "no-selector" };
     // A scale hold is not a size hold.
@@ -164,12 +153,16 @@ export async function tryGsapResizeIntercept(
         ? (anim ?? findSizeSetAnimation(workingAnimations, sel, selection.element))
         : findSizeSetAnimation(workingAnimations, sel, selection.element);
 
-    // If the element is animated (has a real tween, not just a static size
-    // hold), keyframe the size at the playhead so other keyframes keep theirs —
-    // instead of a global set that resizes every frame.
+    // Keyframe the size only when a real tween already animates it, as move and
+    // rotate do; a fade or a slide on the element gets a plain size.
     if (resizeGroup === "size") {
       const animatedTween = pickClosestToPlayhead(
-        workingAnimations.filter((a) => !isInstantHold(a) && resolveTweenDuration(a) > 0),
+        workingAnimations.filter(
+          (a) =>
+            !isInstantHold(a) &&
+            resolveTweenDuration(a) > 0 &&
+            animationWritesAnyProperty(a, resizeProperties),
+        ),
       );
       if (animatedTween) {
         logResize("intercept-route", { route: "keyframed-size", tweenId: animatedTween.id });
@@ -194,7 +187,12 @@ export async function tryGsapResizeIntercept(
   }
 
   const tweenDuration = resolveTweenDuration(anim);
-  if (tweenDuration <= 0) return { status: "blocked", reason: "source-uneditable" };
+  if (tweenDuration <= 0) {
+    // The tween exists in source but has no positive duration, so there is no
+    // timeline position at which a resize could land — a different cause from
+    // the live-tween-without-a-source-match cases above.
+    return { status: "blocked", reason: "source-uneditable", detail: "zero-duration-tween" };
+  }
 
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
@@ -294,8 +292,8 @@ export async function tryGsapResizeIntercept(
     }
   } else {
     resizeProps = {
-      width: Math.round(size.width),
-      height: Math.round(size.height),
+      width: roundToLayoutPx(size.width),
+      height: roundToLayoutPx(size.height),
     };
   }
   // Finalize a scale-route commit: tear down the gesture's inline width/height
@@ -365,8 +363,8 @@ export async function tryGsapResizeIntercept(
     // persisted file agree exactly (commitStaticGsapPosition composes the same
     // rounded value from this delta).
     const corrected = {
-      x: Math.round(base.x + residual.x),
-      y: Math.round(base.y + residual.y),
+      x: roundTo3(base.x + residual.x),
+      y: roundTo3(base.y + residual.y),
     };
     logResize("scale-finalize", {
       dropPoint: scaleDraftDropPoint,
@@ -548,7 +546,6 @@ export async function tryGsapResizeIntercept(
     return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
   }
 
-  const SIZE_PROPS = new Set(["width", "height"]);
   const backfillDefaults: Record<string, number> = {};
   for (const k of Object.keys(runtimeProps)) {
     if (SIZE_PROPS.has(k)) continue;

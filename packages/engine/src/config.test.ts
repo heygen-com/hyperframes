@@ -53,6 +53,7 @@ describe("resolveConfig", () => {
     expect(config.browserGpuMode).toBe("software");
     expect(config.enableStreamingEncode).toBe(true);
     expect(config.streamingEncodeMaxDurationSeconds).toBe(240);
+    expect(config.streamingEncodeDurationCapEnabled).toBe(false);
     expect((config as Record<string, unknown>).vp9CpuUsed).toBe(4);
     expect(config.audioGain).toBe(1);
     expect(config.debug).toBe(false);
@@ -103,6 +104,18 @@ describe("resolveConfig", () => {
 
     const config = resolveConfig();
     expect(config.streamingEncodeMaxDurationSeconds).toBe(0);
+  });
+
+  it("reads the streaming duration cap enable flag from env", () => {
+    setEnv("PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED", "true");
+
+    const config = resolveConfig();
+    expect(config.streamingEncodeDurationCapEnabled).toBe(true);
+  });
+
+  it("keeps the streaming duration cap disabled when the flag is unset", () => {
+    const config = resolveConfig();
+    expect(config.streamingEncodeDurationCapEnabled).toBe(false);
   });
 
   it("reads VP9 cpu-used from env", () => {
@@ -242,6 +255,24 @@ describe("resolveConfig", () => {
   // which is worse than no reason.
   describe("explainDrawElementDisabled (names the silent refusals)", () => {
     const base = { browserGpuMode: "hardware" as const, workerEncode: true };
+
+    it("turns fast capture off by default on a host capped at Chrome 150, unless opted in", () => {
+      const args = {
+        useDrawElement: true,
+        platform: "darwin" as const,
+        browserGpuMode: "hardware" as const,
+        workerEncode: true,
+        chromeCeiling: 150,
+      };
+      expect(resolveDefaultDrawElement({ ...args, explicitOptIn: false })).toBe(false);
+      expect(resolveDefaultDrawElement({ ...args, explicitOptIn: true })).toBe(true);
+      expect(
+        resolveDefaultDrawElement({ ...args, chromeCeiling: undefined, explicitOptIn: false }),
+      ).toBe(true);
+      expect(explainDrawElementDisabled({ ...base, platform: "darwin", chromeCeiling: 150 })).toBe(
+        "old_chrome",
+      );
+    });
 
     it("names each refusal", () => {
       expect(explainDrawElementDisabled({ ...base, platform: "linux" })).toBe(

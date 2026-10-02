@@ -119,6 +119,7 @@ describe("mirrorGlobalSkills", () => {
     const home = makeHome();
     seedStore(home, ["hyperframes", "hyperframes-core"]);
     installMarker(home, ".cursor"); // cursor present
+    installMarker(home, ".bob"); // IBM Bob present
     installMarker(home, ".config/goose"); // goose present (XDG base)
     // windsurf NOT installed (no ~/.codeium/windsurf)
 
@@ -130,6 +131,7 @@ describe("mirrorGlobalSkills", () => {
     });
     const agents = mirrored.map((m) => m.agent);
     expect(agents).toContain("cursor");
+    expect(agents).toContain("bob");
     expect(agents).toContain("goose");
     expect(agents).not.toContain("windsurf");
 
@@ -138,6 +140,12 @@ describe("mirrorGlobalSkills", () => {
     expect(isAbsolute(readlinkSync(link))).toBe(false); // relative target
     expect(realpathSync(link)).toBe(realpathSync(join(home, ".claude", "skills", "hyperframes")));
     expect(existsSync(join(link, "SKILL.md"))).toBe(true);
+
+    const bobLink = join(home, ".bob", "skills", "hyperframes");
+    expect(lstatSync(bobLink).isSymbolicLink()).toBe(true);
+    expect(realpathSync(bobLink)).toBe(
+      realpathSync(join(home, ".claude", "skills", "hyperframes")),
+    );
 
     // goose lands in the XDG config dir (~/.config/goose), not ~/.goose
     expect(
@@ -283,6 +291,7 @@ describe("AGENT_GLOBAL_DIRS (generated table)", () => {
     const byAgent = new Map(AGENT_GLOBAL_DIRS.map((e) => [e.agent, e]));
     expect(byAgent.get("claude-code")).toMatchObject({ base: "claudeHome", sub: "skills" });
     expect(byAgent.get("cursor")).toMatchObject({ base: "home", sub: ".cursor/skills" });
+    expect(byAgent.get("bob")).toMatchObject({ base: "home", sub: ".bob/skills" });
     expect(byAgent.get("codex")).toMatchObject({ base: "codexHome", sub: "skills" });
     expect(byAgent.get("goose")).toMatchObject({ base: "configHome", sub: "goose/skills" });
     expect(byAgent.get("windsurf")).toMatchObject({

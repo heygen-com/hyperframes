@@ -23,6 +23,7 @@ import {
   type MotionFrame,
 } from "./motionAudit.js";
 import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
+import { inspectHdrAutoPromotion } from "./hdrPromotion.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
   parseColorRGBA,
@@ -109,6 +110,8 @@ function buildMotionSampleTimes(duration: number): number[] {
 interface SampleGrid {
   duration: number;
   layoutSamples: number[];
+  /** `--at` times: they can all land on a still stretch, so the frozen-sweep guard never judges them. */
+  userPickedSamples: number[];
   captionSamples: number[];
   frameSamples: number[];
   transitionSamples: number[];
@@ -157,6 +160,7 @@ async function buildSampleGrid(
   return {
     duration,
     layoutSamples,
+    userPickedSamples: options.at?.length ? baseSamples : [],
     captionSamples,
     frameSamples,
     transitionSamples: transitions.times,
@@ -212,7 +216,7 @@ interface GridSamples {
   screenshots: CheckScreenshot[];
   contrastMs: number;
   /** One visible-state fingerprint per layout sample (#U10 frozen-sweep guard). */
-  layoutStateSignatures: string[];
+  layoutStateSignatures: { time: number; signature: string }[];
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
@@ -416,7 +420,7 @@ async function collectGridSamples(
       const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
       collected.layoutIssues.push(...layoutIssues);
       issuesAtTime.push(...layoutIssues);
-      collected.layoutStateSignatures.push(await driver.collectLayoutGeometry());
+      collected.layoutStateSignatures.push({ time, signature: await driver.collectLayoutGeometry() });
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
     }
@@ -1088,9 +1092,12 @@ export async function runAuditGrid(
     );
     motionIssues = [...motionIssues, ...(await driver.anchorMotionIssues(evaluated))];
   }
+  const userPicked = new Set(grid.userPickedSamples);
   const sweepFindings = detectSweepStatic(
     grid.duration,
-    collected.layoutStateSignatures,
+    collected.layoutStateSignatures
+      .filter((sample) => !userPicked.has(sample.time))
+      .map((sample) => sample.signature),
     motionIssues,
     await driver.hasNoTimelineDeclaration(),
   );
@@ -1145,8 +1152,24 @@ export async function runCheckPipeline(
   });
 
   const lint = buildLintSection(lintResult);
+  let hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null;
+  let hdrInspection: CheckReport["hdr"]["inspection"] = "available";
+  try {
+    hdrPromotion = await (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(project);
+  } catch {
+    hdrInspection = "unavailable";
+  }
   if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
-    return buildReport(options, lint, emptyBrowserResult(), { kind: "none" }, [], []);
+    return buildReport(
+      options,
+      lint,
+      emptyBrowserResult(),
+      { kind: "none" },
+      [],
+      [],
+      hdrPromotion,
+      hdrInspection,
+    );
   }
 
   const motion = dependencies.resolveMotionSpec(project.dir);
@@ -1173,7 +1196,16 @@ export async function runCheckPipeline(
   const snapshotFiles = options.snapshots
     ? await writeContrastSnapshots(dependencies, project.dir, browser)
     : [];
-  const report = buildReport(options, lint, browser, motion, specFindings, snapshotFiles);
+  const report = buildReport(
+    options,
+    lint,
+    browser,
+    motion,
+    specFindings,
+    snapshotFiles,
+    hdrPromotion,
+    hdrInspection,
+  );
   return options.snapshots
     ? await withFindingCrops(dependencies, project, options, report)
     : report;
@@ -1353,6 +1385,8 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
+  hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null,
+  hdrInspection: CheckReport["hdr"]["inspection"] = "available",
 ): CheckReport {
   const layout = shapeLayoutSection(browser.layoutIssues, browser, options);
   const shapedMotion = shapeLayoutFindings(browser.motionIssues, options);
@@ -1391,6 +1425,7 @@ function buildReport(
       checked: browser.contrastChecked,
       passed: browser.contrastPassed,
     },
+    hdr: { autoPromotion: hdrPromotion, inspection: hdrInspection },
     snapshots: {
       enabled: options.snapshots,
       files: snapshotFiles,
@@ -1595,4 +1630,5 @@ const DEFAULT_DEPENDENCIES: CheckDependencies = {
   runBrowserCheck,
   writeSnapshot,
   captureFindingCrops,
+  inspectHdrAutoPromotion,
 };

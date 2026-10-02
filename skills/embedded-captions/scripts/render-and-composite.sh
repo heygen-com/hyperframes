@@ -12,21 +12,10 @@ set -euo pipefail
 PROJECT="${1:?usage: render-and-composite.sh <project-dir> [hyperframes-repo]}"
 PROJECT="$(cd "$PROJECT" && pwd)"
 
-# Resolve the hyperframes checkout. Candidate order:
-#   1. arg 2   2. $HYPERFRAMES_ROOT   3. repo root if this skill ships INSIDE the
-#   hyperframes repo (skills/embedded-captions/scripts → ../../..)   4. ~/Downloads/hyperframes
 SKILL_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HF=""
-for cand in "${2:-}" "${HYPERFRAMES_ROOT:-}" "$(cd "$SKILL_SCRIPT_DIR/../../.." 2>/dev/null && pwd)" "$HOME/Downloads/hyperframes"; do
-  if [[ -n "$cand" && -f "$cand/packages/cli/dist/cli.js" ]]; then HF="$cand"; break; fi
-done
-if [[ -z "$HF" ]]; then
-  echo "[render] hyperframes CLI not found. Set HYPERFRAMES_ROOT to your hyperframes" >&2
-  echo "         checkout (needs packages/cli/dist/cli.js — 'bun install && bun run build')." >&2
-  exit 1
-fi
-export HYPERFRAMES_ROOT="$HF"   # so the occlusion gate's measure-layout.cjs finds puppeteer too
-HF_CLI="$HF/packages/cli/dist/cli.js"
+HF_CLI="$(node "$SKILL_SCRIPT_DIR/hf-cli.cjs" "${2:-}")"
+# Retain the explicit dependency-root override for source-checkout users.
+if [[ -n "${2:-}" ]]; then export HYPERFRAMES_ROOT="$2"; fi
 if [[ ! -d "$PROJECT/frames_fg" ]]; then
   echo "[render] missing matte frames at $PROJECT/frames_fg — run matte.cjs first" >&2
   exit 1
@@ -237,49 +226,16 @@ echo "[render] snapshot → history/index-${STAMP}.html"
 
 echo "[render] hyperframes render @ ${FPS}fps"
 
-# Hyperframes occasionally hangs on Chromium shutdown *after* the output file
-# is successfully written (seen multiple times on 15–30s clips). Without a
-# guard the shell waits forever. This helper enforces a max wall-clock budget,
-# and if the output is already on disk when we hit it, treats the run as
-# successful and kills the zombie. Tune HF_TIMEOUT_S via env if needed.
-# Default SCALES with clip size: two parallel Chromium passes on a long clip
-# legitimately exceed a fixed 240s (a 38s/1151-frame render was killed at 244s
-# while healthy). ~1.5s per source frame, floor 240s.
-N_FRAMES="$(ls "$PROJECT/frames_fg" 2>/dev/null | wc -l | tr -d ' ')"
-HF_TIMEOUT_S="${HF_TIMEOUT_S:-$(( N_FRAMES * 3 / 2 > 240 ? N_FRAMES * 3 / 2 : 240 ))}"
-# hf_render_dir: render one hyperframes composition.
-# args: <output.mp4> <label> <project_dir>
-# watches for the Chromium-shutdown-hang; if output file exists and is >1MB
-# past timeout, treats as success and kills the zombie.
+# Wait for the renderer's real exit status. File size cannot prove completion,
+# and a portable process snapshot cannot safely recover a timed-out render tree.
+# Cancellation/browser cleanup belongs to the CLI that owns those processes.
 hf_render_dir() {
   local out="$1" label="$2" proj="$3" fmt="${4:-}"
-  # bash 3.2 (macOS) throws on empty-array expansion under `set -u`, so branch
-  # explicitly instead of splatting an optional --format array.
   if [[ -n "$fmt" ]]; then
-    node "$HF_CLI" render --skill=embedded-captions --dir "$proj" --fps "$FPS" --format "$fmt" --crf 11 -o "$out" &
+    node "$HF_CLI" render --skill=embedded-captions --dir "$proj" --fps "$FPS" --format "$fmt" --crf 11 -o "$out" || return $?
   else
-    node "$HF_CLI" render --skill=embedded-captions --dir "$proj" --fps "$FPS" --crf 11 -o "$out" &
+    node "$HF_CLI" render --skill=embedded-captions --dir "$proj" --fps "$FPS" --crf 11 -o "$out" || return $?
   fi
-  local pid=$! start=$SECONDS elapsed
-  while kill -0 "$pid" 2>/dev/null; do
-    elapsed=$((SECONDS - start))
-    if (( elapsed > HF_TIMEOUT_S )); then
-      local sz=0
-      [[ -f "$out" ]] && sz=$(stat -f%z "$out" 2>/dev/null || echo 0)
-      if (( sz > 1000000 )); then
-        echo "[render] ${label}: node hung ${elapsed}s after shutdown (output ${sz}B exists, treating as success)"
-        kill -9 "$pid" 2>/dev/null
-        pkill -9 -f "puppeteer_dev_chrome_profile" 2>/dev/null
-        return 0
-      fi
-      echo "[render] ${label}: hung ${elapsed}s with no output — killing and failing" >&2
-      kill -9 "$pid" 2>/dev/null
-      pkill -9 -f "puppeteer_dev_chrome_profile" 2>/dev/null
-      return 2
-    fi
-    sleep 5
-  done
-  wait "$pid" 2>/dev/null
   [[ -f "$out" ]]
 }
 

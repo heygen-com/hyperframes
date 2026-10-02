@@ -59,8 +59,9 @@ from any command's output, without a second call:
 }
 ```
 
-The version numbers come from a cache refreshed at most once a day. `--json`
-never makes a network request of its own. Deprecated commands add
+The version numbers come from a cache refreshed at most once a day, in a
+background process, and never under CI or `HYPERFRAMES_NO_UPDATE_CHECK=1`.
+`--json` never makes a network request of its own. Deprecated commands add
 `_meta.deprecated: true`.
 
 **Flags, not prompts.** A missing required flag fails immediately with a usage
@@ -89,19 +90,19 @@ off the check, the install, and the notice.
 Scaffold a new composition project from an example.
 
 ```bash
-# Agents and CI — every input from a flag
-npx hyperframes init my-video --example blank --video video.mp4 --non-interactive
+# Default: centered Inter blank. Non-TTY skips the wizard.
+npx hyperframes init my-video
+
+# Start from a video file
+npx hyperframes init my-video --video video.mp4 --non-interactive
 
 # With the Tailwind browser runtime
-npx hyperframes init my-video --example blank --tailwind
-
-# Interactive on a TTY
-npx hyperframes init my-video
+npx hyperframes init my-video --tailwind
 ```
 
 | Flag                | Description                                                                                                                                                                                                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--example, -e`     | Example to scaffold. Required with `--non-interactive`. See [Examples](/examples) for the full list.                                                                                                                                                                                  |
+| `--example, -e`     | Example to scaffold. Default is the centered blank. See [Examples](/examples) for the full list.                                                                                                                                                                                     |
 | `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160). Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`. Default: keep template dimensions. |
 | `--video, -v`       | Path to a video file (MP4, WebM, MOV)                                                                                                                                                                                                                                                |
 | `--audio, -a`       | Path to an audio file (MP3, WAV, M4A)                                                                                                                                                                                                                                                |
@@ -172,8 +173,15 @@ npx hyperframes catalog --human-friendly         # picker; installs on select
 
 Filter with `--type` (`block` or `component`) and `--tag` (`social`,
 `transition`, `text`, …). Default output is a table of name, type, description,
-and tags, shaped for agents to parse; `--json` is the structured form.
+and tags, shaped for agents to parse; `--json` is the structured form. Each
+`--json` row has the item's name, type, title, description and tags, plus its
+dimensions, duration and `preview` (`video` and `poster` URLs) when it has them.
 `--human-friendly` opens a picker that runs `add` on whatever you select.
+
+`--query "<what you want>"` searches by description instead of listing
+everything, and `--on-device` switches that search from word match to meaning
+search after a one-time 33 MB download. What each does, what is downloaded and
+what stays on your machine: [How catalog search works](/developers/catalog-search).
 
 ## Bring in source material
 
@@ -267,19 +275,22 @@ npx hyperframes transcribe transcript.json --to srt
 | Flag              | Description                                                                                                                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--dir, -d`       | Project directory (default: current directory)                                                                                                                                                     |
-| `--engine, -e`    | ASR engine: `auto` (default — Parakeet if installed, else whisper), `parakeet`, or `whisper`                                                                                                        |
+| `--engine, -e`    | ASR engine: `auto` (default — Parakeet if installed and the language is one of its 25, else whisper), `parakeet` (fails if Parakeet is missing, broken, or lacks the `--language`), or `whisper` |
 | `--model, -m`     | Whisper model (default `small.en`): `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3`                                                                                                       |
 | `--language, -l`  | Language code (`en`, `es`, `ja`, …). Filters out speech in other languages.                                                                                                                        |
 | `--to`            | Export a sidecar instead: `srt` or `vtt`                                                                                                                                                           |
 | `--output, -o`    | Where the exported SRT/VTT goes                                                                                                                                                                    |
 | `--preserve-cues` | Keep each transcript entry as its own caption cue, skipping word-level grouping                                                                                                                    |
-| `--optional`      | Skip and exit 0 when whisper-cpp is unavailable, instead of failing. For pipelines that can carry on without captions.                                                                              |
+| `--optional`      | Skip and exit 0 when whisper-cpp is unavailable, instead of failing. For pipelines that can carry on without captions. A broken Parakeet install is a real failure: it exits 1 even when whisper-cpp is missing. |
 | `--timeout`       | Whisper spawn timeout in ms, overriding the auto-scaled default. Raise it on slow or emulated CPUs where large models take many seconds per audio second. Whisper only — Parakeet has its own. Minimum 5000. Env: `HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS`. |
 | `--json`          | Output the result as JSON                                                                                                                                                                          |
 
 The command works out what you gave it. Audio and video are transcribed
-locally — Parakeet when it is installed (`uv pip install parakeet-mlx`; faster
-and more accurate), whisper.cpp otherwise. Transcript files are imported and
+locally — Parakeet when it is installed (`hyperframes models install parakeet`;
+faster and more accurate), whisper.cpp otherwise. Parakeet covers en, es, fr,
+de, bg, hr, cs, da, nl, et, fi, el, hu, it, lv, lt, mt, pl, pt, ro, sk, sl, sv,
+ru and uk; `auto` uses whisper for any other `--language`. If Parakeet fails under
+`auto`, the run says why, names the repair command, and uses whisper. Transcript files are imported and
 normalized instead: whisper.cpp JSON, OpenAI Whisper API JSON with word
 timestamps, SRT, and VTT all land as the same `[{text, start, end}]` word array
 in `transcript.json`. If the project has caption HTML, it is patched
@@ -295,6 +306,26 @@ cues with no internal spaces — single-word or CJK captions.
   production content, transcribe through the OpenAI or Groq Whisper API and import
   the JSON.
 </Tip>
+
+### `models`
+
+Download an on-device model. Only asked-for installs happen; nothing downloads
+on first use.
+
+```bash
+npx hyperframes models install parakeet          # progress on stderr
+npx hyperframes models install parakeet --json   # one JSON result
+```
+
+`parakeet` installs the sherpa-onnx runtime from npm and NVIDIA's Parakeet TDT
+0.6B v3 speech model (int8, about 640 MB, CC-BY-4.0) into
+`~/.cache/hyperframes`. Every file is checked against a pinned size and
+sha256. Re-running loads the runtime in a separate process and re-checks each
+model file's sha256, reinstalls whichever fails, and changes nothing on a good
+install. It runs on macOS
+(arm64, x64), Windows (x64, ia32) and Linux (x64, arm64, glibc 2.32 or newer),
+and refuses up front anywhere else. Ctrl-C stops the download and keeps no
+partial file.
 
 ### `tts`
 
@@ -369,12 +400,13 @@ Which format do you want?
 | `.mov` (ProRes 4444) | Editing round-trip in Premiere / Resolve / DaVinci        | ~50 MB            |
 | `.png`               | Single-image cutout                                       | varies            |
 
-The model is `u2net_human_seg` (MIT, ~168 MB ONNX). It downloads to
+The model is `u2net_human_seg` (Apache-2.0, ~168 MB ONNX). It downloads to
 `~/.cache/hyperframes/background-removal/models/` on first run and is reused
 after that. Peak inference RAM is about 1.5 GB.
 
 `--device auto` picks CoreML on Apple Silicon, CUDA where available, CPU
-otherwise. The CLI bundles the CPU build of `onnxruntime-node`; for CUDA, set
+otherwise. The first run installs the CPU build of `onnxruntime-node` into
+`~/.cache/hyperframes/optional/` (one line on stderr, once, no prompt); for CUDA, set
 `HYPERFRAMES_CUDA=1` and supply a GPU-enabled build.
 
 <Tip>
@@ -609,7 +641,7 @@ npx hyperframes lint [dir] --json
 ◆  Linting my-project/index.html
 
   ✗ missing_gsap_script: Composition uses GSAP but no GSAP script is loaded.
-  ⚠ unmuted-video [clip-1]: Video should have the 'muted' attribute for reliable autoplay.
+  ⚠ video_missing_muted [clip-1]: <video id="clip-1"> has data-start but declares neither muted nor data-has-audio. If the file has sound, add data-has-audio="true" (the sound stays on this clip). If it is silent, add muted.
 
 ◇  1 error(s), 1 warning(s)
 ```
@@ -855,6 +887,9 @@ npx hyperframes render --docker --output output.mp4
 # Transparent, for overlays and lower thirds
 npx hyperframes render --format webm --output overlay.webm
 
+# HLS VOD stream (output is a directory of playlists and .ts segments)
+npx hyperframes render --format hls --output stream
+
 npx hyperframes render --output output.mp4 --fps 60 --quality high
 npx hyperframes render --gpu --output gpu.mp4
 ```
@@ -865,9 +900,9 @@ The flags that come up most:
 | ------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--output, -o`      | `renders/<name>.mp4`          | Output file path                                                                                                                                  |
 | `--composition, -c` | `index.html`                  | Render a different composition file. Sub-compositions using `<template>` wrappers must be referenced from `index.html` via `data-composition-src`. |
-| `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, or `png-sequence`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory.                 |
+| `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, `png-sequence`, or `hls`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory; `hls` writes a VOD playlist directory. |
 | `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
-| `--quality, -q`     | `standard`                    | `draft`, `standard`, or `high`. Drives MP4/WebM encoder settings; MOV always uses the fixed alpha-preserving ProRes 4444 profile.                  |
+| `--quality, -q`     | `looks`                       | `draft`, `looks` (CRF 16, default), `delivery` (= `high`), `standard`, or `high`. MOV always uses the fixed alpha-preserving ProRes 4444 profile. |
 | `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
 | `--docker`          | off                           | Render inside Docker for [deterministic output](/concepts/determinism)                                                                             |
 | `--variables`       | —                             | JSON object merged over the composition's `data-composition-variables` defaults                                                                    |
@@ -883,6 +918,7 @@ Quality and file size:
 | `--video-bitrate`      | from `--quality`| Target MP4/WebM bitrate, e.g. `10M` or `5000k`. Not with `--crf`; rejected for MOV.                       |
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
 | `--gif-loop`           | `0`             | GIF loop count, `0` for forever. Range 0–65535, `--format gif` only.                                     |
+| `--hls-segment-seconds`| `4`             | HLS target segment length in whole seconds, 1–60. `--format hls` only. Also fixes the encoder GOP so every segment starts on a keyframe. |
 | `--video-frame-format` | `auto`          | How source video frames are extracted: `auto`, `jpg`, `png`. Use `png` for UI recordings, screen captures, and other colour-sensitive footage. |
 | `--hdr`                | off             | Force HDR even with no HDR sources. MP4 only. See [HDR rendering](/guides/hdr).                           |
 | `--sdr`                | off             | Force SDR even when HDR sources are detected                                                              |
@@ -895,7 +931,7 @@ How it uses the machine, and when it gives up:
 | `--low-memory-mode` / `--no-low-memory-mode`             | auto at 8 GB RAM or less                   | Safe profile: one worker, screenshot capture, no calibration. See the note below.                                   |
 | `--gpu`                                                  | off                                        | Hardware FFmpeg encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)                                                    |
 | `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back.                |
-| `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for compatible SDR shader transitions, ~6× faster. HDR, alpha, and video disable it themselves.     |
+| `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for SDR shader transitions in mp4, hls and gif, ~6× faster. webm and mov use the layered path; gif always uses page-side WebGL, even with `--no-page-side-compositing`. |
 | `--experimental-fast-capture`                            | on where it can engage                     | Chrome's draw-element capture, ~2× faster; falls back to screenshots on its own. Env: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`. |
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
 | `--max-concurrent-renders`                               | `2`                                        | Concurrent jobs on the Producer server, 1–10                                                                       |
@@ -932,6 +968,66 @@ does not.
   auto-scales with output pixel area, capped at 30 minutes; an explicit value
   becomes a floor and disables that scaling below it. Env:
   `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS`.
+
+#### Long renders and the capture path
+
+Captured frames either stream into FFmpeg as they arrive or land on disk first
+as raw RGBA, which costs `frames × width × height × 4` bytes — about 25 GB per
+minute at 1080p30. Streaming is the default for single-worker mp4/mov renders
+**at any duration**: the old four-minute ceiling guarded an FFmpeg timeout that
+is now per-frame rather than whole-render, so it no longer applies.
+
+Multi-worker mp4/mov renders also stream where capture runs BeginFrame — Linux
+on the bundled `chrome-headless-shell`, at DPR 1, with no forced screenshot. On
+macOS and Windows, multi-worker capture is screenshot-based and still writes
+frames to disk unless you opt in with `HF_CAPTURE_PARALLEL_STREAM=true`. That
+path now retries a stalled worker pool or a mid-stream encoder exit on a fresh
+screenshot session, dropping an interleaved render to one worker, instead of
+failing the render; it stays opt-in until its error rate matches the disk
+path's.
+
+Renders still land on the disk path when the output is `png-sequence` or `gif`,
+when HDR or shader-transition layering is in play, and when streaming is
+switched off. If a render fails preflight asking for tens of GB of temporary
+frame storage, the message names which of those applied; the usual fixes are
+`--workers 1`, `--low-memory-mode`, or freeing disk.
+
+| Environment variable                             | Default | Effect                                                                                  |
+| ------------------------------------------------ | ------- | ----------------------------------------------------------------------------------------- |
+| `PRODUCER_ENABLE_STREAMING_ENCODE`               | `true`  | `false` sends every render to the disk path                                             |
+| `HF_CAPTURE_PARALLEL_STREAM`                     | on for BeginFrame | `true` also streams multi-worker screenshot capture; `false` disables the router entirely |
+| `PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED` | `false` | `true` restores the duration ceiling below                                              |
+| `PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS` | `240`   | The ceiling's value; inert unless the flag above is `true`, including the `0` ("never") setting |
+
+#### Segmented capture
+
+For long renders, capture can be split into fixed-size segments, each encoded
+by its own ffmpeg and stream-copied together at the end. It costs some speed
+against a single-encoder streaming render, and buys three things:
+
+- Scratch is encoded video rather than raw frames, at any duration.
+- The browser restarts at segment boundaries, so a session never accumulates
+  the tens of thousands of frames where Chrome starts losing its target.
+- A crash costs one segment. `--resume` re-runs the render and reuses the
+  segments a previous attempt finished, after re-validating each one; a
+  resumed render is byte-identical to an uninterrupted one.
+
+Segments live in `renders/.hf-segments/<hash>/`, where the hash covers
+everything that determines segment bytes, so changing the composition, fps,
+resolution, quality or segment size starts a fresh set instead of splicing
+mismatched encodes. The directory is deleted after a successful render unless
+`--keep-segments`, and deliberately kept after a failure, because that is what
+`--resume` reads next time.
+
+mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
+keep their existing routes.
+
+| Environment variable           | Default    | Effect                                                                                   |
+| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------ |
+| `HF_SEGMENTED_CAPTURE`         | unset      | `true` segments any eligible render; `false` is the kill switch                          |
+| `HF_SEGMENTED_MIN_SECONDS`     | off        | Segment renders at least this long. Unset means duration never routes on its own          |
+| `HF_SEGMENT_FRAMES`            | `3000`     | Frames per segment (~100 s at 30 fps); minimum 30                                        |
+| `HF_SEGMENT_BROWSER_RECYCLE`   | `3`        | Restart the browser every N segments; `0` keeps one session for the whole render          |
 
 #### Render the same composition with different content
 
@@ -1051,6 +1147,27 @@ In JSON mode, paths inside `detail` and `hint` are redacted — your home
 directory becomes the literal `$HOME`, so output is safe to paste into a bug
 report or an agent context.
 
+### `clean`
+
+Find and remove what HyperFrames left on disk.
+
+```bash
+npx hyperframes clean --dry-run   # list it, remove nothing
+npx hyperframes clean
+npx hyperframes clean --snapshots # also remove snapshots/ folders
+npx hyperframes clean --json
+```
+
+It looks in the current project (not its subfolders) and every project the Studio history knows, and removes:
+
+- frames and staging folders left by renders that were killed or crashed (a render that is still running keeps its own);
+- work folders of `--debug` renders nothing has written to for six hours;
+- the history of projects that no longer exist;
+- extracted video frames and video proxies nobody has used for an hour (they rebuild on demand).
+
+`snapshots/` folders are listed as also reclaimable and removed only with `--snapshots`. Rendered outputs, source
+files, the browser download and models are never touched.
+
 ### `info` and `compositions`
 
 `npx hyperframes info [dir]` prints project metadata: name, resolution,
@@ -1145,15 +1262,17 @@ npx hyperframes telemetry status
 Telemetry collects command names, render performance, render checkpoint and
 error names, aggregate browser diagnostic counts, browser initialization
 duration and tween count, aggregate video-extraction workload counts (extracted
-frames, VFR preflights), example choices, the names of registry items `add`
-installs, and system info — including a coarse
+frames, VFR preflights), example choices, the names of registry items `add` or
+Studio installs and which of the two installed them, and system info — including a coarse
 environment fingerprint: OS, kernel string, CPU and memory shape, sandbox
 runtime such as gVisor or Docker, and the _name_ of a coding agent driving the
 CLI when one is detected (`claude_code`, `codex`, `cursor`). That name is
-inferred from which well-known environment variables exist; their values are
-never read. Local paths and URL query strings are redacted from error and
+inferred from which well-known environment variables exist. Local paths and URL query strings are redacted from error and
 checkpoint messages. Project names, video content, and environment variable
-values are never collected.
+values are never collected, except short self-identifying names: `AGENT`,
+`AI_AGENT` and `TERM_PROGRAM` (filtered to short slugs), and `HYPERFRAMES_CLIENT`,
+the `<app>/<version>/<channel>` tag an app that launches the CLI sets, sent as
+`client` so reports from that app can be told apart.
 
 Nothing personally identifying is collected until you sign in. When you run
 `hyperframes auth login`, your HeyGen account email — or username, if the

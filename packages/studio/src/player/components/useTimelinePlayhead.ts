@@ -4,13 +4,29 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   getTimelinePlaybackFollowScrollLeft,
-  getTimelinePlayheadLeft,
   getTimelineScrubTime,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
   shouldAutoScrollTimeline,
 } from "./timelineLayout";
+import { getTimelinePlayheadTransform } from "./timelinePlayheadTransform";
 import { applyTimelineHorizontalAutoScrollStep } from "./timelineEditing";
+
+function revealPlayheadScrollLeft(
+  scroll: HTMLDivElement,
+  playheadX: number,
+  contentOrigin: number,
+  from = scroll.scrollLeft,
+): number {
+  if (playheadX >= from + contentOrigin && playheadX <= from + scroll.clientWidth) return from;
+  return getTimelinePlaybackFollowScrollLeft({
+    playheadX,
+    currentScrollLeft: from,
+    viewportWidth: scroll.clientWidth,
+    contentOrigin,
+    maxScrollLeft: scroll.scrollWidth - scroll.clientWidth,
+  });
+}
 
 interface UseTimelinePlayheadInput {
   playheadRef: React.RefObject<HTMLDivElement | null>;
@@ -58,10 +74,13 @@ export function useTimelinePlayhead({
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
-  // Center-anchored magnify: keep the time at the viewport center fixed when
-  // the zoom level (pps) changes via the toolbar / slider. The pinch handler
-  // anchors at the cursor instead, so it opts out via `skipCenterAnchorRef`.
+  // A toolbar zoom keeps the playhead in place; a resize keeps the centre, or 00:00 at the start.
+  // The pinch handler anchors at the cursor instead, so it opts out via `skipCenterAnchorRef`.
   const previousAnchorPpsRef = useRef(pps);
+  const userZoomCount = usePlayerStore((s) => s.userZoomCount);
+  const previousZoomCountRef = useRef(userZoomCount);
+  const lastLiveTimeRef = useRef(usePlayerStore.getState().currentTime);
+  const lastSeekCountRef = useRef(liveTime.seekCount());
   const skipCenterAnchorRef = useRef(false);
   const contentOriginRef = useRef(contentOrigin);
   contentOriginRef.current = contentOrigin;
@@ -70,14 +89,22 @@ export function useTimelinePlayhead({
     const scroll = scrollRef.current;
     const prevPps = previousAnchorPpsRef.current;
     previousAnchorPpsRef.current = pps;
+    const prevZoomCount = previousZoomCountRef.current;
+    previousZoomCountRef.current = userZoomCount;
     // Always consume the skip flag, even when pps didn't change — otherwise a
     // pinch that produced no pps change (already at the zoom clamp) would strand
     // it true and the next toolbar zoom would wrongly skip center-anchoring.
     const skip = skipCenterAnchorRef.current;
     skipCenterAnchorRef.current = false;
     if (!scroll || pps === prevPps || skip) return;
+    const zoomed = userZoomCount !== prevZoomCount;
+    if (!zoomed && scroll.scrollLeft < 1) return;
+    const time = Math.max(0, lastLiveTimeRef.current);
+    const playheadX = contentOrigin + time * prevPps;
+    const onScreen =
+      revealPlayheadScrollLeft(scroll, playheadX, contentOrigin) === scroll.scrollLeft;
     const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
-      pointerX: scroll.clientWidth / 2,
+      pointerX: zoomed && onScreen ? playheadX - scroll.scrollLeft : scroll.clientWidth / 2,
       currentScrollLeft: scroll.scrollLeft,
       contentOrigin,
       currentPixelsPerSecond: prevPps,
@@ -85,20 +112,28 @@ export function useTimelinePlayhead({
       duration: durationRef.current,
     });
     const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-    scroll.scrollLeft = Math.max(0, Math.min(maxScrollLeft, nextScrollLeft));
-  }, [pps, scrollRef, durationRef, contentOrigin]);
+    const anchored = Math.max(0, Math.min(maxScrollLeft, nextScrollLeft));
+    scroll.scrollLeft = zoomed
+      ? revealPlayheadScrollLeft(scroll, contentOrigin + time * pps, contentOrigin, anchored)
+      : anchored;
+  }, [pps, userZoomCount, scrollRef, durationRef, contentOrigin]);
 
   const syncPlayheadPosition = useCallback(
     (time: number) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
-      playheadRef.current.style.left = `${getTimelinePlayheadLeft(time, ppsRef.current, contentOrigin)}px`;
+      playheadRef.current.style.transform = getTimelinePlayheadTransform(
+        time,
+        ppsRef.current,
+        contentOrigin,
+        !usePlayerStore.getState().isPlaying,
+      );
     },
     [playheadRef, durationRef, ppsRef, contentOrigin],
   );
 
   useEffect(() => {
     syncPlayheadPosition(currentTime);
-  }, [currentTime, pps, syncPlayheadPosition]);
+  }, [currentTime, pps, syncPlayheadPosition, timelineReady, elementsLength]);
 
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
@@ -121,35 +156,48 @@ export function useTimelinePlayhead({
   }, [zoomMode, scrollRef]);
 
   useMountEffect(() => {
-    const unsub = liveTime.subscribe((t) => {
-      if (!playheadRef.current || durationRef.current <= 0) return;
-      const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
-      playheadRef.current.style.left = `${getTimelinePlayheadLeft(
+    const place = (t: number, atRest: boolean) => {
+      if (!playheadRef.current || durationRef.current <= 0) return false;
+      playheadRef.current.style.transform = getTimelinePlayheadTransform(
         t,
         ppsRef.current,
         contentOriginRef.current,
-      )}px`;
+        atRest,
+      );
+      return true;
+    };
+    const dragging = () => isDragging.current || usePlayerStore.getState().beatDragging;
+    const unsubPlaying = usePlayerStore.subscribe((state, prev) => {
+      if (prev.isPlaying && !state.isPlaying) place(lastLiveTimeRef.current, true);
+    });
+    lastSeekCountRef.current = liveTime.seekCount();
+    const unsub = liveTime.subscribe((t) => {
+      const sought = liveTime.seekCount() !== lastSeekCountRef.current;
+      lastSeekCountRef.current = liveTime.seekCount();
+      lastLiveTimeRef.current = t;
+      const playing = usePlayerStore.getState().isPlaying;
+      if (!place(t, !playing)) return;
+      const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
       const scroll = scrollRef.current;
-      if (
-        !scroll ||
-        !usePlayerStore.getState().isPlaying ||
-        isDragging.current ||
-        zoomModeRef.current === "fit"
-      ) {
-        return;
-      }
-      const nextScrollLeft = getTimelinePlaybackFollowScrollLeft({
-        playheadX,
-        currentScrollLeft: scroll.scrollLeft,
-        viewportWidth: scroll.clientWidth,
-        contentOrigin: contentOriginRef.current,
-        maxScrollLeft: scroll.scrollWidth - scroll.clientWidth,
-      });
+      // Paused, only a seek scrolls: a reload's republish, frame-rounded, must not undo a person's scroll.
+      if (!scroll || dragging() || zoomModeRef.current === "fit" || (!playing && !sought)) return;
+      const nextScrollLeft = playing
+        ? getTimelinePlaybackFollowScrollLeft({
+            playheadX,
+            currentScrollLeft: scroll.scrollLeft,
+            viewportWidth: scroll.clientWidth,
+            contentOrigin: contentOriginRef.current,
+            maxScrollLeft: scroll.scrollWidth - scroll.clientWidth,
+          })
+        : revealPlayheadScrollLeft(scroll, playheadX, contentOriginRef.current);
       if (Math.abs(nextScrollLeft - scroll.scrollLeft) >= 0.5) {
         scroll.scrollLeft = nextScrollLeft;
       }
     });
-    return unsub;
+    return () => {
+      unsub();
+      unsubPlaying();
+    };
   });
 
   const seekFromX = useCallback(

@@ -2,6 +2,7 @@
 // Nothing in this file should emit findings — it only parses and extracts.
 
 import { Parser } from "htmlparser2";
+import { parse } from "acorn";
 
 export type OpenTag = {
   raw: string;
@@ -13,6 +14,8 @@ export type OpenTag = {
 };
 
 export type ExtractedBlock = {
+  contentStart?: number;
+  file?: string;
   attrs: string;
   content: string;
   raw: string;
@@ -34,9 +37,8 @@ export const TIMELINE_REGISTRY_ASSIGN_PATTERN =
 // missed `window.__timelines[spec.id] = tl`, a pattern the shipped
 // code-particle-assemble/code-3d-extrude registry blocks actually use,
 // making gsap_timeline_not_registered false-fire on correctly registered
-// timelines. The computed-key alternative is deliberately non-capturing:
-// its text isn't a literal composition id, so callers reading group 1/2
-// (readRegisteredTimelineCompositionId) must keep falling back to null for it.
+// timelines. The computed-key alternative is non-capturing; remaining
+// callers only `.test()` this pattern.
 export const WINDOW_TIMELINE_ASSIGN_PATTERN =
   /window\.__timelines(?:\[\s*(?:["']([^"']+)["']|[A-Za-z_$][\w$.]*)\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=\s*([A-Za-z_$][\w$]*)/i;
 export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
@@ -70,12 +72,37 @@ export function parseHtmlStructure(source: string): {
     contentStart: number;
     index: number;
   }> = [];
+  let explicitOpenTag: { index: number; nameEnd: number } | null = null;
   const parser: Parser = new Parser(
     {
-      onopentag(name) {
-        const index = parser.startIndex;
+      onopentagname(name) {
+        // startIndex can still point into the preceding close. Bound this scan by
+        // HTML name delimiters, not '<' (which can occur in a malformed name).
+        // Keep the raw name end too: Unicode lowercasing can change UTF-16 length.
+        let tokenStart = parser.endIndex - 1;
+        while (
+          tokenStart >= parser.startIndex &&
+          !/[\t\n\f\r />]/.test(source.charAt(tokenStart))
+        ) {
+          tokenStart -= 1;
+        }
+        const index = source.indexOf("<", tokenStart + 1);
+        explicitOpenTag =
+          index >= 0 &&
+          index < parser.endIndex &&
+          source.slice(index + 1, parser.endIndex).toLowerCase() === name
+            ? { index, nameEnd: parser.endIndex }
+            : null;
+      },
+      onopentag(name, _attrs, isImplied) {
+        const origin = !isImplied ? explicitOpenTag : null;
+        const index = origin?.index ?? parser.startIndex;
+        explicitOpenTag = null;
         const raw = source.slice(index, parser.endIndex + 1);
-        const attrs = raw.slice(name.length + 1, -1).replace(/\s*\/$/, "");
+        const rawAttrs = origin
+          ? source.slice(origin.nameEnd, parser.endIndex)
+          : raw.slice(name.length + 1, -1);
+        const attrs = rawAttrs.replace(/\s*\/$/, "");
         const tag = { raw, name, attrs, index };
         tags.push(tag);
         const sameNameStack = openTagsByName.get(name) ?? [];
@@ -97,6 +124,7 @@ export function parseHtmlStructure(source: string): {
         blocks[name].push({
           attrs: block.attrs,
           content: source.slice(block.contentStart, parser.startIndex),
+          contentStart: block.contentStart,
           raw: source.slice(block.index, parser.endIndex + 1),
           index: block.index,
         });
@@ -203,6 +231,34 @@ export function readAttr(tagSource: string, attr: string): string | null {
   // The lookbehind requires the match to start a fresh attribute name.
   const match = tagSource.match(new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*["']([^"']+)["']`, "i"));
   return match?.[1] || null;
+}
+
+export function hasAttrName(tagSource: string, attr: string): boolean {
+  return readDecodedAttr(tagSource, attr) !== null;
+}
+
+// An explicit data-has-audio is authoritative for the compiler; only the exact value "true" means audible.
+export function isAudibleVideoTag(tagSource: string): boolean {
+  if (hasAttrName(tagSource, "muted")) return false;
+  if (!hasAttrName(tagSource, "data-has-audio")) return true;
+  const declared = readAttr(tagSource, "data-has-audio");
+  return declared === "true";
+}
+
+export function mediaTimeWindow(tagSource: string): { start: number; end: number } | null {
+  const start = Number(readAttr(tagSource, "data-start"));
+  const duration = Number(readAttr(tagSource, "data-duration"));
+  if (!readAttr(tagSource, "data-start") || !readAttr(tagSource, "data-duration")) return null;
+  if (!Number.isFinite(start) || !Number.isFinite(duration)) return null;
+  return { start, end: start + duration };
+}
+
+export function mediaWindowsOverlap(
+  a: { start: number; end: number } | null,
+  b: { start: number; end: number } | null,
+): boolean {
+  if (!a || !b) return true;
+  return a.start < b.end && b.start < a.end;
 }
 
 /** Read an HTML attribute using browser-equivalent character-reference decoding. */
@@ -329,15 +385,26 @@ function readTimelineRegistryTopLevelKeys(source: string): string[] {
   return keys;
 }
 
-export function getInlineScriptSyntaxError(source: string): string | null {
+export function getInlineScriptSyntaxError(
+  source: string,
+): { message: string; offset?: number } | null {
   if (!source.trim()) return null;
   try {
-    // eslint-disable-next-line no-new-func
-    new Function(source);
+    // Match the former Function-body grammar (including top-level return), without eval.
+    parse(source, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      allowReturnOutsideFunction: true,
+    });
     return null;
   } catch (error) {
-    if (error instanceof Error) return error.message;
-    return String(error);
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      offset:
+        error instanceof SyntaxError && "pos" in error && typeof error.pos === "number"
+          ? error.pos
+          : undefined,
+    };
   }
 }
 
@@ -729,7 +796,10 @@ export function stripCssComments(source: string): string {
 // `/<!--[\s\S]*?-->/` regex: that pattern backtracks O(n²) on inputs with many
 // unterminated "<!--" (CodeQL js/polynomial-redos). An unterminated "<!--" with
 // no closing "-->" is kept verbatim, matching the prior regex's no-match behavior.
-function stripHtmlCommentsOnce(source: string): string {
+function stripHtmlCommentsOnce(
+  source: string,
+  removed?: (start: number, end: number) => void,
+): string {
   let out = "";
   let i = 0;
   for (;;) {
@@ -738,6 +808,7 @@ function stripHtmlCommentsOnce(source: string): string {
     const end = source.indexOf("-->", start + 4);
     if (end < 0) return out + source.slice(i);
     out += source.slice(i, start);
+    removed?.(start, end + 3);
     i = end + 3;
   }
 }
@@ -746,11 +817,16 @@ function stripHtmlCommentsOnce(source: string): string {
 // comment can splice adjacent markers into a fresh, complete <!-- … --> (e.g.
 // "<<!-- -->!-- … -->" → "<!-- … -->"), which would otherwise survive and let a
 // commented-out <template>/tag hijack the linter's tag scan.
-export function stripHtmlComments(source: string): string {
+export function stripHtmlComments(
+  source: string,
+  pass?: (ranges: Array<[number, number]>) => void,
+): string {
   let out = source;
   for (let prev = ""; prev !== out; ) {
     prev = out;
-    out = stripHtmlCommentsOnce(out);
+    const ranges: Array<[number, number]> = [];
+    out = stripHtmlCommentsOnce(out, pass ? (start, end) => ranges.push([start, end]) : undefined);
+    if (ranges.length) pass?.(ranges);
   }
   return out;
 }

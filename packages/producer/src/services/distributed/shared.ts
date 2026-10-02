@@ -9,8 +9,9 @@ import { dirname, join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { type Fps } from "@hyperframes/core";
+import { type Fps, type RateSpec } from "@hyperframes/core";
 import {
+  getFfmpegBinary,
   MIXED_AUDIO_FILENAME,
   type VideoElement,
   type VideoFrameFormat,
@@ -172,6 +173,17 @@ function readNonNegativeInteger(value: unknown, field: string): number {
   return value;
 }
 
+function readRateSpec(value: unknown, field: string): RateSpec | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "number") return readFiniteNumber(value, field);
+  const lane = readRecord(value, field);
+  if (!Array.isArray(lane.points)) {
+    metadataError(`${field}.points`, "must be an array");
+  }
+  // The planner serialized this lane from the clip's parsed `data-automation` rate lane.
+  return lane as unknown as Exclude<RateSpec, number>;
+}
+
 function readVideoMetadata(
   value: unknown,
   field: string,
@@ -232,6 +244,7 @@ export function parsePlanVideosJson(value: unknown): PlanVideosJson {
       start: readFiniteNumber(video.start, `${field}.start`),
       end: readFiniteNumber(video.end, `${field}.end`),
       mediaStart: readFiniteNumber(video.mediaStart, `${field}.mediaStart`),
+      playbackRate: readRateSpec(video.playbackRate, `${field}.playbackRate`),
       loop: readBoolean(video.loop, `${field}.loop`),
       hasAudio: readBoolean(video.hasAudio, `${field}.hasAudio`),
     };
@@ -323,7 +336,7 @@ const execFile = promisify(execFileCallback);
  * same process (Cloud Run Jobs, Temporal activity workers) would otherwise
  * spawn ffmpeg once per chunk just to read the version — ~20-50ms each.
  */
-let cachedFfmpegVersion: string | null = null;
+const cachedFfmpegVersions = new Map<string, string>();
 
 /**
  * Read `ffmpeg -version` first line. The string is opaque — `planHash`
@@ -332,23 +345,36 @@ let cachedFfmpegVersion: string | null = null;
  * disagree with the plan's baked-in encoder args.
  */
 export async function readFfmpegVersion(): Promise<string> {
-  if (cachedFfmpegVersion !== null) return cachedFfmpegVersion;
-  const { stdout } = await execFile("ffmpeg", ["-version"], {
-    maxBuffer: 1024 * 1024,
-    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
-    windowsHide: true,
-  });
+  const binary = getFfmpegBinary();
+  const cached = cachedFfmpegVersions.get(binary);
+  if (cached !== undefined) return cached;
+  let stdout: string;
+  try {
+    ({ stdout } = await execFile(binary, ["-version"], {
+      maxBuffer: 1024 * 1024,
+      // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+      windowsHide: true,
+    }));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    throw Object.assign(
+      new Error(`ffmpeg not found at "${binary}": install FFmpeg or set HYPERFRAMES_FFMPEG_PATH.`, {
+        cause: error,
+      }),
+      { code: "ENOENT" },
+    );
+  }
   const firstLine = stdout.split(/\r?\n/)[0]?.trim() ?? "";
   if (!firstLine) {
     throw new Error("ffmpeg -version returned empty output");
   }
-  cachedFfmpegVersion = firstLine;
+  cachedFfmpegVersions.set(binary, firstLine);
   return firstLine;
 }
 
 /** Test-only: clear the cached ffmpeg version so a fresh probe runs. */
 function _resetFfmpegVersionCacheForTests(): void {
-  cachedFfmpegVersion = null;
+  cachedFfmpegVersions.clear();
 }
 
 /**

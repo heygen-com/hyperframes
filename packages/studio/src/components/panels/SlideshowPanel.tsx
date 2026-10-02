@@ -21,6 +21,7 @@ import { usePlayerStore } from "../../player";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
 import { generateId } from "../../utils/generateId";
+import { isTypingTarget } from "../../utils/typingTarget";
 import {
   SectionHeader,
   SlideList,
@@ -153,10 +154,17 @@ export function makeSlideshowNotesController(): NotesController {
   };
 }
 
+export function isPanelUndoKey(
+  e: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey" | "key" | "target">,
+): boolean {
+  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== "z") return false;
+  return !isTypingTarget(e.target);
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 export interface SlideshowPanelProps {
-  /** Scenes from the live clip manifest (passed from StudioRightPanel). */
+  /** Scenes from the live clip manifest (passed from StudioRightPanels). */
   scenes: import("./slideshowPanelHelpers").SceneInfo[];
   /**
    * Called with the updated manifest after every discrete edit (toggle, add,
@@ -413,29 +421,26 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
 
   return (
     <div
-      className="flex flex-col h-full overflow-y-auto text-white"
+      className="flex flex-col h-full overflow-y-auto text-text-0"
       onKeyDown={(e) => {
         // In-panel undo — scoped so it never fights the app-level file undo.
-        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
-          const target = e.target instanceof HTMLElement ? e.target.tagName : "";
-          if (target === "TEXTAREA" || target === "INPUT") return;
-          e.preventDefault();
-          e.stopPropagation();
-          handleUndo();
-        }
+        if (!isPanelUndoKey(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        handleUndo();
       }}
     >
       {persistError && (
         <div
           role="alert"
-          className="flex items-center justify-between gap-2 px-3 py-2 bg-red-950/40 border-b border-red-500/40"
+          className="flex items-center justify-between gap-2 px-3 py-2 bg-danger/15 border-b border-red-500/40"
         >
-          <span className="text-[11px] text-red-300">Changes not saved</span>
+          <span className="text-[11px] text-danger-ink">Changes not saved</span>
           <button
             type="button"
             disabled={retrying}
             onClick={handleRetryPersist}
-            className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white enabled:hover:bg-red-500 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
+            className="px-2 py-0.5 text-[10px] rounded-sm bg-danger text-on-danger enabled:hover:brightness-95 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
           >
             {retrying ? "Retrying…" : "Retry"}
           </button>
@@ -447,7 +452,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
             type="button"
             onClick={handleUndo}
             title="Undo last slideshow edit (⌘Z)"
-            className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.97] transition-colors"
+            className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.97] transition-colors"
           >
             Undo ({undoDepth})
           </button>

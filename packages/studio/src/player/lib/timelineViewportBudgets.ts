@@ -28,6 +28,8 @@ export interface TimelineViewportBudgets {
   frameIntervalP95Ms: number;
   constrainedInteractionP95Ms: number;
   constrainedFrameIntervalP95Ms: number;
+  ciVirtualizedInteractionP95Ms: number;
+  ciVirtualizedFrameIntervalP95Ms: number;
   longTaskLimitMs: number;
   constrainedLongTaskLimitMs: number;
   memoryReturnToleranceRatio: number;
@@ -49,6 +51,7 @@ export interface TimelineViewportBudgets {
 
 const MEBIBYTE = 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const MAX_VISIBLE_THUMBNAIL_FRAMES = Math.ceil(3840 / (66 * (16 / 9))); // Decode-memory cap, 4K width / a 66 px 16:9 tile; 40 px clips reuse frames past it.
 
 /**
  * The sole default budget owner for timeline viewport and media virtualization.
@@ -66,7 +69,7 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   posterMaxPhysicalWidth: 240,
   posterMaxPhysicalHeight: 135,
   posterDprCap: 1.5,
-  richPreviewFrameCount: 6,
+  richPreviewFrameCount: MAX_VISIBLE_THUMBNAIL_FRAMES,
   concurrentVideoDecodes: 2,
   concurrentMetadataJobs: 4,
   concurrentCompositionFetches: 2,
@@ -85,6 +88,8 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   frameIntervalP95Ms: 33.3,
   constrainedInteractionP95Ms: 75,
   constrainedFrameIntervalP95Ms: 75,
+  ciVirtualizedInteractionP95Ms: 58.3,
+  ciVirtualizedFrameIntervalP95Ms: 25,
   longTaskLimitMs: 50,
   constrainedLongTaskLimitMs: 300,
   memoryReturnToleranceRatio: 0.15,
@@ -98,7 +103,7 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   richPreviewP95Ms: 750,
   constrainedRichPreviewP95Ms: 1_200,
   supportedFixtureFallbackRatio: 0.02,
-  scrollSamplesPerRun: 21,
+  scrollSamplesPerRun: 63,
   warmupRuns: 3,
   measuredRuns: 5,
   requiredPassingRuns: 4,

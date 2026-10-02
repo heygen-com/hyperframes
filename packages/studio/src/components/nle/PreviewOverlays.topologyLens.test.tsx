@@ -3,21 +3,13 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getPreviewState, iframeRef } from "./PreviewOverlaysTestMocks";
 import { PreviewOverlays } from "./PreviewOverlays";
+
+const previewState = getPreviewState();
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const previewState = vi.hoisted(() => ({ captionEditMode: false }));
-const iframeRef = { current: null as HTMLIFrameElement | null };
-
-vi.mock("../../contexts/StudioContext", () => ({
-  useStudioShellContext: () => ({ activeCompPath: "index.html", previewIframeRef: iframeRef }),
-  useStudioPlaybackContext: () => ({
-    captionEditMode: previewState.captionEditMode,
-    compositionLoading: false,
-    isPlaying: false,
-  }),
-}));
 vi.mock("../../contexts/DomEditContext", () => ({
   useDomEditSelectionContext: () => ({
     domEditHoverSelection: null,
@@ -41,30 +33,7 @@ vi.mock("../../contexts/DomEditContext", () => ({
     handleDomZIndexReorderCommit: vi.fn(),
   }),
 }));
-vi.mock("../../captions/store", () => {
-  const state = {
-    model: null,
-    dismissed: false,
-    syncError: null,
-    clearSelection: vi.fn(),
-    setDismissed: vi.fn(),
-    setEditMode: vi.fn(),
-    setSyncError: vi.fn(),
-  };
-  return {
-    useCaptionStore: Object.assign(
-      (selector: (value: typeof state) => unknown) => selector(state),
-      { getState: () => state },
-    ),
-  };
-});
-vi.mock("../../hooks/useCompositionDimensions", () => ({
-  useCompositionDimensions: () => null,
-}));
-vi.mock("../../utils/studioUiPreferences", () => ({ readStudioUiPreferences: () => ({}) }));
-vi.mock("./useCanvasZOrderTimelineMirror", () => ({
-  useCanvasZOrderTimelineMirror: () => vi.fn(),
-}));
+
 vi.mock("../editor/TopologyLens", async () => {
   const { createElement } = await import("react");
   return {

@@ -383,8 +383,9 @@ The skeleton handles most structural rules. These are the runtime rules the skel
 | Never                           | Use instead                 |
 | ------------------------------- | --------------------------- |
 | `video.play()`, `audio.play()`  | Framework owns playback     |
-| `<video>` without `muted`       | Always `muted playsinline`  |
-| Audio on `<video>`              | Separate `<audio>` element  |
+| `<video>` with sound            | `data-has-audio="true"`, no `muted` |
+| Music, voiceover, or replacement audio | separate `<audio>` element |
+| Silent footage and b-roll       | `muted` |
 | Base64 media                    | File reference or HTTPS URL |
 | Placeholder URLs (placehold.co) | Real assets                 |
 

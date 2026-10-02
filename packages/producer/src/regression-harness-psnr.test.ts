@@ -12,7 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { frameIndexForCheckpoint, psnrAtCheckpoint, psnrAtFrames } from "./regression-harness.js";
@@ -166,6 +166,18 @@ describe("psnrAtFrames()", () => {
   it("returns exactly the frames asked for", () => {
     const byFrame = psnrAtFrames(referenceVideo, degradedVideo, SAMPLE_FRAMES);
     expect([...byFrame.keys()].sort((a, b) => a - b)).toEqual(SAMPLE_FRAMES);
+  });
+
+  it("writes its stats file under a temp dir whose path holds filtergraph syntax", () => {
+    const savedTmp = process.env.TMPDIR;
+    try {
+      process.env.TMPDIR = join(workDir, "tmp:with\\backslash, [o'brien];");
+      mkdirSync(process.env.TMPDIR, { recursive: true });
+      expect(psnrAtFrames(referenceVideo, degradedVideo, [0, 59]).size).toBe(2);
+    } finally {
+      if (savedTmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = savedTmp;
+    }
   });
 
   it("matches the per-checkpoint ffmpeg method it replaced", () => {

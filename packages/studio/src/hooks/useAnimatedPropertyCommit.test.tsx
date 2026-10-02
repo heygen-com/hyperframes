@@ -6,7 +6,9 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
-import { mountReactHarness } from "./domSelectionTestHarness";
+import { mountReactHarness, withInlineLayoutBox } from "./domSelectionTestHarness";
+import { writeSizeWithCrop } from "../components/editor/cropResize";
+import type { CommitMutation } from "./gsapScriptCommitTypes";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -359,6 +361,43 @@ describe("commitStaticSet group routing", () => {
       "Atomic GSAP property batch is unavailable",
     );
     expect(committed).toHaveLength(0);
+    act(() => root.unmount());
+  });
+});
+
+describe("useAnimatedPropertyCommit — a size write and its crop are one undo step", () => {
+  it.each([[{ width: 450 }], [{ x: 10, width: 450 }]])("%o on a static element", async (props) => {
+    const element = withInlineLayoutBox(document.createElement("div"));
+    element.id = "box";
+    element.style.cssText = "width: 300px; height: 200px; clip-path: inset(0px 60px 0px 0px)";
+    document.body.append(element);
+    const sel = { ...selection, element } as DomEditSelection;
+    const keys: unknown[] = [];
+    const land = async (options: { coalesceKey?: string }) => {
+      keys.push(options.coalesceKey);
+      element.style.width = "450px";
+    };
+    const mutation: CommitMutation = (_s, _m, options) => land(options);
+    mutation.batch = (_calls, options) => land(options);
+    let raw!: ReturnType<typeof useAnimatedPropertyCommit>["commitAnimatedProperties"];
+    function Harness() {
+      raw = useAnimatedPropertyCommit({
+        selectedGsapAnimations: [],
+        gsapCommitMutation: mutation,
+        addGsapAnimation: vi.fn(),
+        convertToKeyframes: vi.fn(),
+        previewIframeRef: { current: null },
+        bumpGsapCache: vi.fn(),
+      }).commitAnimatedProperties;
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+    const patch = vi.fn().mockResolvedValue(undefined);
+    await writeSizeWithCrop(sel, props, mutation, patch, (keyed) => raw(sel, props, keyed));
+
+    const cropKey = patch.mock.calls[0]![2].coalesceKey;
+    expect(patch.mock.calls[0]![1][0]).toMatchObject({ value: "inset(0px 90px 0px 0px)" });
+    expect(keys).toEqual([cropKey]);
     act(() => root.unmount());
   });
 });

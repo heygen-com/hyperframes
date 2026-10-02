@@ -14,7 +14,7 @@
  * Guardrails:
  *   - Never auto-update across major versions. The user opts in explicitly
  *     via `hyperframes upgrade`.
- *   - Skip on CI, non-TTY, dev mode, unknown installer, ephemeral exec (npx),
+ *   - Skip on CI, dev mode, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
  *   - If a previous install is still in flight (less than 10 min old), don't
@@ -28,8 +28,10 @@ import { appendFileSync, mkdirSync, openSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { compareVersions } from "compare-versions";
+import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
-import { isDevMode } from "./env.js";
+import { updateCheckDisabled } from "./updateCheck.js";
+import { RUNNING_DIR, RUNNING_STALE_MS } from "./runningCli.js";
 import {
   detectInstaller,
   installInvocation,
@@ -40,13 +42,12 @@ const CONFIG_DIR = join(homedir(), ".hyperframes");
 const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
 /** An install that hasn't finished after this many ms is considered stuck. */
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
+/** A waiting installer gives up after this long; the next run schedules it again. */
+const INSTALL_MAX_WAIT_MS = 60 * 60 * 1000;
+const INSTALL_POLL_MS = 2_000;
 
 function isAutoInstallDisabled(): boolean {
-  if (isDevMode()) return true;
-  if (process.env["CI"] === "true" || process.env["CI"] === "1") return true;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return true;
-  if (process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1") return true;
-  return false;
+  return updateCheckDisabled() || process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1";
 }
 
 /** Parse a semver-ish string's major number; returns NaN for pre-releases etc. */
@@ -68,6 +69,125 @@ function log(line: string): void {
   }
 }
 
+export interface InstallerScriptOptions {
+  configFile: string;
+  version: string;
+  bin: string;
+  args: readonly string[];
+  runningDir: string;
+  pollMs: number;
+  maxWaitMs: number;
+  /** A pid or install-lock file not touched for this long belongs to a dead process. */
+  staleMs: number;
+}
+
+/** The detached installer, run via `node -e`: waits until no CLI in `runningDir` is alive, then
+ *  installs with execFile (no shell) and records completedUpdate under the settings lock. */
+export function installerScript(o: InstallerScriptOptions): string {
+  return `
+    const { execFile } = require("node:child_process");
+    const fs = require("node:fs");
+    const { join } = require("node:path");
+    const { readFileSync, renameSync, writeFileSync } = fs;
+    const CFG = ${JSON.stringify(o.configFile)};
+    const TMP = \`\${CFG}.tmp\`;
+    const INSTALL_LOCK = \`\${CFG}.install-lock\`;
+    const RUNNING = ${JSON.stringify(o.runningDir)};
+    const VERSION = ${JSON.stringify(o.version)};
+    const BIN = ${JSON.stringify(o.bin)};
+    const ARGS = ${JSON.stringify(o.args)};
+    const withFileLock = ${withFileLock.toString()};
+    const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+    // Stale = no heartbeat for staleMs on this process's own clock, which stops while the machine sleeps.
+    const seen = new Map();
+    const mono = () => Number(process.hrtime.bigint() / 1000000n);
+    const observe = (file) => {
+      let mtime;
+      try { mtime = fs.statSync(file).mtimeMs; } catch (e) { return "stale"; }
+      const prev = seen.get(file);
+      if (prev && prev.mtime === mtime) return mono() - prev.at >= ${o.staleMs} ? "stale" : "quiet";
+      seen.set(file, { mtime, at: mono() });
+      return prev ? "beating" : "quiet";
+    };
+    const touch = (file) => { try { const now = new Date(); fs.utimesSync(file, now, now); } catch (e) {} };
+    const running = () => {
+      let names = [];
+      try { names = fs.readdirSync(RUNNING); } catch (e) {}
+      return names.filter((name) => {
+        const pid = Number(name);
+        const file = join(RUNNING, name);
+        if (Number.isInteger(pid) && pid > 0 && alive(pid) && observe(file) !== "stale") return true;
+        try { fs.unlinkSync(file); } catch (e) {}
+        return false;
+      });
+    };
+    let lockBeat;
+    const ownsLock = () => { try { return Number(readFileSync(INSTALL_LOCK, "utf-8")) === process.pid; } catch (e) { return false; } };
+    // Under the settings lock, so two installers launched together cannot both take it over.
+    const tryLock = () => {
+      let result = "stuck";
+      withLock(() => {
+        let owner = NaN;
+        try { owner = Number(readFileSync(INSTALL_LOCK, "utf-8")); } catch (e) {}
+        const state = Number.isInteger(owner) && owner > 0 && alive(owner) ? observe(INSTALL_LOCK) : "stale";
+        if (state !== "stale") { result = state; return; }
+        writeFileSync(INSTALL_LOCK, String(process.pid));
+        result = "taken";
+      });
+      return result;
+    };
+    const releaseInstallLock = () => {
+      clearInterval(lockBeat);
+      if (ownsLock()) { try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} }
+    };
+    const install = () => execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+      withLock(() => {
+        let cfg = {};
+        try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
+        cfg.completedUpdate = {
+          version: VERSION,
+          ok: !err,
+          finishedAt: new Date().toISOString(),
+          ...(err ? { error: String(stderr || err.message || "install failed").slice(-400) } : {}),
+        };
+        delete cfg.pendingUpdate;
+        try {
+          writeFileSync(TMP, JSON.stringify(cfg, null, 2) + "\\n", { mode: 0o600 });
+          renameSync(TMP, CFG);
+        } catch (e) {}
+      });
+      releaseInstallLock();
+    });
+    const started = Date.now();
+    let lastPoll = Date.now();
+    const waitThenInstall = () => {
+      if (!ownsLock()) return releaseInstallLock();
+      // A long gap between polls means the machine slept: watch every file afresh.
+      if (Date.now() - lastPoll > ${o.pollMs} * 5) seen.clear();
+      lastPoll = Date.now();
+      if (running().length === 0) return install();
+      if (Date.now() - started > ${o.maxWaitMs}) {
+        console.log(\`[wait] gave up on \${VERSION}: a hyperframes process is still running\`);
+        return releaseInstallLock();
+      }
+      setTimeout(waitThenInstall, ${o.pollMs});
+    };
+    const acquire = () => {
+      const result = tryLock();
+      if (result === "taken") {
+        lockBeat = setInterval(() => ownsLock() && touch(INSTALL_LOCK), ${o.pollMs});
+        return waitThenInstall();
+      }
+      if (result === "quiet") return setTimeout(acquire, ${o.pollMs});
+      console.log(result === "beating"
+        ? \`[wait] another installer is already waiting; leaving \${VERSION} to it\`
+        : \`[wait] settings lock busy; \${VERSION} left for the next run\`);
+    };
+    acquire();
+  `;
+}
+
 /**
  * Spawn a detached child to run the install command. Stdout/stderr land in
  * the log file; the child is `unref()`d so the parent exits immediately
@@ -86,37 +206,16 @@ function launchDetachedInstall(
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   const configFile = join(CONFIG_DIR, "config.json");
 
-  // The child script:
-  //   1. Runs the install via execFile (bin + argv, NO shell) so a version
-  //      string can never be re-interpreted as shell syntax — structural
-  //      symmetry with the interactive `runDetectedInstall` path.
-  //   2. Rewrites the config file with completedUpdate, clears pendingUpdate.
-  // We run it through `node -e` so we don't need to ship a separate file. Bin
-  // and args are embedded as JSON literals (data, not code).
-  const nodeScript = `
-    const { execFile } = require("node:child_process");
-    const { readFileSync, renameSync, writeFileSync } = require("node:fs");
-    const CFG = ${JSON.stringify(configFile)};
-    const TMP = \`\${CFG}.tmp\`;
-    const VERSION = ${JSON.stringify(version)};
-    const BIN = ${JSON.stringify(invocation.bin)};
-    const ARGS = ${JSON.stringify(invocation.args)};
-    execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
-      let cfg = {};
-      try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) {}
-      cfg.completedUpdate = {
-        version: VERSION,
-        ok: !err,
-        finishedAt: new Date().toISOString(),
-        ...(err ? { error: String(stderr || err.message || "install failed").slice(-400) } : {}),
-      };
-      delete cfg.pendingUpdate;
-      try {
-        writeFileSync(TMP, JSON.stringify(cfg, null, 2) + "\\n", { mode: 0o600 });
-        renameSync(TMP, CFG);
-      } catch (e) {}
-    });
-  `;
+  const nodeScript = installerScript({
+    configFile,
+    version,
+    bin: invocation.bin,
+    args: invocation.args,
+    runningDir: RUNNING_DIR,
+    pollMs: INSTALL_POLL_MS,
+    maxWaitMs: INSTALL_MAX_WAIT_MS,
+    staleMs: RUNNING_STALE_MS,
+  });
 
   const out = openSync(LOG_FILE, "a", 0o600);
   const child = spawn(process.execPath, ["-e", nodeScript], {
@@ -129,12 +228,7 @@ function launchDetachedInstall(
   log(`[launch] pid=${child.pid ?? "?"} cmd=${displayCommand} version=${version}`);
 }
 
-/**
- * If a new version is available and policy allows, kick off a detached
- * installer. Returns whether an install was spawned (for tests).
- */
-export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
-  if (isAutoInstallDisabled()) return false;
+function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean {
   if (!latestVersion || !currentVersion) return false;
 
   let cmp: number;
@@ -154,6 +248,16 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     log(`[skip] major-bump ${currentVersion} -> ${latestVersion}`);
     return false;
   }
+  return true;
+}
+
+/**
+ * If a new version is available and policy allows, kick off a detached
+ * installer. Returns whether an install was spawned (for tests).
+ */
+export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
+  if (isAutoInstallDisabled()) return false;
+  if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
 
   const installer = detectInstaller();
   if (installer.kind === "skip") {
@@ -187,7 +291,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     command: installCommand,
     startedAt: new Date().toISOString(),
   };
-  writeConfig(config);
+  if (!writeConfig(config)) return false;
 
   try {
     launchDetachedInstall(invocation, installCommand, latestVersion);

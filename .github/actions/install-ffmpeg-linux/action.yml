@@ -1,20 +1,19 @@
 name: Install ffmpeg (Linux)
 description: >-
-  Install ffmpeg from apt, resilient to a slow or stalling mirror.
+  Put a pinned static ffmpeg and ffprobe from BtbN/FFmpeg-Builds on PATH. No
+  apt: its mirror has taken up to 10 minutes.
 
-  Hosted runners hit `azure.archive.ubuntu.com` at wildly varying speeds: the
-  same install has taken 40 seconds and 15 minutes on consecutive runs, and a
-  stalled connection used to hang until the job's own timeout killed it. That
-  cost more than one red check, because the gates downstream fail closed when a
-  dependency does not succeed — a single slow fetch showed up as a producer
-  defect and a preview defect at once.
-
-  The bound belongs on the connection, not on the command. `Acquire::Retries`
-  re-fetches the individual package that stalled while keeping everything
-  already downloaded, and `Acquire::http::Timeout` caps how long any one
-  connection may sit idle. Wrapping the whole command in a wall-clock kill
-  looks similar but behaves worse: it discards a download that was making
-  progress and starts it over, which turns a slow mirror into a slower one.
+inputs:
+  release-url:
+    description: >-
+      BtbN/FFmpeg-Builds linux64 tarball. Bump the tag, filename and sha256
+      together.
+    required: false
+    default: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-04-30-13-44/ffmpeg-n7.1.3-46-g957b06a788-linux64-gpl-7.1.tar.xz
+  sha256:
+    description: sha256 of the tarball, from the release's checksums.sha256.
+    required: false
+    default: 15a62cc3facdacfa5ce1fbe80f898fc77f159bdd5f3ed6b60dd2c970d52b3f19
 
 runs:
   using: composite
@@ -22,13 +21,17 @@ runs:
     - name: Install ffmpeg
       shell: bash
       env:
-        # Idle-connection cap, and per-package retries that keep prior progress.
-        APT_RESILIENCE: >-
-          -o Acquire::Retries=3
-          -o Acquire::http::Timeout=30
-          -o Acquire::https::Timeout=30
+        URL: ${{ inputs.release-url }}
+        SHA256: ${{ inputs.sha256 }}
       run: |
         set -euo pipefail
-        sudo apt-get $APT_RESILIENCE update -qq
-        sudo apt-get $APT_RESILIENCE install -y --no-install-recommends ffmpeg
-        ffmpeg -version | head -1
+        archive="$RUNNER_TEMP/${URL##*/}"
+        # Two attempts of at most 20 s keep the install under a minute.
+        curl -fsSL --retry 1 --retry-all-errors --retry-max-time 25 --connect-timeout 10 --max-time 20 \
+          --speed-limit 5000000 --speed-time 10 -o "$archive" "$URL"
+        sha256sum -c --quiet <<<"$SHA256  $archive"
+        bin="$RUNNER_TEMP/ffmpeg-bin"
+        mkdir -p "$bin"
+        tar -xJf "$archive" -C "$bin" --strip-components=2 --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'
+        echo "$bin" >> "$GITHUB_PATH"
+        "$bin/ffmpeg" -version | head -1

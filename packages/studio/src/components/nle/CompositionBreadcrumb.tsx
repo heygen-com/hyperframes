@@ -21,7 +21,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
   return (
     <nav
       aria-label="Composition navigation"
-      className="flex items-center gap-1 px-2 h-8 border-b border-neutral-800/50 bg-neutral-900/50 flex-shrink-0"
+      className="flex items-center gap-1 px-2 h-8 border-b border-hairline bg-bg-1 shrink-0"
     >
       {/* Back button — always goes to parent */}
       <button
@@ -33,7 +33,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
           });
           onNavigate(stack.length - 2);
         }}
-        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-[0.98] transition-colors"
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs text-text-3 hover:text-text-0 hover:bg-hover active:scale-[0.98] transition-colors"
         title="Back (Esc, or double-click empty timeline)"
         aria-label="Back to parent composition"
       >
@@ -45,9 +45,9 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
         const isLast = i === stack.length - 1;
         return (
           <span key={level.id} className="flex items-center gap-1">
-            {i > 0 && <CaretRight size={10} className="text-neutral-600 flex-shrink-0" />}
+            {i > 0 && <CaretRight size={10} className="text-text-4 shrink-0" />}
             {isLast ? (
-              <span className="text-xs text-neutral-200 font-medium">{level.label}</span>
+              <span className="text-xs text-text-1 font-medium">{level.label}</span>
             ) : (
               <button
                 type="button"
@@ -55,7 +55,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
                   trackStudioEvent("navigation", { action: "breadcrumb", target: level.label });
                   onNavigate(i);
                 }}
-                className="text-xs text-neutral-500 hover:text-neutral-200 transition-colors"
+                className="text-xs text-text-3 hover:text-text-1 transition-colors"
               >
                 {level.label}
               </button>

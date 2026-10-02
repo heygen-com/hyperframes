@@ -87,18 +87,25 @@ function attr(tag: string, name: string): string | null {
   return m ? m[1]! : null;
 }
 
+function isSoundingVideoTag(tag: string): boolean {
+  const unquoted = tag.replace(/"[^"]*"|'[^']*'/g, '""');
+  return attr(tag, "data-has-audio") === "true" && !/\smuted(?=[\s/>=])/i.test(unquoted);
+}
+
 /**
  * Find the music track's src in composition HTML, applying the SAME rules as the
- * Studio's `isMusicTrack` so the CLI and Studio agree on which `<audio>` is music:
- * the FIRST `<audio>` (in document order) where data-timeline-role="music", or —
+ * Studio's `isMusicTrack` so the CLI and Studio agree on which clip is music:
+ * the FIRST `<audio>`, or `<video data-has-audio="true">` without `muted` (in
+ * document order) where data-timeline-role="music", or —
  * when no role is set — whose id matches the music regex. An explicit non-music
  * role excludes the element. Returns the raw src attribute, or null.
  */
 export function findMusicAudioSrc(html: string): string | null {
   // `[^>]*` spans newlines (it's a negated class, not `.`), so multi-line opening
   // tags are handled. HyperFrames authors src as an attribute on <audio>.
-  const tags = html.match(/<audio\b[^>]*>/gi) ?? [];
+  const tags = html.match(/<(?:audio|video)\b[^>]*>/gi) ?? [];
   for (const tag of tags) {
+    if (/^<video/i.test(tag) && !isSoundingVideoTag(tag)) continue;
     const src = attr(tag, "src");
     if (!src) continue;
     const role = attr(tag, "data-timeline-role");

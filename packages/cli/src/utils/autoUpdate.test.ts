@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+// fallow-ignore-file code-duplication
+import { execFileSync, spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * These tests exercise the policy — when a background install should or
@@ -20,6 +25,7 @@ function setupMocks(opts: {
   devMode?: boolean;
   config?: ConfigShape;
   env?: Record<string, string | undefined>;
+  writeFails?: boolean;
 }): {
   writeSpy: ReturnType<typeof vi.fn>;
   spawnSpy: ReturnType<typeof vi.fn>;
@@ -29,12 +35,14 @@ function setupMocks(opts: {
 
   const config = { ...(opts.config ?? {}) };
   const writeSpy = vi.fn((next: ConfigShape) => {
+    if (opts.writeFails) return false;
     Object.assign(config, next);
     // writeConfig is given a full replacement — mirror that by pruning keys
     // that disappeared.
     for (const k of Object.keys(config)) {
       if (!(k in next)) delete (config as Record<string, unknown>)[k];
     }
+    return true;
   });
 
   vi.doMock("../telemetry/config.js", () => ({
@@ -114,6 +122,17 @@ describe("scheduleBackgroundInstall", () => {
     expect(writeSpy).toHaveBeenCalled();
     expect(config.pendingUpdate?.version).toBe("0.4.4");
     expect(config.pendingUpdate?.command).toBe("npm install -g hyperframes@0.4.4");
+  });
+
+  it("launches nothing when the pending install cannot be recorded", async () => {
+    const { spawnSpy } = setupMocks({
+      installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
+      writeFails: true,
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
   });
 
   it("does NOT schedule across a major-version jump", async () => {
@@ -305,5 +324,74 @@ describe("scheduleBackgroundInstall", () => {
         configurable: true,
       });
     }
+  });
+
+  describe("the detached child's settings write", () => {
+    const home = mkdtempSync(join(tmpdir(), "hf-auto-update-"));
+    const dir = join(home, ".hyperframes");
+    const cfg = join(dir, "config.json");
+
+    beforeEach(() => mkdirSync(dir, { recursive: true }));
+    afterEach(() => {
+      rmSync(home, { recursive: true, force: true });
+      vi.doUnmock("node:os");
+    });
+
+    /** The script the CLI would spawn, pointed at a throwaway home and an install that does nothing. */
+    async function runChild(): Promise<void> {
+      const { spawnSpy } = setupMocks({ installer: { kind: "npm", command: "npm i" } });
+      vi.doMock("node:os", async () => ({
+        ...(await vi.importActual<typeof import("node:os")>("node:os")),
+        homedir: () => home,
+      }));
+      vi.doMock("./installerDetection.js", () => ({
+        detectInstaller: () => ({ kind: "npm", installCommand: () => "npm i" }),
+        installInvocation: () => ({ bin: process.execPath, args: ["-e", ""] }),
+      }));
+      const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+      expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(true);
+      const args = spawnSpy.mock.calls[0]?.[1] as unknown as string[];
+      expect(args[1]).toContain(JSON.stringify(cfg));
+      execFileSync(process.execPath, args);
+    }
+
+    it("waits for another process's locked write, then keeps the no it saved", async () => {
+      const script = `
+        const fs = require("fs");
+        const dir = process.argv[1];
+        fs.writeFileSync(dir + "/config.json.lock", "", { flag: "wx" });
+        process.stdout.write("locked\\n");
+        setTimeout(() => {
+          fs.writeFileSync(dir + "/other.tmp", JSON.stringify({ localEmbeddingEnabled: false }));
+          fs.renameSync(dir + "/other.tmp", dir + "/config.json");
+          fs.rmSync(dir + "/config.json.lock");
+        }, 1000);`;
+      const holder = spawn(process.execPath, ["-e", script, dir]);
+      const exited = new Promise((done) => holder.on("exit", done));
+      await new Promise((locked) => holder.stdout.once("data", locked));
+
+      await runChild();
+      await exited;
+
+      const saved = JSON.parse(readFileSync(cfg, "utf-8"));
+      expect([saved.localEmbeddingEnabled, saved.completedUpdate?.version]).toEqual([
+        false,
+        "0.4.4",
+      ]);
+    });
+
+    it("leaves a settings file it cannot read untouched", async () => {
+      writeFileSync(cfg, "{not json");
+
+      await runChild();
+
+      expect(readFileSync(cfg, "utf-8")).toBe("{not json");
+    });
+
+    it("starts a settings file when there is none", async () => {
+      await runChild();
+
+      expect(JSON.parse(readFileSync(cfg, "utf-8")).completedUpdate?.version).toBe("0.4.4");
+    });
   });
 });

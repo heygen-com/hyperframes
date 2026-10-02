@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchModifierKey, dispatchPlainKey } from "./useAppHotkeys";
-import { usePlayerStore } from "../player/store/playerStore";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { dispatchModifierKey, dispatchPlainKey, type HotkeyCallbacks } from "./appHotkeysDispatch";
+import { liveTime, usePlayerStore } from "../player/store/playerStore";
+import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
+import { useAudioGainDialogStore } from "../player/components/audioGainDialogStore";
 
 /** Minimal valid fixture — TimelineElement only requires these five fields. */
 const bgmElement: TimelineElement = {
@@ -19,7 +21,7 @@ const bgmElement: TimelineElement = {
 /** Every callback dispatchPlainKey can reach, so a test can assert which one
  *  a key resolved to. Unannotated on purpose: the parameter type is not
  *  exported, and structural inference checks it at the call site. */
-function callbacks() {
+function callbacks(overrides: Partial<HotkeyCallbacks> = {}) {
   return {
     handleTimelineElementDelete: vi.fn(async () => {}),
     handleTimelineElementsDelete: vi.fn(async () => {}),
@@ -30,11 +32,15 @@ function callbacks() {
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(async () => {}),
     handleCut: vi.fn(async () => false),
+    handleDuplicate: vi.fn(async () => false),
+    onGroupSelection: vi.fn(),
+    onUngroupSelection: vi.fn(),
     onResetKeyframes: vi.fn(() => true),
     onDeleteSelectedKeyframes: vi.fn(),
     showToast: vi.fn(),
-    leftSidebarRef: { current: null },
     domEditSelectionRef: { current: null },
+    readOnlyPreview: false,
+    ...overrides,
   };
 }
 
@@ -52,6 +58,114 @@ afterEach(() => {
     selectedElementId: null,
     selectedElementIds: new Set<string>(),
     selectedKeyframes: new Set<string>(),
+  });
+});
+
+describe("keys on a focused slider", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+  const slider = () => {
+    const el = document.createElement("div");
+    el.setAttribute("role", "slider");
+    document.body.append(el);
+    return el;
+  };
+  const from = (target: HTMLElement, init: KeyboardEventInit) => {
+    const event = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
+    Object.defineProperty(event, "target", { value: target });
+    return event;
+  };
+
+  it("leaves Delete to the slider instead of deleting the selected clip", () => {
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const cb = callbacks();
+    dispatchPlainKey(from(slider(), { key: "Delete" }), "delete", cb);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+  });
+
+  it.each(["video", "audio"])("leaves Delete to a focused <%s controls>", (tag) => {
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const player = document.body.appendChild(document.createElement(tag));
+    player.setAttribute("controls", "");
+    const cb = callbacks();
+    dispatchPlainKey(from(player, { key: "Delete" }), "delete", cb);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+  });
+
+  it("still undoes with Cmd+Z while a slider has focus", () => {
+    const cb = callbacks();
+    dispatchModifierKey(from(slider(), { key: "z", metaKey: true }), "z", cb);
+    expect(cb.handleUndo).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dispatchPlainKey — select leftward / rightward", () => {
+  const clips = [
+    { ...bgmElement, id: "early", key: "early", start: 0, track: 0 },
+    { ...bgmElement, id: "at", key: "at", start: 4, track: 1 },
+    { ...bgmElement, id: "late", key: "late", start: 7, track: 2 },
+    { ...bgmElement, id: "gone", key: "gone", start: 0, duration: 2, track: 3 },
+  ];
+  beforeEach(() => usePlayerStore.setState({ elements: clips, currentTime: 4 }));
+
+  it("[ selects every clip that started before the playhead, crossing clips included", () => {
+    const event = press("[");
+    dispatchPlainKey(event, "[", callbacks());
+    expect([...usePlayerStore.getState().selectedElementIds].sort()).toEqual(["early", "gone"]);
+    expect(usePlayerStore.getState().selectedElementId).toBe("early");
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("uses the live playhead while playing, not the time stored at play start", () => {
+    usePlayerStore.setState({ isPlaying: true, currentTime: 0 });
+    liveTime.notify(8);
+    try {
+      dispatchPlainKey(press("["), "[", callbacks());
+      expect([...usePlayerStore.getState().selectedElementIds].sort()).toEqual([
+        "at",
+        "early",
+        "gone",
+        "late",
+      ]);
+    } finally {
+      usePlayerStore.setState({ isPlaying: false });
+      liveTime.notify(0);
+    }
+  });
+
+  it("clears a clicked keyframe like any other selection change", () => {
+    usePlayerStore.setState({ activeKeyframePct: 50 });
+    dispatchPlainKey(press("]"), "]", callbacks());
+    expect(usePlayerStore.getState().activeKeyframePct).toBeNull();
+  });
+
+  it("] selects every clip still running at or after the playhead, crossing clips included", () => {
+    dispatchPlainKey(press("]"), "]", callbacks());
+    const { selectedElementIds, selectedElementId } = usePlayerStore.getState();
+    expect([...selectedElementIds].sort()).toEqual(["at", "early", "late"]);
+    expect(selectedElementId).toBe("early");
+  });
+
+  it("selects nothing when no clip is on that side", () => {
+    usePlayerStore.setState({
+      currentTime: 0,
+      selectedElementId: "late",
+      selectedElementIds: new Set(["late"]),
+    });
+    dispatchPlainKey(press("["), "[", callbacks());
+    expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
   });
 });
 
@@ -275,5 +389,122 @@ describe("dispatchModifierKey — Cmd+C/Cmd+V arbitration", () => {
     dispatchModifierKey(e, "v", cb);
     expect(cb.handlePaste).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe('dispatchPlainKey — "A" returns to select while the razor is armed', () => {
+  afterEach(() => {
+    usePlayerStore.setState({ activeTool: "select" });
+  });
+
+  it("returns to the select tool, matching CapCut's keybinding", () => {
+    usePlayerStore.setState({ activeTool: "razor" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("does not intercept plain \"a\" when the razor isn't armed, leaving playback's seek-to-in-point live", () => {
+    usePlayerStore.setState({ activeTool: "select" });
+    const e = press("a");
+    dispatchPlainKey(e, "a", callbacks());
+    expect(usePlayerStore.getState().activeTool).toBe("select");
+    expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe("hotkeys with the preview read-only", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: null });
+  });
+
+  it("does not delete the selected element on Delete", () => {
+    const cb = callbacks({ readOnlyPreview: true });
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+    expect(cb.handleDomEditElementDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not split on s", () => {
+    usePlayerStore.setState({
+      currentTime: 3,
+      elements: [{ ...bgmElement, hfId: "hf-bgm" }],
+      selectedElementId: "bgm",
+    });
+    const cb = callbacks({ readOnlyPreview: true });
+    dispatchPlainKey(press("s"), "s", cb);
+    expect(cb.handleTimelineElementSplit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["x", "handleCut"],
+    ["d", "handleDuplicate"],
+    ["v", "handlePaste"],
+    ["g", "onGroupSelection"],
+  ] as const)("does not run %s", (key, callback) => {
+    const cb = callbacks({ readOnlyPreview: true });
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchModifierKey(chord(key), key, cb);
+    expect(cb[callback]).not.toHaveBeenCalled();
+  });
+
+  it("still undoes, because history covers timeline edits", () => {
+    const cb = callbacks({ readOnlyPreview: true });
+    dispatchModifierKey(chord("z"), "z", cb);
+    expect(cb.handleUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps timeline paste when the mirrored preview selection is not the owner", () => {
+    usePlayerStore.setState({ selectedElementId: "bgm" });
+    const cb = callbacks({ readOnlyPreview: true });
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    const event = chord("v");
+    const timeline = document.createElement("div");
+    timeline.dataset.studioTimeline = "true";
+    Object.defineProperty(event, "target", { value: timeline });
+    dispatchModifierKey(event, "v", cb);
+    expect(cb.handlePaste).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: with the flag off Delete removes the selected element", () => {
+    const cb = callbacks();
+    cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dispatchPlainKey — G opens Audio Gain", () => {
+  const video: TimelineElement = {
+    id: "b-roll",
+    key: "b-roll",
+    tag: "video",
+    start: 0,
+    duration: 4,
+    track: 1,
+  };
+
+  afterEach(() => useAudioGainDialogStore.getState().close());
+
+  it("opens the dialog for the selected clips with sound and owns the key", () => {
+    usePlayerStore.setState({
+      elements: [bgmElement, video],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm", "b-roll"]),
+    });
+    const event = press("g");
+    dispatchPlainKey(event, "g", callbacks());
+    expect(useAudioGainDialogStore.getState().targetKeys).toEqual(["bgm"]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("leaves G to the grid toggle when nothing selected has sound", () => {
+    usePlayerStore.setState({ elements: [video], selectedElementId: "b-roll" });
+    const event = press("g");
+    dispatchPlainKey(event, "g", callbacks());
+    expect(useAudioGainDialogStore.getState().targetKeys).toBeNull();
+    expect(event.defaultPrevented).toBe(false);
   });
 });

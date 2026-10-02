@@ -69,7 +69,7 @@ function productResult(signalStats = SIGNALSTATS) {
 
 async function vendoredResult(signalStats = SIGNALSTATS) {
   const moduleUrl = new URL(
-    "../../../skills/media-use/scripts/lib/grade-analyzer.mjs",
+    "../../../packages/cli/src/media-use/lib/grade-analyzer.mjs",
     import.meta.url,
   );
   const analyzer = await import(moduleUrl.href);

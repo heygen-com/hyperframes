@@ -6,8 +6,9 @@
  * an envelope afterwards writes to the preview document and the source file, and the
  * store would go on holding the value it was born with until a reload.
  *
- * One reader, called from the two places a change lands: the resync every dom-edit
- * attribute commit already runs, and the soft restore an undo or redo applies. It
+ * One reader, called where a change lands: the resync every dom-edit attribute
+ * commit runs, and an undo or redo's soft restore (timeline saves record their own
+ * value through syncStoredElementAttribute below). It
  * reads the preview rather than being told, because those callers know a file
  * changed, not which attribute — and because three separate writers shipped without
  * remembering to sync, which is what a single sink prevents.
@@ -15,19 +16,18 @@
 
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import {
+  HF_AUDIO_FADE_IN_ATTR,
+  HF_AUDIO_FADE_OUT_ATTR,
+  readElementFades,
+  readFadeSeconds,
+} from "@hyperframes/core/audio-fade";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
-
-/** The preview node an element stands for, by dom id and then by `data-hf-id`. */
-function previewNodeFor(doc: Document, element: TimelineElement): Element | null {
-  const domId = element.domId ?? element.id;
-  const byId = domId ? doc.getElementById(domId) : null;
-  if (byId) return byId;
-  return element.hfId ? doc.querySelector(`[data-hf-id="${element.hfId}"]`) : null;
-}
+import { getTimelineElementIdentity, previewElementFinder } from "./timelineElementHelpers";
 
 /**
- * Re-read every element's automation and FX-chain attributes from the preview
+ * Re-read every element's automation, FX-chain and fade attributes from the preview
  * document, for a change that reached the DOM without going through this store.
  *
  * That is undo and redo. A soft restore patches the reverted attributes onto the
@@ -40,21 +40,21 @@ function previewNodeFor(doc: Document, element: TimelineElement): Element | null
  * reverted is only known by looking.
  */
 /**
- * What an element's four synced fields SHOULD read, given the preview.
+ * What an element's six synced fields SHOULD read, given the preview.
  *
- * Its own two come off its node; the other two are its copy of what its group
+ * Its own four come off its node; the other two are its copy of what its group
  * carries. The timeline derives a group's lanes and chain from these mirrors,
- * never from the group element — and the FX rack is not group-aware: selecting
- * a group and automating one of its parameters writes `data-automation` on the
- * group node through the ordinary element path, which used to refresh an
- * element's own two fields and nothing else. So the group's row went on reading
- * the value it was born with, and its `∿` never appeared.
+ * never from the group element, and automating a group writes `data-automation`
+ * on the group node through the ordinary element path, so both halves are re-read.
  */
 function syncedFields(doc: Document, element: TimelineElement, node: Element) {
   const group = element.audioGroup ? groupInfoFor(doc, element.audioGroup) : null;
+  const fades = readElementFades(node);
   return {
     automation: node.getAttribute(HF_AUDIO_AUTOMATION_ATTR) ?? undefined,
     fxChain: node.getAttribute(HF_AUDIO_FX_ATTR) ?? undefined,
+    fadeIn: storedFade(fades.fadeIn),
+    fadeOut: storedFade(fades.fadeOut),
     audioGroupAutomation: group?.automation,
     audioGroupFxChain: group?.fxChain,
   };
@@ -62,16 +62,49 @@ function syncedFields(doc: Document, element: TimelineElement, node: Element) {
 
 export function syncStoredAutomationFromPreview(doc: Document | null | undefined): void {
   if (!doc) return;
+  const findNode = previewElementFinder(doc);
   usePlayerStore.setState((state) => {
     let changed = false;
     const elements = state.elements.map((element) => {
-      const node = previewNodeFor(doc, element);
+      const node = findNode(element);
       if (!node) return element;
       const fields = syncedFields(doc, element, node);
       // Same array back when nothing moved: `elements` keys memos all over the
       // timeline, and a fresh object per sync would re-render every one.
       const keys = Object.keys(fields) as (keyof typeof fields)[];
       if (keys.every((key) => fields[key] === element[key])) return element;
+      changed = true;
+      return { ...element, ...fields };
+    });
+    return changed ? { elements } : {};
+  });
+}
+
+/** Discovery's rule (applyFadeMetadataFromElement): a fade of 0 is no fade. */
+const storedFade = (seconds: number) => (seconds > 0 ? seconds : undefined);
+
+const STORED_FIELD: Record<string, (value: string | null) => Partial<TimelineElement>> = {
+  [HF_AUDIO_AUTOMATION_ATTR]: (value) => ({ automation: value ?? undefined }),
+  [HF_AUDIO_FX_ATTR]: (value) => ({ fxChain: value ?? undefined }),
+  [HF_AUDIO_FADE_IN_ATTR]: (value) => ({ fadeIn: storedFade(readFadeSeconds(value)) }),
+  [HF_AUDIO_FADE_OUT_ATTR]: (value) => ({ fadeOut: storedFade(readFadeSeconds(value)) }),
+};
+
+/** Record a saved automation, FX-chain or fade value on one element's stored copy. */
+export function syncStoredElementAttribute(
+  target: TimelineElement,
+  attr: string,
+  value: string | null,
+): void {
+  const fields = STORED_FIELD[attr]?.(value);
+  if (!fields) return;
+  const key = getTimelineElementIdentity(target);
+  const same = (element: TimelineElement) =>
+    (Object.keys(fields) as (keyof TimelineElement)[]).every((k) => element[k] === fields[k]);
+  usePlayerStore.setState((state) => {
+    let changed = false;
+    const elements = state.elements.map((element) => {
+      if (getTimelineElementIdentity(element) !== key || same(element)) return element;
       changed = true;
       return { ...element, ...fields };
     });

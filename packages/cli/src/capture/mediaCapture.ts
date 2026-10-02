@@ -8,7 +8,8 @@
  */
 
 import type { Browser, Page } from "puppeteer-core";
-import { mkdirSync, writeFileSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { isPrivateUrl, safeFetch } from "./assetDownloader.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
@@ -94,7 +95,7 @@ export async function saveLottieAnimations(
 
         if (!validLottieJson(jsonData)) continue;
 
-        writeFileSync(join(lottieDir, `animation-${savedCount}.json`), jsonData, "utf-8");
+        writeCaptureFileSync(join(lottieDir, `animation-${savedCount}.json`), jsonData, "utf-8");
         savedCount++;
       }
     } catch {
@@ -186,11 +187,8 @@ export async function renderLottiePreviews(
           .waitForFunction(() => (window as any).__READY === true, { timeout: 5000 })
           .catch(() => {});
         if (liveRemainingMs(budget, 1) > 0) {
-          await previewPage.screenshot({
-            path: join(previewDir, previewName),
-            type: "png",
-            omitBackground: true,
-          });
+          const shot = await previewPage.screenshot({ type: "png", omitBackground: true });
+          writeCaptureFileSync(join(previewDir, previewName), shot);
           preview = `assets/lottie/previews/${previewName}`;
         }
       } catch {
@@ -214,7 +212,7 @@ export async function renderLottiePreviews(
     }
   }
   if (manifest.length > 0) {
-    writeFileSync(
+    writeCaptureFileSync(
       join(outputDir, "extracted", "lottie-manifest.json"),
       JSON.stringify(manifest, null, 2),
       "utf-8",
@@ -283,7 +281,7 @@ async function downloadVideoBody(
     }
     if (total < 1024) return null; // too small to be a real video (likely an error blob)
     const safe = /\.[a-z0-9]+$/i.test(filename) ? filename.replace(/[^\w.-]/g, "_") : `video${ext}`;
-    writeFileSync(join(videosDir, safe), Buffer.concat(chunks));
+    writeCaptureFileSync(join(videosDir, safe), Buffer.concat(chunks));
     return `assets/videos/${safe}`;
   } catch {
     return null;
@@ -522,8 +520,8 @@ export async function captureVideoManifest(
         if (rect && rect.width >= 10) {
           await new Promise((r) => setTimeout(r, 200)); // let decoder settle
           if (liveRemainingMs(opts ?? {}, 1) > 0) {
-            await page.screenshot({
-              path: join(previewDir, previewName),
+            const shot = await page.screenshot({
+              type: "png",
               clip: {
                 x: Math.max(0, rect.x),
                 y: Math.max(0, rect.y),
@@ -531,6 +529,7 @@ export async function captureVideoManifest(
                 height: Math.min(rect.height, 1080),
               },
             });
+            writeCaptureFileSync(join(previewDir, previewName), shot);
             preview = `assets/videos/previews/${previewName}`;
           }
         }
@@ -573,7 +572,7 @@ export async function captureVideoManifest(
   }
 
   if (videoManifest.length > 0) {
-    writeFileSync(
+    writeCaptureFileSync(
       join(outputDir, "extracted", "video-manifest.json"),
       JSON.stringify(videoManifest, null, 2),
       "utf-8",

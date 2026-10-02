@@ -148,6 +148,10 @@ export function localVectorRevision(
   );
 }
 
+export function mediaMetadataRevision(rows: readonly unknown[]): string {
+  return sha256Hex(JSON.stringify(rows));
+}
+
 /**
  * Digest the two published files as bytes.
  *

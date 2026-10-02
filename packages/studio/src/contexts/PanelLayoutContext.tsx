@@ -13,69 +13,15 @@ export function usePanelLayoutContext(): PanelLayoutValue {
 }
 
 export function PanelLayoutProvider({
-  value: {
-    leftWidth,
-    rightWidth,
-    adjustPanelWidth,
-    leftCollapsed,
-    rightCollapsed,
-    setRightCollapsed,
-    effectiveLeftCollapsed,
-    effectiveRightCollapsed,
-    rightPanelTab,
-    setRightPanelTab,
-    rightInspectorPanes,
-    toggleRightInspectorPane,
-    setExclusiveRightInspectorPane,
-    toggleLeftSidebar,
-    handlePanelResizeStart,
-    handlePanelResizeMove,
-    handlePanelResizeEnd,
-  },
+  value: { rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab },
   children,
 }: {
   value: PanelLayoutValue;
   children: ReactNode;
 }) {
   const stable = useMemo<PanelLayoutValue>(
-    () => ({
-      leftWidth,
-      rightWidth,
-      adjustPanelWidth,
-      leftCollapsed,
-      rightCollapsed,
-      setRightCollapsed,
-      effectiveLeftCollapsed,
-      effectiveRightCollapsed,
-      rightPanelTab,
-      setRightPanelTab,
-      rightInspectorPanes,
-      toggleRightInspectorPane,
-      setExclusiveRightInspectorPane,
-      toggleLeftSidebar,
-      handlePanelResizeStart,
-      handlePanelResizeMove,
-      handlePanelResizeEnd,
-    }),
-    [
-      leftWidth,
-      rightWidth,
-      adjustPanelWidth,
-      leftCollapsed,
-      rightCollapsed,
-      setRightCollapsed,
-      effectiveLeftCollapsed,
-      effectiveRightCollapsed,
-      rightPanelTab,
-      setRightPanelTab,
-      rightInspectorPanes,
-      toggleRightInspectorPane,
-      setExclusiveRightInspectorPane,
-      toggleLeftSidebar,
-      handlePanelResizeStart,
-      handlePanelResizeMove,
-      handlePanelResizeEnd,
-    ],
+    () => ({ rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab }),
+    [rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab],
   );
   return <PanelLayoutContext value={stable}>{children}</PanelLayoutContext>;
 }

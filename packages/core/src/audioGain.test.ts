@@ -4,12 +4,22 @@ import {
   formatAudioGain,
   AUDIO_GAIN_FADER_MIN,
   MAX_AUDIO_GAIN,
+  audioDbToGain,
+  audioGainToDb,
   audioGainToFaderPosition,
   audioGainToText,
   audioFaderPositionToGain,
 } from "./audioGain";
 
 describe("audio gain fader", () => {
+  it("converts decibels to linear gain", () => {
+    expect(audioDbToGain(0)).toBe(1);
+    expect(audioDbToGain(-6)).toBeCloseTo(10 ** (-6 / 20), 10);
+    expect(MAX_AUDIO_GAIN).toBe(audioDbToGain(12));
+    expect(audioGainToDb(1)).toBeCloseTo(0, 10);
+    expect(audioGainToDb(audioDbToGain(-6))).toBeCloseTo(-6, 10);
+  });
+
   it("puts unity gain at the physical midpoint", () => {
     expect(audioGainToFaderPosition(1)).toBe(0);
     expect(audioFaderPositionToGain(0)).toBe(1);

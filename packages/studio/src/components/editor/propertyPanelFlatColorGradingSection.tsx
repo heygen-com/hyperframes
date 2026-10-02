@@ -70,23 +70,20 @@ function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
   return (
     <div
       data-flat-grade-hdr-banner="true"
-      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-4 text-amber-100"
+      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-4 text-warning-ink"
     >
       <div className="mb-0.5 flex items-center justify-between gap-2">
         <span className="font-semibold">{metadata.color.label} source</span>
-        <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
+        <span className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning-ink">
           SDR preview
         </span>
       </div>
-      <p className="text-amber-100/80">
+      <p className="text-text-2">
         These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
         is not true HDR color grading yet.
       </p>
       {details && (
-        <p
-          data-flat-grade-hdr-detail="true"
-          className="mt-0.5 truncate text-[9px] text-amber-100/55"
-        >
+        <p data-flat-grade-hdr-detail="true" className="mt-0.5 truncate text-[9px] text-text-muted">
           {details}
         </p>
       )}
@@ -214,7 +211,7 @@ export function FlatColorGradingSection({
           <button
             type="button"
             onClick={onRequestPresetPreviews}
-            className="text-[10px] font-medium text-panel-accent hover:text-panel-accent/80"
+            className="text-[10px] font-medium text-accent-ink hover:text-accent-ink/80"
           >
             Retry look previews
           </button>
@@ -389,7 +386,7 @@ export function FlatColorGradingSection({
             height="10"
             viewBox="0 0 10 10"
             fill="currentColor"
-            className={`flex-shrink-0 text-panel-text-5 transition-transform ${lutOpen ? "rotate-90" : ""}`}
+            className={`shrink-0 text-panel-text-5 transition-transform ${lutOpen ? "rotate-90" : ""}`}
           >
             <path d="M2 3l3 4 3-4z" />
           </svg>
@@ -409,7 +406,7 @@ export function FlatColorGradingSection({
                   track("select", "Custom LUT");
                   actions.applyLut(src || null, src && lut?.src === src ? lut.intensity : 1);
                 }}
-                className="border-b border-panel-border-input/50 bg-transparent font-mono text-[10px] text-panel-text-3 outline-none hover:border-panel-border-input"
+                className="border-b border-panel-border-input/50 bg-transparent font-mono text-[10px] text-panel-text-3 outline-hidden hover:border-panel-border-input"
               >
                 <option value="">None</option>
                 {lutAssets.map((asset) => (
@@ -423,7 +420,7 @@ export function FlatColorGradingSection({
                 disabled={!onImportAssets}
                 onClick={() => lutInputRef.current?.click()}
                 title="Import .cube LUT"
-                className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+                className="shrink-0 text-panel-text-4 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Plus size={12} />
               </button>
@@ -467,7 +464,7 @@ export function FlatColorGradingSection({
             data-flat-grade-settings="vignette"
             title="Vignette settings"
             onClick={() => setDetailSettingsOpen((c) => (c === "vignette" ? null : "vignette"))}
-            className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
+            className="shrink-0 text-panel-text-4 hover:text-panel-text-1"
           >
             <Settings size={12} />
           </button>
@@ -479,7 +476,7 @@ export function FlatColorGradingSection({
             data-flat-grade-settings="grain"
             title="Grain settings"
             onClick={() => setDetailSettingsOpen((c) => (c === "grain" ? null : "grain"))}
-            className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
+            className="shrink-0 text-panel-text-4 hover:text-panel-text-1"
           >
             <Settings size={12} />
           </button>
@@ -505,7 +502,7 @@ export function FlatColorGradingSection({
                 onSetApplyScope(e.target.value as "source-file" | "project");
               }}
               disabled={applyBusy}
-              className="border-b border-panel-border-input/50 bg-transparent font-mono text-[11px] text-panel-text-0 outline-none hover:border-panel-border-input disabled:opacity-50"
+              className="border-b border-panel-border-input/50 bg-transparent font-mono text-[11px] text-panel-text-0 outline-hidden hover:border-panel-border-input disabled:opacity-50"
             >
               <option value="source-file">Current file media</option>
               <option value="project">All project media</option>
@@ -519,7 +516,7 @@ export function FlatColorGradingSection({
               track("button", "Apply grade to scope");
               onApplyToScope();
             }}
-            className="text-[11px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-[11px] font-medium text-accent-ink hover:text-accent-ink/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {applyBusy ? "Applying" : "Apply"}
           </button>

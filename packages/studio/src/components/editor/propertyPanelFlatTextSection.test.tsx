@@ -2,8 +2,7 @@
 
 import React, { act, useState } from "react";
 import { createRoot } from "react-dom/client";
-import postcss from "postcss";
-import tailwindcss from "tailwindcss";
+import { compile } from "tailwindcss";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatTextLayerList, FlatTextSection } from "./propertyPanelFlatTextSection";
 import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
@@ -511,13 +510,13 @@ describe("FlatTextSection — multi-field", () => {
     expect(contentTextarea?.classList).toContain("resize-y");
     expect(contentTextarea?.classList).toContain("overflow-y-auto");
 
-    const compiled = await postcss([
-      tailwindcss({
-        content: [{ raw: host.innerHTML, extension: "html" }],
-        corePlugins: { preflight: false },
-      }),
-    ]).process("@tailwind utilities;", { from: undefined });
-    expect(compiled.css).toContain("field-sizing: content");
+    // Tailwind v4 has no PostCSS-plugin JS API; `compile` takes the stylesheet
+    // and is handed the candidates directly instead of scanning raw content.
+    const candidates = Array.from(host.querySelectorAll<HTMLElement>("*")).flatMap((el) =>
+      Array.from(el.classList),
+    );
+    const compiled = await compile("@tailwind utilities;");
+    expect(compiled.build(candidates)).toContain("field-sizing: content");
 
     act(() => root.unmount());
   });

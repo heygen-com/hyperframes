@@ -1081,6 +1081,60 @@ describe("handleSetTiming GSAP sync (CF2 #15/#16)", () => {
     expect(script).not.toMatch(/tl\.to\("#box",[^)]*\}, \d/);
   });
 
+  it("moving a scene carries its children's tweens, not chained, partly known or outside ones", () => {
+    const parsed =
+      parseMutable(`<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div id="scene" data-hf-id="hf-scene" data-start="1" data-duration="3"><h1 data-hf-id="hf-title">Hi</h1></div>
+  <div id="side" data-hf-id="hf-side" data-start="0" data-duration="5"></div>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.from("#scene h1", { y: 20, duration: 1 }, 1);
+tl.to("#scene h1", { x: 5, duration: 1 });
+tl.to("#side", { y: 1, duration: 0.5 });
+tl.to(["#scene h1", window.logo], { x: 1, duration: 1 }, 2);
+tl.to("#side", { x: 5, duration: 1 }, 1);
+window.__timelines["t"] = tl;</script>
+</div>`);
+    applyOp(parsed, { type: "setTiming", target: "hf-scene", start: 3 });
+    const script = getScript(parsed);
+    expect(script).toContain('tl.from("#scene h1", { y: 20, duration: 1 }, 3);');
+    expect(script).toContain('tl.to("#scene h1", { x: 5, duration: 1 });');
+    expect(script).toContain('tl.to(["#scene h1", window.logo], { x: 1, duration: 1 }, 2);');
+    expect(script).toContain('tl.to("#side", { x: 5, duration: 1 }, 1);');
+    // Known limit: the chained outside tween stays unwritten, so it follows the moved content.
+    expect(script).toContain('tl.to("#side", { y: 1, duration: 0.5 });');
+  });
+
+  it("moving a clip syncs the timeline script even when a config script comes first", () => {
+    const parsed =
+      parseMutable(`<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div id="scene" data-hf-id="hf-scene" data-start="1" data-duration="3"><h1 data-hf-id="hf-title">Hi</h1></div>
+  <script>gsap.config({ nullTargetWarn: false });</script>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.from("#scene h1", { y: 20, duration: 1 }, 1.5);
+window.__timelines["t"] = tl;</script>
+</div>`);
+    applyOp(parsed, { type: "setTiming", target: "hf-scene", start: 3 });
+    const html = serializeDocument(parsed);
+    expect(html).toContain("gsap.config({ nullTargetWarn: false });");
+    expect(html).toContain('tl.from("#scene h1", { y: 20, duration: 1 }, 3.5);');
+  });
+
+  it("moving a clip in a template-wrapped composition carries its tweens", () => {
+    const parsed = parseMutable(`<template id="card-template">
+  <div data-composition-id="card-comp" data-hf-id="hf-comp" data-width="1280" data-height="720">
+    <div id="card" data-hf-id="hf-card" data-start="1" data-duration="2"><h1 data-hf-id="hf-t">Hi</h1></div>
+    <script>var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-card\\"]", { x: 1, duration: 1 }, 1);
+tl.from("#card h1", { y: 20, duration: 1 }, 1.5);
+window.__timelines["card-comp"] = tl;</script>
+  </div>
+</template>`);
+    applyOp(parsed, { type: "setTiming", target: "hf-card", start: 3 });
+    const script = getScript(parsed);
+    expect(script).toContain("{ x: 1, duration: 1 }, 3);");
+    expect(script).toContain('tl.from("#card h1", { y: 20, duration: 1 }, 3.5);');
+  });
+
   it("canonicalizes a clip carrying both authored duration and derived end", () => {
     const parsed = timingDoc(
       `data-start="1" data-duration="2" data-end="3"`,

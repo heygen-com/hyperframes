@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { GsapAnimation, GsapKeyframesData } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { findPreviewNode } from "../components/editor/domEditingElement";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
   clearKeyframeCacheForElement,
@@ -17,63 +19,17 @@ import {
   type MergeableKeyframe,
 } from "./gsapTweenSynth";
 import { fetchParsedAnimations, populateKeyframeCacheFromAst } from "./keyframeCacheAstLoad";
+import { getAnimationsForElement } from "./gsapElementMatch";
 
 // Re-exported so callers keep importing the GSAP cache surface from one module.
 export { resolveClipTimingBasis } from "./gsapShared";
 export { fetchParsedAnimations, resolveSelectorElementIds } from "./keyframeCacheAstLoad";
-
-/** The selected element's identity for matching tweens to it. */
-export interface GsapElementTarget {
-  id?: string | null;
-  selector?: string | null;
-}
-
-/**
- * A tween belongs to the selected element when its target selector addresses
- * that element — by id (`#id`), by the exact CSS selector the element was
- * selected through (`.kicker`), or as one member of a group selector
- * (`.clock-face, .clock-hand`, emitted for array/`toArray` targets). Real
- * compositions target tweens by class via `querySelector`, so id-only matching
- * misses them.
- *
- * When the live DOM `element` is supplied, each comma-part of a tween's selector
- * is also tested with `element.matches(part)` — true CSS semantics — so a
- * class/descendant tween shared across elements (e.g. `gsap.from(".dot", {stagger})`)
- * is attributed to *every* matching element, not just the one whose exact
- * selector string happens to equal the tween's.
- */
-export function getAnimationsForElement(
-  animations: GsapAnimation[],
-  target: GsapElementTarget,
-  element?: Element | null,
-): GsapAnimation[] {
-  const matchers = new Set<string>();
-  if (target.id) matchers.add(`#${target.id}`);
-  if (target.selector) matchers.add(target.selector);
-  if (matchers.size === 0 && !element) return [];
-  return animations.filter((a) =>
-    a.targetSelector.split(",").some((part) => {
-      const trimmed = part.trim();
-      if (!trimmed) return false;
-      if (matchers.has(trimmed)) return true;
-      const lastSimple = trimmed.split(/\s+/).pop();
-      if (lastSimple && matchers.has(lastSimple)) return true;
-      if (element) {
-        try {
-          if (element.matches(trimmed)) return true;
-        } catch {
-          /* tween selector isn't a valid CSS selector for matches() — skip */
-        }
-      }
-      return false;
-    }),
-  );
-}
+export { getAnimationsForElement } from "./gsapElementMatch";
 
 export function useGsapAnimationsForElement(
   projectId: string | null,
   sourceFile: string,
-  target: GsapElementTarget | null,
+  target: DomEditSelection | null,
   version: number,
   iframeRef?: React.RefObject<HTMLIFrameElement | null>,
 ): {
@@ -85,7 +41,6 @@ export function useGsapAnimationsForElement(
   const [multipleTimelines, setMultipleTimelines] = useState(false);
   const [unsupportedTimelinePattern, setUnsupportedTimelinePattern] = useState(false);
   const lastFetchKeyRef = useRef("");
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Re-run the per-element cache populate when sub-comp DOM children appear, so a
   // sub-comp element gets its host-relative keyframe percentages (not elDuration=1).
   const domClipChildrenKey = usePlayerStore((s) =>
@@ -97,11 +52,6 @@ export function useGsapAnimationsForElement(
     const fetchKey = `${projectId}:${sourceFile}:${version}:${targetKey}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
-
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
 
     if (!projectId) {
       setAllAnimations([]);
@@ -124,28 +74,10 @@ export function useGsapAnimationsForElement(
       setAllAnimations(parsed.animations);
       setMultipleTimelines(parsed.multipleTimelines === true);
       setUnsupportedTimelinePattern(parsed.unsupportedTimelinePattern === true);
-
-      // Retry once if initial fetch returned 0 animations — handles
-      // cold-load race where the sourceFile isn't resolved yet.
-      if (parsed.animations.length === 0 && targetKey) {
-        retryTimerRef.current = setTimeout(() => {
-          if (cancelled) return;
-          fetchParsedAnimations(projectId, sourceFile).then((retryParsed) => {
-            if (cancelled) return;
-            if (retryParsed && retryParsed.animations.length > 0) {
-              setAllAnimations(retryParsed.animations);
-            }
-          });
-        }, 800);
-      }
     });
 
     return () => {
       cancelled = true;
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
     };
   }, [projectId, sourceFile, version, target?.id, target?.selector]);
 
@@ -157,24 +89,14 @@ export function useGsapAnimationsForElement(
     // gsap.from(".dot", {stagger})) attribute to every matching element, not
     // just the one whose exact selector equals the tween's. `version` re-runs
     // this after composition reloads.
-    let element: Element | null = null;
-    const doc = iframeRef?.current?.contentDocument;
-    if (doc) {
-      try {
-        element =
-          (targetId ? doc.getElementById(targetId) : null) ??
-          (targetSelector ? doc.querySelector(targetSelector) : null);
-      } catch {
-        element = null;
-      }
-    }
+    const element = target ? findPreviewNode(iframeRef?.current?.contentDocument, target) : null;
     return getAnimationsForElement(
       allAnimations,
       { id: targetId, selector: targetSelector },
       element,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allAnimations, targetId, targetSelector, version, iframeRef]);
+  }, [allAnimations, target, version, iframeRef]);
 
   // fallow-ignore-next-line complexity
   const animations = useMemo(() => {
@@ -414,8 +336,7 @@ export function usePopulateKeyframeCacheForFile(
     // fallow-ignore-next-line complexity
     const tryRuntimeScan = () => {
       if (runtimeScanDoneRef.current === `kf-cache:${projectId}:${sf}:${version}`) return true;
-      const iframe =
-        iframeRef?.current ?? document.querySelector<HTMLIFrameElement>("iframe[src*='/preview/']");
+      const iframe = iframeRef?.current;
       if (!iframe) return false;
       // Clip dims per element so the scan converts tween-relative keyframes to
       // clip-relative (matching the static path) instead of timeline-relative.

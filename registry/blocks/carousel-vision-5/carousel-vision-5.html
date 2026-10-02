@@ -632,7 +632,8 @@
         const varUrl = (v) => (v && typeof v === "object" ? v.url || v.src || "" : v || "");
         if (REG) {
           const srcs = REG.imageVars.map(
-            (id, i) => varUrl(V[id]) || DATA.cards[i % DATA.cards.length].file,
+            (id, i) =>
+              varUrl(V[id]) || "assets/carousel-images/" + DATA.cards[i % DATA.cards.length].file,
           );
           DATA.cards = await Promise.all(
             srcs.map(async (src, i) => {

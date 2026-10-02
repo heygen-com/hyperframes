@@ -103,7 +103,7 @@ The browser entry exposes `lintHyperframeHtml`, `lintMediaUrls`, and `shouldBloc
 Detected issues include:
 
 - Missing timeline registration (`window.__timelines`)
-- Unmuted video elements (causes autoplay failures)
+- A timed `<video>` that declares neither `muted` (silent footage) nor `data-has-audio="true"` (has sound) — `video_missing_muted`
 - Missing `class="clip"` on timed visible elements
 - Deprecated attribute names
 - Missing composition dimensions (`data-width`, `data-height`)

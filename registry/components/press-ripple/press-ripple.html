@@ -2,11 +2,12 @@
 <!--
   press-ripple: HyperFrames video primitive (product demo / payoff)
 
-  A cursor decel-arrives from off-stage (power2.out, it arrives, never passes
+  A cursor decel-arrives from off-stage (power3.out, it arrives, never passes
   through), lands a few px off-center on a caller-positioned target zone, the
-  target and cursor compress in lockstep, release with two ink ripple rings,
-  then the cursor exits off-stage the way it came. The pressed state and the
-  ripple aftermath carry the hold; the cursor never camps on the label.
+  target and cursor compress in lockstep, two small click rings grow from the
+  cursor tip while the label swaps to a check plus the done label, then the
+  cursor exits off-stage the way it came. The confirmed state carries the hold;
+  the cursor never camps on the label.
 
   The target is a slot: the element marked data-slot="target" is the press
   surface. Its default content is a token-styled pill carrying the label
@@ -16,10 +17,11 @@
 
   Variables:
     label: text inside the default pill (ignored when the slot is replaced)
+    done_label: text beside the check after the press (default pill only)
     target_x, target_y: zone center as a percent of the host box
     press_at: seconds from mount start when the compression begins
     cursor: light or dark pointer
-    accent: green, blue, or violet ink (ripple rings + pressed pill fill)
+    accent: green, blue, or violet ink (click rings + confirmation check)
     exit: none, fade, or up (default none; holds end films)
 
   Envelope (elastic HOLD, never time-scaled):
@@ -28,7 +30,7 @@
     OUT  = none by default; 0.45s fade or fade-up when exit is set
     press_at clamps into the window that keeps the whole gesture inside D.
 
-  Sync point: the press lands at press_at (default 1.4s).
+  Sync point: the press lands at press_at (default 0.9s).
 
   Mount contract: the runtime clones only this template. #root fills the host
   box, establishes the container query basis, has no data-width or data-height,
@@ -37,14 +39,15 @@
 <html
   lang="en"
   data-composition-id="press-ripple"
-  data-composition-duration="3"
+  data-composition-duration="2.4"
   data-composition-variables='[
     { "id": "label", "type": "string", "role": "content", "label": "Label", "description": "Text inside the default pill target.", "default": "Get started" },
+    { "id": "done_label", "type": "string", "role": "content", "label": "Done label", "description": "Text beside the check once the default pill is pressed.", "default": "Saved" },
     { "id": "target_x", "type": "number", "role": "layout", "label": "Target X", "description": "Zone center, percent of host width.", "default": 50, "min": 8, "max": 92, "step": 1, "unit": "%" },
     { "id": "target_y", "type": "number", "role": "layout", "label": "Target Y", "description": "Zone center, percent of host height.", "default": 50, "min": 8, "max": 92, "step": 1, "unit": "%" },
-    { "id": "press_at", "type": "number", "role": "timing", "label": "Press at", "description": "Seconds from mount start when the press begins.", "default": 1.4, "min": 0.9, "max": 10, "step": 0.1, "unit": "s" },
+    { "id": "press_at", "type": "number", "role": "timing", "label": "Press at", "description": "Seconds from mount start when the press begins.", "default": 0.9, "min": 0.9, "max": 10, "step": 0.1, "unit": "s" },
     { "id": "cursor", "type": "enum", "role": "style", "label": "Cursor", "description": "Pointer tone.", "default": "light", "options": [{ "value": "light", "label": "Light" }, { "value": "dark", "label": "Dark" }] },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract color for the ripple ink and pressed fill.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract color for the click rings and the confirmation check.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
     { "id": "exit", "type": "enum", "role": "style", "label": "Exit", "description": "How the frame leaves. None holds the pressed state.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Fade up" }] }
   ]'
 >
@@ -54,7 +57,7 @@
   </head>
   <body>
     <template>
-      <div id="root" data-composition-id="press-ripple" data-duration="3" data-fps="30">
+      <div id="root" data-composition-id="press-ripple" data-duration="2.4" data-fps="30">
         <style>
           *,
           *::before,
@@ -94,22 +97,19 @@
             transform: translate(-50%, -50%);
           }
 
-          /* Ink ripple rings, centered under the slot, hidden until release.
-             The ink mixes the accent toward --fg so the rings carry real
-             weight against the host background on both light and dark
-             themes; thickness reads as drawn ink, not a hairline. */
-          .pr-ring {
+          /* Click rings around the cursor tip; the script sets cx/cy/r in px. */
+          .pr-rings {
             position: absolute;
-            left: 50%;
-            top: 50%;
-            width: 20cqmin;
-            height: 20cqmin;
-            margin: -10cqmin 0 0 -10cqmin;
-            border: 0.85cqmin solid
-              color-mix(in srgb, var(--pr-accent, #71f5a7) 72%, var(--fg, #f8fafc));
-            border-radius: 50%;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+          }
+
+          .pr-ring {
+            fill: none;
+            stroke: var(--pr-accent, #71f5a7);
             opacity: 0;
-            will-change: transform, opacity;
           }
 
           /* GSAP owns this wrapper's opacity/y (entrance) and scale (press). */
@@ -119,6 +119,7 @@
           }
 
           .pr-pill {
+            position: relative;
             display: inline-flex;
             align-items: center;
             padding: var(--space-2, 2.6cqmin) calc(var(--space-2, 2.6cqmin) * 2.1);
@@ -134,25 +135,40 @@
             white-space: nowrap;
           }
 
-          .pr-target-slot[data-state="pressed"] .pr-pill {
-            border-color: color-mix(in srgb, var(--pr-accent, #71f5a7) 72%, var(--fg, #f8fafc));
-            background: var(--pr-accent, #71f5a7);
-            color: var(--bg, #0b0c0e);
+          /* The label stays in flow so the pill keeps its width; the done
+             state is layered over it and cross-fades in. */
+          .pr-label {
+            display: inline-block;
           }
 
-          /* Pointer: SVG tip sits exactly at this box's top-left corner, so
-             the box position places the tip itself. GSAP moves it with x/y
-             transforms only (never left/top: layout props snap to integer
-             device pixels under the seek-by-frame capture engine) and scales
-             it about the tip (press). */
+          .pr-done {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.3em;
+            opacity: 0;
+          }
+
+          .pr-check {
+            width: 0.9em;
+            height: 0.9em;
+            fill: none;
+            stroke: var(--pr-accent, #71f5a7);
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          /* Pointer: the script sizes the box and offsets it so the arrow tip
+             sits at the stage origin; GSAP x/y then place the tip itself and
+             the press scales about it. */
           .pr-cursor {
             position: absolute;
             left: 0;
             top: 0;
-            width: 7cqmin;
-            height: 7cqmin;
-            transform-origin: 0 0;
-            filter: drop-shadow(0 0.4cqmin 0.9cqmin rgba(2, 6, 23, 0.45));
+            filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
             will-change: transform, opacity;
           }
 
@@ -167,25 +183,33 @@
           id="press-ripple-clip"
           class="pr-clip clip"
           data-start="0"
-          data-duration="3"
+          data-duration="2.4"
           data-track-index="0"
         >
           <div class="pr-stage">
             <div class="pr-zone">
-              <div class="pr-ring" aria-hidden="true"></div>
-              <div class="pr-ring" aria-hidden="true"></div>
               <div class="pr-actor">
                 <div class="pr-target-slot" data-slot="target" data-state="idle">
-                  <span class="pr-pill"></span>
+                  <span class="pr-pill"
+                    ><span class="pr-label"></span
+                    ><span class="pr-done"
+                      ><svg class="pr-check" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5 12.5 L9.5 17 L19 7.5"></path></svg
+                      ><span class="pr-done-text"></span></span
+                  ></span>
                 </div>
               </div>
             </div>
+            <svg class="pr-rings" aria-hidden="true">
+              <circle class="pr-ring"></circle>
+              <circle class="pr-ring"></circle>
+            </svg>
             <div class="pr-cursor" aria-hidden="true">
-              <svg viewBox="0 0 20 20">
+              <svg viewBox="0 0 24 24">
                 <path
                   class="pr-cursor-path"
-                  d="M0.6 0.6 L0.6 14.6 L4.4 11.3 L6.7 16.8 L9.4 15.6 L7.1 10.2 L12.4 9.8 Z"
-                  stroke-width="1.1"
+                  d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z"
+                  stroke-width="1.4"
                   stroke-linejoin="round"
                 ></path>
               </svg>
@@ -200,11 +224,11 @@
 
             var root = document.getElementById("root");
             var stage = root.querySelector(".pr-stage");
-            var zone = root.querySelector(".pr-zone");
             var rings = root.querySelectorAll(".pr-ring");
             var actor = root.querySelector(".pr-actor");
             var slot = root.querySelector(".pr-target-slot");
-            var pill = root.querySelector(".pr-pill");
+            var label = root.querySelector(".pr-label");
+            var done = root.querySelector(".pr-done");
             var cursor = root.querySelector(".pr-cursor");
             var cursorPath = root.querySelector(".pr-cursor-path");
 
@@ -219,8 +243,12 @@
               return Math.min(max, Math.max(min, n));
             }
 
-            var labelText =
-              vars.label == null ? "Get started" : String(vars.label).trim().replace(/\s+/g, " ");
+            function text(value, fallback) {
+              return value == null ? fallback : String(value).trim().replace(/\s+/g, " ");
+            }
+
+            var labelText = text(vars.label, "Get started");
+            var doneText = text(vars.done_label, "Saved");
             var targetX = num(vars.target_x, 50, 8, 92);
             var targetY = num(vars.target_y, 50, 8, 92);
             var cursorTone = vars.cursor === "dark" ? "dark" : "light";
@@ -248,28 +276,29 @@
               accentColors.blue = "#61a8ff";
             }
 
-            pill.textContent = labelText;
+            label.textContent = labelText;
+            root.querySelector(".pr-done-text").textContent = doneText;
             root.style.setProperty("--pr-accent", accentColors[accent]);
             root.style.setProperty("--pr-x", String(targetX));
             root.style.setProperty("--pr-y", String(targetY));
             if (cursorTone === "dark") {
-              cursorPath.setAttribute("fill", "#111827");
-              cursorPath.setAttribute("stroke", "#f8fafc");
+              cursorPath.setAttribute("fill", "#141414");
+              cursorPath.setAttribute("stroke", "#ffffff");
             } else {
-              cursorPath.setAttribute("fill", "#f8fafc");
-              cursorPath.setAttribute("stroke", "#0f172a");
+              cursorPath.setAttribute("fill", "#ffffff");
+              cursorPath.setAttribute("stroke", "#141414");
             }
 
-            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "2.4"));
             var OUT = exit === "none" ? 0 : 0.45;
-            // The whole press tail (compress + release ripple + cursor exit)
-            // is ~1.05s; keep it inside D, then keep the OUT window after it.
-            var pressAt = num(vars.press_at, 1.4, 0.9, Math.max(0.9, duration - 1.05 - OUT));
+            // Press to cursor gone; keep it inside D, then the OUT window after it.
+            var TAIL = 0.8;
+            var pressAt = num(vars.press_at, 0.9, 0.9, Math.max(0.9, duration - TAIL - OUT));
             // Human aim: the tip lands a few px off the zone's true center.
             var landX = targetX + 0.55;
             var landY = targetY + 0.85;
-            var arriveEnd = pressAt - 0.16;
-            var arriveStart = Math.max(0, arriveEnd - 0.78);
+            var arriveEnd = pressAt - 0.15;
+            var arriveStart = arriveEnd - 0.45;
 
             // Motion runs on transforms only (x/y px), never left/top: layout
             // props snap to integer device pixels under the seek-by-frame
@@ -285,6 +314,21 @@
               return (percent / 100) * stageH;
             }
 
+            // Sizes are authored at 1920 wide and scale with the stage.
+            var u = stageW / 1920;
+            var ARROW = 64 * u;
+            cursor.style.width = cursor.style.height = ARROW + "px";
+            cursor.style.left = (-5 / 24) * ARROW + "px";
+            cursor.style.top = (-3 / 24) * ARROW + "px";
+            cursor.style.transformOrigin = (5 / 24) * ARROW + "px " + (3 / 24) * ARROW + "px";
+
+            for (var i = 0; i < rings.length; i++) {
+              rings[i].setAttribute("cx", xAt(landX));
+              rings[i].setAttribute("cy", yAt(landY));
+              rings[i].setAttribute("r", 16 * u);
+              rings[i].setAttribute("stroke-width", 2 * u);
+            }
+
             var tl = gsap.timeline({ paused: true });
 
             // IN: target settles in.
@@ -295,8 +339,8 @@
               0,
             );
 
-            // Cursor decel-arrives from off-stage bottom-right. power2.out to
-            // an exact endpoint: it arrives, it never passes through.
+            // Cursor decel-arrives from off-stage bottom-right to an exact
+            // endpoint: it arrives, it never passes through.
             tl.fromTo(
               cursor,
               { x: xAt(114), y: yAt(112) },
@@ -304,7 +348,7 @@
                 x: xAt(landX),
                 y: yAt(landY),
                 duration: arriveEnd - arriveStart,
-                ease: "power2.out",
+                ease: "power3.out",
               },
               arriveStart,
             );
@@ -319,44 +363,61 @@
               pressAt + 0.14,
             );
 
-            // Ink ripple rings from under the slot: real weight (thick ink,
-            // fg-mixed contrast, wide travel), still just two rings.
+            // Click: two rings grow from the tip, the second 60ms behind and fainter.
+            // Opacity fades late so the ring stays readable while it grows.
+            [1, 0.6].forEach(function (peak, i) {
+              var at = pressAt + 0.12 + i * 0.06;
+              var ring = { duration: 0.32, immediateRender: false };
+              tl.fromTo(
+                rings[i],
+                { attr: { r: 16 * u } },
+                Object.assign({ attr: { r: 72 * u }, ease: "power2.out" }, ring),
+                at,
+              );
+              tl.fromTo(
+                rings[i],
+                { opacity: peak },
+                Object.assign({ opacity: 0, ease: "power1.in" }, ring),
+                at,
+              );
+            });
+
+            // Confirm: the label cross-fades to check + done label (icon swap).
+            var swap = { duration: 0.3, ease: "power3.out", immediateRender: false };
             tl.fromTo(
-              rings,
-              { scale: 0.16, autoAlpha: 0.95 },
-              {
-                scale: 2.6,
-                autoAlpha: 0,
-                duration: 0.66,
-                ease: "power2.out",
-                stagger: 0.11,
-                immediateRender: false,
-              },
-              pressAt + 0.1,
+              label,
+              { scale: 1, opacity: 1, filter: "blur(0px)" },
+              Object.assign({ scale: 0.3, opacity: 0, filter: "blur(3px)" }, swap),
+              pressAt + 0.12,
+            );
+            tl.fromTo(
+              done,
+              { scale: 0.3, opacity: 0, filter: "blur(3px)" },
+              Object.assign({ scale: 1, opacity: 1, filter: "blur(0px)" }, swap),
+              pressAt + 0.12,
             );
 
-            // The cursor exits off-stage after the release (accelerating,
-            // power2.in) so it never occludes the label during the hold; the
-            // pressed state and the ripple aftermath carry the frame. Both
-            // endpoints are explicit so reverse seeks restore the landing.
+            // The cursor exits off-stage (accelerating) so it never occludes the
+            // label during the hold. Both endpoints are explicit so reverse
+            // seeks restore the landing.
             tl.fromTo(
               cursor,
               { x: xAt(landX), y: yAt(landY) },
               {
                 x: xAt(112),
                 y: yAt(110),
-                duration: 0.55,
+                duration: 0.4,
                 ease: "power2.in",
                 immediateRender: false,
               },
-              pressAt + 0.5,
+              pressAt + 0.4,
             );
 
             // HOLD: dead-still on the pressed state; elastic with D.
 
             // OUT: only when the host opts in; frame roots own transitions.
             if (exit !== "none") {
-              var outStart = Math.max(pressAt + 1.05, duration - OUT);
+              var outStart = Math.max(pressAt + TAIL, duration - OUT);
               var outVars = { opacity: 0, duration: OUT, ease: "power2.in" };
               if (exit === "up") outVars.y = "-4cqh";
               tl.to(stage, outVars, outStart);

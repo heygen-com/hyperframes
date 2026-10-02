@@ -13,6 +13,12 @@
       "types": "./dist/utils/alphaBlit.d.ts",
       "environments": ["bun", "node"]
     },
+    "./chrome-host-ceiling": {
+      "source": "./src/services/chromeHostCeiling.ts",
+      "runtime": "./dist/services/chromeHostCeiling.js",
+      "types": "./dist/services/chromeHostCeiling.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./shader-transitions": {
       "source": "./src/utils/shaderTransitions.ts",
       "runtime": "./dist/utils/shaderTransitions.js",

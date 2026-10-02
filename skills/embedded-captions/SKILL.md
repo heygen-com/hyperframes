@@ -9,6 +9,8 @@ description: >
   including transcription and subject matting; split multi-shot footage before applying it.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update embedded-captions`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Embedded Captions
@@ -16,6 +18,27 @@ description: >
 **One catalog, picked up front** ([CATALOG.md](CATALOG.md) — 35 identities; the engines behind it are backend detail). **Standard** (default) builds a clean verbatim **rail** (lower-third subtitle carrying most text) + an **embed** climax composited _into_ the scene behind the subject at the peak. **Cinematic** is pure embed — no rail, every caption composited behind the subject (hero typography, accumulation, occlusion as the effect). **Theme** is a complete themed constitution — body paradigm × hero setpiece × front fx × plate reaction, composed from registries ([themes/README.md](themes/README.md)): `ordnance` `terminal` `neonsign` `stardust` `stomp`. Most explainer / voiceover is **Standard**; **embed is the scarce, earned peak** — embedding every word is the common mistake; Theme is for VFX-grade asks ("炸", "特效", "像 AE 做的").
 
 ---
+
+## Runtime prerequisites
+
+Plugin installs use the bundled, manifest-pinned CLI for matting, transcription,
+and rendering; no source checkout is required. The local preview and caption
+measurement helpers also need Sharp, Puppeteer (with its Chromium browser), and
+GSAP. Install these in the **caption project**, not inside the read-only plugin:
+
+```bash
+npm install --prefix <project> --save-dev --save-exact sharp@0.35.3 puppeteer@25.8.0 gsap@3.15.0
+```
+
+Keep the project's lockfile. If these dependencies already exist, use its locked
+versions instead of overwriting them. Bash and FFmpeg/ffprobe must be on PATH.
+Matting and transcription may download their own models on first use.
+
+Rendering waits for the CLI to exit successfully before compositing. The old
+`HF_TIMEOUT_S` shell watchdog is no longer used: a large partial file is not proof
+that rendering finished. An explicit built-checkout argument or `HYPERFRAMES_ROOT`
+selects the contributor CLI instead of the plugin pin. Cancel a stalled render normally through the CLI/terminal;
+the caption helper does not force-kill or recover a render from a process snapshot.
 
 ## Operational flow (TL;DR)
 
@@ -57,7 +80,7 @@ Rail-surface identities build exactly this (rail = `rail.html`, embed = the clim
 
 **One front-end, three engines behind.** The user picks an IDENTITY from [CATALOG.md](CATALOG.md) (35 entries: 10 classic + 25 themed); the engine, compiler and authoring file are derived by lookup from the catalog row. **Never surface "Standard vs Cinematic vs Theme" as a question** — those are backend names (a product has one UX even with several engines). The catalog encodes everything routing needs: reading surface, voice, recommend-for, scene needs, adjacency notes for the genuinely-close pairs (loud↔ordnance, neon↔neonsign, cream↔stardust).
 
-The identity pick is a **preference gate** (`../hyperframes-core/references/brief-contract.md` § 1): in autonomous mode ("surprise me" / "decide for me"), pick from your shortlist yourself and state the one-line why instead of asking.
+The identity pick is a **preference gate** (`../hyperframes/references/brief-contract.md` § 1): in autonomous mode ("surprise me" / "decide for me"), pick from your shortlist yourself and state the one-line why instead of asking.
 
 Procedure: probe the clip → shortlist 2–3 identities from the catalog → recommend ONE with a one-line why → **the user picks** (autonomous mode: you pick, stating the why) → author that identity's file. Identities are engine-locked (no cross combos; opening one is a validation event — see dna/README.md).
 
@@ -250,8 +273,8 @@ The full **embed-track** playbook lives in **[references/composition-craft.md](r
 
 ## Dependencies
 
-- **hyperframes**, built (`packages/cli/dist/cli.js`). Scripts auto-resolve the checkout: `HYPERFRAMES_ROOT` env → repo root if this skill ships _inside_ hyperframes → `~/Downloads/hyperframes`. Build with `bun install && bun run build`.
-- **Node-first; two Python touchpoints via `uvx` (no manual installs):** transcription runs WhisperX through `uvx` (word-level timings; falls back per SKILL §transcription), and Theme's `drawon` setpiece shells `python3 scripts/gen-stroke-path.py` at compile time. Everything else runs on the toolchain hyperframes already ships: matting via the hyperframes CLI's **`remove-background`** (u2net_human_seg; weights auto-download once, ~168 MB, to `~/.cache/hyperframes/`), image/alpha math via **`sharp`**, layout/occlusion/overflow via **`puppeteer`**, plus **`ffmpeg`**. The scripts auto-resolve these from the hyperframes checkout — nothing extra to install.
+- **HyperFrames CLI:** plugin installs use the bundled manifest-pinned launcher. Source contributors can use a built checkout (`packages/cli/dist/cli.js`) via `HYPERFRAMES_ROOT`, the skill’s source tree, or `~/Downloads/hyperframes`.
+- **Node-first; two Python touchpoints via `uvx` (no manual installs):** transcription runs WhisperX through `uvx` (word-level timings; falls back per SKILL §transcription), and Theme's `drawon` setpiece shells `python3 scripts/gen-stroke-path.py` at compile time. Everything else runs on the toolchain hyperframes already ships: matting via the hyperframes CLI's **`remove-background`** (u2net_human_seg; weights auto-download once, ~168 MB, to `~/.cache/hyperframes/`), image/alpha math via **`sharp`**, layout/occlusion/overflow via **`puppeteer`**, plus **`ffmpeg`**. Install Sharp, Puppeteer, and GSAP in the caption project as described in **Runtime prerequisites** above. The helpers check that project first and retain checkout dependency lookup for source contributors.
 - **Transcription = WhisperX via `uvx`** (word-level timings + alignment; no manual install — `transcribe.cjs` drives `uvx whisperx`). Falls back to an existing word-level `transcript.json` if present.
 - **Source video** — `matte.cjs` / `transcribe.cjs` auto-resolve `source.mp4` (or glob the clip / read `hyperframes.json`), so `hyperframes init --video X.mp4` needs no manual rename.
 - **fps** — `matte.cjs` extracts at the source's native rate and records `matte.fps`; `render-and-composite.sh` uses that so the matte stays frame-aligned.

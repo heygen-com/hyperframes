@@ -47,7 +47,8 @@ Set `autoplay muted` only when playback should start without a user gesture.
 
 | Attribute       | Type    | Default | Description                                               |
 | --------------- | ------- | ------- | --------------------------------------------------------- |
-| `src`           | string  | —       | URL or relative path to composition HTML                  |
+| `src`           | string  | —       | URL or relative path to composition HTML, or to a video file with `type` |
+| `type`          | string  | —       | A `video/...` type (e.g. `video/mp4`) plays `src` as a video file |
 | `srcdoc`        | string  | —       | Composition HTML already available as a string            |
 | `width`         | number  | 1920    | Native composition width used for aspect ratio            |
 | `height`        | number  | 1080    | Native composition height used for aspect ratio           |
@@ -60,10 +61,21 @@ Set `autoplay muted` only when playback should start without a user gesture.
 | `playback-rate` | number  | 1       | Playback speed multiplier                                 |
 | `audio-src`     | string  | —       | Optional primary audio URL to preload in the parent frame |
 | `audio-locked`  | boolean | false   | Force muted playback and hide volume controls             |
+| `assets-loading-ui` | `player` or `none` | `player` | `none` hides the loading-assets card; asset events still fire |
+| `low-power-idle` | boolean | false | While paused, check in once a second, not every 80 ms (many-player pages) |
+| `disable-click-to-play` | boolean | false | A click on the player no longer plays or pauses, so the page can handle it |
+| `range-start` | number | — | Film second where playback starts, loops back to and parks when paused (`rangeStart`) |
+| `range-end` | number | — | Film second the range ends before: it stops or loops on the frame before it (`rangeEnd`) |
+
+`range-start` and `range-end` play the moment [start, end) of the film. The player parks on `range-start` at `ready`, and again when a paused playhead falls outside a new range; `play()` from outside the range starts there. At the end it holds the last frame before `range-end` and fires `ended`, or wraps to `range-start` with `loop`. `currentTime` at `ended` is then inside that frame, not `range-end` itself, so listen for `ended` rather than comparing times. A current runtime stops on that frame itself; video and `__timelines` players stop one clock tick early, predicted from the smaller of their last two steps, and a video in a background tab checks on its own `timeupdate`; an older runtime stops when the player sees its time pass the end. `currentTime` and `duration` stay in film time. A range past the film is cut to its end and an empty or negative one is ignored; both fire `rangeclamped`.
 
 Player also accepts `shader-capture-scale` and `shader-loading` for previewing
 projects that use shader transitions. These are preview controls, not composition
 authoring attributes.
+
+With a `video/...` `type`, `src` plays in a `<video>` behind the same playback API and
+events. `scenes`, `setRuntimeData()`, `setColorGrading()`, `iframeElement` and `stopMedia()`
+are composition-only, and `srcdoc` wins over a video `src`, as it does in an iframe.
 
 ## JavaScript API
 
@@ -81,6 +93,7 @@ player.playbackRate = 1.5;
 player.muted = true;
 
 console.log(player.duration, player.paused, player.ready);
+console.log(player.compositionWidth, player.compositionHeight);
 ```
 
 ## Events
@@ -99,15 +112,19 @@ player.addEventListener("timeupdate", (event) => {
 
 | Event          | Detail            | Description                                                  |
 | -------------- | ----------------- | ------------------------------------------------------------ |
-| `ready`        | `{ duration }`    | Composition loaded and timeline discovered                   |
+| `ready`        | `{ duration, compositionWidth, compositionHeight }` | Composition loaded and timeline discovered |
+| `durationchange` | `{ duration }`  | The duration changed after `ready`                           |
+| `resize`       | `{ compositionWidth, compositionHeight }` | The composition's size changed           |
 | `timeupdate`   | `{ currentTime }` | Playback position changed, approximately 10 times per second |
 | `play`         | —                 | Playback started                                             |
 | `pause`        | —                 | Playback paused                                              |
 | `ended`        | —                 | Playback reached end                                         |
+| `rangeclamped` | `{ rangeStart, rangeEnd, duration }` | A range past the film was cut to its end, or an empty one ignored (nulls) |
 | `ratechange`   | —                 | Playback rate changed                                        |
 | `volumechange` | —                 | Volume or muted state changed                                |
 | `scenes`       | `{ scenes }`      | The runtime reported its scene list                          |
-| `error`        | `{ message }`     | Load or runtime error                                        |
+| `error`        | `{ message }`     | Load or runtime error; a video adds its `MediaError` `code`  |
+| `playbackerror` | `{ source, error }` | The browser blocked playback, for example unmuted autoplay |
 
 ## Advanced: iframe access
 

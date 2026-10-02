@@ -4,6 +4,7 @@ import {
   collectTimelineSnapTargets,
   snapMoveToTargets,
   snapTimelineTime,
+  resolveSnapGuide,
 } from "./timelineSnapping";
 
 describe("collectTimelineSnapTargets", () => {
@@ -23,6 +24,18 @@ describe("collectTimelineSnapTargets", () => {
     expect(targets).toContainEqual({ time: 10, type: "clip-edge" });
     expect(targets).toContainEqual({ time: 11.5, type: "clip-edge" });
     expect(targets).toContainEqual({ time: 7.25, type: "playhead" });
+    expect(targets).toContainEqual({ time: 0.5, type: "beat" });
+  });
+
+  it("omits the playhead when includePlayhead is false, for a trim", () => {
+    const targets = collectTimelineSnapTargets({
+      elements,
+      playheadTime: 7.25,
+      beatTimes: [0.5],
+      includePlayhead: false,
+    });
+    expect(targets.some((t) => t.type === "playhead")).toBe(false);
+    expect(targets).toContainEqual({ time: 2, type: "clip-edge" });
     expect(targets).toContainEqual({ time: 0.5, type: "beat" });
   });
 
@@ -130,5 +143,19 @@ describe("snapMoveToTargets", () => {
     const duration = 10 / 3;
     const r = snapMoveToTargets(5.0, duration, [{ time: 5.05, type: "beat" }], 100, 6);
     expect(r.snapTime).toBeNull();
+  });
+});
+
+describe("resolveSnapGuide", () => {
+  it("prefers a started move, falls back to a trim, and is null when neither snapped", () => {
+    const move = { started: true, snapTime: 2, snapType: "playhead" as const };
+    const trim = { snapTime: 5, snapType: "clip-edge" as const };
+    expect(resolveSnapGuide(move, trim)).toEqual({ time: 2, type: "playhead" });
+    expect(resolveSnapGuide({ ...move, started: false }, trim)).toEqual({
+      time: 5,
+      type: "clip-edge",
+    });
+    expect(resolveSnapGuide(null, { snapTime: null, snapType: null })).toBeNull();
+    expect(resolveSnapGuide(null, null)).toBeNull();
   });
 });

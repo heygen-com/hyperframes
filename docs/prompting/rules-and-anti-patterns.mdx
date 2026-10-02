@@ -10,7 +10,7 @@ Almost every rule below is taught in context somewhere earlier in this guide; a 
 The skills enforce these automatically, but if you hand-edit compositions or debug issues, these are the rules that matter:
 
 1. **Register all timelines** on `window.__timelines` — the renderer can't seek animations it doesn't know about.
-2. **Video elements must be `muted`** — audio goes in separate `<audio>` elements so the renderer can mix it.
+2. **A video with sound keeps it on the `<video>`** — `data-has-audio="true"`, no `muted`. Use a separate `<audio>` for music, voiceover, replacement audio, J/L cuts, or audio detached in Studio. Silent footage and b-roll: `muted`.
 3. **No `Math.random()`** — random values produce different frames on each render, breaking determinism. Use a seeded PRNG (e.g. mulberry32) if you need pseudo-random values. And when you want a stepped, stop-motion hold, quantize it on the **integer frame index**, not on elapsed seconds — seek times don't land on exact 1/fps doubles, so second-domain arithmetic drifts and the hold length stutters. See [Handmade, still deterministic](/prompting/motion#handmade-still-deterministic).
 4. **Synchronous timeline construction** — no `async`/`await` or `fetch()` during GSAP timeline setup.
 5. **Timed elements need `class="clip"`** — plus `data-start`, `data-duration`, and `data-track-index`.
@@ -23,7 +23,7 @@ The skills enforce these automatically, but if you hand-edit compositions or deb
 
 ## Lint rules to know
 
-The linter added eight more rules that catch subtler seek-order and SVG-drawing mistakes — cases where a render can look right in the live preview and still render wrong on a cold, non-linear render worker. Two further hazards below carry no rule code: they surface in the render, not the linter. Phrase prompts to avoid these up front rather than debugging them after a render.
+The linter added more rules that catch subtler seek-order and SVG-drawing mistakes — cases where a render can look right in the live preview and still render wrong on a cold, non-linear render worker — plus one centering footgun that shows in the preview too. Two further hazards below carry no rule code: they surface in the render, not the linter. Phrase prompts to avoid these up front rather than debugging them after a render.
 
 ### Cold-seek visibility
 
@@ -46,6 +46,10 @@ These four all come from the same root cause: a cold render worker seeks non-lin
 - **Don't combine `repeatRefresh: true` with a relative value on a repeating tween.** The relative offset accumulates per iteration, so a worker seeking straight into iteration N never performed the earlier iterations' accumulation and lands somewhere else. Ask for absolute endpoints (a `fromTo()`) instead if the loop needs to render correctly from any seek position. (`gsap_repeat_refresh_relative_value`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
 - **Function-valued tween vars receive `(index, target, targets)` — the first argument is a number, not the element.** Don't ask for a function value that calls an element method on its first parameter, or that reads transform-sensitive layout (its result would depend on the worker's own seek order). Use the second parameter for the element, index arithmetic like `(i) => i * 20`, or a value computed once at build time. (`gsap_function_value_hazard`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
 - **Don't measure DOM geometry inside a timeline callback.** `getBoundingClientRect()`, `getTotalLength()`, and `getComputedStyle()` all depend on whatever DOM state the render happens to be in — and timeline callbacks re-fire on every seek, so a cold worker's own non-linear seek order can hand the callback a different measurement than the live preview did. Ask for geometry to be computed once at build time instead. (`gsap_callback_dom_measurement`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
+
+### Centering
+
+- **Don't center with CSS `transform: translate(-50%, -50%)` on an element GSAP moves with `x` or `y`.** GSAP writes the whole transform, so the first tween throws the centering away and the element jumps. Center with layout (flex or grid on the parent) or let GSAP own the offset: `tl.fromTo("#title", { xPercent: -50, yPercent: -50, y: 40 }, { xPercent: -50, yPercent: -50, y: 0 })`. (`gsap_css_transform_conflict`)
 
 ### SVG draw-on
 

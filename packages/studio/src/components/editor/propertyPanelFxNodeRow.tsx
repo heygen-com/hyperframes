@@ -216,7 +216,7 @@ function FxNodeHeader({
       />
       <button
         type="button"
-        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-red-400 disabled:opacity-40"
+        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-danger-ink disabled:opacity-40"
         title="Remove"
         disabled={disabled}
         onClick={onRemove}

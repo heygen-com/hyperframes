@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { riffChunks } from "./wavChunks.js";
+import { riffChunks, wavFormatTag } from "./wavChunks.js";
 
 /**
  * The two WAV readers that share this walk both had their own copy, and neither
@@ -52,5 +52,36 @@ describe("riffChunks", () => {
     // end rather than read off the buffer.
     const buf = Buffer.concat([riff([{ id: "data", body: Buffer.alloc(4) }]), Buffer.from("da")]);
     expect([...riffChunks(buf)].map((c) => c.id)).toEqual(["data"]);
+  });
+});
+
+describe("wavFormatTag", () => {
+  const floatFmt = Buffer.from(
+    "feff040080bb000000b80b001000200016002000070100000300000000001000800000aa00389b71",
+    "hex",
+  );
+
+  it("resolves a complete IEEE float GUID", () => {
+    expect(wavFormatTag(floatFmt, 0, floatFmt.length)).toBe(3);
+  });
+
+  it("rejects a different GUID sharing the float prefix", () => {
+    const unknown = Buffer.from(floatFmt);
+    unknown[39] = 0;
+    expect(wavFormatTag(unknown, 0, unknown.length)).toBeNull();
+  });
+
+  it("does not read a GUID beyond the declared chunk", () => {
+    expect(wavFormatTag(floatFmt, 0, 24)).toBeNull();
+  });
+
+  it("rejects a physically truncated GUID", () => {
+    expect(wavFormatTag(floatFmt.subarray(0, 39), 0, 40)).toBeNull();
+  });
+
+  it.each([0, 21, 23])("rejects an invalid extension length of %i", (size) => {
+    const malformed = Buffer.from(floatFmt);
+    malformed.writeUInt16LE(size, 16);
+    expect(wavFormatTag(malformed, 0, malformed.length)).toBeNull();
   });
 });

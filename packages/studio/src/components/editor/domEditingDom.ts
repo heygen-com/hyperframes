@@ -199,6 +199,7 @@ export function getSourceFileForElement(
 export function normalizeTimelineCompositionSource(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
+  if (!/^([a-z][a-z0-9+.-]*:|\/)/i.test(trimmed)) return trimmed;
 
   let pathname = trimmed;
   try {
@@ -311,7 +312,8 @@ function getPreferredClassSelector(el: HTMLElement): string | undefined {
 
 // fallow-ignore-next-line complexity
 export function buildElementLabel(el: HTMLElement): string {
-  const compositionId = el.getAttribute("data-composition-id");
+  const compositionId =
+    el.getAttribute("data-hf-original-composition-id") ?? el.getAttribute("data-composition-id");
   if (compositionId && compositionId !== "main") {
     return humanizeIdentifier(compositionId);
   }

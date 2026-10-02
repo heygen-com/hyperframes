@@ -375,7 +375,9 @@ The cloud renderer seeks the timeline frame-by-frame. Non-deterministic or self-
 | `stagger: { from: "random" }` | `from: "start"`, `"center"`, or `"end"` |
 | async timeline construction | build synchronously at page load |
 | `video.play()` / `audio.play()` | the framework owns playback |
-| `<video>` without `muted playsinline` | always `muted playsinline`; audio on a separate `<audio>` |
+| `<video>` with sound            | `data-has-audio="true"`, no `muted` |
+| Music, voiceover, or replacement audio | separate `<audio>` |
+| Silent footage and b-roll       | `muted` |
 | exit tweens before a shader | the shader IS the exit — content stays visible |
 | `tl.set`/`tl.to` on an anchor container (beyond the required first-anchor `opacity:1` set) | HyperShader owns anchor opacity; only `tl.set(firstAnchor, { opacity: 1 }, start)` is allowed |
 | `autoAlpha` on an anchor scene | anchors use `opacity` (HyperShader-managed); `autoAlpha` is for non-anchor scenes |

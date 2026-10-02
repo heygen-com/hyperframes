@@ -3,8 +3,8 @@
   "name": "motion-blur",
   "type": "hyperframes:component",
   "title": "Motion Blur",
-  "description": "Velocity-driven motion blur — samples element position each frame and applies a one-sided SVG feGaussianBlur ghost trail proportional to speed",
-  "tags": ["effect", "motion-blur", "velocity", "animation", "physics"],
+  "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
+  "tags": ["effect", "motion-blur", "shutter", "after-effects", "velocity", "animation"],
   "files": [
     {
       "path": "motion-blur.html",

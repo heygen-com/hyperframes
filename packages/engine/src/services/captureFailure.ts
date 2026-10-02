@@ -52,6 +52,11 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /ECONNREFUSED/i,
   /net::ERR_NETWORK_CHANGED/i,
   /Composition has zero duration[\s\S]*Runtime ready: false/,
+  // CDP can refuse a capture call outright with this exact wording; timed-out
+  // variants of the same call hit PROTOCOL_TIMEOUT_PATTERNS, checked first.
+  // Anchored to this literal reason (not just the CDP method) so an unrelated,
+  // genuinely deterministic Page.captureScreenshot error isn't swept in too.
+  /Protocol error \(Page\.captureScreenshot\): Unable to capture screenshot/i,
 ];
 
 const PROTOCOL_TIMEOUT_PATTERNS = [
@@ -120,10 +125,24 @@ function hasIoOperationFailure(message: string): boolean {
   );
 }
 
+/**
+ * A write to a pipe whose reader has gone: EPIPE on darwin/linux, EOF on
+ * win32 (libuv reports a closed named pipe as UV_EOF), ECONNRESET on a
+ * socket. All three mean the streaming encoder died under us, which is an io
+ * fact about the host, not an authoring defect in the composition.
+ */
+const BROKEN_PIPE_MESSAGE = /\bwrite (?:EPIPE|EOF|ECONNRESET)\b/;
+
 function ioError(error: unknown, message: string): boolean {
   const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
   return (
-    Boolean(code && /^(?:EACCES|EEXIST|EIO|EMFILE|ENFILE|ENOENT|ENOSPC|EPERM|EROFS)$/.test(code)) ||
+    Boolean(
+      code &&
+      /^(?:EACCES|ECONNRESET|EEXIST|EIO|EMFILE|ENFILE|ENOENT|ENOSPC|EOF|EPERM|EPIPE|EROFS)$/.test(
+        code,
+      ),
+    ) ||
+    BROKEN_PIPE_MESSAGE.test(message) ||
     hasIoOperationFailure(message)
   );
 }

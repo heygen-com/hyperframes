@@ -518,6 +518,23 @@ describe("video-frame injection respects ancestor visibility", () => {
     expect(seededImg.style.visibility).toBe("hidden");
   });
 
+  it("preserves display:none on an inactive in-flow video so its sibling keeps the same box", async () => {
+    const { teardown, setup } = withGlobals(setupHostHiddenScenario({}));
+    setup.video.style.display = "none";
+    const seededImg = setup.document.createElement("img");
+    seededImg.classList.add("__render_frame__");
+    setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
+
+    try {
+      await syncVideoFrameVisibility(passthroughPage(), []);
+    } finally {
+      teardown();
+    }
+
+    expect(setup.video.style.display).toBe("none");
+    expect(seededImg.style.visibility).toBe("hidden");
+  });
+
   it("still injects when a plain [data-start] host is visibility:hidden (CSS-escapable)", async () => {
     // Regression guard for the style-9-prod symptom: a regular
     // `[data-start]` container whose GSAP timeline is shorter than its

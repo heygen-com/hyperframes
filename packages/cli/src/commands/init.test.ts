@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,14 +64,22 @@ describe("hyperframes init flag rename", () => {
     expect(initSource).not.toMatch(/await ensureModel\(modelFlag/g);
   });
 
-  it("requires an explicit source in non-interactive mode", () => {
+  it("bare init scaffolds the centered blank without --example", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
     try {
       const res = runInit([target, "--non-interactive"]);
-      expect(res.status).toBe(1);
-      expect(res.stderr).toContain("Non-interactive init requires --example, --video, or --audio");
-      expect(existsSync(target)).toBe(false);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toContain('data-composition-id="main"');
+      expect(html).toContain("display: flex");
+      expect(html).toContain("align-items: center");
+      expect(html).toContain("font-family: Inter");
+      expect(html).toContain("tl.seek(0)");
+      expect(html).not.toMatch(/transform:\s*translate\(-50%/);
+      expect(html).toMatch(/#root\s*\{[^}]*width:\s*100%/);
+      expect(html).not.toContain("window.__timelines = window.__timelines || {}");
+      expectScaffoldedScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -77,6 +93,21 @@ describe("hyperframes init flag rename", () => {
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("--example requires a value");
       expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("deprecated --agent still scaffolds the same centered blank", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--agent"]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toContain("font-family: Inter");
+      expect(html).toContain("tl.seek(0)");
+      expectScaffoldedScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -167,6 +198,83 @@ describe("hyperframes init flag rename", () => {
     expect(injected).not.toContain("Date.now");
     expect(injected).not.toContain("requestAnimationFrame");
     expect(injected).not.toContain("setTimeout");
+  });
+
+  it("packs from-file and wires --video into the composition", () => {
+    const copySource = readFileSync(
+      new URL("../../scripts/build-copy.mjs", import.meta.url),
+      "utf-8",
+    );
+    expect(copySource).toContain('for (const tmpl of ["blank", "from-file", "_shared"])');
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    const clip = join(dir, "clip.mp4");
+    copyFileSync(
+      resolve(
+        fileURLToPath(import.meta.url),
+        "../../../../studio/tests/e2e/fixtures/design-panel-qa/assets/test.mp4",
+      ),
+      clip,
+    );
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--video", clip]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      const video = html.match(/<video\b[^>]*>/)?.[0] ?? "";
+      expect(video).toContain('id="a-roll"');
+      expect(video).toContain('src="clip.mp4"');
+      expect(video).toContain('data-has-audio="true"');
+      expect(video).not.toMatch(/\bmuted\b/);
+      expect(html).not.toMatch(/<audio\b/);
+      expect(existsSync(join(target, "clip.mp4"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("scaffolds a silent --video as a muted clip with no audio element", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-silent-"));
+    const target = join(dir, "proj");
+    const clip = join(dir, "silent.mp4");
+    copyFileSync(resolve(fileURLToPath(import.meta.url), "../__fixtures__/silent.mp4"), clip);
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--video", clip]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      const video = html.match(/<video\b[^>]*>/)?.[0] ?? "";
+      expect(video).toMatch(/\bmuted\b/);
+      expect(video).not.toContain("data-has-audio");
+      expect(html).not.toMatch(/<audio\b/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("wires --audio into the composition without creating a video clip", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-audio-test-"));
+    const target = join(dir, "proj");
+    const audio = join(dir, "track.wav");
+    copyFileSync(
+      resolve(
+        fileURLToPath(import.meta.url),
+        "../../../../producer/tests/audio-mux-parity/src/assets/tone.wav",
+      ),
+      audio,
+    );
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--audio", audio]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toMatch(/<audio\b[^>]*src="track\.wav"/);
+      expect(html).not.toMatch(/<video\b/);
+      // tone.wav is 3 s; the root and the <audio> both carry the probed length, not the 10 s default.
+      expect(html).toMatch(/<audio\b[^>]*data-duration="3"/);
+      expect(html).toMatch(/<div[^>]*id="root"[^>]*data-duration="3"/);
+      expect(html).not.toContain("__VIDEO_SRC__");
+      expect(html).not.toContain("__AUDIO_SRC__");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("-v works as the short alias for --video", () => {

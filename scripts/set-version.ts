@@ -15,7 +15,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { join, posix } from "path";
 import { execFileSync } from "child_process";
 import { pathToFileURL } from "url";
 import { CLI_SEMVER_PATTERN } from "./cli-options.ts";
@@ -36,7 +36,13 @@ const PACKAGES = [
   "packages/sdk",
 ];
 
-const PLUGINS = [".claude-plugin", ".codex-plugin", ".cursor-plugin"];
+const PLUGINS = [
+  ".claude-plugin/plugin.json",
+  ".codex-plugin/plugin.json",
+  ".cursor-plugin/plugin.json",
+  "plugin.json",
+  "gemini-extension.json",
+];
 
 const ROOT = join(import.meta.dirname, "..");
 export const CHANGELOG_REVIEW_TODO = "<!-- TODO: write a 1-2 sentence release summary here. -->";
@@ -118,7 +124,7 @@ function updatePluginVersions(version: string) {
   // short arrays inline, but JSON.stringify expands them, which would fail the
   // pre-commit format check on the release commit this script creates.
   for (const plugin of PLUGINS) {
-    const pluginPath = join(ROOT, plugin, "plugin.json");
+    const pluginPath = join(ROOT, plugin);
     const text = readFileSync(pluginPath, "utf-8");
     const oldVersion = text.match(/"version"\s*:\s*"([^"]*)"/)?.[1] ?? "unknown";
     writeFileSync(pluginPath, text.replace(/("version"\s*:\s*)"[^"]*"/, `$1"${version}"`));
@@ -259,7 +265,7 @@ export function missingChangelogArtifacts(version: string) {
 }
 
 export function changelogArtifacts(version: string) {
-  return [join("releases", `v${version}.md`), `docs/changelog.mdx#HyperFrames v${version}`];
+  return [posix.join("releases", `v${version}.md`), `docs/changelog.mdx#HyperFrames v${version}`];
 }
 
 export function unreviewedChangelogArtifacts(version: string) {
@@ -310,10 +316,11 @@ export function docsChangelogEntryHasGeneratedTodo(content: string, marker: stri
 
 export function releaseAllowedPaths(version: string) {
   return [
-    ...PACKAGES.map((pkg) => join(pkg, "package.json")),
-    ...PLUGINS.map((plugin) => join(plugin, "plugin.json")),
+    // These values are compared with Git's slash-separated path output.
+    ...PACKAGES.map((pkg) => posix.join(pkg, "package.json")),
+    ...PLUGINS,
     "docs/changelog.mdx",
-    join("releases", `v${version}.md`),
+    posix.join("releases", `v${version}.md`),
   ];
 }
 
@@ -372,6 +379,14 @@ function printReleaseNextSteps(version: string) {
     console.log(`\nDo NOT push the local tag. Run:`);
     console.log(`  git push origin HEAD:refs/heads/release/v${version}`);
     console.log(`  gh pr create --base main --head release/v${version} --fill`);
+    // Every release bumps packages/studio and packages/player, which the
+    // captures gate watches, so it asks a version bump for before/after media.
+    // Its own hatch covers this: the watched diff is 4 lines of package.json.
+    console.log(
+      `\nThe PR body needs a '## No visible change' section — a release bumps` +
+        `\npackages/studio and packages/player, so scripts/check-pr-captures.mjs` +
+        `\notherwise demands before/after captures for a version bump.`,
+    );
     console.log(
       `\nMerging that PR publishes: the workflow checks out the merge SHA, creates` +
         `\nthe v${version} tag there, publishes npm, and cuts the GitHub release.` +

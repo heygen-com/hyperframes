@@ -19,12 +19,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { downloadFile } from "../utils/download.js";
-import { readConfig, writeConfig } from "../telemetry/config.js";
+import { readConfig, updateLocalModelConsent } from "../telemetry/config.js";
 
 /**
- * bge-small-en-v1.5: 62.17 MTEB average against 62.3 for the hosted model this
- * substitutes for, at 384 dimensions instead of 1536. Chosen for being close to
- * parity while small enough to ship, not for being a weaker tier.
+ * bge-small-en-v1.5: 62.17 MTEB average against 62.3 for text-embedding-3-small,
+ * the model it was chosen against, at 384 dimensions instead of 1536. Chosen for
+ * being close to parity while small enough to ship, not for being a weaker tier.
  */
 export const LOCAL_MODEL_ID = "bge-small-en-v1.5";
 export const LOCAL_MODEL_DIMENSIONS = 384;
@@ -82,8 +82,18 @@ export function localModelConsent(): LocalModelDecision {
   return readConfig().localEmbeddingEnabled;
 }
 
-export function recordLocalModelConsent(enabled: boolean): void {
-  writeConfig({ ...readConfig(), localEmbeddingEnabled: enabled });
+export function recordLocalModelConsent(enabled: boolean): LocalModelDecision {
+  return updateLocalModelConsent(() => enabled);
+}
+
+/** The answer saved right now, read through the settings lock so a write in progress lands first. */
+export function savedLocalModelConsent(): LocalModelDecision {
+  return updateLocalModelConsent((onDisk) => onDisk);
+}
+
+/** --yes in a run nobody watches: it answers only a question never asked. Returns the decision that stands. */
+export function assumeLocalModelConsent(): LocalModelDecision {
+  return updateLocalModelConsent((onDisk) => onDisk ?? true);
 }
 
 export function localModelPath(): string {

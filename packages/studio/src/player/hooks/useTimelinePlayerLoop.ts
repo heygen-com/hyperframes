@@ -22,6 +22,7 @@ interface UseTimelinePlayerLoopParams {
   getAdapter: () => PlaybackAdapter | null;
   setCurrentTime: (v: number) => void;
   setIsPlaying: (v: boolean) => void;
+  setLoopStart: (seconds: number | null) => void;
 }
 
 interface UseTimelinePlayerLoopResult {
@@ -36,6 +37,7 @@ export function useTimelinePlayerLoop({
   getAdapter,
   setCurrentTime,
   setIsPlaying,
+  setLoopStart,
 }: UseTimelinePlayerLoopParams): UseTimelinePlayerLoopResult {
   const stopReverseLoop = useCallback(() => {
     cancelAnimationFrame(reverseRafRef.current);
@@ -55,8 +57,10 @@ export function useTimelinePlayerLoop({
         const rawLoopStart = inPoint !== null ? inPoint : 0;
         const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : dur;
         const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
+        const looping = usePlayerStore.getState().loopEnabled && dur > 0;
+        setLoopStart(looping ? loopStart : null);
         if (time >= loopEnd) {
-          if (usePlayerStore.getState().loopEnabled && dur > 0) {
+          if (looping) {
             // keepPlaying skips the adapter's implicit pause; play() below is then a no-op.
             adapter.seek(loopStart, { keepPlaying: true });
             liveTime.notify(loopStart);
@@ -75,7 +79,7 @@ export function useTimelinePlayerLoop({
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
-  }, [rafRef, getAdapter, setCurrentTime, setIsPlaying]);
+  }, [rafRef, getAdapter, setCurrentTime, setIsPlaying, setLoopStart]);
 
   const stopRAFLoop = useCallback(() => {
     cancelAnimationFrame(rafRef.current);

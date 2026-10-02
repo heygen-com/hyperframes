@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createCapturePlan, replanAfterFailure, type CaptureRouting } from "./capturePlan.js";
+import {
+  capturePathForPlanKind,
+  createCapturePlan,
+  drawElementVerificationFailure,
+  replanAfterFailure,
+  streamingCaptureFailure,
+  type CaptureRouting,
+} from "./capturePlan.js";
 
 function streaming(routing?: CaptureRouting) {
   return createCapturePlan({
@@ -46,6 +53,49 @@ describe("CapturePlan", () => {
     expect(initial.kind).toBe("sdr_streaming");
   });
 
+  it("retries interleaved parallel streaming at one worker, never N contiguous", () => {
+    // The non-DE router's plan: N workers, interleaved, default routing.
+    const routed = createCapturePlan({
+      workerCount: 4,
+      forceScreenshot: false,
+      forceParallelStream: true,
+      useStreamingEncode: true,
+      useLayeredComposite: false,
+      usePageSideCompositing: false,
+      hasHdrContent: false,
+      needsAlpha: false,
+    });
+    expect(routed).toMatchObject({
+      kind: "sdr_streaming",
+      forceParallelStream: true,
+      routing: { kind: "default" },
+    });
+    const next = replanAfterFailure(routed, { kind: "capture_failure", memoryExhaustion: false });
+    // Not `workerCount: 4, forceParallelStream: false` — that is contiguous
+    // streaming, the serialising shape interleaving exists to avoid.
+    expect(next).toMatchObject({
+      kind: "sdr_streaming",
+      workerCount: 1,
+      forceParallelStream: false,
+      forceScreenshot: true,
+    });
+
+    // A plan that was never interleaved keeps its worker count on retry.
+    const plain = createCapturePlan({
+      workerCount: 4,
+      forceScreenshot: false,
+      forceParallelStream: false,
+      useStreamingEncode: true,
+      useLayeredComposite: false,
+      usePageSideCompositing: false,
+      hasHdrContent: false,
+      needsAlpha: false,
+    });
+    expect(
+      replanAfterFailure(plain, { kind: "capture_failure", memoryExhaustion: false }).workerCount,
+    ).toBe(4);
+  });
+
   it("makes page-side compositing force screenshot capture", () => {
     const plan = createCapturePlan({
       workerCount: 1,
@@ -80,7 +130,10 @@ describe("CapturePlan", () => {
         forceParallelStream: false,
       },
     });
-    const next = replanAfterFailure(initial, { kind: "draw_element_verification" });
+    const next = replanAfterFailure(initial, {
+      kind: "draw_element_verification",
+      diskFallbackAvailable: true,
+    });
 
     expect(next).toMatchObject({
       kind: "sdr_disk",
@@ -90,6 +143,191 @@ describe("CapturePlan", () => {
     });
     expect(initial).toMatchObject({ workerCount: 1, routing: { state: "active" } });
     expect(Object.isFrozen(next.routing)).toBe(true);
+  });
+
+  it("keeps verification recovery streaming when the disk fallback lacks headroom", () => {
+    const initial = streaming({
+      kind: "worker_inversion",
+      state: "active",
+      fallback: { kind: "sdr_disk", workerCount: 5, forceParallelStream: false },
+      memoryExhaustionFallback: {
+        kind: "sdr_streaming",
+        workerCount: 1,
+        forceParallelStream: false,
+      },
+    });
+
+    const next = replanAfterFailure(initial, {
+      kind: "draw_element_verification",
+      diskFallbackAvailable: false,
+    });
+
+    expect(next).toMatchObject({
+      kind: "sdr_streaming",
+      workerCount: 1,
+      forceScreenshot: true,
+      routing: { kind: "worker_inversion", state: "reverted" },
+    });
+    expect(initial).toMatchObject({ workerCount: 1, routing: { state: "active" } });
+    expect(Object.isFrozen(next.routing)).toBe(true);
+  });
+
+  it("keeps parallel-router verification recovery streaming when the disk fallback lacks headroom", () => {
+    const initial = streaming({
+      kind: "parallel_router",
+      state: "active",
+      fallback: { kind: "sdr_disk", workerCount: 5, forceParallelStream: false },
+      memoryExhaustionFallback: {
+        kind: "sdr_streaming",
+        workerCount: 1,
+        forceParallelStream: false,
+      },
+    });
+
+    const next = replanAfterFailure(initial, {
+      kind: "draw_element_verification",
+      diskFallbackAvailable: false,
+    });
+
+    expect(next).toMatchObject({
+      kind: "sdr_streaming",
+      workerCount: 1,
+      forceScreenshot: true,
+      routing: { kind: "parallel_router", state: "reverted" },
+    });
+    expect(
+      replanAfterFailure(initial, {
+        kind: "draw_element_verification",
+        diskFallbackAvailable: true,
+      }),
+    ).toMatchObject({ kind: "sdr_disk", workerCount: 5 });
+  });
+
+  describe("drawElementVerificationFailure", () => {
+    const diskFallback = { kind: "sdr_disk", workerCount: 5, forceParallelStream: false } as const;
+    const streamFallback = {
+      kind: "sdr_streaming",
+      workerCount: 1,
+      forceParallelStream: false,
+    } as const;
+
+    it("consults disk headroom for every routing whose disk fallback has an off-disk escape", () => {
+      for (const kind of ["worker_inversion", "parallel_router"] as const) {
+        const plan = streaming({
+          kind,
+          state: "active",
+          fallback: diskFallback,
+          memoryExhaustionFallback: streamFallback,
+        });
+        for (const available of [false, true]) {
+          let inspections = 0;
+          const failure = drawElementVerificationFailure(plan, () => {
+            inspections += 1;
+            return available;
+          });
+          expect(failure).toEqual({
+            kind: "draw_element_verification",
+            diskFallbackAvailable: available,
+          });
+          expect(inspections).toBe(1);
+        }
+      }
+    });
+
+    it("skips the disk inspection when headroom cannot change the fallback", () => {
+      const inspect = () => {
+        throw new Error("disk must not be inspected");
+      };
+      const unchanged = { kind: "draw_element_verification", diskFallbackAvailable: undefined };
+
+      expect(drawElementVerificationFailure(streaming(), inspect)).toEqual(unchanged);
+      expect(
+        drawElementVerificationFailure(
+          streaming({
+            kind: "parallel_router",
+            state: "active",
+            fallback: streamFallback,
+            memoryExhaustionFallback: streamFallback,
+          }),
+          inspect,
+        ),
+      ).toEqual(unchanged);
+      expect(
+        drawElementVerificationFailure(
+          streaming({
+            kind: "worker_inversion",
+            state: "active",
+            fallback: diskFallback,
+            memoryExhaustionFallback: { ...diskFallback, workerCount: 1 },
+          }),
+          inspect,
+        ),
+      ).toEqual(unchanged);
+    });
+  });
+
+  describe("streamingCaptureFailure", () => {
+    // The routing shape for which a verification failure DOES consult disk
+    // headroom — so any inspector call below would be on that path alone.
+    const routedPlan = streaming({
+      kind: "worker_inversion",
+      state: "active",
+      fallback: { kind: "sdr_disk", workerCount: 5, forceParallelStream: false },
+      memoryExhaustionFallback: {
+        kind: "sdr_streaming",
+        workerCount: 1,
+        forceParallelStream: false,
+      },
+    });
+    const inspect = () => {
+      throw new Error("disk must not be inspected");
+    };
+
+    // A canvas / paint-record capture error, a renderer stall and an OOM are
+    // not verification failures: each retries as a plain capture failure and
+    // must not touch the disk.
+    it.each([false, true])(
+      "never inspects disk headroom for a non-verification failure (memoryExhaustion: %s)",
+      (isMemoryExhaustion) => {
+        expect(
+          streamingCaptureFailure(
+            routedPlan,
+            { isVerifyError: false, isMemoryExhaustion },
+            inspect,
+          ),
+        ).toEqual({ kind: "capture_failure", memoryExhaustion: isMemoryExhaustion });
+      },
+    );
+
+    it("reverts to the preferred disk fallback on a drawElement capture failure", () => {
+      // The streaming-side capture failure carries no headroom flag, so the
+      // retry takes the routing's preferred fallback without steering.
+      const failure = streamingCaptureFailure(
+        routedPlan,
+        { isVerifyError: false, isMemoryExhaustion: false },
+        inspect,
+      );
+      expect(replanAfterFailure(routedPlan, failure)).toMatchObject({
+        kind: "sdr_disk",
+        workerCount: 5,
+        forceScreenshot: true,
+        routing: { kind: "worker_inversion", state: "reverted" },
+      });
+    });
+
+    it("routes a verification failure through the headroom-aware builder", () => {
+      let inspections = 0;
+      const failure = streamingCaptureFailure(
+        routedPlan,
+        { isVerifyError: true, isMemoryExhaustion: false },
+        () => {
+          inspections += 1;
+          return false;
+        },
+      );
+      expect(failure).toEqual({ kind: "draw_element_verification", diskFallbackAvailable: false });
+      expect(inspections).toBe(1);
+    });
   });
 
   it("retries an inversion OOM in single-worker screenshot streaming mode", () => {
@@ -178,5 +416,76 @@ describe("CapturePlan", () => {
     expect(() => replanAfterFailure(disk, { kind: "streaming_unavailable" })).toThrow(
       "Cannot apply streaming_unavailable to sdr_disk",
     );
+  });
+});
+
+describe("sdr_segmented capture plan", () => {
+  const segmented = {
+    workerCount: 1,
+    forceScreenshot: false,
+    forceParallelStream: false,
+    useStreamingEncode: true,
+    useLayeredComposite: false,
+    usePageSideCompositing: false,
+    hasHdrContent: false,
+    needsAlpha: false,
+    useSegmentedCapture: true,
+  };
+
+  it("selects segmented capture for streaming-eligible renders at any worker count", () => {
+    const plan = createCapturePlan(segmented);
+    expect(plan).toMatchObject({
+      kind: "sdr_segmented",
+      workerCount: 1,
+      forceParallelStream: false,
+    });
+    expect(Object.isFrozen(plan)).toBe(true);
+    // Phase 2d: several workers each own a segment and an encoder.
+    expect(createCapturePlan({ ...segmented, workerCount: 3 })).toMatchObject({
+      kind: "sdr_segmented",
+      workerCount: 3,
+      forceParallelStream: false,
+    });
+  });
+
+  it("loses to the layered route but not to the single-encoder streaming flag", () => {
+    // useStreamingEncode answers "one encoder for the whole render", which a
+    // segmented render never wants — it goes false for multi-worker, and
+    // requiring it here would silently drop those renders onto the disk path.
+    // Viability is decided by shouldSegmentCapture before this is set.
+    expect(createCapturePlan({ ...segmented, useStreamingEncode: false }).kind).toBe(
+      "sdr_segmented",
+    );
+    expect(createCapturePlan({ ...segmented, useLayeredComposite: true }).kind).toBe("hdr_layered");
+  });
+
+  it("reports its own capture path", () => {
+    expect(capturePathForPlanKind("sdr_segmented")).toBe("segmented");
+  });
+
+  it("falls back from segmented to plain streaming when the encoder is unavailable", () => {
+    const initial = createCapturePlan(segmented);
+    const next = replanAfterFailure(initial, { kind: "streaming_unavailable" });
+    expect(next.kind).toBe("sdr_streaming");
+    // The input plan is never mutated.
+    expect(initial.kind).toBe("sdr_segmented");
+  });
+
+  it("keeps segmenting but drops to screenshot after a drawElement failure", () => {
+    const next = replanAfterFailure(createCapturePlan(segmented), {
+      kind: "draw_element_capture",
+    });
+    expect(next).toMatchObject({ kind: "sdr_segmented", forceScreenshot: true });
+  });
+
+  it("drops segmentation after a plain capture failure instead of throwing", () => {
+    // Until Phase 2c adds per-segment retry, the whole render retries; it must
+    // reach a plan rather than the "cannot apply" throw that guards the
+    // non-streaming kinds.
+    const next = replanAfterFailure(createCapturePlan(segmented), {
+      kind: "capture_failure",
+      memoryExhaustion: false,
+    });
+    expect(next).toMatchObject({ kind: "sdr_streaming", forceScreenshot: true });
   });
 });

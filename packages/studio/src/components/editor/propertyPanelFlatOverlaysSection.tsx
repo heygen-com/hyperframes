@@ -45,7 +45,7 @@ export function FlatOverlaysSection({
     return <div className="py-4 text-center text-[10px] text-panel-text-4">Loading overlays…</div>;
   }
   if (error) {
-    return <div className="py-4 text-center text-[10px] text-red-300">{error}</div>;
+    return <div className="py-4 text-center text-[10px] text-danger-ink">{error}</div>;
   }
 
   const busy = adding !== null;
@@ -95,7 +95,7 @@ export function FlatOverlaysSection({
             )}
             <Plus
               size={12}
-              className="absolute right-1.5 top-1.5 text-white opacity-70 drop-shadow group-hover:text-panel-accent group-hover:opacity-100"
+              className="absolute right-1.5 top-1.5 text-white opacity-70 drop-shadow-sm group-hover:text-accent-ink group-hover:opacity-100"
             />
           </span>
           <span className="block truncate px-2 py-1.5 text-[10px] text-panel-text-2">

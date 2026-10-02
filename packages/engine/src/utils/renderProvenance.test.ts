@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import {
   PROVENANCE_VERSION_TAG,
   readRenderProvenance,
   renderProvenanceArgs,
+  resolveOwnVersionFrom,
 } from "./renderProvenance.js";
 import {
   applyFaststart,
@@ -263,5 +264,77 @@ describe.skipIf(!HAS_FFMPEG)("provenance survives a real encode", () => {
       renderer: PROVENANCE_RENDERER_NAME,
       version: PROVENANCE_VERSION,
     });
+  });
+});
+
+describe("resolveOwnVersionFrom", () => {
+  let root: string;
+  const write = (rel: string, body: unknown) => {
+    const dir = join(root, rel);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify(body));
+  };
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-version-"));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("finds the version at the package root itself", () => {
+    write(".", { name: "hyperframes", version: "1.2.3" });
+    expect(resolveOwnVersionFrom(root)).toBe("1.2.3");
+  });
+
+  it("walks up from a nested build directory — the published <pkg>/dist/ layout", () => {
+    write(".", { name: "hyperframes", version: "0.8.71" });
+    mkdirSync(join(root, "dist"), { recursive: true });
+    expect(resolveOwnVersionFrom(join(root, "dist"))).toBe("0.8.71");
+  });
+
+  it("walks up from the repo src/utils depth too", () => {
+    write("packages/engine", { name: "@hyperframes/engine", version: "4.5.6" });
+    mkdirSync(join(root, "packages/engine/src/utils"), { recursive: true });
+    expect(resolveOwnVersionFrom(join(root, "packages/engine/src/utils"))).toBe("4.5.6");
+  });
+
+  it("IGNORES a foreign package.json above us — the hoisted-install trap", () => {
+    // This is the whole point of matching on name. A bare "first package.json
+    // found while walking up" returns 9.9.9 here: a confident wrong version,
+    // which is the same class of defect as the sentinel it replaces.
+    write(".", { name: "some-consumer-app", version: "9.9.9" });
+    mkdirSync(join(root, "node_modules/hyperframes/dist"), { recursive: true });
+    expect(resolveOwnVersionFrom(join(root, "node_modules/hyperframes/dist"))).toBe("unresolved");
+  });
+
+  it("prefers our own root over a foreign one further up", () => {
+    write(".", { name: "some-consumer-app", version: "9.9.9" });
+    write("node_modules/hyperframes", { name: "hyperframes", version: "0.8.71" });
+    mkdirSync(join(root, "node_modules/hyperframes/dist"), { recursive: true });
+    expect(resolveOwnVersionFrom(join(root, "node_modules/hyperframes/dist"))).toBe("0.8.71");
+  });
+
+  it("returns the sentinel, not a foreign version, when our root declares none", () => {
+    write(".", { name: "some-consumer-app", version: "9.9.9" });
+    write("node_modules/hyperframes", { name: "hyperframes" });
+    expect(resolveOwnVersionFrom(join(root, "node_modules/hyperframes"))).toBe("unresolved");
+  });
+
+  it("steps over a malformed package.json and keeps walking", () => {
+    write("pkg", { name: "hyperframes", version: "7.7.7" });
+    mkdirSync(join(root, "pkg/dist"), { recursive: true });
+    writeFileSync(join(root, "pkg/dist/package.json"), "{ not json");
+    expect(resolveOwnVersionFrom(join(root, "pkg/dist"))).toBe("7.7.7");
+  });
+
+  it("returns the sentinel when nothing matches", () => {
+    mkdirSync(join(root, "a/b/c"), { recursive: true });
+    expect(resolveOwnVersionFrom(join(root, "a/b/c"))).toBe("unresolved");
+  });
+
+  it("the sentinel is not semver-shaped, so it cannot be read as a version", () => {
+    expect(resolveOwnVersionFrom(root)).toBe("unresolved");
+    expect(/^\d+\.\d+\.\d+/.test("unresolved")).toBe(false);
   });
 });

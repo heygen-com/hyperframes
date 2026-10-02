@@ -20,6 +20,11 @@ import {
   resolveAudioGroups,
   resolveCarveSourceIds,
 } from "@hyperframes/core/audio-groups";
+import { isAudibleVideoNode } from "../../player/lib/timelineElementHelpers";
+
+export function isCarveVoiceElement(el: Element | null): el is Element {
+  return el !== null && (el.tagName === "AUDIO" || isAudibleVideoNode(el));
+}
 
 /**
  * An id for a new voiceover group, de-duped against every id already in the
@@ -130,7 +135,7 @@ function excludedFor(groupByMember: Map<string, { id: string }>, bedId?: string)
 
 export function collectCarveCandidates(
   doc: Document,
-  others: readonly HTMLAudioElement[],
+  others: readonly Element[],
   overlapsBed: (a: Element) => boolean,
   /** The bed's own id, so neither it nor the group it belongs to is offered. */
   bedId?: string,
@@ -141,7 +146,7 @@ export function collectCarveCandidates(
   const excluded = excludedFor(groupByMember, bedId);
   const offeredGroupIds = new Set<string>();
   const described: CarveCandidate[] = [];
-  for (const a of others) {
+  for (const a of others.filter(isCarveVoiceElement)) {
     const group = groupByMember.get(a.id);
     if (excluded.has(a.id) || (group && excluded.has(group.id))) continue;
     if (!group) {
@@ -161,7 +166,7 @@ export function collectCarveCandidates(
       // iframe document, so the constructor is a different realm's and the
       // instanceof is false for every one (mirrors resolveCarveVoices in
       // useFxCarve.ts).
-      .filter((el): el is HTMLElement => el?.tagName === "AUDIO");
+      .filter((el): el is HTMLElement => isCarveVoiceElement(el));
     if (!members.some(overlapsBed)) continue;
     offeredGroupIds.add(group.id);
     described.push({

@@ -1,28 +1,28 @@
 ---
 title: "Lower Third — Soft Pill"
 description: "Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/lt-soft-pill.json"
+  compositionId="lt-soft-pill"
+  compositionSrc="compositions/lt-soft-pill.html"
+  title="Lower Third — Soft Pill"
+  description="Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance"
+  variables={[]}
+  meta={{"duration":4.8,"width":1920,"height":1080,"category":"Lower Thirds","badge":"Stable","codeLines":118}}
+  attribution={{"path":"registry/blocks/lt-soft-pill","tags":["lower-third","overlay","podcast","interview","minimal"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/lt-soft-pill/lt-soft-pill.html"
+>
 
-<InstallCommand command="npx hyperframes add lt-soft-pill" item="lt-soft-pill" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/lt-soft-pill.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="lt-soft-pill preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/lt-soft-pill.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-soft-pill.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title={`lt-soft-pill.html`}>
-
-```html
+```html lt-soft-pill.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -143,15 +143,36 @@ That writes one file: `compositions/lt-soft-pill.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add lt-soft-pill" item="lt-soft-pill" />
 
-```html
-<div data-composition-id="lt-soft-pill" data-composition-src="compositions/lt-soft-pill.html" data-start="0" data-duration="4.8" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes one file: `compositions/lt-soft-pill.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 4.8 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="lt-soft-pill"
+  data-composition-src="compositions/lt-soft-pill.html"
+  data-start="0"
+  data-duration="4.8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -162,3 +183,7 @@ Tagged `lower-third` `overlay` `podcast` `interview` `minimal`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

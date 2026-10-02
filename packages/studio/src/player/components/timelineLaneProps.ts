@@ -8,6 +8,7 @@ import type { TrackVisualStyle } from "./timelineIcons";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
 import type { TimelineClipIndex, TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TimelineRowGeometry } from "./timelineLayout";
+import type { TimelineSnapTarget } from "./timelineSnapping";
 import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -28,6 +29,7 @@ export interface TimelineLaneBaseProps {
   contentGutter: number;
   trackContentWidth: number;
   theme: TimelineTheme;
+  showAudioEffects?: boolean;
   displayTrackOrder: number[];
   rowHeights: readonly number[];
   rowGeometry: TimelineRowGeometry;
@@ -64,11 +66,6 @@ export interface TimelineLaneBaseProps {
   setResizingClip: (v: ResizingClipState | null) => void;
   setDraggedClip: (v: DraggedClipState | null) => void;
   setSelectedElementId: (id: string | null) => void;
-  shiftClickClipRef: React.RefObject<{
-    element: TimelineElement;
-    anchorX: number;
-    anchorY: number;
-  } | null>;
   getPreviewElement: (element: TimelineElement) => TimelineElement;
   getTrackStyle: (tag: string) => TrackVisualStyle;
   keyframeCache?: Map<string, KeyframeCacheEntry>;
@@ -112,6 +109,8 @@ export interface TimelineLaneBaseProps {
 export interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
   draggedElement: TimelineElement | null;
+  /** Live move or trim snap target, resolved once by TimelineCanvas. */
+  snapGuide: TimelineSnapTarget | null;
   multiDragPreview: MultiDragPreviewInput | null;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
   onTogglePropertyGroupKeyframe: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];

@@ -31,11 +31,12 @@ import type {
 } from "./types.js";
 import { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
 import { buildRoots, flatElements, parsedAnimationIds } from "./document.js";
+import { syncFixFor, syncOffsetOf } from "./engine/syncTiming.js";
 import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
-import { getGsapScripts, resolveScoped, declarationElement } from "./engine/model.js";
+import { getGsapScripts, resolveScoped, declarationCarriers } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
 import { readClipTiming, type ClipTiming } from "@hyperframes/core/composition-contract";
@@ -161,8 +162,29 @@ class CompositionImpl implements Composition {
     this.dispatch({ type: "setAttribute", target: id, name, value });
   }
 
-  setTiming(id: HfId, timing: { start?: number; duration?: number; trackIndex?: number }): void {
-    this.dispatch({ type: "setTiming", target: id, ...timing });
+  setTiming(
+    id: HfId,
+    timing: { start?: number; duration?: number; trackIndex?: number },
+    opts?: { linked?: boolean },
+  ): void {
+    this.dispatch({ type: "setTiming", target: id, ...timing, ...opts });
+  }
+
+  syncOffset(id: HfId, fps = 30): number | null {
+    return syncOffsetOf(this.parsed.document, id, fps);
+  }
+
+  /** Moves `id` alone; a link group it belongs to is left (as `setTiming` `linked: false`). */
+  moveIntoSync(id: HfId): void {
+    const fix = syncFixFor(this.parsed.document, id, "move");
+    if (fix.kind === "move")
+      this.dispatch({ type: "setTiming", target: id, start: fix.start, linked: false });
+  }
+
+  slipIntoSync(id: HfId): void {
+    const fix = syncFixFor(this.parsed.document, id, "slip");
+    if (fix.kind === "slip")
+      this.dispatch({ type: "setAttribute", target: id, name: fix.name, value: fix.value });
   }
 
   removeElement(id: HfId): void {
@@ -221,21 +243,22 @@ class CompositionImpl implements Composition {
   }
 
   getVariableDeclarations(): CompositionVariable[] {
-    return readVariableDeclarations(declarationElement(this.parsed.document, this.parsed.wrapped));
+    const byId = new Map<string, CompositionVariable>();
+    for (const el of declarationCarriers(this.parsed.document, this.parsed.wrapped))
+      for (const decl of readVariableDeclarations(el)) byId.set(decl.id, decl);
+    return [...byId.values()];
   }
 
   getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown> {
     // THIS composition's own declared defaults (loose extraction: any entry with
     // a string id + a `default` key, even ones the strict declaration parser
     // drops) spread under the overrides. Scope note: this reads the composition's
-    // single declaration element only — NOT a union of every `[data-composition-
+    // own carriers (<html> and its root) only — NOT every `[data-composition-
     // variables]` in the document. The runtime's getVariables()
     // (core/runtime/getVariables.ts) additionally walks inlined sub-composition
     // declarers because it operates on the bundled multi-composition document;
     // the SDK models one composition file, so per-file scope is intended.
-    const defaults = readDeclaredDefaults(
-      declarationElement(this.parsed.document, this.parsed.wrapped),
-    );
+    const defaults = declaredDefaults(this.parsed);
     return { ...defaults, ...(overrides ?? {}) };
   }
 
@@ -562,7 +585,8 @@ class CompositionImpl implements Composition {
       setText: (value) => this.dispatch({ type: "setText", target: ids, value }),
       setAttribute: (name, value) =>
         this.dispatch({ type: "setAttribute", target: ids, name, value }),
-      setTiming: (timing) => this.dispatch({ type: "setTiming", target: ids, ...timing }),
+      setTiming: (timing, opts) =>
+        this.dispatch({ type: "setTiming", target: ids, ...timing, ...opts }),
       removeElement: () => this.dispatch({ type: "removeElement", target: ids }),
     };
   }
@@ -574,7 +598,8 @@ class CompositionImpl implements Composition {
       setText: (value) => this.dispatch({ type: "setText", target: id, value }),
       setAttribute: (name, value) =>
         this.dispatch({ type: "setAttribute", target: id, name, value }),
-      setTiming: (timing) => this.dispatch({ type: "setTiming", target: id, ...timing }),
+      setTiming: (timing, opts) =>
+        this.dispatch({ type: "setTiming", target: id, ...timing, ...opts }),
       removeElement: () => this.dispatch({ type: "removeElement", target: id }),
     };
   }
@@ -845,6 +870,14 @@ class CompositionImpl implements Composition {
   }
 }
 
+/** Declared defaults across the composition's carriers, the root winning a shared id as in the runtime. */
+function declaredDefaults(parsed: ParsedDocument): Record<string, unknown> {
+  return Object.assign(
+    {},
+    ...declarationCarriers(parsed.document, parsed.wrapped).map((el) => readDeclaredDefaults(el)),
+  );
+}
+
 // ─── Public factory ───────────────────────────────────────────────────────────
 
 /**
@@ -867,9 +900,7 @@ export async function openComposition(
   // overrides destructively into the declarations, so this is the last moment
   // the authored base values are readable. getVariableValue({ base: true })
   // serves them for the rest of the session (undo-to-base restores).
-  const baseVariableDefaults = readDeclaredDefaults(
-    declarationElement(parsed.document, parsed.wrapped),
-  );
+  const baseVariableDefaults = declaredDefaults(parsed);
 
   // T3 embedded: replay the stored override-set onto the base in one pass,
   // so the session exposes the user's exact edited state — not the template.

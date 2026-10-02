@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { applyVariableBindings } from "./applyVariableBindings";
 import { getVariables } from "./getVariables";
 
@@ -174,5 +174,16 @@ describe("applyVariableBindings", () => {
       expect(css).not.toContain("{");
       expect(css).not.toContain("<");
     });
+  });
+});
+
+describe("applyVariableBindings media src", () => {
+  it("leaves an unchanged src alone, since rewriting it restarts the media's load", () => {
+    setDeclared([{ id: "clip", type: "string", label: "Clip", default: "clip.mp4" }]);
+    document.body.innerHTML = '<video data-var-src="clip" src="clip.mp4"></video>';
+    const video = document.querySelector("video")!;
+    const writes = vi.spyOn(video, "setAttribute");
+    applyVariableBindings(document);
+    expect(writes).not.toHaveBeenCalledWith("src", expect.anything());
   });
 });

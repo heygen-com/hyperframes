@@ -156,6 +156,7 @@ export const FALLBACK_CORE_SKILLS: readonly string[] = [
   "hyperframes-creative",
   "hyperframes-keyframes",
   "hyperframes-registry",
+  "hyperframes-studio",
   "media-use",
 ];
 
@@ -663,7 +664,11 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
     const { stdout } = await execFileAsync(
       "git",
       ["ls-remote", `https://github.com/${repoSlug}.git`, "refs/heads/main"],
-      { timeout: FETCH_TIMEOUT_MS, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
+      {
+        timeout: FETCH_TIMEOUT_MS,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        windowsHide: true,
+      },
     );
     const sha = stdout.split(/\s+/)[0]?.trim() ?? "";
     return /^[0-9a-f]{40}$/.test(sha) ? sha : null;

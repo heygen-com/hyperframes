@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -70,6 +71,17 @@ it("atomically replaces a hard-linked leaf without altering its other name", () 
   }
 });
 
+it("does not recreate a project folder renamed away before an install", () => {
+  const parent = mkdtempSync(join(tmpdir(), "hf-publish-gone-"));
+  try {
+    const project = join(parent, "film");
+    expect(() => registryRoot(project)).toThrow(/Project folder not found/);
+    expect(existsSync(project)).toBe(false);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 it("publishes through an internal leaf alias to its physical target", () => {
   const root = registryRoot(mkdtempSync(join(tmpdir(), "hf-publish-")));
   try {
@@ -83,6 +95,26 @@ it("publishes through an internal leaf alias to its physical target", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it.skipIf(process.platform === "win32")(
+  "publishes through a leaf alias whose target climbs out of a linked folder to the file it resolves",
+  () => {
+    const root = registryRoot(mkdtempSync(join(tmpdir(), "hf-publish-")));
+    try {
+      mkdirSync(join(root, "deep", "nested"), { recursive: true });
+      mkdirSync(join(root, "m"));
+      writeFileSync(join(root, "deep", "y.html"), "old");
+      writeFileSync(join(root, "y.html"), "decoy");
+      symlinkSync(join(root, "deep", "nested"), join(root, "sub"), "dir");
+      symlinkSync("../sub/../y.html", join(root, "m", "x.html"), "file");
+      publishRegistryFile(root, "m/x.html", "new");
+      expect(readFileSync(join(root, "deep", "y.html"), "utf8")).toBe("new");
+      expect(readFileSync(join(root, "y.html"), "utf8")).toBe("decoy");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 it.skipIf(process.platform === "win32")(
   "preserves executable mode when replacing an installed file",

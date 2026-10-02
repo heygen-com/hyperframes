@@ -11,6 +11,16 @@ export function trackStudioSessionStart(props: { has_project: boolean }): void {
   });
 }
 
+export function trackPreviewFirstFrame(props: {
+  duration_ms: number;
+  composition_seconds: number;
+  clip_count: number;
+  media_clip_count: number;
+  studio_version: string;
+}): void {
+  trackEvent("preview_first_frame", props);
+}
+
 export function trackStudioRenderStart(props: {
   fps: number;
   quality: string;
@@ -72,14 +82,6 @@ export function trackStudioRazorSplit(props: { mode: "single" | "all"; count: nu
     mode: props.mode,
     count: props.count,
   });
-}
-
-// Adoption signal for the inline timeline-expansion surface: edits applied to a
-// sub-composition child clip while its parent scene is expanded.
-export function trackStudioExpandedClipEdit(props: {
-  action: "move" | "resize" | "delete" | "split";
-}): void {
-  trackEvent("studio_expanded_clip_edit", { action: props.action });
 }
 
 // Adoption signal for the per-clip keyframe-lane caret toggle.

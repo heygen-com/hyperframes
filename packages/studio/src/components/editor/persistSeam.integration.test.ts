@@ -14,8 +14,6 @@ import {
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
 } from "./domEditingLayers";
-import { buildPathOffsetPatches } from "./manualEditsDomPatches";
-import { STUDIO_OFFSET_X_PROP, STUDIO_PATH_OFFSET_ATTR } from "./manualEditsTypes";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { buildTextFieldChildOperations } from "../../hooks/domEditTextFieldCommitOps";
 
@@ -124,22 +122,6 @@ describe("persist seam source mutation", () => {
     );
 
     expect(findByHfId(html, "qa-image").getAttribute("style")).toContain("opacity: 0.4");
-  });
-
-  it("persists detached jsdom path offset operations", () => {
-    const element = document.createElement("div");
-    element.style.setProperty(STUDIO_OFFSET_X_PROP, "24px");
-
-    const html = patchAndExpectChange(
-      indexHtml,
-      clientTarget({ id: "qa-shape", hfId: "qa-shape", tagName: "div" }),
-      buildPathOffsetPatches(element),
-    );
-    const shape = findByHfId(html, "qa-shape");
-
-    expect(shape.getAttribute("style")).toContain(`${STUDIO_OFFSET_X_PROP}: 24px`);
-    expect(shape.getAttribute("style")).toContain("translate: var(--hf-studio-offset-x, 0px)");
-    expect(shape.getAttribute(STUDIO_PATH_OFFSET_ATTR)).toBe("true");
   });
 
   it("persists timeline data-start attribute operation", () => {

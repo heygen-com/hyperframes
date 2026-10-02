@@ -46,6 +46,7 @@ npx hyperframes render --output final.mp4
 | WebM         | Web delivery and transparent overlays                      |
 | GIF          | Short previews in issues, pull requests, and documentation |
 | PNG sequence | Frame-by-frame handoff to compositing software             |
+| HLS          | VOD streaming from a playlist directory                    |
 
 Examples:
 
@@ -61,6 +62,9 @@ npx hyperframes render --format gif --fps 15 --output preview.gif
 
 # RGBA frames in a directory
 npx hyperframes render --format png-sequence --output frames
+
+# HLS VOD stream in a directory
+npx hyperframes render --format hls --output stream
 ```
 
 GIF has no audio and limited transparency. Prefer MP4 or WebM for normal playback.
@@ -93,6 +97,25 @@ ffmpeg -c:v libvpx-vp9 -i overlay.webm -frames:v 1 -pix_fmt rgba overlay-frame.p
 View the PNG over a checkerboard or contrasting background. If it is still
 opaque, compare it with the composition's PNG-sequence output to check whether
 transparency was already missing before video encoding.
+
+### HLS streaming output
+
+`--format hls` writes an HLS VOD stream into the output **directory**:
+`master.m3u8`, `video.m3u8` and `video_NNNNN.ts`, plus `audio.m3u8` and
+`audio_NNNNN.ts` when the composition has audio. The video and audio encodes
+are identical to MP4; only the delivery container differs, and packaging is a
+stream copy rather than a second encode.
+
+```bash
+npx hyperframes render --format hls --output stream
+npx hyperframes render --format hls --hls-segment-seconds 6 --output stream
+```
+
+Segments are exactly `--hls-segment-seconds` long (default 4) except the last,
+and every segment starts on a keyframe. HLS output is SDR only, so `--hdr` is
+rejected, and `--gpu` is rejected because GPU encoders ignore the forced-keyframe
+lock that fixed-length segments depend on. Cloud rendering (`lambda`,
+`cloudrun`) does not offer HLS yet.
 
 ## Input video codecs
 

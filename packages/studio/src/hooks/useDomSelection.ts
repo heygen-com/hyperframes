@@ -83,7 +83,7 @@ export function useDomSelection({
   // ── Callbacks ──
 
   const announceTimelineSelection = useCallback(
-    (group: DomEditSelection[], primary: DomEditSelection | null) =>
+    (group: DomEditSelection[], primary: DomEditSelection | null, replaceSet?: boolean) =>
       announceSelectionToTimeline(
         {
           timelineElements,
@@ -93,6 +93,7 @@ export function useDomSelection({
         },
         group,
         primary,
+        replaceSet,
       ),
     [
       getTimelineSelectionSet,
@@ -179,7 +180,7 @@ export function useDomSelection({
             setRightPanelTab("design");
           }
         }
-        announceTimelineSelection(nextGroup, nextSelection);
+        announceTimelineSelection(nextGroup, nextSelection, isAdditiveSelection);
         return;
       }
 
@@ -510,7 +511,7 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      announceTimelineSelection(nextGroup, nextSelection);
+      announceTimelineSelection(nextGroup, nextSelection, true);
     },
     [applyDomSelection, announceTimelineSelection],
   );

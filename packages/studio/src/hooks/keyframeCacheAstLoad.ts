@@ -5,7 +5,7 @@
  */
 import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
 import { isStudioHoldSet } from "@hyperframes/core/gsap-parser";
-import { usePlayerStore } from "../player/store/playerStore";
+import { isPreviewBooted, usePlayerStore, whenPreviewBooted } from "../player/store/playerStore";
 import { replaceKeyframeCacheForFile } from "./gsapKeyframeCacheHelpers";
 import { resolveClipTimingBasis, resolveSelectorElementIds, toClipKeyframes } from "./gsapShared";
 import {
@@ -53,12 +53,15 @@ function hasAnimations(value: unknown): value is ParsedGsapAnimations {
  */
 const inFlightParses = new Map<string, Promise<ParsedGsapAnimations | null>>();
 
+export const parseCacheKey = (projectId: string, sourceFile: string) =>
+  `${projectId}|${sourceFile}`;
+
 export function fetchParsedAnimations(
   projectId: string,
   sourceFile: string,
   options: { fresh?: boolean } = {},
 ): Promise<ParsedGsapAnimations | null> {
-  const key = `${projectId}|${sourceFile}`;
+  const key = parseCacheKey(projectId, sourceFile);
   if (options.fresh) inFlightParses.delete(key);
   const inFlight = inFlightParses.get(key);
   if (inFlight) return inFlight;
@@ -74,6 +77,7 @@ async function requestParsedAnimations(
   projectId: string,
   sourceFile: string,
 ): Promise<ParsedGsapAnimations | null> {
+  if (!isPreviewBooted(projectId) && !(await whenPreviewBooted(projectId))) return null;
   try {
     const res = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,

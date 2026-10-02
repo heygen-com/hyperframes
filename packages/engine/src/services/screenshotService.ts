@@ -901,7 +901,6 @@ export async function syncVideoFrameVisibility(
           // cannot revive a stale frame when the sub-comp host lands in the
           // active layer's `show` set — same mask-defense reasoning as the
           // `isVisualAncestorHidden` branch in `injectVideoFramesBatch`.
-          video.style.removeProperty("display");
           video.style.setProperty("visibility", "hidden", "important");
           video.style.setProperty("pointer-events", "none", "important");
           if (hasImg) {

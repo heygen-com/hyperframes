@@ -1,0 +1,187 @@
+<!doctype html>
+<!--
+  starfield: HyperFrames video primitive (backgrounds / ambient overlay)
+
+  Concept: a night sky of seeded stars in three size tiers, twinkling and drifting sideways
+  in two parallax layers over a transparent field, meant to sit
+  on a track above real footage rather than as an opaque background. A radial mask keeps
+  the frame center clear for a subject or caption underneath.
+
+  Variables:
+    - density (sparse | dense, default sparse): star count across the frame.
+    - tone (warm | cool | white, default warm): star color mix.
+    - speed (slow | fast, default slow): how fast stars pulse.
+
+  Envelope: IN = 0, HOLD = the full elastic duration (the host clip's data-duration), OUT = 0.
+  Each star runs its own whole number of sine cycles during HOLD, so a longer mount adds
+  more twinkle cycles instead of stretching a single one thin.
+
+  Loop invariant: twinkle is sin(2*PI * integer * phase + const) and each star drifts once per
+  mount, fading out at the end of its drift and back in at its start, so phase = 0 and
+  phase = 1 (t = 0 and t = duration) always match exactly.
+
+  Sound: none.
+
+  Mount contract: the runtime clones only this file's body. The root has no data-width or
+  data-height requirement beyond the block's own declared dimensions, and registers one
+  paused timeline under the hardcoded starfield id.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      #hf-starfield {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        /* Center clearance: a subject placed mid-frame stays readable by default. */
+        -webkit-mask-image: radial-gradient(
+          circle 230px at 50% 50%,
+          transparent 0 230px,
+          #000 653px
+        );
+        mask-image: radial-gradient(circle 230px at 50% 50%, transparent 0 230px, #000 653px);
+      }
+
+      #hf-starfield .hf-star {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="starfield"
+      data-composition-id="starfield"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+      data-composition-variables='[
+        { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Star count across the frame.", "default": "sparse", "options": [{ "value": "sparse", "label": "Sparse" }, { "value": "dense", "label": "Dense" }] },
+        { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Star color mix.", "default": "warm", "options": [{ "value": "warm", "label": "Warm (white + yellow)" }, { "value": "cool", "label": "Cool (white + blue)" }, { "value": "white", "label": "White only" }] },
+        { "id": "speed", "type": "enum", "role": "style", "label": "Twinkle speed", "description": "How fast stars pulse.", "default": "slow", "options": [{ "value": "slow", "label": "Slow" }, { "value": "fast", "label": "Fast" }] }
+      ]'
+    >
+      <div id="hf-starfield" aria-hidden="true"></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      (function () {
+        var field = document.getElementById("hf-starfield");
+        // Mounted, the runtime strips data-duration off this file's root; the host clip carries it.
+        var host = field.closest("[data-composition-id]");
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        var TONES = {
+          warm: ["#fff7e0", "#ffe08a"],
+          cool: ["#f2f8ff", "#a9d6ff"],
+          white: ["#ffffff", "#ffffff"],
+        };
+
+        var COUNT = vars.density === "dense" ? 420 : 180;
+        var palette = Object.prototype.hasOwnProperty.call(TONES, vars.tone)
+          ? TONES[vars.tone]
+          : TONES.warm;
+        var cycleSeconds = vars.speed === "fast" ? 0.9 : 1.6;
+
+        // Deterministic per-index hash (sin fold; no Math.random). registry/components/
+        // stop-motion-cadence's rnd(n).
+        function rnd(n) {
+          var x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+          return x - Math.floor(x);
+        }
+
+        var W = 1920;
+        var H = 1080;
+        var duration = Number(host.getAttribute("data-duration")) || 6;
+        var TAU = 2 * Math.PI;
+        var FADE = 0.12; // share of a star's drift spent fading in, and again fading out
+
+        function smooth(x) {
+          x = Math.min(1, Math.max(0, x / FADE));
+          return x * x * (3 - 2 * x);
+        }
+
+        var stars = [];
+        for (var i = 0; i < COUNT; i++) {
+          // 70% faint 1 px far stars, 25% 1.6 px and 5% bright 2.6 px glowing near stars.
+          var r = rnd(i + 7000);
+          var tier = r < 0.7 ? 0 : r < 0.95 ? 1 : 2;
+          var sizePx = [1, 1.6, 2.6][tier];
+          var color = i % 3 === 0 ? palette[1] : palette[0];
+
+          var el = document.createElement("div");
+          el.className = "hf-star";
+          el.style.width = sizePx + "px";
+          el.style.height = sizePx + "px";
+          el.style.background = color;
+          if (tier === 2) {
+            el.style.borderRadius = "50%";
+            el.style.boxShadow = "0 0 3px 1px " + color + ", 0 0 8px 2px " + color + "80";
+          }
+          field.appendChild(el);
+
+          // Whole cycles per star over the mount, drawn independently so the field as a
+          // whole repeats only at t = duration, not every cycleSeconds.
+          var cycles = Math.max(1, Math.round((duration / cycleSeconds) * (2 + rnd(i + 4000) * 2)));
+          stars.push({
+            el: el,
+            x: rnd(i + 5000) * W - sizePx / 2,
+            // Whole-pixel rows keep 1 px stars crisp; x stays fractional so drift is smooth.
+            y: Math.round(rnd(i + 6000) * H - sizePx / 2),
+            drift: (tier === 0 ? 2 : 5) * duration,
+            lag: rnd(i + 8000),
+            omega: TAU * cycles,
+            phi: TAU * rnd(i + 1000),
+            base: 0.75 + rnd(i + 2000) * 0.25,
+            amp: tier === 2 ? 0.12 : 0.2 + rnd(i + 3000) * 0.2,
+          });
+        }
+
+        var state = { phase: 0 };
+
+        function render() {
+          var p = state.phase;
+          for (var s = 0; s < stars.length; s++) {
+            var star = stars[s];
+            var u = (p + star.lag) % 1;
+            var twinkle = Math.min(1, star.base + star.amp * Math.sin(star.omega * p + star.phi));
+            star.el.style.transform =
+              "translate3d(" + (star.x - star.drift * (u - 0.5)) + "px," + star.y + "px,0)";
+            star.el.style.opacity = twinkle * smooth(u) * smooth(1 - u);
+          }
+        }
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to(state, { phase: 1, duration: duration, ease: "none", onUpdate: render }, 0);
+        render();
+
+        window.__timelines["starfield"] = tl;
+      })();
+    </script>
+  </body>
+</html>

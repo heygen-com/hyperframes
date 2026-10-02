@@ -1,0 +1,436 @@
+/** Drag paths and edit sequences: several steps with no settle between, then the usual commit, undo and reload. */
+import { watch } from "node:fs";
+import { dirname, join } from "node:path";
+import { COMPOSITION } from "./grid.mjs";
+import { centre, dist, percentile, quadDistance } from "./geometry.mjs";
+import {
+  VIEWPORT,
+  blurPreview,
+  inStudio,
+  chord,
+  controlDrag,
+  measure,
+  nextFrame,
+  openStudio,
+  pointerGesture,
+  readFiles,
+  recording,
+  sameFiles,
+  selectTarget,
+  settled,
+  saveFault,
+  sleep,
+  smoothness,
+  timedWrite,
+  waitForFiles,
+} from "./case.mjs";
+import { scoreTeleport, stopFrames } from "./teleport.mjs";
+
+// The frame sampler sees every painted frame, so a path needs few pointer steps (each costs a CDP read).
+const STEP_PX = 28;
+const STRAIGHT_STEPS = 20;
+const UNDONE_QUIET_MS = 3000;
+
+/** `n` evenly spaced points from `a` (excluded) to `b` (included). */
+const legN = (a, b, n) =>
+  Array.from({ length: n }, (_, i) => [
+    a[0] + ((b[0] - a[0]) * (i + 1)) / n,
+    a[1] + ((b[1] - a[1]) * (i + 1)) / n,
+  ]);
+const leg = (a, b) => legN(a, b, Math.max(1, Math.ceil(dist(a, b) / STEP_PX)));
+const legs = (start, points) => points.flatMap((p, i) => leg(i ? points[i - 1] : start, p));
+const at = (v, [fx, fy]) => [v.x0 + fx * (v.x1 - v.x0), v.y0 + fy * (v.y1 - v.y0)];
+
+/** Screen paths from the press point `p` inside `v`, the part of the canvas the preview shows. */
+const ROUTES = {
+  zigzag: (p, v) =>
+    legs(
+      p,
+      [
+        [0.1, 0.15],
+        [0.3, 0.85],
+        [0.5, 0.15],
+        [0.7, 0.85],
+        [0.9, 0.15],
+        [0.6, 0.5],
+      ].map((f) => at(v, f)),
+    ),
+  circle: (p, v) => {
+    const r = 0.3 * Math.min(v.x1 - v.x0, v.y1 - v.y0);
+    const ring = Array.from({ length: 45 }, (_, i) => {
+      const a = (2 * Math.PI * (i + 1)) / 45;
+      return [p[0] - r + r * Math.cos(a), p[1] + r * Math.sin(a)];
+    });
+    return [...ring, ...leg(p, [p[0] + 0.08 * (v.x1 - v.x0), p[1] + 0.08 * (v.y1 - v.y0)])];
+  },
+  flick: (p, v) => legN(p, at(v, [0.75, 0.7]), 4),
+  pause: (p) => {
+    const half = legN(p, [p[0] + 90, p[1] + 45], 20);
+    return [...half, { pause: 1000 }, ...legN(half.at(-1), [p[0] + 180, p[1] + 90], 20)];
+  },
+  // Just before the release, Chromium resends the press point with no button down; the drop must not take it.
+  stray: (p) => [...legN(p, [p[0] + 180, p[1] + 90], 20), { stray: p }],
+  edge: (p, v) => {
+    const out = [Math.min(v.edge + 60, VIEWPORT.width - 2), p[1]];
+    return legs(p, [out, [p[0] + 60, p[1] + 30]]);
+  },
+};
+
+/** The canvas the preview shows, in screen px: the composition clipped by the stage's scroll box. */
+async function visibleCanvas(page, m) {
+  const clip = await page.$eval('[data-testid="preview-zoom-stage"]', (stage) => {
+    for (let n = stage.parentElement; n; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      if (s.overflowX === "visible" && s.overflowY === "visible") continue;
+      const r = n.getBoundingClientRect();
+      return [r.left, r.top, r.right, r.bottom];
+    }
+    return [0, 0, innerWidth, innerHeight];
+  });
+  const [a, b] = [m.map.toScreen([0, 0]), m.map.toScreen([COMPOSITION.width, COMPOSITION.height])];
+  const v = {
+    x0: Math.max(a[0], clip[0]),
+    y0: Math.max(a[1], clip[1]),
+    x1: Math.min(b[0], clip[2]),
+    y1: Math.min(b[1], clip[3]),
+  };
+  return { ...v, edge: v.x1 };
+}
+
+/** Every distinct saved state in order, read on each file event; atomic replaces mean no torn read. */
+export function watchVersions(dir, files) {
+  const versions = [readFiles(dir, files)];
+  const record = () => {
+    const now = readFiles(dir, files);
+    if (!sameFiles(now, versions.at(-1))) versions.push(now);
+  };
+  const watchers = [...new Set(files.map((f) => dirname(join(dir, f))))].map((d) =>
+    watch(d, record),
+  );
+  return { versions, stop: () => watchers.forEach((w) => w.close()) };
+}
+
+function mergeSmooth(parts) {
+  const intervals = parts.flatMap((s) => s.intervals);
+  return {
+    p95: percentile(intervals, 95),
+    frames: intervals.length,
+    longTasks: parts.reduce((n, s) => n + s.longTasks, 0),
+    intervals,
+    work: parts.every((s) => s.work) ? parts.flatMap((s) => s.work) : null,
+  };
+}
+
+export const slowest = (writes = []) =>
+  writes.length ? Math.max(...writes.map((w) => w.ms ?? 0)) : null;
+
+/** Undo (or redo) once per entry, each landing on that entry's file; stops at the first write that never lands. */
+// fallow-ignore-next-line complexity
+async function walk(ctx, keys, entries, current) {
+  const [landed, writes] = [[], []];
+  for (const want of entries) {
+    await blurPreview(ctx.page);
+    const since = Date.now();
+    await chord(ctx.page, keys);
+    const w = await timedWrite(ctx, current, since);
+    writes.push(w);
+    landed.push(w.reached && Boolean(want) && sameFiles(w.files, want));
+    current = w.files;
+    if (!w.reached) break;
+  }
+  return {
+    ok: landed.length === entries.length && landed.every(Boolean),
+    landed,
+    writes,
+    current,
+  };
+}
+
+// fallow-ignore-next-line complexity
+async function driveStep(ctx, step, state) {
+  const { page } = ctx.A;
+  if (step.do === "undo") {
+    await blurPreview(page);
+    await chord(page, "Control+z");
+    // A key's DOM change reaches the CDP quads only after a frame; the next step reads from them.
+    await nextFrame(page);
+    state.depth -= 1;
+    // Undone back to the start, the box belongs where it began; any other undo leaves it unknown here.
+    state.intended = state.depth === 0 ? state.start : null;
+    return { do: "undo" };
+  }
+  if (step.do === "nudge") {
+    await recording(page, true);
+    for (let i = 0; i < step.count; i++) {
+      await page.keyboard.press("ArrowRight");
+      await nextFrame(page);
+    }
+    state.smooth.push(smoothness(await recording(page, false)));
+    state.depth += 1;
+    state.intended = (await measure(ctx.A)).visible;
+    return { do: "nudge", count: step.count };
+  }
+  if (step.do === "text") return editText(ctx.A, step, state);
+  if (step.do === "seek") {
+    const seek = await page.evaluate(
+      (time) => window.__editBench.call("studio_seek", { time }),
+      step.time,
+    );
+    if (!seek?.ok) throw new Error(`studio_seek ${step.time} failed: ${JSON.stringify(seek)}`);
+    return { do: "seek", time: step.time };
+  }
+  const name = step.element ?? "A";
+  const c = ctx[name];
+  // In flight: pressed where the last drag let go, without reading the preview first.
+  let pre = step.inFlight ? state.last.lastMeasure : await measure(c);
+  if (name !== state.selected) {
+    await selectTarget(c, pre);
+    state.selected = name;
+    pre = await measure(c);
+  }
+  const savesAtPress = state.versions.length - 1;
+  const v = step.route && (await visibleCanvas(page, pre));
+  const route = step.route
+    ? (p) => ROUTES[step.route](p, v)
+    : step.by && ((p) => legN(p, [p[0] + step.by[0], p[1] + step.by[1]], STRAIGHT_STEPS));
+  const drive = await pointerGesture(c, step.gesture, pre, route);
+  state.last = drive;
+  state.drags.push({ drive, ctx: c });
+  state.smooth.push(drive.smooth);
+  state.depth += 1;
+  state.intended = drive.lastQuad;
+  return {
+    do: "drag",
+    element: name,
+    gesture: step.gesture,
+    route: step.route,
+    tracking: Math.max(...drive.errors),
+    pressJump: drive.pressJump,
+    savesAtPress,
+    hit: drive.diag.hit,
+  };
+}
+
+/** The word's centre in composition px, read in the preview beside the element. */
+const wordPoint = (c, word) =>
+  c.handles.target.evaluate(
+    (e, w, width) => {
+      const node = e.firstChild;
+      const range = e.ownerDocument.createRange();
+      range.setStart(node, node.data.indexOf(w));
+      range.setEnd(node, node.data.indexOf(w) + w.length);
+      const b = range.getBoundingClientRect();
+      const r = e.ownerDocument
+        .querySelector('[data-composition-id="main"]')
+        .getBoundingClientRect();
+      const k = width / r.width;
+      return [(b.left + b.width / 2 - r.left) * k, (b.top + b.height / 2 - r.top) * k];
+    },
+    word,
+    COMPOSITION.width,
+  );
+
+/** Double press to open the text, optionally double-click a word, type, and commit with Enter. */
+// fallow-ignore-next-line complexity
+async function editText(c, step, state) {
+  const { page } = c;
+  const pre = await measure(c);
+  const at = pre.map.toScreen(centre(pre.visible));
+  await recording(page, true);
+  await page.mouse.click(at[0], at[1]);
+  await sleep(120);
+  await page.mouse.click(at[0], at[1]);
+  const editing = () =>
+    c.handles.target.evaluate((e) => e.isContentEditable && e.ownerDocument.activeElement === e);
+  let opened = false;
+  for (const deadline = Date.now() + 2000; !opened && Date.now() < deadline; await sleep(50))
+    opened = await editing();
+  let selection = null;
+  if (opened && step.select) {
+    const word = pre.map.toScreen(await wordPoint(c, step.select));
+    await page.mouse.click(word[0], word[1], { count: 2 });
+    await nextFrame(page, 2);
+    selection = await c.handles.target.evaluate((e) => ({
+      text: e.ownerDocument.getSelection().toString(),
+      editing: e.isContentEditable,
+    }));
+  }
+  // Typing with no session open would land on Studio's shortcuts, so a failed open types nothing.
+  if (opened) {
+    await page.keyboard.type(step.word);
+    await page.keyboard.press("Enter");
+    await nextFrame(page);
+  }
+  state.smooth.push(smoothness(await recording(page, false)));
+  state.depth += 1;
+  state.intended = pre.visible;
+  state.text = { word: step.word, select: step.select, opened, selection };
+  return { do: "text", opened, selection };
+}
+
+const round = (m) => m.visible.map((p) => p.map((v) => Math.round(v * 100) / 100));
+
+/** One path or sequence case, end to end, against a Studio already serving `dir`. */
+export async function runSequence(args) {
+  const drags = args.spec.steps.some((s) => s.do === "drag");
+  const control = await controlDrag(args.browser, drags ? "move" : "nudge");
+  let watcher = null;
+  try {
+    return await inStudio(args, (session) => {
+      watcher = watchVersions(args.dir, args.files);
+      return measureSequence(args, session, control, watcher);
+    });
+  } finally {
+    watcher?.stop();
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function measureSequence({ spec, dir, files, evidence }, session, control, watcher) {
+  const { page, pre, zoom, shoot, consoleErrors } = session;
+  const ctx = { A: session.ctx, B: { ...session.ctx, handles: null, selector: "#other" } };
+  const state = {
+    selected: "A",
+    last: null,
+    drags: [],
+    smooth: [],
+    versions: watcher.versions,
+    depth: 0,
+    start: pre.visible,
+    intended: null,
+    text: null,
+  };
+  const steps = [];
+  // Back-to-back drags share one recording, so a drag's frames run up to the next press: a jump in
+  // the gap fails the earlier drag, whose box must stay where it was let go. Other steps end it.
+  const collect = async () => {
+    const open = steps.filter((s) => s.do === "drag" && !s.teleport);
+    const windows = open.length ? await stopFrames(page) : [];
+    open.forEach((s, i) => (s.teleport = scoreTeleport(s.gesture, windows[i] ?? [])));
+  };
+  for (const step of spec.steps) {
+    if (step.do !== "drag") await collect();
+    steps.push(await driveStep(ctx, step, state));
+  }
+  // Every step but a seek saves once (a nudge burst saves once); wait for all of them. An undo may
+  // cancel the save it follows, so one ending undone stops once the file has stayed original for 3 s.
+  const owed = spec.steps.filter((s) => s.do !== "seek").length;
+  const endsUndone = spec.steps.at(-1).do === "undo" && state.depth === 0;
+  let backSince = null;
+  for (const deadline = Date.now() + 10_000; Date.now() < deadline; await sleep(50)) {
+    if (watcher.versions.length - 1 >= owed) break;
+    const back = endsUndone && sameFiles(readFiles(dir, files), watcher.versions[0]);
+    backSince = back ? (backSince ?? Date.now()) : null;
+    if (backSince !== null && Date.now() - backSince >= UNDONE_QUIET_MS) break;
+  }
+  await waitForFiles(ctx.A, { timeout: 5000 });
+  watcher.stop();
+  const versions = watcher.versions;
+  await nextFrame(page, 2);
+  await blurPreview(page);
+  await page.keyboard.press("Escape");
+  const committed = await settled(ctx.A);
+  await collect();
+  await shoot("committed");
+  const committedFiles = readFiles(dir, files);
+  evidence.files = committedFiles;
+
+  // The undo stack the steps imply: each save pushes (before, after), an undo pops.
+  const stack = [];
+  let vi = 0;
+  for (const s of spec.steps.filter((s) => s.do !== "seek")) {
+    vi += 1;
+    if (s.do === "undo") stack.pop();
+    else stack.push({ before: versions[vi - 1], after: versions[vi] });
+  }
+  const undo = await walk(ctx.A, "Control+z", stack.map((e) => e.before).reverse(), committedFiles);
+  // The file the steps should have left: the last surviving save's, or the original when all were undone.
+  const expected = stack.length ? stack.at(-1).after : versions[0];
+  const undone = await settled(ctx.A);
+  await shoot("undone");
+  const redo = undo.ok
+    ? await walk(
+        ctx.A,
+        "Control+Shift+z",
+        stack.map((e) => e.after),
+        undo.current,
+      )
+    : { ok: false, landed: [] };
+  const redone = undo.ok ? await settled(ctx.A) : null;
+  // A late write must not land under the reload.
+  await waitForFiles(ctx.A, { timeout: 15_000 });
+
+  await page.reload();
+  const reloaded = await openStudio(ctx.A);
+  await shoot("reloaded");
+  const shown = state.text && (await ctx.A.handles.target.evaluate((e) => e.textContent));
+  const drags = steps.filter((s) => s.do === "drag");
+  const errors = state.drags.flatMap((d) => d.drive.errors);
+  const worst = drags.reduce(
+    (a, s) => ((s.teleport.max ?? Infinity) > (a.teleport.max ?? Infinity) ? s : a),
+    drags[0],
+  );
+  const quads = Object.fromEntries(
+    Object.entries({ pre, committed, undone, redone, reloaded }).filter(([, m]) => m),
+  );
+  const intended = state.intended ?? committed.visible;
+  const has = (files, word) => Boolean(files) && Object.values(files).some((f) => f.includes(word));
+  const text = state.text && {
+    ...state.text,
+    saved: has(committedFiles, state.text.word),
+    shown: shown?.includes(state.text.word) ?? false,
+  };
+  return {
+    zoom,
+    saved: versions.length > 1,
+    tracking: errors.length
+      ? { max: Math.max(...errors), p95: percentile(errors, 95), frames: errors.length }
+      : { max: 0, p95: 0, frames: 0 },
+    pressJump: drags.length ? Math.max(...drags.map((s) => s.pressJump)) : null,
+    teleport: worst ? { ...worst.teleport, trace: undefined, step: steps.indexOf(worst) } : null,
+    // Against the box the last step left: its drag's last frame, the box after its keys, or the start when undone.
+    drop: quadDistance(intended, committed.visible),
+    reload: Math.max(
+      quadDistance(committed.visible, reloaded.visible),
+      quadDistance(intended, reloaded.visible),
+    ),
+    text: text && {
+      ...text,
+      pass:
+        text.opened &&
+        text.saved &&
+        text.shown &&
+        (!text.select || (text.selection?.editing && text.selection.text.trim().length > 0)),
+    },
+    reloaded,
+    undo: {
+      bytes: undo.ok && sameFiles(committedFiles, expected ?? {}),
+      box: quadDistance(undone.visible, pre.visible),
+      redoBytes: redo.ok,
+      redoBox: redone && quadDistance(redone.visible, committed.visible),
+      // The slowest write of each walk, judged by the single-case undo rule.
+      ms: slowest(undo.writes),
+      redoMs: slowest(redo.writes),
+    },
+    undoTimeout: saveFault([
+      ...undo.writes.map((w) => ["undo", w]),
+      ...(redo.writes ?? []).map((w) => ["redo", w]),
+    ]),
+    smooth: { ...mergeSmooth(state.smooth), control },
+    unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
+    steps: steps.map(({ teleport, ...s }) => ({
+      ...s,
+      teleport: teleport && { ...teleport, trace: undefined },
+    })),
+    diag: {
+      saves: { seen: versions.length - 1, owed },
+      undoWalk: undo.landed,
+      redoWalk: redo.landed,
+      traces: Object.fromEntries(
+        drags.filter((s) => s.teleport.trace).map((s) => [steps.indexOf(s), s.teleport.trace]),
+      ),
+      consoleErrors: consoleErrors.slice(0, 5),
+      quads: Object.fromEntries(Object.entries(quads).map(([k, m]) => [k, round(m)])),
+    },
+  };
+}

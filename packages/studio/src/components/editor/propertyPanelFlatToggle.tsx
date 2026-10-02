@@ -37,7 +37,7 @@ export function FlatToggle({
           track("toggle", label);
           onChange(!checked);
         }}
-        className={`relative h-[14px] w-6 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`relative h-[14px] w-6 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
           checked ? "bg-panel-accent/35" : "bg-panel-hover"
         }`}
       >

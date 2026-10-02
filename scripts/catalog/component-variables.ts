@@ -27,6 +27,18 @@
  */
 
 const DECLARATION = /data-composition-variables\s*=\s*'(\[[\s\S]*?\])'/;
+/** The variables a composition declares on its root, or none when it declares nothing readable. */
+export function declaredVariables(html: string): unknown[] {
+  const raw = DECLARATION.exec(html)?.[1];
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style>/g;
 const SCRIPT_BLOCK = /<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/g;
 const DECLARING_TAG = /<[a-zA-Z][\w-]*\b[^>]*data-composition-variables[\s\S]*?>/;

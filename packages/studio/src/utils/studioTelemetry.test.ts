@@ -66,6 +66,20 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
     });
   });
 
+  // The property is useless if the transport does not attach it: the module
+  // has its own test, but nothing there fails if this line is deleted.
+  it("stamps every event with a tab id that is stable within the page", async () => {
+    trackStudioEvent("first");
+    trackStudioEvent("second");
+    const events = await sentEvents();
+    expect(events).toHaveLength(2);
+    const tabIds = events.map((e) => (e["properties"] as Record<string, unknown>)["tab_id"]);
+    expect(typeof tabIds[0]).toBe("string");
+    expect((tabIds[0] as string).length).toBeGreaterThan(0);
+    // Same page, same id — otherwise a burst still reads as several sources.
+    expect(tabIds[1]).toBe(tabIds[0]);
+  });
+
   it("lets an explicit property win over the canary mixin", async () => {
     trackStudioEvent("thing_happened", { "$feature/canary-test-one": "false" });
     const events = await sentEvents();

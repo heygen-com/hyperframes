@@ -1,3 +1,4 @@
+/// <reference types="@webgpu/types" />
 /**
  * Browser Manager
  *
@@ -5,11 +6,12 @@
  * launch args, pooled browser acquisition/release.
  */
 
-import type { Browser, PuppeteerNode } from "puppeteer-core";
+import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { chromeMajorCeiling, exceedsChromeCeiling } from "./chromeHostCeiling.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
 import {
@@ -28,6 +30,15 @@ export type {
 } from "./browserLeasePool.js";
 
 let _puppeteer: PuppeteerNode | undefined;
+
+let hostHandlesSigint = false;
+
+/** Set while the host cancels renders on Ctrl+C; Puppeteer's own handler would exit before any cleanup ran. */
+export function setHostHandlesSigint(owned: boolean): void {
+  hostHandlesSigint = owned;
+}
+
+export const sigintLaunchOptions = () => ({ handleSIGINT: !hostHandlesSigint });
 
 interface WebGlProbeInfo {
   hasWebGL: boolean;
@@ -72,6 +83,7 @@ async function probeHardwareWebGlInfo(
   let probeBrowser: Browser | undefined;
   try {
     probeBrowser = await ppt.launch({
+      ...sigintLaunchOptions(),
       headless: true,
       args: options.args,
       defaultViewport: { width: 64, height: 64 },
@@ -161,8 +173,10 @@ function findCachedHeadlessShell(baseDir: string): string | undefined {
   const executable = cachedHeadlessShellExecutable();
   if (!executable) return undefined;
   try {
+    const ceiling = chromeMajorCeiling();
     const versions = readdirSync(baseDir).sort(compareBrowserVersionsDescending);
     for (const version of versions) {
+      if (exceedsChromeCeiling(version, ceiling)) continue;
       const binary = join(baseDir, version, ...executable);
       if (existsSync(binary)) return binary;
     }
@@ -695,6 +709,7 @@ async function launchBrowser(
   let browser: Browser | undefined;
   try {
     browser = await ppt.launch({
+      ...sigintLaunchOptions(),
       headless: true,
       args: [...fingerprint.args],
       defaultViewport: null,
@@ -726,6 +741,7 @@ async function launchBrowser(
         );
         captureMode = "screenshot";
         browser = await ppt.launch({
+          ...sigintLaunchOptions(),
           headless: true,
           args: stripBeginFrameFlags([...fingerprint.args]),
           defaultViewport: null,
@@ -789,6 +805,11 @@ export async function drainBrowserPool(): Promise<void> {
   await browserLeasePool.drain();
 }
 
+/** Terminal shutdown: drains the pool and makes every later acquire() reject. */
+export async function closeBrowserPool(): Promise<void> {
+  await browserLeasePool.close();
+}
+
 /** Test-only: reset all pool state. */
 export function _resetBrowserPoolForTests(): void {
   browserLeasePool.reset();
@@ -809,6 +830,7 @@ function probeNvidiaVramMb(): number | null {
       timeout: 3000,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     }).trim();
     const mb = parseInt(out.split("\n")[0] ?? "", 10);
     if (Number.isFinite(mb) && mb > 0) {
@@ -843,6 +865,8 @@ export interface BuildChromeArgsOptions {
   height: number;
   captureMode?: CaptureMode;
   platform?: NodeJS.Platform;
+  /** The composition declares `data-requires-webgpu`; forces the WebGPU flag even in "software" mode. */
+  requiresWebGpu?: boolean;
 }
 
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
@@ -871,6 +895,7 @@ export function buildChromeArgs(
     ...getBrowserGpuArgs(browserGpuMode, platform),
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
+    "--force-device-scale-factor=1",
     `--window-size=${options.width},${options.height}`,
     // Prevent Chrome from throttling background tabs/timers — critical when the
     // page is offscreen during headless capture
@@ -906,7 +931,7 @@ export function buildChromeArgs(
     "--autoplay-policy=no-user-gesture-required",
   ];
 
-  if (browserGpuMode !== "software") {
+  if (browserGpuMode !== "software" || options.requiresWebGpu) {
     chromeArgs.push(WEBGPU_FLAG);
   }
 
@@ -954,6 +979,56 @@ export function buildChromeArgs(
     chromeArgs.push("--disable-gpu");
   }
   return chromeArgs;
+}
+
+/** Does the composition's root element declare `data-requires-webgpu`? */
+export function compositionRequiresWebGpu(html: string): boolean {
+  // Quoted values are consumed whole, so '<' or '>' inside one stays in the tag; no nested quantifier overlaps.
+  for (const [tag] of html.matchAll(/<(?:[^<>"']|"[^"]*"|'[^']*')*>/g)) {
+    if (/\bdata-composition-id\b/i.test(tag)) return /\bdata-requires-webgpu(?:\s|=|>)/i.test(tag);
+  }
+  return false;
+}
+
+/** No hardware WebGPU adapter on this host; distinct from a browser or navigation failure. */
+export class WebGpuUnavailableError extends Error {
+  constructor() {
+    super(
+      "This composition declares data-requires-webgpu, but no hardware WebGPU adapter could be " +
+        "obtained on this browser launch (a software fallback adapter such as swiftshader reports " +
+        "one but cannot render it). Run on a host with a GPU, or remove data-requires-webgpu.",
+    );
+    this.name = "WebGpuUnavailableError";
+  }
+}
+
+const WEBGPU_ADAPTER_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Confirms the already-navigated page can obtain a hardware WebGPU adapter; no-op otherwise.
+ * `page` must be on a secure-context origin, or navigator.gpu always reads absent.
+ */
+export async function assertWebGpuAdapterAvailable(
+  page: Page,
+  requiresWebGpu: boolean,
+): Promise<void> {
+  if (!requiresWebGpu) return;
+  // requestAdapter() has no native timeout; a broken driver can hang it
+  // indefinitely. Race it in-page so a stuck adapter reads as "unavailable"
+  // instead of hanging the caller.
+  const hasUsableAdapter = await page.evaluate(async (timeoutMs) => {
+    if (typeof navigator === "undefined" || !navigator.gpu) return false;
+    try {
+      const adapter = await Promise.race([
+        navigator.gpu.requestAdapter(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
+      return !!adapter && !adapter.info.isFallbackAdapter;
+    } catch {
+      return false;
+    }
+  }, WEBGPU_ADAPTER_PROBE_TIMEOUT_MS);
+  if (!hasUsableAdapter) throw new WebGpuUnavailableError();
 }
 
 function getBrowserGpuArgs(

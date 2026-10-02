@@ -1,3 +1,4 @@
+import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { c } from "./colors.js";
 
 export function formatBytes(bytes: number): string {
@@ -20,23 +21,94 @@ export function formatDuration(ms: number): string {
  * wall-clock render time explicitly labeled "rendered in" so the two are never
  * confused (users were comparing the render time to ffprobe's media duration).
  * Directory (png-sequence) output has no single muxed video, so it shows a frame
- * count instead, or just the render time when neither is known.
+ * count instead, or just the render time when neither is known. An HLS playlist
+ * directory does play as one continuous video, so it reports a duration.
  */
 export function formatRenderSummaryDetail(input: {
   elapsedMs: number;
   outputDurationSeconds?: number;
   isDirectory: boolean;
   frameCount?: number;
+  playlistDirectory?: boolean;
 }): string {
-  const middle = input.isDirectory
-    ? input.frameCount != null
-      ? `${input.frameCount} frames`
-      : undefined
-    : input.outputDurationSeconds != null && input.outputDurationSeconds > 0
-      ? `${formatDuration(input.outputDurationSeconds * 1000)} video`
-      : undefined;
+  const middle =
+    input.isDirectory && !input.playlistDirectory
+      ? input.frameCount != null
+        ? `${input.frameCount} frames`
+        : undefined
+      : input.outputDurationSeconds != null && input.outputDurationSeconds > 0
+        ? `${formatDuration(input.outputDurationSeconds * 1000)} video`
+        : undefined;
   const renderTime = `rendered in ${formatDuration(input.elapsedMs)}`;
   return [middle, renderTime].filter(Boolean).join(" · ");
+}
+
+type PipelineStageKey =
+  | "compileMs"
+  | "videoExtractMs"
+  | "audioProcessMs"
+  | "browserProbeMs"
+  | "captureSetupMs"
+  | "captureFrameMs"
+  | "encodeMs"
+  | "assembleMs";
+
+const PIPELINE_STAGES: ReadonlyArray<readonly [PipelineStageKey, string]> = [
+  ["compileMs", "compile"],
+  ["videoExtractMs", "extract"],
+  ["audioProcessMs", "audio"],
+  ["browserProbeMs", "probe"],
+  ["captureSetupMs", "setup"],
+  ["captureFrameMs", "capture"],
+  ["encodeMs", "encode"],
+  ["assembleMs", "assemble"],
+];
+
+/** Session mode wins unless it is the aggregator's empty `"unknown"` sentinel. */
+export function resolvePrintedCaptureMode(
+  sessionMode?: string,
+  observabilityCaptureMode?: string,
+): string | undefined {
+  if (sessionMode && sessionMode !== "unknown") return sessionMode;
+  return observabilityCaptureMode;
+}
+
+/** Capture path, gpu mode, and stage timings for the render summary. */
+export function formatRenderPipelineDetail(input: {
+  captureMode?: string;
+  browserGpuMode?: BrowserGpuMode | string;
+  streamingEncode?: boolean;
+  stages: Record<string, number | undefined>;
+}): string | undefined {
+  const parts: string[] = [];
+  if (input.captureMode) parts.push(`${input.captureMode} capture`);
+  if (input.browserGpuMode) parts.push(`${input.browserGpuMode} gpu`);
+  for (const [key, stageLabel] of PIPELINE_STAGES) {
+    const ms = input.stages[key];
+    if (ms == null) continue;
+    const label =
+      key === "encodeMs" && input.streamingEncode ? "encode (during capture)" : stageLabel;
+    parts.push(`${label} ${formatDuration(ms)}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * Why a Linux auto render stayed on screenshot after BeginFrame was requested.
+ * Silent when software was requested (--docker, --no-browser-gpu) or off Linux.
+ */
+export function formatScreenshotFallbackHint(input: {
+  captureMode?: string;
+  browserGpuMode?: BrowserGpuMode | string;
+  requestedGpuMode?: BrowserGpuMode;
+  platform: NodeJS.Platform;
+}): string | undefined {
+  if (input.platform !== "linux" || input.requestedGpuMode !== "auto") return undefined;
+  if (input.captureMode !== "screenshot" || input.browserGpuMode !== "software") return undefined;
+  return (
+    "Screenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no " +
+    "--resolution upscale. Heavy compositions can stall on software GL."
+  );
 }
 
 export function label(name: string, value: string): string {

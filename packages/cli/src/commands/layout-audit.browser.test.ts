@@ -86,6 +86,172 @@ describe("layout-audit.browser", () => {
     expect(issues[0]?.selector).toBe('[data-layout-name="headline"]');
   });
 
+  it("flags nowrap text wider than a container that does not clip", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+        word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+      },
+      { word: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    const overflow = runAudit().find((issue) => issue.code === "container_overflow");
+    expect(overflow).toMatchObject({
+      selector: "#word",
+      containerSelector: "#box",
+    });
+  });
+
+  it("clears nowrap container overflow when the container allows overflow", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box" data-layout-allow-overflow>
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+        word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+      },
+      { word: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag font-height spill from nowrap text that fits its width", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="hi">Hi</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 150, height: 64 }),
+        hi: rect({ left: 0, top: -4, width: 60.44, height: 72 }),
+      },
+      { hi: { whiteSpace: "nowrap", fontSize: "64px" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag a narrow nowrap label that sits outside a box that does not clip", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="badge">NEW</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 200, height: 80 }),
+        badge: rect({ left: 184, top: 0, width: 32, height: 20 }),
+      },
+      { badge: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag an empty nowrap decoration beside a fitting label", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="label">OK</span>
+          <div id="decoration"></div>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 150, height: 40 }),
+        label: rect({ left: 0, top: 0, width: 40, height: 20 }),
+        decoration: rect({ left: 0, top: 0, width: 240, height: 20 }),
+      },
+      { label: { whiteSpace: "nowrap" }, decoration: { whiteSpace: "nowrap" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag a wrapping sibling because another child is nowrap", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="label">OK</span>
+          <span id="body">a wrapping line</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        box: rect({ left: 0, top: 0, width: 150, height: 80 }),
+        label: rect({ left: 0, top: 0, width: 40, height: 20 }),
+        body: rect({ left: 0, top: 24, width: 240, height: 40 }),
+      },
+      { label: { whiteSpace: "nowrap" }, body: { whiteSpace: "normal" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
+  it("does not flag a container that does not clip when its text wraps", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="box">
+          <span id="word">OVERPAYING</span>
+        </div>
+      </div>
+    `;
+
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      box: rect({ left: 96, top: 533, width: 576, height: 140 }),
+      word: rect({ left: 96, top: 533, width: 823, height: 140 }),
+    });
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "container_overflow")).toBe(false);
+  });
+
   it("respects layout ignore and allow-overflow opt-outs", () => {
     document.body.innerHTML = `
       <div data-composition-id="main" data-width="640" data-height="360">
@@ -268,6 +434,162 @@ describe("layout-audit.browser", () => {
     installAuditScript();
 
     expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(true);
+  });
+
+  it("flags text a clipping parent cuts off", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card">
+          <div id="headline">CREATIVE CHOICES</div>
+        </div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 60, width: 200, height: 80 }),
+        headline: rect({ left: 50, top: 20, width: 160, height: 200 }),
+        text: rect({ left: 50, top: 20, width: 160, height: 200 }),
+      },
+      {
+        card: {
+          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "hidden",
+          backgroundColor: "rgb(40, 20, 60)",
+          borderTopLeftRadius: "34px",
+          borderTopRightRadius: "34px",
+          borderBottomRightRadius: "34px",
+          borderBottomLeftRadius: "34px",
+        },
+      },
+    );
+    installAuditScript();
+
+    const found = runAudit().filter((issue) => issue.code === "text_box_overflow");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.selector).toBe("#headline");
+    expect(found[0]?.containerSelector).toBe("#card");
+    expect(found[0]?.overflow?.top).toBeGreaterThan(2);
+    expect(found[0]?.overflow?.bottom).toBeGreaterThan(2);
+    expect(runAudit().some((issue) => issue.code === "clipped_text")).toBe(false);
+
+    document.querySelector("#card")?.setAttribute("data-layout-allow-overflow", "");
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
+  });
+
+  it("flags visible text entirely outside a non-clipping card", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card"><div id="headline">Visible overflow</div></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 60, width: 200, height: 80 }),
+        headline: rect({ left: 50, top: 170, width: 160, height: 30 }),
+        text: rect({ left: 50, top: 170, width: 160, height: 30 }),
+      },
+      {
+        card: {
+          overflow: "visible",
+          backgroundColor: "rgb(40, 20, 60)",
+          borderTopLeftRadius: "34px",
+        },
+      },
+    );
+    installAuditScript();
+
+    const found = runAudit().filter((issue) => issue.code === "text_box_overflow");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.selector).toBe("#headline");
+    expect(found[0]?.containerSelector).toBe("#card");
+    expect(found[0]?.overflow?.bottom).toBe(60);
+  });
+
+  it("does not flag a line parked entirely outside a clipping window", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card">
+          <div id="headline">9</div>
+        </div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 60, width: 40, height: 20 }),
+        headline: rect({ left: 40, top: 0, width: 40, height: 20 }),
+        text: rect({ left: 40, top: 0, width: 40, height: 20 }),
+      },
+      {
+        card: {
+          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "hidden",
+        },
+      },
+    );
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
+  });
+
+  it.each([
+    { name: "resting tight line", top: 87, height: 145, clipHeight: 120, scale: 1, error: false },
+    { name: "parked touching line", top: 195, height: 113, clipHeight: 96, scale: 1, error: false },
+    { name: "real cut", top: 87, height: 145, clipHeight: 60, scale: 1, error: true },
+    { name: "scaled real cut", top: 93.5, height: 72.5, clipHeight: 30, scale: 0.5, error: true },
+  ])("uses scaled line boxes for $name", ({ top, height, clipHeight, scale, error }) => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card"><div id="headline">HELLO</div></div>
+      </div>`;
+    const contextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+      mockReturnValue(value: CanvasRenderingContext2D): void;
+    };
+    contextSpy.mockReturnValue({
+      font: "",
+      measureText: () => ({
+        fontBoundingBoxAscent: 115,
+        fontBoundingBoxDescent: 30,
+        actualBoundingBoxAscent: 85,
+        actualBoundingBoxDescent: 0,
+      }),
+    } as unknown as CanvasRenderingContext2D);
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 100, width: 400 * scale, height: clipHeight }),
+        headline: rect({ left: 40, top, width: 300 * scale, height }),
+        text: rect({ left: 40, top, width: 300 * scale, height }),
+      },
+      {
+        card: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" },
+        headline: { lineHeight: "120px" },
+      },
+    );
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(error);
+  });
+
+  it("ignores subpixel contact with a clipping window", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card"><div id="headline">NEXT</div></div>
+      </div>`;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 100, width: 400, height: 96 }),
+        headline: rect({ left: 40, top: 195.7, width: 300, height: 96 }),
+        text: rect({ left: 40, top: 195.7, width: 300, height: 96 }),
+      },
+      { card: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
   });
 
   it("keeps auditing visible descendants beyond the second element", () => {
@@ -744,6 +1066,119 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       "data-layout-allow-overflow",
     );
     expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
+  });
+
+  describe("canvas_content_at_edge", () => {
+    // One grey RGBA pixel per entry: a 1px-thick band, read the same along every edge.
+    function edgeLine(levels: number[]): Uint8ClampedArray {
+      return new Uint8ClampedArray(levels.flatMap((level) => [level, level, level, 255]));
+    }
+
+    // Serves any requested band: the pattern runs along the edge (padded with its last pixel),
+    // painted into every column of the band's thickness, or only `inkAcross` when given.
+    // `inkAt(sx, sy)` limits the ink to the band drawn from that source origin.
+    function stubEdgeReads(
+      line: Uint8ClampedArray,
+      inkAcross?: number,
+      inkAt?: (sx: number, sy: number) => boolean,
+    ): ReturnType<typeof vi.fn> {
+      let origin: [number, number] = [0, 0];
+      const drawImage = vi.fn((_source: unknown, sx: number, sy: number) => {
+        origin = [sx, sy];
+      });
+      const pixels = line.length / 4;
+      const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+        mockReturnValue(value: CanvasRenderingContext2D): void;
+      };
+      getContextSpy.mockReturnValue({
+        drawImage,
+        getImageData: (_x: number, _y: number, width: number, height: number) => {
+          const vertical = height >= width;
+          const data = new Uint8ClampedArray(width * height * 4);
+          if (inkAt && !inkAt(...origin)) return { data };
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              const along = vertical ? y : x;
+              const across = vertical ? x : y;
+              if (inkAcross !== undefined && across !== inkAcross) continue;
+              const source = 4 * Math.min(along, pixels - 1);
+              data.set(line.subarray(source, source + 4), 4 * (y * width + x));
+            }
+          }
+          return { data };
+        },
+      } as unknown as CanvasRenderingContext2D);
+      return drawImage;
+    }
+
+    function mountCanvas(canvasRect: DOMRect, attributes = ""): void {
+      document.body.innerHTML = `
+        <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+          <canvas id="art" width="1920" height="1080" ${attributes}></canvas>
+        </div>
+      `;
+      installGeometry({
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        art: canvasRect,
+      });
+      installAuditScript();
+    }
+
+    const FULL_FRAME = rect({ left: 0, top: 0, width: 1920, height: 1080 });
+    // Dark ground crossed by two glyph strokes, as a headline cut by the frame edge reads.
+    const CUT_TEXT = edgeLine([0, 0, 0, 0, 200, 200, 200, 0, 0, 0, 220, 220, 0, 0, 0, 0]);
+
+    it("warns when drawn text crosses the frame edge", () => {
+      stubEdgeReads(CUT_TEXT);
+      mountCanvas(FULL_FRAME);
+
+      const issues = runAudit().filter((issue) => issue.code === "canvas_content_at_edge");
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatchObject({
+        selector: "#art",
+        message: "Canvas content touches the frame edge (left, right, top, bottom).",
+      });
+      expect(issues[0]?.fixHint).toContain("data-layout-allow-overflow");
+    });
+
+    it("sees text whose glyph cell ends in a gap at the outermost pixel column", () => {
+      stubEdgeReads(CUT_TEXT, 1);
+      mountCanvas(FULL_FRAME);
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(true);
+    });
+
+    it("names only the edge whose band holds the content", () => {
+      stubEdgeReads(CUT_TEXT, undefined, (sx, sy) => sx === 1916 && sy === 0);
+      mountCanvas(FULL_FRAME);
+
+      const issues = runAudit().filter((issue) => issue.code === "canvas_content_at_edge");
+      expect(issues.map((issue) => issue.message)).toEqual([
+        "Canvas content touches the frame edge (right).",
+      ]);
+    });
+
+    it("stays silent on a full-bleed gradient", () => {
+      stubEdgeReads(edgeLine(Array.from({ length: 256 }, (_, index) => index)));
+      mountCanvas(FULL_FRAME);
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
+    });
+
+    it("stays silent under data-layout-allow-overflow", () => {
+      stubEdgeReads(CUT_TEXT);
+      mountCanvas(FULL_FRAME, "data-layout-allow-overflow");
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
+    });
+
+    it("never reads a canvas that sits inside the frame", () => {
+      const drawImage = stubEdgeReads(CUT_TEXT);
+      mountCanvas(rect({ left: 200, top: 200, width: 800, height: 450 }));
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
+      expect(drawImage).not.toHaveBeenCalled();
+    });
   });
 
   it("flags a gradient-content hero but not an all-translucent gradient glow", () => {
@@ -2293,6 +2728,25 @@ describe("layout-audit.browser occlusion", () => {
       topmostId: "overlay",
     });
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("still flags covered text when only an ancestor allows occlusion", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="node-top" data-layout-allow-occlusion>
+          <div id="headline">Typed Answers</div>
+        </div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    const occluded = runAudit().find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
   });
 
   it("does not treat a visible container as painted text when its only text child is hidden", () => {

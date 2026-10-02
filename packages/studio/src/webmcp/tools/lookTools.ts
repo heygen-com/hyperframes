@@ -11,6 +11,7 @@
 import { collectDomEditLayerItems } from "../../components/editor/domEditingLayers";
 import type { DomEditLayerItem, DomEditSelection } from "../../components/editor/domEditingTypes";
 import type { TimelineElement } from "../../player/store/timelineElement";
+import { byStart, describeClip, type ClipFact } from "../../player/lib/describeClips";
 import { mintElementHandle, patchTargetAddress, timelineElementAddress } from "../handles";
 import { toolOk, type ToolResult } from "../toolResult";
 
@@ -107,7 +108,14 @@ export interface StudioLook {
   elementCount: number;
   truncated: boolean;
   elements: LookElement[];
+  /** Every timeline clip, audio included, whether or not it is a visual layer. */
+  clipCount: number;
+  clipsTruncated: boolean;
+  clips: LookClip[];
 }
+
+/** A timeline clip; `handle` is null when the clip has no addressable source element. */
+type LookClip = ClipFact & { handle: string | null };
 
 export interface StudioLookInput {
   /** Case-insensitive substring match against label, tag, and handle. */
@@ -152,6 +160,22 @@ function describeSelection(
     },
     animationCount,
   };
+}
+
+function matchesClipFilter(clip: LookClip, needle: string): boolean {
+  return [clip.id, clip.label, clip.kind, clip.src].some((field) =>
+    field?.toLowerCase().includes(needle),
+  );
+}
+
+function describeClipsWithHandles(snapshot: StudioLookSnapshot): LookClip[] {
+  const activeCompositionPath = snapshot.compositionPath ?? "index.html";
+  return snapshot.elements.map((element) => ({
+    ...describeClip(element),
+    handle: mintElementHandle(
+      timelineElementAddress(element, activeCompositionPath, snapshot.projectId),
+    ),
+  }));
 }
 
 function matchesFilter(element: LookElement, needle: string): boolean {
@@ -258,6 +282,8 @@ export function buildStudioLook(
   const requested =
     Number.isInteger(input.limit) && input.limit! > 0 ? input.limit! : DEFAULT_LIMIT;
   const limit = Math.min(requested, DEFAULT_LIMIT);
+  const clips = describeClipsWithHandles(snapshot).sort(byStart);
+  const matchedClips = needle ? clips.filter((clip) => matchesClipFilter(clip, needle)) : clips;
 
   return toolOk<StudioLook>({
     projectId: snapshot.projectId,
@@ -281,6 +307,9 @@ export function buildStudioLook(
     elementCount: matched.length,
     truncated: matched.length > limit,
     elements: matched.slice(0, limit),
+    clipCount: matchedClips.length,
+    clipsTruncated: matchedClips.length > limit,
+    clips: matchedClips.slice(0, limit),
   });
 }
 
@@ -296,7 +325,7 @@ export const STUDIO_LOOK_INPUT_SCHEMA = {
       type: "integer",
       minimum: 1,
       maximum: DEFAULT_LIMIT,
-      description: `Cap the returned elements (default and max ${DEFAULT_LIMIT}). elementCount always reports the full match count.`,
+      description: `Cap the returned elements and clips (default and max ${DEFAULT_LIMIT} each). elementCount and clipCount always report the full match count.`,
     },
   },
   additionalProperties: false,
@@ -307,6 +336,8 @@ export const STUDIO_LOOK_DESCRIPTION = [
   "the playhead and duration, what the human currently has selected (including what that",
   "element will and will not accept), and the live nested scene in DOM preorder.",
   "Each scene element includes source ownership, hierarchy, and optional timeline timing.",
+  "`clips` lists every timeline clip, audio included: kind, start, duration, track, volume,",
+  "volume/effect automation points, playback rate, audio group and role.",
   "Pass a handle back to any tool that edits an element.",
   "Returns an object with `ok: true`, or `ok: false` with `kind`, `reason` and often a `hint`.",
   "`history.undoLabel` is worth checkpointing before a batch: if it later names something",

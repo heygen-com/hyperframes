@@ -10,11 +10,11 @@
   "ssim_threshold": 0.95,
   "validation": {
     "measured_mean_ssim": 0.974,
-    "measured_min_ssim": 0.972,
-    "measured_p05_ssim": 0.972,
-    "measured_p95_ssim": 0.983,
-    "measured_at": "2026-04-27",
-    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.4.15-alpha.1"
+    "measured_min_ssim": 0.973,
+    "measured_p05_ssim": 0.973,
+    "measured_p95_ssim": 0.984,
+    "measured_at": "2026-09-18",
+    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.7.71 (sub-composition fixtures)"
   },
   "translation_notes": [
     "Remotion: AbsoluteFill → HF: position:absolute;inset:0 div",

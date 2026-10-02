@@ -2,6 +2,7 @@ export interface TimelineEditCapabilities {
   canMove: boolean;
   canTrimStart: boolean;
   canTrimEnd: boolean;
+  readOnly?: boolean;
 }
 
 function isDeterministicTimelineWindow(input: {
@@ -42,10 +43,9 @@ export function getTimelineEditCapabilities(input: {
   playbackStart?: number;
   playbackStartAttr?: "media-start" | "playback-start";
   sourceDuration?: number;
-  timingSource?: "authored" | "implicit";
   timelineLocked?: boolean;
 }): TimelineEditCapabilities {
-  if (input.timingSource === "implicit" || input.timelineLocked) {
+  if (input.timelineLocked) {
     return { canMove: false, canTrimStart: false, canTrimEnd: false };
   }
 

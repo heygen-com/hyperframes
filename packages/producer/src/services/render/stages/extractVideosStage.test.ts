@@ -114,6 +114,15 @@ describe("appendAutoDetectedVideoAudio", () => {
     expect(composition.audios).toHaveLength(0);
   });
 
+  it("skips a hidden video so a track hidden in Studio stays silent in the render", () => {
+    const composition = {
+      videos: [makeVideo({ hidden: true })],
+      audios: [] as never[],
+    };
+    appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
+    expect(composition.audios).toHaveLength(0);
+  });
+
   it("skips when the source file has no audio track", () => {
     const composition = { videos: [makeVideo()], audios: [] as never[] };
     appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", false)]);

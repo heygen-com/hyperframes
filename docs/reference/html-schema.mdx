@@ -80,7 +80,7 @@ timeline registry key.
 | `data-start="0"` | Yes on the top-level root | Start of the composition |
 | `data-width` and `data-height` | Yes | Authored frame dimensions in pixels |
 | `data-duration` | Usually | Total render duration in seconds |
-| `data-no-timeline` | Only for a timeline-free composition | Tells the runtime not to wait for a timeline |
+| `data-no-timeline` | Only for a timeline-free composition | Tells the runtime not to wait for a timeline. Without it a composition that never registers one still waits out `player-ready-timeout` (45 s by default) on every render; `hyperframes lint` reports this as `missing_data_no_timeline` |
 
 An explicit root `data-duration` is the render length. The compiler reads it
 before composition scripts run, so a script or variable override cannot change
@@ -96,7 +96,7 @@ unbounded animation, and timeline-free compositions need an explicit duration.
 | --- | --- | --- |
 | `id` | Yes | Stable identifier for timing, editing, and animation |
 | `data-start` | Yes | Start in seconds or a relative timing expression |
-| `data-duration` | Yes for DOM, image, and nested-composition clips | Visible slot length in seconds |
+| `data-duration` | Yes for DOM and nested-composition clips; optional for image (3 s default), video and audio (source length) | Visible slot length in seconds |
 | `data-track-index` | No | Studio timeline lane, display only. The render never reads it and it does not prevent overlap |
 | `class="clip"` | Recommended for authored timed DOM and image elements | Layout and tooling convention. Visibility is keyed off `data-start`, but the shared `.clip` rule supplies the full-frame box |
 
@@ -124,16 +124,16 @@ Audio has no visual lifecycle.
 | Attribute | Applies to | Meaning |
 | --- | --- | --- |
 | `data-media-start` / `data-playback-start` | Video, audio, nested composition | Offset into the source file, used by trim and split. Two groups of readers disagree, so the right name depends on the element. **Read only `data-media-start`:** the timing compiler, the HTML parser, `hyperframes validate` (which only inspects `<audio>`), and the engine's audio mixer (which feeds ffmpeg `-ss`). **Read `data-playback-start` first, falling back to `data-media-start`:** the runtime player, Studio (which also writes it), and `hyperframes snapshot`. Because the audio mixer reads only `data-media-start`, a `<video>` authored with just `data-playback-start` renders a trimmed picture over untrimmed audio. Set the name by kind: **`<video>` / `<audio>` → `data-media-start`**; **nested composition → `data-playback-start`** — composition hosts are inspected only by the playback-start-first readers (the media-start-only ones are all `<video>`/`<audio>`-scoped). `data-media-start` still works there as a fallback, but `data-playback-start` is the canonical name Studio writes and normalises to for new composition hosts, so the other name works until an edit rewrites it (it is the [child-timeline offset](/concepts/compositions)). |
-| `data-playback-rate` | Video, audio, nested composition | Playback multiplier from `0.1` to `5` |
+| `data-playback-rate` | Video, audio, nested composition | Playback multiplier from `0.1` to `10`. A `rate` lane in `data-automation` overrides it; see [Speed ramps](/reference/speed-ramps) |
 | `data-volume` | Video and audio | Static gain. `1` is 0 dB, `0` is silence, and values above `1` boost up to `3.98` (+12 dB) |
+| `data-fade-in` / `data-fade-out` | Video and audio | Clip-edge fades in seconds: gain rises 0 → 1 over the first `data-fade-in` seconds and falls 1 → 0 over the last `data-fade-out` seconds of the clip. Linear, anchored to the clip's own edges (a fade-out follows a later trim), and multiplied on top of `data-volume` and any volume lane. Fades that together exceed the clip are scaled to meet inside it. Studio drags them from the dots at an audio clip's top corners or types them in the inspector's Fade rows |
 | `data-has-audio="true"` | Video | Declares that the video contributes audio |
 
 Video and audio may omit `data-duration` when their intrinsic duration is known
 and the whole remaining source should play.
 
 Do not imperatively call `play()`, `pause()`, or set `currentTime`.
-HyperFrames owns media playback and seeking. A video should be `muted` unless it
-is intentionally audible and declares `data-has-audio="true"`.
+HyperFrames owns media playback and seeking. A `<video>` with sound declares `data-has-audio="true"` and is not muted. Silent footage is `muted`. Every timed `<video>` must say one or the other (lint `video_missing_muted`).
 
 Media can live inside nested composition markup. Keep element IDs unique across
 the assembled project because render-time frame injection targets those IDs.

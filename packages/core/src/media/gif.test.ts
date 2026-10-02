@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseAnimatedGifMetadata } from "./gif";
+import {
+  clearGifFramesBeforeNext,
+  gifClearsAfterLeavingFrameInPlace,
+  parseAnimatedGifMetadata,
+} from "./gif";
 
 function u16(value: number): number[] {
   return [value & 0xff, (value >> 8) & 0xff];
@@ -88,5 +92,70 @@ describe("parseAnimatedGifMetadata", () => {
 
   it("returns null for non-GIF data", () => {
     expect(parseAnimatedGifMetadata(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
+  });
+});
+
+// A frame whose graphic control block has the given disposal and optional transparent index,
+// optionally carrying its own two-entry colour table.
+function controlledFrame(
+  disposal: number,
+  transparentIndex?: number,
+  localTable = false,
+): number[] {
+  const bytes = frame(10);
+  bytes[3] = (disposal << 2) | (transparentIndex === undefined ? 0 : 1);
+  bytes[6] = transparentIndex ?? 0;
+  if (localTable) {
+    bytes[17] = 0b1000_0000;
+    bytes.splice(18, 0, 0, 0, 0, 255, 255, 255);
+  }
+  return bytes;
+}
+
+function controls(bytes: Uint8Array): number[][] {
+  return [...bytes.keys()]
+    .filter((i) => bytes[i] === 0x21 && bytes[i + 1] === 0xf9 && bytes[i + 2] === 0x04)
+    .map((i) => [bytes[i + 3]!, bytes[i + 6]!]);
+}
+
+describe("gifClearsAfterLeavingFrameInPlace", () => {
+  it("is true only when a frame left in place is followed by one cleared to background", () => {
+    const leftInPlace = controlledFrame(1);
+    const cleared = controlledFrame(2, 1);
+    expect(gifClearsAfterLeavingFrameInPlace(gif([...leftInPlace, ...cleared]))).toBe(true);
+    expect(gifClearsAfterLeavingFrameInPlace(gif([...cleared, ...leftInPlace]))).toBe(false);
+    expect(gifClearsAfterLeavingFrameInPlace(gif([...leftInPlace, ...leftInPlace]))).toBe(false);
+    expect(gifClearsAfterLeavingFrameInPlace(gif([...cleared, ...cleared]))).toBe(false);
+    expect(gifClearsAfterLeavingFrameInPlace(Uint8Array.from(ascii("not a gif")))).toBeNull();
+  });
+
+  it("does not give an image the control block of the plain text before it", () => {
+    const plainText = [0x21, 0x01, 12, ...new Array<number>(12).fill(0), 1, 65, 0];
+    const textLeftInPlace = [...controlledFrame(1).slice(0, 8), ...plainText];
+    const imageWithoutControl = controlledFrame(2, 1).slice(8);
+    const bytes = gif([...textLeftInPlace, ...imageWithoutControl, ...controlledFrame(2, 1)]);
+    expect(gifClearsAfterLeavingFrameInPlace(bytes)).toBe(false);
+  });
+});
+
+describe("clearGifFramesBeforeNext", () => {
+  it("clears every frame and names the shared table's transparent index where missing", () => {
+    const bytes = gif([
+      ...controlledFrame(2, 1, true), // own table: its index means nothing in the shared one
+      ...controlledFrame(1),
+      ...controlledFrame(2, 0),
+    ]);
+
+    expect(clearGifFramesBeforeNext(bytes)).toBe(true);
+
+    expect(controls(bytes)).toEqual([
+      [0b0000_1001, 1],
+      [0b0000_1001, 0],
+      [0b0000_1001, 0],
+    ]);
+  });
+
+  it("refuses bytes that are not a GIF", () => {
+    expect(clearGifFramesBeforeNext(Uint8Array.from(ascii("not a gif at all")))).toBe(false);
   });
 });

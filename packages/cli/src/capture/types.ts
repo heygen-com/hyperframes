@@ -20,8 +20,10 @@ export type CapturePhase =
   | "scaffold"
   | "complete";
 
+export const CAPTURE_PHASE_SCHEMA = "hyperframes.capture.phase.v1" as const;
+
 export interface CapturePhaseProgress {
-  schema: "hyperframes.capture.phase.v1";
+  schema: typeof CAPTURE_PHASE_SCHEMA;
   phase: CapturePhase;
   status: "started" | "completed" | "degraded";
   /** Null before the post-navigation budget begins. */
@@ -32,7 +34,9 @@ export interface CapturePhaseProgress {
     | "request-timeout"
     | "provider-error"
     | "internal-error"
-    | "blocked";
+    | "blocked"
+    | "webgl-disabled-retry"
+    | "deadline";
 }
 
 export interface CaptureOptions {
@@ -56,6 +60,8 @@ export interface CaptureOptions {
   skipVision?: boolean;
   /** Cooperative post-navigation budget in ms (default: 120000). */
   postNavigationBudgetMs?: number;
+  /** Optional hard wall-clock deadline for the complete capture run. */
+  captureDeadlineMs?: number;
   /** Stable, non-sensitive progress records for watchdog diagnostics. */
   onPhase?: (event: CapturePhaseProgress) => void;
   /** Output JSON for programmatic use */

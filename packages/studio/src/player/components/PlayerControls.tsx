@@ -6,7 +6,8 @@ import { liveTime, usePlayerStore } from "../store/playerStore";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { ShortcutsPanel } from "./ShortcutsPanel";
+import { ShortcutsButton } from "./ShortcutsPanel";
+import type { ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
 
@@ -75,7 +76,7 @@ const LoopButton = memo(function LoopButton({
         }}
         disabled={disabled}
         className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-30 ${
-          loopEnabled ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
+          loopEnabled ? "text-accent-ink" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={loopEnabled ? "Disable loop playback" : "Enable loop playback"}
         aria-pressed={loopEnabled}
@@ -116,8 +117,8 @@ const FullscreenButton = memo(function FullscreenButton({
           trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
           onToggleFullscreen();
         }}
-        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-          isFullscreen ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
+          isFullscreen ? "text-accent-ink" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
       >
@@ -161,6 +162,8 @@ interface PlayerControlsProps {
   disabled?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Replaces the shortcuts panel's list, e.g. DEFAULT_SHORTCUT_SECTIONS with entries dropped or relabelled. */
+  shortcutSections?: readonly ShortcutSection[];
 }
 
 export const PlayerControls = memo(function PlayerControls({
@@ -169,6 +172,7 @@ export const PlayerControls = memo(function PlayerControls({
   disabled = false,
   isFullscreen = false,
   onToggleFullscreen,
+  shortcutSections,
 }: PlayerControlsProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const duration = usePlayerStore((s) => s.duration);
@@ -181,10 +185,6 @@ export const PlayerControls = memo(function PlayerControls({
   const setAudioMuted = usePlayerStore.getState().setAudioMuted;
   const setAudioVolume = usePlayerStore.getState().setAudioVolume;
   const setLoopEnabled = usePlayerStore.getState().setLoopEnabled;
-  const inPoint = usePlayerStore((s) => s.inPoint);
-  const outPoint = usePlayerStore((s) => s.outPoint);
-  const setInPoint = usePlayerStore.getState().setInPoint;
-  const setOutPoint = usePlayerStore.getState().setOutPoint;
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const setTimeDisplayMode = usePlayerStore.getState().setTimeDisplayMode;
 
@@ -209,10 +209,11 @@ export const PlayerControls = memo(function PlayerControls({
       currentTimeRef.current = time;
       if (!timeDisplayRef.current) return;
       const currentDuration = durationRef.current;
-      timeDisplayRef.current.textContent =
+      const text =
         timeDisplayModeRef.current === "frame"
           ? formatFrameTime(time, currentDuration)
           : formatTime(time);
+      if (timeDisplayRef.current.textContent !== text) timeDisplayRef.current.textContent = text;
     };
     const unsubscribe = liveTime.subscribe(updateTime);
     updateTime(usePlayerStore.getState().currentTime);
@@ -240,7 +241,7 @@ export const PlayerControls = memo(function PlayerControls({
             <span ref={timeDisplayRef}>{formatTime(0)}</span>
             {timeDisplayMode === "time" ? (
               <>
-                <span className="mx-0.5 text-neutral-700">/</span>
+                <span className="mx-0.5 text-text-off">/</span>
                 <span className="text-neutral-600">{formatTime(duration)}</span>
               </>
             ) : null}
@@ -283,15 +284,7 @@ export const PlayerControls = memo(function PlayerControls({
           {onToggleFullscreen && (
             <FullscreenButton isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />
           )}
-          <ShortcutsPanel
-            disabled={disabled}
-            duration={duration}
-            inPoint={inPoint}
-            outPoint={outPoint}
-            setInPoint={setInPoint}
-            setOutPoint={setOutPoint}
-            onSeek={onSeek}
-          />
+          <ShortcutsButton disabled={disabled} onSeek={onSeek} sections={shortcutSections} />
         </div>
       </div>
     </div>

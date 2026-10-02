@@ -34,6 +34,27 @@ function withUnreflectedCrossOrigin(el: HTMLAudioElement, value: string): HTMLAu
   return el;
 }
 
+/** Stubs the document's actual security origin (`window.origin`) for the
+ *  duration of `run`, then restores it — distinct from `location.origin`,
+ *  which stays URL-shaped even inside an opaque sandboxed document. */
+function withSelfOrigin<T>(origin: string, run: () => T): T {
+  const original = Object.getOwnPropertyDescriptor(window, "origin");
+  Object.defineProperty(window, "origin", { value: origin, configurable: true });
+  try {
+    return run();
+  } finally {
+    if (original) Object.defineProperty(window, "origin", original);
+    else delete (window as { origin?: string }).origin;
+  }
+}
+
+/** The one console line `reportWebAudioMediaRoute` emits for `el`, or "". */
+function bypassLine(el: HTMLAudioElement): string {
+  const info = vi.spyOn(console, "info").mockImplementation(() => {});
+  reportWebAudioMediaRoute(el, classifyWebAudioMediaRoute(el));
+  return (info.mock.calls[0]?.[0] as string) ?? "";
+}
+
 describe("classifyWebAudioMediaRoute", () => {
   it("routes same-origin media through Web Audio", () => {
     expect(classifyWebAudioMediaRoute(audio({ src: "/assets/vo.mp3" }))).toEqual({
@@ -136,6 +157,39 @@ describe("classifyWebAudioMediaRoute", () => {
       asset: `${CROSS_ORIGIN}/track.mp3`,
     });
   });
+
+  it("withholds capture when the document's security origin is opaque, even though the URL origins match", () => {
+    // See withSelfOrigin above for why this differs from location.origin.
+    const asset = `${SAME_ORIGIN}/assets/vo.mp3`;
+    const route = withSelfOrigin("null", () => classifyWebAudioMediaRoute(audio({ src: asset })));
+
+    expect(route).toEqual({ kind: "decode-only", reason: "opaque_document_origin", asset });
+  });
+
+  it("reports opacity, not foreignness, when the document is opaque AND the asset is remote", () => {
+    // Both conditions hold. Opacity is the blocking one and the only one the
+    // author cannot fix by moving the asset, so it must win the reason.
+    const asset = `${CROSS_ORIGIN}/track.mp3`;
+    const route = withSelfOrigin("null", () => classifyWebAudioMediaRoute(audio({ src: asset })));
+
+    expect(route).toEqual({ kind: "decode-only", reason: "opaque_document_origin", asset });
+  });
+
+  it("still lets a crossorigin opt-in rescue an opaque document", () => {
+    const el = audio({ src: `${CROSS_ORIGIN}/track.mp3`, crossorigin: "anonymous" });
+    const route = withSelfOrigin("null", () => classifyWebAudioMediaRoute(el));
+
+    expect(route).toEqual({ kind: "web-audio" });
+  });
+
+  it("keeps today's same-origin result when window.origin genuinely matches", () => {
+    const asset = `${SAME_ORIGIN}/assets/vo.mp3`;
+    const route = withSelfOrigin(SAME_ORIGIN, () =>
+      classifyWebAudioMediaRoute(audio({ src: asset })),
+    );
+
+    expect(route).toEqual({ kind: "web-audio" });
+  });
 });
 
 describe("isRouteSelectionSettled", () => {
@@ -225,13 +279,40 @@ describe("reportWebAudioMediaRoute", () => {
     expect(info).not.toHaveBeenCalled();
   });
 
-  it("names the dropped processing in the CORS bypass line", () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    const el = audio({ src: `${CROSS_ORIGIN}/track.mp3`, "data-audio-group": "vo" });
+  it("names the dropped processing, and offers a proxy, when a same-origin URL could exist", () => {
+    const line = bypassLine(audio({ src: `${CROSS_ORIGIN}/track.mp3`, "data-audio-group": "vo" }));
 
-    reportWebAudioMediaRoute(el, classifyWebAudioMediaRoute(el));
+    expect(line).toContain("audio-group");
+    expect(line).toContain("proxy or download the asset to a same-origin URL");
+  });
 
-    expect(info.mock.calls[0]?.[0]).toContain("audio-group");
+  it("tells an opaque document to fix the sandbox, not to move the asset", () => {
+    // The whole point of the second reason. Nothing is same-origin with an
+    // opaque origin, so the proxy advice names a fix that cannot exist here.
+    const el = audio({ src: `${SAME_ORIGIN}/assets/vo.mp3`, "data-audio-group": "vo" });
+
+    const line = withSelfOrigin("null", () => bypassLine(el));
+
+    expect(line).toContain("audio-group");
+    expect(line).toContain("allow-same-origin");
+    expect(line).toContain("Access-Control-Allow-Origin");
+    expect(line).not.toContain("proxy or download");
+  });
+
+  it("puts the opaque reason and its note on the bridge message, not just the console", () => {
+    const posted: unknown[] = [];
+    const post = vi
+      .spyOn(window.parent, "postMessage")
+      .mockImplementation((message: unknown) => void posted.push(message));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const el = audio({ src: `${SAME_ORIGIN}/assets/vo.mp3` });
+
+    withSelfOrigin("null", () => reportWebAudioMediaRoute(el, classifyWebAudioMediaRoute(el)));
+
+    const details = (posted[0] as { details?: Record<string, unknown> })?.details ?? {};
+    expect(details.reason).toBe("opaque_document_origin");
+    expect(String(details.note)).toContain("opaque");
+    post.mockRestore();
   });
 
   describe("render mode", () => {

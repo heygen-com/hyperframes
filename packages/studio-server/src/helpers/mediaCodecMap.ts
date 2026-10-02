@@ -1,4 +1,5 @@
 import { existsSync, statSync } from "node:fs";
+import { realpath } from "./safePath.js";
 import { relative, resolve, sep } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
@@ -191,26 +192,24 @@ function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
   };
 }
 
-/**
- * Probe a single video asset. Best-effort: ffprobe missing, erroring, or
- * finding no video stream resolves to `null` (asset omitted by the caller),
- * never a throw. Async so a pool of probes runs concurrently (the default
- * runner is `execFile`-based).
- */
-export async function probeAssetCodec(
+/** `undefined` when ffprobe itself failed: no answer about the file, so nothing to cache. */
+async function probeCodecFacts(
   filePath: string,
   runner?: FfprobeRunner,
-): Promise<AssetCodecFacts | null> {
+): Promise<AssetCodecFacts | null | undefined> {
   const metadata = runner
     ? await probeMediaMetadata(filePath, runner)
     : await probeMediaMetadata(filePath);
-  if (metadata.kind !== "video" || metadata.probeError) return null;
+  if (metadata.probeError) return undefined;
+  if (metadata.kind !== "video") return null;
   const codecName = metadata.color.codecName;
   if (!codecName) return null;
   return codecFactsFor(codecName, pixelFormatHasAlpha(metadata.color.pixelFormat));
 }
 
 interface CachedAssetProbe {
+  /** The file a symlinked path pointed at, so retargeting the link is a miss. */
+  target: string;
   mtimeMs: number;
   size: number;
   facts: AssetCodecFacts | null;
@@ -224,10 +223,7 @@ export function createMediaCodecProbeCache(): MediaCodecProbeCache {
   return new Map();
 }
 
-// Used when a caller doesn't pass its own cache — still correct (probes every
-// time a fresh Map would), but callers that want the mtime-cache benefit
-// across repeated scans (the studio preview route, etc.) should construct
-// and hold their own cache via `createMediaCodecProbeCache`.
+// Shared by every route and scan in this process that does not pass its own cache.
 const defaultProbeCache: MediaCodecProbeCache = new Map();
 const MAX_PROBE_CACHE_ENTRIES = 512;
 
@@ -245,24 +241,36 @@ function rememberProbeResult(
   cache.set(filePath, result);
 }
 
-async function probeAssetCodecCached(
+/**
+ * Codec facts for one video, cached per path until its target, mtime or size changes; a hit skips
+ * `runner`. Never throws: no video stream or a failed probe gives `null`, and a failed probe is not cached.
+ */
+export async function probeAssetCodec(
   filePath: string,
-  cache: MediaCodecProbeCache,
   runner?: FfprobeRunner,
+  cache: MediaCodecProbeCache = defaultProbeCache,
 ): Promise<AssetCodecFacts | null> {
   let stat: ReturnType<typeof statSync>;
+  let target: string;
   try {
     stat = statSync(filePath);
+    target = realpath(filePath);
   } catch {
     return null;
   }
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+  if (
+    cached &&
+    cached.target === target &&
+    cached.mtimeMs === stat.mtimeMs &&
+    cached.size === stat.size
+  ) {
     rememberProbeResult(cache, filePath, cached);
     return cached.facts;
   }
-  const facts = await probeAssetCodec(filePath, runner);
-  rememberProbeResult(cache, filePath, { mtimeMs: stat.mtimeMs, size: stat.size, facts });
+  const facts = await probeCodecFacts(filePath, runner);
+  if (facts === undefined) return null;
+  rememberProbeResult(cache, filePath, { target, mtimeMs: stat.mtimeMs, size: stat.size, facts });
   return facts;
 }
 
@@ -369,7 +377,7 @@ export async function scanProjectMediaCodecMap(
         const index = nextIndex++;
         const entry = entries[index];
         if (!entry) break;
-        facts[index] = await probeAssetCodecCached(entry[0], cache, options.runner);
+        facts[index] = await probeAssetCodec(entry[0], options.runner, cache);
       }
     }),
   );

@@ -153,23 +153,14 @@
       <video
         id="a-roll"
         src="source.mp4"
-        muted
         playsinline
+        data-has-audio="true"
         data-duration="{{DURATION}}"
         data-track-index="0"
         style="z-index: 1"
       ></video>
 
       <div id="stage">{{GROUPS_HTML}}</div>
-
-      <audio
-        id="a-roll-audio"
-        src="source.mp4"
-        data-start="0"
-        data-duration="{{DURATION}}"
-        data-track-index="3"
-        data-volume="1"
-      ></audio>
     </div>
 
     <script>

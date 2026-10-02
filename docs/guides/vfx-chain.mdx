@@ -1,0 +1,129 @@
+---
+title: "Per-pixel effects with data-vfx-chain"
+sidebarTitle: "VFX chain"
+description: "The data-vfx-chain attribute: a WebGL2 kernel chain for warps, displacement, and generated noise that repaints deterministically on every seek."
+---
+
+`data-vfx-chain` gives an element a chain of per-pixel WebGL2 kernels — warps,
+displacement maps, generated noise — that the runtime repaints from `(t, params)`
+every time the composition seeks. It mirrors the shipped audio effects rack
+(`data-fx-chain`): a versioned JSON chain attribute, static params in JSON,
+animated params as CSS custom properties GSAP tweens like any other exporter
+variable.
+
+Use it for a per-pixel treatment a CSS filter or SVG `<filter>` cannot express —
+a wave warp, a self-referential displacement map, or a generated fractal-noise
+texture — where you need the same frame twice at the same `t` to produce
+byte-identical pixels.
+
+## Element
+
+```html
+<div id="rw-main-text" class="clip" data-start="0" data-duration="8.8"
+     data-vfx-chain='{"version":1,"nodes":[{"type":"displacement-map","id":"n1","params":{"useH":1,"useV":2,"edge":0,"expand":true}},{"type":"wave-warp","id":"n2","params":{"waveType":1,"direction":0,"speed":1,"pinning":1,"phase":0}}]}'
+     style="--vfx-n1-maxH:150;--vfx-n1-maxV:150;--vfx-n2-height:21;--vfx-n2-width:93.4">
+  <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…layer content, with any PRECEDING CSS/SVG effects already applied on this wrapper…</div></canvas>
+  <canvas class="hf-vfx-out"></canvas>
+</div>
+```
+
+- `data-vfx-chain` is JSON with the same field names as `data-fx-chain`:
+  `version`, `nodes[]`, and each node's `type` / `id` / `enabled` / `params`.
+- **Static params** live in `params`. **Animated params** live in CSS custom
+  properties named `--vfx-<nodeId>-<key>` on the host element, tweened by GSAP
+  like every other exporter variable. The runtime reads the CSS var first on
+  every paint and falls back to `params` when it doesn't resolve.
+- `.hf-vfx-src` (a `<canvas layoutsubtree>`) is present **only** when some
+  node's def needs to read pixels besides `(x, y, t, params)` — see
+  [Capture](#capture) below. Its one child, `.hf-vfx-in`, is the texture
+  source. Give `.hf-vfx-in` an **explicit pixel box** (`width`/`height`, the
+  layer's own size) — `position:absolute; inset:0` has no containing block to
+  resolve against inside a `layoutsubtree` canvas and collapses to 0×0, which
+  makes the capture succeed and draw nothing, silently.
+- Effects that run **before** the chain in After Effects order belong on
+  `.hf-vfx-in` (inside the capture); effects that run **after** belong on the
+  host (outside, applied to `.hf-vfx-out` by the ordinary page compositor).
+  Chain order is nesting order.
+- `.hf-vfx-out` is created by the runtime if you don't provide it. It is
+  `position:absolute; inset:0`, sized to the host's own (untransformed) layout
+  box — `offsetWidth`/`offsetHeight` — times devicePixelRatio, not the host's
+  transformed bounding box. A GSAP scale or rotation on the host does not
+  inflate or stretch the capture.
+
+## Capture
+
+Every kernel declares a `capture` requirement on its **def**, not the element:
+
+| capture | reads | render capture path | ships in this plan |
+| --- | --- | --- | --- |
+| `none` | `(x, y, t, params)` only | screenshot capture, workers unpinned | `fractal-noise` |
+| `self` | its own layer's pixels, via `drawElementImage` | screenshot capture, **pinned to 1 worker** | `wave-warp`, `displacement-map` |
+| `backdrop` | every layer below it | screenshot capture, pinned to 1 worker | not yet — later phase |
+
+A `self` or `backdrop` node puts the whole composition on screenshot capture
+pinned to one worker (the `htmlInCanvas` render-mode hint exists because a
+paint-cache race across parallel browser instances is a measured failure, not
+a theoretical one). A `none` node still forces screenshot capture — WebGL
+content is not something the fast `drawElementImage` path can read back
+faithfully — but leaves worker count auto-resolved.
+
+Neither is a regression against the alternative of baking the effect in After
+Effects and shipping video instead of a live chain: a bake costs a full AE
+render up front and produces a filmstrip nothing can retime. But compared to a
+`drawElement` render of the same composition **without** the node, both `self`
+and `none` capture are slower. Budget for it, and don't add a chain to a layer
+that doesn't need per-pixel treatment.
+
+## Determinism
+
+Same backend, same `(u_t, params)` → byte-identical `.hf-vfx-out` pixels. A
+kernel may read only `(u_size, u_t, u_fps, params, u_src)` — no `Math.random`,
+no clock, no state carried between paints. That's what makes `data-vfx-chain`
+safe to seek anywhere in a render, including backwards, and still get the same
+frame you'd get scrubbing forward to it in Studio.
+
+## Studio and browser support
+
+`self` and `backdrop` capture depend on `drawElementImage`, the same
+experimental Chromium API [HTML in Canvas](/guides/html-in-canvas) uses. In a
+normal browser preview, enable `chrome://flags/#canvas-draw-element` in a
+compatible Chrome or Brave build and restart it before opening a composition
+that uses a capturing chain. Without it — or on a browser build with no
+WebGL2 — a chain fails loudly (a `[HyperFrames] composition script error:`
+console line naming the flag) rather than silently rendering the wrong thing.
+`none`-capture chains (like `fractal-noise`) need only WebGL2, not the flag.
+
+## Known constraints
+
+A few things the runtime implementation found worth knowing before you author
+a chain by hand:
+
+- **`.hf-vfx-in` needs an explicit pixel box.** See [Element](#element) above —
+  this is the one that costs a silent, empty capture if you skip it.
+- **Only immediate children of the `layoutsubtree` canvas can be captured.**
+  `drawElementImage` throws on a grandchild. `.hf-vfx-in` must be the canvas's
+  only child.
+- **Output size follows the host's layout box, not its transformed bounding
+  box.** A GSAP `transform: scale()` or rotation on the host does not affect
+  `.hf-vfx-out`'s resolution.
+- **A chain repaints on seek, not on every animation-frame tick.** Every render
+  path seeks per frame, so this only matters for Studio scrubbing-free
+  playback, where a chain does not repaint between seeks.
+- **Known conflict with page-side shader transitions.** A composition running
+  both `@hyperframes/shader-transitions`' page-side compositing and a
+  capturing `data-vfx-chain` node can have the chain painted from a stale
+  texture outside a transition's own active window. If your composition uses
+  both features together and a chain looks wrong outside a transition, this is
+  why.
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="HTML in Canvas" icon="cube" href="/guides/html-in-canvas">
+    The same `drawElementImage` capture, for compositing DOM into a 3D scene
+    instead of a per-pixel kernel.
+  </Card>
+  <Card title="Audio effects implementation" icon="waveform-lines" href="/reference/audio-effects">
+    The `data-fx-chain` shape `data-vfx-chain` mirrors, for the audio rack.
+  </Card>
+</CardGroup>
