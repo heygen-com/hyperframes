@@ -66,6 +66,21 @@ describe("assignGsapTargetAutoIdIfNeeded", () => {
     expect(showToast).toHaveBeenCalledWith("Couldn't save edit: target not found", "error");
   });
 
+  it("is false with a plain toast when the refusal has no JSON reason", async () => {
+    stubPatch(new Response("boom", { status: 500, headers: { "content-type": "text/plain" } }));
+    const { result, showToast } = assign();
+
+    await expect(result).resolves.toBe(false);
+    expect(showToast).toHaveBeenCalledWith("Couldn't save edit", "error");
+  });
+
+  it("is false when the response does not say it changed, and needs no toast handler", async () => {
+    stubPatch(jsonResponse({}));
+    await expect(assign().result).resolves.toBe(false);
+    stubPatch(new Response("{}", { status: 409, headers: { "content-type": "application/json" } }));
+    await expect(assign({ showToast: undefined }).result).resolves.toBe(false);
+  });
+
   it("refuses a non-finite target before any request", async () => {
     const fetchMock = stubPatch(jsonResponse({ changed: true }));
     const { result, showToast } = assign({
