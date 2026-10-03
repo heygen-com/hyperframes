@@ -1,6 +1,11 @@
 # Motion-Graphics Builder
 
-Turn `shot-plan.json` into one renderable HyperFrames composition (`compositions/index.html`). Everything stays in the HF ecosystem — HTML is the source of truth; a single **paused** GSAP timeline carries all motion; the engine seeks it. Category-specific build rules live in `categories/<id>/module.md`; this file is the shared contract.
+Turn `shot-plan.json` into one renderable HyperFrames composition at the
+project root (`index.html`). The pinned HyperFrames CLI loads this root entry;
+do not leave the composition only under `compositions/`. Everything stays in
+the HF ecosystem — HTML is the source of truth; a single **paused** GSAP
+timeline carries all motion; the engine seeks it. Category-specific build rules
+live in `categories/<id>/module.md`; this file is the shared contract.
 
 ## Reuse-first (the default)
 
@@ -29,8 +34,45 @@ Build the **hero-frame end-state** in CSS first (flex + padding; never absolute 
 - `content.block` → `hyperframes add` it (or inline) + apply `content.customize`.
 - per-category `content` (text scenes / chart data / fusion positions / news-tweet content) → realize per `categories/<id>/module.md`.
 - resolved `asset_needs` → reference **frozen project-local paths** (never a remote URL or a prompt).
+- A Quiver need is consumed only after Source records a completed local SVG and
+  matching preview. Provider prompts and remote URLs never enter the
+  composition.
 - `palette[-1]` / bg + `font` from the envelope.
 - `export: alpha-overlay` → transparent bg; render `--format webm` (or `mov`).
+
+The current Quiver animation evidence is **INDETERMINATE / BLOCKED** for
+HyperFrames compatibility. Do not claim a Quiver-native animated asset or
+silently substitute local SVG editing or prompt regeneration. If the user did
+not request Quiver-native animation, ordinary whole-asset GSAP motion over the
+frozen local SVG remains valid and must still use this paused root timeline.
+
+## Intent-bound motion proof
+
+Every motion-graphics handoff includes `index.motion.json` beside the root
+`index.html`. Derive its non-empty `assertions` from the final shot plan's
+planned visibility and framing timings, using selectors for IDs that actually
+exist in the authored HTML. Use the supported HyperFrames shape, for example:
+
+```json
+{
+  "duration": 5,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#logo-reveal", "bySec": 1.6 },
+    { "kind": "staysInFrame", "selector": "#logo-reveal" }
+  ]
+}
+```
+
+Use `appearsBy` for a planned reveal and `staysInFrame` for a planned framing
+constraint. Do not add a generic whole-shot `keepsMoving` assertion to make an
+intentional final hold pass. Use `keepsMoving` only when continuous motion is
+explicitly part of the shot plan and scope it to an actual element or group.
+
+Before handoff, run a fresh `hyperframes check --json` and the relevant fresh
+proof snapshots. Confirm the report has `motion.enabled: true`, a nonzero
+`motion.samples` count, the authored sidecar path, and no motion findings. A
+disabled or zero-sample motion audit is an incomplete handoff and cannot be
+reported as passed.
 
 ## Critical correctness (GSAP / seek)
 
@@ -38,4 +80,9 @@ Opacity-gate delayed elements (set hidden until their entrance). Clamp at tween 
 
 ## Hand off for verification
 
-Self-check the authored file, then return it to the orchestrator. Step 5 runs `hyperframes lint`, `hyperframes check`, and proof snapshots on the assembled project. Do not render. When redispatched with a finding, fix the offending element and never change a fixed `data-duration` during repair. Remotion-source migrations use `/remotion-to-hyperframes` and its SSIM harness instead.
+Self-check the authored root `index.html`, then return it to the orchestrator.
+Step 5 runs `hyperframes lint`, `hyperframes check`, and proof snapshots on the
+assembled project. Do not render. When redispatched with a finding, fix the
+offending element in root `index.html` and never change a fixed
+`data-duration` during repair. Remotion-source migrations use
+`/remotion-to-hyperframes` and its SSIM harness instead.

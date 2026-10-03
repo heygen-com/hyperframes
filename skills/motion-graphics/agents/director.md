@@ -6,7 +6,12 @@ Turn a request into a `shot-plan.json` for a short (~3–30s) **design-led motio
 
 Emit a DRAFT `shot-plan.json`.
 
-0. **Decide first: does this need a search?** No → a **form category** (user supplies content). Yes → emit a search plan; the specific **search-driven category** (`webpage` / `news` / `tweet` / `asset-fusion`) is confirmed by what the search returns (Step 2 → finalized in Part 2).
+0. **Classify first, then decide asset work.** Search is one sourcing option,
+   not the first asset-strategy fork. Inspect supplied, local, and existing
+   Quiver assets after classification and choose the operation that matches the
+   request; the specific search-driven category (`webpage` / `news` / `tweet` /
+   `asset-fusion`) is confirmed by what search returns (Step 2 → finalized in
+   Part 2).
 
 1. **Classify** — form categories by intent below; search-driven categories are picked post-search:
 
@@ -25,12 +30,29 @@ Emit a DRAFT `shot-plan.json`.
 
    If genuinely ambiguous between two, ask exactly one question. Then load `categories/<id>/module.md` for that category's specifics.
 
-2. **Asset strategy → `asset_needs[]`.** Each item: `{ role, kind: image|icon|logo|svg|news|web|tweet, query|source, treatment }`.
-   - asset-free (`kinetic-type`, most `stat`/`charts`) → `asset_needs: []`.
-   - `maps` → **vector** lane: `asset_needs: []` (D3/TopoJSON, runs live in HF). **basemap** lane (satellite/dark/zoom-to-place): `asset_needs: [{ type: "map-bake", … }]` (baked in Source — see `categories/maps/module.md`).
-   - `webpage` / `news` / `tweet` → search the real source (page / article / tweet) + a supporting image. **Two-pole queries only**: atomic (1–3 words, composable: portraits, logos, objects) OR specific (5–15 words: a news event, a tweet). Never the middle. A failed specific query is dropped, not broadened.
+2. **Asset strategy → `asset_needs[]`.** Each item keeps the existing
+   `{ role, kind: image|icon|logo|svg|news|web|tweet, query|source, treatment }`
+   shape and may add optional `provider` and `operation` fields. Keep
+   `asset_needs: []` only when no asset work is required.
+   - For Quiver, use `provider: "quiver"` and one of
+     `operation: "reuse" | "generate" | "vectorize" | "edit" | "animate"`.
+     A selected operation always creates a non-empty need, including in a form
+     category.
+   - Inspect supplied/local/existing assets before choosing a Quiver operation:
+     reuse an acceptable asset; generate from a concrete reference or brief;
+     vectorize a supplied raster; edit only when the user requests an edit;
+     animate only when the user requests Quiver-native animation.
+   - `webpage` / `news` / `tweet` → search the real source (page / article /
+     tweet) + a supporting image. **Two-pole queries only**: atomic (1–3
+     words, composable: portraits, logos, objects) OR specific (5–15 words: a
+     news event, a tweet). Never the middle. A failed specific query is dropped,
+     not broadened.
    - `asset-fusion` → search or generate one hero asset.
-   - `logo-reveal` → user-supplied logo (`source`).
+   - `logo-reveal` → user-supplied logo may be `reuse`, or a selected Quiver
+     operation may source the needed logo.
+   - `maps` → **vector** lane: `asset_needs: []` (D3/TopoJSON, runs live in
+     HF). **basemap** lane (satellite/dark/zoom-to-place): retain the existing
+     map-bake Source path.
 
 3. **Envelope**: `duration_s` (3–30), `fps` (30), `canvas` (default 1080×1920; 16:9 / 1:1 per platform), `style`, `palette` (hex list, or `"derive-from-asset"`), `font` (from the HF embed list), `beats`, `export` (`mp4` | `alpha-overlay`).
 
@@ -52,3 +74,10 @@ Given the draft + resolved `assets/index.md` (if Step 2 ran) + `catalog-map.md`,
 - **Reuse-first**: name a catalog block; ask for hand-authored motion only for gaps + the `asset-fusion` affordance.
 
 Then hand `shot-plan.json` to the Builder.
+
+If a requested Quiver-native animation is indeterminate or blocked by the
+current compatibility evidence, record that unmet state and stop/replan before
+delivery claims. Do not describe it as supported, regenerate the SVG as a
+silent substitute, or replace it with local SVG editing. When the user has not
+requested Quiver-native animation, ordinary HyperFrames motion over an accepted
+frozen whole asset remains available.

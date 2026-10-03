@@ -25,22 +25,64 @@ This workflow is **autonomous by design** — at most one clarifying question (`
 
 A short design-led motion graphic. **Asset-first**: decide the asset strategy and source real material _before_ designing the shot, then design the shot around what you have, then compose by reusing catalog capabilities. All artifacts go to `PROJECT_DIR = videos/<project-name>/` (created in Step 0); all paths below are relative to it.
 
+Asset strategy is independent from the search decision. The Director classifies
+the shot first, then inspects supplied, local, and existing Quiver assets and
+chooses reuse, generate, vectorize, edit, or animate when that operation is
+appropriate. A selected operation creates a non-empty `asset_needs` item even
+for a form category; keep `asset_needs: []` only when no asset work is needed.
+
+## Setup and provider boundaries
+
+Keep the released HyperFrames skill fresh for ordinary released-user workflows
+with:
+
+```bash
+npx hyperframes skills update motion-graphics
+```
+
+When a request pins a project-local candidate or explicitly asks to use the
+already-installed skills, do not run that refresh. Use the installed
+HyperFrames CLI and preserve the project-local candidate; do not change
+`HOME`/`CODEX_HOME` or rely on a private wrapper.
+
+If the HyperFrames CLI is not available, use the released fallback:
+
+```bash
+npx skills add heygen-com/hyperframes --skill motion-graphics
+```
+
+Quiver is an optional asset provider. For its tools, use the official [Quiver
+plugin README](https://github.com/quiverai/cursor-plugin#readme), the hosted
+MCP at `https://app.quiver.ai/mcp`, host-managed OAuth, and the bundled
+`quiverai` skill. Do not invent host-specific connection flags or another
+installer. MCP OAuth is separate from genuine SVG editing: the edit lane needs
+`QUIVERAI_API_KEY`, an edit-capable permitted model, and API Platform balance.
+
 | Phase    | Execution                                                             | Primary artifact                                                 | Detailed flow                 |
 | -------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------- |
 | init     | Bash                                                                  | `hyperframes.json`                                               | Step 0                        |
-| plan     | subagent — **decide search?** + classify + asset strategy             | `shot-plan.json` (draft: category, `asset_needs` queries, brief) | `agents/director.md` (Part 1) |
-| source ◇ | Bash — media-use resolve (**skip if `asset_needs` is empty**)         | `assets/` + `assets/index.md`                                    | `phases/source/guide.md`      |
+| plan     | subagent — classify + asset strategy, then decide search when needed  | `shot-plan.json` (draft: category, `asset_needs`, brief)         | `agents/director.md` (Part 1) |
+| source ◇ | agent-driven source procedure (**skip if `asset_needs` is empty**)    | `assets/` + `assets/index.md`                                    | `phases/source/guide.md`      |
 | design   | subagent — shot design around resolved assets                         | `shot-plan.json` (final: block(s) + layout + motion + positions) | `agents/director.md` (Part 2) |
-| build    | subagent — reuse-first composition                                    | `compositions/index.html`                                        | `agents/builder.md`           |
+| build    | subagent — reuse-first composition                                    | `index.html`                                                     | `agents/builder.md`           |
 | verify   | Bash — `lint`, `check`, proof snapshots; repair on failure            | `snapshots/contact-sheet.jpg`                                    | Step 5                        |
 | approve  | Ask preview or render; wait for the answer                            | explicit render approval                                         | Step 6                        |
 | render   | Bash — `hyperframes render` (MP4, or `--format webm/mov` for overlay) | `renders/video.mp4` or transparent overlay                       | Step 6                        |
 
-`◇ source` runs only when the chosen category declares assets. Pure code/text categories (e.g. `kinetic-type`, most `charts`/`stat`) have `asset_needs: []` and skip straight from plan to design.
+`◇ source` runs only when `asset_needs` is non-empty. Pure code/text categories
+(e.g. `kinetic-type`, most `charts`/`stat`) use `asset_needs: []` only when no
+asset work is required; a form category with a selected Quiver operation still
+enters Source.
 
 ## Categories — split by the search decision
 
-`plan`'s **first decision is: does this need a search?** That fork splits the categories into two groups; then the specific category is picked — for search-driven, **by the type of content the search returns**. Each category is one `categories/<id>/module.md` (its planning + build rules); the shared motion vocabulary lives in `references/motion-vocabulary.md` (→ `hyperframes-animation` rules/blueprints + registry blocks).
+`plan` first classifies the shot and decides whether any asset work is needed.
+Search is one source option, not the asset-strategy gate. Search-driven
+categories are finalized by the returned content type; form categories may
+still carry a non-empty asset need when the selected operation requires it.
+Each category is one `categories/<id>/module.md` (its planning + build rules);
+the shared motion vocabulary lives in `references/motion-vocabulary.md` (→
+`hyperframes-animation` rules/blueprints + registry blocks).
 
 **Form categories — no search; the user supplies the content:**
 
@@ -89,7 +131,18 @@ mkdir -p "$(dirname "$PROJECT_DIR")"
 npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=motion-graphics
 ```
 
-`init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
+For a pinned project-local candidate, prefix the same command with
+`HYPERFRAMES_SKIP_SKILLS=1`:
+
+```bash
+HYPERFRAMES_SKIP_SKILLS=1 npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=motion-graphics
+```
+
+This prevents `init` from refreshing the canonical/global skill set. The
+current CLI ignores `--skip-skills` on the normal user path, so that flag is
+not a substitute for the environment variable. Without the environment
+variable, `init` checks installed skills against the latest GitHub versions and
+may update the global set.
 
 **Constraints:** never `hyperframes init` in the workspace root; never nest another `hyperframes/` inside `PROJECT_DIR`; every Bash command (master + subagents) is a `(cd "$PROJECT_DIR" && ...)` subshell — never bare `cd`.
 
@@ -97,23 +150,27 @@ npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=mo
 
 Dispatch one subagent. prompt = full `agents/director.md` + `## Dispatch context` (`SKILL_DIR` / `PROJECT_DIR` / the user's request / `Schema: <SKILL_DIR>/references/shot-plan-ir.md`). It must:
 
-1. **Decide: does this need a search?** (the first fork)
-   - **No** → pick a **form category** (kinetic-type / stat / charts / logo-reveal / lower-thirds); content is user-supplied; `asset_needs: []`.
-   - **Yes** → emit a **search plan** into `asset_needs[]` (news / web / tweet / image; two-pole queries). The specific **search-driven category** (webpage / news / tweet / asset-fusion) is confirmed by the content type returned in Step 2, and finalized in Step 3.
-2. Write a draft `shot-plan.json` (envelope + chosen form category _or_ search intent + `asset_needs` + a one-paragraph shot brief). Schema: `references/shot-plan-ir.md`.
+1. **Classify the shot first**, then decide whether asset work is needed. Inspect supplied/local/existing Quiver assets before selecting `reuse`, `generate`, `vectorize`, `edit`, or `animate`.
+   - Keep `asset_needs: []` only when no asset work is required.
+   - For a selected Quiver operation, emit a non-empty need with `provider: "quiver"` and `operation: "reuse|generate|vectorize|edit|animate"`.
+   - If search is needed, emit its search plan in `asset_needs[]` (news / web / tweet / image; two-pole queries). The specific search-driven category is confirmed by returned content in Step 2 and finalized in Step 3.
+2. Write a draft `shot-plan.json` (envelope + category or search intent + `asset_needs` + one-paragraph shot brief). Schema: `references/shot-plan-ir.md`.
 
 Validation: `[ -s "$PROJECT_DIR/shot-plan.json" ] && echo ok || echo missing`.
 
-### Step 2 — Source ◇ (Bash: media-use, conditional)
+### Step 2 — Source ◇ (agent-driven, conditional)
 
-If `shot-plan.json.asset_needs` is non-empty, resolve assets (search / generate / fetch → frozen project-local paths + ledger). See `phases/source/guide.md` (wraps `media-use resolve`; the search-driven categories use the news/web/tweet/image search). If `asset_needs` is empty, **skip to Step 3**.
+If `shot-plan.json.asset_needs` is non-empty, follow
+`phases/source/guide.md`. A need with `provider: "quiver"` routes to
+`phases/source/quiver.md`; all other needs retain the existing media-use
+search/capture/generate behavior. In either lane, Source freezes accepted
+material into project-local paths and writes the ledger. If `asset_needs` is
+empty, **skip to Step 3**.
 
-```bash
-# illustrative — see phases/source/guide.md
-(cd "$PROJECT_DIR" && node <SKILL_DIR>/phases/source/resolve.mjs --plan ./shot-plan.json --out ./assets)
-```
-
-Degrade gracefully: if a search/provider is unavailable, the category falls back to asset-free (note it in `context.log`).
+If a required provider or operation is unavailable, record the distinct unmet
+state in the ledger/context and do not fabricate an SVG, preview, creation, or
+provenance. Optional Quiver absence can preserve an existing HyperFrames path
+when no Quiver asset work is required.
 
 ### Step 3 — Design (subagent: Director Part 2)
 
@@ -121,7 +178,7 @@ Dispatch a subagent (prompt = `agents/director.md` Part 2 + dispatch context inc
 
 ### Step 4 — Build (subagent: Builder, reuse-first)
 
-Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot-plan.json`, `catalog-map.md`, the category's `module.md`, `references/motion-vocabulary.md`, `references/builder-contract.md`). **Reuse-first**: `npx hyperframes add <block>` + customize in place; hand-author only gaps + the asset-fusion affordance. Output `compositions/index.html` honoring the HF contract (paused GSAP timeline on `window.__timelines`, `class="clip"` + stable ids, `tl.seek(0)`, deterministic).
+Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot-plan.json`, `catalog-map.md`, the category's `module.md`, `references/motion-vocabulary.md`, `references/builder-contract.md`). **Reuse-first**: `npx hyperframes add <block>` + customize in place; hand-author only gaps + the asset-fusion affordance. Output the actual root `index.html` that the pinned HyperFrames CLI loads, honoring the HF contract (paused GSAP timeline on `window.__timelines`, `class="clip"` + stable ids, `tl.seek(0)`, deterministic). `assets/` inputs are local paths only.
 
 ### Step 5 — Verify (Bash → repair subagent on failure)
 
@@ -131,7 +188,7 @@ Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot
 (cd "$PROJECT_DIR" && npx hyperframes snapshot --at <proof-times>)
 ```
 
-Choose proof times that show the opening state, signature move, and final hold. Inspect the generated contact or snapshot sheet before continuing. On `lint`, `check`, or snapshot failure, dispatch the repair subagent (`agents/finalize.md`) for one in-place fix pass, then rerun the failed gate. Never change a fixed duration merely to hide a defect.
+Choose proof times that show the opening state, signature move, and final hold. Inspect the generated contact or snapshot sheet before continuing. On `lint`, `check`, or snapshot failure, dispatch the repair subagent (`agents/finalize.md`) with the actual root `index.html` as the repair target for one in-place fix pass, then rerun the failed gate. Never change a fixed duration merely to hide a defect.
 
 ### Step 6 — Approve and render (Bash)
 
@@ -140,6 +197,12 @@ Ask one question: “preview first, or render?” If the user chooses preview, o
 ```bash
 (cd "$PROJECT_DIR" && npx hyperframes preview --background)
 ```
+
+Always report the preview server URL and whether it is running; claim it was
+opened or visibly displayed only after the host confirms visible display (a
+queued or pending open request means the link is ready, not opened). Do not
+claim strict deterministic pixel proof without repeated forward and backward
+pixel evidence; `contrast: 0 elements` means no contrast coverage.
 
 Render only after an explicit render answer:
 
@@ -152,14 +215,14 @@ Verify the output exists, is non-empty, and has the intended duration. The final
 
 ## Resume table
 
-| State                                                    | Continue from              |
-| -------------------------------------------------------- | -------------------------- |
-| no `shot-plan.json`                                      | Step 1 (plan)              |
-| `shot-plan.json` has `asset_needs`, no `assets/`         | Step 2 (source)            |
-| `shot-plan.json` final, no `compositions/index.html`     | Step 3/4 (design+build)    |
-| `compositions/index.html` exists, proof snapshots absent | Step 5 (verify)            |
-| checks and proof snapshots pass, no approved render      | Step 6 (approval)          |
-| approved render exists                                   | verify output, then report |
+| State                                               | Continue from              |
+| --------------------------------------------------- | -------------------------- |
+| no `shot-plan.json`                                 | Step 1 (plan)              |
+| `shot-plan.json` has `asset_needs`, no `assets/`    | Step 2 (source)            |
+| `shot-plan.json` final, no `index.html`             | Step 3/4 (design+build)    |
+| `index.html` exists, proof snapshots absent         | Step 5 (verify)            |
+| checks and proof snapshots pass, no approved render | Step 6 (approval)          |
+| approved render exists                              | verify output, then report |
 
 ## Design notes (maintainers — execution does not read this)
 
@@ -172,7 +235,7 @@ Verify the output exists, is non-empty, and has the intended duration. The final
     hyperframes.json  context.log
     shot-plan.json            # the IR (Director output)
     assets/  assets/index.md  # media-use output (if sourced)
-    compositions/index.html   # Builder output
+    index.html                 # Builder output; actual CLI entry
     renders/video.mp4
   ```
 - **Registration:** in `hyperframes` router — add the "design-led short motion graphic" intent + Workflow description; carve the motion-graphics triggers out of `/general-video`; add reverse Do-NOT-use edges. See `motion-graphics-genre.md` §5-7.

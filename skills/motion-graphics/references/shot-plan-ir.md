@@ -23,6 +23,8 @@ The single contract between Director and Builder. One file: `PROJECT_DIR/shot-pl
       "query": "…",
       "source": "…",
       "treatment": "cutout|recolor|vectorize|none",
+      "provider": "quiver", // optional; omit for the existing media-use path
+      "operation": "reuse|generate|vectorize|edit|animate", // required with provider: "quiver"
     },
   ],
 
@@ -51,4 +53,4 @@ The single contract between Director and Builder. One file: `PROJECT_DIR/shot-pl
 - `tweet` → `{ author, handle, avatar, text, metrics }`
 - `asset-fusion` → `{ data_type, asset: <path>, affordance, element_positions: {center, extent, safe[], avoid[]}, derived_palette[], connectors[] }`
 
-**Invariants:** `scenes` (if present) partition `[0, duration_s]` with no gaps/overlaps · empty `asset_needs` ⇒ Step 2 (source) is skipped · a named `block` ⇒ the Builder reuses + customizes it rather than hand-authoring.
+**Invariants:** `scenes` (if present) partition `[0, duration_s]` with no gaps/overlaps · empty `asset_needs` means no asset work is required and Step 2 (source) is skipped · a selected asset operation creates a non-empty need, including for a form category · a need with `provider: "quiver"` also declares `operation` · Source resolves every completed need to a frozen local path before Builder uses it · a named `block` ⇒ the Builder reuses + customizes it rather than hand-authoring.
