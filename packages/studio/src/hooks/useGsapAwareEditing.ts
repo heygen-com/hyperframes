@@ -364,7 +364,7 @@ export function useGsapAwareEditing({
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: RotationCommit) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (next.plain || editsPlainCss(selection.element, "rotate")) {
+      if (next.plain === undefined ? editsPlainCss(selection.element, "rotate") : next.plain) {
         const result = await handleDomRotationCommit(selection, next);
         return writes.finish(result?.changed === true);
       }

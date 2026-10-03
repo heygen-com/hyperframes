@@ -442,7 +442,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       }
       // Hold the final angle while the commit lands.
       applyRotationDraft(sel.element, finalRotation.angle, g.plainRotation);
-      const commit = g.plainRotation ? { ...finalRotation, plain: g.plainRotation } : finalRotation;
+      const commit = { ...finalRotation, plain: g.plainRotation };
       void Promise.resolve(opts.onRotationCommitRef.current(sel, commit))
         .then((result) => trackPreviewEditResult("rotate", "drag", result))
         .catch((error) => {

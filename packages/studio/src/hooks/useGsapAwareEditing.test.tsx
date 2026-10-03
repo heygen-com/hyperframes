@@ -312,6 +312,15 @@ describe("useGsapAwareEditing rotation routing", () => {
     act(() => h.root.unmount());
   });
 
+  it("saves a turn the press sent down the GSAP route there, even once the element looks GSAP-free", async () => {
+    vi.mocked(tryGsapRotationIntercept).mockResolvedValue({ status: "persisted" });
+    const h = rotate(document.createElement("div"));
+    await act(() => h.rotationCommit(h.box, { angle: 55, plain: null }));
+    expect(tryGsapRotationIntercept).toHaveBeenCalledTimes(1);
+    expect(h.handleDomRotationCommit).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
   it("saves a turn the press drew as CSS by the CSS writer, even once a GSAP tween turns the element", async () => {
     const element = document.createElement("div");
     const h = rotate(element);
