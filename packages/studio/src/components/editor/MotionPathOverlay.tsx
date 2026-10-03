@@ -378,7 +378,15 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     const anim =
       d.ref.type === "keyframe" ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
     const iframe = iframeRef.current;
-    void commitNodeDrop({ ref: d.ref, at: { x, y }, animId, anim, selection, iframe, commitMutation });
+    void commitNodeDrop({
+      ref: d.ref,
+      at: { x, y },
+      animId,
+      anim,
+      selection,
+      iframe,
+      commitMutation,
+    });
     // Park the playhead on the edited keyframe's time so the element previews AT
     // that keyframe. Without it, a playhead sitting before the tween renders the
     // element's base pose — the edit (correct on the path) looks like it vanished.
