@@ -26,8 +26,8 @@ import {
   finishGroupTimingGsapFallback,
   sdkTimingGsapSync,
   readFileContent,
-  scaleGsapPositions,
-  shiftGsapPositions,
+  scaleGsapMutation,
+  shiftGsapMutation,
   syncPreviewContentDuration,
 } from "./timelineTimingSync";
 import type { GsapMutationStatus } from "./gsapMutationClient";
@@ -347,12 +347,8 @@ export function useTimelineGroupEditing({
             changes,
             sdkGsap: sdk?.sdkGsap,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
-            mutateChange: (change, changePath) => {
-              const delta = change.start - change.element.start;
-              const domId = change.element.domId;
-              if (delta === 0 || !domId) return null;
-              return shiftGsapPositions(projectId, changePath, domId, delta);
-            },
+            mutationFor: (change) =>
+              shiftGsapMutation(change.element.domId ?? "", change.start - change.element.start),
           });
         } finally {
           invalidateGsapCache?.();
@@ -460,22 +456,14 @@ export function useTimelineGroupEditing({
             changes,
             sdkGsap: sdk?.sdkGsap,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
-            mutateChange: (change, changePath) => {
-              const domId = change.element.domId;
-              const timingChanged =
-                change.start !== change.element.start ||
-                change.duration !== change.element.duration;
-              if (!timingChanged || !domId) return null;
-              return scaleGsapPositions(
-                projectId,
-                changePath,
-                domId,
+            mutationFor: (change) =>
+              scaleGsapMutation(
+                change.element.domId ?? "",
                 toCompositionTime(change.element, change.element.start),
                 change.element.duration,
                 toCompositionTime(change.element, change.start),
                 change.duration,
-              );
-            },
+              ),
           });
         } finally {
           invalidateGsapCache?.();
