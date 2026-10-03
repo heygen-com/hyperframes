@@ -20,6 +20,16 @@ vi.mock("./projectLink.js", () => ({
   writeProjectLink: linkMocks.writeProjectLink,
 }));
 
+const oauthMocks = vi.hoisted(() => ({
+  refreshTokens: vi.fn(),
+}));
+
+vi.mock("../auth/oauth.js", () => ({
+  refreshTokens: oauthMocks.refreshTokens,
+}));
+
+import { ErrRefreshFailed } from "../auth/errors.js";
+
 import {
   buildPublishFileMap,
   createPublishArchive,
@@ -1068,7 +1078,7 @@ describe("publishProjectArchive", () => {
   });
 });
 
-describe("publishProjectArchive with a login the server rejects", () => {
+describe("publishProjectArchive with a credential the server rejects", () => {
   const EXPIRED = "Your login expired. Run hyperframes auth login, then publish again.";
   const unauthorized = () =>
     new Response(JSON.stringify({ message: "Unauthorized" }), {
@@ -1076,16 +1086,29 @@ describe("publishProjectArchive with a login the server rejects", () => {
       headers: { "content-type": "application/json" },
     });
 
-  it("stops at the first request, before any upload, with a re-login message", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized());
+  async function publishExpecting(fetchMock: ReturnType<typeof vi.fn>, message: string) {
     const dir = makeProjectDir();
     try {
-      await expect(runAuthenticatedPublish(fetchMock, dir)).rejects.toThrow(EXPIRED);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expectAuthorizedHeaders(fetchMock, 0);
+      await expect(runAuthenticatedPublish(fetchMock, dir)).rejects.toThrow(message);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  }
+
+  it("stops at the first request, before any upload, with a re-login message", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized());
+    await publishExpecting(fetchMock, EXPIRED);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthorizedHeaders(fetchMock, 0);
+  });
+
+  it("says the same when the final publish request is refused", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(uploadResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(unauthorized());
+    await publishExpecting(fetchMock, EXPIRED);
   });
 
   it("says the same on the legacy multipart publish", async () => {
@@ -1093,9 +1116,76 @@ describe("publishProjectArchive with a login the server rejects", () => {
       .fn()
       .mockResolvedValueOnce(new Response("not found", { status: 404 }))
       .mockResolvedValueOnce(unauthorized());
+    await publishExpecting(fetchMock, EXPIRED);
+  });
+
+  it("does not blame the login for a 401 from the storage upload, which carries no credential", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(uploadResponse())
+      .mockResolvedValueOnce(new Response("denied", { status: 401 }));
+    await publishExpecting(fetchMock, "Failed to upload project archive");
+  });
+
+  it("names the environment API key instead of asking for a login it would not use", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized());
     const dir = makeProjectDir();
     try {
-      await expect(runAuthenticatedPublish(fetchMock, dir)).rejects.toThrow(EXPIRED);
+      authMocks.tryResolveCredential.mockResolvedValue({
+        type: "api_key",
+        key: "k",
+        source: "env",
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "HEYGEN_API_KEY was rejected. Fix or unset it, then publish again.",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("publishProjectArchive with an expired login it can refresh", () => {
+  const expiredLogin = {
+    type: "oauth",
+    access_token: "stale-token",
+    refresh_token: "refresh-token",
+    source: "file_json",
+    refreshable: true,
+  };
+
+  it("refreshes the login and publishes with the new token", async () => {
+    oauthMocks.refreshTokens.mockResolvedValueOnce({ access_token: "fresh-token" });
+    authMocks.tryResolveCredential.mockResolvedValue(expiredLogin);
+    const fetchMock = stagedFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await publishProjectArchive(dir);
+      expect(oauthMocks.refreshTokens).toHaveBeenCalledWith("refresh-token");
+      expect(fetchMock.mock.calls[0]![1].headers).toEqual(
+        expect.objectContaining({ authorization: "Bearer fresh-token" }),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("asks for a new login, without sending anything, when the refresh is refused", async () => {
+    oauthMocks.refreshTokens.mockRejectedValueOnce(ErrRefreshFailed("invalid_grant"));
+    authMocks.tryResolveCredential.mockResolvedValue(expiredLogin);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "Your login expired. Run hyperframes auth login, then publish again.",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
