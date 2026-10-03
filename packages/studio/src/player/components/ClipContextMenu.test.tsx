@@ -164,6 +164,7 @@ describe("ClipContextMenu tools", () => {
     const { labels, unmount } = menuWith(undefined);
     expect(labels().some((label) => label?.startsWith("Freeze frame"))).toBe(true);
     expect(labels().some((label) => label?.startsWith("Look"))).toBe(true);
+    expect(labels().some((label) => label?.startsWith("Voice"))).toBe(true);
     unmount();
   });
 
