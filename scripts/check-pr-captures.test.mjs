@@ -116,6 +116,17 @@ test("markdown under a watched package needs no capture", () => {
   assert.equal(evaluate({ body: "", files }).ok, true);
 });
 
+test("test files under a watched package need no capture", () => {
+  const files = parseNumstat(
+    "28\t0\tpackages/studio/tests/e2e/edit-accuracy/server.test.mjs\0" +
+      "12\t4\tpackages/studio/tests/e2e/edit-accuracy/case.mjs\0" +
+      "6\t1\tpackages/player/src/a.spec.tsx\0" +
+      "40\t0\tpackages/studio/src/b.test.ts\0",
+  );
+  assert.deepEqual(files, []);
+  assert.equal(evaluate({ body: "", files }).ok, true);
+});
+
 test("a binary file spends the whole no-visible-change budget", () => {
   const [file] = parseNumstat("-\t-\tpackages/studio/public/logo.png\0");
   assert.equal(file.lines, 20);
@@ -193,7 +204,10 @@ test("comment fragments cannot rebuild a comment or hide a section from the read
 
 test("No visible change accepts a test-only .tsx change but not a component change", () => {
   const body = "## No visible change\nx";
-  assert.equal(evaluate({ body, files: [studio("packages/studio/src/A.test.tsx", 5)] }).ok, true);
+  assert.equal(
+    evaluate({ body, files: parseNumstat("5\t0\tpackages/studio/src/A.test.tsx\0") }).ok,
+    true,
+  );
   assert.equal(evaluate({ body, files: [studio("packages/studio/src/A.tsx", 5)] }).ok, false);
 });
 
