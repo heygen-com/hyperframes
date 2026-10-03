@@ -50,7 +50,6 @@ export interface TimelineToolbarProps {
   showAddBeat?: boolean;
   /** Hides Add keyframe and auto-record, and turns off auto-record and the K shortcut with them. */
   showKeyframes?: boolean;
-  /** The host's own controls, drawn first in the right-hand group, before the thumbnails toggle. */
   rightActions?: ReactNode;
 }
 
