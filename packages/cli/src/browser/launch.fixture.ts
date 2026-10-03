@@ -15,8 +15,10 @@ registerRootExitRequester((exitCode) => {
 const { executablePath } = await ensureBrowser();
 const puppeteer = await import("puppeteer-core");
 if (process.argv[4] === "probe") {
+  // The signal owner is installed synchronously by the call, so "probing" is only written once a SIGTERM is handled.
+  const probe = resolveManagedGpuMode("auto", executablePath);
   writeFileSync(readyPath, "probing");
-  await resolveManagedGpuMode("auto", executablePath);
+  await probe;
 }
 writeFileSync(readyPath, "launching");
 const browser = await launchManagedBrowser(puppeteer.default, {
