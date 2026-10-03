@@ -252,7 +252,13 @@ you build.
 For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 (~$0.001/image), or `OPENROUTER_API_KEY` to route any vision model through
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
-`HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
+`HYPERFRAMES_OPENROUTER_MODEL` overrides the model. To use any other
+OpenAI-compatible endpoint (a regional provider, or a local server such as
+Ollama or vLLM), set `HYPERFRAMES_VISION_BASE_URL`, `HYPERFRAMES_VISION_API_KEY`
+and `HYPERFRAMES_VISION_MODEL` together; this endpoint wins over both. Pick a
+model that accepts image input, and give servers that ignore auth any non-empty
+key. If only some of the three are set, capture warns and skips descriptions
+instead of falling back to another provider.
 
 ### `transcribe`
 

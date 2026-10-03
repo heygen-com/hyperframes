@@ -27,6 +27,7 @@ import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import {
   captionImagesWithGemini,
   generateAssetDescriptions,
+  resolveCustomVisionEndpoint,
   resolveVisionPhaseCompletion,
 } from "./contentExtractor.js";
 import type { VisionCaptionOutcome } from "./contentExtractor.js";
@@ -34,7 +35,8 @@ import type { VisionCaptionOutcome } from "./contentExtractor.js";
 function hasVisionCredentials(skipVision: boolean): boolean {
   return Boolean(
     !skipVision &&
-    (process.env.OPENROUTER_API_KEY ||
+    (resolveCustomVisionEndpoint().kind === "ready" ||
+      process.env.OPENROUTER_API_KEY ||
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
       (process.env.HYPERFRAMES_VERTEX_PROJECT_ID &&
@@ -344,7 +346,7 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       const hasVisionKey = hasVisionCredentials(skipVision);
       const header = hasVisionKey
         ? "# Asset Descriptions\n\nOne line per file. Read this instead of opening every image individually.\n\nTo find a specific brand or icon, **grep this file for the brand name in the description text** (e.g. `grep -i 'autodesk' asset-descriptions.md`). The Gemini Vision captions identify what's actually in each file — that's the agent's selector.\n\nThe `logo-<hash>.svg` filename prefix is a cheap structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). It is NOT a content claim — many `logo-*` files are nav icons or decorative shapes. Trust the captions, not the filename prefix.\n\n"
-        : "# Asset Descriptions\n\n⚠️  No vision credentials — descriptions below are catalog-derived (alt text, headings, section context, filename) instead of Vision-generated. To get richer Vision descriptions on the next capture, set GEMINI_API_KEY (or GOOGLE_API_KEY), or HYPERFRAMES_VERTEX_PROJECT_ID plus HYPERFRAMES_VERTEX_SERVICE_ACCOUNT for Vertex service-account auth, and re-run.\n\nThe `logo-<hash>.svg` filename prefix is a structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). To pick the actual brand logo without Vision, open the `logo-*` candidates in a previewer or rasterize them with `sharp` before referencing — composing a fake logo ships off-brand in the final video.\n\n";
+        : "# Asset Descriptions\n\n⚠️  No vision credentials — descriptions below are catalog-derived (alt text, headings, section context, filename) instead of Vision-generated. To get richer Vision descriptions on the next capture, set GEMINI_API_KEY (or GOOGLE_API_KEY), HYPERFRAMES_VERTEX_PROJECT_ID plus HYPERFRAMES_VERTEX_SERVICE_ACCOUNT for Vertex service-account auth, or HYPERFRAMES_VISION_BASE_URL, HYPERFRAMES_VISION_API_KEY and HYPERFRAMES_VISION_MODEL for any OpenAI-compatible vision endpoint, and re-run.\n\nThe `logo-<hash>.svg` filename prefix is a structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). To pick the actual brand logo without Vision, open the `logo-*` candidates in a previewer or rasterize them with `sharp` before referencing — composing a fake logo ships off-brand in the final video.\n\n";
       writeAssetDescriptionsFile(outputDir, lines, header);
       progress(
         "design",
