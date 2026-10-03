@@ -6,6 +6,7 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import { addExternalFileReloadListener } from "./externalFileReloadBus";
 import { whenPreviewBooted } from "../player/store/playerStore";
+import { useAbsentReadRecoveryTelemetry } from "./useAbsentReadRecoveryTelemetry";
 
 /**
  * Why an optional project-file read produced no usable content. `stage: "read"`
@@ -376,13 +377,8 @@ export function useSdkSession(
   reloadTokenRef.current = reloadToken;
   const [unreachableProject, setUnreachableProject] = useState<string | null>(null);
   const [compositionMissing, setCompositionMissing] = useState(false);
-  // Keyed `${projectId}:${path}` so a refresh that doesn't fix it (the file
-  // really is gone) can't loop, and so it fires again for a genuinely
-  // different path or project.
-  const refreshedAbsentPathsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    refreshedAbsentPathsRef.current.clear();
-  }, [projectId]);
+  // Keyed by path alone: cleared below on every `projectId` change, so only
+  const absentReadRecovery = useAbsentReadRecoveryTelemetry(projectId, fileTree, fileTreeLoaded);
 
   /**
    * Update `unreachableProject`/`compositionMissing` for one failed read, and
@@ -399,10 +395,7 @@ export function useSdkSession(
     setUnreachableProject(reportReadFailure(read, forProjectId, pathInTree));
     setCompositionMissing(read.reason === "absent");
     if (read.reason !== "absent") return;
-    const key = `${forProjectId}:${forPath}`;
-    if (refreshedAbsentPathsRef.current.has(key)) return;
-    refreshedAbsentPathsRef.current.add(key);
-    onAbsentRead?.(forPath);
+    absentReadRecovery.triggerOnce(forPath, onAbsentRead);
   }
 
   useEffect(
