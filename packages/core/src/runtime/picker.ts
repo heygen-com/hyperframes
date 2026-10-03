@@ -196,15 +196,18 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
 
   function buildElementLabel(el: Element): string {
     const tag = el.tagName.toLowerCase();
-    const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
+    const words = (value: string | null) => (value ?? "").trim().replace(/\s+/g, " ");
+    const text = words(el.textContent);
     const trimLabel = (value: string, maxChars: number) => {
       const chars = Array.from(value);
       return chars.length > maxChars ? `${chars.slice(0, maxChars - 1).join("")}…` : value;
     };
+    const authorsLabel = words(el.getAttribute("data-label"));
+    if (authorsLabel) return trimLabel(authorsLabel, 56);
     const heading = /^h[1-6]$/.test(tag);
     if (heading || tag === "p" || tag === "span" || tag === "div")
       return text.length > 0 ? trimLabel(text, 56) : heading ? "Heading" : "Text";
-    if (tag === "img") return "Image";
+    if (tag === "img") return trimLabel(words(el.getAttribute("alt")), 56) || "Image";
     if (tag === "video") return "Video";
     if (tag === "audio") return "Audio";
     if (tag === "svg") return "Shape";

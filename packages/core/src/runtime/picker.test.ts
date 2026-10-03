@@ -882,4 +882,55 @@ describe("createPickerModule", () => {
       }
     });
   });
+
+  describe("buildElementLabel names pictures by what the author called them", () => {
+    function pickLabel(el: Element): string | undefined {
+      Object.assign((el as HTMLElement).style, {
+        position: "absolute",
+        left: "0px",
+        top: "0px",
+        width: "40px",
+        height: "40px",
+      });
+      document.body.appendChild(el);
+      const restore = emulateHitTest(() => [el]);
+      try {
+        const picker = createPickerModule({ postMessage: createMockPostMessage() });
+        picker.installPickerApi();
+        const api = (
+          window as {
+            __HF_PICKER_API?: { pickAtPoint?: (x: number, y: number) => { label: string } | null };
+          }
+        ).__HF_PICKER_API;
+        return api?.pickAtPoint?.(10, 10)?.label;
+      } finally {
+        restore();
+      }
+    }
+    const img = (attrs: Record<string, string>) => {
+      const el = document.createElement("img");
+      for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+      return el;
+    };
+
+    it("uses data-label first, then alt, then Image", () => {
+      expect(
+        pickLabel(img({ "data-label": "Player cutout (from Stadium photo)", alt: "Player" })),
+      ).toBe("Player cutout (from Stadium photo)");
+      expect(pickLabel(img({ alt: "  Player holding\n a basketball " }))).toBe(
+        "Player holding a basketball",
+      );
+      expect(pickLabel(img({ alt: "" }))).toBe("Image");
+      expect(pickLabel(img({ "data-label": "   " }))).toBe("Image");
+    });
+
+    it("honours data-label on any element and trims a long one", () => {
+      const div = document.createElement("div");
+      div.setAttribute("data-label", "Intro card");
+      div.textContent = "Welcome to the show";
+      expect(pickLabel(div)).toBe("Intro card");
+      const long = img({ alt: "x".repeat(80) });
+      expect(pickLabel(long)).toBe(`${"x".repeat(55)}…`);
+    });
+  });
 });
