@@ -142,4 +142,61 @@ describe("gsap adapter at a tween's start", () => {
     adapter.seek({ time: 1 });
     expect(gsap.getProperty(box, "x")).toBe(10);
   });
+
+  it.each([
+    {
+      shape: "a stagger whose next target starts 0.5 ms later with overwrite auto",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        timeline.to(o, { x: 100, duration: 10, ease: "none" }, 0);
+        timeline.to([{ x: 0 }, o], { x: 200, duration: 1, stagger: 0.0005, overwrite: "auto" }, 2);
+      },
+      seeks: [2, 1],
+      x: 10,
+    },
+    {
+      shape: "a reversed keyframed tween",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        const tween = gsap.to(o, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 });
+        timeline.add(tween, 1);
+        tween.timeScale(-1);
+      },
+      seeks: [1],
+      x: 60,
+    },
+    {
+      shape: "a paused keyframed tween",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        const tween = gsap.to(o, {
+          keyframes: { "0%": { x: 5 }, "100%": { x: 60 } },
+          duration: 1,
+          ease: "none",
+        });
+        timeline.add(tween, 1);
+        tween.totalTime(0.5).pause();
+      },
+      seeks: [1, 1],
+      x: 32.5,
+    },
+    {
+      shape: "a short repeatRefresh keyframed tween",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        const keyframes = [
+          { x: "+=10", duration: 0.0002 },
+          { x: "+=10", duration: 0.0002 },
+        ];
+        timeline.to(o, { keyframes, repeat: 2, repeatRefresh: true, ease: "none" }, 2);
+      },
+      seeks: [2, 2],
+      x: 0,
+    },
+  ])("leaves $shape as GSAP renders it at its start", ({ build, seeks, x }) => {
+    const o = { x: 0 };
+    const timeline = gsap.timeline({ paused: true });
+    build(timeline, o);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const time of seeks) adapter.seek({ time });
+    expect(o.x).toBeCloseTo(x, 6);
+  });
 });

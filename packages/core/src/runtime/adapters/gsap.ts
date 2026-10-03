@@ -24,22 +24,32 @@ type GsapAnimation = {
   startTime: () => number;
   timeScale: () => number;
   totalDuration: () => number;
+  paused: () => boolean;
   render: (totalTime: number, suppressEvents: boolean) => unknown;
   timeline?: unknown;
   getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => unknown[];
 };
 
-const isGsapAnimation = (value: unknown): value is GsapAnimation =>
-  typeof (value as GsapAnimation | null)?.render === "function" &&
-  typeof (value as GsapAnimation).startTime === "function" &&
-  typeof (value as GsapAnimation).timeScale === "function";
+const STEP_PAST_START = 1e-6;
+
+const playsForward = (value: unknown): value is GsapAnimation => {
+  const animation = value as GsapAnimation | null;
+  return (
+    typeof animation?.render === "function" &&
+    typeof animation.startTime === "function" &&
+    typeof animation.paused === "function" &&
+    typeof animation.timeScale === "function" &&
+    animation.timeScale() > 0 &&
+    !animation.paused()
+  );
+};
 
 function recrossTweensStartingAt(children: unknown[], time: number): void {
-  for (const child of children.filter(isGsapAnimation)) {
+  for (const child of children.filter(playsForward)) {
     const local = (time - child.startTime()) * child.timeScale();
     if (Math.abs(local) < 1e-9 && child.timeline) {
-      child.render(0.001, true);
-      child.render(-0.001, true);
+      child.render(STEP_PAST_START, true);
+      child.render(-STEP_PAST_START, true);
       child.render(0, true);
     } else if (child.getChildren && local > 0 && local <= child.totalDuration()) {
       recrossTweensStartingAt(child.getChildren(false, true, true), local);
