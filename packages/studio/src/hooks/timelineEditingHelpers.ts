@@ -232,7 +232,7 @@ function resolveResizePlaybackStart(
   };
 }
 
-export function buildTimelineMoveTimingPatch(
+export function applyTimelineMoveAttributes(
   original: string,
   target: PatchTarget,
   start: number,
@@ -242,7 +242,7 @@ export function buildTimelineMoveTimingPatch(
 ): string {
   if (!Number.isFinite(start) || !Number.isFinite(duration)) {
     console.warn(
-      `[Timeline] buildTimelineMoveTimingPatch: non-finite timing (start=${start}, duration=${duration}) — patch skipped`,
+      `[Timeline] applyTimelineMoveAttributes: non-finite timing (start=${start}, duration=${duration}) — patch skipped`,
     );
     return original;
   }
@@ -264,15 +264,30 @@ export function buildTimelineMoveTimingPatch(
       property: "data-audio-group",
       value: null,
     });
-  // Content-driven duration: sync data-duration to the furthest clip end read
-  // from the PATCHED SOURCE (raw data-duration), so it grows if a clip moved
-  // past the end and shrinks if the furthest clip moved left. Measured from the
-  // source, NOT the store — store durations are runtime-truncated to the current
-  // comp length, which would ratchet the duration down every move.
-  return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
+  return patched;
 }
 
-export function buildTimelineResizeTimingPatch(
+/**
+ * Content-driven duration: sync data-duration to the furthest clip end read from the PATCHED
+ * SOURCE (raw data-duration), so it grows if a clip moved past the end and shrinks if the
+ * furthest clip moved left. Measured from the source, NOT the store: store durations are
+ * runtime-truncated to the current comp length, which would ratchet the duration down every edit.
+ */
+export function syncCompositionDurationToContent(source: string): string {
+  return setCompositionDurationToContent(source, furthestClipEndFromSource(source));
+}
+
+export function buildTimelineMoveTimingPatch(
+  ...args: Parameters<typeof applyTimelineMoveAttributes>
+): string {
+  const patched = applyTimelineMoveAttributes(...args);
+  const [, , start, duration] = args;
+  return Number.isFinite(start) && Number.isFinite(duration)
+    ? syncCompositionDurationToContent(patched)
+    : patched;
+}
+
+export function applyTimelineResizeAttributes(
   original: string,
   target: PatchTarget,
   element: TimelineElement,
@@ -296,10 +311,13 @@ export function buildTimelineResizeTimingPatch(
       value: formatTimelineMediaOffset(pbs.value),
     });
   }
-  // Content-driven duration from the PATCHED SOURCE (raw data-duration) —
-  // grows/shrinks to the furthest clip end. Not from the store, whose
-  // durations are runtime-truncated.
-  return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
+  return patched;
+}
+
+export function buildTimelineResizeTimingPatch(
+  ...args: Parameters<typeof applyTimelineResizeAttributes>
+): string {
+  return syncCompositionDurationToContent(applyTimelineResizeAttributes(...args));
 }
 
 export interface PersistTimelineEditInput {
@@ -357,11 +375,15 @@ export function operationChanges(
   }));
 }
 
-/** Patches each change into `source`, failing loudly on a target the file does not hold. */
+/**
+ * Patches each change into `source`, failing loudly on a target the file does not hold.
+ * `finishFile` runs once on the patched file, so a per-file step is not repeated per change.
+ */
 export function patchTimelineChangesInSource(
   source: string,
   targetPath: string,
   changes: readonly PersistTimelineBatchChange[],
+  finishFile?: (patched: string) => string,
 ): string {
   let current = source;
   for (const { element, buildPatches } of changes) {
@@ -373,7 +395,7 @@ export function patchTimelineChangesInSource(
     }
     current = buildPatches(current, target);
   }
-  return current;
+  return finishFile && current !== source ? finishFile(current) : current;
 }
 
 export interface PersistTimelineBatchEditInput {
@@ -387,6 +409,8 @@ export interface PersistTimelineBatchEditInput {
   coalesceKey?: string;
   /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
   coalesceMs?: number;
+  /** Applied once to each patched file, after every change to it. */
+  finishFile?: (patched: string) => string;
 }
 
 export async function persistTimelineBatchEdit(
@@ -398,7 +422,12 @@ export async function persistTimelineBatchEdit(
     changesByPath.set(targetPath, [...(changesByPath.get(targetPath) ?? []), change]);
   }
   const buildFile = (targetPath: string) => (original: string) => {
-    const next = patchTimelineChangesInSource(original, targetPath, changesByPath.get(targetPath)!);
+    const next = patchTimelineChangesInSource(
+      original,
+      targetPath,
+      changesByPath.get(targetPath)!,
+      input.finishFile,
+    );
     if (next !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
     return next;
   };

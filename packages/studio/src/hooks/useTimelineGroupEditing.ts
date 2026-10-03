@@ -10,8 +10,9 @@ import {
   type PublishSdkSession,
 } from "../utils/sdkCutover";
 import {
-  buildTimelineMoveTimingPatch,
-  buildTimelineResizeTimingPatch,
+  applyTimelineMoveAttributes,
+  applyTimelineResizeAttributes,
+  syncCompositionDurationToContent,
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
@@ -175,6 +176,7 @@ export function useTimelineGroupEditing({
         pendingTimelineEditPathRef,
         coalesceKey,
         coalesceMs,
+        finishFile: syncCompositionDurationToContent,
       });
       forceReloadSdkSession?.();
     },
@@ -312,7 +314,7 @@ export function useTimelineGroupEditing({
             changes.map((change) => ({
               element: change.element,
               buildPatches: (original, target) =>
-                buildTimelineMoveTimingPatch(
+                applyTimelineMoveAttributes(
                   original,
                   target,
                   toAuthoredStart(change.element, change.start),
@@ -430,7 +432,7 @@ export function useTimelineGroupEditing({
             changes.map((change) => ({
               element: change.element,
               buildPatches: (original, target) =>
-                buildTimelineResizeTimingPatch(original, target, change.element, {
+                applyTimelineResizeAttributes(original, target, change.element, {
                   start: change.start,
                   duration: change.duration,
                   playbackStart: change.playbackStart,
