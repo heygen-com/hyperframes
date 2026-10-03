@@ -10,7 +10,6 @@ import {
   readNestedFiles,
 } from "./gsapSoftReload";
 import { isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
-import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { markScenesStale } from "../player/sceneSwap";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
@@ -185,15 +184,21 @@ function keepDrawnStyle(
   }
 }
 
-// A gesture folded into the script leaves marks on the live element that every seek would re-impose.
-function syncStaleEditMarks(doc: Document, file: UndoRestoreFile): void {
-  const [restoredDoc, previousDoc] = [file.restored, file.previous].map(parseSavedSource);
-  for (const live of doc.querySelectorAll(STUDIO_EDIT_ATTRS.map((attr) => `[${attr}]`).join())) {
-    const source = findAuthoredElement(restoredDoc, live);
-    if (source && STUDIO_EDIT_ATTRS.some((a) => live.getAttribute(a) !== source.getAttribute(a))) {
-      syncElementAttributes(live, source, findAuthoredElement(previousDoc, live) ?? undefined);
-    }
-  }
+// Every seek re-imposes the live Studio marks, and they drift from the file: a drag drops them, a fold keeps them.
+function markDriftTargets(
+  liveByKey: Map<string, Element>,
+  restoredByKey: Map<string, Element>,
+  previousByKey: Map<string, Element>,
+  synced: string[],
+): RestoreTarget[] {
+  const drifted = (live: Element, restored: Element) =>
+    !live.hasAttribute("data-hf-inner-root") &&
+    STUDIO_EDIT_ATTRS.some((attr) => live.getAttribute(attr) !== restored.getAttribute(attr));
+  return [...restoredByKey].flatMap(([key, restored]) => {
+    const live = liveByKey.get(key);
+    if (!live || synced.includes(key) || !drifted(live, restored)) return [];
+    return [{ live, restored, previous: previousByKey.get(key) }];
+  });
 }
 
 function hasAmbiguousGsapScriptChange(
@@ -243,7 +248,7 @@ function scopeTargets(
     if (!live || !restored || live.hasAttribute("data-hf-inner-root")) return null;
     targets.push({ live, restored, previous: previousByKey.get(key) });
   }
-  return targets;
+  return targets.concat(markDriftTargets(liveByKey, restoredByKey, previousByKey, keys));
 }
 
 function fileTargets(
@@ -406,7 +411,6 @@ export function applyUndoRestoreToPreview(
     return "full";
   }
   if (restoredScript && (restoredScript !== previousScript || reparse.length)) {
-    syncStaleEditMarks(doc, active);
     const result = applySoftReload(iframe, restoredScript, {
       onAsyncFailure: reloadPreview,
       currentTimeOverride: currentTime,
