@@ -73,7 +73,8 @@ export function commitNodeDrop(drop: NodeDrop): Promise<void> {
   const store = usePlayerStore.getState();
   if (store.autoKeyframeEnabled) {
     const selected = store.activeKeyframePct;
-    store.setActiveKeyframePct(ref.pct);
+    const step = ref.step == null ? undefined : anim.keyframes?.keyframes[ref.step];
+    store.setActiveKeyframePct(step?.percentage ?? ref.pct);
     const live = readGsapPositionFromIframe(iframe, selectorFor(selection) ?? "");
     done = commitValueAtPlayhead(selection, anim, at, iframe, callbacks, {
       label: "Move keyframe",

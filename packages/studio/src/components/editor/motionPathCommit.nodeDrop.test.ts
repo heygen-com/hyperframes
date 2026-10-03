@@ -58,6 +58,50 @@ it("a keyframe node's drop changes that keyframe and keeps a newly animated chan
   ]);
 });
 
+it("a drop on an array step's node edits that step, though the path spaces nodes evenly", async () => {
+  const el = document.body.appendChild(document.createElement("div"));
+  el.id = "box";
+  const selection = { id: "box", selector: "#box", element: el } as DomEditSelection;
+  // Step ends at 2 s and 3 s; the path draws the first node at 0%, the parser and lane at 66.7%.
+  const keys = tween({
+    id: "#box-to-0-position",
+    method: "to",
+    properties: {},
+    resolvedStart: 0,
+    duration: 3,
+    keyframes: {
+      format: "object-array",
+      keyframes: [
+        { percentage: 66.7, properties: { x: 60, y: 30 } },
+        { percentage: 100, properties: { x: 120, y: 30 } },
+      ],
+    },
+  });
+  const steps = [
+    { startTime: () => 0, duration: () => 2 },
+    { startTime: () => 2, duration: () => 1 },
+  ];
+  const live = liveTween(el, { start: 0, duration: 3, vars: { keyframes: [] } }, { parts: steps });
+  usePlayerStore.setState({ currentTime: 1, autoKeyframeEnabled: true, activeKeyframePct: null });
+  const commitMutation = vi.fn(async () => {});
+
+  await commitNodeDrop({
+    ref: { type: "keyframe", pct: 0, step: 0 },
+    at: { x: 40, y: 90 },
+    animId: keys.id,
+    anim: keys,
+    selection,
+    iframe: previewWith(el, [live], { x: 60, y: 30 }),
+    commitMutation,
+  });
+
+  const [mutation] = commitMutation.mock.calls.map((call) => call[0] as Record<string, never>);
+  expect((mutation!.keyframes as { properties: object }[]).map((kf) => kf.properties)).toEqual([
+    { x: 40, y: 90 },
+    { x: 120, y: 30 },
+  ]);
+});
+
 it("a drop the writer refuses rejects with the reason, writes nothing and selects nothing", async () => {
   const [a, b] = ["a", "b"].map((id) => {
     const el = document.body.appendChild(document.createElement("div"));
