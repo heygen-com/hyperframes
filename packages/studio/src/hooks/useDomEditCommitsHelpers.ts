@@ -206,7 +206,7 @@ interface AssignAutoIdParams {
   targetPath: string;
   selection: DomEditSelection;
   autoId: string;
-  showToast?: ShowToast;
+  showToast: ShowToast;
 }
 
 /** Writes `autoId` as the element's id so a GSAP tween can target it; false when nothing was saved. */
@@ -215,7 +215,7 @@ export async function assignGsapTargetAutoIdIfNeeded({
   targetPath,
   selection,
   autoId,
-  showToast = () => {},
+  showToast,
 }: AssignAutoIdParams): Promise<boolean> {
   const patchBody = {
     target: {

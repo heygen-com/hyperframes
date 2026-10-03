@@ -42,6 +42,8 @@ describe("assignGsapTargetAutoIdIfNeeded", () => {
 
     await expect(result).resolves.toBe(true);
     const [, init] = fetchMock.mock.calls[0]!;
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("X-Hyperframes-Write-Token")).toBeTruthy();
     expect(JSON.parse(String(init?.body))).toEqual({
       target: { hfId: "hf-card", selector: '[data-hf-id="hf-card"]', selectorIndex: 0 },
       operations: [{ type: "html-attribute", property: "id", value: "hf-auto-1" }],
@@ -74,11 +76,9 @@ describe("assignGsapTargetAutoIdIfNeeded", () => {
     expect(showToast).toHaveBeenCalledWith("Couldn't save edit", "error");
   });
 
-  it("is false when the response does not say it changed, and needs no toast handler", async () => {
+  it("is false when the response does not say it changed", async () => {
     stubPatch(jsonResponse({}));
     await expect(assign().result).resolves.toBe(false);
-    stubPatch(new Response("{}", { status: 409, headers: { "content-type": "application/json" } }));
-    await expect(assign({ showToast: undefined }).result).resolves.toBe(false);
   });
 
   it("refuses a non-finite target before any request", async () => {
