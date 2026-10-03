@@ -36,7 +36,6 @@ export {
 // GsapAnimation helper — re-exported here so studio can filter holds via the
 // public entry even though gsapParser.ts is otherwise an internal module.
 export { isStudioHoldSet } from "./gsapParser.js";
-export { getObjectArrayKeyframeTiming } from "./gsapObjectArrayTiming.js";
 export type { PropertyGroupName } from "./gsapConstants.js";
 export {
   PROPERTY_GROUPS,

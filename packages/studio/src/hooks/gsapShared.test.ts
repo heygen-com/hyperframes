@@ -67,17 +67,6 @@ describe("parsePercentageKeyframes", () => {
     expect(out?.keyframes[1]!.properties).toEqual({ x: 520, y: 120 });
   });
 
-  it("places array steps with authored durations at their ends, as the parser does", () => {
-    const out = parsePercentageKeyframes([
-      { x: 60, duration: 2 },
-      { x: 120, duration: 1 },
-    ] as unknown as Record<string, unknown>);
-    expect(out?.keyframes).toEqual([
-      { percentage: 66.7, properties: { x: 60 } },
-      { percentage: 100, properties: { x: 120 } },
-    ]);
-  });
-
   it("strips a per-entry ease without shifting the even index-spacing of the others", () => {
     // GSAP positions array keyframes by array index, so a `{ ease }` carried on an
     // entry is a segment ease (skipped as a property) — it must not change where
