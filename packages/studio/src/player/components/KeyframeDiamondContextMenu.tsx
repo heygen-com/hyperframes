@@ -41,7 +41,6 @@ interface KeyframeDiamondContextMenuProps {
 }
 
 const ITEM_CLS = `${menuClasses.row} ${menuClasses.rowEnabled} flex items-center gap-2`;
-// The single delete hovers quietly; only Delete All turns red, so the two cannot be misread (#1967).
 const DESTRUCTIVE_ITEM_CLS = `${menuClasses.row} text-danger-ink hover:bg-neutral-800 focus-visible:bg-neutral-800 cursor-pointer flex items-center gap-2`;
 
 export function KeyframeDiamondContextMenu({
