@@ -20,12 +20,13 @@ if (process.argv[4] === "probe") {
   writeFileSync(readyPath, "probing");
   await probe;
 }
-writeFileSync(readyPath, "launching");
-const browser = await launchManagedBrowser(puppeteer.default, {
+const launch = launchManagedBrowser(puppeteer.default, {
   headless: true,
   executablePath,
   args: ["--no-sandbox", `--user-data-dir=${profileDir}`],
 });
+writeFileSync(readyPath, "launching");
+const browser = await launch;
 writeFileSync(readyPath, "ready");
 await browser.pages();
 setInterval(() => undefined, 1_000);
