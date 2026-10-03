@@ -37,6 +37,7 @@ vi.mock("./useDomEditOverlayRects", () => ({
       hoverRect: null,
       childRects: [],
       setOverlayRect: noop,
+      previewOverlayRect: noop,
       setGroupOverlayItems: noop,
     };
   },

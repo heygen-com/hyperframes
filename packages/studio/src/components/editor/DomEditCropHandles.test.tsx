@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { DomEditCropHandles } from "./DomEditCropHandles";
+import { CropPresetBar } from "./CropPresetBar";
+import { renderToStaticMarkup } from "react-dom/server";
 import { isElementCropLifted } from "./domEditOverlayCrop";
 import { useCropPresetBarStore } from "./cropPresetStore";
 
@@ -312,6 +314,22 @@ describe("DomEditCropHandles preset bar", () => {
   };
 
   afterEach(() => useCropPresetBarStore.getState().close());
+
+  it("follows a drag by the chrome variables' change, keeping its top clamp", () => {
+    const html = renderToStaticMarkup(
+      <CropPresetBar
+        left={110}
+        top={60}
+        drawnFrom={{ left: 10, top: 20 }}
+        elementWidth={200}
+        elementHeight={100}
+        onApply={() => {}}
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("left:calc(110px + var(--hf-sel-x, 10px) - 10px)");
+    expect(html).toContain("top:max(4px, calc(26px + var(--hf-sel-y, 20px) - 20px))");
+  });
 
   it("shows only for the clip the menu opened it for", () => {
     const a = makeEl("a", "");

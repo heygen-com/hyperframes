@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { type OverlayRectDraft, selectionChromeVars } from "./selectionChromeVars";
 import { type DomEditSelection } from "./domEditing";
 import {
   type GroupOverlayItem,
@@ -32,25 +33,25 @@ const NO_CROP_INSET: CropInset = { top: 0, right: 0, bottom: 0, left: 0 };
 
 function resizeHandleStyle(
   def: (typeof RESIZE_HANDLE_DEFS)[number],
-  overlayRect: { left: number; top: number; width: number; height: number },
   cropInset?: CropInset,
 ): React.CSSProperties {
   const half = RESIZE_HANDLE_HIT_PX / 2;
   const inset = cropInset ?? NO_CROP_INSET;
-  const style: React.CSSProperties = { cursor: def.cursor, touchAction: "none" };
-  // Position relative to the overlay container (not the selection box).
-  // This ensures the dots render as siblings of the box border div — strictly
-  // above it — rather than as children where the parent border can visually
-  // overlap the dot circle at the corner.
-  style.left =
+  const x =
     def.x === "left"
-      ? overlayRect.left + inset.left - half
-      : overlayRect.left + overlayRect.width - inset.right - half;
-  style.top =
+      ? `var(--hf-sel-x) + ${inset.left - half}px`
+      : `var(--hf-sel-x) + var(--hf-sel-w) - ${inset.right + half}px`;
+  const y =
     def.y === "top"
-      ? overlayRect.top + inset.top - half
-      : overlayRect.top + overlayRect.height - inset.bottom - half;
-  return style;
+      ? `var(--hf-sel-y) + ${inset.top - half}px`
+      : `var(--hf-sel-y) + var(--hf-sel-h) - ${inset.bottom + half}px`;
+  return {
+    cursor: def.cursor,
+    touchAction: "none",
+    left: 0,
+    top: 0,
+    transform: `translate(calc(${x}), calc(${y}))`,
+  };
 }
 
 type GestureHandlers = ReturnType<typeof createDomEditOverlayGestureHandlers>;
@@ -119,6 +120,9 @@ interface DomEditSelectionChromeProps {
   allowBodyDrag: boolean;
   cropOutlineInsetPx?: { top: number; right: number; bottom: number; left: number };
   boxRef: RefObject<HTMLDivElement | null>;
+  /** Carries the geometry variables a gesture rewrites each move instead of re-rendering. */
+  chromeRef: RefObject<HTMLDivElement | null>;
+  overlayRectDraft: OverlayRectDraft;
   boxChromeClass: string;
   boxClipPath: string | undefined;
   selectionKey: string;
@@ -147,6 +151,8 @@ export function DomEditSelectionChrome({
   allowBodyDrag,
   cropOutlineInsetPx,
   boxRef,
+  chromeRef,
+  overlayRectDraft,
   boxChromeClass,
   boxClipPath,
   selectionKey,
@@ -167,17 +173,18 @@ export function DomEditSelectionChrome({
   const canManipulate = allowCanvasMovement && !readOnly;
 
   return (
-    <>
+    // Holds the geometry variables for the plane and the crop frame; takes no box of its own.
+    <div ref={chromeRef} className="contents" style={selectionChromeVars(overlayRect)}>
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          transformOrigin: `${overlayRect.left + overlayRect.width / 2}px ${overlayRect.top + overlayRect.height / 2}px`,
-          transform: overlayRect.angle ? `rotate(${overlayRect.angle}deg)` : undefined,
+          transformOrigin:
+            "calc(var(--hf-sel-x) + var(--hf-sel-w) / 2) calc(var(--hf-sel-y) + var(--hf-sel-h) / 2)",
+          transform: "rotate(var(--hf-sel-angle))",
         }}
       >
         {canManipulate && !editing && selection.capabilities.canApplyManualRotation && (
           <DomEditRotateHandle
-            overlayRect={overlayRect}
             cropOutlineInsetPx={cropOutlineInsetPx}
             onStartRotate={(e) => {
               e.stopPropagation();
@@ -191,10 +198,11 @@ export function DomEditSelectionChrome({
           data-dom-edit-selection-box="true"
           className={`${editing ? "pointer-events-none" : "pointer-events-auto"} absolute rounded-md ${boxChromeClass}`}
           style={{
-            left: overlayRect.left,
-            top: overlayRect.top,
-            width: overlayRect.width,
-            height: overlayRect.height,
+            left: 0,
+            top: 0,
+            width: "var(--hf-sel-w)",
+            height: "var(--hf-sel-h)",
+            transform: "translate(var(--hf-sel-x), var(--hf-sel-y))",
             clipPath: boxClipPath,
             cursor: !allowBodyDrag
               ? undefined
@@ -236,8 +244,8 @@ export function DomEditSelectionChrome({
         </div>
         {/* Resize-handle dots rendered as siblings of the selection box, not
           children, so they paint strictly above the box border. Each handle
-          is positioned relative to the overlay container using the
-          overlayRect origin, matching the old child-relative offsets. */}
+          is placed in the overlay from the chrome's geometry variables
+          (selectionChromeVars), as the box is. */}
         {canManipulate &&
           !editing &&
           selection.capabilities.canApplyManualSize &&
@@ -247,7 +255,7 @@ export function DomEditSelectionChrome({
                 key={def.handle}
                 className="pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
                 style={{
-                  ...resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined),
+                  ...resizeHandleStyle(def, cropOutlineInsetPx ?? undefined),
                   // Cursor rotates with the object: bucket the corner's base
                   // diagonal + element rotation into the 8 CSS resize cursors.
                   cursor: resolveRotatedResizeCursor(def.handle, overlayRect.angle ?? 0),
@@ -268,9 +276,10 @@ export function DomEditSelectionChrome({
         <DomEditCropHandles
           selection={selection}
           overlayRect={overlayRect}
+          overlayRectDraft={overlayRectDraft}
           onStyleCommit={onStyleCommit}
         />
       )}
-    </>
+    </div>
   );
 }

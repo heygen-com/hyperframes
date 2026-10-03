@@ -76,7 +76,7 @@ function logGestureCommitFailure(message: string, error: unknown): void {
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
-    opts.setOverlayRect(next);
+    opts.previewOverlayRect(next);
   };
   const restoreGestureOverlayRect = (g: GestureState) => {
     setDraftOverlayRect({
@@ -86,8 +86,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       height: g.originHeight,
       editScaleX: g.editScaleX,
       editScaleY: g.editScaleY,
-      // Every draft rect must carry the element's rotation: the rotation wrapper
-      // renders rotate(overlayRect.angle), so an omitted angle straightens the
+      // Every draft rect must carry the element's rotation: the chrome plane rotates
+      // by the rect's angle (--hf-sel-angle), so an omitted angle straightens the
       // chrome for the duration of the draft (the "straightens while moving" bug).
       angle: g.actualRotation,
     });
@@ -242,10 +242,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         editScaleY: g.editScaleY,
         angle: g.actualRotation,
       });
-      if (box) {
-        box.style.left = `${nextBoxLeft}px`;
-        box.style.top = `${nextBoxTop}px`;
-      }
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     } else {
       if (!box) return;
@@ -288,10 +284,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         draftRect,
         liveInlineStyle: sel.element.getAttribute("style"),
       });
-      box.style.left = `${draftRect.left}px`;
-      box.style.top = `${draftRect.top}px`;
-      box.style.width = `${draftRect.width}px`;
-      box.style.height = `${draftRect.height}px`;
       setDraftOverlayRect(draftRect);
     }
   };
@@ -302,7 +294,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const box = opts.boxRef.current;
     opts.blockedMoveRef.current = null;
 
     if (groupG) {
@@ -388,10 +379,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (g.kind === "drag" && isTap(g, e)) {
       if (g.pathOffsetMember) restoreManualOffsetDragMembers([g.pathOffsetMember]);
-      if (box) {
-        box.style.left = `${g.originLeft}px`;
-        box.style.top = `${g.originTop}px`;
-      }
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
       opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
@@ -407,10 +394,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         restoreManualOffsetDragMembers([g.pathOffsetMember]);
       } else {
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
-      }
-      if (box) {
-        box.style.width = `${g.originWidth}px`;
-        box.style.height = `${g.originHeight}px`;
       }
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
@@ -477,10 +460,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         editScaleY: g.editScaleY,
         angle: g.actualRotation,
       });
-      if (box) {
-        box.style.left = `${nextBoxLeft}px`;
-        box.style.top = `${nextBoxTop}px`;
-      }
       const member = g.pathOffsetMember;
       const edit = beginStudioPendingEdit(manualOffsetMoveRevert([member]));
       const saved = Promise.resolve(

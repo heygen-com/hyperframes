@@ -45,6 +45,7 @@ vi.mock("./useDomEditOverlayRects", async () => {
   const React = await import("react");
   const { rectsEqual } = await import("./domEditOverlayGeometry");
 
+  const NO_OVERLAY_RECT_DRAFT = { get: () => null, subscribe: () => () => {} };
   return {
     useDomEditOverlayRects: (options: { selectionRef: { current: unknown } }) => {
       const defaultSelectionRect = {
@@ -76,6 +77,8 @@ vi.mock("./useDomEditOverlayRects", async () => {
         overlayRect,
         overlayRectRef,
         setOverlayRect,
+        previewOverlayRect: () => {},
+        overlayRectDraft: NO_OVERLAY_RECT_DRAFT,
         hoverRect: null,
         hoverRectRef: { current: null },
         setHoverRect: () => {},

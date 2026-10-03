@@ -33,6 +33,7 @@ vi.mock("./useDomEditOverlayRects", () => {
       overlayRect: rect,
       overlayRectRef: { current: rect },
       setOverlayRect: () => undefined,
+      previewOverlayRect: () => undefined,
       hoverRect: null,
       groupOverlayItems: layout.group,
       groupOverlayItemsRef: { current: layout.group },

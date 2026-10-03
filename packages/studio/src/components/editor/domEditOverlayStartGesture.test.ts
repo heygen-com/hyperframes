@@ -48,6 +48,7 @@ function pressOptions(element: HTMLElement) {
     groupGestureRef: ref(null),
     blockedMoveRef: ref(null),
     setOverlayRect: vi.fn(),
+    previewOverlayRect: vi.fn(),
     suppressNextBoxClickRef: ref(false),
     hoverSelectionRef: ref(null),
     onCanvasMouseDown: vi.fn(),

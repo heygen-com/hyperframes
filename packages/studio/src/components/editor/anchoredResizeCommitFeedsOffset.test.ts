@@ -162,6 +162,7 @@ function buildHarness(
     rafPausedRef: ref(false),
     suppressNextBoxClickRef: ref(false),
     setOverlayRect: () => {},
+    previewOverlayRect: () => {},
     setGroupOverlayItems: () => {},
     onBlockedMoveRef: ref(() => {}),
     onManualDragStartRef: ref(() => {}),
@@ -255,6 +256,20 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     // exactly the gesture-start center (offset = -(finalSize - origin)/2).
     expect(offset.x).toBeCloseTo(-(size.width - ORIGIN.width) / 2, 0);
     expect(offset.y).toBeCloseTo(-(size.height - ORIGIN.height) / 2, 0);
+  });
+
+  it("draws each resize move on the chrome without setting the overlay's state", () => {
+    const { handlers, opts } = buildHarness();
+    const setOverlayRect = vi.fn();
+    const previewOverlayRect = vi.fn();
+    Object.assign(opts, { setOverlayRect, previewOverlayRect });
+    handlers.startGesture("resize", evt(ORIGIN_CENTER.x + 100, ORIGIN_CENTER.y), {
+      resizeHandle: "se",
+    });
+    for (let i = 0; i < 3; i++)
+      handlers.onPointerMove(evt(ORIGIN_CENTER.x + 120 + i, ORIGIN_CENTER.y));
+    expect(previewOverlayRect).toHaveBeenCalledTimes(3);
+    expect(setOverlayRect).not.toHaveBeenCalled();
   });
 
   it("keeps the centre on the first frame when the authored translate is a percent", async () => {

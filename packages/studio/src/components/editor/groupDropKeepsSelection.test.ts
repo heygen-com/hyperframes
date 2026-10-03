@@ -40,6 +40,7 @@ describe("dropping a dragged group eats the click that follows", () => {
       rafPausedRef: { current: false },
       suppressNextBoxClickRef,
       setOverlayRect: vi.fn(),
+      previewOverlayRect: vi.fn(),
       setGroupOverlayItems: vi.fn(),
       onBlockedMoveRef: { current: vi.fn() },
       onManualDragStartRef: { current: vi.fn() },

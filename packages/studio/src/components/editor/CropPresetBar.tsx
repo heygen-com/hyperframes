@@ -5,6 +5,7 @@ import { CROP_ASPECT_PRESETS, centredCropInsets } from "./cropPresets";
 interface CropPresetBarProps {
   left: number;
   top: number;
+  drawnFrom: { left: number; top: number };
   elementWidth: number;
   elementHeight: number;
   /** Centred insets for a ratio, or `null` to remove the crop. */
@@ -19,6 +20,7 @@ const CHIP =
 export function CropPresetBar({
   left,
   top,
+  drawnFrom,
   elementWidth,
   elementHeight,
   onApply,
@@ -38,7 +40,11 @@ export function CropPresetBar({
       aria-label="Crop presets"
       data-dom-edit-crop-bar="true"
       className="pointer-events-auto absolute z-20 flex gap-1 rounded-md border border-white/15 bg-neutral-900/95 p-1 shadow-lg"
-      style={{ left, top: Math.max(4, top - 34), transform: "translateX(-50%)" }}
+      style={{
+        left: `calc(${left}px + var(--hf-sel-x, ${drawnFrom.left}px) - ${drawnFrom.left}px)`,
+        top: `max(4px, calc(${top - 34}px + var(--hf-sel-y, ${drawnFrom.top}px) - ${drawnFrom.top}px))`,
+        transform: "translateX(-50%)",
+      }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <button type="button" className={CHIP} title="Drag the edges freely">

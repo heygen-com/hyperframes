@@ -1,35 +1,29 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { OverlayRect } from "./domEditOverlayGeometry";
 
-/** Rotate handle below the selection: an attached circular-arrows icon chip
- *  (no connecting stem). Anchors to the crop outline when the element is
- *  cropped so it stays next to what's visible on screen. Presentation only —
- *  the rotation gesture measures pointer angles from the element CENTER
- *  (resolveDomEditRotationGesture), so the handle position doesn't affect the
- *  math. Sits 12px below the bbox, past the bottom crop handle's hit strip. */
+/** Rotate handle 12px below the selection, past the bottom crop handle's hit strip, placed from the chrome's
+ *  geometry variables and anchored to the crop outline when cropped. Presentation only: the rotation gesture
+ *  measures pointer angles from the element CENTER (resolveDomEditRotationGesture), so its position doesn't
+ *  affect the math. */
 export function DomEditRotateHandle({
-  overlayRect,
   cropOutlineInsetPx,
   onStartRotate,
 }: {
-  overlayRect: OverlayRect;
   cropOutlineInsetPx?: { top: number; right: number; bottom: number; left: number };
   onStartRotate: (e: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   const inset = cropOutlineInsetPx ?? { top: 0, right: 0, bottom: 0, left: 0 };
-  const visibleLeft = overlayRect.left + inset.left;
-  const visibleWidth = Math.max(0, overlayRect.width - inset.left - inset.right);
-  const visibleBottom = overlayRect.top + overlayRect.height - inset.bottom;
+  const visibleCenterX = `var(--hf-sel-x) + ${inset.left}px + max(0px, var(--hf-sel-w) - ${inset.left + inset.right}px) / 2`;
+  const visibleBottom = `var(--hf-sel-y) + var(--hf-sel-h) - ${inset.bottom}px`;
   return (
     <button
       type="button"
       className="pointer-events-auto absolute flex items-center justify-center border-0 bg-transparent p-0"
       style={{
-        left: visibleLeft + visibleWidth / 2,
-        top: visibleBottom + 12,
+        left: 0,
+        top: 0,
         width: 22,
         height: 22,
-        transform: "translateX(-50%)",
+        transform: `translate(calc(${visibleCenterX}), calc(${visibleBottom} + 12px)) translateX(-50%)`,
         touchAction: "none",
         // Closed-hand grab cursor: this handle is grabbed and dragged to rotate.
         cursor: "grabbing",

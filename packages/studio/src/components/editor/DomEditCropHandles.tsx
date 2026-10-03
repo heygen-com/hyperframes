@@ -1,5 +1,11 @@
 import { trackPreviewEditResult, type PreviewMethod } from "../../utils/previewFeatureUsage";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { DomEditSelection } from "./domEditing";
 import { type OverlayRect, RESIZE_HANDLE_HIT_PX } from "./domEditOverlayGeometry";
 import {
@@ -19,6 +25,7 @@ import { readCropFollowingResize } from "./cropResize";
 import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
 import { CropPresetBar } from "./CropPresetBar";
 import { movesGesture } from "./domEditOverlayGestures";
+import { NO_OVERLAY_RECT_DRAFT, type OverlayRectDraft } from "./selectionChromeVars";
 
 interface CropGestureState {
   edge: CropEdge | "move";
@@ -37,6 +44,7 @@ interface CropGestureState {
 interface DomEditCropHandlesProps {
   selection: DomEditSelection;
   overlayRect: OverlayRect;
+  overlayRectDraft?: OverlayRectDraft;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
 }
 
@@ -108,8 +116,17 @@ const NO_CROP = { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
 export function DomEditCropHandles({
   selection,
   overlayRect,
+  overlayRectDraft = NO_OVERLAY_RECT_DRAFT,
   onStyleCommit,
 }: DomEditCropHandlesProps) {
+  // A move follows the chrome's variables below; only a size change needs this to re-render.
+  const resized = useSyncExternalStore(overlayRectDraft.subscribe, () => {
+    const draft = overlayRectDraft.get();
+    return draft && (draft.width !== overlayRect.width || draft.height !== overlayRect.height)
+      ? draft
+      : null;
+  });
+  const rect = resized ?? overlayRect;
   const gestureRef = useRef<CropGestureState | null>(null);
   const [dragging, setDragging] = useState(false);
   const [hotEdge, setHotEdge] = useState<CropEdge | null>(null);
@@ -151,7 +168,7 @@ export function DomEditCropHandles({
   // transform), so all crop UI is drawn inside a container rotated with the
   // element — on a rotated element an axis-aligned dim visually "straightens"
   // it by masking the rotated corners.
-  const frame = readElementCropFrame(selection.element, overlayRect);
+  const frame = readElementCropFrame(selection.element, rect);
   const width = frame.width / frame.scaleX; // element CSS px
   const height = frame.height / frame.scaleY;
   // Crop rect in FRAME-LOCAL coordinates (origin = frame top-left).
@@ -264,6 +281,7 @@ export function DomEditCropHandles({
         <CropPresetBar
           left={frame.left + frame.width / 2}
           top={frame.top}
+          drawnFrom={rect}
           elementWidth={width}
           elementHeight={height}
           onApply={applyPresetInsets}
@@ -278,7 +296,7 @@ export function DomEditCropHandles({
           top: frame.top,
           width: frame.width,
           height: frame.height,
-          transform: frame.angleDeg !== 0 ? `rotate(${frame.angleDeg}deg)` : undefined,
+          transform: `translate(calc(var(--hf-sel-x, ${rect.left}px) - ${rect.left}px), calc(var(--hf-sel-y, ${rect.top}px) - ${rect.top}px)) rotate(${frame.angleDeg}deg)`,
         }}
       >
         {/* Dim the cropped-away area whenever the element is cropped and selected,

@@ -8,6 +8,7 @@ import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionCh
 import { createManualOffsetDragMember } from "./manualOffsetDrag";
 import { resolveSnapAdjustment } from "./snapEngine";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
+import { NO_OVERLAY_RECT_DRAFT } from "./selectionChromeVars";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -23,6 +24,7 @@ function gestureHarness(gesture: Partial<GestureState> | null, group: GroupGestu
     suppressNextBoxClickRef: { current: false },
     snapGuidesRef: { current: null },
     setOverlayRect: vi.fn(),
+    previewOverlayRect: vi.fn(),
     setGroupOverlayItems: vi.fn(),
     onCanvasMouseDown: vi.fn(),
     onCanvasPointerMoveRef: { current: vi.fn() },
@@ -70,15 +72,16 @@ describe("shift+drag locks a move to the axis the pointer travels further on", (
   it("keeps a mostly horizontal single drag on its row", () => {
     const { opts, handlers, pointer } = singleDrag();
     handlers.onPointerMove(pointer(130, 108, true));
-    expect(opts.setOverlayRect).toHaveBeenLastCalledWith(
+    expect(opts.previewOverlayRect).toHaveBeenLastCalledWith(
       expect.objectContaining({ left: 40, top: 20 }),
     );
+    expect(opts.setOverlayRect).not.toHaveBeenCalled();
   });
 
   it("keeps a mostly vertical single drag on its column", () => {
     const { opts, handlers, pointer } = singleDrag();
     handlers.onPointerMove(pointer(95, 160, true));
-    expect(opts.setOverlayRect).toHaveBeenLastCalledWith(
+    expect(opts.previewOverlayRect).toHaveBeenLastCalledWith(
       expect.objectContaining({ left: 10, top: 80 }),
     );
   });
@@ -86,11 +89,11 @@ describe("shift+drag locks a move to the axis the pointer travels further on", (
   it("frees the drag on the next move once shift is released, and locks again when pressed", () => {
     const { opts, handlers, pointer } = singleDrag();
     handlers.onPointerMove(pointer(130, 108, false));
-    expect(opts.setOverlayRect).toHaveBeenLastCalledWith(
+    expect(opts.previewOverlayRect).toHaveBeenLastCalledWith(
       expect.objectContaining({ left: 40, top: 28 }),
     );
     handlers.onPointerMove(pointer(140, 110, true));
-    expect(opts.setOverlayRect).toHaveBeenLastCalledWith(
+    expect(opts.previewOverlayRect).toHaveBeenLastCalledWith(
       expect.objectContaining({ left: 50, top: 20 }),
     );
   });
@@ -195,6 +198,8 @@ describe("a shift press on a selected box starts the drag", () => {
         allowCanvasMovement
         allowBodyDrag
         boxRef={createRef()}
+        chromeRef={createRef()}
+        overlayRectDraft={NO_OVERLAY_RECT_DRAFT}
         boxChromeClass=""
         boxClipPath={undefined}
         selectionKey="box"

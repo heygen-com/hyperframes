@@ -17,6 +17,7 @@ vi.mock("./useDomEditOverlayRects", () => ({
     overlayRect: null,
     overlayRectRef: { current: null },
     setOverlayRect: () => undefined,
+    previewOverlayRect: () => undefined,
     hoverRect: hoverSelectionRef.current
       ? {
           left: 20,

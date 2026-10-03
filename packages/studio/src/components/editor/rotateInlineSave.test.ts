@@ -65,6 +65,7 @@ async function rotateWord(before: (word: HTMLElement) => void = () => {}) {
     rafPausedRef: ref(false),
     suppressNextBoxClickRef: ref(false),
     setOverlayRect: () => {},
+    previewOverlayRect: () => {},
     setGroupOverlayItems: () => {},
     onBlockedMoveRef: ref(() => {}),
     onManualDragStartRef: ref(() => {}),

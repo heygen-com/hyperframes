@@ -21,6 +21,7 @@ import {
 } from "./domEditOverlayGeometry";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
+import { type OverlayRectDraft, writeSelectionChromeVars } from "./selectionChromeVars";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -38,12 +39,15 @@ interface UseDomEditOverlayRectsOptions {
   groupSelectionsRef: RefObject<DomEditSelection[]>;
   hoverSelectionRef: RefObject<DomEditSelection | null>;
   rafPausedRef: RefObject<boolean>;
+  chromeRef: RefObject<HTMLDivElement | null>;
 }
 
 interface UseDomEditOverlayRectsResult {
   overlayRect: OverlayRect | null;
   overlayRectRef: RefObject<OverlayRect | null>;
   setOverlayRect: (next: OverlayRect | null) => void;
+  previewOverlayRect: (next: OverlayRect) => void;
+  overlayRectDraft: OverlayRectDraft;
   hoverRect: OverlayRect | null;
   hoverRectRef: RefObject<OverlayRect | null>;
   setHoverRect: (next: OverlayRect | null) => void;
@@ -61,6 +65,7 @@ export function useDomEditOverlayRects({
   groupSelectionsRef,
   hoverSelectionRef,
   rafPausedRef,
+  chromeRef,
 }: UseDomEditOverlayRectsOptions): UseDomEditOverlayRectsResult {
   const [overlayRect, setOverlayRectState] = useState<OverlayRect | null>(null);
   const [hoverRect, setHoverRectState] = useState<OverlayRect | null>(null);
@@ -75,9 +80,36 @@ export function useDomEditOverlayRects({
   const resolvedGroupElementRef = useRef<Map<string, HTMLElement>>(new Map());
   const childRectsRef = useRef<OverlayRect[]>([]);
 
-  const setOverlayRect = (next: OverlayRect | null) => {
-    if (rectsEqual(overlayRectRef.current, next)) return;
+  const committedRectRef = useRef<OverlayRect | null>(null);
+  const draftRef = useRef<OverlayRect | null>(null);
+  const draftListenersRef = useRef(new Set<() => void>());
+  const [overlayRectDraft] = useState<OverlayRectDraft>(() => ({
+    get: () => draftRef.current,
+    subscribe: (listener) => {
+      draftListenersRef.current.add(listener);
+      return () => draftListenersRef.current.delete(listener);
+    },
+  }));
+  const publishDraft = (next: OverlayRect | null) => {
+    draftRef.current = next;
+    for (const listener of draftListenersRef.current) listener();
+  };
+
+  const previewOverlayRect = (next: OverlayRect) => {
     overlayRectRef.current = next;
+    if (chromeRef.current) writeSelectionChromeVars(chromeRef.current, next);
+    publishDraft(next);
+  };
+
+  const setOverlayRect = (next: OverlayRect | null) => {
+    overlayRectRef.current = next;
+    if (draftRef.current) {
+      // React only rewrites what changed since its last render, which a draft may also have moved.
+      if (next && chromeRef.current) writeSelectionChromeVars(chromeRef.current, next);
+      publishDraft(null);
+    }
+    if (rectsEqual(committedRectRef.current, next)) return;
+    committedRectRef.current = next;
     setOverlayRectState(next);
   };
 
@@ -268,6 +300,8 @@ export function useDomEditOverlayRects({
     overlayRect,
     overlayRectRef,
     setOverlayRect,
+    previewOverlayRect,
+    overlayRectDraft,
     hoverRect,
     hoverRectRef,
     setHoverRect,
