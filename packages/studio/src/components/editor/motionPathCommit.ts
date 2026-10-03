@@ -70,13 +70,20 @@ export function commitNodeDrop(drop: NodeDrop): Promise<void> {
   const writes = observeGsapGesture((_sel, mutation, options) => commitMutation(mutation, options));
   const callbacks = { commitMutation: writes.commit! };
   let done: Promise<unknown>;
-  if (usePlayerStore.getState().autoKeyframeEnabled) {
-    usePlayerStore.getState().setActiveKeyframePct(ref.pct);
+  const store = usePlayerStore.getState();
+  if (store.autoKeyframeEnabled) {
+    const selected = store.activeKeyframePct;
+    store.setActiveKeyframePct(ref.pct);
     const live = readGsapPositionFromIframe(iframe, selectorFor(selection) ?? "");
     done = commitValueAtPlayhead(selection, anim, at, iframe, callbacks, {
       label: "Move keyframe",
       backfill: live ?? undefined,
-    }).then(assertGsapEditPersisted);
+    })
+      .then(assertGsapEditPersisted)
+      .catch((error: unknown) => {
+        usePlayerStore.getState().setActiveKeyframePct(selected);
+        throw error;
+      });
   } else {
     const label = "Move animation path";
     done = commitWholePropertyOffset(selection, anim, at, ref.pct, iframe, callbacks, label);

@@ -58,7 +58,7 @@ it("a keyframe node's drop changes that keyframe and keeps a newly animated chan
   ]);
 });
 
-it("a drop the writer refuses rejects with the reason, and writes nothing", async () => {
+it("a drop the writer refuses rejects with the reason, writes nothing and selects nothing", async () => {
   const [a, b] = ["a", "b"].map((id) => {
     const el = document.body.appendChild(document.createElement("div"));
     el.id = id;
@@ -73,7 +73,7 @@ it("a drop the writer refuses rejects with the reason, and writes nothing", asyn
     duration: 1,
     keyframes: { format: "percentage", keyframes: [{ percentage: 100, properties: { x: 20 } }] },
   });
-  usePlayerStore.setState({ autoKeyframeEnabled: true });
+  usePlayerStore.setState({ autoKeyframeEnabled: true, activeKeyframePct: null });
   const commitMutation = vi.fn(async () => {});
   const drop = commitNodeDrop({
     ref: { type: "keyframe", pct: 100 },
@@ -86,4 +86,5 @@ it("a drop the writer refuses rejects with the reason, and writes nothing", asyn
   });
   await expect(drop).rejects.toBeInstanceOf(GsapEditBlockedError);
   expect(commitMutation).not.toHaveBeenCalled();
+  expect(usePlayerStore.getState().activeKeyframePct).toBeNull();
 });

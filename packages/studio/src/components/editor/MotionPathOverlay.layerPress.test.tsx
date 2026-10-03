@@ -109,7 +109,8 @@ it("the layer's node and another node's ring inside the layer's box press the la
 });
 
 it("a node drop the writer refuses says why", async () => {
-  vi.mocked(commitNodeDrop).mockRejectedValue(new GsapEditBlockedError("keyframes-uneditable"));
+  const refusal = new GsapEditBlockedError("keyframes-uneditable");
+  vi.mocked(commitNodeDrop).mockRejectedValue(refusal);
   vi.spyOn(Element.prototype, "setPointerCapture").mockImplementation(() => {});
   const host = document.body.appendChild(document.createElement("div"));
   const root = createRoot(host);
@@ -134,10 +135,7 @@ it("a node drop the writer refuses says why", async () => {
     act(() => void node.dispatchEvent(new PointerEvent("pointermove", at(160))));
     await act(async () => void node.dispatchEvent(new PointerEvent("pointerup", at(160))));
     expect(commitNodeDrop).toHaveBeenCalledTimes(1);
-    expect(showToast).toHaveBeenCalledWith(
-      new GsapEditBlockedError("keyframes-uneditable").message,
-      "error",
-    );
+    expect(showToast).toHaveBeenCalledWith(refusal.message, "error");
   } finally {
     act(() => root.unmount());
     host.remove();
