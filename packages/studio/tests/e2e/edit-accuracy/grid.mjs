@@ -1,6 +1,6 @@
 // The edit accuracy grid: one flat-coloured element in a generated project, crossed with one gesture.
 // Projects are written to a tmp dir per case; nothing checked in is edited.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { dragCases } from "./drags.mjs";
@@ -22,7 +22,7 @@ const LOCAL_GSAP_DIST = dirname(require.resolve("gsap/dist/gsap.min.js"));
 export function localAsset(url) {
   if (!url.startsWith(GSAP_DIST)) return undefined;
   const file = join(LOCAL_GSAP_DIST, url.slice(GSAP_DIST.length));
-  return existsSync(file) ? file : undefined;
+  return statSync(file, { throwIfNoEntry: false })?.isFile() ? file : undefined;
 }
 
 // Studio has corner handles only (ResizeHandle is nw|ne|sw|se); its edge strips crop, so there is no edge resize.
