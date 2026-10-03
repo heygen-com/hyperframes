@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -22,6 +22,7 @@ describe("starting the bench's Studio server", () => {
       expect((await fetch(`http://127.0.0.1:${port}/api/projects`)).ok).toBe(true);
     } finally {
       await stopServer(child);
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
