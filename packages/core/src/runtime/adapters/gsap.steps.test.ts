@@ -90,6 +90,33 @@ describe("gsap adapter at a tween's start", () => {
     expect(gsap.getProperty(box, "x")).toBe(0);
   });
 
+  it.each([
+    { order: "keyframes, then a set", x: 42 },
+    { order: "a set, then keyframes", x: 5 },
+  ])("keeps the authored order of $order at the seek time", ({ order, x }) => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.from(box, { x: -60, duration: 2, ease: "none" }, 0);
+    const keyframes = () =>
+      timeline.to(box, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 }, 2);
+    const set = () => timeline.set(box, { x: 42 }, 2);
+    if (order.startsWith("keyframes")) {
+      keyframes();
+      set();
+    } else {
+      set();
+      keyframes();
+    }
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const from of [0, 1, 2, 2.5, 3]) {
+      timeline.totalTime(from, true);
+      adapter.seek({ time: 2 });
+      expect(gsap.getProperty(box, "x")).toBe(x);
+    }
+  });
+
   it("shows a keyframed tween's start inside a nested timeline, seeking onto it twice", () => {
     const box = document.body.appendChild(document.createElement("div"));
     const timeline = gsap.timeline({ paused: true });
