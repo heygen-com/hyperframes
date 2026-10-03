@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AFTER_FONTS_SCRIPT_TYPE } from "../compiler/scriptRuns";
+import {
+  AFTER_FONTS_CLAIM,
+  AFTER_FONTS_SCRIPT_TYPE,
+  deferScriptsUntilFonts,
+} from "../compiler/scriptRuns";
 import { FONT_WAIT_TIMEOUT_MS } from "./afterFonts";
 
 type Face = { family: string; status: FontFaceLoadStatus };
@@ -34,6 +38,25 @@ async function parseThenLoad(): Promise<void> {
 }
 
 const log = () => document.getElementById("log")!.textContent;
+const claims = (claimed: boolean) =>
+  claimed
+    ? ((window as unknown as Record<string, unknown>)[AFTER_FONTS_CLAIM] = true)
+    : delete (window as unknown as Record<string, unknown>)[AFTER_FONTS_CLAIM];
+
+// A page compiled elsewhere and imported, so jsdom runs none of its scripts; the test runs the fallback.
+function compilePage(): void {
+  const compiled = new DOMParser().parseFromString(
+    `<output id="log"></output><script>${logs("a")}</script><script>${logs("b")}</script>`,
+    "text/html",
+  );
+  deferScriptsUntilFonts(compiled);
+  const fallback = compiled.head.querySelector("script")!;
+  expect(fallback.textContent).toContain("no web-font gate");
+  document.body.replaceChildren(
+    ...Array.from(compiled.body.childNodes, (node) => document.importNode(node, true)),
+  );
+  new Function(fallback.textContent!)();
+}
 
 describe("runtime entry: composition scripts after web fonts", () => {
   afterEach(() => {
@@ -42,6 +65,7 @@ describe("runtime entry: composition scripts after web fonts", () => {
     window.__hfRuntimeTeardown?.();
     document.body.innerHTML = "";
     window.__timelines = {};
+    claims(true);
     delete window.__player;
     delete (window as { __hyperframeRuntimeBootstrapped?: boolean })
       .__hyperframeRuntimeBootstrapped;
@@ -88,5 +112,31 @@ describe("runtime entry: composition scripts after web fonts", () => {
       }),
       "*",
     );
+  });
+
+  it("runs deferred scripts once and in order through the page's fallback when the runtime predates the gate", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    claims(false);
+    compilePage();
+
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    expect(log()).toBe("a b ");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no web-font gate"));
+  });
+
+  it("leaves the scripts to a runtime with the gate, which runs them once after fonts", async () => {
+    let fontsLoaded = () => {};
+    serveFonts(new Promise<void>((resolve) => (fontsLoaded = resolve)), []);
+    claims(false);
+    compilePage();
+
+    await parseThenLoad();
+    await Promise.resolve();
+    expect(log()).toBe("");
+    fontsLoaded();
+    await vi.waitFor(() => expect(window.__player).toBeDefined());
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    expect(log()).toBe("a b ");
   });
 });

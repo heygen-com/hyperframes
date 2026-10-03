@@ -1,8 +1,10 @@
-import { typeAfterFonts } from "../compiler/scriptRuns";
+import { AFTER_FONTS_CLAIM, typeAfterFonts } from "../compiler/scriptRuns";
 import { postRuntimeMessage } from "./bridge";
 
 /** Past the 3 s a font-display:block face holds text back, far under the engine's 45 s player-ready wait. */
 export const FONT_WAIT_TIMEOUT_MS = 5000;
+
+(window as unknown as Record<string, unknown>)[AFTER_FONTS_CLAIM] = true;
 
 /** Resolves once the page's web fonts are ready or the timeout passes, reporting faces still loading. */
 export async function waitForFonts(): Promise<void> {

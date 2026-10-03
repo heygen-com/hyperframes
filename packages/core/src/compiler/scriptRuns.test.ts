@@ -69,7 +69,10 @@ describe("deferScriptsUntilFonts", () => {
       el.hasAttribute("data-runtime"),
     );
     const deferred = AFTER_FONTS_SCRIPT_TYPE;
+    // First in the head: the fallback that runs them under a runtime without the gate.
+    expect(document.head.firstElementChild?.textContent).toContain("no web-font gate");
     expect([...document.querySelectorAll("script")].map((el) => el.getAttribute("type"))).toEqual([
+      null,
       null,
       deferred,
       deferred,
