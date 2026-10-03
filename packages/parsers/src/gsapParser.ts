@@ -57,6 +57,7 @@ import {
 } from "./gsapConstants";
 import type { PropertyGroupName } from "./gsapConstants";
 import { clipTweenMatcher, hasExplicitTime } from "./clipTweens";
+import { parseGsapScriptAcorn } from "./gsapParserAcorn";
 import {
   findObjectArrayKeyframeIndex,
   getCompatibleObjectArrayKeyframeTiming,
@@ -1890,15 +1891,15 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
   const staleHoldIds = parsed.animations.filter(isStudioHoldSet).map((a) => a.id);
   for (const id of staleHoldIds) result = removeAnimationFromScript(result, id);
 
-  // 2. Re-add a hold for each position-keyframed tween that starts after t=0.
-  let reparsed: ParsedGsap;
+  // 2. Re-add holds from the acorn parse: it resolves label starts this parser leaves unknown.
+  let animations: GsapAnimation[];
   try {
-    reparsed = parseGsapScript(result);
+    animations = parseGsapScriptAcorn(result).animations;
   } catch {
     return result;
   }
-  for (const anim of reparsed.animations) {
-    const posProps = positionHoldForAnimation(anim, reparsed.animations);
+  for (const anim of animations) {
+    const posProps = positionHoldForAnimation(anim, animations);
     if (!posProps) continue;
     result = insertInheritedStateSet(result, anim.targetSelector, 0, {
       ...posProps,

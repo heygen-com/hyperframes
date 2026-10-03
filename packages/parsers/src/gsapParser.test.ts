@@ -1847,6 +1847,18 @@ describe("keyframe mutations", () => {
       expect(syncPositionHoldsBeforeKeyframesAcorn(once)).toBe(once);
     });
 
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds nothing an earlier label-placed tween already writes", (_, sync) => {
+      const script =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.addLabel("early", 0);\n` +
+        `tl.from("#t", { x: -60, duration: 1 }, "early+=0.5");\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      expect(sync(script)).not.toContain("hf-hold");
+    });
+
     it("removes an orphaned hold when its tween is gone", () => {
       const withHold = syncPositionHoldsBeforeKeyframes(posTweenAt(1.2));
       const tweenId = parseGsapScript(withHold).animations.find((a) => a.keyframes)!.id;
