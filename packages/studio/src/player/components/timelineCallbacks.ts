@@ -137,6 +137,9 @@ export interface TimelineEditCallbacks {
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplitAll?: (splitTime: number) => Promise<void> | void;
   onFreezeFrame?: (element: TimelineElement, time: number) => Promise<void> | void;
+  /** `false` hides the clip menu's own tools (Freeze frame, Voice, Look, Crop, Audio Gain, Duck, the link rows)
+   *  while the handlers behind them stay, as fade handles and volume lanes need them; unset shows them. */
+  clipMenuTools?: boolean;
   onNotice?: (message: string, tone?: "error" | "info") => void;
   onDeleteKeyframe?: (elementId: string, keyframe: TimelineKeyframeTarget) => void;
   onDeleteAllKeyframes?: (element: TimelineElement, animationId?: string) => void;
