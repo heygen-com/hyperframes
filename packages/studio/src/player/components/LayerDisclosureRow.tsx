@@ -1,4 +1,4 @@
-import { TRACK_H } from "./timelineLayout";
+import { usePlayerStore } from "../store/playerStore";
 import { TrackClipCount } from "./TrackClipCount";
 
 // Layer row (diamond, name, then the ∿ disclosure on the right edge) — the
@@ -82,12 +82,13 @@ export function LayerDisclosureRow({
   /** Trailing controls that act on the LAYER (the visibility eye), not on a lane. */
   children?: React.ReactNode;
 }) {
+  const trackHeight = usePlayerStore((s) => s.trackHeight);
   return (
     <div
       className="absolute left-0 top-0 flex items-center gap-1.5 overflow-hidden px-1.5 text-[11px]"
       style={{
         width: columnWidth,
-        height: TRACK_H,
+        height: trackHeight,
         color: "var(--timeline-text-solid)",
         background: gutterBackground,
       }}

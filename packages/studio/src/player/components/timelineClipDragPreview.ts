@@ -134,9 +134,10 @@ function dragRowAim(
   let y = clientY - (ctx.scroll?.getBoundingClientRect().top ?? 0) + (ctx.scroll?.scrollTop ?? 0);
   if (drag.started && drag.insertRow !== null) {
     const top = geometry.getRowTop(drag.insertRow);
-    if (y >= top - INSERT_SEAM_PX && y <= top + TRACK_H + INSERT_SEAM_PX)
+    const trackHeight = geometry.trackHeight;
+    if (y >= top - INSERT_SEAM_PX && y <= top + trackHeight + INSERT_SEAM_PX)
       return { rowFloat: drag.insertRow, insertRow: drag.insertRow };
-    if (y > top + TRACK_H) y -= TRACK_H;
+    if (y > top + trackHeight) y -= trackHeight;
   }
   const rowFloat = geometry.getRowFromY(y);
   return { rowFloat, insertRow: physicalInsertRow(rowFloat, y, ctx, geometry) };

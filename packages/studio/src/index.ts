@@ -60,7 +60,7 @@ export {
 } from "./player/components/TimelineParts";
 export { TimelineProvider, useTimelineContext } from "./player/components/TimelineProvider";
 export type { TimelineTheme } from "./player/components/timelineTheme";
-export { TRACK_H } from "./player/components/timelineLayout";
+export { TRACK_H, TRACK_H_MAX, TRACK_H_MIN } from "./player/components/timelineLayout";
 export type { TimelineTrackPadding } from "./player/components/timelineLayout";
 export { displayTrackOrder } from "./player/components/useTimelineTrackDerivations";
 export { fadeHandleBoxes } from "./player/components/timelineClipFadeGeometry";

@@ -8,7 +8,7 @@
  * they are the seam.
  */
 
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { LANE_H, getTimelineLaneTop } from "./timelineLayout";
@@ -105,6 +105,7 @@ export function PropertyGroupHeaderRow({
   onSeek?: (time: number) => void;
   rovingTargetId: string | null;
 }) {
+  const trackHeight = usePlayerStore((s) => s.trackHeight);
   const elementId = expandedElement.key ?? expandedElement.id;
   const { navigation, values, label, toggleTarget } = resolveLaneHeaderState(
     lane,
@@ -119,10 +120,10 @@ export function PropertyGroupHeaderRow({
       data-timeline-element-id={elementId}
       tabIndex={rovingTargetId === timelinePropertyRowId(elementId, lane.group) ? 0 : -1}
       data-property-group={lane.group}
-      data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
+      data-timeline-lane-top={getTimelineLaneTop(laneIndex, trackHeight)}
       className="absolute left-0 flex items-center gap-1 overflow-hidden px-1.5 text-[10px] text-text-2"
       style={{
-        top: getTimelineLaneTop(laneIndex),
+        top: getTimelineLaneTop(laneIndex, trackHeight),
         // The header column narrows to contentOrigin whenever that is under
         // LABEL_COL_W; a lane row pinned to LABEL_COL_W then hangs its value
         // readout over the canvas, on top of the clips it is labelling.

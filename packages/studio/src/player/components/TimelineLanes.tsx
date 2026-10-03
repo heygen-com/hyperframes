@@ -18,7 +18,7 @@ import {
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { useTimelineClipCapabilities } from "./timelineReadOnly";
-import { CLIP_Y, TRACK_H } from "./timelineLayout";
+import { CLIP_Y } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
 import { isMultiDragPassenger, multiDragPassengerOffsetPx } from "./timelineMultiDragPreview";
 import { useTimelineMultiDragActorWindows } from "./useTimelineMultiDragActorWindows";
@@ -209,7 +209,7 @@ export function TimelineLanes({
                   top: rowsVirtualized ? rowGeometry.getRowTop(row) : undefined,
                   marginLeft: contentOrigin,
                   width: trackContentWidth,
-                  height: TRACK_H,
+                  height: rowGeometry.trackHeight,
                   border: "1px dashed var(--timeline-accent)",
                   background: "color-mix(in srgb, var(--timeline-accent) 5%, transparent)",
                   pointerEvents: "none",
@@ -237,7 +237,7 @@ export function TimelineLanes({
           // bar is capped for every clip on the row, not just the one whose
           // property lanes are showing. Undefined means "fill the row", which is
           // right only while it is collapsed and the row is nothing but bar.
-          const clipBarHeight = rowExpanded ? TRACK_H - 2 * CLIP_Y : undefined;
+          const clipBarHeight = rowExpanded ? rowGeometry.trackHeight - 2 * CLIP_Y : undefined;
           const automationElements = els.map(getPreviewElement);
           // Minted here because this is the only place that sees BOTH ends of
           // the disclosure: the caret in the sticky header and the diamond lanes
@@ -306,6 +306,7 @@ export function TimelineLanes({
                 isTrackHidden={isTrackHidden}
                 isAudioTrack={isAudioTrack}
                 isGroupMember={groupMemberTracks.has(trackNum)}
+                row={row}
                 theme={theme}
                 showAudioEffects={showAudioEffects}
                 onToggleClipExpanded={() => {

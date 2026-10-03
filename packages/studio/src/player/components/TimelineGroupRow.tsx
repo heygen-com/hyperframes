@@ -12,7 +12,7 @@ import { groupAutomationLanes } from "./automationLaneData";
 import { groupAutomationElement } from "./groupAutomationElement";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { TimelineGroupLaneLabels } from "./TimelineGroupLaneLabels";
-import { LABEL_COL_W, TRACK_H } from "./timelineLayout";
+import { LABEL_COL_W } from "./timelineLayout";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
@@ -98,6 +98,7 @@ export function TimelineGroupRow({
   } = useTimelineEditContextOptional();
   const domEditActions = useDomEditActionsContextOptional();
   const revealAudioFx = usePlayerStore((state) => state.setRevealedAudioFxTarget);
+  const trackHeight = usePlayerStore((state) => state.trackHeight);
   const writeGroupFxChain = (next: HfAudioFxChain, live: boolean, ended = false) => {
     const value = next.nodes.length ? serializeAudioFxChain(next) : null;
     if (!live) {
@@ -139,7 +140,7 @@ export function TimelineGroupRow({
       rovingTargetId={rovingTargetId}
     >
       {/* Header and its lane labels in ONE sticky column — the shape
-          `TimelineTrackHeader` already uses: a fixed TRACK_H line box with the
+          `TimelineTrackHeader` already uses: a fixed one-layer line box with the
           lane rows absolutely positioned beneath it, the whole thing pinned.
           The labels used to be SIBLINGS of the header, so `absolute left-0`
           resolved against the ROW, and the row is what scrolls horizontally —
@@ -186,7 +187,7 @@ export function TimelineGroupRow({
           <TimelineGroupLaneLabels
             groupElement={groupElement}
             groupLabel={group.label}
-            top={TRACK_H}
+            top={trackHeight}
             columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
             gutterBackground={theme.gutterBackground}
             accentColor={GROUP_LANE_ACCENT}
@@ -212,7 +213,7 @@ export function TimelineGroupRow({
             pps={pps}
             // Below the strip, which sits directly under the header row.
             laneCount={0}
-            topOffset={TRACK_H}
+            topOffset={trackHeight}
             accentColor={GROUP_LANE_ACCENT}
             currentTime={currentTime}
             beatTimes={beatTimes}

@@ -20,11 +20,12 @@ import { buildCompositionThumbnailUrl } from "../player/components/CompositionTh
 import { compositionCardThumbnailUrl } from "../components/sidebar/CompositionsTab";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
 import { useRenderClipContent } from "./useRenderClipContent";
+import { TRACK_H, TRACK_H_THUMBNAILS_MIN } from "../player/components/timelineLayout";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
-  usePlayerStore.setState({ thumbnailMode: "hidden", elements: [] });
+  usePlayerStore.setState({ thumbnailMode: "hidden", elements: [], trackHeight: TRACK_H });
   document.body.innerHTML = "";
 });
 
@@ -263,6 +264,22 @@ describe("useRenderClipContent", () => {
       );
       expect(isValidElement(content) && content.type).toBe(VideoThumbnail);
     }
+  });
+
+  it("drops a video's thumbnails on layers shorter than the threshold", () => {
+    const video = {
+      id: "b",
+      tag: "video",
+      start: 0,
+      duration: 4,
+      track: 0,
+      src: "b.mp4",
+      hasAudio: false,
+    };
+    usePlayerStore.setState({ thumbnailMode: "adaptive", trackHeight: TRACK_H_THUMBNAILS_MIN });
+    expect(isValidElement(renderClipContent(video, null))).toBe(true);
+    usePlayerStore.setState({ trackHeight: TRACK_H_THUMBNAILS_MIN - 1 });
+    expect(renderClipContent(video, null)).toBeNull();
   });
 
   it("still shows the sound strip when thumbnails are off", () => {

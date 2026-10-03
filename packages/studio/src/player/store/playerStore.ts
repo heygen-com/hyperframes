@@ -10,6 +10,7 @@ import {
   type TimelineTimeDisplayMode,
 } from "../../utils/studioUiPreferences";
 import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
+import { TRACK_H, clampTrackHeight } from "../components/timelineLayout";
 import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
 import {
   createAutomationSelectionSlice,
@@ -84,6 +85,8 @@ interface PlayerState extends PlayerStoreSlices {
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
   userZoomCount: number;
+  /** Height of every collapsed timeline layer, in px; one value for all layers. */
+  trackHeight: number;
   /**
    * Bumped on every live z-index edit (handleDomZIndexReorderCommit apply AND
    * rollback). Flashless z commits (skipReload) never reload the iframe or
@@ -147,6 +150,7 @@ interface PlayerState extends PlayerStoreSlices {
   updateElement: (elementId: string, updates: TimelineElementPatch) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
+  setTrackHeight: (height: number) => void;
   bumpZEditVersion: () => void;
   setInPoint: (time: number | null) => void;
   setOutPoint: (time: number | null) => void;
@@ -281,6 +285,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   zoomMode: "fit",
   manualZoomPercent: 100,
   userZoomCount: 0,
+  trackHeight: TRACK_H,
   zEditVersion: 0,
   timelinePps: 100,
   timelineFitPps: 100,
@@ -492,6 +497,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((state) => ({
       manualZoomPercent: clampTimelineZoomPercent(percent, state.timelineFitPps),
     })),
+  setTrackHeight: (height) => set({ trackHeight: clampTrackHeight(height) }),
   bumpZEditVersion: () => set((state) => ({ zEditVersion: state.zEditVersion + 1 })),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),

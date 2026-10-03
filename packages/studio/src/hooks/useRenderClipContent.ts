@@ -21,6 +21,7 @@ import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/
 import { usePlayerStore } from "../player/store/playerStore";
 import { thumbnailRevisionOf } from "../player/store/thumbnailSlice";
 import { effectiveThumbnailMode } from "../player/lib/thumbnailPolicy";
+import { TRACK_H_THUMBNAILS_MIN } from "../player/components/timelineLayout";
 
 export function normalizeCompositionSrc(
   compSrc: string,
@@ -125,7 +126,9 @@ export function useRenderClipContent({
 }: UseRenderClipContentOptions) {
   // Self-sourced so the adaptive policy gates thumbnail generation without App plumbing.
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
-  const effectiveMode = effectiveThumbnailMode(thumbnailMode);
+  // Short layers keep just the name bar (and an audio clip's waveform).
+  const shortLayers = usePlayerStore((s) => s.trackHeight < TRACK_H_THUMBNAILS_MIN);
+  const effectiveMode = shortLayers ? "hidden" : effectiveThumbnailMode(thumbnailMode);
   const sessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   const thumbnailRevisions = usePlayerStore((s) => s.thumbnailRevisions);
   const elements = usePlayerStore((s) => s.elements);

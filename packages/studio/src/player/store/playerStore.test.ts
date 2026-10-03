@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { usePlayerStore, liveTime, whenPreviewBooted, type TimelineElement } from "./playerStore";
 import { thumbnailRevisionOf } from "./thumbnailSlice";
+import { TRACK_H, TRACK_H_MAX, TRACK_H_MIN } from "../components/timelineLayout";
 
 /** The playback/selection state `reset()` restores (persistent prefs asserted separately). */
 function expectResettableDefaults(state: ReturnType<typeof usePlayerStore.getState>): void {
@@ -570,6 +571,21 @@ describe("usePlayerStore", () => {
       usePlayerStore.getState().setZoomMode("manual");
       usePlayerStore.getState().setZoomMode("fit");
       expect(usePlayerStore.getState().zoomMode).toBe("fit");
+    });
+  });
+
+  describe("setTrackHeight", () => {
+    it("keeps every layer between the shortest and tallest height", () => {
+      const { setTrackHeight } = usePlayerStore.getState();
+      setTrackHeight(TRACK_H_MIN - 10);
+      expect(usePlayerStore.getState().trackHeight).toBe(TRACK_H_MIN);
+      setTrackHeight(TRACK_H_MAX + 10);
+      expect(usePlayerStore.getState().trackHeight).toBe(TRACK_H_MAX);
+      setTrackHeight(Number.NaN);
+      expect(usePlayerStore.getState().trackHeight).toBe(TRACK_H);
+      setTrackHeight(33.4);
+      expect(usePlayerStore.getState().trackHeight).toBe(33);
+      setTrackHeight(TRACK_H);
     });
   });
 

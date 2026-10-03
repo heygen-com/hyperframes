@@ -5,7 +5,17 @@ import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 /* ── Layout constants ──────────────────────────────────────────────── */
 export const GUTTER = 32;
 export const LABEL_COL_W = 232;
+/** The default layer height; the person can resize every layer at once between the MIN and MAX below. */
 export const TRACK_H = 48;
+export const TRACK_H_MIN = 24;
+export const TRACK_H_MAX = 120;
+/** Below this layer height clips show only their name bar, no thumbnails. */
+export const TRACK_H_THUMBNAILS_MIN = 40;
+
+export function clampTrackHeight(height: number): number {
+  if (!Number.isFinite(height)) return TRACK_H;
+  return Math.round(Math.min(TRACK_H_MAX, Math.max(TRACK_H_MIN, height)));
+}
 export const LANE_H = 28;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
@@ -51,8 +61,8 @@ export function getTimelineBeatEntries(
     .map((index) => ({ index, time: beatTimes[index]!, strength: beatStrengths?.[index] }));
 }
 
-export function getTimelineLaneTop(laneIndex: number): number {
-  return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
+export function getTimelineLaneTop(laneIndex: number, trackHeight = TRACK_H): number {
+  return trackHeight + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
 }
 /**
  * Default breathing room INSIDE the scroll area (CapCut-style). A host overrides
@@ -61,7 +71,8 @@ export function getTimelineLaneTop(laneIndex: number): number {
  * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track,
  *   just enough that the first clip isn't jammed under the ruler.
  * - TRACKS_BOTTOM_PAD: one empty track below the last, drawn as a ghost lane;
- *   dropping a clip or file there creates a new bottom track.
+ *   dropping a clip or file there creates a new bottom track. It follows the
+ *   layer height when the person resizes layers.
  */
 export const TRACKS_TOP_PAD = 8;
 export const TRACKS_BOTTOM_PAD = TRACK_H;
@@ -98,6 +109,7 @@ type TimelineTrackHeightInput = readonly (readonly TimelineTrackHeightClip[])[];
 export function trackHeights(
   tracks: TimelineTrackHeightInput,
   expandedClipIds?: ReadonlySet<string>,
+  trackHeight = TRACK_H,
 ): number[] {
   return tracks.map((clips) => {
     let laneCount = 0;
@@ -108,13 +120,15 @@ export function trackHeights(
       automationLanes = Math.max(automationLanes, clip.automationLaneCount ?? 0);
     }
     return (
-      TRACK_H + Math.max(0, Math.trunc(laneCount)) * LANE_H + automationLanes * AUTOMATION_LANE_H
+      trackHeight +
+      Math.max(0, Math.trunc(laneCount)) * LANE_H +
+      automationLanes * AUTOMATION_LANE_H
     );
   });
 }
 
-function validRowHeight(height: number | undefined): number {
-  if (height === undefined || !Number.isFinite(height) || height <= 0) return TRACK_H;
+function validRowHeight(height: number | undefined, trackHeight = TRACK_H): number {
+  if (height === undefined || !Number.isFinite(height) || height <= 0) return trackHeight;
   return height;
 }
 
@@ -129,6 +143,8 @@ export interface TimelineRowGeometry {
   readonly rowOffsets: readonly number[];
   readonly rowsHeight: number;
   readonly padding: Readonly<Required<TimelineTrackPadding>>;
+  /** One collapsed layer: rows past the last, and every clip bar, take this height. */
+  readonly trackHeight: number;
   readonly canvasHeight: number;
   getRowIndex(rowKey: number): number;
   getRowHeight(row: number): number;
@@ -150,10 +166,11 @@ export function createTimelineRowGeometry(
   rowKeys: readonly number[],
   rowHeights: readonly number[],
   padding: TimelineTrackPadding = {},
+  trackHeight = TRACK_H,
 ): TimelineRowGeometry {
   const topPad = validPad(padding.top, TRACKS_TOP_PAD);
-  const bottomPad = validPad(padding.bottom, TRACKS_BOTTOM_PAD);
-  const heights = Object.freeze(rowHeights.map(validRowHeight));
+  const bottomPad = validPad(padding.bottom, trackHeight);
+  const heights = Object.freeze(rowHeights.map((height) => validRowHeight(height, trackHeight)));
   const keys = Object.freeze(
     heights.map((_, row) => {
       const key = rowKeys[row];
@@ -165,22 +182,22 @@ export function createTimelineRowGeometry(
   Object.freeze(offsets);
   const rowIndexByKey = new Map(keys.map((key, row) => [key, row]));
 
-  const getRowHeight = (row: number) => validRowHeight(heights[row]);
+  const getRowHeight = (row: number) => validRowHeight(heights[row], trackHeight);
   const getRowOffset = (row: number) => {
-    if (heights.length === 0) return row * TRACK_H;
+    if (heights.length === 0) return row * trackHeight;
     if (row <= 0) return row * getRowHeight(0);
     if (row >= heights.length) {
-      return (offsets[heights.length] ?? 0) + (row - heights.length) * TRACK_H;
+      return (offsets[heights.length] ?? 0) + (row - heights.length) * trackHeight;
     }
     const wholeRow = Math.floor(row);
     return (offsets[wholeRow] ?? 0) + (row - wholeRow) * getRowHeight(wholeRow);
   };
   const getRowFromY = (contentY: number) => {
     const y = contentY - RULER_H - topPad;
-    if (heights.length === 0) return y / TRACK_H;
+    if (heights.length === 0) return y / trackHeight;
     if (y < 0) return y / getRowHeight(0);
     const rowsHeight = offsets[heights.length] ?? 0;
-    if (y >= rowsHeight) return heights.length + (y - rowsHeight) / TRACK_H;
+    if (y >= rowsHeight) return heights.length + (y - rowsHeight) / trackHeight;
 
     // First boundary strictly greater than y. Unlike the old linear scan this
     // stays logarithmic for large timelines and uses the precomputed offsets.
@@ -200,6 +217,7 @@ export function createTimelineRowGeometry(
     rowOffsets: offsets,
     rowsHeight: offsets.at(-1) ?? 0,
     padding: Object.freeze({ top: topPad, bottom: bottomPad }),
+    trackHeight,
     canvasHeight: RULER_H + topPad + (offsets.at(-1) ?? 0) + bottomPad,
     getRowIndex: (rowKey) => rowIndexByKey.get(rowKey) ?? -1,
     getRowHeight,

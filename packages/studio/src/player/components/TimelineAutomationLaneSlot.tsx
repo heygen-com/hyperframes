@@ -15,7 +15,7 @@ import { getTimelineLaneTop } from "./timelineLayout";
 import { groupAutomationLanes, isCarveLane } from "./automationLaneData";
 import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
 
 /** Which shared rows one clip draws into, and with which of its lanes. */
@@ -174,6 +174,7 @@ export function TimelineAutomationLaneSlot({
   currentTime,
   beatTimes,
 }: TimelineAutomationLaneSlotProps) {
+  const trackHeight = usePlayerStore((s) => s.trackHeight);
   // Broader than a raw-attribute check — a clip mid-edit (see the stale-
   // selection test) has lanes in its live binding before the attribute commits.
   const clips = elements.filter(isAudioOrVideoTimelineElement);
@@ -186,7 +187,7 @@ export function TimelineAutomationLaneSlot({
       else rowsByClip.set(key, [{ lane: entry.lane, rowIndex }]);
     }
   });
-  const top = topOffset ?? getTimelineLaneTop(laneCount);
+  const top = topOffset ?? getTimelineLaneTop(laneCount, trackHeight);
   return (
     <>
       {clips.map((element) => (

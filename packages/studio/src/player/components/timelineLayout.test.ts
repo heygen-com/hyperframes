@@ -17,6 +17,7 @@ import {
   trackHeights,
   resolveTimelineAssetDrop,
   getTimelineBeatEntries,
+  getTimelineLaneTop,
 } from "./timelineLayout";
 import { generateTicks, getTimelineMajorTickInterval } from "./timelineRulerGeometry";
 import { resolveInsertRow } from "./timelineCollision";
@@ -292,6 +293,31 @@ describe("host track padding", () => {
   it("keeps the default pads when a host passes none", () => {
     const defaults = createTimelineRowGeometry([0], baseRows(1));
     expect(defaults.padding).toEqual({ top: TRACKS_TOP_PAD, bottom: TRACKS_BOTTOM_PAD });
+  });
+});
+
+describe("resized layers", () => {
+  const short = 30;
+  const geometry = createTimelineRowGeometry(
+    [0, 1],
+    trackHeights([[], []], undefined, short),
+    {},
+    short,
+  );
+
+  it("sizes every row, the ghost lane and the rows past the last from one layer height", () => {
+    expect(geometry.rowHeights).toEqual([short, short]);
+    expect(geometry.trackHeight).toBe(short);
+    expect(geometry.padding.bottom).toBe(short);
+    expect(geometry.canvasHeight).toBe(RULER_H + TRACKS_TOP_PAD + 3 * short);
+    expect(geometry.getRowTop(3)).toBe(RULER_H + TRACKS_TOP_PAD + 3 * short);
+    expect(Math.floor(geometry.getRowFromY(RULER_H + TRACKS_TOP_PAD + 2 * short + 1))).toBe(2);
+  });
+
+  it("puts an expanded clip's lanes under the resized bar", () => {
+    const expanded = trackHeights([[{ clipId: "a", laneCount: 2 }]], new Set(["a"]), short);
+    expect(expanded).toEqual([short + 2 * LANE_H]);
+    expect(getTimelineLaneTop(1, short)).toBe(short + LANE_H);
   });
 });
 

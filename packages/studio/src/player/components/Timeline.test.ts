@@ -78,6 +78,13 @@ describe("timeline viewport geometry", () => {
     expect(getTimelineScrollTopForGeometryChange(previous, next, 0)).toBe(0);
   });
 
+  it("keeps scrollTop when every layer is resized, so a dragged layer edge stays under the pointer", () => {
+    const previous = createTimelineRowGeometry([1, 2, 3], [48, 48, 48], {}, 48);
+    const next = createTimelineRowGeometry([1, 2, 3], [60, 60, 60], {}, 60);
+    const scrollTop = previous.getRowTop(1) - RULER_H + 6;
+    expect(getTimelineScrollTopForGeometryChange(previous, next, scrollTop)).toBe(scrollTop);
+  });
+
   it("leaves scrollTop to edge auto-scroll while a clip drag adds a row above", () => {
     const previous = createTimelineRowGeometry([1, 2, 3], [48, 48, 48]);
     const next = createTimelineRowGeometry([9, 1, 2, 3], [48, 48, 48, 48]);

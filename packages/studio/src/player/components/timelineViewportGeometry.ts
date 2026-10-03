@@ -44,6 +44,9 @@ export function getTimelineScrollTopForGeometryChange(
 ): number {
   const atTopSoRowsAddedAboveStayShown = scrollTop <= 0;
   if (dragAutoScrollOwnsScrollTop || atTopSoRowsAddedAboveStayShown) return scrollTop;
+  // Resizing every layer keeps the scroll: a dragged layer edge then moves by its share of every layer above it,
+  // scrolled out or not, and stays under the pointer (TrackHeightGrip).
+  if (previous.trackHeight !== next.trackHeight) return scrollTop;
   const anchor = previous.getRowPositionFromY(scrollTop + RULER_H);
   if (anchor.row < 0 || anchor.row >= previous.rowKeys.length) return scrollTop;
   const anchorKey = previous.rowKeys[anchor.row];

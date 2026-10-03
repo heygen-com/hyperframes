@@ -2,7 +2,7 @@ import { memo } from "react";
 import { TimelineRulerPart } from "./TimelineRulerPart";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import { TimelinePlayheadLayer } from "./TimelinePlayheadLayer";
-import { RULER_H, CLIP_Y, TRACK_H, PLAYHEAD_HEAD_W, getTimelineRowHeight } from "./timelineLayout";
+import { RULER_H, CLIP_Y, PLAYHEAD_HEAD_W, getTimelineRowHeight } from "./timelineLayout";
 import { getTimelinePlayheadTransform } from "./timelinePlayheadTransform";
 import { TimelineLanes } from "./TimelineLanes";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
@@ -30,15 +30,16 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
     (insertLineRow ?? -1) >= props.trackOrder.length ||
     (props.dropPreview?.insertRow == null && props.dropPreview != null && dropTrackIndex < 0);
   // A host bottom pad shorter than a track leaves no lane to draw.
-  const showGhostLane = props.rowGeometry.padding.bottom >= TRACK_H;
+  const trackHeight = props.rowGeometry.trackHeight;
+  const showGhostLane = props.rowGeometry.padding.bottom >= trackHeight;
   // Past the last committed track: a drag's new bottom-track preview row is the lane itself.
   const ghostLaneRow = props.rowGeometry.getRowIndex(props.trackOrder.at(-1) ?? Number.NaN) + 1;
   const draggedRowHeight = getTimelineRowHeight(draggedRowIndex, props.rowHeights);
-  // A clip bar in an EXPANDED row still renders at TRACK_H (the property lanes
+  // A clip bar in an EXPANDED row still renders at one layer height (the property lanes
   // occupy the rest of the row — see TimelineLanes' clipHeight), so the drag
   // ghost and drop placeholder must clamp to it or they stretch to the full
   // expanded row height and stop matching the clip being dragged.
-  const draggedClipHeight = Math.min(draggedRowHeight, TRACK_H) - CLIP_Y * 2;
+  const draggedClipHeight = Math.min(draggedRowHeight, trackHeight) - CLIP_Y * 2;
   const beatDragging = props.beatDragging;
   const { draggedElement, snapGuide, multiDragPreview } = props;
   return (
@@ -92,7 +93,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             top: props.rowGeometry.getRowTop(ghostLaneRow) + CLIP_Y,
             left: props.contentOrigin,
             width: props.trackContentWidth,
-            height: TRACK_H - CLIP_Y * 2,
+            height: trackHeight - CLIP_Y * 2,
           }}
         >
           {props.acceptsMediaDrop && "Drop media here"}
@@ -121,7 +122,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
               top: props.rowGeometry.getRowTop(rowIndex) + CLIP_Y,
               left: props.contentOrigin + gap.start * props.pps,
               width: Math.max((gap.end - gap.start) * props.pps, 2),
-              height: TRACK_H - CLIP_Y * 2,
+              height: trackHeight - CLIP_Y * 2,
               background: loud ? "var(--timeline-accent-soft)" : "var(--timeline-accent-faint)",
               borderRadius: 4,
               zIndex: 25,
@@ -159,7 +160,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
             top: props.rowGeometry.getRowTop(dropRowIndex) + CLIP_Y,
             left: props.contentOrigin + props.dropPreview.start * props.pps,
             width: DROP_PREVIEW_SECONDS * props.pps,
-            height: TRACK_H - CLIP_Y * 2,
+            height: trackHeight - CLIP_Y * 2,
             border: "1px solid color-mix(in srgb, var(--timeline-accent) 55%, transparent)",
             background: "color-mix(in srgb, var(--timeline-accent) 12%, transparent)",
             borderRadius: 4,

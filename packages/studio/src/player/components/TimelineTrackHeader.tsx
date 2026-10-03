@@ -18,7 +18,8 @@ import { elementFxChain, groupAutomationLanes, isCarveLane } from "./automationL
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { LaneToggleButton, LayerDisclosureRow } from "./LayerDisclosureRow";
-import { LABEL_COL_W, TRACK_H, getTimelineLaneTop } from "./timelineLayout";
+import { LABEL_COL_W, getTimelineLaneTop } from "./timelineLayout";
+import { TrackHeightGrip } from "./TrackHeightGrip";
 import type { TimelineTheme } from "./timelineTheme";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 import { AutomationLaneHeaderRow, PropertyGroupHeaderRow } from "./trackHeaderLabelRows";
@@ -71,6 +72,8 @@ interface TimelineTrackHeaderProps {
   /** This track is a member of an audio group — indents the row under its header. */
   isGroupMember?: boolean;
   rovingTargetId?: string | null;
+  /** Display row; with it the header's bottom edge resizes every layer. */
+  row?: number;
   theme: TimelineTheme;
   showAudioEffects?: boolean;
   onToggleClipExpanded: () => void;
@@ -106,6 +109,7 @@ export function TimelineTrackHeader({
   onRemoveAutomationLane,
   onSeek,
   rovingTargetId = null,
+  row,
 }: TimelineTrackHeaderProps) {
   const clipPercentage = keyframeClip
     ? ((currentTime - keyframeClip.start) / keyframeClip.duration) * 100
@@ -164,6 +168,7 @@ export function TimelineTrackHeader({
     [groupAutomationRaw, groupFxChainRaw, groupOwner],
   );
   const revealAudioFx = usePlayerStore((s) => s.setRevealedAudioFxTarget);
+  const trackHeight = usePlayerStore((s) => s.trackHeight);
   /**
    * Which element's rack a lane's reveal opens, in the PANEL's id space.
    *
@@ -289,9 +294,10 @@ export function TimelineTrackHeader({
           : {}),
       }}
     >
+      {row !== undefined && <TrackHeightGrip row={row} />}
       {!isKeyframeLayer ? (
         <>
-          {/* The two lines own exactly TRACK_H, not the whole header.
+          {/* The two lines own exactly one layer height, not the whole header.
               `justify-center` on the header itself centred them in its FULL
               height — which grows by AUTOMATION_LANE_H per open lane — so
               opening one pushed the name and its controls down THROUGH the lane
@@ -299,10 +305,10 @@ export function TimelineTrackHeader({
           <div
             className={
               showTrackLabel
-                ? "flex flex-col justify-center gap-0.5 px-1.5 text-[var(--timeline-handle)]"
-                : "flex flex-col items-center justify-center gap-0.5"
+                ? "flex flex-col justify-center gap-0.5 overflow-hidden px-1.5 text-[var(--timeline-handle)]"
+                : "flex flex-col items-center justify-center gap-0.5 overflow-hidden"
             }
-            style={{ height: TRACK_H }}
+            style={{ height: trackHeight }}
           >
             <PlainTrackHeader
               trackNumber={trackNumber}
@@ -435,7 +441,7 @@ export function TimelineTrackHeader({
               alsoAutomatedBy={
                 groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
               }
-              top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
+              top={getTimelineLaneTop(lanes.length, trackHeight) + index * AUTOMATION_LANE_H}
               isLastLane={index === automationRows.length - 1}
               gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
               columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}

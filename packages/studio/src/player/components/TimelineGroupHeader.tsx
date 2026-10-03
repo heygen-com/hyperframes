@@ -1,5 +1,5 @@
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
-import { TRACK_H } from "./timelineLayout";
+import { usePlayerStore } from "../store/playerStore";
 import type { TimelineTheme } from "./timelineTheme";
 import { TimelineFxButton } from "./TimelineFxButton";
 import type { AuditionSpan } from "../../components/editor/useAuditionTransport.js";
@@ -102,6 +102,7 @@ export function TimelineGroupHeader({
   theme,
   showAudioEffects = true,
 }: TimelineGroupHeaderProps) {
+  const trackHeight = usePlayerStore((s) => s.trackHeight);
   return (
     <div
       role="rowheader"
@@ -109,7 +110,7 @@ export function TimelineGroupHeader({
       className="sticky left-0 z-12 flex shrink-0 items-center gap-1.5 overflow-hidden px-1.5 text-[11px]"
       style={{
         width: columnWidth,
-        height: TRACK_H,
+        height: trackHeight,
         color: "var(--timeline-text-solid)",
         background: theme.gutterBackground,
         borderRight: `1px solid ${theme.gutterBorder}`,

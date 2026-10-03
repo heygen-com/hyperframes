@@ -5,6 +5,7 @@ import {
   Magnet,
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
+  Rows,
 } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
@@ -20,6 +21,7 @@ import {
   timelineSliderToZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
+import { TRACK_H_MAX, TRACK_H_MIN } from "../player/components/timelineLayout";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
 import { AudioMetersIcon } from "./icons/AudioMetersIcon";
@@ -40,6 +42,10 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
 }
+
+// h-6 on a range input is the 24x24 WCAG 2.2 (2.5.8) target: the visible track stays 2px and the thumb 10px.
+const RANGE_INPUT_CLASS =
+  "cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-0 [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing";
 
 export interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
@@ -159,6 +165,8 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
   const setThumbnailMode = usePlayerStore((s) => s.setThumbnailMode);
   const thumbnailsVisible = thumbnailMode === "adaptive";
+  const trackHeight = usePlayerStore((s) => s.trackHeight);
+  const setTrackHeight = usePlayerStore((s) => s.setTrackHeight);
   const audioMetersVisible = useAudioMetersVisible((s) => s.visible);
   const setAudioMetersVisible = useAudioMetersVisible((s) => s.setVisible);
   const projectHasAudio = useProjectHasAudio();
@@ -485,6 +493,21 @@ export const TimelineToolbar = memo(function TimelineToolbar({
               <Image size={16} aria-hidden="true" />
             </button>
           </Tooltip>
+          <Tooltip label="Layer height">
+            <span className="flex items-center text-neutral-400">
+              <Rows size={16} aria-hidden="true" className="ml-1" />
+              <input
+                type="range"
+                min={TRACK_H_MIN}
+                max={TRACK_H_MAX}
+                value={trackHeight}
+                aria-label="Layer height"
+                aria-valuetext={`${trackHeight} px`}
+                onChange={(e) => setTrackHeight(Number(e.target.value))}
+                className={`mx-1 h-6 w-[56px] ${RANGE_INPUT_CLASS}`}
+              />
+            </span>
+          </Tooltip>
           <Tooltip label="Fit timeline to width">
             <button
               type="button"
@@ -528,9 +551,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                 timelineSliderToZoomPercent(Number(e.target.value), timelineFitPps),
               );
             }}
-            // h-6 on the input is the 24x24 WCAG 2.2 (2.5.8) target: the visible
-            // track stays 2px and the thumb 10px, only the pointer box grows.
-            className="mx-1 h-6 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-0 [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+            className={`mx-1 h-6 w-[96px] ${RANGE_INPUT_CLASS}`}
           />
           <Tooltip label="Zoom in">
             <button

@@ -8,6 +8,7 @@ import { toClipKeyframes } from "../../hooks/gsapShared";
 import { synthesizeFlatTweenKeyframes } from "../../hooks/gsapTweenSynth";
 import { TimelineDiamondLane, type TimelineDiamondKeyframe } from "./TimelineClipDiamonds";
 import { LANE_H, getTimelineLaneTop } from "./timelineLayout";
+import { usePlayerStore } from "../store/playerStore";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import { timelineLogicalRowCellId, timelinePropertyRowId } from "./timelineNavigationIdentity";
 
@@ -197,6 +198,7 @@ export function TimelinePropertyLanes({
   onMoveKeyframe,
   suppressClickRef,
 }: TimelinePropertyLanesProps) {
+  const trackHeight = usePlayerStore((s) => s.trackHeight);
   // Memoized: TimelineDiamondLane is React.memo'd, and rebuilding the lanes (and
   // a fresh keyframesData literal per lane) on every render would re-render every
   // diamond in every expanded clip on each playhead tick.
@@ -232,11 +234,11 @@ export function TimelinePropertyLanes({
           data-property-group={group}
           data-timeline-element-id={elementId}
           data-timeline-property-lane=""
-          data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
+          data-timeline-lane-top={getTimelineLaneTop(laneIndex, trackHeight)}
           className="absolute"
           style={{
             left: clipLeftPx,
-            top: getTimelineLaneTop(laneIndex),
+            top: getTimelineLaneTop(laneIndex, trackHeight),
             width: clipWidthPx,
             height: LANE_H,
           }}
