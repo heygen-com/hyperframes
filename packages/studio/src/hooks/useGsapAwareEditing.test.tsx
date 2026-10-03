@@ -74,6 +74,7 @@ function mountResizeHandler(
         size: { width: number; height: number },
         offset?: { x: number; y: number },
         restore?: () => void,
+        route?: { plainTranslate: boolean },
       ) => Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult>)
     | null = null;
   let property: ReturnType<typeof useGsapAwareEditing>["commitAnimatedProperty"] | null = null;
@@ -231,6 +232,21 @@ describe("useGsapAwareEditing keeps the route a gesture chose at press", () => {
     expect(stageElementPositionOffset.mock.calls.length).toBe(plainTranslate ? 2 : 0);
     expect(mocks.drag.mock.calls.some((call) => call[0] === box)).toBe(!plainTranslate);
     act(() => root.unmount());
+  });
+});
+
+describe("useGsapAwareEditing keeps the box route a resize chose at press", () => {
+  it.each([
+    ["the CSS route, on an element GSAP has since taken over", true],
+    ["the GSAP route, on an element that now looks GSAP-free", false],
+  ])("%s", async (_, plainTranslate) => {
+    mocks.resize.mockResolvedValue({ status: "persisted" });
+    const h = mountResizeHandler([], [], plainTranslate);
+    const size = { width: 300, height: 200 };
+    await act(() => h.resize(h.selection, size, undefined, vi.fn(), { plainTranslate }));
+    expect(h.fallback).toHaveBeenCalledTimes(plainTranslate ? 1 : 0);
+    expect(mocks.resize).toHaveBeenCalledTimes(plainTranslate ? 0 : 1);
+    act(() => h.root.unmount());
   });
 });
 

@@ -5,7 +5,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { CommitMutationCall, CommitMutationOptions } from "./gsapScriptCommitTypes";
 import type { UseGsapAwareEditingParams } from "./useGsapAwareEditing";
 import { observeGsapGesture } from "./gsapGestureOutcome";
-import { gsapWritesPosition } from "./gsapRuntimeKeyframes";
+import { editsPlainCss } from "./gsapRuntimeKeyframes";
 import { refuseGsapTakeover } from "./elementOffsetStager";
 import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
 import { assertGsapEditPersisted } from "./gsapEditOutcome";
@@ -81,7 +81,7 @@ export function useGsapAwareGroupMove({
       // write nothing and share one in-flight parse per file, so they run together.
       const preflightResults = await Promise.allSettled(
         updates.map(async ({ selection, next, plainTranslate }) => {
-          if (plainTranslate ?? !gsapWritesPosition(selection.element)) {
+          if (plainTranslate ?? editsPlainCss(selection.element, "move")) {
             refuseGsapTakeover(selection.element, toastRefusal ? showToast : () => {});
             return void offsetMembers.set(selection, true);
           }

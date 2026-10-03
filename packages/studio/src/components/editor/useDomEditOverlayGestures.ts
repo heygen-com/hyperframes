@@ -536,7 +536,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         if (finalOffset) restoreStudioPathOffset(sel.element, g.initialPathOffset);
       };
       void Promise.resolve(
-        opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined, restore),
+        opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined, restore, member),
       )
         .then((result) => trackPreviewEditResult("resize", "drag", result))
         .catch((error) => {

@@ -42,6 +42,7 @@ export interface DomGeometryCommits {
     next: { width: number; height: number },
     offset?: { x: number; y: number },
     restore?: () => void,
+    route?: { plainTranslate: boolean },
   ) => Promise<DomEditCommitOutcome>;
   commitRotation: (
     selection: DomEditSelection,
@@ -174,8 +175,8 @@ export function useDomGeometryCommit({
         saved(() => handleGsapAwarePathOffsetCommit(selection, next, modifiers)),
       commitGroupPathOffset: (updates) =>
         saved(() => handleGsapAwareGroupPathOffsetCommit(updates)),
-      commitBoxSize: (selection, next, offset, restore) =>
-        saved(() => handleGsapAwareBoxSizeCommit(selection, next, offset, restore), restore),
+      commitBoxSize: (selection, next, offset, restore, route) =>
+        saved(() => handleGsapAwareBoxSizeCommit(selection, next, offset, restore, route), restore),
       commitRotation: (selection, next) =>
         saved(() => handleGsapAwareRotationCommit(selection, next)),
       waitForPendingSaves: () => Promise.allSettled([...pending]).then(noop),

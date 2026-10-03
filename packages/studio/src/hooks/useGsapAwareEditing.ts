@@ -30,9 +30,7 @@ import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { MoveCommitOptions } from "../components/editor/domEditOverlayGestures";
 import { runGestureTransaction } from "./gestureTransaction";
 import {
-  gsapWritesBox,
-  gsapWritesPosition,
-  gsapWritesRotation,
+  editsPlainCss,
   hasNonHoldTweenForElement,
   POSITION_CHANNELS,
 } from "./gsapRuntimeKeyframes";
@@ -151,7 +149,7 @@ export function useGsapAwareEditing({
       modifiers?: MoveCommitOptions,
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (modifiers?.plainTranslate ?? !gsapWritesPosition(selection.element)) {
+      if (modifiers?.plainTranslate ?? editsPlainCss(selection.element, "move")) {
         const result = await stageElementPositionOffset(selection, next, true).save();
         return writes.finish(result?.changed === true);
       }
@@ -207,9 +205,10 @@ export function useGsapAwareEditing({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
+      route?: { plainTranslate: boolean },
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (!gsapWritesBox(selection.element)) {
+      if (route?.plainTranslate ?? editsPlainCss(selection.element, "resize")) {
         const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
         return writes.finish(result?.changed === true);
       }
@@ -258,8 +257,13 @@ export function useGsapAwareEditing({
           );
           // Saved after the size, under its undo key, so the two are one step.
           await saveMove(dragOutcome, async () => {
-            const plain = !gsapWritesPosition(selection.element);
-            anchorMove = stageElementPositionOffset(selection, offset, plain, coalesceKey);
+            const plainAfterSettle = editsPlainCss(selection.element, "move");
+            anchorMove = stageElementPositionOffset(
+              selection,
+              offset,
+              plainAfterSettle,
+              coalesceKey,
+            );
           });
         }
       };
@@ -360,7 +364,7 @@ export function useGsapAwareEditing({
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: RotationCommit) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (next.plain || !gsapWritesRotation(selection.element)) {
+      if (next.plain || editsPlainCss(selection.element, "rotate")) {
         const result = await handleDomRotationCommit(selection, next);
         return writes.finish(result?.changed === true);
       }
