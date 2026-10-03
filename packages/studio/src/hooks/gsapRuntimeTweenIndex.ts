@@ -26,8 +26,9 @@ function indexTweens(children: RuntimeTween[]): TweenIndex {
   const index: TweenIndex = { byElement: new Map(), byId: new Map() };
   const add = <K>(map: Map<K, RuntimeTween[]>, key: K, tween: RuntimeTween) => {
     const list = map.get(key);
-    if (list) list.push(tween);
-    else map.set(key, [tween]);
+    // A tween's targets are added together, so a repeat of its key is always the last entry.
+    if (!list) map.set(key, [tween]);
+    else if (list.at(-1) !== tween) list.push(tween);
   };
   for (const tween of children) {
     for (const target of tween.targets?.() ?? []) {

@@ -278,18 +278,13 @@ export function syncCompositionDurationToContent(source: string): string {
 }
 
 export function buildTimelineMoveTimingPatch(
-  original: string,
-  target: PatchTarget,
-  start: number,
-  duration: number,
-  track?: number,
-  audioGroup?: null,
+  ...args: Parameters<typeof applyTimelineMoveAttributes>
 ): string {
-  const patched = applyTimelineMoveAttributes(original, target, start, duration, track, audioGroup);
-  // A non-finite timing skips the patch above; skip the duration sync with it.
-  return patched === original && !(Number.isFinite(start) && Number.isFinite(duration))
-    ? patched
-    : syncCompositionDurationToContent(patched);
+  const patched = applyTimelineMoveAttributes(...args);
+  const [, , start, duration] = args;
+  return Number.isFinite(start) && Number.isFinite(duration)
+    ? syncCompositionDurationToContent(patched)
+    : patched;
 }
 
 export function applyTimelineResizeAttributes(
@@ -380,11 +375,15 @@ export function operationChanges(
   }));
 }
 
-/** Patches each change into `source`, failing loudly on a target the file does not hold. */
+/**
+ * Patches each change into `source`, failing loudly on a target the file does not hold.
+ * `finishFile` runs once on the patched file, so a per-file step is not repeated per change.
+ */
 export function patchTimelineChangesInSource(
   source: string,
   targetPath: string,
   changes: readonly PersistTimelineBatchChange[],
+  finishFile?: (patched: string) => string,
 ): string {
   let current = source;
   for (const { element, buildPatches } of changes) {
@@ -396,7 +395,7 @@ export function patchTimelineChangesInSource(
     }
     current = buildPatches(current, target);
   }
-  return current;
+  return finishFile && current !== source ? finishFile(current) : current;
 }
 
 export interface PersistTimelineBatchEditInput {
@@ -423,8 +422,12 @@ export async function persistTimelineBatchEdit(
     changesByPath.set(targetPath, [...(changesByPath.get(targetPath) ?? []), change]);
   }
   const buildFile = (targetPath: string) => (original: string) => {
-    const patched = patchTimelineChangesInSource(original, targetPath, changesByPath.get(targetPath)!);
-    const next = input.finishFile ? input.finishFile(patched) : patched;
+    const next = patchTimelineChangesInSource(
+      original,
+      targetPath,
+      changesByPath.get(targetPath)!,
+      input.finishFile,
+    );
     if (next !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
     return next;
   };
