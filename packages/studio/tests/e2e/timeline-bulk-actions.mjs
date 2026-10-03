@@ -152,6 +152,7 @@ async function measure(page, name, action) {
   const onRequest = (r) => started.set(r, Date.now());
   const onFinished = (r) =>
     requests.push({
+      at: started.get(r) - startedAt,
       ms: Date.now() - started.get(r),
       kind: `${r.method()} ${requestKind(r.url())}`,
     });
@@ -161,6 +162,7 @@ async function measure(page, name, action) {
     page.on("request", onRequest);
     page.on("requestfinished", onFinished);
   }
+  const startedAt = Date.now();
   const t0 = await now(page);
   const doneAt = await action();
   const ms = doneAt - t0;
