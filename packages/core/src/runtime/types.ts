@@ -315,6 +315,7 @@ export type RuntimeTimelineLike = {
   seek: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
   totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
   progress?: (value?: number, suppressEvents?: boolean) => unknown;
+  render?: (totalTime: number, suppressEvents?: boolean, force?: boolean) => unknown;
   time: () => number;
   duration: () => number;
   add: (timeline: RuntimeTimelineLike, startAtSeconds: number) => void;

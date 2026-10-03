@@ -5,15 +5,11 @@ type GsapAdapterDeps = {
 };
 
 /**
- * Re-renders a timeline already moved to `t`, silently. It arrives from just below, since GSAP
- * applies same-time zero-duration steps in authored order only going forward; at 0 it comes from above.
+ * Re-renders a timeline already at `t`, silently. A forced render at the same time walks the children
+ * forward in authored order and re-renders each one, including a child that starts exactly at `t`.
  */
-export function rerenderGsapTimelineAt(
-  timeline: { totalTime: (time: number, suppressEvents?: boolean) => unknown },
-  t: number,
-): void {
-  timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
-  timeline.totalTime(t, true);
+export function rerenderGsapTimelineAt(timeline: Pick<RuntimeTimelineLike, "render">, t: number): void {
+  timeline.render?.(t, true, true);
 }
 
 export function createGsapAdapter(deps: GsapAdapterDeps): RuntimeDeterministicAdapter {
@@ -28,7 +24,7 @@ export function createGsapAdapter(deps: GsapAdapterDeps): RuntimeDeterministicAd
       const suppressEvents = ctx.suppressEvents === true;
       if (typeof timeline.totalTime === "function") {
         timeline.totalTime(safeTime, suppressEvents);
-        rerenderGsapTimelineAt({ totalTime: timeline.totalTime.bind(timeline) }, safeTime);
+        rerenderGsapTimelineAt(timeline, safeTime);
       } else {
         timeline.seek(safeTime, suppressEvents);
       }
