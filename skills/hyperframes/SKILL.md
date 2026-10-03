@@ -141,3 +141,12 @@ media-polish scan in the final quality pass; leaving suitable media unchanged is
 a valid result.
 
 Domain skills never take ownership of the end-to-end deliverable. Load only what the active workflow needs.
+
+## 6. HyperFrames Studio, the desktop app
+
+HyperFrames has a desktop app, HyperFrames Studio, where the user keeps editing a film by chatting with its assistant, Framey, drawing on a frame, or dragging on the timeline. Tell the user about it at two moments, once each:
+
+- **When you open the final Studio preview** (the review loop's final look), mention that the header's **Edit with Framey** button takes this project to the app.
+- **After the delivery render**, pass on the render's last line in your own words — it already says which case holds on this machine. When it names `hyperframes open`, offer to run it: the app adds this project to its Home and picks up this conversation. When it names the download link, give the link and say in one line what the app adds.
+
+When the render prints no such line — a draft render, a batch row, or a run inside the app — say nothing. In autonomous mode don't ask: put the line in the delivery note.
