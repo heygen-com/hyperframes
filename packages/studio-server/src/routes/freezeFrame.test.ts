@@ -49,7 +49,8 @@ describe("freeze-frame route", () => {
       target: { id: "talk" },
       playhead: 2.5,
     });
-    const body: { before?: string; after?: string; imageSrc?: string } = await res.json();
+    const body: { before?: string; after?: string; imageSrc?: string; stillPath?: string } =
+      await res.json();
     expect(res.status).toBe(200);
     const output = calls[0]?.at(-1) ?? "";
     expect(calls[0]).toEqual([
@@ -65,6 +66,7 @@ describe("freeze-frame route", () => {
     expect(dirname(output)).toBe(join(dir, "assets/freeze"));
     expect(basename(output)).toMatch(/^talk-[0-9a-f]{10}-2500-[0-9a-f]{8}\.png$/);
     expect(body.imageSrc).toBe(`assets/freeze/${basename(output)}`);
+    expect(body.stillPath).toBe(`assets/freeze/${basename(output)}`);
     expect(body.before).toBe(html);
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(body.after);
     expect(body.after).toContain('id="talk-freeze"');
@@ -98,6 +100,25 @@ describe("freeze-frame route", () => {
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
   });
 
+  it("removes the still it extracted when the page changed before the write", async () => {
+    let still = "";
+    const { dir, post } = setup(async (args) => {
+      still = args.at(-1) ?? "";
+      writeFileSync(still, "png");
+      writeFileSync(join(dir, "index.html"), `${html}\n<!-- edited meanwhile -->`);
+      return { ok: true };
+    });
+    const res = await post({
+      path: "index.html",
+      expectedVersion: fileContentVersion(html),
+      target: { id: "talk" },
+      playhead: 2.5,
+    });
+    expect(res.status).toBe(409);
+    expect(still).not.toBe("");
+    expect(existsSync(still)).toBe(false);
+  });
+
   it("keeps a traversal clip id inside assets/freeze, for the ffmpeg output and the still's src", async () => {
     const evil = html.replace('id="talk"', 'id="../../../../outside/frame"');
     const calls: string[][] = [];
@@ -114,9 +135,11 @@ describe("freeze-frame route", () => {
       target: { id: "../../../../outside/frame" },
       playhead: 2.5,
     });
-    const body: { imageSrc?: string; after?: string } = await res.json();
+    const body: { imageSrc?: string; after?: string; stillPath?: string } = await res.json();
     expect(res.status).toBe(200);
     const output = calls[0]?.at(-1) ?? "";
+    // The history names project files from the project root, not from the page that shows the still.
+    expect(body.stillPath).toBe(`assets/freeze/${basename(output)}`);
     expect(basename(output)).toMatch(/^____________outside_frame-[0-9a-f]{10}-2500-/);
     expect(dirname(output)).toBe(join(dir, "assets/freeze"));
     expect(body.imageSrc).toBe(`../assets/freeze/${basename(output)}`);
@@ -190,16 +213,16 @@ describe("freeze-frame route", () => {
       expect(readFileSync(outputs[0] ?? "", "utf-8")).toBe(first);
     });
 
-    it("gives concurrent requests distinct stills", async () => {
+    it("gives concurrent requests distinct stills and keeps only the one the page uses", async () => {
       const outputs: string[] = [];
       const { dir, post } = setup(writingExtractor(outputs));
       const results = await Promise.all([freeze(post, dir, "talk"), freeze(post, dir, "talk")]);
       expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
       expect(new Set(outputs).size).toBe(2);
-      expect(outputs.map((output) => readFileSync(output, "utf-8"))).toEqual([
-        expect.stringContaining("#"),
-        expect.stringContaining("#"),
-      ]);
+      const kept = outputs.filter((output) => existsSync(output));
+      expect(kept).toHaveLength(1);
+      expect(readFileSync(kept[0] ?? "", "utf-8")).toContain("#");
+      expect(readFileSync(join(dir, "index.html"), "utf-8")).toContain(basename(kept[0] ?? ""));
     });
 
     it("refuses, without extracting, when the still's name is already taken", async () => {

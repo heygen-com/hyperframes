@@ -3,13 +3,7 @@ import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server"
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import { studioApiFetch } from "../utils/studioApiFetch";
-
-interface RecordEditInput {
-  label: string;
-  coalesceKey?: string;
-  coalesceMs?: number;
-  files: Record<string, { before: string; after: string }>;
-}
+import type { RecordEditInput } from "../utils/studioFileHistory";
 
 interface ApplyCallbacks {
   readFile: (path: string) => Promise<string>;
@@ -235,9 +229,9 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
   }, [refresh, own]);
 
   const recordEdit = useCallback(
-    async ({ label, coalesceKey, coalesceMs, files }: RecordEditInput) => {
+    async ({ label, coalesceKey, coalesceMs, files, created = [] }: RecordEditInput) => {
       if (!projectId) return;
-      const paths = Object.keys(files);
+      const paths = [...Object.keys(files), ...created];
       own.overtake();
       const reply = await post(historyUrl(projectId, "/claim"), {
         label,

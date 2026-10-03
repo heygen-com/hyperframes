@@ -2,9 +2,9 @@
 // fallow-ignore-file code-duplication
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   createStudioApi,
@@ -314,6 +314,29 @@ it("refuses a second press whose edit is undone once an edit was made after the 
   expect(second).toMatchObject({ ok: false, reason: "content-mismatch" });
   expect(readFileSync(join(dir, "card.html"), "utf8")).toBe("Y");
   expect(file()).toBe("B");
+});
+
+it("a file the edit made (a freeze's still) is deleted by its Undo and put back by its Redo", async () => {
+  const { dir, hook, save, readFile } = await studio();
+  const still = join(dir, "assets", "freeze", "talk.png");
+  mkdirSync(dirname(still), { recursive: true });
+  writeFileSync(still, "png");
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Freeze frame",
+      files: { "index.html": { before: "A", after: "B" } },
+      created: ["assets/freeze/talk.png"],
+    }),
+  );
+  await vi.waitFor(() => expect(hook().undoLabel).toBe("Freeze frame"));
+
+  await act(() => hook().undo({ readFile }));
+  expect(existsSync(still)).toBe(false);
+
+  await vi.waitFor(() => expect(hook().canRedo).toBe(true));
+  await act(() => hook().redo({ readFile }));
+  expect(readFileSync(still, "utf8")).toBe("png");
 });
 
 it("a drag's edits under one key undo as one step, even before the drag goes idle", async () => {

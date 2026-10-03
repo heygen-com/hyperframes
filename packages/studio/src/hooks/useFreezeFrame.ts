@@ -14,6 +14,7 @@ interface FreezeFrameResponse {
   before: string;
   after: string;
   version: string;
+  stillPath: string;
 }
 
 function isFreezeFrameResponse(value: unknown): value is FreezeFrameResponse {
@@ -22,7 +23,8 @@ function isFreezeFrameResponse(value: unknown): value is FreezeFrameResponse {
   return (
     typeof body.before === "string" &&
     typeof body.after === "string" &&
-    typeof body.version === "string"
+    typeof body.version === "string" &&
+    typeof body.stillPath === "string"
   );
 }
 
@@ -109,6 +111,7 @@ export function useFreezeFrame(options: UseFreezeFrameOptions) {
         await opts.recordEdit({
           label: "Freeze frame",
           files: { [path]: { before: result.before, after: result.after } },
+          created: [result.stillPath],
         });
         opts.observeProjectFileVersion?.(path, result.version);
       });

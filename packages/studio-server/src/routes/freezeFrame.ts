@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import type { Hono } from "hono";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
@@ -86,7 +86,7 @@ async function extractStill(
   source: FreezeSource,
   playhead: number,
   tools: { extract: FrameExtractor; stillToken: () => string },
-): Promise<{ imageSrc: string } | Failure> {
+): Promise<{ imageSrc: string; stillPath: string; imagePath: string } | Failure> {
   const fileDir = dirname(absPath);
   const mediaPath = pinWithinProject(projectDir, relative(projectDir, join(fileDir, source.src)));
   if (!mediaPath) return { error: `forbidden media path: ${source.src}`, status: 403 };
@@ -107,7 +107,8 @@ async function extractStill(
     };
   }
   const depth = relative(projectDir, fileDir).split(sep).filter(Boolean).length;
-  return { imageSrc: `${"../".repeat(depth)}${FREEZE_DIR.join("/")}/${fileName}` };
+  const stillPath = `${FREEZE_DIR.join("/")}/${fileName}`;
+  return { imageSrc: `${"../".repeat(depth)}${stillPath}`, stillPath, imagePath };
 }
 
 function writeFolded(
@@ -160,17 +161,22 @@ export function registerFreezeFrameRoutes(
       stillToken,
     });
     if ("error" in still) return c.json({ error: still.error }, still.status);
-    const { imageSrc } = still;
+    const { imageSrc, stillPath } = still;
     const folded = applyFreezeFrameToHtml(before, {
       target: body.target,
       playhead: body.playhead,
       imageSrc,
     });
-    if (!folded) return c.json({ error: "Freeze target was not found in the file" }, 400);
+    // The page never names a still from a freeze that failed past here.
+    const fail = (error: string, status: 400 | Failure["status"]) => {
+      rmSync(still.imagePath, { force: true });
+      return c.json({ error }, status);
+    };
+    if (!folded) return fail("Freeze target was not found in the file", 400);
     const written = writeFolded(project.dir, absPath, body.path, before, folded.html, {
       token: body.transactionToken ?? c.req.header("X-Hyperframes-Write-Token"),
     });
-    if ("error" in written) return c.json({ error: written.error }, written.status);
+    if ("error" in written) return fail(written.error, written.status);
     const { version, writeToken, backupPath } = written;
     return c.json({
       ok: true,
@@ -182,6 +188,7 @@ export function registerFreezeFrameRoutes(
       backupPath,
       freezeId: folded.freezeId,
       imageSrc,
+      stillPath,
     });
   });
 }
