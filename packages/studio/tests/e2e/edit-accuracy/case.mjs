@@ -77,7 +77,6 @@ export async function startServer(cli, dir, port, log, home) {
   for (const deadline = Date.now() + 60_000; Date.now() < deadline; await sleep(200)) {
     if (child.exitCode !== null)
       throw new Error(`studio exited ${child.exitCode}: ${log.join("").slice(-500)}`);
-    // The CLI announces the port it bound, which may not be the one asked for.
     const announced = Number(announcedPort(log));
     if (announced && (await up(announced))) return { child, port: announced };
   }
