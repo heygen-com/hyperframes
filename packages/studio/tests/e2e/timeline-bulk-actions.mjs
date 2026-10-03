@@ -6,7 +6,7 @@ BULK_PROJECT_DIR=<project> node packages/studio/tests/e2e/timeline-bulk-actions.
 Runs the built CLI's preview server, so build first:
   bun run --filter @hyperframes/studio build && bun run --filter @hyperframes/cli build
 BULK_PROJECT_DIR is copied, never modified. Optional: BULK_RUNS (default 5), BULK_PORT,
-BULK_ONLY (action name substring), BULK_PROFILE=1 (CPU profile and request summary).
+BULK_ONLY (action name substring), BULK_THROTTLE (CPU slowdown rate for drag actions), BULK_PROFILE=1 (CPU profile and request summary).
 An action is done when no foreground request is in flight and no long task ran for 500 ms.
 Thumbnail and lint requests are background and not awaited. Each run starts a fresh server.
 `;
@@ -259,10 +259,75 @@ async function selectN(page, name, n) {
   return { ...result, selected: await selectedCount(page) };
 }
 
+const clipTimes = (page) =>
+  page.evaluate(() =>
+    Object.fromEntries(
+      [...document.querySelectorAll("button[data-clip]")].map((c) => [
+        c.dataset.elId,
+        `${c.dataset.clipStart}-${c.dataset.clipEnd}`,
+      ]),
+    ),
+  );
+
+const taskMs = async (cdp) =>
+  (await cdp.send("Performance.getMetrics")).metrics.find((m) => m.name === "TaskDuration").value *
+  1000;
+
+const percentile = (xs, q) =>
+  [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * q))];
+
+// Drags with every clip selected: main-thread task time per pointermove, then the drop settle time.
+async function dragAll(page, name, { edge, dx, steps }) {
+  const cdp = await page.createCDPSession();
+  await cdp.send("Performance.enable");
+  const throttle = Number(process.env.BULK_THROTTLE || 1);
+  if (throttle > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: throttle });
+  await page.click("[data-studio-timeline]", { offset: { x: 5, y: 5 } }).catch(() => {});
+  await settle(page);
+  await page.keyboard.press("]");
+  await page.waitForFunction(
+    () => Number(document.body.innerText.match(/(\d+) elements selected/)?.[1] ?? 0) > 3,
+  );
+  await settle(page);
+  const selected = await selectedCount(page);
+  const before = await clipTimes(page);
+  const box = await (await page.$("button[data-clip]")).boundingBox();
+  const cy = box.y + box.height / 2;
+  const cx = edge ? box.x + box.width - 2 : box.x + box.width / 2;
+  await page.mouse.move(cx - 20, cy);
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  const frames = [];
+  for (let i = 1; i <= steps; i++) {
+    const t0 = await taskMs(cdp);
+    await page.mouse.move(cx + i * dx, cy);
+    await nextPaint(page);
+    frames.push((await taskMs(cdp)) - t0);
+  }
+  const result = await measure(page, name, async () => {
+    await page.mouse.up();
+    return settle(page);
+  });
+  const after = await clipTimes(page);
+  const changed = Object.keys(before).filter((id) => before[id] !== after[id]).length;
+  const round = (n) => Math.round(n * 10) / 10;
+  return {
+    ...result,
+    selected,
+    changed,
+    frameP95Ms: round(percentile(frames, 0.95)),
+    frameMaxMs: round(Math.max(...frames)),
+    throttle,
+  };
+}
+
 const actions = {
   "select-all": selectAll,
   "move-3": move3,
   "delete-all": deleteAll,
+  "move-all-small": (p, name) => dragAll(p, name, { edge: null, dx: 4, steps: 20 }),
+  "move-all-past-end": (p, name) => dragAll(p, name, { edge: null, dx: 40, steps: 20 }),
+  "resize-all-end": (p, name) => dragAll(p, name, { edge: "end", dx: -6, steps: 20 }),
   "ctrl-click-5": (p, name) => selectN(p, name, 5),
 };
 
