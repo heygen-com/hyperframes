@@ -6,6 +6,7 @@ import { afterEach, expect, it } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { findParsedTween, parsedImplicitEndValue, parsedTweenEase } from "./gsapParsedTween";
+import { readRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { planValueEdit } from "./gsapValueAtPlayhead";
 
 /** Runs a composition script as the preview does: a paused timeline, bound, then seeked to `at`. */
@@ -52,6 +53,17 @@ it("edits a delayed tween with no authored ease, landing the value at the playhe
 it("writes a delayed linear tween so GSAP shows the new value at the playhead, not later", () => {
   const { shown } = dragAndReplay(script("duration: 1, delay: 0.5, x: 100, ease: 'none'"), 200, 2);
   expect(shown).toBe(200);
+});
+
+it("reads plain array nodes where the lane puts them, though GSAP fills in step durations", () => {
+  const source = script("keyframes: [{ x: 60 }, { x: 120 }, { x: 180 }], duration: 3");
+  document.body.appendChild(document.createElement("div")).id = "x";
+  const { timeline, iframe } = play(source, 0);
+  const frame = { ...iframe, contentDocument: document } as HTMLIFrameElement;
+  const read = readRuntimeKeyframes(frame, "#x");
+  timeline.kill();
+  const parsed = parseGsapScriptAcorn(source).animations[0]!.keyframes!.keyframes;
+  expect(read?.keyframes.map((kf) => kf.percentage)).toEqual(parsed.map((kf) => kf.percentage));
 });
 
 it("times array steps on their own timeline, which GSAP stretches over the tween", () => {
