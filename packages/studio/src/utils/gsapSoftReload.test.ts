@@ -481,6 +481,45 @@ describe("applySoftReload authored-style restore", () => {
     return el.style.getPropertyValue("opacity");
   }
 
+  it("flushes only elements when a tween targets a plain object (the runtime's duration filler)", () => {
+    const el = document.createElement("div");
+    // GSAP's clearProps writes target.style.cssText, which throws on a plain object.
+    const set = vi.fn((targets: Array<{ style: CSSStyleDeclaration }>) => {
+      for (const t of targets) t.style.cssText = "";
+    });
+    const { iframe } = buildIframeWithTarget(el, {
+      gsap: { timeline: vi.fn(), set },
+      __timelines: {
+        root: {
+          kill: vi.fn(),
+          getChildren: () => [{ targets: () => [el] }, { targets: () => [{}] }],
+        },
+      },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("applied");
+    expect(set).toHaveBeenCalledWith([el], { clearProps: "all" });
+  });
+
+  it("falls back to a full reload, and says why, when the flush throws", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { iframe } = buildIframeWithTarget(document.createElement("div"), {
+      gsap: {
+        timeline: vi.fn(),
+        set: vi.fn(() => {
+          throw new Error("flush failed");
+        }),
+      },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("soft reload threw"),
+      expect.any(Error),
+    );
+    error.mockRestore();
+  });
+
   it("restores opacity from the after-write HTML (matched by data-hf-id)", () => {
     const el = document.createElement("img");
     el.setAttribute("data-hf-id", "hf-1");

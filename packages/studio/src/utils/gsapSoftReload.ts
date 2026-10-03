@@ -152,7 +152,8 @@ function runSuppressed(win: IframeWindow, reload: () => void): boolean {
     if (win.__hfSuppressSceneMutations) win.__hfSuppressSceneMutations(reload);
     else reload();
     return true;
-  } catch {
+  } catch (error) {
+    console.error("[Studio] GSAP soft reload threw; falling back to a full reload", error);
     return false;
   }
 }
@@ -369,16 +370,11 @@ export function applySoftReload(
     // HTML `style=""` attribute. Save → clear → restore → what GSAP wrote, from the file.
     const allTargets = [...targets.keys()];
     if (allTargets.length > 0 && win.gsap?.set) {
-      const saved: Array<[HTMLElement, string]> = [];
-      for (const el of allTargets) {
-        // Iframe-realm node: instanceof HTMLElement fails across realms, and
-        // gsap targets() only yields elements here — style access is duck-typed.
-        const styled = el as HTMLElement;
-        if (styled.style?.cssText != null) saved.push([styled, styled.style.cssText]);
-      }
-      try {
-        win.gsap.set(allTargets, { clearProps: "all" });
-      } catch {}
+      // Iframe-realm nodes: instanceof HTMLElement fails across realms, so style access is duck-typed.
+      const saved = allTargets.map(
+        (el) => [el as HTMLElement, (el as HTMLElement).style.cssText] as const,
+      );
+      win.gsap.set(allTargets, { clearProps: "all" });
       for (const [el, css] of saved) {
         const s = el.style;
         s.cssText = css;
