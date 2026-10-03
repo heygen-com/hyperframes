@@ -104,7 +104,7 @@ export function withLiveTiming(anim: GsapAnimation, tween: ParsedTween | null): 
 
 /** GSAP parses a to() tween only when the playhead first passes it, and a soft reload resets that.
  *  Play its timeline from the tween's start (so earlier tweens set its start value) to its end and
- *  back, its channels cleared first; then restore every element's attributes and GSAP cache. */
+ *  back, its channels cleared first; then restore every styled element's attributes and GSAP cache. */
 function parseUnplayed(win: GsapWindow, element: Element, tween: ParsedTween, props: string[]) {
   const seek = !isParsed(tween) && seekable(win, tween);
   if (!seek) return;
