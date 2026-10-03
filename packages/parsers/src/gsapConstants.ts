@@ -76,15 +76,17 @@ type PositionWrite = Pick<
   "propertyGroup" | "properties" | "fromProperties" | "keyframes"
 >;
 
+function writesProperty(animation: PositionWrite, property: string): boolean {
+  return (
+    property in animation.properties ||
+    (!!animation.fromProperties && property in animation.fromProperties) ||
+    !!animation.keyframes?.keyframes.some((k) => property in k.properties)
+  );
+}
+
 /** A position write that sets x or y. An xPercent/yPercent centring set never duplicates one. */
 export function isXYPositionWrite(a: PositionWrite): boolean {
-  const xy = (props?: Record<string, unknown>) => !!props && ("x" in props || "y" in props);
-  return (
-    a.propertyGroup === "position" &&
-    (xy(a.properties) ||
-      xy(a.fromProperties) ||
-      !!a.keyframes?.keyframes.some((k) => xy(k.properties)))
-  );
+  return a.propertyGroup === "position" && (writesProperty(a, "x") || writesProperty(a, "y"));
 }
 
 export function classifyPropertyGroup(prop: string): PropertyGroupName {
@@ -105,6 +107,43 @@ export function classifyTweenPropertyGroup(
   }
   if (groups.size === 1) return groups.values().next().value;
   return undefined;
+}
+
+function animationStart(animation: GsapAnimation): number {
+  if (animation.resolvedStart !== undefined) return animation.resolvedStart;
+  return typeof animation.position === "number" ? animation.position : 0;
+}
+
+/**
+ * The position a Studio hold must pin from t=0 for a keyframed tween that starts later: its first
+ * keyframe's position props, minus any an earlier tween on the same target already writes. A global
+ * `gsap.set` is a base value, like CSS, so the hold still overrides it.
+ */
+export function positionHoldForAnimation(
+  animation: GsapAnimation,
+  animations: readonly GsapAnimation[],
+): Record<string, number> | null {
+  if (!animation.keyframes) return null;
+  const start = animationStart(animation);
+  if (!(start > 0.001)) return null;
+  const first = [...animation.keyframes.keyframes].sort(
+    (left, right) => left.percentage - right.percentage,
+  )[0];
+  if (!first) return null;
+  const earlier = animations.filter(
+    (other) =>
+      other !== animation &&
+      !other.global &&
+      other.targetSelector === animation.targetSelector &&
+      animationStart(other) < start - 0.001,
+  );
+  const position: Record<string, number> = {};
+  for (const [property, value] of Object.entries(first.properties)) {
+    if (classifyPropertyGroup(property) !== "position" || typeof value !== "number") continue;
+    if (earlier.some((other) => writesProperty(other, property))) continue;
+    position[property] = value;
+  }
+  return Object.keys(position).length > 0 ? position : null;
 }
 
 export const SUPPORTED_EASES = [

@@ -29,6 +29,7 @@ import {
   scalePositionsInScript,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
+import { syncPositionHoldsBeforeKeyframes as syncPositionHoldsBeforeKeyframesAcorn } from "./gsapWriterAcorn.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
 import type { Keyframe } from "./types.js";
 import {
@@ -1795,6 +1796,35 @@ describe("keyframe mutations", () => {
         `const tl = gsap.timeline({ paused: true });\n` +
         `tl.to("#b", { keyframes: { "0%": { opacity: 0 }, "100%": { opacity: 1 } }, duration: 1 }, 2);`;
       expect(syncPositionHoldsBeforeKeyframes(opacity)).not.toContain("hf-hold");
+    });
+
+    // The from() owns x from t=0 until the keyframed tween; only y is left to hold.
+    const afterEarlierFrom =
+      `const tl = gsap.timeline({ paused: true });\n` +
+      `tl.from("#t", { x: -60, duration: 2, ease: "none" }, 0);\n` +
+      `tl.to("#t", { keyframes: { "0%": { x: -50, y: -3.5 }, "100%": { x: 60, y: 30 } }, duration: 1 }, 2);`;
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds no property an earlier tween on the target already writes", (_, sync) => {
+      const hold = parseGsapScript(sync(afterEarlierFrom)).animations.find(
+        (a) => a.method === "set",
+      );
+      expect(hold!.properties).toEqual({ y: -3.5, data: "hf-hold" });
+    });
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: still holds over a global gsap.set base value", (_, sync) => {
+      const script =
+        `gsap.set("#t", { x: 40 });\n` +
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(script)).animations.find(
+        (a) => a.method === "set" && !a.global,
+      );
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
     });
 
     it("removes an orphaned hold when its tween is gone", () => {

@@ -24,7 +24,11 @@ import {
   type ParsedGsapAcornForWrite,
   type TweenCallInfo,
 } from "./gsapParserAcorn.js";
-import { classifyPropertyGroup, isXYPositionWrite } from "./gsapConstants.js";
+import {
+  classifyPropertyGroup,
+  isXYPositionWrite,
+  positionHoldForAnimation,
+} from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
 import {
   findObjectArrayKeyframeIndex,
@@ -2462,36 +2466,6 @@ function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): 
   return ms.toString();
 }
 
-function animationStart(animation: GsapAnimation): number {
-  if (animation.resolvedStart !== undefined) return animation.resolvedStart;
-  return typeof animation.position === "number" ? animation.position : 0;
-}
-
-function positionProperties(
-  properties: Record<string, number | string>,
-): Record<string, number | string> {
-  const position: Record<string, number | string> = {};
-  for (const [property, value] of Object.entries(properties)) {
-    if (classifyPropertyGroup(property) === "position" && typeof value === "number") {
-      position[property] = value;
-    }
-  }
-  return position;
-}
-
-function positionHoldForAnimation(
-  animation: GsapAnimation,
-): Record<string, number | string> | null {
-  if (!animation.keyframes) return null;
-  if (!(animationStart(animation) > 0.001)) return null;
-  const first = [...animation.keyframes.keyframes].sort(
-    (left, right) => left.percentage - right.percentage,
-  )[0];
-  if (!first) return null;
-  const position = positionProperties(first.properties);
-  return Object.keys(position).length > 0 ? position : null;
-}
-
 /** Acorn-native, byte-preserving hold synchronization used after mutations. */
 export function syncPositionHoldsBeforeKeyframes(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
@@ -2499,9 +2473,9 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
   let result = removeStudioHoldSets(script, parsed);
   const current = parseGsapScriptAcornForWrite(result);
   if (!current) return result;
-  for (const entry of current.located) {
-    const animation = entry.animation;
-    const position = positionHoldForAnimation(animation);
+  const animations = current.located.map((entry) => entry.animation);
+  for (const animation of animations) {
+    const position = positionHoldForAnimation(animation, animations);
     if (!position) continue;
     result = insertInheritedStateSetInScript(result, animation.targetSelector, 0, {
       ...position,

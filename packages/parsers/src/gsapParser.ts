@@ -53,6 +53,7 @@ import {
   classifyPropertyGroup,
   classifyTweenPropertyGroup,
   isXYPositionWrite,
+  positionHoldForAnimation,
 } from "./gsapConstants";
 import type { PropertyGroupName } from "./gsapConstants";
 import { clipTweenMatcher, hasExplicitTime } from "./clipTweens";
@@ -1897,16 +1898,8 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
     return result;
   }
   for (const anim of reparsed.animations) {
-    if (!anim.keyframes) continue;
-    const start = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
-    if (!(start > 0.001)) continue;
-    const firstKf = [...anim.keyframes.keyframes].sort((a, b) => a.percentage - b.percentage)[0];
-    if (!firstKf) continue;
-    const posProps: Record<string, number | string> = {};
-    for (const [k, v] of Object.entries(firstKf.properties)) {
-      if (classifyPropertyGroup(k) === "position" && typeof v === "number") posProps[k] = v;
-    }
-    if (Object.keys(posProps).length === 0) continue;
+    const posProps = positionHoldForAnimation(anim, reparsed.animations);
+    if (!posProps) continue;
     result = insertInheritedStateSet(result, anim.targetSelector, 0, {
       ...posProps,
       data: STUDIO_HOLD_MARKER,
