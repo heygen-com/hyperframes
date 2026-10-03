@@ -489,6 +489,55 @@ describe("vfx runtime — self capture", () => {
     expect(String(errors[0]![1])).toMatch(/hf-vfx-src/);
   });
 
+  it("refuses a capture canvas that contains another capture canvas", () => {
+    // Chrome blocks the renderer main thread on drawElementImage of a subtree
+    // holding a second layoutsubtree canvas (#4405) — refuse, don't hang.
+    const host = makeCaptureHost(createMockCtx2d());
+    const inner = host.querySelector(".hf-vfx-in");
+    inner?.appendChild(makeCaptureWrapper(createMockCtx2d()));
+
+    expect(inner).not.toBeNull();
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]?.[1])).toMatch(/nested inside another capture canvas/);
+    expect(host.querySelectorAll("canvas.hf-vfx-out")).toHaveLength(0);
+  });
+
+  it("refuses a capture canvas that sits inside another capture canvas", () => {
+    const backdropHost = makeBackdropHost(createMockCtx2d(), "adj");
+    const nested = makeCaptureHost(createMockCtx2d(), "self");
+    const wrapperIn = backdropHost.previousElementSibling?.querySelector(".hf-vfx-in");
+    wrapperIn?.appendChild(nested);
+
+    expect(wrapperIn).not.toBeNull();
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(errors.map((e) => String(e[1])).filter((m) => /nested inside/.test(m))).toHaveLength(2);
+  });
+
+  it("only binds a capture canvas that is an immediate child of the host", () => {
+    // A descendant query would bind the canvas of a nested host instead.
+    const host = makeHost(ONE_NODE, "outer");
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(makeCaptureWrapper(createMockCtx2d()));
+    host.appendChild(wrapper);
+
+    expect(initVfx(document.body, 30)).toHaveLength(0);
+    expect(String(errors[0]?.[1])).toMatch(/hf-vfx-src/);
+  });
+
+  it("does not adopt an .hf-vfx-out that belongs to a nested host", () => {
+    const host = makeCaptureHost(createMockCtx2d(), "outer");
+    const nestedOut = document.createElement("canvas");
+    nestedOut.className = "hf-vfx-out";
+    const nested = document.createElement("div");
+    nested.appendChild(nestedOut);
+    host.appendChild(nested);
+
+    const [entry] = initVfx(document.body, 30);
+
+    expect(entry?.out).not.toBe(nestedOut);
+    expect(entry?.out.parentElement).toBe(host);
+  });
+
   it("names the Chrome flag when drawElementImage is missing", () => {
     makeCaptureHost({ clearRect: () => {} });
 
@@ -1036,6 +1085,26 @@ describe("vfx runtime — ref (second source) params", () => {
       [320, 180],
     ]);
     expect(errors).toEqual([]);
+  });
+
+  it("reads one visible flag for a canvas reached as a host's own source and as a ref", () => {
+    // `#owner` runs its own chain (self-ref) and is also `#cap`'s matte: two
+    // capture sources for one canvas must not disagree on keepBitmap (#4405).
+    const owner = makeCaptureHost(
+      createMockCtx2d(),
+      "matte-1",
+      '{"version":1,"nodes":[{"type":"fractal-noise","id":"n1","params":{"matte":"matte-1"}}]}',
+    );
+    owner.querySelector("canvas.hf-vfx-src")?.setAttribute("data-vfx-ref-visible", "");
+    makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
+
+    const entries = initVfx(document.body, 30);
+    const own = entries.find((e) => e.host.id === "matte-1")?.src;
+    const viaRef = entries.find((e) => e.host.id === "cap")?.passes[0]?.ref;
+
+    expect(errors).toEqual([]);
+    expect(own?.visible).toBe(true);
+    expect(viaRef?.visible).toBe(true);
   });
 
   it("clears an ordinary ref's bitmap and draws it at the host's box", () => {

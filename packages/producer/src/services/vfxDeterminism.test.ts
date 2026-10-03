@@ -367,6 +367,35 @@ function backdropStackedFixture(chain: string): string {
 }
 
 /**
+ * The shape that hangs the renderer (#4405): a backdrop wrapper whose preceding
+ * layers include a self-capture host, so one `<canvas layoutsubtree>` ends up
+ * inside another. Chrome blocks the main thread in `drawElementImage` on it.
+ */
+function nestedBackdropFixture(chain: string): string {
+  return `<!doctype html>
+<style>
+  html, body { margin: 0; background: #0000ff; }
+  #wrap { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  .hf-vfx-in { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host, #inner { position: absolute; left: 0; top: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+  #host > canvas, #inner > canvas { position: absolute; inset: 0; width: ${HOST_W}px; height: ${HOST_H}px; }
+</style>
+<div data-composition-id="root" data-start="0" data-duration="4" data-width="${HOST_W}" data-height="${HOST_H}">
+  <canvas id="wrap" layoutsubtree class="hf-vfx-src" data-vfx-for="host">
+    <div class="hf-vfx-in">
+      <div id="inner" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+        <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in"><div style="position:absolute;left:0;top:0;width:${SQUARE_W}px;height:${HOST_H}px;background:#ff0000"></div></div></canvas>
+        <canvas class="hf-vfx-out"></canvas>
+      </div>
+    </div>
+  </canvas>
+  <div id="host" class="clip" data-start="0" data-duration="4" data-vfx-chain='${chain}'>
+    <canvas class="hf-vfx-out"></canvas>
+  </div>
+</div>`;
+}
+
+/**
  * The same two stacked blocks, but the host reading them through `backdrop`
  * is OUTSIDE its own `data-start`/`data-duration` window at the seek time
  * under test — the real way a host goes invisible (the clip runtime owns
@@ -807,6 +836,28 @@ describe("data-vfx-chain in the browser", () => {
       await page.close();
     }
   }, 60_000);
+
+  it("refuses nested capture canvases instead of hanging the renderer", async () => {
+    const page = await browser.newPage();
+    const errors = watchPage(page);
+    try {
+      await page.setViewport({ width: 320, height: 240, deviceScaleFactor: 1 });
+      await page.setContent(nestedBackdropFixture(waveWarpChain({ height: 0, width: 93.4 })));
+      await page.addScriptTag({ content: runtime });
+      await page.waitForFunction(() => (window as CompositeWindow).__renderReady === true);
+
+      // Without the guard this evaluate never returns: the main thread is
+      // blocked inside drawElementImage and the test times out.
+      await page.evaluate(() => (window as CompositeWindow).__player?.renderSeek(0));
+      await page.screenshot({ clip: { x: 0, y: 0, width: 1, height: 1 } });
+
+      expect(errors.filter((e) => e.includes("nested inside another capture canvas"))).toHaveLength(
+        2,
+      );
+    } finally {
+      await page.close();
+    }
+  }, 30_000);
 
   it("registers a vfx host that arrives inside a mounted sub-composition", async () => {
     const page = await openMounted({
