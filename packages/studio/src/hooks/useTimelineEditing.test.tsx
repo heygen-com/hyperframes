@@ -308,7 +308,8 @@ function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unk
     [
       "/api/projects/p1/gsap-mutations",
       (url) => {
-        const content = fileContent(pathAfter(url, url.includes("-batch/") ? "-batch/" : "s/")) ?? "";
+        const content =
+          fileContent(pathAfter(url, url.includes("-batch/") ? "-batch/" : "s/")) ?? "";
         return jsonResponse(
           gsapBody ?? { mutated: false, scriptText: null, before: content, after: content },
         );
@@ -2290,8 +2291,9 @@ describe("clip timing edits sync GSAP exactly once", () => {
         }
         if (url.includes("/gsap-mutations-batch/")) {
           const path = pathAfter(url, "/gsap-mutations-batch/");
-          const steps = (JSON.parse(String(init?.body)) as { mutations: Record<string, unknown>[] })
-            .mutations.map((mutation) => applyServerMutation(path, mutation));
+          const steps = (
+            JSON.parse(String(init?.body)) as { mutations: Record<string, unknown>[] }
+          ).mutations.map((mutation) => applyServerMutation(path, mutation));
           const last = steps[steps.length - 1]!;
           return jsonResponse({
             ...last,
