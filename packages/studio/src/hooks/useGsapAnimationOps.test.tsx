@@ -13,6 +13,8 @@ let cleanup: (() => void) | null = null;
 afterEach(() => {
   cleanup?.();
   cleanup = null;
+  vi.unstubAllGlobals();
+  document.body.replaceChildren();
 });
 
 const selection = { id: "box", selector: "#box" } as DomEditSelection;
@@ -84,6 +86,33 @@ describe("useGsapAnimationOps settlement", () => {
       expect.objectContaining({ type: "add" }),
       expect.objectContaining({ softReload: true }),
     );
+  });
+
+  it.each([
+    ["saved", { status: 200, body: { changed: true } }, "div"],
+    ["refused", { status: 409, body: { error: "file changed" } }, null],
+  ])("gives an id-less element its id only once the id write is %s", async (_name, reply, id) => {
+    const element = document.body.appendChild(document.createElement("div"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(reply.body), {
+            status: reply.status,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    const commitMutation = vi.fn(async () => undefined);
+    const api = renderOps(
+      vi.fn(async () => undefined),
+      commitMutation,
+    );
+
+    await api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from");
+
+    expect(element.getAttribute("id")).toBe(id);
+    expect(commitMutation).toHaveBeenCalledTimes(id ? 1 : 0);
   });
 
   it("soft-reloads the preview when deleting an animation", async () => {

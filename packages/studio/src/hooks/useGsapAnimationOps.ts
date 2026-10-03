@@ -138,6 +138,8 @@ export function useGsapAnimationOps({
           ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
           : assign());
         if (!assigned) return;
+        // Only a saved id goes on the live element: a stray one would be read back as the element's id.
+        selection.element.setAttribute("id", autoId);
       }
 
       const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;

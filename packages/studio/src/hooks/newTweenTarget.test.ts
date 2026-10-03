@@ -73,6 +73,9 @@ describe("ensureElementAddressable — add-animation button", () => {
     const { selector, autoId } = ensureElementAddressable(selection);
 
     expect(autoId).toBeTruthy();
+    // The minted id is free, and stays off the element until the caller saves it.
+    expect(document.querySelectorAll(selector)).toHaveLength(0);
+    el.setAttribute("id", autoId!);
     expect(document.querySelectorAll(selector)).toHaveLength(1);
     expect(document.querySelector(selector)).toBe(el);
     expect(attributedTo(selector)).toEqual([autoId]);

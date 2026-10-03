@@ -34,7 +34,6 @@ export function ensureElementAddressable(selection: DomEditSelection): {
     n += 1;
     id = `${tag}-${n}`;
   }
-  el.setAttribute("id", id);
   return { selector: idSelector(id), autoId: id };
 }
 
