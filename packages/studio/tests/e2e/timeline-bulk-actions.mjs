@@ -180,6 +180,25 @@ async function measure(page, name, action) {
   };
 }
 
+// Call chain of the node with the most self time among real functions (BULK_STACKS=1).
+function printHeaviestStack(cpu, byId) {
+  const parent = new Map();
+  for (const n of cpu.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
+  const selfById = new Map();
+  cpu.samples.forEach((id, i) =>
+    selfById.set(id, (selfById.get(id) ?? 0) + cpu.timeDeltas[i] / 1000),
+  );
+  const real = [...selfById].filter(([id]) => byId.get(id).callFrame.url);
+  const [top] = real.sort((a, b) => b[1] - a[1]);
+  if (!top) return;
+  const chain = [];
+  for (let id = top[0]; id !== undefined && chain.length < 14; id = parent.get(id)) {
+    const f = byId.get(id).callFrame;
+    chain.push(`${f.functionName || "(anon)"}:${f.lineNumber}`);
+  }
+  console.error(`heaviest ${Math.round(top[1])}ms: ${chain.join(" <- ")}`);
+}
+
 // fallow-ignore-next-line complexity
 function printProfile(name, cpu, requests) {
   const self = new Map();
@@ -192,6 +211,7 @@ function printProfile(name, cpu, requests) {
   console.error(`--- ${name}`);
   for (const [k, v] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 15))
     console.error(`${Math.round(v)}ms ${k}`);
+  if (process.env.BULK_STACKS) printHeaviestStack(cpu, byId);
   const kinds = new Map();
   for (const { ms, kind } of requests) {
     const k = kinds.get(kind) ?? { n: 0, totalMs: 0, maxMs: 0 };
