@@ -19,6 +19,7 @@ import {
   visibleQuad,
 } from "./geometry.mjs";
 import { frameSamplerScript, scoreTeleport, startFrames, stopFrames } from "./teleport.mjs";
+import { terminateWindowsProcessTree } from "../../../../cli/src/utils/processTree.ts";
 
 export const VIEWPORT = { width: 1600, height: 900 };
 const STEPS = 20;
@@ -39,6 +40,9 @@ const up = (port) =>
 const liveServers = new Set();
 /** Signals the server's process group; a group that already exited is not an error. */
 function signalGroup(child, signal) {
+  // Windows has no process groups, so taskkill /T ends the server and its children.
+  if (process.platform === "win32")
+    return void terminateWindowsProcessTree(child.pid).catch(() => undefined);
   try {
     process.kill(-child.pid, signal);
   } catch (error) {
