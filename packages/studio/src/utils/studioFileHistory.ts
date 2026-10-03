@@ -9,7 +9,6 @@ export interface RecordEditInput {
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
-  /** Files the edit made that are not text (a freeze's still): Undo deletes them, Redo puts them back. */
   created?: string[];
 }
 

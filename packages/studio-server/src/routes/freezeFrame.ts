@@ -80,7 +80,7 @@ function readExpected(absPath: string, expectedVersion: string): { content: stri
     : { error: "file conflict", status: 409 };
 }
 
-function claimFile(path: string): boolean {
+function claimStillNameBeforeExtracting(path: string): boolean {
   try {
     closeSync(openSync(path, "wx"));
     return true;
@@ -107,12 +107,11 @@ async function extractStill(
   if (!imagePath || dirname(imagePath) !== freezeDir) {
     return { error: `forbidden freeze path: ${fileName}`, status: 403 };
   }
-  // Claim the name before extracting, so a failed request only ever removes a still it made.
-  if (!claimFile(imagePath))
+  if (!claimStillNameBeforeExtracting(imagePath))
     return { error: `freeze still already exists: ${fileName}`, status: 409 };
   const extracted = await tools.extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
-  // ffmpeg can leave a partial file when it fails, and exits 0 with no frame past the media's end.
-  if (!extracted.ok || statSync(imagePath).size === 0) {
+  const partialOrNoFrame = !extracted.ok || statSync(imagePath).size === 0;
+  if (partialOrNoFrame) {
     rmSync(imagePath, { force: true });
     const reason = extracted.ok ? "no frame at this time" : (extracted.error ?? "ffmpeg failed");
     return { error: `Could not extract the frame: ${reason}`, status: 500 };
@@ -178,16 +177,15 @@ export function registerFreezeFrameRoutes(
       playhead: body.playhead,
       imageSrc,
     });
-    // The page never names a still from a freeze that failed past here.
-    const fail = (error: string, status: 400 | Failure["status"]) => {
+    const failAndRemoveStill = (error: string, status: 400 | Failure["status"]) => {
       rmSync(imagePath, { force: true });
       return c.json({ error }, status);
     };
-    if (!folded) return fail("Freeze target was not found in the file", 400);
+    if (!folded) return failAndRemoveStill("Freeze target was not found in the file", 400);
     const written = writeFolded(project.dir, absPath, body.path, before, folded.html, {
       token: body.transactionToken ?? c.req.header("X-Hyperframes-Write-Token"),
     });
-    if ("error" in written) return fail(written.error, written.status);
+    if ("error" in written) return failAndRemoveStill(written.error, written.status);
     const { version, writeToken, backupPath } = written;
     return c.json({
       ok: true,

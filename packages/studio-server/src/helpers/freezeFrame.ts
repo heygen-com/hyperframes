@@ -39,7 +39,6 @@ export function freezeFrameMediaTime(input: {
   return input.mediaStart + sourceTimeAt(rate, Math.max(0, input.playhead - input.clipStart));
 }
 
-/** `-y`: the route has already claimed `output` as an empty file, so ffmpeg writes into its own claim. */
 export function freezeExtractArgs(src: string, mediaTime: number, output: string): string[] {
   return ["-y", "-ss", String(round3(mediaTime)), "-i", src, "-frames:v", "1", output];
 }
