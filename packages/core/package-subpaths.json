@@ -80,6 +80,12 @@
       "types": "./dist/studioPreviewMark.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./gsap-cdn": {
+      "source": "./src/gsapCdn.ts",
+      "runtime": "./dist/gsapCdn.js",
+      "types": "./dist/gsapCdn.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./media-timing": {
       "source": "./src/mediaTiming.ts",
       "runtime": "./dist/mediaTiming.js",
