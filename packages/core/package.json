@@ -94,6 +94,12 @@
       "import": "./src/studioPreviewMark.ts",
       "types": "./src/studioPreviewMark.ts"
     },
+    "./gsap-cdn": {
+      "bun": "./src/gsapCdn.ts",
+      "node": "./dist/gsapCdn.js",
+      "import": "./src/gsapCdn.ts",
+      "types": "./src/gsapCdn.ts"
+    },
     "./media-timing": {
       "bun": "./src/mediaTiming.ts",
       "node": "./dist/mediaTiming.js",
@@ -539,6 +545,10 @@
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",
         "types": "./dist/studioPreviewMark.d.ts"
+      },
+      "./gsap-cdn": {
+        "import": "./dist/gsapCdn.js",
+        "types": "./dist/gsapCdn.d.ts"
       },
       "./media-timing": {
         "import": "./dist/mediaTiming.js",

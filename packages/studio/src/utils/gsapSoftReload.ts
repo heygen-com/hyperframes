@@ -1,4 +1,5 @@
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findAuthoredElement } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
 import { authoringFile, collectResetTargets, compositionFile, fileDocs } from "./softReloadTargets";
@@ -14,6 +15,7 @@ type IframeWindow = Window & {
   // re-flash the iframe. Cleared once the plugin loads or errors.
   __hfMotionPathPluginLoading?: boolean;
   gsap?: {
+    version?: string;
     timeline?: (...args: unknown[]) => unknown;
     registerPlugin?: (...plugins: unknown[]) => unknown;
     set?: (targets: Element | Element[], vars: Record<string, unknown>) => void;
@@ -21,14 +23,6 @@ type IframeWindow = Window & {
   };
   MotionPathPlugin?: unknown;
 };
-
-/**
- * CDN URL for the GSAP MotionPathPlugin. Shared between the one-time preview
- * bootstrap (ensureMotionPathPluginLoaded) and the soft-reload fallback so the
- * version is pinned in a single place.
- */
-const MOTION_PATH_PLUGIN_CDN =
-  "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
 
 /**
  * Pre-load + register MotionPathPlugin ONCE in the preview iframe so
@@ -66,7 +60,7 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
   try {
     win.__hfMotionPathPluginLoading = true;
     const pluginScript = doc.createElement("script");
-    pluginScript.src = MOTION_PATH_PLUGIN_CDN;
+    pluginScript.src = motionPathPluginUrl(win.gsap?.version);
     const finalize = () => {
       win.__hfMotionPathPluginLoading = false;
       try {
@@ -445,7 +439,7 @@ export function applySoftReload(
       }
       win.__hfMotionPathPluginLoading = true;
       const pluginScript = doc.createElement("script");
-      pluginScript.src = MOTION_PATH_PLUGIN_CDN;
+      pluginScript.src = motionPathPluginUrl(win.gsap?.version);
       pluginScript.onload = () => {
         win.__hfMotionPathPluginLoading = false;
         executeScript();

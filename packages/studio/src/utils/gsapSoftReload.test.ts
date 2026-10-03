@@ -249,7 +249,7 @@ describe("applySoftReload", () => {
     // gsap present but MotionPathPlugin unset → async load path.
     const { iframe, contentWindow } = buildMockIframe({
       MotionPathPlugin: undefined,
-      gsap: { timeline: vi.fn(), registerPlugin: vi.fn() },
+      gsap: { timeline: vi.fn(), registerPlugin: vi.fn(), version: "3.15.0" },
     });
     (iframe.contentDocument as unknown as { head: unknown }).head = head;
 
@@ -260,7 +260,7 @@ describe("applySoftReload", () => {
     // script has NOT executed yet, so the timeline isn't rebound synchronously.
     expect(result).toBe("applied");
     expect(appendedScripts).toHaveLength(1);
-    expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    expect(appendedScripts[0]!.src).toContain("gsap@3.15.0/dist/MotionPathPlugin");
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
 
     // onerror must NOT run the script (that would reference a missing plugin) —
@@ -382,6 +382,16 @@ describe("ensureMotionPathPluginLoaded", () => {
     const { iframe, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
     ensureMotionPathPluginLoaded(iframe);
     expect(appendedScripts).toHaveLength(0);
+  });
+
+  it("loads the plugin at the composition's own gsap version", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({
+      gsap: { version: "3.15.0", registerPlugin: vi.fn() },
+    });
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts[0]!.src).toBe(
+      "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js",
+    );
   });
 
   it("appends the plugin script once and registers it on load", () => {
