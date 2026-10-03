@@ -36,7 +36,10 @@ function indexTweens(children: RuntimeTween[]): TweenIndex {
   return index;
 }
 
-export function tweensTargeting(timeline: RuntimeTimeline | undefined, el: Element): RuntimeTween[] {
+export function tweensTargeting(
+  timeline: RuntimeTimeline | undefined,
+  el: Element,
+): RuntimeTween[] {
   const children = timeline?.getChildren?.(true) ?? [];
   if (!timeline || typeof timeline !== "object" || !tweenIndexes)
     return children.filter((tween) => matchesElement(tween, el));
@@ -44,4 +47,3 @@ export function tweensTargeting(timeline: RuntimeTimeline | undefined, el: Eleme
   if (!index) tweenIndexes.set(timeline, (index = indexTweens(children)));
   return [...(index.byElement.get(el) ?? []), ...(el.id ? (index.byId.get(el.id) ?? []) : [])];
 }
-

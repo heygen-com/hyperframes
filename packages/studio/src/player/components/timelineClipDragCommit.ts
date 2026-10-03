@@ -206,7 +206,9 @@ export function persistMoveEdits(
   const start = () =>
     onMoveElements
       ? onMoveElements(persistEdits, coalesceKey, operation, coalesceMs)
-      : Promise.all(persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
+      : Promise.all(
+          persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))),
+        );
   const persisted = saving ? saving.adopt(start) : start();
   const done = Promise.resolve(persisted).then(
     () => {
