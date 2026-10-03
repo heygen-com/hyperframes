@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// fallow-ignore-file complexity
 /** Times select-all, move 3 and delete-all in a real browser on a real project; see USAGE. */
 const USAGE = `
 BULK_PROJECT_DIR=<project> node packages/studio/tests/e2e/timeline-bulk-actions.mjs
