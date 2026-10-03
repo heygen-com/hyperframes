@@ -167,6 +167,48 @@ describe("the audio the playhead follows", () => {
     expect(lastTime).toBeGreaterThan(1.4);
   });
 
+  it("follows the music across cuts between short clips earlier in the page", async () => {
+    mount(
+      `<audio id="shot1" data-start="0" data-duration="1" src="/assets/a.mp4"></audio>` +
+        `<audio id="shot2" data-start="1" data-duration="1" src="/assets/b.mp4"></audio>` +
+        `<audio id="shot3" data-start="2" data-duration="1" src="/assets/c.mp4"></audio>` +
+        `<audio id="music" data-start="0" data-duration="10" src="/assets/music.wav"></audio>`,
+    );
+    const shots = ["shot1", "shot2", "shot3"].map(
+      (id) => document.getElementById(id) as HTMLAudioElement,
+    );
+    const music = document.getElementById("music") as HTMLAudioElement;
+    let musicTime = 0;
+    const musicSeeks: number[] = [];
+    Object.defineProperty(music, "currentTime", {
+      configurable: true,
+      get: () => musicTime,
+      set: (value: number) => {
+        musicSeeks.push(value);
+        musicTime = value;
+      },
+    });
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    musicSeeks.length = 0; // Play itself lands every clip on the playhead
+    Object.assign(music, { paused: false });
+    for (let frame = 1; frame <= 170; frame++) {
+      const t = (nowMs + 1000 / 60 - playedAt) / 1000;
+      musicTime = t; // the music plays straight through every cut
+      shots.forEach((shot, i) => {
+        if (t < i) return;
+        // Each shot's sound starts 250 ms late, as a cold clip does at a cut.
+        Object.assign(shot, { paused: t >= i + 1, currentTime: Math.max(0, t - i - 0.25) });
+      });
+      stepFrames(1);
+      expect(window.__player!.getTime()).toBeCloseTo(t, 3);
+    }
+    expect(musicSeeks).toEqual([]);
+  });
+
   it("follows the next clip when one earlier in the page failed to load", async () => {
     mount(
       `<audio id="broken" data-start="0" data-duration="10" src="/assets/missing.mp3"></audio>` +

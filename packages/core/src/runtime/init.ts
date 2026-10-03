@@ -4534,6 +4534,25 @@ export function initSandboxRuntimeModular(): void {
     state.transportRafId = window.requestAnimationFrame(transportTick);
   };
 
+  const followedOrLongestRunningAudio = (
+    followed: HTMLMediaElement | null,
+  ): { el: HTMLMediaElement; start: number } | null => {
+    let leader: { el: HTMLMediaElement; start: number; runsUntil: number } | null = null;
+    for (const el of document.querySelectorAll("audio[data-start]")) {
+      if (!isMediaElement(el) || !el.isConnected) continue;
+      if (isSilencedByHidden(el) || isUnplayable(el)) continue;
+      if (!el.hasAttribute("src") && !el.querySelector("source[src]")) continue;
+      const start = resolveAbsoluteMediaStartSeconds(el);
+      const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);
+      const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
+      if (!Number.isFinite(start) || !isInClipWindow(state.currentTime, start, end)) continue;
+      if (el === followed) return { el, start };
+      const runsUntil = start + (resolveMediaElementDurationSeconds(el) ?? Infinity);
+      if (!leader || runsUntil > leader.runsUntil) leader = { el, start, runsUntil };
+    }
+    return leader;
+  };
+
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
@@ -4640,34 +4659,21 @@ export function initSandboxRuntimeModular(): void {
             clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
           }
         } else {
-          const audioEls = document.querySelectorAll("audio[data-start]");
-          const followed = clock.audioElement();
+          const leader = followedOrLongestRunningAudio(clock.audioElement());
           let foundActive = false;
-          for (const rawEl of followed ? [followed, ...audioEls] : audioEls) {
-            if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
-            if (isSilencedByHidden(rawEl) || isUnplayable(rawEl)) continue;
-            if (!rawEl.hasAttribute("src") && !rawEl.querySelector("source[src]")) continue;
-            const start = resolveAbsoluteMediaStartSeconds(rawEl);
-            const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
-            const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
-            const mediaStart = readElementPlaybackStart(rawEl);
-            if (Number.isFinite(start) && isInClipWindow(state.currentTime, start, end)) {
-              if (!rawEl.paused) {
-                clock.attachAudioSource({
-                  el: rawEl,
-                  compositionStart: start,
-                  mediaStart,
-                  rate: readElementRateSpec(rawEl),
-                });
-                foundActive = true;
-              } else if (rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-                // Audio is buffering — freeze visuals at last known position
-                // instead of falling through to monotonic (which runs ahead).
-                clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
-                foundActive = true;
-              }
-              break;
-            }
+          if (leader && !leader.el.paused) {
+            clock.attachAudioSource({
+              el: leader.el,
+              compositionStart: leader.start,
+              mediaStart: readElementPlaybackStart(leader.el),
+              rate: readElementRateSpec(leader.el),
+            });
+            foundActive = true;
+          } else if (leader && leader.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+            // Audio is buffering — freeze visuals at last known position
+            // instead of falling through to monotonic (which runs ahead).
+            clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
+            foundActive = true;
           }
           if (!foundActive && clock.hasAudioSource()) {
             clock.detachAudioSource();
