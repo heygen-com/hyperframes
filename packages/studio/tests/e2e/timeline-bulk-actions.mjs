@@ -344,6 +344,8 @@ async function dragAll(page, name, { edge, dx, steps }) {
     ...result,
     selected,
     changed,
+    firstFrameMs: round(frames[0]),
+    steadyP95Ms: round(percentile(frames.slice(1), 0.95)),
     frameP95Ms: round(percentile(frames, 0.95)),
     frameMaxMs: round(Math.max(...frames)),
     throttle,
