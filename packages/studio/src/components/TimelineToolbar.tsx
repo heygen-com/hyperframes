@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, type ReactNode } from "react";
 import {
   ArrowsOutLineHorizontal,
   Image,
@@ -50,6 +50,8 @@ export interface TimelineToolbarProps {
   showAddBeat?: boolean;
   /** Hides Add keyframe and auto-record, and turns off auto-record and the K shortcut with them. */
   showKeyframes?: boolean;
+  /** The host's own controls, drawn first in the right-hand group, before the thumbnails toggle. */
+  rightActions?: ReactNode;
 }
 
 interface KeyframeToggleState {
@@ -149,6 +151,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   showSelectAroundPlayhead = true,
   showAddBeat = true,
   showKeyframes = true,
+  rightActions,
 }: TimelineToolbarProps) {
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
@@ -460,6 +463,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           })()}
         </div>
         <div className="flex items-center gap-0.5">
+          {rightActions}
           <Tooltip
             label={
               thumbnailsVisible
