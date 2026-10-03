@@ -110,6 +110,16 @@ describe("writeTargetSelector", () => {
     expect(writeTargetSelector(selection)).toBe("#scene > div:nth-child(2)");
   });
 
+  it("anchors on an ancestor's id in the preview, whichever window built its nodes", () => {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML = `<div id="scene"><div></div><div></div></div>`;
+    const el = doc.querySelectorAll<HTMLElement>("#scene > div")[1]!;
+    const selection = { ...stableSelectionFor(el), selector: "div[unclosed" } as DomEditSelection;
+
+    expect(writeTargetSelector(selection)).toBe("#scene > div:nth-child(2)");
+  });
+
   it("returns null when a live DOM is present and no rung addresses one element", () => {
     document.body.innerHTML = `<div id="scene"><div class="group"></div><div class="group"></div></div>`;
     const el = document.querySelectorAll<HTMLElement>(".group")[1]!;

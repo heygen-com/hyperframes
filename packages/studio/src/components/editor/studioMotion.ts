@@ -93,7 +93,6 @@ function resolveTarget(
   if (target.id) {
     const byId = document.getElementById(target.id);
     if (
-      document.defaultView &&
       isHtmlElement(byId) &&
       elementMatchesSourceFile(byId, target.sourceFile, activeCompositionPath)
     ) {
@@ -131,7 +130,6 @@ function restoreStudioMotionElement(element: HTMLElement, gsap: StudioMotionWind
 }
 
 function restoreStudioMotionElements(document: Document, gsap: StudioMotionWindow["gsap"]): void {
-  if (!document.defaultView) return;
   for (const element of Array.from(document.querySelectorAll(`[${STUDIO_MOTION_ATTR}]`))) {
     if (isHtmlElement(element)) restoreStudioMotionElement(element, gsap);
   }
@@ -232,10 +230,6 @@ export function applyStudioMotionFromDom(document: Document, currentTime?: numbe
   win.__timelines = win.__timelines ?? {};
   win.__timelines[STUDIO_MOTION_TIMELINE_ID]?.kill?.();
   delete win.__timelines[STUDIO_MOTION_TIMELINE_ID];
-
-  // Restore elements that had GSAP motion applied previously but whose attribute
-  // is now just the legacy marker "true" (i.e. they were restored/cleared).
-  if (!document.defaultView) return 0;
 
   // Collect elements that have JSON motion data in their attribute
   const motionElements: Array<{
