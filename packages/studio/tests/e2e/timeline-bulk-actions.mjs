@@ -180,6 +180,26 @@ async function measure(page, name, action) {
   };
 }
 
+// Inclusive time per function (self plus callees), the costliest first (BULK_STACKS=1).
+function printInclusive(cpu, byId) {
+  const parent = new Map();
+  for (const n of cpu.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
+  const total = new Map();
+  cpu.samples.forEach((id, i) => {
+    const seen = new Set();
+    for (let n = id; n !== undefined; n = parent.get(n)) {
+      const f = byId.get(n).callFrame;
+      const key = `${f.functionName || "(anon)"} ${f.url.split("/").pop()}:${f.lineNumber}`;
+      if (f.url && !seen.has(key)) {
+        seen.add(key);
+        total.set(key, (total.get(key) ?? 0) + cpu.timeDeltas[i] / 1000);
+      }
+    }
+  });
+  for (const [k, v] of [...total].sort((a, b) => b[1] - a[1]).slice(0, 14))
+    console.error(`incl ${Math.round(v)}ms ${k}`);
+}
+
 // Call chain of the node with the most self time among real functions (BULK_STACKS=1).
 function printHeaviestStack(cpu, byId) {
   const parent = new Map();
@@ -211,7 +231,10 @@ function printProfile(name, cpu, requests) {
   console.error(`--- ${name}`);
   for (const [k, v] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 15))
     console.error(`${Math.round(v)}ms ${k}`);
-  if (process.env.BULK_STACKS) printHeaviestStack(cpu, byId);
+  if (process.env.BULK_STACKS) {
+    printHeaviestStack(cpu, byId);
+    printInclusive(cpu, byId);
+  }
   const kinds = new Map();
   for (const { ms, kind } of requests) {
     const k = kinds.get(kind) ?? { n: 0, totalMs: 0, maxMs: 0 };
