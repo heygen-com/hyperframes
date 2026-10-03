@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
@@ -66,15 +67,6 @@ export function elementHome(el: HTMLElement): { x: number; y: number } {
     y += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
   }
   return { x, y };
-}
-
-export function isPreviewHtmlElement(
-  node: Element | null | undefined,
-  iframe: HTMLIFrameElement | null,
-): node is HTMLElement {
-  const Ctor = (iframe?.contentWindow as unknown as { HTMLElement?: typeof HTMLElement } | null)
-    ?.HTMLElement;
-  return Boolean(node && Ctor && node instanceof Ctor);
 }
 
 function rectsClose(a: Rect, b: Rect): boolean {
@@ -146,7 +138,7 @@ export function useMotionPathData(
         } catch {
           /* cross-origin guard */
         }
-        const live = isPreviewHtmlElement(target, el) ? target : null;
+        const live = isHtmlElement(target) ? target : null;
         const vis = live ? isElementVisibleForOverlay(live) : true;
         setVisibleInPreview((prev) => (prev === vis ? prev : vis));
         if (live) {
