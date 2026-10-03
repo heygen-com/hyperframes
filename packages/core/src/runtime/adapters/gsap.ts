@@ -8,7 +8,10 @@ type GsapAdapterDeps = {
  * Re-renders a timeline already at `t`, silently. A forced render at the same time walks the children
  * forward in authored order and re-renders each one, including a child that starts exactly at `t`.
  */
-export function rerenderGsapTimelineAt(timeline: Pick<RuntimeTimelineLike, "render">, t: number): void {
+export function rerenderGsapTimelineAt(
+  timeline: Pick<RuntimeTimelineLike, "render">,
+  t: number,
+): void {
   timeline.render?.(t, true, true);
 }
 

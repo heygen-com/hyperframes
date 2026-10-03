@@ -63,13 +63,18 @@ describe("gsap adapter on a step", () => {
 
 describe("gsap adapter at a tween's start", () => {
   // An edit at 2 s turns the later tween into keyframes; its first keyframe must win over the from() end.
-  it.each([0, 1, 2.5, 3])("shows the tween that starts at the seek time, seeking from %s s", (from) => {
-    const box = document.body.appendChild(document.createElement("div"));
-    const timeline = gsap.timeline({ paused: true });
-    timeline.from(box, { x: -60, duration: 2, ease: "none" }, 0);
-    timeline.to(box, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 }, 2);
-    timeline.totalTime(from, true);
-    createGsapAdapter({ getTimeline: () => timeline as unknown as RuntimeTimelineLike }).seek({ time: 2 });
-    expect(gsap.getProperty(box, "x")).toBe(5);
-  });
+  it.each([0, 1, 2.5, 3])(
+    "shows the tween that starts at the seek time, seeking from %s s",
+    (from) => {
+      const box = document.body.appendChild(document.createElement("div"));
+      const timeline = gsap.timeline({ paused: true });
+      timeline.from(box, { x: -60, duration: 2, ease: "none" }, 0);
+      timeline.to(box, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 }, 2);
+      timeline.totalTime(from, true);
+      createGsapAdapter({ getTimeline: () => timeline as unknown as RuntimeTimelineLike }).seek({
+        time: 2,
+      });
+      expect(gsap.getProperty(box, "x")).toBe(5);
+    },
+  );
 });
