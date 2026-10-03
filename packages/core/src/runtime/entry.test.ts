@@ -52,6 +52,30 @@ async function evaluateRuntime(): Promise<void> {
   await import("./entry");
 }
 
+function resetRuntimeGlobals(): void {
+  vi.useRealTimers();
+  window.__hfRuntimeTeardown?.();
+  document.head.innerHTML = "";
+  document.body.innerHTML = "";
+  window.__timelines = {};
+  delete window.__player;
+  delete window.__playerReady;
+  delete window.__renderReady;
+  delete window.__hfTimelinesBuilding;
+  const win = window as {
+    __hyperframeRuntimeBootstrapped?: boolean;
+    __hfFirstPassHidden?: boolean;
+  };
+  delete win.__hyperframeRuntimeBootstrapped;
+  delete win.__hfFirstPassHidden;
+  delete (document as { readyState?: unknown }).readyState;
+}
+
+// The first evaluation transforms the whole runtime graph. Paying it while the file loads keeps
+// that one-time cost out of the first test's timeout; every test still evaluates a fresh copy.
+await evaluateRuntime();
+resetRuntimeGlobals();
+
 const visibility = (...els: HTMLElement[]) => els.map((el) => getComputedStyle(el).visibility);
 const imageSkipped = (...clips: HTMLElement[]) =>
   clips.map((clip) => getComputedStyle(clip.querySelector("img")!).display === "none");
@@ -70,24 +94,7 @@ const neverDecodes = (clip: HTMLElement) => {
 };
 
 describe("runtime entry", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    window.__hfRuntimeTeardown?.();
-    document.head.innerHTML = "";
-    document.body.innerHTML = "";
-    window.__timelines = {};
-    delete window.__player;
-    delete window.__playerReady;
-    delete window.__renderReady;
-    delete window.__hfTimelinesBuilding;
-    const win = window as {
-      __hyperframeRuntimeBootstrapped?: boolean;
-      __hfFirstPassHidden?: boolean;
-    };
-    delete win.__hyperframeRuntimeBootstrapped;
-    delete win.__hfFirstPassHidden;
-    delete (document as { readyState?: unknown }).readyState;
-  });
+  afterEach(resetRuntimeGlobals);
 
   it("paints no timed clip, from script evaluation until the first visibility pass decides it", async () => {
     servePreview();
