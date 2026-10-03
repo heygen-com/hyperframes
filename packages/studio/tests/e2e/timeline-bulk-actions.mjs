@@ -6,7 +6,7 @@ BULK_PROJECT_DIR=<project> node packages/studio/tests/e2e/timeline-bulk-actions.
 Runs the built CLI's preview server, so build first:
   bun run --filter @hyperframes/studio build && bun run --filter @hyperframes/cli build
 BULK_PROJECT_DIR is copied, never modified. Optional: BULK_RUNS (default 5), BULK_PORT,
-BULK_ONLY (action name substring), BULK_THROTTLE (CPU slowdown rate for drag actions), BULK_PROFILE=1 (CPU profile and request summary).
+BULK_ONLY (action name substring), BULK_THROTTLE (CPU slowdown rate for drag actions), BULK_PROFILE=1 (CPU profile and request summary; "drag" profiles the pointer moves of the drag actions).
 An action is done when no foreground request is in flight and no long task ran for 500 ms.
 Thumbnail and lint requests are background and not awaited. Each run starts a fresh server.
 `;
@@ -300,6 +300,11 @@ async function dragAll(page, name, { edge, dx, steps }) {
   await page.mouse.move(cx - 20, cy);
   await page.mouse.move(cx, cy);
   await page.mouse.down();
+  const profileDrag = process.env.BULK_PROFILE === "drag";
+  if (profileDrag) {
+    await cdp.send("Profiler.enable");
+    await cdp.send("Profiler.start");
+  }
   const frames = [];
   for (let i = 1; i <= steps; i++) {
     const t0 = await taskMs(cdp);
@@ -307,6 +312,7 @@ async function dragAll(page, name, { edge, dx, steps }) {
     await nextPaint(page);
     frames.push((await taskMs(cdp)) - t0);
   }
+  if (profileDrag) printProfile(`${name} (drag)`, (await cdp.send("Profiler.stop")).profile, []);
   const result = await measure(page, name, async () => {
     await page.mouse.up();
     return settle(page);
