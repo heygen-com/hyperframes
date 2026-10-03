@@ -389,6 +389,28 @@ describe("TimelineLanes disclosure target", () => {
     act(() => second.root.unmount());
   });
 
+  it("does not remount a clip when it becomes, then stops being, a drag passenger", () => {
+    const elements = [element("clip-a", TRACK_A), element("clip-b", TRACK_A)];
+    const selectedElementIds = new Set(["clip-a", "clip-b"]);
+    const dragging: MultiDragPreviewInput = {
+      dragStarted: true,
+      draggedKey: "clip-b",
+      draggedOriginStart: 0,
+      draggedPreviewStart: 0.5,
+      selectedKeys: selectedElementIds,
+    };
+    const view = renderLanes({ elements, selectedElementIds });
+    const clipA = view.host.querySelector('[data-el-id="clip-a"]');
+    expect(clipA).not.toBeNull();
+
+    view.rerender({ elements, selectedElementIds, multiDragPreview: dragging });
+    expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
+
+    view.rerender({ elements, selectedElementIds });
+    expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
+    act(() => view.root.unmount());
+  });
+
   // The passenger branch wraps [clip, lanes] in a transformed div that re-renders
   // on every pointer move. An unstable key there remounts the lanes and drops the
   // in-flight drag.
