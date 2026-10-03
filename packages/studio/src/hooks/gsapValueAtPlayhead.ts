@@ -55,6 +55,7 @@ export type PlayheadEditPlan =
         position: number;
         duration: number;
         keyframes: Keyframe[];
+        ease?: string;
         easeEach?: string;
       };
       /** A keyframe was added, not only changed: keyframe usage counts it as an add. */
@@ -70,6 +71,8 @@ const isLinear = (ease: string | undefined) => !ease || ease === "none" || ease 
 
 interface Normalized {
   keyframes: Keyframe[];
+  /** GSAP eases the whole keyframe run with `keyframes.ease || ease`; the rewrite drops both, so it writes this. */
+  ease?: string;
   easeEach?: string;
 }
 
@@ -82,10 +85,11 @@ function normalize(edit: PlayheadEdit): Normalized | { reason: PlayheadEditRefus
   const { anim } = edit;
   const data = anim.keyframes;
   if (data) {
-    if (!isLinear(anim.ease) || !isLinear(data.ease)) return { reason: "eased-keyframes" };
     if (data.format === "simple-array") return { reason: "simple-array-keyframes" };
     const arrayStep = data.format === "object-array";
+    const ease = data.ease ?? anim.ease;
     return {
+      ...(ease ? { ease } : {}),
       keyframes: data.keyframes.map((kf) => ({
         ...kf,
         properties: { ...kf.properties },
@@ -195,14 +199,19 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
     "percentage" in edit.at
       ? edit.at.percentage
       : roundPct(((edit.at.time - start) / duration) * 100);
+  // An ease over the whole run moves where a new keyframe's time lands; changing one in place is exact.
+  const eased = !isLinear(norm.ease);
   if (pct >= -KEYFRAME_PCT_MATCH && pct <= 100 + KEYFRAME_PCT_MATCH) {
     const at = Math.min(100, Math.max(0, pct));
+    if (eased && !keyframes.some((kf) => Math.abs(kf.percentage - at) <= KEYFRAME_PCT_MATCH))
+      return refuse("eased-keyframes");
     const next = [...keyframes]
       .sort((a, b) => a.percentage - b.percentage)
       .find((kf) => kf.percentage > at + KEYFRAME_PCT_MATCH);
     // The new keyframe splits next's segment, so it takes next's ease.
     upsert(keyframes, at, { ...values }, next?.ease);
   } else {
+    if (eased) return refuse("eased-keyframes");
     const time = (edit.at as { time: number }).time;
     const before = time < start;
     const held = heldEnds(norm, before ? "start" : "end", edit.implicitEndValue, backfilled);
@@ -232,6 +241,7 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
       position: roundTo3(position),
       duration: roundTo3(span),
       keyframes,
+      ...(norm.ease ? { ease: norm.ease } : {}),
       ...(norm.easeEach ? { easeEach: norm.easeEach } : {}),
     },
     added: keyframes.length > authored,
