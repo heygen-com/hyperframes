@@ -1,3 +1,4 @@
+import { launchManagedBrowser } from "../browser/launch.js";
 // Run the shared beat detection (@hyperframes/core/beats) in a headless Chrome
 // so results match the Studio exactly — same Web Audio decode + same
 // bpm-detective. Used by the `beats` CLI command to write the beat file before
@@ -138,7 +139,7 @@ export async function analyzeBeatsHeadless(audioBytes: Buffer): Promise<Headless
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
   const browser = await ensureBrowser();
-  const chrome: Browser = await puppeteer.default.launch({
+  const chrome: Browser = await launchManagedBrowser(puppeteer.default, {
     headless: true,
     executablePath: browser.executablePath,
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--autoplay-policy=no-user-gesture-required"],

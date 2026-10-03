@@ -38,6 +38,22 @@ bun run build   # Build all packages
 bun run test    # Run all tests
 ```
 
+Packages load each other through their `exports`. Under Node, core, parsers,
+lint and studio-server resolve to `dist/`, and player always loads its built
+bundle. Run `bun run build` once in a fresh worktree, before any package's
+tests or typecheck. After editing a package that another package imports, run
+that package's `build` again before the dependent package's tests. Core's
+`src/generated/` is git-ignored build output: if you see
+`Cannot find module '../generated/runtime-inline'`, run
+`bun run build:hyperframes-runtime`.
+
+One file: `bun run --cwd packages/<pkg> test <path>`. Each package's `test`
+script picks its runner (vitest in most, `bun test` in aws-lambda and
+gcp-cloud-run). Producer is the exception: a file that imports `bun:test` runs
+with `bun test <file>`, any other with `bunx vitest run <file>`. Root `scripts/*.test.mjs` run through `bun run test:scripts`,
+which is an explicit list in `package.json`. CI's test-reachability check fails
+any test file that no runner reaches.
+
 ### Linting & Formatting
 
 Uses **oxlint** and **oxfmt** (not eslint, not prettier, not biome).

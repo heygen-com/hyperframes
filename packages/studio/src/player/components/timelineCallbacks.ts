@@ -137,6 +137,7 @@ export interface TimelineEditCallbacks {
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplitAll?: (splitTime: number) => Promise<void> | void;
   onFreezeFrame?: (element: TimelineElement, time: number) => Promise<void> | void;
+  clipMenuTools?: boolean;
   onNotice?: (message: string, tone?: "error" | "info") => void;
   onDeleteKeyframe?: (elementId: string, keyframe: TimelineKeyframeTarget) => void;
   onDeleteAllKeyframes?: (element: TimelineElement, animationId?: string) => void;

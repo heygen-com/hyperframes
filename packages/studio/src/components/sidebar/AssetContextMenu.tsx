@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { filename } from "./assetHelpers";
+import { menuClasses } from "../ui/menuStyle";
 
 /** Reject names that would escape the asset directory or break paths. */
 function isValidAssetName(name: string): boolean {
@@ -94,8 +95,7 @@ export function ContextMenu({
     onClose();
   }, [renameDraft, asset, onRename, onClose]);
 
-  const itemCls =
-    "w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden active:bg-neutral-700/70 transition-colors";
+  const itemCls = `${menuClasses.row} ${menuClasses.rowEnabled} active:bg-neutral-700/70 transition-colors`;
 
   return (
     <div
@@ -110,7 +110,7 @@ export function ContextMenu({
         ref={menuRef}
         role="menu"
         aria-label={`Actions for ${filename(asset)}`}
-        className="absolute bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px] text-xs"
+        className={`${menuClasses.panel} absolute min-w-[160px] text-xs`}
         style={{ left: pos.x, top: pos.y }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -147,7 +147,7 @@ export function ContextMenu({
               <button
                 role="menuitem"
                 onClick={() => setMode("confirm-delete")}
-                className={`${itemCls} text-danger-ink`}
+                className={`${menuClasses.row} ${menuClasses.rowDanger} active:bg-neutral-700/70 transition-colors`}
               >
                 Delete
               </button>

@@ -15,6 +15,7 @@ import {
   type ClipToolChoice,
 } from "./clipToolAttrs";
 import { useClipToolState } from "./useClipToolState";
+import { menuClasses } from "../../components/ui/menuStyle";
 
 export type ClipMenuToolGroup = "time" | "sound" | "picture";
 
@@ -25,10 +26,8 @@ interface ClipMenuToolItemsProps {
   onClose: () => void;
 }
 
-const ROW_CLASS =
-  "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer";
-const DISABLED_ROW_CLASS =
-  "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none text-neutral-600 cursor-not-allowed";
+const ROW_CLASS = `${menuClasses.row} flex items-center justify-between ${menuClasses.rowEnabled}`;
+const DISABLED_ROW_CLASS = `${menuClasses.row} flex items-center justify-between ${menuClasses.rowDisabled}`;
 const SUBMENU_WIDTH = 170;
 const HOVER_PREVIEW_DELAY_MS = 80;
 
@@ -98,7 +97,7 @@ function ChoiceSubmenu({
   preview?: HoverPreview;
 }) {
   const [open, setOpen] = useState(false);
-  const [flipLeft, setFlipLeft] = useState(false);
+  const [anchor, setAnchor] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
   const rowRef = useRef<HTMLButtonElement | null>(null);
   const submenuRef = useRef<HTMLDivElement | null>(null);
   const hover = useHoverPreview(preview);
@@ -111,7 +110,12 @@ function ChoiceSubmenu({
 
   const show = (focusFirst: boolean) => {
     const rect = rowRef.current?.getBoundingClientRect();
-    setFlipLeft(rect ? rect.right + SUBMENU_WIDTH > window.innerWidth : false);
+    if (rect)
+      setAnchor(
+        rect.right + SUBMENU_WIDTH > window.innerWidth
+          ? { top: rect.top, right: window.innerWidth - rect.left }
+          : { top: rect.top, left: rect.right },
+      );
     setOpen(true);
     if (!focusFirst) return;
     openingFocusRef.current = true;
@@ -184,8 +188,8 @@ function ChoiceSubmenu({
           ref={submenuRef}
           role="menu"
           aria-label={label}
-          className="absolute top-0 z-10 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1"
-          style={{ width: SUBMENU_WIDTH, ...(flipLeft ? { right: "100%" } : { left: "100%" }) }}
+          className={`${menuClasses.panel} fixed z-10`}
+          style={{ width: SUBMENU_WIDTH, ...anchor }}
           onKeyDown={onSubmenuKeyDown}
         >
           {choiceRow(null, "None")}
@@ -193,7 +197,7 @@ function ChoiceSubmenu({
             <div key={section.heading ?? index}>
               {section.heading && (
                 <>
-                  <div className="my-1 border-t border-neutral-700/60" />
+                  <div className={menuClasses.divider} />
                   <div className="px-3 py-1 text-[9px] uppercase tracking-wide text-neutral-500">
                     {section.heading}
                   </div>

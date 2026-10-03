@@ -19,6 +19,7 @@ import {
   visibleQuad,
 } from "./geometry.mjs";
 import { frameSamplerScript, scoreTeleport, startFrames, stopFrames } from "./teleport.mjs";
+import { terminateWindowsProcessTree } from "../../../../cli/src/utils/processTree.ts";
 import { installWebMcpHost } from "../webmcp-host.mjs";
 
 export const VIEWPORT = { width: 1600, height: 900 };
@@ -40,6 +41,12 @@ const up = (port) =>
 const liveServers = new Set();
 /** Signals the server's process group; a group that already exited is not an error. */
 function signalGroup(child, signal) {
+  // Windows has no process groups, so taskkill /T ends the server and its children.
+  if (process.platform === "win32")
+    return void terminateWindowsProcessTree(child.pid).catch((error) => {
+      // taskkill exits 128 when the process is already gone.
+      if (!/status 128$/.test(error.message)) throw error;
+    });
   try {
     process.kill(-child.pid, signal);
   } catch (error) {
@@ -53,16 +60,16 @@ export function killServers() {
 
 const announcedPort = (log) => /http:\/\/localhost:(\d+)/.exec(log.join(""))?.[1];
 
+/** Starts Studio at `port` or, when that is busy, the next free one the CLI binds; returns the port it serves. */
 // fallow-ignore-next-line complexity
 export async function startServer(cli, dir, port, log, home) {
-  // The CLI quietly takes the next free port when asked for a busy one, so only the port it announces counts.
-  if (await up(port)) throw new Error(`port ${port} is already serving`);
   const child = spawn(
     "node",
     [cli, "preview", dir, "--port", String(port), "--no-open", "--foreground", "--force-new"],
     {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
+      windowsHide: true,
       // A per-case HOME keeps Studio's undo history inside the case's tmp dir.
       env: {
         ...process.env,
@@ -79,12 +86,8 @@ export async function startServer(cli, dir, port, log, home) {
   for (const deadline = Date.now() + 60_000; Date.now() < deadline; await sleep(200)) {
     if (child.exitCode !== null)
       throw new Error(`studio exited ${child.exitCode}: ${log.join("").slice(-500)}`);
-    const announced = announcedPort(log);
-    if (announced && announced !== String(port)) {
-      await stopServer(child);
-      throw new Error(`studio moved from port ${port} to ${announced}`);
-    }
-    if (announced && (await up(port))) return child;
+    const announced = Number(announcedPort(log));
+    if (announced && (await up(announced))) return { child, port: announced };
   }
   await stopServer(child);
   throw new Error("studio did not start in 60s");

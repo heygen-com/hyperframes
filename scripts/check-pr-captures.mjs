@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Fail a PR touching packages/studio or packages/player unless its body has Before and After sections with media.
+// Markdown under them is docs, not behaviour, so it is not watched.
 // usage: node scripts/check-pr-captures.mjs --base origin/main --head <sha>; the body arrives in the env (see main).
 
 import { execFileSync } from "node:child_process";
@@ -131,8 +132,9 @@ function parseRecord(record) {
   return { path: rest.join("\t"), lines };
 }
 
+const DOC_FILE = /\.mdx?$/i;
 const isWatched = (path) =>
-  path !== "" && WATCHED_PREFIXES.some((prefix) => path.startsWith(prefix));
+  path !== "" && WATCHED_PREFIXES.some((prefix) => path.startsWith(prefix)) && !DOC_FILE.test(path);
 
 /** Parse `git diff --numstat -z --no-renames`, keeping watched paths. A binary file counts as a full budget. */
 export const parseNumstat = (numstat) =>

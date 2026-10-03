@@ -108,6 +108,14 @@ test("numstat keeps only watched paths and counts added plus deleted", () => {
   ]);
 });
 
+test("markdown under a watched package needs no capture", () => {
+  const files = parseNumstat(
+    "60\t4\tpackages/studio/AGENTS.md\0" + "8\t0\tpackages/player/README.md\0",
+  );
+  assert.deepEqual(files, []);
+  assert.equal(evaluate({ body: "", files }).ok, true);
+});
+
 test("a binary file spends the whole no-visible-change budget", () => {
   const [file] = parseNumstat("-\t-\tpackages/studio/public/logo.png\0");
   assert.equal(file.lines, 20);

@@ -8,6 +8,7 @@ import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { AUTOMATION_SHAPES, type AutomationShapeId } from "./automationShapes";
+import { menuClasses } from "../../components/ui/menuStyle";
 
 interface AutomationSelectionMenuProps {
   x: number;
@@ -45,7 +46,7 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
       // portaled to `document.body`, but the ruler's sticky header sits at z-70
       // in the SAME root stacking context, so a z-50 menu opened near the top of
       // the timeline is painted through by the ruler and the playhead.
-      className="hf-automation-menu fixed z-200 min-w-[140px] rounded-sm border border-panel-border-input bg-panel-bg-2 py-1 shadow-lg"
+      className={`${menuClasses.panel} hf-automation-menu fixed z-200 min-w-[140px]`}
       style={{ left: adjustedX, top: adjustedY }}
     >
       {AUTOMATION_SHAPES.map((shape) => (
@@ -61,7 +62,7 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
           {shape.label}
         </button>
       ))}
-      <div className="my-1 border-t border-panel-border-input" />
+      <div className={menuClasses.divider} />
       <button
         type="button"
         className={row}

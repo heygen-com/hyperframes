@@ -46,6 +46,7 @@ const EDIT_CALLBACK_KEY_SET: Record<keyof TimelineEditCallbacks, true> = {
   onRazorSplit: true,
   onRazorSplitAll: true,
   onFreezeFrame: true,
+  clipMenuTools: true,
   onNotice: true,
   onDeleteKeyframe: true,
   onDeleteAllKeyframes: true,

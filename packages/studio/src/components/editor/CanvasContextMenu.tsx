@@ -33,6 +33,7 @@ import {
   type ZOrderAction,
   type ZOrderPatch,
 } from "./canvasContextMenuZOrder";
+import { menuClasses } from "../ui/menuStyle";
 
 interface CanvasContextMenuProps {
   /** Viewport x of the right-click event. */
@@ -209,7 +210,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
       style={{ left: adjustedX, top: adjustedY }}
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}
@@ -252,7 +253,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
           );
         })}
 
-      {hasDivider && <div className="my-1 border-t border-neutral-700/60" />}
+      {hasDivider && <div className={menuClasses.divider} />}
 
       {hasDelete && (
         <button

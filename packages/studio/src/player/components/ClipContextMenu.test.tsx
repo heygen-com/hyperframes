@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { ClipContextMenu } from "./ClipContextMenu";
 import type { TimelineClipMenuItem } from "./TimelineTypes";
+import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -117,6 +118,67 @@ describe("ClipContextMenu host items", () => {
   });
 });
 
+describe("ClipContextMenu tools", () => {
+  const video = {
+    id: "talk",
+    domId: "talk",
+    tag: "video",
+    start: 0,
+    duration: 4,
+    track: 0,
+    hasAudio: true,
+  } as unknown as TimelineElement;
+
+  function menuWith(clipMenuTools: boolean | undefined) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <TimelineEditProvider
+          value={{
+            onFreezeFrame: vi.fn(),
+            onSetElementAttributeQuiet: vi.fn(),
+            onLinkEdit: vi.fn(),
+            ...(clipMenuTools === undefined ? {} : { clipMenuTools }),
+          }}
+        >
+          <ClipContextMenu
+            x={10}
+            y={10}
+            element={video}
+            currentTime={1}
+            onClose={vi.fn()}
+            onSplit={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </TimelineEditProvider>,
+      ),
+    );
+    const labels = () =>
+      Array.from(document.body.querySelectorAll("[role=menuitem]")).map((item) => item.textContent);
+    return { labels, unmount: () => act(() => root.unmount()) };
+  }
+
+  it("offers Freeze frame and the attribute tools by default", () => {
+    const { labels, unmount } = menuWith(undefined);
+    expect(labels().some((label) => label?.startsWith("Freeze frame"))).toBe(true);
+    expect(labels().some((label) => label?.startsWith("Look"))).toBe(true);
+    expect(labels().some((label) => label?.startsWith("Voice"))).toBe(true);
+    unmount();
+  });
+
+  it("hides every tool when the host turns them off, keeping Split and Delete", () => {
+    const { labels, unmount } = menuWith(false);
+    expect(labels().some((label) => label?.startsWith("Freeze frame"))).toBe(false);
+    expect(labels().some((label) => label?.startsWith("Look"))).toBe(false);
+    expect(labels().some((label) => label?.startsWith("Voice"))).toBe(false);
+    expect(labels().some((label) => label?.startsWith("Split"))).toBe(true);
+    expect(labels().some((label) => label?.startsWith("Delete"))).toBe(true);
+    unmount();
+  });
+});
+
 /** A clip button that opens the real menu, whose Ask moves the focus the way `focus` says. */
 function FocusHost({ focus }: { focus: "existing" | "mounted" }) {
   const [open, setOpen] = useState(false);
@@ -184,5 +246,16 @@ describe("ClipContextMenu focus on close", () => {
     expect(menuItem()).toBeNull();
     expect(focusedId()).toBe("clip");
     unmount();
+  });
+});
+
+describe("ClipContextMenu row fill", () => {
+  it("leaves no padding or margin between its rows and the panel edge or a divider", () => {
+    renderMenu([{ id: "ask", label: "Ask", onSelect: vi.fn() }]);
+    const menu = document.body.querySelector<HTMLElement>("[role=menu]")!;
+    const spacing = /(^| )(p|py|pt|pb|m|my|mt|mb)-\d/;
+    expect(menu.className).not.toMatch(spacing);
+    for (const group of menu.querySelectorAll<HTMLElement>("[role=group]"))
+      expect(group.className).not.toMatch(spacing);
   });
 });

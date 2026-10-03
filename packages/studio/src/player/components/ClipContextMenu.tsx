@@ -8,10 +8,10 @@ import type { TimelineClipMenuItem } from "./TimelineTypes";
 import { ClipMenuToolItems } from "./clipMenuToolItems";
 import { ClipMenuAudioItems } from "./clipMenuAudioItems";
 import { ClipMenuLinkItems } from "./clipMenuLinkItems";
+import { menuClasses } from "../../components/ui/menuStyle";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 
 const MENU_MARGIN = 8;
-// Empty groups collapse; every non-empty group before the always-present Delete group ends in a divider.
-const GROUP_CLASS = "empty:hidden mb-1 pb-1 border-b border-neutral-700/60";
 
 function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: string): number {
   const [height, setHeight] = useState(0);
@@ -42,13 +42,8 @@ interface ClipContextMenuProps {
   hostItems?: readonly TimelineClipMenuItem[] | undefined;
 }
 
-// Same enabled/disabled menu-item pattern as the sibling TrackGapContextMenu.
 const itemClass = (enabled: boolean) =>
-  `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none${
-    enabled
-      ? " focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-      : " text-neutral-600 cursor-not-allowed"
-  }`;
+  `${menuClasses.row} flex items-center justify-between ${enabled ? menuClasses.rowEnabled : menuClasses.rowDisabled}`;
 
 /** The host's items, above Studio's. A pick closes the menu; focus the item moves stays where it went. */
 function HostItems({
@@ -103,6 +98,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
 }: ClipContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
   useMenuKeyboardNav(menuRef);
+  const tools = useTimelineEditContextOptional().clipMenuTools !== false;
   // The right-clicked clip's own id: a member of the live multi-selection
   // means Copy/Duplicate act on the whole group, matching onContextMenuClip's
   // selection-preserving behaviour for a right-click inside it.
@@ -134,15 +130,15 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ref={menuRef}
       role="menu"
       aria-label="Clip actions"
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
       style={{ left: adjustedX, top: adjustedY }}
     >
       {hostItems.length > 0 && (
-        <div role="group" aria-label="Host" className={GROUP_CLASS}>
+        <div role="group" aria-label="Host" className={menuClasses.group}>
           <HostItems items={hostItems} onClose={onClose} />
         </div>
       )}
-      <div role="group" aria-label="Time" className={GROUP_CLASS}>
+      <div role="group" aria-label="Time" className={menuClasses.group}>
         {splitLabel && (
           <button
             type="button"
@@ -164,7 +160,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <span className="text-neutral-500 text-[10px] ml-3">S</span>
           </button>
         )}
-        {splitLabel && (
+        {tools && splitLabel && (
           <ClipMenuToolItems
             group="time"
             element={element}
@@ -174,28 +170,34 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         )}
       </div>
 
-      <div role="group" aria-label="Sound" className={GROUP_CLASS}>
-        <ClipMenuAudioItems part="gain" element={element} onClose={onClose} />
-        <ClipMenuToolItems
-          group="sound"
-          element={element}
-          currentTime={currentTime}
-          onClose={onClose}
-        />
-        <ClipMenuLinkItems part="link" element={element} onClose={onClose} />
-        <ClipMenuAudioItems part="duck" element={element} onClose={onClose} />
+      <div role="group" aria-label="Sound" className={menuClasses.group}>
+        {tools && (
+          <>
+            <ClipMenuAudioItems part="gain" element={element} onClose={onClose} />
+            <ClipMenuToolItems
+              group="sound"
+              element={element}
+              currentTime={currentTime}
+              onClose={onClose}
+            />
+            <ClipMenuLinkItems part="link" element={element} onClose={onClose} />
+            <ClipMenuAudioItems part="duck" element={element} onClose={onClose} />
+          </>
+        )}
       </div>
 
-      <div role="group" aria-label="Picture" className={GROUP_CLASS}>
-        <ClipMenuToolItems
-          group="picture"
-          element={element}
-          currentTime={currentTime}
-          onClose={onClose}
-        />
+      <div role="group" aria-label="Picture" className={menuClasses.group}>
+        {tools && (
+          <ClipMenuToolItems
+            group="picture"
+            element={element}
+            currentTime={currentTime}
+            onClose={onClose}
+          />
+        )}
       </div>
 
-      <div role="group" aria-label="Clipboard" className={GROUP_CLASS}>
+      <div role="group" aria-label="Clipboard" className={menuClasses.group}>
         {onCopy && (
           <button
             type="button"
@@ -255,7 +257,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
           <span>Delete</span>
           <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
         </button>
-        <ClipMenuLinkItems part="delete" element={element} onClose={onClose} />
+        {tools && <ClipMenuLinkItems part="delete" element={element} onClose={onClose} />}
       </div>
     </div>,
     document.body,
