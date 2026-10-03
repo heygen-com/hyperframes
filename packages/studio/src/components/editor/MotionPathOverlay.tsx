@@ -2,6 +2,8 @@ import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
+import { isGsapEditBlockedError } from "../../hooks/gsapEditOutcome";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
@@ -92,6 +94,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     handleGsapRemoveAllKeyframes,
     handleGsapMoveKeyframeToPlayhead,
   } = useDomEditContext();
+  const shell = useStudioShellContextOptional();
   const { rect, geometry, geometryResolved, visibleInPreview, home, pScale } = useMotionPathData(
     iframeRef,
     selectorFor(selection),
@@ -378,15 +381,12 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     const anim =
       d.ref.type === "keyframe" ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
     const iframe = iframeRef.current;
-    void commitNodeDrop({
-      ref: d.ref,
-      at: { x, y },
-      animId,
-      anim,
-      selection,
-      iframe,
-      commitMutation,
-    });
+    commitNodeDrop({ ref: d.ref, at: { x, y }, animId, anim, selection, iframe, commitMutation }).catch(
+      (error: unknown) => {
+        if (!isGsapEditBlockedError(error)) throw error;
+        shell?.showToast(error.message, "error");
+      },
+    );
     // Park the playhead on the edited keyframe's time so the element previews AT
     // that keyframe. Without it, a playhead sitting before the tween renders the
     // element's base pose — the edit (correct on the path) looks like it vanished.

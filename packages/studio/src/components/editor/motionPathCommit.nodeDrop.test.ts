@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import { liveTween, previewWith, tween } from "../../hooks/gsapParsedTween.test-helpers";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { GsapEditBlockedError } from "../../hooks/gsapEditOutcome";
 import { commitNodeDrop } from "./motionPathCommit";
 
 afterEach(() => {
@@ -55,4 +56,34 @@ it("a keyframe node's drop changes that keyframe and keeps a newly animated chan
     { x: 60, y: 30 },
     { x: 150, y: 90 },
   ]);
+});
+
+it("a drop the writer refuses rejects with the reason, and writes nothing", async () => {
+  const [a, b] = ["a", "b"].map((id) => {
+    const el = document.body.appendChild(document.createElement("div"));
+    el.id = id;
+    el.className = "card";
+    return el;
+  });
+  const shared = tween({
+    targetSelector: ".card",
+    method: "to",
+    properties: {},
+    resolvedStart: 0,
+    duration: 1,
+    keyframes: { format: "percentage", keyframes: [{ percentage: 100, properties: { x: 20 } }] },
+  });
+  usePlayerStore.setState({ autoKeyframeEnabled: true });
+  const commitMutation = vi.fn(async () => {});
+  const drop = commitNodeDrop({
+    ref: { type: "keyframe", pct: 100 },
+    at: { x: 5, y: 0 },
+    animId: shared.id,
+    anim: shared,
+    selection: { id: "a", selector: "#a", element: a! } as DomEditSelection,
+    iframe: previewWith(b!, [], { x: 0, y: 0 }),
+    commitMutation,
+  });
+  await expect(drop).rejects.toBeInstanceOf(GsapEditBlockedError);
+  expect(commitMutation).not.toHaveBeenCalled();
 });

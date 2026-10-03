@@ -6,6 +6,7 @@ import { trackPreviewFeatureUsed, type PreviewMethod } from "../../utils/preview
  * handles the soft reload, undo snapshot, and save-failure feedback.
  */
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
+import { assertGsapEditPersisted } from "../../hooks/gsapEditOutcome";
 import { observeGsapGesture } from "../../hooks/gsapGestureOutcome";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { commitValueAtPlayhead } from "../../hooks/gsapValueAtPlayhead";
@@ -75,7 +76,7 @@ export function commitNodeDrop(drop: NodeDrop): Promise<void> {
     done = commitValueAtPlayhead(selection, anim, at, iframe, callbacks, {
       label: "Move keyframe",
       backfill: live ?? undefined,
-    });
+    }).then(assertGsapEditPersisted);
   } else {
     const label = "Move animation path";
     done = commitWholePropertyOffset(selection, anim, at, ref.pct, iframe, callbacks, label);
