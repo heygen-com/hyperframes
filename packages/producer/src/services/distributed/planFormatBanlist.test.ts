@@ -96,6 +96,21 @@ describe("rejectUnsupportedDistributedFormat (pure)", () => {
     expect(caught).toBeInstanceOf(FormatNotSupportedInDistributedError);
     expect((caught as FormatNotSupportedInDistributedError).format).toBe("mp4-hdr");
   });
+
+  it("rejects crop-pack until a follow-up ships sibling uploads", () => {
+    expect(() =>
+      rejectUnsupportedDistributedFormat({
+        format: "mp4",
+        cropPack: { members: [{ id: "vertical" }] },
+      }),
+    ).toThrow(FormatNotSupportedInDistributedError);
+    expect(() =>
+      rejectUnsupportedDistributedFormat({
+        format: "mp4",
+        cropPack: { members: [{ id: "vertical" }] },
+      }),
+    ).toThrow(/crop-pack/i);
+  });
 });
 
 describe("plan() banlist (end-to-end)", () => {

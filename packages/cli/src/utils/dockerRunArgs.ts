@@ -70,6 +70,11 @@ export interface DockerRenderOptions {
   protocolTimeoutMs?: number;
   /** Player readiness timeout in milliseconds. */
   playerReadyTimeoutMs?: number;
+  /**
+   * Comma-separated `data-safe-frames` ids (or `all`). Forwarded as
+   * `--crop-pack` so the in-container CLI crops the encoded master.
+   */
+  cropPack?: string;
 }
 
 /**
@@ -164,5 +169,6 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.playerReadyTimeoutMs != null
       ? ["--player-ready-timeout", String(options.playerReadyTimeoutMs)]
       : []),
+    ...(options.cropPack ? ["--crop-pack", options.cropPack] : []),
   ];
 }

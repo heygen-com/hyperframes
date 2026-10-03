@@ -7,6 +7,7 @@ import {
 } from "@hyperframes/engine";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution, type Fps } from "@hyperframes/core";
 import type { ProducerLogger } from "./logger.js";
+import type { SafeFrame } from "@hyperframes/parsers/safe-frames";
 import type { RenderConfig } from "./services/renderOrchestrator.js";
 import type { DistributedRenderConfig } from "./services/distributed/plan.js";
 import {
@@ -51,6 +52,15 @@ export interface RenderRequestOptions {
   outputResolutionAspectAgnostic?: boolean;
   engineConfig: EngineConfig;
   distributed?: DistributedRenderOptions;
+  /**
+   * Local post-encode crop pack. Distributed adapters must reject this;
+   * it is not a second capture and is not supported on Lambda/cloud.
+   */
+  cropPack?: {
+    compositionWidth: number;
+    compositionHeight: number;
+    members: SafeFrame[];
+  };
 }
 
 export interface RenderRequest {
@@ -128,6 +138,44 @@ function isCanvasResolution(value: unknown): value is CanvasResolution {
   );
 }
 
+// fallow-ignore-next-line complexity
+function assertCropPack(value: unknown): void {
+  if (!isPlainObject(value)) throw new Error("Render request cropPack must be an object");
+  if (
+    typeof value.compositionWidth !== "number" ||
+    !Number.isInteger(value.compositionWidth) ||
+    value.compositionWidth <= 0
+  ) {
+    throw new Error("Render request cropPack.compositionWidth must be a positive integer");
+  }
+  if (
+    typeof value.compositionHeight !== "number" ||
+    !Number.isInteger(value.compositionHeight) ||
+    value.compositionHeight <= 0
+  ) {
+    throw new Error("Render request cropPack.compositionHeight must be a positive integer");
+  }
+  if (!Array.isArray(value.members)) {
+    throw new Error("Render request cropPack.members must be an array");
+  }
+  for (const member of value.members) {
+    if (!isPlainObject(member)) {
+      throw new Error("Render request cropPack.members must contain objects");
+    }
+    if (typeof member.id !== "string" || member.id.length === 0) {
+      throw new Error("Render request cropPack member id must be a non-empty string");
+    }
+    if (typeof member.ratio !== "string") {
+      throw new Error(`Render request cropPack member "${member.id}" ratio is invalid`);
+    }
+    for (const field of ["x", "y", "width", "height"] as const) {
+      if (typeof member[field] !== "number" || !Number.isFinite(member[field])) {
+        throw new Error(`Render request cropPack member "${member.id}" ${field} must be a number`);
+      }
+    }
+  }
+}
+
 function assertDistributedOptions(value: unknown): void {
   if (!isPlainObject(value)) throw new Error("Render request distributed must be an object");
   for (const field of ["width", "height"] as const) {
@@ -182,6 +230,7 @@ function assertRequestOptionObjects(options: Record<string, unknown>): void {
     throw new Error("Render request variables must be a JSON object");
   }
   if (options.distributed !== undefined) assertDistributedOptions(options.distributed);
+  if (options.cropPack !== undefined) assertCropPack(options.cropPack);
 }
 
 function assertRequestOptions(options: unknown): asserts options is RenderRequestOptions {
@@ -269,6 +318,11 @@ export function distributedConfigFromRequest(
   const distributed = options.distributed;
   if (!distributed) throw new Error("Render request is missing distributed options");
   if (options.format === "gif") throw new Error("Distributed render does not support gif");
+  if (options.cropPack) {
+    throw new Error(
+      "--crop-pack is not supported on distributed / Lambda / cloud renders. Crop packs are a local post-encode ffmpeg crop of the assembled master.",
+    );
+  }
   if (options.hdrMode === "force-hdr") {
     throw new Error("Distributed render does not support force-hdr");
   }

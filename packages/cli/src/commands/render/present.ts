@@ -23,9 +23,13 @@ async function presentRenderWarnings(plan: RenderPlan): Promise<void> {
   if (!plan.effectiveQuiet && plan.gifFpsCapped) {
     console.log(c.warn("  GIF output is capped at 30fps. Use --fps 15 for smaller files."));
   }
+  if (!plan.effectiveQuiet && plan.cropPackIgnoredWarning) {
+    console.log(c.warn("  " + plan.cropPackIgnoredWarning));
+  }
   if (!plan.effectiveQuiet) await warnForSlideshow(plan);
 }
 
+// fallow-ignore-next-line complexity
 function presentRenderSummary(plan: RenderPlan): void {
   const workerLabel =
     plan.workers != null
@@ -41,6 +45,12 @@ function presentRenderSummary(plan: RenderPlan): void {
   );
   if (plan.outputResolution) {
     console.log(c.dim("   Output resolution: " + plan.outputResolution));
+  }
+  if (plan.cropPack && plan.cropPack.members.length > 0) {
+    const members = plan.cropPack.members.map((frame) => `${frame.id} (${frame.ratio})`).join(", ");
+    console.log(
+      c.dim("   Crop pack: " + members + " — ffmpeg crop of the master, not a second capture"),
+    );
   }
   if (plan.useGpu || plan.browserGpuMode !== "software") {
     const gpuModes = [

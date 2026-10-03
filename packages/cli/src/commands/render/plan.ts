@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   formatRenderOutputTimestamp,
@@ -30,6 +30,12 @@ import {
 import { normalizeSkillSlug } from "../../telemetry/skill.js";
 import { loadProjectConfig } from "../../utils/projectConfig.js";
 import { type CatalogUsage, summarizeCatalogUsage } from "../../utils/catalogUsage.js";
+import {
+  parseCropPackFlag,
+  parseSafeFramesAttribute,
+  resolveCropPackSelection,
+  type SafeFrame,
+} from "@hyperframes/parsers/safe-frames";
 
 const VALID_QUALITY = new Set(["draft", "standard", "high"]);
 const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif"] as const;
@@ -90,6 +96,7 @@ export interface RenderCommandArgs {
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
+  "crop-pack"?: string;
 }
 
 export interface RenderPlan {
@@ -138,6 +145,12 @@ export interface RenderPlan {
   variablesFileArg?: string;
   strictVariables: boolean;
   environment: Readonly<Record<string, string>>;
+  cropPack?: {
+    compositionWidth: number;
+    compositionHeight: number;
+    members: SafeFrame[];
+  };
+  cropPackIgnoredWarning?: string;
 }
 
 function formatFpsParseError(
@@ -411,6 +424,12 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
 
   const quiet = args.quiet ?? false;
   const batchJson = args.json ?? false;
+  const cropPackResolved = resolveCropPackPlan({
+    flag: args["crop-pack"],
+    configIds: loadProjectConfig(project.dir).render?.cropPack,
+    format,
+    htmlPath: renderTarget,
+  });
   return Object.freeze({
     project,
     entryFile,
@@ -456,6 +475,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     variablesFileArg: args["variables-file"],
     strictVariables: args["strict-variables"] ?? false,
     environment: Object.freeze(environment),
+    cropPack: cropPackResolved.spec,
+    cropPackIgnoredWarning: cropPackResolved.ignoredWarning,
   });
 }
 
@@ -479,4 +500,83 @@ export function resolveBrowserGpuForCli(
   if (browserGpuArg === false) return "software";
   if (envMode === "hardware" || envMode === "software" || envMode === "auto") return envMode;
   return "auto";
+}
+
+function readQuotedAttr(html: string, attr: string): string | null {
+  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = html.match(new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i"));
+  return match?.[2] ?? null;
+}
+
+// fallow-ignore-next-line complexity
+function resolveCropPackPlan(input: {
+  flag: string | undefined;
+  configIds: string[] | undefined;
+  format: RenderFormat;
+  htmlPath: string;
+}): {
+  spec?: {
+    compositionWidth: number;
+    compositionHeight: number;
+    members: SafeFrame[];
+  };
+  ignoredWarning?: string;
+} {
+  const requested =
+    input.flag !== undefined
+      ? parseCropPackFlag(input.flag)
+      : input.configIds && input.configIds.length > 0
+        ? input.configIds.includes("all")
+          ? "all"
+          : input.configIds
+        : undefined;
+  if (requested === undefined) return {};
+  if (input.format === "gif" || input.format === "png-sequence") {
+    return {
+      ignoredWarning: `--crop-pack is ignored for ${input.format}; writing the master only.`,
+    };
+  }
+  let html: string;
+  try {
+    html = readFileSync(input.htmlPath, "utf8");
+  } catch {
+    errorBox("Crop pack", `Could not read ${input.htmlPath} to resolve --crop-pack.`);
+    failUsage();
+  }
+  const width = Number.parseFloat(readQuotedAttr(html, "data-width") ?? "");
+  const height = Number.parseFloat(readQuotedAttr(html, "data-height") ?? "");
+  if (!(width > 0) || !(height > 0)) {
+    errorBox("Crop pack", "data-width and data-height are required to resolve --crop-pack.");
+    failUsage();
+  }
+  const parsed = parseSafeFramesAttribute(
+    readQuotedAttr(html, "data-safe-frames"),
+    width > 0 && height > 0 ? { width, height } : undefined,
+  );
+  if (!parsed.ok) {
+    errorBox("Crop pack", parsed.message);
+    failUsage();
+  }
+  if (parsed.frames.length === 0) {
+    errorBox(
+      "Crop pack",
+      "--crop-pack requires authored data-safe-frames on the composition root.",
+    );
+    failUsage();
+  }
+  const selected = resolveCropPackSelection(parsed.frames, requested);
+  if (!selected.ok) {
+    errorBox(
+      "Unknown crop-pack id",
+      `Unknown crop-pack id(s): ${selected.unknownIds.join(", ")}. Authored: ${parsed.frames.map((frame) => frame.id).join(", ")}.`,
+    );
+    failUsage();
+  }
+  return {
+    spec: {
+      compositionWidth: width,
+      compositionHeight: height,
+      members: selected.members,
+    },
+  };
 }

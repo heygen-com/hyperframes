@@ -197,6 +197,11 @@ export default defineCommand({
       type: "string",
       description: "Optional Idempotency-Key for safe retries (1-255 chars from [A-Za-z0-9_:.-])",
     },
+    "crop-pack": {
+      type: "string",
+      description:
+        "Not supported on cloud render. Crop packs are a local post-encode ffmpeg crop of the assembled master.",
+    },
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
@@ -213,6 +218,15 @@ export default defineCommand({
     const pollIntervalMs = parsePollIntervalMs(args["poll-interval"]);
     const maxWaitMs = parseMaxWaitMs(args["max-wait"]);
     validateIdempotencyKey(args["idempotency-key"]);
+
+    if (args["crop-pack"]) {
+      errorBox(
+        "Unsupported flag",
+        "--crop-pack is not supported on cloud render.",
+        "Crop packs are a local post-encode ffmpeg crop of the assembled master. Render locally with `hyperframes render --crop-pack`.",
+      );
+      failCommand();
+    }
 
     // Project resolution runs BEFORE variables resolution so a user
     // passing conflicting inputs (`dir + --asset-id`) sees the

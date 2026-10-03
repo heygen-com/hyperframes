@@ -45,6 +45,7 @@ const EVERY_WRITTEN_KEY: Required<ProjectConfig> = {
   media: { autoProxy: true },
   authoringSkill: "product-launch-video",
   registryItems: [EVERY_RECORD_FIELD],
+  render: { cropPack: ["vertical", "square"] },
 };
 
 describe("hyperframes.json schema", () => {

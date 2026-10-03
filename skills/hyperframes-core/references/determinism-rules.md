@@ -62,6 +62,7 @@ Build the visible end-state in static HTML and CSS first, then animate from/to t
 - **Do not** use `<br>` in body text. Forced breaks ignore the actual rendered font width and produce an extra break when the line already wraps naturally, causing overlap. Let text wrap via `max-width`. Exception: short display titles where each word is deliberately on its own line.
 - **Transformed elements must be block-level + sized.** `transform`/`scaleX`/`scaleY` is a no-op on an inline `<span>`, and scaling an auto-width (0px) element shows nothing → invisible bars/fills. Give them `display: block`/`inline-block`/flex-item **and** a real `width`/`height` (e.g. `width: 100%` inside a sized parent). _(Silent — automated gates may miss it.)_
 - **Absolutely-positioned decoratives that pulse or overshoot** (`yoyo` scale, `back.out`) need clearance at their **peak** size and must not straddle an `overflow: hidden` edge — else they overlap a neighbor or get clipped. Position for the largest frame, not the resting one. _(silent.)_
+- **Cropping is not reflow.** `data-safe-frames` + `--crop-pack` cut pixels from the already-encoded master (ffmpeg crop+scale). Titles authored near a left/right edge are lost on a center 9:16 window. Do not auto-reposition text. Keep critical copy inside every requested window (`data-safe-critical`) and let `hyperframes check` sample overflow. Pixel sizes snap in one shared function (`pixelRect`) so lint, render, Studio, and the player cannot drift by a pixel.
 
 ## Why This Matters
 

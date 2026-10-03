@@ -484,13 +484,20 @@ function formatBytes(bytes: number): string {
  * what `plan()` would have thrown.
  */
 export function rejectUnsupportedDistributedFormat(
-  config: Pick<DistributedRenderConfig, "format" | "hdrMode">,
+  config: Pick<DistributedRenderConfig, "format" | "hdrMode"> & { cropPack?: unknown },
 ): void {
   if ((config.hdrMode as string) === "force-hdr") {
     throw new FormatNotSupportedInDistributedError(
       "mp4-hdr",
       "HDR (PQ / HLG) requires per-source HDR pre-extract + HDR signaling re-apply on the " +
         "assembled file; neither is implemented for the distributed pipeline",
+    );
+  }
+  if (config.cropPack != null) {
+    throw new FormatNotSupportedInDistributedError(
+      "crop-pack",
+      "--crop-pack is a local post-encode crop of the assembled master; distributed / Lambda / cloud " +
+        "renders cannot write sibling deliverables yet",
     );
   }
 }

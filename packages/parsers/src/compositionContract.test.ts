@@ -27,6 +27,11 @@ class Attributes {
 }
 
 describe("composition timing contract", () => {
+  it("names the safe-frame crop-pack attributes", () => {
+    expect(COMPOSITION_ATTRIBUTES.safeFrames).toBe("data-safe-frames");
+    expect(COMPOSITION_ATTRIBUTES.safeCritical).toBe("data-safe-critical");
+  });
+
   it.each([
     ["1.25", { kind: "absolute", value: 1.25 }],
     ["intro", { kind: "reference", refId: "intro", offset: 0 }],

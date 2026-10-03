@@ -24,6 +24,7 @@ import {
 } from "./motionAudit.js";
 import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
+import { snapshotToAnchoredIssues } from "./safeCriticalOverflow.js";
 import {
   parseColorRGBA,
   requiredContrastRatio,
@@ -69,6 +70,9 @@ export type {
   ContrastAuditEntry,
   MotionSpecResolution,
 } from "./checkTypes.js";
+
+export { evaluateSafeCriticalOverflows } from "./safeCriticalOverflow.js";
+export type { SafeCriticalSnapshot } from "./safeCriticalOverflow.js";
 
 const MOTION_FPS = 20;
 const MOTION_MAX_SAMPLES = 300;
@@ -384,6 +388,7 @@ async function collectGeometryAt(
   return issues;
 }
 
+// fallow-ignore-next-line complexity
 async function collectGridSamples(
   driver: CheckAuditDriver,
   options: CheckOptions,
@@ -419,6 +424,12 @@ async function collectGridSamples(
       collected.geometrySignatures.push(await driver.collectLayoutGeometry());
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
+      if (typeof driver.collectSafeCriticalSnapshot === "function") {
+        const snapshot = await driver.collectSafeCriticalSnapshot(time);
+        const overflowIssues = snapshotToAnchoredIssues(snapshot, options.tolerance, "index.html");
+        collected.layoutIssues.push(...overflowIssues);
+        issuesAtTime.push(...overflowIssues);
+      }
     }
     if (canvas) {
       const geometryIssues = await collectGeometryAt(

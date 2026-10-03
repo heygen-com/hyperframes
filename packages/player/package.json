@@ -35,7 +35,8 @@
     "perf": "bun run tests/perf/index.ts"
   },
   "dependencies": {
-    "@hyperframes/core": "workspace:*"
+    "@hyperframes/core": "workspace:*",
+    "@hyperframes/parsers": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

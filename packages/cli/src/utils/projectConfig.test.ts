@@ -75,6 +75,11 @@ describe("projectConfig", () => {
       expect(result.media).toEqual({ autoProxy: false });
     });
 
+    it("keeps render.cropPack ids", () => {
+      const result = normalizeConfig({ render: { cropPack: ["vertical", "square"] } });
+      expect(result.render).toEqual({ cropPack: ["vertical", "square"] });
+    });
+
     it("falls back to the default when media.autoProxy is malformed", () => {
       const result = normalizeConfig({
         media: { autoProxy: "nope" } as unknown as never,

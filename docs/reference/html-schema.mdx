@@ -81,6 +81,7 @@ timeline registry key.
 | `data-width` and `data-height` | Yes | Authored frame dimensions in pixels |
 | `data-duration` | Usually | Total render duration in seconds |
 | `data-no-timeline` | Only for a timeline-free composition | Tells the runtime not to wait for a timeline |
+| `data-safe-frames` | No | JSON array of named crop windows on this root. Each object is `{ id, ratio, x, y, width, height }`. `id` is `[a-z][a-z0-9-]{0,31}` and unique. `ratio` is `16:9`, `9:16`, or `1:1`. Fractions are of the authored frame, origin top-left, each in `[0, 1]`, with `x + width ≤ 1` and `y + height ≤ 1`. Pixel size must match the named ratio within one pixel after snap. Used by `--crop-pack`, Studio overlays, the player `safe-frame` attribute, and `data-safe-critical` checks. Cropping the encoded master does not reflow layout. |
 
 An explicit root `data-duration` is the render length. The compiler reads it
 before composition scripts run, so a script or variable override cannot change
@@ -99,6 +100,7 @@ unbounded animation, and timeline-free compositions need an explicit duration.
 | `data-duration` | Yes for DOM, image, and nested-composition clips | Visible slot length in seconds |
 | `data-track-index` | No | Studio timeline lane, display only. The render never reads it and it does not prevent overlap |
 | `class="clip"` | Recommended for authored timed DOM and image elements | Layout and tooling convention. Visibility is keyed off `data-start`, but the shared `.clip` rule supplies the full-frame box |
+| `data-safe-critical` | No | Boolean, or a comma-separated list of `data-safe-frames` ids. The element's border box must stay inside every required crop window while it is visible. Static lint checks unknown ids; `hyperframes check` samples overflow (`safe_critical_overflow`). Cropping is not reflow — keep critical copy inside the windows you intend to deliver. |
 
 `data-track-index` does not control paint order. Use CSS `z-index` for
 front-to-back layering. Two clips on the same track may overlap in time; the

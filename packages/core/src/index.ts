@@ -311,6 +311,29 @@ export {
   type ClipTimingDiagnosticCode,
   type ClipTimingUpdate,
 } from "./compositionContract.js";
+export {
+  SAFE_FRAME_RATIOS,
+  SAFE_FRAME_ID_PATTERN,
+  isSafeFrameRatio,
+  parseRatioParts,
+  snapPixelSizeToRatio,
+  pixelRect,
+  tryPixelRect,
+  outputSizeForCrop,
+  parseSafeFramesAttribute,
+  parseSafeFrames,
+  parseSafeCriticalIds,
+  elementRequiresFrame,
+  resolveCropPackSelection,
+  parseCropPackFlag,
+  cropPackOutputPath,
+  type SafeFrameRatio,
+  type SafeFrame,
+  type PixelRect,
+  type SafeFrameParseErrorCode,
+  type SafeFrameParseResult,
+  type SafeFrameAttributeReader,
+} from "@hyperframes/parsers/safe-frames";
 // Also exposed via the ./runtime/start-resolver subpath. This root re-export
 // additionally makes tsc EMIT dist/runtime/startResolver.js: src/runtime is
 // excluded from the tsconfig include set, so runtime files only reach dist

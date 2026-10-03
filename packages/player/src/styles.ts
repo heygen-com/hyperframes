@@ -23,6 +23,9 @@ export const PLAYER_STYLES = /* css */ `
     pointer-events: none;
   }
 
+  /* safe-frame="<id>" applies clip-path + transform inline on this iframe
+     (see safe-frame.ts). Crop chrome must not live in the composition document. */
+
   /* Opt-in: an interactive composition (e.g. a live slideshow/app with playable
      media or controls) — let pointer events reach the iframe content. */
   :host([interactive]) .hfp-container,

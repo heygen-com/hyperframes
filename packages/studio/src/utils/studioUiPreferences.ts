@@ -42,6 +42,12 @@ export interface StudioUiPreferences {
    * intentionally scoped to one mount.
    */
   agentToolsEnabled?: boolean;
+  /**
+   * Draw authored `data-safe-frames` crop windows over the preview iframe.
+   * Default off. Overlay chrome stays in the Studio document, never inside
+   * the composition (renders would capture it).
+   */
+  safeFramesVisible?: boolean;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -150,6 +156,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.agentToolsEnabled === "boolean") {
       preferences.agentToolsEnabled = parsed.agentToolsEnabled;
+    }
+    if (typeof parsed.safeFramesVisible === "boolean") {
+      preferences.safeFramesVisible = parsed.safeFramesVisible;
     }
     return preferences;
   } catch {

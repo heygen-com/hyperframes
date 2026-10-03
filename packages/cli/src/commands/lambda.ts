@@ -189,12 +189,24 @@ export default defineCommand({
 
     // shared
     json: { type: "boolean", description: "Emit machine-readable JSON" },
+    "crop-pack": {
+      type: "string",
+      description:
+        "Not supported on Lambda. Crop packs are a local post-encode ffmpeg crop of the assembled master.",
+    },
   },
   async run({ args }) {
     const subcommand = args.subcommand;
     if (!subcommand) {
       console.log(HELP);
       return;
+    }
+
+    if (args["crop-pack"]) {
+      console.error(
+        "[lambda] --crop-pack is not supported on Lambda. Crop packs are a local post-encode ffmpeg crop of the assembled master. Render locally with `hyperframes render --crop-pack`.",
+      );
+      failCommand();
     }
 
     const stackName =

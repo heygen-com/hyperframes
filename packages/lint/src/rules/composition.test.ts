@@ -2131,4 +2131,70 @@ describe("composition rules", () => {
       expect(finding?.message).toMatch(/25 elements/);
     });
   });
+
+  describe("safe_frames_invalid_json", () => {
+    it("flags a root whose data-safe-frames is not a JSON array", async () => {
+      const html = `<div data-composition-id="c1" data-width="1920" data-height="1080" data-safe-frames="{nope}"></div>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "safe_frames_invalid_json")?.severity).toBe(
+        "error",
+      );
+    });
+  });
+
+  describe("safe_frame_bad_id", () => {
+    it("flags a duplicate crop-pack id", async () => {
+      const frames = JSON.stringify([
+        { id: "vertical", ratio: "9:16", x: 0.34, y: 0, width: 608 / 1920, height: 1 },
+        { id: "vertical", ratio: "9:16", x: 0.1, y: 0, width: 608 / 1920, height: 1 },
+      ]);
+      const html = `<div data-composition-id="c1" data-width="1920" data-height="1080" data-safe-frames='${frames}'></div>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "safe_frame_bad_id")?.severity).toBe("error");
+    });
+  });
+
+  describe("safe_frame_bad_rect", () => {
+    it("flags a window that leaves the authored frame", async () => {
+      const frames = JSON.stringify([
+        { id: "vertical", ratio: "9:16", x: 0.8, y: 0, width: 0.4, height: 1 },
+      ]);
+      const html = `<div data-composition-id="c1" data-width="1920" data-height="1080" data-safe-frames='${frames}'></div>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "safe_frame_bad_rect")?.severity).toBe("error");
+    });
+  });
+
+  describe("safe_critical_unknown_frame", () => {
+    it("flags data-safe-critical naming a missing frame id", async () => {
+      const frames = JSON.stringify([
+        {
+          id: "vertical",
+          ratio: "9:16",
+          x: (1920 - 608) / 2 / 1920,
+          y: 0,
+          width: 608 / 1920,
+          height: 1,
+        },
+      ]);
+      const html = `<div data-composition-id="c1" data-width="1920" data-height="1080" data-safe-frames='${frames}'>
+        <h1 id="headline" class="clip" data-start="0" data-duration="2" data-safe-critical="square">Hi</h1>
+      </div>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "safe_critical_unknown_frame")?.severity).toBe(
+        "error",
+      );
+    });
+  });
+
+  describe("safe_critical_without_frames", () => {
+    it("warns when data-safe-critical is set without data-safe-frames", async () => {
+      const html = `<div data-composition-id="c1" data-width="1920" data-height="1080">
+        <h1 id="headline" data-safe-critical>Hi</h1>
+      </div>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "safe_critical_without_frames");
+      expect(finding?.severity).toBe("warning");
+    });
+  });
 });

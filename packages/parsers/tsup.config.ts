@@ -14,6 +14,7 @@ export default defineConfig({
     assets: "src/assets.ts",
     composition: "src/composition.ts",
     compositionContract: "src/compositionContract.ts",
+    safeFrames: "src/safeFrames.ts",
     colorGradingContract: "src/colorGradingContract.ts",
     subCompositionValidity: "src/subCompositionValidity.ts",
     ffBinaries: "src/ffBinaries.ts",

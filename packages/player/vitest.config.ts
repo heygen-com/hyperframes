@@ -14,6 +14,7 @@ export default defineConfig({
         coreRoot,
         "../../parsers/src/compositionContract.ts",
       ),
+      "@hyperframes/parsers/safe-frames": resolve(coreRoot, "../../parsers/src/safeFrames.ts"),
       "@hyperframes/core/slideshow": resolve(coreRoot, "slideshow/index.ts"),
       "@hyperframes/core/runtime/protocol": resolve(coreRoot, "runtime/protocol.ts"),
     },

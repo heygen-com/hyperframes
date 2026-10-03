@@ -73,5 +73,6 @@ export function scaleIframeToFit(
   iframe.style.width = `${compositionWidth}px`;
   iframe.style.height = `${compositionHeight}px`;
   iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  iframe.style.clipPath = "";
   return true;
 }

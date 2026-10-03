@@ -20,6 +20,7 @@ import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import { applySafeFrameView, readSafeFramesFromDocument, type SafeFrame } from "./safe-frame.js";
 
 // Playback-rate bounds mirror the runtime clamp in
 // packages/core/src/runtime/init.ts (applyPlaybackRate) and media.ts so the
@@ -82,6 +83,7 @@ class HyperframesPlayer extends HTMLElement {
       RUNTIME_SRC_ATTR,
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
+      "safe-frame",
     ];
   }
 
@@ -105,6 +107,7 @@ class HyperframesPlayer extends HTMLElement {
   private _volume = 1;
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
+  private _safeFrames: SafeFrame[] = [];
   private _rescaleWarned = false;
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
@@ -302,6 +305,9 @@ class HyperframesPlayer extends HTMLElement {
       case RUNTIME_SRC_ATTR:
         if (!this.isConnected) break;
         this._reloadShaderOptions();
+        break;
+      case "safe-frame":
+        this._rescale();
         break;
     }
   }
@@ -956,11 +962,12 @@ class HyperframesPlayer extends HTMLElement {
     this._ready = true;
     this.controlsApi?.updateTime(0, duration);
     this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
+    this._safeFrames = readSafeFramesFromDocument(this.iframe.contentDocument);
     if (compositionSize) {
       this._compositionWidth = compositionSize.width;
       this._compositionHeight = compositionSize.height;
-      this._rescale();
     }
+    this._rescale();
     try {
       const doc = this.iframe.contentDocument;
       if (doc) this._media.setupFromIframe(doc);
@@ -972,6 +979,18 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _rescale() {
+    const cropId = this.getAttribute("safe-frame");
+    if (cropId) {
+      const cropped = applySafeFrameView({
+        playerElement: this,
+        iframe: this.iframe,
+        compositionWidth: this._compositionWidth,
+        compositionHeight: this._compositionHeight,
+        frames: this._safeFrames,
+        frameId: cropId,
+      });
+      if (cropped) return;
+    }
     const applied = scaleIframeToFit(
       this,
       this.iframe,

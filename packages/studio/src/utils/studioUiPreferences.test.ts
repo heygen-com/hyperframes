@@ -110,3 +110,12 @@ describe("timeline zoom pin persistence", () => {
     expect(prefs.timelineManualZoomPercent).toBeUndefined();
   });
 });
+
+describe("safeFramesVisible preference", () => {
+  it("defaults off and round-trips through storage", () => {
+    const storage = createStorage();
+    expect(readStudioUiPreferences(storage).safeFramesVisible).toBeUndefined();
+    writeStudioUiPreferences({ safeFramesVisible: true }, storage);
+    expect(readStudioUiPreferences(storage).safeFramesVisible).toBe(true);
+  });
+});

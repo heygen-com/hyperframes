@@ -50,6 +50,10 @@ File shape, host wiring, and the pre-render checklist → `references/sub-compos
 
 The standalone root needs an explicit **sized box** (`width`/`height` in px), and every ancestor down to a `height:100%` element must have a resolved height — otherwise a flex/`100%` child collapses to ~0 and content piles into the top-left corner. Do not rely on automated gates alone to catch this; inspect a snapshot. Skeleton → `references/minimal-composition.md`.
 
+### Safe-frame crop packs (optional extra deliverables)
+
+`data-safe-frames` on the composition root names crop windows as fractions of the authored frame. `hyperframes render --crop-pack all` (or `id,id`) captures the master once, then ffmpeg-crops sibling files (`launch.vertical.mp4`). Cropping is **not reflow** and not a second capture / viewport reshape / `--resolution`. Type outside a window is cut off. Mark copy that must survive every requested window with `data-safe-critical` and let `check` sample overflow. Attribute table → `references/data-attributes.md`. Snap / ratio rules → `references/determinism-rules.md`.
+
 ### One paused timeline
 
 Each composition registers **exactly one** `gsap.timeline({ paused: true })` at `window.__timelines["<id>"]` (key = root `data-composition-id`). Building it inside an async callback (`document.fonts.ready`) is supported; what matters is that you **register only after the build completes**. Render length is the root's `data-duration`, **not** the timeline's length: a timeline that runs past it is cut off, and one that ends early holds its last frame. Omit the root `data-duration` and the length is inferred instead (timeline, media window, or adapter). You do not need `window.__timelines = window.__timelines || {}`: the runtime creates the registry before your inline scripts run, and `lint` no longer asks for it. Don't manually nest sub-timelines into the host; the runtime auto-nests registered child timelines. Full contract (incl. non-GSAP runtimes) → `references/determinism-rules.md` + `hyperframes-animation/adapters/`.

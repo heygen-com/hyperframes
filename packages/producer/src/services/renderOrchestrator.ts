@@ -19,6 +19,7 @@
  *                              services/render/stages/captureHdrStage.ts
  *   Stage 5  encode          → services/render/stages/encodeStage.ts
  *   Stage 6  assemble        → services/render/stages/assembleStage.ts
+ *   Stage 6b crop pack       → services/render/stages/cropPackStage.ts
  *
  * Resources spawned by stages (file server, capture sessions, streaming
  * encoders, raw HDR frame files) are tracked in the orchestrator's
@@ -79,6 +80,7 @@ import {
   type SubTimelineWaitOutcome,
   type WorkerSizing,
   type StaticVerificationOutcome,
+  type CropPackMemberResult,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
   applyConcreteGpuScreenshotClamp,
@@ -93,6 +95,7 @@ import {
   augmentPageNavigationTimeoutError,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
+import type { SafeFrame } from "@hyperframes/parsers/safe-frames";
 import { totalmem } from "node:os";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
@@ -171,6 +174,7 @@ import {
 import { runCaptureHdrStage } from "./render/stages/captureHdrStage.js";
 import { runEncodeStage } from "./render/stages/encodeStage.js";
 import { runAssembleStage } from "./render/stages/assembleStage.js";
+import { runCropPackStage } from "./render/stages/cropPackStage.js";
 import { shouldUseLayeredComposite } from "./hdrCompositor.js";
 
 function sampleDirectoryBytes(dir: string): number {
@@ -375,6 +379,17 @@ export interface RenderConfig {
    * alias (`1080p-portrait`). Explicit orientation presets stay strict.
    */
   outputResolutionAspectAgnostic?: boolean;
+  /**
+   * Local post-encode crop pack. Capture still uses the authored frame;
+   * extra deliverables are ffmpeg crops of the assembled master. Ignored
+   * for gif and png-sequence. Distributed / Lambda / cloud must reject this
+   * rather than uploading only the master.
+   */
+  cropPack?: {
+    compositionWidth: number;
+    compositionHeight: number;
+    members: SafeFrame[];
+  };
 }
 
 export interface RenderPerfSummary {
@@ -617,6 +632,7 @@ export interface RenderJob {
   totalFrames?: number;
   framesRendered?: number;
   perfSummary?: RenderPerfSummary;
+  cropPack?: CropPackMemberResult[];
   failedStage?: string;
   errorDetails?: {
     message: string;
@@ -3949,6 +3965,18 @@ async function executeRenderPipeline(input: {
       perfStages.assembleMs = assembleRes.assembleMs;
     } else {
       observability.checkpoint("assemble", `skipped for ${outputFormat}`);
+    }
+
+    const cropPackRes = await runCropPackStage({
+      job,
+      masterPath: stagedOutputPath,
+      format: outputFormat,
+      abortSignal: executionSignal,
+    });
+    if (cropPackRes.members.length > 0) {
+      observability.checkpoint("cropPack", "wrote crop-pack members", {
+        count: cropPackRes.members.length,
+      });
     }
 
     await artifactTransaction.validate(

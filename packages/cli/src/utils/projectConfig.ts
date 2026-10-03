@@ -51,6 +51,14 @@ export interface RegistryItemRecord {
   target: string;
 }
 
+export interface ProjectConfigRender {
+  /**
+   * Default `--crop-pack` ids when the CLI flag is omitted. `"all"` means
+   * every authored `data-safe-frames` id, in array order.
+   */
+  cropPack?: string[];
+}
+
 export interface ProjectConfig {
   $schema?: string;
   /** Base URL of the registry to pull items from. */
@@ -59,6 +67,10 @@ export interface ProjectConfig {
   paths: ProjectConfigPaths;
   /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
   media?: ProjectConfigMedia;
+  /**
+   * Default render options. CLI flags win when both are set.
+   */
+  render?: ProjectConfigRender;
   /**
    * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
    * by `hyperframes init --skill` or seeded from the first `hyperframes render
@@ -154,10 +166,8 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
     // Slug-gate on read so a hand-edited or corrupt value never reaches the
     // telemetry stream; an invalid slug simply drops the attribution.
     authoringSkill: normalizeSkillSlug(partial.authoringSkill),
-    // Whitelist rebuild - an omission here silently drops the manifest on
-    // every config round-trip, which would read as "this project never
-    // installed a catalog item".
     registryItems: normalizeRegistryItems(partial.registryItems),
+    render: normalizeRenderConfig(partial.render),
   };
 }
 
@@ -177,6 +187,15 @@ function normalizeRegistryItems(raw: unknown): RegistryItemRecord[] | undefined 
       typeof entry.target === "string",
   );
   return items.length > 0 ? items : undefined;
+}
+
+function normalizeRenderConfig(raw: unknown): ProjectConfigRender | undefined {
+  if (!isJsonObject(raw)) return undefined;
+  const cropPack = Array.isArray(raw.cropPack)
+    ? raw.cropPack.filter((entry): entry is string => typeof entry === "string" && entry !== "")
+    : undefined;
+  if (!cropPack || cropPack.length === 0) return undefined;
+  return { cropPack };
 }
 
 /** Write `hyperframes.json` to a project directory. Overwrites if present. */

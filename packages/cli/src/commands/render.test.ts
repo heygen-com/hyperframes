@@ -757,6 +757,35 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.outputResolution).toBeUndefined();
   });
 
+  it("forwards cropPack to createRenderJob when --crop-pack is resolved", async () => {
+    const cropPack = {
+      compositionWidth: 1920,
+      compositionHeight: 1080,
+      members: [
+        {
+          id: "vertical",
+          ratio: "9:16" as const,
+          x: 608 / 1920,
+          y: 0,
+          width: 608 / 1920,
+          height: 1,
+        },
+      ],
+    };
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      cropPack,
+    });
+
+    expect(producerState.createdJobs[0]?.cropPack).toEqual(cropPack);
+  });
+
   it("requests a root-owned CLI exit after a successful local render", async () => {
     vi.useFakeTimers();
     const { consumeCommandResult } = await import("../utils/commandResult.js");

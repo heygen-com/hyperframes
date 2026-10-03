@@ -224,6 +224,11 @@ export default defineCommand({
       description: "Poll cadence in ms when --wait is set (default: 5000)",
     },
     json: { type: "boolean", description: "Emit machine-readable JSON" },
+    "crop-pack": {
+      type: "string",
+      description:
+        "Not supported on Cloud Run. Crop packs are a local post-encode ffmpeg crop of the assembled master.",
+    },
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
@@ -231,6 +236,12 @@ export default defineCommand({
     if (!subcommand) {
       console.log(HELP);
       return;
+    }
+    if (args["crop-pack"]) {
+      console.error(
+        "[cloudrun] --crop-pack is not supported on Cloud Run. Crop packs are a local post-encode ffmpeg crop of the assembled master. Render locally with `hyperframes render --crop-pack`.",
+      );
+      failCommand();
     }
     const verbsNeedingAdapter = new Set([
       "deploy",

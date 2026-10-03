@@ -113,6 +113,10 @@ const ROOT_EXAMPLES: Example[] = [
   ["Start the live preview studio", "hyperframes preview"],
   ["Publish to hyperframes.dev", "hyperframes publish"],
   ["Render to MP4", "hyperframes render -o out.mp4"],
+  [
+    "Crop sibling 9:16 / 1:1 files from the master",
+    "hyperframes render -o out.mp4 --crop-pack all",
+  ],
   ["Transparent WebM overlay", "hyperframes render --format webm -o out.webm"],
   ["Validate your composition", "hyperframes lint"],
   ["Inspect visual layout", "hyperframes inspect"],

@@ -2,7 +2,12 @@ import { failCommand, requestCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
-import { createRenderPlan, resolveBrowserGpuForCli, type RenderFormat } from "./render/plan.js";
+import {
+  createRenderPlan,
+  resolveBrowserGpuForCli,
+  type RenderFormat,
+  type RenderPlan,
+} from "./render/plan.js";
 import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { presentRenderPlan } from "./render/present.js";
@@ -28,6 +33,10 @@ export const examples: Example[] = [
     "hyperframes render --format png-sequence --output frames/",
   ],
   ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
+  [
+    "Crop extra 9:16 and 1:1 deliverables from the master",
+    "hyperframes render --output renders/launch.mp4 --crop-pack all",
+  ],
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
   ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
@@ -97,6 +106,7 @@ import {
   type OutputResolutionIssueKind,
   type Fps,
 } from "@hyperframes/core";
+import { cropPackOutputPath, outputSizeForCrop, pixelRect } from "@hyperframes/parsers/safe-frames";
 
 export default defineCommand({
   meta: {
@@ -154,6 +164,13 @@ export default defineCommand({
         "(MOV/WebM render with transparency; png-sequence writes RGBA frames " +
         "to a directory for AE/Nuke/Fusion ingest; gif is best at 15fps for PRs/docs)",
       default: "mp4",
+    },
+    "crop-pack": {
+      type: "string",
+      description:
+        "After encoding the master, crop sibling files from authored data-safe-frames " +
+        "(all, or comma-separated ids). Local post-encode crop — not a second capture. " +
+        "Ignored for gif and png-sequence. Not supported on Lambda/cloud.",
     },
     "gif-loop": {
       type: "string",
@@ -371,6 +388,7 @@ export interface SingleRenderResult {
   renderTimeMs: number;
   outcome?: "completed" | "completed_with_warnings";
   warnings?: Array<{ code: string; message: string }>;
+  cropPack?: Array<{ id: string; outputPath: string; width: number; height: number }>;
 }
 
 export interface RenderOptions {
@@ -428,6 +446,8 @@ export interface RenderOptions {
   playerReadyTimeout?: number;
   /** Throw render failures to the caller instead of printing and exiting. */
   throwOnError?: boolean;
+  /** Local post-encode crop pack, already resolved against authored frames. */
+  cropPack?: RenderPlan["cropPack"];
   /** Skip the interactive feedback prompt after a successful render. */
   skipFeedback?: boolean;
   /**
@@ -728,6 +748,7 @@ async function renderDocker(
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
       protocolTimeoutMs: options.protocolTimeout,
       playerReadyTimeoutMs: options.playerReadyTimeout,
+      cropPack: options.cropPack?.members.map((frame) => frame.id).join(","),
     },
   });
 
@@ -771,6 +792,7 @@ async function renderDocker(
       gpu: options.gpu,
       authoringSkill: options.authoringSkill,
       catalogUsage: options.catalogUsage,
+      cropPack: cropPackListing(outputPath, options.cropPack),
       ...getMemorySnapshot(),
     }),
   );
@@ -779,13 +801,23 @@ async function renderDocker(
   // threaded back here; the summary shows render time only (never a wrong video
   // length). Probe the output with ffprobe if a duration figure is wanted here.
   runPostRenderStep("printRenderComplete", () =>
-    printRenderComplete(outputPath, elapsed, options.quiet),
+    printRenderComplete(
+      outputPath,
+      elapsed,
+      options.quiet,
+      undefined,
+      undefined,
+      cropPackListing(outputPath, options.cropPack),
+    ),
   );
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
   );
   if (options.exitAfterComplete) scheduleRenderProcessExit();
-  return { renderTimeMs: elapsed };
+  return {
+    renderTimeMs: elapsed,
+    cropPack: cropPackListing(outputPath, options.cropPack),
+  };
 }
 
 // fallow-ignore-next-line complexity
@@ -896,6 +928,7 @@ export async function renderLocal(
       outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
       debug: options.debug,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
+      cropPack: options.cropPack,
     },
   });
   const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
@@ -946,6 +979,7 @@ export async function renderLocal(
       options.quiet,
       job.perfSummary?.compositionDurationSeconds,
       job.perfSummary?.totalFrames,
+      job.cropPack,
     ),
   );
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
@@ -970,6 +1004,7 @@ export async function renderLocal(
     durationMs,
     outcome,
     warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+    cropPack: job.cropPack,
   };
 }
 
@@ -1580,7 +1615,25 @@ function trackRenderMetrics(
     extractCacheHits: extract?.cacheHits,
     extractCacheMisses: extract?.cacheMisses,
     ...renderJobObservabilityTelemetryPayload(job),
+    cropPack: job.cropPack,
     ...getMemorySnapshot(),
+  });
+}
+
+function cropPackListing(
+  masterPath: string,
+  spec: RenderOptions["cropPack"] | undefined,
+): SingleRenderResult["cropPack"] {
+  if (!spec || spec.members.length === 0) return undefined;
+  return spec.members.map((frame) => {
+    const crop = pixelRect(frame, spec.compositionWidth, spec.compositionHeight);
+    const size = outputSizeForCrop(crop, frame.ratio);
+    return {
+      id: frame.id,
+      outputPath: cropPackOutputPath(masterPath, frame.id),
+      width: size.width,
+      height: size.height,
+    };
   });
 }
 
@@ -1590,6 +1643,7 @@ function printRenderComplete(
   quiet: boolean,
   outputDurationSeconds?: number,
   frameCount?: number,
+  cropPack?: SingleRenderResult["cropPack"],
 ): void {
   if (quiet) return;
 
@@ -1628,4 +1682,14 @@ function printRenderComplete(
   console.log("");
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
   console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
+  if (cropPack) {
+    for (const member of cropPack) {
+      console.log(
+        c.success("\u25C7") +
+          "  " +
+          c.accent(member.outputPath) +
+          c.dim(`  ${member.width}\u00d7${member.height}`),
+      );
+    }
+  }
 }

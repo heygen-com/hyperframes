@@ -65,6 +65,45 @@ Media can also declare a source offset, playback rate, and volume. A nested
 composition adds a source path and its own fixed timeline window. These are
 exact contracts rather than new timing models.
 
+## Safe-frame crop windows
+
+A landscape (or any) master can declare named crop windows on the composition
+root. Rendering `--crop-pack` then writes extra files by **cropping the already-encoded
+master** — one capture, several output files. Type that sits outside a window is
+cut off. The layout does not reflow.
+
+```html
+<div
+  id="root"
+  data-composition-id="launch"
+  data-start="0"
+  data-duration="30"
+  data-width="1920"
+  data-height="1080"
+  data-safe-frames='[
+    {"id":"vertical","ratio":"9:16","x":0.3416666666666667,"y":0,"width":0.31666666666666665,"height":1},
+    {"id":"square","ratio":"1:1","x":0.21875,"y":0,"width":0.5625,"height":1}
+  ]'
+>
+  <h1 id="headline" class="clip" data-start="0" data-duration="4" data-safe-critical>Launch day</h1>
+</div>
+```
+
+`id` is the output suffix (`launch.vertical.mp4`) and the Studio label. `ratio`
+is `16:9`, `9:16`, or `1:1` and validates the rect; it does not invent one.
+`x`, `y`, `width`, and `height` are fractions of the authored frame (origin
+top-left), each in `[0, 1]`, with `x + width ≤ 1` and `y + height ≤ 1`. Pixel
+sizes snap by at most one pixel so a 9:16 window on 1920×1080 that rounds
+through 607.5 still matches the named ratio.
+
+`data-safe-critical` on a visual element means its border box must stay inside
+every named window while it is visible. `data-safe-critical="vertical"`
+(comma-separated ids) limits that requirement. Static `lint` checks ids and
+rects; `hyperframes check` samples painted boxes.
+
+A composition with no `data-safe-frames` is unchanged. See
+[Render from the command line](/guides/rendering#crop-packs) for `--crop-pack`.
+
 Use the [HTML schema reference](/reference/html-schema) for every supported
 attribute and element-specific rule. Use [Compositions](/concepts/compositions)
 to decide when a scene should become a separate composition.

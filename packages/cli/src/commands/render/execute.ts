@@ -38,6 +38,41 @@ export interface RenderExecutionDependencies {
   checkResolution: ResolutionPreflight;
 }
 
+function renderOptionsFromPlan(
+  plan: RenderPlan,
+  browserPath: string | undefined,
+  extras: { quiet: boolean } & Partial<Omit<RenderOptions, "quiet">>,
+): RenderOptions {
+  return {
+    fps: plan.fps,
+    quality: plan.quality,
+    authoringSkill: plan.authoringSkill,
+    catalogUsage: plan.catalogUsage,
+    format: plan.format,
+    gifLoop: plan.gifLoop,
+    workers: plan.workers,
+    gpu: plan.useGpu,
+    browserGpuMode: plan.browserGpuMode,
+    hdrMode: plan.hdrMode,
+    crf: plan.crf,
+    vp9CpuUsed: plan.vp9CpuUsed,
+    videoBitrate: plan.videoBitrate,
+    videoFrameFormat: plan.videoFrameFormat,
+    browserPath,
+    debug: plan.debug,
+    bestEffort: plan.bestEffort,
+    entryFile: plan.entryFile,
+    outputResolution: plan.outputResolution,
+    outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
+    outputResolutionRaw: plan.outputResolutionRaw,
+    pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
+    protocolTimeout: plan.protocolTimeout,
+    playerReadyTimeout: plan.playerReadyTimeout,
+    cropPack: plan.cropPack,
+    ...extras,
+  };
+}
+
 // Exported only through render.ts so command tests can lock the user-facing guidance.
 export function renderLintContinuationHint(strictErrors: boolean): string {
   return strictErrors
@@ -97,36 +132,12 @@ export async function executeRenderPlan(
     reportVariableIssues(issues, { strict: plan.strictVariables, quiet: plan.quiet });
   }
 
-  const options: RenderOptions = {
-    fps: plan.fps,
-    quality: plan.quality,
-    authoringSkill: plan.authoringSkill,
-    catalogUsage: plan.catalogUsage,
-    format: plan.format,
-    gifLoop: plan.gifLoop,
-    workers: plan.workers,
-    gpu: plan.useGpu,
-    browserGpuMode: plan.browserGpuMode,
-    hdrMode: plan.hdrMode,
-    crf: plan.crf,
-    vp9CpuUsed: plan.vp9CpuUsed,
-    videoBitrate: plan.videoBitrate,
-    videoFrameFormat: plan.videoFrameFormat,
+  const options = renderOptionsFromPlan(plan, browserPath, {
     quiet: plan.quiet,
-    browserPath,
-    debug: plan.debug,
-    bestEffort: plan.bestEffort,
     variables,
-    entryFile: plan.entryFile,
-    outputResolution: plan.outputResolution,
-    outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
-    outputResolutionRaw: plan.outputResolutionRaw,
-    pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
-    protocolTimeout: plan.protocolTimeout,
-    playerReadyTimeout: plan.playerReadyTimeout,
     exitAfterComplete: true,
     manageDeParallelRouterBreaker: true,
-  };
+  });
   if (plan.useDocker) {
     options.pageSideCompositing = plan.pageSideCompositing;
     options.experimentalFastCapture = plan.experimentalFastCapture;
@@ -251,37 +262,13 @@ async function executeBatchRender(
   dependencies: RenderExecutionDependencies,
 ): Promise<void> {
   const batchQuiet = plan.quiet || plan.batchJson;
-  const renderOptionsBase: RenderOptions = {
-    fps: plan.fps,
-    quality: plan.quality,
-    authoringSkill: plan.authoringSkill,
-    catalogUsage: plan.catalogUsage,
-    format: plan.format,
-    gifLoop: plan.gifLoop,
-    workers: plan.workers,
-    gpu: plan.useGpu,
-    browserGpuMode: plan.browserGpuMode,
-    hdrMode: plan.hdrMode,
-    crf: plan.crf,
-    vp9CpuUsed: plan.vp9CpuUsed,
-    videoBitrate: plan.videoBitrate,
-    videoFrameFormat: plan.videoFrameFormat,
+  const renderOptionsBase = renderOptionsFromPlan(plan, browserPath, {
     quiet: batchQuiet,
-    browserPath,
-    entryFile: plan.entryFile,
-    outputResolution: plan.outputResolution,
-    outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
-    outputResolutionRaw: plan.outputResolutionRaw,
-    pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
-    protocolTimeout: plan.protocolTimeout,
-    playerReadyTimeout: plan.playerReadyTimeout,
-    debug: plan.debug,
-    bestEffort: plan.bestEffort,
     exitAfterComplete: false,
     throwOnError: true,
     skipFeedback: true,
     manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
-  };
+  });
   const manifest = await batchModule.runBatchRender({
     prepared: preparedBatch,
     concurrency: plan.batchConcurrency,

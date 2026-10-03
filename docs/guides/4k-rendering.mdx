@@ -52,6 +52,13 @@ For a fully sharp 4K result, use 4K source media and size canvas/WebGL buffers f
 
 HyperFrames checks these conditions before opening the browser. Render at the composition's native size and resize separately when a combination is unsupported.
 
+`--crop-pack` is a different path. It does not reshape the capture viewport and
+it is not `--resolution`. The master is captured at the authored size (or the
+`--resolution` supersample, if you asked for one), then ffmpeg crops sibling
+files from that encoded master. A 9:16 crop of a 1920×1080 composition is still
+a crop of 1080p pixels, not a portrait capture and not a 4K re-render. See
+[Crop packs](/guides/rendering#crop-packs).
+
 ## Verify the file
 
 ```bash

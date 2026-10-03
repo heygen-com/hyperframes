@@ -14,6 +14,8 @@ export const COMPOSITION_ATTRIBUTES = Object.freeze({
   trackIndex: "data-track-index",
   derivedEnd: "data-end",
   legacyTrack: "data-layer",
+  safeFrames: "data-safe-frames",
+  safeCritical: "data-safe-critical",
 } as const);
 
 export const CANONICAL_AUTHORED_TIMING_ATTRIBUTES = Object.freeze([

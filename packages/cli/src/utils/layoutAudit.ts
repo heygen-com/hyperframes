@@ -38,7 +38,8 @@ export type LayoutIssueCode =
   | "motion_off_frame"
   | "motion_frozen"
   | "motion_selector_missing"
-  | "motion_selector_ambiguous";
+  | "motion_selector_ambiguous"
+  | "safe_critical_overflow";
 
 export type LayoutIssueSeverity = "error" | "warning" | "info";
 

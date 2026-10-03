@@ -181,6 +181,53 @@ ffmpeg -i out.mp4 -map_metadata -1 -c copy clean.mp4
   C2PA.
 </Note>
 
+## Crop packs
+
+A composition that declares `data-safe-frames` on the root can emit extra
+deliverables from **one** capture. `--crop-pack` runs after the master is encoded
+and writes sibling files with ffmpeg crop + scale. It is not a second capture
+and not an aspect-ratio override on the capture viewport. Type outside a window
+is cut off; the layout does not reflow.
+
+```bash
+npx hyperframes render --output renders/launch.mp4 --crop-pack all
+npx hyperframes render --output renders/launch.mp4 --crop-pack vertical,square
+```
+
+That writes the master unchanged, then one sibling per requested id:
+
+- `renders/launch.mp4` (master)
+- `renders/launch.vertical.mp4`
+- `renders/launch.square.mp4`
+
+Default output size is the largest integer size that fits the named ratio and
+does not upscale either dimension past the cropped source. A 608×1080 9:16 crop
+from a 1920×1080 master stays 608×1080.
+
+`all` means every authored id, in array order. An unknown id exits non-zero
+**before** capture. `--crop-pack` without authored frames is an error.
+
+GIF and PNG-sequence ignore the flag (warning, master still written). MP4, MOV,
+and WebM are supported. HDR masters keep the same encode family; if crop+scale
+would break HDR, that member hard-errors by id instead of writing SDR.
+
+Project config may set a default. CLI flags win over `hyperframes.json`.
+
+```json
+{
+  "render": {
+    "cropPack": ["vertical", "square"]
+  }
+}
+```
+
+Lambda, Cloud Run, and `hyperframes cloud render` reject `--crop-pack` with an
+explicit error. Crop packs are a local post-encode step until a follow-up ships
+sibling uploads.
+
+Mark copy that must survive every requested window with `data-safe-critical`,
+then run `hyperframes check`. See [Data attributes](/concepts/data-attributes#safe-frame-crop-windows).
+
 ## If rendering fails
 
 Run:

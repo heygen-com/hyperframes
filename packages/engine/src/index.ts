@@ -416,3 +416,12 @@ export {
   PROVENANCE_VERSION,
   type RenderProvenance,
 } from "./utils/renderProvenance.js";
+export {
+  buildCropPackArgs,
+  encodeCropPackMember,
+  planCropPackMembers,
+  cropPackOutputPath,
+  type CropPackMemberPlan,
+  type CropPackMemberResult,
+  type BuildCropPackArgsInput,
+} from "./utils/cropPack.js";

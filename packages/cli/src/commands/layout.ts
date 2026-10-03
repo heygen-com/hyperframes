@@ -22,6 +22,12 @@ import {
   type LayoutIssue,
 } from "../utils/layoutAudit.js";
 import {
+  collectSafeCriticalSnapshotFromPage,
+  evaluateSafeCriticalOverflows,
+  type AuthoredSafeFramePixels,
+  type SafeCriticalOverflow,
+} from "../utils/safeCriticalOverflow.js";
+import {
   ambiguousIssue,
   collectSamplingTargets,
   evaluateMotion,
@@ -67,6 +73,8 @@ interface LayoutAuditResult {
   transitionSamplesDropped: number;
   rawIssues: LayoutIssue[];
   motionSamples: number;
+  safeFrames: AuthoredSafeFramePixels[];
+  criticalOverflows: SafeCriticalOverflow[];
 }
 
 function buildMotionSampleTimes(duration: number): number[] {
@@ -262,7 +270,8 @@ async function runLayoutAudit(
     }
     const samples = mergeSampleTimes(baseSamples, transitionSamples);
 
-    const issues = await collectLayoutIssues(page, samples, opts.tolerance);
+    const collected = await collectLayoutIssues(page, samples, opts.tolerance);
+    const issues = [...collected.issues];
 
     let motionSamples = 0;
     if (opts.motion) {
@@ -278,6 +287,8 @@ async function runLayoutAudit(
       transitionSamplesDropped,
       rawIssues: dedupeLayoutIssues(issues),
       motionSamples,
+      safeFrames: collected.frames,
+      criticalOverflows: collected.overflows,
     };
   } finally {
     await chromeBrowser?.close().catch(() => {});
@@ -301,11 +312,17 @@ async function collectLayoutIssues(
   page: import("puppeteer-core").Page,
   samples: number[],
   tolerance: number,
-): Promise<LayoutIssue[]> {
-  if (samples.length === 0) return [];
+): Promise<{
+  issues: LayoutIssue[];
+  frames: AuthoredSafeFramePixels[];
+  overflows: SafeCriticalOverflow[];
+}> {
+  if (samples.length === 0) return { issues: [], frames: [], overflows: [] };
   await page.addScriptTag({ content: loadLayoutAuditScript() });
 
   const issues: LayoutIssue[] = [];
+  const overflows: SafeCriticalOverflow[] = [];
+  let frames: AuthoredSafeFramePixels[] = [];
   for (const time of samples) {
     await seekCompositionTimeline(page, time, LAYOUT_SEEK_OPTIONS);
     const sampleIssues = await page.evaluate(
@@ -318,8 +335,13 @@ async function collectLayoutIssues(
       { time, tolerance },
     );
     issues.push(...(sampleIssues as LayoutIssue[]));
+    const snapshot = await collectSafeCriticalSnapshotFromPage(page, time);
+    const evaluated = evaluateSafeCriticalOverflows(snapshot, tolerance);
+    if (evaluated.frames.length > 0) frames = evaluated.frames;
+    overflows.push(...evaluated.overflows);
+    issues.push(...evaluated.issues);
   }
-  return issues;
+  return { issues, frames, overflows };
 }
 
 /** Reject selectors matching multiple elements — first-match-only sampling silently passes for siblings. */
@@ -436,6 +458,7 @@ export function parseAt(value: unknown): number[] | undefined {
   return times.length > 0 ? times : undefined;
 }
 
+// fallow-ignore-next-line code-duplication
 export function createInspectCommand(commandName: "inspect" | "layout") {
   return defineCommand({
     meta: {
@@ -573,6 +596,8 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
                   truncated: limited.truncated,
                   ok,
                   issues: limited.issues,
+                  safeFrames: result.safeFrames,
+                  criticalOverflows: result.criticalOverflows,
                 },
                 { deprecated: true },
               ),

@@ -443,6 +443,18 @@ describe("buildDockerRunArgs", () => {
     expect(args).not.toContain("--no-page-side-compositing");
   });
 
+  it("forwards --crop-pack only when ids are set", () => {
+    const on = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, cropPack: "vertical,square" },
+    });
+    expect(on).toContain("--crop-pack");
+    expect(on[on.indexOf("--crop-pack") + 1]).toBe("vertical,square");
+
+    const absent = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(absent).not.toContain("--crop-pack");
+  });
+
   // Regression for #1193: an arm64 host (Apple Silicon) was being pinned to
   // linux/amd64, which forced qemu emulation of chrome-headless-shell and
   // produced either navigation timeouts or chrome SEGVs. Each host arch must

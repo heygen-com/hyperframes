@@ -216,6 +216,13 @@ export interface CheckAuditDriver {
   ): Promise<MotionFrame>;
   anchorMotionIssues(issues: LayoutIssue[]): Promise<AnchoredLayoutIssue[]>;
   collectContrast(time: number, annotations?: CheckAnnotationBox[]): Promise<ContrastCapture>;
+  /**
+   * Optional: sample `data-safe-critical` boxes vs authored `data-safe-frames`.
+   * Absent on drivers that do not implement the crop-pack check (tests).
+   */
+  collectSafeCriticalSnapshot?(
+    time: number,
+  ): Promise<import("./safeCriticalOverflow.js").SafeCriticalSnapshot>;
 }
 
 export interface CheckScreenshot {

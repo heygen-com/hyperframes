@@ -135,4 +135,73 @@ describe("createRenderPlan", () => {
     const plan = createRenderPlan({ dir: projectDir, skill: "motion-graphics" });
     expect(plan.authoringSkill).toBe("motion-graphics");
   });
+
+  const frames = [
+    {
+      id: "vertical",
+      ratio: "9:16",
+      x: (1920 - 608) / 2 / 1920,
+      y: 0,
+      width: 608 / 1920,
+      height: 1,
+    },
+    {
+      id: "square",
+      ratio: "1:1",
+      x: (1920 - 1080) / 2 / 1920,
+      y: 0,
+      width: 1080 / 1920,
+      height: 1,
+    },
+  ];
+
+  function writeFramedIndex() {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<main data-composition-id="main" data-width="1920" data-height="1080" data-fps="24" data-safe-frames='${JSON.stringify(frames)}'></main>`,
+    );
+  }
+
+  it("resolves --crop-pack all against authored frames before launch", () => {
+    writeFramedIndex();
+    const plan = createRenderPlan({ dir: projectDir, "crop-pack": "all" });
+    expect(plan.cropPack?.members.map((frame) => frame.id)).toEqual(["vertical", "square"]);
+  });
+
+  it("rejects an unknown crop-pack id before capture", () => {
+    writeFramedIndex();
+    expect(() => createRenderPlan({ dir: projectDir, "crop-pack": "story" })).toThrow(
+      CliUsageError,
+    );
+  });
+
+  it("errors when --crop-pack is set without authored frames", () => {
+    expect(() => createRenderPlan({ dir: projectDir, "crop-pack": "all" })).toThrow(CliUsageError);
+  });
+
+  it("merges hyperframes.json render.cropPack only when the flag is absent", () => {
+    writeFramedIndex();
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({
+        registry: "https://example.test",
+        render: { cropPack: ["square"] },
+      }),
+    );
+    expect(
+      createRenderPlan({ dir: projectDir }).cropPack?.members.map((frame) => frame.id),
+    ).toEqual(["square"]);
+    expect(
+      createRenderPlan({ dir: projectDir, "crop-pack": "vertical" }).cropPack?.members.map(
+        (frame) => frame.id,
+      ),
+    ).toEqual(["vertical"]);
+  });
+
+  it("ignores --crop-pack for gif with a warning flag", () => {
+    writeFramedIndex();
+    const plan = createRenderPlan({ dir: projectDir, format: "gif", "crop-pack": "all" });
+    expect(plan.cropPack).toBeUndefined();
+    expect(plan.cropPackIgnoredWarning).toMatch(/gif/);
+  });
 });

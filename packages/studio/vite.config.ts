@@ -239,6 +239,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
+      "@hyperframes/parsers/safe-frames": resolve(__dirname, "../parsers/src/safeFrames.ts"),
       "@hyperframes/studio-server/source-mutation": resolve(
         __dirname,
         "../studio-server/src/helpers/sourceMutation.ts",

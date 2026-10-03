@@ -12,6 +12,7 @@ import {
 } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { parseSafeCriticalIds, parseSafeFramesAttribute } from "@hyperframes/parsers/safe-frames";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.
@@ -1204,4 +1205,65 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       },
     ];
   },
+
+  ({ tags, rootTag }) => lintSafeFrames(tags, rootTag),
 ];
+
+// fallow-ignore-next-line complexity
+function lintSafeFrames(tags: OpenTag[], rootTag: OpenTag | null): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  const rawFrames = rootTag ? readJsonAttr(rootTag.raw, COMPOSITION_ATTRIBUTES.safeFrames) : null;
+  const width = rootTag ? Number.parseFloat(readAttr(rootTag.raw, "data-width") ?? "") : NaN;
+  const height = rootTag ? Number.parseFloat(readAttr(rootTag.raw, "data-height") ?? "") : NaN;
+  const dimensions = width > 0 && height > 0 ? { width, height } : undefined;
+  const parsed = parseSafeFramesAttribute(rawFrames, dimensions);
+  const frameIds = parsed.ok ? new Set(parsed.frames.map((frame) => frame.id)) : new Set<string>();
+  const hasFramesAttr = rawFrames !== null;
+
+  if (hasFramesAttr && !parsed.ok) {
+    findings.push({
+      code: parsed.code,
+      severity: "error",
+      message: parsed.message,
+      elementId: rootTag ? readAttr(rootTag.raw, "id") || undefined : undefined,
+      snippet: rootTag ? truncateSnippet(rootTag.raw) : undefined,
+      fixHint:
+        parsed.code === "safe_frames_invalid_json"
+          ? "Set data-safe-frames to a JSON array of {id, ratio, x, y, width, height} objects."
+          : "Fix the named crop window so its id is unique and its rect matches the named ratio after snap.",
+    });
+  }
+
+  for (const tag of tags) {
+    if (isInsideInertTemplate(tag, tags)) continue;
+    const rawCritical = readDecodedAttr(tag.raw, COMPOSITION_ATTRIBUTES.safeCritical);
+    if (rawCritical === null) continue;
+    const elementId = readAttr(tag.raw, "id") || undefined;
+    if (!hasFramesAttr) {
+      findings.push({
+        code: "safe_critical_without_frames",
+        severity: "warning",
+        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> is data-safe-critical but the composition root has no data-safe-frames.`,
+        elementId,
+        snippet: truncateSnippet(tag.raw),
+        fixHint: "Author data-safe-frames on the composition root, or remove data-safe-critical.",
+      });
+      continue;
+    }
+    if (!parsed.ok) continue;
+    const required = parseSafeCriticalIds(rawCritical);
+    if (required === null || required === "all") continue;
+    for (const frameId of required) {
+      if (frameIds.has(frameId)) continue;
+      findings.push({
+        code: "safe_critical_unknown_frame",
+        severity: "error",
+        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> data-safe-critical names unknown frame "${frameId}".`,
+        elementId,
+        snippet: truncateSnippet(tag.raw),
+        fixHint: "Use a data-safe-frames id, or drop the unknown name from data-safe-critical.",
+      });
+    }
+  }
+  return findings;
+}

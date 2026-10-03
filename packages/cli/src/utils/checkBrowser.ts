@@ -27,6 +27,7 @@ import {
 } from "@hyperframes/studio-server/media-codec-map";
 import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
+import { collectSafeCriticalSnapshotFromPage } from "./safeCriticalOverflow.js";
 import type {
   AnchoredLayoutIssue,
   CheckAnchor,
@@ -418,6 +419,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
       collectMotionFrame(page, time, selectors, scopes),
     anchorMotionIssues: (issues) => anchorLayoutIssues(page, issues),
     collectContrast: (time, annotations) => collectContrast(page, time, annotations),
+    collectSafeCriticalSnapshot: (time) => collectSafeCriticalSnapshotFromPage(page, time),
   };
 }
 
@@ -1229,6 +1231,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "motion_frozen",
   "motion_selector_missing",
   "motion_selector_ambiguous",
+  "safe_critical_overflow",
 ];
 
 function layoutCodeValue(value: unknown): LayoutIssueCode | null {

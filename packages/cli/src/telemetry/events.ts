@@ -337,6 +337,8 @@ export function trackRenderComplete(
     extractPhase3Ms?: number;
     extractCacheHits?: number;
     extractCacheMisses?: number;
+    /** Sibling crop-pack files written after assemble. */
+    cropPack?: Array<{ id: string; outputPath: string; width: number; height: number }>;
     // Attribute this event to a specific user (e.g. the browser user who
     // triggered a studio render); defaults to the install anonymousId.
     distinctId?: string;
@@ -431,6 +433,8 @@ export function trackRenderComplete(
       extract_phase3_ms: props.extractPhase3Ms,
       extract_cache_hits: props.extractCacheHits,
       extract_cache_misses: props.extractCacheMisses,
+      crop_pack_count: props.cropPack?.length,
+      crop_pack_ids: props.cropPack?.map((member) => member.id).join(","),
     },
     props.distinctId,
   );

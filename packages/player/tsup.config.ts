@@ -8,7 +8,7 @@ export default defineConfig({
   entry: ["src/hyperframes-player.ts", "src/slideshow/hyperframes-slideshow.ts"],
   format: ["esm", "cjs", "iife"],
   globalName: "HyperframesPlayer",
-  noExternal: ["@hyperframes/core"],
+  noExternal: ["@hyperframes/core", "@hyperframes/parsers"],
   dts: true,
   clean: true,
   minify: true,

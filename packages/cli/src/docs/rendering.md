@@ -24,6 +24,7 @@ Requires: Docker installed and running.
 - `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)
 - `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default for local renders is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable. Docker mode always uses software.
 - `-o, --output` — Custom output path
+- `--crop-pack all|id,id` — After encoding the master, crop sibling files from authored `data-safe-frames` (`renders/launch.vertical.mp4`). One capture; ffmpeg crop+scale of the assembled master. Not a second capture and not a viewport reshape. Ignored for gif and png-sequence. Unsupported on Lambda / Cloud Run / cloud render.
 
 ## Tips
 
@@ -33,3 +34,4 @@ Requires: Docker installed and running.
 - Use `--video-frame-format png` when source videos contain saturated UI colors that should avoid JPEG extraction
 - Use `npx hyperframes benchmark` to find optimal settings
 - 4 workers is usually the sweet spot for most compositions
+- `--crop-pack` cuts pixels that sit outside a named window; it does not reflow titles. Use `data-safe-critical` and `hyperframes check` before shipping a pack.
