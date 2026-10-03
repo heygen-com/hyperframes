@@ -192,16 +192,19 @@ describe("the audio the playhead follows", () => {
     await flush();
     window.__player?.play();
     await flush();
+    const coldStartLagSeconds = 0.25; // how late each shot's sound starts, as a cold clip does at a cut
     const playedAt = nowMs;
     musicSeeks.length = 0; // Play itself lands every clip on the playhead
     Object.assign(music, { paused: false });
     for (let frame = 1; frame <= 170; frame++) {
       const t = (nowMs + 1000 / 60 - playedAt) / 1000;
-      musicTime = t; // the music plays straight through every cut
+      musicTime = t;
       shots.forEach((shot, i) => {
         if (t < i) return;
-        // Each shot's sound starts 250 ms late, as a cold clip does at a cut.
-        Object.assign(shot, { paused: t >= i + 1, currentTime: Math.max(0, t - i - 0.25) });
+        Object.assign(shot, {
+          paused: t >= i + 1,
+          currentTime: Math.max(0, t - i - coldStartLagSeconds),
+        });
       });
       stepFrames(1);
       expect(window.__player!.getTime()).toBeCloseTo(t, 3);

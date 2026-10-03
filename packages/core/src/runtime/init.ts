@@ -4537,8 +4537,9 @@ export function initSandboxRuntimeModular(): void {
   const followedOrLongestRunningAudio = (
     followed: HTMLMediaElement | null,
   ): { el: HTMLMediaElement; start: number } | null => {
-    let leader: { el: HTMLMediaElement; start: number; runsUntil: number } | null = null;
-    for (const el of document.querySelectorAll("audio[data-start]")) {
+    const audioEls = document.querySelectorAll("audio[data-start]");
+    let longest: { el: HTMLMediaElement; start: number; runsUntil: number } | null = null;
+    for (const el of followed ? [followed, ...audioEls] : audioEls) {
       if (!isMediaElement(el) || !el.isConnected) continue;
       if (isSilencedByHidden(el) || isUnplayable(el)) continue;
       if (!el.hasAttribute("src") && !el.querySelector("source[src]")) continue;
@@ -4548,9 +4549,9 @@ export function initSandboxRuntimeModular(): void {
       if (!Number.isFinite(start) || !isInClipWindow(state.currentTime, start, end)) continue;
       if (el === followed) return { el, start };
       const runsUntil = start + (resolveMediaElementDurationSeconds(el) ?? Infinity);
-      if (!leader || runsUntil > leader.runsUntil) leader = { el, start, runsUntil };
+      if (!longest || runsUntil > longest.runsUntil) longest = { el, start, runsUntil };
     }
-    return leader;
+    return longest;
   };
 
   const transportTick = () => {
@@ -4659,23 +4660,19 @@ export function initSandboxRuntimeModular(): void {
             clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
           }
         } else {
-          const leader = followedOrLongestRunningAudio(clock.audioElement());
-          let foundActive = false;
-          if (leader && !leader.el.paused) {
+          const source = followedOrLongestRunningAudio(clock.audioElement());
+          if (source && !source.el.paused) {
             clock.attachAudioSource({
-              el: leader.el,
-              compositionStart: leader.start,
-              mediaStart: readElementPlaybackStart(leader.el),
-              rate: readElementRateSpec(leader.el),
+              el: source.el,
+              compositionStart: source.start,
+              mediaStart: readElementPlaybackStart(source.el),
+              rate: readElementRateSpec(source.el),
             });
-            foundActive = true;
-          } else if (leader && leader.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+          } else if (source && source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
             // Audio is buffering — freeze visuals at last known position
             // instead of falling through to monotonic (which runs ahead).
             clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
-            foundActive = true;
-          }
-          if (!foundActive && clock.hasAudioSource()) {
+          } else if (clock.hasAudioSource()) {
             clock.detachAudioSource();
           }
         }
