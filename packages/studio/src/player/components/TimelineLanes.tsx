@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo } from "react";
+import { useId, useMemo } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
@@ -520,29 +520,22 @@ export function TimelineLanes({
                       />
                     );
 
-                    // Keep one keyed top-level child per element. Returning an
-                    // array here makes React reconcile the outer array by
-                    // position, so a window shift remounts otherwise stable
-                    // clip keys and can tear down focus mid-reveal.
-                    if (!isPassenger) {
-                      return (
-                        <Fragment key={clipKey}>
-                          {clip}
-                          {compactDiamonds}
-                          {propertyLanes}
-                        </Fragment>
-                      );
-                    }
+                    // One keyed wrapper per element, the same element type whether or not the
+                    // clip rides a drag, so joining or leaving a drag restyles it, never remounts it.
                     return (
                       <div
                         key={clipKey}
-                        className="absolute inset-0"
-                        style={{
-                          transform: `translateX(${passengerOffsetPx}px)`,
-                          opacity: 0.85,
-                          zIndex: 20,
-                          pointerEvents: "none",
-                        }}
+                        className={isPassenger ? "absolute inset-0" : undefined}
+                        style={
+                          isPassenger
+                            ? {
+                                transform: `translateX(${passengerOffsetPx}px)`,
+                                opacity: 0.85,
+                                zIndex: 20,
+                                pointerEvents: "none",
+                              }
+                            : { display: "contents" }
+                        }
                       >
                         {clip}
                         {compactDiamonds}
