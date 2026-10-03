@@ -6,7 +6,7 @@ type GsapAdapterDeps = {
 
 /**
  * Re-renders a timeline already at `t`, silently, from just below (above at 0) so same-time steps apply in authored
- * order. That step skips a keyframes or stagger tween already at its start, so each one re-crosses its start alone.
+ * order. That step skips a keyframed tween already at its start, so each one re-crosses its own start alone.
  */
 export function rerenderGsapTimelineAt(
   timeline: {
@@ -26,11 +26,11 @@ type GsapAnimation = {
   totalDuration: () => number;
   paused: () => boolean;
   render: (totalTime: number, suppressEvents: boolean) => unknown;
-  timeline?: unknown;
+  vars?: { keyframes?: unknown };
   getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => unknown[];
 };
 
-const STEP_PAST_START = 1e-6;
+const BELOW_GSAP_TIME_RESOLUTION = 2e-8;
 
 const playsForward = (value: unknown): value is GsapAnimation => {
   const animation = value as GsapAnimation | null;
@@ -47,9 +47,9 @@ const playsForward = (value: unknown): value is GsapAnimation => {
 function recrossTweensStartingAt(children: unknown[], time: number): void {
   for (const child of children.filter(playsForward)) {
     const local = (time - child.startTime()) * child.timeScale();
-    if (Math.abs(local) < 1e-9 && child.timeline) {
-      child.render(STEP_PAST_START, true);
-      child.render(-STEP_PAST_START, true);
+    if (Math.abs(local) < 1e-9 && child.vars?.keyframes) {
+      child.render(BELOW_GSAP_TIME_RESOLUTION, true);
+      child.render(-BELOW_GSAP_TIME_RESOLUTION, true);
       child.render(0, true);
     } else if (child.getChildren && local > 0 && local <= child.totalDuration()) {
       recrossTweensStartingAt(child.getChildren(false, true, true), local);

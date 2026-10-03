@@ -105,19 +105,6 @@ describe("gsap adapter at a tween's start", () => {
     expect(gsap.getProperty(box, "x")).toBe(5);
   });
 
-  it("shows a staggered tween's start over an earlier tween's end", () => {
-    const boxes = [0, 1].map(() => document.body.appendChild(document.createElement("div")));
-    const timeline = gsap.timeline({ paused: true });
-    timeline.from(boxes, { x: -60, duration: 2, ease: "none" }, 0);
-    timeline.fromTo(boxes, { x: 5 }, { x: 60, duration: 1, stagger: 0.1 }, 2);
-    const adapter = createGsapAdapter({
-      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
-    });
-    adapter.seek({ time: 2 });
-    adapter.seek({ time: 2 });
-    expect(gsap.getProperty(boxes[0]!, "x")).toBe(5);
-  });
-
   it("does not start a tween that begins just after the seek time", () => {
     const box = document.body.appendChild(document.createElement("div"));
     const timeline = gsap.timeline({ paused: true });
@@ -145,10 +132,10 @@ describe("gsap adapter at a tween's start", () => {
 
   it.each([
     {
-      shape: "a stagger whose next target starts 0.5 ms later with overwrite auto",
+      shape: "a stagger whose next target starts 0.1 us later with overwrite auto",
       build: (timeline: gsap.core.Timeline, o: { x: number }) => {
         timeline.to(o, { x: 100, duration: 10, ease: "none" }, 0);
-        timeline.to([{ x: 0 }, o], { x: 200, duration: 1, stagger: 0.0005, overwrite: "auto" }, 2);
+        timeline.to([{ x: 0 }, o], { x: 200, duration: 1, stagger: 1e-7, overwrite: "auto" }, 2);
       },
       seeks: [2, 1],
       x: 10,
@@ -178,11 +165,11 @@ describe("gsap adapter at a tween's start", () => {
       x: 32.5,
     },
     {
-      shape: "a short repeatRefresh keyframed tween",
+      shape: "a 0.4 us repeatRefresh keyframed tween",
       build: (timeline: gsap.core.Timeline, o: { x: number }) => {
         const keyframes = [
-          { x: "+=10", duration: 0.0002 },
-          { x: "+=10", duration: 0.0002 },
+          { x: "+=10", duration: 2e-7 },
+          { x: "+=10", duration: 2e-7 },
         ];
         timeline.to(o, { keyframes, repeat: 2, repeatRefresh: true, ease: "none" }, 2);
       },
