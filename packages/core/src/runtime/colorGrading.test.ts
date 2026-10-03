@@ -1,6 +1,10 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
+import {
+  HF_COLOR_GRADING_ATTR,
+  HF_COLOR_GRADING_EFFECT_KEYS,
+  serializeHfColorGrading,
+} from "../colorGrading";
 import {
   createColorGradingRuntime,
   installAuthoredOpacityCapture,
@@ -1243,6 +1247,244 @@ describe("createColorGradingRuntime", () => {
     expect(secondGrainSeed).toBe((firstGrainSeed ?? 0) + 15);
     const fragment = lastShaderSources.find((source) => source.includes("sampleMedia"));
     expect(fragment).toContain("float time = u_effectTime * speed;");
+  });
+
+  function mainFragmentSources(): string[] {
+    return lastShaderSources.filter((source) =>
+      source.includes("vec4 sampleColor = sampleMedia(uv);"),
+    );
+  }
+
+  function stageNames(source: string, directive: "define" | "ifdef"): string[] {
+    const pattern = new RegExp(`^#${directive} (HF_STAGE_\\w+)$`, "gm");
+    return [...new Set([...source.matchAll(pattern)].map((match) => match[1] ?? ""))].sort();
+  }
+
+  it("compiles an adjust-only grade with every optional shader stage left out", () => {
+    startRuntimeWithVideo();
+
+    const fragments = mainFragmentSources();
+    expect(fragments).not.toHaveLength(0);
+    for (const fragment of fragments) expect(stageNames(fragment, "define")).toEqual([]);
+    expect(stageNames(fragments[0] ?? "", "ifdef")).toContain("HF_STAGE_ASCII");
+  });
+
+  it("compiles exactly the stages a grade enables", () => {
+    const video = makeDrawableVideo();
+    video.setAttribute(
+      HF_COLOR_GRADING_ATTR,
+      serializeHfColorGrading({ details: { vignette: 0.3 }, effects: { ascii: 0.5 } }),
+    );
+    startRuntimeWithVideo(video);
+
+    expect(stageNames(mainFragmentSources().at(-1) ?? "", "define")).toEqual([
+      "HF_STAGE_ASCII",
+      "HF_STAGE_VIGNETTE",
+    ]);
+  });
+
+  it.each([
+    ["HF_STAGE_BLUR", { effects: { blur: 0.4 } }],
+    ["HF_STAGE_KUWAHARA", { effects: { kuwahara: 0.4 } }],
+    ["HF_STAGE_PIXELATE", { effects: { pixelate: 0.4 } }],
+    ["HF_STAGE_TAPE", { effects: { tapeDamage: 0.4 } }],
+    ["HF_STAGE_CHROMA_BLEED", { effects: { chromaBleed: 0.4 } }],
+    ["HF_STAGE_CHROMATIC", { effects: { chromaticAberration: 0.4 } }],
+    ["HF_STAGE_CRT", { effects: { crtCurvature: 0.4 } }],
+    ["HF_STAGE_GLITCH", { effects: { digitalGlitch: 0.4 } }],
+    ["HF_STAGE_GRAIN", { details: { grain: 0.4 } }],
+    ["HF_STAGE_FILM_ARTIFACTS", { effects: { filmArtifacts: 0.4 } }],
+    ["HF_STAGE_MONO_SCREEN", { effects: { monoScreen: 0.4 } }],
+    ["HF_STAGE_ENGRAVING", { effects: { engraving: 0.4 } }],
+    ["HF_STAGE_CROSSHATCH", { effects: { crosshatch: 0.4 } }],
+    ["HF_STAGE_HALFTONE", { effects: { halftone: 0.4 } }],
+    ["HF_STAGE_TWO_INK_PRINT", { effects: { twoInkPrint: 0.4 } }],
+    ["HF_STAGE_DITHER", { effects: { dither: 0.4 } }],
+    ["HF_STAGE_ASCII", { effects: { ascii: 0.4 } }],
+    ["HF_STAGE_BLOOM", { effects: { bloom: 0.4 } }],
+    ["HF_STAGE_SCANLINES", { effects: { scanlines: 0.4 } }],
+    ["HF_STAGE_VIGNETTE", { details: { vignette: 0.4 } }],
+    [
+      "HF_STAGE_RGB_CURVES",
+      {
+        curves: {
+          master: [
+            [0, 0],
+            [0.5, 0.6],
+            [1, 1],
+          ],
+        },
+      },
+    ],
+    [
+      "HF_STAGE_HUE_CURVES",
+      {
+        hueCurves: {
+          hueVsHue: [
+            [0, 0],
+            [120, 12],
+            [240, 0],
+          ],
+        },
+      },
+    ],
+    [
+      "HF_STAGE_SECONDARIES",
+      {
+        secondaries: [
+          {
+            key: { hue: { center: 350, range: 20, softness: 10 } },
+            correction: { saturation: 0.15 },
+          },
+        ],
+      },
+    ],
+    ["HF_STAGE_LUT", { lut: { src: "/looks/test.cube" } }],
+  ] as const)("keys %s to its own grade value and nothing else", (stage, grading) => {
+    const { video } = startRuntimeWithVideo();
+    runtime!.setGrading(`#${video.id}`, grading);
+
+    expect(stageNames(mainFragmentSources().at(-1) ?? "", "define")).toEqual([stage]);
+  });
+
+  it("can enable every stage the shader guards, and no stage it does not", () => {
+    const { video } = startRuntimeWithVideo();
+    runtime!.setGrading(`#${video.id}`, {
+      details: { grain: 0.5, vignette: 0.5 },
+      effects: Object.fromEntries(HF_COLOR_GRADING_EFFECT_KEYS.map((key) => [key, 0.5])),
+      curves: {
+        master: [
+          [0, 0],
+          [0.5, 0.6],
+          [1, 1],
+        ],
+      },
+      hueCurves: {
+        hueVsHue: [
+          [0, 0],
+          [120, 12],
+          [240, 0],
+        ],
+      },
+      secondaries: [
+        {
+          key: { hue: { center: 350, range: 20, softness: 10 } },
+          correction: { saturation: 0.15 },
+        },
+      ],
+      lut: { src: "/looks/test.cube" },
+    });
+    runtime!.setCompare(`#${video.id}`, { enabled: true });
+
+    const fragment = mainFragmentSources().at(-1) ?? "";
+    expect(stageNames(fragment, "ifdef")).not.toHaveLength(0);
+    expect(stageNames(fragment, "define")).toEqual(stageNames(fragment, "ifdef"));
+  });
+
+  it("compiles a variant once per stage set and reuses it when the grade returns", () => {
+    const { video } = startRuntimeWithVideo();
+    const compiled = () => mainFragmentSources().length;
+    const baseline = compiled();
+
+    runtime!.setGrading(`#${video.id}`, { effects: { halftone: 0.6 } });
+    expect(compiled()).toBe(baseline + 1);
+    runtime!.setGrading(`#${video.id}`, { adjust: { exposure: 0.1 } });
+    runtime!.setGrading(`#${video.id}`, { effects: { halftone: 0.2 } });
+    expect(compiled()).toBe(baseline + 1);
+  });
+
+  it("evicts the least recently used variant, not a variant still in use", () => {
+    const { video } = startRuntimeWithVideo();
+    const amounts = [
+      "blur",
+      "kuwahara",
+      "pixelate",
+      "tapeDamage",
+      "chromaBleed",
+      "chromaticAberration",
+      "crtCurvature",
+      "digitalGlitch",
+      "filmArtifacts",
+      "monoScreen",
+      "engraving",
+      "crosshatch",
+      "halftone",
+      "twoInkPrint",
+      "dither",
+      "ascii",
+      "bloom",
+      "scanlines",
+    ] as const;
+    const distinctGrades = [
+      ...amounts.map((key) => ({ effects: { [key]: 0.5 } })),
+      ...amounts
+        .slice(1)
+        .map((key, index) => ({ effects: { [amounts[index]!]: 0.5, [key]: 0.5 } })),
+    ];
+    const compiled = () => mainFragmentSources().length;
+    const adjustOnly = { adjust: { exposure: 0.5 } };
+
+    // The adjust-only variant plus 31 more fills the 32-entry cache.
+    for (const grading of distinctGrades.slice(0, 31)) runtime!.setGrading(`#${video.id}`, grading);
+    runtime!.setGrading(`#${video.id}`, adjustOnly);
+    const beforeEviction = compiled();
+    runtime!.setGrading(`#${video.id}`, distinctGrades[31]!);
+    runtime!.setGrading(`#${video.id}`, adjustOnly);
+
+    expect(compiled()).toBe(beforeEviction + 1);
+  });
+
+  it("selects the variant from the animated grade, not the authored one", () => {
+    const video = makeDrawableVideo();
+    video.setAttribute(HF_COLOR_GRADING_ATTR, serializeHfColorGrading({ effects: { blur: 0 } }));
+    video.style.setProperty("--hf-color-grading-blur", "0.45");
+    startRuntimeWithVideo(video);
+
+    expect(stageNames(mainFragmentSources().at(-1) ?? "", "define")).toEqual(["HF_STAGE_BLUR"]);
+  });
+
+  it("compiles each look preview with its own stages", async () => {
+    const video = makeDrawableVideo();
+    video.removeAttribute(HF_COLOR_GRADING_ATTR);
+    document.body.appendChild(video);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,x");
+    runtime = createColorGradingRuntime();
+
+    await runtime.renderPreviews("#hero-video", [
+      { id: "halftone", grading: { effects: { halftone: 0.5 } } },
+    ]);
+
+    expect(stageNames(mainFragmentSources().at(-1) ?? "", "define")).toEqual(["HF_STAGE_HALFTONE"]);
+  });
+
+  it("draws a variant the driver rejects through every stage, and stops retrying it", () => {
+    const { video } = startRuntimeWithVideo();
+    const gl = getContextSpy.mock.results[0]?.value as WebGLRenderingContext;
+    const rejected = "#define HF_STAGE_HALFTONE\n#ifdef GL_FRAGMENT_PRECISION_HIGH";
+    gl.getShaderParameter = vi.fn(() => !lastShaderSources.at(-1)?.startsWith(rejected));
+    const attempts = () => lastShaderSources.filter((source) => source.startsWith(rejected)).length;
+
+    runtime!.setGrading(`#${video.id}`, { effects: { halftone: 0.6 } });
+    const fallback = mainFragmentSources().at(-1) ?? "";
+    expect(stageNames(fallback, "define")).toEqual(stageNames(fallback, "ifdef"));
+    runtime!.setGrading(`#${video.id}`, { adjust: { exposure: 0.1 } });
+    runtime!.setGrading(`#${video.id}`, { effects: { halftone: 0.2 } });
+
+    expect(attempts()).toBe(1);
+    expect(runtime!.isGraded(video)).toBe(true);
+  });
+
+  it("stops compiling once even the every-stage variant is rejected", () => {
+    const { video } = startRuntimeWithVideo();
+    const gl = getContextSpy.mock.results[0]?.value as WebGLRenderingContext;
+    gl.getShaderParameter = vi.fn(() => false);
+    const compiled = () => mainFragmentSources().length;
+    const afterCreation = compiled();
+
+    runtime!.setGrading(`#${video.id}`, { effects: { halftone: 0.6 } });
+    runtime!.setGrading(`#${video.id}`, { effects: { halftone: 0.2 } });
+
+    expect(compiled()).toBe(afterCreation + 2);
   });
 
   it("uses the effected media sample as the graded shader input", () => {

@@ -66,12 +66,17 @@ interface VideoFrameCallbackHost {
 type FloatUniformBinding<K extends string> = readonly [key: K, location: WebGLUniformLocation];
 
 interface ProgramInfo {
-  program: WebGLProgram;
   texture: WebGLTexture;
   lutTexture: WebGLTexture;
   advancedTexture: WebGLTexture;
   advancedSignature: string | null;
   quad: WebGLBuffer;
+  shaders: Map<string, MainShader>;
+  failedStageDefines: Set<string>;
+}
+
+interface MainShader {
+  program: WebGLProgram;
   position: number;
   source: WebGLUniformLocation | null;
   blurSource: WebGLUniformLocation | null;
@@ -514,12 +519,16 @@ const FRAGMENT_SHADER = [
   "}",
   "vec4 samplePrepared(vec2 uv){",
   "  vec4 base = sampleSource(uv);",
+  "#ifdef HF_STAGE_BLUR",
   "  float blur = clamp(u_blur, 0.0, 1.0);",
   "  if (blur > 0.0 && u_blurReady > 0.5) base = mix(base, sampleBlur(uv), blur);",
+  "#endif",
+  "#ifdef HF_STAGE_KUWAHARA",
   "  float kuwahara = clamp(u_kuwahara, 0.0, 1.0);",
   "  if (kuwahara > 0.0 && u_kuwaharaReady > 0.5) {",
   "    base.rgb = mix(base.rgb, sampleKuwahara(uv), kuwahara);",
   "  }",
+  "#endif",
   "  return base;",
   "}",
   "float tapeTrackingBand(float y, float center, float width){",
@@ -530,11 +539,14 @@ const FRAGMENT_SHADER = [
   "vec4 sampleMedia(vec2 uv){",
   "  float pixel = clamp(u_pixelate, 0.0, 1.0);",
   "  vec2 sampleUv = uv;",
+  "#ifdef HF_STAGE_PIXELATE",
   "  if (pixel > 0.0) {",
   "    float blockSize = mix(1.0, 48.0, pixel);",
   "    vec2 cells = max(u_resolution / blockSize, vec2(1.0));",
   "    sampleUv = (floor(clamp(uv, vec2(0.0), vec2(0.999999)) * cells) + 0.5) / cells;",
   "  }",
+  "#endif",
+  "#ifdef HF_STAGE_TAPE",
   "  float tapeDamage = clamp(u_tapeDamage, 0.0, 1.0);",
   "  float tapeTracking = clamp(u_tapeTracking, 0.0, 1.0);",
   "  float tapeNoise = clamp(u_tapeNoise, 0.0, 1.0);",
@@ -551,9 +563,15 @@ const FRAGMENT_SHADER = [
   "  trackingShift += tapeTrackingBand(sampleUv.y, fract(0.89 + tapeTime * 0.029), 0.032) * 0.55;",
   "  trackingShift *= tapeTracking * 48.0;",
   "  float tapeShift = (lineJitter + slowWobble + headSwitch + trackingShift) * tapeDamage;",
+  "#endif",
   "  float texelX = 1.0 / max(u_resolution.x * max(u_uvScale.x, 0.00001), 1.0);",
+  "#ifdef HF_STAGE_TAPE",
   "  vec2 tapeUv = sampleUv + vec2(tapeShift * texelX, 0.0);",
+  "#else",
+  "  vec2 tapeUv = sampleUv;",
+  "#endif",
   "  vec4 base = samplePrepared(tapeUv);",
+  "#ifdef HF_STAGE_TAPE",
   "  if (tapeDamage > 0.0) {",
   "    vec2 lumaStep = vec2(texelX * mix(1.0, 3.5, tapeDamage), 0.0);",
   "    vec3 leftTape = samplePrepared(tapeUv - lumaStep).rgb;",
@@ -569,6 +587,8 @@ const FRAGMENT_SHADER = [
   "    tapeColor += (fineNoise * 0.035 + dropout * 0.12) * tapeDamage * tapeNoise;",
   "    base.rgb = mix(base.rgb, clamp(tapeColor, 0.0, 1.0), tapeDamage);",
   "  }",
+  "#endif",
+  "#ifdef HF_STAGE_CHROMA_BLEED",
   "  float chromaBleed = clamp(u_chromaBleed, 0.0, 1.0);",
   "  if (chromaBleed > 0.0) {",
   "    float radius = mix(1.0, 4.0, chromaBleed);",
@@ -582,8 +602,10 @@ const FRAGMENT_SHADER = [
   "    vec3 blurredChroma = ((c0 - vec3(lumaOf(c0))) * 6.0 + (c1 - vec3(lumaOf(c1))) * 4.0 + (c2 - vec3(lumaOf(c2))) * 4.0 + (c3 - vec3(lumaOf(c3))) + (c4 - vec3(lumaOf(c4)))) / 16.0;",
   "    base.rgb = mix(base.rgb, clamp(vec3(centerLuma) + blurredChroma, 0.0, 1.0), chromaBleed);",
   "  }",
+  "#endif",
   "  return base;",
   "}",
+  "#ifdef HF_STAGE_CHROMATIC",
   "vec4 sampleChromaticMedia(vec2 uv, vec4 center){",
   "  float amount = clamp(u_chromaticAberration, 0.0, 1.0);",
   "  if (amount <= 0.0) return center;",
@@ -594,6 +616,9 @@ const FRAGMENT_SHADER = [
   "  vec3 split = vec3(positive.r, center.g, negative.b);",
   "  return vec4(split, center.a);",
   "}",
+  "#else",
+  "vec4 sampleChromaticMedia(vec2 uv, vec4 center){ return center; }",
+  "#endif",
   "vec3 sampleDigitalSplit(vec2 uv, vec2 block, float time, float amount){",
   "  float split = amount * 0.06;",
   "  float direction = digitalHash(block * 0.4 + vec2(floor(time * 3.7), floor(time * 5.3)));",
@@ -601,6 +626,7 @@ const FRAGMENT_SHADER = [
   "  vec4 center = sampleMedia(uv);",
   "  return vec3(sampleMedia(uv + axis * split).r, center.g, sampleMedia(uv - axis * split).b);",
   "}",
+  "#ifdef HF_STAGE_GLITCH",
   "vec3 applyDigitalGlitch(vec2 uv, vec3 source){",
   "  float amount = clamp(u_digitalGlitch, 0.0, 1.0);",
   "  if (amount <= 0.0) return source;",
@@ -669,6 +695,9 @@ const FRAGMENT_SHADER = [
   "  }",
   "  return mix(source, clamp(glitch, 0.0, 1.0), amount);",
   "}",
+  "#else",
+  "vec3 applyDigitalGlitch(vec2 uv, vec3 source){ return source; }",
+  "#endif",
   "float dustMask(vec2 uv, float frameBucket){",
   "  vec2 grid = vec2(128.0, 72.0);",
   "  vec2 cell = floor(uv * grid);",
@@ -697,6 +726,7 @@ const FRAGMENT_SHADER = [
   "  float shapeRadius = shape > 3.5 ? radius * 0.45 : radius;",
   "  return 1.0 - smoothstep(shapeRadius, shapeRadius + softness, distanceToInk);",
   "}",
+  "#ifdef HF_STAGE_MONO_SCREEN",
   "vec3 applyMonoScreen(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float invert = step(0.5, u_monoScreenInvert);",
@@ -714,6 +744,10 @@ const FRAGMENT_SHADER = [
   "  vec3 paper = paletteColor(max(u_paletteSize - 1.0, 1.0));",
   "  return mix(source, mix(paper, ink, inkMask), amount);",
   "}",
+  "#else",
+  "vec3 applyMonoScreen(vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_ENGRAVING",
   "vec3 applyEngraving(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float spacing = mix(3.0, 20.0, clamp(u_engravingSpacing, 0.0, 1.0));",
@@ -740,6 +774,9 @@ const FRAGMENT_SHADER = [
   "  vec3 paper = paletteColor(max(u_paletteSize - 1.0, 1.0));",
   "  return mix(source, mix(paper, ink, inkMask), amount);",
   "}",
+  "#else",
+  "vec3 applyEngraving(vec3 source, float amount){ return source; }",
+  "#endif",
   "float crosshatchLine(vec2 pixel, float angle, float spacing, float thickness, float seed){",
   "  vec2 alongAxis = vec2(cos(angle), sin(angle));",
   "  vec2 acrossAxis = vec2(-alongAxis.y, alongAxis.x);",
@@ -767,6 +804,7 @@ const FRAGMENT_SHADER = [
   "  float gy = -tl - 2.0 * tc - tr + bl + 2.0 * bc + br;",
   "  return length(vec2(gx, gy));",
   "}",
+  "#ifdef HF_STAGE_CROSSHATCH",
   "vec3 applyCrosshatch(vec2 uv, vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float spacing = mix(5.0, 30.0, clamp(u_crosshatchSpacing, 0.0, 1.0));",
@@ -791,6 +829,10 @@ const FRAGMENT_SHADER = [
   "  result = mix(result, ink, clamp(edge, 0.0, 1.0));",
   "  return mix(source, result, amount);",
   "}",
+  "#else",
+  "vec3 applyCrosshatch(vec2 uv, vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_HALFTONE",
   "vec3 applyHalftone(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  vec3 cmy = 1.0 - source;",
@@ -810,6 +852,10 @@ const FRAGMENT_SHADER = [
   "  printColor *= mix(vec3(1.0), vec3(0.035), blackInk * 0.92);",
   "  return mix(source, printColor, amount);",
   "}",
+  "#else",
+  "vec3 applyHalftone(vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_TWO_INK_PRINT",
   "vec3 applyTwoInkPrint(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float sourceLuma = lumaOf(source);",
@@ -836,6 +882,9 @@ const FRAGMENT_SHADER = [
   "  printColor += overprint * redDot * tealDot;",
   "  return mix(source, clamp(printColor, 0.0, 1.0), amount);",
   "}",
+  "#else",
+  "vec3 applyTwoInkPrint(vec3 source, float amount){ return source; }",
+  "#endif",
   "vec3 paletteColor(float index){",
   "  if (index < 0.5) return u_palette0;",
   "  if (index < 1.5) return u_palette1;",
@@ -1020,6 +1069,7 @@ const FRAGMENT_SHADER = [
   "  color += u_highlightWheel.z * weights.z * 0.25;",
   "  return color;",
   "}",
+  "#ifdef HF_STAGE_RGB_CURVES",
   "vec3 applyRgbCurves(vec3 color){",
   "  if (u_rgbCurvesEnabled < 0.5) return color;",
   "  vec3 master = vec3(",
@@ -1033,7 +1083,11 @@ const FRAGMENT_SHADER = [
   "    sampleAdvancedCurve(master.b, 0.0).b",
   "  );",
   "}",
+  "#else",
+  "vec3 applyRgbCurves(vec3 color){ return color; }",
+  "#endif",
   "float decodeSigned(float value){ return (value * 255.0 - 128.0) / 127.0; }",
+  "#ifdef HF_STAGE_HUE_CURVES",
   "vec3 applyHueCurves(vec3 color){",
   "  if (u_hueCurvesEnabled < 0.5) return color;",
   "  vec3 hsv = rgbToHsv(clamp(color, 0.0, 1.0));",
@@ -1045,6 +1099,9 @@ const FRAGMENT_SHADER = [
   "  shifted += vec3(originalLuma - lumaOf(shifted) + decodeSigned(curves.b));",
   "  return shifted;",
   "}",
+  "#else",
+  "vec3 applyHueCurves(vec3 color){ return color; }",
+  "#endif",
   "float softRangeMask(float value, float minimum, float maximum, float softness){",
   "  if (value < minimum) {",
   "    if (softness <= 0.0) return 0.0;",
@@ -1094,10 +1151,12 @@ const FRAGMENT_SHADER = [
   "  color = applyTonalWheels(color);",
   "  color = applyRgbCurves(color);",
   "  color = applyHueCurves(color);",
+  "#ifdef HF_STAGE_SECONDARIES",
   "  if (u_secondaryCount > 0.5) color = applySecondary(color, 0.0);",
   "  if (u_secondaryCount > 1.5) color = applySecondary(color, 1.0);",
   "  if (u_secondaryCount > 2.5) color = applySecondary(color, 2.0);",
   "  if (u_secondaryCount > 3.5) color = applySecondary(color, 3.0);",
+  "#endif",
   "  return color;",
   "}",
   "vec3 sampleLut(float r, float g, float b){",
@@ -1106,6 +1165,7 @@ const FRAGMENT_SHADER = [
   "  float y = (g + 0.5) / max(u_lutTextureSize.y, 1.0);",
   "  return texture2D(u_lut, vec2(x, y)).rgb;",
   "}",
+  "#ifdef HF_STAGE_LUT",
   "vec3 applyLut(vec3 color){",
   "  if (u_lutEnabled < 0.5) return color;",
   "  float size = max(u_lutSize, 2.0);",
@@ -1131,6 +1191,9 @@ const FRAGMENT_SHADER = [
   "  vec3 lutColor = mix(c0, c1, f.b);",
   "  return mix(color, lutColor, clamp(u_lutIntensity, 0.0, 1.0));",
   "}",
+  "#else",
+  "vec3 applyLut(vec3 color){ return color; }",
+  "#endif",
   "vec3 applyPrimaryGrade(vec3 color){",
   "  color *= pow(2.0, u_exposure);",
   "  float y = lumaOf(color);",
@@ -1158,6 +1221,7 @@ const FRAGMENT_SHADER = [
   "  color = applyAdvancedGrade(color);",
   "  return clamp(applyLut(clamp(color, 0.0, 1.0)), 0.0, 1.0);",
   "}",
+  "#ifdef HF_STAGE_DITHER",
   "vec3 applyDither(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float scale = max(min(u_resolution.x, u_resolution.y) / 540.0, 0.25);",
@@ -1167,6 +1231,9 @@ const FRAGMENT_SHADER = [
   "  float index = floor(clamp(lumaOf(source) * (levels - 1.0) + bayer4(block), 0.0, levels - 1.0));",
   "  return mix(source, paletteColor(index), amount);",
   "}",
+  "#else",
+  "vec3 applyDither(vec3 source, float amount){ return source; }",
+  "#endif",
   "vec2 asciiEdgeDirection(vec2 uv, vec2 stepUv){",
   "  float topLeft = bt601Luma(sampleMedia(uv + vec2(-stepUv.x, -stepUv.y)).rgb);",
   "  float top = bt601Luma(sampleMedia(uv + vec2(0.0, -stepUv.y)).rgb);",
@@ -1186,6 +1253,7 @@ const FRAGMENT_SHADER = [
   "  vec2 centered = uv - 0.5;",
   "  return vec2(centered.x * cosine - centered.y * sine, centered.x * sine + centered.y * cosine) + 0.5;",
   "}",
+  "#ifdef HF_STAGE_ASCII",
   "vec3 applyAscii(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float scale = max(min(u_resolution.x, u_resolution.y) / 540.0, 0.25);",
@@ -1212,6 +1280,10 @@ const FRAGMENT_SHADER = [
   "  vec3 asciiColor = mix(background, inkColor, ink);",
   "  return mix(source, asciiColor, amount);",
   "}",
+  "#else",
+  "vec3 applyAscii(vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_SCANLINES",
   "vec3 applyScanlines(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float count = mix(50.0, 500.0, clamp(u_scanlineCount, 0.0, 1.0));",
@@ -1220,6 +1292,9 @@ const FRAGMENT_SHADER = [
   "  float line = mix(1.0 - wave, pow(1.0 - wave, 2.2), softness);",
   "  return source * (1.0 - line * amount);",
   "}",
+  "#else",
+  "vec3 applyScanlines(vec3 source, float amount){ return source; }",
+  "#endif",
   "void main(){",
   "  vec2 uv = (v_uv - u_uvOffset) / u_uvScale;",
   "  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {",
@@ -1228,13 +1303,16 @@ const FRAGMENT_SHADER = [
   "  }",
   "  vec4 originalSample = sampleSource(uv);",
   "  uv = applyCrtWarp(uv);",
+  "#ifdef HF_STAGE_CRT",
   "  vec2 displayEdge = smoothstep(vec2(0.0), vec2(0.006), uv) * (1.0 - smoothstep(vec2(0.994), vec2(1.0), uv));",
   "  float displayMask = displayEdge.x * displayEdge.y;",
+  "#endif",
   "  vec4 sampleColor = sampleMedia(uv);",
   "  sampleColor = sampleChromaticMedia(uv, sampleColor);",
   "  sampleColor.rgb = applyDigitalGlitch(uv, sampleColor.rgb);",
   "  vec3 original = originalSample.rgb;",
   "  vec3 color = mix(sampleColor.rgb, applyColorGrade(sampleColor.rgb), u_intensity);",
+  "#ifdef HF_STAGE_GRAIN",
   "  float grainAmount = clamp(u_grain, 0.0, 1.0);",
   "  if (grainAmount > 0.0) {",
   "    float grainPixelSize = mix(1.0, 6.0, clamp(u_grainSize, 0.0, 1.0));",
@@ -1246,6 +1324,8 @@ const FRAGMENT_SHADER = [
   "    float grainMask = smoothstep(0.02, 0.55, grainLuma) * (1.0 - smoothstep(0.88, 1.0, grainLuma));",
   "    color += grain * grainAmount * mix(0.025, 0.08, grainMask);",
   "  }",
+  "#endif",
+  "#ifdef HF_STAGE_FILM_ARTIFACTS",
   "  float filmArtifacts = clamp(u_filmArtifacts, 0.0, 1.0);",
   "  if (filmArtifacts > 0.0) {",
   "    float filmFrame = floor(u_grainSeed);",
@@ -1258,6 +1338,7 @@ const FRAGMENT_SHADER = [
   "    float scratch = (1.0 - smoothstep(0.0, 1.4 / max(u_resolution.x, 1.0), abs(v_uv.x - scratchX))) * scratchLife;",
   "    color = mix(color, vec3(0.94, 0.88, 0.76), scratch * 0.28 * filmArtifacts);",
   "  }",
+  "#endif",
   "  color = applyMonoScreen(clamp(color, 0.0, 1.0), clamp(u_monoScreen, 0.0, 1.0));",
   "  color = applyEngraving(clamp(color, 0.0, 1.0), clamp(u_engraving, 0.0, 1.0));",
   "  color = applyCrosshatch(uv, clamp(color, 0.0, 1.0), clamp(u_crosshatch, 0.0, 1.0));",
@@ -1265,8 +1346,11 @@ const FRAGMENT_SHADER = [
   "  color = applyTwoInkPrint(clamp(color, 0.0, 1.0), clamp(u_twoInkPrint, 0.0, 1.0));",
   "  color = applyDither(clamp(color, 0.0, 1.0), clamp(u_dither, 0.0, 1.0));",
   "  color = applyAscii(clamp(color, 0.0, 1.0), clamp(u_ascii, 0.0, 1.0));",
+  "#ifdef HF_STAGE_BLOOM",
   "  if (u_bloomReady > 0.5 && u_bloom > 0.0) color += sampleBloom(uv) * u_bloom;",
+  "#endif",
   "  color = applyScanlines(clamp(color, 0.0, 1.0), clamp(u_scanlines, 0.0, 1.0));",
+  "#ifdef HF_STAGE_VIGNETTE",
   "  vec2 vignetteAspect = u_resolution.x > u_resolution.y",
   "    ? vec2(u_resolution.x / max(u_resolution.y, 1.0), 1.0)",
   "    : vec2(1.0, u_resolution.y / max(u_resolution.x, 1.0));",
@@ -1277,9 +1361,13 @@ const FRAGMENT_SHADER = [
   "  float vignetteFeather = mix(0.08, 0.72, clamp(u_vignetteFeather, 0.0, 1.0));",
   "  float vignetteMask = smoothstep(vignetteMidpoint, vignetteMidpoint + vignetteFeather, vignetteDistance);",
   "  color *= 1.0 - vignetteMask * clamp(u_vignette, 0.0, 1.0) * 0.75;",
+  "#endif",
+  "#ifdef HF_STAGE_CRT",
   "  float warpActive = step(0.0001, u_crtCurvature);",
   "  color *= mix(1.0, displayMask, warpActive);",
+  "#endif",
   "  vec3 graded = clamp(color, 0.0, 1.0);",
+  "#ifdef HF_STAGE_COMPARE",
   "  if (u_compareEnabled > 0.5) {",
   "    float pos = clamp(u_comparePosition, 0.0, 1.0);",
   "    float softness = max(u_compareSoftness, 0.00001);",
@@ -1293,9 +1381,63 @@ const FRAGMENT_SHADER = [
   "    gl_FragColor = vec4(mix(splitColor, vec3(1.0), lineMask * 0.82), sampleColor.a);",
   "    return;",
   "  }",
+  "#endif",
   "  gl_FragColor = vec4(graded, sampleColor.a);",
   "}",
 ].join("\n");
+
+type FragmentShaderStage = readonly [
+  define: string,
+  active: (grading: ResolvedHfColorGrading, compare: RuntimeColorGradingCompareState) => boolean,
+];
+
+/** Software GL pays for a stage even at 0, so each grade compiles only the stages it enables. */
+const FRAGMENT_SHADER_STAGES: readonly FragmentShaderStage[] = [
+  ["HF_STAGE_BLUR", (grading) => grading.effects.blur > 0],
+  ["HF_STAGE_KUWAHARA", (grading) => grading.effects.kuwahara > 0],
+  ["HF_STAGE_PIXELATE", (grading) => grading.effects.pixelate > 0],
+  ["HF_STAGE_TAPE", (grading) => grading.effects.tapeDamage > 0],
+  ["HF_STAGE_CHROMA_BLEED", (grading) => grading.effects.chromaBleed > 0],
+  ["HF_STAGE_CHROMATIC", (grading) => grading.effects.chromaticAberration > 0],
+  ["HF_STAGE_CRT", (grading) => grading.effects.crtCurvature > 0],
+  ["HF_STAGE_GLITCH", (grading) => grading.effects.digitalGlitch > 0],
+  ["HF_STAGE_GRAIN", (grading) => grading.details.grain > 0],
+  ["HF_STAGE_FILM_ARTIFACTS", (grading) => grading.effects.filmArtifacts > 0],
+  ["HF_STAGE_MONO_SCREEN", (grading) => grading.effects.monoScreen > 0],
+  ["HF_STAGE_ENGRAVING", (grading) => grading.effects.engraving > 0],
+  ["HF_STAGE_CROSSHATCH", (grading) => grading.effects.crosshatch > 0],
+  ["HF_STAGE_HALFTONE", (grading) => grading.effects.halftone > 0],
+  ["HF_STAGE_TWO_INK_PRINT", (grading) => grading.effects.twoInkPrint > 0],
+  ["HF_STAGE_DITHER", (grading) => grading.effects.dither > 0],
+  ["HF_STAGE_ASCII", (grading) => grading.effects.ascii > 0],
+  ["HF_STAGE_BLOOM", (grading) => grading.effects.bloom > 0],
+  ["HF_STAGE_SCANLINES", (grading) => grading.effects.scanlines > 0],
+  ["HF_STAGE_VIGNETTE", (grading) => grading.details.vignette > 0],
+  ["HF_STAGE_RGB_CURVES", (grading) => advancedGradeState(grading).rgbCurvesEnabled],
+  ["HF_STAGE_HUE_CURVES", (grading) => advancedGradeState(grading).hueCurvesEnabled],
+  ["HF_STAGE_SECONDARIES", (grading) => advancedGradeState(grading).secondaryCount > 0],
+  ["HF_STAGE_LUT", (grading) => grading.lut !== null],
+  ["HF_STAGE_COMPARE", (_grading, compare) => compare.enabled],
+];
+
+function fragmentShaderStageDefines(
+  grading: ResolvedHfColorGrading,
+  compare: RuntimeColorGradingCompareState,
+): string {
+  let defines = "";
+  for (const [define, active] of FRAGMENT_SHADER_STAGES) {
+    if (active(grading, compare)) defines += `#define ${define}\n`;
+  }
+  return defines;
+}
+
+const ALL_FRAGMENT_SHADER_STAGE_DEFINES = FRAGMENT_SHADER_STAGES.map(
+  ([define]) => `#define ${define}\n`,
+).join("");
+
+const MAX_PREVIEW_CANDIDATES = 32;
+
+const MAX_CACHED_MAIN_SHADERS = MAX_PREVIEW_CANDIDATES;
 
 const BLUR_FRAGMENT_SHADER = [
   "#ifdef GL_FRAGMENT_PRECISION_HIGH",
@@ -1636,15 +1778,63 @@ function createFloatUniformBindings<K extends string>(
   return bindings;
 }
 
-function deleteProgramResources(
+function deleteTextures(
   gl: WebGLRenderingContext,
-  program: WebGLProgram | null,
   textures: readonly (WebGLTexture | null)[],
 ): void {
-  if (program) gl.deleteProgram(program);
   for (const texture of textures) {
     if (texture) gl.deleteTexture(texture);
   }
+}
+
+function createMainShader(gl: WebGLRenderingContext, stageDefines: string): MainShader | null {
+  const program = createProgram(gl, stageDefines + FRAGMENT_SHADER);
+  if (!program) return null;
+  return {
+    program,
+    position: gl.getAttribLocation(program, "a_pos"),
+    source: gl.getUniformLocation(program, "u_source"),
+    blurSource: gl.getUniformLocation(program, "u_blurSource"),
+    bloomSource: gl.getUniformLocation(program, "u_bloomSource"),
+    kuwaharaSource: gl.getUniformLocation(program, "u_kuwaharaSource"),
+    lut: gl.getUniformLocation(program, "u_lut"),
+    advanced: gl.getUniformLocation(program, "u_advanced"),
+    resolution: gl.getUniformLocation(program, "u_resolution"),
+    uvScale: gl.getUniformLocation(program, "u_uvScale"),
+    uvOffset: gl.getUniformLocation(program, "u_uvOffset"),
+    blurReady: gl.getUniformLocation(program, "u_blurReady"),
+    bloomReady: gl.getUniformLocation(program, "u_bloomReady"),
+    kuwaharaReady: gl.getUniformLocation(program, "u_kuwaharaReady"),
+    lutEnabled: gl.getUniformLocation(program, "u_lutEnabled"),
+    lutSize: gl.getUniformLocation(program, "u_lutSize"),
+    lutTextureSize: gl.getUniformLocation(program, "u_lutTextureSize"),
+    lutDomainMin: gl.getUniformLocation(program, "u_lutDomainMin"),
+    lutDomainMax: gl.getUniformLocation(program, "u_lutDomainMax"),
+    lutIntensity: gl.getUniformLocation(program, "u_lutIntensity"),
+    shadowWheel: gl.getUniformLocation(program, "u_shadowWheel"),
+    midtoneWheel: gl.getUniformLocation(program, "u_midtoneWheel"),
+    highlightWheel: gl.getUniformLocation(program, "u_highlightWheel"),
+    rgbCurvesEnabled: gl.getUniformLocation(program, "u_rgbCurvesEnabled"),
+    hueCurvesEnabled: gl.getUniformLocation(program, "u_hueCurvesEnabled"),
+    secondaryCount: gl.getUniformLocation(program, "u_secondaryCount"),
+    adjustUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_ADJUST_KEYS),
+    detailUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_DETAIL_KEYS),
+    effectUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_EFFECT_KEYS),
+    grainSeed: gl.getUniformLocation(program, "u_grainSeed"),
+    effectTime: gl.getUniformLocation(program, "u_effectTime"),
+    paletteSize: gl.getUniformLocation(program, "u_paletteSize"),
+    palette0: gl.getUniformLocation(program, "u_palette0"),
+    palette1: gl.getUniformLocation(program, "u_palette1"),
+    palette2: gl.getUniformLocation(program, "u_palette2"),
+    palette3: gl.getUniformLocation(program, "u_palette3"),
+    palette4: gl.getUniformLocation(program, "u_palette4"),
+    palette5: gl.getUniformLocation(program, "u_palette5"),
+    intensity: gl.getUniformLocation(program, "u_intensity"),
+    compareEnabled: gl.getUniformLocation(program, "u_compareEnabled"),
+    comparePosition: gl.getUniformLocation(program, "u_comparePosition"),
+    compareSoftness: gl.getUniformLocation(program, "u_compareSoftness"),
+    compareLineWidth: gl.getUniformLocation(program, "u_compareLineWidth"),
+  };
 }
 
 function createProgramInfo(canvas: HTMLCanvasElement): {
@@ -1656,75 +1846,82 @@ function createProgramInfo(canvas: HTMLCanvasElement): {
     premultipliedAlpha: false,
   });
   if (!gl) return null;
-  const program = createProgram(gl);
+  const baseShader = createMainShader(gl, "");
+  if (!baseShader) return null;
+  const resources = createMainResources(gl);
+  if (!resources) {
+    gl.deleteProgram(baseShader.program);
+    return null;
+  }
+  return {
+    gl,
+    program: { ...resources, shaders: new Map([["", baseShader]]), failedStageDefines: new Set() },
+  };
+}
+
+function createMainResources(
+  gl: WebGLRenderingContext,
+): Omit<ProgramInfo, "shaders" | "failedStageDefines"> | null {
   const texture = createTexture(gl);
   const lutTexture = createTexture(gl, gl.NEAREST);
   const advancedTexture = createTexture(gl, gl.NEAREST);
-  if (!program || !texture || !lutTexture || !advancedTexture) {
-    deleteProgramResources(gl, program, [texture, lutTexture, advancedTexture]);
+  if (!texture || !lutTexture || !advancedTexture) {
+    deleteTextures(gl, [texture, lutTexture, advancedTexture]);
     return null;
   }
   const quad = gl.createBuffer();
   if (!quad) {
-    deleteProgramResources(gl, program, [texture, lutTexture, advancedTexture]);
+    deleteTextures(gl, [texture, lutTexture, advancedTexture]);
     return null;
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  return { texture, lutTexture, advancedTexture, advancedSignature: null, quad };
+}
 
-  return {
-    gl,
-    program: {
-      program,
-      texture,
-      lutTexture,
-      advancedTexture,
-      advancedSignature: null,
-      quad,
-      position: gl.getAttribLocation(program, "a_pos"),
-      source: gl.getUniformLocation(program, "u_source"),
-      blurSource: gl.getUniformLocation(program, "u_blurSource"),
-      bloomSource: gl.getUniformLocation(program, "u_bloomSource"),
-      kuwaharaSource: gl.getUniformLocation(program, "u_kuwaharaSource"),
-      lut: gl.getUniformLocation(program, "u_lut"),
-      advanced: gl.getUniformLocation(program, "u_advanced"),
-      resolution: gl.getUniformLocation(program, "u_resolution"),
-      uvScale: gl.getUniformLocation(program, "u_uvScale"),
-      uvOffset: gl.getUniformLocation(program, "u_uvOffset"),
-      blurReady: gl.getUniformLocation(program, "u_blurReady"),
-      bloomReady: gl.getUniformLocation(program, "u_bloomReady"),
-      kuwaharaReady: gl.getUniformLocation(program, "u_kuwaharaReady"),
-      lutEnabled: gl.getUniformLocation(program, "u_lutEnabled"),
-      lutSize: gl.getUniformLocation(program, "u_lutSize"),
-      lutTextureSize: gl.getUniformLocation(program, "u_lutTextureSize"),
-      lutDomainMin: gl.getUniformLocation(program, "u_lutDomainMin"),
-      lutDomainMax: gl.getUniformLocation(program, "u_lutDomainMax"),
-      lutIntensity: gl.getUniformLocation(program, "u_lutIntensity"),
-      shadowWheel: gl.getUniformLocation(program, "u_shadowWheel"),
-      midtoneWheel: gl.getUniformLocation(program, "u_midtoneWheel"),
-      highlightWheel: gl.getUniformLocation(program, "u_highlightWheel"),
-      rgbCurvesEnabled: gl.getUniformLocation(program, "u_rgbCurvesEnabled"),
-      hueCurvesEnabled: gl.getUniformLocation(program, "u_hueCurvesEnabled"),
-      secondaryCount: gl.getUniformLocation(program, "u_secondaryCount"),
-      adjustUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_ADJUST_KEYS),
-      detailUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_DETAIL_KEYS),
-      effectUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_EFFECT_KEYS),
-      grainSeed: gl.getUniformLocation(program, "u_grainSeed"),
-      effectTime: gl.getUniformLocation(program, "u_effectTime"),
-      paletteSize: gl.getUniformLocation(program, "u_paletteSize"),
-      palette0: gl.getUniformLocation(program, "u_palette0"),
-      palette1: gl.getUniformLocation(program, "u_palette1"),
-      palette2: gl.getUniformLocation(program, "u_palette2"),
-      palette3: gl.getUniformLocation(program, "u_palette3"),
-      palette4: gl.getUniformLocation(program, "u_palette4"),
-      palette5: gl.getUniformLocation(program, "u_palette5"),
-      intensity: gl.getUniformLocation(program, "u_intensity"),
-      compareEnabled: gl.getUniformLocation(program, "u_compareEnabled"),
-      comparePosition: gl.getUniformLocation(program, "u_comparePosition"),
-      compareSoftness: gl.getUniformLocation(program, "u_compareSoftness"),
-      compareLineWidth: gl.getUniformLocation(program, "u_compareLineWidth"),
-    },
-  };
+function useMainShader(
+  gl: WebGLRenderingContext,
+  program: ProgramInfo,
+  grading: ResolvedHfColorGrading,
+  compare: RuntimeColorGradingCompareState,
+): MainShader {
+  const shader = mainShaderFor(gl, program, fragmentShaderStageDefines(grading, compare));
+  gl.useProgram(shader.program);
+  return shader;
+}
+
+function mainShaderFor(
+  gl: WebGLRenderingContext,
+  program: ProgramInfo,
+  requested: string,
+): MainShader {
+  const stageDefines = program.failedStageDefines.has(requested)
+    ? ALL_FRAGMENT_SHADER_STAGE_DEFINES
+    : requested;
+  if (program.failedStageDefines.has(stageDefines)) {
+    throw new Error("Color grading shader failed to compile");
+  }
+  const cached = program.shaders.get(stageDefines);
+  if (cached) {
+    // Re-inserting a hit keeps the Map in least-recently-used order for eviction.
+    program.shaders.delete(stageDefines);
+    program.shaders.set(stageDefines, cached);
+    return cached;
+  }
+  const compiled = createMainShader(gl, stageDefines);
+  if (!compiled) {
+    program.failedStageDefines.add(stageDefines);
+    return mainShaderFor(gl, program, ALL_FRAGMENT_SHADER_STAGE_DEFINES);
+  }
+  if (program.shaders.size >= MAX_CACHED_MAIN_SHADERS) {
+    for (const [key, evicted] of program.shaders) {
+      gl.deleteProgram(evicted.program);
+      program.shaders.delete(key);
+      break;
+    }
+  }
+  program.shaders.set(stageDefines, compiled);
+  return compiled;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1931,7 +2128,8 @@ function destroyMainProgramResources(gl: WebGLRenderingContext, program: Program
   gl.deleteTexture(program.lutTexture);
   gl.deleteTexture(program.advancedTexture);
   gl.deleteBuffer(program.quad);
-  gl.deleteProgram(program.program);
+  for (const shader of program.shaders.values()) gl.deleteProgram(shader.program);
+  program.shaders.clear();
 }
 
 function replaceProgramResources(entry: ColorGradingEntry): boolean {
@@ -2821,10 +3019,26 @@ function setWheelUniform(
   gl.uniform3f(location, wheel.hue / 360, wheel.amount, wheel.level);
 }
 
+function advancedGradeState(grading: ResolvedHfColorGrading): {
+  rgbCurvesEnabled: boolean;
+  hueCurvesEnabled: boolean;
+  secondaryCount: number;
+} {
+  const { curves, hueCurves, secondaries } = grading;
+  return {
+    rgbCurvesEnabled: hasHfColorGradingRgbCurveValues(curves),
+    hueCurvesEnabled: hasHfColorGradingHueCurveValues(hueCurves),
+    secondaryCount: hasHfColorGradingSecondaryValues(secondaries)
+      ? secondaries.reduce((count, secondary) => count + Number(secondary.enabled), 0)
+      : 0,
+  };
+}
+
 // fallow-ignore-next-line complexity
 function applyUniforms(
   gl: WebGLRenderingContext,
   program: ProgramInfo,
+  shader: MainShader,
   grading: ResolvedHfColorGrading,
   lut: RuntimeLutTexture | null,
   blurReady: boolean,
@@ -2836,58 +3050,53 @@ function applyUniforms(
   grainSeed: number,
   effectTime: number,
 ): void {
-  gl.uniform1i(program.source, 0);
-  gl.uniform1i(program.blurSource, 1);
-  gl.uniform1i(program.lut, 2);
-  gl.uniform1i(program.kuwaharaSource, 3);
-  gl.uniform1i(program.bloomSource, 4);
-  gl.uniform1i(program.advanced, 5);
-  gl.uniform2f(program.resolution, layout.width, layout.height);
-  gl.uniform2f(program.uvScale, uv.scaleX, uv.scaleY);
-  gl.uniform2f(program.uvOffset, uv.offsetX, uv.offsetY);
-  gl.uniform1f(program.blurReady, blurReady ? 1 : 0);
-  gl.uniform1f(program.bloomReady, bloomReady ? 1 : 0);
-  gl.uniform1f(program.kuwaharaReady, kuwaharaReady ? 1 : 0);
-  gl.uniform1f(program.lutEnabled, lut ? 1 : 0);
-  gl.uniform1f(program.lutSize, lut?.size ?? 2);
-  gl.uniform2f(program.lutTextureSize, lut?.textureWidth ?? 1, lut?.textureHeight ?? 1);
+  gl.uniform1i(shader.source, 0);
+  gl.uniform1i(shader.blurSource, 1);
+  gl.uniform1i(shader.lut, 2);
+  gl.uniform1i(shader.kuwaharaSource, 3);
+  gl.uniform1i(shader.bloomSource, 4);
+  gl.uniform1i(shader.advanced, 5);
+  gl.uniform2f(shader.resolution, layout.width, layout.height);
+  gl.uniform2f(shader.uvScale, uv.scaleX, uv.scaleY);
+  gl.uniform2f(shader.uvOffset, uv.offsetX, uv.offsetY);
+  gl.uniform1f(shader.blurReady, blurReady ? 1 : 0);
+  gl.uniform1f(shader.bloomReady, bloomReady ? 1 : 0);
+  gl.uniform1f(shader.kuwaharaReady, kuwaharaReady ? 1 : 0);
+  gl.uniform1f(shader.lutEnabled, lut ? 1 : 0);
+  gl.uniform1f(shader.lutSize, lut?.size ?? 2);
+  gl.uniform2f(shader.lutTextureSize, lut?.textureWidth ?? 1, lut?.textureHeight ?? 1);
   gl.uniform3f(
-    program.lutDomainMin,
+    shader.lutDomainMin,
     lut?.domainMin[0] ?? 0,
     lut?.domainMin[1] ?? 0,
     lut?.domainMin[2] ?? 0,
   );
   gl.uniform3f(
-    program.lutDomainMax,
+    shader.lutDomainMax,
     lut?.domainMax[0] ?? 1,
     lut?.domainMax[1] ?? 1,
     lut?.domainMax[2] ?? 1,
   );
-  gl.uniform1f(program.lutIntensity, grading.lut?.intensity ?? 0);
-  const { curves, hueCurves, secondaries } = grading;
-  const rgbCurvesEnabled = hasHfColorGradingRgbCurveValues(curves);
-  const hueCurvesEnabled = hasHfColorGradingHueCurveValues(hueCurves);
-  const secondaryCount = hasHfColorGradingSecondaryValues(secondaries)
-    ? secondaries.reduce((count, secondary) => count + Number(secondary.enabled), 0)
-    : 0;
+  gl.uniform1f(shader.lutIntensity, grading.lut?.intensity ?? 0);
+  const { rgbCurvesEnabled, hueCurvesEnabled, secondaryCount } = advancedGradeState(grading);
   if (rgbCurvesEnabled || hueCurvesEnabled || secondaryCount > 0) {
-    ensureAdvancedTexture(gl, program, grading, secondaries);
+    ensureAdvancedTexture(gl, program, grading, grading.secondaries);
   }
-  setWheelUniform(gl, program.shadowWheel, grading.wheels.shadows);
-  setWheelUniform(gl, program.midtoneWheel, grading.wheels.midtones);
-  setWheelUniform(gl, program.highlightWheel, grading.wheels.highlights);
-  gl.uniform1f(program.rgbCurvesEnabled, rgbCurvesEnabled ? 1 : 0);
-  gl.uniform1f(program.hueCurvesEnabled, hueCurvesEnabled ? 1 : 0);
-  gl.uniform1f(program.secondaryCount, secondaryCount);
-  for (const [key, location] of program.adjustUniforms) {
+  setWheelUniform(gl, shader.shadowWheel, grading.wheels.shadows);
+  setWheelUniform(gl, shader.midtoneWheel, grading.wheels.midtones);
+  setWheelUniform(gl, shader.highlightWheel, grading.wheels.highlights);
+  gl.uniform1f(shader.rgbCurvesEnabled, rgbCurvesEnabled ? 1 : 0);
+  gl.uniform1f(shader.hueCurvesEnabled, hueCurvesEnabled ? 1 : 0);
+  gl.uniform1f(shader.secondaryCount, secondaryCount);
+  for (const [key, location] of shader.adjustUniforms) {
     gl.uniform1f(location, grading.adjust[key]);
   }
-  for (const [key, location] of program.detailUniforms) {
+  for (const [key, location] of shader.detailUniforms) {
     gl.uniform1f(location, grading.details[key]);
   }
-  gl.uniform1f(program.grainSeed, grainSeed);
-  gl.uniform1f(program.effectTime, effectTime);
-  for (const [key, location] of program.effectUniforms) {
+  gl.uniform1f(shader.grainSeed, grainSeed);
+  gl.uniform1f(shader.effectTime, effectTime);
+  for (const [key, location] of shader.effectUniforms) {
     gl.uniform1f(location, grading.effects[key]);
   }
   const palette =
@@ -2896,18 +3105,18 @@ function applyUniforms(
       ? DEFAULT_ART_PALETTE
       : DEFAULT_EFFECT_PALETTE);
   const lastColor = palette[palette.length - 1] ?? DEFAULT_EFFECT_PALETTE[1];
-  gl.uniform1f(program.paletteSize, palette.length);
-  setPaletteColorUniform(gl, program.palette0, palette[0] ?? DEFAULT_EFFECT_PALETTE[0]);
-  setPaletteColorUniform(gl, program.palette1, palette[1] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette2, palette[2] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette3, palette[3] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette4, palette[4] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette5, palette[5] ?? lastColor);
-  gl.uniform1f(program.intensity, grading.intensity);
-  gl.uniform1f(program.compareEnabled, compare.enabled ? 1 : 0);
-  gl.uniform1f(program.comparePosition, compare.position);
-  gl.uniform1f(program.compareSoftness, compare.softness);
-  gl.uniform1f(program.compareLineWidth, compare.lineWidth);
+  gl.uniform1f(shader.paletteSize, palette.length);
+  setPaletteColorUniform(gl, shader.palette0, palette[0] ?? DEFAULT_EFFECT_PALETTE[0]);
+  setPaletteColorUniform(gl, shader.palette1, palette[1] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette2, palette[2] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette3, palette[3] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette4, palette[4] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette5, palette[5] ?? lastColor);
+  gl.uniform1f(shader.intensity, grading.intensity);
+  gl.uniform1f(shader.compareEnabled, compare.enabled ? 1 : 0);
+  gl.uniform1f(shader.comparePosition, compare.position);
+  gl.uniform1f(shader.compareSoftness, compare.softness);
+  gl.uniform1f(shader.compareLineWidth, compare.lineWidth);
 }
 
 function hideSourceElement(entry: ColorGradingEntry): void {
@@ -3121,7 +3330,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, layout.width, layout.height);
-    gl.useProgram(program.program);
+    const shader = useMainShader(gl, program, grading, entry.compare);
     bindProgramTextures(gl, program, prepared);
     const runtimeTime = (window as WindowWithColorGrading).__player?.getTime?.();
     const frameTime =
@@ -3134,6 +3343,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
     applyUniforms(
       gl,
       program,
+      shader,
       grading,
       lut,
       prepared.blurReady,
@@ -3145,7 +3355,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
       grainSeed,
       frameTime,
     );
-    drawFullscreenQuad(gl, program);
+    drawFullscreenQuad(gl, { quad: program.quad, position: shader.position });
     hideSourceElement(entry);
     entry.hasDrawn = true;
     entry.drawError = null;
@@ -3251,7 +3461,7 @@ async function renderPreviewBatch(
   const { dimensions, uv, grainSeed, effectTime } = frame;
   const images: RuntimeColorGradingPreviewBatch["images"] = [];
 
-  for (const candidate of candidates.slice(0, 32)) {
+  for (const candidate of candidates.slice(0, MAX_PREVIEW_CANDIDATES)) {
     const grading = normalizeHfColorGrading(candidate.grading);
     if (!grading) {
       images.push({ id: candidate.id, dataUrl: null, error: "Invalid grading" });
@@ -3303,12 +3513,13 @@ function renderPreviewCandidate(
   });
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, dimensions.width, dimensions.height);
-  gl.useProgram(program.program);
+  const shader = useMainShader(gl, program, grading, DEFAULT_COMPARE);
   bindProgramTextures(gl, program, prepared);
   if (!lut) renderer.lut = null;
   applyUniforms(
     gl,
     program,
+    shader,
     grading,
     lut,
     prepared.blurReady,
@@ -3320,7 +3531,7 @@ function renderPreviewCandidate(
     grainSeed,
     effectTime,
   );
-  drawFullscreenQuad(gl, program);
+  drawFullscreenQuad(gl, { quad: program.quad, position: shader.position });
   return canvas.toDataURL("image/png");
 }
 
