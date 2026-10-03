@@ -97,7 +97,7 @@ function ChoiceSubmenu({
   preview?: HoverPreview;
 }) {
   const [open, setOpen] = useState(false);
-  // Where the submenu opens, in window pixels: `position: fixed`, so the clipped panel around its row cannot cut it off.
+  // Where the submenu opens, in window pixels: `fixed`, so the clipped panel around its row cannot cut it off.
   const [anchor, setAnchor] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
   const rowRef = useRef<HTMLButtonElement | null>(null);
   const submenuRef = useRef<HTMLDivElement | null>(null);
