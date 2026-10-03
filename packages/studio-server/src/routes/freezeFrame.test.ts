@@ -88,8 +88,13 @@ describe("freeze-frame route", () => {
     expect(calls).toEqual([]);
   });
 
-  it("leaves the file untouched when extraction fails", async () => {
-    const { dir, post } = setup(async () => ({ ok: false, error: "boom" }));
+  it("leaves the file untouched, and no partial still, when extraction fails", async () => {
+    let still = "";
+    const { dir, post } = setup(async (args) => {
+      still = args.at(-1) ?? "";
+      writeFileSync(still, "partial");
+      return { ok: false, error: "boom" };
+    });
     const res = await post({
       path: "index.html",
       expectedVersion: fileContentVersion(html),
@@ -98,6 +103,8 @@ describe("freeze-frame route", () => {
     });
     expect(res.status).toBe(500);
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
+    expect(still).not.toBe("");
+    expect(existsSync(still)).toBe(false);
   });
 
   it("removes the still it extracted when the page changed before the write", async () => {

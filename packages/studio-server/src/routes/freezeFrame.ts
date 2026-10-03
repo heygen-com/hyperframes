@@ -101,6 +101,7 @@ async function extractStill(
     return { error: `freeze still already exists: ${fileName}`, status: 409 };
   const extracted = await tools.extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
   if (!extracted.ok) {
+    rmSync(imagePath, { force: true }); // ffmpeg can leave a partial file when it fails or times out
     return {
       error: `Could not extract the frame: ${extracted.error ?? "ffmpeg failed"}`,
       status: 500,
@@ -161,7 +162,7 @@ export function registerFreezeFrameRoutes(
       stillToken,
     });
     if ("error" in still) return c.json({ error: still.error }, still.status);
-    const { imageSrc, stillPath } = still;
+    const { imageSrc, stillPath, imagePath } = still;
     const folded = applyFreezeFrameToHtml(before, {
       target: body.target,
       playhead: body.playhead,
@@ -169,7 +170,7 @@ export function registerFreezeFrameRoutes(
     });
     // The page never names a still from a freeze that failed past here.
     const fail = (error: string, status: 400 | Failure["status"]) => {
-      rmSync(still.imagePath, { force: true });
+      rmSync(imagePath, { force: true });
       return c.json({ error }, status);
     };
     if (!folded) return fail("Freeze target was not found in the file", 400);
