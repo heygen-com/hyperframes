@@ -2440,9 +2440,8 @@ function insertInheritedStateSetInScript(
   const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   const firstLocated = parsed.located[0];
   if (tlDecl) {
-    // Own line both sides: a removal takes the trailing newline, so a re-sync is byte-stable.
-    const lineEnd = script[tlDecl.end] === "\n" ? "" : "\n";
-    ms.appendLeft(tlDecl.end, "\n" + code + lineEnd);
+    const ownLineEnd = script[tlDecl.end] === "\n" ? "" : "\n";
+    ms.appendLeft(tlDecl.end, "\n" + code + ownLineEnd);
   } else if (firstLocated) {
     const firstCall = firstLocated.call;
     const exprStmt = findEnclosingExpressionStatement(firstCall.ancestors);
