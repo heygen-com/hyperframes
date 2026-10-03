@@ -320,16 +320,12 @@ async function runResolutionPreflight(
   failCommand();
 }
 
-async function executeBatchRender(
+export function batchRowRenderOptions(
   plan: RenderPlan,
   browserPath: string | undefined,
-  batchModule: typeof import("../batchRender.js"),
-  preparedBatch: import("../batchRender.js").PreparedBatchRender,
-  dependencies: RenderExecutionDependencies,
-  cancellation?: RenderCancellationScope,
-): Promise<void> {
+): RenderOptions {
   const batchQuiet = plan.quiet || plan.batchJson;
-  const renderOptionsBase: RenderOptions = {
+  return {
     fps: plan.fps,
     quality: plan.quality,
     authoringSkill: plan.authoringSkill,
@@ -368,6 +364,18 @@ async function executeBatchRender(
     desktopHint: false,
     manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
   };
+}
+
+async function executeBatchRender(
+  plan: RenderPlan,
+  browserPath: string | undefined,
+  batchModule: typeof import("../batchRender.js"),
+  preparedBatch: import("../batchRender.js").PreparedBatchRender,
+  dependencies: RenderExecutionDependencies,
+  cancellation?: RenderCancellationScope,
+): Promise<void> {
+  const batchQuiet = plan.quiet || plan.batchJson;
+  const renderOptionsBase = batchRowRenderOptions(plan, browserPath);
   const manifest = await batchModule.runBatchRender({
     prepared: preparedBatch,
     concurrency: plan.batchConcurrency,

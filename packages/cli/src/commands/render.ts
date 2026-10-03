@@ -890,7 +890,7 @@ async function renderDocker(
     printRenderComplete({
       outputPath,
       projectDir,
-      desktopHint: options.desktopHint !== false && options.quality !== "draft",
+      desktopHint: wantsDesktopHint(options),
       elapsedMs: elapsed,
       quiet: options.quiet,
       format: options.format,
@@ -1144,7 +1144,7 @@ async function executeLocalRender(
     printRenderComplete({
       outputPath,
       projectDir,
-      desktopHint: options.desktopHint !== false && options.quality !== "draft",
+      desktopHint: wantsDesktopHint(options),
       elapsedMs: elapsed,
       quiet: options.quiet,
       format: options.format,
@@ -1903,6 +1903,11 @@ function readOutputFootprint(outputPath: string): { fileSize: string; isDirector
   } catch {
     return { fileSize: "unknown", isDirectory: false };
   }
+}
+
+/** A delivered render points to the desktop app; a draft or a batch row does not. */
+export function wantsDesktopHint(options: Pick<RenderOptions, "desktopHint" | "quality">): boolean {
+  return options.desktopHint !== false && options.quality !== "draft";
 }
 
 function printRenderComplete(input: {

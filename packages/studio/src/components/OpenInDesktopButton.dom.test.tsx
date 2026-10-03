@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
 /**
- * "Open in app": shown only when the preview server can hand the project to the desktop app; a click opens it, or
- * offers the download when the app is missing.
+ * "Edit with Framey": shown only where the preview server answers on macOS; a press opens the project in the app,
+ * or introduces Framey with the download while the app cannot take it or is missing.
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -14,7 +14,7 @@ const showToast = vi.fn();
 vi.mock("../contexts/StudioContext", () => ({ useStudioShellContext: () => ({ showToast }) }));
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
-const { HANDOFF_READY, OpenInDesktopButton } = await import("./OpenInDesktopButton");
+const { OpenInDesktopButton } = await import("./OpenInDesktopButton");
 
 const DOWNLOAD = "https://hyperframes.dev/studio/download";
 let mounted: { root: Root; host: HTMLElement } | null = null;
@@ -74,19 +74,20 @@ it("stays hidden when the server says it cannot open the app (not macOS)", async
   expect(button()).toBeNull();
 });
 
-it("before the app opens projects from here, introduces Framey with the download and opens nothing", async () => {
-  serve(Response.json({ available: true }), { opened: true });
+it("while the app cannot take a project yet, introduces Framey with the download and opens nothing", async () => {
+  serve(Response.json({ available: true, handoff: false }), { opened: true });
   await mount();
   await act(async () => button()!.click());
-  if (HANDOFF_READY) return;
   expect(posts).toBe(0);
   expect(document.body.textContent).toContain("Meet Framey");
-  expect(document.body.textContent).not.toContain("Coming soon");
   expect(downloadHref()).toBe(DOWNLOAD);
 });
 
-it.skipIf(!HANDOFF_READY)("opens the project in the app and says so", async () => {
-  serve(Response.json({ available: true }), { opened: true, bundleId: "dev.hyperframes.desktop" });
+it("opens the project in the app and says so", async () => {
+  serve(Response.json({ available: true, handoff: true }), {
+    opened: true,
+    bundleId: "dev.hyperframes.desktop",
+  });
   await mount();
   await act(async () => button()!.click());
   expect(posts).toBe(1);
@@ -98,18 +99,15 @@ it.skipIf(!HANDOFF_READY)("opens the project in the app and says so", async () =
   expect(document.body.textContent).not.toContain("Meet Framey");
 });
 
-it.skipIf(!HANDOFF_READY)(
-  "introduces Framey and offers the download when the app is missing",
-  async () => {
-    serve(Response.json({ available: true }), {
-      opened: false,
-      reason: "not-installed",
-      downloadUrl: DOWNLOAD,
-    });
-    await mount();
-    await act(async () => button()!.click());
-    expect(showToast).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain("Meet Framey");
-    expect(downloadHref()).toBe(DOWNLOAD);
-  },
-);
+it("introduces Framey and offers the download when the app is missing", async () => {
+  serve(Response.json({ available: true, handoff: true }), {
+    opened: false,
+    reason: "not-installed",
+    downloadUrl: DOWNLOAD,
+  });
+  await mount();
+  await act(async () => button()!.click());
+  expect(showToast).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain("Meet Framey");
+  expect(downloadHref()).toBe(DOWNLOAD);
+});

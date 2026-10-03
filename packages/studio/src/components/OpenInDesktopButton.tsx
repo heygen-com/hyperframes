@@ -4,37 +4,33 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 import { FrameyGlyph } from "./FrameyGlyph";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Popover } from "./ui";
 
-// "Edit with Framey": hands this project to HyperFrames Studio, the desktop app, through the preview server
-// (`POST /api/open-in-desktop`, the same hand-off as `hyperframes open`). Shown only when that server says it can.
+// "Edit with Framey": the preview server (`/api/open-in-desktop`) says whether to show it and whether the app can
+// take the project yet (its gate is the CLI's HANDOFF_READY); until then a press introduces Framey with the download.
 const ROUTE = "/api/open-in-desktop";
 const DOWNLOAD_URL = "https://hyperframes.dev/studio/download";
-// ponytail: the desktop app opens a handed-over folder only from its next release; until then the button
-// introduces Framey and links the download. Flip once that release ships.
-export const HANDOFF_READY = false;
 /** How far the pupils travel towards the pointer, in the glyph's own units. */
 const GAZE = 2.2;
 /** Long enough for the flight to finish before the label comes back. */
 const OPENING_MS = 1600;
 
-type OpenResult =
-  | { opened: true }
-  | { opened: false; reason: "not-installed" | "unsupported-platform"; downloadUrl: string };
+type OpenResult = { opened: true } | { opened: false; reason: string; downloadUrl: string };
 
-function useDesktopHandoffAvailable(): boolean {
-  const [available, setAvailable] = useState(false);
+/** Null hides the button: no such route (the app's own Studio), or not macOS. */
+function useDesktopRoute(): { handoff: boolean } | null {
+  const [route, setRoute] = useState<{ handoff: boolean } | null>(null);
   useEffect(() => {
     let live = true;
     fetch(ROUTE)
       .then((res) => (res.ok ? res.json() : null))
-      .then((body: { available?: unknown } | null) => {
-        if (live) setAvailable(body?.available === true);
+      .then((body: { available?: unknown; handoff?: unknown } | null) => {
+        if (live && body?.available === true) setRoute({ handoff: body.handoff === true });
       })
       .catch(() => {});
     return () => {
       live = false;
     };
   }, []);
-  return available;
+  return route;
 }
 
 /** Framey looks at the pointer: one listener, one write per frame, no re-render. */
@@ -65,17 +61,17 @@ function useGaze(
 
 export function OpenInDesktopButton() {
   const { showToast } = useStudioShellContext();
-  const available = useDesktopHandoffAvailable();
+  const route = useDesktopRoute();
   const [opening, setOpening] = useState(false);
   // The card under the button, introducing Framey with the app's download.
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const eye = useRef<SVGGElement>(null);
   useGaze(trigger, eye);
-  if (!available) return null;
+  if (!route) return null;
 
   const open = async () => {
-    if (!HANDOFF_READY) {
+    if (!route.handoff) {
       trackStudioEvent("toolbar_action", { action: "open_in_desktop" });
       setDownloadUrl(DOWNLOAD_URL);
       return;
