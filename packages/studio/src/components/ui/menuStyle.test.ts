@@ -23,7 +23,7 @@ function sources(dir: string): string[] {
 }
 
 const files = sources(root).map((path) => ({
-  name: relative(root, path),
+  name: relative(root, path).replaceAll("\\", "/"),
   text: readFileSync(path, "utf8"),
 }));
 
