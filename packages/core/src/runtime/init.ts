@@ -4425,8 +4425,7 @@ export function initSandboxRuntimeModular(): void {
     // running transport. This stays as the explicit statement of the
     // invariant, one boolean, for the day that guard is added there.
     manualEditGestureWatch.observing &&
-    // A drop/cancel owes one reconciling seek. Mid-gesture nothing is owed yet, and the
-    // gesture watch wakes the loop the moment the marker clears.
+    // A drop/cancel owes one reconciling seek; the gesture watch wakes the loop when it clears.
     (!pausedSeekDeferredByManualGesture || hasActiveStudioManualEditGesture()) &&
     // A composition change is owed a manifest post that the rate limit has
     // deferred. Parking here would strand it until the next unrelated change,
