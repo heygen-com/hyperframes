@@ -44,6 +44,7 @@ import {
   resolveHeadlessShellPath,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
+  BeginFrameRequiredError,
   type BrowserLease,
   type CaptureMode,
 } from "./browserManager.js";
@@ -1209,6 +1210,26 @@ export async function completeDeferredDrawElementInit(session: CaptureSession): 
   session.deInitDeferred = false;
 }
 
+function screenshotModeReason(input: {
+  headlessShell: boolean;
+  isLinux: boolean;
+  supersampling: boolean;
+  drawElementTransparent: boolean;
+  softwareGpu: boolean;
+}): string {
+  if (!input.isLinux) return "BeginFrame capture runs only on Linux";
+  if (!input.headlessShell) return "chrome-headless-shell was not found";
+  if (input.supersampling) return "a deviceScaleFactor above 1 needs screenshot capture";
+  if (input.drawElementTransparent)
+    return "transparent drawElement capture needs screenshot capture";
+  if (input.softwareGpu)
+    return "the browser GPU resolved to software, which uses screenshot capture";
+  return (
+    "this session was set to screenshot capture (a transparent format, a render-mode hint, " +
+    "low-memory mode, or a retry after a capture failure)"
+  );
+}
+
 // fallow-ignore-next-line unit-size
 export async function createCaptureSession(
   serverUrl: string,
@@ -1284,6 +1305,17 @@ export async function createCaptureSession(
     !drawElementTransparent
       ? "beginframe"
       : "screenshot";
+  if (preMode === "screenshot" && config?.requireBeginFrame) {
+    throw new BeginFrameRequiredError(
+      screenshotModeReason({
+        headlessShell: Boolean(headlessShell),
+        isLinux,
+        supersampling,
+        drawElementTransparent,
+        softwareGpu: !forceScreenshot && effectiveForceScreenshot,
+      }),
+    );
+  }
   // Callers that already have the HTML pass options.requiresWebGpu; others
   // fall back to fetching the server about to be navigated to anyway. A
   // fetch failure defaults to false — the real page.goto moments later

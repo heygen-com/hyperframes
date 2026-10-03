@@ -19,6 +19,7 @@ function fingerprint(args: string[] = ["--one"]): BrowserLaunchFingerprint {
     browserTimeoutMs: 1_000,
     protocolTimeoutMs: 2_000,
     requestedCaptureMode: "screenshot",
+    requireBeginFrame: false,
   };
 }
 

@@ -17,6 +17,7 @@ import {
   _probeBeginFrameSupportForTests,
   _setPuppeteerForTests,
   acquireBrowser,
+  BeginFrameRequiredError,
   buildChromeArgs,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
@@ -304,6 +305,65 @@ describe("browser launch capture-mode contract", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe.skipIf(process.platform !== "linux")("BeginFrame probe failure", () => {
+  let dir: string;
+  let chromePath: string;
+  let launch: ReturnType<typeof vi.fn>;
+
+  function browserFailingProbe(): Browser {
+    return {
+      connected: true,
+      newPage: vi.fn().mockRejectedValue(new Error("renderer unavailable")),
+      version: vi.fn().mockResolvedValue("HeadlessChrome/152.0.0.0"),
+      close: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      process: () => ({ kill: vi.fn(), killed: false }),
+    } as unknown as Browser;
+  }
+
+  beforeEach(() => {
+    _resetBrowserPoolForTests();
+    dir = mkdtempSync(join(tmpdir(), "hf-require-beginframe-"));
+    chromePath = join(dir, "chrome-headless-shell");
+    writeFileSync(chromePath, "");
+    launch = vi.fn().mockImplementation(async () => browserFailingProbe());
+    _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
+    vi.restoreAllMocks();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("relaunches in screenshot mode by default", async () => {
+    const lease = await acquireBrowser(["--enable-begin-frame-control"], {
+      chromePath,
+      enableBrowserPool: false,
+    });
+
+    expect(lease.captureMode).toBe("screenshot");
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(launch.mock.calls[1]?.[0].args).not.toContain("--enable-begin-frame-control");
+    await lease.release();
+  });
+
+  it("fails without a screenshot relaunch when BeginFrame is required", async () => {
+    const acquired = acquireBrowser(["--enable-begin-frame-control"], {
+      chromePath,
+      enableBrowserPool: false,
+      requireBeginFrame: true,
+    });
+
+    await expect(acquired).rejects.toThrow(BeginFrameRequiredError);
+    await expect(acquired).rejects.toThrow(/beginFrame probe failed.*renderer unavailable/);
+    expect(launch).toHaveBeenCalledOnce();
   });
 });
 

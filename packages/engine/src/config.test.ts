@@ -85,6 +85,14 @@ describe("resolveConfig", () => {
     expect(config.enableBrowserPool).toBe(true);
   });
 
+  it("requires BeginFrame only when PRODUCER_REQUIRE_BEGINFRAME is true", () => {
+    unsetEnv("PRODUCER_REQUIRE_BEGINFRAME");
+    expect(resolveConfig().requireBeginFrame).toBe(false);
+
+    setEnv("PRODUCER_REQUIRE_BEGINFRAME", "true");
+    expect(resolveConfig().requireBeginFrame).toBe(true);
+  });
+
   it("lets env vars opt out of default streaming encode", () => {
     setEnv("PRODUCER_ENABLE_STREAMING_ENCODE", "false");
 

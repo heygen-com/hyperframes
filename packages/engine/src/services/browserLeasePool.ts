@@ -9,6 +9,7 @@ export interface BrowserLaunchFingerprint {
   readonly browserTimeoutMs: number;
   readonly protocolTimeoutMs: number;
   readonly requestedCaptureMode: CaptureMode;
+  readonly requireBeginFrame: boolean;
 }
 
 export interface BrowserLaunchResult {
@@ -58,6 +59,7 @@ function fingerprintKey(fingerprint: Readonly<BrowserLaunchFingerprint>): string
     fingerprint.browserTimeoutMs,
     fingerprint.protocolTimeoutMs,
     fingerprint.requestedCaptureMode,
+    fingerprint.requireBeginFrame,
   ]);
 }
 

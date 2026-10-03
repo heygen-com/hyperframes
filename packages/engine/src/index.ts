@@ -87,6 +87,7 @@ export {
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
   WebGpuUnavailableError,
+  BeginFrameRequiredError,
   ENABLE_BROWSER_POOL,
   BrowserLeasePool,
   type BuildChromeArgsOptions,

@@ -229,6 +229,40 @@ describe("createRenderPlan", () => {
     }
   });
 
+  it("maps --require-beginframe to the engine's environment switch", () => {
+    expect(createRenderPlan({ dir: projectDir, "require-beginframe": true }).environment).toEqual({
+      PRODUCER_REQUIRE_BEGINFRAME: "true",
+    });
+    expect(createRenderPlan({ dir: projectDir }).environment).not.toHaveProperty(
+      "PRODUCER_REQUIRE_BEGINFRAME",
+    );
+  });
+
+  it("rejects --require-beginframe with --docker instead of dropping the requirement", () => {
+    expect(() =>
+      createRenderPlan({ dir: projectDir, docker: true, "require-beginframe": true }),
+    ).toThrow(CliUsageError);
+    expect(
+      createRenderPlan({ dir: projectDir, docker: true, "require-beginframe": false }).environment,
+    ).toEqual({ PRODUCER_REQUIRE_BEGINFRAME: "false" });
+  });
+
+  it("rejects PRODUCER_REQUIRE_BEGINFRAME=true with --docker", () => {
+    const previous = process.env.PRODUCER_REQUIRE_BEGINFRAME;
+    process.env.PRODUCER_REQUIRE_BEGINFRAME = "true";
+    try {
+      expect(() => createRenderPlan({ dir: projectDir, docker: true })).toThrow(CliUsageError);
+      expect(() => createRenderPlan({ dir: projectDir })).not.toThrow();
+      expect(
+        createRenderPlan({ dir: projectDir, docker: true, "require-beginframe": false })
+          .environment,
+      ).toEqual({ PRODUCER_REQUIRE_BEGINFRAME: "false" });
+    } finally {
+      if (previous === undefined) delete process.env.PRODUCER_REQUIRE_BEGINFRAME;
+      else process.env.PRODUCER_REQUIRE_BEGINFRAME = previous;
+    }
+  });
+
   it("resolves a relative frame-cache directory into the execution environment", () => {
     const plan = createRenderPlan({ dir: projectDir, "frames-cache-dir": "./frame-cache" });
     expect(plan.environment.HYPERFRAMES_EXTRACT_CACHE_DIR).toBe(resolve("./frame-cache"));
