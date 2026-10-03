@@ -199,7 +199,8 @@ function indexTweens(children: RuntimeTween[]): TweenIndex {
 
 function tweensTargeting(timeline: RuntimeTimeline | undefined, el: Element): RuntimeTween[] {
   const children = timeline?.getChildren?.(true) ?? [];
-  if (!timeline || !tweenIndexes) return children.filter((tween) => matchesElement(tween, el));
+  if (typeof timeline !== "object" || !tweenIndexes)
+    return children.filter((tween) => matchesElement(tween, el));
   let index = tweenIndexes.get(timeline);
   if (!index) tweenIndexes.set(timeline, (index = indexTweens(children)));
   return [...(index.byElement.get(el) ?? []), ...(el.id ? (index.byId.get(el.id) ?? []) : [])];

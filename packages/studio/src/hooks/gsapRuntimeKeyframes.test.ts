@@ -289,4 +289,15 @@ describe("withTweenIndex — many elements, one scan of the tweens", () => {
     withTweenIndex(askAll);
     expect(tweens.every((tween) => tween.targets.mock.calls.length === 1)).toBe(true);
   });
+
+  it("skips a timelines entry that is not an object", () => {
+    const odd = {
+      contentWindow: {
+        __timelines: { stray: null, label: "x", main: { getChildren: () => tweens } },
+      },
+      contentDocument: { querySelector: (sel: string) => ({ id: sel.slice(1) }) },
+    } as unknown as HTMLIFrameElement;
+    expect(withTweenIndex(() => hasNonHoldTweenForElement(odd, "#clip-3"))).toBe(true);
+    expect(withTweenIndex(() => hasNonHoldTweenForElement(odd, "#nobody"))).toBe(false);
+  });
 });
