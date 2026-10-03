@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
+import { parseHTML } from "linkedom";
 import {
   closeSync,
   ftruncateSync,
@@ -21,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
@@ -194,7 +196,11 @@ describe("registerPreviewRoutes", () => {
     const html = await response.text();
 
     expect(response.status).toBe(200);
-    expect(html).toContain("__hfStudioMotionApply");
+    const motionScript = [...parseHTML(html).document.querySelectorAll("script")].find((el) =>
+      el.textContent?.includes("__hfStudioMotionApply"),
+    );
+    // Deferred with the composition scripts, so it still runs after them.
+    expect(motionScript?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
     expect(html).toContain("studio-motion");
     expect(html).toContain("gsap@3.15.0/dist/gsap.min.js");
   });

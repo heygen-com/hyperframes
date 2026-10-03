@@ -9,6 +9,7 @@ import {
 } from "../compiler/compositionScoping";
 import { parseImportMap } from "../compiler/importMaps";
 import { hasSameLink } from "../compiler/scriptRuns";
+import { waitForFonts } from "./afterFonts";
 import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
@@ -554,6 +555,7 @@ async function mountCompositionContent(params: {
     stashInstanceVariables(params, contentNode, runtimeScopeCompositionId);
   }
 
+  if (scriptPayloads.length > 0) await waitForFonts();
   for (const scriptPayload of scriptPayloads) {
     const injectedScript = document.createElement("script");
     if (scriptPayload.type) {

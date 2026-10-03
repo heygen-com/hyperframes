@@ -4,8 +4,8 @@ import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
+  AFTER_FONTS_SCRIPT_TYPE,
   addScenePartsManifest,
-  injectScriptsIntoHtml,
   insertBeforeCloseTag,
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
@@ -186,12 +186,9 @@ function injectStudioMotionScript(
     activeCompositionPath,
   });
   if (!script) return html;
-  return injectScriptsIntoHtml(
-    injectStudioMotionDependencies(html, manifestContent),
-    [],
-    [script],
-    false,
-  );
+  const withDependencies = injectStudioMotionDependencies(html, manifestContent);
+  const tag = `<script type="${AFTER_FONTS_SCRIPT_TYPE}">${script.replace(/<\/script/gi, "<\\/script")}</script>`;
+  return insertBeforeCloseTag(withDependencies, "body", tag) ?? `${withDependencies}${tag}`;
 }
 
 const GSAP_FALLBACK_ATTR = "data-hf-gsap-fallback";

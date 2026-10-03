@@ -7,6 +7,7 @@ import { resetRuntimeDataForTests } from "./runtimeData";
 import { WebAudioTransport } from "./webAudioTransport";
 import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
 import { wrapScopedCompositionScript } from "../compiler/compositionScoping";
+import { AFTER_FONTS_SCRIPT_TYPE } from "../compiler/scriptRuns";
 
 vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
@@ -105,7 +106,7 @@ function preview(scenes: Scene[], shared = "s1", sharedMarkup = "") {
     scenes
       .map(
         (s) =>
-          `<script data-hf-scene="${s.id}">${sceneScript(s.id, s.label)}${s.script ?? ""}</script>`,
+          `<script type="${AFTER_FONTS_SCRIPT_TYPE}" data-hf-scene="${s.id}">${sceneScript(s.id, s.label)}${s.script ?? ""}</script>`,
       )
       .join("");
   return {
@@ -139,14 +140,15 @@ function mount(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
   document.body.innerHTML = body;
   window.__timelines = { main: root };
   for (const s of scenes) window.__timelines[s.id] = made[s.label];
-  // Run each scene script the swap appends when it is appended, as a browser would.
-  const append = document.body.appendChild.bind(document.body);
-  document.body.appendChild = <T extends Node>(node: T): T => {
-    append(node);
-    if (node instanceof HTMLScriptElement && node.hasAttribute("data-hf-scene"))
-      new Function(node.textContent ?? "")();
-    return node;
-  };
+  // Run each scene script the swap puts in place, as a browser runs a created script.
+  const replaceWith = Element.prototype.replaceWith;
+  vi.spyOn(Element.prototype, "replaceWith").mockImplementation(function (this: Element, ...nodes) {
+    replaceWith.apply(this, nodes);
+    for (const node of nodes) {
+      if (node instanceof HTMLScriptElement && node.hasAttribute("data-hf-scene"))
+        new Function(node.textContent ?? "")();
+    }
+  });
 }
 
 function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
@@ -205,7 +207,6 @@ describe("__hfSwapScenes", () => {
     (window as unknown as { __made: typeof made }).__made = made;
   });
   afterEach(() => {
-    Reflect.deleteProperty(document.body, "appendChild");
     Reflect.deleteProperty(window, "gsap");
     window.__hfRuntimeTeardown?.();
     document.head.innerHTML = "";

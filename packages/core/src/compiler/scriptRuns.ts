@@ -38,6 +38,30 @@ export function inlineScriptRuns(
   return runs;
 }
 
+export const AFTER_FONTS_SCRIPT_TYPE = "text/hf-after-fonts";
+const AFTER_FONTS_MODULE_TYPE = `${AFTER_FONTS_SCRIPT_TYPE}+module`;
+export const AFTER_FONTS_SCRIPTS = `script[type="${AFTER_FONTS_SCRIPT_TYPE}"], script[type="${AFTER_FONTS_MODULE_TYPE}"]`;
+
+/** Gives each body script a type the browser does not run, so the runtime can run it once web fonts are ready. */
+export function deferScriptsUntilFonts(
+  document: Document,
+  isFramework: (el: Element) => boolean = () => false,
+): void {
+  for (const el of document.querySelectorAll("body script")) {
+    if (isFramework(el) || el.closest("noscript, svg")) continue;
+    if (isClassicInline(el)) el.setAttribute("type", AFTER_FONTS_SCRIPT_TYPE);
+    else if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") {
+      el.setAttribute("type", AFTER_FONTS_MODULE_TYPE);
+    }
+  }
+}
+
+export function typeAfterFonts(el: Element): string | null {
+  const type = el.getAttribute("type");
+  if (type === AFTER_FONTS_SCRIPT_TYPE) return null;
+  return type === AFTER_FONTS_MODULE_TYPE ? "module" : type;
+}
+
 /** Undefined for a type the browser never applies as CSS; `media="all"` and an empty title count as none. */
 export function cssStyleMergeKey(el: Element): string | undefined {
   const rawType = el.getAttribute("type") ?? "";
