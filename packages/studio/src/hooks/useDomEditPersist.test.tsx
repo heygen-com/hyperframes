@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { CutoverResult } from "../utils/sdkCutover";
+import { studioManualEditSavesIn } from "../components/editor/manualEditsDom";
 import {
+  DomEditPersistPreparedWriteError,
   DomEditPersistUnresolvableError,
   DomEditPersistUnsafeValueError,
 } from "./domEditPersistFailure";
@@ -46,6 +48,10 @@ function stubServer(patchResponse: Record<string, unknown>) {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
+
+const CHANGED = { changed: true, content: PATCHED, path: "index.html", version: "v2" };
+const PREPARED = PATCHED.replace("Card", "Card!");
+const sdkResult = (result: CutoverResult) => vi.fn(async (): Promise<CutoverResult> => result);
 
 const patchPosts = (fetchMock: ReturnType<typeof stubServer>) =>
   fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes("/patch-element/"));
@@ -193,6 +199,105 @@ describe("useDomEditPersist", () => {
     expect(patchPosts(fetchMock)).toHaveLength(0);
     expect(params.reloadPreview).not.toHaveBeenCalled();
     expect(params.forceReloadSdkSession).not.toHaveBeenCalled();
+  });
+
+  it("records the edit once, before the preview reloads", async () => {
+    stubServer(CHANGED);
+    const { persist, params } = renderPersist();
+
+    await persist(selection, OPERATIONS);
+
+    const recordEdit = vi.mocked(params.editHistory.recordEdit);
+    const reloadPreview = vi.mocked(params.reloadPreview);
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    expect(recordEdit.mock.invocationCallOrder[0]).toBeLessThan(
+      reloadPreview.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("writes prepared content after the patch and records it as the saved file", async () => {
+    stubServer(CHANGED);
+    const { persist, params } = renderPersist();
+
+    const outcome = await persist(selection, OPERATIONS, { prepareContent: () => PREPARED });
+
+    expect(params.writeProjectFile).toHaveBeenCalledWith("index.html", PREPARED, PATCHED);
+    expect(params.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ files: { "index.html": { before: SOURCE, after: PREPARED } } }),
+    );
+    expect(params.reloadPreview).toHaveBeenCalledTimes(1);
+    expect(outcome).toBeUndefined();
+  });
+
+  it("a failed prepared write keeps the patch, reloads, then rejects", async () => {
+    stubServer(CHANGED);
+    const { persist, params } = renderPersist({
+      writeProjectFile: vi.fn(async () => {
+        throw new Error("disk full");
+      }),
+    });
+
+    const saving = persist(selection, OPERATIONS, { prepareContent: () => PREPARED });
+
+    await expect(saving).rejects.toBeInstanceOf(DomEditPersistPreparedWriteError);
+    expect(params.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ files: { "index.html": { before: SOURCE, after: PATCHED } } }),
+    );
+    expect(params.reloadPreview).toHaveBeenCalledTimes(1);
+    expect(params.showToast).toHaveBeenCalledWith(
+      "Saved, but couldn't finish updating index.html: disk full",
+      "error",
+    );
+  });
+
+  it("a declined SDK cutover falls back to the server patch", async () => {
+    const fetchMock = stubServer(CHANGED);
+    const onTrySdkPersist = sdkResult({ status: "declined", reason: "unsupported" });
+    const { persist, params } = renderPersist({ onTrySdkPersist });
+
+    await persist(selection, OPERATIONS);
+
+    expect(onTrySdkPersist).toHaveBeenCalledTimes(1);
+    expect(patchPosts(fetchMock)).toHaveLength(1);
+    expect(params.editHistory.recordEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed SDK cutover rethrows without a server patch", async () => {
+    const fetchMock = stubServer(CHANGED);
+    const error = new Error("sdk broke");
+    const { persist } = renderPersist({ onTrySdkPersist: sdkResult({ status: "failed", error }) });
+
+    await expect(persist(selection, OPERATIONS)).rejects.toBe(error);
+    expect(patchPosts(fetchMock)).toHaveLength(0);
+  });
+
+  it("an imported font or prepared content skips the SDK and goes to the server", async () => {
+    const fetchMock = stubServer(CHANGED);
+    const onTrySdkPersist = sdkResult({ status: "declined", reason: "unused" });
+    const { persist } = renderPersist({ onTrySdkPersist });
+    const importedFont = { family: "Inter", path: "fonts/inter.woff2", url: "/fonts/inter.woff2" };
+
+    await persist(selection, OPERATIONS, { importedFont });
+    await persist(selection, OPERATIONS, { prepareContent: (html) => html });
+
+    expect(onTrySdkPersist).not.toHaveBeenCalled();
+    const [[, fontInit]] = patchPosts(fetchMock);
+    expect(JSON.parse(String(fontInit?.body)).fontFaceCss).toContain("Inter");
+    expect(patchPosts(fetchMock)).toHaveLength(2);
+  });
+
+  it("counts a save on the edited element's document until it settles", async () => {
+    stubServer(CHANGED);
+    const element = document.createElement("div");
+    const { persist } = renderPersist();
+    const before = studioManualEditSavesIn(document);
+
+    const saving = persist({ ...selection, element }, OPERATIONS);
+    expect(studioManualEditSavesIn(document)).toBe(before + 1);
+    await saving;
+    await Promise.resolve();
+
+    expect(studioManualEditSavesIn(document)).toBe(before + 2);
   });
 
   it("does nothing when shouldSave says no", async () => {
