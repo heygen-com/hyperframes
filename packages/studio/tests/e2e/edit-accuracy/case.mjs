@@ -42,7 +42,10 @@ const liveServers = new Set();
 function signalGroup(child, signal) {
   // Windows has no process groups, so taskkill /T ends the server and its children.
   if (process.platform === "win32")
-    return void terminateWindowsProcessTree(child.pid).catch(() => undefined);
+    return void terminateWindowsProcessTree(child.pid).catch((error) => {
+      // taskkill exits 128 when the process is already gone.
+      if (!/status 128$/.test(error.message)) throw error;
+    });
   try {
     process.kill(-child.pid, signal);
   } catch (error) {
@@ -65,6 +68,7 @@ export async function startServer(cli, dir, port, log, home) {
     {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
+      windowsHide: true,
       // A per-case HOME keeps Studio's undo history inside the case's tmp dir.
       env: {
         ...process.env,
