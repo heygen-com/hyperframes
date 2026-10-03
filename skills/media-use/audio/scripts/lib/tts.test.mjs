@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -155,3 +155,46 @@ test("synthResult names a non-zero subprocess exit", () => {
   assert.equal(res.ok, false);
   assert.match(res.error, /kokoro .* exited with status 2/);
 });
+
+// Kokoro shells out to `npx hyperframes tts`; a fake npx on PATH records the argv
+// synthesizeOne really builds, so a dropped flag fails here. Windows runs npx via
+// node directly, so the stub never resolves there.
+async function kokoroArgv(options) {
+  const dir = mkdtempSync(join(tmpdir(), "tts-kokoro-argv-"));
+  const argvLog = join(dir, "argv.txt");
+  writeFileSync(join(dir, "npx"), `#!/bin/sh\nprintf '%s\\n' "$@" > "${argvLog}"\n`);
+  chmodSync(join(dir, "npx"), 0o755);
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = dir;
+    await synthesizeOne({
+      provider: "kokoro",
+      text: "hi",
+      voiceId: "am_michael",
+      wavAbs: join(dir, "line-0.wav"),
+      hyperframesDir: dir,
+      ...options,
+    });
+    return readFileSync(argvLog, "utf8").trim().split("\n");
+  } finally {
+    process.env.PATH = originalPath;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test(
+  "synthesizeOne(kokoro) forwards a non-default speed to the CLI",
+  { skip: process.platform === "win32" },
+  async () => {
+    const argv = await kokoroArgv({ speed: 0.8, lang: "es" });
+    assert.deepEqual(argv.slice(-4), ["--lang", "es", "--speed", "0.8"]);
+  },
+);
+
+test(
+  "synthesizeOne(kokoro) leaves --speed off at the default",
+  { skip: process.platform === "win32" },
+  async () => {
+    assert.ok(!(await kokoroArgv({})).includes("--speed"));
+  },
+);

@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -120,6 +121,20 @@ test("two effects never share a file when one's name is taken by the person, run
     } finally {
       globalThis.fetch = realFetch;
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an out-of-range speed stops the engine before any TTS runs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audio-speed-range-"));
+  try {
+    writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ speed: 5, lines: [] }));
+    const r = spawnSync(process.execPath, [join(HERE, "audio.mjs"), "--hyperframes", dir], {
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /speed must be above 0 and at most 3, got 5/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
