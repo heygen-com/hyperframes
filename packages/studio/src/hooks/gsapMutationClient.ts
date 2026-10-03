@@ -88,7 +88,6 @@ function readMutationError(value: unknown, fallback: string): string {
   return fallback;
 }
 
-/** The one request every GSAP mutation write sends; each caller reads the response its own way. */
 export function requestGsapMutation(
   projectId: string,
   route: "gsap-mutations" | "gsap-mutations-batch",
