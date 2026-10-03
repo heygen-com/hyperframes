@@ -18,6 +18,7 @@ import {
   shouldIgnoreHttpError,
   shouldIgnoreRequestFailure,
 } from "../commands/validate.js";
+import { detectColorGradingGpuStallRisk } from "../browser/gpuPolicy.js";
 import { loadBrowserScript } from "../commands/layout.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
@@ -156,6 +157,9 @@ export async function runBrowserCheck(
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
   await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
+  const requestedGpuMode = options.browserGpuMode ?? resolveCliChromeGpuMode();
+  const colorGradingGpuWarning = await detectColorGradingGpuStallRisk(html, requestedGpuMode);
+  if (colorGradingGpuWarning) console.warn(`\n[hyperframes] ${colorGradingGpuWarning}`);
   const server = await serveStaticProjectHtml(
     project.dir,
     html,
@@ -173,7 +177,7 @@ export async function runBrowserCheck(
       navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
-      browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
+      browserGpuMode: requestedGpuMode,
       beforeNavigate: (page) => wireRuntimeListeners(page, drafts, () => currentTime),
     });
     chromeBrowser = session.browser;
