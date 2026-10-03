@@ -17,6 +17,7 @@ import {
   GsapOwnershipProtocolError,
   GsapPreviewConvergenceError,
   postGsapMutation,
+  postGsapMutations,
   requireGsapOwnershipProtocol,
   rollbackOwnedMutation,
   type GsapMutationStatus,
@@ -336,6 +337,32 @@ function foldGsapMutationIntoHistory(
   );
 }
 
+export function shiftGsapMutation(elementId: string, delta: number) {
+  if (delta === 0 || !elementId) return null;
+  return { type: "shift-positions", targetSelector: `#${elementId}`, delta };
+}
+
+export function scaleGsapMutation(
+  elementId: string,
+  oldStart: number,
+  oldDuration: number,
+  newStart: number,
+  newDuration: number,
+) {
+  if (!elementId || oldDuration <= 0 || newDuration <= 0) return null;
+  if (oldStart === newStart && oldDuration === newDuration) return null;
+  return {
+    type: "scale-positions",
+    targetSelector: `#${elementId}`,
+    oldStart,
+    oldDuration,
+    newStart,
+    newDuration,
+  };
+}
+
+const UNMUTATED: GsapMutationStatus = { mutated: false, scriptText: null };
+
 /**
  * Shift all GSAP animation positions targeting a given element by a time delta.
  * Calls the server-side GSAP mutation endpoint which uses the AST-based parser.
@@ -347,17 +374,9 @@ export async function shiftGsapPositions(
   elementId: string,
   delta: number,
 ): Promise<GsapMutationStatus> {
-  if (delta === 0 || !elementId) return { mutated: false, scriptText: null };
-  return postGsapMutation(
-    projectId,
-    filePath,
-    {
-      type: "shift-positions",
-      targetSelector: `#${elementId}`,
-      delta,
-    },
-    "shift-positions failed",
-  );
+  const mutation = shiftGsapMutation(elementId, delta);
+  if (!mutation) return UNMUTATED;
+  return postGsapMutation(projectId, filePath, mutation, "shift-positions failed");
 }
 
 export async function scaleGsapPositions(
@@ -369,23 +388,9 @@ export async function scaleGsapPositions(
   newStart: number,
   newDuration: number,
 ): Promise<GsapMutationStatus> {
-  if (!elementId || oldDuration <= 0 || newDuration <= 0)
-    return { mutated: false, scriptText: null };
-  if (oldStart === newStart && oldDuration === newDuration)
-    return { mutated: false, scriptText: null };
-  return postGsapMutation(
-    projectId,
-    filePath,
-    {
-      type: "scale-positions",
-      targetSelector: `#${elementId}`,
-      oldStart,
-      oldDuration,
-      newStart,
-      newDuration,
-    },
-    "scale-positions failed",
-  );
+  const mutation = scaleGsapMutation(elementId, oldStart, oldDuration, newStart, newDuration);
+  if (!mutation) return UNMUTATED;
+  return postGsapMutation(projectId, filePath, mutation, "scale-positions failed");
 }
 
 /** The GSAP sync a committed SDK timing write made, or null when its timeline script is unchanged. */
@@ -502,8 +507,8 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
   activeCompPath: string | null;
   changes: readonly C[];
   resolveChangePath: (element: TimelineElement) => string;
-  /** Per-change GSAP mutation; return null to skip a change with no timing delta. */
-  mutateChange: (change: C, changePath: string) => Promise<GsapMutationStatus> | null;
+  /** The change's GSAP mutation; null skips a change with no timing delta. */
+  mutationFor: (change: C) => Record<string, unknown> | null;
   sdkGsap?: GsapMutationStatus | null;
 }): Promise<void> {
   const activePath = input.activeCompPath || "index.html";
@@ -539,14 +544,18 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
           let mutated = false;
           let scriptText: GsapMutationStatus["scriptText"] = null;
           let after: string | undefined;
+          const byPath = new Map<string, Record<string, unknown>[]>();
           for (const change of input.changes) {
+            const mutation = input.mutationFor(change);
+            if (!mutation) continue;
             const changePath = input.resolveChangePath(change.element);
+            byPath.set(changePath, [...(byPath.get(changePath) ?? []), mutation]);
+          }
+          for (const [changePath, mutations] of byPath) {
             const status = await runOwnedMutation(changePath, () =>
-              input.mutateChange(change, changePath),
+              postGsapMutations(input.projectId, changePath, mutations, input.errorLabel),
             );
             mutated = mutated || status.mutated;
-            // The LAST mutation against the active comp carries the cumulative
-            // rewritten script for that file.
             if (changePath === activePath) ({ scriptText, after } = status);
           }
           return { mutated, scriptText: otherFileChanged ? null : scriptText, after };
