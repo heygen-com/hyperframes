@@ -184,6 +184,22 @@ The activity functions plus their result types are also re-exported from `@hyper
 4. **Mix** — extracts `<audio>` elements and mixes them into the final video. For `png-sequence`, audio is written as an `audio.aac` sidecar.
 5. **Finalize** — applies faststart for streaming-friendly MP4 (no-op for WebM, MOV, and `png-sequence`). For `hls`, stream-copies the encode into playlists and MPEG-TS segments instead.
 
+### Where each step lives
+
+`executeRenderJob` in `src/services/renderOrchestrator.ts` runs the stages in
+`src/services/render/stages/`, in this order:
+
+- `compileStage.ts`, `probeStage.ts`, `extractVideosStage.ts`, `audioStage.ts`
+- `createCapturePlan` in `src/services/render/capturePlan.ts` picks the capture
+  kind (streaming, disk, segmented or HDR layered) and the worker count
+- capture: `captureStreamingStage.ts`, `captureStage.ts`,
+  `captureSegmentedStage.ts` or `captureHdrStage.ts`, by plan kind
+- `encodeStage.ts`, then `assembleStage.ts`
+
+The job's `producerConfig` is used when present; otherwise `resolveConfig` in
+`packages/engine/src/config.ts` builds it. Capture, encoding and browser
+primitives are engine services (see `packages/engine/README.md`).
+
 ## Documentation
 
 Full documentation: [hyperframes.heygen.com/packages/producer](https://hyperframes.heygen.com/packages/producer)

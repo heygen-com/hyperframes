@@ -32,8 +32,9 @@ line names the owner; read it there.
    and `useInlineTextEditing.tsx`. `hooks/useDomEditSession.ts` wires the handlers.
 2. **GSAP or plain.** The predicates `gsapWritesPosition`, `gsapWritesRotation`
    and `gsapWritesBox` live in `hooks/gsapRuntimeKeyframes.ts`. The router is
-   `hooks/useGsapAwareEditing.ts`. Move and rotate keep the route chosen at
-   press. Resize decides again at commit through `hooks/gsapResizeIntercept.ts`.
+   `hooks/useGsapAwareEditing.ts`. Move and a plain rotation keep the route
+   chosen at press. A GSAP rotation checks ownership again at commit, and resize
+   decides at commit through `hooks/gsapResizeIntercept.ts`.
 3. **Writers.** Plain edits go through `hooks/elementOffsetStager.ts`,
    `hooks/useDomGeometryCommits.ts` and `hooks/plainRotation.ts`, then
    `hooks/useDomEditPositionPatchCommit.ts`. GSAP edits: `hooks/gsapRuntimeBridge.ts`
@@ -42,15 +43,20 @@ line names the owner; read it there.
    `hooks/gsapWholePropertyOffsetCommit.ts`. Styles, text, attributes and groups:
    `hooks/domStyleCommit.ts`, `hooks/useDomEditTextCommits.ts`,
    `hooks/useDomEditAttributeCommits.ts`, `hooks/useGroupCommits.ts`.
-4. **Save.** DOM edits go through `hooks/useDomEditPersist.ts`, the single
-   writer, to studio-server's `file-mutations/patch-element` route. Script edits
-   go through `hooks/useGsapScriptCommits.ts` to `gsap-mutations`. Both routes
-   are in `packages/studio-server/src/routes/files.ts`. The own-write token is in
-   `utils/studioFileVersion.ts`. `hooks/useExternalFileChangeCoordinator.ts`
+4. **Save.** There are three paths. A single DOM edit goes through
+   `hooks/useDomEditPersist.ts`. It first offers the edit to the SDK path
+   (`utils/sdkCutover.ts`, wired in `useDomEditSession.ts`), which writes the
+   file itself. Otherwise it posts studio-server's `file-mutations/patch-element`.
+   Atomic DOM batches go through `hooks/useDomEditCommits.ts` to
+   `patch-element-batches`. Script edits go through `hooks/useGsapScriptCommits.ts`,
+   to `gsap-mutations` or to the SDK path. The routes are in
+   `packages/studio-server/src/routes/files.ts`. The own-write token is in
+   `utils/studioFileVersion.ts`, and `hooks/useExternalFileChangeCoordinator.ts`
    drops the echo.
-5. **Reload.** For DOM edits, `useDomEditPersist.ts` reloads unless `skipRefresh`
-   is set. For script edits, `useGsapScriptCommits.ts` (`applyPreviewSync`)
-   picks one of three: an instant patch, `utils/gsapSoftReload.ts`, or a reload.
+5. **Reload.** Each save path decides its own reload. After a `patch-element`
+   save, `useDomEditPersist.ts` reloads unless `skipRefresh` is set. For script
+   edits, `useGsapScriptCommits.ts` (`applyPreviewSync`) picks one of three: an
+   instant patch, `utils/gsapSoftReload.ts`, or a reload.
    A reload bumps `refreshKey`, and `refreshPlayer` in
    `player/hooks/useTimelinePlayer.ts` either swaps the scene or runs
    `player/hooks/useShadowPreviewReload.ts`, which waits while a gesture or a
@@ -142,8 +148,8 @@ bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-
 - **oxlint and oxfmt**, not eslint or prettier.
 - **Before and After captures.** A PR that changes code under `packages/studio`
   or `packages/player` needs `## Before` and `## After` sections in its
-  description, each with an image or video. The exemptions are in
-  `scripts/check-pr-captures.mjs`, and its failure message lists them.
+  description, each with an image or video. The exemptions (a small change with
+  no visible effect, Markdown) are defined in `scripts/check-pr-captures.mjs`.
 
 ## Traps worth knowing
 

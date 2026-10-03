@@ -38,8 +38,9 @@ bun run build   # Build all packages
 bun run test    # Run all tests
 ```
 
-Packages load each other through their `exports`, and Node resolves those to
-`dist/`. Run `bun run build` once in a fresh worktree, before any package's
+Packages load each other through their `exports`. Under Node, core, parsers,
+lint and studio-server resolve to `dist/`, and player always loads its built
+bundle. Run `bun run build` once in a fresh worktree, before any package's
 tests or typecheck. After editing a package that another package imports, run
 that package's `build` again before the dependent package's tests. Core's
 `src/generated/` is git-ignored build output: if you see
