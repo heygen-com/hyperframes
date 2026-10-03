@@ -422,3 +422,17 @@ describe("TimelineToolbar Linked Selection", () => {
     act(() => useLinkedClipPreferences.getState().setSyncIndicatorsVisible(true));
   });
 });
+
+describe("TimelineToolbar — host right actions", () => {
+  it("draws the host's controls immediately before the thumbnails toggle", () => {
+    const { host, root } = renderToolbar(undefined, {
+      rightActions: <button type="button">Script</button>,
+    });
+    const buttons = [...host.querySelectorAll("button")];
+    const script = buttons.findIndex((b) => b.textContent === "Script");
+    const thumbs = buttons.findIndex((b) => b.getAttribute("aria-label")?.includes("thumbnails"));
+    expect(script).toBeGreaterThan(-1);
+    expect(thumbs).toBe(script + 1);
+    act(() => root.unmount());
+  });
+});
