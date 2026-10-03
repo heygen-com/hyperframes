@@ -55,6 +55,8 @@ describe("a case's verdict", () => {
   it("passes only when every metric does, smoothness included", () => {
     expect(score({ id: "case" }, result({})).pass).toBe(true);
     expect(score({ id: "case" }, { ...result({}), drop: 1000 }).pass).toBe(false);
+    const slow = { ...frames, work: [9, 1, 1], control: frames };
+    expect(score({ id: "case" }, { ...result({}), smooth: slow }).pass).toBe(false);
     expect(score({ id: "case" }, { error: "boom" }).pass).toBe(false);
   });
 });
