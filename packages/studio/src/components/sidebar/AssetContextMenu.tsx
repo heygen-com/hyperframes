@@ -95,8 +95,7 @@ export function ContextMenu({
     onClose();
   }, [renameDraft, asset, onRename, onClose]);
 
-  const itemCls =
-    `${menuClasses.row} ${menuClasses.rowEnabled} active:bg-neutral-700/70 transition-colors`;
+  const itemCls = `${menuClasses.row} ${menuClasses.rowEnabled} active:bg-neutral-700/70 transition-colors`;
 
   return (
     <div

@@ -289,10 +289,7 @@ function WindowMenu() {
         Window
       </button>
       {open && (
-        <div
-          role="menu"
-          className={`${menuClasses.panel} absolute right-0 top-8 z-50 w-44`}
-        >
+        <div role="menu" className={`${menuClasses.panel} absolute right-0 top-8 z-50 w-44`}>
           {panels.map((id) => (
             <button
               key={id}

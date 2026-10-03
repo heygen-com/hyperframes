@@ -101,9 +101,7 @@ describe("ClipMenuToolItems", () => {
 
   it("opens its submenu at the row's edge in window pixels, and flips left near the window's right edge", () => {
     const rowAt = (rect: { top: number; left: number; right: number }) =>
-      vi
-        .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-        .mockReturnValue(rect as DOMRect);
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(rect as DOMRect);
     const spy = rowAt({ top: 50, left: 100, right: 300 });
     renderItems("sound", video);
     openSubmenu("Voice");
@@ -112,7 +110,11 @@ describe("ClipMenuToolItems", () => {
     expect([menu.style.top, menu.style.left]).toEqual(["50px", "300px"]);
     act(() => root?.unmount());
     document.body.innerHTML = "";
-    spy.mockReturnValue({ top: 50, left: window.innerWidth - 200, right: window.innerWidth - 10 } as DOMRect);
+    spy.mockReturnValue({
+      top: 50,
+      left: window.innerWidth - 200,
+      right: window.innerWidth - 10,
+    } as DOMRect);
     renderItems("sound", video);
     openSubmenu("Voice");
     menu = document.querySelector<HTMLElement>('[role="menu"]')!;
