@@ -16,7 +16,6 @@ import { STUDIO_MOTION_ATTR, STUDIO_MOTION_TIMELINE_ID } from "./studioMotionTyp
 import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 
 function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
-  if (!doc.defaultView) return [];
   const elements = Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(isHtmlElement);
   // Handle legacy HTML files where attributes were persisted with a double data- prefix
   const legacyAttr = `data-${attr}`;

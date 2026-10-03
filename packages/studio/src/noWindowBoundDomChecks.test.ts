@@ -5,10 +5,10 @@ import { expect, it } from "vitest";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const DOM_CTOR = String.raw`(?:HTML\w*Element|SVG\w*Element|Element|Node|Text|ShadowRoot|DocumentFragment)\b`;
-// A DOM constructor taken off a window asks which window built a node, not what it is.
+// A DOM constructor read off any object, a window most of all, asks which window built a node.
 const WINDOW_BOUND = [
-  new RegExp(String.raw`\b(?:defaultView|contentWindow|\w*[Ww]in|\w*[Vv]iew)\??\.\s*${DOM_CTOR}`),
-  new RegExp(String.raw`instanceof\s+[\w$]+(?:\??\.[\w$]+)*\??\.\s*${DOM_CTOR}`),
+  new RegExp(String.raw`[\w$)\]!?]\??\.\s*${DOM_CTOR}`),
+  new RegExp(String.raw`\[\s*["'](?:HTML|SVG)\w*Element["']`),
 ];
 
 function sources(dir: string): string[] {

@@ -3,6 +3,7 @@
  * Centralises duplicated interfaces, constants, and small utilities
  * to reduce drift risk.
  */
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
@@ -223,7 +224,7 @@ function structuralSelector(element: Element): string | null {
   const parts: string[] = [];
   for (let node: Element | null = element; node; node = node.parentElement) {
     if (node !== element) {
-      const id = node instanceof HTMLElement ? node.id : "";
+      const id = isHtmlElement(node) ? node.id : "";
       const hfId = node.getAttribute("data-hf-id");
       if (id) {
         parts.unshift(idSelector(id));
