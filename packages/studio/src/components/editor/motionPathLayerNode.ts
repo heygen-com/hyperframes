@@ -1,11 +1,9 @@
-/** Which presses on a motion-path node belong to the selected layer instead of the node. */
 type Point = { x: number; y: number };
 type DrawnNode = Point & { ax: number; ay: number };
 
 const LAYER_BOX = '[data-dom-edit-selection-box="true"]';
 
-/** The node GSAP renders the layer at stands for the layer; inside the layer's box, only a node's
- *  drawn dot (`dotR` around it, composition px) is the node's, not its wider grab ring. */
+/** A press on the layer's own node, or in its box but off a node's dot, belongs to the layer. */
 export function pressBelongsToLayer(
   e: React.PointerEvent,
   point: Point,
