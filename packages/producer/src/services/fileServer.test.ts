@@ -1,16 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   closeFileServerSafely,
   createFileServer,
+  FILE_SERVER_HEALTH_PATH,
   RENDER_CAPTURE_MODE_SHIM,
   HF_BRIDGE_SCRIPT,
   HF_EARLY_STUB,
   injectScriptsAtHeadStart,
   isPathInside,
   parseRangeHeader,
+  probeFileServerHealth,
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 
@@ -73,6 +76,84 @@ async function withFileServer(
 function writeEmptyIndex(projectDir: string): void {
   writeFileSync(join(projectDir, "index.html"), "<!doctype html><html></html>");
 }
+
+describe("file server health", () => {
+  it("serves a dedicated loopback health endpoint", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-health-"));
+    try {
+      writeEmptyIndex(projectDir);
+      await withFileServer(projectDir, async (server) => {
+        const response = await fetch(`${server.url}${FILE_SERVER_HEALTH_PATH}`);
+
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("ok");
+        expect(await probeFileServerHealth(server)).toMatchObject({
+          healthy: true,
+          status: 200,
+        });
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports an unreachable endpoint without throwing", async () => {
+    const health = await probeFileServerHealth({ url: "http://127.0.0.1:1" }, 100);
+
+    expect(health.healthy).toBe(false);
+    expect(health.error).toBeTruthy();
+    expect(health.durationMs).toBeLessThan(1_000);
+  });
+
+  it("rejects a foreign listener that answers 200 without the identity header", async () => {
+    // A stale port can be re-bound by an unrelated process between the probe
+    // and the restart decision; a bare 200 must not read as "our server".
+    const foreign = createServer((_request, response) => response.end("ok"));
+    await new Promise<void>((resolve) => foreign.listen(0, "127.0.0.1", resolve));
+    const address = foreign.address();
+    if (!address || typeof address === "string") throw new Error("foreign server has no port");
+    try {
+      const health = await probeFileServerHealth({ url: `http://127.0.0.1:${address.port}` }, 500);
+
+      expect(health).toMatchObject({ healthy: false, status: 200 });
+      expect(health.error).toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve) => foreign.close(() => resolve()));
+    }
+  });
+
+  it("names the connection-refused code of a probe against a closed port", async () => {
+    const vacated = createServer();
+    await new Promise<void>((resolve) => vacated.listen(0, "127.0.0.1", resolve));
+    const address = vacated.address();
+    if (!address || typeof address === "string") throw new Error("server has no port");
+    await new Promise<void>((resolve) => vacated.close(() => resolve()));
+
+    const health = await probeFileServerHealth({ url: `http://127.0.0.1:${address.port}` }, 500);
+
+    expect(health.healthy).toBe(false);
+    // Bun reports `ConnectionRefused` on the error itself; Node buries
+    // `ECONNREFUSED` in `.cause`. Either must surface in the diagnostic.
+    expect(health.error).toMatch(/ConnectionRefused|ECONNREFUSED/);
+  });
+
+  it("bounds a health endpoint that never responds", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Promise<Response>(() => {}),
+    });
+    try {
+      const health = await probeFileServerHealth({ url: `http://127.0.0.1:${server.port}` }, 25);
+
+      expect(health.healthy).toBe(false);
+      expect(health.error).toBeTruthy();
+      expect(health.durationMs).toBeLessThan(500);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
 
 async function expectTextResponse(
   url: string,

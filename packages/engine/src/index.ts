@@ -139,8 +139,11 @@ export {
   CaptureFailure,
   classifyCaptureFailure,
   isFatalCaptureFailure,
+  isLoopbackConnectionLoss,
+  type CaptureEndpointDiagnostic,
   type CaptureFailureKind,
   type CaptureWorkerDiagnostic,
+  type LoopbackConnectionLoss,
 } from "./services/captureFailure.js";
 export {
   createChromeMemorySampler,
