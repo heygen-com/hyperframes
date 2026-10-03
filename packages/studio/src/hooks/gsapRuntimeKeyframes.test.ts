@@ -271,8 +271,12 @@ describe("withTweenIndex — many elements, one scan of the tweens", () => {
     duration: () => 1,
     startTime: () => 0,
   }));
-  const iframe = (id: string) => fakeIframe({ id }, tweens);
-  const askAll = () => ids.map((id) => hasNonHoldTweenForElement(iframe(id), `#${id}`));
+  const timeline = { getChildren: () => tweens };
+  const preview = {
+    contentWindow: { __timelines: { "index.html": timeline } },
+    contentDocument: { querySelector: (sel: string) => ({ id: sel.slice(1) }) },
+  } as unknown as HTMLIFrameElement;
+  const askAll = () => ids.map((id) => hasNonHoldTweenForElement(preview, `#${id}`));
 
   it("answers the same as the plain scan", () => {
     const plain = askAll();
