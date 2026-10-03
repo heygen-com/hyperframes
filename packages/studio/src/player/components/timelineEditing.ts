@@ -250,7 +250,6 @@ export interface TimelinePromptElement {
 
 export type BlockedTimelineEditIntent = "move" | "edit-many" | "resize-start" | "resize-end";
 
-/** Most clips a hand drag moves or resizes at once; a larger selection goes through the prompt box. */
 export const MAX_HAND_EDIT_CLIPS = 3;
 
 export interface TimelineRangeSelection {

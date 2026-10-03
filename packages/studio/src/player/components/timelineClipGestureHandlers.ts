@@ -98,7 +98,8 @@ function resolvePointerDownAction(
   }
 
   if (!onMoveElement || !capabilities.canMove) return { kind: "ignore" };
-  if (exceedsHandEditLimit(grabbed, e.altKey)) return { kind: "block", intent: "edit-many", rect };
+  if (exceedsHandEditLimit(grabbed, e.altKey, null))
+    return { kind: "block", intent: "edit-many", rect };
   return { kind: "move", rect };
 }
 
@@ -135,7 +136,7 @@ export function createClipGestureHandlers(
   const onResizeStart = (edge: "start" | "end", e: ReactPointerEvent): void => {
     if (!canStartResize(edge, e, capabilities, onResizeElement)) return;
     e.stopPropagation();
-    if (exceedsHandEditLimit(el, e.altKey)) {
+    if (exceedsHandEditLimit(el, e.altKey, edge)) {
       blockedClipRef.current = {
         pointerId: e.pointerId,
         element: el,

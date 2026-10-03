@@ -81,9 +81,8 @@ async function requestParsedAnimations(
   try {
     const res = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
-      // Always revalidate against the source; the server answers 304 for a file that did not
-      // change, so a write elsewhere costs no re-parse here. No per-call timestamp (a
-      // deterministic-render no-no).
+      // Always revalidate; an unchanged file answers 304. No per-call timestamp
+      // (a deterministic-render no-no).
       { cache: "no-cache" },
     );
     if (!res.ok) return null;
@@ -99,8 +98,8 @@ async function requestParsedAnimations(
 }
 
 /**
- * Read one composition file's tweens into the keyframe cache; false when the read failed.
- * Split out of the hook so the effect can run it per file without re-nesting the whole body.
+ * Read one composition file's tweens into the keyframe cache. Split out of the
+ * hook so the effect can run it per file without re-nesting the whole body.
  */
 // fallow-ignore-next-line complexity
 export async function populateKeyframeCacheFromAst(

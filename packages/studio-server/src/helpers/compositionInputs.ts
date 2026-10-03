@@ -54,14 +54,11 @@ function closureOf(read: SourceReader, compPath: string): Set<string> {
 const inputSignatures = new Map<string, { projectSignature: string; inputSignature: string }>();
 
 interface RootMemo {
-  /** Hash of the whole root file this memo answers for. */
   root: string;
   head: string;
-  /** What `compositionsAffectedBy` told every subscriber for that root content. */
   affected: string[] | null;
 }
 
-/** Per project, the last root content announced to watchers; thumbnail requests only seed it. */
 const rootMemos = new Map<string, RootMemo>();
 
 const sha1 = (text: string) => createHash("sha1").update(text).digest("hex");
@@ -72,8 +69,7 @@ function rootHashes(read: SourceReader) {
 }
 
 // What a thumbnail of `compPath` renders from: the project minus the compositions the root
-// mounts that `compPath` does not. A scene's page borrows only the root's head, so for a scene
-// the root counts as its head alone; the root's own thumbnail renders all of it.
+// mounts that `compPath` does not; for a scene the root counts as its head alone.
 export function compositionInputSignature(
   projectDir: string,
   compPath: string,
@@ -103,8 +99,7 @@ export function compositionInputSignature(
 /**
  * Compositions whose rendered frames a write at `changedPath` can change, or `null` for all
  * of them: assets, a root head edit, and any file the root does not mount reach every
- * composition. A root write that leaves the head as it was changes only the root's own frames.
- * Every subscriber asking about the same root content gets the same answer.
+ * composition. A head-preserving root write changes only the root's own frames.
  */
 export function compositionsAffectedBy(projectDir: string, changedPath: string): string[] | null {
   const changed = changedPath.replace(/\\/g, "/");

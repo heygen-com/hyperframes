@@ -44,10 +44,6 @@ export function readFileChangeAffectedCompositions(payload: unknown): readonly s
   return value.map(normalizeStudioFileChangePath);
 }
 
-/**
- * `incoming` replacing a `waiting` change must not forget what `waiting` invalidated: the
- * result carries both lists, or "all" when either said so.
- */
 export function mergeFileChangeAffectedCompositions(waiting: unknown, incoming: unknown): unknown {
   const before = readFileChangeAffectedCompositions(waiting);
   const after = readFileChangeAffectedCompositions(incoming);

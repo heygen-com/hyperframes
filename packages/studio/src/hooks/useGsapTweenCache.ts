@@ -290,8 +290,6 @@ export function usePopulateKeyframeCacheForFile(
   const domClipChildrenKey = usePlayerStore((s) =>
     s.domClipChildren.map((c) => `${c.id}<${c.hostId}`).join("|"),
   );
-  // What each file's cache entries were last loaded for. Switching `sourceFile` to a
-  // file that is already loaded for the current data must not refetch the others.
   const loadedRef = useRef<{ dataKey: string; files: Set<string> }>({
     dataKey: "",
     files: new Set(),
@@ -311,8 +309,6 @@ export function usePopulateKeyframeCacheForFile(
     );
     const sameData = loadedRef.current.dataKey === dataKey;
     const stale = sameData ? files.filter((sf) => !loadedRef.current.files.has(sf)) : files;
-    // Flipping `sourceFile` among files already covered keeps all of them; only new data
-    // (another composition, a write) narrows the set back to what is on screen.
     const covered = sameData ? new Set([...loadedRef.current.files, ...files]) : new Set(files);
     loadedRef.current = { dataKey, files: covered };
     // Everything the previous scan cached for a file this one no longer covers
@@ -323,7 +319,6 @@ export function usePopulateKeyframeCacheForFile(
     const doc = iframeRef?.current?.contentDocument;
     for (const sf of stale) {
       void populateKeyframeCacheFromAst(projectId, sf, doc).then((loaded) => {
-        // A failed read is not loaded: the next selection flip asks for it again.
         if (!loaded && loadedRef.current.dataKey === dataKey) loadedRef.current.files.delete(sf);
       });
     }

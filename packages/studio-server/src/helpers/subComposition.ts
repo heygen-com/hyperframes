@@ -236,7 +236,6 @@ function tagRootCompositionFile(bodyHtml: string, compPath: string): string {
   );
 }
 
-/** The root document's `<head>` content: the only part of the root a sub-composition page borrows. */
 export function rootHeadContent(rootHtml: string): string {
   return rootHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i)?.[1] ?? "";
 }

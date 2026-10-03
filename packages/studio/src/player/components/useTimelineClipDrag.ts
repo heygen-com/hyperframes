@@ -538,7 +538,7 @@ export function useTimelineClipDrag({
       if (!element || !getClipCapabilities(element).canMove) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (exceedsHandEditLimit(element, false))
+      if (exceedsHandEditLimit(element, false, null))
         return void onBlockedEditAttemptRef.current?.(element, "edit-many");
       setShowPopover(false);
       setRangeSelectionRef.current?.(null);
