@@ -332,7 +332,7 @@ describe("persistTimelineBatchEdit", () => {
 
     expect(finishFile).toHaveBeenCalledTimes(1);
     const perMember = members.reduce(
-      (current, { element, buildPatches }, i) =>
+      (current, { element }, i) =>
         buildTimelineMoveTimingPatch(current, { id: element.id }, i + 6, 1),
       source,
     );

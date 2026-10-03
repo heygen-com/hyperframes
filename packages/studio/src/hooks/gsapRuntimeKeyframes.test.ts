@@ -3,8 +3,8 @@ import {
   arcPathFromMotionPathValue,
   hasNonHoldTweenForElement,
   readRuntimeKeyframes,
-  withTweenIndex,
 } from "./gsapRuntimeKeyframes";
+import { withTweenIndex } from "./gsapRuntimeTweenIndex";
 
 // Build a fake preview iframe whose runtime timeline holds the given child tweens
 // and resolves `selector` to `el`.
