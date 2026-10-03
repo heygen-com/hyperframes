@@ -48,7 +48,7 @@ export function toggleClipWithLinks(key: string, altKey: boolean): TimelineEleme
   return state.elements.find((el) => (el.key ?? el.id) === primary) ?? null;
 }
 
-/** Whether a hand drag grabbing `grabbed` (trimming `edge`, or null for a move) would change more clips than allowed. */
+/** Whether a hand drag on `grabbed` (trimming `edge`, or null to move) would change more clips than allowed. */
 export function exceedsHandEditLimit(
   grabbed: TimelineElement,
   altKey: boolean,

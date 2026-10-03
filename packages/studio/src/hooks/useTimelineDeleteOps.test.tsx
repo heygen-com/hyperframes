@@ -28,6 +28,17 @@ describe("applyRippleShifts", () => {
   });
 });
 
+function stubRemoveElementsFetch(current: string, afterRemoval: string) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const isRemoval = String(input).includes("/file-mutations/remove-elements/");
+      const content = isRemoval ? afterRemoval : current;
+      return new Response(JSON.stringify({ changed: isRemoval, content }), { status: 200 });
+    }),
+  );
+}
+
 describe("useTimelineDeleteOps: ripple undo label", () => {
   const html = `<!DOCTYPE html><html data-composition-variables='[]'><body>
 <div data-hf-id="hf-stage" data-hf-root data-duration="6">
@@ -38,16 +49,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
 </body></html>`;
 
   beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/file-mutations/remove-elements/")) {
-          return new Response(JSON.stringify({ changed: true, content: html }), { status: 200 });
-        }
-        return new Response(JSON.stringify({ content: html }), { status: 200 });
-      }),
-    );
+    stubRemoveElementsFetch(html, html);
   });
 
   afterEach(() => {
@@ -179,18 +181,7 @@ describe("useTimelineDeleteOps: undo race", () => {
 </body></html>`;
 
   beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/file-mutations/remove-elements/")) {
-          return new Response(JSON.stringify({ changed: true, content: htmlAfterDeletingC }), {
-            status: 200,
-          });
-        }
-        return new Response(JSON.stringify({ content: html }), { status: 200 });
-      }),
-    );
+    stubRemoveElementsFetch(html, htmlAfterDeletingC);
   });
 
   afterEach(() => {

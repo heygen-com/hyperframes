@@ -145,6 +145,7 @@ const requestKind = (url) =>
  * Runs `action` (which returns the page time it considers done) and returns ms since its start.
  * BULK_PROFILE=1 also prints the CPU profile and a request summary of just that action to stderr.
  */
+// fallow-ignore-next-line complexity
 async function measure(page, name, action) {
   const profile = Boolean(process.env.BULK_PROFILE);
   const cdp = profile ? await page.createCDPSession() : null;
@@ -179,6 +180,7 @@ async function measure(page, name, action) {
   };
 }
 
+// fallow-ignore-next-line complexity
 function printProfile(name, cpu, requests) {
   const self = new Map();
   const byId = new Map(cpu.nodes.map((n) => [n.id, n]));
