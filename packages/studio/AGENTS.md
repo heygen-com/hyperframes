@@ -21,6 +21,44 @@ Two consequences you will meet immediately:
   chrome disagrees with the pixels underneath it, the bug is almost always in
   the measurement, in `components/editor/domEditOverlayGeometry.ts`.
 
+## Where a canvas edit goes
+
+Paths are under `src/`; bare file names are in `src/components/editor/`. Each
+line names the owner; read it there.
+
+1. **Gesture.** `DomEditSelectionChrome.tsx` starts it, `domEditOverlayStartGesture.ts`
+   arms it, `useDomEditOverlayGestures.ts` (`onPointerUp`) hands it off. Nudge,
+   crop and inline text enter through `useDomEditNudge.ts`, `DomEditCropHandles.tsx`
+   and `useInlineTextEditing.tsx`. `hooks/useDomEditSession.ts` wires the handlers.
+2. **GSAP or plain.** The predicates `gsapWritesPosition`, `gsapWritesRotation`
+   and `gsapWritesBox` live in `hooks/gsapRuntimeKeyframes.ts`. The router is
+   `hooks/useGsapAwareEditing.ts`. Move and rotate keep the route chosen at
+   press. Resize decides again at commit through `hooks/gsapResizeIntercept.ts`.
+3. **Writers.** Plain edits go through `hooks/elementOffsetStager.ts`,
+   `hooks/useDomGeometryCommits.ts` and `hooks/plainRotation.ts`, then
+   `hooks/useDomEditPositionPatchCommit.ts`. GSAP edits: `hooks/gsapRuntimeBridge.ts`
+   (the drag and rotate intercepts), `hooks/gsapDragCommit.ts`,
+   `hooks/gsapDragPositionCommit.ts` (keyframe at the playhead) and
+   `hooks/gsapWholePropertyOffsetCommit.ts`. Styles, text, attributes and groups:
+   `hooks/domStyleCommit.ts`, `hooks/useDomEditTextCommits.ts`,
+   `hooks/useDomEditAttributeCommits.ts`, `hooks/useGroupCommits.ts`.
+4. **Save.** DOM edits go through `hooks/useDomEditPersist.ts`, the single
+   writer, to studio-server's `file-mutations/patch-element` route. Script edits
+   go through `hooks/useGsapScriptCommits.ts` to `gsap-mutations`. Both routes
+   are in `packages/studio-server/src/routes/files.ts`. The own-write token is in
+   `utils/studioFileVersion.ts`. `hooks/useExternalFileChangeCoordinator.ts`
+   drops the echo.
+5. **Reload.** For DOM edits, `useDomEditPersist.ts` reloads unless `skipRefresh`
+   is set. For script edits, `useGsapScriptCommits.ts` (`applyPreviewSync`)
+   picks one of three: an instant patch, `utils/gsapSoftReload.ts`, or a reload.
+   A reload bumps `refreshKey`, and `refreshPlayer` in
+   `player/hooks/useTimelinePlayer.ts` either swaps the scene or runs
+   `player/hooks/useShadowPreviewReload.ts`, which waits while a gesture or a
+   save is in flight.
+6. **Undo.** `hooks/usePersistentEditHistory.ts` records the edit.
+   `hooks/useEditHistoryActions.ts` steps through history.
+   `utils/gsapUndoRestore.ts` repaints the preview.
+
 ## Driving Studio for verification
 
 A pixel-precise click inside the preview is not something an automated driver
@@ -73,6 +111,29 @@ properties (`rotate`, `scale`, `translate`) into computed style, and it has no
 `DOMMatrix` — the geometry tests carry their own stand-in. When a behaviour
 depends on real layout or real computed style, prove it in a browser and keep
 the unit test on the pure function underneath.
+
+## The edit accuracy bench
+
+`tests/e2e/edit-accuracy/` performs real gestures in the built CLI's Studio and
+checks the saved file, the reloaded preview, undo and a producer frame. It
+needs the built CLI (`packages/cli/dist/cli.js`, from `bun run build`) and
+`chrome-headless-shell` (`npx hyperframes browser ensure`):
+
+```bash
+bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-' --jobs 1
+```
+
+- Case ids come from `grid.mjs`; `--filter` is a regex on them. `--grid pr` is
+  the smaller slice, `full` is what CI runs.
+- Each run writes `results.json`, `table.md` and `baseline.json` to
+  `tests/e2e/evidence/edit-accuracy/<run>/` (git-ignored; `--out` moves it); a
+  failing case also gets its screens and saved files under `cases/<id>/`.
+- CI runs the full grid in 20 shards, then `ratchet.mjs gate` compares them with
+  the base branch's `baseline.json`: a case that flips is re-run twice and
+  judged 2 of 3. The gate fails when a passing case regresses, or when a newly
+  passing case is not banked. To bank, commit the `baseline.json` from the
+  `edit-accuracy-gate` artifact. Smoothness is reported, never gated.
+- Known races sit in `QUARANTINED` in `ratchet.mjs`, measured but not gated.
 
 ## Gates that will fail your PR
 
