@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { buildSubCompositionHtml, hasBaseElement } from "./subComposition";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -17,6 +18,15 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  it("loads the default gsap version when the project head has no gsap", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><title>Host</title></head><body></body></html>`,
+      "compositions/scene.html": `<div data-composition-id="scene" data-width="320" data-height="180"></div>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/api/runtime.js");
+    expect(html).toContain(`<script src="${gsapCdnDist()}gsap.min.js"></script>`);
+  });
+
   it("adds the preview base even when the project head's script mentions a <base>", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head><script>if (0) document.write('<base href="../">');</script></head><body></body></html>`,
