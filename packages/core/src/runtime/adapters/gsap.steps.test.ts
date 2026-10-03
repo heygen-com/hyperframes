@@ -60,3 +60,157 @@ describe("gsap adapter on a step", () => {
     expect(gsap.getProperty(box, "x")).toBe(10);
   });
 });
+
+describe("gsap adapter at a tween's start", () => {
+  // An edit at 2 s turns the later tween into keyframes; its first keyframe must win over the from() end.
+  it.each([0, 1, 2, 2.5, 3])(
+    "shows the tween that starts at the seek time, seeking from %s s",
+    (from) => {
+      const box = document.body.appendChild(document.createElement("div"));
+      const timeline = gsap.timeline({ paused: true });
+      timeline.from(box, { x: -60, duration: 2, ease: "none" }, 0);
+      timeline.to(box, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 }, 2);
+      timeline.totalTime(from, true);
+      createGsapAdapter({ getTimeline: () => timeline as unknown as RuntimeTimelineLike }).seek({
+        time: 2,
+      });
+      expect(gsap.getProperty(box, "x")).toBe(5);
+    },
+  );
+
+  it("leaves a tween that starts later alone after a seek past the end", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(box, { x: -400, duration: 0.4 }, 4.8);
+    timeline.to(box, { x: 0, duration: 0.4 }, 16);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const time of [20, 0, 4]) adapter.seek({ time });
+    expect(gsap.getProperty(box, "x")).toBe(0);
+  });
+
+  it.each([
+    { order: "keyframes, then a set", x: 42 },
+    { order: "a set, then keyframes", x: 5 },
+  ])("keeps the authored order of $order at the seek time", ({ order, x }) => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.from(box, { x: -60, duration: 2, ease: "none" }, 0);
+    const keyframes = () =>
+      timeline.to(box, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 }, 2);
+    const set = () => timeline.set(box, { x: 42 }, 2);
+    if (order.startsWith("keyframes")) {
+      keyframes();
+      set();
+    } else {
+      set();
+      keyframes();
+    }
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const from of [0, 1, 2, 2.5, 3]) {
+      timeline.totalTime(from, true);
+      adapter.seek({ time: 2 });
+      expect(gsap.getProperty(box, "x")).toBe(x);
+    }
+  });
+
+  it("shows a keyframed tween's start inside a nested timeline, seeking onto it twice", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    const scene = gsap.timeline();
+    scene.from(box, { x: -60, duration: 2, ease: "none" }, 0);
+    scene.to(box, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 }, 2);
+    timeline.add(scene, 0.5);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 2.5 });
+    adapter.seek({ time: 2.5 });
+    expect(gsap.getProperty(box, "x")).toBe(5);
+  });
+
+  it("does not start a tween that begins just after the seek time", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(box, { x: 100, duration: 10, ease: "none" }, 0);
+    timeline.to(box, { x: 200, duration: 1, ease: "none", overwrite: "auto" }, 2.0005);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 2 });
+    adapter.seek({ time: 1 });
+    expect(gsap.getProperty(box, "x")).toBe(10);
+  });
+
+  it("keeps a relative repeatRefresh tween on its iteration at a repeat boundary", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(box, { x: "+=10", duration: 1, repeat: 1, repeatRefresh: true, ease: "none" }, 0);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 1 });
+    adapter.seek({ time: 1 });
+    expect(gsap.getProperty(box, "x")).toBe(10);
+  });
+
+  it.each([
+    {
+      shape: "a stagger whose next target starts 0.1 us later with overwrite auto",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        timeline.to(o, { x: 100, duration: 10, ease: "none" }, 0);
+        timeline.to([{ x: 0 }, o], { x: 200, duration: 1, stagger: 1e-7, overwrite: "auto" }, 2);
+      },
+      seeks: [2, 1],
+      x: 10,
+    },
+    {
+      shape: "a reversed keyframed tween",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        const tween = gsap.to(o, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 });
+        timeline.add(tween, 1);
+        tween.timeScale(-1);
+      },
+      seeks: [1],
+      x: 60,
+    },
+    {
+      shape: "a paused keyframed tween",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        const tween = gsap.to(o, {
+          keyframes: { "0%": { x: 5 }, "100%": { x: 60 } },
+          duration: 1,
+          ease: "none",
+        });
+        timeline.add(tween, 1);
+        tween.totalTime(0.5).pause();
+      },
+      seeks: [1, 1],
+      x: 32.5,
+    },
+    {
+      shape: "a 0.4 us repeatRefresh keyframed tween",
+      build: (timeline: gsap.core.Timeline, o: { x: number }) => {
+        const keyframes = [
+          { x: "+=10", duration: 2e-7 },
+          { x: "+=10", duration: 2e-7 },
+        ];
+        timeline.to(o, { keyframes, repeat: 2, repeatRefresh: true, ease: "none" }, 2);
+      },
+      seeks: [2, 2],
+      x: 0,
+    },
+  ])("leaves $shape as GSAP renders it at its start", ({ build, seeks, x }) => {
+    const o = { x: 0 };
+    const timeline = gsap.timeline({ paused: true });
+    build(timeline, o);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const time of seeks) adapter.seek({ time });
+    expect(o.x).toBeCloseTo(x, 6);
+  });
+});
