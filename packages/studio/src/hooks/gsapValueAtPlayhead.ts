@@ -291,7 +291,8 @@ export async function commitValueAtPlayhead(
   await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const tween = findParsedTween(iframe, selection.element, anim);
-  const parkAt = activeKeyframePct == null ? null : exactKeyframePct(anim, tween, activeKeyframePct);
+  const parkAt =
+    activeKeyframePct == null ? null : exactKeyframePct(anim, tween, activeKeyframePct);
   const plan = planValueEdit(selection, anim, values, iframe, options);
   if (!plan.ok) return { status: "blocked", reason: "keyframes-uneditable", detail: plan.reason };
   await callbacks.commitMutation(selection, plan.mutation, {
