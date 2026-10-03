@@ -4249,7 +4249,6 @@ export function initSandboxRuntimeModular(): void {
   const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null;
 
-  const gsapCallbackTweenCache = new WeakMap<RuntimeTimelineLike, boolean>();
   const GSAP_CALLBACK_NAMES = [
     "onStart",
     "onUpdate",
@@ -4271,9 +4270,6 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const hasZeroDurationCallbackTween = (timeline: RuntimeTimelineLike): boolean => {
-    const cached = gsapCallbackTweenCache.get(timeline);
-    if (cached != null) return cached;
-
     if (!("getChildren" in timeline) || typeof timeline.getChildren !== "function") {
       return false;
     }
@@ -4283,13 +4279,9 @@ export function initSandboxRuntimeModular(): void {
       children = timeline.getChildren(true, true, true);
     } catch (err) {
       swallow("runtime.init.gsapCallbackChildren", err);
-      gsapCallbackTweenCache.set(timeline, false);
       return false;
     }
-    if (!Array.isArray(children)) {
-      gsapCallbackTweenCache.set(timeline, false);
-      return false;
-    }
+    if (!Array.isArray(children)) return false;
 
     for (const child of children) {
       if (!isObjectRecord(child)) continue;
@@ -4300,13 +4292,8 @@ export function initSandboxRuntimeModular(): void {
 
       const totalDuration = readGsapDuration(child, "totalDuration");
       const duration = totalDuration ?? readGsapDuration(child, "duration");
-      if (duration != null && duration <= 0.000001) {
-        gsapCallbackTweenCache.set(timeline, true);
-        return true;
-      }
+      if (duration != null && duration <= 0.000001) return true;
     }
-
-    gsapCallbackTweenCache.set(timeline, false);
     return false;
   };
 
