@@ -201,18 +201,25 @@ describe("useDomEditPersist", () => {
     expect(params.forceReloadSdkSession).not.toHaveBeenCalled();
   });
 
-  it("records the edit once, before the preview reloads", async () => {
+  it("records the edit once, and reloads only after the record has settled", async () => {
     stubServer(CHANGED);
-    const { persist, params } = renderPersist();
-
-    await persist(selection, OPERATIONS);
-
-    const recordEdit = vi.mocked(params.editHistory.recordEdit);
-    const reloadPreview = vi.mocked(params.reloadPreview);
-    expect(recordEdit).toHaveBeenCalledTimes(1);
-    expect(recordEdit.mock.invocationCallOrder[0]).toBeLessThan(
-      reloadPreview.mock.invocationCallOrder[0]!,
+    let finishRecord = () => {};
+    const recordEdit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRecord = resolve;
+        }),
     );
+    const { persist, params } = renderPersist({ editHistory: { recordEdit } });
+
+    const saving = persist(selection, OPERATIONS);
+    await vi.waitFor(() => expect(recordEdit).toHaveBeenCalledTimes(1));
+    expect(params.reloadPreview).not.toHaveBeenCalled();
+    finishRecord();
+    await saving;
+
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    expect(params.reloadPreview).toHaveBeenCalledTimes(1);
   });
 
   it("writes prepared content after the patch and records it as the saved file", async () => {
@@ -295,7 +302,6 @@ describe("useDomEditPersist", () => {
     const saving = persist({ ...selection, element }, OPERATIONS);
     expect(studioManualEditSavesIn(document)).toBe(before + 1);
     await saving;
-    await Promise.resolve();
 
     expect(studioManualEditSavesIn(document)).toBe(before + 2);
   });
