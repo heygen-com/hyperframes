@@ -8,11 +8,7 @@ import {
 import type { TimelineEditCapabilities } from "./timelineEditCapabilities";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { CLIP_HANDLE_W } from "./timelineLayout";
-import {
-  exceedsHandEditLimit,
-  selectClipWithLinks,
-  toggleClipWithLinks,
-} from "./timelineLinkSelection";
+import { selectClipWithLinks, toggleClipWithLinks } from "./timelineLinkSelection";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 
 export interface ClipGestureDeps {
@@ -77,7 +73,6 @@ function isIntentBlocked(
  */
 function resolvePointerDownAction(
   e: ReactPointerEvent,
-  grabbed: TimelineElement,
   capabilities: TimelineEditCapabilities,
   onResizeElement: ClipGestureDeps["onResizeElement"],
   onMoveElement: ClipGestureDeps["onMoveElement"],
@@ -98,8 +93,6 @@ function resolvePointerDownAction(
   }
 
   if (!onMoveElement || !capabilities.canMove) return { kind: "ignore" };
-  if (exceedsHandEditLimit(grabbed, e.altKey, null))
-    return { kind: "block", intent: "edit-many", rect };
   return { kind: "move", rect };
 }
 
@@ -136,17 +129,6 @@ export function createClipGestureHandlers(
   const onResizeStart = (edge: "start" | "end", e: ReactPointerEvent): void => {
     if (!canStartResize(edge, e, capabilities, onResizeElement)) return;
     e.stopPropagation();
-    if (exceedsHandEditLimit(el, e.altKey, edge)) {
-      blockedClipRef.current = {
-        pointerId: e.pointerId,
-        element: el,
-        intent: "edit-many",
-        originClientX: e.clientX,
-        originClientY: e.clientY,
-        started: false,
-      };
-      return;
-    }
     blockedClipRef.current = null;
     setShowPopover(false);
     setRangeSelection(null);
@@ -165,7 +147,7 @@ export function createClipGestureHandlers(
   };
 
   const onPointerDown = (e: ReactPointerEvent): void => {
-    const action = resolvePointerDownAction(e, el, capabilities, onResizeElement, onMoveElement);
+    const action = resolvePointerDownAction(e, capabilities, onResizeElement, onMoveElement);
     if (action.kind === "ignore") return;
 
     if (action.kind === "block") {
