@@ -935,3 +935,54 @@
     transform: scaleY(1);
   }
 }
+
+/* Framey on the header's "Edit with Framey" (OpenInDesktopButton.tsx): a wiggle on hover, a flight towards
+ * the app while it opens. The eye follows the pointer from script. */
+@keyframes hf-framey-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-14deg);
+  }
+  60% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes hf-framey-fly {
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(48px, -28px) rotate(25deg) scale(0.6);
+    opacity: 0;
+  }
+}
+
+.hf-framey {
+  transform-origin: 30% 30%;
+}
+
+.hf-framey-eye {
+  transition: transform 80ms linear;
+}
+
+.hf-framey-trigger:hover .hf-framey {
+  animation: hf-framey-wiggle 0.5s ease-in-out;
+}
+
+.hf-framey-trigger[data-opening] .hf-framey {
+  animation: hf-framey-fly 0.9s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-framey-trigger:hover .hf-framey,
+  .hf-framey-trigger[data-opening] .hf-framey {
+    animation: none;
+  }
+  .hf-framey-eye {
+    transition: none;
+  }
+}

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRenderPlan } from "./plan.js";
-import { renderOptionsFromPlan } from "./execute.js";
+import { batchRowRenderOptions, renderOptionsFromPlan } from "./execute.js";
+import { wantsDesktopHint } from "../render.js";
 
 describe("renderOptionsFromPlan", () => {
   let projectDir: string;
@@ -38,5 +39,21 @@ describe("renderOptionsFromPlan", () => {
     expect(on.keepSegments).toBe(true);
     expect(on.browserPath).toBe("/usr/bin/chrome");
     expect(on.variables).toEqual({ title: "x" });
+  });
+});
+
+describe("the desktop-app line after a render", () => {
+  it("comes after a delivered render, never after a draft or a batch row", () => {
+    expect(wantsDesktopHint({ quality: "high" })).toBe(true);
+    expect(wantsDesktopHint({ quality: "draft" })).toBe(false);
+    expect(wantsDesktopHint({ quality: "high", desktopHint: false })).toBe(false);
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-batch-"));
+    try {
+      writeFileSync(join(projectDir, "index.html"), '<main data-composition-id="main"></main>');
+      const row = batchRowRenderOptions(createRenderPlan({ dir: projectDir }), undefined);
+      expect(wantsDesktopHint(row)).toBe(false);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 });
