@@ -140,7 +140,7 @@ function syncTimingEditPreview(
   if (result === "cannot-soft-reload") reloadPreview();
 }
 
-async function finishTimelineTimingFallback(input: {
+export async function finishTimelineTimingFallback(input: {
   iframe: HTMLIFrameElement | null;
   projectId: string | null;
   reloadPreview: () => void;
@@ -325,7 +325,7 @@ async function foldGsapMutationInQueue(input: {
 }
 
 // The mutations, the ownership read and any rollback hold every touched file's queue.
-function foldGsapMutationIntoHistory(
+export function foldGsapMutationIntoHistory(
   input: Parameters<typeof foldGsapMutationInQueue>[0] & {
     writeFile: StudioProjectFileWriter;
     paths: readonly string[];
