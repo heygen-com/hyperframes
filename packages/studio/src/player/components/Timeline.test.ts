@@ -90,7 +90,8 @@ describe("timeline viewport geometry", () => {
 function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: string) {
   const clip = host.querySelector<HTMLElement>(`[data-el-id="${clipId}"]`);
   if (!clip) throw new Error(`Missing timeline clip ${clipId}`);
-  const trackContent = clip.parentElement;
+  let trackContent = clip.parentElement;
+  while (trackContent?.style.display === "contents") trackContent = trackContent.parentElement;
   if (!trackContent) throw new Error(`Missing content row for ${clipId}`);
   const trackHeader = trackContent.previousElementSibling;
   if (!(trackHeader instanceof HTMLElement)) throw new Error(`Missing track header for ${clipId}`);
