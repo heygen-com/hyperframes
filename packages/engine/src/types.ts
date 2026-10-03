@@ -100,15 +100,16 @@ export interface HfTransitionMeta {
  * as `seek()` produces deterministic visual output for a given time.
  */
 /**
- * Per-seek controls the page honours. Both default off, which is an ordinary frame seek.
+ * Per-seek controls the page honours. All default off, which is an ordinary frame seek.
  *
- * `suppressEvents` stops a composition's own timeline callbacks from firing, and
- * `subFrameDivisions` refines the grid the page quantizes onto so a fractional time is
- * not floored back onto the output frame. Motion-blur sampling sets both.
+ * `suppressEvents` stops a composition's own timeline callbacks from firing, `subFrameDivisions`
+ * refines the quantize grid so a fractional time is not floored onto the output frame, and
+ * `keepFiredCallbacksSpent` on a frame's eventful seek and its silent return fires callbacks once.
  */
 export interface HfSeekOptions {
   suppressEvents?: boolean;
   subFrameDivisions?: number;
+  keepFiredCallbacksSpent?: boolean;
 }
 
 export interface HfProtocol {

@@ -2920,6 +2920,70 @@ describe("initSandboxRuntimeModular", () => {
     expect(fired).toHaveBeenCalledTimes(1);
   });
 
+  describe("with the engine's motion-blur seeks", () => {
+    const mountRootAndScene = (sceneStart: number) => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-duration", "10");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      const scene = document.createElement("div");
+      scene.setAttribute("data-composition-id", "scene");
+      scene.setAttribute("data-start", String(sceneStart));
+      scene.setAttribute("data-duration", "5");
+      root.appendChild(scene);
+    };
+    const timelineWithCallAt = (at: number, fired: () => void) =>
+      gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 5 }).call(fired, [], at);
+    // Per frame: eventful, a silent sample on each side, a silent return.
+    const renderBlurredFrames = (first: number, last: number) => {
+      for (let frame = first; frame <= last; frame++) {
+        window.__player?.renderSeek(frame / 30, { keepFiredCallbacksSpent: true });
+        for (const offset of [-0.25, 0.25]) {
+          window.__player?.renderSeek((frame + offset) / 30, {
+            suppressEvents: true,
+            subFrameDivisions: 4,
+          });
+        }
+        window.__player?.renderSeek(frame / 30, {
+          suppressEvents: true,
+          keepFiredCallbacksSpent: true,
+        });
+      }
+    };
+
+    it("fires a call on a frame time once, on the root and on a scene", () => {
+      mountRootAndScene(0);
+      const fired: string[] = [];
+      window.__timelines = {
+        main: timelineWithCallAt(2 / 30, () => fired.push("root")),
+        scene: timelineWithCallAt(2 / 30, () => fired.push("scene")),
+      };
+      initSandboxRuntimeModular();
+
+      renderBlurredFrames(1, 4);
+
+      expect(fired.sort()).toEqual(["root", "scene"]);
+    });
+
+    it("fires a call at a scene's start once, as with motion blur off", () => {
+      mountRootAndScene(1);
+      const fired = vi.fn();
+      window.__timelines = {
+        main: gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 10 }),
+        scene: timelineWithCallAt(0, fired),
+      };
+      initSandboxRuntimeModular();
+
+      renderBlurredFrames(28, 34);
+
+      expect(fired).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("shows pip video at global start time even when host composition starts late", () => {
     // Regression: resolveStartForElement used to add the host composition's start on top of
     // the video's own data-start, causing double-offset. A pip video with data-start="45.40"

@@ -287,6 +287,7 @@ export type RuntimeSeekOptions = {
    */
   subFrameDivisions?: number;
   exact?: boolean;
+  keepFiredCallbacksSpent?: boolean;
 };
 
 export type RuntimeTimelineChildLike = {

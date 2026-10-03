@@ -9,6 +9,7 @@ import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
 import { createGsapAdapter, rerenderGsapTimelineAt } from "./adapters/gsap";
+import { keepLandedGsapCallbacksSpent } from "./adapters/gsapSpentCallbacks";
 import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
@@ -3920,6 +3921,7 @@ export function initSandboxRuntimeModular(): void {
       const pageAnimations = seekTimelineAndAdapters(state.currentTime, {
         activateChildren: true,
         suppressEvents: options?.suppressEvents,
+        keepFiredCallbacksSpent: options?.keepFiredCallbacksSpent,
       });
       runAdapters("pause", 0, pageAnimations);
       syncMediaForCurrentState();
@@ -4190,6 +4192,7 @@ export function initSandboxRuntimeModular(): void {
       pauseTimelineIfPossible(timeline);
       if (typeof timeline.totalTime === "function") {
         timeline.totalTime(timeSeconds, suppressEvents);
+        keepLandedGsapCallbacksSpent(timeline, options);
       } else {
         timeline.seek(timeSeconds, suppressEvents);
       }
@@ -4303,7 +4306,7 @@ export function initSandboxRuntimeModular(): void {
    */
   function seekTimelineAndAdapters(
     t: number,
-    opts?: { activateChildren?: boolean; suppressEvents?: boolean },
+    opts?: RuntimeSeekOptions & { activateChildren?: boolean },
   ): () => Animation[] {
     const tl = state.capturedTimeline;
     // Critical for a sub-composition whose data-start is at or near 0: it is added
@@ -4320,7 +4323,7 @@ export function initSandboxRuntimeModular(): void {
   function seekRootChildrenAndAdapters(
     tl: RuntimeTimelineLike | null,
     t: number,
-    opts?: { activateChildren?: boolean; suppressEvents?: boolean },
+    opts?: RuntimeSeekOptions & { activateChildren?: boolean },
   ): () => Animation[] {
     const suppressEvents = opts?.suppressEvents === true;
     if (tl) {
@@ -4346,6 +4349,7 @@ export function initSandboxRuntimeModular(): void {
       try {
         if (typeof tl.totalTime === "function") {
           tl.totalTime(tlSeekTime, suppressEvents);
+          keepLandedGsapCallbacksSpent(tl, opts);
           if (!suppressEvents && !hasZeroDurationCallbackTween(tl)) {
             // The first seek is the only eventful one; the re-render only refreshes styles.
             rerenderGsapTimelineAt(

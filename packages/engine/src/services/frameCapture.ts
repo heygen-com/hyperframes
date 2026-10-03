@@ -4032,9 +4032,9 @@ async function resolveAdaptiveSampleCount(
  *
  * Callback invariant: exactly one eventful seek per output frame, at the frame time,
  * arriving from the previous frame's time. Every sample seek (including a probe)
- * suppresses events and the playhead is restored to the frame time afterwards, so a
- * composition's own onUpdate/onComplete fire on the same interval boundaries as a
- * render with blur off.
+ * suppresses events, and the silent return to the frame time keeps the callbacks the
+ * eventful seek fired spent, so a composition's callbacks (tl.call, onStart, onComplete)
+ * fire once, on the same boundaries as a render with blur off.
  */
 async function captureAccumulatedFrame(
   session: CaptureSession,
@@ -4046,7 +4046,7 @@ async function captureAccumulatedFrame(
   const frameTime = quantizeSeekTime(absFrameIndex / fps, fps);
 
   const eventfulSeekStart = Date.now();
-  await seekPageTimeline(session.page, frameTime, undefined);
+  await seekPageTimeline(session.page, frameTime, { keepFiredCallbacksSpent: true });
   const totals = { seekMs: Date.now() - eventfulSeekStart, beforeCaptureMs: 0, screenshotMs: 0 };
 
   const sampleSeek: HfSeekOptions = {
@@ -4080,7 +4080,10 @@ async function captureAccumulatedFrame(
   }
 
   const restoreSeekStart = Date.now();
-  await seekPageTimeline(session.page, frameTime, { suppressEvents: true });
+  await seekPageTimeline(session.page, frameTime, {
+    suppressEvents: true,
+    keepFiredCallbacksSpent: true,
+  });
   totals.seekMs += Date.now() - restoreSeekStart;
 
   const blended = accumulator.finish();

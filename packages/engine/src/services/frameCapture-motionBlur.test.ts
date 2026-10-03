@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import gsap from "gsap";
+import { keepLandedGsapCallbacksSpent } from "../../../core/src/runtime/adapters/gsapSpentCallbacks";
+import { resolveRenderSeekTime } from "../../../core/src/runtime/player";
+import type { HfSeekOptions } from "../types.js";
 import {
   captureFrame,
   captureFrameToBuffer,
@@ -24,12 +28,7 @@ vi.mock("./screenshotService.js", async (importOriginal) => ({
  * recording that a call happened. What lands in `seeks` is therefore what a browser's
  * `window.__hf.seek` would have received.
  */
-interface RecordedSeek {
-  time: number;
-  suppressEvents?: boolean;
-  subFrameDivisions?: number;
-  exact?: boolean;
-}
+type RecordedSeek = HfSeekOptions & { time: number; exact?: boolean };
 
 function installPageGlobals(seeks: RecordedSeek[]): void {
   const root = globalThis as Record<string, unknown>;
@@ -125,12 +124,12 @@ describe("sub-frame accumulation reaches the page with distinct sample times", (
     expect(seeks[0]).toBe(eventful[0]);
   });
 
-  it("restores the playhead to the frame time so the next frame's callbacks are not skipped", async () => {
+  it("pairs the frame's eventful seek with a silent return to the frame time", async () => {
     await captureFrameToBuffer(makeSession(), 10, 10 / 30);
 
+    expect(seeks[0]).toEqual({ time: 10 / 30, keepFiredCallbacksSpent: true });
     const last = seeks[seeks.length - 1];
-    expect(last?.time).toBe(10 / 30);
-    expect(last?.suppressEvents).toBe(true);
+    expect(last).toEqual({ time: 10 / 30, suppressEvents: true, keepFiredCallbacksSpent: true });
     expect(seeks).toHaveLength(18);
   });
 
@@ -173,6 +172,65 @@ describe("sub-frame accumulation reaches the page with distinct sample times", (
     expect(vi.mocked(pageScreenshotCapture)).toHaveBeenCalledTimes(1);
     expect(seeks).toHaveLength(1);
     expect(seeks[0]).toEqual({ time: 10 / 30 });
+  });
+});
+
+describe("a composition's callbacks fire once with motion blur on, as with it off", () => {
+  function installRenderSeek(timeline: ReturnType<typeof gsap.timeline>): void {
+    (globalThis as Record<string, unknown>).window = {
+      __hf: {
+        // Mirrors core renderSeek's snap, seek and keep-spent steps on a real GSAP root timeline.
+        seek: (time: number, options?: Omit<RecordedSeek, "time">) => {
+          timeline.totalTime(
+            resolveRenderSeekTime(time, 30, options),
+            options?.suppressEvents === true,
+          );
+          keepLandedGsapCallbacksSpent(timeline, options);
+        },
+      },
+    };
+  }
+
+  async function captureFrames(count: number): Promise<void> {
+    const session = makeSession();
+    for (let frame = 1; frame <= count; frame++)
+      await captureFrameToBuffer(session, frame, frame / 30);
+  }
+
+  it("fires a call on a frame time once", async () => {
+    const fired = vi.fn();
+    const timeline = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 1 });
+    timeline.call(fired, [], 2 / 30);
+    installRenderSeek(timeline);
+
+    await captureFrames(4);
+
+    expect(fired).toHaveBeenCalledTimes(1);
+  });
+
+  it("swaps a caption in a tween's onStart on a frame time", async () => {
+    const caption = { text: "first line" };
+    const started = vi.fn(() => (caption.text = "second line"));
+    const timeline = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 1 });
+    timeline.to({ y: 0 }, { y: 1, duration: 0.2, onStart: started }, 3 / 30);
+    installRenderSeek(timeline);
+
+    await captureFrames(6);
+
+    expect(started).toHaveBeenCalledTimes(1);
+    expect(caption.text).toBe("second line");
+  });
+
+  it("fires a call at a nested scene's start once", async () => {
+    const fired = vi.fn();
+    const scene = gsap.timeline().call(fired, [], 0).to({ y: 0 }, { y: 1, duration: 0.5 }, 0);
+    const timeline = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 1 });
+    timeline.add(scene, 2 / 30);
+    installRenderSeek(timeline);
+
+    await captureFrames(5);
+
+    expect(fired).toHaveBeenCalledTimes(1);
   });
 });
 
