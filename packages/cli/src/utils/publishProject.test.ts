@@ -1067,3 +1067,37 @@ describe("publishProjectArchive", () => {
     expect(anon.mock.calls[2]![1].headers).not.toHaveProperty("x-space-id");
   });
 });
+
+describe("publishProjectArchive with a login the server rejects", () => {
+  const EXPIRED = "Your login expired. Run hyperframes auth login, then publish again.";
+  const unauthorized = () =>
+    new Response(JSON.stringify({ message: "Unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+
+  it("stops at the first request, before any upload, with a re-login message", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized());
+    const dir = makeProjectDir();
+    try {
+      await expect(runAuthenticatedPublish(fetchMock, dir)).rejects.toThrow(EXPIRED);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expectAuthorizedHeaders(fetchMock, 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("says the same on the legacy multipart publish", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("not found", { status: 404 }))
+      .mockResolvedValueOnce(unauthorized());
+    const dir = makeProjectDir();
+    try {
+      await expect(runAuthenticatedPublish(fetchMock, dir)).rejects.toThrow(EXPIRED);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

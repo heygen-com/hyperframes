@@ -156,6 +156,10 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  // Only a credential the server rejects gets a 401; anonymous publishing never does.
+  if (response.status === 401) {
+    return "Your login expired. Run hyperframes auth login, then publish again.";
+  }
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     const payload = await readJson(response);
