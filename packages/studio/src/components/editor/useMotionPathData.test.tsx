@@ -102,10 +102,11 @@ it("finds the layer whichever window built its node, so the path draws on every 
   };
   const iframe = document.createElement("iframe");
   document.body.append(iframe);
-  // As on the loads that hid the path, the layer's node carries the editor window's prototypes.
-  const box = document.createElement("div");
+  const box = iframe.contentDocument!.createElement("div");
   box.id = "box";
   iframe.contentDocument!.body.append(box);
+  // happy-dom shares one realm, so the frame's own constructor stands in for another window's.
+  Object.defineProperty(iframe.contentWindow!, "HTMLElement", { value: class {} });
   let home: unknown = null;
   function Probe() {
     const ref = useRef(iframe);
