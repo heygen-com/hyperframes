@@ -279,6 +279,7 @@ const percentile = (xs, q) =>
   [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * q))];
 
 // Drags with every clip selected: main-thread task time per pointermove, then the drop settle time.
+// fallow-ignore-next-line complexity
 async function dragAll(page, name, { edge, dx, steps }) {
   const cdp = await page.createCDPSession();
   await cdp.send("Performance.enable");
