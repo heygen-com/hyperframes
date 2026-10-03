@@ -122,6 +122,24 @@ describe("fresh screenshot fallback", () => {
     expect(existsSync(join(s.outputDir, "diagnostics", "frame-error-7.json"))).toBe(true);
   });
 
+  // A BeginFrame page paints only when the engine sends a frame, so a diagnostic
+  // page.screenshot never resolves there and held the real error until the stall watchdog.
+  it("rejects a BeginFrame capture failure with its own error, without a page screenshot", async () => {
+    const s = await session();
+    s.captureMode = "beginframe";
+    s.onBeforeCapture = async () => {
+      throw new Error('Video frame for "clip" failed to load (inline frame)');
+    };
+    const screenshot = vi.fn(() => new Promise<Buffer>(() => {}));
+    Object.assign(s.page, { screenshot, content: async () => "<html></html>" });
+
+    await expect(captureFrameToBuffer(s, 7, 7 / 30)).rejects.toThrow(
+      'Video frame for "clip" failed to load',
+    );
+    expect(screenshot).not.toHaveBeenCalled();
+    expect(existsSync(join(s.outputDir, "diagnostics", "frame-error-7.json"))).toBe(true);
+  });
+
   it("rejects a suspect tiny frame without substituting a stale screenshot", async () => {
     vi.mocked(captureDrawElementFrame).mockResolvedValueOnce(Buffer.alloc(100));
     await expect(captureFrameToBuffer(await session(), 7, 7 / 30)).rejects.toThrow(
