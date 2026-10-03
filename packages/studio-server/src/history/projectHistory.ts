@@ -440,7 +440,7 @@ class Engine {
   }
 
   async firstOpen(): Promise<void> {
-    const sweptAt = Date.now();
+    const sweptAt = this.now();
     for (const file of listProjectFiles(this.dir)) {
       const hash = await this.storeIfPresent(file.path);
       if (this.whereFolder() !== "here") throw this.replaced();
@@ -477,7 +477,7 @@ class Engine {
   async sweep(): Promise<void> {
     // A folder moved or removed was not emptied, and another project at its path is none of this history's.
     if (this.whereFolder() !== "here") return;
-    const sweptAt = Date.now();
+    const sweptAt = this.now();
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
     const seen = listProjectFiles(this.dir);
@@ -820,7 +820,7 @@ class Engine {
       await this.settle();
       const window = { ...this.newGroup(who, label), idleMs };
       this.windows.push(window);
-      this.touch(window, Date.now());
+      this.touch(window, this.now());
       const close = () => this.queue(() => this.sweepAndEnd(window));
       return { id: window.id, startedAt: window.startedAt, close };
     });
