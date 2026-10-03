@@ -112,13 +112,14 @@ async function runOne(spec, browser, decoder, port) {
   let result;
   let server;
   try {
-    server = await startServer(opt.cli, dir, port, log, join(root, "home"));
+    const served = await startServer(opt.cli, dir, port, log, join(root, "home"));
+    server = served.child;
     const { keyRender, ...measured } = await (spec.steps ? runSequence : runCase)({
       browser,
       spec,
       dir,
       files,
-      url: `http://127.0.0.1:${port}/#project/case`,
+      url: `http://127.0.0.1:${served.port}/#project/case`,
       evidence,
     });
     await stopServer(server);

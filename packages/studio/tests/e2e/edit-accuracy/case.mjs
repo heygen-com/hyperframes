@@ -52,10 +52,9 @@ export function killServers() {
 
 const announcedPort = (log) => /http:\/\/localhost:(\d+)/.exec(log.join(""))?.[1];
 
+/** Starts Studio at `port` or, when that is busy, the next free one the CLI binds; returns the port it serves. */
 // fallow-ignore-next-line complexity
 export async function startServer(cli, dir, port, log, home) {
-  // The CLI quietly takes the next free port when asked for a busy one, so only the port it announces counts.
-  if (await up(port)) throw new Error(`port ${port} is already serving`);
   const child = spawn(
     "node",
     [cli, "preview", dir, "--port", String(port), "--no-open", "--foreground", "--force-new"],
@@ -78,12 +77,9 @@ export async function startServer(cli, dir, port, log, home) {
   for (const deadline = Date.now() + 60_000; Date.now() < deadline; await sleep(200)) {
     if (child.exitCode !== null)
       throw new Error(`studio exited ${child.exitCode}: ${log.join("").slice(-500)}`);
-    const announced = announcedPort(log);
-    if (announced && announced !== String(port)) {
-      await stopServer(child);
-      throw new Error(`studio moved from port ${port} to ${announced}`);
-    }
-    if (announced && (await up(port))) return child;
+    // The CLI announces the port it bound, which may not be the one asked for.
+    const announced = Number(announcedPort(log));
+    if (announced && (await up(announced))) return { child, port: announced };
   }
   await stopServer(child);
   throw new Error("studio did not start in 60s");
