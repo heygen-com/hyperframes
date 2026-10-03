@@ -50,6 +50,11 @@ describe("assignGsapTargetAutoIdIfNeeded", () => {
     });
   });
 
+  it("is true when the file already holds the id", async () => {
+    stubPatch(jsonResponse({ changed: false, matched: true }));
+    await expect(assign().result).resolves.toBe(true);
+  });
+
   it("is false when the server saved nothing", async () => {
     stubPatch(jsonResponse({ changed: false }));
     await expect(assign().result).resolves.toBe(false);

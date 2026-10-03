@@ -22,11 +22,12 @@ const selection = { id: "box", selector: "#box" } as DomEditSelection;
 function renderOps(
   commitMutationSafely: (...args: unknown[]) => Promise<void>,
   commitMutation: (...args: unknown[]) => Promise<void> = vi.fn(async () => undefined),
+  projectId: string | null = "project",
 ): HookApi {
   const captured: { api: HookApi | null } = { api: null };
   function Probe() {
     captured.api = useGsapAnimationOps({
-      projectIdRef: { current: "project" },
+      projectIdRef: { current: projectId },
       activeCompPath: "index.html",
       commitMutation,
       commitMutationSafely,
@@ -91,29 +92,32 @@ describe("useGsapAnimationOps settlement", () => {
   it.each([
     ["saved", { status: 200, body: { changed: true } }, "div"],
     ["refused", { status: 409, body: { error: "file changed" } }, null],
-  ])("an id-less element keeps its minted id only when the id write is %s", async (_name, reply, id) => {
-    const element = document.body.appendChild(document.createElement("div"));
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify(reply.body), {
-            status: reply.status,
-            headers: { "content-type": "application/json" },
-          }),
-      ),
-    );
-    const commitMutation = vi.fn(async () => undefined);
-    const api = renderOps(
-      vi.fn(async () => undefined),
-      commitMutation,
-    );
+  ])(
+    "an id-less element keeps its minted id only when the id write is %s",
+    async (_name, reply, id) => {
+      const element = document.body.appendChild(document.createElement("div"));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify(reply.body), {
+              status: reply.status,
+              headers: { "content-type": "application/json" },
+            }),
+        ),
+      );
+      const commitMutation = vi.fn(async () => undefined);
+      const api = renderOps(
+        vi.fn(async () => undefined),
+        commitMutation,
+      );
 
-    await api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from");
+      await api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from");
 
-    expect(element.getAttribute("id")).toBe(id);
-    expect(commitMutation).toHaveBeenCalledTimes(id ? 1 : 0);
-  });
+      expect(element.getAttribute("id")).toBe(id);
+      expect(commitMutation).toHaveBeenCalledTimes(id ? 1 : 0);
+    },
+  );
 
   it("mints different ids for two adds whose id writes overlap", async () => {
     const first = document.body.appendChild(document.createElement("div"));
@@ -158,6 +162,19 @@ describe("useGsapAnimationOps settlement", () => {
     await expect(
       api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from"),
     ).rejects.toThrow("offline");
+    expect(element.hasAttribute("id")).toBe(false);
+  });
+
+  it("drops the minted id when there is no project to save it to", async () => {
+    const element = document.body.appendChild(document.createElement("div"));
+    const api = renderOps(
+      vi.fn(async () => undefined),
+      undefined,
+      null,
+    );
+
+    await api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from");
+
     expect(element.hasAttribute("id")).toBe(false);
   });
 

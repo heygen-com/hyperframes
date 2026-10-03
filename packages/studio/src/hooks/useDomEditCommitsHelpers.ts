@@ -209,7 +209,7 @@ interface AssignAutoIdParams {
   showToast: ShowToast;
 }
 
-/** Writes `autoId` as the element's id so a GSAP tween can target it; false when nothing was saved. */
+/** Writes `autoId` as the element's id so a GSAP tween can target it; false when the file does not hold it. */
 export async function assignGsapTargetAutoIdIfNeeded({
   projectId,
   targetPath,
@@ -231,7 +231,8 @@ export async function assignGsapTargetAutoIdIfNeeded({
     return false;
   }
   try {
-    return (await postPatchElement(projectId, targetPath, patchBody, showToast)).changed === true;
+    const result = await postPatchElement(projectId, targetPath, patchBody, showToast);
+    return result.changed === true || result.matched === true;
   } catch (error) {
     if (error instanceof StudioSaveHttpError && error.alreadyToasted) return false;
     throw error;

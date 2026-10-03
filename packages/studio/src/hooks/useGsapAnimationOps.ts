@@ -125,17 +125,17 @@ export function useGsapAnimationOps({
       if (autoId) {
         const pid = projectIdRef.current;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
-        if (!pid) return;
-        const assign = () =>
-          assignGsapTargetAutoIdIfNeeded({
-            projectId: pid,
-            targetPath,
-            selection,
-            autoId,
-            showToast,
-          });
         let assigned = false;
         try {
+          if (!pid) return;
+          const assign = () =>
+            assignGsapTargetAutoIdIfNeeded({
+              projectId: pid,
+              targetPath,
+              selection,
+              autoId,
+              showToast,
+            });
           assigned = await (writeProjectFile
             ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
             : assign());
