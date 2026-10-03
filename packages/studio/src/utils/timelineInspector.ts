@@ -34,6 +34,13 @@ export function isAudioTimelineElement(
   return Boolean(element.src && AUDIO_SOURCE_EXT_RE.test(element.src));
 }
 
+/** A track whose hide toggle reads as mute: the header button and its undo entry. */
+export function isAudioOnlyTrack(
+  elements: readonly Pick<TimelineElement, "tag" | "src">[],
+): boolean {
+  return elements.length > 0 && elements.every(isAudioTimelineElement);
+}
+
 /** The two tags the property panel lets you put a volume automation lane on.
  * Single owner: `groupAutomationLanes`, `automationLaneCountOf` and
  * `TimelineAutomationLaneSlot`'s clip filter all have to agree on this set. */

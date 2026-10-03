@@ -1,18 +1,18 @@
 import type React from "react";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { Eye, EyeSlash, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import { Music } from "../../icons/SystemIcons";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 
-// Hide, plainly. The speaker variant was the mute presentation; with mute gone
-// this is the visibility eye it always was, and audio rows do not render it.
-function visibilityButtonLabel(hidden: boolean, suffix: string): string {
+// Same words as the undo entry `toggleTimelineTrackHidden` records for this click.
+function visibilityButtonLabel(asMute: boolean, hidden: boolean, suffix: string): string {
+  if (asMute) return hidden ? `Unmute track${suffix}` : `Mute track${suffix}`;
   return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
 }
 
-function visibilityButtonIcon(hidden: boolean) {
-  const Icon = hidden ? EyeSlash : Eye;
+function visibilityButtonIcon(asMute: boolean, hidden: boolean) {
+  const Icon = asMute ? (hidden ? SpeakerSlash : SpeakerHigh) : hidden ? EyeSlash : Eye;
   return <Icon size={14} weight="bold" aria-hidden="true" />;
 }
 
@@ -20,20 +20,20 @@ export function VisibilityButton({
   hidden,
   trackNumber,
   trackDisplayNumber,
-  visible,
+  asMute,
   onToggle,
 }: {
   hidden: boolean;
   trackNumber: number;
   trackDisplayNumber: number | null;
-  visible: boolean;
+  /** `data-hidden` silences an audio-only track, so its toggle is a mute. */
+  asMute: boolean;
   onToggle: TimelineEditCallbacks["onToggleTrackHidden"];
 }) {
-  if (!visible) return <span aria-hidden="true" className="h-6 w-6 shrink-0" />;
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
   const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const label = visibilityButtonLabel(hidden, suffix);
+  const label = visibilityButtonLabel(asMute, hidden, suffix);
   return (
     <button
       type="button"
@@ -52,7 +52,7 @@ export function VisibilityButton({
         void onToggle?.(trackNumber, !hidden, trackDisplayNumber);
       }}
     >
-      {visibilityButtonIcon(hidden)}
+      {visibilityButtonIcon(asMute, hidden)}
     </button>
   );
 }
@@ -67,6 +67,7 @@ export function PlainTrackHeader({
   showTrackLabel,
   isTrackHidden,
   isAudioTrack,
+  isAudioOnly,
   onToggleTrackHidden,
   trailing,
 }: {
@@ -76,6 +77,7 @@ export function PlainTrackHeader({
   clipCount: number;
   isTrackHidden: boolean;
   isAudioTrack: boolean;
+  isAudioOnly: boolean;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
   showTrackLabel: boolean;
   /** Trailing controls that belong on the control line — the FX entry points,
@@ -111,25 +113,11 @@ export function PlainTrackHeader({
             truncating name leaves, so the controls sit on the edge whatever the
             name's length. */}
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {/* Not on an audio track. The control is the old visibility eye, and
-            on audio it silences rather than hides — but a row that already says
-            what it is with a speaker does not also need the hide affordance
-            sitting in the eye's slot. `visible={false}` rather than omitting the
-            element, so the spacer keeps every row's control columns aligned.
-
-            EXCEPT when the audio track is ALREADY hidden. Withholding the
-            control unconditionally withheld the only way back: `data-hidden`
-            silences the clip in preview and drops it from the render, the
-            panel's "Muted" is the unrelated HTML `muted` attribute, and nothing
-            else writes it — so a track hidden before this rule (or by "Hide
-            all", or by hand) was silent with no control anywhere to restore it.
-            Offering the eye only in that state keeps the affordance off a normal
-            audio row while leaving the door open from the inside. */}
           <VisibilityButton
             hidden={isTrackHidden}
             trackNumber={trackNumber}
             trackDisplayNumber={trackDisplayNumber}
-            visible={!isAudioTrack || isTrackHidden}
+            asMute={isAudioOnly}
             onToggle={onToggleTrackHidden}
           />
           {trailing}

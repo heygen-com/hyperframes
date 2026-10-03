@@ -8,7 +8,7 @@ import {
   trackDisplaySuffix,
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { isAudioTimelineElement } from "../utils/timelineInspector";
+import { isAudioOnlyTrack } from "../utils/timelineInspector";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
   findTimelineElementInIframe,
@@ -206,8 +206,7 @@ export async function toggleTimelineTrackHidden({
     displayNumber ?? trackDisplayNumber(timelineTrackOrder(timelineElements), track),
   );
   const trackElements = timelineElements.filter((element) => element.track === track);
-  const isAudioOnlyTrack = trackElements.length > 0 && trackElements.every(isAudioTimelineElement);
-  const label = isAudioOnlyTrack
+  const label = isAudioOnlyTrack(trackElements)
     ? hidden
       ? `Mute track${suffix}`
       : `Unmute track${suffix}`
