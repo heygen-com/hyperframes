@@ -4,6 +4,7 @@ import {
   isNavigationTimeoutError,
   navigateForCapture,
   networkIdleAttemptTimeoutMs,
+  waitForPageReady,
   NETWORK_IDLE_ATTEMPT_MS,
 } from "./navigateForCapture.js";
 
@@ -115,5 +116,61 @@ describe("navigateForCapture", () => {
       waitUntil: "networkidle2",
       timeout: 10_000,
     });
+  });
+});
+
+describe("waitForPageReady", () => {
+  it("pays one idle wait when the document is already parsed", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    const evaluate = vi.fn(async () => false);
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate });
+
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-waits for idle once a still-parsing document finishes loading", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    let loading = true;
+    const evaluate = vi.fn(async () => {
+      const was = loading;
+      loading = false;
+      return was;
+    });
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate });
+
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats a destroyed execution context as mid-navigation and keeps polling", async () => {
+    const waitForNetworkIdle = vi.fn(async () => undefined);
+    const evaluate = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Execution context was destroyed"))
+      .mockResolvedValue(false);
+
+    await waitForPageReady({ waitForNetworkIdle, evaluate });
+
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays bounded when the document never reports a parsed state", async () => {
+    vi.useFakeTimers();
+    try {
+      const waitForNetworkIdle = vi.fn(async () => undefined);
+      const evaluate = vi.fn(async () => true);
+
+      const done = waitForPageReady({ waitForNetworkIdle, evaluate });
+      await vi.runAllTimersAsync();
+      await done;
+
+      expect(evaluate).toHaveBeenCalledTimes(30);
+      expect(waitForNetworkIdle).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

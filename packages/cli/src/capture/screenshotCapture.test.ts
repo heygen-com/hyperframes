@@ -48,7 +48,18 @@ function fakePage(
     String(script).includes("scrollHeight") ? docHeight : undefined,
   );
   const screenshot = vi.fn(async (_opts?: unknown) => pngBuffer(plateHeight));
-  return { page: { evaluate, screenshot, ...overrides } as unknown as Page, evaluate, screenshot };
+  const waitForNetworkIdle = vi.fn(async () => undefined);
+  return {
+    page: {
+      evaluate,
+      screenshot,
+      waitForNetworkIdle,
+      ...overrides,
+    } as unknown as Page,
+    evaluate,
+    screenshot,
+    waitForNetworkIdle,
+  };
 }
 
 describe("captureFullPagePlate — the scroll shot's plate", () => {
@@ -149,7 +160,11 @@ describe("captureScrollScreenshots — capture budget", () => {
       return undefined;
     });
     const screenshot = vi.fn(async () => pngBuffer(1080));
-    const page = { evaluate, screenshot } as unknown as Page;
+    const page = {
+      evaluate,
+      screenshot,
+      waitForNetworkIdle: vi.fn(async () => undefined),
+    } as unknown as Page;
 
     try {
       const capture = captureScrollScreenshots(page, dir, {
@@ -270,6 +285,132 @@ describe("captureFullPagePlate — the guard sees the post-neutralisation page (
     expect(existsSync(join(dir, "full-page.png"))).toBe(false);
     // Bailing out early must still hand the page back unmodified.
     expect(String(evaluate.mock.calls.at(-1)?.[0])).toContain("removeAttribute");
+  });
+});
+
+describe("captureScrollScreenshots — consent-click page reload (#4923)", () => {
+  // The click-evaluate script is the one containing `el.click()`; the overlay
+  // sweep contains `createTreeWalker`. While `reloading` is set, evaluate
+  // throws like a real page mid-navigation until the idle wait settles it.
+  function settledSize(src: string) {
+    if (src.includes("scrollHeight")) return 2160;
+    if (src === "window.innerHeight") return 1080;
+    return undefined;
+  }
+  function scrollablePage(
+    evaluate: ReturnType<typeof vi.fn>,
+    waitForNetworkIdle: ReturnType<typeof vi.fn>,
+  ) {
+    const screenshot = vi.fn(async (_opts?: unknown) => pngBuffer(1080));
+    const page = { evaluate, screenshot, waitForNetworkIdle } as unknown as Page;
+    return { page, evaluate, waitForNetworkIdle };
+  }
+  function reloadingPage() {
+    let reloading = false;
+    const evaluate = vi.fn(async (script?: unknown) => {
+      const src = String(script);
+      if (src.includes("el.click()")) {
+        reloading = true;
+        return undefined;
+      }
+      if (reloading) {
+        throw new Error("Execution context was destroyed, most likely because of a navigation");
+      }
+      return settledSize(src);
+    });
+    const waitForNetworkIdle = vi.fn(async () => {
+      reloading = false;
+    });
+    return scrollablePage(evaluate, waitForNetworkIdle);
+  }
+
+  it("waits out a click-triggered reload before measuring the page", async () => {
+    const dir = tempDir("hf-scroll-reload-");
+    const { page, evaluate, waitForNetworkIdle } = reloadingPage();
+
+    const files = await captureScrollScreenshots(page, dir);
+
+    expect(files.length).toBeGreaterThan(0);
+    expect(waitForNetworkIdle).toHaveBeenCalled();
+    const firstIdle = waitForNetworkIdle.mock.invocationCallOrder[0]!;
+    const heightProbe = evaluate.mock.calls.findIndex((c) => String(c[0]).includes("scrollHeight"));
+    expect(heightProbe).toBeGreaterThanOrEqual(0);
+    expect(evaluate.mock.invocationCallOrder[heightProbe]!).toBeGreaterThan(firstIdle);
+  });
+
+  it("re-runs the overlay sweep on the reloaded document", async () => {
+    const dir = tempDir("hf-scroll-reload-sweep-");
+    const { page, evaluate } = reloadingPage();
+
+    await captureScrollScreenshots(page, dir);
+
+    const scripts = evaluate.mock.calls.map((c) => String(c[0]));
+    const clickIdx = scripts.findIndex((s) => s.includes("el.click()"));
+    const sweepIdx = scripts.findIndex((s) => s.includes("createTreeWalker"));
+    const heightIdx = scripts.findIndex((s) => s.includes("scrollHeight"));
+    expect(clickIdx).toBeGreaterThanOrEqual(0);
+    // Clicks, then the sweep on the settled document, then the height probe —
+    // a sweep that ran pre-reload would have been wiped with the old document.
+    expect(clickIdx).toBeLessThan(sweepIdx);
+    expect(sweepIdx).toBeLessThan(heightIdx);
+  });
+
+  it("does not stall when the clicks leave the page in place", async () => {
+    const dir = tempDir("hf-scroll-no-reload-");
+    const { page, waitForNetworkIdle } = fakePage();
+
+    const files = await captureScrollScreenshots(page, dir);
+
+    // The document reports parsed on the first probe, so the settle pays
+    // exactly one idle wait and the run still finishes.
+    expect(files.length).toBeGreaterThan(0);
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(1);
+  });
+
+  // Puppeteer's waitForNetworkIdle counts a request only until its response
+  // headers arrive, so it resolves while a reloaded document is still
+  // parsing. waitForNavigation cannot help there — it deadlocks when armed
+  // after the navigation commits — so the settle also polls readyState.
+  function loadingDocumentPage() {
+    let loading = false;
+    const evaluate = vi.fn(async (script?: unknown) => {
+      const src = String(script);
+      if (src.includes("el.click()")) {
+        loading = true;
+        return undefined;
+      }
+      if (src.includes("readyState")) {
+        if (!loading) return false;
+        // The document finishes parsing while the settle loop waits for it.
+        queueMicrotask(() => {
+          loading = false;
+        });
+        return true;
+      }
+      if (loading) {
+        throw new Error("Execution context was destroyed, most likely because of a navigation");
+      }
+      return settledSize(src);
+    });
+    return scrollablePage(
+      evaluate,
+      vi.fn(async () => undefined),
+    );
+  }
+
+  it("waits out a reloaded document that is still parsing after network idle", async () => {
+    const dir = tempDir("hf-scroll-loading-doc-");
+    const { page, evaluate, waitForNetworkIdle } = loadingDocumentPage();
+
+    const files = await captureScrollScreenshots(page, dir);
+
+    expect(files.length).toBeGreaterThan(0);
+    // A second idle wait runs once the document finishes loading, before the
+    // height probe measures the rebuilt page.
+    expect(waitForNetworkIdle).toHaveBeenCalledTimes(2);
+    const lastIdle = waitForNetworkIdle.mock.invocationCallOrder.at(-1)!;
+    const heightProbe = evaluate.mock.calls.findIndex((c) => String(c[0]).includes("scrollHeight"));
+    expect(evaluate.mock.invocationCallOrder[heightProbe]!).toBeGreaterThan(lastIdle);
   });
 });
 

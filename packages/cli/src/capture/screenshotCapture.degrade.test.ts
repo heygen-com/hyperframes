@@ -17,6 +17,7 @@ describe("captureScrollScreenshots degradation", () => {
         );
       }),
       screenshot: vi.fn(),
+      waitForNetworkIdle: vi.fn(async () => undefined),
     } as unknown as Page;
 
     await expect(

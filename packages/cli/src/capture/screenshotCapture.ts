@@ -7,6 +7,7 @@
 
 import type { Page } from "puppeteer-core";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
+import { waitForPageReady } from "./navigateForCapture.js";
 import { join } from "node:path";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 
@@ -128,6 +129,8 @@ export async function captureScrollScreenshots(
     // Dismiss marketing banners, cookie consents, and popups before scrolling.
     // These overlay content and contaminate screenshots with UI that doesn't
     // belong in video compositions (cookie popups, newsletter modals, etc.)
+    // A consent click can reload the page (some CMPs reload once consent is
+    // stored); wait out the reloading document before reading the DOM again.
     await page
       .evaluate(() => {
         // Click common dismiss/accept buttons
@@ -166,6 +169,17 @@ export async function captureScrollScreenshots(
             /* ignore */
           }
         }
+      })
+      .catch((err: unknown) => {
+        if (isDegradableEvaluateTimeoutError(err)) {
+          throw err;
+        }
+      });
+    await new Promise((r) => setTimeout(r, 400));
+    await waitForPageReady(page);
+    await page
+      // fallow-ignore-next-line complexity
+      .evaluate(() => {
         // Hide fixed/sticky overlays that aren't the main nav. Scanning every
         // element with querySelectorAll('*') + getComputedStyle is O(n) DOM
         // calls and can dominate evaluate() time on large pages. Narrow the
@@ -203,7 +217,6 @@ export async function captureScrollScreenshots(
           throw err;
         }
       });
-    await new Promise((r) => setTimeout(r, 400));
 
     const scrollHeight = (await page.evaluate(
       `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
