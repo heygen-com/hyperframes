@@ -35,6 +35,8 @@ import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
 import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
 
+const CONTENTS_STYLE = { display: "contents" } as const;
+
 export function TimelineLanes({
   pps,
   contentOrigin,
@@ -534,7 +536,7 @@ export function TimelineLanes({
                                 zIndex: 20,
                                 pointerEvents: "none",
                               }
-                            : { display: "contents" }
+                            : CONTENTS_STYLE
                         }
                       >
                         {clip}
