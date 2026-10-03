@@ -378,7 +378,7 @@ export async function shiftGsapPositions(
   return postGsapMutation(projectId, filePath, mutation, "shift-positions failed");
 }
 
-export async function scaleGsapPositions(
+async function scaleGsapPositions(
   projectId: string,
   filePath: string,
   elementId: string,
