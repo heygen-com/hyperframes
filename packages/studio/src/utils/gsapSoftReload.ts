@@ -132,6 +132,12 @@ function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): bool
   return Object.keys(timelines).filter((k) => k !== "__proxied").length > 0;
 }
 
+// The next tween re-reads the element's transform, folding its CSS translate/rotate/scale afresh.
+function markGsapTransformStale(el: Element): void {
+  const cache = (el as { _gsap?: { uncache?: number } })._gsap;
+  if (cache) cache.uncache = 1;
+}
+
 // GSAP masks a folded CSS translate/rotate/scale with `none`, and a tween writes what it animates
 // inline; a fresh load has only what the file authors. Opacity has its own restore.
 function restoreAuthoredStyle(
@@ -379,6 +385,8 @@ export function applySoftReload(
       try {
         win.gsap.set(allTargets, { clearProps: "all" });
       } catch {}
+      // GSAP's parsed transform outlives clearProps here, so the re-run would not fold the CSS again.
+      for (const el of allTargets) markGsapTransformStale(el);
       for (const [el, css] of saved) {
         const s = el.style;
         s.cssText = css;
