@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { COMPOSITION, PLAYHEAD } from "./grid.mjs";
+import { COMPOSITION, PLAYHEAD, localAsset } from "./grid.mjs";
 import {
   angleOf,
   centre,
@@ -772,6 +772,23 @@ async function nudgeGesture(ctx, pre) {
   };
 }
 
+/** Fulfils the fixtures' CDN requests from the repo, so a case never depends on the network. */
+async function serveFixtureAssetsLocally(page) {
+  const cdp = await page.createCDPSession();
+  cdp.on("Fetch.requestPaused", ({ requestId, request }) => {
+    const file = localAsset(request.url);
+    if (!file)
+      return void cdp.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+    void cdp.send("Fetch.fulfillRequest", {
+      requestId,
+      responseCode: 200,
+      responseHeaders: [{ name: "Content-Type", value: "text/javascript" }],
+      body: readFileSync(file).toString("base64"),
+    });
+  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "https://cdn.jsdelivr.net/*" }] });
+}
+
 /**
  * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
  * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
@@ -779,6 +796,7 @@ async function nudgeGesture(ctx, pre) {
 export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
+  await serveFixtureAssetsLocally(page);
   const ctx = {
     page,
     dir,

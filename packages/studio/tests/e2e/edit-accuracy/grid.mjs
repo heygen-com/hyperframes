@@ -1,6 +1,7 @@
 // The edit accuracy grid: one flat-coloured element in a generated project, crossed with one gesture.
 // Projects are written to a tmp dir per case; nothing checked in is edited.
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { dragCases } from "./drags.mjs";
 
@@ -10,7 +11,13 @@ export const PLAYHEAD = 1;
 export const TARGET = { width: 240, height: 160, color: "#f0c020" };
 export const BACKGROUND = "#202020";
 const NESTED_HOST = { left: 160, top: 90, width: 1600, height: 900 };
-const GSAP_CDN = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js";
+// Fixtures keep the CDN URL users author; the bench serves it from the repo's gsap (`localAsset`).
+const require = createRequire(import.meta.url);
+const GSAP_CDN = `https://cdn.jsdelivr.net/npm/gsap@${require("gsap/package.json").version}/dist/gsap.min.js`;
+const LOCAL_ASSETS = new Map([[GSAP_CDN, require.resolve("gsap/dist/gsap.min.js")]]);
+
+/** The repo file a fixture URL is served from, so no case waits on the network. */
+export const localAsset = (url) => LOCAL_ASSETS.get(url);
 
 // Studio has corner handles only (ResizeHandle is nw|ne|sw|se); its edge strips crop, so there is no edge resize.
 const GESTURES = ["move", "resize", "rotate", "crop", "nudge"];
