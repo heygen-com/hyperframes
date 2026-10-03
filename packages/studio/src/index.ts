@@ -76,6 +76,8 @@ export type { AudioWaveformProps } from "./player/components/AudioWaveform";
 export { ImageThumbnail } from "./player/components/ImageThumbnail";
 export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
 export { useRenderClipContent } from "./hooks/useRenderClipContent";
+export { useThumbnailStill } from "./hooks/useThumbnailStill";
+export type { ThumbnailStill, UseThumbnailStillOptions } from "./hooks/useThumbnailStill";
 export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
 export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";
 export type {
