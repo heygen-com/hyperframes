@@ -44,7 +44,7 @@ export interface CommitMutationOptions {
    * error handling — a failed write still throws.
    */
   deferPreviewSync?: boolean;
-  /** Shares an in-place patch miss with the final render of one multi-write action. */
+  /** Carries a deferred write not yet on screen (no patch, or a missed one) to the final render. */
   previewFallbackLatch?: { pending: boolean };
   beforeReload?: () => void;
   /**

@@ -215,6 +215,34 @@ describe("applyPreviewSync", () => {
     expect(applySoftReload).toHaveBeenCalledTimes(1);
   });
 
+  it("carries a deferred write with no instant patch into the final batch render", () => {
+    const previewFallbackLatch = { pending: false };
+    applySoftReload.mockReturnValue("applied");
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+    const group = {
+      label: "Move animated layer (group)",
+      softReload: true,
+      previewFallbackLatch,
+    };
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      { ...group, deferPreviewSync: true },
+      vi.fn(),
+    );
+    expect(previewFallbackLatch.pending).toBe(true);
+    expect(applySoftReload).not.toHaveBeenCalled();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      { ...group, instantPatch: { selector: "#final", change: { kind: "set", props: { x: 2 } } } },
+      vi.fn(),
+    );
+    expect(applySoftReload).toHaveBeenCalledTimes(1);
+  });
+
   it("falls back immediately when a deferred patch miss has no final-render latch", () => {
     patchRuntimeTweenInPlace.mockReturnValue(false);
     applySoftReload.mockReturnValue("applied");

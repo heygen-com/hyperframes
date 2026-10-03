@@ -268,7 +268,8 @@ export function applyPreviewSync(
   nestedFiles?: Map<string, string> | null,
 ): void {
   const patches = instantPatchesFor(options);
-  let needsFallback = options.previewFallbackLatch?.pending === true;
+  const writtenWithoutPatch = patches.length === 0;
+  let needsFallback = options.previewFallbackLatch?.pending === true || writtenWithoutPatch;
   if (patches.length > 0) {
     const deferSeek = options.deferPreviewSync === true;
     const missed = patches.find(
