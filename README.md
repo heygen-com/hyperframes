@@ -17,12 +17,17 @@
 <p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
 
 <p align="center">
+  <a href="https://www.hyperframes.dev/studio">Studio</a> |
   <a href="https://hyperframes.heygen.com/quickstart">Quickstart</a> |
   <a href="https://hyperframes.heygen.com/showcase">Showcase</a> |
   <a href="https://www.hyperframes.dev/">Playground</a> |
   <a href="https://hyperframes.heygen.com/catalog/blocks/data-chart">Catalog</a> |
   <a href="https://hyperframes.heygen.com/introduction">Docs</a> |
   <a href="https://discord.gg/EbK98HBPdk">Discord</a>
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f6ff9fae-f33d-4f68-bd54-f3ed4ba6473b" alt="HyperFrames app opening from the Dock: native Mac and Linux app now available" width="800">
 </p>
 
 <p align="center">
