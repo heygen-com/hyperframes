@@ -24,7 +24,11 @@ import {
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
 import { realFilePath } from "../helpers/safePath.js";
-import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
+import {
+  STUDIO_SIGNATURE_MANIFEST_PATHS,
+  affectsProjectSignature,
+  listProjectFiles,
+} from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
@@ -198,6 +202,16 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
   sweptAt - Math.max(file.mtimeMs, file.ctimeMs) < RACY_MS
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
+
+/** Whether history keeps a project path: a hidden name anywhere in it (a tool's own record, .DS_Store) is nobody's
+ * work, except Studio's two manifests. */
+function isHistoryPath(path: string): boolean {
+  if ((STUDIO_SIGNATURE_MANIFEST_PATHS as readonly string[]).includes(path)) return true;
+  return !path.split("/").some((segment) => segment.startsWith("."));
+}
+
+/** The project files history keeps. */
+const historyFiles = (dir: string) => listProjectFiles(dir).filter((file) => isHistoryPath(file.path));
 
 const sameWho = (a: HistoryWho, b: HistoryWho) => a.kind === b.kind && a.name === b.name;
 
@@ -402,6 +416,7 @@ class Engine {
       const replaced = hashOfVersion(fileContentVersion(bytes));
       if (!replaced || replaced === after) return;
       const path = relative(realDir, absPath).split(sep).join("/");
+      if (!isHistoryPath(path)) return;
       // One chain per file, a new Map per write (forgetWritesBefore checks identity); off-chain notes were overwritten.
       this.overwritten.set(
         path,
@@ -443,7 +458,7 @@ class Engine {
 
   async firstOpen(): Promise<void> {
     const sweptAt = this.now();
-    for (const file of listProjectFiles(this.dir)) {
+    for (const file of historyFiles(this.dir)) {
       const hash = await this.storeIfPresent(file.path);
       if (this.whereFolder() !== "here") throw this.replaced();
       if (hash !== null) this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
@@ -482,10 +497,11 @@ class Engine {
     const sweptAt = this.now();
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
-    const seen = listProjectFiles(this.dir);
+    const seen = historyFiles(this.dir);
     const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
+      .filter(isHistoryPath)
       .filter((path) => !present.has(path))
       .map((path) => {
         const standing = this.standingAt(path);
@@ -802,7 +818,9 @@ class Engine {
 
   /** A watcher saw a write: one sweep per burst takes it in (a deleted folder is reported by its name alone). */
   noteChange(path: string): void {
-    if (this.notedTimer || !affectsProjectSignature(this.dir, resolve(this.dir, path))) return;
+    const absolute = resolve(this.dir, path);
+    if (this.notedTimer || !affectsProjectSignature(this.dir, absolute)) return;
+    if (!isHistoryPath(relative(this.dir, absolute).split(sep).join("/"))) return;
     this.notedTimer = setTimeout(() => {
       this.notedTimer = null;
       this.background(() => this.sweep());
