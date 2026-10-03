@@ -33,3 +33,9 @@ export function trackDisplayNumber(trackOrder: readonly number[], track: number)
 export function trackDisplaySuffix(displayNumber: number | null): string {
   return displayNumber === null ? "" : ` ${displayNumber}`;
 }
+
+/** The action a track toggle offers from its CURRENT `hidden` state; mute on an audio-only track. */
+export function trackHiddenToggleLabel(asMute: boolean, hidden: boolean, suffix: string): string {
+  if (asMute) return hidden ? `Unmute track${suffix}` : `Mute track${suffix}`;
+  return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
+}

@@ -3,13 +3,7 @@ import { Eye, EyeSlash, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react"
 import { Music } from "../../icons/SystemIcons";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
-import { trackDisplaySuffix } from "./timelineTrackDisplay";
-
-// Same words as the undo entry `toggleTimelineTrackHidden` records for this click.
-function visibilityButtonLabel(asMute: boolean, hidden: boolean, suffix: string): string {
-  if (asMute) return hidden ? `Unmute track${suffix}` : `Mute track${suffix}`;
-  return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
-}
+import { trackDisplaySuffix, trackHiddenToggleLabel } from "./timelineTrackDisplay";
 
 function visibilityButtonIcon(asMute: boolean, hidden: boolean) {
   const Icon = asMute ? (hidden ? SpeakerSlash : SpeakerHigh) : hidden ? EyeSlash : Eye;
@@ -33,7 +27,7 @@ export function VisibilityButton({
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
   const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const label = visibilityButtonLabel(asMute, hidden, suffix);
+  const label = trackHiddenToggleLabel(asMute, hidden, suffix);
   return (
     <button
       type="button"

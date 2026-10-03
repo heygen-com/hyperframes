@@ -116,10 +116,9 @@ export function resolveBeatSourceTrack(
  *
  * Audio has no visual to hide, and `data-hidden` on an audio element is what
  * MUTES it — preview silences it and the render drops it from the mix. The
- * timeline withholds the eye on an audio track for that reason
- * (`visible={!isAudioTrack}`), and the single-selection panel gates the same
- * write on `audioSelection`. The multi-selection "Hide all" was the one path
- * left back to it, on a control whose label promises visibility.
+ * timeline offers it on an audio track as a mute, and the single-selection panel
+ * gates the same write on `audioSelection`. The multi-selection "Hide all" would
+ * reach it on a control whose label promises visibility.
  *
  * A shared predicate rather than a check in the handler so the panel's button
  * and the handler's refusal cannot disagree — the button is not the only caller.

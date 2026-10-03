@@ -540,9 +540,7 @@ export function PropertyPanelFlat({
             // next to each other, differing only in a distinction the author
             // cannot see." An `<hf-audio-group>` has no visual to hide at all.
             //
-            // EXCEPT while it is already hidden — the same door-from-the-inside
-            // the timeline's eye keeps for an audio track
-            // (`TimelineTrackPlainHeader`). Withholding it unconditionally
+            // EXCEPT while it is already hidden. Withholding it unconditionally
             // withheld the only way back: a `data-hidden` group is silent in
             // preview (the bus's mute gain) and absent from the render (every
             // member dropped), and the group header carries no visibility

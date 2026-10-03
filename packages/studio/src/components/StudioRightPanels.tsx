@@ -170,12 +170,9 @@ export const StudioRightPanels = memo(function StudioRightPanels({
   );
   const handleHideAllSelected = useCallback(() => {
     // Audio has no visual to hide, and `data-hidden` on an audio element is what
-    // MUTES it — preview silences it and the render drops it from the mix. The
-    // timeline withholds the eye on an audio track for that reason
-    // (`visible={!isAudioTrack}`), and the single-selection panel gates the same
-    // write on `audioSelection`; this multi-selection path was the way back to
-    // it. Checked here as well as in the panel because the button is not the
-    // only caller.
+    // MUTES it — preview silences it and the render drops it from the mix; the
+    // timeline offers that write as a mute. Checked here as well as in the panel
+    // because the button is not the only caller.
     if (!canHideSelections(domEditGroupSelections)) {
       showToast("Audio can't be hidden — use the group's own controls", "info");
       return;

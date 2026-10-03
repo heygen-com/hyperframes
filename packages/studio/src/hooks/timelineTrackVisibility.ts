@@ -6,6 +6,7 @@ import {
   timelineTrackOrder,
   trackDisplayNumber,
   trackDisplaySuffix,
+  trackHiddenToggleLabel,
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { isAudioOnlyTrack } from "../utils/timelineInspector";
@@ -206,13 +207,8 @@ export async function toggleTimelineTrackHidden({
     displayNumber ?? trackDisplayNumber(timelineTrackOrder(timelineElements), track),
   );
   const trackElements = timelineElements.filter((element) => element.track === track);
-  const label = isAudioOnlyTrack(trackElements)
-    ? hidden
-      ? `Mute track${suffix}`
-      : `Unmute track${suffix}`
-    : hidden
-      ? `Hide track${suffix}`
-      : `Show track${suffix}`;
+  // `hidden` is the incoming state; the label names the action that produced it.
+  const label = trackHiddenToggleLabel(isAudioOnlyTrack(trackElements), !hidden, suffix);
   return setElementsHidden({
     projectId,
     activeCompPath,
