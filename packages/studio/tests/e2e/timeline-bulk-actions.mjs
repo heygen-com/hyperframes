@@ -83,6 +83,8 @@ function installProbe(backgroundSource) {
     } finally {
       probe.inflight--;
       probe.lastBusy = performance.now();
+      if (/\/(files|gsap-mutations[^/]*|file-mutations\/(?!probe))/.test(url) && init?.method)
+        probe.lastWriteDone = probe.lastBusy;
     }
   };
 }
@@ -163,9 +165,11 @@ async function measure(page, name, action) {
     page.on("requestfinished", onFinished);
   }
   const startedAt = Date.now();
+  await page.evaluate(() => (window.__bulk.lastWriteDone = 0));
   const t0 = await now(page);
   const doneAt = await action();
   const ms = doneAt - t0;
+  const lastWrite = await page.evaluate(() => window.__bulk.lastWriteDone);
   if (profile) {
     page.off("request", onRequest);
     page.off("requestfinished", onFinished);
@@ -174,6 +178,7 @@ async function measure(page, name, action) {
   }
   return {
     ms,
+    saveMs: lastWrite > 0 ? lastWrite - t0 : undefined,
     thumbnailRequests: profile
       ? requests.filter((r) => r.kind.includes("thumbnail")).length
       : undefined,
