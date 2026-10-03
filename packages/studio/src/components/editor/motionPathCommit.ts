@@ -5,7 +5,16 @@ import { trackPreviewFeatureUsed, type PreviewMethod } from "../../utils/preview
  * GSAP source mutation routed through the (selection-bound) commit facade, which
  * handles the soft reload, undo snapshot, and save-failure feedback.
  */
+import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
+import { observeGsapGesture } from "../../hooks/gsapGestureOutcome";
+import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
+import { commitValueAtPlayhead } from "../../hooks/gsapValueAtPlayhead";
+import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
+import { usePlayerStore } from "../../player/store/playerStore";
+import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
+import type { DomEditSelection } from "./domEditing";
 import type { MotionNodeRef } from "./motionPathGeometry";
+import { selectorFor } from "./motionPathSelection";
 
 export type CommitFn = (
   mutation: Record<string, unknown>,
@@ -39,6 +48,40 @@ export function commitNode(
     mutation,
     motionPathCommitOptions(ref.type === "keyframe" ? "Move keyframe" : "Move waypoint", "drag"),
   );
+}
+
+type NodeDrop = {
+  ref: MotionNodeRef;
+  at: { x: number; y: number };
+  animId: string;
+  anim: GsapAnimation | undefined;
+  selection: DomEditSelection | null;
+  iframe: HTMLIFrameElement | null;
+  commitMutation: CommitFn;
+};
+
+/** Writes a dropped node. A keyframe goes through the writer a layer drag uses, at that keyframe:
+ *  a channel it starts animating keeps GSAP's live value on every other keyframe. With
+ *  auto-keyframe off (#1808) the drop shifts the whole path instead. A waypoint moves in place. */
+export function commitNodeDrop(drop: NodeDrop): Promise<void> {
+  const { ref, at, anim, selection, iframe, commitMutation } = drop;
+  if (ref.type !== "keyframe" || !anim || !selection)
+    return commitNode(ref, at.x, at.y, drop.animId, commitMutation);
+  const writes = observeGsapGesture((_sel, mutation, options) => commitMutation(mutation, options));
+  const callbacks = { commitMutation: writes.commit! };
+  let done: Promise<unknown>;
+  if (usePlayerStore.getState().autoKeyframeEnabled) {
+    usePlayerStore.getState().setActiveKeyframePct(ref.pct);
+    const live = readGsapPositionFromIframe(iframe, selectorFor(selection) ?? "");
+    done = commitValueAtPlayhead(selection, anim, at, iframe, callbacks, {
+      label: "Move keyframe",
+      backfill: live ?? undefined,
+    });
+  } else {
+    const label = "Move animation path";
+    done = commitWholePropertyOffset(selection, anim, at, ref.pct, iframe, callbacks, label);
+  }
+  return done.then(() => trackPreviewEditResult("motion_path", "drag", writes.finish()));
 }
 
 export function commitAddWaypoint(

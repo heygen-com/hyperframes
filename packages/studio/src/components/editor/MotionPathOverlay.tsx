@@ -1,5 +1,3 @@
-import { observeGsapGesture } from "../../hooks/gsapGestureOutcome";
-import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
@@ -7,7 +5,6 @@ import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
-import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
 import { dotRadius, pressBelongsToLayer, pressSelectedLayer } from "./motionPathLayerNode";
@@ -22,7 +19,7 @@ import {
   commitAddKeyframe,
   commitAddWaypoint,
   commitCreatePath,
-  commitNode,
+  commitNodeDrop,
   commitRemoveWaypoint,
 } from "./motionPathCommit";
 import {
@@ -378,33 +375,10 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     // high zoom) would commit an identical value — a no-op undo entry. Skip the
     // commit, but don't treat it as a click either (the user did drag).
     if (x === Math.round(d.initX) && y === Math.round(d.initY)) return;
-    // With auto-keyframe off (#1808), dragging a keyframe's node on the motion
-    // path (the common way to nudge a KEYFRAMED element's position on canvas,
-    // since the element renders exactly at its current keyframe) shifts the
-    // whole path instead of moving just that one keyframe.
     const anim =
       d.ref.type === "keyframe" ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
-    if (
-      d.ref.type === "keyframe" &&
-      anim &&
-      selection &&
-      !usePlayerStore.getState().autoKeyframeEnabled
-    ) {
-      const writes = observeGsapGesture((_sel, mutation, options) =>
-        commitMutation(mutation, options),
-      );
-      void commitWholePropertyOffset(
-        selection,
-        anim,
-        { x, y },
-        d.ref.pct,
-        iframeRef.current,
-        { commitMutation: writes.commit! },
-        "Move animation path",
-      ).then(() => trackPreviewEditResult("motion_path", "drag", writes.finish()));
-    } else {
-      void commitNode(d.ref, x, y, animId, commitMutation);
-    }
+    const iframe = iframeRef.current;
+    void commitNodeDrop({ ref: d.ref, at: { x, y }, animId, anim, selection, iframe, commitMutation });
     // Park the playhead on the edited keyframe's time so the element previews AT
     // that keyframe. Without it, a playhead sitting before the tween renders the
     // element's base pose — the edit (correct on the path) looks like it vanished.
