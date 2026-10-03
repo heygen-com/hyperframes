@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildGrid, localAsset, writeFixture } from "./grid.mjs";
+import { FIXTURE_CDN, buildGrid, localAsset, writeFixture } from "./grid.mjs";
 
 function fixtureUrls(spec) {
   const dir = mkdtempSync(join(tmpdir(), "edit-bench-urls-"));
@@ -17,7 +17,8 @@ function fixtureUrls(spec) {
   return urls;
 }
 
-const servedLocally = (url) => existsSync(localAsset(url) ?? "");
+// Only the CDN host is intercepted, so a mapped URL anywhere else would still reach the network.
+const servedLocally = (url) => url.startsWith(FIXTURE_CDN) && localAsset(url) !== undefined;
 
 describe("grid fixtures", () => {
   it("reference only URLs the bench serves from the repo", () => {
@@ -25,5 +26,5 @@ describe("grid fixtures", () => {
       .flatMap(fixtureUrls)
       .filter((url) => !servedLocally(url));
     expect([...new Set(unserved)]).toEqual([]);
-  });
+  }, 30_000);
 });

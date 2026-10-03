@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { COMPOSITION, PLAYHEAD, localAsset } from "./grid.mjs";
+import { COMPOSITION, FIXTURE_CDN, PLAYHEAD, localAsset } from "./grid.mjs";
 import {
   angleOf,
   centre,
@@ -772,21 +772,32 @@ async function nudgeGesture(ctx, pre) {
   };
 }
 
-/** Fulfils the fixtures' CDN requests from the repo, so a case never depends on the network. */
+const blockedCdnUrls = new Set();
+
+/** Serves the fixtures' CDN requests from the repo; any other CDN URL is blocked and named once. */
 async function serveFixtureAssetsLocally(page) {
   const cdp = await page.createCDPSession();
   cdp.on("Fetch.requestPaused", ({ requestId, request }) => {
     const file = localAsset(request.url);
-    if (!file)
-      return void cdp.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
-    void cdp.send("Fetch.fulfillRequest", {
-      requestId,
-      responseCode: 200,
-      responseHeaders: [{ name: "Content-Type", value: "text/javascript" }],
-      body: readFileSync(file).toString("base64"),
-    });
+    if (!file) {
+      if (!blockedCdnUrls.has(request.url)) console.warn(`edit bench: blocked ${request.url}`);
+      blockedCdnUrls.add(request.url);
+      cdp
+        .send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" })
+        .catch(() => undefined);
+      return;
+    }
+    // A request whose frame went away rejects; that must not end the run.
+    cdp
+      .send("Fetch.fulfillRequest", {
+        requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "text/javascript" }],
+        body: readFileSync(file).toString("base64"),
+      })
+      .catch(() => undefined);
   });
-  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "https://cdn.jsdelivr.net/*" }] });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `${FIXTURE_CDN}*` }] });
 }
 
 /**
