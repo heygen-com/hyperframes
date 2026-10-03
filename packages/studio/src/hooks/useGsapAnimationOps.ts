@@ -14,10 +14,8 @@ import {
   cutoverCommittedOrThrow,
   type CutoverDeps,
 } from "../utils/sdkCutover";
-import {
-  assignGsapTargetAutoIdIfNeeded,
-  ensureElementAddressable,
-} from "./gsapScriptCommitHelpers";
+import { ensureElementAddressable } from "./gsapScriptCommitHelpers";
+import { assignGsapTargetAutoIdIfNeeded } from "./useDomEditCommitsHelpers";
 import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 
 interface SdkAnimationDeps {
@@ -127,18 +125,23 @@ export function useGsapAnimationOps({
       if (autoId) {
         const pid = projectIdRef.current;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
-        if (!pid) return;
-        const assign = () =>
-          assignGsapTargetAutoIdIfNeeded({
-            projectId: pid,
-            targetPath,
-            selection,
-            autoId,
-            showToast,
-          });
-        const assigned = await (writeProjectFile
-          ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
-          : assign());
+        let assigned = false;
+        try {
+          if (!pid) return;
+          const assign = () =>
+            assignGsapTargetAutoIdIfNeeded({
+              projectId: pid,
+              targetPath,
+              selection,
+              autoId,
+              showToast,
+            });
+          assigned = await (writeProjectFile
+            ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
+            : assign());
+        } finally {
+          if (!assigned) selection.element.removeAttribute("id");
+        }
         if (!assigned) return;
       }
 
