@@ -134,11 +134,15 @@ export function useGsapAnimationOps({
             autoId,
             showToast,
           });
-        const assigned = await (writeProjectFile
-          ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
-          : assign());
+        let assigned = false;
+        try {
+          assigned = await (writeProjectFile
+            ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
+            : assign());
+        } finally {
+          if (!assigned) selection.element.removeAttribute("id");
+        }
         if (!assigned) return;
-        selection.element.setAttribute("id", autoId);
       }
 
       const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;

@@ -91,7 +91,7 @@ describe("useGsapAnimationOps settlement", () => {
   it.each([
     ["saved", { status: 200, body: { changed: true } }, "div"],
     ["refused", { status: 409, body: { error: "file changed" } }, null],
-  ])("gives an id-less element its id only once the id write is %s", async (_name, reply, id) => {
+  ])("an id-less element keeps its minted id only when the id write is %s", async (_name, reply, id) => {
     const element = document.body.appendChild(document.createElement("div"));
     vi.stubGlobal(
       "fetch",
@@ -113,6 +113,52 @@ describe("useGsapAnimationOps settlement", () => {
 
     expect(element.getAttribute("id")).toBe(id);
     expect(commitMutation).toHaveBeenCalledTimes(id ? 1 : 0);
+  });
+
+  it("mints different ids for two adds whose id writes overlap", async () => {
+    const first = document.body.appendChild(document.createElement("div"));
+    const second = document.body.appendChild(document.createElement("div"));
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchMock = vi.fn(async (_input: unknown, _init?: RequestInit) => {
+      if (fetchMock.mock.calls.length === 1) await held;
+      return new Response(JSON.stringify({ changed: true }), {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const api = renderOps(vi.fn(async () => undefined));
+    const add = (element: HTMLElement, hfId: string) =>
+      api.addGsapAnimation({ element, hfId } as unknown as DomEditSelection, "from");
+
+    const adding = add(first, "hf-1");
+    await add(second, "hf-2");
+    release();
+    await adding;
+
+    const ids = fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse(String(init?.body)).operations[0].value,
+    );
+    expect(ids).toEqual(["div", "div-2"]);
+    expect([first.id, second.id]).toEqual(["div", "div-2"]);
+  });
+
+  it("drops the minted id when the id write fails on the network", async () => {
+    const element = document.body.appendChild(document.createElement("div"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("offline");
+      }),
+    );
+    const api = renderOps(vi.fn(async () => undefined));
+
+    await expect(
+      api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from"),
+    ).rejects.toThrow("offline");
+    expect(element.hasAttribute("id")).toBe(false);
   });
 
   it("soft-reloads the preview when deleting an animation", async () => {
