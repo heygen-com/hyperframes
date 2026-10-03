@@ -480,8 +480,8 @@ describe("parked transport loop", () => {
     target.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, "token-1");
     await flushObservers();
     raf.step();
-    // A gesture owns the paused frame: the loop stays awake and defers the seek.
-    expect(raf.pending()).toBe(1);
+    // A gesture owns the paused frame: the loop defers the seek and parks until the marker clears.
+    expect(raf.pending()).toBe(0);
 
     const timeline = window.__timelines!["main"] as RuntimeTimelineLike;
     const seeks: number[] = [];
