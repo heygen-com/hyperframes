@@ -10,6 +10,7 @@ import {
 } from "./gsapDragCommit";
 import type { GsapEditOutcome, PlayheadEditRefusal } from "./gsapEditOutcome";
 import {
+  exactKeyframePct,
   findParsedTween,
   parsedImplicitEndValue,
   parsedTweenEase,
@@ -263,7 +264,10 @@ export function planValueEdit(
   const timed = withExactStepTimes(anim, tween);
   return planValueAtPlayhead({
     anim: withLiveTiming(timed, tween),
-    at: activeKeyframePct != null ? { percentage: activeKeyframePct } : { time: currentTime },
+    at:
+      activeKeyframePct != null
+        ? { percentage: exactKeyframePct(anim, tween, activeKeyframePct) }
+        : { time: currentTime },
     values,
     backfill,
     holdFromStart,
@@ -286,6 +290,8 @@ export async function commitValueAtPlayhead(
 ): Promise<GsapEditOutcome> {
   await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+  const tween = findParsedTween(iframe, selection.element, anim);
+  const parkAt = activeKeyframePct == null ? null : exactKeyframePct(anim, tween, activeKeyframePct);
   const plan = planValueEdit(selection, anim, values, iframe, options);
   if (!plan.ok) return { status: "blocked", reason: "keyframes-uneditable", detail: plan.reason };
   await callbacks.commitMutation(selection, plan.mutation, {
@@ -294,9 +300,9 @@ export async function commitValueAtPlayhead(
     beforeReload: options.beforeReload,
     ...(plan.added && { keyframeAction: "add" as const }),
   });
-  if (activeKeyframePct != null) {
+  if (parkAt != null) {
     setActiveKeyframePct(null);
-    parkPlayheadOnKeyframe(anim, activeKeyframePct);
+    parkPlayheadOnKeyframe(anim, parkAt);
   }
   return { status: "persisted" };
 }

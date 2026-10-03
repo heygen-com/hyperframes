@@ -1,6 +1,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { elementTargets } from "../utils/elementGsap";
 import { resolveTweenStart } from "../utils/globalTimeCompiler";
+import { KEYFRAME_PCT_MATCH } from "./gsapShared";
 import type { ImplicitEndValue } from "./gsapValueAtPlayhead";
 
 // GSAP 3 internals: a property tween in a tween's `_pt` chain; CSSPlugin keeps its own under `d._pt`.
@@ -240,4 +241,10 @@ export function withExactStepTimes(anim: GsapAnimation, tween: ParsedTween | nul
     percentage: Math.round(ends[i]! * 100000) / 1000,
   }));
   return { ...anim, keyframes: { ...data, keyframes } };
+}
+
+export function exactKeyframePct(anim: GsapAnimation, tween: ParsedTween | null, pct: number) {
+  const authored = anim.keyframes?.keyframes ?? [];
+  const i = authored.findIndex((kf) => Math.abs(kf.percentage - pct) <= KEYFRAME_PCT_MATCH);
+  return withExactStepTimes(anim, tween).keyframes?.keyframes[i]?.percentage ?? pct;
 }

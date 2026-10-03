@@ -4,6 +4,7 @@
  * to reduce drift risk.
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { getObjectArrayKeyframeTiming } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
   absoluteToPercentage,
@@ -405,7 +406,7 @@ export interface ParsedPercentageKeyframes {
 function collectAnimatableKeyframeProperties(entry: object): Record<string, number | string> {
   const properties: Record<string, number | string> = {};
   for (const [property, value] of Object.entries(entry)) {
-    if (property === "ease") continue;
+    if (property === "ease" || property === "duration") continue;
     if (typeof value === "number") properties[property] = Math.round(value * 1000) / 1000;
     else if (typeof value === "string") properties[property] = value;
   }
@@ -423,10 +424,8 @@ export function parsePercentageKeyframes(
   const keyframes: ParsedPercentageKeyframes["keyframes"] = [];
   let easeEach: string | undefined;
 
-  // GSAP array-form keyframes — `keyframes: [{x,y}, {x,y}, ...]` — are spread
-  // evenly across the tween by default: GSAP gives each entry an equal share of
-  // the duration unless an entry carries its own `duration`/`delay`, which the
-  // studio never emits. So entry i of n maps to i/(n-1)*100% (n=4 → 0/33.3/66.7/100).
+  // GSAP array-form keyframes — `keyframes: [{x,y}, {x,y}, ...]` — sit where the
+  // parser times them, so a path node and the lane agree (n=4 → 0/33.3/66.7/100).
   // Index spacing counts EVERY array slot, including a degenerate entry that
   // contributes no animatable prop (it's still a slot GSAP allocates a position
   // to), so dropping such an entry from the output below must NOT shift the others.
@@ -437,9 +436,14 @@ export function parsePercentageKeyframes(
   // motion path.
   if (Array.isArray(kfObj)) {
     const steps = kfObj as unknown[];
+    const timing = getObjectArrayKeyframeTiming(
+      steps.map((entry) => (entry as { duration?: unknown } | null)?.duration),
+    );
     steps.forEach((entry, i) => {
       if (!entry || typeof entry !== "object") return;
-      const percentage = steps.length > 1 ? Math.round((i / (steps.length - 1)) * 1000) / 10 : 0;
+      const percentage =
+        timing?.percentages[i] ??
+        (steps.length > 1 ? Math.round((i / (steps.length - 1)) * 1000) / 10 : 0);
       const properties = collectAnimatableKeyframeProperties(entry);
       if (Object.keys(properties).length > 0) keyframes.push({ percentage, properties });
     });
