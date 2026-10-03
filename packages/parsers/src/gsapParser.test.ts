@@ -1827,6 +1827,26 @@ describe("keyframe mutations", () => {
       expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
     });
 
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: still holds when the other tween sits at a label after the keyframes", (_, sync) => {
+      const script =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.addLabel("later", 5);\n` +
+        `tl.to("#t", { x: 20, duration: 1 }, "later");\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(script)).animations.find((a) => a.method === "set");
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
+    it("acorn: a re-sync of a one-line script is byte-stable", () => {
+      const once = syncPositionHoldsBeforeKeyframesAcorn(
+        `const tl = gsap.timeline({ paused: true });tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`,
+      );
+      expect(syncPositionHoldsBeforeKeyframesAcorn(once)).toBe(once);
+    });
+
     it("removes an orphaned hold when its tween is gone", () => {
       const withHold = syncPositionHoldsBeforeKeyframes(posTweenAt(1.2));
       const tweenId = parseGsapScript(withHold).animations.find((a) => a.keyframes)!.id;

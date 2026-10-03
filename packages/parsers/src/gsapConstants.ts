@@ -109,9 +109,9 @@ export function classifyTweenPropertyGroup(
   return undefined;
 }
 
-function animationStart(animation: GsapAnimation): number {
+function knownStart(animation: GsapAnimation): number | undefined {
   if (animation.resolvedStart !== undefined) return animation.resolvedStart;
-  return typeof animation.position === "number" ? animation.position : 0;
+  return typeof animation.position === "number" ? animation.position : undefined;
 }
 
 /**
@@ -124,19 +124,23 @@ export function positionHoldForAnimation(
   animations: readonly GsapAnimation[],
 ): Record<string, number> | null {
   if (!animation.keyframes) return null;
-  const start = animationStart(animation);
+  const start = knownStart(animation) ?? 0;
   if (!(start > 0.001)) return null;
   const first = [...animation.keyframes.keyframes].sort(
     (left, right) => left.percentage - right.percentage,
   )[0];
   if (!first) return null;
-  const earlier = animations.filter(
-    (other) =>
+  // A tween whose start the parser could not resolve (a label, say) is not known to come first.
+  const earlier = animations.filter((other) => {
+    const otherStart = knownStart(other);
+    return (
       other !== animation &&
       !other.global &&
       other.targetSelector === animation.targetSelector &&
-      animationStart(other) < start - 0.001,
-  );
+      otherStart !== undefined &&
+      otherStart < start - 0.001
+    );
+  });
   const position: Record<string, number> = {};
   for (const [property, value] of Object.entries(first.properties)) {
     if (classifyPropertyGroup(property) !== "position" || typeof value !== "number") continue;
