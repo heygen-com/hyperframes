@@ -115,9 +115,8 @@ function knownStart(animation: GsapAnimation): number | undefined {
 }
 
 /**
- * The position a Studio hold must pin from t=0 for a keyframed tween that starts later: its first
- * keyframe's position props, minus any an earlier tween on the same target already writes. A global
- * `gsap.set` is a base value, like CSS, so the hold still overrides it.
+ * What a Studio hold pins from t=0 before a later keyframed tween: its first keyframe's position props,
+ * minus those an earlier timeline tween on the target writes (a global `gsap.set` is a base value).
  */
 export function positionHoldForAnimation(
   animation: GsapAnimation,
