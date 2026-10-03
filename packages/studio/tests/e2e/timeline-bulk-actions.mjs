@@ -407,7 +407,12 @@ try {
       const result = await run(page, name).catch(async (error) => {
         await page.screenshot({ path: join(tmpdir(), `bulk-failed-${name}.png`) });
         console.error(`${name} failed, screenshot in ${tmpdir()}: ${error.message}`);
-        console.error(page.pageErrors.slice(0, 8).join("\n"));
+        console.error(
+          page.pageErrors
+            .filter((e) => !e.startsWith("Failed to load resource"))
+            .slice(0, 8)
+            .join("\n"),
+        );
         console.error(
           await page.evaluate(
             () =>
