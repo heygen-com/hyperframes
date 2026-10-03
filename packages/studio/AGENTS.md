@@ -128,12 +128,9 @@ bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-
 - Each run writes its results, a table and a candidate baseline to
   `tests/e2e/evidence/edit-accuracy/<run>/` (git-ignored; `--out` moves it); a
   failing case also gets its screens and saved files under `cases/<id>/`.
-- CI runs the full grid in 20 shards, then `ratchet.mjs gate` compares them with
-  the base branch's `baseline.json`: a case that flips is re-run twice and
-  judged 2 of 3. The gate fails when a passing case regresses, or when a newly
-  passing case is not banked. To bank, commit the `baseline.json` from the
-  `edit-accuracy-gate` artifact. Smoothness is reported, never gated.
-- Known races sit in `QUARANTINED` in `ratchet.mjs`, measured but not gated.
+- CI runs the full grid in shards and `ratchet.mjs` gates the result against the
+  base branch's `baseline.json`; its header states the rules. When cases newly
+  pass, commit the `baseline.json` from the `edit-accuracy-gate` artifact.
 
 ## Gates that will fail your PR
 
@@ -145,10 +142,8 @@ bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-
 - **oxlint and oxfmt**, not eslint or prettier.
 - **Before and After captures.** A PR that changes code under `packages/studio`
   or `packages/player` needs `## Before` and `## After` sections in its
-  description, each with an image or video (`scripts/check-pr-captures.mjs`).
-  A change under 20 lines with no `.tsx`, `.css` or `.html` file may declare
-  `## No visible change` instead. Markdown is exempt. Captures posted as comments
-  are not read.
+  description, each with an image or video. The exemptions are in
+  `scripts/check-pr-captures.mjs`, and its failure message lists them.
 
 ## Traps worth knowing
 
