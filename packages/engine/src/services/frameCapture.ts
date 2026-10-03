@@ -2638,7 +2638,7 @@ async function captureFrameErrorDiagnostics(
     const diagnosticsDir = join(session.outputDir, "diagnostics");
     if (!existsSync(diagnosticsDir)) mkdirSync(diagnosticsDir, { recursive: true });
     const base = join(diagnosticsDir, `frame-error-${frameIndex}`);
-    const pageScreenshotCanResolve = session.captureMode !== "beginframe";
+    const pageScreenshotCanResolve = session.launchCaptureMode !== "beginframe";
     if (pageScreenshotCanResolve) {
       await session.page.screenshot({ path: `${base}.png`, type: "png", fullPage: true });
     }
