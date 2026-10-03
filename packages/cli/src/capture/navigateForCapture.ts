@@ -61,3 +61,21 @@ export async function navigateForCapture<TResponse>(
     fellBackFromNetworkIdle: true,
   };
 }
+
+export interface PageReadyPage {
+  waitForNetworkIdle(options: { idleTime: number; timeout: number }): Promise<unknown>;
+  evaluate(fn: () => unknown): Promise<unknown>;
+}
+
+export async function waitForPageReady(page: PageReadyPage): Promise<void> {
+  await page.waitForNetworkIdle({ idleTime: 500, timeout: 15_000 }).catch(() => {});
+  let waitedOutLoad = false;
+  for (let i = 0; i < 30; i++) {
+    const loading = await page.evaluate(() => document.readyState === "loading").catch(() => true);
+    if (!loading) break;
+    waitedOutLoad = true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!waitedOutLoad) return;
+  await page.waitForNetworkIdle({ idleTime: 500, timeout: 15_000 }).catch(() => {});
+}
