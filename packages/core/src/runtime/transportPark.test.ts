@@ -781,7 +781,6 @@ describe("parked transport loop", () => {
     expect(media.isPaused()).toBe(false);
 
     window.__hf!.releasePausedMedia!(video);
-    media.start();
     settle();
     expect(media.isPaused()).toBe(true);
   });

@@ -3005,6 +3005,7 @@ export function initSandboxRuntimeModular(): void {
   };
   const releasePausedMedia = (el: HTMLMediaElement): void => {
     pausedMediaLeases.delete(el);
+    wakeTransport();
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
   window.__hf.releasePausedMedia = releasePausedMedia;
