@@ -111,12 +111,11 @@ async function extractStill(
   if (!claimFile(imagePath))
     return { error: `freeze still already exists: ${fileName}`, status: 409 };
   const extracted = await tools.extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
-  if (!extracted.ok) {
-    rmSync(imagePath, { force: true }); // ffmpeg can leave a partial file when it fails or times out
-    return {
-      error: `Could not extract the frame: ${extracted.error ?? "ffmpeg failed"}`,
-      status: 500,
-    };
+  // ffmpeg can leave a partial file when it fails, and exits 0 with no frame past the media's end.
+  if (!extracted.ok || statSync(imagePath).size === 0) {
+    rmSync(imagePath, { force: true });
+    const reason = extracted.ok ? "no frame at this time" : (extracted.error ?? "ffmpeg failed");
+    return { error: `Could not extract the frame: ${reason}`, status: 500 };
   }
   const depth = relative(projectDir, fileDir).split(sep).filter(Boolean).length;
   const stillPath = `${FREEZE_DIR.join("/")}/${fileName}`;

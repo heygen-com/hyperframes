@@ -41,6 +41,7 @@ describe("freeze-frame route", () => {
     const calls: string[][] = [];
     const { dir, post } = setup(async (args) => {
       calls.push(args);
+      writeFileSync(args.at(-1) ?? "", "png");
       return { ok: true };
     });
     const res = await post({
@@ -107,6 +108,24 @@ describe("freeze-frame route", () => {
     expect(existsSync(still)).toBe(false);
   });
 
+  it("refuses, leaving nothing behind, when ffmpeg succeeds without writing a frame", async () => {
+    let still = "";
+    const { dir, post } = setup(async (args) => {
+      still = args.at(-1) ?? "";
+      return { ok: true };
+    });
+    const res = await post({
+      path: "index.html",
+      expectedVersion: fileContentVersion(html),
+      target: { id: "talk" },
+      playhead: 2.5,
+    });
+    expect(res.status).toBe(500);
+    expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
+    expect(still).not.toBe("");
+    expect(existsSync(still)).toBe(false);
+  });
+
   it("removes the still it extracted when the page changed before the write", async () => {
     let still = "";
     const { dir, post } = setup(async (args) => {
@@ -132,6 +151,7 @@ describe("freeze-frame route", () => {
     const { dir, post } = setup(
       async (args) => {
         calls.push(args);
+        writeFileSync(args.at(-1) ?? "", "png");
         return { ok: true };
       },
       { path: "scenes/a.html", html: evil.replace('src="media/', 'src="../media/') },
