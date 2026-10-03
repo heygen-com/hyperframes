@@ -62,6 +62,7 @@ import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
+import { desktopHint } from "../utils/desktopApp.js";
 import {
   formatBytes,
   formatRenderSummaryDetail,
@@ -524,6 +525,8 @@ export interface RenderOptions {
   throwOnError?: boolean;
   /** Skip the interactive feedback prompt after a successful render. */
   skipFeedback?: boolean;
+  /** False for a batch row: one line about the desktop app per batch is noise, not a pointer. */
+  desktopHint?: boolean;
   /**
    * OPT IN to managing the DE parallel-router circuit breaker
    * (`applyDeParallelRouterCircuitBreaker`) for this render. Default OFF —
@@ -886,6 +889,8 @@ async function renderDocker(
   runPostRenderStep("printRenderComplete", () =>
     printRenderComplete({
       outputPath,
+      projectDir,
+      desktopHint: options.desktopHint !== false && options.quality !== "draft",
       elapsedMs: elapsed,
       quiet: options.quiet,
       format: options.format,
@@ -1138,6 +1143,8 @@ async function executeLocalRender(
   runPostRenderStep("printRenderComplete", () =>
     printRenderComplete({
       outputPath,
+      projectDir,
+      desktopHint: options.desktopHint !== false && options.quality !== "draft",
       elapsedMs: elapsed,
       quiet: options.quiet,
       format: options.format,
@@ -1900,6 +1907,9 @@ function readOutputFootprint(outputPath: string): { fileSize: string; isDirector
 
 function printRenderComplete(input: {
   outputPath: string;
+  projectDir: string;
+  /** Print the desktop-app line: a delivered render, never a draft or a batch row. */
+  desktopHint: boolean;
   elapsedMs: number;
   quiet: boolean;
   format: RenderFormat;
@@ -1920,6 +1930,8 @@ function printRenderComplete(input: {
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
   console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
   if (perf) printRenderPipeline(perf, input.requestedGpuMode);
+  const hint = input.desktopHint ? desktopHint(input.projectDir) : null;
+  if (hint) console.log("   " + c.dim(hint));
 }
 
 function printRenderPipeline(

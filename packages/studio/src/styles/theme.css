@@ -436,6 +436,9 @@
   --color-violet-400: oklch(70.2% 0.183 293.541);
   --color-violet-500: oklch(60.6% 0.25 292.717);
   --color-white: #fff;
+  /* Framey, the desktop app's cursor mascot (hyperframes-internal packages/nib): the same in both themes. */
+  --color-framey: #3ce6ac;
+  --color-framey-ink: #16121a;
 }
 
 /* The colour-scheme picks each token's light or dark half: dark unless the document element

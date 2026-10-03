@@ -40,6 +40,8 @@ vi.mock("../contexts/PanelLayoutContext", () => ({
 }));
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+// Probes the preview server on mount; covered in OpenInDesktopButton.dom.test.tsx.
+vi.mock("./OpenInDesktopButton", () => ({ OpenInDesktopButton: () => null }));
 
 const { StudioHeader } = await import("./StudioHeader");
 const { ShowThemeToggle } = await import("./ThemeToggle");

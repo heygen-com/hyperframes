@@ -966,6 +966,15 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     });
   });
 
+  // HyperFrames Studio, the desktop app: the header's "Open in app" asks this server, which runs on the person's Mac,
+  // to hand the project folder over (`hyperframes open`'s `open -b`). The desktop's own Studio has no such route, so
+  // the button stays hidden there.
+  app.get("/api/open-in-desktop", (c) => c.json({ available: process.platform === "darwin" }));
+  app.post("/api/open-in-desktop", async (c) => {
+    const { openInDesktop } = await import("../utils/desktopApp.js");
+    return c.json(openInDesktop(projectDir));
+  });
+
   // ── Pre-flight checks for render ────────────────────────────────────────
   // Intercept render requests before they reach the shared API so we can
   // fail fast with an actionable hint instead of burning through the entire

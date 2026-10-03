@@ -365,6 +365,7 @@ async function executeBatchRender(
     exitAfterComplete: false,
     throwOnError: true,
     skipFeedback: true,
+    desktopHint: false,
     manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
   };
   const manifest = await batchModule.runBatchRender({
