@@ -76,6 +76,7 @@ import {
 } from "@hyperframes/engine";
 import {
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
@@ -1168,6 +1169,14 @@ function injectTextRenderingRule(html: string): string {
 
 class ScriptIntegrityError extends Error {}
 
+function isPolicyRejectedUrl(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("kind" in error)) return false;
+  const { kind, status } = error as { kind?: unknown; status?: unknown };
+  return kind === "http_rejected" && status === undefined;
+}
+
+const MAX_INLINE_SCRIPT_BYTES = 2 * 1024 * 1024;
+
 /** Match SRI's strongest supported digest before decoding or rewriting script bytes. */
 function matchesScriptIntegrity(bytes: Uint8Array, metadata: string): boolean {
   const hashes = [
@@ -1209,11 +1218,11 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 
   const downloads = await Promise.allSettled(
     externalScripts.map(async ({ el, src }) => {
-      const response = await fetch(src, {
-        signal: AbortSignal.timeout(15_000),
+      // Same public-URL policy as the stylesheet path, re-validated per redirect hop.
+      const bytes = await fetchPublicHttpsBytes(src, {
+        maxBytes: MAX_INLINE_SCRIPT_BYTES,
+        timeoutMs: 15_000,
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
       if (!matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")) {
         throw new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`);
       }
@@ -1241,6 +1250,15 @@ export async function inlineExternalScripts(html: string): Promise<string> {
       // A verified mismatch must never fall back to an executable external tag:
       // browser support for integrity metadata (including casing) can differ.
       if (download.reason instanceof ScriptIntegrityError) throw download.reason;
+      // Leaving the tag would hand the fetch to the render browser, the SSRF this prevents.
+      if (isPolicyRejectedUrl(download.reason)) {
+        el.remove();
+        defaultLogger.warn(
+          `[Compiler] Dropped external script with a disallowed URL: ${src}. ` +
+            `Only public https:// script sources may be inlined.`,
+        );
+        continue;
+      }
       defaultLogger.warn(
         `[Compiler] WARNING: Failed to download CDN script: ${src} — ${download.reason}. ` +
           `The render may fail if this script is required (e.g. GSAP). ` +
