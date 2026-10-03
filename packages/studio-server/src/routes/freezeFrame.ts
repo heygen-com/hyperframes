@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { closeSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import type { Hono } from "hono";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
@@ -80,6 +80,16 @@ function readExpected(absPath: string, expectedVersion: string): { content: stri
     : { error: "file conflict", status: 409 };
 }
 
+function claimFile(path: string): boolean {
+  try {
+    closeSync(openSync(path, "wx"));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+}
+
 async function extractStill(
   projectDir: string,
   absPath: string,
@@ -97,7 +107,8 @@ async function extractStill(
   if (!imagePath || dirname(imagePath) !== freezeDir) {
     return { error: `forbidden freeze path: ${fileName}`, status: 403 };
   }
-  if (existsSync(imagePath))
+  // Claim the name before extracting, so a failed request only ever removes a still it made.
+  if (!claimFile(imagePath))
     return { error: `freeze still already exists: ${fileName}`, status: 409 };
   const extracted = await tools.extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
   if (!extracted.ok) {

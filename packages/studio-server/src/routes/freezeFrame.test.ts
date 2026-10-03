@@ -54,7 +54,7 @@ describe("freeze-frame route", () => {
     expect(res.status).toBe(200);
     const output = calls[0]?.at(-1) ?? "";
     expect(calls[0]).toEqual([
-      "-n",
+      "-y",
       "-ss",
       "2.5",
       "-i",
@@ -230,6 +230,16 @@ describe("freeze-frame route", () => {
       expect(kept).toHaveLength(1);
       expect(readFileSync(kept[0] ?? "", "utf-8")).toContain("#");
       expect(readFileSync(join(dir, "index.html"), "utf-8")).toContain(basename(kept[0] ?? ""));
+    });
+
+    it("keeps the winner's still when two requests race for the same name", async () => {
+      const outputs: string[] = [];
+      const { dir, post } = setup(writingExtractor(outputs), undefined, () => "fixed");
+      const results = await Promise.all([freeze(post, dir, "talk"), freeze(post, dir, "talk")]);
+      expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
+      expect(outputs).toHaveLength(1);
+      expect(existsSync(outputs[0] ?? "")).toBe(true);
+      expect(readFileSync(join(dir, "index.html"), "utf-8")).toContain(basename(outputs[0] ?? ""));
     });
 
     it("refuses, without extracting, when the still's name is already taken", async () => {

@@ -61,9 +61,9 @@ describe("freezeFrameMediaTime", () => {
 });
 
 describe("freezeExtractArgs", () => {
-  it("seeks before the input and writes one frame, never over an existing file", () => {
+  it("seeks before the input and writes one frame into the file the route claimed", () => {
     expect(freezeExtractArgs("/p/a.mp4", 7.2004, "/p/assets/freeze/a-3200.png")).toEqual([
-      "-n",
+      "-y",
       "-ss",
       "7.2",
       "-i",
