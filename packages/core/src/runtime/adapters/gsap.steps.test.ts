@@ -89,4 +89,57 @@ describe("gsap adapter at a tween's start", () => {
     for (const time of [20, 0, 4]) adapter.seek({ time });
     expect(gsap.getProperty(box, "x")).toBe(0);
   });
+
+  it("shows a keyframed tween's start inside a nested timeline, seeking onto it twice", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    const scene = gsap.timeline();
+    scene.from(box, { x: -60, duration: 2, ease: "none" }, 0);
+    scene.to(box, { keyframes: { "0%": { x: 5 }, "100%": { x: 60 } }, duration: 1 }, 2);
+    timeline.add(scene, 0.5);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 2.5 });
+    adapter.seek({ time: 2.5 });
+    expect(gsap.getProperty(box, "x")).toBe(5);
+  });
+
+  it("shows a staggered tween's start over an earlier tween's end", () => {
+    const boxes = [0, 1].map(() => document.body.appendChild(document.createElement("div")));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.from(boxes, { x: -60, duration: 2, ease: "none" }, 0);
+    timeline.fromTo(boxes, { x: 5 }, { x: 60, duration: 1, stagger: 0.1 }, 2);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 2 });
+    adapter.seek({ time: 2 });
+    expect(gsap.getProperty(boxes[0]!, "x")).toBe(5);
+  });
+
+  it("does not start a tween that begins just after the seek time", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(box, { x: 100, duration: 10, ease: "none" }, 0);
+    timeline.to(box, { x: 200, duration: 1, ease: "none", overwrite: "auto" }, 2.0005);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 2 });
+    adapter.seek({ time: 1 });
+    expect(gsap.getProperty(box, "x")).toBe(10);
+  });
+
+  it("keeps a relative repeatRefresh tween on its iteration at a repeat boundary", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(box, { x: "+=10", duration: 1, repeat: 1, repeatRefresh: true, ease: "none" }, 0);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 1 });
+    adapter.seek({ time: 1 });
+    expect(gsap.getProperty(box, "x")).toBe(10);
+  });
 });

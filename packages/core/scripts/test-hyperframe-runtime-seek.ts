@@ -102,7 +102,6 @@ function testGsapAdapterPreservesTotalTime(): void {
       { method: "pause" },
       { method: "totalTime", time: seekTime, suppressEvents: false },
       // Silent re-render arriving from below, so same-time steps apply in authored order
-      { method: "totalTime", time: seekTime + 0.001, suppressEvents: true },
       { method: "totalTime", time: seekTime - 0.001, suppressEvents: true },
       { method: "totalTime", time: seekTime, suppressEvents: true },
     ],
