@@ -8,7 +8,7 @@ vi.mock("./plainTranslate", async (importOriginal) => ({
   readTranslatePx: () => ({ x: Number.NaN, y: 0 }),
 }));
 
-it("a drag press the layer cannot take gets the notice alone, and counts as handled", () => {
+it("a drag press the layer cannot take gets the notice alone, counts as handled, and pauses nothing", () => {
   const element = document.body.appendChild(document.createElement("div"));
   const ref = <T>(current: T) => ({ current });
   const onBlockedMove = vi.fn();
@@ -48,4 +48,7 @@ it("a drag press the layer cannot take gets the notice alone, and counts as hand
   expect(handlers.startGesture("drag", e as never)).toBe(false);
   expect(onBlockedMove).toHaveBeenCalledTimes(1);
   expect(press.defaultPrevented).toBe(true);
+  // The release lands outside the box, so nothing would ever resume it.
+  expect(opts.rafPausedRef.current).toBe(false);
+  expect(opts.onManualDragStartRef.current).not.toHaveBeenCalled();
 });
