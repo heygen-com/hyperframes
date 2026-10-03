@@ -412,6 +412,29 @@ describe("external file change coordinator", () => {
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
   });
 
+  it("keeps the failed file's payload when a snapshot delete fails for another file", async () => {
+    const { captured } = await mountCoordinator({
+      drainPendingChanges: vi
+        .fn()
+        .mockResolvedValueOnce({ status: "failed" as const, error: new Error("offline") })
+        .mockResolvedValueOnce({ status: "clean" as const }),
+      getPendingCandidate: () => ({ path: "scene.html", content: "studio" }),
+      deleteConflictSnapshot: vi.fn(async () => {
+        throw new Error("delete failed");
+      }),
+    });
+    await act(async () =>
+      handler?.({ path: "scene.html", content: "scene-external", version: "s1" }),
+    );
+    await act(async () =>
+      handler?.({ path: "index.html", content: "index-external", version: "i1" }),
+    );
+    expect(captured.handle?.blocked).toMatchObject({
+      status: "failed",
+      payload: { path: "scene.html", content: "scene-external", version: "s1" },
+    });
+  });
+
   it("restores and overwrites from a durable failed draft", async () => {
     const overwriteConflict = vi.fn(async () => undefined);
     const onAcceptedPersistedFileChange = vi.fn();

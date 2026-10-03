@@ -284,7 +284,12 @@ export function useExternalFileChangeCoordinator({
             await deleteConflictSnapshot(projectId!, path);
           } catch (error) {
             if (mountedRef.current && generation === generationRef.current) {
-              setBlocked({ ...previousBlocked, generation, error, payload });
+              setBlocked({
+                ...previousBlocked,
+                generation,
+                error,
+                payload: mergeFileChangeAffectedCompositions(payload, previousBlocked.payload),
+              });
             }
             return;
           }
