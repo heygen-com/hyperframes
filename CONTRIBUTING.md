@@ -97,6 +97,8 @@ Reviewers judge rules 2 to 5 and 8. The `Comments` check (`scripts/check-comment
 
 Only comment blocks holding a line your PR added can fail the citation and block rules, and the TODO and URL rules grade only the lines your PR added. Broken citations elsewhere in a file you touched are printed as warnings, and fixing one while you are there is welcome. To grade files by hand, pass their paths: `node scripts/check-comment-citations.mjs path/to/file.ts`.
 
+Run both checks before pushing: `node scripts/check-comment-citations.mjs` and `node scripts/comment-ratchet.mjs` grade your branch against its merge-base with `origin/main` (set `COMMENT_CHECK_BASE` to compare with another base). The pre-commit hooks run neither.
+
 ## Adding Registry Items (Blocks & Components)
 
 The registry at `registry/` contains reusable items installable via `hyperframes add <name>`. Each item lives in its own directory under `registry/blocks/` or `registry/components/`.

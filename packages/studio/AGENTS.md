@@ -125,7 +125,7 @@ bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-
 
 - Case ids come from `grid.mjs`; `--filter` is a regex on them. `--grid pr` is
   the smaller slice, `full` is what CI runs.
-- Each run writes `results.json`, `table.md` and `baseline.json` to
+- Each run writes its results, a table and a candidate baseline to
   `tests/e2e/evidence/edit-accuracy/<run>/` (git-ignored; `--out` moves it); a
   failing case also gets its screens and saved files under `cases/<id>/`.
 - CI runs the full grid in 20 shards, then `ratchet.mjs gate` compares them with
@@ -143,6 +143,12 @@ bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-
   function, duplication, unused exports. Adding branches to an already-complex
   function trips it; extract rather than nest.
 - **oxlint and oxfmt**, not eslint or prettier.
+- **Before and After captures.** A PR that changes code under `packages/studio`
+  or `packages/player` needs `## Before` and `## After` sections in its
+  description, each with an image or video (`scripts/check-pr-captures.mjs`).
+  A change under 20 lines with no `.tsx`, `.css` or `.html` file may declare
+  `## No visible change` instead. Markdown is exempt. Captures posted as comments
+  are not read.
 
 ## Traps worth knowing
 
