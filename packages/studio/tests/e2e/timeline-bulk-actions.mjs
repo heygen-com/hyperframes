@@ -363,6 +363,7 @@ try {
   browser = await puppeteer.launch({
     executablePath: chrome,
     headless: true,
+    timeout: TIMEOUT_MS,
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
   });
   const rows = [];
