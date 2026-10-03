@@ -109,8 +109,10 @@ try {
 }
 const lines = Array.isArray(request.lines) ? request.lines : [];
 const lang = langOverride || request.lang || "en";
-const speed = Number(speedOverride ?? request.speed ?? 1.0) || 1.0;
-if (!(speed > 0 && speed <= 3)) die(`speed must be above 0 and at most 3, got ${speed}`);
+const speedInput = speedOverride ?? request.speed ?? 1;
+const speed = Number(speedInput);
+if (!(speed > 0 && speed <= 3))
+  die(`speed must be above 0 and at most 3, got ${JSON.stringify(speedInput)}`);
 
 // ── env + HeyGen availability (the single switch) ─────────────────────────────
 loadEnvFromDir(hyperframesDir);
