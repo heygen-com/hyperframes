@@ -121,6 +121,7 @@ describe("ClipContextMenu host items", () => {
 describe("ClipContextMenu tools", () => {
   const video = {
     id: "talk",
+    domId: "talk",
     tag: "video",
     start: 0,
     duration: 4,
