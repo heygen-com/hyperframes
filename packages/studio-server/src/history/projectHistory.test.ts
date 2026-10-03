@@ -104,6 +104,26 @@ async function change(history: ProjectHistory, who: HistoryWho, label: string, w
 }
 
 describe("openProjectHistory", () => {
+  it("never files a hidden file name as a change, but keeps Studio's two manifests", async () => {
+    const { history, write } = await project({ "index.html": "<h1>Hello</h1>" }, { quietMs: 30 });
+    const turn = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "<h1>Bye</h1>");
+    write(".turn-record", "a tool's own record");
+    write("sub/.DS_Store", "finder");
+    write(".hyperframes/studio-motion.json", "{}");
+    const entry = await turn.close();
+    expect(entry!.files.map((file) => file.path)).toEqual([
+      ".hyperframes/studio-motion.json",
+      "index.html",
+    ]);
+    const records = await history.beginWindow(agent, "Records only");
+    write(".spawn-record", "pid");
+    expect(await records.close()).toBeNull();
+    history.noteChange(".spawn-record");
+    await history.flush();
+    expect(history.list()).toHaveLength(1);
+  });
+
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
     const { history, write, read, projectDir } = await project(
       { "index.html": "<h1>Hello</h1>", "assets/logo.png": Buffer.from([1, 2, 3]) },
