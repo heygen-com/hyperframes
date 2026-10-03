@@ -398,7 +398,11 @@ export function queryIframeElement(
 // ── Keyframe parsing ──────────────────────────────────────────────────────────
 
 export interface ParsedPercentageKeyframes {
-  keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    step?: number;
+  }>;
   easeEach?: string;
 }
 
@@ -441,7 +445,7 @@ export function parsePercentageKeyframes(
       if (!entry || typeof entry !== "object") return;
       const percentage = steps.length > 1 ? Math.round((i / (steps.length - 1)) * 1000) / 10 : 0;
       const properties = collectAnimatableKeyframeProperties(entry);
-      if (Object.keys(properties).length > 0) keyframes.push({ percentage, properties });
+      if (Object.keys(properties).length > 0) keyframes.push({ percentage, properties, step: i });
     });
     return keyframes.length > 0 ? { keyframes } : null;
   }

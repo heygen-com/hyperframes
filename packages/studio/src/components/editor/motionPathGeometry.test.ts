@@ -135,3 +135,16 @@ describe("nearestPointOnPath", () => {
     expect(nearestPointOnPath(0, 0, [{ x: 0, y: 0 }])).toBeNull();
   });
 });
+
+it("an array step's node carries its step, so a drop finds that keyframe whatever its time", () => {
+  const read = {
+    keyframes: [
+      { percentage: 0, properties: { x: 60 }, step: 0 },
+      { percentage: 100, properties: { x: 120 }, step: 1 },
+    ],
+  };
+  expect(buildMotionPathGeometry(read)!.nodes.map((n) => n.ref)).toEqual([
+    { type: "keyframe", pct: 0, step: 0 },
+    { type: "keyframe", pct: 100, step: 1 },
+  ]);
+});
