@@ -6,7 +6,7 @@ const LAYER_BOX = '[data-dom-edit-selection-box="true"]';
 
 /** The node GSAP renders the layer at stands for the layer; inside the layer's box, only a node's
  *  drawn dot (`dotR` around it, composition px) is the node's, not its wider grab ring. */
-export function pressIsLayers(
+export function pressBelongsToLayer(
   e: React.PointerEvent,
   point: Point,
   pressed: DrawnNode,
