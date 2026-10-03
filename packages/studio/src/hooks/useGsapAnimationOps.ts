@@ -14,10 +14,8 @@ import {
   cutoverCommittedOrThrow,
   type CutoverDeps,
 } from "../utils/sdkCutover";
-import {
-  assignGsapTargetAutoIdIfNeeded,
-  ensureElementAddressable,
-} from "./gsapScriptCommitHelpers";
+import { ensureElementAddressable } from "./gsapScriptCommitHelpers";
+import { assignGsapTargetAutoIdIfNeeded } from "./useDomEditCommitsHelpers";
 import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 
 interface SdkAnimationDeps {

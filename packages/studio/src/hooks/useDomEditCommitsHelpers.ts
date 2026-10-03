@@ -8,6 +8,8 @@ import type { DomEditPatchBatch } from "./domEditCommitTypes";
 import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 export function formatUnsafeFieldList(fields: Array<{ path: string }>): string {
   return fields.map((field) => field.path).join(", ");
@@ -197,6 +199,43 @@ export async function postPatchElement(
     });
   }
   return (await response.json()) as PatchElementResponse;
+}
+
+interface AssignAutoIdParams {
+  projectId: string;
+  targetPath: string;
+  selection: DomEditSelection;
+  autoId: string;
+  showToast?: ShowToast;
+}
+
+/** Writes `autoId` as the element's id so a GSAP tween can target it; false when nothing was saved. */
+export async function assignGsapTargetAutoIdIfNeeded({
+  projectId,
+  targetPath,
+  selection,
+  autoId,
+  showToast = () => {},
+}: AssignAutoIdParams): Promise<boolean> {
+  const patchBody = {
+    target: {
+      id: selection.id,
+      hfId: selection.hfId,
+      selector: selection.selector,
+      selectorIndex: selection.selectorIndex,
+    },
+    operations: [{ type: "html-attribute", property: "id", value: autoId }],
+  };
+  if (findUnsafeDomPatchValues(patchBody).length > 0) {
+    showToast("Couldn't assign element id because the patch contains invalid values", "error");
+    return false;
+  }
+  try {
+    return (await postPatchElement(projectId, targetPath, patchBody, showToast)).changed === true;
+  } catch (error) {
+    if (error instanceof StudioSaveHttpError && error.alreadyToasted) return false;
+    throw error;
+  }
 }
 
 export async function writePreparedContent(
