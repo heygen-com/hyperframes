@@ -999,9 +999,14 @@ function findAllTweenCalls(
 
 const PERCENTAGE_KEY_RE = /^(\d+(?:\.\d+)?)%$/;
 
-function tryResolveStringProp(propValue: any, scope: ScopeBindings): string | undefined {
+function tryResolveStringProp(
+  propValue: any,
+  scope: ScopeBindings,
+  source?: string,
+): string | undefined {
   const val = resolveNode(propValue, scope);
-  return typeof val === "string" ? val : undefined;
+  if (typeof val === "string") return val;
+  return source === undefined ? undefined : `__raw:${source.slice(propValue.start, propValue.end)}`;
 }
 
 // fallow-ignore-next-line complexity
@@ -1042,9 +1047,9 @@ function parsePercentageKeyframes(
       }
       keyframes.push({ percentage, properties, ...(kfEase ? { ease: kfEase } : {}) });
     } else if (key === "ease") {
-      ease = tryResolveStringProp(prop.value, scope) ?? ease;
+      ease = tryResolveStringProp(prop.value, scope, source) ?? ease;
     } else if (key === "easeEach") {
-      easeEach = tryResolveStringProp(prop.value, scope) ?? easeEach;
+      easeEach = tryResolveStringProp(prop.value, scope, source) ?? easeEach;
     }
   }
 
@@ -1645,7 +1650,7 @@ function applyTimelineDefaults(
       if (defaults.duration !== undefined) anim.duration = defaults.duration;
       else if (defaults.durationUnresolved) anim.durationUnresolved = true;
     }
-    if (anim.ease === undefined && defaults.ease !== undefined) {
+    if (anim.ease === undefined && defaults.ease !== undefined && !anim.keyframes) {
       anim.ease = defaults.ease;
     }
   }
