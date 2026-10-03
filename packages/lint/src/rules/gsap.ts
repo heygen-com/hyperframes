@@ -1008,6 +1008,152 @@ function collectCssOpacityZeroSelectors(
 
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
+// ── gsap_timeline_registered_behind_network_fetch ────────────────────────────
+// Render-time network requests a composition script can hang its timeline on.
+const NETWORK_FETCH_PATTERN =
+  /\bfetch\s*\(|\bd3\s*\.\s*(?:json|csv|tsv|dsv|text|xml|html)\s*\(|\baxios\s*(?:\.\s*\w+\s*)?\(/g;
+// Every way a script registers a timeline (the `= window.__timelines || {}` init is neither).
+const TIMELINE_REGISTRATION_PATTERNS = [
+  /window\.__timelines(?:\[[^\]]+\]|\.[A-Za-z_$][\w$]*)\s*=/g,
+  /window\.__timelines\s*=\s*\{\s*(?:["'][^"']+["']|[A-Za-z_$][\w$]*)\s*:/g,
+];
+
+/**
+ * Walk `src` from `from`, skipping string and template literals, calling `visit` with
+ * each code character; stop when `visit` returns true and return that index, else -1.
+ */
+function scanCode(src: string, from: number, visit: (ch: string, i: number) => boolean): number {
+  let quote: string | null = null;
+  for (let i = from; i < src.length; i++) {
+    const ch = src[i]!;
+    if (quote) {
+      if (ch === "\\") i++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      continue;
+    }
+    if (visit(ch, i)) return i;
+  }
+  return -1;
+}
+
+/** True at every index that lies inside a string or template literal. */
+function stringMask(src: string): Uint8Array {
+  const mask = new Uint8Array(src.length);
+  let quote: string | null = null;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]!;
+    if (quote) {
+      mask[i] = 1;
+      if (ch === "\\") mask[++i] = 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      mask[i] = 1;
+    }
+  }
+  return mask;
+}
+
+/** Index of the `)` closing the `(` at `open`, or -1. */
+function closingParen(src: string, open: number): number {
+  let depth = 0;
+  return scanCode(src, open, (ch) => {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    return depth === 0;
+  });
+}
+
+/** Index of the `}` closing the innermost block that contains `at`, or src.length at top level. */
+function enclosingBlockEnd(src: string, at: number): number {
+  let depth = 0;
+  const end = scanCode(src, at, (ch) => {
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      if (depth === 0) return true;
+      depth--;
+    }
+    return false;
+  });
+  return end < 0 ? src.length : end;
+}
+
+/**
+ * The spans of the `.then(...)` / `.catch(...)` / `.finally(...)` continuations chained
+ * onto the call whose `(` is at `open` — `fetch(u).then(r => r.json()).then(us => {…})`
+ * yields both `.then` argument spans.
+ */
+function continuationSpans(src: string, open: number): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  let close = closingParen(src, open);
+  while (close >= 0) {
+    const chain = /^\s*\.\s*(then|catch|finally|json|text|arrayBuffer|blob)\s*\(/.exec(
+      src.slice(close + 1),
+    );
+    if (!chain) break;
+    const nextOpen = close + 1 + chain[0].length - 1;
+    const nextClose = closingParen(src, nextOpen);
+    if (nextClose < 0) break;
+    if (chain[1] === "then" || chain[1] === "catch" || chain[1] === "finally") {
+      spans.push([nextOpen, nextClose]);
+    }
+    close = nextClose;
+  }
+  return spans;
+}
+
+/** `await fetch(…)` / `await (await fetch(…)).json()`: is the call at `index` awaited? */
+function isAwaited(src: string, index: number): boolean {
+  return /\bawait\s*\(*\s*$/.test(src.slice(Math.max(0, index - 32), index));
+}
+
+// A timeline registered inside a render-time request's continuation makes the render need the
+// network and stalls the engine's sub-composition poll until the request resolves. Checked
+// structurally: inside a .then/.catch/.finally chained onto the request, or after an awaited
+// request in the same block. An unrelated earlier request with a synchronous registration passes.
+export const gsapTimelineRegisteredBehindNetworkFetch: LintRule<LintContext> = ({ scripts }) => {
+  const findings: HyperframeLintFinding[] = [];
+  for (const script of scripts) {
+    const content = stripJsComments(script.content);
+    const inString = stringMask(content);
+    const registrations = TIMELINE_REGISTRATION_PATTERNS.flatMap((pattern) =>
+      [...content.matchAll(pattern)].map((m) => m.index).filter((i) => !inString[i]),
+    );
+    if (registrations.length === 0) continue;
+    for (const request of content.matchAll(NETWORK_FETCH_PATTERN)) {
+      if (inString[request.index]) continue;
+      const open = request.index + request[0].length - 1;
+      const spans = continuationSpans(content, open);
+      if (isAwaited(content, request.index)) {
+        spans.push([open, enclosingBlockEnd(content, open)]);
+      }
+      const behind = registrations.some((r) => spans.some(([a, b]) => r > a && r < b));
+      if (!behind) continue;
+      findings.push({
+        code: "gsap_timeline_registered_behind_network_fetch",
+        severity: "error",
+        message:
+          `window.__timelines is registered inside the callback of a render-time network request (${request[0].trim()}). ` +
+          "The render then depends on the network at capture time, and the timeline is registered late, " +
+          "so the engine's sub-composition timeline poll waits on the request (up to the full player-ready timeout when it is slow or blocked).",
+        fixHint:
+          "Inline the data the composition needs (bake it at authoring time — for map blocks see " +
+          "scripts/catalog/bake-map-geometry.ts) and build + register the paused timeline synchronously. " +
+          "Keep network-free asset readiness (fonts, media) behind the existing readiness gates, not the registration.",
+        snippet: truncateSnippet(request[0]),
+      });
+      break;
+    }
+  }
+  return findings;
+};
+
 // fallow-ignore-next-line complexity
 export const gsapRules: LintRule<LintContext>[] = [
   // gsap_undefined_css_variable
@@ -1694,6 +1840,8 @@ export const gsapRules: LintRule<LintContext>[] = [
     }
     return findings;
   },
+
+  gsapTimelineRegisteredBehindNetworkFetch,
 
   // CSS/GSAP-hidden reveal safety. A fromTo() whose from-vars make an element
   // visible but whose destination omits opacity works during sequential seeks,
