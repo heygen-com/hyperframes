@@ -3,6 +3,9 @@ type DrawnNode = Point & { ax: number; ay: number };
 
 const LAYER_BOX = '[data-dom-edit-selection-box="true"]';
 
+/** How far a node's dot reaches; a selected node draws it larger. */
+export const dotRadius = (r: number, selected: boolean) => (selected ? r * 1.5 : r);
+
 /** A press on the layer's own node, or in its box but off a node's dot, belongs to the layer. */
 export function pressBelongsToLayer(
   e: React.PointerEvent,
@@ -17,10 +20,9 @@ export function pressBelongsToLayer(
   return inBox && Math.hypot(point.x - pressed.ax, point.y - pressed.ay) > dotR;
 }
 
-/** Hands a press to the selected layer's box, which starts the move a press on the layer starts. */
+/** Hands a press to the selected layer's box; true when the box started a gesture with it. */
 export function pressSelectedLayer(e: React.PointerEvent): boolean {
   const box = e.currentTarget.ownerDocument.querySelector(LAYER_BOX);
-  if (!box) return false;
-  box.dispatchEvent(new PointerEvent("pointerdown", e.nativeEvent));
-  return true;
+  if (!box || getComputedStyle(box).pointerEvents === "none") return false;
+  return !box.dispatchEvent(new PointerEvent("pointerdown", e.nativeEvent));
 }

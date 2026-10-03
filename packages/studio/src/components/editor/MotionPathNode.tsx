@@ -1,4 +1,5 @@
 import type React from "react";
+import { dotRadius } from "./motionPathLayerNode";
 
 // Editor primary color (themeable via --hf-accent). Applied through inline
 // style because CSS var() isn't valid in SVG presentation attributes.
@@ -29,7 +30,7 @@ export function MotionPathNode(props: {
   // Diamond matching the timeline keyframe (a 45°-rotated rounded square).
   // `side` is chosen so the diamond's points reach ~`r` from center, matching the
   // old dot's footprint; selection is shown by enlarging it (no extra shape).
-  const side = (selected ? r * 1.5 : r) * 1.414;
+  const side = dotRadius(r, !!selected) * 1.414;
   return (
     <g onPointerEnter={props.onEnter} onPointerLeave={props.onLeave}>
       <rect

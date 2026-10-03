@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
+import { usePlayerStore } from "../../player/store/playerStore";
 import { MotionPathOverlay } from "./MotionPathOverlay";
 import type { DomEditSelection } from "./domEditing";
 
@@ -43,7 +44,12 @@ it("the layer's node and another node's ring inside the layer's box press the la
   const host = document.createElement("div");
   document.body.append(box, host);
   const boxPresses: number[] = [];
-  box.addEventListener("pointerdown", (e) => boxPresses.push((e as PointerEvent).clientX));
+  let boxStarts = true;
+  box.addEventListener("pointerdown", (e) => {
+    boxPresses.push((e as PointerEvent).clientX);
+    if (boxStarts) e.preventDefault();
+  });
+  const captured = vi.spyOn(Element.prototype, "setPointerCapture").mockImplementation(() => {});
   const root = createRoot(host);
   const selection = { element: document.createElement("div") } as unknown as DomEditSelection;
   // Scale 1: client px are composition px. `inBox`: the layer's box is under the press.
@@ -52,7 +58,7 @@ it("the layer's node and another node's ring inside the layer's box press the la
       (c) => c.getAttribute("cx") === String(node),
     )!;
     document.elementsFromPoint = () => (inBox ? [hit, box] : [hit]);
-    const down = { bubbles: true, button: 0, clientX: x, clientY: 30 };
+    const down = { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: 30 };
     act(() => void hit.dispatchEvent(new PointerEvent("pointerdown", down)));
   };
   try {
@@ -72,7 +78,20 @@ it("the layer's node and another node's ring inside the layer's box press the la
     press(120, 118, true);
     press(120, 110, false);
     expect(boxPresses).toEqual([63, 110]);
+    // A selected node draws its dot 1.5x as large, and the larger dot is the node's.
+    act(() => usePlayerStore.setState({ activeKeyframePct: 100 }));
+    press(120, 112, true);
+    expect(boxPresses).toEqual([63, 110]);
+    act(() => usePlayerStore.setState({ activeKeyframePct: null }));
+    press(120, 112, true);
+    expect(boxPresses).toEqual([63, 110, 112]);
+    // A box that starts no gesture leaves the press to the node.
+    boxStarts = false;
+    captured.mockClear();
+    press(60, 63, false);
+    expect(captured).toHaveBeenCalledTimes(1);
   } finally {
+    captured.mockRestore();
     act(() => root.unmount());
     box.remove();
     host.remove();

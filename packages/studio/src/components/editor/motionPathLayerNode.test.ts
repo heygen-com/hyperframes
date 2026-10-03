@@ -46,6 +46,7 @@ it("hands a press to the selected layer's box with its pointer and position", ()
   const listen = (e: Event) => {
     const p = e as PointerEvent;
     got.push([p.pointerId, p.clientX, p.clientY, p.button]);
+    e.preventDefault();
   };
   box.addEventListener("pointerdown", listen);
   const nativeEvent = new PointerEvent("pointerdown", {
@@ -54,6 +55,7 @@ it("hands a press to the selected layer's box with its pointer and position", ()
     clientY: 34,
     button: 0,
     bubbles: true,
+    cancelable: true,
   });
   const down = { currentTarget: circle, nativeEvent } as unknown as React.PointerEvent;
   expect(pressSelectedLayer(down)).toBe(true);
@@ -62,4 +64,19 @@ it("hands a press to the selected layer's box with its pointer and position", ()
   box.remove();
   expect(pressSelectedLayer(down)).toBe(false);
   document.body.append(box);
+});
+
+it("keeps the press when the box does not start a gesture with it, or takes no pointer", () => {
+  let got = 0;
+  const listen = () => void got++;
+  box.addEventListener("pointerdown", listen);
+  const nativeEvent = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+  const down = { currentTarget: circle, nativeEvent } as unknown as React.PointerEvent;
+  expect(pressSelectedLayer(down)).toBe(false);
+  expect(got).toBe(1);
+  box.style.pointerEvents = "none";
+  expect(pressSelectedLayer(down)).toBe(false);
+  expect(got).toBe(1);
+  box.style.pointerEvents = "";
+  box.removeEventListener("pointerdown", listen);
 });
