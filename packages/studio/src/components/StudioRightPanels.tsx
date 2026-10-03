@@ -170,7 +170,7 @@ export const StudioRightPanels = memo(function StudioRightPanels({
   );
   const handleHideAllSelected = useCallback(() => {
     // Audio has no visual to hide, and `data-hidden` on an audio element is what
-    // MUTES it — preview silences it and the render drops it from the mix; the
+    // mutes it — preview silences it and the render drops it from the mix; the
     // timeline offers that write as a mute. Checked here as well as in the panel
     // because the button is not the only caller.
     if (!canHideSelections(domEditGroupSelections)) {

@@ -208,8 +208,8 @@ export async function toggleTimelineTrackHidden({
     displayNumber ?? trackDisplayNumber(timelineTrackOrder(timelineElements), track),
   );
   const trackElements = timelineElements.filter((element) => element.track === track);
-  // `hidden` is the incoming state; the label names the action that produced it.
-  const label = trackHiddenToggleLabel(isAudioOnlyTrack(trackElements), !hidden, suffix);
+  const hiddenBefore = !hidden;
+  const label = trackHiddenToggleLabel(isAudioOnlyTrack(trackElements), hiddenBefore, suffix);
   return setElementsHidden({
     projectId,
     activeCompPath,
@@ -236,7 +236,8 @@ export async function toggleTimelineElementHidden({
 }: ToggleTimelineElementHiddenInput): Promise<string[]> {
   const keys = new Set(typeof elementKey === "string" ? [elementKey] : elementKey);
   const elements = timelineElements.filter((item) => keys.has(item.key ?? item.id));
-  const verb = hiddenToggleVerb(isAudioOnlyTrack(elements), !hidden);
+  const hiddenBefore = !hidden;
+  const verb = hiddenToggleVerb(isAudioOnlyTrack(elements), hiddenBefore);
   return setElementsHidden({
     projectId,
     activeCompPath,

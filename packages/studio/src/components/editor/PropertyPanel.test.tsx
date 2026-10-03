@@ -251,7 +251,8 @@ async function renderPanel(
   // before PropertyPanel is imported/rendered so its initial render sees it.
   const { usePlayerStore } = await import("../../player/store/playerStore");
   if (currentTime !== undefined) usePlayerStore.getState().setCurrentTime(currentTime);
-  if (options.selectedElementId) usePlayerStore.setState({ selectedElementId: options.selectedElementId });
+  if (options.selectedElementId)
+    usePlayerStore.setState({ selectedElementId: options.selectedElementId });
   const { PropertyPanel } = await import("./PropertyPanel");
   const { TimelineEditProvider } = await import("../../contexts/TimelineEditContext");
   const host = document.createElement("div");
@@ -1071,7 +1072,10 @@ describe("PropertyPanel — Motion is for things that move", () => {
     async () => {
       const bus = (hidden: boolean) => {
         const element = audioBusElement();
-        return { ...element, dataAttributes: { ...element.dataAttributes, ...(hidden ? { hidden: "" } : {}) } };
+        return {
+          ...element,
+          dataAttributes: { ...element.dataAttributes, ...(hidden ? { hidden: "" } : {}) },
+        };
       };
       let hidden = true;
       const onSetAudioGroupAttributeQuiet = vi.fn(

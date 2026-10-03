@@ -26,7 +26,6 @@ export function PropertyPanelFlatHeader({
   meta: string;
   elementKind: "text" | "media" | "other";
   hidden: boolean;
-  /** The selection is audio, where `data-hidden` is a mute. */
   asMute?: boolean;
   onToggleHidden?: () => void;
   copied: boolean;

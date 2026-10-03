@@ -36,7 +36,7 @@ export function trackDisplaySuffix(displayNumber: number | null): string {
   return displayNumber === null ? "" : ` ${displayNumber}`;
 }
 
-/** A track toggle's label from its CURRENT `hidden` state; mute on an audio-only track. */
+/** A track toggle's label from its current `hidden` state; mute on an audio-only track. */
 export function trackHiddenToggleLabel(asMute: boolean, hidden: boolean, suffix: string): string {
   return `${hiddenToggleVerb(asMute, hidden)} track${suffix}`;
 }
