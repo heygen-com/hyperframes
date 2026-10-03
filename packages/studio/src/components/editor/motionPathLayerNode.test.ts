@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { pressIsLayers, pressSelectedLayer } from "./motionPathLayerNode";
 
 // Keyframe nodes at x 60 and 120 (y 30), drawn from home (500, 400); dots of radius 6.
@@ -14,11 +14,9 @@ document.body.append(box, circle);
 
 /** A press on `circle` at (x, y), with `under` what the document hit-tests there. */
 function press(x: number, y: number, under: Element[]) {
-  vi.spyOn(document, "elementsFromPoint").mockReturnValue([circle, ...under]);
+  document.elementsFromPoint = () => [circle, ...under];
   return { currentTarget: circle, clientX: x, clientY: y } as unknown as React.PointerEvent;
 }
-
-afterEach(() => vi.restoreAllMocks());
 
 it("the node GSAP renders the layer at is the layer, inside the box or out", () => {
   expect(pressIsLayers(press(562, 431, [box]), { x: 562, y: 431 }, atLayer, 6, live)).toBe(true);

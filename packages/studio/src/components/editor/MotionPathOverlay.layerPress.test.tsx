@@ -51,10 +51,9 @@ it("the layer's node and another node's ring inside the layer's box press the la
     const hit = [...host.querySelectorAll("circle.pointer-events-auto")].find(
       (c) => c.getAttribute("cx") === String(node),
     )!;
-    vi.spyOn(document, "elementsFromPoint").mockReturnValue(inBox ? [hit, box] : [hit]);
+    document.elementsFromPoint = () => (inBox ? [hit, box] : [hit]);
     const down = { bubbles: true, button: 0, clientX: x, clientY: 30 };
     act(() => void hit.dispatchEvent(new PointerEvent("pointerdown", down)));
-    vi.restoreAllMocks();
   };
   try {
     act(() =>
