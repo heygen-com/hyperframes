@@ -86,9 +86,8 @@ function normalize(edit: PlayheadEdit): Normalized | { reason: PlayheadEditRefus
   if (data) {
     if (data.format === "simple-array") return { reason: "simple-array-keyframes" };
     const arrayStep = data.format === "object-array";
-    const runEase = data.ease ?? anim.ease;
     return {
-      ...(runEase ? { runEase } : {}),
+      runEase: data.ease ?? anim.ease,
       keyframes: data.keyframes.map((kf) => ({
         ...kf,
         properties: { ...kf.properties },
@@ -129,8 +128,11 @@ function valueAt(keyframes: Keyframe[], prop: string, side: "first" | "last") {
   return kf ? { percentage: kf.percentage, value: kf.properties[prop]! } : null;
 }
 
+const keyframeAt = (keyframes: Keyframe[], percentage: number) =>
+  keyframes.find((kf) => Math.abs(kf.percentage - percentage) <= KEYFRAME_PCT_MATCH);
+
 function upsert(keyframes: Keyframe[], percentage: number, properties: Props, ease?: string) {
-  const hit = keyframes.find((kf) => Math.abs(kf.percentage - percentage) <= KEYFRAME_PCT_MATCH);
+  const hit = keyframeAt(keyframes, percentage);
   if (hit) {
     Object.assign(hit.properties, properties);
     return hit;
@@ -201,8 +203,7 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
   const eased = !isLinear(norm.runEase);
   if (pct >= -KEYFRAME_PCT_MATCH && pct <= 100 + KEYFRAME_PCT_MATCH) {
     const at = Math.min(100, Math.max(0, pct));
-    if (eased && !keyframes.some((kf) => Math.abs(kf.percentage - at) <= KEYFRAME_PCT_MATCH))
-      return refuse("eased-keyframes");
+    if (eased && !keyframeAt(keyframes, at)) return refuse("eased-keyframes");
     const next = [...keyframes]
       .sort((a, b) => a.percentage - b.percentage)
       .find((kf) => kf.percentage > at + KEYFRAME_PCT_MATCH);
