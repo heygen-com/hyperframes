@@ -15,11 +15,11 @@ import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   buildPublishFileMap,
   publishProjectArchive,
+  resolvePublishCredential,
   zipPublishFileMap,
 } from "../utils/publishProject.js";
 import { bakeMediaProxies } from "../utils/publishProxyBake.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
-import { tryResolveCredential } from "../auth/index.js";
 import {
   ensureProjectId,
   readProjectLink,
@@ -166,7 +166,7 @@ export default defineCommand({
     // --update / --space only take effect for an authenticated owner. Fail loudly rather
     // than silently minting a fresh URL — the exact failure mode this feature removes.
     if (updateTarget || spaceOverride) {
-      const credential = await tryResolveCredential();
+      const credential = await resolvePublishCredential();
       if (!credential) {
         console.log();
         console.log(

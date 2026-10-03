@@ -29,6 +29,8 @@ vi.mock("../auth/oauth.js", () => ({
 }));
 
 import { ErrRefreshFailed } from "../auth/errors.js";
+import { setupTempAuthEnv } from "../auth/_test-utils.js";
+import { writeStore } from "../auth/store.js";
 
 import {
   buildPublishFileMap,
@@ -138,6 +140,9 @@ function publishedResponse(overrides?: Record<string, unknown>): Response {
     { status: 200 },
   );
 }
+
+/** What the server returns when it accepted the credential and owns the project. */
+const OWNED = { claim_token: "", claimed: true };
 
 /** Full staged flow: upload, S3 PUT, complete. */
 function stagedFetch(completeData?: Record<string, unknown>, uploadData?: Record<string, unknown>) {
@@ -683,7 +688,7 @@ describe("publishProjectArchive", () => {
 describe("publishProjectArchive", () => {
   it("authenticates staged metadata requests but not the presigned S3 upload", async () => {
     const dir = makeProjectDir();
-    const fetchMock = stagedFetch();
+    const fetchMock = stagedFetch(OWNED);
 
     try {
       await runAuthenticatedPublish(fetchMock, dir);
@@ -699,7 +704,7 @@ describe("publishProjectArchive", () => {
 
   it("authenticates the direct fallback request", async () => {
     const dir = makeProjectDir();
-    const fetchMock = directFetch();
+    const fetchMock = directFetch(OWNED);
 
     try {
       await runAuthenticatedPublish(fetchMock, dir);
@@ -996,8 +1001,7 @@ function ownedStagedFetch() {
   return stagedFetch({
     project_id: "hfp_stable",
     url: "https://hyperframes.dev/p/hfp_stable",
-    claim_token: "",
-    claimed: true,
+    ...OWNED,
   });
 }
 
@@ -1127,6 +1131,12 @@ describe("publishProjectArchive with a credential the server rejects", () => {
     await publishExpecting(fetchMock, "Failed to upload project archive");
   });
 
+  it("refuses an anonymous result for a signed-in publish and links nothing", async () => {
+    await publishExpecting(stagedFetch(), EXPIRED);
+    await publishExpecting(directFetch(), EXPIRED);
+    expect(linkMocks.writeProjectLink).not.toHaveBeenCalled();
+  });
+
   it("names the environment API key instead of asking for a login it would not use", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized());
     const dir = makeProjectDir();
@@ -1159,7 +1169,7 @@ describe("publishProjectArchive with an expired login it can refresh", () => {
   it("refreshes the login and publishes with the new token", async () => {
     oauthMocks.refreshTokens.mockResolvedValueOnce({ access_token: "fresh-token" });
     authMocks.tryResolveCredential.mockResolvedValue(expiredLogin);
-    const fetchMock = stagedFetch();
+    const fetchMock = stagedFetch(OWNED);
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeProjectDir();
     try {
@@ -1177,6 +1187,38 @@ describe("publishProjectArchive with an expired login it can refresh", () => {
   it("asks for a new login, without sending anything, when the refresh is refused", async () => {
     oauthMocks.refreshTokens.mockRejectedValueOnce(ErrRefreshFailed("invalid_grant"));
     authMocks.tryResolveCredential.mockResolvedValue(expiredLogin);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "Your login expired. Run hyperframes auth login, then publish again.",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("publishProjectArchive with an expired login and no refresh token", () => {
+  let fixture: Awaited<ReturnType<typeof setupTempAuthEnv>>;
+
+  beforeEach(async () => {
+    fixture = await setupTempAuthEnv("hf-publish-expired-");
+    const { tryResolveCredential } =
+      await vi.importActual<typeof import("../auth/resolver.js")>("../auth/resolver.js");
+    authMocks.tryResolveCredential.mockImplementation(tryResolveCredential);
+  });
+
+  afterEach(async () => {
+    await fixture.restore();
+  });
+
+  it("asks for a new login instead of publishing anonymously", async () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await writeStore({ oauth: { access_token: "stale-token", expires_at: past } });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const dir = makeProjectDir();

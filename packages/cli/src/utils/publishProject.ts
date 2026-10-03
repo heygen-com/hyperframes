@@ -178,13 +178,14 @@ function rejectedCredentialMessage(credential: ResolvedCredential): string {
   return LOGIN_EXPIRED;
 }
 
-async function resolvePublishCredential(): Promise<ResolvedCredential | null> {
-  const credential = await tryResolveCredential();
-  if (!credential) return null;
+export async function resolvePublishCredential(): Promise<ResolvedCredential | null> {
   try {
-    return await refreshIfNeeded(credential);
+    const credential = await tryResolveCredential();
+    return credential ? await refreshIfNeeded(credential) : null;
   } catch (error) {
-    if (isAuthError(error) && error.code === "REFRESH_FAILED") throw new Error(LOGIN_EXPIRED);
+    if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {
+      throw new Error(LOGIN_EXPIRED);
+    }
     throw error;
   }
 }
@@ -786,6 +787,8 @@ export async function publishProjectArchive(
         metadataHeaders,
         projectId,
       ));
+    // The server publishes anonymously when it drops a credential it could not verify.
+    if (credential && !result.claimed) throw new CredentialRejectedError("unclaimed publish");
   } catch (error) {
     if (error instanceof CredentialRejectedError && credential) {
       throw new Error(rejectedCredentialMessage(credential));
