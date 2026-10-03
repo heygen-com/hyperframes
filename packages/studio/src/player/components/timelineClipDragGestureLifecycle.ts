@@ -195,7 +195,7 @@ export function mountTimelineClipDragGestureLifecycle({
       event.clientX - blocked.originClientX,
       event.clientY - blocked.originClientY,
     );
-    const threshold = blocked.intent === "move" || blocked.intent === "edit-many" ? 4 : 2;
+    const threshold = blocked.intent === "move" ? 4 : 2;
     if (!blocked.started && distance < threshold) return;
     if (!blocked.started) {
       blocked.started = true;

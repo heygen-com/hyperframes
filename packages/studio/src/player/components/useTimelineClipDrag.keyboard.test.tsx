@@ -165,13 +165,11 @@ it("leaves Space on a nested fade slider to the slider", () => {
   act(() => view.root.unmount());
 });
 
-it("does not pick up a clip held in a selection above the hand-move limit", () => {
+it("picks up a clip held in a selection of any size", () => {
   const view = mount();
   usePlayerStore.getState().setSelection(["top", "hero", "tail", "bottom"], "hero");
   view.key(" ");
-  expect(view.drag).toBeNull();
-  expect(view.onBlockedEditAttempt).toHaveBeenCalledWith(
-    expect.objectContaining({ id: "hero" }),
-    "edit-many",
-  );
+  expect(view.drag).not.toBeNull();
+  expect(view.onBlockedEditAttempt).not.toHaveBeenCalled();
+  act(() => view.root.unmount());
 });
