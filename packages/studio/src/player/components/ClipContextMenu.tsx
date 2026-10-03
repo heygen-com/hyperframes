@@ -11,8 +11,6 @@ import { ClipMenuLinkItems } from "./clipMenuLinkItems";
 import { menuClasses } from "../../components/ui/menuStyle";
 
 const MENU_MARGIN = 8;
-// Empty groups collapse; every non-empty group before the always-present Delete group ends in a divider.
-const GROUP_CLASS = menuClasses.group;
 
 function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: string): number {
   const [height, setHeight] = useState(0);
@@ -43,7 +41,6 @@ interface ClipContextMenuProps {
   hostItems?: readonly TimelineClipMenuItem[] | undefined;
 }
 
-// Same enabled/disabled menu-item pattern as the sibling TrackGapContextMenu.
 const itemClass = (enabled: boolean) =>
   `${menuClasses.row} flex items-center justify-between ${enabled ? menuClasses.rowEnabled : menuClasses.rowDisabled}`;
 
@@ -135,11 +132,11 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       style={{ left: adjustedX, top: adjustedY }}
     >
       {hostItems.length > 0 && (
-        <div role="group" aria-label="Host" className={GROUP_CLASS}>
+        <div role="group" aria-label="Host" className={menuClasses.group}>
           <HostItems items={hostItems} onClose={onClose} />
         </div>
       )}
-      <div role="group" aria-label="Time" className={GROUP_CLASS}>
+      <div role="group" aria-label="Time" className={menuClasses.group}>
         {splitLabel && (
           <button
             type="button"
@@ -171,7 +168,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         )}
       </div>
 
-      <div role="group" aria-label="Sound" className={GROUP_CLASS}>
+      <div role="group" aria-label="Sound" className={menuClasses.group}>
         <ClipMenuAudioItems part="gain" element={element} onClose={onClose} />
         <ClipMenuToolItems
           group="sound"
@@ -183,7 +180,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         <ClipMenuAudioItems part="duck" element={element} onClose={onClose} />
       </div>
 
-      <div role="group" aria-label="Picture" className={GROUP_CLASS}>
+      <div role="group" aria-label="Picture" className={menuClasses.group}>
         <ClipMenuToolItems
           group="picture"
           element={element}
@@ -192,7 +189,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         />
       </div>
 
-      <div role="group" aria-label="Clipboard" className={GROUP_CLASS}>
+      <div role="group" aria-label="Clipboard" className={menuClasses.group}>
         {onCopy && (
           <button
             type="button"

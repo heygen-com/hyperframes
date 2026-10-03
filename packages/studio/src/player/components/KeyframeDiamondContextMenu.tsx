@@ -172,7 +172,7 @@ export function KeyframeDiamondContextMenu({
       <button
         type="button"
         role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger-ink hover:bg-danger/25 focus-visible:bg-danger/25 outline-hidden cursor-pointer text-left"
+        className={`${menuClasses.row} ${menuClasses.rowDanger} flex items-center gap-2`}
         onClick={() => {
           onDeleteAll(state.element, state.animationId);
           onClose();

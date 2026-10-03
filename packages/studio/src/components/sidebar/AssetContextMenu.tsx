@@ -148,7 +148,7 @@ export function ContextMenu({
               <button
                 role="menuitem"
                 onClick={() => setMode("confirm-delete")}
-                className={`${itemCls} text-danger-ink`}
+                className={`${menuClasses.row} ${menuClasses.rowDanger} active:bg-neutral-700/70 transition-colors`}
               >
                 Delete
               </button>

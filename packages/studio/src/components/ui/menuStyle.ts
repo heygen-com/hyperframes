@@ -1,9 +1,7 @@
 /**
- * The one owner of a context menu's spacing and shape. A hovered row fills its whole row: the panel pads nothing
- * around its rows and a divider carries no margin, so the highlight reaches the panel's edge and the divider; the
- * panel clips its rows to its own rounded corners, so a highlight never pokes out past the border. A menu that adds
- * `py-*` to its panel or `my-*` to a divider brings the dark bands back, and a menu that clips nothing lets a square
- * highlight out of its corner; menuStyle.test.ts holds every hand-built menu panel to this module.
+ * The one owner of a context menu's spacing and shape. The panel and dividers carry no padding or margin and the
+ * panel clips to its rounded corners, so a row's highlight fills its row edge to edge; menuStyle.test.ts holds every
+ * menu panel to this module.
  */
 export const menuClasses = {
   /** The panel: fill, border, shadow and radius on one element, clipped to that radius. A submenu inside it is
