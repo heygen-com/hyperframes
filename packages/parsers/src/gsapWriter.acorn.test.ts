@@ -567,6 +567,17 @@ tl.set("#b", { x: 5 }, 0);`;
     );
   });
 
+  it("writes an ease the file names by variable as that variable, not a string", () => {
+    const keyframes = [{ percentage: 100, properties: { x: 100 }, ease: "__raw:K" }];
+    const out = replaceTweenWithKeyframesInScript(
+      script,
+      tweenOn("#a").id,
+      edit(1, { keyframes, ease: "__raw:E", easeEach: "__raw:X" }),
+    );
+    expect(rewritten(out)).toContain('"100%": { x: 100, ease: K }, easeEach: X }');
+    expect(rewritten(out)).toContain("ease: E }");
+  });
+
   it("moves a retargeted tween to the new position without its delay, with the edit's ease", () => {
     const out = replaceTweenWithKeyframesInScript(
       script,

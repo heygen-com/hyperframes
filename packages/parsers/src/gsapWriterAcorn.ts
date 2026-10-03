@@ -802,7 +802,7 @@ function preservedVarsEntries(varsNode: Node, source: string): string[] {
 function buildConvertedVarsCode(animation: GsapAnimation, varsNode: Node, source: string): string {
   const { fromProps, toProps } = conversionEndpoints(animation);
   const easeEach = animation.ease;
-  const easeEachEntry = easeEach ? `, easeEach: ${JSON.stringify(easeEach)}` : "";
+  const easeEachEntry = easeEach ? `, easeEach: ${valueToCode(easeEach)}` : "";
   const kfCode = `{ "0%": ${recordToCode(fromProps)}, "100%": ${recordToCode(toProps)}${easeEachEntry} }`;
   const entries = [`keyframes: ${kfCode}`, ...preservedVarsEntries(varsNode, source)];
   if (easeEach) entries.push(`ease: "none"`);
@@ -1638,7 +1638,7 @@ function buildKeyframesVarsCode(
 ): string {
   const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   const toEntries = Object.entries(toProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-  const easeEntry = animation.ease ? `, easeEach: ${JSON.stringify(animation.ease)}` : "";
+  const easeEntry = animation.ease ? `, easeEach: ${valueToCode(animation.ease)}` : "";
   const kfCode = `{ "0%": { ${fromEntries.join(", ")} }, "100%": { ${toEntries.join(", ")} }${easeEntry} }`;
   // Preserve every non-editable key (duration/delay/callbacks/stagger/yoyo/…)
   // verbatim from source — rebuilding from the animation object alone dropped
@@ -1729,11 +1729,11 @@ function buildKeyframeObjectCode(
 ): string {
   const entries = mergePercentageKeyframes(keyframes).map((kf) => {
     const props = Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-    if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
+    if (kf.ease) props.push(`ease: ${valueToCode(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
     return `${JSON.stringify(`${kf.percentage}%`)}: { ${props.join(", ")} }`;
   });
-  if (easeEach) entries.push(`easeEach: ${JSON.stringify(easeEach)}`);
+  if (easeEach) entries.push(`easeEach: ${valueToCode(easeEach)}`);
   return `{ ${entries.join(", ")} }`;
 }
 
@@ -1832,7 +1832,7 @@ export function replaceTweenWithKeyframesInScript(
   const sorted = [...edit.keyframes].sort((a, b) => a.percentage - b.percentage);
   const parts = [`keyframes: ${buildKeyframeObjectCode(sorted, edit.easeEach)}`, ...kept];
   parts.push(`duration: ${valueToCode(edit.duration)}`);
-  if (edit.ease) parts.push(`ease: ${JSON.stringify(edit.ease)}`);
+  if (edit.ease) parts.push(`ease: ${valueToCode(edit.ease)}`);
   if (animation.hasUnresolvedSelector || animation.targetSelector !== edit.targetSelector) {
     const selectorArg = call.node.arguments[0];
     ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(edit.targetSelector));
@@ -1868,7 +1868,7 @@ export function addAnimationWithKeyframesToScript(
   const sorted = [...keyframes].sort((a, b) => a.percentage - b.percentage);
   const kfObjCode = buildKeyframeObjectCode(sorted, easeEach);
   const varParts = [`keyframes: ${kfObjCode}`, `duration: ${valueToCode(duration)}`];
-  if (ease) varParts.push(`ease: ${JSON.stringify(ease)}`);
+  if (ease) varParts.push(`ease: ${valueToCode(ease)}`);
   const stmtCode = `${parsed.timelineVar}.to(${JSON.stringify(targetSelector)}, { ${varParts.join(", ")} }, ${valueToCode(position)});`;
 
   const ms = new MagicString(script);
@@ -2788,7 +2788,7 @@ function buildUnrollReplacement(
   const calls = elements.map((el) => {
     const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
     const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
-    return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`;
+    return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
   });
   return calls.join("\n  ");
 }
@@ -2811,7 +2811,7 @@ function buildUnrollCallForElement(
   const posCode = typeof pos === "number" ? String(pos) : JSON.stringify(pos);
   const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
   const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
-  return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`;
+  return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
 }
 
 /** Sentinel: the unroll cannot safely reproduce the loop body — caller no-ops. */

@@ -10,6 +10,8 @@ import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
 import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
+import { dotRadius, pressBelongsToLayer, pressSelectedLayer } from "./motionPathLayerNode";
+import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { ACCENT, MotionPathNode } from "./MotionPathNode";
 import {
   KeyframeDiamondContextMenu,
@@ -310,6 +312,10 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     if (!interactive) return;
     if (e.button !== 0) return;
     e.stopPropagation();
+    const live = readGsapPositionFromIframe(iframeRef.current, selectorFor(selection) ?? "");
+    const dotR = dotRadius(nodeR, ref.type === "keyframe" && ref.pct === activeKeyframePct);
+    if (pressBelongsToLayer(e, clientToComp(e), abs[index]!, dotR, live) && pressSelectedLayer(e))
+      return;
     (e.target as Element).setPointerCapture(e.pointerId);
     dragRef.current = {
       index,
