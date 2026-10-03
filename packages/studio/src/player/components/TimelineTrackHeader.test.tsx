@@ -274,6 +274,20 @@ describe("TimelineTrackHeader", () => {
     act(() => view.root.unmount());
   });
 
+  // Same rule as the undo entry: a track with any visual clip hides, it does not mute.
+  it("offers the eye on a track mixing audio and a visual clip", () => {
+    const audio: TimelineElement = { ...ELEMENT, id: "vo", tag: "audio" };
+    const view = renderHeader({
+      keyframeClip: audio,
+      trackElements: [audio, ELEMENT],
+      clipCount: 2,
+      isAudioTrack: true,
+      animations: [],
+    });
+    expect(view.host.querySelector('button[aria-label="Hide track 1"]')).not.toBeNull();
+    act(() => view.root.unmount());
+  });
+
   it("keeps it on a non-audio track", () => {
     const view = renderHeader({ isAudioTrack: false });
     const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>

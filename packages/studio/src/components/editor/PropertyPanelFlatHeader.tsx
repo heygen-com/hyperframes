@@ -1,4 +1,4 @@
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { HiddenToggleIcon, hiddenToggleVerb } from "../../player/components/hiddenToggle";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { ClipboardList, Film, Square, Type, X } from "../../icons/SystemIcons";
 
@@ -14,6 +14,7 @@ export function PropertyPanelFlatHeader({
   meta,
   elementKind,
   hidden,
+  asMute = false,
   onToggleHidden,
   copied,
   onCopy,
@@ -25,6 +26,8 @@ export function PropertyPanelFlatHeader({
   meta: string;
   elementKind: "text" | "media" | "other";
   hidden: boolean;
+  /** The selection is audio, where `data-hidden` is a mute. */
+  asMute?: boolean;
   onToggleHidden?: () => void;
   copied: boolean;
   onCopy: () => void;
@@ -34,7 +37,7 @@ export function PropertyPanelFlatHeader({
 }) {
   const track = useTrackDesignInput();
   const Icon = ICON_BY_KIND[elementKind];
-  const visibilityLabel = hidden ? "Show element" : "Hide element";
+  const visibilityLabel = `${hiddenToggleVerb(asMute, hidden)} element`;
 
   return (
     <div className="flex items-center gap-2.5 border-b border-panel-hairline px-4 py-3">
@@ -81,7 +84,7 @@ export function PropertyPanelFlatHeader({
               onToggleHidden();
             }}
           >
-            {hidden ? <EyeSlash size={13} weight="bold" /> : <Eye size={13} weight="bold" />}
+            <HiddenToggleIcon asMute={asMute} hidden={hidden} size={13} />
           </button>
         )}
         <button

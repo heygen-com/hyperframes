@@ -8,7 +8,9 @@ import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
-import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { HF_AUDIO_GROUP_TAG, resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { hiddenToggleVerb } from "../../player/components/hiddenToggle";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { closedGroupHeader, isSelectionHidden } from "./propertyPanelFlatClosedGroup";
@@ -206,6 +208,7 @@ export function PropertyPanelFlat({
    * selected the clip and then appeared to do nothing.
    */
   const hiddenNow = isSelectionHidden(selectedElementHidden, element);
+  const { onSetAudioGroupAttributeQuiet } = useTimelineEditContextOptional();
 
   const reveal = useAudioFxRevealSection({
     elementId: element?.id,
@@ -284,6 +287,20 @@ export function PropertyPanelFlat({
         }
       : null;
   const audioSelection = isAudioDomElement(element.element);
+  // A bus has no timeline row, so it mutes through the group's own writer.
+  const audioGroupId = element.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG ? element.id : null;
+  const toggleHidden = audioGroupId
+    ? onSetAudioGroupAttributeQuiet &&
+      (() =>
+        void onSetAudioGroupAttributeQuiet(
+          audioGroupId,
+          "data-hidden",
+          hiddenNow ? null : "",
+          `${hiddenToggleVerb(true, hiddenNow)} element`,
+        ))
+    : selectedElementId && onToggleElementHidden
+      ? () => void onToggleElementHidden(selectedElementId, !hiddenNow)
+      : undefined;
   // Gated on the tag, not `sections.animation` (`animationCount > 0`): an audio
   // clip/bus has no tween to move, but a fresh div with no tweens yet must
   // still offer "+ Add" — "has none" and "can have none" differ.
@@ -531,26 +548,8 @@ export function PropertyPanelFlat({
             meta={`${sourceLabel} · ${element.tagName}`}
             elementKind={elementKind}
             hidden={hiddenNow}
-            // Audio gets no hide control here. On an audio track "hidden" and
-            // "muted" are not similar operations, they are the SAME operation
-            // with two names (groups doc §2.1) — which is why the timeline's eye
-            // BECAME the mute rather than growing a sibling. A second copy in
-            // the panel, still called "Hide element", is exactly what that step
-            // set out to remove: "Two controls that silence a track, sitting
-            // next to each other, differing only in a distinction the author
-            // cannot see." An `<hf-audio-group>` has no visual to hide at all.
-            //
-            // EXCEPT while it is already hidden. Withholding it unconditionally
-            // withheld the only way back: a `data-hidden` group is silent in
-            // preview (the bus's mute gain) and absent from the render (every
-            // member dropped), and the group header carries no visibility
-            // control of its own now that mute and solo are gone. Only
-            // hand-editing the HTML brought the audio back.
-            onToggleHidden={
-              selectedElementId && onToggleElementHidden && (!audioSelection || hiddenNow)
-                ? () => void onToggleElementHidden(selectedElementId, !hiddenNow)
-                : undefined
-            }
+            asMute={audioSelection}
+            onToggleHidden={toggleHidden}
             copied={clipboardCopied}
             onCopy={onCopyElementInfo}
             onClear={onClearSelection}

@@ -1,14 +1,9 @@
 import type React from "react";
-import { Eye, EyeSlash, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import { Music } from "../../icons/SystemIcons";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
 import { trackDisplaySuffix, trackHiddenToggleLabel } from "./timelineTrackDisplay";
-
-function visibilityButtonIcon(asMute: boolean, hidden: boolean) {
-  const Icon = asMute ? (hidden ? SpeakerSlash : SpeakerHigh) : hidden ? EyeSlash : Eye;
-  return <Icon size={14} weight="bold" aria-hidden="true" />;
-}
+import { HiddenToggleIcon } from "./hiddenToggle";
 
 export function VisibilityButton({
   hidden,
@@ -46,7 +41,7 @@ export function VisibilityButton({
         void onToggle?.(trackNumber, !hidden, trackDisplayNumber);
       }}
     >
-      {visibilityButtonIcon(asMute, hidden)}
+      <HiddenToggleIcon asMute={asMute} hidden={hidden} size={14} />
     </button>
   );
 }

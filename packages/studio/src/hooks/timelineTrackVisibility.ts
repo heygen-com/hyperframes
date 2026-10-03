@@ -10,6 +10,7 @@ import {
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { isAudioOnlyTrack } from "../utils/timelineInspector";
+import { hiddenToggleVerb } from "../player/components/hiddenToggle";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
   findTimelineElementInIframe,
@@ -235,19 +236,13 @@ export async function toggleTimelineElementHidden({
 }: ToggleTimelineElementHiddenInput): Promise<string[]> {
   const keys = new Set(typeof elementKey === "string" ? [elementKey] : elementKey);
   const elements = timelineElements.filter((item) => keys.has(item.key ?? item.id));
+  const verb = hiddenToggleVerb(isAudioOnlyTrack(elements), !hidden);
   return setElementsHidden({
     projectId,
     activeCompPath,
     elements,
     hidden,
-    label:
-      elements.length > 1
-        ? hidden
-          ? `Hide ${elements.length} elements`
-          : `Show ${elements.length} elements`
-        : hidden
-          ? "Hide element"
-          : "Show element",
+    label: elements.length > 1 ? `${verb} ${elements.length} elements` : `${verb} element`,
     previewIframe,
     writeProjectFile,
     recordEdit,
