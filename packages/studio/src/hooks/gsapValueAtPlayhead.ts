@@ -203,7 +203,8 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
   const eased = !isLinear(norm.runEase);
   if (pct >= -KEYFRAME_PCT_MATCH && pct <= 100 + KEYFRAME_PCT_MATCH) {
     const at = Math.min(100, Math.max(0, pct));
-    if (eased && !keyframeAt(keyframes, at)) return refuse("eased-keyframes");
+    const hit = keyframeAt(keyframes, at);
+    if (eased && hit?.percentage !== 0 && hit?.percentage !== 100) return refuse("eased-keyframes");
     const next = [...keyframes]
       .sort((a, b) => a.percentage - b.percentage)
       .find((kf) => kf.percentage > at + KEYFRAME_PCT_MATCH);

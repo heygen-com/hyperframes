@@ -548,6 +548,21 @@ describe("planValueAtPlayhead", () => {
       expect(result.ok && result.mutation.ease).toBe("expo.in");
     });
 
+    it("refuses an inner keyframe, which the ease shows at another time", () => {
+      const anim = {
+        ...kf([
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 50, properties: { x: 100 } },
+          { percentage: 100, properties: { x: 300 } },
+        ]),
+        ease: "power2.out",
+      };
+      expect(plan({ anim, at: { time: 2 }, values: { x: 5 } })).toEqual({
+        ok: false,
+        reason: "eased-keyframes",
+      });
+    });
+
     it("refuses to add a keyframe, whose time the ease would move", () => {
       expect(plan({ anim: eased, at: { time: 2 }, values: { x: 5 } })).toEqual({
         ok: false,

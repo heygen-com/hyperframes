@@ -195,6 +195,7 @@ export function startGesture(
     });
     if (!result.ok) {
       opts.onBlockedMoveRef.current(result.selection, result.reason);
+      e.preventDefault();
       return false;
     }
     pathOffsetMember = result.member;
