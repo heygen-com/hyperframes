@@ -41,6 +41,7 @@ export interface RenderRequestOptions {
   useGpu?: boolean;
   debug?: boolean;
   strictness?: RenderConfig["strictness"];
+  chapters?: boolean;
   entryFile?: string;
   crf?: number;
   videoBitrate?: string;
@@ -160,7 +161,7 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   assertOptionalInteger(options, "gifLoop");
   assertOptionalInteger(options, "workers", 1);
   assertOptionalInteger(options, "crf");
-  for (const field of ["useGpu", "debug", "outputResolutionAspectAgnostic"] as const) {
+  for (const field of ["useGpu", "debug", "outputResolutionAspectAgnostic", "chapters"] as const) {
     assertOptionalBoolean(options, field);
   }
   for (const field of ["entryFile", "videoBitrate"] as const) {

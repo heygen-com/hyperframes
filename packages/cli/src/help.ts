@@ -57,6 +57,7 @@ const GROUPS: Group[] = [
       ["compare", "Render composition variants into one labeled comparison sheet"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
+      ["chapters", "List authored chapter markers in a project"],
       ["docs", "View inline documentation in the terminal"],
     ],
   },

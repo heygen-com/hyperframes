@@ -65,6 +65,8 @@ npx hyperframes render --format png-sequence --output frames
 
 GIF has no audio and limited transparency. Prefer MP4 or WebM for normal playback.
 
+Authored `data-chapter` markers are written into MP4 and MOV by default. GIF, WebM, and png-sequence have no chapter track here, so those renders stay valid and skip the metadata. Use `--no-chapters` to skip the write on MP4/MOV.
+
 ### Transparent video
 
 Use WebM for a transparent web overlay or MOV for a ProRes 4444 editing

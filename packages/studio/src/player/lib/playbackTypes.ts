@@ -40,6 +40,7 @@ export interface ClipManifestClip extends RuntimeTimelineClipIdentity {
   compositionAncestors?: string[];
   playbackStart?: number;
   playbackRate?: number;
+  chapter?: string | null;
 }
 
 export interface ClipManifest {

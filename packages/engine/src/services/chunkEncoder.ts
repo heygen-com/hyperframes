@@ -31,6 +31,7 @@ import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
+import { appendFfmetadataChapterInput } from "../utils/ffmetadataChapters.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -94,7 +95,8 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * source compatibility; it will be removed in a future major.
    */
   preserveAudioPrimingEditList?: boolean;
-  /** Hard cap copied audio to the already-encoded video's exact duration. */
+  /** Path to an ffmetadata file (`;FFMETADATA1` + `[CHAPTER]` blocks). */
+  chaptersFfmetadataPath?: string;
 }
 
 async function shouldCopyAacSidecar(
@@ -694,7 +696,9 @@ export async function muxVideoWithAudio(
   const isWebm = outputPath.endsWith(".webm");
   const isMov = outputPath.endsWith(".mov");
   const shouldCopyAudio = isWebm ? false : await shouldCopyAacSidecar(audioPath, config);
-  const args = ["-i", videoPath, "-i", audioPath, "-c:v", "copy"];
+  const args = ["-i", videoPath, "-i", audioPath];
+  appendFfmetadataChapterInput(args, outputPath, config?.chaptersFfmetadataPath);
+  args.push("-c:v", "copy");
 
   if (isWebm) {
     args.push("-c:a", "libopus", "-b:a", "128k");
@@ -760,20 +764,28 @@ export async function muxVideoWithAudio(
   };
 }
 
+export type ApplyFaststartOptions = Partial<Pick<EngineConfig, "ffmpegProcessTimeout">> & {
+  chaptersFfmetadataPath?: string;
+};
+
 export async function applyFaststart(
   inputPath: string,
   outputPath: string,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  config?: ApplyFaststartOptions,
   fps?: Fps,
 ): Promise<MuxResult> {
+  const chaptersPath = config?.chaptersFfmetadataPath;
   // faststart is MP4-only (moves moov atom to file start for streaming).
-  // WebM and MOV don't need it — skip the re-mux.
-  if (outputPath.endsWith(".webm") || outputPath.endsWith(".mov")) {
+  // WebM never remuxes. MOV copies unless chapters need a metadata remux.
+  if (outputPath.endsWith(".webm") || (outputPath.endsWith(".mov") && !chaptersPath)) {
     if (inputPath !== outputPath) copyFileSync(inputPath, outputPath);
     return { success: true, outputPath, durationMs: 0 };
   }
-  const args = ["-i", inputPath, "-c", "copy", "-movflags", "+faststart"];
+  const args = ["-i", inputPath];
+  appendFfmetadataChapterInput(args, outputPath, chaptersPath);
+  args.push("-c", "copy");
+  if (!outputPath.endsWith(".mov")) args.push("-movflags", "+faststart");
   appendRenderProvenanceArgs(args, outputPath);
   if (fps !== undefined) {
     // Set the exact output framerate so the final remux doesn't PTS-average

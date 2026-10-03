@@ -20,6 +20,7 @@ import {
 } from "./timeline-adapters.js";
 
 import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
+import { extractPlayerChapters, type PlayerChapter } from "./chapters.js";
 
 export { runtimeCdnUrlForVersion };
 
@@ -28,6 +29,7 @@ export interface ProbeResult {
   adapter: PlaybackDurationAdapter;
   /** Resolved composition dimensions, if present in the document. */
   compositionSize: { width: number; height: number } | null;
+  chapters: PlayerChapter[];
 }
 
 export interface ProbeCallbacks {
@@ -124,6 +126,7 @@ export class CompositionProbe {
             duration: adapter.getDuration(),
             adapter,
             compositionSize,
+            chapters: extractPlayerChapters(this._iframe.contentDocument),
           });
           return;
         }

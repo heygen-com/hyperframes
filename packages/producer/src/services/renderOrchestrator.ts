@@ -50,6 +50,8 @@ import {
   type Fps,
   type FpsInput,
   fpsToNumber,
+  listAuthoredChapters,
+  parseChapters,
   redactTelemetryString,
   toFps,
 } from "@hyperframes/core";
@@ -325,6 +327,11 @@ export interface RenderConfig {
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
   logger?: ProducerLogger;
+  /**
+   * Write authored `data-chapter` markers into MP4/MOV containers when any
+   * exist. Default true. GIF / WebM / png-sequence ignore chapters.
+   */
+  chapters?: boolean;
   /** Override CRF for the video encoder. Mutually exclusive with `videoBitrate`. */
   crf?: number;
   /** Target video bitrate (e.g. "10M"). Mutually exclusive with `crf`. */
@@ -3944,6 +3951,14 @@ async function executeRenderPipeline(input: {
             abortSignal: executionSignal,
             assertNotAborted,
             onProgress,
+            chapters:
+              job.config.chapters === false
+                ? []
+                : listAuthoredChapters(
+                    parseChapters(parseHTML(compiled.html).document, {
+                      rootDuration: composition.duration,
+                    }),
+                  ),
           }),
       );
       perfStages.assembleMs = assembleRes.assembleMs;

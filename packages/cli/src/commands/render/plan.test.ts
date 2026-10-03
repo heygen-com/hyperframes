@@ -78,6 +78,11 @@ describe("createRenderPlan", () => {
     expect(plan.bestEffort).toBe(false);
   });
 
+  it("writes chapters by default and honors --no-chapters", () => {
+    expect(createRenderPlan({ dir: projectDir }).chapters).toBe(true);
+    expect(createRenderPlan({ dir: projectDir, chapters: false }).chapters).toBe(false);
+  });
+
   it("preserves an aspect-agnostic resolution alias through the execution plan", () => {
     const plan = createRenderPlan({ dir: projectDir, resolution: "1080p" });
     expect(plan.outputResolution).toBe("landscape");

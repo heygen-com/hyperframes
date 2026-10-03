@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { extractPlayerChapters } from "./chapters.js";
 import { readCompositionSizeFromDocument, runtimeCdnUrlForVersion } from "./composition-probe.js";
 
 describe("readCompositionSizeFromDocument", () => {
@@ -22,6 +23,18 @@ describe("readCompositionSizeFromDocument", () => {
     doc.body.innerHTML = '<div data-width="0" data-height="1920"></div>';
 
     expect(readCompositionSizeFromDocument(doc)).toBeNull();
+  });
+});
+
+describe("composition chapters probe", () => {
+  it("extracts chapters from the composition document", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = `
+      <div data-composition-id="main" data-duration="8">
+        <section id="hook" data-start="0" data-duration="4" data-chapter="Hook"></section>
+      </div>
+    `;
+    expect(extractPlayerChapters(doc)).toEqual([{ start: 0, title: "Hook", elementId: "hook" }]);
   });
 });
 

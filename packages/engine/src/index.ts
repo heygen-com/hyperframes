@@ -165,8 +165,16 @@ export {
   ENCODER_PRESETS,
   getEncoderPreset,
   type GpuEncoder,
+  type MuxVideoWithAudioOptions,
+  type ApplyFaststartOptions,
 } from "./services/chunkEncoder.js";
 export type { EncoderOptions, EncodeResult, MuxResult } from "./services/chunkEncoder.types.js";
+export {
+  appendFfmetadataChapterInput,
+  countFfmpegInputFlags,
+  serializeFfmetadataChapters,
+  type FfmetadataChapter,
+} from "./utils/ffmetadataChapters.js";
 
 export {
   spawnStreamingEncoder,

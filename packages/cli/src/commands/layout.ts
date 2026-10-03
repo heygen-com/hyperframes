@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
+import { parseProjectChapters } from "./chapters.js";
+import { ensureDOMParser } from "../utils/dom.js";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -552,12 +554,15 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
         const ok = summary.errorCount === 0 && (!strict || summary.warningCount === 0);
 
         if (args.json) {
+          ensureDOMParser();
+          const chapters = parseProjectChapters(readFileSync(project.indexPath, "utf-8"));
           console.log(
             JSON.stringify(
               withMeta(
                 {
                   schemaVersion: INSPECT_SCHEMA_VERSION,
                   duration: result.duration,
+                  chapters,
                   samples: result.samples,
                   transitionSamples: atTransitions ? result.transitionSamples : undefined,
                   transitionSamplesDropped: atTransitions

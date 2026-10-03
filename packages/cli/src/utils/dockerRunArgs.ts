@@ -52,6 +52,7 @@ export interface DockerRenderOptions {
   quiet: boolean;
   debug?: boolean;
   bestEffort?: boolean;
+  chapters?: boolean;
   variables?: Record<string, unknown>;
   entryFile?: string;
   /** Output resolution preset (e.g. "landscape-4k"). Forwarded as `--resolution`. */
@@ -144,6 +145,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     // The in-container CLI is best-effort by default. Only forward the
     // explicit strict opt-in so Docker and local renders cannot drift.
     ...(options.bestEffort === false ? ["--no-best-effort"] : []),
+    ...(options.chapters === false ? ["--no-chapters"] : []),
     ...(options.gpu ? ["--gpu"] : []),
     ...(options.browserGpu ? [] : ["--no-browser-gpu"]),
     ...(options.hdrMode === "force-hdr" ? ["--hdr"] : []),

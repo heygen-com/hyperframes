@@ -582,6 +582,25 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].label).toBe("Hero Shot");
   });
 
+  it("copies data-chapter onto the clip record separately from the label", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.id = "hook";
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "4");
+    clip.setAttribute("data-label", "Inspector name");
+    clip.setAttribute("data-chapter", "Hook");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips[0].label).toBe("Inspector name");
+    expect(result.clips[0].chapter).toBe("Hook");
+  });
+
   it("uses a friendly label and null id for anonymous clips", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

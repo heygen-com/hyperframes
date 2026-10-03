@@ -294,7 +294,7 @@ export const PLAYER_STYLES = /* css */ `
     border-radius: var(--hfp-scrubber-radius, 2px);
     cursor: pointer;
     position: relative;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .hfp-scrubber:hover {
@@ -308,6 +308,28 @@ export const PLAYER_STYLES = /* css */ `
     height: 100%;
     background: var(--hfp-accent, #fff);
     pointer-events: none;
+  }
+
+  .hfp-chapter-tick {
+    position: absolute;
+    top: -3px;
+    width: 2px;
+    height: 10px;
+    padding: 0;
+    border: 0;
+    background: var(--hfp-accent, #fff);
+    opacity: 0.75;
+    transform: translateX(-50%);
+    cursor: pointer;
+  }
+
+  .hfp-chapter-title {
+    flex-shrink: 1;
+    max-width: 12em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.9;
   }
 
   .hfp-time {

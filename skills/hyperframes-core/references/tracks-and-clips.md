@@ -14,6 +14,8 @@ A clip is any DOM element with `data-start` and, where required, `data-duration`
 
 Add `class="clip"` to authored visual clips. The runtime does not read it, but the scaffold's shared `.clip { position: absolute; inset: 0 }` rule is what gives a scene its full-frame box, Studio treats it as an edit hint, and `lint` warns without it.
 
+When a video has distinct parts (hook, demo, recap), mark each section start with `data-chapter="Title"` on the timed clip that begins it. Chapter start is that clip's resolved `data-start`; duration does not close the chapter. This is not `data-label` — labels stay inspector names. `hyperframes chapters` lists them; the player, Studio ruler, and MP4/MOV renders pick them up.
+
 ## Tracks Are a Display Lane
 
 `data-track-index` is the row a clip occupies in Studio's timeline. It is **not** read by the render, and it constrains nothing:

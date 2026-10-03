@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssembleStageInput } from "./assembleStage.js";
 
@@ -10,6 +11,7 @@ const { applyFaststartMock, muxVideoWithAudioMock, padOrTrimAudioMock } = vi.hoi
 vi.mock("@hyperframes/engine", () => ({
   applyFaststart: applyFaststartMock,
   muxVideoWithAudio: muxVideoWithAudioMock,
+  serializeFfmetadataChapters: () => ";FFMETADATA1\n",
 }));
 
 vi.mock("../audioPadTrim.js", () => ({
@@ -77,6 +79,57 @@ describe("runAssembleStage audio duration parity", () => {
       { audioCodec: "aac" },
       { num: 30, den: 1 },
     );
+  });
+
+  it("writes a temp ffmetadata file for chapters and removes it after mux", async () => {
+    const chaptersPath = "/tmp/video-only.mp4.chapters.ffmetadata";
+    await runAssembleStage(
+      makeInput({
+        chapters: [
+          { start: 0, title: "Hook" },
+          { start: 4, title: "Walkthrough" },
+        ],
+      }),
+    );
+
+    expect(muxVideoWithAudioMock).toHaveBeenCalledWith(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.duration-normalized.m4a",
+      "/tmp/output.mp4",
+      undefined,
+      { audioCodec: "aac", chaptersFfmetadataPath: chaptersPath },
+      { num: 30, den: 1 },
+    );
+    expect(existsSync(chaptersPath)).toBe(false);
+  });
+
+  it("skips the chapter input when the list is empty", async () => {
+    await runAssembleStage(makeInput({ chapters: [] }));
+    expect(muxVideoWithAudioMock).toHaveBeenCalledWith(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.duration-normalized.m4a",
+      "/tmp/output.mp4",
+      undefined,
+      { audioCodec: "aac" },
+      { num: 30, den: 1 },
+    );
+  });
+
+  it("passes chapters into video-only faststart", async () => {
+    await runAssembleStage(
+      makeInput({
+        hasAudio: false,
+        chapters: [{ start: 0, title: "Hook" }],
+      }),
+    );
+    expect(applyFaststartMock).toHaveBeenCalledWith(
+      "/tmp/video-only.mp4",
+      "/tmp/output.mp4",
+      undefined,
+      { chaptersFfmetadataPath: "/tmp/video-only.mp4.chapters.ffmetadata" },
+      { num: 30, den: 1 },
+    );
+    expect(existsSync("/tmp/video-only.mp4.chapters.ffmetadata")).toBe(false);
   });
 
   it("uses a distinct AAC normalization path when the mixed-audio extension differs", async () => {

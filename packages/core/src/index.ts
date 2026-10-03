@@ -310,6 +310,15 @@ export {
   type ClipTimingDiagnostic,
   type ClipTimingDiagnosticCode,
   type ClipTimingUpdate,
+  CHAPTER_START_EQUALITY_EPSILON_SECONDS,
+  createDocumentReferenceEndResolver,
+  listAuthoredChapters,
+  parseChapters,
+  type ChapterDiagnostic,
+  type ChapterDiagnosticCode,
+  type ChapterListing,
+  type ParseChaptersOptions,
+  type ParsedChapter,
 } from "./compositionContract.js";
 // Also exposed via the ./runtime/start-resolver subpath. This root re-export
 // additionally makes tsc EMIT dist/runtime/startResolver.js: src/runtime is

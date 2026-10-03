@@ -40,6 +40,8 @@ import {
   MIXED_AUDIO_FILENAME,
   muxVideoWithAudio,
   runFfmpeg,
+  serializeFfmetadataChapters,
+  type FfmetadataChapter,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -115,6 +117,7 @@ export async function assemble(
      * stream-copy paths don't exhibit the same avg-frame-rate drift.
      */
     cfr?: boolean;
+    chapters?: readonly FfmetadataChapter[];
   },
 ): Promise<AssembleResult> {
   const start = Date.now();
@@ -331,6 +334,14 @@ export async function assemble(
       normalizedAudioPath !== null
         ? join(workDir, `mux.${plan.dimensions.format}`)
         : postConcatPath;
+    const chapters = options?.chapters;
+    const chaptersPath =
+      chapters && chapters.length > 0 ? join(workDir, "chapters.ffmetadata") : undefined;
+    if (chaptersPath && chapters) {
+      const durationSeconds = plan.totalFrames / (plan.dimensions.fpsNum / plan.dimensions.fpsDen);
+      writeFileSync(chaptersPath, serializeFfmetadataChapters(chapters, durationSeconds));
+    }
+
     if (normalizedAudioPath !== null) {
       const muxResult = await muxVideoWithAudio(
         postConcatPath,
@@ -339,6 +350,7 @@ export async function assemble(
         abortSignal,
         {
           audioCodec: "aac",
+          chaptersFfmetadataPath: chaptersPath,
         },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
@@ -349,11 +361,12 @@ export async function assemble(
 
     // applyFaststart is a no-op for `.mov` (it copies the input to output);
     // we still call it so the success path produces `outputPath` regardless.
+    // Chapters must be re-asserted on this final remux or they would be dropped.
     const faststartResult = await applyFaststart(
       muxOutputPath,
       outputPath,
       abortSignal,
-      undefined,
+      chaptersPath ? { chaptersFfmetadataPath: chaptersPath } : undefined,
       {
         num: plan.dimensions.fpsNum,
         den: plan.dimensions.fpsDen,

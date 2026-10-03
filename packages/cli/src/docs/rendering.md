@@ -24,6 +24,7 @@ Requires: Docker installed and running.
 - `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)
 - `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default for local renders is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable. Docker mode always uses software.
 - `-o, --output` — Custom output path
+- `--chapters` / `--no-chapters` — Write authored `data-chapter` markers into MP4 and MOV (default on when any exist). GIF, WebM, and png-sequence have no chapter track here and ignore the flag.
 
 ## Tips
 

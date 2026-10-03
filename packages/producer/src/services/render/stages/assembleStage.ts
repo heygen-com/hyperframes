@@ -16,7 +16,13 @@
  *     verbatim on the respective `success: false` results.
  */
 
-import { applyFaststart, muxVideoWithAudio } from "@hyperframes/engine";
+import {
+  applyFaststart,
+  muxVideoWithAudio,
+  serializeFfmetadataChapters,
+  type FfmetadataChapter,
+} from "@hyperframes/engine";
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { padOrTrimAudioToVideoFrameCount } from "../audioPadTrim.js";
@@ -35,11 +41,40 @@ export interface AssembleStageInput {
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
+  /** Authored chapters to mux into MP4/MOV. Empty or omitted skips the extra input. */
+  chapters?: readonly FfmetadataChapter[];
 }
 
 export interface AssembleStageResult {
   /** Wall-clock ms for the assemble phase. */
   assembleMs: number;
+}
+
+function warnChapterMuxFailure(job: RenderJob, error: string | undefined): void {
+  const message = `Chapter metadata mux failed; writing video without chapters${error ? `: ${error}` : ""}`;
+  const logger = job.config.logger;
+  if (logger && typeof logger.warn === "function") logger.warn(message);
+  else console.warn(message);
+}
+
+function writeChaptersFfmetadata(
+  videoOnlyPath: string,
+  chapters: readonly FfmetadataChapter[] | undefined,
+  durationSeconds: number,
+): string | undefined {
+  if (!chapters || chapters.length === 0) return undefined;
+  const chaptersPath = `${videoOnlyPath}.chapters.ffmetadata`;
+  writeFileSync(chaptersPath, serializeFfmetadataChapters(chapters, durationSeconds));
+  return chaptersPath;
+}
+
+function removeChaptersFfmetadata(chaptersPath: string | undefined): void {
+  if (!chaptersPath || !existsSync(chaptersPath)) return;
+  try {
+    unlinkSync(chaptersPath);
+  } catch {
+    /* temp file cleanup is best-effort */
+  }
 }
 
 export async function runAssembleStage(input: AssembleStageInput): Promise<AssembleStageResult> {
@@ -52,53 +87,89 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
     abortSignal,
     assertNotAborted,
     onProgress,
+    chapters,
   } = input;
 
   const stage6Start = Date.now();
   updateJobStatus(job, "assembling", "Assembling final video", 90, onProgress);
 
-  if (hasAudio) {
-    const audioExtension = extname(audioOutputPath);
-    const audioStem = audioExtension
-      ? audioOutputPath.slice(0, -audioExtension.length)
-      : audioOutputPath;
-    const normalizedAudioPath = `${audioStem}.duration-normalized.m4a`;
-    const normalizeResult = await padOrTrimAudioToVideoFrameCount({
-      videoPath: videoOnlyPath,
-      audioPath: audioOutputPath,
-      outputPath: normalizedAudioPath,
-      signal: abortSignal,
-    });
-    assertNotAborted();
-    if (!normalizeResult.success) {
-      throw encoderFailureError("Audio duration normalization failed", normalizeResult);
+  const chaptersPath = writeChaptersFfmetadata(videoOnlyPath, chapters, job.duration);
+  try {
+    if (hasAudio) {
+      const audioExtension = extname(audioOutputPath);
+      const audioStem = audioExtension
+        ? audioOutputPath.slice(0, -audioExtension.length)
+        : audioOutputPath;
+      const normalizedAudioPath = `${audioStem}.duration-normalized.m4a`;
+      const normalizeResult = await padOrTrimAudioToVideoFrameCount({
+        videoPath: videoOnlyPath,
+        audioPath: audioOutputPath,
+        outputPath: normalizedAudioPath,
+        signal: abortSignal,
+      });
+      assertNotAborted();
+      if (!normalizeResult.success) {
+        throw encoderFailureError("Audio duration normalization failed", normalizeResult);
+      }
+      let muxResult = await muxVideoWithAudio(
+        videoOnlyPath,
+        normalizeResult.outputPath,
+        outputPath,
+        abortSignal,
+        {
+          audioCodec: "aac",
+          ...(chaptersPath ? { chaptersFfmetadataPath: chaptersPath } : {}),
+        },
+        job.config.fps,
+      );
+      if (
+        !muxResult.success &&
+        chaptersPath &&
+        muxResult.failureReason !== "external_interruption"
+      ) {
+        warnChapterMuxFailure(job, muxResult.error);
+        muxResult = await muxVideoWithAudio(
+          videoOnlyPath,
+          normalizeResult.outputPath,
+          outputPath,
+          abortSignal,
+          { audioCodec: "aac" },
+          job.config.fps,
+        );
+      }
+      assertNotAborted();
+      if (!muxResult.success) {
+        throw encoderFailureError("Audio muxing failed", muxResult);
+      }
+    } else {
+      let faststartResult = await applyFaststart(
+        videoOnlyPath,
+        outputPath,
+        abortSignal,
+        chaptersPath ? { chaptersFfmetadataPath: chaptersPath } : undefined,
+        job.config.fps,
+      );
+      if (
+        !faststartResult.success &&
+        chaptersPath &&
+        faststartResult.failureReason !== "external_interruption"
+      ) {
+        warnChapterMuxFailure(job, faststartResult.error);
+        faststartResult = await applyFaststart(
+          videoOnlyPath,
+          outputPath,
+          abortSignal,
+          undefined,
+          job.config.fps,
+        );
+      }
+      assertNotAborted();
+      if (!faststartResult.success) {
+        throw encoderFailureError("Faststart failed", faststartResult);
+      }
     }
-    const muxResult = await muxVideoWithAudio(
-      videoOnlyPath,
-      normalizeResult.outputPath,
-      outputPath,
-      abortSignal,
-      {
-        audioCodec: "aac",
-      },
-      job.config.fps,
-    );
-    assertNotAborted();
-    if (!muxResult.success) {
-      throw encoderFailureError("Audio muxing failed", muxResult);
-    }
-  } else {
-    const faststartResult = await applyFaststart(
-      videoOnlyPath,
-      outputPath,
-      abortSignal,
-      undefined,
-      job.config.fps,
-    );
-    assertNotAborted();
-    if (!faststartResult.success) {
-      throw encoderFailureError("Faststart failed", faststartResult);
-    }
+  } finally {
+    removeChaptersFfmetadata(chaptersPath);
   }
 
   return { assembleMs: Date.now() - stage6Start };

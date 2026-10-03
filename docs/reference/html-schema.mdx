@@ -99,6 +99,7 @@ unbounded animation, and timeline-free compositions need an explicit duration.
 | `data-duration` | Yes for DOM, image, and nested-composition clips | Visible slot length in seconds |
 | `data-track-index` | No | Studio timeline lane, display only. The render never reads it and it does not prevent overlap |
 | `class="clip"` | Recommended for authored timed DOM and image elements | Layout and tooling convention. Visibility is keyed off `data-start`, but the shared `.clip` rule supplies the full-frame box |
+| `data-chapter` | No | Navigational section title. The chapter starts at the clip's resolved `data-start` and continues until the next chapter or the composition end. Clip `data-duration` does not close it. Not `data-label`. |
 
 `data-track-index` does not control paint order. Use CSS `z-index` for
 front-to-back layering. Two clips on the same track may overlap in time; the

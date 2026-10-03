@@ -5,6 +5,12 @@ import {
   VOLUME_LOW_ICON,
   VOLUME_MUTED_ICON,
 } from "./styles.js";
+import {
+  chapterIndexAtTime,
+  nextChapterStart,
+  previousChapterStart,
+  type PlayerChapter,
+} from "./chapters.js";
 
 export interface ControlsCallbacks {
   onPlay: () => void;
@@ -17,6 +23,7 @@ export interface ControlsCallbacks {
   onSpeedChange: (speed: number) => void;
   onMuteToggle: () => void;
   onVolumeChange: (volume: number) => void;
+  onChapterSeek?: (index: number) => void;
 }
 
 /** Default logarithmic speed presets — each step roughly doubles/halves. */
@@ -33,6 +40,8 @@ export interface ControlsOptions {
    * at runtime via the returned `setVolumeControlsHidden`.
    */
   audioLocked?: boolean;
+  chapters?: readonly PlayerChapter[];
+  chaptersUi?: boolean;
 }
 
 export function formatSpeed(speed: number): string {
@@ -61,6 +70,8 @@ export function createControls(
   updateMuted: (muted: boolean) => void;
   updateVolume: (volume: number) => void;
   setVolumeControlsHidden: (hidden: boolean) => void;
+  setChapters: (chapters: readonly PlayerChapter[]) => void;
+  setChaptersUi: (visible: boolean) => void;
   show: () => void;
   hide: () => void;
   destroy: () => void;
@@ -93,6 +104,10 @@ export function createControls(
   const time = document.createElement("span");
   time.className = "hfp-time";
   time.textContent = "0:00 / 0:00";
+
+  const chapterTitle = document.createElement("span");
+  chapterTitle.className = "hfp-chapter-title";
+  chapterTitle.hidden = true;
 
   const speedWrap = document.createElement("div");
   speedWrap.className = "hfp-speed-wrap";
@@ -156,10 +171,55 @@ export function createControls(
 
   controls.appendChild(playBtn);
   controls.appendChild(scrubber);
+  controls.appendChild(chapterTitle);
   controls.appendChild(time);
   controls.appendChild(volumeWrap);
   controls.appendChild(speedWrap);
   parent.appendChild(controls);
+
+  let chapters: PlayerChapter[] = [...(options.chapters ?? [])];
+  let chaptersUi = options.chaptersUi !== false;
+  let lastTime = 0;
+  let lastDuration = 0;
+
+  const renderChapterTicks = () => {
+    for (const tick of Array.from(scrubber.querySelectorAll(".hfp-chapter-tick"))) {
+      tick.remove();
+    }
+    if (!chaptersUi || lastDuration <= 0) {
+      chapterTitle.hidden = true;
+      return;
+    }
+    for (const [index, chapter] of chapters.entries()) {
+      const tick = document.createElement("button");
+      tick.type = "button";
+      tick.className = "hfp-chapter-tick";
+      tick.style.left = `${(chapter.start / lastDuration) * 100}%`;
+      tick.title = chapter.title;
+      tick.setAttribute("aria-label", chapter.title);
+      tick.addEventListener("click", (event) => {
+        event.stopPropagation();
+        callbacks.onChapterSeek?.(index + 1);
+      });
+      scrubber.appendChild(tick);
+    }
+  };
+
+  const updateChapterChip = (current: number) => {
+    if (!chaptersUi || chapters.length === 0) {
+      chapterTitle.hidden = true;
+      return;
+    }
+    const index = chapterIndexAtTime(chapters, current);
+    const chapter = index == null ? null : chapters[index];
+    if (!chapter) {
+      chapterTitle.hidden = true;
+      return;
+    }
+    chapterTitle.hidden = false;
+    chapterTitle.textContent = chapter.title;
+    chapterTitle.title = chapter.title;
+  };
 
   let isPlaying = false;
   let isMuted = false;
@@ -355,6 +415,30 @@ export function createControls(
   host.addEventListener("mousemove", onHostMouseMove);
   host.addEventListener("mouseleave", onHostMouseLeave);
 
+  const isTextEntryTarget = (target: EventTarget | null): boolean => {
+    if (!target || typeof (target as HTMLElement).tagName !== "string") return false;
+    const el = target as HTMLElement;
+    const tag = el.tagName;
+    return (
+      tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true
+    );
+  };
+
+  const onChapterKey = (event: KeyboardEvent) => {
+    if (!chaptersUi || chapters.length === 0) return;
+    if (isTextEntryTarget(event.target)) return;
+    if (event.key !== "[" && event.key !== "]") return;
+    const start =
+      event.key === "["
+        ? previousChapterStart(chapters, lastTime)
+        : nextChapterStart(chapters, lastTime);
+    if (start == null) return;
+    const index = chapters.findIndex((chapter) => chapter.start === start);
+    if (index >= 0) callbacks.onChapterSeek?.(index + 1);
+    event.preventDefault();
+  };
+  document.addEventListener("keydown", onChapterKey);
+
   return {
     updateTime(current: number, duration: number) {
       // Defensive: source should already clamp, but guard here so the UI never overflows.
@@ -362,6 +446,11 @@ export function createControls(
       const pct = duration > 0 ? (clampedCurrent / duration) * 100 : 0;
       progress.style.width = `${pct}%`;
       time.textContent = `${formatTime(clampedCurrent)} / ${formatTime(duration)}`;
+      const durationChanged = duration !== lastDuration;
+      lastTime = clampedCurrent;
+      lastDuration = duration;
+      if (durationChanged) renderChapterTicks();
+      updateChapterChip(clampedCurrent);
     },
     updatePlaying(playing: boolean) {
       isPlaying = playing;
@@ -390,6 +479,16 @@ export function createControls(
     setVolumeControlsHidden(hidden: boolean) {
       volumeWrap.style.display = hidden ? "none" : "";
     },
+    setChapters(next) {
+      chapters = [...next];
+      renderChapterTicks();
+      updateChapterChip(lastTime);
+    },
+    setChaptersUi(visible) {
+      chaptersUi = visible;
+      renderChapterTicks();
+      updateChapterChip(lastTime);
+    },
     show() {
       controls.style.display = "";
     },
@@ -408,6 +507,7 @@ export function createControls(
       document.removeEventListener("click", onDocClick);
       host.removeEventListener("mousemove", onHostMouseMove);
       host.removeEventListener("mouseleave", onHostMouseLeave);
+      document.removeEventListener("keydown", onChapterKey);
       if (hideTimeout) clearTimeout(hideTimeout);
       controls.remove();
     },

@@ -462,3 +462,24 @@ export function isImplicitTimelineLayerCandidate(root: Element, el: Element): el
   if (el.hasAttribute("data-start") || el.hasAttribute("data-track-index")) return false;
   return Boolean(getTimelineElementSelector(el));
 }
+
+export interface TimelineChapterTick {
+  start: number;
+  title: string;
+}
+
+/** Unique-by-start chapter markers from timeline elements. */
+export function uniqueTimelineChapters(
+  elements: readonly TimelineElement[],
+): TimelineChapterTick[] {
+  const seen = new Map<number, string>();
+  for (const element of elements) {
+    const title = element.chapter?.trim();
+    if (!title || !Number.isFinite(element.start)) continue;
+    const existing = [...seen.keys()].find((start) => Math.abs(start - element.start) < 0.001);
+    if (existing == null) seen.set(element.start, title);
+  }
+  return [...seen.entries()]
+    .map(([start, title]) => ({ start, title }))
+    .sort((a, b) => a.start - b.start);
+}

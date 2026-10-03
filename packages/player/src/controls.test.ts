@@ -76,3 +76,53 @@ describe("createControls host listeners", () => {
     host.remove();
   });
 });
+
+describe("createControls chapters", () => {
+  const chapters = [
+    { start: 0, title: "Hook", elementId: "hook" },
+    { start: 4, title: "Demo", elementId: "demo" },
+  ];
+
+  it("renders ticks and seeks with [ / ]", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const onChapterSeek = vi.fn();
+    const api = createControls(host, { ...noopCallbacks(), onChapterSeek }, { chapters });
+    api.updateTime(0.5, 16);
+
+    expect(host.querySelectorAll(".hfp-chapter-tick")).toHaveLength(2);
+    expect(host.querySelector(".hfp-chapter-title")?.textContent).toBe("Hook");
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "]" }));
+    expect(onChapterSeek).toHaveBeenCalledWith(2);
+
+    api.destroy();
+    host.remove();
+  });
+
+  it("hides the rail when chapters UI is off but still accepts setChapters", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const api = createControls(host, noopCallbacks(), { chapters, chaptersUi: false });
+    api.updateTime(1, 16);
+    expect(host.querySelectorAll(".hfp-chapter-tick")).toHaveLength(0);
+    expect(host.querySelector(".hfp-chapter-title")?.hidden).toBe(true);
+    api.destroy();
+    host.remove();
+  });
+
+  it("ignores chapter keys from form controls", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const onChapterSeek = vi.fn();
+    const api = createControls(host, { ...noopCallbacks(), onChapterSeek }, { chapters });
+    api.updateTime(1, 16);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "]", bubbles: true }));
+    expect(onChapterSeek).not.toHaveBeenCalled();
+    api.destroy();
+    input.remove();
+    host.remove();
+  });
+});

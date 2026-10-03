@@ -18,6 +18,7 @@ a start, a duration, and a track:
 | `data-start`       | When the element enters the composition timeline |
 | `data-duration`    | How long its timeline slot lasts                 |
 | `data-track-index` | Which Studio lane displays it (optional; the render ignores it) |
+| `data-chapter`     | Optional navigational section title. Start time is the clip's resolved `data-start`; the chapter runs until the next chapter or the composition end. Distinct from `data-label`. |
 
 Add `class="clip"` to timed DOM and image elements. The runtime keys visibility
 off `data-start` rather than the class, but the shared `.clip` rule is what gives

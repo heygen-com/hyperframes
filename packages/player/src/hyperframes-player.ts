@@ -1,4 +1,5 @@
 import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
+import { type PlayerChapter } from "./chapters.js";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
@@ -82,6 +83,7 @@ class HyperframesPlayer extends HTMLElement {
       RUNTIME_SRC_ATTR,
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
+      "chapters",
     ];
   }
 
@@ -111,6 +113,7 @@ class HyperframesPlayer extends HTMLElement {
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
   private _scenes: { id: string; start: number; duration: number }[] = [];
+  private _chapters: PlayerChapter[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
   private _runtimeData = new Map<string, unknown>();
@@ -297,6 +300,9 @@ class HyperframesPlayer extends HTMLElement {
         if (val) this._media.setupFromUrl(val);
         else this._media.teardownUrlAudio();
         break;
+      case "chapters":
+        this.controlsApi?.setChaptersUi(this._chaptersUiEnabled());
+        break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
       case RUNTIME_SRC_ATTR:
@@ -341,6 +347,20 @@ class HyperframesPlayer extends HTMLElement {
    *  the composition runtime fires its first "timeline" postMessage. */
   get scenes(): { id: string; start: number; duration: number }[] {
     return this._scenes;
+  }
+
+  get chapters(): ReadonlyArray<PlayerChapter> {
+    return this._chapters;
+  }
+
+  seekToChapter(index: number): void {
+    const chapter = this._chapters[index - 1];
+    if (!chapter) return;
+    this.seek(chapter.start);
+  }
+
+  private _chaptersUiEnabled(): boolean {
+    return this.getAttribute("chapters") !== "off";
   }
 
   play() {
@@ -950,10 +970,13 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("autoplay")) this.play();
   }
 
-  private _onProbeReady({ duration, adapter, compositionSize }: ProbeResult) {
+  private _onProbeReady({ duration, adapter, compositionSize, chapters }: ProbeResult) {
     this._duration = duration;
     this._directTimelineAdapter = adapter.kind === "direct-timeline" ? adapter.timeline : null;
     this._ready = true;
+    this._chapters = chapters;
+    this.controlsApi?.setChapters(chapters);
+    this.controlsApi?.setChaptersUi(this._chaptersUiEnabled());
     this.controlsApi?.updateTime(0, duration);
     this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
     if (compositionSize) {
@@ -1033,8 +1056,11 @@ class HyperframesPlayer extends HTMLElement {
         onSpeedChange: (s) => void (this.playbackRate = s),
         onMuteToggle: () => void (this.muted = !this.muted),
         onVolumeChange: (v) => void (this.volume = v),
+        onChapterSeek: (index) => this.seekToChapter(index),
       },
       this._isAudioLocked(),
+      this._chapters,
+      this._chaptersUiEnabled(),
     );
   }
 

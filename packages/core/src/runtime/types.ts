@@ -62,6 +62,8 @@ export type RuntimeTimelineClipIdentity = {
   parentCompositionId: string | null;
   compositionSrc: string | null;
   assetUrl: string | null;
+  /** Authored `data-chapter` title, when present. Distinct from `label`. */
+  chapter?: string | null;
 };
 
 export type RuntimeTimelineClip = RuntimeTimelineClipIdentity & {

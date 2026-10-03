@@ -2131,4 +2131,63 @@ describe("composition rules", () => {
       expect(finding?.message).toMatch(/25 elements/);
     });
   });
+
+  describe("authored chapter markers", () => {
+    it("flags chapter_empty", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="10">
+          <section id="hook" class="clip" data-start="0" data-duration="4" data-chapter="   "></section>
+        </div>
+      </body></html>`);
+      const finding = result.findings.find((f) => f.code === "chapter_empty");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("flags chapter_missing_timing", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="10">
+          <section id="hook" data-chapter="Hook"></section>
+        </div>
+      </body></html>`);
+      const finding = result.findings.find((f) => f.code === "chapter_missing_timing");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("flags chapter_duplicate_start", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="10">
+          <section id="a" class="clip" data-start="1" data-duration="2" data-chapter="A"></section>
+          <section id="b" class="clip" data-start="1.0004" data-duration="2" data-chapter="B"></section>
+        </div>
+      </body></html>`);
+      expect(
+        result.findings.filter((f) => f.code === "chapter_duplicate_start").length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("flags chapter_out_of_range as a warning", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="8">
+          <section id="late" class="clip" data-start="12" data-duration="2" data-chapter="Late"></section>
+        </div>
+      </body></html>`);
+      const finding = result.findings.find((f) => f.code === "chapter_out_of_range");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+    });
+
+    it("is silent for a valid two-chapter composition", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="20">
+          <section id="hook" class="clip" data-start="0" data-duration="4" data-chapter="Hook"></section>
+          <section id="demo" class="clip" data-start="hook" data-duration="12" data-chapter="Product walkthrough"></section>
+        </div>
+      </body></html>`);
+      expect(
+        result.findings.map((f) => f.code).filter((code) => code.startsWith("chapter_")),
+      ).toEqual([]);
+    });
+  });
 });

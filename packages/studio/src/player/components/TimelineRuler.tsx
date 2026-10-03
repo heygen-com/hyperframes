@@ -2,6 +2,8 @@ import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
 import { RULER_H, getTimelineBeatEntries } from "./timelineLayout";
 import { formatTimelineTickLabel } from "./timelineRulerGeometry";
+import { TimelineChapterTicks } from "./TimelineChapterTicks";
+import { uniqueTimelineChapters } from "../lib/timelineElementHelpers";
 import { usePlayerStore } from "../store/playerStore";
 import { secondsToFrame } from "../lib/time";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
@@ -35,6 +37,7 @@ export const TimelineRuler = memo(function TimelineRuler({
   renderTimeRange,
 }: TimelineRulerProps) {
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
+  const chapters = uniqueTimelineChapters(usePlayerStore((s) => s.elements));
   const beatTimes = beatAnalysis?.beatTimes ?? [];
   const beatStrengths = beatAnalysis?.beatStrengths ?? [];
   const beatEntries = getTimelineBeatEntries(beatTimes, beatStrengths, renderTimeRange);
@@ -108,6 +111,7 @@ export const TimelineRuler = memo(function TimelineRuler({
               t * pps — matching the playhead line, which is also centered on
               contentOrigin + t * pps (see getTimelinePlayheadLeft). Without the shift
               a tick spans [x, x+1) and its center is half a pixel right. */}
+          <TimelineChapterTicks chapters={chapters} pps={pps} duration={effectiveDuration} />
           {minor.map((t) => (
             <div
               key={`m-${t}`}

@@ -10,7 +10,11 @@ import {
   truncateSnippet,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
-import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
+import {
+  CHAPTER_START_EQUALITY_EPSILON_SECONDS,
+  COMPOSITION_VARIABLE_TYPES,
+  isSafeMediaUrl,
+} from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
@@ -1204,4 +1208,146 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       },
     ];
   },
+
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const rawChapter = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.chapter);
+      if (rawChapter == null) continue;
+      if (rawChapter.trim().length === 0) {
+        findings.push({
+          code: "chapter_empty",
+          severity: "error",
+          message: "data-chapter is empty. Set a non-empty section title or remove the attribute.",
+          elementId: readAttr(tag.raw, "id") || undefined,
+          fixHint: 'Use data-chapter="Hook" (or delete the attribute).',
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const resolveReferenceEnd = createLintReferenceEndResolver(tags);
+    for (const tag of tags) {
+      if (readAttr(tag.raw, COMPOSITION_ATTRIBUTES.chapter) == null) continue;
+      const rawStart = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.start);
+      const timing = readClipTiming(
+        { getAttribute: (name) => readAttr(tag.raw, name) },
+        { defaultStart: null, resolveReferenceEnd },
+      );
+      if (rawStart == null || rawStart.trim() === "" || timing.start == null) {
+        findings.push({
+          code: "chapter_missing_timing",
+          severity: "error",
+          message: "data-chapter requires a resolvable data-start on the same element.",
+          elementId: readAttr(tag.raw, "id") || undefined,
+          fixHint: "Add data-start in seconds or as a clip-id reference.",
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const resolveReferenceEnd = createLintReferenceEndResolver(tags);
+    const resolved: Array<{ tag: OpenTag; start: number }> = [];
+    for (const tag of tags) {
+      if (readAttr(tag.raw, COMPOSITION_ATTRIBUTES.chapter) == null) continue;
+      const timing = readClipTiming(
+        { getAttribute: (name) => readAttr(tag.raw, name) },
+        { defaultStart: null, resolveReferenceEnd },
+      );
+      if (timing.start == null) continue;
+      resolved.push({ tag, start: timing.start });
+    }
+    for (let i = 0; i < resolved.length; i++) {
+      const current = resolved[i];
+      if (!current) continue;
+      const duplicate = resolved.some(
+        (other, j) =>
+          j !== i &&
+          Math.abs(other.start - current.start) <= CHAPTER_START_EQUALITY_EPSILON_SECONDS,
+      );
+      if (!duplicate) continue;
+      findings.push({
+        code: "chapter_duplicate_start",
+        severity: "error",
+        message: `Two chapters resolve to the same start (${current.start}s). Chapter start times must be unique.`,
+        elementId: readAttr(current.tag.raw, "id") || undefined,
+        fixHint: "Move one chapter onto a different timed clip.",
+        snippet: truncateSnippet(current.tag.raw),
+      });
+    }
+    return findings;
+  },
+
+  ({ tags, rootTag }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const resolveReferenceEnd = createLintReferenceEndResolver(tags);
+    const rootDuration = parseLintRootDuration(rootTag);
+    for (const tag of tags) {
+      const rawChapter = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.chapter);
+      if (rawChapter == null) continue;
+      const rawStart = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.start);
+      const timing = readClipTiming(
+        { getAttribute: (name) => readAttr(tag.raw, name) },
+        { defaultStart: null, resolveReferenceEnd },
+      );
+      const rawAbsolute = Number(rawStart);
+      const negative =
+        rawStart != null &&
+        rawStart.trim() !== "" &&
+        Number.isFinite(rawAbsolute) &&
+        rawAbsolute < 0;
+      const pastEnd = timing.start != null && rootDuration != null && timing.start > rootDuration;
+      if (!negative && !pastEnd) continue;
+      findings.push({
+        code: "chapter_out_of_range",
+        severity: "warning",
+        message: "Chapter start is outside the root composition duration.",
+        elementId: readAttr(tag.raw, "id") || undefined,
+        fixHint: "Keep data-chapter on a clip whose resolved start is inside [0, root duration].",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+    return findings;
+  },
 ];
+
+function createLintReferenceEndResolver(tags: readonly OpenTag[]) {
+  const byId = new Map<string, OpenTag>();
+  for (const tag of tags) {
+    const id = readAttr(tag.raw, "id");
+    const hfId = readAttr(tag.raw, "data-hf-id");
+    const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
+    if (id) byId.set(id, tag);
+    if (hfId) byId.set(hfId, tag);
+    if (compositionId) byId.set(compositionId, tag);
+  }
+  const resolveEnd = (refId: string, visiting: Set<string>): number | null => {
+    if (visiting.has(refId)) return null;
+    const tag = byId.get(refId);
+    if (!tag) return null;
+    visiting.add(refId);
+    const timing = readClipTiming(
+      { getAttribute: (name) => readAttr(tag.raw, name) },
+      { defaultStart: null, resolveReferenceEnd: (nestedId) => resolveEnd(nestedId, visiting) },
+    );
+    visiting.delete(refId);
+    return timing.end;
+  };
+  return (refId: string) => resolveEnd(refId, new Set());
+}
+
+function parseLintRootDuration(rootTag: OpenTag | null): number | null {
+  if (!rootTag) return null;
+  const raw = readAttr(rootTag.raw, COMPOSITION_ATTRIBUTES.duration);
+  if (raw == null || raw.trim() === "") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}

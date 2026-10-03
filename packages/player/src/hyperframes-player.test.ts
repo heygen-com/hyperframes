@@ -1495,6 +1495,26 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     expect(ctor).toBeDefined();
     expect(ctor!.observedAttributes).toContain("srcdoc");
     expect(ctor!.observedAttributes).toContain("runtime-src");
+    expect(ctor!.observedAttributes).toContain("chapters");
+  });
+
+  it("keeps player.chapters populated when chapters is off", () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal & {
+      chapters: ReadonlyArray<{ start: number; title: string; elementId: string }>;
+      seekToChapter: (index: number) => void;
+    };
+    player.setAttribute("chapters", "off");
+    Object.defineProperty(player, "_chapters", {
+      configurable: true,
+      writable: true,
+      value: [{ start: 0, title: "Hook", elementId: "hook" }],
+    });
+    expect(player.chapters).toEqual([{ start: 0, title: "Hook", elementId: "hook" }]);
+    const seek = vi.spyOn(player, "seek");
+    player.seekToChapter(1);
+    expect(seek).toHaveBeenCalledWith(0);
+    player.seekToChapter(9);
+    expect(seek).toHaveBeenCalledTimes(1);
   });
 
   it("uses a configured runtime source for loopback srcdoc", () => {

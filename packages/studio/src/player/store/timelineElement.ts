@@ -67,6 +67,8 @@ export interface TimelineElement {
   hidden?: boolean;
   /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
   timelineRole?: string;
+  /** Authored `data-chapter` title. Read-only chrome; not a work-area point. */
+  chapter?: string;
   /** Verbatim `data-audio-group` — the id of the `<hf-audio-group>` this clip belongs to, when any. */
   audioGroup?: string;
   /** The owning group's `data-label` (falls back to its id) — resolved once per parse. */

@@ -8,6 +8,7 @@
  */
 
 import { createControls, type ControlsCallbacks, type ControlsOptions } from "./controls.js";
+import type { PlayerChapter } from "./chapters.js";
 
 /**
  * Create the playback controls overlay and attach it to `parent`.
@@ -21,6 +22,8 @@ export function setupControls(
   speedPresetsAttr: string | null,
   callbacks: ControlsCallbacks,
   audioLocked = false,
+  chapters: readonly PlayerChapter[] = [],
+  chaptersUi = true,
 ): ReturnType<typeof createControls> {
   const speedPresets = speedPresetsAttr
     ? speedPresetsAttr
@@ -31,6 +34,8 @@ export function setupControls(
   const options: ControlsOptions = {
     ...(speedPresets ? { speedPresets } : {}),
     audioLocked,
+    chapters,
+    chaptersUi,
   };
   const api = createControls(parent, callbacks, options);
   api.updateMuted(muted);

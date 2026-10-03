@@ -633,6 +633,21 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.strictness).toBe("strict");
   });
 
+  it("forwards --no-chapters onto the render job", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      chapters: false,
+    });
+
+    expect(producerState.createdJobs[0]?.chapters).toBe(false);
+  });
+
   it("omits variables from createRenderJob when not provided", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },

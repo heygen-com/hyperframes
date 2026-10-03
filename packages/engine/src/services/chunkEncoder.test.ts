@@ -505,6 +505,75 @@ describe("muxVideoWithAudio audio codec handling", () => {
     });
   });
 
+  it("adds the ffmetadata input only when chaptersFfmetadataPath is set", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const { renderProvenanceArgs } = await import("../utils/renderProvenance.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.aac",
+      "/tmp/output.mp4",
+      undefined,
+      { chaptersFfmetadataPath: "/tmp/chapters.ffmetadata" },
+      { num: 30, den: 1 },
+    );
+
+    await flushMuxCodecResolution();
+    expect(calls[0]!.args).toEqual([
+      "-i",
+      "/tmp/video-only.mp4",
+      "-i",
+      "/tmp/audio.aac",
+      "-i",
+      "/tmp/chapters.ffmetadata",
+      "-map_metadata",
+      "2",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "copy",
+      "-movflags",
+      "+faststart",
+      ...renderProvenanceArgs("/tmp/output.mp4"),
+      "-r",
+      "30",
+      "-y",
+      "/tmp/output.mp4",
+    ]);
+    expect(calls[0]!.args.filter((a) => a === "-movflags")).toHaveLength(2);
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
+  it("skips the chapter input for WebM and still copies codecs without re-encoding video", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.webm",
+      "/tmp/audio.opus",
+      "/tmp/output.webm",
+      undefined,
+      { chaptersFfmetadataPath: "/tmp/chapters.ffmetadata" },
+      { num: 30, den: 1 },
+    );
+
+    await flushMuxCodecResolution();
+    expect(calls[0]!.args).not.toContain("/tmp/chapters.ffmetadata");
+    expect(calls[0]!.args).not.toContain("-map_metadata");
+    expect(calls[0]!.args).toContain("-c:v");
+    expect(calls[0]!.args).toContain("copy");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
   it("never repairs negative timestamps for an M4A sidecar (regression #3487)", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

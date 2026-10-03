@@ -18,3 +18,4 @@ export {
 } from "./compositionVariables.js";
 export { scanVariableUsage, type VariableUsageScan } from "./variableUsage.js";
 export * from "./compositionContract.js";
+export * from "./chapters.js";

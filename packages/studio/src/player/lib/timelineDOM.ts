@@ -132,6 +132,7 @@ export function createTimelineElementFromManifestClip(params: {
     sourceFile,
     playbackStart: clip.playbackStart,
     playbackRate: clip.playbackRate,
+    chapter: clip.chapter?.trim() || undefined,
   };
 
   if (hostEl) {
@@ -139,6 +140,8 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const chapter = hostEl.getAttribute("data-chapter")?.trim();
+    if (chapter) entry.chapter = chapter;
     const audioGroup = hostEl.getAttribute("data-audio-group");
     if (audioGroup) {
       entry.audioGroup = audioGroup;

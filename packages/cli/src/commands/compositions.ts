@@ -1,5 +1,11 @@
 import { defineCommand } from "citty";
-import { parseNumeric, parseStartExpression } from "@hyperframes/core";
+import {
+  listAuthoredChapters,
+  parseChapters,
+  parseNumeric,
+  parseStartExpression,
+  type ChapterListing,
+} from "@hyperframes/core";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -20,6 +26,7 @@ interface CompositionInfo {
   height: number;
   elementCount: number;
   source?: string;
+  chapters: ChapterListing[];
 }
 
 const NON_RENDERED_TAGS = new Set(["script", "style", "link", "meta", "template"]);
@@ -166,6 +173,7 @@ export function parseCompositions(html: string, baseDir: string): CompositionInf
       width,
       height,
       elementCount,
+      chapters: listAuthoredChapters(parseChapters(div, { rootDuration: maxEnd })),
     });
   });
 
@@ -233,7 +241,8 @@ export function parseSubComposition(
     duration = estimateDurationFromScripts(searchRoot);
   }
 
-  return { id, duration, width, height, elementCount };
+  const chapters = listAuthoredChapters(parseChapters(searchRoot, { rootDuration: duration }));
+  return { id, duration, width, height, elementCount, chapters };
 }
 
 export default defineCommand({

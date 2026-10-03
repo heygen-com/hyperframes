@@ -27,6 +27,12 @@ describe("CLI command registration", () => {
     );
   });
 
+  it("registers chapters next to compositions in Project help", () => {
+    const loaders = commandLoaderBlock();
+    expect(loaders).toMatch(/\bchapters:\s*\(\)\s*=>\s*import\("\.\/commands\/chapters\.js"\)/);
+    expect(helpSource).toContain('["chapters", "List authored chapter markers in a project"]');
+  });
+
   it("shows the check command used by workflow capability preflight in root help", () => {
     const loaders = commandLoaderBlock();
     expect(loaders).toMatch(/\bcheck:\s*\(\)\s*=>\s*import\("\.\/commands\/check\.js"\)/);

@@ -61,6 +61,7 @@ describe("parseSubComposition", () => {
       width: 1920,
       height: 1080,
       elementCount: 1,
+      chapters: [],
     });
   });
 
@@ -84,6 +85,26 @@ describe("parseSubComposition", () => {
       width: 1920,
       height: 1080,
       elementCount: 1,
+      chapters: [],
     });
+  });
+});
+
+describe("composition chapters", () => {
+  beforeEach(() => {
+    ensureDOMParser();
+  });
+
+  it("includes authored chapters on the host composition", () => {
+    const html = `
+<div data-composition-id="host" data-width="1920" data-height="1080">
+  <section id="hook" class="clip" data-start="0" data-duration="4" data-chapter="Hook"></section>
+  <section id="demo" class="clip" data-start="hook" data-duration="12" data-chapter="Product walkthrough"></section>
+</div>`;
+    const host = parseCompositions(html, "/tmp").find((composition) => composition.id === "host");
+    expect(host?.chapters).toEqual([
+      { index: 1, start: 0, title: "Hook", elementId: "hook" },
+      { index: 2, start: 4, title: "Product walkthrough", elementId: "demo" },
+    ]);
   });
 });

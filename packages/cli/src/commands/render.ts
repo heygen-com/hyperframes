@@ -225,6 +225,12 @@ export default defineCommand({
         "Allow output with structured capture-readiness warnings (default). Use --no-best-effort to fail on missing or unready media.",
       default: true,
     },
+    chapters: {
+      type: "boolean",
+      description:
+        "Write authored data-chapter markers into MP4 and MOV containers when any exist (default). Use --no-chapters to skip the metadata write. GIF, WebM, and png-sequence ignore chapters.",
+      default: true,
+    },
     strict: {
       type: "boolean",
       description: "Fail render on lint errors",
@@ -402,6 +408,7 @@ export interface RenderOptions {
   quiet: boolean;
   debug?: boolean;
   bestEffort?: boolean;
+  chapters?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   entryFile?: string;
@@ -724,6 +731,7 @@ async function renderDocker(
       pageSideCompositing: options.pageSideCompositing,
       debug: options.debug,
       bestEffort: options.bestEffort,
+      chapters: options.chapters,
       experimentalFastCapture: options.experimentalFastCapture,
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
       protocolTimeoutMs: options.protocolTimeout,
@@ -896,6 +904,7 @@ export async function renderLocal(
       outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
       debug: options.debug,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
+      chapters: options.chapters,
     },
   });
   const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));

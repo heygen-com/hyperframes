@@ -416,6 +416,7 @@ export function collectRuntimeTimelinePayload(params: {
       timelineLabel: node.getAttribute("data-timeline-label"),
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
+      chapter: node.getAttribute("data-chapter"),
     });
   }
   // ── GSAP introspection ──────────────────────────────────────────────────
@@ -527,6 +528,7 @@ export function collectRuntimeTimelinePayload(params: {
             timelineLabel: el.getAttribute("data-timeline-label"),
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+            chapter: el.getAttribute("data-chapter"),
           });
           gsapClipIds.add(el.id);
         }
@@ -584,6 +586,7 @@ export function collectRuntimeTimelinePayload(params: {
         timelineLabel: el.getAttribute("data-timeline-label"),
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+        chapter: el.getAttribute("data-chapter"),
       });
       gsapClipIds.add(el.id);
     }
