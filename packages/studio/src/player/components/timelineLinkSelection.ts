@@ -1,5 +1,6 @@
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { expandToLinkedMembers, linkedMembersOf } from "./audioClipLink";
+import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 
 /**
  * Select `key` the way a clip click does, then widen to link partners; Alt
