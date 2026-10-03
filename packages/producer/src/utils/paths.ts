@@ -127,7 +127,20 @@ export function resolveRenderPaths(
 ): RenderPaths {
   const absoluteProjectDir = nodeResolve(projectDir);
   const projectName = basename(absoluteProjectDir);
-  const resolvedOutputPath = outputPath ?? join(rendersDir, `${projectName}.mp4`);
+  // A bare filename is an output *name*, not a path from the process CWD —
+  // resolving it against CWD lands renders outside the renders directory.
+  // Anchoring it to rendersDir keeps every default-adjacent output in one
+  // contained place.
+  const isBareFilename =
+    !!outputPath &&
+    !outputPath.includes("/") &&
+    !outputPath.includes("\\") &&
+    !nodeIsAbsolute(outputPath);
+  const resolvedOutputPath = !outputPath
+    ? join(rendersDir, `${projectName}.mp4`)
+    : isBareFilename
+      ? join(rendersDir, outputPath)
+      : outputPath;
   const absoluteOutputPath = nodeResolve(resolvedOutputPath);
 
   return { absoluteProjectDir, absoluteOutputPath };

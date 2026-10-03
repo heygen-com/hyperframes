@@ -22,7 +22,7 @@ import {
   rmSync,
   createReadStream,
 } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, relative, isAbsolute } from "node:path";
 import { tmpdir } from "node:os";
 import { parseArgs } from "node:util";
 import crypto from "node:crypto";
@@ -47,6 +47,7 @@ import {
   parseFps,
   normalizeResolutionFlag,
   isAspectAgnosticResolutionAlias,
+  isSafePath,
   type CanvasResolution,
 } from "@hyperframes/core";
 import { createRenderRequest, renderConfigFromRequest } from "./renderRequest.js";
@@ -67,11 +68,27 @@ export interface HandlerOptions {
   artifactTtlMs?: number;
   /** Max renders that execute simultaneously. Queued requests wait FIFO. Default: 2. */
   maxConcurrentRenders?: number;
+  /**
+   * Directories an explicit `outputPath` may resolve inside. When set, a
+   * caller-supplied output path outside any of these roots is rejected with a
+   * 400 and the render never starts. When omitted (the default), no output
+   * containment applies, preserving behavior for embedders that mount the
+   * handlers behind their own network boundary and manage their own output
+   * locations. The standalone `startServer()` supplies `[rendersDir]`.
+   */
+  allowedOutputRoots?: string[];
 }
 
 export interface ServerOptions extends HandlerOptions {
   /** Port to listen on. Default: 9847. */
   port?: number;
+  /**
+   * Interface to bind. Default: `PRODUCER_HOST` env or `127.0.0.1`. The
+   * standalone server is unauthenticated, so exposing it to other interfaces
+   * (for example `0.0.0.0` inside a published container) is an explicit
+   * operator choice.
+   */
+  hostname?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,14 +343,66 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
  */
 function resolvePreparedRenderOutput(
   prepared: PreparedRenderInput,
+  allowedOutputRoots: string[] | undefined,
   rendersDir: string,
   log: ProducerLogger,
-): { input: RenderInput; cleanupProjectDir?: string; absoluteOutputPath: string } {
+):
+  | { input: RenderInput; cleanupProjectDir?: string; absoluteOutputPath: string }
+  | { error: string } {
+  const outputError = validateRenderOutputPath(
+    prepared.input.outputPath,
+    allowedOutputRoots,
+    rendersDir,
+  );
+  if (outputError) return { error: outputError };
   const { input, cleanupProjectDir } = prepared;
   const absoluteOutputPath = resolveOutputPath(input.projectDir, input.outputPath, rendersDir, log);
   const outputDir = dirname(absoluteOutputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   return { input, cleanupProjectDir, absoluteOutputPath };
+}
+
+/**
+ * The render handlers accept a caller-supplied destination path, and the
+ * server's output-artifact route hands the rendered file back. When output
+ * roots are declared, an explicit path must resolve inside one of them —
+ * checked lexically first, then through `isSafePath`, whose `realpathSync`
+ * walk catches symlinks that lexical comparison cannot see. A bare filename
+ * is an output *name*: it joins the renders directory (see
+ * `resolveRenderPaths`) and is checked against that root. Without declared
+ * roots this is a no-op so embedders that mount the handlers behind their own
+ * network boundary keep today's behavior. The error text deliberately does
+ * not echo any server-side path back to the caller.
+ */
+export function validateRenderOutputPath(
+  outputCandidate: string | null | undefined,
+  allowedOutputRoots: string[] | undefined,
+  rendersDir: string,
+): string | undefined {
+  if (!outputCandidate || !allowedOutputRoots || allowedOutputRoots.length === 0) return undefined;
+
+  const isBareFilename =
+    !outputCandidate.includes("/") &&
+    !outputCandidate.includes("\\") &&
+    !isAbsolute(outputCandidate);
+  const absoluteOutputPath = isBareFilename
+    ? join(rendersDir, outputCandidate)
+    : resolve(outputCandidate);
+
+  const containingRoot = isBareFilename
+    ? resolve(rendersDir)
+    : allowedOutputRoots.find((root) => {
+        const rel = relative(root, absoluteOutputPath);
+        return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+      });
+  if (!containingRoot) {
+    return "outputPath must be within the producer renders directory";
+  }
+  if (!existsSync(containingRoot)) mkdirSync(containingRoot, { recursive: true });
+  if (!isSafePath(containingRoot, absoluteOutputPath)) {
+    return "outputPath must be within the producer renders directory";
+  }
+  return undefined;
 }
 
 /**
@@ -408,6 +477,40 @@ function prepareProjectDirectory(
   return { prepared: { input: { projectDir: absProjectDir, ...options } } };
 }
 
+/** Hostnames that resolve to the loopback interface, compared lowercased. */
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+/**
+ * The server fetches the previewUrl on behalf of the requester and returns the
+ * fetched document inside the rendered output, so an unvalidated URL is a
+ * read-SSRF primitive against whatever the server can reach. The legitimate
+ * source is the co-located preview server, so validation is loopback-only by
+ * default; `PRODUCER_PREVIEW_HOST_ALLOWLIST` (comma-separated hostnames)
+ * extends it for deployments that render other explicitly trusted hosts.
+ */
+export function validatePreviewUrl(raw: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return "previewUrl is not a valid URL";
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return `previewUrl must use http or https, received: ${parsed.protocol}`;
+  }
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (LOOPBACK_HOSTNAMES.has(hostname)) return undefined;
+  const allowlist = (process.env.PRODUCER_PREVIEW_HOST_ALLOWLIST ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowlist.includes(hostname)) return undefined;
+  return `previewUrl must target the loopback interface (localhost, 127.0.0.1, ::1) or a PRODUCER_PREVIEW_HOST_ALLOWLIST host; received: ${hostname}`;
+}
+
+/** Redirect hops a previewUrl may traverse before the fetch gives up. */
+const MAX_PREVIEW_REDIRECTS = 5;
+
 async function resolveInlineRenderHtml(body: Record<string, unknown>): Promise<
   | { html: string }
   | {
@@ -419,17 +522,45 @@ async function resolveInlineRenderHtml(body: Record<string, unknown>): Promise<
   const previewUrl = nonEmptyString(body.previewUrl);
   if (!previewUrl)
     return { error: "Missing render source: provide projectDir, previewUrl, or html" };
-  try {
-    const response = await fetch(previewUrl, { method: "GET" });
+  // Follow redirects manually so every hop is re-validated: a loopback URL
+  // that answers 302 to an internal host would otherwise pass the guard and
+  // fetch that host through the default redirect-following client.
+  let currentUrl = previewUrl;
+  for (let hops = 0; hops <= MAX_PREVIEW_REDIRECTS; hops += 1) {
+    const redirectError = validatePreviewUrl(currentUrl);
+    if (redirectError) return { error: redirectError };
+    if (hops === MAX_PREVIEW_REDIRECTS) {
+      return { error: `previewUrl exceeded ${MAX_PREVIEW_REDIRECTS} redirects` };
+    }
+    let response: Response;
+    try {
+      response = await fetch(currentUrl, { method: "GET", redirect: "manual" });
+    } catch (error) {
+      return {
+        error: `Failed to fetch previewUrl: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    if (
+      response.status === 301 ||
+      response.status === 302 ||
+      response.status === 303 ||
+      response.status === 307 ||
+      response.status === 308
+    ) {
+      const location = response.headers.get("location");
+      await response.body?.cancel();
+      if (!location) {
+        return { error: "previewUrl redirect had no Location header" };
+      }
+      currentUrl = new URL(location, currentUrl).href;
+      continue;
+    }
     if (!response.ok) {
       return { error: `Failed to fetch previewUrl: ${response.status} ${response.statusText}` };
     }
     return { html: await response.text() };
-  } catch (error) {
-    return {
-      error: `Failed to fetch previewUrl: ${error instanceof Error ? error.message : String(error)}`,
-    };
   }
+  return { error: `previewUrl exceeded ${MAX_PREVIEW_REDIRECTS} redirects` };
 }
 
 function materializeInlineProject(
@@ -665,6 +796,9 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     options.getRequestId ?? ((c: Context) => c.req.header("x-request-id") || crypto.randomUUID());
   const outputUrlPrefix = options.outputUrlPrefix ?? "/outputs";
   const rendersDir = options.rendersDir ?? process.env.PRODUCER_RENDERS_DIR ?? "/tmp";
+  // Resolve once so containment compares against the same absolute roots the
+  // handlers use for output URLs.
+  const allowedOutputRoots = options.allowedOutputRoots?.map((root) => resolve(root));
   const artifactTtlMs =
     options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
   const store = createArtifactStore(artifactTtlMs);
@@ -729,11 +863,16 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       return c.json({ success: false, requestId, error: preparedResult.error }, 400);
     }
 
-    const { input, cleanupProjectDir, absoluteOutputPath } = resolvePreparedRenderOutput(
+    const resolvedOutput = resolvePreparedRenderOutput(
       preparedResult.prepared,
+      allowedOutputRoots,
       rendersDir,
       log,
     );
+    if ("error" in resolvedOutput) {
+      return c.json({ success: false, requestId, error: resolvedOutput.error }, 400);
+    }
+    const { input, cleanupProjectDir, absoluteOutputPath } = resolvedOutput;
 
     const release = await renderSemaphore.acquire();
 
@@ -817,11 +956,24 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const prepared = await prepareSseRenderRequest(c, stream, requestId);
       if (!prepared) return;
 
-      const { input, cleanupProjectDir, absoluteOutputPath } = resolvePreparedRenderOutput(
+      const resolvedOutput = resolvePreparedRenderOutput(
         prepared,
+        allowedOutputRoots,
         rendersDir,
         log,
       );
+      if ("error" in resolvedOutput) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            requestId,
+            error: resolvedOutput.error,
+            stage: "validation",
+          }),
+        });
+        return;
+      }
+      const { input, cleanupProjectDir, absoluteOutputPath } = resolvedOutput;
 
       log.info("render-stream started", { requestId, projectDir: input.projectDir });
 
@@ -947,10 +1099,23 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
 export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? parseInt(process.env.PRODUCER_PORT ?? "9847", 10);
   const log = options.logger ?? defaultLogger;
-  const app = createProducerApp(options);
+  // The standalone server is unauthenticated: bind loopback by default and
+  // require an explicit operator choice (option or PRODUCER_HOST) to expose
+  // it to other interfaces. Container deployments that publish the port set
+  // PRODUCER_HOST=0.0.0.0 in their compose/service definition.
+  const hostname = options.hostname ?? process.env.PRODUCER_HOST ?? "127.0.0.1";
+  // The standalone server takes callers' output paths over its HTTP API, so
+  // it contains them to its renders directory. `createProducerApp` embedders
+  // that don't pass `allowedOutputRoots` keep today's uncontained behavior.
+  const rendersDir = options.rendersDir ?? process.env.PRODUCER_RENDERS_DIR ?? "/tmp";
+  const serverOptions: ServerOptions = {
+    ...options,
+    allowedOutputRoots: options.allowedOutputRoots ?? [rendersDir],
+  };
+  const app = createProducerApp(serverOptions);
 
-  const server = serve({ fetch: app.fetch, port }, () => {
-    log.info(`Listening on http://localhost:${port}`);
+  const server = serve({ fetch: app.fetch, port, hostname }, () => {
+    log.info(`Listening on http://${hostname}:${port}`);
   });
 
   // Disable timeouts for long renders
