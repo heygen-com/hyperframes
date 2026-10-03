@@ -11,7 +11,7 @@ import { parseArgs } from "node:util";
 import { execSync, spawn } from "node:child_process";
 import puppeteer from "puppeteer-core";
 import { resolveHeadlessShellPath } from "../../../../engine/src/index.ts";
-import { buildGrid, writeFixture } from "./grid.mjs";
+import { buildGrid, frameOf, writeFixture } from "./grid.mjs";
 import { killServers, runCase, startServer, stopServer } from "./case.mjs";
 import { runSequence } from "./sequences.mjs";
 import { METRICS, score, writeReport } from "./report.mjs";
@@ -70,10 +70,17 @@ const errorResult = (error, log) => ({
 
 const liveRoots = new Set();
 
+const clipTo = (b, f) => ({
+  left: Math.max(b.left, f.left),
+  top: Math.max(b.top, f.top),
+  right: Math.min(b.right, f.right),
+  bottom: Math.min(b.bottom, f.bottom),
+});
+
 /** Render drift: the reloaded preview's visible box against the target's pixel box in a producer frame. */
-async function withRender(dir, decoder, { reloaded, ...measured }, evidence, time) {
-  const expected = aabb(reloaded.visible);
-  const render = await renderBox(dir, decoder, time).catch((error) => ({ error }));
+async function withRender(spec, dir, decoder, { reloaded, ...measured }, evidence) {
+  const expected = clipTo(aabb(reloaded.visible), frameOf(spec));
+  const render = await renderBox(dir, decoder, spec.playhead).catch((error) => ({ error }));
   // A producer failure fails render alone; the case's other metrics still count.
   if (render.error)
     return {
@@ -123,7 +130,7 @@ async function runOne(spec, browser, decoder, port) {
     });
     await stopServer(server);
     server = null;
-    result = await withRender(dir, decoder, measured, evidence, spec.playhead);
+    result = await withRender(spec, dir, decoder, measured, evidence);
     if (keyRender) result.renderKey = await renderKeyframe(dir, decoder, keyRender);
   } catch (error) {
     result = errorResult(error, log);

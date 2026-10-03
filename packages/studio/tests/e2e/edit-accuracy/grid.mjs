@@ -101,6 +101,22 @@ const product = (axes) =>
 const caseId = (c) =>
   [c.gesture, c.gsap, c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-");
 
+// An <img> as Studio places a dropped picture, full-frame or smaller, at gsap none (one tween for contrast).
+// Each pointer gesture also gets the stray no-button move a hand drag meets (case.mjs strayMove).
+// The id's placement token is letters only, so `-img(contain|cover)` selects them.
+function imageCases() {
+  const fitted = product({
+    fit: ["contain", "cover"],
+    size: ["full", "small"],
+    nesting: AXES.nesting,
+    gesture: GESTURES,
+  }).map((c) => ({ ...c, gsap: "none" }));
+  return fitted
+    .concat({ fit: "contain", size: "full", nesting: "root", gesture: "move", gsap: "tween" })
+    .map((c) => ({ ...c, placement: `img${c.fit}${c.size}`, rotation: 0, zoom: 100, stray: true }))
+    .map((c) => ({ id: caseId(c), ...c }));
+}
+
 /** `pr` is a smaller slice for CI; `keyframes` is the GSAP-animated set alone, which `full` also runs. */
 export function buildGrid(kind = "full") {
   if (kind === "keyframes") return keyframedCases();
@@ -109,7 +125,7 @@ export function buildGrid(kind = "full") {
       // xPercent only exists through GSAP on the target itself.
       .filter((c) => c.placement !== "xpercent" || !["none", "idle"].includes(c.gsap))
       .map((c) => ({ id: caseId(c), ...c, other: c.gsap === "idle" }))
-      .concat(dragCases(), keyframedCases())
+      .concat(dragCases(), keyframedCases(), imageCases())
       .filter((c) => kind !== "pr" || (c.zoom === 100 && c.nesting === "root"))
   );
 }
@@ -130,6 +146,32 @@ const OTHER_PLACEMENT_CSS = {
   center: "left: 75%; top: 75%; translate: -50% -50%;",
 };
 
+// A flat 4:3 picture in the target colour: contain letterboxes it in a 16:9 box and cover crops it.
+const IMAGE_SRC =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR42mP4cEABjhhwcgCyFhXBc/l8wQAAAABJRU5ErkJggg==";
+
+/** The target's composition frame in composition px: nothing outside it reaches the producer frame. */
+export function frameOf(spec) {
+  const h = spec.nesting === "nested" ? NESTED_HOST : { left: 0, top: 0, ...COMPOSITION };
+  return { left: h.left, top: h.top, right: h.left + h.width, bottom: h.top + h.height };
+}
+
+// fallow-ignore-next-line complexity
+function targetBox(spec) {
+  if (!spec.fit)
+    return `${PLACEMENT_CSS[spec.placement]} width: ${TARGET.width}px; height: ${TARGET.height}px;`;
+  const f = frameOf(spec);
+  const [w, h] = spec.size === "full" ? [f.right - f.left, f.bottom - f.top] : [640, 360];
+  const at = spec.size === "full" ? [0, 0] : [640, 360];
+  // The box colour fills contain's letterbox, so the producer's pixel box is the element box the bench measures.
+  return `left: ${at[0]}px; top: ${at[1]}px; width: ${w}px; height: ${h}px; object-fit: ${spec.fit};`;
+}
+
+const targetEl = (spec, attrs) =>
+  spec.fit
+    ? `<img id="target"${attrs} src="${IMAGE_SRC}" alt="" />`
+    : `<div id="target"${attrs}>${targetText(spec)}</div>`;
+
 const TEXT = "Edit accuracy bench";
 const targetText = (spec) => (spec.text ? TEXT : "");
 
@@ -140,7 +182,7 @@ function targetCss(spec) {
     : "";
   // White text reads as full coverage in the render's luminance box, so it leaves that metric alone.
   const text = spec.text ? " color: #ffffff; font: 28px/1.2 sans-serif;" : "";
-  return `#target { position: absolute; ${PLACEMENT_CSS[spec.placement]} width: ${TARGET.width}px; height: ${TARGET.height}px; background: ${TARGET.color};${rotate}${text} }${other}`;
+  return `#target { position: absolute; ${targetBox(spec)} background: ${TARGET.color};${rotate}${text} }${other}`;
 }
 
 // fallow-ignore-next-line complexity
@@ -171,7 +213,7 @@ function rootHtml(spec) {
   const nested = spec.nesting === "nested";
   const body = nested
     ? `<div id="scene-sub" data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0" data-duration="4" data-track-index="1" style="position: absolute; left: ${NESTED_HOST.left}px; top: ${NESTED_HOST.top}px; width: ${NESTED_HOST.width}px; height: ${NESTED_HOST.height}px; overflow: hidden"></div>`
-    : `<div id="target" class="clip" data-start="0" data-duration="4" data-track-index="1">${targetText(spec)}</div>${spec.other ? `\n      <div id="other" class="clip" data-start="0" data-duration="4" data-track-index="2"></div>` : ""}`;
+    : `${targetEl(spec, ' class="clip" data-start="0" data-duration="4" data-track-index="1"')}${spec.other ? `\n      <div id="other" class="clip" data-start="0" data-duration="4" data-track-index="2"></div>` : ""}`;
   const script = spec.gsap === "none" ? "" : timelineScript("main", nested ? [] : gsapLines(spec));
   return `<!doctype html>
 <html lang="en">
@@ -197,7 +239,7 @@ function subHtml(spec) {
   const script = spec.gsap === "none" ? "" : timelineScript("sub", gsapLines(spec));
   return `<template id="sub-template">
   <div id="sub" data-composition-id="sub" data-width="${NESTED_HOST.width}" data-height="${NESTED_HOST.height}">
-    <div id="target">${targetText(spec)}</div>${spec.other ? `\n    <div id="other"></div>` : ""}
+    ${targetEl(spec, "")}${spec.other ? `\n    <div id="other"></div>` : ""}
     <style>
       #sub { position: relative; width: ${NESTED_HOST.width}px; height: ${NESTED_HOST.height}px; background: ${BACKGROUND}; overflow: hidden; }
       ${targetCss(spec)}

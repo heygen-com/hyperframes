@@ -27,6 +27,8 @@ const RESIZE_BY = 60;
 const ROTATE_BY = (25 * Math.PI) / 180;
 const CROP_BY = 40;
 const NUDGES = 5;
+// Where a hand drag's stray hover move landed, from the press, in composition px (the saved translate it caused).
+const STRAY_BY = [-611, 213.6];
 const ZOOM_SENSITIVITY = 0.007; // previewZoom.ts: one wheel unit scales zoom by exp(0.007)
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -675,11 +677,15 @@ export async function controlDrag(browser, gesture) {
 }
 
 /** The move Chromium resends at the last known point after a layout change: no button, capture kept. A CDP move
- * with no button ends the capture instead, so it goes to the captured box (the mouse is pointer 1). */
-async function strayMove(page, [x, y]) {
+ * with no button ends the capture instead, so it goes to the captured box (the mouse is pointer 1), or to the
+ * element under `pressed` for a handle drag. */
+async function strayMove(page, [x, y], pressed) {
   const sent = await page.evaluate(
-    ([clientX, clientY]) =>
-      document.querySelector("[data-dom-edit-selection-box]")?.dispatchEvent(
+    ([clientX, clientY, at]) =>
+      (at
+        ? document.elementFromPoint(at[0], at[1])
+        : document.querySelector("[data-dom-edit-selection-box]")
+      )?.dispatchEvent(
         new PointerEvent("pointermove", {
           bubbles: true,
           pointerId: 1,
@@ -690,9 +696,9 @@ async function strayMove(page, [x, y]) {
           clientY,
         }),
       ),
-    [x, y],
+    [x, y, pressed],
   );
-  if (sent === undefined) throw new Error("no selection box to send the stray move to");
+  if (sent === undefined) throw new Error("no element to send the stray move to");
   await nextFrame(page);
 }
 
@@ -734,6 +740,12 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   }
   const rec = await recording(ctx.page, false);
   const smooth = smoothness(rec);
+  if (ctx.stray)
+    await strayMove(
+      ctx.page,
+      pre.map.toScreen([0, 1].map((i) => pressComp[i] + STRAY_BY[i])),
+      press,
+    );
   await ctx.page.mouse.up();
   const lastQuad = gesture === "crop" ? last.m.outline : last.m.visible;
   return {
@@ -783,6 +795,7 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
     handles: null,
     playhead: spec.playhead ?? PLAYHEAD,
     keys: spec.keys,
+    stray: spec.stray,
   };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
