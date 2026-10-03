@@ -50,3 +50,11 @@ describe("the smooth verdict", () => {
     expect(accurate(e)).toBe(true);
   });
 });
+
+describe("a case's verdict", () => {
+  it("passes only when every metric does, smoothness included", () => {
+    expect(score({ id: "case" }, result({})).pass).toBe(true);
+    expect(score({ id: "case" }, { ...result({}), drop: 1000 }).pass).toBe(false);
+    expect(score({ id: "case" }, { error: "boom" }).pass).toBe(false);
+  });
+});

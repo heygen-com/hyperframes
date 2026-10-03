@@ -66,6 +66,7 @@ export function score(spec, r) {
       ...spec,
       ...r,
       checks: Object.fromEntries(METRICS.map((m) => [m, false])),
+      pass: false,
     };
   const smooth = { ...frameBudget(r.smooth), control: frameBudget(r.smooth.control) };
   const checks = {
@@ -96,7 +97,7 @@ export function score(spec, r) {
       smooth.workMax <= WORK_MS,
   };
   for (const m of unsettledMetrics(r)) checks[m] = false;
-  return { ...spec, ...r, smooth, checks };
+  return { ...spec, ...r, smooth, checks, pass: METRICS.every((m) => checks[m]) };
 }
 
 const round = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
