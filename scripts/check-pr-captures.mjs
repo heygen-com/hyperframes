@@ -469,7 +469,7 @@ function printFailure(problems, prNumber) {
     "Edit the body text first: gh pr edit --body-file replaces the body and drops attachments.",
   );
   console.error(
-    `A change with no visible effect (under ${NO_VISIBLE_CHANGE_MAX_LINES} lines, no .tsx/.css/.html) may instead add a '## No visible change' section.`,
+    `A change with no visible effect (under ${NO_VISIBLE_CHANGE_MAX_LINES} lines, no .tsx/.css/.html; tests and Markdown are not counted) may instead add a '## No visible change' section.`,
   );
 }
 
