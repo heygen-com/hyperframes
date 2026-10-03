@@ -350,7 +350,7 @@ export function useTimelineGroupEditing({
             sdkGsap: sdk?.sdkGsap,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
             mutationFor: (change) =>
-              shiftGsapMutation(change.element.domId ?? "", change.start - change.element.start),
+              shiftGsapMutation(change.element.domId, change.start - change.element.start),
           });
         } finally {
           invalidateGsapCache?.();
@@ -460,7 +460,7 @@ export function useTimelineGroupEditing({
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
             mutationFor: (change) =>
               scaleGsapMutation(
-                change.element.domId ?? "",
+                change.element.domId,
                 toCompositionTime(change.element, change.element.start),
                 change.element.duration,
                 toCompositionTime(change.element, change.start),

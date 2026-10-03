@@ -4,7 +4,7 @@ import {
   hasNonHoldTweenForElement,
   readRuntimeKeyframes,
 } from "./gsapRuntimeKeyframes";
-import { withTweenIndex } from "./gsapRuntimeTweenIndex";
+import { tweensTargeting, withTweenIndex } from "./gsapRuntimeTweenIndex";
 
 // Build a fake preview iframe whose runtime timeline holds the given child tweens
 // and resolves `selector` to `el`.
@@ -299,5 +299,16 @@ describe("withTweenIndex — many elements, one scan of the tweens", () => {
     } as unknown as HTMLIFrameElement;
     expect(withTweenIndex(() => hasNonHoldTweenForElement(odd, "#clip-3"))).toBe(true);
     expect(withTweenIndex(() => hasNonHoldTweenForElement(odd, "#nobody"))).toBe(false);
+  });
+
+  it("returns the plain scan's tweens, once each and in timeline order", () => {
+    const el = { id: "clip-2" } as unknown as Element;
+    const byElement = { targets: () => [el], vars: {}, duration: () => 1 };
+    const byId = { targets: () => [{ id: "clip-2" }], vars: {}, duration: () => 1 };
+    const both = { targets: () => [el, { id: "clip-2" }], vars: {}, duration: () => 1 };
+    const tl = { getChildren: () => [byId, byElement, both] };
+    const plain = tweensTargeting(tl, el);
+    expect(withTweenIndex(() => tweensTargeting(tl, el))).toEqual(plain);
+    expect(plain).toEqual([byId, byElement, both]);
   });
 });

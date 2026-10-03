@@ -141,6 +141,8 @@ function syncTimingEditPreview(
   if (result === "cannot-soft-reload") reloadPreview();
 }
 
+const UNMUTATED: GsapMutationStatus = { mutated: false, scriptText: null };
+
 export async function finishTimelineTimingFallback(input: {
   iframe: HTMLIFrameElement | null;
   projectId: string | null;
@@ -156,7 +158,7 @@ export async function finishTimelineTimingFallback(input: {
    */
   rebindWhenUnmutated: boolean;
 }): Promise<void> {
-  let outcome: GsapMutationStatus = { mutated: false, scriptText: null };
+  let outcome = UNMUTATED;
   if (input.gsapMutation) {
     try {
       outcome = await input.gsapMutation();
@@ -266,7 +268,7 @@ async function foldGsapMutationInQueue(input: {
   const ownedSteps: OwnedMutationStep[] = [];
   const runOwnedMutation: OwnedMutationRunner = async (path, mutation) => {
     const pending = mutation();
-    if (!pending) return { mutated: false, scriptText: null };
+    if (!pending) return UNMUTATED;
     const status = await pending;
     if (!status.mutated) return status;
     if (status.before === undefined || status.after === undefined) {
@@ -337,13 +339,13 @@ export function foldGsapMutationIntoHistory(
   );
 }
 
-export function shiftGsapMutation(elementId: string, delta: number) {
+export function shiftGsapMutation(elementId: string | undefined, delta: number) {
   if (delta === 0 || !elementId) return null;
   return { type: "shift-positions", targetSelector: `#${elementId}`, delta };
 }
 
 export function scaleGsapMutation(
-  elementId: string,
+  elementId: string | undefined,
   oldStart: number,
   oldDuration: number,
   newStart: number,
@@ -360,8 +362,6 @@ export function scaleGsapMutation(
     newDuration,
   };
 }
-
-const UNMUTATED: GsapMutationStatus = { mutated: false, scriptText: null };
 
 /**
  * Shift all GSAP animation positions targeting a given element by a time delta.
