@@ -116,11 +116,20 @@ function combineCaptureCostEstimates(
  * - Auto-sized renders only (`requestedWorkers === undefined`) — the field
  *   failure was auto sizing, and an explicit `--workers N` is the operator's
  *   own call.
- * - Not enforced as a cap yet — the per-worker budget constant is derived
- *   from one field report; the `workers_heap_*` telemetry emitted with the
- *   sizing decides whether to enforce (see the TODO on HEAP_PER_WORKER_MB in
- *   @hyperframes/engine's parallelCoordinator). The message gives the
- *   operator the actionable knobs today.
+ * - Only when the chosen count exceeds the heap budget.
+ *
+ * Those two conditions are now mutually exclusive, so this returns undefined
+ * for every real render: auto-sizing enforces the heap cap, so the auto path
+ * can no longer exceed `heapBasedWorkers`, and the explicit `--workers N`
+ * path — the only one that still can — is guarded out by the first condition.
+ *
+ * Kept rather than deleted because enforcement is PRINFRA-341's open
+ * question: if fleet telemetry rejects the 640MB/worker + 1024MB reserve
+ * figures and the cap reverts to advisory, this is the live path again.
+ * Delete it once enforcement ships validated. The `exceedsHeapAdvisory` flag
+ * it reads stays live either way — CLI telemetry reports it as
+ * `workersExceedHeapAdvisory`, and it is still true for an over-budget
+ * explicit `--workers N`.
  *
  * Pure so the message shape + firing condition are unit-testable with a
  * synthetic `WorkerSizing` (the real one depends on the host's heap).
