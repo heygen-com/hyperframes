@@ -1,8 +1,5 @@
-/**
- * The one owner of a context menu's spacing and shape. The panel and dividers carry no padding or margin and the
- * panel clips to its rounded corners, so a row's highlight fills its row edge to edge; menuStyle.test.ts holds every
- * menu panel to this module.
- */
+/** The one owner of a context menu's spacing and shape: no padding or margin around rows, and a panel that clips to
+ * its rounded corners, so a row's highlight fills its row. menuStyle.test.ts holds every menu panel to it. */
 export const menuClasses = {
   /** The panel: fill, border, shadow and radius on one element, clipped to that radius. A submenu inside it is
    * `position: fixed` so the clip does not cut it off. */
