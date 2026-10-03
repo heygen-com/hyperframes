@@ -37,6 +37,13 @@ if (!chrome) {
 }
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+/** `median<Key>` for each numeric key that every run reported. */
+const medians = (results, keys) =>
+  Object.fromEntries(
+    keys
+      .filter((key) => results.every((r) => typeof r[key] === "number"))
+      .map((key) => [`median_${key}`, Math.round(median(results.map((r) => r[key])) * 10) / 10]),
+  );
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const projectId = `bulk-${basename(SOURCE)}`;
@@ -429,6 +436,7 @@ try {
   for (const [name, run] of Object.entries(actions)) {
     if (process.env.BULK_ONLY && !name.includes(process.env.BULK_ONLY)) continue;
     const samples = [];
+    const results = [];
     let detail = {};
     for (let i = 0; i < RUNS; i++) {
       await startFreshServer();
@@ -452,6 +460,7 @@ try {
         throw error;
       });
       samples.push(result.ms);
+      results.push(result);
       detail = { visibleClips: clips, ...result };
       await page.close();
       await stopServer();
@@ -461,6 +470,7 @@ try {
       medianMs: Math.round(median(samples)),
       samplesMs: samples.map(Math.round),
       ...detail,
+      ...medians(results, ["saveMs", "firstFrameMs", "steadyP95Ms", "frameP95Ms", "frameMaxMs"]),
     });
   }
   console.log(JSON.stringify({ project: basename(SOURCE), runs: RUNS, rows }, null, 2));
