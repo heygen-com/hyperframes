@@ -26,8 +26,8 @@ import { useMountEffect } from "./useMountEffect";
  * mounts; drain `waitForPendingSaves` before switching projects.
  */
 export interface UseDomGeometryCommitOptions extends UseDomStyleCommitOptions {
-  /** Called when a save cannot patch the preview in place; defaults to reloading the iframe. */
-  reloadPreview?: () => void;
+  /** Reloads the host's preview when a save cannot patch it in place. */
+  reloadPreview: () => void;
 }
 
 export interface DomGeometryCommits {
@@ -71,17 +71,13 @@ export function useDomGeometryCommit({
   projectIdRef.current = projectId;
   const pending = useRef(new Set<Promise<GeometryCommitResult | undefined>>()).current;
   const editHistory = useMemo(() => ({ recordEdit }), [recordEdit]);
-  const reload = useCallback(
-    () => (reloadPreview ? reloadPreview() : iframeRef.current?.contentWindow?.location.reload()),
-    [reloadPreview, iframeRef],
-  );
   const { bump: bumpGsapCache } = useGsapCacheVersion();
   const gsap = useGsapScriptCommits({
     projectIdRef,
     activeCompPath,
     previewIframeRef: iframeRef,
     editHistory,
-    reloadPreview: reload,
+    reloadPreview,
     onCacheInvalidate: bumpGsapCache,
     showToast,
     writeProjectFile,
