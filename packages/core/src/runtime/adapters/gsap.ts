@@ -1,8 +1,4 @@
-import type {
-  RuntimeDeterministicAdapter,
-  RuntimeTimelineChildLike,
-  RuntimeTimelineLike,
-} from "../types";
+import type { RuntimeDeterministicAdapter, RuntimeTimelineLike } from "../types";
 
 type GsapAdapterDeps = {
   getTimeline: () => RuntimeTimelineLike | null;
@@ -21,21 +17,32 @@ export function rerenderGsapTimelineAt(
 ): void {
   timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
   timeline.totalTime(t, true);
-  recrossTweensStartingAt(timeline, t);
+  recrossTweensStartingAt(timeline.getChildren?.(false, true, true) ?? [], t);
 }
 
-function recrossTweensStartingAt(
-  timeline: Pick<RuntimeTimelineChildLike, "getChildren">,
-  time: number,
-): void {
-  for (const child of timeline.getChildren?.(false, true, true) ?? []) {
-    const local = (time - (child.startTime?.() ?? 0)) * (child.timeScale?.() ?? 1);
-    if (Math.abs(local) < 1e-9 && child.timeline && child.render) {
+type GsapAnimation = {
+  startTime: () => number;
+  timeScale: () => number;
+  totalDuration: () => number;
+  render: (totalTime: number, suppressEvents: boolean) => unknown;
+  timeline?: unknown;
+  getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => unknown[];
+};
+
+const isGsapAnimation = (value: unknown): value is GsapAnimation =>
+  typeof (value as GsapAnimation | null)?.render === "function" &&
+  typeof (value as GsapAnimation).startTime === "function" &&
+  typeof (value as GsapAnimation).timeScale === "function";
+
+function recrossTweensStartingAt(children: unknown[], time: number): void {
+  for (const child of children.filter(isGsapAnimation)) {
+    const local = (time - child.startTime()) * child.timeScale();
+    if (Math.abs(local) < 1e-9 && child.timeline) {
       child.render(0.001, true);
       child.render(-0.001, true);
       child.render(0, true);
-    } else if (child.getChildren && local > 0 && local <= (child.totalDuration?.() ?? 0)) {
-      recrossTweensStartingAt(child, local);
+    } else if (child.getChildren && local > 0 && local <= child.totalDuration()) {
+      recrossTweensStartingAt(child.getChildren(false, true, true), local);
     }
   }
 }
