@@ -4541,7 +4541,7 @@ export function initSandboxRuntimeModular(): void {
     let longest: { el: HTMLMediaElement; start: number; runsUntil: number } | null = null;
     for (const el of followed ? [followed, ...audioEls] : audioEls) {
       if (!isMediaElement(el) || !el.isConnected) continue;
-      if (isSilencedByHidden(el) || isUnplayable(el)) continue;
+      if (isSilencedByHidden(el) || isUnplayable(el) || (el.ended && !el.loop)) continue;
       if (!el.hasAttribute("src") && !el.querySelector("source[src]")) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
       const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);

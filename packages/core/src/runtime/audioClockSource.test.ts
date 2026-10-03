@@ -212,6 +212,55 @@ describe("the audio the playhead follows", () => {
     expect(musicSeeks).toEqual([]);
   });
 
+  it("keeps following a playing voice when a longer bed starts late", async () => {
+    mount(
+      `<audio id="vo" data-start="0" data-duration="5" src="/assets/vo.mp3"></audio>` +
+        `<audio id="bed" data-start="1" data-duration="60" src="/assets/bed.wav"></audio>`,
+    );
+    const vo = document.getElementById("vo") as HTMLAudioElement;
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    Object.assign(vo, { paused: false });
+    for (let frame = 0; frame < 90; frame++) {
+      stepFrames(1);
+      const t = (nowMs - playedAt) / 1000;
+      vo.currentTime = t;
+      if (t >= 1) Object.assign(bed, { paused: false, currentTime: 0 }); // started, not moving yet
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan(1.4);
+  });
+
+  it("follows a playing clip when the longest one ran out of source early", async () => {
+    mount(
+      `<audio id="shot" data-start="0" data-duration="3" src="/assets/shot.mp4"></audio>` +
+        `<audio id="bed" data-start="0" data-duration="10" src="/assets/bed.wav"></audio>`,
+    );
+    const shot = document.getElementById("shot") as HTMLAudioElement;
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    Object.assign(shot, { paused: false });
+    Object.assign(bed, { paused: false });
+    for (let frame = 0; frame < 150; frame++) {
+      stepFrames(1);
+      const t = (nowMs - playedAt) / 1000;
+      shot.currentTime = t + 0.2; // ahead of the wall clock, so only the shot explains it
+      bed.currentTime = Math.min(t, 1);
+      if (t >= 1) {
+        Object.assign(bed, { paused: true });
+        Object.defineProperty(bed, "ended", { value: true, configurable: true });
+      }
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan((nowMs - playedAt) / 1000 + 0.1);
+  });
+
   it("follows the next clip when one earlier in the page failed to load", async () => {
     mount(
       `<audio id="broken" data-start="0" data-duration="10" src="/assets/missing.mp3"></audio>` +
