@@ -102,11 +102,10 @@ it("finds the layer whichever window built its node, so the path draws on every 
   };
   const iframe = document.createElement("iframe");
   document.body.append(iframe);
-  const box = iframe.contentDocument!.createElement("div");
+  // As on the loads that hid the path, the layer's node carries the editor window's prototypes.
+  const box = document.createElement("div");
   box.id = "box";
   iframe.contentDocument!.body.append(box);
-  // The preview's body nodes can carry another window's prototypes than the frame's own.
-  Object.defineProperty(iframe.contentWindow!, "HTMLElement", { value: class {} });
   let home: unknown = null;
   function Probe() {
     const ref = useRef(iframe);

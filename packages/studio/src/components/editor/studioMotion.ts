@@ -35,6 +35,7 @@ export {
   clearStudioMotionFromElement,
 } from "./studioMotionOps";
 
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { readStudioMotionFromElement as readMotionAttr } from "./studioMotionOps";
 import {
   STUDIO_MOTION_ATTR,
@@ -71,21 +72,17 @@ function elementMatchesSourceFile(
 }
 
 function querySelectorCandidates(document: Document, selector: string): HTMLElement[] {
-  const isCandidate = (element: Element): element is HTMLElement => {
-    const HTMLElementCtor = element.ownerDocument.defaultView?.HTMLElement;
-    return Boolean(HTMLElementCtor && element instanceof HTMLElementCtor);
-  };
   const className = selector.match(/^\.([A-Za-z0-9_-]+)$/)?.[1];
   if (className) {
     return Array.from(document.getElementsByTagName("*")).filter(
       (element): element is HTMLElement =>
-        isCandidate(element) && element.classList.contains(className),
+        isHtmlElement(element) && element.classList.contains(className),
     );
   }
   if (/^[A-Za-z][A-Za-z0-9-]*$/.test(selector)) {
-    return Array.from(document.getElementsByTagName(selector)).filter(isCandidate);
+    return Array.from(document.getElementsByTagName(selector)).filter(isHtmlElement);
   }
-  return Array.from(document.querySelectorAll(selector)).filter(isCandidate);
+  return Array.from(document.querySelectorAll(selector)).filter(isHtmlElement);
 }
 
 function resolveTarget(
@@ -93,12 +90,11 @@ function resolveTarget(
   target: StudioMotionTarget,
   activeCompositionPath: string | null,
 ): HTMLElement | null {
-  const HTMLElementCtor = document.defaultView?.HTMLElement;
   if (target.id) {
     const byId = document.getElementById(target.id);
     if (
-      HTMLElementCtor &&
-      byId instanceof HTMLElementCtor &&
+      document.defaultView &&
+      isHtmlElement(byId) &&
       elementMatchesSourceFile(byId, target.sourceFile, activeCompositionPath)
     ) {
       return byId;
@@ -135,10 +131,9 @@ function restoreStudioMotionElement(element: HTMLElement, gsap: StudioMotionWind
 }
 
 function restoreStudioMotionElements(document: Document, gsap: StudioMotionWindow["gsap"]): void {
-  const HTMLElementCtor = document.defaultView?.HTMLElement;
-  if (!HTMLElementCtor) return;
+  if (!document.defaultView) return;
   for (const element of Array.from(document.querySelectorAll(`[${STUDIO_MOTION_ATTR}]`))) {
-    if (element instanceof HTMLElementCtor) restoreStudioMotionElement(element, gsap);
+    if (isHtmlElement(element)) restoreStudioMotionElement(element, gsap);
   }
 }
 
@@ -240,8 +235,7 @@ export function applyStudioMotionFromDom(document: Document, currentTime?: numbe
 
   // Restore elements that had GSAP motion applied previously but whose attribute
   // is now just the legacy marker "true" (i.e. they were restored/cleared).
-  const HTMLElementCtor = document.defaultView?.HTMLElement;
-  if (!HTMLElementCtor) return 0;
+  if (!document.defaultView) return 0;
 
   // Collect elements that have JSON motion data in their attribute
   const motionElements: Array<{
@@ -257,7 +251,7 @@ export function applyStudioMotionFromDom(document: Document, currentTime?: numbe
   }> = [];
 
   for (const el of Array.from(document.querySelectorAll(`[${STUDIO_MOTION_ATTR}]`))) {
-    if (!(el instanceof HTMLElementCtor)) continue;
+    if (!isHtmlElement(el)) continue;
     const motionData = readMotionAttr(el);
     if (motionData) {
       motionElements.push({ element: el, motion: motionData });
