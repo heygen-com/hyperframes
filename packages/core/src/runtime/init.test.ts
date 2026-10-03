@@ -3798,6 +3798,29 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  it("a torn-down runtime's pending readiness check leaves the next document alone", () => {
+    vi.useFakeTimers();
+    try {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      document.body.appendChild(root);
+      window.__timelines = { main: createMockTimeline(10) };
+
+      initSandboxRuntimeModular();
+      window.__hfRuntimeTeardown?.();
+      // The next document is still batching its timelines when the old check fires.
+      delete window.__renderReady;
+      window.__hfTimelinesBuilding = true;
+      vi.runAllTimers();
+
+      expect(window.__renderReady).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sets __renderReady even without a GSAP timeline (CSS/WAAPI compositions)", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
