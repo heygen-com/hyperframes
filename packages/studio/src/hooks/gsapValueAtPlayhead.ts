@@ -71,8 +71,7 @@ const isLinear = (ease: string | undefined) => !ease || ease === "none" || ease 
 
 interface Normalized {
   keyframes: Keyframe[];
-  /** GSAP eases the whole keyframe run with `keyframes.ease || ease`; the rewrite drops both, so it writes this. */
-  ease?: string;
+  runEase?: string;
   easeEach?: string;
 }
 
@@ -87,9 +86,9 @@ function normalize(edit: PlayheadEdit): Normalized | { reason: PlayheadEditRefus
   if (data) {
     if (data.format === "simple-array") return { reason: "simple-array-keyframes" };
     const arrayStep = data.format === "object-array";
-    const ease = data.ease ?? anim.ease;
+    const runEase = data.ease ?? anim.ease;
     return {
-      ...(ease ? { ease } : {}),
+      ...(runEase ? { runEase } : {}),
       keyframes: data.keyframes.map((kf) => ({
         ...kf,
         properties: { ...kf.properties },
@@ -199,8 +198,7 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
     "percentage" in edit.at
       ? edit.at.percentage
       : roundPct(((edit.at.time - start) / duration) * 100);
-  // An ease over the whole run moves where a new keyframe's time lands; changing one in place is exact.
-  const eased = !isLinear(norm.ease);
+  const eased = !isLinear(norm.runEase);
   if (pct >= -KEYFRAME_PCT_MATCH && pct <= 100 + KEYFRAME_PCT_MATCH) {
     const at = Math.min(100, Math.max(0, pct));
     if (eased && !keyframes.some((kf) => Math.abs(kf.percentage - at) <= KEYFRAME_PCT_MATCH))
@@ -241,7 +239,7 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
       position: roundTo3(position),
       duration: roundTo3(span),
       keyframes,
-      ...(norm.ease ? { ease: norm.ease } : {}),
+      ...(norm.runEase ? { ease: norm.runEase } : {}),
       ...(norm.easeEach ? { easeEach: norm.easeEach } : {}),
     },
     added: keyframes.length > authored,
