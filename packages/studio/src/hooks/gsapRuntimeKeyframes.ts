@@ -169,6 +169,42 @@ function matchesElement(tween: RuntimeTween, el: Element): boolean {
   return false;
 }
 
+type TweenIndex = { byElement: Map<unknown, RuntimeTween[]>; byId: Map<string, RuntimeTween[]> };
+let tweenIndexes: WeakMap<RuntimeTimeline, TweenIndex> | null = null;
+
+/** Within `run`, finding the tweens on an element reads one index per timeline, not every tween. */
+export function withTweenIndex<T>(run: () => T): T {
+  const outer = tweenIndexes;
+  tweenIndexes ??= new WeakMap();
+  try {
+    return run();
+  } finally {
+    tweenIndexes = outer;
+  }
+}
+
+function indexTweens(children: RuntimeTween[]): TweenIndex {
+  const index: TweenIndex = { byElement: new Map(), byId: new Map() };
+  const add = <K>(map: Map<K, RuntimeTween[]>, key: K, tween: RuntimeTween) =>
+    map.set(key, [...(map.get(key) ?? []), tween]);
+  for (const tween of children) {
+    for (const target of tween.targets?.() ?? []) {
+      add(index.byElement, target, tween);
+      const id = (target as Element).id;
+      if (id) add(index.byId, id, tween);
+    }
+  }
+  return index;
+}
+
+function tweensTargeting(timeline: RuntimeTimeline | undefined, el: Element): RuntimeTween[] {
+  const children = timeline?.getChildren?.(true) ?? [];
+  if (!timeline || !tweenIndexes) return children.filter((tween) => matchesElement(tween, el));
+  let index = tweenIndexes.get(timeline);
+  if (!index) tweenIndexes.set(timeline, (index = indexTweens(children)));
+  return [...(index.byElement.get(el) ?? []), ...(el.id ? (index.byId.get(el.id) ?? []) : [])];
+}
+
 function tweenTiming(tween: RuntimeTween): { start: number; duration: number } {
   const rawStart = typeof tween.startTime === "function" ? tween.startTime() : 0;
   const rawDur = typeof tween.duration === "function" ? tween.duration() : 0;
@@ -431,10 +467,9 @@ export const GSAP_TRANSFORM_KEYS = new Set(
 export function gsapWritesChannels(el: Element, channels: string[]): boolean {
   const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
   return Object.values(win?.__timelines ?? {}).some((tl) =>
-    (tl?.getChildren?.(true) ?? []).some(
+    tweensTargeting(tl, el).some(
       (tween) =>
         !!tween.vars &&
-        matchesElement(tween, el) &&
         (channels.some((ch) => ch in tween.vars!) ||
           keyframeVarsCarryChannel(tween.vars, channels)),
     ),
@@ -495,9 +530,8 @@ function hasNonHoldTween(
 ): boolean {
   if (!timelines) return false;
   for (const tlId of compositionId ? [compositionId] : Object.keys(timelines)) {
-    // fallow-ignore-next-line code-duplication
-    for (const tween of timelines[tlId]?.getChildren?.(true) ?? []) {
-      if (!tween.vars || !matchesElement(tween, targetEl)) continue;
+    for (const tween of tweensTargeting(timelines[tlId], targetEl)) {
+      if (!tween.vars) continue;
       const dur = typeof tween.duration === "function" ? tween.duration() : 0;
       if (isZeroDurationSet(dur)) continue; // skip hold/set tweens (see isZeroDurationSet)
       if (channels && keyframeVarsCarryChannel(tween.vars, channels)) return true;

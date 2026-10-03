@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   arcPathFromMotionPathValue,
   hasNonHoldTweenForElement,
   readRuntimeKeyframes,
+  withTweenIndex,
 } from "./gsapRuntimeKeyframes";
 
 // Build a fake preview iframe whose runtime timeline holds the given child tweens
@@ -259,5 +260,29 @@ describe("arcPathFromMotionPathValue", () => {
     expect(arcPathFromMotionPathValue({ curviness: 2 })).toBeUndefined();
     expect(arcPathFromMotionPathValue({ path: "M0 0 L10 10" })).toBeUndefined();
     expect(arcPathFromMotionPathValue(null)).toBeUndefined();
+  });
+});
+
+describe("withTweenIndex — many elements, one scan of the tweens", () => {
+  const ids = Array.from({ length: 20 }, (_, i) => `clip-${i}`);
+  const tweens = ids.map((id) => ({
+    targets: vi.fn(() => [{ id }]),
+    vars: { x: 10, duration: 1 },
+    duration: () => 1,
+    startTime: () => 0,
+  }));
+  const iframe = (id: string) => fakeIframe({ id }, tweens);
+  const askAll = () => ids.map((id) => hasNonHoldTweenForElement(iframe(id), `#${id}`));
+
+  it("answers the same as the plain scan", () => {
+    const plain = askAll();
+    expect(withTweenIndex(askAll)).toEqual(plain);
+    expect(plain.every(Boolean)).toBe(true);
+  });
+
+  it("reads each tween's targets once per pass instead of once per element", () => {
+    for (const tween of tweens) tween.targets.mockClear();
+    withTweenIndex(askAll);
+    expect(tweens.every((tween) => tween.targets.mock.calls.length === 1)).toBe(true);
   });
 });
