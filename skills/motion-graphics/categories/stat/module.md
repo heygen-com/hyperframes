@@ -2,6 +2,8 @@
 
 A single **hero number** reveal. Asset-free (the "input" is the number). ~4–6s.
 
+Read [data in motion](../../../hyperframes-creative/references/data-in-motion.md) before planning or building the number reveal.
+
 ## Plan (Director)
 
 `content`: `{ value, prefix ($), suffix (% / x / K-M-B), label, ring: bool }`. Envelope: bold display font, restrained palette + one accent.
