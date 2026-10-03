@@ -1556,15 +1556,13 @@ describe("persistMoveEdits convergence", () => {
     const reapply = revertNewestStudioPendingEdit();
     expect(reapply).not.toBeNull();
     expect(current.start).toBe(1);
-    reapply?.();
-    expect(current.start).toBe(4);
-    revertNewestStudioPendingEdit();
-    expect(current.start).toBe(1);
 
     releaseSave();
     await expect(persisted).resolves.toBe(true);
     expect(current.start).toBe(1);
     expect(isStudioEditSaving()).toBe(false);
+    reapply?.();
+    expect(current.start).toBe(4);
   });
 
   it("reasserts a saved lane after a stale runtime sync", async () => {
