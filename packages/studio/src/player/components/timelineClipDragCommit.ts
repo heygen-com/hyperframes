@@ -25,6 +25,7 @@ import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
+import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
 
 type StartTrack = TimelineAtomicMoveUpdates;
 export interface TimelineMoveEdit extends TimelineAtomicMoveEdit {
@@ -183,35 +184,47 @@ export function persistMoveEdits(
       ? e
       : { element: e.element, updates: { ...e.updates, track: e.persistTrack } },
   );
-  const persisted = onMoveElements
-    ? onMoveElements(persistEdits, coalesceKey, operation, coalesceMs)
-    : Promise.all(persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
-  return Promise.resolve(persisted).then(
+  const restorePrev = () => {
+    for (const p of prev) {
+      const { audioGroup, ...timing } = p.updates;
+      const updates: Partial<TimelineElement> = {};
+      if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
+        Object.assign(updates, timing);
+      }
+      if (isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership"))
+        updates.audioGroup = audioGroup;
+      if (Object.keys(updates).length) updateElement(p.key, updates);
+    }
+  };
+  // Cmd+Z while the save is in flight shows the old lanes at once; the returned fn re-applies the move.
+  const saving = onMoveElements
+    ? beginStudioPendingEdit(() => {
+        restorePrev();
+        return () => edits.forEach((e) => applyEdit(e));
+      })
+    : null;
+  const start = () =>
+    onMoveElements
+      ? onMoveElements(persistEdits, coalesceKey, operation, coalesceMs)
+      : Promise.all(persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
+  const persisted = saving ? saving.adopt(start) : start();
+  const done = Promise.resolve(persisted).then(
     () => {
       // Runtime timeline messages can arrive while the save is in flight and
       // restore the preview manifest's pre-gesture lane. Reassert the durable
       // result after persistence, but only while this remains the latest
       // optimistic gesture so an older save can never clobber a newer drag.
-      for (const e of edits) applyEdit(e, true);
+      if (!saving?.reverted()) for (const e of edits) applyEdit(e, true);
       return true;
     },
     (error) => {
-      for (const p of prev) {
-        const { audioGroup, ...timing } = p.updates;
-        const updates: Partial<TimelineElement> = {};
-        if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          Object.assign(updates, timing);
-        }
-        if (
-          isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership")
-        )
-          updates.audioGroup = audioGroup;
-        if (Object.keys(updates).length) updateElement(p.key, updates);
-      }
+      if (!saving?.reverted()) restorePrev();
       console.error("[Timeline] Failed to persist clip edits", error);
       return false;
     },
   );
+  saving?.settle(done);
+  return done;
 }
 
 /**
