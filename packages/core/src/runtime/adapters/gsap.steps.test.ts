@@ -63,7 +63,7 @@ describe("gsap adapter on a step", () => {
 
 describe("gsap adapter at a tween's start", () => {
   // An edit at 2 s turns the later tween into keyframes; its first keyframe must win over the from() end.
-  it.each([0, 1, 2.5, 3])(
+  it.each([0, 1, 2, 2.5, 3])(
     "shows the tween that starts at the seek time, seeking from %s s",
     (from) => {
       const box = document.body.appendChild(document.createElement("div"));
@@ -77,4 +77,16 @@ describe("gsap adapter at a tween's start", () => {
       expect(gsap.getProperty(box, "x")).toBe(5);
     },
   );
+
+  it("leaves a tween that starts later alone after a seek past the end", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(box, { x: -400, duration: 0.4 }, 4.8);
+    timeline.to(box, { x: 0, duration: 0.4 }, 16);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const time of [20, 0, 4]) adapter.seek({ time });
+    expect(gsap.getProperty(box, "x")).toBe(0);
+  });
 });

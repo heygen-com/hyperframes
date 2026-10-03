@@ -4,10 +4,9 @@ import { createRuntimePlayer } from "../src/runtime/player";
 import type { RuntimeTimelineLike } from "../src/runtime/types";
 
 type Call = {
-  method: "pause" | "seek" | "totalTime" | "render";
+  method: "pause" | "seek" | "totalTime";
   time?: number;
   suppressEvents?: boolean;
-  force?: boolean;
 };
 
 function createTimeline(withTotalTime: boolean): { calls: Call[]; timeline: RuntimeTimelineLike } {
@@ -29,9 +28,6 @@ function createTimeline(withTotalTime: boolean): { calls: Call[]; timeline: Runt
   if (withTotalTime) {
     timeline.totalTime = (timeSeconds: number, suppressEvents?: boolean) => {
       calls.push({ method: "totalTime", time: timeSeconds, suppressEvents });
-    };
-    timeline.render = (time: number, suppressEvents?: boolean, force?: boolean) => {
-      calls.push({ method: "render", time, suppressEvents, force });
     };
   }
   return { calls, timeline };
@@ -105,9 +101,12 @@ function testGsapAdapterPreservesTotalTime(): void {
     [
       { method: "pause" },
       { method: "totalTime", time: seekTime, suppressEvents: false },
-      { method: "render", time: seekTime, suppressEvents: true, force: true },
+      // Silent re-render arriving from below, so same-time steps apply in authored order
+      { method: "totalTime", time: seekTime + 0.001, suppressEvents: true },
+      { method: "totalTime", time: seekTime - 0.001, suppressEvents: true },
+      { method: "totalTime", time: seekTime, suppressEvents: true },
     ],
-    "GSAP adapter should seek via totalTime() then force a silent re-render at the same time",
+    "GSAP adapter should seek via totalTime() then re-render from just below",
   );
 }
 

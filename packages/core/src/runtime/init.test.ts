@@ -2835,15 +2835,12 @@ describe("initSandboxRuntimeModular", () => {
     root.setAttribute("data-height", "1080");
     document.body.appendChild(root);
 
-    const seekCalls: Array<{ time: number; suppressEvents?: boolean; force?: boolean }> = [];
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
     const rootTimeline = createMockTimeline(10);
     const originalTotalTime = rootTimeline.totalTime;
     rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
       seekCalls.push({ time, suppressEvents });
       return originalTotalTime?.(time, suppressEvents);
-    };
-    rootTimeline.render = (time: number, suppressEvents?: boolean, force?: boolean) => {
-      seekCalls.push({ time, suppressEvents, force });
     };
 
     window.__timelines = { main: rootTimeline };
@@ -2854,7 +2851,9 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(seekCalls).toEqual([
       { time: 2, suppressEvents: false },
-      { time: 2, suppressEvents: true, force: true },
+      { time: 2.001, suppressEvents: true },
+      { time: 1.999, suppressEvents: true },
+      { time: 2, suppressEvents: true },
     ]);
 
     seekCalls.length = 0;
@@ -2873,15 +2872,12 @@ describe("initSandboxRuntimeModular", () => {
     root.setAttribute("data-height", "1080");
     document.body.appendChild(root);
 
-    const seekCalls: Array<{ time: number; suppressEvents?: boolean; force?: boolean }> = [];
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
     const rootTimeline = createMockTimeline(10);
     const originalTotalTime = rootTimeline.totalTime;
     rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
       seekCalls.push({ time, suppressEvents });
       return originalTotalTime?.(time, suppressEvents);
-    };
-    rootTimeline.render = (time: number, suppressEvents?: boolean, force?: boolean) => {
-      seekCalls.push({ time, suppressEvents, force });
     };
     Object.assign(rootTimeline, {
       getChildren: () => [
