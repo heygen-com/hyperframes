@@ -257,6 +257,8 @@ const blocks = (removed: string, added: string) =>
   added.startsWith(`${removed}/`) || removed.startsWith(`${added}/`);
 
 /** A window takes a write within idleMs of its last one; past that it has ended, even before its timer commits it. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
 const takesWrite = (window: Group, at: number) =>
   window.idleMs === undefined || at - (window.lastWriteAt ?? at) <= window.idleMs;
 
@@ -836,11 +838,14 @@ class Engine {
     clearTimeout(window.idleTimer);
     if (window.idleMs === undefined || !Number.isFinite(window.idleMs) || delay === undefined)
       return;
-    window.idleTimer = setTimeout(() => {
-      const left = window.idleMs! - (this.now() - (window.lastWriteAt ?? this.now()));
-      if (left > 0) this.endWhenIdle(window, left);
-      else this.background(() => this.sweepAndEnd(window));
-    }, delay);
+    window.idleTimer = setTimeout(
+      () => {
+        const left = window.idleMs! - (this.now() - (window.lastWriteAt ?? this.now()));
+        if (left > 0) this.endWhenIdle(window, left);
+        else this.background(() => this.sweepAndEnd(window));
+      },
+      Math.min(delay, MAX_TIMER_MS),
+    );
     window.idleTimer.unref?.();
   }
 

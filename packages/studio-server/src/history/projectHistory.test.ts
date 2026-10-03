@@ -2113,3 +2113,16 @@ describe("claim: a writer that records after writing", () => {
     ]);
   });
 });
+
+describe("idle windows", () => {
+  it("sleeps a window with an idle limit past Node's timer range instead of waking every millisecond", async () => {
+    const { history } = await project({ "index.html": "A" });
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    const window = await history.beginWindow(agent, "Long turn", { idleMs: 30 * 86_400_000 });
+    const delays = timer.mock.calls.map(([, delay]) => delay ?? 0);
+    timer.mockRestore();
+    expect(Math.max(...delays)).toBeLessThanOrEqual(2 ** 31 - 1);
+    expect(Math.max(...delays)).toBeGreaterThan(86_400_000);
+    await window.close();
+  });
+});
