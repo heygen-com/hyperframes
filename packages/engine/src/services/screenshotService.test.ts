@@ -240,6 +240,54 @@ describe("initTransparentBackground", () => {
   });
 });
 
+describe("injectVideoFramesBatch load failures", () => {
+  it("rejects naming the video when an injected frame fails to decode", async () => {
+    const { window, document } = parseHTML(
+      '<html><body><div id="root"><video id="clip" style="position:absolute;width:100%;height:100%"></video></div></body></html>',
+    );
+    Object.defineProperty(window.HTMLImageElement.prototype, "decode", {
+      configurable: true,
+      value: async () => {
+        throw new Error("The source image cannot be decoded.");
+      },
+    });
+    const video = document.getElementById("clip") as HTMLVideoElement;
+    video.getBoundingClientRect = () => ({ width: 1920, height: 1080 }) as DOMRect;
+    const computedStyle = document.createElement("div").style;
+    computedStyle.opacity = "1";
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: () => computedStyle,
+    });
+    const globals = globalThis as unknown as { window?: typeof window; document?: Document };
+    const previousWindow = globals.window;
+    const previousDocument = globals.document;
+    globals.window = window;
+    globals.document = document;
+    try {
+      const page = {
+        evaluate: async (
+          fn: (
+            updates: Array<{ videoId: string; dataUri: string }>,
+            visualProperties: string[],
+          ) => Promise<void>,
+          updates: Array<{ videoId: string; dataUri: string }>,
+          visualProperties: string[],
+        ) => fn(updates, visualProperties),
+      } as unknown as Page;
+
+      await expect(
+        injectVideoFramesBatch(page, [{ videoId: "clip", dataUri: "data:image/jpeg;base64,AAAA" }]),
+      ).rejects.toThrow(
+        'Video frame for "clip" failed to load (inline frame): The source image cannot be decoded.',
+      );
+    } finally {
+      globals.window = previousWindow;
+      globals.document = previousDocument;
+    }
+  });
+});
+
 describe("injectVideoFramesBatch replacement layout", () => {
   it("does not copy opposing inset constraints onto the injected frame image", async () => {
     const { window, document } = parseHTML(
