@@ -3,7 +3,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { dragEditOutcome, preflightGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { preflightGsapResizeIntercept } from "./gsapResizePreflight";
-import { withTweenIndex } from "./gsapRuntimeKeyframes";
+import { withTweenIndex } from "./gsapRuntimeTweenIndex";
 import { GSAP_EDIT_BLOCK_COPY, type GsapEditOutcome } from "./gsapEditOutcome";
 import { fetchParsedAnimations, parseCacheKey } from "./keyframeCacheAstLoad";
 import { getAnimationsForElement } from "./gsapElementMatch";
