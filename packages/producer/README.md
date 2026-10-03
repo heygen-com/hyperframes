@@ -190,11 +190,15 @@ The activity functions plus their result types are also re-exported from `@hyper
 `src/services/render/stages/`, in this order:
 
 - `compileStage.ts`, `probeStage.ts`, `extractVideosStage.ts`, `audioStage.ts`
+- `src/services/render/captureCost.ts` sizes the worker count
+  (`runCaptureCalibration`, then `resolveRenderWorkerCount`)
 - `createCapturePlan` in `src/services/render/capturePlan.ts` picks the capture
-  kind (streaming, disk, segmented or HDR layered) and the worker count
-- capture: `captureStreamingStage.ts`, `captureStage.ts`,
-  `captureSegmentedStage.ts` or `captureHdrStage.ts`, by plan kind
-- `encodeStage.ts`, then `assembleStage.ts`
+  kind: streaming, disk, segmented or HDR layered
+- capture: `captureStreamingStage.ts`, `captureSegmentedStage.ts` and
+  `captureHdrStage.ts` encode as they capture; disk capture (`captureStage.ts`)
+  encodes afterwards in `encodeStage.ts`
+- `assembleStage.ts`, except for PNG sequences and GIF, which are written
+  directly
 
 The job's `producerConfig` is used when present; otherwise `resolveConfig` in
 `packages/engine/src/config.ts` builds it. Capture, encoding and browser
