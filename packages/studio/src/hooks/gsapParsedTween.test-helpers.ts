@@ -22,7 +22,7 @@ export function liveTween(
     vars: tween.vars,
     _from: from,
     ...(head && { _pt: { d: { _pt: head } } }),
-    ...(parts && { timeline: { getChildren: () => parts } }),
+    ...(parts && { timeline: { getChildren: () => parts, duration: () => tween.duration } }),
   };
 }
 

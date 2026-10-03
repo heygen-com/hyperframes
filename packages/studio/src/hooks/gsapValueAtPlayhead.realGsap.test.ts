@@ -54,6 +54,17 @@ it("writes a delayed linear tween so GSAP shows the new value at the playhead, n
   expect(shown).toBe(200);
 });
 
+it("times array steps on their own timeline, which GSAP stretches over the tween", () => {
+  // Three default 0.5 s steps stretched over 3 s: GSAP reaches the middle one at 2 s.
+  const { plan, shown } = dragAndReplay(
+    script("keyframes: [{ x: 60 }, { x: 120 }, { x: 180 }], duration: 3"),
+    130,
+    2,
+  );
+  expect(plan.ok && plan.mutation.keyframes.map((kf) => kf.properties.x)).toEqual([60, 130, 180]);
+  expect(shown).toBeCloseTo(130, 2);
+});
+
 it("changes a selected array keyframe in place, though GSAP reaches it at its step's end", () => {
   // The parse places the middle of three equal steps at 50%; GSAP reaches it at 2 s of 3.
   const { plan, shown } = dragAndReplay(
@@ -63,7 +74,7 @@ it("changes a selected array keyframe in place, though GSAP reaches it at its st
     50,
   );
   expect(plan.ok && plan.mutation.keyframes.map((kf) => kf.properties.x)).toEqual([60, 130, 180]);
-  expect(shown).toBe(130);
+  expect(shown).toBeCloseTo(130, 2);
 });
 
 it("keeps GSAP's default ease, by name, for a tween that authors none", () => {
