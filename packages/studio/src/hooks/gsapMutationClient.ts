@@ -87,20 +87,21 @@ function readMutationError(value: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function postGsapMutation(
+async function postOwnedGsapMutation(
+  route: string,
   projectId: string,
   filePath: string,
-  mutation: Record<string, unknown>,
+  body: Record<string, unknown>,
   fallback: string,
 ): Promise<GsapMutationStatus> {
   let response: Response;
   try {
     response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(filePath)}`,
+      `/api/projects/${encodeURIComponent(projectId)}/${route}/${encodeURIComponent(filePath)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-        body: JSON.stringify(mutation),
+        body: JSON.stringify(body),
       },
     );
   } catch (error) {
@@ -108,9 +109,34 @@ export async function postGsapMutation(
       cause: error,
     });
   }
-  const body: unknown = await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new GsapPreviewConvergenceError(readMutationError(body, fallback));
+    throw new GsapPreviewConvergenceError(readMutationError(payload, fallback));
   }
-  return readMutationStatus(body);
+  return readMutationStatus(payload);
+}
+
+export function postGsapMutation(
+  projectId: string,
+  filePath: string,
+  mutation: Record<string, unknown>,
+  fallback: string,
+): Promise<GsapMutationStatus> {
+  return postOwnedGsapMutation("gsap-mutations", projectId, filePath, mutation, fallback);
+}
+
+/** Every mutation in one request: the file is parsed and written once, with one ownership pair. */
+export function postGsapMutations(
+  projectId: string,
+  filePath: string,
+  mutations: readonly Record<string, unknown>[],
+  fallback: string,
+): Promise<GsapMutationStatus> {
+  return postOwnedGsapMutation(
+    "gsap-mutations-batch",
+    projectId,
+    filePath,
+    { mutations },
+    fallback,
+  );
 }

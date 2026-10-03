@@ -306,9 +306,10 @@ function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unk
       (url) => jsonResponse({ content: fileContent(pathAfter(url, "/files/")) }),
     ],
     [
-      "/api/projects/p1/gsap-mutations/",
+      "/api/projects/p1/gsap-mutations",
       (url) => {
-        const content = fileContent(pathAfter(url, "/gsap-mutations/")) ?? "";
+        const content =
+          fileContent(pathAfter(url, url.includes("-batch/") ? "-batch/" : "s/")) ?? "";
         return jsonResponse(
           gsapBody ?? { mutated: false, scriptText: null, before: content, after: content },
         );
@@ -1936,8 +1937,11 @@ function setupNestedHarness() {
   const fetchMock = stubProjectFetch(NESTED_FILES);
   const scaleCalls = () =>
     fetchMock.mock.calls
-      .filter((call) => requestUrl(call[0]).includes("/gsap-mutations/"))
-      .map((call) => JSON.parse(String((call[1] as RequestInit).body)))
+      .filter((call) => requestUrl(call[0]).includes("/gsap-mutations"))
+      .flatMap((call) => {
+        const body = JSON.parse(String((call[1] as RequestInit).body));
+        return body.mutations ?? [body];
+      })
       .filter((body) => body.type === "scale-positions");
   usePlayerStore.getState().setDuration(20);
   const hook = renderTimelineEditingHook({
@@ -2284,6 +2288,19 @@ describe("clip timing edits sync GSAP exactly once", () => {
           return jsonResponse(
             applyServerMutation(pathAfter(url, "/gsap-mutations/"), JSON.parse(String(init?.body))),
           );
+        }
+        if (url.includes("/gsap-mutations-batch/")) {
+          const path = pathAfter(url, "/gsap-mutations-batch/");
+          const steps = (
+            JSON.parse(String(init?.body)) as { mutations: Record<string, unknown>[] }
+          ).mutations.map((mutation) => applyServerMutation(path, mutation));
+          const last = steps[steps.length - 1]!;
+          return jsonResponse({
+            ...last,
+            before: steps[0]!.before,
+            mutated: steps[0]!.before !== last.after,
+            changed: steps[0]!.before !== last.after,
+          });
         }
         if (url.includes("/files/"))
           return jsonResponse({ content: files[pathAfter(url, "/files/")] });

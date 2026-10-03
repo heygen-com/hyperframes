@@ -11,6 +11,7 @@
 import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-acorn";
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
+import { matchesElement, tweensTargeting } from "./gsapRuntimeTweenIndex";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
 
@@ -159,14 +160,6 @@ function readTween(vars: Record<string, unknown>): ReadTween | null {
   }
   const flat = flatTweenKeyframes(vars);
   return flat ? { keyframes: flat } : null;
-}
-
-function matchesElement(tween: RuntimeTween, el: Element): boolean {
-  if (!tween.targets) return false;
-  for (const t of tween.targets()) {
-    if (t === el || (el.id && (t as Element).id === el.id)) return true;
-  }
-  return false;
 }
 
 function tweenTiming(tween: RuntimeTween): { start: number; duration: number } {
@@ -431,10 +424,9 @@ export const GSAP_TRANSFORM_KEYS = new Set(
 export function gsapWritesChannels(el: Element, channels: string[]): boolean {
   const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
   return Object.values(win?.__timelines ?? {}).some((tl) =>
-    (tl?.getChildren?.(true) ?? []).some(
+    tweensTargeting(tl, el).some(
       (tween) =>
         !!tween.vars &&
-        matchesElement(tween, el) &&
         (channels.some((ch) => ch in tween.vars!) ||
           keyframeVarsCarryChannel(tween.vars, channels)),
     ),
@@ -495,9 +487,8 @@ function hasNonHoldTween(
 ): boolean {
   if (!timelines) return false;
   for (const tlId of compositionId ? [compositionId] : Object.keys(timelines)) {
-    // fallow-ignore-next-line code-duplication
-    for (const tween of timelines[tlId]?.getChildren?.(true) ?? []) {
-      if (!tween.vars || !matchesElement(tween, targetEl)) continue;
+    for (const tween of tweensTargeting(timelines[tlId], targetEl)) {
+      if (!tween.vars) continue;
       const dur = typeof tween.duration === "function" ? tween.duration() : 0;
       if (isZeroDurationSet(dur)) continue; // skip hold/set tweens (see isZeroDurationSet)
       if (channels && keyframeVarsCarryChannel(tween.vars, channels)) return true;

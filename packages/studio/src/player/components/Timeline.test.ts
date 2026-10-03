@@ -87,10 +87,17 @@ describe("timeline viewport geometry", () => {
   });
 });
 
+/** The track's content row: a clip's parent, past its `display: contents` wrapper. */
+function trackContentOf(clip: HTMLElement | null | undefined): HTMLElement | null {
+  let row = clip?.parentElement ?? null;
+  while (row?.style.display === "contents") row = row.parentElement;
+  return row;
+}
+
 function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: string) {
   const clip = host.querySelector<HTMLElement>(`[data-el-id="${clipId}"]`);
   if (!clip) throw new Error(`Missing timeline clip ${clipId}`);
-  const trackContent = clip.parentElement;
+  const trackContent = trackContentOf(clip);
   if (!trackContent) throw new Error(`Missing content row for ${clipId}`);
   const trackHeader = trackContent.previousElementSibling;
   if (!(trackHeader instanceof HTMLElement)) throw new Error(`Missing track header for ${clipId}`);
@@ -660,7 +667,7 @@ describe("Timeline provider boundary", () => {
     expect(host.querySelector('button[aria-label="Hide clip-2 lanes"]')).toBeNull();
 
     const clip = host.querySelector<HTMLElement>('[data-el-id="clip-1"]');
-    const row = clip?.parentElement?.parentElement;
+    const row = trackContentOf(clip)?.parentElement;
     expectTrackExpansion(row, ["clip-1"], TRACK_H + 2 * LANE_H);
 
     // Collapsing sticks (does not bounce back open via auto-expand).
@@ -683,8 +690,9 @@ describe("Timeline provider boundary", () => {
   it("expands and collapses every clip on a shared track together", () => {
     const { host, root } = renderSharedAutomationTimeline();
 
-    const row = host.querySelector<HTMLElement>('[data-el-id="narration-1"]')?.parentElement
-      ?.parentElement;
+    const row = trackContentOf(
+      host.querySelector<HTMLElement>('[data-el-id="narration-1"]'),
+    )?.parentElement;
     // A row of several clips is named for the track, so the caret is too.
     const caret = () => host.querySelector<HTMLButtonElement>('button[aria-label$=" lanes"]');
     expect(caret()?.getAttribute("aria-label")).toBe("Show Track 1 lanes");

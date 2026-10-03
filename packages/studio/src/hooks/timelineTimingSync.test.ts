@@ -7,6 +7,8 @@ import {
   captureDurationRollback,
   finishClipTimingFallback,
   finishGroupTimingGsapFallback,
+  finishTimelineTimingFallback,
+  foldGsapMutationIntoHistory,
   readFileContent,
   shiftGsapPositions,
 } from "./timelineTimingSync";
@@ -509,7 +511,7 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
       changes: [{ element }, { element }],
       resolveChangePath: () => "index.html",
       // No domId → nothing to rewrite for ANY change (the gap-close blink path).
-      mutateChange: () => null,
+      mutationFor: () => null,
     });
 
     expect(reloadPreview).not.toHaveBeenCalled();
@@ -539,7 +541,7 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
         { element: { sourceFile: "scenes/intro.html" } as TimelineElement },
       ],
       resolveChangePath: (el) => el.sourceFile ?? "index.html",
-      mutateChange: () => null,
+      mutationFor: () => null,
     });
 
     expect(reloadPreview).toHaveBeenCalledTimes(1);
@@ -657,32 +659,53 @@ function ownedMutation(contents: Map<string, string>, path: string, before: stri
   return { mutated: true, scriptText: null, before, after };
 }
 
-describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
-  const element = { sourceFile: "index.html" } as TimelineElement;
+type OwnedStep = () => Promise<ReturnType<typeof ownedMutation>>;
 
+/** Runs `steps` as one owned same-file transaction, wired the way a group edit wires it. */
+function runOwnedChain(
+  steps: readonly OwnedStep[],
+  options: {
+    reloadPreview?: () => void;
+    recordEdit?: (edit: never) => Promise<void>;
+  } = {},
+) {
+  const onGsapError = (err: unknown) =>
+    console.error("[Timeline] Failed to shift GSAP positions", err);
+  return finishTimelineTimingFallback({
+    iframe: buildLivePreviewIframe().iframe,
+    projectId: "p1",
+    reloadPreview: options.reloadPreview ?? vi.fn(),
+    gsapMutation: () =>
+      foldGsapMutationIntoHistory({
+        writeFile: writeProjectFile,
+        paths: ["index.html"],
+        projectId: "p1",
+        label: "Move timeline clips",
+        recordEdit: (options.recordEdit ?? vi.fn(async () => {})) as never,
+        gsapMutation: async (runOwnedMutation) => {
+          let status = { mutated: false, scriptText: null } as Awaited<ReturnType<OwnedStep>>;
+          for (const step of steps) status = await runOwnedMutation("index.html", step);
+          return status;
+        },
+        onRollbackError: onGsapError,
+      }),
+    onGsapError,
+    rebindWhenUnmutated: true,
+  });
+}
+
+describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
   it("reverse-rolls back every successful same-file step after a late failure", async () => {
     const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
     const server = installOwnedFileServer(contents);
-    let clipIndex = 0;
 
-    await finishGroupTimingGsapFallback({
-      writeProjectFile,
-      projectId: "p1",
-      iframe: buildLivePreviewIframe().iframe,
-      reloadPreview: vi.fn(),
-      label: "Move timeline clips",
-      errorLabel: "Failed to shift GSAP positions",
-      recordEdit: vi.fn(async () => {}) as never,
-      activeCompPath: "index.html",
-      changes: [{ element }, { element }, { element }],
-      resolveChangePath: () => "index.html",
-      mutateChange: async () => {
-        clipIndex += 1;
-        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "STEP-1");
-        if (clipIndex === 2) return ownedMutation(contents, "index.html", "STEP-1", "STEP-2");
+    await runOwnedChain([
+      async () => ownedMutation(contents, "index.html", "ORIGINAL", "STEP-1"),
+      async () => ownedMutation(contents, "index.html", "STEP-1", "STEP-2"),
+      async () => {
         throw new Error("late failure");
       },
-    });
+    ]);
 
     expect(server.rollbacks).toEqual([
       { path: "index.html", expected: "STEP-2", restore: "STEP-1", conflict: false },
@@ -694,27 +717,13 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
   it("uses the endpoint's atomic before when a foreign write precedes mutation", async () => {
     const contents = new Map<string, string>([["index.html", "FOREIGN"]]);
     const server = installOwnedFileServer(contents);
-    let clipIndex = 0;
 
-    await finishGroupTimingGsapFallback({
-      writeProjectFile,
-      projectId: "p1",
-      iframe: buildLivePreviewIframe().iframe,
-      reloadPreview: vi.fn(),
-      label: "Move timeline clips",
-      errorLabel: "Failed to shift GSAP positions",
-      recordEdit: vi.fn(async () => {}) as never,
-      activeCompPath: "index.html",
-      changes: [{ element }, { element }],
-      resolveChangePath: () => "index.html",
-      mutateChange: async () => {
-        clipIndex += 1;
-        if (clipIndex === 1) {
-          return ownedMutation(contents, "index.html", "FOREIGN", "FOREIGN+OWNED");
-        }
+    await runOwnedChain([
+      async () => ownedMutation(contents, "index.html", "FOREIGN", "FOREIGN+OWNED"),
+      async () => {
         throw new Error("late failure");
       },
-    });
+    ]);
 
     expect(server.readCount()).toBe(0);
     expect(server.rollbacks[0]).toEqual({
@@ -731,26 +740,17 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     const server = installOwnedFileServer(contents, {
       beforeRollback: () => contents.set("index.html", "SUCCESSOR"),
     });
-    let clipIndex = 0;
-
     const reloadPreview = vi.fn();
-    await finishGroupTimingGsapFallback({
-      writeProjectFile,
-      projectId: "p1",
-      iframe: buildLivePreviewIframe().iframe,
-      reloadPreview,
-      label: "Move timeline clips",
-      errorLabel: "Failed to shift GSAP positions",
-      recordEdit: vi.fn(async () => {}) as never,
-      activeCompPath: "index.html",
-      changes: [{ element }, { element }],
-      resolveChangePath: () => "index.html",
-      mutateChange: async () => {
-        clipIndex += 1;
-        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "OWNED");
-        throw new Error("late failure");
-      },
-    });
+
+    await runOwnedChain(
+      [
+        async () => ownedMutation(contents, "index.html", "ORIGINAL", "OWNED"),
+        async () => {
+          throw new Error("late failure");
+        },
+      ],
+      { reloadPreview },
+    );
 
     expect(server.rollbacks[0]?.conflict).toBe(true);
     expect(contents.get("index.html")).toBe("SUCCESSOR");
@@ -762,25 +762,16 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     installOwnedFileServer(contents, { failRollback: true });
     const reloadPreview = vi.fn();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    let clipIndex = 0;
 
-    await finishGroupTimingGsapFallback({
-      writeProjectFile,
-      projectId: "p1",
-      iframe: buildLivePreviewIframe().iframe,
-      reloadPreview,
-      label: "Move timeline clips",
-      errorLabel: "Failed to shift GSAP positions",
-      recordEdit: vi.fn(async () => {}) as never,
-      activeCompPath: "index.html",
-      changes: [{ element }, { element }],
-      resolveChangePath: () => "index.html",
-      mutateChange: async () => {
-        clipIndex += 1;
-        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "OWNED");
-        throw new Error("late failure");
-      },
-    });
+    await runOwnedChain(
+      [
+        async () => ownedMutation(contents, "index.html", "ORIGINAL", "OWNED"),
+        async () => {
+          throw new Error("late failure");
+        },
+      ],
+      { reloadPreview },
+    );
 
     expect(contents.get("index.html")).toBe("OWNED");
     expect(reloadPreview).toHaveBeenCalledTimes(1);
@@ -795,23 +786,13 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     const server = installOwnedFileServer(contents);
     const recordEdit = vi.fn(async () => {});
 
-    await finishGroupTimingGsapFallback({
-      writeProjectFile,
-      projectId: "p1",
-      iframe: buildLivePreviewIframe().iframe,
-      reloadPreview: vi.fn(),
-      label: "Move timeline clips",
-      errorLabel: "Failed to shift GSAP positions",
-      recordEdit: recordEdit as never,
-      activeCompPath: "index.html",
-      changes: [{ element }, { element }],
-      resolveChangePath: () => "index.html",
-      mutateChange: async (_change, _path) => {
-        const before = contents.get("index.html")!;
-        const after = before === "FOREIGN" ? "FOREIGN+ONE" : "FOREIGN+ONE+TWO";
-        return ownedMutation(contents, "index.html", before, after);
-      },
-    });
+    await runOwnedChain(
+      [
+        async () => ownedMutation(contents, "index.html", "FOREIGN", "FOREIGN+ONE"),
+        async () => ownedMutation(contents, "index.html", "FOREIGN+ONE", "FOREIGN+ONE+TWO"),
+      ],
+      { recordEdit },
+    );
 
     expect(server.readCount()).toBe(1); // final ownership verification only
     expect(recordEdit).toHaveBeenCalledWith(
@@ -827,26 +808,15 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
     const server = installOwnedFileServer(contents);
     const recordEdit = vi.fn(async () => {});
-    let clipIndex = 0;
-
     const reloadPreview = vi.fn();
-    await finishGroupTimingGsapFallback({
-      writeProjectFile,
-      projectId: "p1",
-      iframe: buildLivePreviewIframe().iframe,
-      reloadPreview,
-      label: "Move timeline clips",
-      errorLabel: "Failed to shift GSAP positions",
-      recordEdit: recordEdit as never,
-      activeCompPath: "index.html",
-      changes: [{ element }, { element }],
-      resolveChangePath: () => "index.html",
-      mutateChange: async () => {
-        clipIndex += 1;
-        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "STEP-1");
-        return ownedMutation(contents, "index.html", "FOREIGN", "FOREIGN+STEP-2");
-      },
-    });
+
+    await runOwnedChain(
+      [
+        async () => ownedMutation(contents, "index.html", "ORIGINAL", "STEP-1"),
+        async () => ownedMutation(contents, "index.html", "FOREIGN", "FOREIGN+STEP-2"),
+      ],
+      { recordEdit, reloadPreview },
+    );
 
     expect(recordEdit).not.toHaveBeenCalled();
     expect(server.rollbacks).toEqual([
@@ -866,19 +836,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
     const server = installOwnedFileServer(contents, { failReadAt: 1 });
 
-    await finishGroupTimingGsapFallback({
-      writeProjectFile,
-      projectId: "p1",
-      iframe: buildLivePreviewIframe().iframe,
-      reloadPreview: vi.fn(),
-      label: "Move timeline clips",
-      errorLabel: "Failed to shift GSAP positions",
-      recordEdit: vi.fn(async () => {}) as never,
-      activeCompPath: "index.html",
-      changes: [{ element }],
-      resolveChangePath: () => "index.html",
-      mutateChange: async () => ownedMutation(contents, "index.html", "ORIGINAL", "OWNED"),
-    });
+    await runOwnedChain([async () => ownedMutation(contents, "index.html", "ORIGINAL", "OWNED")]);
 
     expect(server.rollbacks[0]).toEqual({
       path: "index.html",

@@ -232,7 +232,7 @@ function resolveResizePlaybackStart(
   };
 }
 
-export function buildTimelineMoveTimingPatch(
+export function applyTimelineMoveAttributes(
   original: string,
   target: PatchTarget,
   start: number,
@@ -242,7 +242,7 @@ export function buildTimelineMoveTimingPatch(
 ): string {
   if (!Number.isFinite(start) || !Number.isFinite(duration)) {
     console.warn(
-      `[Timeline] buildTimelineMoveTimingPatch: non-finite timing (start=${start}, duration=${duration}) — patch skipped`,
+      `[Timeline] applyTimelineMoveAttributes: non-finite timing (start=${start}, duration=${duration}) — patch skipped`,
     );
     return original;
   }
@@ -264,15 +264,35 @@ export function buildTimelineMoveTimingPatch(
       property: "data-audio-group",
       value: null,
     });
-  // Content-driven duration: sync data-duration to the furthest clip end read
-  // from the PATCHED SOURCE (raw data-duration), so it grows if a clip moved
-  // past the end and shrinks if the furthest clip moved left. Measured from the
-  // source, NOT the store — store durations are runtime-truncated to the current
-  // comp length, which would ratchet the duration down every move.
-  return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
+  return patched;
 }
 
-export function buildTimelineResizeTimingPatch(
+/**
+ * Content-driven duration: sync data-duration to the furthest clip end read from the PATCHED
+ * SOURCE (raw data-duration), so it grows if a clip moved past the end and shrinks if the
+ * furthest clip moved left. Measured from the source, NOT the store: store durations are
+ * runtime-truncated to the current comp length, which would ratchet the duration down every edit.
+ */
+export function syncCompositionDurationToContent(source: string): string {
+  return setCompositionDurationToContent(source, furthestClipEndFromSource(source));
+}
+
+export function buildTimelineMoveTimingPatch(
+  original: string,
+  target: PatchTarget,
+  start: number,
+  duration: number,
+  track?: number,
+  audioGroup?: null,
+): string {
+  const patched = applyTimelineMoveAttributes(original, target, start, duration, track, audioGroup);
+  // A non-finite timing skips the patch above; skip the duration sync with it.
+  return patched === original && !(Number.isFinite(start) && Number.isFinite(duration))
+    ? patched
+    : syncCompositionDurationToContent(patched);
+}
+
+export function applyTimelineResizeAttributes(
   original: string,
   target: PatchTarget,
   element: TimelineElement,
@@ -296,10 +316,13 @@ export function buildTimelineResizeTimingPatch(
       value: formatTimelineMediaOffset(pbs.value),
     });
   }
-  // Content-driven duration from the PATCHED SOURCE (raw data-duration) —
-  // grows/shrinks to the furthest clip end. Not from the store, whose
-  // durations are runtime-truncated.
-  return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
+  return patched;
+}
+
+export function buildTimelineResizeTimingPatch(
+  ...args: Parameters<typeof applyTimelineResizeAttributes>
+): string {
+  return syncCompositionDurationToContent(applyTimelineResizeAttributes(...args));
 }
 
 export interface PersistTimelineEditInput {
@@ -387,6 +410,8 @@ export interface PersistTimelineBatchEditInput {
   coalesceKey?: string;
   /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
   coalesceMs?: number;
+  /** Applied once to each patched file, after every change to it. */
+  finishFile?: (patched: string) => string;
 }
 
 export async function persistTimelineBatchEdit(
@@ -398,7 +423,8 @@ export async function persistTimelineBatchEdit(
     changesByPath.set(targetPath, [...(changesByPath.get(targetPath) ?? []), change]);
   }
   const buildFile = (targetPath: string) => (original: string) => {
-    const next = patchTimelineChangesInSource(original, targetPath, changesByPath.get(targetPath)!);
+    const patched = patchTimelineChangesInSource(original, targetPath, changesByPath.get(targetPath)!);
+    const next = input.finishFile ? input.finishFile(patched) : patched;
     if (next !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
     return next;
   };

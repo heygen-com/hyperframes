@@ -11,6 +11,7 @@ import {
 import { normalizeToZones } from "./timelineZones";
 import { resolveZMirrorLaneMove } from "./timelineZMirror";
 import type { StackingPatch } from "./timelineStackingSync";
+import { isStudioEditSaving, revertNewestStudioPendingEdit } from "../../utils/studioPendingEdits";
 
 function el(
   id: string,
@@ -1533,6 +1534,36 @@ describe("persistMoveEdits convergence", () => {
       }
     },
   );
+
+  it("registers a revert for the save in flight, and a reverted move is not reasserted", async () => {
+    let current = el("clip", 0, 1, 2);
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const updateElement = (_key: string, updates: Partial<TimelineElement>) => {
+      current = { ...current, ...updates };
+    };
+    const persisted = persistMoveEdits([{ element: current, updates: { start: 4, track: 0 } }], {
+      elements: [current],
+      trackOrder: [0],
+      updateElement,
+      onMoveElements: () => pendingSave,
+    });
+    expect(current.start).toBe(4);
+    expect(isStudioEditSaving()).toBe(true);
+
+    const reapply = revertNewestStudioPendingEdit();
+    expect(reapply).not.toBeNull();
+    expect(current.start).toBe(1);
+
+    releaseSave();
+    await expect(persisted).resolves.toBe(true);
+    expect(current.start).toBe(1);
+    expect(isStudioEditSaving()).toBe(false);
+    reapply?.();
+    expect(current.start).toBe(4);
+  });
 
   it("reasserts a saved lane after a stale runtime sync", async () => {
     const clip = { ...el("headline", 2, 0.5, 4.9), authoredTrack: 2 };
