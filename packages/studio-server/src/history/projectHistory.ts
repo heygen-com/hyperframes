@@ -829,12 +829,18 @@ class Engine {
   /** A window with no write for its idleMs ends, so a close that never comes cannot hold every later write. */
   touch(window: Group, at: number): void {
     window.lastWriteAt = Math.max(window.lastWriteAt ?? at, at);
+    this.endWhenIdle(window, window.idleMs);
+  }
+
+  endWhenIdle(window: Group, delay: number | undefined): void {
     clearTimeout(window.idleTimer);
-    if (window.idleMs === undefined || !Number.isFinite(window.idleMs)) return;
-    window.idleTimer = setTimeout(
-      () => this.background(() => this.sweepAndEnd(window)),
-      window.idleMs,
-    );
+    if (window.idleMs === undefined || !Number.isFinite(window.idleMs) || delay === undefined)
+      return;
+    window.idleTimer = setTimeout(() => {
+      const left = window.idleMs! - (this.now() - (window.lastWriteAt ?? this.now()));
+      if (left > 0) this.endWhenIdle(window, left);
+      else this.background(() => this.sweepAndEnd(window));
+    }, delay);
     window.idleTimer.unref?.();
   }
 
