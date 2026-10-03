@@ -49,6 +49,7 @@ import {
   type UserInfo,
 } from "../../auth/index.js";
 import { c } from "../../ui/colors.js";
+import { printHeygenCliNoteIfMissing } from "../../utils/heygenCli.js";
 
 const STDIN_TIMEOUT_MS = 30_000;
 // Smallest plausible length for a real API key. We don't validate the
@@ -191,6 +192,7 @@ async function runDeviceLogin(): Promise<void> {
   trackAuthLoginCompleted("device", id);
   const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
   console.log(c.success(`✓ Signed in as ${identity}.`));
+  printHeygenCliNoteIfMissing();
 }
 
 async function revokeDeviceTokens(tokens: {
@@ -259,6 +261,7 @@ async function reportIdentity(): Promise<void> {
     trackAuthLoginCompleted("oauth", id);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ Signed in as ${identity}.`));
+    printHeygenCliNoteIfMissing();
   } catch (err) {
     // Don't roll back — the OAuth tokens are valid on disk; this is a
     // transient verify-side issue. The credential is persisted and usable, so
@@ -426,6 +429,7 @@ async function verifyAndReport(key: string): Promise<UserInfo | null> {
     await persistUserInfo(user);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ API key saved. Authenticated as ${identity}.`));
+    printHeygenCliNoteIfMissing();
     return user;
   } catch (err) {
     if (isAuthError(err) && err.code === "UNAUTHENTICATED") {
