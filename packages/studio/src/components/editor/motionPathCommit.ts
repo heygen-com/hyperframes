@@ -60,9 +60,8 @@ type NodeDrop = {
   commitMutation: CommitFn;
 };
 
-/** Writes a dropped node. A keyframe goes through the writer a layer drag uses, at that keyframe:
- *  a channel it starts animating keeps GSAP's live value on every other keyframe. With
- *  auto-keyframe off (#1808) the drop shifts the whole path instead. A waypoint moves in place. */
+/** A dropped keyframe goes through the layer drag's writer, GSAP's live values backfilling others
+ *  (auto-keyframe off, #1808: the whole path shifts); a waypoint moves in place. */
 export function commitNodeDrop(drop: NodeDrop): Promise<void> {
   const { ref, at, anim, selection, iframe, commitMutation } = drop;
   if (ref.type !== "keyframe" || !anim || !selection)
