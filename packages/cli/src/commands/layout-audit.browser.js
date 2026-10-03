@@ -334,12 +334,7 @@
   }
 
   function hasPaint(style) {
-    const backgroundColor = style.backgroundColor || "";
-    const hasBackground =
-      backgroundColor !== "" &&
-      backgroundColor !== "transparent" &&
-      !backgroundColor.endsWith(", 0)") &&
-      backgroundColor !== "rgba(0, 0, 0, 0)";
+    const hasBackground = !isTransparentColor(style.backgroundColor);
     const hasImage = style.backgroundImage && style.backgroundImage !== "none";
     const hasBorder =
       parsePx(style.borderTopWidth) +
@@ -347,13 +342,8 @@
         parsePx(style.borderBottomWidth) +
         parsePx(style.borderLeftWidth) >
       0;
-    const hasRadius =
-      parsePx(style.borderTopLeftRadius) +
-        parsePx(style.borderTopRightRadius) +
-        parsePx(style.borderBottomRightRadius) +
-        parsePx(style.borderBottomLeftRadius) >
-      0;
-    return hasBackground || hasImage || hasBorder || hasRadius;
+    // A border-radius shapes the box without painting it; box-shadow, outline and filters are not read.
+    return hasBackground || hasImage || hasBorder;
   }
 
   function clipsOverflowValue(value) {
@@ -653,10 +643,9 @@
     return element.hasAttribute("data-layout-allow-overlap");
   }
 
+  // Never a `", 0)` suffix check: that also matches opaque zero-blue colours like rgb(255, 0, 0).
   function isTransparentColor(color) {
-    return (
-      !color || color === "transparent" || color === "rgba(0, 0, 0, 0)" || color.endsWith(", 0)")
-    );
+    return !color || color === "transparent" || colorAlpha(color) === 0;
   }
 
   function alphaFromParts(parts, index) {
