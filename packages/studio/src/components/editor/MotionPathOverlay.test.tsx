@@ -77,10 +77,11 @@ it("sets a destination on a layer whichever window built its node", () => {
   document.body.append(host, surface, frame);
   Reflect.set(frame.contentWindow as object, "MotionPathPlugin", {});
   frame.getBoundingClientRect = () => new DOMRect(0, 0, 1920, 1080);
-  // As on the loads that hid the path, the layer's node carries the editor window's prototypes.
-  const box = document.createElement("div");
+  const box = frame.contentDocument!.createElement("div");
   box.id = "box";
   frame.contentDocument!.body.append(box);
+  // happy-dom shares one realm, so the frame's own constructor stands in for another window's.
+  Object.defineProperty(frame.contentWindow!, "HTMLElement", { value: class {} });
   const root = createRoot(host);
   const selection = { element: box } as unknown as DomEditSelection;
   try {
