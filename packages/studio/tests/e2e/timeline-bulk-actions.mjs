@@ -141,10 +141,8 @@ const requestKind = (url) =>
     .slice(0, 2)
     .join("/");
 
-/**
- * Runs `action` (which returns the page time it considers done) and returns ms since its start.
- * BULK_PROFILE=1 also prints the CPU profile and a request summary of just that action to stderr.
- */
+// Runs `action` (returns the page time it considers done); returns ms since its start.
+// BULK_PROFILE=1 also prints the CPU profile and a request summary of that action to stderr.
 // fallow-ignore-next-line complexity
 async function measure(page, name, action) {
   const profile = Boolean(process.env.BULK_PROFILE);
