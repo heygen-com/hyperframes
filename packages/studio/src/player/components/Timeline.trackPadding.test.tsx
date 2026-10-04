@@ -99,9 +99,7 @@ describe("Timeline trackPadding", () => {
     const clip = host.querySelector('[data-clip][data-el-id="c0"]')!;
     pointer(clip, "pointerdown", RULER_H + TRACK_H / 2);
     pointer(window, "pointermove", ROW1_MID);
-    const ghost = Array.from(
-      host.querySelectorAll<HTMLElement>(".absolute.pointer-events-none"),
-    ).find((el) => el.style.zIndex === "30" && !el.dataset.testid);
+    const ghost = host.querySelector<HTMLElement>('[data-testid="timeline-drag-landing"]');
     expect(top(ghost)).toBe(`${RULER_H + TRACK_H + CLIP_Y}px`);
     pointer(window, "pointermove", RULER_H + 3 * TRACK_H + TRACK_H / 2);
     const lane = host.querySelector<HTMLElement>("[data-timeline-new-track-lane]");
