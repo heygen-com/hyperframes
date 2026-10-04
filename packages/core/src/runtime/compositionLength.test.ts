@@ -151,4 +151,15 @@ describe("rules moved unchanged from the runtime", () => {
     });
     expect(result).toMatchObject({ seconds: null, source: "unresolved" });
   });
+
+  it("holds the derived length while a loaded Lottie library may still register animations", () => {
+    const doc = parseHTMLContent(
+      `<div data-composition-id="main"><div data-start="0" data-duration="3"></div></div>`,
+    );
+    const root = findRootCompositionElement(doc)!;
+    const result = resolveContentDerivedDuration(root, resolverFor(doc), {
+      unregisteredLottie: true,
+    });
+    expect(result).toMatchObject({ seconds: null, source: "unresolved" });
+  });
 });
