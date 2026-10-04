@@ -26,12 +26,13 @@ function mount(
     files?: RestoreFiles;
   },
   predicted?: Prediction,
+  claims: () => number = () => 7,
 ) {
   const editHistory = {
     undo: vi.fn<EditHistoryHandle["undo"]>(async () => result),
     redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
     predict: () => predicted ?? null,
-    claims: () => 7,
+    claims,
   };
   const putBack = vi.fn();
   const deps = {
@@ -117,14 +118,33 @@ describe("useEditHistoryActions", () => {
       PREDICTED,
     );
     const undone = actions.undo();
-    try {
-      expect(revert).toHaveBeenCalledTimes(1);
-      expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
-    } finally {
-      saving.settle();
-      await act(() => undone);
-    }
+    expect(revert).toHaveBeenCalledTimes(1);
+    expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
+    saving.settle();
+    await act(() => undone);
+    expect(deps.editHistory.undo).not.toHaveBeenCalled();
     expect(reapply).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["its claim counted, the server undo is the shown revert", 8, 0],
+    ["its claim never counted, the move is shown again", 7, 1],
+  ])("an edit that lands while undo waits: %s", async (_, claimsAfter, reapplied) => {
+    const reapply = vi.fn();
+    const saving = beginStudioPendingEdit(() => reapply);
+    let claimCount = 7;
+    const { deps, actions } = mount(
+      { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e2" },
+      PREDICTED,
+      () => claimCount,
+    );
+    const undone = actions.undo();
+    saving.settle(saving.adopt(() => Promise.resolve()));
+    claimCount = claimsAfter;
+    await act(() => undone);
+    expect(deps.editHistory.undo).toHaveBeenCalledTimes(1);
+    expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
+    expect(reapply).toHaveBeenCalledTimes(reapplied);
   });
 
   it("puts a shown step back when the server refuses it", async () => {
