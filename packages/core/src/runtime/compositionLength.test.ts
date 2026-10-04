@@ -35,11 +35,11 @@ describe("resolveCompositionLengthSeconds", () => {
     ).toBe(8);
   });
 
-  it("ignores a timeline of one frame or less and falls back to the floors", () => {
+  it("ignores a timeline of one frame or less", () => {
     const oneFrame = MIN_VALID_TIMELINE_DURATION_SECONDS;
     expect(
-      resolveCompositionLengthSeconds({ ...base, timeline: () => oneFrame, floors: () => [3] }),
-    ).toBe(3);
+      resolveCompositionLengthSeconds({ ...base, timeline: () => oneFrame, derived: () => 2 }),
+    ).toBe(2);
   });
 
   it("derives the length only when nothing else gives one", () => {
