@@ -787,8 +787,10 @@ export async function publishProjectArchive(
         metadataHeaders,
         projectId,
       ));
-    // The server publishes anonymously when it drops a credential it could not verify.
-    if (credential && !result.claimed) throw new CredentialRejectedError("unclaimed publish");
+    // Only a bearer login owns a publish; the server drops one it cannot verify.
+    if (credential?.type === "oauth" && !result.claimed) {
+      throw new CredentialRejectedError("unclaimed publish");
+    }
   } catch (error) {
     if (error instanceof CredentialRejectedError && credential) {
       throw new Error(rejectedCredentialMessage(credential));
@@ -796,7 +798,7 @@ export async function publishProjectArchive(
     throw error;
   }
   // Remember the server's id + url so the next publish of this directory updates in place.
-  if (credential) {
+  if (result.claimed) {
     writeProjectLink(projectDir, { projectId: result.projectId, url: result.url });
   }
   return result;

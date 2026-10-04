@@ -1034,7 +1034,7 @@ describe("publishProjectArchive", () => {
   it("never sends a project id or persists a link when anonymous", async () => {
     // Default credential is null (anonymous).
     const dir = makeProjectDir();
-    const fetchMock = ownedStagedFetch();
+    const fetchMock = stagedFetch();
     vi.stubGlobal("fetch", fetchMock);
 
     try {
@@ -1135,6 +1135,24 @@ describe("publishProjectArchive with a credential the server rejects", () => {
     await publishExpecting(stagedFetch(), EXPIRED);
     await publishExpecting(directFetch(), EXPIRED);
     expect(linkMocks.writeProjectLink).not.toHaveBeenCalled();
+  });
+
+  it("publishes with an API key, which the server never marks as owned, and links nothing", async () => {
+    const dir = makeProjectDir();
+    try {
+      authMocks.tryResolveCredential.mockResolvedValue({
+        type: "api_key",
+        key: "k",
+        source: "env",
+      });
+      vi.stubGlobal("fetch", stagedFetch());
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      const result = await publishProjectArchive(dir);
+      expect(result.claimToken).toBe("claim-token");
+      expect(linkMocks.writeProjectLink).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("names the environment API key instead of asking for a login it would not use", async () => {
