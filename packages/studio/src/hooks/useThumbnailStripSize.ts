@@ -22,6 +22,12 @@ const spanInView = (target: Element) => {
   };
 };
 
+// scrollMargin widens the band inside the timeline's own scroller too; TypeScript's DOM types lack it.
+const GAP_WARNING: IntersectionObserverInit & { scrollMargin: string } = {
+  rootMargin: `0px ${IN_VIEW_CHUNK_PX / 2}px`,
+  scrollMargin: `0px ${IN_VIEW_CHUNK_PX / 2}px`,
+};
+
 const merge = (patch: Partial<StripSize>) => (prev: StripSize) => {
   const next = { ...prev, ...patch };
   return (Object.keys(next) as (keyof StripSize)[]).every((key) => next[key] === prev[key])
@@ -58,7 +64,7 @@ export function useThumbnailStripSize() {
       ? null
       : new IntersectionObserver(
           (entries) => entries.some((entry) => entry.isIntersecting) && remeasure(),
-          { rootMargin: `0px ${IN_VIEW_CHUNK_PX / 2}px` },
+          GAP_WARNING,
         ),
   );
 
