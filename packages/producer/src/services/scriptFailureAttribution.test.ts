@@ -15,18 +15,22 @@ const composition = (scripts: string) => `<!doctype html>
 
 let root: string;
 let widgetServer: Server;
-let widgetUrl: string;
+let widgetOrigin: string;
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "hf-script-attribution-"));
-  widgetServer = createServer((_request, response) => {
+  widgetServer = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/javascript" });
-    response.end("setTimeout(function widget() { throw new Error('widget failed'); }, 0);");
+    response.end(
+      request.url === "/decode.js"
+        ? "var image = new Image(); image.src = 'data:image/png;base64,AAAA'; image.decode();"
+        : "setTimeout(function widget() { throw new Error('widget failed'); }, 0);",
+    );
   });
   await new Promise<void>((resolve) => widgetServer.listen(0, "127.0.0.1", resolve));
   const address = widgetServer.address();
   if (!address || typeof address === "string") throw new Error("widget server has no port");
-  widgetUrl = `http://127.0.0.1:${address.port}/widget.js`;
+  widgetOrigin = `http://127.0.0.1:${address.port}`;
 });
 
 afterAll(() => {
@@ -86,8 +90,14 @@ describe("which uncaught errors fail a timeline that never registers", () => {
     30_000,
   );
 
-  it("keeps a cross-origin widget's error a readiness warning", async () => {
-    const files = { "index.html": composition(`<script src="${widgetUrl}"></script>`) };
-    expect(await timelineWarningCodes(files)).toEqual(["sub_timeline_readiness_timeout"]);
-  }, 30_000);
+  it.each(["widget.js", "decode.js"])(
+    "keeps the error a readiness warning when a cross-origin %s throws or rejects",
+    async (script) => {
+      const files = {
+        "index.html": composition(`<script src="${widgetOrigin}/${script}"></script>`),
+      };
+      expect(await timelineWarningCodes(files)).toEqual(["sub_timeline_readiness_timeout"]);
+    },
+    30_000,
+  );
 });

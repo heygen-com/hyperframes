@@ -43,6 +43,7 @@ describe("classifyConsoleScriptFailure", () => {
 
 describe("classifyPageError", () => {
   const server = "http://localhost:4100";
+  const doc = `${server}/index.html`;
   // Shapes as Chromium 152 reports them through Runtime.exceptionThrown.
   const thrown = (
     description: string | undefined,
@@ -64,9 +65,9 @@ describe("classifyPageError", () => {
   it("records an error thrown by a script served with the composition, by its first line", () => {
     const error =
       "TypeError: Cannot read properties of null (reading 'timeline')\n    at build (comp.js:1:37)";
-    expect(
-      classifyPageError(thrown(error, `${server}/comp.js`, [`${server}/comp.js`]), server),
-    ).toBe("runtime-error:TypeError: Cannot read properties of null (reading 'timeline')");
+    expect(classifyPageError(thrown(error, `${server}/comp.js`, [`${server}/comp.js`]), doc)).toBe(
+      "runtime-error:TypeError: Cannot read properties of null (reading 'timeline')",
+    );
   });
 
   it("records a syntax error and a thrown string, which carry no error stack", () => {
@@ -77,26 +78,30 @@ describe("classifyPageError", () => {
       [`${server}/index.html`],
       "plain string",
     );
-    expect(classifyPageError(syntax, server)).toBe(
-      "runtime-error:SyntaxError: Unexpected token ';'",
-    );
-    expect(classifyPageError(plain, server)).toBe("runtime-error:plain string");
+    expect(classifyPageError(syntax, doc)).toBe("runtime-error:SyntaxError: Unexpected token ';'");
+    expect(classifyPageError(plain, doc)).toBe("runtime-error:plain string");
   });
 
   it("records a foreign library throwing when the composition called it", () => {
     const lib = "https://cdn.example/lib.js";
-    expect(
-      classifyPageError(thrown("TypeError: x", lib, [lib, `${server}/index.html`]), server),
-    ).toBe("runtime-error:TypeError: x");
+    expect(classifyPageError(thrown("TypeError: x", lib, [lib, `${server}/index.html`]), doc)).toBe(
+      "runtime-error:TypeError: x",
+    );
+  });
+
+  // A widget's failed img.decode() and the composition's failed r.json() report the same shape.
+  it("ignores a frameless rejection that names only the document", () => {
+    const rejection = thrown("EncodingError: The source image cannot be decoded.", doc, []);
+    expect(classifyPageError(rejection, doc)).toBeNull();
   });
 
   it("ignores errors from other origins and the benign play/pause race", () => {
     const widget = "http://127.0.0.1:4100/widget.js";
     const abort =
       "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22";
-    expect(classifyPageError(thrown("Error: widget failed", widget, [widget]), server)).toBeNull();
+    expect(classifyPageError(thrown("Error: widget failed", widget, [widget]), doc)).toBeNull();
     expect(
-      classifyPageError(thrown(abort, `${server}/index.html`, [`${server}/index.html`]), server),
+      classifyPageError(thrown(abort, `${server}/index.html`, [`${server}/index.html`]), doc),
     ).toBeNull();
   });
 

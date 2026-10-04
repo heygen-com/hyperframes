@@ -61,7 +61,7 @@
       ],
       "sources": {
         "packages/producer/scripts/run-test-lane.mjs": "bff02680f19eebcce0df72cdeedbbc05edfdcede3f3f60658fc0cb18ed8c59f6",
-        "packages/producer/scripts/test-classification.mjs": "1c0490f70042787a081a47ffe70fb8688785015cbf50fbbce712ba1fa1cca889",
+        "packages/producer/scripts/test-classification.mjs": "ae0cd9e09bf93df932d41649855f86ebb2230b25aabf3e56355fed8f101a0322",
         ".github/workflows/ci.yml#job#producer-source-tests": "45da72aa6cf08cdfd5bcf5311e89f12af4842f9eebc6735df19da8c02f4d4864",
         "packages/producer/package.json#script#test:unit": "ae6beda8319d166774be958ea5593cd27dbf7f6c9bce1d787a3fe28dfc3477b1",
         "packages/producer/package.json#script#test:integration": "008589f37d026877595a13501cbb66abd5cbe50e21fdcac6904f45466c3f475d",

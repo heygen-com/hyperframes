@@ -2021,7 +2021,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
   if (outcome === "ready" || !outcome) return;
   const threwThenTimedOut = outcome === "timeout" && session.pageErrors.length > 0;
   const scriptFailure = outcome === "script_failure" || threwThenTimedOut;
-  const failures = [...session.scriptLoadFailures, ...session.pageErrors];
+  const sources = [...session.scriptLoadFailures, ...session.pageErrors];
   const loadFailed = session.scriptLoadFailures.some((f) => !f.startsWith("runtime-error:"));
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
@@ -2030,12 +2030,12 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: threwThenTimedOut
         ? `A composition script threw and no timeline registered within ${timeoutMs}ms` +
-          `${pendingSuffix} (${failures.join(", ")}). A composition animated by CSS or rAF ` +
+          `${pendingSuffix} (${sources.join(", ")}). A composition animated by CSS or rAF ` +
           `rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
           ? loadFailed
-            ? `A sub-composition timeline script failed to load (${failures.join(", ")})`
-            : `A composition script threw during execution — timeline registration never arrived (${failures.join(", ")})`
+            ? `A sub-composition timeline script failed to load (${sources.join(", ")})`
+            : `A composition script threw during execution — timeline registration never arrived (${sources.join(", ")})`
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2043,7 +2043,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
             `once setup completes.`,
       details: {
         timeoutMs,
-        sources: failures,
+        sources,
         pendingCompositionIds: [...pending],
       },
     },
@@ -2219,23 +2219,23 @@ export function classifyConsoleScriptFailure(type: string, text: string): string
   return null;
 }
 
-/** Benign play/pause race during frame capture. */
 function isPlayPauseAbort(message: string): boolean {
   return /^AbortError:/.test(message) && message.includes("play()") && message.includes("pause()");
 }
 
-/** `runtime-error:<first line>` when a script served with the composition threw; null for other origins. */
+/** `runtime-error:<first line>` when a script served with the composition threw; null if not attributable to one. */
 export function classifyPageError(
   details: Protocol.Runtime.ExceptionDetails,
-  serverUrl: string,
+  documentUrl: string,
 ): string | null {
   const exception = details.exception;
-  const [firstLine = ""] = String(exception?.description ?? exception?.value ?? details.text).split(
-    "\n",
-  );
+  const message = String(exception?.description ?? exception?.value ?? details.text);
+  const [firstLine = ""] = message.split("\n");
   if (isPlayPauseAbort(firstLine)) return null;
-  const origin = new URL(serverUrl).origin;
-  const urls = [details.url, ...(details.stackTrace?.callFrames ?? []).map((frame) => frame.url)];
+  const origin = new URL(documentUrl).origin;
+  const frames = (details.stackTrace?.callFrames ?? []).map((frame) => frame.url);
+  // Frameless: a parse error names its script; a browser API rejection names only the document.
+  const urls = frames.length > 0 ? frames : details.url === documentUrl ? [] : [details.url];
   return urls.some((url) => url?.startsWith(`${origin}/`)) ? `runtime-error:${firstLine}` : null;
 }
 
@@ -2313,7 +2313,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    const pageError = classifyPageError(exceptionDetails, serverUrl);
+    const pageError = classifyPageError(exceptionDetails, `${serverUrl}/index.html`);
     if (pageError && !session.pageErrors.includes(pageError)) session.pageErrors.push(pageError);
   });
   await runtimeClient.send("Runtime.enable");
