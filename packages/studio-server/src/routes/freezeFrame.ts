@@ -103,17 +103,16 @@ function publishStill(path: string, frame: Buffer): boolean {
   }
 }
 
-/** ffmpeg writes under a temp name the project history skips, so the still appears whole or not at all. */
-async function extractAndPublish(
+async function extractThenPublishWhole(
   extract: FrameExtractor,
   mediaPath: string,
   mediaTime: number,
   imagePath: string,
 ): Promise<Failure | null> {
-  const tempPath = atomicTempPath(imagePath);
+  const unseenByHistory = atomicTempPath(imagePath);
   try {
-    const extracted = await extract(freezeExtractArgs(mediaPath, mediaTime, tempPath));
-    const frame = extracted.ok ? readFrame(tempPath) : null;
+    const extracted = await extract(freezeExtractArgs(mediaPath, mediaTime, unseenByHistory));
+    const frame = extracted.ok ? readFrame(unseenByHistory) : null;
     if (!frame?.length) {
       const reason = extracted.ok ? "no frame at this time" : (extracted.error ?? "ffmpeg failed");
       return { error: `Could not extract the frame: ${reason}`, status: 500 };
@@ -121,7 +120,7 @@ async function extractAndPublish(
     if (publishStill(imagePath, frame)) return null;
     return { error: `freeze still already exists: ${basename(imagePath)}`, status: 409 };
   } finally {
-    rmSync(tempPath, { force: true });
+    rmSync(unseenByHistory, { force: true });
   }
 }
 
@@ -142,7 +141,12 @@ async function extractStill(
   if (!imagePath || dirname(imagePath) !== freezeDir) {
     return { error: `forbidden freeze path: ${fileName}`, status: 403 };
   }
-  const failed = await extractAndPublish(tools.extract, mediaPath, source.mediaTime, imagePath);
+  const failed = await extractThenPublishWhole(
+    tools.extract,
+    mediaPath,
+    source.mediaTime,
+    imagePath,
+  );
   if (failed) return failed;
   const depth = relative(projectDir, fileDir).split(sep).filter(Boolean).length;
   const stillPath = `${FREEZE_DIR.join("/")}/${fileName}`;

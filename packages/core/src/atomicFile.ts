@@ -70,7 +70,6 @@ function createDirectly(
   try {
     operations.writeFileSync(fd, content);
     open = false;
-    // A network share may report a full disk or quota only here.
     operations.closeSync(fd);
   } catch (error) {
     try {

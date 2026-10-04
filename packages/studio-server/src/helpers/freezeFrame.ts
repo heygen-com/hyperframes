@@ -40,7 +40,6 @@ export function freezeFrameMediaTime(input: {
 }
 
 export function freezeExtractArgs(src: string, mediaTime: number, output: string): string[] {
-  // The output name need not end in .png, so the format is named.
   return [
     "-y",
     "-ss",
