@@ -82,7 +82,8 @@ export async function renderBox(dir, decoder, time = PLAYHEAD) {
       },
       null,
       // A composition with no GSAP never registers a timeline; the default 45 s wait for one changes no pixel.
-      { playerReadyTimeout: 10_000 },
+      // Static-frame dedup opens a second page that would fetch GSAP from the CDN; one frame needs none.
+      { playerReadyTimeout: 10_000, staticFrameDedup: false },
     );
     // The producer's own browser would fetch GSAP from the CDN; a stalled fetch renders the 0 s frame.
     await serveFixtureAssetsLocally(session.page);
