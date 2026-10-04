@@ -22,13 +22,15 @@ function play(script: string) {
   new Function("gsap", "window", script)(gsap, win);
   const timeline = win.__timelines.t!;
   timeline.progress(0.0001, true).seek(0);
+  // The runtime nests each sub-composition's timeline into its host's; the script does not know them.
+  timeline.add(gsap.timeline().to({}, { duration: 6.7 }), 0);
   return { win, timeline };
 }
 
 /** Each tween's start and length, and what every element shows across the timeline. */
 function observe(timeline: gsap.core.Timeline) {
   const tweens = timeline
-    .getChildren(false, true, true)
+    .getChildren(false, true, false)
     .map((t) => [round(t.startTime()), round(t.duration())]);
   const shown = SAMPLES.map((at) => {
     timeline.seek(at);
@@ -144,10 +146,10 @@ it("reports, without moving anything, a live timeline that does not pair with it
   const plan = planLiveRetimeFromPreview(live.iframe, after);
   expect(plan.kind).toBe("retime");
   if (plan.kind !== "retime") return;
-  const starts = live.timeline.getChildren(false, true, true).map((t) => t.startTime());
+  const starts = live.timeline.getChildren(false, true, false).map((t) => t.startTime());
 
   expect(applyLiveRetime(live.iframe, plan)).toBe("5 live tweens for 4 in the script");
-  expect(live.timeline.getChildren(false, true, true).map((t) => t.startTime())).toEqual(starts);
+  expect(live.timeline.getChildren(false, true, false).map((t) => t.startTime())).toEqual(starts);
   expect(live.tag.textContent).toBe(BEFORE);
 });
 

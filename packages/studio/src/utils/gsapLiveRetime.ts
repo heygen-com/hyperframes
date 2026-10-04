@@ -112,8 +112,9 @@ export function applyLiveRetime(
   const [script, ...extra] = scriptsRegistering(findGsapScriptElements(doc), [plan.key]);
   if (!script || extra.length > 0)
     return `${extra.length + (script ? 1 : 0)} scripts register "${plan.key}"`;
+  // Tweens only: the runtime nests each sub-composition's timeline here, and those come from the DOM, not this script.
   // Paired before anything moves: moving a tween re-sorts the timeline's children.
-  const children = timeline.getChildren(false, true, true);
+  const children = timeline.getChildren(false, true, false);
   if (children.length !== plan.tweens.length) {
     return `${children.length} live tweens for ${plan.tweens.length} in the script`;
   }
