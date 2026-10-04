@@ -63,17 +63,21 @@ let shared: {
 const offsetOf = (scroller: Element | null) =>
   scroller ? { x: scroller.scrollLeft, y: scroller.scrollTop } : { x: scrollX, y: scrollY };
 
-const read = (target: Element, strip: Strip) => {
-  const { left, top, width, height } = target.getBoundingClientRect();
-  strip.box = { left, top, width, height };
-  return spanAt(left);
-};
-
 const isNear = ({ left, top, width, height }: Strip["box"]) =>
   left < innerWidth + NEAR_PX &&
   left + width > -NEAR_PX &&
   top < innerHeight + NEAR_PX &&
   top + height > -NEAR_PX;
+
+const NOTHING_IN_VIEW = { inViewStart: 0, inViewEnd: 0 };
+
+const spanOf = (box: Strip["box"]) => (isNear(box) ? spanAt(box.left) : NOTHING_IN_VIEW);
+
+const read = (target: Element, strip: Strip) => {
+  const { left, top, width, height } = target.getBoundingClientRect();
+  strip.box = { left, top, width, height };
+  return spanOf(strip.box);
+};
 
 const commit = (updates: (readonly [Apply, Partial<StripSize>])[]) =>
   flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
@@ -90,7 +94,7 @@ const refresh = () => {
     const shift = moved.get(strip.scroller);
     if (shift)
       strip.box = { ...strip.box, left: strip.box.left - shift.x, top: strip.box.top - shift.y };
-    return [strip.apply, isNear(strip.box) ? read(target, strip) : spanAt(strip.box.left)] as const;
+    return [strip.apply, isNear(strip.box) ? read(target, strip) : spanOf(strip.box)] as const;
   });
   commit(updates);
 };

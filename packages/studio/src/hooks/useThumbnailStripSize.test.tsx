@@ -56,6 +56,7 @@ describe("on a scroll", () => {
   let host: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
   let left = 0;
+  let top = 0;
   let scrolled = 0;
   let stripWidth = 1_000_000;
   let renders = 0;
@@ -101,10 +102,11 @@ describe("on a scroll", () => {
       NearScreenIntersectionObserver as unknown as typeof IntersectionObserver;
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => frames.push(frame));
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
-      () => ({ left, top: 0, width: stripWidth, height: 40 }) as DOMRect,
+      () => ({ left, top, width: stripWidth, height: 40 }) as DOMRect,
     );
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => stripWidth);
     left = 0;
+    top = 0;
     scrolled = 0;
     stripWidth = 1_000_000;
     renders = 0;
@@ -159,6 +161,13 @@ describe("on a scroll", () => {
     scrollTo(-2_000_000);
 
     expect(renders).toBe(settled);
+  });
+
+  it("mounts nothing for a strip far above or below the screen", async () => {
+    top = 5_000;
+    await mountStrips(1);
+
+    expect(spans()).toEqual(["0-0"]);
   });
 
   it("measures a strip as it comes near the screen, without waiting for a frame", async () => {
