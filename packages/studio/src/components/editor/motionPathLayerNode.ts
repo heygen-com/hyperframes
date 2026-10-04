@@ -15,9 +15,13 @@ export function pressBelongsToLayer(
   live: Point | null,
 ): boolean {
   if (live && Math.abs(pressed.x - live.x) < 0.5 && Math.abs(pressed.y - live.y) < 0.5) return true;
+  return Boolean(layerBoxUnder(e)) && Math.hypot(point.x - pressed.ax, point.y - pressed.ay) > dotR;
+}
+
+/** Between keyframes the layer sits on its own path, so the path's line crosses its box. */
+export function layerBoxUnder(e: React.PointerEvent): Element | null {
   const hits = e.currentTarget.ownerDocument.elementsFromPoint(e.clientX, e.clientY);
-  const inBox = hits.some((el) => el.closest(LAYER_BOX));
-  return inBox && Math.hypot(point.x - pressed.ax, point.y - pressed.ay) > dotR;
+  return hits.find((el) => el.closest(LAYER_BOX))?.closest(LAYER_BOX) ?? null;
 }
 
 /** Hands a press to the selected layer's box; true when the box started a gesture with it. */

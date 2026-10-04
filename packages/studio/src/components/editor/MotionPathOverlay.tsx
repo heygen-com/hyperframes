@@ -10,7 +10,12 @@ import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
 import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
-import { dotRadius, pressBelongsToLayer, pressSelectedLayer } from "./motionPathLayerNode";
+import {
+  dotRadius,
+  layerBoxUnder,
+  pressBelongsToLayer,
+  pressSelectedLayer,
+} from "./motionPathLayerNode";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { ACCENT, MotionPathNode } from "./MotionPathNode";
@@ -101,6 +106,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   );
   const [draft, setDraft] = useState<Draft | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number; segIndex: number } | null>(null);
+  const [lineCursor, setLineCursor] = useState("copy");
   const [hoverNode, setHoverNode] = useState<number | null>(null);
   // Right-click context menu on a path node — same delete actions as the
   // timeline keyframe diamond. The node it was opened on rides along, because
@@ -415,15 +421,21 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
 
   // Ghost "add" affordance: project the cursor onto the path; click inserts.
   const onPathHover = (e: React.PointerEvent) => {
+    const box = layerBoxUnder(e);
+    setLineCursor(box ? getComputedStyle(box).cursor : "copy");
     const c = clientToComp(e);
     const np = nearestPointOnPath(
       c.x,
       c.y,
       abs.map((p) => ({ x: p.ax, y: p.ay })),
     );
-    setGhost(np ? { x: np.x, y: np.y, segIndex: np.segIndex } : null);
+    setGhost(np && !box ? { x: np.x, y: np.y, segIndex: np.segIndex } : null);
   };
   const onPathDown = (e: React.PointerEvent) => {
+    if (layerBoxUnder(e) && pressSelectedLayer(e)) {
+      e.stopPropagation();
+      return;
+    }
     if (!animId) return;
     // Compute the insertion point from the event directly so a click works
     // without (or faster than) a preceding hover.
@@ -525,7 +537,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
             stroke="transparent"
             strokeWidth={14 / scale}
             className="pointer-events-auto"
-            style={{ cursor: "copy" }}
+            style={{ cursor: lineCursor }}
             onPointerMove={onPathHover}
             onPointerLeave={() => setGhost(null)}
             onPointerDown={onPathDown}
