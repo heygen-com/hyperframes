@@ -37,8 +37,8 @@ describe("parsePercentageKeyframes", () => {
   });
 
   it("parses GSAP array-form keyframes at each step's end, as the parser does", () => {
-    // Regression: a multi-point shuttle path authored as `keyframes: [...]` used to
-    // read as null (no `N%` keys) → no motion path. Step i of n ends at (i+1)/n.
+    // A multi-point shuttle path authored as `keyframes: [...]` has no `N%` keys;
+    // step i of n ends at (i+1)/n.
     const out = parsePercentageKeyframes([
       { x: 0, y: 0 },
       { x: 520, y: 120 },

@@ -2020,8 +2020,7 @@ describe("keyframe mutations", () => {
   });
 
   // Array-form keyframes (`keyframes: [{x,y}, …]`) carry no percentages — GSAP
-  // ends step i of n at (i+1)/n. The motion-path overlay drags/adds by percentage,
-  // which used to no-op on array-authored tweens (#puck-b / #shuttle).
+  // ends step i of n at (i+1)/n. The motion-path overlay drags/adds by percentage.
   const ARRAY_KF_SCRIPT =
     "const tl = gsap.timeline();\n" +
     'tl.to("#shuttle", { keyframes: [{ x: 0, y: 0 }, { x: 520, y: 120 }, { x: 1040, y: 0 }, { x: 1480, y: 160 }], duration: 4.4, ease: "none" }, 5.2);';

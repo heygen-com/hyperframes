@@ -7,7 +7,6 @@
 
 import type { GsapAnimation } from "./gsapSerialize.js";
 
-/** GSAP plays a tween, or each step of a keyframe array, for this long when no duration is set. */
 export const GSAP_DEFAULT_DURATION = 0.5;
 
 export const SUPPORTED_PROPS = [

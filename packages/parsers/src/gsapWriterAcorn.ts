@@ -1207,7 +1207,6 @@ function convertArrayKeyframesToObject(script: string, target: Node): string {
     return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recordToCode(record)}`;
   });
   const ms = new MagicString(script);
-  // Array steps play linearly; percentage segments default to power1.inOut.
   ms.overwrite(
     kfPropNode.value.start,
     kfPropNode.value.end,

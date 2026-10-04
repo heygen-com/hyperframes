@@ -36,7 +36,6 @@ export function resolveTweenStart(animation: GsapAnimation): number | null {
   return null;
 }
 
-/** How long GSAP plays the tween: its duration, or GSAP's default when none is set. */
 export function resolveTweenDuration(animation: GsapAnimation): number {
   return animation.duration ?? GSAP_DEFAULT_DURATION;
 }

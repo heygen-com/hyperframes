@@ -67,20 +67,12 @@ export function buildExtendedKeyframes(
   const newStart = Math.min(oldStart, currentTime);
   const newEnd = Math.max(oldStart + oldDuration, currentTime);
   const newDuration = roundTo3(newEnd - newStart);
-  const runEase = writeEase;
   const oldRunEase = runEaseOf(anim);
-  const toPct = (absoluteTime: number) =>
-    newDuration > 0
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            Math.round(
-              progressAtTime(runEase, ((absoluteTime - newStart) / newDuration) * 100) * 10,
-            ) / 10,
-          ),
-        )
-      : 0;
+  const toPct = (absoluteTime: number) => {
+    if (newDuration <= 0) return 0;
+    const progress = progressAtTime(writeEase, ((absoluteTime - newStart) / newDuration) * 100);
+    return Math.max(0, Math.min(100, Math.round(progress * 10) / 10));
+  };
   const stops = anim.keyframes?.keyframes ?? [];
   const rescaled: GsapPercentageKeyframe[] = stops.map((stop) => ({
     percentage: toPct(oldStart + (timeAtProgress(oldRunEase, stop.percentage) / 100) * oldDuration),
