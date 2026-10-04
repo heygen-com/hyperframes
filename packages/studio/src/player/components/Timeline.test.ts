@@ -499,6 +499,54 @@ describe("Timeline provider boundary", () => {
     act(() => root.unmount());
   });
 
+  // An agent writes music alternatives muted; the author unmutes one and must be
+  // able to mute it again from the same row.
+  it("mutes, unmutes and mutes an audio track again from its header", () => {
+    const host = createSizedTimelineHost(640);
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [{ id: "music-b", tag: "audio", start: 0, duration: 4, track: 0, hidden: true }],
+    });
+    const onToggleTrackHidden = vi.fn((track: number, hidden: boolean) => {
+      usePlayerStore.setState({
+        elements: usePlayerStore
+          .getState()
+          .elements.map((el) => (el.track === track ? { ...el, hidden } : el)),
+      });
+    });
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        React.createElement(
+          TimelineEditProvider,
+          { value: { onToggleTrackHidden } },
+          React.createElement(Timeline),
+        ),
+      );
+    });
+    act(() => {});
+
+    const press = (label: string) => {
+      const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+      if (!button) throw new Error(`Expected a "${label}" button`);
+      act(() => button.click());
+    };
+    press("Unmute track 1");
+    press("Mute track 1");
+    press("Unmute track 1");
+    press("Mute track 1");
+
+    expect(onToggleTrackHidden.mock.calls.map((call) => call[1])).toEqual([
+      false,
+      true,
+      false,
+      true,
+    ]);
+    expect(usePlayerStore.getState().elements[0]?.hidden).toBe(true);
+    act(() => root.unmount());
+  });
+
   it("splits all tracks once when shift-clicking the timeline with the razor", () => {
     const host = createSizedTimelineHost(640);
     usePlayerStore.setState({

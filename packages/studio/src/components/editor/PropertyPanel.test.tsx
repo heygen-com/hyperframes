@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PropertyPanelProps } from "./propertyPanelHelpers";
+import type { TimelineEditCallbacks } from "../../player/components/timelineCallbacks";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -235,7 +236,13 @@ async function renderPanel(
   flatEnabled: boolean,
   elementOverride: NonNullable<PropertyPanelProps["element"]> = baseElement(),
   propsOverride: Partial<PropertyPanelProps> = {},
-  currentTime?: number,
+  options: {
+    currentTime?: number;
+    selectedElementId?: string;
+    timelineEdit?: TimelineEditCallbacks;
+    refreshSelection?: (selection: unknown) => void;
+    selectionRef?: { current: unknown };
+  } = {},
 ) {
   vi.resetModules();
   vi.doMock("./manualEditingAvailability", async () => {
@@ -244,32 +251,55 @@ async function renderPanel(
     );
     return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: flatEnabled };
   });
-  // Seed the playhead on the SAME store instance PropertyPanel.tsx will read via
-  // usePlayerStore (module-fresh since the resetModules() above) — must happen
-  // before PropertyPanel is imported/rendered so its initial render sees it.
-  if (currentTime !== undefined) {
-    const { usePlayerStore } = await import("../../player/store/playerStore");
-    usePlayerStore.getState().setCurrentTime(currentTime);
+  vi.doMock("../../contexts/DomEditContext", async () => {
+    const actual = await vi.importActual<typeof import("../../contexts/DomEditContext")>(
+      "../../contexts/DomEditContext",
+    );
+    const { refreshSelection: refresh, selectionRef } = options;
+    return refresh && selectionRef
+      ? {
+          ...actual,
+          useDomEditActionsContextOptional: () => ({ refreshDomEditSelectionFromPreview: refresh }),
+          useDomEditSelectionContextOptional: () => ({ domEditSelectionRef: selectionRef }),
+        }
+      : actual;
+  });
+  // Seed the playhead and selection on the same store instance PropertyPanel.tsx
+  // reads (module-fresh after the resetModules() above), before it is imported so
+  // its first render sees them.
+  const { usePlayerStore } = await import("../../player/store/playerStore");
+  if (options.currentTime !== undefined) {
+    usePlayerStore.getState().setCurrentTime(options.currentTime);
   }
+  if (options.selectedElementId)
+    usePlayerStore.setState({ selectedElementId: options.selectedElementId });
   const { PropertyPanel } = await import("./PropertyPanel");
+  const { TimelineEditProvider } = await import("../../contexts/TimelineEditContext");
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  // Only the props the render path touches are supplied; the rest are unused at
-  // mount (handlers fire on interaction), so cast a minimal object to the full
-  // props shape rather than stubbing all ~15 required fields.
-  const props = {
-    element: elementOverride,
-    assets: [],
-    onSetStyle: vi.fn(),
-    onSetText: vi.fn(),
-    onSetAttributeLive: vi.fn(),
-    ...propsOverride,
-  } as unknown as PropertyPanelProps;
-  act(() => {
-    root.render(<PropertyPanel {...props} />);
-  });
-  return { host, root };
+  const render = (element: NonNullable<PropertyPanelProps["element"]>) => {
+    // Only the props the render path touches are supplied; the rest are unused at
+    // mount (handlers fire on interaction), so cast a minimal object to the full
+    // props shape rather than stubbing all ~15 required fields.
+    const props = {
+      element,
+      assets: [],
+      onSetStyle: vi.fn(),
+      onSetText: vi.fn(),
+      onSetAttributeLive: vi.fn(),
+      ...propsOverride,
+    } as unknown as PropertyPanelProps;
+    act(() => {
+      root.render(
+        <TimelineEditProvider value={options.timelineEdit ?? {}}>
+          <PropertyPanel {...props} />
+        </TimelineEditProvider>,
+      );
+    });
+  };
+  render(elementOverride);
+  return { host, root, render };
 }
 
 // renderPanel resetModules()+dynamic-imports PropertyPanel (needed for a fresh
@@ -561,7 +591,7 @@ describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan cohe
         true,
         inferredMotionElement(),
         { gsapAnimations: [INFERRED_TIMING_ANIMATION], onSeekToTime },
-        2,
+        { currentTime: 2 },
       );
       openFlatGroup(host, "Layout");
       const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
@@ -606,7 +636,7 @@ describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up f
         true,
         inferredMotionElement(),
         { gsapAnimations: [INFERRED_TIMING_ANIMATION] },
-        3.5,
+        { currentTime: 3.5 },
       );
       openFlatGroup(host, "Layout");
       const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
@@ -643,7 +673,7 @@ describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up f
         true,
         inferredMotionElement(),
         { gsapAnimations: [INFERRED_TIMING_ANIMATION], onSeekToTime },
-        3.5,
+        { currentTime: 3.5 },
       );
       openFlatGroup(host, "Layout");
       const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
@@ -1033,6 +1063,98 @@ describe("PropertyPanel — Motion is for things that move", () => {
       // transform, opacity or box for. Showing it was the panel gating on
       // handler presence rather than on the element.
       expect(titles.some((t) => t.includes("Motion"))).toBe(false);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "offers a mute on an audible audio clip and toggles it through the timeline",
+    async () => {
+      const onToggleElementHidden = vi.fn();
+      const { host, root } = await renderPanel(
+        true,
+        audioClipElement(),
+        { onToggleElementHidden },
+        { selectedElementId: "vo-1" },
+      );
+      act(() => host.querySelector<HTMLElement>('button[aria-label="Mute element"]')!.click());
+      expect(onToggleElementHidden).toHaveBeenCalledWith("vo-1", true);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  // A bus has no timeline row, so the panel is its only mute; it must go both ways.
+  it(
+    "mutes, unmutes and mutes an audio group from the panel header",
+    async () => {
+      const bus = (hidden: boolean) => {
+        const element = audioBusElement();
+        return {
+          ...element,
+          dataAttributes: { ...element.dataAttributes, ...(hidden ? { hidden: "" } : {}) },
+        };
+      };
+      let hidden = true;
+      const onSetAudioGroupAttributeQuiet = vi.fn(
+        async (_id: string, _attr: string, value: string | null, _label: string) => {
+          hidden = value !== null;
+        },
+      );
+      // The panel re-reads its selection after the write; nothing else re-renders it here.
+      const { host, root, render } = await renderPanel(
+        true,
+        bus(true),
+        {},
+        {
+          timelineEdit: { onSetAudioGroupAttributeQuiet },
+          selectionRef: { current: bus(true) },
+          refreshSelection: () => render(bus(hidden)),
+        },
+      );
+      const press = async (label: string) => {
+        const button = host.querySelector<HTMLElement>(`button[aria-label="${label}"]`);
+        if (!button) throw new Error(`Expected a "${label}" button`);
+        await act(async () => button.click());
+      };
+      await press("Unmute element");
+      await press("Mute element");
+      await press("Unmute element");
+      expect(onSetAudioGroupAttributeQuiet.mock.calls).toEqual([
+        ["voiceover", "data-hidden", null, "Unmute element"],
+        ["voiceover", "data-hidden", "", "Mute element"],
+        ["voiceover", "data-hidden", null, "Unmute element"],
+      ]);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "re-reads the current selection, not the muted bus, once the write lands",
+    async () => {
+      let land = () => {};
+      const onSetAudioGroupAttributeQuiet = vi.fn(
+        () => new Promise<void>((resolve) => (land = resolve)),
+      );
+      const selectionRef: { current: unknown } = { current: audioBusElement() };
+      const refreshSelection = vi.fn();
+      const { host, root } = await renderPanel(
+        true,
+        audioBusElement(),
+        {},
+        {
+          timelineEdit: { onSetAudioGroupAttributeQuiet },
+          selectionRef,
+          refreshSelection,
+        },
+      );
+      act(() => host.querySelector<HTMLElement>('button[aria-label="Mute element"]')!.click());
+      const next = audioClipElement();
+      selectionRef.current = next;
+      await act(async () => land());
+      expect(refreshSelection.mock.calls).toEqual([[next]]);
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,
