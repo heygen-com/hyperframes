@@ -152,7 +152,7 @@ it("redraws a node whose keyframe changes only its size", () => {
   }
 });
 
-/** A layer laid out at (960, 540), 240 x 160, with `css` inline and `percent` in GSAP's cache. */
+/** A layer laid out at (960, 540), 240 x 160, with `css` inline and `percent` in the cache GSAP's parse leaves. */
 function layer(css: Partial<CSSStyleDeclaration>, percent?: Record<string, number>) {
   const el = document.body.appendChild(document.createElement("div"));
   Object.assign(el.style, css);
@@ -164,10 +164,10 @@ function layer(css: Partial<CSSStyleDeclaration>, percent?: Record<string, numbe
     offsetParent: null,
   };
   for (const [key, value] of Object.entries(box)) Object.defineProperty(el, key, { value });
-  return percent ? Object.assign(el, { _gsap: percent }) : el;
+  return percent ? Object.assign(el, { _gsap: { x: 0, y: 0, ...percent } }) : el;
 }
 
-it("anchors a layer that xPercent/yPercent -50 centres (CSS translate -50% folds into them) on its centre", () => {
+it("anchors a layer GSAP centres with xPercent/yPercent -50 on its centre", () => {
   const el = layer(
     { position: "absolute", left: "50%", top: "50%" },
     { xPercent: -50, yPercent: -50 },
@@ -188,13 +188,18 @@ it("moves a resized layer's centre by half the change from a set left, against i
   expect(elementHome(layer({}))).toMatchObject({ x: 1080, ax: 0, ay: 0 });
 });
 
+const resolved = (style: CSSStyleDeclaration) =>
+  (style.translate ?? "").replace(/var\((--[\w-]+)\)/g, (_, name) =>
+    style.getPropertyValue(name),
+  ) || "none";
+
 /** Computes `translate` as Chromium does (happy-dom does not), so GSAP's transform parse would fold it. */
 function computeTranslate() {
   const real = window.getComputedStyle.bind(window);
   const computed = (node: Element, pseudo?: string | null) =>
     new Proxy(real(node, pseudo), {
       get(style, key) {
-        if (key === "translate") return (node as HTMLElement).style.translate || "none";
+        if (key === "translate") return resolved((node as HTMLElement).style);
         if (key === "scale" || key === "rotate") return "none";
         const value = Reflect.get(style, key);
         return typeof value === "function" ? value.bind(style) : value;
@@ -206,19 +211,36 @@ function computeTranslate() {
   );
 }
 
-it("leaves the plain CSS translate Studio wrote alone, and reads the percent GSAP owns (real GSAP)", () => {
+it("leaves a layer's CSS translate alone and anchors where GSAP's parse will put it (real GSAP)", () => {
   vi.stubGlobal("gsap", gsap);
   computeTranslate();
   try {
     const offset = "var(--hf-studio-offset-x) var(--hf-studio-offset-y)";
-    for (const translate of ["40px 30px", offset]) {
+    const cases: [string, number, number][] = [
+      // GSAP folds these into x, which a created path sets.
+      ["40px 30px", 1080, 620],
+      [offset, 1080, 620],
+      // Minus half the size becomes xPercent/yPercent -50.
+      ["-50% -50%", 960, 540],
+      ["-120px -80px", 960, 540],
+    ];
+    for (const [translate, x, y] of cases) {
       const el = layer({ position: "absolute", left: "10px", top: "10px", translate });
       el.style.setProperty("--hf-studio-offset-x", "40px");
       el.style.setProperty("--hf-studio-offset-y", "30px");
-      const home = elementHome(el);
+      expect(elementHome(el), translate).toMatchObject({ x, y });
       expect([el.style.translate, el.style.transform]).toEqual([translate, ""]);
-      if (translate === offset) expect(home).toMatchObject({ x: 1120, y: 650 });
     }
+    // A drag's offset on a layer GSAP already parsed composes with its transform.
+    const dragged = layer({ position: "absolute", left: "10px", top: "10px" });
+    gsap.set(dragged, { x: 20 });
+    dragged.style.setProperty("--hf-studio-offset-x", "40px");
+    dragged.style.setProperty("--hf-studio-offset-y", "30px");
+    dragged.style.translate = offset;
+    expect(elementHome(dragged)).toMatchObject({ x: 1120, y: 650 });
+    // After clearProps GSAP marks its cache uncache and its next parse folds the translate again.
+    const css = { position: "absolute", left: "10px", top: "10px", translate: "40px 30px" };
+    expect(elementHome(layer(css, { uncache: 1 }))).toMatchObject({ x: 1080, y: 620 });
     const owned = layer({ position: "absolute", left: "50%", top: "50%" });
     gsap.set(owned, { xPercent: -50, yPercent: -50 });
     expect(elementHome(owned)).toMatchObject({ x: 960, y: 540, ax: 0, ay: 0 });

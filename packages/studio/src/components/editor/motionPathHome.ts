@@ -17,6 +17,14 @@ function transformTranslate(el: HTMLElement): { x: number; y: number } {
   return { x: 0, y: 0 };
 }
 
+function cssTranslate(el: HTMLElement): [number, number] {
+  const raw = el.ownerDocument?.defaultView?.getComputedStyle(el).translate ?? "none";
+  const [x = "0", y = "0"] = raw === "none" ? [] : raw.split(" ");
+  const px = (v: string, size: number) =>
+    v.endsWith("%") ? (Number.parseFloat(v) / 100) * size : Number.parseFloat(v) || 0;
+  return [px(x, el.offsetWidth), px(y, el.offsetHeight)];
+}
+
 /** Centre shift per px grown: 0.5 from a set left/top, -0.5 from a set right/bottom, plus the percent.
  *  ponytail: in-flow layers get 0 (layout may centre them); read their anchor if one draws off. */
 function growShares(el: HTMLElement, px: number, py: number): { ax: number; ay: number } {
@@ -46,16 +54,21 @@ export function elementHome(el: HTMLElement): MotionPathHome {
     if (!parent || parent.hasAttribute("data-composition-id")) break;
     node = parent;
   }
-  // GSAP's own cache, set once it owns the transform: asking GSAP folds a plain CSS translate into it.
-  const cache = (el as { _gsap?: { xPercent?: unknown; yPercent?: unknown } })._gsap;
-  const percent = (p: unknown) => (Number(p) || 0) / 100;
-  const [px, py] = [percent(cache?.xPercent), percent(cache?.yPercent)];
-  let x = left + el.offsetWidth * (0.5 + px);
-  let y = top + el.offsetHeight * (0.5 + py);
+  // A translate composes once GSAP has parsed the layer; before, its parse makes minus half the size
+  // xPercent -50 and folds the rest into x, which a path sets (gsap.js _parseTransform).
+  const cache = (
+    el as { _gsap?: { x?: unknown; uncache?: unknown; xPercent?: unknown; yPercent?: unknown } }
+  )._gsap;
+  const parsed = cache !== undefined && "x" in cache && !cache.uncache;
+  const [tx, ty] = cssTranslate(el);
+  const share = (cached: unknown, t: number, size: number) =>
+    parsed ? (Number(cached) || 0) / 100 : t && Math.round(size / 2) === Math.round(-t) ? -0.5 : 0;
+  const [px, py] = [
+    share(cache?.xPercent, tx, el.offsetWidth),
+    share(cache?.yPercent, ty, el.offsetHeight),
+  ];
+  const x = left + el.offsetWidth * (0.5 + px) + (parsed ? tx : 0);
+  const y = top + el.offsetHeight * (0.5 + py) + (parsed ? ty : 0);
   const { ax, ay } = growShares(el, px, py);
-  if ((el.style.translate ?? "").includes("var(")) {
-    x += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-x")) || 0;
-    y += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
-  }
   return { x, y, w: el.offsetWidth, h: el.offsetHeight, ax, ay };
 }
