@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockResizeObserver, reportResize } from "../../hooks/resizeObserverTestUtils";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
+import { createHappyDomRootHarness } from "./testRootHarness";
 import { VideoThumbnail } from "./VideoThumbnail";
 
 vi.mock("../lib/thumbnailVideoDecoder", () => ({ decodeVideoThumbnail: vi.fn() }));
@@ -15,28 +15,26 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 });
 
 let host: HTMLDivElement;
-let root: Root | null = null;
 
 beforeEach(() => {
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
-  host = document.createElement("div");
-  document.body.append(host);
+  host = document.body.appendChild(document.createElement("div"));
 });
 
 afterEach(() => {
-  act(() => root?.unmount());
-  root = null;
   thumbnailScheduler.invalidateProject("p");
   vi.clearAllMocks();
-  document.body.innerHTML = "";
 });
+
+// Registered after the reset above, so each test's strip unmounts before the cache is cleared.
+const harness = createHappyDomRootHarness();
 
 async function render(width = 0, height = 40) {
   Object.defineProperty(host, "clientWidth", { configurable: true, value: width });
   Object.defineProperty(host, "clientHeight", { configurable: true, value: height });
-  root = createRoot(host);
+  const root = harness.mount(host);
   await act(async () => {
-    root!.render(
+    root.render(
       <VideoThumbnail
         videoSrc="/api/projects/p/preview/assets/clip.mp4"
         label=""

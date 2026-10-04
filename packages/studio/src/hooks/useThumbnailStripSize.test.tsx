@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHappyDomRootHarness } from "../player/components/testRootHarness";
 import { NearScreenIntersectionObserver } from "./intersectionObserverTestUtils";
 import { MockResizeObserver, reportResize } from "./resizeObserverTestUtils";
 import { useThumbnailStripSize } from "./useThumbnailStripSize";
@@ -47,25 +48,18 @@ it("does not re-render the strip when the observer reports the size it already h
   }
 });
 
-it("re-measures every strip in one shared frame on a scroll, so a full timeline lays out once", async () => {
-  const originalIntersectionObserver = globalThis.IntersectionObserver;
-  globalThis.IntersectionObserver =
-    NearScreenIntersectionObserver as unknown as typeof IntersectionObserver;
+describe("on a scroll", () => {
   const originalResizeObserver = globalThis.ResizeObserver;
-  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
   const frames: FrameRequestCallback[] = [];
-  const requestFrame = vi
-    .spyOn(window, "requestAnimationFrame")
-    .mockImplementation((frame) => frames.push(frame));
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
+  const harness = createHappyDomRootHarness();
+  let host: HTMLDivElement;
+  let root: ReturnType<typeof createRoot>;
   let left = 0;
-  const rect = vi
-    .spyOn(Element.prototype, "getBoundingClientRect")
-    .mockImplementation(() => ({ left }) as DOMRect);
-  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_000_000);
+  let renders = 0;
+
   function Strip() {
+    renders += 1;
     const [size, ref] = useThumbnailStripSize();
     return (
       <div>
@@ -73,119 +67,77 @@ it("re-measures every strip in one shared frame on a scroll, so a full timeline 
       </div>
     );
   }
-  try {
-    await act(async () =>
-      root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)),
+
+  const mountStrips = (count: number) =>
+    act(async () =>
+      root.render(Array.from({ length: count }, (_, index) => <Strip key={index} />)),
     );
+
+  const scrollAndSettle = () => {
+    act(() => host.dispatchEvent(new Event("scroll")));
+    act(() => frames.splice(0).forEach((frame) => frame(0)));
+  };
+
+  beforeEach(() => {
+    globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+    globalThis.IntersectionObserver =
+      NearScreenIntersectionObserver as unknown as typeof IntersectionObserver;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => frames.push(frame));
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      () => ({ left }) as DOMRect,
+    );
+    left = 0;
+    renders = 0;
+    host = document.body.appendChild(document.createElement("div"));
+    root = harness.mount(host);
+  });
+
+  afterEach(() => {
+    frames.length = 0;
+    vi.restoreAllMocks();
+    globalThis.ResizeObserver = originalResizeObserver;
+    globalThis.IntersectionObserver = originalIntersectionObserver;
+  });
+
+  it("re-measures every near strip in one shared frame, so a full timeline lays out once", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_000_000);
+    await mountStrips(50);
 
     left = -10_000;
     act(() => host.dispatchEvent(new Event("scroll")));
-    expect(requestFrame).toHaveBeenCalledTimes(1);
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
     act(() => frames.splice(0).forEach((frame) => frame(0)));
 
     const starts = [...host.querySelectorAll("[data-in-view-start]")].map((strip) =>
       strip.getAttribute("data-in-view-start"),
     );
     expect(starts).toEqual(Array(50).fill("9216"));
-  } finally {
-    rect.mockRestore();
-    width.mockRestore();
-    act(() => root.unmount());
-    host.remove();
-    requestFrame.mockRestore();
-    globalThis.ResizeObserver = originalResizeObserver;
-    globalThis.IntersectionObserver = originalIntersectionObserver;
-  }
-});
+  });
 
-it("does not re-render a strip wholly on screen when a scroll moves it", async () => {
-  const originalIntersectionObserver = globalThis.IntersectionObserver;
-  globalThis.IntersectionObserver =
-    NearScreenIntersectionObserver as unknown as typeof IntersectionObserver;
-  const originalResizeObserver = globalThis.ResizeObserver;
-  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
-  const frames: FrameRequestCallback[] = [];
-  const requestFrame = vi
-    .spyOn(window, "requestAnimationFrame")
-    .mockImplementation((frame) => frames.push(frame));
-  let left = 100;
-  const rect = vi
-    .spyOn(Element.prototype, "getBoundingClientRect")
-    .mockImplementation(() => ({ left }) as DOMRect);
-  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  let renders = 0;
-  function Strip() {
-    renders += 1;
-    const [, ref] = useThumbnailStripSize();
-    return (
-      <div>
-        <div ref={ref} />
-      </div>
-    );
-  }
-  try {
-    await act(async () => root.render(<Strip />));
+  it("does not re-render a strip wholly on screen when it moves", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    left = 100;
+    await mountStrips(1);
     const settled = renders;
 
     left = 700;
-    act(() => host.dispatchEvent(new Event("scroll")));
-    act(() => frames.splice(0).forEach((frame) => frame(0)));
+    scrollAndSettle();
 
     expect(renders).toBe(settled);
-  } finally {
-    act(() => root.unmount());
-    host.remove();
-    rect.mockRestore();
-    width.mockRestore();
-    requestFrame.mockRestore();
-    globalThis.ResizeObserver = originalResizeObserver;
-    globalThis.IntersectionObserver = originalIntersectionObserver;
-  }
-});
+  });
 
-it("reads no strip far from the screen on a scroll, however many clips the timeline mounts", async () => {
-  const originalResizeObserver = globalThis.ResizeObserver;
-  const originalIntersectionObserver = globalThis.IntersectionObserver;
-  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
-  globalThis.IntersectionObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  } as unknown as typeof IntersectionObserver;
-  const frames: FrameRequestCallback[] = [];
-  const requestFrame = vi
-    .spyOn(window, "requestAnimationFrame")
-    .mockImplementation((frame) => frames.push(frame));
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  function Strip() {
-    const [, ref] = useThumbnailStripSize();
-    return (
-      <div>
-        <div ref={ref} />
-      </div>
-    );
-  }
-  try {
-    await act(async () =>
-      root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)),
-    );
-    const reads = vi.spyOn(Element.prototype, "getBoundingClientRect");
+  it("reads no strip far from the screen, however many clips the timeline mounts", async () => {
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver;
+    await mountStrips(50);
+    const reads = vi.mocked(Element.prototype.getBoundingClientRect);
+    reads.mockClear();
 
-    act(() => host.dispatchEvent(new Event("scroll")));
-    act(() => frames.splice(0).forEach((frame) => frame(0)));
+    scrollAndSettle();
 
     expect(reads).not.toHaveBeenCalled();
-    reads.mockRestore();
-  } finally {
-    act(() => root.unmount());
-    host.remove();
-    requestFrame.mockRestore();
-    globalThis.ResizeObserver = originalResizeObserver;
-    globalThis.IntersectionObserver = originalIntersectionObserver;
-  }
+  });
 });
