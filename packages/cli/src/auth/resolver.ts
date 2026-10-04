@@ -13,8 +13,7 @@
  * Expiry policy: an OAuth access_token whose `expires_at` is in the
  * past (60s skew) is considered expired. If a `refresh_token` is also
  * present, callers can still use it via `refreshable: true`. Otherwise
- * the api_key (if any) wins, else `ErrLoginExpired`: an expired login is
- * not the same as never having signed in.
+ * the api_key (if any) wins, else `ErrLoginExpired`, not `ErrNotConfigured`.
  */
 
 import { isHeaderSafe, readStore } from "./store.js";
