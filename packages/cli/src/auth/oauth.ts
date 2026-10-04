@@ -613,10 +613,9 @@ async function persistOAuth(tokens: OAuthTokens, opts: { refreshed?: string } = 
   try {
     const { credentials } = await readStore();
     existing = credentials;
-  } catch {
-    // Treat unreadable existing file as empty — we're about to
-    // overwrite the OAuth block anyway.
-    existing = {};
+  } catch (err) {
+    // A fresh login overwrites the OAuth block anyway; a refresh must not guess.
+    if (opts.refreshed !== undefined) throw err;
   }
 
   if (opts.refreshed !== undefined && existing.oauth?.refresh_token !== opts.refreshed) {

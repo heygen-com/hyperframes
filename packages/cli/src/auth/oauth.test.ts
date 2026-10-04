@@ -230,6 +230,16 @@ describe("auth/oauth", () => {
       expect(credentials.user?.email).toBe("b@example.com");
     });
 
+    it("reports an unreadable credentials file on refresh instead of a changed login", async () => {
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(path, "{not json", { mode: 0o600 });
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
+      await expect(refreshTokens("old_rt", { fetchImpl })).rejects.toSatisfy(
+        (err) => isAuthError(err) && err.code === "INVALID_STORE",
+      );
+      expect(await fs.readFile(path, "utf8")).toBe("{not json");
+    });
+
     it("preserves an existing api_key when persisting refreshed oauth", async () => {
       await writeStore({
         api_key: "hg_keep",
