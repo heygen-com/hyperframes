@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { MockResizeObserver, reportResize } from "./resizeObserverTestUtils";
 import { useThumbnailStripSize } from "./useThumbnailStripSize";
 
@@ -42,6 +42,38 @@ it("does not re-render the strip when the observer reports the size it already h
   } finally {
     act(() => root.unmount());
     host.remove();
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
+});
+
+it("re-measures every strip in one shared frame on a scroll, so a full timeline lays out once", () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const frames: FrameRequestCallback[] = [];
+  const requestFrame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((frame) => frames.push(frame));
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  function Strip() {
+    const [, ref] = useThumbnailStripSize();
+    return (
+      <div>
+        <div ref={ref} />
+      </div>
+    );
+  }
+  try {
+    act(() => root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)));
+
+    act(() => host.dispatchEvent(new Event("scroll")));
+
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+    requestFrame.mockRestore();
     globalThis.ResizeObserver = originalResizeObserver;
   }
 });

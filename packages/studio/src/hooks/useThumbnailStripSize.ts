@@ -1,6 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { flushSync } from "react-dom";
-import { useMountEffect } from "./useMountEffect";
 
 export interface StripSize {
   width: number;
@@ -35,10 +34,75 @@ const merge = (patch: Partial<StripSize>) => (prev: StripSize) => {
     : next;
 };
 
-/**
- * Size of the thumbnail's parent and its span in the window. Scroll and resize keep it current; `watchGap` goes on
- * the strip's unmounted ends and re-measures whenever one nears the screen, whatever moved it.
- */
+type Apply = (patch: Partial<StripSize>) => void;
+
+// Every strip shares one listener set and one frame: all positions are read, then all updates
+// commit together, so a timeline of many clips lays out once per frame, not once per clip.
+const strips = new Map<Element, Apply>();
+let users = 0;
+let frame = 0;
+let shared: { resize: ResizeObserver; gaps: IntersectionObserver | null } | null = null;
+
+const applyAll = (updates: [Apply, Partial<StripSize>][]) =>
+  flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
+
+const refreshAll = () => {
+  frame = 0;
+  applyAll([...strips].map(([target, apply]) => [apply, spanInView(target)]));
+};
+
+const scheduleRefresh = () => {
+  if (!frame) frame = requestAnimationFrame(refreshAll);
+};
+
+const onResize = (entries: ResizeObserverEntry[]) =>
+  applyAll(
+    entries.flatMap((entry) => {
+      const apply = strips.get(entry.target);
+      if (!apply) return [];
+      const { width, height } = entry.contentRect;
+      return [[apply, { width, height, ...spanInView(entry.target) }]];
+    }),
+  );
+
+function acquire() {
+  if (users++ === 0) {
+    shared = {
+      resize: new ResizeObserver(onResize),
+      gaps:
+        typeof IntersectionObserver === "undefined"
+          ? null
+          : new IntersectionObserver(
+              (entries) => entries.some((entry) => entry.isIntersecting) && scheduleRefresh(),
+              GAP_WARNING,
+            ),
+    };
+    window.addEventListener("scroll", scheduleRefresh, { capture: true, passive: true });
+  }
+  return shared!;
+}
+
+function release() {
+  if (--users > 0) return;
+  shared?.resize.disconnect();
+  shared?.gaps?.disconnect();
+  shared = null;
+  window.removeEventListener("scroll", scheduleRefresh, { capture: true });
+  cancelAnimationFrame(frame);
+  frame = 0;
+}
+
+const watchGap = (gap: HTMLDivElement | null) => {
+  if (!gap) return;
+  const { gaps } = acquire();
+  gaps?.observe(gap);
+  return () => {
+    gaps?.unobserve(gap);
+    release();
+  };
+};
+
+/** Size of the thumbnail's parent and its span in the window, kept current on resize, scroll and moves. */
 export function useThumbnailStripSize() {
   const [size, setSize] = useState<StripSize>({
     width: 0,
@@ -46,75 +110,22 @@ export function useThumbnailStripSize() {
     inViewStart: 0,
     inViewEnd: 0,
   });
-  const targetRef = useRef<Element | null>(null);
-  const frameRef = useRef(0);
-  const cleanupRef = useRef<(() => void) | null>(null);
 
-  const remeasure = useCallback(() => {
-    if (frameRef.current) return;
-    frameRef.current = requestAnimationFrame(() => {
-      frameRef.current = 0;
-      const target = targetRef.current;
-      if (target) flushSync(() => setSize(merge(spanInView(target))));
-    });
+  const ref = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return;
+    const target = element.parentElement ?? element;
+    const { resize } = acquire();
+    strips.set(target, (patch) => setSize(merge(patch)));
+    setSize(
+      merge({ width: target.clientWidth, height: target.clientHeight, ...spanInView(target) }),
+    );
+    resize.observe(target);
+    return () => {
+      resize.unobserve(target);
+      strips.delete(target);
+      release();
+    };
   }, []);
-
-  const [gaps] = useState(() =>
-    typeof IntersectionObserver === "undefined"
-      ? null
-      : new IntersectionObserver(
-          (entries) => entries.some((entry) => entry.isIntersecting) && remeasure(),
-          GAP_WARNING,
-        ),
-  );
-
-  const watchGap = useCallback(
-    (gap: HTMLDivElement | null) => {
-      if (!gap || !gaps) return;
-      gaps.observe(gap);
-      return () => gaps.unobserve(gap);
-    },
-    [gaps],
-  );
-
-  const ref = useCallback(
-    (element: HTMLDivElement | null) => {
-      cleanupRef.current?.();
-      cleanupRef.current = null;
-      targetRef.current = null;
-      if (!element) return;
-      const target = element.parentElement ?? element;
-      targetRef.current = target;
-      setSize(
-        merge({ width: target.clientWidth, height: target.clientHeight, ...spanInView(target) }),
-      );
-      const observer = new ResizeObserver(([entry]) =>
-        flushSync(() =>
-          setSize(
-            merge({
-              width: entry.contentRect.width,
-              height: entry.contentRect.height,
-              ...spanInView(target),
-            }),
-          ),
-        ),
-      );
-      observer.observe(target);
-      window.addEventListener("scroll", remeasure, { capture: true, passive: true });
-      cleanupRef.current = () => {
-        observer.disconnect();
-        window.removeEventListener("scroll", remeasure, { capture: true });
-      };
-    },
-    [remeasure],
-  );
-
-  useMountEffect(() => () => {
-    cleanupRef.current?.();
-    cancelAnimationFrame(frameRef.current);
-    frameRef.current = 0;
-    gaps?.disconnect();
-  });
 
   return [size, ref, watchGap] as const;
 }
