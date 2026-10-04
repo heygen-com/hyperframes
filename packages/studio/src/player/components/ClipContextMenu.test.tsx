@@ -160,6 +160,37 @@ describe("ClipContextMenu tools", () => {
     return { labels, unmount: () => act(() => root.unmount()) };
   }
 
+  function splitRow(splitShortcut?: string) {
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <ClipContextMenu
+          x={10}
+          y={10}
+          element={video}
+          currentTime={1}
+          onClose={vi.fn()}
+          onSplit={vi.fn()}
+          onDelete={vi.fn()}
+          splitShortcut={splitShortcut}
+        />,
+      ),
+    );
+    const row = Array.from(document.body.querySelectorAll("[role=menuitem]")).find((item) =>
+      item.textContent?.startsWith("Split"),
+    );
+    const text = row?.textContent;
+    act(() => root.unmount());
+    host.remove();
+    return text;
+  }
+
+  it("hints Split with Studio's own S, or with the key the host binds Split to", () => {
+    expect(splitRow()).toBe("Split at 1.00sS");
+    expect(splitRow("⌥S")).toBe("Split at 1.00s⌥S");
+  });
+
   it("offers Freeze frame and the attribute tools by default", () => {
     const { labels, unmount } = menuWith(undefined);
     expect(labels().some((label) => label?.startsWith("Freeze frame"))).toBe(true);

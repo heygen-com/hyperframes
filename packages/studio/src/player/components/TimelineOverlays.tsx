@@ -190,6 +190,7 @@ export function TimelineClipMenuOverlay() {
       onDuplicate={overlay.onDuplicateClip}
       canPaste={overlay.canPasteClip?.() ?? false}
       hostItems={hostItems}
+      splitShortcut={overlay.splitShortcut}
     />
   );
 }

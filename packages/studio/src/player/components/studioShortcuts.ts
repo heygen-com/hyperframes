@@ -19,6 +19,9 @@ export interface ShortcutSection {
 
 const hintKey = (key: string) => key.toUpperCase();
 
+/** Split's key as Studio's own hotkeys bind it; an embedder that binds Split elsewhere passes its own label. */
+export const SPLIT_SHORTCUT_HINT = hintKey(STUDIO_PLAIN_KEYS.split);
+
 /** What PlayerControls' shortcuts panel lists unless an embedder passes its own sections. */
 export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
   {
@@ -51,7 +54,7 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: "⌘C", label: "Copy element" },
       { key: "⌘V", label: "Paste element" },
       { key: "⌘X", label: "Cut element" },
-      { key: hintKey(STUDIO_PLAIN_KEYS.split), label: "Split clip at playhead" },
+      { key: SPLIT_SHORTCUT_HINT, label: "Split clip at playhead" },
       { key: hintKey(STUDIO_PLAIN_KEYS.audioGain), label: "Audio Gain for clips with sound" },
       { key: "⇧Click", label: "Razor tool: split all tracks" },
       { key: "[", label: "Select clips starting before the playhead" },

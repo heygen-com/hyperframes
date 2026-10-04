@@ -43,6 +43,8 @@ export interface TimelineProps
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
   clipMenuItems?: (element: TimelineElement) => readonly TimelineClipMenuItem[];
+  /** The key hint the clip menu shows beside Split, for a host that binds Split to another key. Default: S. */
+  splitShortcut?: string;
   theme?: Partial<TimelineTheme>;
   showAudioEffects?: boolean;
   showKeyframes?: boolean;
