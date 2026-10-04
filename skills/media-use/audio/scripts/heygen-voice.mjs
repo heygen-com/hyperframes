@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { heygenAuthHeaders, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
+import { heygenAuthHeaders, heygenJSON, heygenMessage, loadEnvFromDir } from "./lib/heygen.mjs";
 
 const MEDIA_TYPES = { ".mp3": "audio/mpeg", ".wav": "audio/wav" };
 const POLL_MS = 2_000;
@@ -42,12 +42,15 @@ async function clone(file, name, headers, { sleep, now }) {
 
 async function list(prefix, headers) {
   const mine = [];
+  const seen = new Set();
   let token;
   do {
+    if (token && seen.has(token)) throw new Error(`HeyGen returned page token ${token} twice`);
+    if (token) seen.add(token);
     const query = new URLSearchParams({ type: "private", limit: "100" });
     if (token) query.set("token", token);
     const page = await heygenJSON(`/voices?${query}`, { headers });
-    mine.push(...page.data.filter((v) => v.name.startsWith(prefix)));
+    mine.push(...page.data.filter((v) => (v.name ?? "").startsWith(prefix)));
     token = page.has_more ? page.next_token : null;
   } while (token);
   // ponytail: the list response has no created_at, so one GET per match; bounded by the clone limit.
@@ -57,16 +60,6 @@ async function list(prefix, headers) {
       return { voice_id, name, created_at: data.created_at ?? null };
     }),
   );
-}
-
-// HeyGen errors are {"error":{"message"}}; print that, else the raw body, else our own message.
-function apiMessage(e) {
-  if (!e.body) return e.message;
-  try {
-    return JSON.parse(e.body).error?.message ?? e.body;
-  } catch {
-    return e.body;
-  }
 }
 
 export async function main(
@@ -101,7 +94,7 @@ export async function main(
     }
     return 0;
   } catch (e) {
-    err(apiMessage(e));
+    err(heygenMessage(e));
     return 1;
   }
 }

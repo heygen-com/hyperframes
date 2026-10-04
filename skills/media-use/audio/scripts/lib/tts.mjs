@@ -18,7 +18,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { heygenAuthHeaders, heygenCredential, heygenJSON } from "./heygen.mjs";
+import { heygenAuthHeaders, heygenCredential, heygenJSON, heygenMessage } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 import { synthesizeGemini } from "./gemini-tts.mjs";
 import { geminiConfigured } from "./gemini-auth.mjs";
@@ -350,7 +350,7 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
       : [];
     return { ok: true, words };
   } catch (e) {
-    return { ok: false, words: null, error: e?.message ? String(e.message) : String(e) };
+    return { ok: false, words: null, error: heygenMessage(e) };
   }
 }
 

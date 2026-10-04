@@ -37,7 +37,7 @@ function mockFetch(routes) {
     const queue = routes[key];
     if (!queue) throw new Error(`unexpected request ${key}`);
     const [status, body] = queue.length > 1 ? queue.shift() : queue[0];
-    return new Response(JSON.stringify(body), { status });
+    return new Response(body === undefined ? null : JSON.stringify(body), { status });
   };
 }
 
@@ -142,6 +142,34 @@ test("delete calls DELETE /voices/<id> and exits 0", async () => {
   mockFetch({ "DELETE /voices/vc1": [[200, { data: {} }]] });
   const r = await run(["delete", "vc1"]);
   assert.deepEqual(r, { code: 0, out: "", err: "" });
+});
+
+test("delete exits 0 on a 204 with no body, and escapes the id in the path", async () => {
+  mockFetch({ "DELETE /voices/a%2Fb": [[204]] });
+  const r = await run(["delete", "a/b"]);
+  assert.deepEqual(r, { code: 0, out: "", err: "" });
+});
+
+test("clone falls back to the clone id when the finished voice has no voice_id", async () => {
+  mockFetch({
+    "POST /voices/clone": [[200, { data: { voice_clone_id: "vc9" } }]],
+    "GET /voices/vc9": [[200, { data: { status: "complete" } }]],
+  });
+  const r = await run(["clone", audioFile(), "--name", "Me"]);
+  assert.deepEqual(r, { code: 0, out: '{"voice_id":"vc9"}', err: "" });
+});
+
+test("list skips a nameless voice and stops on a page token HeyGen repeats", async () => {
+  mockFetch({
+    "GET /voices?type=private&limit=100": [
+      [200, { data: [{ voice_id: "n", name: null }], has_more: true, next_token: "t2" }],
+    ],
+    "GET /voices?type=private&limit=100&token=t2": [
+      [200, { data: [], has_more: true, next_token: "t2" }],
+    ],
+  });
+  const r = await run(["list", "--prefix", "desk-"]);
+  assert.deepEqual(r, { code: 1, out: "", err: "HeyGen returned page token t2 twice" });
 });
 
 test("delete prints HeyGen's 404 message verbatim and exits 1", async () => {

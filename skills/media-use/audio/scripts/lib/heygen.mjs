@@ -150,7 +150,19 @@ export async function heygenJSON(path, { method = "GET", headers = {}, body } = 
     const message = `HeyGen ${method} ${path} → HTTP ${res.status}${detail ? `\n${detail.slice(0, 300)}` : ""}`;
     throw Object.assign(new Error(message), { status: res.status, body: detail });
   }
-  return res.json();
+  // A DELETE may answer 204 with no body.
+  const text = await res.text();
+  return text ? JSON.parse(text) : {};
+}
+
+// HeyGen's own words for a failed call: its {"error":{"message"}}, else the raw body, else the error's message.
+export function heygenMessage(e) {
+  if (!e?.body) return e?.message ? String(e.message) : String(e);
+  try {
+    return JSON.parse(e.body).error?.message ?? e.body;
+  } catch {
+    return e.body;
+  }
 }
 
 // Download a (presigned) URL to destPath; returns byte length.

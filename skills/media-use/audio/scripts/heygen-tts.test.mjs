@@ -29,5 +29,10 @@ test("a refused speech prints HeyGen's own message, so a caller can act on it", 
     },
   );
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /Voice not found: vc_gone/);
+  assert.match(run.stderr, /✗ heygen-tts: Voice not found: vc_gone\n/);
+  assert.doesNotMatch(
+    run.stderr,
+    /HTTP 404|"error"/,
+    "HeyGen's message alone, not the raw response",
+  );
 });
