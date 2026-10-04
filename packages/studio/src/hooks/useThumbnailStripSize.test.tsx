@@ -163,6 +163,26 @@ describe("on a scroll", () => {
     expect(renders).toBe(settled);
   });
 
+  it("keeps every tile of a short clip, even far from the screen", async () => {
+    stripWidth = 300;
+    top = 5_000;
+    await mountStrips(1);
+
+    expect(spans()).toEqual(["0-300"]);
+  });
+
+  it("never re-measures a short clip on a scroll", async () => {
+    stripWidth = 300;
+    left = 100;
+    await mountStrips(1);
+    const reads = vi.mocked(Element.prototype.getBoundingClientRect);
+    reads.mockClear();
+
+    scrollTo(50);
+
+    expect(reads).not.toHaveBeenCalled();
+  });
+
   it("mounts nothing for a strip far above or below the screen", async () => {
     top = 5_000;
     await mountStrips(1);

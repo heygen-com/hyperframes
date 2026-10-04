@@ -24,14 +24,18 @@ const GAP_WARNING: IntersectionObserverInit & { scrollMargin: string } = {
   scrollMargin: `0px ${IN_VIEW_CHUNK_PX / 2}px`,
 };
 
+// A short strip keeps every tile, as before, so only long clips do work on a scroll.
+const SHORT_STRIP_MAX_PX = 8 * IN_VIEW_CHUNK_PX;
+const isShort = (width: number) => width <= SHORT_STRIP_MAX_PX;
+
 const EMPTY_STRIP: StripSize = { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 };
 
 // Clamped to a measured strip, and empty off either side, so only strips crossing the edge change.
 const merge = (prev: StripSize, patch: Partial<StripSize>): StripSize => {
   const next = { ...prev, ...patch };
   const width = next.width > 0 ? Math.ceil(next.width) : Infinity;
-  next.inViewStart = Math.min(next.inViewStart, width);
-  next.inViewEnd = Math.min(next.inViewEnd, width);
+  next.inViewStart = isShort(width) ? 0 : Math.min(next.inViewStart, width);
+  next.inViewEnd = isShort(width) ? width : Math.min(next.inViewEnd, width);
   if (next.inViewEnd <= next.inViewStart) next.inViewStart = next.inViewEnd = 0;
   return (Object.keys(next) as (keyof StripSize)[]).every((key) => next[key] === prev[key])
     ? prev
@@ -98,6 +102,7 @@ const refresh = () => {
       strip.box.left -= shift.x;
       strip.box.top -= shift.y;
     }
+    if (isShort(strip.box.width)) continue;
     if (isNear(strip.box)) updates.push([strip.apply, read(target, strip)]);
     else if (strip.showing) updates.push([strip.apply, NOTHING_IN_VIEW]);
   }
