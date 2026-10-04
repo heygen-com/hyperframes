@@ -273,13 +273,15 @@ export function useGsapAwareEditing({
           // Scale resize settles its center-scale residual after the scale commit
           // renders. Width/height can settle its anchored position immediately.
           if (!offset || scaleRoute || !selector) return;
-          const gsapPos = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
-            x: 0,
-            y: 0,
-          };
-          const { newX, newY } = computeDraggedGsapPosition(selection.element, offset, gsapPos);
-          logResize("sync-settle", { gsapPos, offset, newX, newY });
-          writes.drawKeepingUndone(() => setElementGsapPosition(selection.element, newX, newY));
+          writes.drawKeepingUndone(() => {
+            const gsapPos = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
+              x: 0,
+              y: 0,
+            };
+            const { newX, newY } = computeDraggedGsapPosition(selection.element, offset, gsapPos);
+            logResize("sync-settle", { gsapPos, offset, newX, newY });
+            setElementGsapPosition(selection.element, newX, newY);
+          });
         },
         persist: async (commit, coalesceKey) => {
           if (writes.commit) {

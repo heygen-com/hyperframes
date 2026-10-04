@@ -6,6 +6,10 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/domEditOverlayGestures";
 import { usePlayerStore } from "../player/store/playerStore";
+import {
+  beginStudioPendingEdit,
+  paintBackNewestStudioPendingEdit,
+} from "../utils/studioPendingEdits";
 import { trackStudioEditBlocked } from "../utils/studioSaveDiagnostics";
 import { GSAP_EDIT_BLOCK_COPY } from "./gsapEditOutcome";
 import { mountGsapAwareEditing } from "./useGsapAwareEditing.testHelpers";
@@ -65,7 +69,10 @@ function mountGroup(animations: GsapAnimation[]) {
     batch: vi.fn().mockResolvedValue(undefined),
   });
   const showToast = vi.fn();
-  const stageElementPositionOffset = vi.fn(() => ({ save: vi.fn(), rollback: vi.fn() }));
+  const stageElementPositionOffset = vi.fn((selection: DomEditSelection) => {
+    selection.element.style.setProperty("translate", "30px 0px");
+    return { save: vi.fn().mockResolvedValue(undefined), rollback: vi.fn() };
+  });
   const { editing, root } = mountGsapAwareEditing({
     gsapCommitMutation: commitMutation,
     activeCompPath: "index.html",
@@ -157,4 +164,25 @@ describe("a group drag plans every member before its first write", () => {
     expect(h.showToast).not.toHaveBeenCalled();
     act(() => h.root.unmount());
   });
+});
+
+it("keeps a member it moves on its own CSS undone when undo painted the group back", async () => {
+  const h = mountGroup(["b", "c"].map((id) => positionTween(id)));
+  const plain = h.elements[0]!;
+  const edit = beginStudioPendingEdit(() => {
+    const shown = plain.getAttribute("style") ?? "";
+    plain.setAttribute("style", "");
+    return () => plain.setAttribute("style", shown);
+  });
+  const saved = edit.adopt(() =>
+    h.groupCommit(h.updates.map((u, i) => (i === 0 ? { ...u, plainTranslate: true } : u))),
+  );
+  edit.settle(saved);
+  const shown = paintBackNewestStudioPendingEdit();
+
+  await act(() => saved);
+  expect(plain.getAttribute("style")).toBe("");
+  shown!.showAgain();
+  expect(plain.getAttribute("style")).toContain("translate: 30px 0px");
+  act(() => h.root.unmount());
 });
