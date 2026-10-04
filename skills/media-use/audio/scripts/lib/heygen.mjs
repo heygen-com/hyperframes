@@ -59,23 +59,29 @@ export function loadEnvFromDir(startDir) {
 
 // → { headers } | { expired: true } | null. Never throws.
 export function heygenCredential() {
+  const cred = resolveCredential();
+  return cred?.unreadable ? null : cred;
+}
+
+// heygenCredential's answer, or { unreadable: { file, code } } when the credentials path exists but cannot be read
+// (a folder, a locked ~/.heygen), so heygenAuthHeaders can say to fix that path: logging in again would fail there too.
+// Read without checking first, so the file cannot change between a check and the read.
+function resolveCredential() {
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
   if (envKey) return { headers: { "X-Api-Key": envKey } };
 
   const file = join(process.env.HEYGEN_CONFIG_DIR || join(homedir(), ".heygen"), "credentials");
-  // Callers only probe for a credential, so any path that cannot be read (missing, a folder, a locked ~/.heygen)
-  // is none. Read without checking first, so the file cannot change between a check and the read.
   let raw;
   try {
     raw = readFileSync(file, "utf8").trim();
-  } catch {
-    return null;
+  } catch (error) {
+    return error.code === "ENOENT" ? null : { unreadable: { file, code: error.code } };
   }
   if (!raw) return null;
   if (!raw.startsWith("{")) return { headers: { "X-Api-Key": raw } };
 
   // A malformed credentials file (partial write / wrong shape) must degrade to
-  // "no credential", not crash the engine at startup — this function never throws.
+  // "no credential", not crash the engine at startup.
   let cred;
   try {
     cred = JSON.parse(raw);
@@ -105,7 +111,7 @@ export function heygenAuthMethod() {
 
 // → auth headers object, or throw with a fix hint.
 export function heygenAuthHeaders() {
-  const cred = heygenCredential();
+  const cred = resolveCredential();
   if (cred?.headers) {
     // Only tag OAuth (Bearer) traffic as cli-source — the backend uses it to
     // grant the free allowance for OAuth requests and ignores it for API-key
@@ -115,6 +121,10 @@ export function heygenAuthHeaders() {
       ? { ...cred.headers, ...HEYGEN_CLI_SOURCE_HEADERS, ...HEYGEN_CLIENT_SOURCE_HEADERS }
       : { ...cred.headers, ...HEYGEN_CLIENT_SOURCE_HEADERS };
   }
+  if (cred?.unreadable)
+    throw new Error(
+      `HeyGen credentials at ${cred.unreadable.file} can't be read (${cred.unreadable.code}) — fix or remove that path, then run \`npx hyperframes auth login\``,
+    );
   if (cred?.expired)
     throw new Error(
       "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",
