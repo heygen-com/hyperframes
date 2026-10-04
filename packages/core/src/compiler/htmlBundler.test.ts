@@ -2669,6 +2669,15 @@ describe("bundleToSingleHtml script order", () => {
     },
   );
 
+  it("leaves a local non-JavaScript file's text as written", async () => {
+    const scripts = await bundledBody(`<script type="application/json" src="data.json"></script>`, {
+      "data.json": "[1,2]",
+    });
+    expect(scripts.find((el) => el.getAttribute("type") === "application/json")?.textContent).toBe(
+      "[1,2]",
+    );
+  });
+
   it("still adds the runtime when an authored script mentions its marker attribute", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
