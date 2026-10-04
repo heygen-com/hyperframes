@@ -145,7 +145,7 @@ function shouldStripRuntimeScriptBlock(block: string, startTag: string): boolean
   return SIMPLE_RUNTIME_FLAG_ASSIGNMENTS.some((pattern) => pattern.test(scriptSource));
 }
 
-function isRuntimeFileUrl(src: string | null | undefined): boolean {
+export function isRuntimeFileUrl(src: string | null | undefined): boolean {
   const path = lowerAscii(src?.split(/[?#]/, 1)[0] ?? "");
   return RUNTIME_FILES.some((file) => path === file || path.endsWith(`/${file}`));
 }

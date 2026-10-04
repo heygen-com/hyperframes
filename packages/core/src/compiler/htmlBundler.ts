@@ -4,6 +4,7 @@ import {
   deferScriptsUntilFonts,
   UNCONDITIONAL_CSS_KEY,
   headStyleRuns,
+  INLINED_FILE_ATTR,
   inlineScriptRuns,
   styleElementsFor,
   type CompositionStyle,
@@ -1225,6 +1226,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
+    el.setAttribute(INLINED_FILE_ATTR, src);
     el.removeAttribute("src");
     el.textContent = escapeInlineScriptSource(js);
   }

@@ -54,6 +54,7 @@ export {
   injectScriptsIntoHtml,
   insertBeforeCloseTag,
   insertRuntimeTag,
+  isRuntimeFileUrl,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";

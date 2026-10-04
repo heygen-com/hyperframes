@@ -120,7 +120,7 @@ describe("runtime entry: composition scripts after web fonts", () => {
       document.body.innerHTML =
         `<output id="log"></output>` +
         `<script type="${AFTER_FONTS_SCRIPT_TYPE}"${when} src="https://cdn.example/lib.js"></script>` +
-        `<script type="${AFTER_FONTS_SCRIPT_TYPE}"${when}>` +
+        `<script type="${AFTER_FONTS_SCRIPT_TYPE}"${when}${when && ' data-hf-inlined-src="main.js"'}>` +
         `document.getElementById("log").textContent += "lib:" + document.body.dataset.lib;</script>`;
 
       await parseThenLoad();
@@ -157,22 +157,31 @@ describe("runtime entry: composition scripts after web fonts", () => {
     );
   });
 
-  it("runs an inlined defer script after the classic scripts that follow it, as the browser defers it", async () => {
+  it.each([
+    [
+      "an inlined deferred file after the classic scripts",
+      ' data-hf-inlined-src="main.js"',
+      "classic deferred ",
+    ],
+    ["an authored inline defer script in place, as the browser does", "", "deferred classic "],
+  ])("runs %s", async (_, inlined, expected) => {
     serveFonts(Promise.resolve(), []);
     document.body.innerHTML =
       `<output id="log"></output>` +
-      `<script type="${AFTER_FONTS_SCRIPT_TYPE}" defer>${logs("deferred")}</script>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}" defer${inlined}>${logs("deferred")}</script>` +
       `<script type="${AFTER_FONTS_SCRIPT_TYPE}">${logs("classic")}</script>`;
 
     await parseThenLoad();
     await vi.waitFor(() => expect(window.__player).toBeDefined());
-    expect(log()).toBe("classic deferred ");
+    expect(log()).toBe(expected);
   });
 
-  it("runs an inlined defer script last through the fallback too", () => {
+  it("runs an inlined deferred file last through the fallback too", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     claims(false);
-    compilePage(`<script defer>${logs("deferred")}</script><script>${logs("classic")}</script>`);
+    compilePage(
+      `<script defer data-hf-inlined-src="main.js">${logs("deferred")}</script><script>${logs("classic")}</script>`,
+    );
 
     document.dispatchEvent(new Event("DOMContentLoaded"));
     expect(log()).toBe("classic deferred ");

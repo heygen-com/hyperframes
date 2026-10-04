@@ -66,6 +66,11 @@ const AFTER_FONTS_MODULE_TYPE = `${AFTER_FONTS_SCRIPT_TYPE}+module`;
 export const AFTER_FONTS_SCRIPTS = `script[type="${AFTER_FONTS_SCRIPT_TYPE}"], script[type="${AFTER_FONTS_MODULE_TYPE}"]`;
 
 export const AFTER_FONTS_CLAIM = "__hfAfterFontsClaimed";
+export const INLINED_FILE_ATTR = "data-hf-inlined-src";
+
+export function isDeferredFile(el: Element): boolean {
+  return el.hasAttribute("defer") && (el.hasAttribute("src") || el.hasAttribute(INLINED_FILE_ATTR));
+}
 const AFTER_FONTS_FALLBACK_ATTR = "data-hf-after-fonts-fallback";
 
 // For a runtime older than the gate: at DOMContentLoaded, before that runtime boots, run them in parser order.
@@ -75,7 +80,9 @@ const afterFontsFallback = () => `document.addEventListener("DOMContentLoaded", 
   var all = [].slice.call(document.querySelectorAll('${AFTER_FONTS_SCRIPTS}'));
   if (!all.length) return;
   console.warn("[hyperframes] the runtime has no web-font gate; composition scripts run without waiting for fonts");
-  var late = function (el) { return el.type !== T || el.hasAttribute("defer"); };
+  var late = function (el) {
+    return el.type !== T || (el.hasAttribute("defer") && (el.hasAttribute("src") || el.hasAttribute("${INLINED_FILE_ATTR}")));
+  };
   var queue = all.filter(function (el) { return !late(el); }).concat(all.filter(late));
   (function next() {
     var el = queue.shift();
@@ -92,13 +99,15 @@ const afterFontsFallback = () => `document.addEventListener("DOMContentLoaded", 
   })();
 });`;
 
-/** Gives each body script a type the browser does not run, so the runtime can run it once web fonts are ready. */
+/** Retypes body scripts and inlined deferred head files so the runtime runs them after web fonts. */
 export function deferScriptsUntilFonts(
   document: Document,
   isFramework: (el: Element) => boolean = () => false,
 ): void {
   let deferred = false;
-  for (const el of document.querySelectorAll("body script")) {
+  for (const el of document.querySelectorAll(
+    `body script, head script[${INLINED_FILE_ATTR}][defer]`,
+  )) {
     if (isFramework(el) || el.closest("noscript, svg")) continue;
     if (isClassicInline(el)) el.setAttribute("type", AFTER_FONTS_SCRIPT_TYPE);
     else if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") {
