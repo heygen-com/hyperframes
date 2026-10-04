@@ -1079,7 +1079,6 @@ function computeKeyframesTotalDuration(
     const r = objectExpressionToRecord(el, scope, source);
     durations.push(r.duration);
   }
-  if (durations.every((duration) => duration === undefined)) return undefined;
   return getObjectArrayKeyframeTiming(durations)?.totalDuration;
 }
 
@@ -1365,11 +1364,11 @@ function tweenCallToAnimation(
   let duration = typeof vars.duration === "number" ? vars.duration : undefined;
   const ease = typeof vars.ease === "string" ? vars.ease : undefined;
 
-  if (duration === undefined && keyframesData) {
-    duration = computeKeyframesTotalDuration(call.varsArg, scope, source);
-  }
   const durationUnresolved =
     call.method !== "set" && duration === undefined && hasUnknownDuration(call.varsArg, scope);
+  if (duration === undefined && keyframesData && !durationUnresolved) {
+    duration = computeKeyframesTotalDuration(call.varsArg, scope, source);
+  }
 
   // Relabel object-proxy / empty-target tweens so they don't read as bare
   // __unresolved__: a dwell/hold spacer or an onUpdate-driven DOM channel (#5/#11).
@@ -1638,21 +1637,17 @@ function seedSetStates(
   }
 }
 
-const stepListDuration = (anim: Omit<GsapAnimation, "id">) =>
-  anim.keyframes?.format === "object-array"
-    ? anim.keyframes.keyframes.length * GSAP_DEFAULT_DURATION
-    : undefined;
-
 function applyTimelineDefaults(
   anims: Omit<GsapAnimation, "id">[],
-  defaults: TimelineDefaults = {},
+  defaults?: TimelineDefaults,
 ): void {
+  if (!defaults) return;
   for (const anim of anims) {
     if (anim.method === "set") continue;
-    if (anim.duration === undefined && !anim.durationUnresolved) {
-      anim.duration = stepListDuration(anim) ?? defaults.duration;
-      if (anim.duration === undefined && defaults.durationUnresolved)
-        anim.durationUnresolved = true;
+    const stepList = anim.keyframes?.format === "object-array";
+    if (anim.duration === undefined && !anim.durationUnresolved && !stepList) {
+      if (defaults.duration !== undefined) anim.duration = defaults.duration;
+      else if (defaults.durationUnresolved) anim.durationUnresolved = true;
     }
     if (
       anim.ease === undefined &&

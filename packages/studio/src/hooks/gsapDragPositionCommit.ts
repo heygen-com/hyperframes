@@ -168,9 +168,9 @@ export async function commitGsapPositionFromDrag(
     }
     const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
     const keyframes = anim.keyframes?.keyframes ?? [];
-    // Same tolerance as applyArcKeyframeAtPlayhead and isMotionPathEndpoint. A
-    // tighter one here meant a drag that landed a fraction of a percent off an
-    // authored waypoint skipped the update-point branch and appended instead.
+    // A drag counts as on a waypoint when it plays within KEYFRAME_PCT_MATCH of it,
+    // so landing a fraction of a percent off an authored waypoint updates that point
+    // instead of appending a new one.
     const pointIndex = keyframes.findIndex((kf) => playsNear(anim, kf.percentage, pct));
     if (pointIndex >= 0) {
       await callbacks.commitMutation(

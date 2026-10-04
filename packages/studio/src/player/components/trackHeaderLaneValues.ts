@@ -121,12 +121,13 @@ export function valuesBefore(
     .sort((a, b) => endOf(a) - endOf(b));
   const values: LaneValues = {};
   for (const other of finished) {
-    for (const keyframe of other.keyframes?.keyframes ?? [{ properties: other.properties }]) {
-      for (const property of Object.keys(keyframe.properties)) {
-        const value = endValue(other, property);
-        if (typeof value === "number") values[property] = value;
-        else delete values[property];
-      }
+    const keyframes = other.keyframes?.keyframes ?? [{ properties: other.properties }];
+    for (const property of new Set(
+      keyframes.flatMap((keyframe) => Object.keys(keyframe.properties)),
+    )) {
+      const value = endValue(other, property);
+      if (typeof value === "number") values[property] = value;
+      else delete values[property];
     }
   }
   return values;
