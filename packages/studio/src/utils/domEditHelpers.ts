@@ -12,7 +12,7 @@ export function domEditSelectionsTargetSame(
 }
 
 export function domEditSelectionsEqual(a: DomEditSelection, b: DomEditSelection): boolean {
-  return a === b || sameData(a, b);
+  return sameData(a, b);
 }
 
 export function domEditSelectionInGroup(

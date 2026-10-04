@@ -10,6 +10,7 @@ import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import { logSelect } from "../utils/selectDebug";
 import { onPreviewContentReplaced } from "../player/sceneSwap";
+import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
 
 interface UseDomEditPreviewSyncParams {
   previewIframe: HTMLIFrameElement | null;
@@ -26,7 +27,7 @@ interface UseDomEditPreviewSyncParams {
   ) => void;
   buildDomSelectionFromTarget: (
     element: HTMLElement,
-    options?: { previous?: DomEditSelection | null },
+    options?: Pick<ResolveDomSelectionOptions, "previous">,
   ) => Promise<DomEditSelection | null>;
   refreshPreviewDocumentVersion: () => void;
   syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;

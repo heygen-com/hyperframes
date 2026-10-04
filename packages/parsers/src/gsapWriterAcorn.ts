@@ -477,6 +477,9 @@ export type ClipTweenRetime =
       newDuration: number;
     };
 
+const isLiveRetime = (r: ClipTweenRetime) =>
+  r.kind === "shift" || (r.oldDuration > 0 && r.newDuration > 0);
+
 /**
  * Applies `retimes` in order with one parse: the bytes equal running shift/scalePositionsInScript once
  * per retime. `changed[i]` says whether retime i moved a value.
@@ -487,10 +490,7 @@ export function retimeClipTweensInScript(
   root?: ParentNode,
 ): { script: string; changed: boolean[] } {
   const changed = retimes.map(() => false);
-  const live = retimes.filter(
-    (r) => r.kind === "shift" || (r.oldDuration > 0 && r.newDuration > 0),
-  );
-  const parsed = live.length > 0 ? parseGsapScriptAcornForWrite(script) : null;
+  const parsed = retimes.some(isLiveRetime) ? parseGsapScriptAcornForWrite(script) : null;
   if (!parsed) return { script, changed };
   // Matchers share one query cache: each selector is looked up in the DOM once, not once per clip.
   const queries = new Map<string, Element[]>();
@@ -509,8 +509,7 @@ export function retimeClipTweensInScript(
         animation.position = shiftedPosition(animation.position, retime.delta);
         position = true;
       } else {
-        if (retime.oldDuration <= 0 || retime.newDuration <= 0) return;
-        if (typeof animation.position !== "number") return;
+        if (!isLiveRetime(retime) || typeof animation.position !== "number") return;
         const ratio = retime.newDuration / retime.oldDuration;
         if (hasExplicitTime(animation)) {
           animation.position = Math.max(

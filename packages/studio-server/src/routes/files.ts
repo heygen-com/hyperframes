@@ -76,8 +76,6 @@ import {
   replaceTweenWithKeyframesInScript,
   splitAnimationsInScript,
   splitIntoPropertyGroupsFromScript,
-  shiftPositionsInScript,
-  scalePositionsInScript,
   retimeClipTweensInScript,
   type ClipTweenRetime,
   dedupePositionWritesInScript,
@@ -1507,7 +1505,7 @@ function retimeRuns(mutations: readonly GsapMutationRequest[]): Map<number, Reti
   return runs;
 }
 
-// The same no-op rules executeGsapMutationAcorn applies; a no-op keeps its slot so flags line up.
+// The one owner of the clip-retime no-op rules; a no-op keeps its slot so flags line up.
 function clipRetimeOf(mutation: GsapMutationRequest): RetimeSlot | null {
   if (mutation.type === "shift-positions") {
     const { targetSelector, delta } = mutation;
@@ -1916,41 +1914,18 @@ function executeGsapMutationAcorn(
     case "unroll-timeline": {
       return unrollComputedTimeline(block.scriptText);
     }
-    case "shift-positions": {
-      const { targetSelector, delta } = body;
-      if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
-      return shiftPositionsInScript(block.scriptText, targetSelector, delta, block.root);
-    }
     case "shift-positions-batch": {
-      let script = block.scriptText;
-      for (const s of body.shifts) {
-        if (!s.targetSelector || !Number.isFinite(s.delta) || s.delta === 0) continue;
-        script = shiftPositionsInScript(script, s.targetSelector, s.delta, block.root);
-      }
-      return script;
+      const shifts = body.shifts
+        .filter((s) => s.targetSelector && Number.isFinite(s.delta) && s.delta !== 0)
+        .map((s) => ({ kind: "shift" as const, targetSelector: s.targetSelector, delta: s.delta }));
+      return retimeClipTweensInScript(block.scriptText, shifts, block.root).script;
     }
+    case "shift-positions":
     case "scale-positions": {
-      const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
-      if (
-        !targetSelector ||
-        !Number.isFinite(oldStart) ||
-        !Number.isFinite(oldDuration) ||
-        !Number.isFinite(newStart) ||
-        !Number.isFinite(newDuration) ||
-        oldDuration <= 0 ||
-        newDuration <= 0
-      )
-        return block.scriptText;
-      if (oldStart === newStart && oldDuration === newDuration) return block.scriptText;
-      return scalePositionsInScript(
-        block.scriptText,
-        targetSelector,
-        oldStart,
-        oldDuration,
-        newStart,
-        newDuration,
-        block.root,
-      );
+      const retime = clipRetimeOf(body);
+      return retime && retime !== "no-op"
+        ? retimeClipTweensInScript(block.scriptText, [retime], block.root).script
+        : block.scriptText;
     }
     default:
       return respond({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);

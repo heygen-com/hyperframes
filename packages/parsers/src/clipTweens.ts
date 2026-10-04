@@ -11,21 +11,24 @@ export function clipTweenMatcher(
   queries: Map<string, Element[]> = new Map(),
 ): (tween: TweenTarget) => boolean {
   const own = typeof clipSelectors === "string" ? [clipSelectors] : clipSelectors;
-  const queryAll = (scope: ParentNode, selector: string): Element[] => {
+  if (!root)
+    return ({ targetSelector, hasPartialSelector }) =>
+      !hasPartialSelector && own.includes(targetSelector);
+  const queryAll = (selector: string): Element[] => {
     if (ID_SELECTOR.test(selector)) {
-      if (!queries.has(ALL_IDS)) indexIds(scope, queries);
+      if (!queries.has(ALL_IDS)) indexIds(root, queries);
       return queries.get(selector) ?? [];
     }
     let found = queries.get(selector);
-    if (!found) queries.set(selector, (found = queryRoot(scope, selector)));
+    if (!found) queries.set(selector, (found = queryRoot(root, selector)));
     return found;
   };
-  const clips = root ? own.flatMap((selector) => queryAll(root, selector)) : [];
+  const clips = own.flatMap((selector) => queryAll(selector));
   return ({ targetSelector, hasPartialSelector }) => {
     if (hasPartialSelector) return false;
     if (own.includes(targetSelector)) return true;
-    if (!root || clips.length === 0) return false;
-    const targets = queryAll(root, targetSelector);
+    if (clips.length === 0) return false;
+    const targets = queryAll(targetSelector);
     return (
       targets.length > 0 &&
       targets.every((target) => {

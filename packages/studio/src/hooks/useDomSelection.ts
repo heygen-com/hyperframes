@@ -24,6 +24,7 @@ import { logSelect } from "../utils/selectDebug";
 import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
 import type {
   ApplyDomSelectionOptions,
+  ResolveDomSelectionOptions,
   UseDomSelectionParams,
   UseDomSelectionReturn,
 } from "./useDomSelectionTypes";
@@ -213,18 +214,7 @@ export function useDomSelection({
   );
 
   const buildDomSelectionFromTarget = useCallback(
-    (
-      target: HTMLElement,
-      options?: {
-        preferClipAncestor?: boolean;
-        skipSourceProbe?: boolean;
-        exactTarget?: boolean;
-        previous?: DomEditSelection | null;
-        // Override the drill-in scope (used by canvas double-click to resolve the
-        // child inside a group before the activeGroupElement state has re-rendered).
-        activeGroupElement?: HTMLElement | null;
-      },
-    ) => {
+    (target: HTMLElement, options?: ResolveDomSelectionOptions) => {
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
