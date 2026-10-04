@@ -406,8 +406,6 @@ export interface PersistTimelineBatchEditInput {
   coalesceKey?: string;
   /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
   coalesceMs?: number;
-  /** Applied once to each patched file, after every change to it. */
-  finishFile?: (patched: string) => string;
 }
 
 export async function persistTimelineBatchEdit(
@@ -424,7 +422,7 @@ export async function persistTimelineBatchEdit(
       targetPath,
       changesByPath.get(targetPath)!,
     );
-    const next = input.finishFile ? input.finishFile(patched) : patched;
+    const next = syncCompositionDurationToContent(patched);
     if (next !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
     return next;
   };

@@ -14,6 +14,10 @@ import {
   type StudioApiAdapter,
 } from "@hyperframes/studio-server";
 import { consumeStudioWriteToken } from "../utils/studioFileVersion";
+import {
+  beginStudioPendingEdit,
+  paintBackNewestStudioPendingEdit,
+} from "../utils/studioPendingEdits";
 import { usePersistentEditHistory } from "./usePersistentEditHistory";
 
 const cleanup: Array<() => unknown> = [];
@@ -86,6 +90,22 @@ it("an edit Studio saved is undone and redone by the project's history, with the
   const redone = await act(() => hook().redo({ readFile }));
   expect(redone).toMatchObject({ ok: true, label: "Redid: Moved Title" });
   expect(file()).toBe("B");
+});
+
+it("gives an edit that begins the history's claim count, so undo can tell its claims from older ones", async () => {
+  const { hook, save } = await studio();
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Moved Title",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  const saving = beginStudioPendingEdit(() => () => {});
+
+  expect(paintBackNewestStudioPendingEdit()?.claimsAtBegin).toBe(hook().claims());
+  expect(hook().claims()).toBe(1);
+  saving.settle();
 });
 
 it("undoes the edit claimed since the key, not a later edit the server took in first", async () => {

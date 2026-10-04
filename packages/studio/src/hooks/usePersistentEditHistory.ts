@@ -3,6 +3,7 @@ import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server"
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { setStudioPendingEditClaimClock } from "../utils/studioPendingEdits";
 import type { RecordEditInput } from "../utils/studioFileHistory";
 
 interface ApplyCallbacks {
@@ -227,6 +228,11 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     own.clear();
     void refresh().finally(() => setLoaded(true));
   }, [refresh, own]);
+
+  useEffect(() => {
+    setStudioPendingEditClaimClock(own.claimCount);
+    return () => setStudioPendingEditClaimClock(null);
+  }, [own]);
 
   const recordEdit = useCallback(
     async ({ label, coalesceKey, coalesceMs, files, created = [] }: RecordEditInput) => {

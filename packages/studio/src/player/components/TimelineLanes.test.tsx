@@ -10,7 +10,11 @@ import { defaultTimelineTheme } from "./timelineTheme";
 import { TRACK_H, getTimelineRowGeometry } from "./timelineLayout";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 import { buildTimelineLogicalRows } from "./timelineKeyboardNavigation";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import {
+  usePlayerStore,
+  type KeyframeCacheEntry,
+  type TimelineElement,
+} from "../store/playerStore";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { DraggedClipState, BlockedClipState } from "./useTimelineClipDrag";
@@ -73,6 +77,7 @@ function positionTween(id: string): GsapAnimation {
 
 interface RenderLanesOptions {
   elements?: TimelineElement[];
+  keyframeCache?: Map<string, KeyframeCacheEntry>;
   animations?: Map<string, GsapAnimation[]>;
   expandedClipIds?: string[];
   selectedElementIds?: Set<string>;
@@ -172,6 +177,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           getPreviewElement={(el) => el}
           getTrackStyle={getTrackStyle}
           gsapAnimations={gsapAnimations}
+          keyframeCache={next.keyframeCache}
           selectedKeyframes={new Set()}
           currentTime={0}
           onContextMenuLane={next.onContextMenuLane}
@@ -399,18 +405,37 @@ describe("TimelineLanes disclosure target", () => {
       draggedPreviewStart: 0.5,
       selectedKeys: selectedElementIds,
     };
-    const view = renderLanes({ elements, selectedElementIds });
+    const keyframeCache = new Map<string, KeyframeCacheEntry>([
+      [
+        "clip-a",
+        {
+          format: "percentage",
+          keyframes: [
+            { percentage: 0, properties: { x: 0 } },
+            { percentage: 100, properties: { x: 50 } },
+          ],
+        },
+      ],
+    ]);
+    const view = renderLanes({ elements, selectedElementIds, keyframeCache });
     const clipA = view.host.querySelector<HTMLElement>('[data-el-id="clip-a"]');
+    const diamonds = () =>
+      view.host
+        .querySelector('[data-el-id="clip-a"] ~ div button[aria-label*="keyframe at"]')
+        ?.closest<HTMLElement>("div.pointer-events-none");
     expect(clipA).not.toBeNull();
     expect(clipA?.parentElement).toBe(
       view.host.querySelector('[data-el-id="clip-b"]')?.parentElement,
     );
 
-    view.rerender({ elements, selectedElementIds, multiDragPreview: dragging });
+    expect(diamonds()).not.toBeNull();
+    view.rerender({ elements, selectedElementIds, keyframeCache, multiDragPreview: dragging });
     expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
     expect(clipA?.style.transform).toMatch(/^translateX\([1-9]/);
+    // Its keyframe diamonds ride with it.
+    expect(diamonds()?.style.transform).toBe(clipA?.style.transform);
 
-    view.rerender({ elements, selectedElementIds });
+    view.rerender({ elements, selectedElementIds, keyframeCache });
     expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
     expect(clipA?.style.transform).toBe("");
     act(() => view.root.unmount());
@@ -437,9 +462,11 @@ describe("TimelineLanes disclosure target", () => {
     });
 
     const before = ariaControlsTarget(view.host);
-    const beforeLane = before?.querySelector("[data-timeline-property-lane]");
+    const beforeLane = before?.querySelector<HTMLElement>("[data-timeline-property-lane]");
     expect(before).not.toBeNull();
     expect(beforeLane).not.toBeNull();
+    const startOffset = beforeLane?.style.transform;
+    expect(startOffset).toMatch(/^translateX\([1-9]/);
 
     view.rerender({
       elements,
@@ -452,6 +479,9 @@ describe("TimelineLanes disclosure target", () => {
     // Node identity, not just presence: a remount replaces these nodes.
     expect(ariaControlsTarget(view.host)).toBe(before);
     expect(before?.querySelector("[data-timeline-property-lane]")).toBe(beforeLane);
+    // The lanes ride with the formation, not just the clip.
+    expect(beforeLane?.style.transform).toMatch(/^translateX\([1-9]/);
+    expect(beforeLane?.style.transform).not.toBe(startOffset);
     act(() => view.root.unmount());
   });
 });

@@ -84,7 +84,8 @@ export function useEditHistoryActions({
       const predictedShown = predicted ? (showHistoryRestoreNow?.(predicted.files) ?? null) : null;
       const putBack = predictedShown ?? pendingEditShown?.showAgain;
       const claimedAfter =
-        direction === "undo" && hasStudioPendingEdits() ? editHistory.claims?.() : undefined;
+        pendingEditShown?.claimsAtBegin ??
+        (direction === "undo" && hasStudioPendingEdits() ? editHistory.claims?.() : undefined);
       let result: HistoryResult = { ok: false, reason: "failed" };
       let serverSteppedShown = false;
       let revertIsTheUndo = false;
@@ -98,11 +99,12 @@ export function useEditHistoryActions({
           claimedAfter,
         });
         const stepped = Boolean(result.ok && result.label);
-        const claimedSinceKey =
-          claimedAfter !== undefined && (editHistory.claims?.() ?? claimedAfter) > claimedAfter;
+        const editClaimed =
+          pendingEditShown !== null &&
+          (editHistory.claims?.() ?? 0) > pendingEditShown.claimsAtBegin;
         serverSteppedShown = predictedShown
           ? stepped && result.undoes === predicted?.id
-          : stepped && Boolean(pendingEditShown) && claimedSinceKey;
+          : stepped && editClaimed;
       } finally {
         if (putBack && !serverSteppedShown && !revertIsTheUndo) putBack();
       }

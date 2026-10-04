@@ -10,7 +10,6 @@ import {
   patchIframeDomTiming,
   persistElementAttribute,
   persistTimelineBatchEdit,
-  syncCompositionDurationToContent,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
 import type { TimelineElement } from "../player/store/playerStore";
@@ -318,19 +317,17 @@ describe("persistTimelineBatchEdit", () => {
     vi.unstubAllGlobals();
   });
 
-  it("finishes each file once, not once per member, and lands where per-member sync would", async () => {
+  it("syncs each file's root duration once, landing where per-member sync would", async () => {
     const source = `<div id="root" data-composition-id="main" data-duration="4"><video id="a" class="clip" data-start="1" data-duration="1"></video><video id="b" class="clip" data-start="2" data-duration="1"></video><video id="c" class="clip" data-start="3" data-duration="1"></video></div>`;
     const members = ["a", "b", "c"].map((id, i) => ({
       element: el({ id, tag: "video", domId: id, start: i + 1, duration: 1 }),
       buildPatches: (original: string, target: Parameters<typeof applyTimelineMoveAttributes>[1]) =>
         applyTimelineMoveAttributes(original, target, i + 6, 1),
     }));
-    const finishFile = vi.fn(syncCompositionDurationToContent);
     stubReadFileContent(source);
     const writes: Array<[string, string]> = [];
-    await persistTimelineBatchEdit({ ...batchInput(members, writes), finishFile });
+    await persistTimelineBatchEdit(batchInput(members, writes));
 
-    expect(finishFile).toHaveBeenCalledTimes(1);
     const perMember = members.reduce(
       (current, { element }, i) =>
         buildTimelineMoveTimingPatch(current, { id: element.id }, i + 6, 1),

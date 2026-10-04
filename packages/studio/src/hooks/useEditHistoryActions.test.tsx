@@ -5,12 +5,19 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryActions";
-import { beginStudioPendingEdit, trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import {
+  beginStudioPendingEdit,
+  setStudioPendingEditClaimClock,
+  trackStudioPendingEdit,
+} from "../utils/studioPendingEdits";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | null = null;
-afterEach(() => act(() => root?.unmount()));
+afterEach(() => {
+  act(() => root?.unmount());
+  setStudioPendingEditClaimClock(null);
+});
 
 type RestoreFiles = Record<string, { previous: string; restored: string }>;
 type Prediction = { id: string; files: RestoreFiles };
@@ -126,23 +133,28 @@ describe("useEditHistoryActions", () => {
     expect(reapply).not.toHaveBeenCalled();
   });
 
+  // Claim counts: when the edit began, at the key, and once its save landed.
   it.each([
-    ["its claim counted, the server undo is the shown revert", 8, 0],
-    ["its claim never counted, the move is shown again", 7, 1],
-  ])("an edit that lands while undo waits: %s", async (_, claimsAfter, reapplied) => {
+    ["its claim counted while undo waited, the server undo is the shown revert", 7, 7, 8, 0],
+    ["its claim counted before the key, the server undo is the shown revert", 7, 8, 8, 0],
+    ["its claim never counted, the move is shown again", 7, 7, 7, 1],
+  ])("an edit that lands while undo waits: %s", async (_, atBegin, atKey, atLand, reapplied) => {
+    let claimCount = atBegin;
+    setStudioPendingEditClaimClock(() => claimCount);
     const reapply = vi.fn();
     const saving = beginStudioPendingEdit(() => reapply);
-    let claimCount = 7;
+    claimCount = atKey;
     const { deps, actions } = mount(
-      { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e2" },
+      { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e8" },
       PREDICTED,
       () => claimCount,
     );
     const undone = actions.undo();
     saving.settle(saving.adopt(() => Promise.resolve()));
-    claimCount = claimsAfter;
+    claimCount = atLand;
     await act(() => undone);
     expect(deps.editHistory.undo).toHaveBeenCalledTimes(1);
+    expect(deps.editHistory.undo.mock.calls[0]![0].claimedAfter).toBe(atBegin);
     expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
     expect(reapply).toHaveBeenCalledTimes(reapplied);
   });

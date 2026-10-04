@@ -12,7 +12,6 @@ import {
 import {
   applyTimelineMoveAttributes,
   applyTimelineResizeAttributes,
-  syncCompositionDurationToContent,
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
@@ -176,7 +175,6 @@ export function useTimelineGroupEditing({
         pendingTimelineEditPathRef,
         coalesceKey,
         coalesceMs,
-        finishFile: syncCompositionDurationToContent,
       });
       forceReloadSdkSession?.();
     },
