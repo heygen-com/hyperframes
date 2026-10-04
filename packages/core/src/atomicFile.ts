@@ -48,8 +48,7 @@ export function createFileAtomically(
       operations.linkSync(tempPath, filePath);
     } catch (error) {
       if (!NO_HARD_LINKS.has(errorCode(error))) throw error;
-      // Without hard links, keep today's direct exclusive write.
-      operations.writeFileSync(filePath, content, { flag: "wx" });
+      createDirectly(filePath, content, operations);
     }
     try {
       operations.unlinkSync(tempPath);
@@ -57,6 +56,27 @@ export function createFileAtomically(
       console.warn(`[hyperframes] created ${filePath} but could not remove ${tempPath}: ${error}`);
     }
   });
+}
+
+/** Without hard links: an exclusive write; a partial file it made (a full disk) is removed, a taken name never. */
+function createDirectly(
+  filePath: string,
+  content: string | Uint8Array,
+  operations: SiblingFileSystem,
+): void {
+  const fd = fs.openSync(filePath, "wx");
+  try {
+    operations.writeFileSync(fd, content);
+  } catch (error) {
+    fs.closeSync(fd);
+    try {
+      operations.unlinkSync(filePath);
+    } catch {
+      // Preserve the write error; cleanup is best effort.
+    }
+    throw error;
+  }
+  fs.closeSync(fd);
 }
 
 /** The file a write to `filePath` lands on: folder links and file links followed as the system does. */

@@ -250,6 +250,34 @@ describe("createFileAtomically", () => {
     },
   );
 
+  it("removes the partial file a direct write leaves on a full disk, keeping the error", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    const operations = {
+      ...failingLink("EXDEV"),
+      writeFileSync: (target: fs.PathOrFileDescriptor, ...args: any[]) => {
+        if (typeof target !== "number") return fs.writeFileSync(target, ...args);
+        fs.writeFileSync(target, "ht");
+        throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
+      },
+    };
+
+    expect(() => createFileAtomically(file, "html", operations)).toThrow("ENOSPC");
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it("keeps another writer's file when the direct write finds the name taken", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    writeFileSync(file, "theirs");
+
+    expect(() => createFileAtomically(file, "html", failingLink("EXDEV"))).toThrow(
+      expect.objectContaining({ code: "EEXIST" }),
+    );
+    expect(readFileSync(file, "utf-8")).toBe("theirs");
+    expect(fs.readdirSync(dir)).toEqual(["index.html"]);
+  });
+
   it("propagates any other link failure without writing the destination", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");

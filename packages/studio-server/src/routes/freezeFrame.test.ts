@@ -57,8 +57,7 @@ function pngWriter(calls: string[][]): FrameExtractor {
 }
 
 const stillOf = (output: string) => output.replace(/\.hf[0-9a-f]{6}\.tmp$/, "");
-const freezeFiles = (dir: string) =>
-  existsSync(join(dir, "assets/freeze")) ? readdirSync(join(dir, "assets/freeze")) : [];
+const freezeFiles = (dir: string) => readdirSync(join(dir, "assets/freeze"));
 
 describe("freeze-frame route", () => {
   it("extracts the frame under the playhead and writes split + still in one write", async () => {
@@ -91,7 +90,8 @@ describe("freeze-frame route", () => {
   it("keeps the still out of history until it is whole, so undo removes it after a slow extraction", async () => {
     let history: ProjectHistory | undefined;
     const { dir, post } = setup(async (args) => {
-      // ffmpeg outlasting the watcher's quiet time: history commits whatever stands in the project now.
+      // ffmpeg outlasting the watcher's quiet time: history commits the project with the still half written.
+      writeFileSync(args.at(-1) ?? "", "pn");
       await history?.flush();
       writeFileSync(args.at(-1) ?? "", "png");
       return { ok: true };
@@ -207,19 +207,17 @@ describe("freeze-frame route", () => {
 <video id="${b}" class="clip" src="media/b.mp4" data-start="0" data-duration="6" data-track-index="1"></video>
 </div>`;
 
-    function writingExtractor(outputs: string[]): FrameExtractor {
+    /** Each extraction writes only once `together` of them have started, so concurrent requests overlap. */
+    function writingExtractor(outputs: string[], together = 1): FrameExtractor {
+      let allStarted = () => {};
+      const started = new Promise<void>((resolve) => (allStarted = resolve));
       return async (args) => {
         const output = args.at(-1) ?? "";
         outputs.push(stillOf(output));
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        try {
-          writeFileSync(output, `frame of ${args[4]} #${outputs.length}`, {
-            flag: args.includes("-y") ? "w" : "wx",
-          });
-          return { ok: true };
-        } catch (error) {
-          return { ok: false, error: String(error) };
-        }
+        if (outputs.length >= together) allStarted();
+        await started;
+        writeFileSync(output, `frame of ${args[4]} #${outputs.length}`);
+        return { ok: true };
       };
     }
 
@@ -276,7 +274,7 @@ describe("freeze-frame route", () => {
 
     it("gives concurrent requests distinct stills and keeps only the one the page uses", async () => {
       const outputs: string[] = [];
-      const { dir, post } = setup(writingExtractor(outputs));
+      const { dir, post } = setup(writingExtractor(outputs, 2));
       const results = await Promise.all([freeze(post, dir, "talk"), freeze(post, dir, "talk")]);
       expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
       expect(new Set(outputs).size).toBe(2);
@@ -288,7 +286,7 @@ describe("freeze-frame route", () => {
 
     it("keeps the winner's still when two requests race for the same name", async () => {
       const outputs: string[] = [];
-      const { dir, post } = setup(writingExtractor(outputs), undefined, () => "fixed");
+      const { dir, post } = setup(writingExtractor(outputs, 2), undefined, () => "fixed");
       const results = await Promise.all([freeze(post, dir, "talk"), freeze(post, dir, "talk")]);
       expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
       expect(new Set(outputs).size).toBe(1);
