@@ -126,6 +126,38 @@ describe("on a scroll", () => {
     expect(renders).toBe(settled);
   });
 
+  it("measures a strip as it comes near the screen, without waiting for a frame", async () => {
+    const reports: IntersectionObserverCallback[] = [];
+    globalThis.IntersectionObserver = class {
+      constructor(callback: IntersectionObserverCallback) {
+        reports.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_000_000);
+    await mountStrips(1);
+    const strip = host.querySelector("[data-in-view-start]")!;
+
+    left = -10_000;
+    const [presence] = reports;
+    act(() =>
+      presence!(
+        [
+          {
+            isIntersecting: true,
+            target: strip.parentElement!,
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      ),
+    );
+
+    expect(frames).toHaveLength(0);
+    expect(strip.getAttribute("data-in-view-start")).toBe("9216");
+  });
+
   it("reads no strip far from the screen, however many clips the timeline mounts", async () => {
     globalThis.IntersectionObserver = class {
       observe() {}
