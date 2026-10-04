@@ -1949,11 +1949,22 @@ const tl = gsap.timeline({ paused: true });
     expect(html).not.toContain("<body");
   });
 
-  it("a first animation in a <body> file lands before </body>, outside its template", async () => {
+  // The registry-block shape: the loader mounts the template's content, so a script outside it never runs.
+  it("a first animation in a full-document sub-composition lands inside its template", async () => {
     const html = await addFirstAnimation(
-      '<body><template><div data-composition-id="sub"><div id="card"></div></div></template></body>\n',
+      '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><template id="sub-template"><div data-composition-id="sub"><div id="card"></div></div></template></body></html>\n',
     );
-    expect(html.indexOf("<script")).toBeGreaterThan(html.indexOf("</template>"));
+    const close = html.indexOf("</template>");
+    expect(html.indexOf('window.__timelines["sub"]')).toBeGreaterThan(-1);
+    expect(html.lastIndexOf("</script>")).toBeLessThan(close);
+    expect(html.slice(close)).toBe("</template></body></html>\n");
+  });
+
+  it("a first animation in a file whose composition is in <body> lands before </body>", async () => {
+    const html = await addFirstAnimation(
+      '<body><div data-composition-id="main"><div id="card"></div></div><template id="other-template"><div data-composition-id="other"></div></template></body>\n',
+    );
+    expect(html.indexOf('window.__timelines["main"]')).toBeGreaterThan(html.indexOf("</template>"));
     expect(html.lastIndexOf("</script>")).toBeLessThan(html.indexOf("</body>"));
   });
 

@@ -300,6 +300,23 @@ function findOuterTemplateClose(html: string): number {
   return -1;
 }
 
+const COMPOSITION_ID_ATTR = /\sdata-composition-id\s*=/;
+
+/** True when an element outside every `<template>` carries `data-composition-id`: the composition lives in `<body>`. */
+export function hasCompositionOutsideTemplates(html: string): boolean {
+  const lowered = lowerAscii(html);
+  let depth = 0;
+  for (const open of markupStarts(lowered)) {
+    if (isTagAt(lowered, open, "<template")) depth++;
+    else if (isTagAt(lowered, open, "</template")) depth = Math.max(0, depth - 1);
+    else if (depth === 0 && /[a-z]/.test(lowered.charAt(open + 1))) {
+      const end = findTagEnd(lowered, open + 1);
+      if (end !== -1 && COMPOSITION_ID_ATTR.test(lowered.slice(open, end))) return true;
+    }
+  }
+  return false;
+}
+
 function insertBeforeDocumentTag(html: string, tag: DocumentTag, markup: string): string | null {
   const at = tag === "</template" ? findOuterTemplateClose(html) : findDocumentTag(html, tag);
   return at === -1 ? null : html.slice(0, at) + markup + html.slice(at);
