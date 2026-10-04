@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { CaptureSession } from "./frameCapture.js";
 import {
   buildZeroDurationDiagnostic,
   classifyConsoleScriptFailure,
+  classifyPageError,
   DrawElementVerificationError,
   formatHttpErrorDiagnostic,
   formatConsoleDiagnostic,
@@ -9,6 +11,7 @@ import {
   formatNavigationStartDiagnostic,
   formatRequestFailureDiagnostic,
   HF_READY_DIAGNOSTIC_EXPR,
+  initializeSession,
   getDrawElementVerificationDetails,
   isFontResourceError,
   isDrawElementVerificationError,
@@ -34,6 +37,53 @@ describe("classifyConsoleScriptFailure", () => {
       ),
     ).toBeNull();
     expect(classifyConsoleScriptFailure("error", "Integrity metadata is present.")).toBeNull();
+  });
+});
+
+describe("classifyPageError", () => {
+  it("records an uncaught composition script error by its first line", () => {
+    expect(classifyPageError("ReferenceError: gsap is not defined\n    at main.js:1:12")).toBe(
+      "runtime-error:ReferenceError: gsap is not defined",
+    );
+  });
+
+  // The listeners go on before navigation, so a page whose goto fails still hands them over.
+  it("is what the page's error listener records, so the timeline wait stops for it", async () => {
+    const listeners = new Map<string, (arg: unknown) => void>();
+    const page = {
+      on: (event: string, listener: (arg: unknown) => void) => listeners.set(event, listener),
+      goto: async () => {
+        throw new Error("navigation stopped by the test");
+      },
+    };
+    const session = {
+      page,
+      serverUrl: "http://127.0.0.1:1",
+      scriptLoadFailures: [],
+      warnings: [],
+      browserConsoleBuffer: [],
+    };
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await initializeSession(session as unknown as CaptureSession).catch(() => {});
+      listeners.get("pageerror")?.(new Error("ReferenceError: gsap is not defined"));
+      listeners.get("pageerror")?.(
+        new Error("AbortError: The play() request was interrupted by pause()"),
+      );
+      expect(session.scriptLoadFailures).toEqual([
+        "runtime-error:ReferenceError: gsap is not defined",
+      ]);
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+
+  it("ignores the benign play/pause race", () => {
+    expect(
+      classifyPageError(
+        "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22",
+      ),
+    ).toBeNull();
   });
 });
 

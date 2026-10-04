@@ -1785,10 +1785,10 @@ export async function pollSubCompositionTimelines(
     if (failures.length > 0 && now - start >= scriptFailureGraceMs) {
       scriptFailureBail = true;
       console.warn(
-        `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
-          `script resource(s) failed to load (${failures.join(", ")}) — ` +
+        `[FrameCapture] Timeline wait cut short after ${now - start}ms: ` +
+          `script(s) failed to load or threw (${failures.join(", ")}) — ` +
           `the timeline registration they carry can never arrive. ` +
-          `Fix the script reference; the render proceeds without those animations.`,
+          `Fix the script; the render fails rather than ship without those animations.`,
       );
       break;
     }
@@ -2018,7 +2018,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: scriptFailure
         ? hasRuntimeErrors
-          ? `A sub-composition script threw during execution — timeline registration never arrived (${session.scriptLoadFailures.join(", ")})`
+          ? `A composition script threw during execution — timeline registration never arrived (${session.scriptLoadFailures.join(", ")})`
           : `A sub-composition timeline script failed to load (${session.scriptLoadFailures.join(", ")})`
         : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
           `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
@@ -2203,6 +2203,15 @@ export function classifyConsoleScriptFailure(type: string, text: string): string
   return null;
 }
 
+/** An uncaught page error is a script that stopped; a timeline it was to register never arrives. */
+export function classifyPageError(message: string): string | null {
+  // Benign play/pause race during frame capture.
+  if (/^AbortError:/.test(message) && message.includes("play()") && message.includes("pause()")) {
+    return null;
+  }
+  return `runtime-error:${message.split("\n")[0]}`;
+}
+
 // fallow-ignore-next-line unit-size
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
@@ -2228,14 +2237,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("pageerror", (err) => {
     const message = err instanceof Error ? err.message : String(err);
     const text = `[Browser:PAGEERROR] ${message}`;
-
-    // Benign play/pause race during frame capture — suppress terminal noise, keep in buffer.
-    const isPlayAbort =
-      /^AbortError:/.test(message) && message.includes("play()") && message.includes("pause()");
-    if (!isPlayAbort) {
+    const scriptFailure = classifyPageError(message);
+    if (scriptFailure) {
       console.error(text);
+      recordScriptLoadFailure(session, scriptFailure);
     }
-
     appendBrowserDiagnostic(session, text);
   });
 
