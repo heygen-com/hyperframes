@@ -316,7 +316,7 @@ export async function tryGsapResizeIntercept(
     // difference and compensates, so release matches the drop pixel-for-pixel
     // regardless of live scale or repeat resizes.
     if (el) {
-      const dropRect = el.getBoundingClientRect();
+      const dropRect = draw(() => el.getBoundingClientRect());
       scaleDraftDropPoint = { x: dropRect.x, y: dropRect.y };
     }
   } else {
