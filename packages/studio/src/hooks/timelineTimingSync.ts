@@ -188,9 +188,20 @@ export async function finishTimelineTimingFallback(input: {
   );
 }
 
-// Coalesce window for folding a GSAP mutation into the preceding timing edit; only has to
-// outlast one GSAP server round-trip, never a real second edit.
-const GSAP_HISTORY_COALESCE_MS = 10_000;
+// Held until the next edit: the key is the gesture's own, so only its GSAP fold can join it.
+const UNTIL_NEXT_EDIT = Number.POSITIVE_INFINITY;
+let timingGestures = 0;
+
+/** One timing gesture's undo step, shared by its timing write and its GSAP fold however long the fold takes. */
+export function timingGestureStep(
+  kind: string,
+  given?: { coalesceKey?: string; coalesceMs?: number },
+): { coalesceKey: string; coalesceMs: number } {
+  return {
+    coalesceKey: given?.coalesceKey ?? `${kind}:${++timingGestures}`,
+    coalesceMs: given?.coalesceMs ?? UNTIL_NEXT_EDIT,
+  };
+}
 
 type OwnedMutationStep = {
   path: string;
@@ -316,7 +327,7 @@ async function foldGsapMutationInQueue(input: {
         await input.recordEdit({
           label: input.label,
           coalesceKey: input.coalesceKey,
-          coalesceMs: GSAP_HISTORY_COALESCE_MS,
+          coalesceMs: UNTIL_NEXT_EDIT,
           files,
         });
       }

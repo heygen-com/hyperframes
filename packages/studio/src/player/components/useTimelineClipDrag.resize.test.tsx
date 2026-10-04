@@ -380,13 +380,10 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
 
     expect(h.onResizeElement).not.toHaveBeenCalled();
     expect(h.onResizeElements).toHaveBeenCalledTimes(1);
-    expect(h.onResizeElements).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({ element: a, duration: 2.5 }),
-        expect.objectContaining({ element: b, duration: 3.5 }),
-      ],
-      { coalesceKey: expect.stringMatching(/^clip-group-resize:/) },
-    );
+    expect(h.onResizeElements).toHaveBeenCalledWith([
+      expect.objectContaining({ element: a, duration: 2.5 }),
+      expect.objectContaining({ element: b, duration: 3.5 }),
+    ]);
     expect(h.storeById("a").duration).toBe(2.5);
     expect(h.getResizeProjection()).toHaveLength(0);
     expect(h.storeById("b").duration).toBe(3.5);

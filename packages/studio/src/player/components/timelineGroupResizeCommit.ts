@@ -35,7 +35,6 @@ export function commitTimelineGroupResize(
     );
     return;
   }
-  const coalesceKey = `clip-group-resize:${changes.map((change) => change.key).join(":")}`;
   Promise.resolve(
     persist(
       changes.map((change) => ({
@@ -44,7 +43,6 @@ export function commitTimelineGroupResize(
         duration: change.duration,
         playbackStart: change.playbackStart,
       })),
-      { coalesceKey },
     ),
   ).catch((error) => {
     rollbackLatestTimelineOptimisticGesture(

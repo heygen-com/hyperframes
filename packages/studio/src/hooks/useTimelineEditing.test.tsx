@@ -1167,6 +1167,41 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     expect(groupWrite.mock.calls[0]![1]).toBe(singleWrite.mock.calls[0]![1]);
     group.unmount();
   });
+
+  it("gives each single-clip move and resize its own undo step, which its GSAP rewrite joins", async () => {
+    const source = '<div id="clip" data-start="0" data-duration="1"></div>';
+    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0, start: 0, duration: 1 });
+    stubProjectFetch(source, {
+      mutated: true,
+      scriptText: null,
+      before: "tweens at 0",
+      after: source,
+    });
+    const recordEdit = vi.fn(async (_edit: { coalesceKey?: string; coalesceMs?: number }) => {});
+    const h = renderTimelineEditingHook({
+      timelineElements: [clip],
+      iframe: createPreviewIframe([{ id: "clip", track: 0 }]),
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile: vi.fn(async () => {}),
+      recordEdit,
+    });
+
+    await act(async () => {
+      await h.move(clip, { start: 0.5, track: clip.track });
+      await h.move(clip, { start: 1, track: clip.track });
+      await h.resize(clip, { start: 0, duration: 2 });
+    });
+
+    const steps = recordEdit.mock.calls.map(([edit]) => edit);
+    expect(steps.map((edit) => edit.coalesceMs)).toEqual(Array(6).fill(Infinity));
+    const [move, fold, again, foldAgain, resize, resizeFold] = steps.map(
+      (edit) => edit.coalesceKey,
+    );
+    expect([fold, foldAgain, resizeFold]).toEqual([move, again, resize]);
+    expect(new Set([move, again, resize]).size).toBe(3);
+    h.unmount();
+  });
 });
 
 describe("useTimelineEditing duration rollback on failed persist", () => {

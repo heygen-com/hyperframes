@@ -1,11 +1,20 @@
 // @vitest-environment happy-dom
 
 import { act } from "react";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createStudioApi,
+  openProjectHistory,
+  type StudioApiAdapter,
+} from "@hyperframes/studio-server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Root } from "react-dom/client";
 import type { TimelineElement } from "../player";
 import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
+import { usePersistentEditHistory } from "./usePersistentEditHistory";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 
 installReactActEnvironment();
@@ -149,3 +158,84 @@ it.each([false, true])(
     }
   },
 );
+
+it("undoes each group move with its GSAP rewrite in one step, however long the rewrite takes", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const dir = mkdtempSync(join(tmpdir(), "hf-group-move-undo-"));
+  const historyRoot = mkdtempSync(join(tmpdir(), "hf-group-move-undo-history-"));
+  const before = [
+    '<div data-composition-id="root" data-duration="4">',
+    '<div id="a" data-start="0" data-duration="2"></div>',
+    '<div id="b" data-start="0" data-duration="2"></div>',
+    "</div>",
+    '<script>const tl = gsap.timeline({ paused: true }); tl.to("#a", { x: 10, duration: 1 }, 0); tl.to("#b", { x: 10, duration: 1 }, 0); window.__timelines["root"] = tl;</script>',
+  ].join("");
+  writeFileSync(join(dir, "index.html"), before);
+  const history = await openProjectHistory({ projectDir: dir, historyRoot });
+  const api = createStudioApi({
+    listProjects: () => [],
+    resolveProject: (id: string) => (id === "demo" ? { id, dir } : null),
+    history: () => history,
+  } as unknown as StudioApiAdapter);
+  let rewriteAsked = () => {};
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (url.includes("/gsap-mutations")) {
+      rewriteAsked();
+      await new Promise((wait) => setTimeout(wait, 400));
+    }
+    return api.request(url.replace(/^\/api/, ""), init);
+  });
+  let editHistory!: ReturnType<typeof usePersistentEditHistory>;
+  let editing!: ReturnType<typeof useTimelineGroupEditing>;
+  function Harness() {
+    editHistory = usePersistentEditHistory({ projectId: "demo" });
+    editing = useTimelineGroupEditing({
+      activeCompPath: "index.html",
+      editQueueRef: { current: Promise.resolve() },
+      pendingTimelineEditPathRef: { current: new Set() },
+      previewIframeRef: { current: null },
+      projectIdRef: { current: "demo" },
+      recordEdit: editHistory.recordEdit,
+      reloadPreview: vi.fn(),
+      showToast: vi.fn(),
+      writeProjectFile: async (path, content) => writeFileSync(join(dir, path), content),
+    });
+    return null;
+  }
+  const root = mountReactHarness(<Harness />);
+  const file = () => readFileSync(join(dir, "index.html"), "utf8");
+  // The rewrite answers after the move's claim has sat idle longer than a default window.
+  const moveTo = (from: number, to: number) =>
+    act(async () => {
+      const rewriting = new Promise<void>((resolve) => (rewriteAsked = resolve));
+      const moved = editing.handleTimelineGroupMove([
+        { element: el("a", from, 2), start: to },
+        { element: el("b", from, 2), start: to },
+      ]);
+      await rewriting;
+      await vi.advanceTimersByTimeAsync(400);
+      await moved;
+    });
+  const undo = () =>
+    act(() =>
+      editHistory.undo({ readFile: async (path) => readFileSync(join(dir, path), "utf8") }),
+    );
+  try {
+    await moveTo(0, 1);
+    const once = file();
+    await moveTo(1, 2);
+    expect(file()).toContain('tl.to("#a", { x: 10, duration: 1 }, 2)');
+
+    await undo();
+    expect(file()).toBe(once);
+    await undo();
+    expect(file()).toBe(before);
+  } finally {
+    act(() => root.unmount());
+    await history.close();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(historyRoot, { recursive: true, force: true });
+  }
+});

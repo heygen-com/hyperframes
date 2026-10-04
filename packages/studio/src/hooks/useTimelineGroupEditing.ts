@@ -24,6 +24,7 @@ import { playbackStartAttributeForElement } from "../player/lib/timelineElementH
 import {
   captureDurationRollback,
   finishGroupTimingGsapFallback,
+  timingGestureStep,
   sdkTimingGsapSync,
   readFileContent,
   scaleGsapMutation,
@@ -93,14 +94,6 @@ function allChangesSharePath(
   return changes.every((change) => targetPathFor(change.element, activeCompPath) === firstPath)
     ? firstPath
     : null;
-}
-
-function moveCoalesceKey(changes: readonly TimelineGroupMoveChange[]): string {
-  return `timeline-group-move:${changes.map((change) => change.element.hfId ?? change.element.id).join(",")}`;
-}
-
-function resizeCoalesceKey(changes: readonly TimelineGroupResizeChange[]): string {
-  return `timeline-group-resize:${changes.map((change) => change.element.hfId ?? change.element.id).join(",")}`;
 }
 
 function toSdkTimingChanges<T extends { element: TimelineElement }>(
@@ -287,8 +280,7 @@ export function useTimelineGroupEditing({
       // Optimistic duration readout: content-driven (grow AND shrink), read from
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
-      const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
-      const coalesceMs = options?.coalesceMs;
+      const { coalesceKey, coalesceMs } = timingGestureStep("timeline-group-move", options);
       const label = options?.label ?? "Move timeline clips";
       return enqueueGroupOperation(label, async (projectId) => {
         await options?.beforeTiming;
@@ -407,8 +399,7 @@ export function useTimelineGroupEditing({
       // Optimistic duration readout: content-driven (grow AND shrink), read from
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
-      const coalesceKey = options?.coalesceKey ?? resizeCoalesceKey(changes);
-      const coalesceMs = options?.coalesceMs;
+      const { coalesceKey, coalesceMs } = timingGestureStep("timeline-group-resize", options);
       return enqueueGroupOperation("Resize timeline clips", async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({

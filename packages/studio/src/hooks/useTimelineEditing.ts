@@ -23,6 +23,7 @@ import {
   sdkTimingGsapSync,
   readFileContent,
   syncPreviewContentDuration,
+  timingGestureStep,
 } from "./timelineTimingSync";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
@@ -81,7 +82,7 @@ export function useTimelineEditing({
       element: TimelineElement,
       label: string,
       buildPatches: PersistTimelineEditInput["buildPatches"],
-      coalesceKey?: string,
+      step: ReturnType<typeof timingGestureStep>,
     ): Promise<void> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
@@ -100,7 +101,7 @@ export function useTimelineEditing({
             writeProjectFile,
             recordEdit,
             pendingTimelineEditPathRef,
-            coalesceKey,
+            ...step,
           }),
         )
         .then(() => {
@@ -190,7 +191,7 @@ export function useTimelineEditing({
             track,
           );
         };
-        const coalesceKey = `timeline-move:${element.hfId ?? element.id}`;
+        const step = timingGestureStep("timeline-move");
         const finishMoveGsapSync = (sdkGsap?: ReturnType<typeof sdkTimingGsapSync>) =>
           // One GSAP sync per edit: the SDK commit's own (sdkGsap), else the server rewrite here.
           finishClipTimingFallback({
@@ -200,14 +201,14 @@ export function useTimelineEditing({
             targetPath,
             domId: element.domId,
             label: "Move timeline clip",
-            coalesceKey,
+            coalesceKey: step.coalesceKey,
             recordEdit,
             writeProjectFile,
             edit: { kind: "shift", delta: updates.start - element.start },
             sdkGsap,
           }).finally(() => invalidateGsapCache?.());
         const moveFallback = () =>
-          enqueueEdit(element, "Move timeline clip", buildMovePatches, coalesceKey).then(() =>
+          enqueueEdit(element, "Move timeline clip", buildMovePatches, step).then(() =>
             finishMoveGsapSync(),
           );
         return reorderDone
@@ -229,7 +230,7 @@ export function useTimelineEditing({
                   readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
                   publishSession: publishSdkSession,
                 },
-                { label: "Move timeline clip", coalesceKey, skipRefresh: true },
+                { label: "Move timeline clip", ...step, skipRefresh: true },
               ).then((result) => {
                 if (!cutoverCommittedOrThrow(result)) return moveFallback();
                 return finishMoveGsapSync(sdkTimingGsapSync(result));
@@ -296,7 +297,7 @@ export function useTimelineEditing({
       // positions/durations on the server, then soft-reload with the rewritten
       // script (timing-only resize) — same no-flash path as move; full reload is
       // the fallback.
-      const coalesceKey = `timeline-resize:${element.hfId ?? element.id}`;
+      const step = timingGestureStep("timeline-resize");
       const finishResizeGsapSync = (sdkGsap?: ReturnType<typeof sdkTimingGsapSync>) =>
         finishClipTimingFallback({
           iframe: previewIframeRef.current,
@@ -305,7 +306,7 @@ export function useTimelineEditing({
           targetPath,
           domId: element.domId,
           label: "Resize timeline clip",
-          coalesceKey,
+          coalesceKey: step.coalesceKey,
           recordEdit,
           writeProjectFile,
           edit: {
@@ -316,7 +317,7 @@ export function useTimelineEditing({
           sdkGsap,
         }).finally(() => invalidateGsapCache?.());
       const resizeFallback = () =>
-        enqueueEdit(element, "Resize timeline clip", buildResizePatches, coalesceKey).then(() =>
+        enqueueEdit(element, "Resize timeline clip", buildResizePatches, step).then(() =>
           finishResizeGsapSync(),
         );
       const persistDone =
@@ -336,7 +337,7 @@ export function useTimelineEditing({
                 readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
                 publishSession: publishSdkSession,
               },
-              { label: "Resize timeline clip", coalesceKey, skipRefresh: true },
+              { label: "Resize timeline clip", ...step, skipRefresh: true },
             ).then((result) => {
               if (!cutoverCommittedOrThrow(result)) return resizeFallback();
               return finishResizeGsapSync(sdkTimingGsapSync(result));
