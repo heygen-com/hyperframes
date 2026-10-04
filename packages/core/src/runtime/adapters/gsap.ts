@@ -15,9 +15,37 @@ export function rerenderGsapTimelineAt(
   },
   t: number,
 ): void {
+  const children = timeline.getChildren?.(false, true, true) ?? [];
+  const calls = callsStartingAt(children, t).map((call) => [call, call._zTime] as const);
   timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
-  primeKeyframedTweensStartingAt(timeline.getChildren?.(false, true, true) ?? [], t);
+  primeKeyframedTweensStartingAt(children, t);
   timeline.totalTime(t, true);
+  // Leaving t and landing back on it silently re-arms a call at t; keep whether it already fired.
+  for (const [call, zTime] of calls) call._zTime = zTime;
+}
+
+type GsapCall = { startTime: () => number; totalDuration: () => number; _zTime?: number };
+
+export const GSAP_CALLBACK_NAMES = [
+  "onStart",
+  "onUpdate",
+  "onComplete",
+  "onReverseComplete",
+  "onRepeat",
+];
+
+function callsStartingAt(children: unknown[], time: number): GsapCall[] {
+  const found: GsapCall[] = [];
+  for (const child of children.filter(playsForward)) {
+    const local = (time - child.startTime()) * child.timeScale();
+    const vars = (child.vars ?? {}) as Record<string, unknown>;
+    if (!child.totalDuration() && Math.abs(local) < 1e-9) {
+      if (GSAP_CALLBACK_NAMES.some((name) => typeof vars[name] === "function")) found.push(child);
+    } else if (child.getChildren && local >= 0 && local <= child.totalDuration()) {
+      found.push(...callsStartingAt(child.getChildren(false, true, true), local));
+    }
+  }
+  return found;
 }
 
 type GsapAnimation = {

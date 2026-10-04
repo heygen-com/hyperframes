@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
-import { createGsapAdapter } from "./gsap";
+import { createGsapAdapter, rerenderGsapTimelineAt } from "./gsap";
 import type { RuntimeTimelineLike } from "../types";
 
 // Every 0.1 s: hide all three frames, then show one, as frame-by-frame films do.
@@ -212,5 +212,32 @@ describe("gsap adapter at a tween's start", () => {
     });
     for (const time of seeks) adapter.seek({ time });
     expect(o.x).toBeCloseTo(x, 6);
+  });
+});
+
+describe("re-rendering onto a call at the playhead", () => {
+  function filmWithCall(nested: boolean) {
+    let fired = 0;
+    const timeline = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 10 });
+    const host = nested ? gsap.timeline().to({ y: 0 }, { y: 1, duration: 4 }) : timeline;
+    host.call(() => void fired++, [], nested ? 1 : 2);
+    if (nested) timeline.add(host, 1);
+    return { timeline, fired: () => fired };
+  }
+
+  it.each([false, true])("does not fire a call that already fired again (nested: %s)", (nested) => {
+    const film = filmWithCall(nested);
+    film.timeline.totalTime(2, false);
+    rerenderGsapTimelineAt(film.timeline, 2);
+    film.timeline.totalTime(3, false);
+    expect(film.fired()).toBe(1);
+  });
+
+  it("still fires a call the playhead reached silently on the next seek", () => {
+    const film = filmWithCall(false);
+    film.timeline.totalTime(2, true);
+    rerenderGsapTimelineAt(film.timeline, 2);
+    film.timeline.totalTime(3, false);
+    expect(film.fired()).toBe(1);
   });
 });
