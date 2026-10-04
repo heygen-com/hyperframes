@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { heygenAuthHeaders, heygenAuthMethod, loadEnvFromDir } from "./heygen.mjs";
+import {
+  heygenAuthHeaders,
+  heygenAuthMethod,
+  heygenCredential,
+  loadEnvFromDir,
+} from "./heygen.mjs";
 
 function withCleanHeygenEnv(fn) {
   const previousApiKey = process.env.HEYGEN_API_KEY;
@@ -149,6 +154,7 @@ test("heygenAuthHeaders says to fix an unreadable credentials path, and to log i
       process.env.HEYGEN_CONFIG_DIR = dir;
       assert.throws(() => heygenAuthHeaders(), /no HeyGen credentials/);
       mkdirSync(join(dir, "credentials"));
+      assert.equal(heygenCredential(), null);
       assert.throws(
         () => heygenAuthHeaders(),
         (error) =>
