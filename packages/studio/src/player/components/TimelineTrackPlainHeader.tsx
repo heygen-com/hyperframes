@@ -2,8 +2,8 @@ import type React from "react";
 import { Music } from "../../icons/SystemIcons";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
-import { trackDisplaySuffix, trackHiddenToggleLabel } from "./timelineTrackDisplay";
-import { HiddenToggleIcon } from "./hiddenToggle";
+import { trackDisplaySuffix } from "./timelineTrackDisplay";
+import { HiddenToggleIcon, hiddenToggleVerb } from "./hiddenToggle";
 
 export function VisibilityButton({
   hidden,
@@ -22,7 +22,7 @@ export function VisibilityButton({
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
   const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const label = trackHiddenToggleLabel(asMute, hidden, suffix);
+  const label = `${hiddenToggleVerb(asMute, hidden)} track${suffix}`;
   return (
     <button
       type="button"

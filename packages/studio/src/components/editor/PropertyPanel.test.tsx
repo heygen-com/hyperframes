@@ -236,8 +236,12 @@ async function renderPanel(
   flatEnabled: boolean,
   elementOverride: NonNullable<PropertyPanelProps["element"]> = baseElement(),
   propsOverride: Partial<PropertyPanelProps> = {},
-  currentTime?: number,
-  options: { selectedElementId?: string; timelineEdit?: TimelineEditCallbacks } = {},
+  options: {
+    currentTime?: number;
+    selectedElementId?: string;
+    timelineEdit?: TimelineEditCallbacks;
+    refreshSelection?: () => void;
+  } = {},
 ) {
   vi.resetModules();
   vi.doMock("./manualEditingAvailability", async () => {
@@ -246,11 +250,25 @@ async function renderPanel(
     );
     return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: flatEnabled };
   });
-  // Seed the playhead on the SAME store instance PropertyPanel.tsx will read via
-  // usePlayerStore (module-fresh since the resetModules() above) — must happen
-  // before PropertyPanel is imported/rendered so its initial render sees it.
+  vi.doMock("../../contexts/DomEditContext", async () => {
+    const actual = await vi.importActual<typeof import("../../contexts/DomEditContext")>(
+      "../../contexts/DomEditContext",
+    );
+    const refresh = options.refreshSelection;
+    return refresh
+      ? {
+          ...actual,
+          useDomEditActionsContextOptional: () => ({ refreshDomEditSelectionFromPreview: refresh }),
+        }
+      : actual;
+  });
+  // Seed the playhead and selection on the same store instance PropertyPanel.tsx
+  // reads (module-fresh after the resetModules() above), before it is imported so
+  // its first render sees them.
   const { usePlayerStore } = await import("../../player/store/playerStore");
-  if (currentTime !== undefined) usePlayerStore.getState().setCurrentTime(currentTime);
+  if (options.currentTime !== undefined) {
+    usePlayerStore.getState().setCurrentTime(options.currentTime);
+  }
   if (options.selectedElementId)
     usePlayerStore.setState({ selectedElementId: options.selectedElementId });
   const { PropertyPanel } = await import("./PropertyPanel");
@@ -571,7 +589,7 @@ describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan cohe
         true,
         inferredMotionElement(),
         { gsapAnimations: [INFERRED_TIMING_ANIMATION], onSeekToTime },
-        2,
+        { currentTime: 2 },
       );
       openFlatGroup(host, "Layout");
       const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
@@ -616,7 +634,7 @@ describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up f
         true,
         inferredMotionElement(),
         { gsapAnimations: [INFERRED_TIMING_ANIMATION] },
-        3.5,
+        { currentTime: 3.5 },
       );
       openFlatGroup(host, "Layout");
       const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
@@ -653,7 +671,7 @@ describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up f
         true,
         inferredMotionElement(),
         { gsapAnimations: [INFERRED_TIMING_ANIMATION], onSeekToTime },
-        3.5,
+        { currentTime: 3.5 },
       );
       openFlatGroup(host, "Layout");
       const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
@@ -1056,7 +1074,6 @@ describe("PropertyPanel — Motion is for things that move", () => {
         true,
         audioClipElement(),
         { onToggleElementHidden },
-        undefined,
         { selectedElementId: "vo-1" },
       );
       act(() => host.querySelector<HTMLElement>('button[aria-label="Mute element"]')!.click());
@@ -1083,18 +1100,24 @@ describe("PropertyPanel — Motion is for things that move", () => {
           hidden = value !== null;
         },
       );
-      const { host, root, render } = await renderPanel(true, bus(true), {}, undefined, {
-        timelineEdit: { onSetAudioGroupAttributeQuiet },
-      });
-      const press = (label: string) => {
+      // The panel re-reads its selection after the write; nothing else re-renders it here.
+      const { host, root, render } = await renderPanel(
+        true,
+        bus(true),
+        {},
+        {
+          timelineEdit: { onSetAudioGroupAttributeQuiet },
+          refreshSelection: () => render(bus(hidden)),
+        },
+      );
+      const press = async (label: string) => {
         const button = host.querySelector<HTMLElement>(`button[aria-label="${label}"]`);
         if (!button) throw new Error(`Expected a "${label}" button`);
-        act(() => button.click());
-        render(bus(hidden));
+        await act(async () => button.click());
       };
-      press("Unmute element");
-      press("Mute element");
-      press("Unmute element");
+      await press("Unmute element");
+      await press("Mute element");
+      await press("Unmute element");
       expect(onSetAudioGroupAttributeQuiet.mock.calls).toEqual([
         ["voiceover", "data-hidden", null, "Unmute element"],
         ["voiceover", "data-hidden", "", "Mute element"],

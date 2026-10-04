@@ -6,8 +6,6 @@
  * routes through here; the raw key stays in callbacks and lookups only.
  */
 
-import { hiddenToggleVerb } from "./hiddenToggle";
-
 /** Ascending distinct track keys; the drawn rows also group audio (`displayTrackOrder`). */
 export function timelineTrackOrder(elements: readonly { track: number }[]): number[] {
   return [...new Set(elements.map((element) => element.track))].sort((a, b) => a - b);
@@ -34,9 +32,4 @@ export function trackDisplayNumber(trackOrder: readonly number[], track: number)
  */
 export function trackDisplaySuffix(displayNumber: number | null): string {
   return displayNumber === null ? "" : ` ${displayNumber}`;
-}
-
-/** A track toggle's label from its current `hidden` state; mute on an audio-only track. */
-export function trackHiddenToggleLabel(asMute: boolean, hidden: boolean, suffix: string): string {
-  return `${hiddenToggleVerb(asMute, hidden)} track${suffix}`;
 }

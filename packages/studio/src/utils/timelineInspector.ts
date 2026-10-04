@@ -115,10 +115,9 @@ export function resolveBeatSourceTrack(
  * May this multi-selection be hidden as one action?
  *
  * Audio has no visual to hide, and `data-hidden` on an audio element is what
- * MUTES it — preview silences it and the render drops it from the mix. The
- * timeline offers it on an audio track as a mute, and the single-selection panel
- * gates the same write on `audioSelection`. The multi-selection "Hide all" would
- * reach it on a control whose label promises visibility.
+ * mutes it: preview silences it and the render drops it from the mix. The timeline
+ * and the single-selection panel offer it as a mute; "Hide all" would reach it on a
+ * control whose label promises visibility.
  *
  * A shared predicate rather than a check in the handler so the panel's button
  * and the handler's refusal cannot disagree — the button is not the only caller.

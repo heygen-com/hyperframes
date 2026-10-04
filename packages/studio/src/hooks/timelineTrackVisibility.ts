@@ -6,7 +6,6 @@ import {
   timelineTrackOrder,
   trackDisplayNumber,
   trackDisplaySuffix,
-  trackHiddenToggleLabel,
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { isAudioOnlyTrack } from "../utils/timelineInspector";
@@ -209,7 +208,7 @@ export async function toggleTimelineTrackHidden({
   );
   const trackElements = timelineElements.filter((element) => element.track === track);
   const hiddenBefore = !hidden;
-  const label = trackHiddenToggleLabel(isAudioOnlyTrack(trackElements), hiddenBefore, suffix);
+  const label = `${hiddenToggleVerb(isAudioOnlyTrack(trackElements), hiddenBefore)} track${suffix}`;
   return setElementsHidden({
     projectId,
     activeCompPath,
