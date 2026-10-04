@@ -55,10 +55,7 @@ export function collectTimelineSnapTargets(input: {
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
-/**
- * The ruler line nearest `time` within the threshold; `gridStep` 0 means no grid. Clip times save
- * to the centisecond, so a line snaps at its saved time, and only when that is within a pixel.
- */
+/** Nearest ruler line in range, at its saved centisecond, and only within a pixel of it. */
 function nearestGridLine(
   time: number,
   gridStep: number,
@@ -72,7 +69,6 @@ function nearestGridLine(
   return Math.abs(saved - time) < thresholdSecs ? { time: saved, type: "grid" } : null;
 }
 
-/** Snaps to the nearest target; the ruler grid only when no target is in range. */
 export function snapTimelineTime(
   time: number,
   targets: readonly TimelineSnapTarget[],

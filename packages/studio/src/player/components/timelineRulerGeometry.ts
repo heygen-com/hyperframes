@@ -94,7 +94,6 @@ function tickSpacing(duration: number, pixelsPerSecond?: number, frameRate?: num
   return { majorInterval, subdivisions };
 }
 
-/** The ruler counts whole preview frames in frame display mode. */
 export function rulerFrameRate(mode: TimelineTimeDisplayMode): number | undefined {
   return mode === "frame" ? STUDIO_PREVIEW_FPS : undefined;
 }

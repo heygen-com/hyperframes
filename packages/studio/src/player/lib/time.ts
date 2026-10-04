@@ -1,6 +1,5 @@
 export const STUDIO_PREVIEW_FPS = 30;
 
-/** A seek target inside the composition; an unknown (0) duration leaves it unbounded above. */
 export const clampToDuration = (time: number, duration: number) =>
   Math.max(0, duration > 0 ? Math.min(duration, time) : time);
 
