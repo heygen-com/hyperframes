@@ -9,6 +9,19 @@ import type { StudioEditRevert } from "../../utils/studioPendingEdits";
 interface MemberPosition {
   offset: StudioPathOffsetSnapshot;
   gsap: { x: number; y: number } | null;
+  placement: string[];
+}
+
+// Where an element-offset move draws the element when no transform channel can take it.
+const PLACEMENT = ["position", "left", "top"];
+const placementOf = (element: HTMLElement) =>
+  PLACEMENT.map((prop) => element.style.getPropertyValue(prop));
+
+function showPlacement(element: HTMLElement, placement: string[]): void {
+  PLACEMENT.forEach((prop, i) => {
+    if (placement[i]) element.style.setProperty(prop, placement[i]!);
+    else element.style.removeProperty(prop);
+  });
 }
 
 function readMemberPosition(member: ManualOffsetDragMember): MemberPosition {
@@ -19,19 +32,25 @@ function readMemberPosition(member: ManualOffsetDragMember): MemberPosition {
       x: Number(gsap.getProperty(member.element, "x")),
       y: Number(gsap.getProperty(member.element, "y")),
     },
+    placement: placementOf(member.element),
   };
 }
 
 function showMemberPosition(member: ManualOffsetDragMember, position: MemberPosition): void {
   restoreStudioPathOffset(member.element, position.offset);
+  showPlacement(member.element, position.placement);
   if (position.gsap) getOffsetDragGsap(member.element)?.set(member.element, { ...position.gsap });
 }
 
 /** Undo's live revert of a move: its members at gesture start (the restore resets GSAP's x/y from the gesture's base). */
 export function manualOffsetMoveRevert(members: ManualOffsetDragMember[]): StudioEditRevert {
+  const startPlacement = members.map((member) => placementOf(member.element));
   return () => {
     const shown = members.map(readMemberPosition);
-    for (const member of members) restoreStudioPathOffset(member.element, member.initialPathOffset);
+    members.forEach((member, i) => {
+      restoreStudioPathOffset(member.element, member.initialPathOffset);
+      showPlacement(member.element, startPlacement[i]!);
+    });
     return () => members.forEach((member, i) => showMemberPosition(member, shown[i]!));
   };
 }

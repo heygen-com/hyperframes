@@ -5,6 +5,7 @@ import type { DomEditSelection } from "./domEditing";
 import type { GestureState } from "./domEditOverlayGestures";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import {
+  adoptingStudioPendingEdit,
   hasStudioPendingEdits,
   paintBackNewestStudioPendingEdit,
 } from "../../utils/studioPendingEdits";
@@ -47,7 +48,7 @@ const pointer = (x: number, y: number) => ({
 });
 
 /** Drags a box without GSAP 100 px right and 60 px down; its save waits for `save`. */
-function dragWithSaveRunning(save: Promise<void>) {
+function dragWithSaveRunning(save: Promise<void> | (() => Promise<void>)) {
   const element = document.createElement("div");
   element.style.setProperty("translate", "40px 30px");
   document.body.append(element);
@@ -62,7 +63,7 @@ function dragWithSaveRunning(save: Promise<void>) {
     rafPausedRef: ref(false),
     onManualDragStartRef: ref(vi.fn()),
     onBlockedMoveRef: ref(vi.fn()),
-    onPathOffsetCommitRef: ref(vi.fn(() => save)),
+    onPathOffsetCommitRef: ref(vi.fn(typeof save === "function" ? save : () => save)),
     snapGuidesRef: ref(null),
     groupGestureRef: ref(null),
     blockedMoveRef: ref(null),
@@ -190,5 +191,26 @@ it("a rotate of a box GSAP turns is painted back to GSAP's angle at press, and s
   expect(gsapOf(element).rotation).toBe(turned);
 
   saved();
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+});
+
+it("a GSAP drag saved as a left/top offset stays painted back while that offset is drawn", async () => {
+  fakeGsap({ x: 5, y: 7 });
+  let saved!: () => void;
+  let drawn!: Promise<void>;
+  const element = dragWithSaveRunning(() => {
+    const edit = adoptingStudioPendingEdit()!;
+    drawn = new Promise<void>((resolve) => (saved = resolve)).then(() =>
+      edit.drawKeepingUndone(() => void element.style.setProperty("left", "99px")),
+    );
+    return drawn;
+  });
+
+  const shown = paintBackNewestStudioPendingEdit();
+  saved();
+  await drawn;
+  expect(element.style.getPropertyValue("left")).toBe("");
+  shown!.showAgain();
+  expect(element.style.getPropertyValue("left")).toBe("99px");
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
 });
