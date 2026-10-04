@@ -183,7 +183,6 @@ function resolveRetimeTweenPercentage(
   const tweenPercentages = animationKeyframes
     .map((keyframe) => keyframe.tweenPercentage)
     .filter((value): value is number => typeof value === "number");
-  // Clip position is linear in time; the run ease maps time to keyframe progress.
   const runEase = retimedRunEase(actor);
   const timed = animationKeyframes.map((keyframe) =>
     keyframe.tweenPercentage === undefined

@@ -1,4 +1,3 @@
-/** GSAP's ease rules for keyframed tweens, and the time at which each keyframe plays. */
 import gsap from "gsap";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 
@@ -25,7 +24,6 @@ export function keyframedTweenEases(anim: GsapAnimation): {
   };
 }
 
-/** Unknown ease names parse to undefined -> linear. */
 export function easeFunction(name: string | undefined): ((progress: number) => number) | null {
   if (!name || name === "none" || name === "linear") return null;
   return gsap.parseEase(name) ?? null;
