@@ -1,5 +1,7 @@
 /** Drives one edit accuracy case in the built Studio and measures it. All distances are composition px. */
 import { spawn } from "node:child_process";
+import { classifyPropertyGroup } from "../../../../parsers/src/gsapConstants.ts";
+import { parseGsapScript } from "../../../../parsers/src/gsapParser.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { COMPOSITION, FIXTURE_CDN, PLAYHEAD, localAsset } from "./grid.mjs";
@@ -344,6 +346,30 @@ export function keyframeDrift(before, after) {
   return { ...worst, pass: worst.diff <= KEY_TOLERANCE };
 }
 
+/** Property groups (position, size, scale, ...) the timelines animate on #target; a static gsap.set hold is not one. */
+function targetGroups(files) {
+  const groups = new Set();
+  for (const html of Object.values(files))
+    for (const [, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))
+      for (const anim of parseGsapScript(script).animations.filter(
+        (a) => a.targetSelector === "#target" && !a.global,
+      ))
+        for (const props of [
+          anim.properties,
+          anim.fromProperties,
+          ...(anim.keyframes?.keyframes ?? []).map((k) => k.properties),
+        ])
+          for (const prop of Object.keys(props ?? {}))
+            if (prop !== "data") groups.add(classifyPropertyGroup(prop));
+  return groups;
+}
+
+/** Property groups the edit made the timeline animate on #target that it did not animate before. */
+export function openedGroups(original, saved) {
+  const before = targetGroups(original);
+  return [...targetGroups(saved)].filter((group) => !before.has(group));
+}
+
 const declarations = (text = "") =>
   Object.fromEntries(
     text
@@ -357,6 +383,9 @@ const targetCss = (html) => ({
   rule: declarations(capture(/#target\s*\{([^}]*)\}/, html)),
   inline: declarations(capture(/\bstyle="([^"]*)"/, capture(/(<[^>]*\bid="target"[^>]*>)/, html))),
 });
+
+/** The keyframe rule: other keyframes read back unchanged and no property nothing animated starts animating. */
+const keyRule = (drift, opened) => ({ ...drift, opened, pass: drift.pass && opened.length === 0 });
 
 /** Plain CSS the edit wrote for a property GSAP animates: it would override or fight the timeline. */
 export function strayCss(original, saved, props) {
@@ -937,7 +966,10 @@ async function measureCase(
     unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
     reloaded,
     ...(spec.keys && {
-      keys: keyframeDrift(keysBefore, keysAfter),
+      keys: keyRule(
+        keyframeDrift(keysBefore, keysAfter),
+        openedGroups(original, readFiles(dir, files)),
+      ),
       css: strayCss(original, readFiles(dir, files), spec.keys.css),
       keyRender: { time: spec.keys.render, visible: keysAfter[spec.keys.render].visible },
     }),

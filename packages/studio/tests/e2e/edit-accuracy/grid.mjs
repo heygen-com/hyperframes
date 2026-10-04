@@ -36,7 +36,8 @@ const AXES = {
   zoom: [50, 100, 200],
 };
 
-// Timelines with keyframes at 0, 2 and 3 s on the property each animates: `css` is what that property is in CSS.
+// Timelines with keyframes at `times` (0, 2 and 3 s unless set) on the property each animates: `css` is what that property
+// is in CSS.
 const T = '"#target"';
 const KEYFRAMED = {
   size: {
@@ -79,10 +80,24 @@ const KEYFRAMED = {
     props: ["x"],
     css: ["left", "top", "translate", "transform"],
   },
+  // Starts at 1 s, so a playhead can sit before its first keyframe.
+  late: {
+    lines: [
+      `tl.to(${T}, { width: 300, height: 200, duration: 1, ease: "none" }, 1);`,
+      `tl.to(${T}, { width: 360, height: 240, duration: 1, ease: "none" }, 2);`,
+    ],
+    props: ["width", "height"],
+    css: ["width", "height"],
+    times: [1, 2, 3],
+  },
 };
 const KEY_TIMES = [0, 2, 3];
-// On a keyframe the edit changes that keyframe; between two it adds one at the playhead.
-const AT = { on: 2, mid: 1 };
+// On a keyframe the edit changes that keyframe; anywhere else, before or after the range too, it adds one there.
+const AT = { on: 2, mid: 1, before: 0.5, after: 3.5 };
+const playheadsFor = (times) =>
+  Object.keys(AT).filter(
+    (at) => at === "on" || (!times.includes(AT[at]) && (at !== "before" || AT.before < times[0])),
+  );
 
 function keyframedCases() {
   return product({
@@ -92,18 +107,21 @@ function keyframedCases() {
     nesting: AXES.nesting,
     zoom: AXES.zoom,
     gesture: GESTURES,
-    at: Object.keys(AT),
-  }).map((c) => ({
-    id: `${caseId(c)}-${c.at}`,
-    ...c,
-    playhead: AT[c.at],
-    keys: {
-      times: KEY_TIMES.filter((t) => t !== AT[c.at]),
-      props: KEYFRAMED[c.gsap].props,
-      css: KEYFRAMED[c.gsap].css,
-      render: KEY_TIMES.at(-1),
-    },
-  }));
+  }).flatMap((c) => {
+    const times = KEYFRAMED[c.gsap].times ?? KEY_TIMES;
+    return playheadsFor(times).map((at) => ({
+      id: `${caseId(c)}-${at}`,
+      ...c,
+      at,
+      playhead: AT[at],
+      keys: {
+        times: times.filter((t) => t !== AT[at]),
+        props: KEYFRAMED[c.gsap].props,
+        css: KEYFRAMED[c.gsap].css,
+        render: times.at(-1),
+      },
+    }));
+  });
 }
 
 const product = (axes) =>

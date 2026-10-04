@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { keyframeDrift, strayCss } from "./case.mjs";
+import { keyframeDrift, openedGroups, strayCss } from "./case.mjs";
 import { buildGrid, writeFixture } from "./grid.mjs";
 import { accurate } from "./ratchet.mjs";
 
@@ -19,6 +19,33 @@ describe("keyframeDrift", () => {
   it("fails a value it could not read", () => {
     const before = { 0: at({ x: 0 }) };
     expect(keyframeDrift(before, { 0: at({ x: Number.NaN }) }).pass).toBe(false);
+  });
+});
+
+describe("openedGroups", () => {
+  const page = (...tweens) => ({
+    "index.html": `<div id="target"></div><script>
+      var tl = gsap.timeline({ paused: true });
+      ${tweens.join("\n")}
+    </script>`,
+  });
+  const size = 'tl.to("#target", { width: 300, duration: 2 }, 0);';
+  const x = 'tl.to("#target", { x: 60, duration: 2 }, 0);';
+
+  it("passes an edit that keyframes another channel of a property already animated", () => {
+    const keyframed =
+      'tl.to("#target", { keyframes: { "50%": { width: 280, height: 200 } }, duration: 2 }, 0);';
+    expect(openedGroups(page(size), page(keyframed))).toEqual([]);
+    expect(
+      openedGroups(page(x), page(x, 'tl.set("#target", { y: 30, data: "hf-hold" }, 0);')),
+    ).toEqual([]);
+  });
+
+  it("names a property group nothing animated, and ignores a static gsap.set hold", () => {
+    expect(
+      openedGroups(page(size), page(size, 'tl.to("#target", { y: 20, duration: 2 }, 0);')),
+    ).toEqual(["position"]);
+    expect(openedGroups(page(size), page(size, 'gsap.set("#target", { x: 20 });'))).toEqual([]);
   });
 });
 
@@ -47,17 +74,30 @@ describe("strayCss", () => {
 describe("the keyframed grid", () => {
   const grid = buildGrid("keyframes");
 
-  it("crosses 5 variants, 5 gestures and 2 playheads with rotation, nesting and zoom", () => {
-    expect(grid).toHaveLength(5 * 5 * 2 * 2 * 3 * 2);
+  it("crosses 6 variants, 5 gestures and 3 playheads each with rotation, nesting and zoom", () => {
+    expect(grid).toHaveLength(6 * 5 * 3 * 2 * 2 * 3);
     expect(new Set(grid.map((c) => c.id)).size).toBe(grid.length);
     expect(new Set(grid.map((c) => c.gsap))).toEqual(
-      new Set(["size", "scale", "spin", "keys", "fromto"]),
+      new Set(["size", "scale", "spin", "keys", "fromto", "late"]),
     );
     const on = grid.find((c) => c.id === "resize-keys-px-r0-root-z100-on");
     expect(on).toMatchObject({ playhead: 2, keys: { times: [0, 3], render: 3 } });
     expect(grid.find((c) => c.id === "resize-keys-px-r0-root-z100-mid").keys.times).toEqual([
       0, 2, 3,
     ]);
+  });
+
+  it("puts the playhead before a range that starts late and after every range", () => {
+    expect(grid.find((c) => c.id === "resize-late-px-r0-root-z100-before")).toMatchObject({
+      playhead: 0.5,
+      keys: { times: [1, 2, 3], render: 3 },
+    });
+    expect(grid.find((c) => c.id === "resize-size-px-r0-root-z100-after")).toMatchObject({
+      playhead: 3.5,
+      keys: { times: [0, 2, 3] },
+    });
+    expect(grid.some((c) => c.id === "resize-late-px-r0-root-z100-mid")).toBe(false);
+    expect(grid.some((c) => c.id === "resize-size-px-r0-root-z100-before")).toBe(false);
   });
 
   it("writes each variant's timeline into the file that holds the target", () => {
