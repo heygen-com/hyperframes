@@ -12,6 +12,7 @@ import {
   useDomEditSelectionContext,
 } from "../../contexts/DomEditContext";
 import { resolveTweenStart, resolveTweenDuration } from "../../utils/globalTimeCompiler";
+import { runEaseOf } from "../../utils/gsapKeyframeEases";
 import { resolveClipTimingBasis } from "../../hooks/useGsapTweenCache";
 import { elementCacheKeys } from "../../hooks/gsapKeyframeCacheHelpers";
 import { resolveKeyframeRetime } from "../editor/keyframeRetime";
@@ -332,7 +333,7 @@ export function useTimelineEditCallbacks({
           elements,
           domClipChildren,
         );
-        const tweenDuration = resolveTweenDuration(anim, elDuration);
+        const tweenDuration = resolveTweenDuration(anim);
         const dropAbsTime = elStart + (toClipPct / 100) * elDuration;
         const decision = resolveKeyframeRetime({
           keyframes: anim.keyframes?.keyframes ?? [],
@@ -340,6 +341,7 @@ export function useTimelineEditCallbacks({
           tweenStart,
           tweenDuration,
           dropAbsTime,
+          runEase: runEaseOf(anim),
         });
         if (decision.kind === "move" && decision.toTweenPct != null) {
           return handleGsapMoveKeyframe(target.animId, target.tweenPct, decision.toTweenPct, sel);

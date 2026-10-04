@@ -112,10 +112,6 @@ describe("resolveTweenDuration", () => {
   test("missing duration defaults to GSAP default (0.5)", () => {
     expect(resolveTweenDuration(makeAnim({ duration: undefined }))).toBe(0.5);
   });
-
-  test("missing duration can use its editor timing basis", () => {
-    expect(resolveTweenDuration(makeAnim({ duration: undefined }), 16.26)).toBe(16.26);
-  });
 });
 
 describe("findTweenAtTime", () => {

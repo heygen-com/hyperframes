@@ -22,6 +22,7 @@ import {
   tweenTargetsElement,
 } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import { progressAtTime, runEaseOf, timeAtProgress } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import {
@@ -365,19 +366,18 @@ async function commitKeyframeProps(
     const newStart = Math.min(ct, ts);
     const newEnd = Math.max(ct, ts + td);
     const newDuration = Math.max(0.01, newEnd - newStart);
+    const runEase = runEaseOf(anim);
+    const toNewPct = (absTime: number) =>
+      Math.round(progressAtTime(runEase, ((absTime - newStart) / newDuration) * 100) * 10) / 10;
     const remapped = kfs.map((kf) => {
-      const absTime = ts + (kf.percentage / 100) * td;
-      const newPct = Math.round(((absTime - newStart) / newDuration) * 1000) / 10;
+      const newPct = toNewPct(ts + (timeAtProgress(runEase, kf.percentage) / 100) * td);
       const p: Record<string, number | string> = { ...kf.properties };
       for (const k of Object.keys(properties)) {
         if (!(k in p) && backfillDefaults[k] != null) p[k] = backfillDefaults[k];
       }
       return { percentage: newPct, properties: p };
     });
-    remapped.push({
-      percentage: Math.round(((ct - newStart) / newDuration) * 1000) / 10,
-      properties,
-    });
+    remapped.push({ percentage: toNewPct(ct), properties });
     remapped.sort((a, b) => a.percentage - b.percentage);
     await commit(
       selection,

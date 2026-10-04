@@ -11,7 +11,7 @@ import {
   publishKeyframeCache,
   writeGsapAnimationsForElement,
 } from "./gsapKeyframeCacheHelpers";
-import { resolveClipTimingBasis, toAbsoluteTime, toClipPercentage } from "./gsapShared";
+import { resolveClipTimingBasis, toClipKeyframes } from "./gsapShared";
 import {
   deduplicateKeyframes,
   isStaticPositionHold,
@@ -199,22 +199,7 @@ export function useGsapAnimationsForElement(
       if (isStaticPositionHold(anim)) continue;
       const kf = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
       if (!kf) continue;
-      // Convert tween-relative percentages to clip-relative so diamonds
-      // render at the correct position within the timeline clip.
-      const tweenPos =
-        anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
-      const tweenDur = anim.duration ?? elDuration;
-      for (const k of kf.keyframes) {
-        const absTime = toAbsoluteTime(tweenPos, tweenDur, k.percentage);
-        const clipPct = toClipPercentage(absTime, elStart, elDuration, k.percentage);
-        allKeyframes.push({
-          ...k,
-          percentage: clipPct,
-          tweenPercentage: k.percentage,
-          propertyGroup: anim.propertyGroup,
-          animationId: anim.id,
-        });
-      }
+      allKeyframes.push(...toClipKeyframes(kf.keyframes, anim, elStart, elDuration));
       format = kf.format;
       if (kf.ease) ease = kf.ease;
       if (kf.easeEach) easeEach = kf.easeEach;

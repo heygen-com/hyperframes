@@ -2,6 +2,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveTweenDuration, resolveTweenStart } from "../utils/globalTimeCompiler";
+import { ARRAY_STEP_EASE, PERCENTAGE_SEGMENT_EASE } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import {
   materializeIfDynamic,
@@ -63,10 +64,8 @@ export type PlayheadEditPlan =
     }
   | { ok: false; reason: PlayheadEditRefusal };
 
-// GSAP 3.14 defaults: a percentage keyframe eases its segment power1.inOut; an array step is linear.
-const PERCENTAGE_SEGMENT_EASE = "power1.inOut";
-const ARRAY_STEP_EASE = "none";
 const roundPct = (pct: number) => Math.round(pct * 1000) / 1000;
+
 const isLinear = (ease: string | undefined) => !ease || ease === "none" || ease === "linear";
 
 interface Normalized {

@@ -236,15 +236,15 @@ describe("removeKeyframeFromScript: array-form keyframes (recast + acorn parity)
     const id = acornId(arrayScript);
     expect(parseGsapScript(arrayScript).animations[0]!.id).toBe(id);
 
-    const recastOut = removeKeyframeRecast(arrayScript, id, 67);
-    const acornOut = removeKeyframeAcorn(arrayScript, id, 67);
+    const recastOut = removeKeyframeRecast(arrayScript, id, 75);
+    const acornOut = removeKeyframeAcorn(arrayScript, id, 75);
 
     expect(recastOut).not.toBe(arrayScript);
     expect(acornOut).not.toBe(arrayScript);
 
     const recShape = shapeOf(recastOut);
     expect(recShape.keyframes?.keyframes.length).toBe(3);
-    // the 67% element { x: -320, y: 40 } is the one removed
+    // the 75% element { x: -320, y: 40 } is the one removed
     expect(JSON.stringify(recShape.keyframes)).not.toContain("-320");
     expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
   });
@@ -1318,25 +1318,25 @@ describe("moveKeyframeInScript: array-form keyframes (recast + acorn parity)", (
   ] as const) {
     it(`${label}: normalizes the array then retimes the moved keyframe`, () => {
       const id = acornId(KF_ADD_ARRAY_SCRIPT);
-      const out = move(KF_ADD_ARRAY_SCRIPT, id, 50, 75);
+      const out = move(KF_ADD_ARRAY_SCRIPT, id, 66.7, 50);
       expect(out).not.toBe(KF_ADD_ARRAY_SCRIPT);
       const kfs = shapeOf(out).keyframes?.keyframes ?? [];
-      expect(kfs.map((k) => k.percentage)).toEqual([0, 75, 100]);
-      expect(kfs.find((k) => k.percentage === 75)!.properties).toEqual({ x: 50, y: 80 });
+      expect(kfs.map((k) => k.percentage)).toEqual([33.3, 50, 100]);
+      expect(kfs.find((k) => k.percentage === 50)!.properties).toEqual({ x: 50, y: 80 });
     });
   }
 
   it("parity: both writers reparse to the same model", () => {
     const id = acornId(KF_ADD_ARRAY_SCRIPT);
-    expect(modelOf(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 50, 75))).toEqual(
-      modelOf(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 50, 75)),
+    expect(modelOf(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 66.7, 50))).toEqual(
+      modelOf(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 66.7, 50)),
     );
   });
 
   it("leaves array-form source untouched when the destination is occupied", () => {
     const id = acornId(KF_ADD_ARRAY_SCRIPT);
-    expect(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
-    expect(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
+    expect(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 66.7, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
+    expect(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 66.7, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
   });
 
   it("normalizes duration-authored percentages before moving", () => {
@@ -1446,8 +1446,8 @@ describe("resizeKeyframedTweenInScript: preserves author intent (acorn + recast)
 // drag-to-retime re-keys existing keyframes to arbitrary percentages, which an
 // array can't host. Both writers now normalize array → object form first.
 const RESIZE_ARRAY_REMAP = [
-  { from: 0, to: 0 },
-  { from: 50, to: 25 },
+  { from: 33.3, to: 16.7 },
+  { from: 66.7, to: 33.3 },
   { from: 100, to: 100 },
 ];
 
@@ -1461,8 +1461,8 @@ describe("resizeKeyframedTweenInScript: array-form keyframes (recast + acorn par
       const out = resize(KF_ADD_ARRAY_SCRIPT, id, 0.2, 2, RESIZE_ARRAY_REMAP);
       expect(out).not.toBe(KF_ADD_ARRAY_SCRIPT);
       const kfs = shapeOf(out).keyframes?.keyframes ?? [];
-      expect(kfs.map((k) => k.percentage)).toEqual([0, 25, 100]);
-      expect(kfs.find((k) => k.percentage === 25)!.properties).toEqual({ x: 50, y: 80 });
+      expect(kfs.map((k) => k.percentage)).toEqual([16.7, 33.3, 100]);
+      expect(kfs.find((k) => k.percentage === 33.3)!.properties).toEqual({ x: 50, y: 80 });
     });
   }
 

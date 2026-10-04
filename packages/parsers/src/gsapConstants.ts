@@ -7,6 +7,9 @@
 
 import type { GsapAnimation } from "./gsapSerialize.js";
 
+/** GSAP plays a tween, or each step of a keyframe array, for this long when no duration is set. */
+export const GSAP_DEFAULT_DURATION = 0.5;
+
 export const SUPPORTED_PROPS = [
   // 2D Transforms
   "x",
@@ -115,7 +118,7 @@ function knownStart(animation: GsapAnimation): number | undefined {
 }
 
 /**
- * What a Studio hold pins from t=0 before a later keyframed tween: its first keyframe's position props,
+ * What a Studio hold pins from t=0 before a later keyframed tween: its 0% keyframe's position props,
  * minus those an earlier timeline tween on the target writes (a global `gsap.set` is a base value).
  */
 export function positionHoldForAnimation(
@@ -125,10 +128,8 @@ export function positionHoldForAnimation(
   if (!animation.keyframes) return null;
   const start = knownStart(animation) ?? 0;
   if (!(start > 0.001)) return null;
-  const first = [...animation.keyframes.keyframes].sort(
-    (left, right) => left.percentage - right.percentage,
-  )[0];
-  if (!first) return null;
+  const atStart = animation.keyframes.keyframes.find((keyframe) => keyframe.percentage === 0);
+  if (!atStart) return null;
   // A tween whose start the parser could not resolve (a label, say) is not known to come first.
   const earlier = animations.filter((other) => {
     const otherStart = knownStart(other);
@@ -141,7 +142,7 @@ export function positionHoldForAnimation(
     );
   });
   const position: Record<string, number> = {};
-  for (const [property, value] of Object.entries(first.properties)) {
+  for (const [property, value] of Object.entries(atStart.properties)) {
     if (classifyPropertyGroup(property) !== "position" || typeof value !== "number") continue;
     if (earlier.some((other) => writesProperty(other, property))) continue;
     position[property] = value;

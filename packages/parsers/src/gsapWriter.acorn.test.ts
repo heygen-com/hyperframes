@@ -314,14 +314,14 @@ describe("T6c — keyframe write ops", () => {
   });
 
   it("updateKeyframeInScript edits ARRAY-form keyframes by percentage→index (the #shuttle case)", () => {
-    // Array-form keyframes carry no explicit percentages; GSAP distributes 4 of
-    // them evenly → 0 / 33.3 / 66.7 / 100. Dragging the 2nd motion-path node
-    // (pct 33.3) must rewrite array index 1 — not no-op (regression: array form
+    // Array-form keyframes carry no explicit percentages; GSAP ends 4 equal
+    // steps at 25 / 50 / 75 / 100. Dragging the 2nd motion-path node
+    // (pct 50) must rewrite array index 1 — not no-op (regression: array form
     // bailed the ObjectExpression check, so the drag committed nothing).
     const script =
       "const tl = gsap.timeline();\n" +
       'tl.to("#shuttle", { keyframes: [{ x: 0, y: 0 }, { x: 520, y: 120 }, { x: 1040, y: 0 }, { x: 1480, y: 160 }], duration: 4.4, ease: "none" }, 5.2);';
-    const result = updateKeyframeInScript(script, "#shuttle-to-5200-position", 33.3, {
+    const result = updateKeyframeInScript(script, "#shuttle-to-5200-position", 50, {
       x: 503,
       y: 642,
     });
@@ -356,17 +356,21 @@ describe("T6c — keyframe write ops", () => {
     expect(kf.keyframes.map((k) => k.properties.x)).toEqual([0, 50, 100]);
   });
 
-  it("addKeyframeToScript — ARRAY-form normalizes to object form + inserts 50%", () => {
+  it("addKeyframeToScript — ARRAY-form normalizes to object form + inserts 62.5%", () => {
     const script =
       "const tl = gsap.timeline();\n" +
       'tl.to("#shuttle", { keyframes: [{ x: 0, y: 0 }, { x: 520, y: 120 }, { x: 1040, y: 0 }, { x: 1480, y: 160 }], duration: 4.4, ease: "none" }, 5.2);';
-    const result = addKeyframeToScript(script, "#shuttle-to-5200-position", 50, { x: 780, y: 60 });
+    const result = addKeyframeToScript(script, "#shuttle-to-5200-position", 62.5, {
+      x: 780,
+      y: 60,
+    });
     expect(result).not.toBe(script); // not a no-op
-    expect(result).toContain('"50%"'); // converted to percentage-object form
+    expect(result).toContain('"62.5%"'); // converted to percentage-object form
     expect(result).toContain("x: 780");
-    // Original even-distribution stops preserved as percentage keys.
-    expect(result).toContain('"0%"');
+    // Original step ends preserved as percentage keys; no 0% is invented.
+    expect(result).toContain('"25%"');
     expect(result).toContain('"100%"');
+    expect(result).not.toContain('"0%"');
   });
 
   it("addKeyframeToScript inserts new percentage in sorted order", () => {

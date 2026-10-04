@@ -1840,6 +1840,27 @@ describe("keyframe mutations", () => {
       expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
     });
 
+    // A step list starts from the element's value before the tween; its first step is an end value.
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds nothing for a delayed step list that has no start keyframe", (_, sync) => {
+      for (const tween of [
+        `tl.to("#x", { keyframes: [{ x: 60 }, { x: 120 }] }, 1);`,
+        `tl.to("#x", { keyframes: { "50%": { x: 60 }, "100%": { x: 120 } }, duration: 1 }, 1);`,
+        `tl.fromTo("#x", { x: 10 }, { keyframes: [{ x: 60 }, { x: 120 }] }, 1);`,
+      ]) {
+        expect(sync(`const tl = gsap.timeline({ paused: true });\n${tween}`)).not.toContain(
+          "hf-hold",
+        );
+      }
+      const partial =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.to("#x", { keyframes: { "0%": { x: -50 }, "50%": { y: 30 }, "100%": { x: 60, y: 0 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(partial)).animations.find((a) => a.method === "set");
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
     it("acorn: a re-sync of a one-line script is byte-stable", () => {
       const once = syncPositionHoldsBeforeKeyframesAcorn(
         `const tl = gsap.timeline({ paused: true });tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`,
@@ -1999,15 +2020,15 @@ describe("keyframe mutations", () => {
   });
 
   // Array-form keyframes (`keyframes: [{x,y}, …]`) carry no percentages — GSAP
-  // distributes them evenly. The motion-path overlay drags/adds by percentage,
+  // ends step i of n at (i+1)/n. The motion-path overlay drags/adds by percentage,
   // which used to no-op on array-authored tweens (#puck-b / #shuttle).
   const ARRAY_KF_SCRIPT =
     "const tl = gsap.timeline();\n" +
     'tl.to("#shuttle", { keyframes: [{ x: 0, y: 0 }, { x: 520, y: 120 }, { x: 1040, y: 0 }, { x: 1480, y: 160 }], duration: 4.4, ease: "none" }, 5.2);';
 
-  it("updateKeyframeInScript — array-form: drags node 2 (pct 33.3) by index", () => {
+  it("updateKeyframeInScript — array-form: drags node 2 (pct 50) by index", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, { x: 503, y: 642 });
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 50, { x: 503, y: 642 });
     expect(updated).not.toBe(ARRAY_KF_SCRIPT);
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
     expect([kf[1]!.properties.x, kf[1]!.properties.y]).toEqual([503, 642]);
@@ -2017,26 +2038,26 @@ describe("keyframe mutations", () => {
 
   it("updateKeyframeInScript — array-form ease-only update preserves existing properties", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, {}, "power2.inOut");
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 50, {}, "power2.inOut");
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
     expect(kf[1]!.properties.x).toBe(520);
     expect(kf[1]!.properties.y).toBe(120);
     expect(kf[1]!.ease).toBe("power2.inOut");
   });
 
-  it("addKeyframeToScript — array-form: normalizes to object form + inserts 50%", () => {
+  it("addKeyframeToScript — array-form: normalizes to object form + inserts 62.5%", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = addKeyframeToScript(ARRAY_KF_SCRIPT, id, 50, { x: 780, y: 60 });
+    const updated = addKeyframeToScript(ARRAY_KF_SCRIPT, id, 62.5, { x: 780, y: 60 });
     expect(updated).not.toBe(ARRAY_KF_SCRIPT);
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
-    expect(kf.length).toBe(5);
-    const at50 = kf.find((k) => Math.abs(k.percentage - 50) < 1)!;
-    expect([at50.properties.x, at50.properties.y]).toEqual([780, 60]);
+    expect(kf.map((k) => k.percentage)).toEqual([25, 50, 62.5, 75, 100]);
+    const added = kf.find((k) => k.percentage === 62.5)!;
+    expect([added.properties.x, added.properties.y]).toEqual([780, 60]);
   });
 
-  it("removeKeyframeFromScript — array-form: drops node 3 (pct 66.7)", () => {
+  it("removeKeyframeFromScript — array-form: drops node 3 (pct 75)", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = removeKeyframeFromScript(ARRAY_KF_SCRIPT, id, 66.7);
+    const updated = removeKeyframeFromScript(ARRAY_KF_SCRIPT, id, 75);
     expect(updated).not.toBe(ARRAY_KF_SCRIPT);
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
     expect(kf.length).toBe(3);

@@ -1354,7 +1354,7 @@ function resolveReplacementEaseEach(
 // Mutations that can change a position tween's first keyframe (value/existence/timing)
 // and therefore require the pre-keyframe hold-`set`s to be re-synced afterwards.
 // `syncPositionHoldsBeforeKeyframes` rebuilds all `hf-hold` sets from scratch: it acts
-// on every tween that has keyframes whose first percentage carries a position prop and
+// on every tween whose 0% keyframe carries a position prop and
 // whose start is > 0. So any mutation that creates such a tween, retargets it, or moves
 // its start across the t=0 boundary must trigger a re-sync.
 const HOLD_SYNC_MUTATION_TYPES = new Set<string>([

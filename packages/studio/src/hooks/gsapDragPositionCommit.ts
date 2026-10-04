@@ -1,8 +1,13 @@
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
-import { resolveTweenStart } from "../utils/globalTimeCompiler";
-import { KEYFRAME_PCT_MATCH, resolveEditableTweenDuration } from "./gsapShared";
+import {
+  isTimeWithinTween,
+  resolveTweenDuration,
+  resolveTweenStart,
+} from "../utils/globalTimeCompiler";
+import { KEYFRAME_PCT_MATCH } from "./gsapShared";
+import { progressAtTime, runEaseOf, timeAtProgress } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import {
@@ -19,7 +24,8 @@ import { commitValueAtPlayhead, planValueEdit } from "./gsapValueAtPlayhead";
  * server takes a replace-with-keyframes list verbatim, so an append-only build
  * could hand it two keyframes a fraction of a percent apart. The invariant lives
  * here rather than in each caller's own pre-check, which is how the two callers
- * ended up with different tolerances in the first place.
+ * ended up with different tolerances in the first place. Arc writes are linear, so each
+ * keyframe moves to the time GSAP reached it and `percentage` is a time percentage.
  */
 export function buildTemporalArcKeyframes(
   anim: GsapAnimation,
@@ -27,7 +33,7 @@ export function buildTemporalArcKeyframes(
   properties: Record<string, number>,
 ) {
   return [
-    ...(anim.keyframes?.keyframes ?? [])
+    ...linearArcKeyframes(anim)
       .filter((keyframe) => Math.abs(keyframe.percentage - percentage) > KEYFRAME_PCT_MATCH)
       .map((keyframe) => ({
         percentage: keyframe.percentage,
@@ -36,6 +42,54 @@ export function buildTemporalArcKeyframes(
       })),
     { percentage, properties },
   ].sort((a, b) => a.percentage - b.percentage);
+}
+
+/** An arc's keyframes at the time percentages GSAP plays them, for a write with `ease: "none"`. */
+export function linearArcKeyframes(anim: GsapAnimation): GsapPercentageKeyframe[] {
+  const runEase = runEaseOf(anim);
+  return (anim.keyframes?.keyframes ?? []).map((keyframe) => ({
+    ...keyframe,
+    percentage: roundTo3(timeAtProgress(runEase, keyframe.percentage)),
+  }));
+}
+
+/** Grow a keyframe tween's range to a playhead outside it and add a keyframe there; every
+ *  existing keyframe keeps its absolute time under `writeEase`, the run ease the write keeps. */
+export function buildExtendedKeyframes(
+  anim: GsapAnimation,
+  currentTime: number,
+  position: Record<string, number>,
+  sourceDuration = resolveTweenDuration(anim),
+  writeEase = runEaseOf(anim),
+): { position: number; duration: number; keyframes: GsapPercentageKeyframe[] } {
+  const oldStart = resolveTweenStart(anim) ?? 0;
+  const oldDuration = sourceDuration;
+  const newStart = Math.min(oldStart, currentTime);
+  const newEnd = Math.max(oldStart + oldDuration, currentTime);
+  const newDuration = roundTo3(newEnd - newStart);
+  const runEase = writeEase;
+  const oldRunEase = runEaseOf(anim);
+  const toPct = (absoluteTime: number) =>
+    newDuration > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              progressAtTime(runEase, ((absoluteTime - newStart) / newDuration) * 100) * 10,
+            ) / 10,
+          ),
+        )
+      : 0;
+  const stops = anim.keyframes?.keyframes ?? [];
+  const rescaled: GsapPercentageKeyframe[] = stops.map((stop) => ({
+    percentage: toPct(oldStart + (timeAtProgress(oldRunEase, stop.percentage) / 100) * oldDuration),
+    properties: stop.properties,
+    ...(stop.ease ? { ease: stop.ease } : {}),
+  }));
+  const added: GsapPercentageKeyframe = { percentage: toPct(currentTime), properties: position };
+  const keyframes = [...rescaled, added].sort((a, b) => a.percentage - b.percentage);
+  return { position: roundTo3(newStart), duration: newDuration, keyframes };
 }
 
 /** commitGsapPositionFromDrag's refusal, decided without writing. */
@@ -87,7 +141,39 @@ export async function commitGsapPositionFromDrag(
   };
 
   if (anim.arcPath?.enabled) {
-    const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+    const { activeKeyframePct, currentTime, setActiveKeyframePct } = usePlayerStore.getState();
+    const tweenStart = resolveTweenStart(anim);
+    const tweenDuration = resolveTweenDuration(anim);
+    if (
+      activeKeyframePct === null &&
+      tweenStart !== null &&
+      !isTimeWithinTween(currentTime, tweenStart, tweenDuration)
+    ) {
+      const extended = buildExtendedKeyframes(
+        anim,
+        currentTime,
+        { x: newX, y: newY },
+        tweenDuration,
+        "none",
+      );
+      await callbacks.commitMutation(
+        selection,
+        {
+          type: "replace-with-keyframes",
+          animationId: anim.id,
+          targetSelector: anim.targetSelector,
+          ...extended,
+          ease: "none",
+        },
+        {
+          label: "Move layer (new keyframe)",
+          keyframeAction: "add",
+          softReload: true,
+          beforeReload: restoreOffset,
+        },
+      );
+      return { status: "persisted" };
+    }
     const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
     const keyframes = anim.keyframes?.keyframes ?? [];
     // Same tolerance as applyArcKeyframeAtPlayhead and isMotionPathEndpoint. A
@@ -113,13 +199,10 @@ export async function commitGsapPositionFromDrag(
       return { status: "persisted" };
     }
 
-    const tweenStart = resolveTweenStart(anim);
-    // Clip-wide, same as applyArcKeyframeAtPlayhead: authoring GSAP's 0.5s
-    // default here would collapse a duration-less arc's window on drag.
-    const tweenDuration = resolveEditableTweenDuration(anim, selection);
     if (tweenStart === null || tweenDuration <= 0 || keyframes.length < 2)
       return { status: "persisted" };
-    const temporalKeyframes = buildTemporalArcKeyframes(anim, pct, { x: newX, y: newY });
+    const timePct = roundTo3(timeAtProgress(runEaseOf(anim), pct));
+    const temporalKeyframes = buildTemporalArcKeyframes(anim, timePct, { x: newX, y: newY });
     await callbacks.commitMutation(
       selection,
       {

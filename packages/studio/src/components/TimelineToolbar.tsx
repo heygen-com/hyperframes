@@ -93,7 +93,7 @@ function resolveKeyframeToggleState(
   if (!animation?.keyframes) return NO_KEYFRAME_TOGGLE;
 
   const isMotionPath = Boolean(arcAnimation);
-  if (!isPlayheadWithinTween(animation, currentTime, session.domEditSelection)) {
+  if (!isPlayheadWithinTween(animation, currentTime)) {
     return { state: "inactive", isMotionPath, pathEndpoint: false, willExtend: true };
   }
 

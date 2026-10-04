@@ -4,12 +4,13 @@
  * reads to a human. Kept apart from the header's JSX so a formatting change and
  * a layout change never touch the same file.
  */
-import gsap from "gsap";
 import {
   classifyPropertyGroup,
   type GsapAnimation,
   type PropertyGroupName,
 } from "@hyperframes/core/gsap-parser";
+import { PROPERTY_DEFAULTS } from "../../hooks/gsapShared";
+import { easeFunction, keyframedTweenEases } from "../../utils/gsapKeyframeEases";
 
 export type LaneValues = Record<string, number | string>;
 
@@ -17,15 +18,8 @@ function roundValue(value: number): string {
   return String(Math.round(value * 100) / 100);
 }
 
-/** GSAP applies a keyframe's `ease` to the segment ARRIVING at it, so the curve
- *  between two keyframes is named by the later one (with the tween-level
- *  `easeEach`/`ease` as the fallback). Sampling linearly would report a value the
- *  element never has at that time, and stamp that wrong value onto a keyframe
- *  added from the track header. Unknown ease names parse to undefined -> linear. */
 function easedProgress(progress: number, animation: GsapAnimation, ease?: string): number {
-  const resolved = ease ?? animation.keyframes?.easeEach ?? animation.ease;
-  if (!resolved || resolved === "none") return progress;
-  return gsap.parseEase(resolved)?.(progress) ?? progress;
+  return easeFunction(keyframedTweenEases(animation).segment({ ease }))?.(progress) ?? progress;
 }
 
 interface PropertyStop {
@@ -34,14 +28,19 @@ interface PropertyStop {
   ease?: string;
 }
 
+/** Before its first keyframe a tween animates from the pre-tween value, taken as the
+ *  property's base value as for a flat tween (synthesizeFlatTweenKeyframes). */
 function propertyStops(animation: GsapAnimation, property: string): PropertyStop[] {
-  return (animation.keyframes?.keyframes ?? [])
+  const stops = (animation.keyframes?.keyframes ?? [])
     .filter((keyframe) => property in keyframe.properties)
     .map((keyframe) => ({
       percentage: keyframe.percentage,
       value: keyframe.properties[property],
       ease: keyframe.ease,
     }));
+  const first = stops[0];
+  if (!first || first.percentage <= 0 || typeof first.value !== "number") return stops;
+  return [{ percentage: 0, value: PROPERTY_DEFAULTS[property] ?? 0 }, ...stops];
 }
 
 /** A pair only interpolates when both ends are numeric and actually span time;

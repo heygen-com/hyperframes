@@ -6,9 +6,14 @@ import {
 } from "./gsapObjectArrayTiming.js";
 
 describe("getObjectArrayKeyframeTiming", () => {
-  it("preserves tenth-percent precision for evenly distributed arrays", () => {
-    expect(getObjectArrayKeyframeTiming([undefined, undefined, undefined, undefined])).toEqual({
-      percentages: [0, 33.3, 66.7, 100],
+  it("ends each equal step at its share of the tween, to a tenth of a percent", () => {
+    expect(getObjectArrayKeyframeTiming([undefined, undefined, undefined])).toEqual({
+      percentages: [33.3, 66.7, 100],
+      totalDuration: 1.5,
+    });
+    expect(getObjectArrayKeyframeTiming([undefined])).toEqual({
+      percentages: [100],
+      totalDuration: 0.5,
     });
   });
 

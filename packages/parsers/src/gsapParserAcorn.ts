@@ -18,7 +18,7 @@ import type {
   GsapPercentageKeyframe,
   ParsedGsap,
 } from "./gsapSerialize.js";
-import { classifyTweenPropertyGroup } from "./gsapConstants.js";
+import { classifyTweenPropertyGroup, GSAP_DEFAULT_DURATION } from "./gsapConstants.js";
 import { buildArcPath } from "./gsapSerialize.js";
 import { inlineComputedTimelines, readProvenance } from "./gsapInline.js";
 import { getObjectArrayKeyframeTiming } from "./gsapObjectArrayTiming.js";
@@ -1512,8 +1512,6 @@ function annotateStaggeredCollections(anims: Omit<GsapAnimation, "id">[]): void 
 }
 
 // ── Timeline position resolution ─────────────────────────────────────────────
-
-const GSAP_DEFAULT_DURATION = 0.5;
 
 // fallow-ignore-next-line complexity
 function resolvePositionString(pos: string, cursor: number, prevStart: number): number | null {

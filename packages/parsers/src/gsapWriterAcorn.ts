@@ -1070,8 +1070,8 @@ export function updateKeyframeInScript(
   }
 
   // Array-form keyframes (`keyframes: [{x,y}, ...]`) carry no explicit percentages
-  // — GSAP distributes them evenly, and the runtime read assigns even percentages
-  // (0, 100/(n-1), …). Map the percentage back to an array index and overwrite that
+  // — GSAP ends step i of n at its cumulative share (getObjectArrayKeyframeTiming).
+  // Map the percentage back to an array index and overwrite that
   // element in place (preserving the array form). Without this the function bailed
   // on the ObjectExpression check, so dragging a motion-path node on an array-form
   // tween committed nothing (server no-op).
@@ -1207,11 +1207,13 @@ function convertArrayKeyframesToObject(script: string, target: Node): string {
     return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recordToCode(record)}`;
   });
   const ms = new MagicString(script);
-  ms.overwrite(kfPropNode.value.start, kfPropNode.value.end, `{ ${entries.join(", ")} }`);
-  if (
-    timing.totalDuration !== undefined &&
-    findPropertyNode(target.call.varsArg, "duration") === undefined
-  ) {
+  // Array steps play linearly; percentage segments default to power1.inOut.
+  ms.overwrite(
+    kfPropNode.value.start,
+    kfPropNode.value.end,
+    `{ ${entries.join(", ")}, easeEach: "none" }`,
+  );
+  if (findPropertyNode(target.call.varsArg, "duration") === undefined) {
     upsertProp(ms, target.call.varsArg, "duration", timing.totalDuration);
   }
   return ms.toString();

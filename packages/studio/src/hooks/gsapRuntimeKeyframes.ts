@@ -10,6 +10,7 @@
  */
 import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-acorn";
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
+import { timeAtProgress } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
@@ -43,7 +44,12 @@ export interface RuntimeTimeline {
 }
 
 type Pct = { percentage: number; properties: Record<string, number | string> };
-export type ReadTween = { keyframes: Pct[]; easeEach?: string; arcPath?: ArcPathConfig };
+export type ReadTween = {
+  keyframes: Pct[];
+  easeEach?: string;
+  arcPath?: ArcPathConfig;
+  runEase?: string;
+};
 
 export interface RuntimeKeyframeEntry {
   keyframes: Pct[];
@@ -141,9 +147,13 @@ function flatTweenKeyframes(vars: Record<string, unknown>): Pct[] | null {
 
 /** Tween-relative keyframes + optional arcPath for one live tween, or null. */
 function readTween(vars: Record<string, unknown>): ReadTween | null {
+  const runEase = typeof vars.ease === "string" ? vars.ease : undefined;
   if (vars.keyframes && typeof vars.keyframes === "object") {
     const parsed = parsePercentageKeyframes(vars.keyframes as Record<string, unknown>);
-    if (parsed) return parsed;
+    const keyframesEase = (vars.keyframes as { ease?: unknown }).ease;
+    if (parsed) {
+      return { ...parsed, runEase: typeof keyframesEase === "string" ? keyframesEase : runEase };
+    }
   }
   const mp = coordsFromMotionPath(vars.motionPath);
   if (mp) {
@@ -154,7 +164,7 @@ function readTween(vars: Record<string, unknown>): ReadTween | null {
         percentage: n > 1 ? Math.round((i / (n - 1)) * 100) : 0,
         properties: { x: wp.x, y: wp.y },
       }));
-      return { keyframes, arcPath: shape.arcPath };
+      return { keyframes, arcPath: shape.arcPath, runEase };
     }
   }
   const flat = flatTweenKeyframes(vars);
@@ -523,14 +533,15 @@ function hasNonHoldTween(
 
 /** Convert tween-relative keyframes to clip-relative % using the element's clip dims. */
 function toClipRelative(
-  keyframes: Pct[],
+  read: ReadTween,
   tweenStart: number,
   tweenDuration: number,
   clip: { start: number; duration: number } | undefined,
 ): Pct[] {
+  const { keyframes, runEase } = read;
   if (!clip || clip.duration <= 0) return keyframes;
   return keyframes.map((kf) => {
-    const abs = toAbsoluteTime(tweenStart, tweenDuration, kf.percentage);
+    const abs = toAbsoluteTime(tweenStart, tweenDuration, timeAtProgress(runEase, kf.percentage));
     return { ...kf, percentage: Math.round(((abs - clip.start) / clip.duration) * 100000) / 1000 };
   });
 }
@@ -542,7 +553,7 @@ function buildEntry(
   clip: { start: number; duration: number } | undefined,
 ): RuntimeKeyframeEntry {
   return {
-    keyframes: toClipRelative(read.keyframes, start, duration, clip),
+    keyframes: toClipRelative(read, start, duration, clip),
     tweenStart: start,
     tweenDuration: duration,
     ...(read.easeEach ? { easeEach: read.easeEach } : {}),

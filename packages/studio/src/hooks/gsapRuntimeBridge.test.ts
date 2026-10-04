@@ -582,6 +582,41 @@ describe("tryGsapDragIntercept — motion paths", () => {
     );
   });
 
+  it("adds a node at a playhead past a duration-less arc, keeping the other nodes' times", async () => {
+    usePlayerStore.setState({
+      autoKeyframeEnabled: true,
+      activeKeyframePct: null,
+      currentTime: 15.9,
+    });
+    const durationless = { ...motionPathAnim, duration: undefined } as GsapAnimation;
+    const commitMutation = vi.fn();
+    await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 30 },
+      [durationless],
+      fakeIframe("puck-b", [
+        { ...liveTween, vars: { motionPath: { path: [] } }, duration: () => 0.5 },
+      ]),
+      commitMutation,
+    );
+    // GSAP plays it 12.17-12.67 s; the nodes stay at 12.17, 12.42 and 12.67 s.
+    expect(commitMutation).toHaveBeenCalledWith(
+      selection,
+      expect.objectContaining({
+        type: "replace-with-keyframes",
+        position: 12.17,
+        duration: 3.73,
+        keyframes: [
+          { percentage: 0, properties: { x: -184, y: 326 } },
+          { percentage: 6.7, properties: { x: 416, y: 804 } },
+          { percentage: 13.4, properties: { x: 796, y: 237 } },
+          { percentage: 100, properties: { x: -50, y: 30 } },
+        ],
+      }),
+      expect.objectContaining({ label: "Move layer (new keyframe)", keyframeAction: "add" }),
+    );
+  });
+
   it("keeps an explicitly selected path waypoint as a spatial edit", async () => {
     const { commitMutation, handled } = await dragMotionPath(50);
 

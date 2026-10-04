@@ -52,6 +52,7 @@ export {
 import {
   classifyPropertyGroup,
   classifyTweenPropertyGroup,
+  GSAP_DEFAULT_DURATION,
   isXYPositionWrite,
   positionHoldForAnimation,
 } from "./gsapConstants";
@@ -1169,8 +1170,6 @@ function tweenCallToAnimation(
 
 // ── Timeline Position Resolution ──────────────────────────────────────────
 
-const GSAP_DEFAULT_DURATION = 0.5;
-
 // NOTE: Label-based positions (e.g. "myLabel+=0.5") are not yet resolved —
 // they fall through to parseFloat which returns null for non-numeric strings.
 function resolvePositionString(pos: string, cursor: number, prevStart: number): number | null {
@@ -2240,7 +2239,7 @@ function convertArrayKeyframesToObjectNode(varsArg: AstNode, scope: ScopeBinding
     outerDuration,
   );
   if (!timing) return null;
-  if (timing.totalDuration !== undefined && findPropertyNode(varsArg, "duration") === undefined) {
+  if (findPropertyNode(varsArg, "duration") === undefined) {
     setVarsKey(varsArg, "duration", timing.totalDuration);
   }
   const entries = els.map((el: AstNode, i: number) => {
@@ -2249,7 +2248,7 @@ function convertArrayKeyframesToObjectNode(varsArg: AstNode, scope: ScopeBinding
     );
     return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recast.print(el).code}`;
   });
-  prop.value = parseExpr(`{ ${entries.join(", ")} }`);
+  prop.value = parseExpr(`{ ${entries.join(", ")}, easeEach: "none" }`);
   return prop.value;
 }
 

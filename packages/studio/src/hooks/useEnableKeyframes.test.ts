@@ -7,13 +7,13 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
   applyArcKeyframeAtPlayhead,
   animatedProps,
-  buildExtendedKeyframes,
   isPlayheadWithinTween,
   promoteSetToKeyframes,
   resolveNewTweenRange,
   useEnableKeyframes,
   type EnableKeyframesSession,
 } from "./useEnableKeyframes";
+import { buildExtendedKeyframes } from "./gsapDragPositionCommit";
 import { usePlayerStore } from "../player/store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -109,17 +109,11 @@ describe("isPlayheadWithinTween", () => {
     expect(isPlayheadWithinTween(anim({ position: "+=1" }), 99)).toBe(true);
   });
 
-  // The toolbar's "extends animation" tooltip has to agree with what the edit
-  // paths do. Those span a duration-less tween across its clip, so answering
-  // from GSAP's 0.5s default reported the playhead outside a window the click
-  // then treated as clip-wide.
-  it("spans the clip for a duration-less tween when given the selection", () => {
+  it("uses the window GSAP plays a duration-less tween in, not its clip", () => {
     const durationless = anim({ position: 0 });
-    const selection = { dataAttributes: { duration: "16" } } as unknown as DomEditSelection;
 
+    expect(isPlayheadWithinTween(durationless, 0.4)).toBe(true);
     expect(isPlayheadWithinTween(durationless, 5)).toBe(false);
-    expect(isPlayheadWithinTween(durationless, 5, selection)).toBe(true);
-    expect(isPlayheadWithinTween(durationless, 20, selection)).toBe(false);
   });
 });
 
@@ -318,8 +312,8 @@ describe("applyArcKeyframeAtPlayhead", () => {
     );
   });
 
-  it("uses the owning clip duration when an arc omits its outer duration", async () => {
-    const fixture = arcFixture(25, 25);
+  it("extends a duration-less arc to a later playhead, keeping the other nodes' times", async () => {
+    const fixture = arcFixture(100, 0);
     const durationlessArc = { ...arcAnim, duration: undefined };
 
     await applyArcKeyframeAtPlayhead(
@@ -330,12 +324,22 @@ describe("applyArcKeyframeAtPlayhead", () => {
       fixture.iframe,
     );
 
+    // GSAP plays it 0-0.5 s, so the nodes stay at 0, 0.25 and 0.5 s.
     expect(fixture.commitMutation).toHaveBeenCalledWith(
-      expect.objectContaining({
+      {
         type: "replace-with-keyframes",
-        duration: 10,
-        keyframes: expect.arrayContaining([{ percentage: 25, properties: { x: 25, y: 25 } }]),
-      }),
+        animationId: arcAnim.id,
+        targetSelector: "#el",
+        position: 0,
+        duration: 2.5,
+        keyframes: [
+          { percentage: 0, properties: { x: 0, y: 0 } },
+          { percentage: 10, properties: { x: 50, y: 50 } },
+          { percentage: 20, properties: { x: 100, y: 0 } },
+          { percentage: 100, properties: { x: 100, y: 0 } },
+        ],
+        ease: "none",
+      },
       { label: "Add keyframe", softReload: true, keyframeAction: "add" },
     );
   });

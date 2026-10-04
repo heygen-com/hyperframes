@@ -5,7 +5,11 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
-import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import {
+  percentageToAbsoluteForAnimation,
+  resolveTweenStart,
+  resolveTweenDuration,
+} from "../utils/globalTimeCompiler";
 import { roundTo3, roundToLayoutPx } from "../utils/rounding";
 import { computeElementPercentage, keyframeEases, writeTargetSelector } from "./gsapShared";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
@@ -53,10 +57,9 @@ export function computeCurrentPercentage(
 // 1.2 start), so the post-commit reseek renders the element's base pose and the edit
 // looks like it snapped away. Keeping the playhead on the edited keyframe avoids that.
 export function parkPlayheadOnKeyframe(anim: GsapAnimation, pct: number): void {
-  const ts = resolveTweenStart(anim);
-  const td = resolveTweenDuration(anim);
-  if (ts == null || !td || td <= 0) return;
-  usePlayerStore.getState().requestSeek(roundTo3(ts + (pct / 100) * td));
+  const time = percentageToAbsoluteForAnimation(pct, anim);
+  if (time === null || resolveTweenDuration(anim) <= 0) return;
+  usePlayerStore.getState().requestSeek(roundTo3(time));
 }
 
 async function replaceKeyframedPositionHold(

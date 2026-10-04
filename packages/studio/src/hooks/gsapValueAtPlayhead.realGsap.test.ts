@@ -1,11 +1,16 @@
 // @vitest-environment happy-dom
 import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
-import { replaceTweenWithKeyframesInScript } from "@hyperframes/parsers/gsap-writer-acorn";
+import {
+  replaceTweenWithKeyframesInScript,
+  syncPositionHoldsBeforeKeyframes,
+  updateKeyframeInScript,
+} from "@hyperframes/parsers/gsap-writer-acorn";
 import { afterEach, expect, it } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { findParsedTween, parsedImplicitEndValue, parsedTweenEase } from "./gsapParsedTween";
+import { toClipKeyframes } from "./gsapShared";
 import { planValueEdit } from "./gsapValueAtPlayhead";
 
 /** Runs a composition script as the preview does: a paused timeline, bound, then seeked to `at`. */
@@ -177,3 +182,48 @@ it("writes an edit into a looping tween and keeps its repeat and yoyo, as main d
   expect(plan.ok).toBe(true);
   expect(written).toMatch(/repeat: 1[\s\S]*yoyo: true/);
 });
+
+it("keeps a delayed step list where GSAP plays it, before and after a keyframe edit", () => {
+  const box = Object.assign(document.body.appendChild(document.createElement("div")), { id: "x" });
+  const stepList = `var tl = gsap.timeline({ paused: true });\ntl.to("#x", { keyframes: [{ x: 60 }, { x: 120 }], ease: "none" }, 1);\nwindow.__timelines["t"] = tl;`;
+  const id = parseGsapScriptAcorn(stepList).animations[0]!.id;
+  const edited = syncPositionHoldsBeforeKeyframes(
+    updateKeyframeInScript(stepList, id, 100, { x: 130 }),
+  );
+  const xAt = (file: string, at: number) => {
+    const { timeline } = play(file, at);
+    const x = gsap.getProperty(box, "x");
+    timeline.kill();
+    gsap.set(box, { clearProps: "all" });
+    return x;
+  };
+  for (const file of [stepList, edited]) {
+    expect([xAt(file, 0.5), xAt(file, 1.25)]).toEqual([0, 30]);
+    const tween = parseGsapScriptAcorn(file).animations.find((a) => a.keyframes)!;
+    for (const { percentage, properties } of tween.keyframes!.keyframes) {
+      expect(xAt(file, 1 + percentage / 100)).toBeCloseTo(Number(properties.x), 3);
+    }
+  }
+});
+
+it.each([
+  [
+    "an outer power2.in",
+    `keyframes: { "0%": { x: 0 }, "50%": { x: 60 }, "100%": { x: 120 } }, duration: 1, ease: "power2.in"`,
+  ],
+  ["no duration", `keyframes: [{ x: 60 }, { x: 120 }], ease: "none"`],
+])("draws each diamond of a keyframed tween with %s where GSAP shows its value", (_, vars) => {
+  const box = Object.assign(document.body.appendChild(document.createElement("div")), { id: "x" });
+  const file = `var tl = gsap.timeline({ paused: true });\ntl.to("#x", { ${vars} }, 1);\nwindow.__timelines["t"] = tl;`;
+  const tween = parseGsapScriptAcornAnimation(file);
+  for (const row of toClipKeyframes(tween.keyframes!.keyframes, tween, 0, 4)) {
+    const { timeline } = play(file, (row.percentage / 100) * 4);
+    expect(gsap.getProperty(box, "x")).toBeCloseTo(Number(row.properties.x), 1);
+    timeline.kill();
+    gsap.set(box, { clearProps: "all" });
+  }
+});
+
+function parseGsapScriptAcornAnimation(file: string) {
+  return parseGsapScriptAcorn(file).animations.find((a) => a.keyframes)!;
+}
