@@ -12,6 +12,28 @@ vi.mock("../utils/publishProject.js", async (importOriginal) => ({
 
 import publishCommand, { examples, parseUpdateTarget } from "./publish.js";
 import { ensureProjectId } from "../utils/projectLink.js";
+import { writeStore } from "../auth/store.js";
+import { consumeCommandResult } from "../utils/commandResult.js";
+
+const VISIBLE_INDEX = `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`;
+
+function mockPublished(result: Record<string, unknown>): void {
+  publishState.publish.mockReset();
+  publishState.publish.mockResolvedValue({ title: "test", fileCount: 1, claimed: true, ...result });
+}
+
+async function captureLog(run: () => Promise<unknown>): Promise<string> {
+  const lines: string[] = [];
+  const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+    lines.push(parts.map(String).join(" "));
+  });
+  try {
+    await run();
+  } finally {
+    log.mockRestore();
+  }
+  return lines.join("\n");
+}
 
 describe("parseUpdateTarget", () => {
   it("extracts the id from a full published URL", () => {
@@ -50,28 +72,17 @@ describe("publish default-entry preflight", () => {
       candidatePath,
       `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
     );
-    publishState.publish.mockReset();
-    publishState.publish.mockResolvedValue({
-      title: "test",
-      fileCount: 2,
-      claimed: true,
-      projectId: "project-id",
-      url: "https://hyperframes.dev/p/project-id",
-      claimToken: "",
-    });
-    const lines: string[] = [];
-    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
-      lines.push(parts.map(String).join(" "));
-    });
+    mockPublished({ projectId: "project-id", url: "https://hyperframes.dev/p/project-id" });
 
     try {
-      await expect(
-        publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
-      ).rejects.toMatchObject({ name: "CliRuntimeError" });
+      const output = await captureLog(() =>
+        expect(
+          publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
+        ).rejects.toMatchObject({ name: "CliRuntimeError" }),
+      );
       expect(publishState.publish).not.toHaveBeenCalled();
-      return lines.join("\n");
+      return output;
     } finally {
-      log.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
   }
@@ -106,34 +117,24 @@ describe("publish visibility messaging", () => {
     inPlace?: boolean;
   }): Promise<string> {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-visibility-"));
-    writeFileSync(
-      join(project, "index.html"),
-      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
-    );
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
     // "Updated in place" is decided by the response echoing the id the directory already
     // resolves to — no --update flag required, which is how a plain re-publish reaches it.
     const projectId = options.inPlace === true ? ensureProjectId(project) : "project-id";
-    publishState.publish.mockReset();
-    publishState.publish.mockResolvedValue({
-      title: "test",
-      fileCount: 1,
+    mockPublished({
       claimed: options.claimed ?? true,
       projectId,
       url: `https://hyperframes.dev/p/${projectId}`,
       claimToken: "claim-secret",
     });
-    const lines: string[] = [];
-    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
-      lines.push(parts.map(String).join(" "));
-    });
 
     try {
-      await publishCommand.run?.({
-        args: { dir: project, yes: true, public: options.public, proxy: false },
-      } as never);
-      return lines.join("\n");
+      return await captureLog(() =>
+        publishCommand.run?.({
+          args: { dir: project, yes: true, public: options.public, proxy: false },
+        } as never),
+      );
     } finally {
-      log.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
   }
@@ -180,5 +181,70 @@ describe("publish visibility messaging", () => {
 
   it("does not describe default publishing as public", () => {
     expect(examples[0]?.[0]).not.toContain("public URL");
+  });
+});
+
+describe("publish --update / --space ownership preflight", () => {
+  async function runWithFlag(
+    flag: { update?: string; space?: string },
+    credentials: { env?: string; stored?: Parameters<typeof writeStore>[0] },
+  ): Promise<{ output: string; exitCode: number }> {
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-owner-"));
+    const config = mkdtempSync(join(tmpdir(), "hf-publish-owner-config-"));
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    vi.stubEnv("HEYGEN_CONFIG_DIR", config);
+    vi.stubEnv("HEYGEN_API_KEY", credentials.env ?? "");
+    vi.stubEnv("HYPERFRAMES_API_KEY", "");
+    if (credentials.stored) await writeStore(credentials.stored, join(config, "credentials"));
+    mockPublished({ projectId: "target", url: "https://hyperframes.dev/p/target" });
+    try {
+      consumeCommandResult();
+      const output = await captureLog(() =>
+        publishCommand.run?.({
+          args: { dir: project, yes: true, public: false, proxy: false, ...flag },
+        } as never),
+      );
+      return { output, exitCode: consumeCommandResult().exitCode };
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(project, { recursive: true, force: true });
+      rmSync(config, { recursive: true, force: true });
+    }
+  }
+
+  it.each([
+    { flag: { update: "target" }, name: "--update" },
+    { flag: { space: "space-1" }, name: "--space" },
+  ])("refuses $name with an env API key before uploading", async ({ flag, name }) => {
+    const { output, exitCode } = await runWithFlag(flag, { env: "valid-key" });
+
+    expect(publishState.publish).not.toHaveBeenCalled();
+    expect(exitCode).toBe(1);
+    expect(output).toContain(`${name} requires a login; HEYGEN_API_KEY cannot own a project`);
+  });
+
+  it("refuses --update with a saved API key before uploading", async () => {
+    const { output, exitCode } = await runWithFlag(
+      { update: "target" },
+      { stored: { api_key: "valid-key" } },
+    );
+
+    expect(publishState.publish).not.toHaveBeenCalled();
+    expect(exitCode).toBe(1);
+    expect(output).toContain("--update requires a login; an API key cannot own a project");
+  });
+
+  it("publishes --update with a login", async () => {
+    const { output, exitCode } = await runWithFlag(
+      { update: "target" },
+      { stored: { oauth: { access_token: "token" } } },
+    );
+
+    expect(publishState.publish).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ projectId: "target" }),
+    );
+    expect(exitCode).toBe(0);
+    expect(output).toContain("Updated existing project");
   });
 });

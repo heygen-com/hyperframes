@@ -13,6 +13,7 @@ import {
 } from "../utils/lintProject.js";
 import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
+  API_KEY_ENV_VAR,
   buildPublishFileMap,
   publishProjectArchive,
   resolvePublishCredential,
@@ -163,14 +164,25 @@ export default defineCommand({
     const spaceOverride =
       typeof args.space === "string" && args.space.trim() ? args.space.trim() : undefined;
 
-    // --update / --space only take effect for an authenticated owner. Fail loudly rather
-    // than silently minting a fresh URL — the exact failure mode this feature removes.
+    // --update / --space only take effect for a login (an API-key publish is never owned).
+    // Fail loudly rather than silently minting a fresh URL.
     if (updateTarget || spaceOverride) {
       const credential = await resolvePublishCredential();
-      if (!credential) {
+      if (credential?.type !== "oauth") {
+        const flag = updateTarget ? "--update" : "--space";
+        const envKey =
+          credential?.source === "env" || credential?.source === "env_alias"
+            ? API_KEY_ENV_VAR[credential.source]
+            : undefined;
         console.log();
         console.log(
-          `  ${c.error(`${updateTarget ? "--update" : "--space"} requires authentication. Run 'hyperframes auth login' first.`)}`,
+          `  ${c.error(
+            !credential
+              ? `${flag} requires authentication. Run 'hyperframes auth login' first.`
+              : envKey
+                ? `${flag} requires a login; ${envKey} cannot own a project. Unset it and run 'hyperframes auth login'.`
+                : `${flag} requires a login; an API key cannot own a project. Run 'hyperframes auth login'.`,
+          )}`,
         );
         console.log();
         setCommandExitCode(1);

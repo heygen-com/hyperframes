@@ -166,7 +166,7 @@ async function metadataRequestError(response: Response, fallback: string): Promi
 }
 
 const LOGIN_EXPIRED = "Your login expired. Run hyperframes auth login, then publish again.";
-const API_KEY_ENV_VAR = { env: "HEYGEN_API_KEY", env_alias: "HYPERFRAMES_API_KEY" } as const;
+export const API_KEY_ENV_VAR = { env: "HEYGEN_API_KEY", env_alias: "HYPERFRAMES_API_KEY" } as const;
 
 function rejectedCredentialMessage(credential: ResolvedCredential): string {
   if (
