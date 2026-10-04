@@ -56,7 +56,59 @@ it("re-measures every strip in one shared frame on a scroll, so a full timeline 
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  let left = 0;
+  const rect = vi
+    .spyOn(Element.prototype, "getBoundingClientRect")
+    .mockImplementation(() => ({ left }) as DOMRect);
+  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_000_000);
   function Strip() {
+    const [size, ref] = useThumbnailStripSize();
+    return (
+      <div>
+        <div ref={ref} data-in-view-start={size.inViewStart} />
+      </div>
+    );
+  }
+  try {
+    act(() => root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)));
+
+    left = -10_000;
+    act(() => host.dispatchEvent(new Event("scroll")));
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    act(() => frames.splice(0).forEach((frame) => frame(0)));
+
+    const starts = [...host.querySelectorAll("[data-in-view-start]")].map((strip) =>
+      strip.getAttribute("data-in-view-start"),
+    );
+    expect(starts).toEqual(Array(50).fill("9216"));
+  } finally {
+    rect.mockRestore();
+    width.mockRestore();
+    act(() => root.unmount());
+    host.remove();
+    requestFrame.mockRestore();
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
+});
+
+it("does not re-render a strip wholly on screen when a scroll moves it", () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const frames: FrameRequestCallback[] = [];
+  const requestFrame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((frame) => frames.push(frame));
+  let left = 100;
+  const rect = vi
+    .spyOn(Element.prototype, "getBoundingClientRect")
+    .mockImplementation(() => ({ left }) as DOMRect);
+  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  let renders = 0;
+  function Strip() {
+    renders += 1;
     const [, ref] = useThumbnailStripSize();
     return (
       <div>
@@ -65,14 +117,19 @@ it("re-measures every strip in one shared frame on a scroll, so a full timeline 
     );
   }
   try {
-    act(() => root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)));
+    act(() => root.render(<Strip />));
+    const settled = renders;
 
+    left = 700;
     act(() => host.dispatchEvent(new Event("scroll")));
+    act(() => frames.splice(0).forEach((frame) => frame(0)));
 
-    expect(requestFrame).toHaveBeenCalledTimes(1);
+    expect(renders).toBe(settled);
   } finally {
     act(() => root.unmount());
     host.remove();
+    rect.mockRestore();
+    width.mockRestore();
     requestFrame.mockRestore();
     globalThis.ResizeObserver = originalResizeObserver;
   }

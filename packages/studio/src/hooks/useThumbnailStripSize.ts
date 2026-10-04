@@ -27,8 +27,14 @@ const GAP_WARNING: IntersectionObserverInit & { scrollMargin: string } = {
   scrollMargin: `0px ${IN_VIEW_CHUNK_PX / 2}px`,
 };
 
-const merge = (patch: Partial<StripSize>) => (prev: StripSize) => {
+const EMPTY_STRIP: StripSize = { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 };
+
+// Clamped to a measured strip, so a scroll changes only strips crossing the screen's edge.
+const merge = (prev: StripSize, patch: Partial<StripSize>): StripSize => {
   const next = { ...prev, ...patch };
+  const width = next.width > 0 ? Math.ceil(next.width) : Infinity;
+  next.inViewStart = Math.min(next.inViewStart, width);
+  next.inViewEnd = Math.min(next.inViewEnd, width);
   return (Object.keys(next) as (keyof StripSize)[]).every((key) => next[key] === prev[key])
     ? prev
     : next;
@@ -36,8 +42,7 @@ const merge = (patch: Partial<StripSize>) => (prev: StripSize) => {
 
 type Apply = (patch: Partial<StripSize>) => void;
 
-// Every strip shares one listener set and one frame: all positions are read, then all updates
-// commit together, so a timeline of many clips lays out once per frame, not once per clip.
+// One shared frame reads every strip, then commits all updates: one layout per frame, not per clip.
 const strips = new Map<Element, Apply>();
 let users = 0;
 let frame = 0;
@@ -104,21 +109,21 @@ const watchGap = (gap: HTMLDivElement | null) => {
 
 /** Size of the thumbnail's parent and its span in the window, kept current on resize, scroll and moves. */
 export function useThumbnailStripSize() {
-  const [size, setSize] = useState<StripSize>({
-    width: 0,
-    height: 0,
-    inViewStart: 0,
-    inViewEnd: 0,
-  });
+  const [size, setSize] = useState(EMPTY_STRIP);
 
   const ref = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
     const target = element.parentElement ?? element;
     const { resize } = acquire();
-    strips.set(target, (patch) => setSize(merge(patch)));
-    setSize(
-      merge({ width: target.clientWidth, height: target.clientHeight, ...spanInView(target) }),
-    );
+    let current = EMPTY_STRIP;
+    const apply: Apply = (patch) => {
+      const next = merge(current, patch);
+      if (next === current) return;
+      current = next;
+      setSize(next);
+    };
+    strips.set(target, apply);
+    apply({ width: target.clientWidth, height: target.clientHeight, ...spanInView(target) });
     resize.observe(target);
     return () => {
       resize.unobserve(target);
