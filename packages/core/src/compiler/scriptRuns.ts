@@ -5,6 +5,7 @@ export interface InlineScriptRun {
 }
 
 function isClassicInline(el: Element): boolean {
+  if (el.hasAttribute("nomodule")) return false;
   const type = (el.getAttribute("type") || "").trim().toLowerCase();
   return !type || type === "text/javascript" || type === "application/javascript";
 }

@@ -2514,6 +2514,97 @@ describe("bundleToSingleHtml script order", () => {
     }
   });
 
+  const LOCAL_ORDER_GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js";
+  async function bundledBody(scripts: string, files: Record<string, string>) {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  ${scripts}
+</body></html>`,
+      ...files,
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      return [...document.querySelectorAll("body script")];
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  const dataUrlSource = (el: Element | undefined) =>
+    decodeURIComponent(
+      (el?.getAttribute("src") ?? "").replace(/^data:text\/javascript;charset=utf-8,/, ""),
+    );
+
+  it("keeps each local script in its own place around a CDN script", async () => {
+    const scripts = await bundledBody(
+      `<script src="setup.js"></script>
+  <script src="${LOCAL_ORDER_GSAP}"></script>
+  <script src="main.js"></script>`,
+      { "setup.js": "window.SETUP_RAN = 1;", "main.js": "window.MAIN_RAN = gsap.version;" },
+    );
+    const setupAt = scripts.findIndex((el) => el.textContent?.includes("SETUP_RAN"));
+    const gsapAt = scripts.findIndex((el) => el.getAttribute("src") === LOCAL_ORDER_GSAP);
+    const mainAt = scripts.findIndex((el) => el.textContent?.includes("MAIN_RAN"));
+    expect(setupAt).toBeGreaterThan(-1);
+    expect(setupAt).toBeLessThan(gsapAt);
+    expect(gsapAt).toBeLessThan(mainAt);
+  });
+
+  it.each(["defer", "async"])(
+    "keeps a local %s script's own timing, with its file as the source",
+    async (when) => {
+      const scripts = await bundledBody(
+        `<script defer src="${LOCAL_ORDER_GSAP}"></script>
+  <script ${when} src="main.js"></script>`,
+        { "main.js": "window.MAIN_RAN = gsap.version;" },
+      );
+      const gsapAt = scripts.findIndex((el) => el.getAttribute("src") === LOCAL_ORDER_GSAP);
+      const main = scripts[gsapAt + 1];
+      expect(main?.hasAttribute(when)).toBe(true);
+      expect(main?.getAttribute("src")).toMatch(/^data:text\/javascript;charset=utf-8,/);
+      expect(dataUrlSource(main)).toBe("window.MAIN_RAN = gsap.version;");
+      expect(
+        scripts.some((el) => !el.hasAttribute("src") && el.textContent?.includes("MAIN_RAN")),
+      ).toBe(false);
+    },
+  );
+
+  it("keeps a throw in one local script from stopping the next", async () => {
+    const scripts = await bundledBody(
+      `<script src="a.js"></script>\n  <script src="${LOCAL_ORDER_GSAP}"></script>\n  <script src="b.js"></script>`,
+      {
+        "a.js": "throw new Error('a');",
+        "b.js": "window.B_RAN = 1;",
+      },
+    );
+    const holders = scripts.filter((el) => /throw new Error|B_RAN/.test(el.textContent ?? ""));
+    expect(holders).toHaveLength(2);
+  });
+
+  it.each([
+    ["a local file", `<script nomodule src="legacy.js"></script>`],
+    ["an inline script", `<script nomodule>window.LEGACY_RAN = 1;</script>`],
+  ])("keeps nomodule on %s, so modern browsers still skip it", async (_, legacy) => {
+    const scripts = await bundledBody(
+      `<script>window.FIRST = 1;</script>\n  ${legacy}\n  <script>window.LAST = 1;</script>`,
+      {
+        "legacy.js": "window.LEGACY_RAN = 1;",
+      },
+    );
+    const holder = scripts.find((el) => el.textContent?.includes("LEGACY_RAN"));
+    expect(holder?.hasAttribute("nomodule")).toBe(true);
+    expect(holder?.textContent).not.toMatch(/FIRST|LAST/);
+  });
+
+  it("keeps a local script's non-JavaScript type, so it is not run as JavaScript", async () => {
+    const scripts = await bundledBody(`<script type="text/babel" src="app.jsx"></script>`, {
+      "app.jsx": "const App = () => <div />;",
+    });
+    const holder = scripts.find((el) => el.textContent?.includes("const App"));
+    expect(holder?.getAttribute("type")).toBe("text/babel");
+  });
+
   it("still merges adjacent inline scripts into one at the end of the body", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

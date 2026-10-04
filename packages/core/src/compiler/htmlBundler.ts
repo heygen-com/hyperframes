@@ -1226,9 +1226,6 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     templateEl.remove();
   }
 
-  // Inline local JS
-  const localJsChunks: string[] = [];
-  let jsAnchorPlaced = false;
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
@@ -1240,27 +1237,15 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
-    localJsChunks.push(js);
-    if (!jsAnchorPlaced) {
-      const anchor = document.createElement("script");
-      anchor.setAttribute("data-hf-bundled-local-js", "1");
-      el.replaceWith(anchor);
-      jsAnchorPlaced = true;
-    } else {
-      el.remove();
+    if (el.hasAttribute("defer") || el.hasAttribute("async")) {
+      el.setAttribute("src", `data:text/javascript;charset=utf-8,${encodeURIComponent(js)}`);
+      continue;
     }
-  }
-  if (localJsChunks.length > 0) {
-    const anchor = document.querySelector('script[data-hf-bundled-local-js="1"]');
-    const joinedJs = joinJsChunks(localJsChunks);
-    if (anchor) {
-      anchor.removeAttribute("data-hf-bundled-local-js");
-      anchor.textContent = joinedJs;
-    } else {
-      const script = document.createElement("script");
-      script.textContent = joinedJs;
-      document.body.appendChild(script);
-    }
+    const inline = document.createElement("script");
+    for (const { name, value } of [...el.attributes])
+      if (name !== "src") inline.setAttribute(name, value);
+    inline.textContent = js;
+    el.replaceWith(inline);
   }
 
   for (const link of compExternalLinks) ensureExternalLinkTag(document, link);
