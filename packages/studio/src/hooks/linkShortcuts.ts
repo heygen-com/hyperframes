@@ -23,7 +23,8 @@ function shortcutOf(event: KeyboardEvent): string | null {
 
 /** ⌘L unlink/link, ⌥⇧D detach audio, ⌥⌫ delete one linked clip — the clip menu's shortcuts. */
 export function dispatchLinkShortcut(event: KeyboardEvent, cb: LinkShortcutCallbacks): boolean {
-  const shortcut = isTypingTarget(event.target) ? null : shortcutOf(event);
+  if (isTypingTarget(event.target)) return false;
+  const shortcut = shortcutOf(event);
   if (!shortcut) return false;
   const { elements, selectedElementId, selectedElementIds } = usePlayerStore.getState();
   const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);

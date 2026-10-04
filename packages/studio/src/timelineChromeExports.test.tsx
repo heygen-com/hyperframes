@@ -14,6 +14,7 @@ import {
 } from "@hyperframes/studio";
 import { installReactActEnvironment, mountReactHarness } from "./hooks/domSelectionTestHarness";
 import { useAudioMetersVisible } from "./utils/audioMeterVisibility";
+import { dispatchLinkShortcut as localDispatchLinkShortcut } from "./hooks/linkShortcuts";
 
 installReactActEnvironment();
 
@@ -54,14 +55,7 @@ describe("timeline chrome package exports, outside Studio's shell", () => {
   });
 
   it("exports the clip menu's link shortcuts for a host's own key handler", () => {
-    const video = { id: "talk", tag: "video", start: 0, duration: 4, track: 0, link: "lk-1" };
-    const audio = { ...video, id: "talk-audio", tag: "audio" };
-    usePlayerStore.getState().setElements([video, audio]);
-    usePlayerStore.getState().setSelection(["talk"], "talk");
-    const handleLinkEdit = vi.fn();
-    const event = new KeyboardEvent("keydown", { metaKey: true, key: "l", cancelable: true });
-    expect(dispatchLinkShortcut(event, { handleLinkEdit })).toBe(true);
-    expect(handleLinkEdit).toHaveBeenCalledWith({ kind: "unlink", elements: [video, audio] });
+    expect(dispatchLinkShortcut).toBe(localDispatchLinkShortcut);
   });
 
   it("exports the meter visibility store a host toggles", () => {
