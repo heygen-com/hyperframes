@@ -5,7 +5,7 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
 // overrides the dir). Vendored so the skill ships standalone. Pure node.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -22,7 +22,8 @@ export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
   for (let i = 0; i < 5; i++) {
     const envPath = join(dir, ".env");
-    if (existsSync(envPath)) {
+    // A `.env` folder (some home dirs have one) is not an env file: keep walking up.
+    if (statSync(envPath, { throwIfNoEntry: false })?.isFile()) {
       for (const raw of readFileSync(envPath, "utf8").split("\n")) {
         let line = raw.trim();
         if (!line || line.startsWith("#")) continue;
