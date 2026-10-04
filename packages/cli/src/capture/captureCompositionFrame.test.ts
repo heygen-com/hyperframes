@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AUDIT_SEEK_OPTIONS,
@@ -14,6 +15,7 @@ import {
   resolveCropRegion,
   runFfmpegOnce,
   seekCompositionTimeline,
+  waitForRuntimeReady,
   type CompositionSeekPage,
 } from "./captureCompositionFrame.js";
 
@@ -46,6 +48,32 @@ function runBrowserSeek(evaluate: ReturnType<typeof fakeSeekPage>["evaluate"]): 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("waitForRuntimeReady", () => {
+  it("waits for the runtime's render-ready flag and reports a timeout as not ready", async () => {
+    const { waitForFunction } = fakeSeekPage();
+
+    await expect(waitForRuntimeReady({ waitForFunction }, 123)).resolves.toBe(true);
+    expect(waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 123 });
+    const ready = waitForFunction.mock.calls[0]![0];
+    vi.stubGlobal("window", { __timelines: {} });
+    expect(ready()).toBe(false);
+    vi.stubGlobal("window", { __timelines: {}, __renderReady: true });
+    expect(ready()).toBe(true);
+
+    waitForFunction.mockRejectedValueOnce(new Error("Waiting failed: 1ms exceeded"));
+    await expect(waitForRuntimeReady({ waitForFunction }, 1)).resolves.toBe(false);
+  });
+
+  it("is what layout, motion-shot and validate wait on before they sample the page", () => {
+    const commands = join(dirname(fileURLToPath(import.meta.url)), "../commands");
+    for (const name of ["layout", "motionShot", "validate"]) {
+      const source = readFileSync(join(commands, `${name}.ts`), "utf8");
+      expect(source, name).toContain("await waitForRuntimeReady(page, ");
+      expect(source, name).not.toContain("__timelines?: unknown }).__timelines");
+    }
+  });
 });
 
 describe("seekCompositionTimeline", () => {

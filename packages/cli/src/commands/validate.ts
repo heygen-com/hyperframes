@@ -20,6 +20,7 @@ import {
   installPageFunctionGuard,
   resolveCliChromeGpuMode,
   seekCompositionTimeline,
+  waitForRuntimeReady,
 } from "../capture/captureCompositionFrame.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -503,6 +504,7 @@ async function validateInBrowser(
       throw err;
     }
     await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+    await waitForRuntimeReady(page, opts.timeout ?? 3000);
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
 
     for (const w of await auditClipDurations(page, analyzeClipMediaFit, opts.timeout ?? 3000)) {

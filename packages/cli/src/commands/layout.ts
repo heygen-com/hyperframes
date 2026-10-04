@@ -34,6 +34,7 @@ import {
   installPageFunctionGuard,
   seekCompositionTimeline,
   waitForCompositionFonts,
+  waitForRuntimeReady,
   type SeekCompositionTimelineOptions,
 } from "../capture/captureCompositionFrame.js";
 
@@ -237,11 +238,7 @@ async function runLayoutAudit(
     });
     await assertWebGpuAdapterAvailable(page, requiresWebGpu);
     await alignViewportToComposition(page, server.url);
-    await page
-      .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {
-        timeout: opts.timeout,
-      })
-      .catch(() => {});
+    await waitForRuntimeReady(page, opts.timeout);
     await waitForCompositionFonts(page, 750);
     await new Promise((resolveSettle) => setTimeout(resolveSettle, 250));
 
