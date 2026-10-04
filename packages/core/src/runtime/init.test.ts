@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { initSandboxRuntimeModular } from "./init";
+import { initSandboxRuntimeModular, installFlatGsapTransforms } from "./init";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -1795,10 +1795,15 @@ describe("initSandboxRuntimeModular", () => {
   describe("mid-tween transforms under real GSAP", () => {
     type Timeline = ReturnType<typeof gsap.timeline>;
     afterEach(() => {
+      delete (window as { gsap?: unknown }).gsap;
       gsap.config({ force3D: "auto" });
     });
-    // Page order: the runtime (end of <head>), then the GSAP bundle, then the composition's script.
-    const transformAt = (time: number, build: (box: HTMLElement) => Timeline) => {
+    // Page order: the runtime script, the GSAP bundle, the composition's script, then DOMContentLoaded.
+    const transformAt = (
+      time: number,
+      build: (box: HTMLElement) => Timeline,
+      { gsapBeforeRuntime = false } = {},
+    ) => {
       const root = document.createElement("div");
       root.setAttribute("data-composition-id", "main");
       root.setAttribute("data-root", "true");
@@ -1814,9 +1819,12 @@ describe("initSandboxRuntimeModular", () => {
       window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
       try {
         window.__timelines = {};
-        initSandboxRuntimeModular();
-        window.gsap = gsap as unknown as typeof window.gsap;
+        if (gsapBeforeRuntime) window.gsap = gsap as unknown as typeof window.gsap;
+        installFlatGsapTransforms();
+        if (!gsapBeforeRuntime) window.gsap = gsap as unknown as typeof window.gsap;
+        expect(window.gsap).toBe(gsap);
         window.__timelines.main = build(box) as unknown as RuntimeTimelineLike;
+        initSandboxRuntimeModular();
         for (let frame = 0; frame < 60; frame += 1) raf.step(16);
         window.__player?.seek(time);
         return box.style.transform;
@@ -1824,37 +1832,71 @@ describe("initSandboxRuntimeModular", () => {
         now.mockRestore();
       }
     };
+    const tween = (vars: gsap.TweenVars) => ({ ...vars, duration: 2, ease: "none" });
 
     // A 3D transform puts the element on its own layer, where Chrome snaps a crop edge to whole pixels.
     it.each([
       [
         "a to() tween",
-        (box: HTMLElement) =>
-          gsap.timeline({ paused: true }).to(box, { scale: 1.25, duration: 2, ease: "none" }, 0),
+        (box: HTMLElement) => gsap.timeline({ paused: true }).to(box, tween({ scale: 1.25 }), 0),
       ],
       [
-        "a from() tween, which renders when the script runs",
-        (box: HTMLElement) =>
-          gsap.timeline({ paused: true }).from(box, { scale: 1.25, duration: 2, ease: "none" }, 0),
+        "a from() tween",
+        (box: HTMLElement) => gsap.timeline({ paused: true }).from(box, tween({ scale: 1.25 }), 0),
       ],
       [
-        "a tween on an element set() when the script runs",
+        "a fromTo() tween",
+        (box: HTMLElement) =>
+          gsap.timeline({ paused: true }).fromTo(box, { scale: 1 }, tween({ scale: 1.25 }), 0),
+      ],
+      [
+        "a tween on an element the script set() first",
         (box: HTMLElement) => {
           gsap.set(box, { scale: 1 });
-          return gsap
-            .timeline({ paused: true })
-            .to(box, { scale: 1.25, duration: 2, ease: "none" }, 0);
+          return gsap.timeline({ paused: true }).to(box, tween({ scale: 1.25 }), 0);
         },
       ],
     ])("draws %s in 2D mid-tween", (_name, build) => {
       expect(transformAt(1, build)).toBe("scale(1.125, 1.125)");
     });
 
+    it("draws a set() then moved element in 2D when GSAP loaded before the runtime", () => {
+      const transform = transformAt(
+        1,
+        (box) => {
+          gsap.set(box, { x: 0 });
+          return gsap.timeline({ paused: true }).to(box, tween({ x: 40 }), 0);
+        },
+        { gsapBeforeRuntime: true },
+      );
+      expect(transform).toBe("translate(20px, 0px)");
+    });
+
+    it("keeps a composition's own force3D setting", () => {
+      const transform = transformAt(1, (box) => {
+        gsap.config({ force3D: true });
+        return gsap.timeline({ paused: true }).to(box, tween({ scale: 1.25 }), 0);
+      });
+      expect(transform).toBe("translate3d(0px, 0px, 0px) scale(1.125, 1.125)");
+    });
+
     it("leaves an element GSAP only fades without an inline transform", () => {
       const transform = transformAt(1, (box) =>
-        gsap.timeline({ paused: true }).to(box, { opacity: 0.5, duration: 2, ease: "none" }, 0),
+        gsap.timeline({ paused: true }).to(box, tween({ opacity: 0.5 }), 0),
       );
       expect(transform).toBe("");
+    });
+
+    it("configures GSAP once when the runtime script runs twice", () => {
+      const config = vi.spyOn(gsap, "config");
+      try {
+        installFlatGsapTransforms();
+        installFlatGsapTransforms();
+        window.gsap = gsap as unknown as typeof window.gsap;
+        expect(config).toHaveBeenCalledTimes(1);
+      } finally {
+        config.mockRestore();
+      }
     });
 
     it("still hands GSAP to an accessor that trapped window.gsap before the runtime", () => {
@@ -1869,10 +1911,9 @@ describe("initSandboxRuntimeModular", () => {
         },
       });
       const transform = transformAt(1, (box) =>
-        gsap.timeline({ paused: true }).to(box, { scale: 1.25, duration: 2, ease: "none" }, 0),
+        gsap.timeline({ paused: true }).to(box, tween({ scale: 1.25 }), 0),
       );
       expect(seen).toEqual([gsap]);
-      expect(window.gsap).toBe(gsap);
       expect(transform).toBe("scale(1.125, 1.125)");
     });
   });
