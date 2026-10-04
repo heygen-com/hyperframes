@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  arcPathFromMotionPathValue,
-  hasNonHoldTweenForElement,
-  readRuntimeKeyframes,
-} from "./gsapRuntimeKeyframes";
+import { hasNonHoldTweenForElement, readRuntimeKeyframes } from "./gsapRuntimeKeyframes";
+import { arcPathFromMotionPathValue } from "./gsapRuntimeMotionPath";
 
 // Build a fake preview iframe whose runtime timeline holds the given child tweens
 // and resolves `selector` to `el`.

@@ -8,9 +8,10 @@
  * `toAbsoluteTime` + the element's clip start/duration. `scanAllRuntimeKeyframes`
  * does that conversion itself when given a `clipById` map.
  */
-import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-acorn";
+import type { ArcPathConfig } from "@hyperframes/core/gsap-parser-acorn";
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
-import { MOTION_PATH_RUN_EASE, timeAtProgress } from "../utils/gsapKeyframeEases";
+import { timeAtProgress } from "../utils/gsapKeyframeEases";
+import { readMotionPathTween } from "./gsapRuntimeMotionPath";
 import { roundTo3 } from "../utils/rounding";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
@@ -91,10 +92,6 @@ function timelinesOf(iframe: HTMLIFrameElement | null): Record<string, RuntimeTi
   }
 }
 
-function isXY(p: unknown): p is { x: number; y: number } {
-  return !!p && typeof (p as any).x === "number" && typeof (p as any).y === "number";
-}
-
 /**
  * A tween we must skip when reading keyframes: a zero-duration `set`/hold (incl.
  * the studio pre-keyframe position hold, tagged `data: STUDIO_HOLD_MARKER`).
@@ -104,31 +101,6 @@ function isXY(p: unknown): p is { x: number; y: number } {
  */
 function isZeroDurationSet(duration: number): boolean {
   return !(duration > 0);
-}
-
-/** Coordinates + curviness from a live `vars.motionPath` value (object or array form), or null. */
-function coordsFromMotionPath(mp: unknown): {
-  coords: Array<{ x: number; y: number }>;
-  curviness: number;
-  autoRotate: boolean | number;
-  isCubic: boolean;
-} | null {
-  if (!mp || typeof mp !== "object") return null;
-  const obj = mp as Record<string, unknown>;
-  const pathVal = Array.isArray(mp) ? mp : obj.path;
-  if (!Array.isArray(pathVal)) return null;
-  const coords = pathVal.filter(isXY).map((p) => ({ x: p.x, y: p.y }));
-  if (coords.length < 2) return null;
-  const curviness = typeof obj.curviness === "number" ? obj.curviness : 1;
-  const autoRotate = typeof obj.autoRotate === "number" ? obj.autoRotate : obj.autoRotate === true;
-  return { coords, curviness, autoRotate, isCubic: obj.type === "cubic" };
-}
-
-/** Build an arcPath config from a live `vars.motionPath` value. */
-export function arcPathFromMotionPathValue(mp: unknown): ArcPathConfig | undefined {
-  const parsed = coordsFromMotionPath(mp);
-  if (!parsed) return undefined;
-  return buildArcPath(parsed.coords, parsed.curviness, parsed.autoRotate, parsed.isCubic)?.arcPath;
 }
 
 function flatTweenKeyframes(vars: Record<string, unknown>): Pct[] | null {
@@ -146,18 +118,6 @@ function flatTweenKeyframes(vars: Record<string, unknown>): Pct[] | null {
 }
 
 const stringOr = (value: unknown) => (typeof value === "string" ? value : undefined);
-
-function readMotionPathTween(vars: Record<string, unknown>, runEase?: string): ReadTween | null {
-  const mp = coordsFromMotionPath(vars.motionPath);
-  const shape = mp && buildArcPath(mp.coords, mp.curviness, mp.autoRotate, mp.isCubic);
-  if (!shape) return null;
-  const n = shape.waypoints.length;
-  const keyframes = shape.waypoints.map((wp, i) => ({
-    percentage: n > 1 ? Math.round((i / (n - 1)) * 100) : 0,
-    properties: { x: wp.x, y: wp.y },
-  }));
-  return { keyframes, arcPath: shape.arcPath, runEase: runEase ?? MOTION_PATH_RUN_EASE };
-}
 
 /** Tween-relative keyframes + optional arcPath for one live tween, or null. */
 function readTween(vars: Record<string, unknown>): ReadTween | null {
