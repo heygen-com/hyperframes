@@ -145,28 +145,30 @@ function flatTweenKeyframes(vars: Record<string, unknown>): Pct[] | null {
   ];
 }
 
+const stringOr = (value: unknown) => (typeof value === "string" ? value : undefined);
+
+function readMotionPathTween(vars: Record<string, unknown>, runEase?: string): ReadTween | null {
+  const mp = coordsFromMotionPath(vars.motionPath);
+  const shape = mp && buildArcPath(mp.coords, mp.curviness, mp.autoRotate, mp.isCubic);
+  if (!shape) return null;
+  const n = shape.waypoints.length;
+  const keyframes = shape.waypoints.map((wp, i) => ({
+    percentage: n > 1 ? Math.round((i / (n - 1)) * 100) : 0,
+    properties: { x: wp.x, y: wp.y },
+  }));
+  return { keyframes, arcPath: shape.arcPath, runEase: runEase ?? MOTION_PATH_RUN_EASE };
+}
+
 /** Tween-relative keyframes + optional arcPath for one live tween, or null. */
 function readTween(vars: Record<string, unknown>): ReadTween | null {
-  const runEase = typeof vars.ease === "string" ? vars.ease : undefined;
+  const runEase = stringOr(vars.ease);
   if (vars.keyframes && typeof vars.keyframes === "object") {
     const parsed = parsePercentageKeyframes(vars.keyframes as Record<string, unknown>);
-    const keyframesEase = (vars.keyframes as { ease?: unknown }).ease;
-    if (parsed) {
-      return { ...parsed, runEase: typeof keyframesEase === "string" ? keyframesEase : runEase };
-    }
+    const keyframesEase = stringOr((vars.keyframes as { ease?: unknown }).ease);
+    if (parsed) return { ...parsed, runEase: keyframesEase ?? runEase };
   }
-  const mp = coordsFromMotionPath(vars.motionPath);
-  if (mp) {
-    const shape = buildArcPath(mp.coords, mp.curviness, mp.autoRotate, mp.isCubic);
-    if (shape) {
-      const n = shape.waypoints.length;
-      const keyframes = shape.waypoints.map((wp, i) => ({
-        percentage: n > 1 ? Math.round((i / (n - 1)) * 100) : 0,
-        properties: { x: wp.x, y: wp.y },
-      }));
-      return { keyframes, arcPath: shape.arcPath, runEase: runEase ?? MOTION_PATH_RUN_EASE };
-    }
-  }
+  const path = readMotionPathTween(vars, runEase);
+  if (path) return path;
   const flat = flatTweenKeyframes(vars);
   return flat ? { keyframes: flat } : null;
 }
