@@ -201,6 +201,20 @@ describe("openProjectHistory", () => {
     expect(reopened.next("forward", you)).toBeUndefined();
   });
 
+  it("takes the media ledger back with the film when a change is undone", async () => {
+    const { history, write, read } = await project({
+      "index.html": "<h1>Hello</h1>",
+      ".media/manifest.jsonl": "{}\n",
+    });
+    const cutout = await change(history, agent, "Cut out the logo", () => {
+      write("index.html", "<h1>Hello</h1><img src='logo.png'>");
+      write(".media/manifest.jsonl", '{}\n{"id":"logo"}\n');
+    });
+    expect(cutout.files.map((file) => file.path)).toContain(".media/manifest.jsonl");
+    expect((await history.undo(cutout.id, { who: you })).ok).toBe(true);
+    expect(read(".media/manifest.jsonl")).toBe("{}\n");
+  });
+
   it("never files a hidden file name as a change, but keeps Studio's two manifests", async () => {
     const { history, write } = await project({ "index.html": "<h1>Hello</h1>" }, { quietMs: 30 });
     const turn = await history.beginWindow(agent, "Agent turn");

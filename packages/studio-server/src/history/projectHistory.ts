@@ -203,9 +203,14 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-/** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except Studio's manifests. */
+const KEPT_HIDDEN_PATHS = new Set<string>([
+  ...STUDIO_SIGNATURE_MANIFEST_PATHS,
+  ".media/manifest.jsonl",
+]);
+
+/** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except the kept ones above. */
 function isHistoryPath(path: string): boolean {
-  if ((STUDIO_SIGNATURE_MANIFEST_PATHS as readonly string[]).includes(path)) return true;
+  if (KEPT_HIDDEN_PATHS.has(path)) return true;
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
 
