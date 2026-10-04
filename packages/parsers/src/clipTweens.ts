@@ -12,6 +12,10 @@ export function clipTweenMatcher(
 ): (tween: TweenTarget) => boolean {
   const own = typeof clipSelectors === "string" ? [clipSelectors] : clipSelectors;
   const queryAll = (scope: ParentNode, selector: string): Element[] => {
+    if (ID_SELECTOR.test(selector)) {
+      if (!queries.has(ALL_IDS)) indexIds(scope, queries);
+      return queries.get(selector) ?? [];
+    }
     let found = queries.get(selector);
     if (!found) queries.set(selector, (found = queryRoot(scope, selector)));
     return found;
@@ -42,6 +46,22 @@ export function hasExplicitTime<T extends TweenTime>(
   animation: T,
 ): animation is T & { position: number } {
   return typeof animation.position === "number" && !animation.implicitPosition;
+}
+
+const ID_SELECTOR = /^#-?[A-Za-z_][\w-]*$/;
+const ALL_IDS = "[id]";
+
+// One DOM walk answers every `#id` lookup; a query per clip cost ~3 ms each on a 100-clip file.
+function indexIds(root: ParentNode, queries: Map<string, Element[]>): void {
+  const all = queryRoot(root, ALL_IDS);
+  queries.set(ALL_IDS, all);
+  for (const el of all) {
+    const key = `#${el.id}`;
+    if (!ID_SELECTOR.test(key)) continue;
+    const list = queries.get(key);
+    if (list) list.push(el);
+    else queries.set(key, [el]);
+  }
 }
 
 function queryRoot(root: ParentNode, selector: string): Element[] {

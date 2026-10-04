@@ -2071,6 +2071,30 @@ tl.to("#hero", { opacity: 0, duration: 0.5 }, 0.0004);`;
     });
   }
 
+  it("answers every #id lookup from one DOM walk, duplicate ids included", () => {
+    const { document: dup } = parseHTML(`<html><body>
+<div id="a" data-start="0" data-duration="2"></div><div id="b" data-start="0" data-duration="2"></div>
+<div id="a" data-start="3" data-duration="2"></div></body></html>`);
+    const retimes: ClipTweenRetime[] = ["#a", "#b", "#c"].map((targetSelector) => ({
+      kind: "shift",
+      targetSelector,
+      delta: 1,
+    }));
+    const source = `const tl = gsap.timeline();\ntl.to("#b", { x: 1 }, 1);\ntl.to("#a", { y: 1 }, 2);`;
+    const expected = retimes.reduce(
+      (current, r) =>
+        r.kind === "shift" ? shiftAcorn(current, r.targetSelector, r.delta, dup) : current,
+      source,
+    );
+    const queried: string[] = [];
+    const real = dup.querySelectorAll.bind(dup);
+    dup.querySelectorAll = ((selector: string) => (
+      queried.push(selector), real(selector)
+    )) as typeof real;
+    expect(retimeClipTweensInScript(source, retimes, dup).script).toBe(expected);
+    expect(queried).toEqual(["[id]"]);
+  });
+
   it("reports which retimes moved something and leaves a script nothing matches alone", () => {
     const folded = retimeClipTweensInScript(
       script,

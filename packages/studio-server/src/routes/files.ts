@@ -1493,7 +1493,6 @@ async function prepareGsapMutationScript(
   return { html, beforeHtml, block };
 }
 
-/** Clip retimes keyed by the index their run starts at; a request that would be a no-op stays out of the run. */
 type RetimeSlot = ClipTweenRetime | "no-op";
 
 function retimeRuns(mutations: readonly GsapMutationRequest[]): Map<number, RetimeSlot[]> {
@@ -1524,7 +1523,6 @@ function clipRetimeOf(mutation: GsapMutationRequest): RetimeSlot | null {
   return { kind: "scale", targetSelector, oldStart, oldDuration, newStart, newDuration };
 }
 
-/** Folds a run's live retimes in one parse, then syncs holds once; flags come back per slot. */
 function retimeRun(script: string, run: readonly RetimeSlot[], root: ParentNode | undefined) {
   const live = run.filter((slot): slot is ClipTweenRetime => slot !== "no-op");
   const retimed = retimeClipTweensInScript(script, live, root);
@@ -1560,7 +1558,6 @@ async function applyGsapMutations(
   }
 
   const mutationChanges: boolean[] = [];
-  // A run of clip retimes is one parse and one hold sync, not one of each per clip.
   const retimes = writer === "acorn" ? retimeRuns(mutations) : new Map<number, RetimeSlot[]>();
   for (let index = 0; index < mutations.length; index++) {
     const run = retimes.get(index);
