@@ -423,7 +423,11 @@ export async function persistTimelineBatchEdit(
     changesByPath.set(targetPath, [...(changesByPath.get(targetPath) ?? []), change]);
   }
   const buildFile = (targetPath: string) => (original: string) => {
-    const patched = patchTimelineChangesInSource(original, targetPath, changesByPath.get(targetPath)!);
+    const patched = patchTimelineChangesInSource(
+      original,
+      targetPath,
+      changesByPath.get(targetPath)!,
+    );
     const next = input.finishFile ? input.finishFile(patched) : patched;
     if (next !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
     return next;
