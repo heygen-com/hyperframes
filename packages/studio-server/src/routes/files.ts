@@ -20,7 +20,7 @@ import {
   realpathSync,
   type Dirent,
 } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, relative, posix, sep } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
@@ -671,28 +671,45 @@ function readableText(file: string): string | null {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const MAX_REST = 256;
+const INLINE_SCRIPT = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+// Where a reference ends inside text: its end, `)`, a query or fragment, a srcset comma or width/density.
+const REFERENCE_END = /^(?:$|\)(?=$|[\s;,])|[?#]|,\s|\s+\d+(?:\.\d+)?[wx](?![\w.]))/;
 const SEPARATOR = String.raw`\\{0,2}[\\/]`;
 const REFERENCE_START = String.raw`(?<![\w./\\+-])`;
 const FILE_END = String.raw`(?![\w-]|\.\w)`;
 
-function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
+function referencePattern(oldPath: string, isDirectory: boolean, bareOrDotLead: boolean): RegExp {
   const name = oldPath.split("/").map(escapeRegExp).join(SEPARATOR);
   const end = isDirectory ? `(?=${SEPARATOR})` : FILE_END;
-  return new RegExp(
-    String.raw`${REFERENCE_START}(?<lead>(?:\.{1,2}${SEPARATOR}|${SEPARATOR}){0,4})${name}${end}`,
-    "g",
-  );
+  const lead = bareOrDotLead
+    ? String.raw`(?:\.${SEPARATOR})?`
+    : String.raw`(?:\.{1,2}${SEPARATOR}|${SEPARATOR}){0,4}`;
+  return new RegExp(String.raw`${REFERENCE_START}(?<lead>${lead})${name}${end}`, "g");
+}
+
+type Edit = { at: number; end: number; text: string };
+
+function applyEdits(text: string, edits: Edit[]): string {
+  let [out, pos] = ["", 0];
+  for (const edit of edits.sort((x, y) => x.at - y.at)) {
+    if (edit.at < pos) continue;
+    out += text.slice(pos, edit.at) + edit.text;
+    pos = edit.end;
+  }
+  return out + text.slice(pos);
 }
 
 // A match inside the longer path of a file or folder that exists (`a.png&b.png`, `other assets/`) is that path's.
 // Existing paths are indexed by the text after the old path, then the text before it, so a match costs a few lookups.
-export function referenceRewriter(
+function referenceEdits(
   oldPath: string,
   newPath: string,
   isDirectory: boolean,
-  existing: readonly string[] = [],
-): (text: string) => string {
-  const pattern = referencePattern(oldPath, isDirectory);
+  existing: readonly string[],
+  beside: { targets: ReadonlySet<string> | null } | null = null,
+): (text: string) => Edit[] {
+  const pattern = referencePattern(oldPath, isDirectory, beside !== null);
   const around = new Map<string, Map<number, Set<string>>>();
   const afterLengths = new Set<number>();
   let window = 0;
@@ -710,9 +727,8 @@ export function referenceRewriter(
   }
   const normalized = (text: string) => text.replace(/\\{0,2}[\\/]/g, "/");
   return (text) =>
-    text.replace(pattern, (...args) => {
-      const [match, offset] = [args[0] as string, args.at(-3) as number];
-      const { lead } = args.at(-1) as { lead: string };
+    [...text.matchAll(pattern)].flatMap((found) => {
+      const [match, offset, lead] = [found[0], found.index, found.groups?.lead ?? ""];
       const at = offset + lead.length;
       const head = normalized(text.slice(Math.max(0, at - window), at));
       const tail = normalized(text.slice(offset + match.length, offset + match.length + window));
@@ -725,8 +741,49 @@ export function referenceRewriter(
           )
         );
       });
-      return inLonger ? match : `${lead}${newPath}`;
+      const end = offset + match.length;
+      if (inLonger) return [];
+      if (beside) {
+        const rest = normalized(/^[^"'`<>\r\n]*/.exec(text.slice(end, end + MAX_REST))![0]);
+        if (isDirectory && leavesFolder(rest)) return [];
+        if (beside.targets && !reaches(beside.targets, `${newPath}${rest}`)) return [];
+      }
+      return [{ at, end, text: newPath }];
     });
+}
+
+export function referenceRewriter(
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+  existing: readonly string[] = [],
+): (text: string) => string {
+  const edits = referenceEdits(oldPath, newPath, isDirectory, existing);
+  return (text) => applyEdits(text, edits(text));
+}
+
+// HTML reads a bare path beside itself only where that file exists, else from the project root (rewriteAssetPath).
+function reaches(targets: ReadonlySet<string>, path: string): boolean {
+  for (let i = 0; i <= path.length; i++)
+    if (REFERENCE_END.test(path.slice(i)) && targets.has(path.slice(0, i))) return true;
+  return false;
+}
+
+function filesOnly(paths: readonly string[]): Set<string> {
+  const folders = new Set<string>();
+  for (const path of paths)
+    for (let at = path.indexOf("/"); at > 0; at = path.indexOf("/", at + 1))
+      folders.add(path.slice(0, at));
+  return new Set(paths.filter((path) => !folders.has(path)));
+}
+
+function leavesFolder(rest: string): boolean {
+  let depth = 0;
+  for (const segment of rest.split("/")) {
+    if (segment === ".." && --depth < 0) return true;
+    if (segment !== ".." && segment !== "." && segment !== "") depth++;
+  }
+  return false;
 }
 
 function occurrences(text: string, part: string): number[] {
@@ -774,14 +831,38 @@ function updateReferences(
     /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
   );
 
-  const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
+  const existing = projectPaths(projectDir);
+  const rootEdits = referenceEdits(oldPath, newPath, isDirectory, existing);
+  const parentFolderEdits = new Map<string, Record<"css" | "html", (text: string) => Edit[]>>();
+  for (let at = oldPath.indexOf("/"); at > 0; at = oldPath.indexOf("/", at + 1)) {
+    const dir = oldPath.slice(0, at);
+    const inside = existing
+      .filter((path) => path.startsWith(`${dir}/`))
+      .map((path) => path.slice(at + 1));
+    const [from, to] = [oldPath.slice(at + 1), posix.relative(dir, newPath)];
+    parentFolderEdits.set(dir, {
+      css: referenceEdits(from, to, isDirectory, inside, { targets: null }),
+      html: referenceEdits(from, to, isDirectory, inside, { targets: filesOnly(inside) }),
+    });
+  }
   let updatedCount = 0;
   for (const file of textFiles) {
     if (!isSafePath(projectDir, file)) continue;
     const content = readableText(file);
     if (content === null) continue;
 
-    const updated = rewrite(content);
+    const parent = parentFolderEdits.get(relative(projectDir, dirname(file)).split(sep).join("/"));
+    // Script and data paths resolve against the page, not their own folder: only the root pass reads them.
+    const kind = /\.css$/i.test(file) ? "css" : /\.html$/i.test(file) ? "html" : null;
+    const beside = (kind && parent?.[kind]?.(content)) || [];
+    const scripts = kind === "html" ? [...content.matchAll(INLINE_SCRIPT)] : [];
+    const outside = beside.filter((edit) =>
+      scripts.every(
+        (script) => edit.at < script.index || edit.at >= script.index + script[0].length,
+      ),
+    );
+    // A bare path in a folder's file is relative to that folder, so its edit wins where both start.
+    const updated = applyEdits(content, [...outside, ...rootEdits(content)]);
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;
