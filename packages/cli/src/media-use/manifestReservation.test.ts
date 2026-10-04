@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
-import { allocateId, typeDirPath, withReservedFileSync } from "./manifest.mjs";
+import { allocateId, typeDirPath, withReservedFileSync } from "./lib/manifest.mjs";
 
 // Studio's project history commits outside changes after a quiet time but skips atomic temp
 // names (core isAtomicTempPath); a reserved-but-empty asset it commits comes back 0-byte on undo.
@@ -31,9 +31,10 @@ describe("media-use id reservation", () => {
     ]);
   });
 
-  it("leaves nothing behind when the download fails", () => {
+  it("leaves nothing behind when the download fails partway", () => {
     expect(() =>
-      withReservedFileSync(project, "image", ".jpg", () => {
+      withReservedFileSync(project, "image", ".jpg", (reservation) => {
+        writeFileSync(reservation.fullPath, "partial");
         throw new Error("download failed");
       }),
     ).toThrow("download failed");
