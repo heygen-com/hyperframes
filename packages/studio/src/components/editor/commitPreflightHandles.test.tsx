@@ -207,6 +207,13 @@ async function select(animations: GsapAnimation[] | null, props: Partial<EditorP
   return view;
 }
 
+async function selectLoopedPair() {
+  const a = resolved(element("a"));
+  const b = resolved(element("b"));
+  const view = await select([loop({ x: 120 }, "#a")], { selection: a, groups: [a, b] });
+  return { a, b, ...view };
+}
+
 describe("handles follow what Studio would commit", () => {
   beforeEach(() => {
     HTMLElement.prototype.setPointerCapture = () => undefined;
@@ -443,12 +450,7 @@ describe("handles follow what Studio would commit", () => {
   });
 
   it("re-checks only the members that changed when the group is handed back anew", async () => {
-    const a = resolved(element("a"));
-    const b = resolved(element("b"));
-    const { seen, render } = await select([loop({ x: 120 }, "#a")], {
-      selection: a,
-      groups: [a, b],
-    });
+    const { a, b, seen, render } = await selectLoopedPair();
     const [narrowedA, narrowedB] = seen.groups;
 
     render({ selection: a, groups: [a, b] });
@@ -462,12 +464,7 @@ describe("handles follow what Studio would commit", () => {
   });
 
   it("checks again on a new cache version even when that re-read fails", async () => {
-    const a = resolved(element("a"));
-    const b = resolved(element("b"));
-    const { seen, render } = await select([loop({ x: 120 }, "#a")], {
-      selection: a,
-      groups: [a, b],
-    });
+    const { a, b, seen, render } = await selectLoopedPair();
     const [narrowedA] = seen.groups;
 
     parses.fetch.mockResolvedValueOnce(null);

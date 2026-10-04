@@ -480,6 +480,31 @@ export type ClipTweenRetime =
 const isLiveRetime = (r: ClipTweenRetime) =>
   r.kind === "shift" || (r.oldDuration > 0 && r.newDuration > 0);
 
+/** Moves `animation`'s written position and duration for one retime; says which of the two it wrote. */
+function applyRetime(
+  animation: GsapAnimation,
+  retime: ClipTweenRetime,
+): { position: boolean; duration: boolean } {
+  if (retime.kind === "shift") {
+    if (!hasExplicitTime(animation)) return { position: false, duration: false };
+    animation.position = shiftedPosition(animation.position, retime.delta);
+    return { position: true, duration: false };
+  }
+  const touched = { position: false, duration: false };
+  if (!isLiveRetime(retime) || typeof animation.position !== "number") return touched;
+  const ratio = retime.newDuration / retime.oldDuration;
+  if (hasExplicitTime(animation)) {
+    const scaled = retime.newStart + (animation.position - retime.oldStart) * ratio;
+    animation.position = Math.max(0, Math.round(scaled * 1000) / 1000);
+    touched.position = true;
+  }
+  if (typeof animation.duration === "number" && animation.duration > 0) {
+    animation.duration = Math.max(0.001, Math.round(animation.duration * ratio * 1000) / 1000);
+    touched.duration = true;
+  }
+  return touched;
+}
+
 /**
  * Applies `retimes` in order with one parse: the bytes equal running shift/scalePositionsInScript once
  * per retime. `changed[i]` says whether retime i moved a value.
@@ -504,29 +529,9 @@ export function retimeClipTweensInScript(
     retimes.forEach((retime, i) => {
       if (!matchers[i]!(animation)) return;
       const before = [animation.position, animation.duration];
-      if (retime.kind === "shift") {
-        if (!hasExplicitTime(animation)) return;
-        animation.position = shiftedPosition(animation.position, retime.delta);
-        position = true;
-      } else {
-        if (!isLiveRetime(retime) || typeof animation.position !== "number") return;
-        const ratio = retime.newDuration / retime.oldDuration;
-        if (hasExplicitTime(animation)) {
-          animation.position = Math.max(
-            0,
-            Math.round((retime.newStart + (animation.position - retime.oldStart) * ratio) * 1000) /
-              1000,
-          );
-          position = true;
-        }
-        if (typeof animation.duration === "number" && animation.duration > 0) {
-          animation.duration = Math.max(
-            0.001,
-            Math.round(animation.duration * ratio * 1000) / 1000,
-          );
-          duration = true;
-        }
-      }
+      const touched = applyRetime(animation, retime);
+      position ||= touched.position;
+      duration ||= touched.duration;
       if (before[0] !== animation.position || before[1] !== animation.duration) changed[i] = true;
     });
     if (position) overwritePosition(ms, entry.call, animation.position as number);

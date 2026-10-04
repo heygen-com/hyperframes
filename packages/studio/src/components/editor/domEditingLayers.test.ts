@@ -267,17 +267,19 @@ describe("buildTextFieldChildLocator", () => {
   });
 });
 
-describe("collectDomEditLayerItems item budget", () => {
-  function documentWith(count: number): HTMLElement {
-    const root = document.createElement("div");
-    root.setAttribute("data-composition-id", "index.html");
-    for (let i = 0; i < count; i++) {
-      const child = document.createElement("div");
-      child.id = `el-${i}`;
-      root.append(child);
-    }
-    return root;
+function compositionWith(count: number, child: (el: HTMLElement, i: number) => void): HTMLElement {
+  const root = document.createElement("div");
+  root.setAttribute("data-composition-id", "index.html");
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("div");
+    child(el, i);
+    root.append(el);
   }
+  return root;
+}
+
+describe("collectDomEditLayerItems item budget", () => {
+  const documentWith = (count: number) => compositionWith(count, (el, i) => (el.id = `el-${i}`));
 
   it("returns the whole document by default", () => {
     // A default cap here silently truncated the marquee's candidate list: a drag
@@ -295,13 +297,7 @@ describe("collectDomEditLayerItems selector-index cost", () => {
   // Attached, unlike the fixture above: a detached subtree is invisible to
   // document.querySelectorAll, so the occurrence lookup would find nothing.
   function attachedRootWithSharedClass(count: number): HTMLElement {
-    const root = document.createElement("div");
-    root.setAttribute("data-composition-id", "index.html");
-    for (let i = 0; i < count; i++) {
-      const child = document.createElement("div");
-      child.className = "box";
-      root.append(child);
-    }
+    const root = compositionWith(count, (el) => (el.className = "box"));
     document.body.append(root);
     return root;
   }

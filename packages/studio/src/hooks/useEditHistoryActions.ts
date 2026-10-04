@@ -98,7 +98,6 @@ export function useEditHistoryActions({
           claimedAfter,
         });
         const stepped = Boolean(result.ok && result.label);
-        // A landed edit whose claim never counted leaves the server stepping an older entry.
         const claimedSinceKey =
           claimedAfter !== undefined && (editHistory.claims?.() ?? claimedAfter) > claimedAfter;
         serverSteppedShown = predictedShown
