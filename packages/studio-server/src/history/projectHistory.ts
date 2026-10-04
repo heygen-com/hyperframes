@@ -210,16 +210,12 @@ function isHistoryPath(path: string): boolean {
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
 
-/** An older log as history keeps it: hidden paths gone, and with them an entry that changed nothing else, unless an
- * undo or restore links it to another entry (an undo left empty still keeps its target undone). */
+/** An older log as history keeps it: hidden paths gone. Every entry stays, emptied or not, since pins, undos, restores
+ * and callers name entries by id. */
 function keptPaths(log: HistoryLog): HistoryLog {
   for (const path of log.baseline.keys()) if (!isHistoryPath(path)) log.baseline.delete(path);
-  const linked = new Set(log.entries.flatMap((entry) => [entry.undoes, entry.restoredTo]));
-  log.entries = log.entries.flatMap((entry) => {
-    const files = entry.files.filter((file) => isHistoryPath(file.path));
-    const kept = files.length || !entry.files.length || entry.undoes || entry.restoredTo;
-    return kept || linked.has(entry.id) ? [{ ...entry, files }] : [];
-  });
+  for (const entry of log.entries)
+    entry.files = entry.files.filter((file) => isHistoryPath(file.path));
   return log;
 }
 
@@ -766,7 +762,9 @@ class Engine {
   }
 
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
-    if (!group.changes.size) return null;
+    // Undoing an entry an older log left with no files still lands, so Undo and Redo move past it like any step.
+    const emptied = this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0;
+    if (!group.changes.size && !emptied) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry: HistoryEntry = { ...pending, endedAt, ...extra };
@@ -1023,7 +1021,7 @@ class Engine {
     const everyone = this.options.undoScope === "everyone";
     const ofOpenTurn = (entry: HistoryEntry) =>
       this.windows.some((open) => open.parts?.has(entry.id));
-    // An entry an older log left with no files has nothing to step back or forward.
+    // Cmd+Z never spends a press on an entry an older log left with no files.
     return stepTarget(
       this.log.entries,
       direction,

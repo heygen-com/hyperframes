@@ -148,9 +148,32 @@ describe("openProjectHistory", () => {
     );
     renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
     const reopened = await open(projectDir, historyRoot);
-    expect(reopened.list().map((entry) => entry.label)).toEqual(["Your edit"]);
+    expect(reopened.list().map((entry) => entry.files.length)).toEqual([1, 0]);
     expect(await reopened.step("back", you)).toMatchObject({ ok: true });
     expect(read("index.html")).toBe("v1");
+  });
+
+  it("keeps every entry an older log names, emptied ones too, and undoing one still lands", async () => {
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "v1", "turn-record": "A" },
+      { quietMs: 30 },
+    );
+    write("turn-record", "B");
+    history.noteChange("turn-record");
+    await history.flush();
+    const [hidden] = history.list();
+    await history.pin(hidden!.id, true);
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.list()).toMatchObject([{ id: hidden!.id, files: [], pinned: true }]);
+    const undone = await reopened.undo(hidden!.id, { who: you });
+    expect(undone).toMatchObject({ ok: true, entry: { undoes: hidden!.id, files: [] } });
   });
 
   it("keeps an older log's Undo that only reverted a hidden file, so its target stays undone", async () => {
