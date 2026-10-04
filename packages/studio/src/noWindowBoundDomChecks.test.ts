@@ -8,6 +8,7 @@ const DOM_CTOR = String.raw`(?:HTML\w*Element|SVG\w*Element|Element|Node|Text|Sh
 // A DOM constructor read off any object, a window most of all, asks which window built a node.
 const WINDOW_BOUND = [
   new RegExp(String.raw`[\w$)\]!?]\??\.\s*${DOM_CTOR}`),
+  new RegExp(String.raw`^\s*\??\.\s*${DOM_CTOR}`),
   new RegExp(String.raw`\[\s*["'](?:HTML|SVG)\w*Element["']`),
 ];
 
