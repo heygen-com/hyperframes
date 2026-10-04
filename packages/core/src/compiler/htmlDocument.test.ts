@@ -5,6 +5,7 @@ import {
   injectScriptsIntoHtml,
   injectTagsAtHeadStart,
   insertBeforeCloseTag,
+  hasCompositionOutsideTemplates,
   isFullHtmlDocument,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
@@ -68,6 +69,24 @@ describe("htmlDocument helpers", () => {
     expect(stripped).toContain("window.__renderReady");
   });
 
+  it.each([
+    ["reads the runtime global", "if (window.__hyperframeRuntime) window.seen = 1;"],
+    [
+      "queries the bootstrap attribute",
+      'document.querySelector("[data-hyperframes-preview-runtime]");',
+    ],
+    ["names a runtime file", 'console.log("hyperframe.runtime.iife.js");'],
+    ["sets up window.__player", "window.__player = window.__player || {};"],
+  ])("keeps an authored script that %s", (_, source) => {
+    const html = `<script>${source}</script>`;
+    expect(stripEmbeddedRuntimeScripts(html)).toBe(html);
+  });
+
+  it("strips a runtime file linked with a query string or uppercase name", () => {
+    const html = '<script src="/static/HYPERFRAME.RUNTIME.IIFE.JS?v=2"></script><p>kept</p>';
+    expect(stripEmbeddedRuntimeScripts(html)).toBe("<p>kept</p>");
+  });
+
   it("does not treat non-script tags as scripts when stripping runtimes", () => {
     const html = "<scripture>window.__playerReady = true;</scripture>";
 
@@ -98,7 +117,7 @@ describe("htmlDocument helpers", () => {
     );
 
     expect(injected).toContain("<\\/script ><script>window.pwned = true;<\\/script>");
-    expect(injected).toContain("<\\!-- kept as script text");
+    expect(injected).toContain("\\x3C!-- kept as script text");
     expect(injected).not.toContain("</script ><script>window.pwned = true;");
   });
 
@@ -147,7 +166,7 @@ describe("htmlDocument helpers", () => {
     expect(stripped).toBe("<p>İİ</p><p>kept</p>");
 
     const escaped = injectScriptsIntoHtml(page, ['x="İİ</SCRIPT>"'], []);
-    expect(escaped).toContain('<script>x="İİ<\\/script>"</script>');
+    expect(escaped).toContain('<script>x="İİ<\\/SCRIPT>"</script>');
   });
 
   it("skips a script tag written inside an attribute value", () => {
@@ -270,5 +289,49 @@ describe("injectTagsAtHeadStart on long adversarial input", () => {
     const started = performance.now();
     injectTagsAtHeadStart(html, "<meta>");
     expect(performance.now() - started).toBeLessThan(1500);
+  });
+});
+
+describe("hasCompositionOutsideTemplates", () => {
+  it.each([
+    ["a root in <body>", '<body><div data-composition-id="main"></div></body>', true],
+    [
+      "a root in <body> beside an inline template",
+      '<body><div data-composition-id="main"></div><template><div data-composition-id="x"></div></template></body>',
+      true,
+    ],
+    [
+      "a full document whose composition is in its template",
+      '<html><body><template id="s-template"><div data-composition-id="s"></div></template></body></html>',
+      false,
+    ],
+    ["a bare template", '<template><div data-composition-id="s"></div></template>', false],
+    [
+      "an id on <html> and on the <template> tag itself",
+      '<html data-composition-id="s"><body><template data-composition-id="s"><div></div></template></body></html>',
+      false,
+    ],
+    [
+      "a root id on <html> beside a template with no composition",
+      '<html data-composition-id="main"><body><template><p>clone me</p></template></body></html>',
+      true,
+    ],
+    [
+      "a full document whose <html> carries the id",
+      '<html data-composition-id="s"><body data-composition-id="s"><template><div data-composition-id="s"></div></template></body></html>',
+      false,
+    ],
+    [
+      "the attribute only in a comment or text",
+      '<body><!-- <div data-composition-id="a"> --><p>data-composition-id="b"</p></body>',
+      false,
+    ],
+    [
+      "a nested template",
+      '<template><template></template><div data-composition-id="s"></div></template>',
+      false,
+    ],
+  ])("%s", (_name, html, expected) => {
+    expect(hasCompositionOutsideTemplates(html)).toBe(expected);
   });
 });

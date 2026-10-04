@@ -135,6 +135,7 @@ export async function tryGsapResizeIntercept(
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
   dragOffset?: { x: number; y: number },
+  draw: <T>(run: () => T) => T = (run) => run(),
 ): Promise<GsapEditOutcome> {
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
   const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
@@ -315,7 +316,7 @@ export async function tryGsapResizeIntercept(
     // difference and compensates, so release matches the drop pixel-for-pixel
     // regardless of live scale or repeat resizes.
     if (el) {
-      const dropRect = el.getBoundingClientRect();
+      const dropRect = draw(() => el.getBoundingClientRect());
       scaleDraftDropPoint = { x: dropRect.x, y: dropRect.y };
     }
   } else {
@@ -342,75 +343,61 @@ export async function tryGsapResizeIntercept(
     // resize took the size route and never moved anything: the drop point is
     // the drag's to settle, not ours.
     if (!scaleDraftEl) return false;
-    clearStudioBoxSize(scaleDraftEl);
-    if (!scaleDraftDropPoint || !selector) return false;
-    // Put the committed scale on the live element before measuring.
-    //
-    // This step reads where the commit lands the box and shifts the position
-    // hold by the difference. That only works if the commit has actually
-    // rendered, and whether it had was luck: on the FIRST resize of an element
-    // the timeline had not re-seeked yet, so this measured the element at its
-    // natural size, still sitting on the drop point, computed a residual of
-    // zero, and skipped the correction entirely. The scale then landed, GSAP
-    // rendered it around the element's centre, and the element jumped by the
-    // whole drag distance. Elements that had been resized before got a
-    // correction only because their PREVIOUS scale made the residual non-zero.
-    //
-    // Setting it here costs nothing when the commit has already rendered (same
-    // value) and makes the measurement below mean what it says either way.
-    if (committedScale) {
-      setElementGsapScale(scaleDraftEl, committedScale.x, committedScale.y);
+    const draftEl = scaleDraftEl;
+    if (!scaleDraftDropPoint || !selector) {
+      draw(() => clearStudioBoxSize(draftEl));
+      return false;
     }
-    // Measure from the pre-gesture position, not the draft one.
-    //
-    // The resize draft translates the element to keep the dragged corner under
-    // the cursor, but the scale route never persists that translation — the
-    // element renders back at its pre-gesture position as soon as the commit
-    // lands. Measuring while the draft translation was still applied made the
-    // residual carry the whole drag distance, and the position commit then
-    // composed that residual onto the pre-gesture base (it reads the gesture's
-    // own base attributes, not the live value), so the element landed a full
-    // drag away from the drop point on every scale resize.
-    const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
-    const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
-      selection.element,
-      { x: 0, y: 0 },
-      gsapPos,
-    );
-    const base = { x: baseGsapX, y: baseGsapY };
-    setElementGsapPosition(scaleDraftEl, base.x, base.y);
-    const post = scaleDraftEl.getBoundingClientRect();
-    const residual = { x: scaleDraftDropPoint.x - post.x, y: scaleDraftDropPoint.y - post.y };
-    if (!Number.isFinite(residual.x) || !Number.isFinite(residual.y)) return false;
-    if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
-      logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
-      // Settled, with nothing to write. Still ours: forwarding the drag offset
-      // on top would move the box off the point it is already sitting on.
-      return true;
-    }
-    // The ONE corrected position — rounded once so the live runtime and the
-    // persisted file agree exactly (commitStaticGsapPosition composes the same
-    // rounded value from this delta).
-    const corrected = {
-      x: roundTo3(base.x + residual.x),
-      y: roundTo3(base.y + residual.y),
-    };
-    logResize("scale-finalize", {
-      dropPoint: scaleDraftDropPoint,
-      post: { x: post.x, y: post.y },
-      residual,
-      gsapPos,
-      base,
-      corrected,
+    const dropPoint = scaleDraftDropPoint;
+    const measured = draw(() => {
+      clearStudioBoxSize(draftEl);
+      // Draw the committed scale before measuring: on a first resize the timeline has not re-seeked yet,
+      // so the box would read at its natural size and the correction would be skipped.
+      if (committedScale) {
+        setElementGsapScale(draftEl, committedScale.x, committedScale.y);
+      }
+      // Measure from the pre-gesture position: the scale route never saves the draft's translation, and
+      // the position write composes the residual onto that same base.
+      const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
+      const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
+        selection.element,
+        { x: 0, y: 0 },
+        gsapPos,
+      );
+      const base = { x: baseGsapX, y: baseGsapY };
+      setElementGsapPosition(draftEl, base.x, base.y);
+      const post = draftEl.getBoundingClientRect();
+      const residual = { x: dropPoint.x - post.x, y: dropPoint.y - post.y };
+      if (!Number.isFinite(residual.x) || !Number.isFinite(residual.y)) return null;
+      if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
+        logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
+        // Settled, with nothing to write. Still ours: forwarding the drag offset
+        // on top would move the box off the point it is already sitting on.
+        return "settled" as const;
+      }
+      // The ONE corrected position — rounded once so the live runtime and the
+      // persisted file agree exactly (commitStaticGsapPosition composes the same
+      // rounded value from this delta).
+      const corrected = {
+        x: roundTo3(base.x + residual.x),
+        y: roundTo3(base.y + residual.y),
+      };
+      logResize("scale-finalize", {
+        dropPoint,
+        post: { x: post.x, y: post.y },
+        residual,
+        gsapPos,
+        base,
+        corrected,
+      });
+      // Correct the live box in the same task as the measurement, so no frame shows it off the drop
+      // point while the position write is in flight.
+      setElementGsapPosition(draftEl, corrected.x, corrected.y);
+      return { base, corrected };
     });
-    // Correct the LIVE runtime NOW, synchronously: the soft reload above just
-    // rendered the committed scale around the element center — NOT at the drop
-    // point — and everything up to here runs in the same microtask chain as
-    // that reload, so no frame has painted the uncorrected position yet. The
-    // server persist below costs network round-trips; without this set, the
-    // element visibly sits at the wrong spot for those frames (the drop
-    // "jump"). The persisted commit re-applies the same values (idempotent).
-    setElementGsapPosition(scaleDraftEl, corrected.x, corrected.y);
+    if (measured === null) return false;
+    if (measured === "settled") return true;
+    const { base, corrected } = measured;
     // Re-fetch: the scale commit above just rewrote the script, so the caller's
     // animation list (and its ids) may be stale for the position lookup.
     const currentAnimations = fetchFallbackAnimations

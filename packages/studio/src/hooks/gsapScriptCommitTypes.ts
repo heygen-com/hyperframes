@@ -2,6 +2,7 @@ import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { PublishSdkSession } from "../utils/sdkCutover";
+import type { StudioEditInFlight } from "../utils/studioPendingEdits";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 import type { KeyframeUsageAction } from "../utils/keyframeUsage";
 
@@ -47,6 +48,7 @@ export interface CommitMutationOptions {
   /** Carries a deferred write not yet on screen (no patch, or a missed one) to the final render. */
   previewFallbackLatch?: { pending: boolean };
   beforeReload?: () => void;
+  pendingEdit?: StudioEditInFlight;
   /**
    * Serialize this commit against others sharing the same key. Used to chain
    * per-animationId GSAP meta updates. Every commit independently takes the

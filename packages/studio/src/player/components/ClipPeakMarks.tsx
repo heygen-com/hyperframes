@@ -49,8 +49,11 @@ export function ClipPeakMarks({
               }}
             />
           ))}
-          <span className="absolute top-0 right-1 font-mono text-[9px] leading-none text-red-400">
-            ▲ peaks {dbText(peakDbfs)}
+          <span
+            className="absolute top-0 right-1 font-mono text-[9px] leading-none text-red-400"
+            data-peak-badge
+          >
+            ▲<span data-peak-text> peaks {dbText(peakDbfs)}</span>
           </span>
         </div>
       )}

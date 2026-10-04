@@ -51,6 +51,23 @@ describe("inlineScriptRuns", () => {
     ).toEqual([{ members: ["a", "b"], anchor: null }]);
   });
 
+  it.each([
+    "application/ecmascript",
+    " TEXT/JScript ",
+    "text/javascript1.5",
+    "application/x-javascript",
+  ])("treats the legacy JavaScript type %j as a classic script", (type) => {
+    expect(runsOf(`<script>a</script><script type="${type}">b</script>`)).toEqual([
+      { members: ["a", "b"], anchor: null },
+    ]);
+  });
+
+  it("leaves a script whose type only looks like JavaScript out of the run", () => {
+    expect(runsOf('<script>a</script><script type="text/javascript2">b</script>')).toEqual([
+      { members: ["a"], anchor: null },
+    ]);
+  });
+
   it("returns no runs when there are no inline scripts", () => {
     expect(runsOf('<script src="x.js"></script>')).toEqual([]);
   });

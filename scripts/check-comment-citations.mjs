@@ -132,6 +132,8 @@ const PROJECT_FILES = new Set([
   "storyboard.html",
   "design.md",
   "_role.md",
+  "cinematic.json",
+  "safe-zones.json",
 ]);
 
 // A URL, an absolute path, a `<sha>:<path>`, build output or a project file: none resolve in the tree.

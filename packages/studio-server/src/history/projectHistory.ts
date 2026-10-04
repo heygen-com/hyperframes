@@ -203,9 +203,12 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-/** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except Studio's manifests. */
+const MEDIA_LEDGER = ".media/manifest.jsonl";
+const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
+
+/** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except the kept ones above. */
 function isHistoryPath(path: string): boolean {
-  if ((STUDIO_SIGNATURE_MANIFEST_PATHS as readonly string[]).includes(path)) return true;
+  if (KEPT_HIDDEN_PATHS.has(path)) return true;
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
 
@@ -403,6 +406,7 @@ class Engine {
     );
     if (!log) return this.firstOpen();
     this.log = withoutHiddenPaths(log);
+    if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
     const last = this.log.entries.at(-1)?.id ?? START;
     for (const [path, hash] of manifestAt(this.log, last) ?? []) {
@@ -462,6 +466,19 @@ class Engine {
     this.windows.push({ id, who, label, startedAt, lastWriteAt, idleMs, changes: new Map() });
   }
 
+  async takeInUnnamedLedger(): Promise<void> {
+    const named = (path: string) =>
+      this.log.entries.some((entry) => entry.files.some((file) => file.path === path));
+    const listed = () => historyFiles(this.dir).some((file) => file.path === MEDIA_LEDGER);
+    const hash =
+      this.log.baseline.has(MEDIA_LEDGER) || named(MEDIA_LEDGER) || !listed()
+        ? null
+        : await this.storeIfPresent(MEDIA_LEDGER);
+    if (hash !== null) this.log.baseline.set(MEDIA_LEDGER, hash);
+    this.log.keepsLedger = true;
+    this.persistLog();
+  }
+
   async firstOpen(): Promise<void> {
     const sweptAt = this.now();
     for (const file of historyFiles(this.dir)) {
@@ -470,6 +487,7 @@ class Engine {
       if (hash !== null) this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
     }
     this.log.baseline = this.manifest();
+    this.log.keepsLedger = true;
     this.persistLog();
     this.saveStatCache();
   }

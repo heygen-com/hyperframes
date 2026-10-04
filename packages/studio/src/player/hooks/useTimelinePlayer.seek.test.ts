@@ -406,6 +406,17 @@ describe("useTimelinePlayer preview frame (a trim's dragged edge)", () => {
     unmountWithAct(root);
   });
 
+  it("reads the playing transport's own time, not the playhead's, under a preview frame", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 2);
+    setStorePlaying();
+    previewFrame(5);
+    adapter.seek(7);
+    act(() => api.pause());
+    expect(usePlayerStore.getState().currentTime).toBe(7);
+    unmountWithAct(root);
+  });
+
   it("leaves live playback alone", () => {
     const { api, root, adapter } = renderAttachedTimelinePlayer();
     seekWithAct(api, 2);

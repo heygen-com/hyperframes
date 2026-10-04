@@ -1,4 +1,8 @@
-import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
+import {
+  initSandboxRuntimeModular,
+  installAuthoredMediaCapture,
+  installFlatGsapTransforms,
+} from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { deferMediaUntilDue } from "./preloadMedia";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
@@ -32,6 +36,7 @@ type HyperframeWindow = Window & {
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
+installFlatGsapTransforms();
 
 hideTimedClipsUntilFirstPass();
 deferMediaUntilDue();

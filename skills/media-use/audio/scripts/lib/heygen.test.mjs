@@ -11,15 +11,19 @@ import {
 } from "./heygen.mjs";
 
 function withCleanHeygenEnv(fn) {
+  const previousAccessToken = process.env.HEYGEN_ACCESS_TOKEN;
   const previousApiKey = process.env.HEYGEN_API_KEY;
   const previousHyperframesApiKey = process.env.HYPERFRAMES_API_KEY;
   const previousConfigDir = process.env.HEYGEN_CONFIG_DIR;
   try {
+    delete process.env.HEYGEN_ACCESS_TOKEN;
     delete process.env.HEYGEN_API_KEY;
     delete process.env.HYPERFRAMES_API_KEY;
     delete process.env.HEYGEN_CONFIG_DIR;
     return fn();
   } finally {
+    if (previousAccessToken === undefined) delete process.env.HEYGEN_ACCESS_TOKEN;
+    else process.env.HEYGEN_ACCESS_TOKEN = previousAccessToken;
     if (previousApiKey === undefined) delete process.env.HEYGEN_API_KEY;
     else process.env.HEYGEN_API_KEY = previousApiKey;
     if (previousHyperframesApiKey === undefined) delete process.env.HYPERFRAMES_API_KEY;
@@ -64,6 +68,19 @@ test("heygenAuthHeaders tags OAuth requests as CLI traffic and with the media-us
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+test("a host-injected HEYGEN_ACCESS_TOKEN wins over an API key and is treated as OAuth", () => {
+  withCleanHeygenEnv(() => {
+    process.env.HEYGEN_ACCESS_TOKEN = "at_host";
+    process.env.HEYGEN_API_KEY = "hg_test";
+    assert.deepEqual(heygenAuthHeaders(), {
+      Authorization: "Bearer at_host",
+      "X-HeyGen-Source": "cli",
+      "X-HeyGen-Client-Source": "media-use",
+    });
+    assert.equal(heygenAuthMethod(), "oauth");
   });
 });
 

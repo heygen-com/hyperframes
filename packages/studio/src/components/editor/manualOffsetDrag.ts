@@ -1,3 +1,4 @@
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import type { DomEditSelection } from "./domEditing";
 import {
   applyStudioPathOffset,
@@ -13,7 +14,6 @@ import {
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
-import type { StudioEditRevert } from "../../utils/studioPendingEdits";
 
 interface OffsetDragGsap {
   set: (el: Element, vars: Record<string, number | string>) => void;
@@ -132,9 +132,7 @@ function getFrameElement(win: Window): HTMLElement | null {
   try {
     const frameElement = win.frameElement;
     if (!frameElement) return null;
-    const ownerWin = frameElement.ownerDocument.defaultView;
-    const htmlElement = ownerWin?.HTMLElement;
-    return htmlElement && frameElement instanceof htmlElement ? frameElement : null;
+    return isHtmlElement(frameElement) ? frameElement : null;
   } catch {
     return null;
   }
@@ -448,7 +446,7 @@ export function applyManualOffsetDragDraft(
  * the element flies off-screen the instant you drop it. The member holds the
  * true gesture-start values in JS, immune to the re-render.
  */
-function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
+export function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
   el.setAttribute("data-hf-drag-gsap-base-x", String(baseGsap.x));
   el.setAttribute("data-hf-drag-gsap-base-y", String(baseGsap.y));
   el.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
@@ -508,16 +506,6 @@ function restoreManualOffsetDragMember(member: ManualOffsetDragMember): void {
     getOffsetDragGsap(member.element)?.set(member.element, { ...member.baseGsap });
   }
   endStudioManualEditGesture(member.element, member.gestureToken);
-}
-
-/** Undo's live revert of a move: its members at gesture start. Null off the plain route, which GSAP draws. */
-export function manualOffsetMoveRevert(members: ManualOffsetDragMember[]): StudioEditRevert | null {
-  if (!members.every((member) => member.plainTranslate)) return null;
-  return () => {
-    const shown = members.map((member) => captureStudioPathOffset(member.element));
-    for (const member of members) restoreStudioPathOffset(member.element, member.initialPathOffset);
-    return () => members.forEach((member, i) => restoreStudioPathOffset(member.element, shown[i]!));
-  };
 }
 
 /** Roll back a FAILED drag to the exact gesture-start state. */

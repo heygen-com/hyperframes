@@ -9,6 +9,53 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.125"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio", "Core", "Skills"]}
+>
+A cropped layer's edge now stays exact while GSAP animates it, in preview and export, and undoing a resize, rotate or GSAP edit shows the change undone at once while it saves.
+
+## Fixes
+
+- **Studio:** Undo shows a resize, rotate or GSAP edit undone at once while it saves ([49333a882d34](https://github.com/heygen-com/hyperframes/commit/49333a882d343cef768f16739a84643296e9da5d), [#5022](https://github.com/heygen-com/hyperframes/pull/5022)).
+- **Core:** A cropped element's edge stays exact while GSAP tweens it ([99c389bce9fd](https://github.com/heygen-com/hyperframes/commit/99c389bce9fd893f3c0052c11f6e4844a5da33ab), [#5010](https://github.com/heygen-com/hyperframes/pull/5010)).
+
+## Docs & Examples
+
+- **Skills:** Fix wrong facts and broken paths from the doctrine audit ([0c3e244269aa](https://github.com/heygen-com/hyperframes/commit/0c3e244269aae698149214379280377a9f7a2f2b), [#5026](https://github.com/heygen-com/hyperframes/pull/5026)).
+- **Skills:** Resolve cross-skill contradictions from the doctrine audit ([173103dfdec5](https://github.com/heygen-com/hyperframes/commit/173103dfdec5738f85733e6796d56932ad2a7436), [#5028](https://github.com/heygen-com/hyperframes/pull/5028)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.124...v0.8.125).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.124"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio Server", "Studio", "CLI"]}
+>
+Undo in Studio now takes added media back with the file, snapping no longer moves a clip to a place it would not save, and motion paths animate when GSAP loads deferred. Media-use can clone, list and delete HeyGen voices.
+
+## Features
+
+- **Studio:** Make edit with framey stand out in the header ([2b82e39cd6fd](https://github.com/heygen-com/hyperframes/commit/2b82e39cd6fde19a74ce4855d5bfc05ceb42b864), [#5019](https://github.com/heygen-com/hyperframes/pull/5019)).
+- **Media Use:** Clone, list and delete HeyGen voices, and accept a host OAuth token ([2497402b270a](https://github.com/heygen-com/hyperframes/commit/2497402b270a4f613cf57abc1c29cbc260fb8c07), [#4992](https://github.com/heygen-com/hyperframes/pull/4992)).
+- **Skills:** Open Studio before every final render ([69a2169bde0c](https://github.com/heygen-com/hyperframes/commit/69a2169bde0c134f42979e1911755084b1c29962), [#4952](https://github.com/heygen-com/hyperframes/pull/4952)).
+- **Cli,studio:** Hand off on macOS now, and open the app on Windows and Linux ([6a27a34f21ef](https://github.com/heygen-com/hyperframes/commit/6a27a34f21ef178d3c5189ab8a4a9f6709c528da), [#4999](https://github.com/heygen-com/hyperframes/pull/4999)).
+
+## Fixes
+
+- **Studio Server:** Undoing a change takes the media ledger back with the film ([a2f41608993e](https://github.com/heygen-com/hyperframes/commit/a2f41608993e3fa74b81b5845d3000a7a0be698e), [#5016](https://github.com/heygen-com/hyperframes/pull/5016)).
+- **CLI:** A project .env cannot set the feedback email in another letter case ([dcc721062b51](https://github.com/heygen-com/hyperframes/commit/dcc721062b51776049d9c8fb4a0bf7fade388888), [#5018](https://github.com/heygen-com/hyperframes/pull/5018)).
+- **Studio:** A video's sound reads on its clip like an audio row ([ed5c1000b1f1](https://github.com/heygen-com/hyperframes/commit/ed5c1000b1f17e9365e9600e9e8e3993ae7a74be), [#5015](https://github.com/heygen-com/hyperframes/pull/5015)).
+- **Studio:** A snap the saved clip would miss no longer moves it ([48bfe618030d](https://github.com/heygen-com/hyperframes/commit/48bfe618030deb3ecedce23a5254d71e7cbd5426), [#5006](https://github.com/heygen-com/hyperframes/pull/5006)).
+- **Studio Server:** Motion paths animate when gsap has a query string or loads deferred ([5cee25efcb8d](https://github.com/heygen-com/hyperframes/commit/5cee25efcb8d6d771e312908f9a54d7fe2a9b3ce), [#5007](https://github.com/heygen-com/hyperframes/pull/5007)).
+- **Studio:** An audio clip's name pill draws over its waveform ([4a5e38eed64b](https://github.com/heygen-com/hyperframes/commit/4a5e38eed64bb361b078eeba9fc5d756d93aa9a2), [#5013](https://github.com/heygen-com/hyperframes/pull/5013)).
+- **Studio:** A first animation in a full-document sub-composition plays ([399f49104e24](https://github.com/heygen-com/hyperframes/commit/399f49104e24ff716e2ca51f024dd8863d9df61a), [#5008](https://github.com/heygen-com/hyperframes/pull/5008)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.123...v0.8.124).
+</Update>
+
+<Update
   label="HyperFrames v0.8.123"
   description="Released - 2026-10-04"
   tags={["Release", "Studio Server", "Core", "Studio,cli"]}

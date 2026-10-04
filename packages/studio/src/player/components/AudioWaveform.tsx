@@ -26,6 +26,7 @@ const BAR_STEP = 3;
 
 export const rendersWaveform = (el: { tag: string }) => el.tag === "audio";
 const FADE_GHOST_OPACITY = 0.27;
+export const WAVEFORM_LAYER_Z = 10;
 
 type BarGeometry = { x: number; width: number; height: number; gain: number };
 
@@ -236,7 +237,7 @@ export const AudioWaveform = memo(function AudioWaveform({
 
   return (
     <div ref={rootRef} className="absolute inset-0">
-      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 10 }}>
+      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: WAVEFORM_LAYER_Z }}>
         <canvas
           ref={setCanvasRef}
           className="absolute inset-x-0 bottom-0 w-full"

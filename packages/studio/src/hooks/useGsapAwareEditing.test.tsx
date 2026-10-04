@@ -423,6 +423,7 @@ describe("useGsapAwareEditing anchored resize", () => {
       expect.any(Function),
       expect.any(Function),
       undefined,
+      expect.any(Function),
     );
     act(() => h.root.unmount());
   });

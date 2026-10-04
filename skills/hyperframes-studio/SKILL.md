@@ -59,7 +59,7 @@ asked you to change nothing at all, write nothing: put the plan in the reply and
 
 The root composition holds only timed hosts, media and audio. Any scene with nested
 structure (a div containing children, a title with a subtitle, a chart) is its own
-file loaded with `data-composition-src`, wiring in
+file loaded with `data-composition-src`, wiring in `/hyperframes-core`
 `references/sub-compositions.md`.
 
 Nested markup left inside the root does not become a row of its own. It hides inside
@@ -136,5 +136,5 @@ the arc wins.
 
 ## Checking your work
 
-Run `hyperframes lint` and fix every finding. Then open the project in Studio and
+Run `hyperframes check` (it runs lint) and fix every finding. Then open the project in Studio and
 check that the timeline shows a base row, one row per scene host, one caption row and the audio rows.

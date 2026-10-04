@@ -321,6 +321,20 @@ describe("guideIfSaved — a guide only where the clip saves", () => {
     expect(guideIfSaved(el, { start: 2.217 }, edge, 1440)).toBeNull();
   });
 
+  it("keeps the pointer's start when a move's snap would save off the target", () => {
+    // 1440 px/s: a 31/30 s clip whose end snaps to 3.25s would save at 2.22s and jump 4px on release.
+    const el = clip("a", 0, 1, 31 / 30, 0, "div");
+    const { drag } = horizontalDrag(el, 0.5, 0);
+    const context = {
+      ...ctx(undefined, [el]),
+      pps: 1440,
+      buildSnapTargets: () => [{ time: 3.25, type: "clip-edge" as const }],
+    };
+    const x = drag.originClientX + 1.22 * 1440;
+    const next = computeDragPreview(drag, x, drag.originClientY, context);
+    expect(next).toMatchObject({ previewStart: 2.22, snapTime: null, snapType: null });
+  });
+
   it("draws no guide for a move whose saved start misses the target", () => {
     const nested = { ...moodboard, parentCompositionStart: 1 / 30 };
     const { drag } = horizontalDrag(nested, 0.5, 0);
@@ -386,6 +400,23 @@ describe("computeResizePreview — composition source continuity", () => {
       },
     );
     expect(result).toMatchObject({ previewStart: 1.03, snapTime: null, snapType: null });
+  });
+
+  it("keeps the pointer's end when a tail snap would save off the target", () => {
+    // 1440 px/s: snapping 1.125s + 2.12s to 3.25s needs a 2.125s duration, which saves 7px off.
+    const result = computeResizePreview(
+      {
+        element: clip("a", 0, 1.125, 2, 0, "div"),
+        edge: "end",
+        originClientX: 0,
+        previewStart: 1.125,
+        previewDuration: 2,
+        started: true,
+      },
+      173,
+      { scroll: fakeScroll(), pps: 1440, buildSnapTargets: () => [{ time: 3.25, type: "grid" }] },
+    );
+    expect(result).toMatchObject({ previewDuration: 2.12, snapTime: null, snapType: null });
   });
 
   it("does not let a tail snap shrink a clip below the drag's minimum duration", () => {

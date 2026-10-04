@@ -6,6 +6,7 @@
  * cache, its revision counter, the observer that bumps it, and the one reader.
  */
 
+import { isElementNode } from "@hyperframes/core/runtime/dom-realm";
 import {
   HF_AUDIO_GROUP_ATTR,
   HF_AUDIO_GROUP_TAG,
@@ -52,7 +53,7 @@ function countGroupChanges(doc: Document, records: readonly MutationRecord[]): v
       record.type !== "childList" ||
       [...record.addedNodes, ...record.removedNodes].some(
         (node) =>
-          node instanceof Element &&
+          isElementNode(node) &&
           (node.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG ||
             node.hasAttribute(HF_AUDIO_GROUP_ATTR) ||
             node.querySelector?.(`${HF_AUDIO_GROUP_TAG},[${HF_AUDIO_GROUP_ATTR}]`) != null),

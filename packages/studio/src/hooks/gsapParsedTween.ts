@@ -2,6 +2,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { elementTargets } from "../utils/elementGsap";
 import { resolveTweenStart } from "../utils/globalTimeCompiler";
 import type { ImplicitEndValue } from "./gsapValueAtPlayhead";
+import type { ReadTween } from "./gsapRuntimeKeyframes";
 
 // GSAP 3 internals: a property tween in a tween's `_pt` chain; CSSPlugin keeps its own under `d._pt`.
 interface PropTween {
@@ -55,6 +56,21 @@ function endsIn(tween: ParsedTween, prop: string): [number, number] | null {
   if (!pt) return null;
   const pair: [number, number] = [pt.s!, pt.s! + pt.c!];
   return tween._from ? [pair[1], pair[0]] : pair;
+}
+
+/** `read` plus GSAP's start for a step list or a first key past 0%, read per channel. */
+export function withParsedStart(read: ReadTween, live: unknown): ReadTween {
+  const tween = live as ParsedTween;
+  const first = read.keyframes[0];
+  if (!Array.isArray(tween.vars?.keyframes) && !((first?.percentage ?? 0) > 0)) return read;
+  const children = tween.timeline?.getChildren?.() ?? [tween];
+  const start: Record<string, number> = {};
+  for (const prop of ["x", "y", "width", "height"]) {
+    const ends = children.map((child) => endsIn(child, prop)).find(Boolean);
+    if (ends) start[prop] = ends[0];
+  }
+  const moved = Object.entries(start).some(([prop, value]) => value !== first?.properties[prop]);
+  return moved ? { ...read, start } : read;
 }
 
 /** The live tween GSAP built from `anim`: same element, start and channels, parsed. */

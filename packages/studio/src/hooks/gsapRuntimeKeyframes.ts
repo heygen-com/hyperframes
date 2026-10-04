@@ -13,6 +13,7 @@ import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { timeAtProgress } from "../utils/gsapKeyframeEases";
 import { readMotionPathTween } from "./gsapRuntimeMotionPath";
 import { roundTo3 } from "../utils/rounding";
+import { withParsedStart } from "./gsapParsedTween";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
 
@@ -50,6 +51,8 @@ export type ReadTween = {
   easeEach?: string;
   arcPath?: ArcPathConfig;
   runEase?: string;
+  /** GSAP's start values when the first keyframe is after 0%. */
+  start?: Record<string, number>;
 };
 
 export interface RuntimeKeyframeEntry {
@@ -337,11 +340,11 @@ export function readRuntimeKeyframes(
       const read = readTween(tween.vars);
       if (!read) continue;
       if (requireChannels && !readCarriesChannel(read, requireChannels)) continue;
-      if (firstRead === null) firstRead = read;
+      if (firstRead === null) firstRead = withParsedStart(read, tween);
       // Prefer the tween whose [start, start+dur] contains the playhead.
       if (now != null) {
         const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
-        if (now >= start - 1e-3 && now <= start + dur + 1e-3) return read;
+        if (now >= start - 1e-3 && now <= start + dur + 1e-3) return withParsedStart(read, tween);
       }
     }
   }

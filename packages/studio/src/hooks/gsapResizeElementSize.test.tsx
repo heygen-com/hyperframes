@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applyStudioBoxSizeDraft } from "../components/editor/manualEdits";
+import {
+  beginStudioPendingEdit,
+  paintBackNewestStudioPendingEdit,
+} from "../utils/studioPendingEdits";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
@@ -132,6 +136,29 @@ describe("resizing an element GSAP positions", () => {
       .flatMap((call) => call[1])
       .filter((p: { property: string }) => p.property === "width" || p.property === "height");
     expect(cssSize).toEqual([]);
+    act(() => h.root.unmount());
+  });
+
+  it("keeps a resize undo painted back drawn undone while its save lands, and draws it again on show again", async () => {
+    const h = mount([positionHold]);
+    const element = h.selection.element;
+    const edit = beginStudioPendingEdit(() => {
+      const shown = element.getAttribute("style");
+      element.setAttribute("style", "scale: none");
+      return () => element.setAttribute("style", shown ?? "");
+    });
+    const saved = edit.adopt(() => h.resize(h.selection, h.size, { x: -50, y: -33.5 }));
+    edit.settle(saved);
+    const shown = paintBackNewestStudioPendingEdit();
+
+    await act(() => saved);
+    expect(h.commitPatch.mock.calls.at(-1)![1]).toEqual(
+      expect.arrayContaining([{ type: "inline-style", property: "width", value: "340px" }]),
+    );
+    expect(element.getAttribute("style")).toBe("scale: none");
+
+    shown!.showAgain();
+    expect(element.getAttribute("style")).toContain("--hf-studio-width: 340px");
     act(() => h.root.unmount());
   });
 });

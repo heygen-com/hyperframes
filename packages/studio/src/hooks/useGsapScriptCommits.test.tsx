@@ -38,7 +38,12 @@ import type {
 import { persistSdkSerialize } from "../utils/sdkCutover";
 import { jsonResponse } from "./fetchStubTestUtils";
 import { applyPreviewSync, useGsapScriptCommits } from "./useGsapScriptCommits";
-import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
+import {
+  beginStudioPendingEdit,
+  hasStudioPendingEdits,
+  paintBackNewestStudioPendingEdit,
+} from "../utils/studioPendingEdits";
+import { observeGsapGesture } from "./gsapGestureOutcome";
 
 // ── applyPreviewSync (pure preview-sync decision) ────────────────────────────
 
@@ -489,6 +494,42 @@ describe("a GSAP script commit", () => {
     expect(hasStudioPendingEdits()).toBe(true);
     await act(async () => void (await committed));
     expect(hasStudioPendingEdits()).toBe(false);
+  });
+
+  it("a gesture's write after an await is still its edit, and once undo paints that edit back it saves without drawing it", async () => {
+    applySoftReload.mockReturnValue("applied");
+    let respond!: () => void;
+    const body: MutationResult = { ok: true, changed: true, after: "AFTER", scriptText: "SCRIPT" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            respond = () => resolve({ ok: true, json: async () => body } as unknown as Response);
+          }),
+      ),
+    );
+    const deps = renderCommitHook();
+    const edit = beginStudioPendingEdit(() => () => undefined);
+    const saved = edit.adopt(async () => {
+      const writes = observeGsapGesture(deps.api.commitMutation);
+      await Promise.resolve();
+      return writes.commit!(selection, { x: 10 }, { label: "Move layer", softReload: true });
+    });
+    edit.settle(saved);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    const shown = paintBackNewestStudioPendingEdit();
+    expect(shown).not.toBeNull();
+    await act(async () => {
+      respond();
+      await saved;
+    });
+    expect(deps.onFileContentChanged).toHaveBeenCalledWith("index.html", "AFTER");
+    expect(applySoftReload).not.toHaveBeenCalled();
+
+    shown!.showAgain();
+    expect(applySoftReload).toHaveBeenCalledTimes(1);
   });
 });
 

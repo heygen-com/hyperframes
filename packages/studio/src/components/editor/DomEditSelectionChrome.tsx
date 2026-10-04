@@ -169,6 +169,7 @@ export function DomEditSelectionChrome({
   return (
     <>
       <div
+        data-dom-edit-chrome="true"
         className="pointer-events-none absolute inset-0"
         style={{
           transformOrigin: `${overlayRect.left + overlayRect.width / 2}px ${overlayRect.top + overlayRect.height / 2}px`,

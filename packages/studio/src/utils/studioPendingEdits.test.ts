@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   addStudioPendingEditFlushListener,
+  adoptingStudioPendingEdit,
   beginStudioPendingEdit,
   flushStudioPendingEdits,
   hasStudioPendingEdits,
@@ -311,4 +312,55 @@ describe("a drain of only the current edits", () => {
     expect(hasStudioPendingEdits()).toBe(true);
     landLater();
   });
+});
+
+describe("an edit undo painted back while it saves", () => {
+  function paintedBackEdit() {
+    const box = { look: "edited" };
+    const edit = beginStudioPendingEdit(() => {
+      const shown = box.look;
+      box.look = "start";
+      return () => (box.look = shown);
+    });
+    let landSave!: () => void;
+    const inFlight = edit.adopt(() => adoptingStudioPendingEdit())!;
+    edit.settle(new Promise<void>((resolve) => (landSave = resolve)));
+    const shown = paintBackNewestStudioPendingEdit()!;
+    return { box, inFlight, shown, landSave };
+  }
+
+  it("draws on the edit as shown, then shows it undone again in the same task", () => {
+    const { box, inFlight, shown, landSave } = paintedBackEdit();
+    let drawnOver = "";
+    inFlight.drawKeepingUndone(() => {
+      drawnOver = box.look;
+      box.look += "+size";
+    });
+    expect(drawnOver).toBe("edited");
+    expect(box.look).toBe("start");
+    shown.showAgain();
+    expect(box.look).toBe("edited+size");
+    landSave();
+  });
+
+  it("keeps a redraw until the edit is shown again", () => {
+    const { inFlight, shown, landSave } = paintedBackEdit();
+    const redraw = vi.fn();
+    inFlight.drawUnlessUndone(redraw);
+    expect(redraw).not.toHaveBeenCalled();
+    shown.showAgain();
+    expect(redraw).toHaveBeenCalledTimes(1);
+    landSave();
+  });
+});
+
+it("counts an edit whose later write failed as saved once an earlier write landed, so undo still steps it", async () => {
+  const edit = beginStudioPendingEdit(() => () => undefined);
+  const committed = edit.adopt(async () => {
+    adoptingStudioPendingEdit()!.markSaved();
+    throw new Error("the crop save failed");
+  });
+  edit.settle(committed.catch(() => undefined));
+  const shown = paintBackNewestStudioPendingEdit()!;
+  await expect(shown.landed()).resolves.toBe(true);
 });

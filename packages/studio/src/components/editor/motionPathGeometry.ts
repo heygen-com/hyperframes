@@ -11,10 +11,30 @@ export type MotionNodeRef =
   | { type: "keyframe"; pct: number } // x/y position keyframe at this tween-relative %
   | { type: "waypoint"; index: number }; // motionPath waypoint (anchor) at this index
 
-export interface MotionPathNode {
+/** An offset on the path and the layout width/height set there, when one is. */
+export interface MotionPathPoint {
   x: number;
   y: number;
+  w?: number;
+  h?: number;
+}
+
+export interface MotionPathNode extends MotionPathPoint {
   ref: MotionNodeRef;
+}
+
+/** The live layer's centre without its x/y offset, its layout size now, and the share of a size
+ *  change that moves the centre (0.5 from the left edge; 0 when xPercent -50 centres it). */
+export type MotionPathHome = { x: number; y: number; w: number; h: number; ax: number; ay: number };
+
+/** Where the layer's centre is at a node, with the size that keyframe sets. */
+export function nodeCentre(n: MotionPathPoint, home: MotionPathHome, pScale: number) {
+  const grow = (to: number | undefined, now: number, share: number) =>
+    to === undefined ? 0 : (to - now) * share;
+  return {
+    x: home.x + (n.x + grow(n.w, home.w, home.ax)) * pScale,
+    y: home.y + (n.y + grow(n.h, home.h, home.ay)) * pScale,
+  };
 }
 
 export interface MotionPathGeometry {
@@ -23,6 +43,8 @@ export interface MotionPathGeometry {
   /** SVG polyline points: "x,y x,y ...". */
   points: string;
   nodes: MotionPathNode[];
+  /** Where GSAP started the tween, when its first keyframe comes later: drawn, not draggable. */
+  start?: MotionPathPoint;
 }
 
 /**
@@ -78,6 +100,16 @@ export function nearestPointOnPath(
   return best;
 }
 
+const finiteNumber = (v: unknown): v is number => typeof v === "number" && isFinite(v);
+
+/** The layout width/height a keyframe sets, when it sets one. */
+function sizeAt(p: Record<string, unknown>): { w?: number; h?: number } {
+  return {
+    ...(finiteNumber(p.width) && { w: p.width }),
+    ...(finiteNumber(p.height) && { h: p.height }),
+  };
+}
+
 export function buildMotionPathGeometry(
   read: ReadTween | null,
   base: { x: number; y: number } = { x: 0, y: 0 },
@@ -94,26 +126,32 @@ export function buildMotionPathGeometry(
   // translate it folded in, else 0), so we default it and still draw a path. But if the tween
   // DOES animate an axis and a given keyframe omits it, that value is interpolated
   // (not 0) and can't be placed here → skip that node (the prior behavior).
-  const finite = (v: unknown): v is number => typeof v === "number" && isFinite(v);
-  const tweenHasX = read.keyframes.some((kf) => finite(kf.properties.x));
-  const tweenHasY = read.keyframes.some((kf) => finite(kf.properties.y));
+  const tweenHasX = read.keyframes.some((kf) => finiteNumber(kf.properties.x));
+  const tweenHasY = read.keyframes.some((kf) => finiteNumber(kf.properties.y));
   if (!tweenHasX && !tweenHasY) return null; // no positional motion (opacity/scale only)
 
+  const pointAt = (p: Record<string, unknown>): MotionPathPoint | null => {
+    if ((tweenHasX && !finiteNumber(p.x)) || (tweenHasY && !finiteNumber(p.y))) return null;
+    const x = tweenHasX ? (p.x as number) : base.x;
+    const y = tweenHasY ? (p.y as number) : base.y;
+    return { x, y, ...sizeAt(p) };
+  };
   read.keyframes.forEach((kf, i) => {
-    if (tweenHasX && !finite(kf.properties.x)) return;
-    if (tweenHasY && !finite(kf.properties.y)) return;
+    const at = pointAt(kf.properties);
+    if (!at) return;
     nodes.push({
-      x: tweenHasX ? (kf.properties.x as number) : base.x,
-      y: tweenHasY ? (kf.properties.y as number) : base.y,
+      ...at,
       ref: isArc ? { type: "waypoint", index: i } : { type: "keyframe", pct: kf.percentage },
     });
   });
 
   if (nodes.length < 2) return null;
+  const start = !isArc && read.start ? pointAt(read.start) : null;
 
   return {
     kind: isArc ? "arc" : "linear",
     points: nodes.map((n) => `${n.x},${n.y}`).join(" "),
     nodes,
+    ...(start && { start }),
   };
 }

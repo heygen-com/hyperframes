@@ -2,19 +2,10 @@ import { parseHTML } from "linkedom";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
 
-const RUNTIME_SRC_MARKERS = [
+const RUNTIME_FILES = [
   "hyperframe.runtime.iife.js",
   "hyperframes-runtime.modular.inline.js",
   "hyperframe-runtime.modular-runtime.inline.js",
-  RUNTIME_BOOTSTRAP_ATTR,
-];
-
-const RUNTIME_INLINE_MARKERS = [
-  "__hyperframeRuntimeBootstrapped",
-  "__hyperframeRuntime",
-  "__hyperframeRuntimeTeardown",
-  "__HF_EXPORT_RENDER_SEEK_CONFIG",
-  "window.__player =",
 ];
 
 const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
@@ -67,7 +58,7 @@ export function stripEmbeddedRuntimeScripts(html: string): string {
     const closeTagEnd = findScriptCloseTagEnd(loweredHtml, startTagEnd + 1);
     const scriptEnd = closeTagEnd === -1 ? html.length : closeTagEnd;
     const block = html.slice(scriptStart, scriptEnd);
-    if (!shouldStripRuntimeScriptBlock(block)) {
+    if (!shouldStripRuntimeScriptBlock(block, html.slice(scriptStart, startTagEnd + 1))) {
       output += block;
     }
     cursor = scriptEnd;
@@ -142,19 +133,21 @@ function findScriptCloseTagBoundary(loweredHtml: string, from: number): number {
   return loweredHtml[cursor] === ">" ? cursor + 1 : -1;
 }
 
-function shouldStripRuntimeScriptBlock(block: string): boolean {
-  const lowered = block.toLowerCase();
-  for (const marker of RUNTIME_SRC_MARKERS) {
-    if (lowered.includes(marker.toLowerCase())) return true;
-  }
-  for (const marker of RUNTIME_INLINE_MARKERS) {
-    if (block.includes(marker)) return true;
+function shouldStripRuntimeScriptBlock(block: string, startTag: string): boolean {
+  const script = parseHTML(`${startTag}</script>`).document.querySelector("script");
+  if (
+    script?.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) ||
+    isRuntimeFileUrl(script?.getAttribute("src"))
+  ) {
+    return true;
   }
   const scriptSource = getScriptSource(block).trim();
-  for (const pattern of SIMPLE_RUNTIME_FLAG_ASSIGNMENTS) {
-    if (pattern.test(scriptSource)) return true;
-  }
-  return false;
+  return SIMPLE_RUNTIME_FLAG_ASSIGNMENTS.some((pattern) => pattern.test(scriptSource));
+}
+
+export function isRuntimeFileUrl(src: string | null | undefined): boolean {
+  const path = lowerAscii(src?.split(/[?#]/, 1)[0] ?? "");
+  return RUNTIME_FILES.some((file) => path === file || path.endsWith(`/${file}`));
 }
 
 function getScriptSource(block: string): string {
@@ -174,15 +167,19 @@ function isHtmlWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\t" || char === "\r" || char === "\f";
 }
 
-function escapeInlineScriptSource(source: string): string {
+export function escapeInlineScriptSource(source: string): string {
   return escapeCaseInsensitiveToken(
-    escapeCaseInsensitiveToken(source, "</script", "<\\/script"),
+    escapeCaseInsensitiveToken(source, "</script", (match) => `<\\/${match.slice(2)}`),
     "<!--",
-    "<\\!--",
+    () => "\\x3C!--",
   );
 }
 
-function escapeCaseInsensitiveToken(source: string, token: string, replacement: string): string {
+function escapeCaseInsensitiveToken(
+  source: string,
+  token: string,
+  replacement: (match: string) => string,
+): string {
   const loweredSource = lowerAscii(source);
   const loweredToken = lowerAscii(token);
   let output = "";
@@ -194,7 +191,9 @@ function escapeCaseInsensitiveToken(source: string, token: string, replacement: 
       output += source.slice(cursor);
       break;
     }
-    output += source.slice(cursor, tokenStart) + replacement;
+    output +=
+      source.slice(cursor, tokenStart) +
+      replacement(source.slice(tokenStart, tokenStart + token.length));
     cursor = tokenStart + token.length;
   }
 
@@ -300,6 +299,35 @@ function findOuterTemplateClose(html: string): number {
   return -1;
 }
 
+const COMPOSITION_ID_ATTR = /\sdata-composition-id\s*=/;
+
+const isDocumentWrapper = (lowered: string, open: number): boolean =>
+  isTagAt(lowered, open, "<html") || isTagAt(lowered, open, "<body");
+
+function carriesCompositionId(lowered: string, open: number): boolean {
+  const end = findTagEnd(lowered, open + 1);
+  return end !== -1 && COMPOSITION_ID_ATTR.test(lowered.slice(open, end));
+}
+
+export function hasCompositionOutsideTemplates(html: string): boolean {
+  const lowered = lowerAscii(html);
+  let depth = 0;
+  let idOnWrapper = false;
+  let idInTemplate = false;
+  for (const open of markupStarts(lowered)) {
+    if (isTagAt(lowered, open, "<template")) {
+      depth++;
+      if (carriesCompositionId(lowered, open)) idInTemplate = true;
+    } else if (isTagAt(lowered, open, "</template")) depth = Math.max(0, depth - 1);
+    else if (/[a-z]/.test(lowered.charAt(open + 1)) && carriesCompositionId(lowered, open)) {
+      if (depth > 0) idInTemplate = true;
+      else if (isDocumentWrapper(lowered, open)) idOnWrapper = true;
+      else return true;
+    }
+  }
+  return idOnWrapper && !idInTemplate;
+}
+
 function insertBeforeDocumentTag(html: string, tag: DocumentTag, markup: string): string | null {
   const at = tag === "</template" ? findOuterTemplateClose(html) : findDocumentTag(html, tag);
   return at === -1 ? null : html.slice(0, at) + markup + html.slice(at);
@@ -312,6 +340,22 @@ export function insertBeforeCloseTag(
   markup: string,
 ): string | null {
   return insertBeforeDocumentTag(html, `</${name}`, markup);
+}
+
+export function insertRuntimeTag(html: string, tag: string): string {
+  const withHead = insertBeforeCloseTag(html, "head", `${tag}\n`);
+  if (withHead !== null) return withHead;
+  const htmlOpenMatch = html.match(/<html\b[^>]*>/i);
+  if (htmlOpenMatch?.index != null) {
+    const insertPos = htmlOpenMatch.index + htmlOpenMatch[0].length;
+    return `${html.slice(0, insertPos)}<head>${tag}</head>${html.slice(insertPos)}`;
+  }
+  const doctypeIdx = html.toLowerCase().indexOf("<!doctype");
+  if (doctypeIdx >= 0) {
+    const insertPos = html.indexOf(">", doctypeIdx) + 1;
+    return html.slice(0, insertPos) + tag + html.slice(insertPos);
+  }
+  return tag + html;
 }
 
 /**

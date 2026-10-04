@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { loadStylesheet, STYLES_DIR } from "../../styles/styleSources";
 import { cleanupMounted, trackedRoot } from "../../components/ui/mountHost.testHelpers";
 import { TimelineClip } from "./TimelineClip";
+import { WAVEFORM_LAYER_Z } from "./AudioWaveform";
 import { renderClipChildren } from "./timelineClipChildren";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
@@ -23,6 +24,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanupMounted();
   usePlayerStore.getState().setLintFindingsByElement(new Map());
+  usePlayerStore.getState().setElements([]);
   document.body.innerHTML = "";
 });
 
@@ -152,5 +154,30 @@ describe("Filmstrip clips", () => {
       /\.timeline-clip\.is-selected,\s*\.timeline-clip\[data-active\]\.is-selected\s*\{[^}]*outline:\s*1px solid var\(--timeline-clip-selection\);[^}]*outline-offset:\s*0;/,
     );
     expect(css).toMatch(/\.timeline-clip:not\(\.is-audio\)\s*\{\s*border-width:\s*0;/);
+  });
+
+  const audioPillZ = () =>
+    Number(
+      css.match(/\.timeline-clip\.is-audio \.timeline-clip__label\s*\{[^}]*z-index:\s*(\d+)/)?.[1],
+    );
+
+  it("draws an audio clip's name pill over its waveform", () => {
+    expect(audioPillZ()).toBeGreaterThan(WAVEFORM_LAYER_Z);
+  });
+
+  it("keeps the out-of-sync badge over the audio name pill", () => {
+    const audio = {
+      id: "clip",
+      domId: "clip",
+      label: "City",
+      tag: "audio",
+      start: 1.7,
+      duration: 4,
+    };
+    const synced = { ...audio, track: 1, playbackStart: 0, syncOrigin: "lk-1" };
+    const video = { ...synced, id: "talk", domId: "talk", tag: "video", start: 1, track: 0 };
+    usePlayerStore.getState().setElements([video, synced]);
+    const badge = render("audio", synced, false).querySelector('[data-testid="out-of-sync-badge"]');
+    expect(Number(badge?.className.match(/\bz-\[(\d+)\]/)?.[1])).toBeGreaterThan(audioPillZ());
   });
 });

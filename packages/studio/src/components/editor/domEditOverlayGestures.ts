@@ -6,6 +6,7 @@ import type {
   StudioRotationSnapshot,
 } from "./manualEdits";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
+import type { StudioElementLook } from "./gestureUndoRevert";
 import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
@@ -57,6 +58,7 @@ export interface GestureState {
   initialPathOffset: StudioPathOffsetSnapshot;
   initialRotation: StudioRotationSnapshot;
   initialBoxSize: StudioBoxSizeSnapshot;
+  initialLook: StudioElementLook;
   pathOffsetMember?: ManualOffsetDragMember;
   originLeft: number;
   originTop: number;

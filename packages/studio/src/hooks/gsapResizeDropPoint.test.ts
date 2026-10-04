@@ -75,6 +75,8 @@ interface ResizeCase {
   longhandTween?: boolean;
   /** What already writes this element's position. */
   positionWrite?: "static-set" | "keyframed-tween" | "none";
+  /** Undo paints the box back to its press look while the animations load. */
+  paintedBackWhileLoading?: boolean;
 }
 
 function createResizeElement(testCase: ResizeCase): HTMLElement {
@@ -241,6 +243,30 @@ async function runCase(testCase: ResizeCase) {
   } as unknown as HTMLIFrameElement;
 
   const dropPoint = el.getBoundingClientRect();
+  // A painted-back edit: undone on screen, shown again only inside a draw (as `drawKeepingUndone` does).
+  const look = () => ({
+    w: el.style.width,
+    h: el.style.height,
+    pos: { ...live.pos },
+    scale: { ...live.scale },
+  });
+  const show = (shown: ReturnType<typeof look>) => {
+    el.style.width = shown.w;
+    el.style.height = shown.h;
+    Object.assign(live, { pos: { ...shown.pos }, scale: { ...shown.scale } });
+  };
+  let shownEdit: ReturnType<typeof look> | null = null;
+  const paintBack = () => {
+    shownEdit = look();
+    show({ w: "", h: "", pos: { ...testCase.base }, scale: { ...testCase.liveScale } });
+  };
+  const draw = <T>(run: () => T): T => {
+    if (!shownEdit) return run();
+    show(shownEdit);
+    const drawn = run();
+    paintBack();
+    return drawn;
+  };
   const position = positionAnimation(testCase.positionWrite ?? "static-set", testCase.base);
   const animations = [scaleTween(!!testCase.longhandTween), ...(position ? [position] : [])];
   const commitMutation = vi.fn();
@@ -252,7 +278,12 @@ async function runCase(testCase: ResizeCase) {
     animations,
     iframe,
     commitMutation,
-    async () => animations,
+    async () => {
+      if (testCase.paintedBackWhileLoading) paintBack();
+      return animations;
+    },
+    undefined,
+    draw,
   );
 
   // Re-render what the file now says: the committed scale, the persisted
@@ -392,4 +423,11 @@ it("holds the drop point across a second drag", async () => {
   expect(second.settled.x).toBeCloseTo(second.dropPoint.x, 0);
   expect(second.settled.y).toBeCloseTo(second.dropPoint.y, 0);
   expect(second.settled.w).toBeCloseTo(second.dropPoint.w, 0);
+});
+
+it("lands on the drop point when undo paints the box back while its animations load", async () => {
+  const { dropPoint, settled } = await runCase({ ...CASES[0]!, paintedBackWhileLoading: true });
+  expect(settled.x).toBeCloseTo(dropPoint.x, 0);
+  expect(settled.y).toBeCloseTo(dropPoint.y, 0);
+  expect(settled.w).toBeCloseTo(dropPoint.w, 0);
 });

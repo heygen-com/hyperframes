@@ -241,7 +241,7 @@ export function computeDragPreview(
     drag.element.key ?? drag.element.id,
     !isMusicTrack(drag.element),
   );
-  const snap = snapMoveToTargets(
+  const snapped = snapMoveToTargets(
     nextMove.start,
     drag.element.duration,
     targets,
@@ -251,6 +251,11 @@ export function computeDragPreview(
     dragMaxStart + drag.element.duration,
     ctx.gridStep,
   );
+  // A snap the saved clip would miss jumps on release, so the clip stays where the pointer put it.
+  const target = snapTarget(snapped);
+  const missed =
+    target !== null && !guideIfSaved(drag.element, { start: snapped.start }, target, pps);
+  const snap = missed ? { start: nextMove.start, snapTime: null, snapType: null } : snapped;
   // A group moves rigidly: the grabbed clip stops where any mover would cross its host's start.
   const group = resolveGroupDrag(drag, ctx);
   const dragKey = drag.element.key ?? drag.element.id;
@@ -268,11 +273,7 @@ export function computeDragPreview(
     return { ...drag, started: true };
   }
   const { track: previewTrack, insertRow } = placement;
-  const target =
-    placement.start === snap.start && snap.snapTime !== null && snap.snapType !== null
-      ? { time: snap.snapTime, type: snap.snapType }
-      : null;
-  const guide = guideIfSaved(drag.element, { start: snap.start }, target, pps);
+  const guide = placement.start === snap.start ? snapTarget(snap) : null;
   return {
     ...drag,
     started: true,
@@ -288,6 +289,9 @@ export function computeDragPreview(
     snapType: guide?.type ?? null,
   };
 }
+
+const snapTarget = (s: { snapTime: number | null; snapType: TimelineSnapType | null }) =>
+  s.snapTime !== null && s.snapType !== null ? { time: s.snapTime, type: s.snapType } : null;
 
 /** A snap's guide, kept only when the clip's edge as its file will save it is within a pixel of it. */
 export function guideIfSaved(
@@ -392,37 +396,38 @@ export function computeResizePreview(
   );
   const gridStep = ctx.gridStep ?? 0;
   let snap: TimelineSnapTarget | null = null;
-  if (trimTargets.length > 0 || gridStep > 0) {
-    const snapSecs = TIMELINE_SNAP_PX / Math.max(pps, 1);
-    if (resize.edge === "end") {
-      const edgeTime = nextResize.start + nextResize.duration;
-      const { time: snapped, target } = snapTimelineTime(edgeTime, trimTargets, snapSecs, gridStep);
-      // Stay within [start+minDuration, maxEnd] so the snap can't create a
-      // degenerate clip or run past the source/composition limit.
-      const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
-      if (
-        target &&
-        snapped <= maxEnd + 1e-6 &&
-        snappedDuration >= resolveTimelineMinDuration() - 1e-6
-      ) {
-        // An edge already on the target still owns the guide; only move it when off.
-        if (snapped !== edgeTime) nextResize = { ...nextResize, duration: snappedDuration };
-        snap = guideIfSaved(resize.element, nextResize, target, pps);
-      }
-    } else {
-      const { time: snapped, target } = snapTimelineTime(
-        nextResize.start,
-        trimTargets,
-        snapSecs,
-        gridStep,
-      );
-      const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
-      const delta = snapped - nextResize.start;
-      const bounds = clipStartTrimDeltaBounds(clip, minStart, resolveTimelineMinDuration());
-      if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
-        if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
-        snap = guideIfSaved(resize.element, nextResize, target, pps);
-      }
+  const snapSecs = TIMELINE_SNAP_PX / Math.max(pps, 1);
+  if (resize.edge === "end") {
+    const edgeTime = nextResize.start + nextResize.duration;
+    const { time: snapped, target } = snapTimelineTime(edgeTime, trimTargets, snapSecs, gridStep);
+    // Stay within [start+minDuration, maxEnd] so the snap can't create a
+    // degenerate clip or run past the source/composition limit.
+    const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
+    if (
+      target &&
+      snapped <= maxEnd + 1e-6 &&
+      snappedDuration >= resolveTimelineMinDuration() - 1e-6
+    ) {
+      const onTarget =
+        snapped === edgeTime ? nextResize : { ...nextResize, duration: snappedDuration };
+      snap = guideIfSaved(resize.element, onTarget, target, pps);
+      if (snap) nextResize = onTarget;
+    }
+  } else {
+    const { time: snapped, target } = snapTimelineTime(
+      nextResize.start,
+      trimTargets,
+      snapSecs,
+      gridStep,
+    );
+    const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
+    const delta = snapped - nextResize.start;
+    const bounds = clipStartTrimDeltaBounds(clip, minStart, resolveTimelineMinDuration());
+    if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
+      const onTarget =
+        snapped === nextResize.start ? nextResize : applyClipStartTrimDelta(clip, delta);
+      snap = guideIfSaved(resize.element, onTarget, target, pps);
+      if (snap) nextResize = onTarget;
     }
   }
 

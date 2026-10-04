@@ -9,6 +9,7 @@ import {
   restoreManualOffsetDragMembers,
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
+import { readElementLook } from "./gestureUndoRevert";
 import { readCssRotationTarget, readRotationBase } from "./rotationDraft";
 import {
   beginStudioManualEditGesture,
@@ -179,6 +180,10 @@ export function startGesture(
     Number.isFinite(rawContentScaleX) && rawContentScaleX > 0 ? rawContentScaleX : 1;
   const contentScaleY =
     Number.isFinite(rawContentScaleY) && rawContentScaleY > 0 ? rawContentScaleY : 1;
+  const initialLook = readElementLook(
+    sel.element,
+    kind !== "drag" && !editsPlainCss(sel.element, kind === "rotate" ? "rotate" : "resize"),
+  );
   let initialPathOffset = captureStudioPathOffset(sel.element);
   let manualEditDragToken: string | undefined;
   let pathOffsetMember: ManualOffsetDragMember | undefined;
@@ -274,6 +279,7 @@ export function startGesture(
       initialPathOffset,
       initialRotation: captureStudioRotation(sel.element),
       initialBoxSize: captureStudioBoxSize(sel.element),
+      initialLook,
       pathOffsetMember,
       originLeft: rect.left,
       originTop: rect.top,

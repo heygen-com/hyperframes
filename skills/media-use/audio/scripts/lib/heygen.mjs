@@ -1,7 +1,8 @@
 import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // heygen.mjs — vendored HeyGen REST helpers (auth + transport) for the audio
 // pipeline. The credential resolver matches the hyperframes CLI auth: first
-// usable source wins — $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
+// usable source wins — a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
+// $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
 // credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
 // overrides the dir). Vendored so the skill ships standalone. Pure node.
 
@@ -67,6 +68,8 @@ export function heygenCredential() {
 // (a folder, a locked ~/.heygen), so heygenAuthHeaders can say to fix that path: logging in again would fail there too.
 // Read without checking first, so the file cannot change between a check and the read.
 function resolveCredential() {
+  const accessToken = process.env.HEYGEN_ACCESS_TOKEN;
+  if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
   if (envKey) return { headers: { "X-Api-Key": envKey } };
 
@@ -144,11 +147,22 @@ export async function heygenJSON(path, { method = "GET", headers = {}, body } = 
   const res = await fetch(`${HEYGEN_BASE}${path}`, opts);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(
-      `HeyGen ${method} ${path} → HTTP ${res.status}${detail ? `\n${detail.slice(0, 300)}` : ""}`,
-    );
+    const message = `HeyGen ${method} ${path} → HTTP ${res.status}${detail ? `\n${detail.slice(0, 300)}` : ""}`;
+    throw Object.assign(new Error(message), { status: res.status, body: detail });
   }
-  return res.json();
+  // A DELETE may answer 204 with no body.
+  const text = await res.text();
+  return text ? JSON.parse(text) : {};
+}
+
+// HeyGen's own words for a failed call: its {"error":{"message"}}, else the raw body, else the error's message.
+export function heygenMessage(e) {
+  if (!e?.body) return e?.message ? String(e.message) : String(e);
+  try {
+    return JSON.parse(e.body).error?.message ?? e.body;
+  } catch {
+    return e.body;
+  }
 }
 
 // Download a (presigned) URL to destPath; returns byte length.

@@ -105,7 +105,10 @@ import {
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
+import {
+  hasCompositionOutsideTemplates,
+  insertBeforeCloseTag,
+} from "@hyperframes/core/compiler/html-document";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -1457,9 +1460,12 @@ async function prepareGsapMutationScript(
       `window.__timelines["${compId}"] = tl;`,
       "</script>",
     ].join("\n");
+    const [first, second] = hasCompositionOutsideTemplates(html)
+      ? (["body", "template"] as const)
+      : (["template", "body"] as const);
     html =
-      insertBeforeCloseTag(html, "body", `${bootstrap}\n`) ??
-      insertBeforeCloseTag(html, "template", `${bootstrap}\n`) ??
+      insertBeforeCloseTag(html, first, `${bootstrap}\n`) ??
+      insertBeforeCloseTag(html, second, `${bootstrap}\n`) ??
       `${html}\n${bootstrap}`;
     block = extractGsapScriptBlock(html);
   }

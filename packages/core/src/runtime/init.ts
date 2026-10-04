@@ -319,6 +319,31 @@ export function installAuthoredMediaCapture(): void {
   authoredMediaObserver.observe(document.documentElement, { childList: true, subtree: true });
 }
 
+// Mid-tween, GSAP's default force3D writes translate3d, and Chrome snaps a crop edge on it to whole pixels.
+// Runs at script evaluation: GSAP is configured as its bundle assigns window.gsap, before a composition's
+// set() or from() parses an element. Chains to an accessor already there (the producer's early stub).
+export function installFlatGsapTransforms(): void {
+  const flatten = (g: Window["gsap"]) => g?.config?.({ force3D: false });
+  const prior = Object.getOwnPropertyDescriptor(window, "gsap");
+  let loaded = window.gsap;
+  flatten(loaded);
+  if (prior?.configurable === false || (prior?.get as { hfFlat?: true } | undefined)?.hfFlat)
+    return;
+  const get = Object.assign(() => (prior?.get ? prior.get.call(window) : loaded), {
+    hfFlat: true,
+  });
+  Object.defineProperty(window, "gsap", {
+    configurable: true,
+    enumerable: true,
+    get,
+    set: (g: Window["gsap"]) => {
+      if (prior?.set) prior.set.call(window, g);
+      else loaded = g;
+      flatten(g);
+    },
+  });
+}
+
 // URL attributes a scene swap checks besides src, poster and srcset, by tag.
 const MEDIA_URL_ATTRS = new Map([
   ["image", ["href", "xlink:href"]],

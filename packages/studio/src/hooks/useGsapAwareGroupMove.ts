@@ -123,12 +123,10 @@ export function useGsapAwareGroupMove({
         renderOnCommit = index === lastScriptWrite;
         const plain = offsetMembers.get(selection);
         if (plain !== undefined) {
-          const result = await stageElementPositionOffset(
-            selection,
-            next,
-            plain,
-            coalesceKey,
-          ).save();
+          const staged = writes.drawKeepingUndone(() =>
+            stageElementPositionOffset(selection, next, plain, coalesceKey),
+          );
+          const result = await staged.save();
           writes.recordDomResult(result);
           continue;
         }

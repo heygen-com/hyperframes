@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { WAVEFORM_LAYER_Z } from "./AudioWaveform";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
@@ -298,7 +299,7 @@ describe("TimelineClipFades", () => {
   it("paints the handles above the clip's waveform and thumbnail layers", () => {
     const { host } = render(clip);
     const layer = host.querySelector<HTMLElement>('[data-testid="clip"]')?.firstElementChild;
-    expect(Number((layer as HTMLElement).style.zIndex)).toBeGreaterThan(10);
+    expect(Number((layer as HTMLElement).style.zIndex)).toBeGreaterThan(WAVEFORM_LAYER_Z);
   });
 
   it("splits a clip narrower than two targets between the handles", () => {

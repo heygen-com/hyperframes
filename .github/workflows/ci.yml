@@ -987,6 +987,11 @@ jobs:
             node packages/studio/tests/e2e/thumbnail-save.mjs || rc=1
           STUDIO_URL="http://localhost:5316/#project/timeline-trim-snap" \
             node packages/studio/tests/e2e/timeline-trim-snap.mjs || rc=1
+          rm -rf packages/studio/data/projects/timeline-trim-snap
+          cp -R packages/studio/tests/e2e/fixtures/timeline-trim-snap \
+            packages/studio/data/projects/timeline-trim-snap
+          STUDIO_URL="http://localhost:5316/#project/timeline-trim-snap" \
+            node packages/studio/tests/e2e/timeline-snap-release.mjs || rc=1
           exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()

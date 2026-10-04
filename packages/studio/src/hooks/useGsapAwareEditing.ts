@@ -169,8 +169,10 @@ export function useGsapAwareEditing({
             modifiers,
           );
           await saveMove(outcome, async () => {
-            const result = await stageElementPositionOffset(selection, next, false).save();
-            writes.recordDomResult(result);
+            const staged = writes.drawKeepingUndone(() =>
+              stageElementPositionOffset(selection, next, false),
+            );
+            writes.recordDomResult(await staged.save());
           });
           return writes.finish();
         } catch (error) {
@@ -258,11 +260,8 @@ export function useGsapAwareEditing({
           // Saved after the size, under its undo key, so the two are one step.
           await saveMove(dragOutcome, async () => {
             const plainAfterSettle = editsPlainCss(selection.element, "move");
-            anchorMove = stageElementPositionOffset(
-              selection,
-              offset,
-              plainAfterSettle,
-              coalesceKey,
+            anchorMove = writes.drawKeepingUndone(() =>
+              stageElementPositionOffset(selection, offset, plainAfterSettle, coalesceKey),
             );
           });
         }
@@ -270,17 +269,20 @@ export function useGsapAwareEditing({
       await runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
+        draw: writes.drawKeepingUndone,
         settle: () => {
           // Scale resize settles its center-scale residual after the scale commit
           // renders. Width/height can settle its anchored position immediately.
           if (!offset || scaleRoute || !selector) return;
-          const gsapPos = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
-            x: 0,
-            y: 0,
-          };
-          const { newX, newY } = computeDraggedGsapPosition(selection.element, offset, gsapPos);
-          logResize("sync-settle", { gsapPos, offset, newX, newY });
-          setElementGsapPosition(selection.element, newX, newY);
+          writes.drawKeepingUndone(() => {
+            const gsapPos = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
+              x: 0,
+              y: 0,
+            };
+            const { newX, newY } = computeDraggedGsapPosition(selection.element, offset, gsapPos);
+            logResize("sync-settle", { gsapPos, offset, newX, newY });
+            setElementGsapPosition(selection.element, newX, newY);
+          });
         },
         persist: async (commit, coalesceKey) => {
           if (writes.commit) {
@@ -294,16 +296,13 @@ export function useGsapAwareEditing({
                 commitMutation,
                 makeFetchFallback(selection),
                 offset,
+                writes.drawKeepingUndone,
               );
               assertGsapEditPersisted(outcome);
               // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.
               if (outcome.status === "element-size") {
-                const result = await handleDomBoxSizeCommit(
-                  selection,
-                  next,
-                  undefined,
-                  undefined,
-                  coalesceKey,
+                const result = await writes.drawKeepingUndone(() =>
+                  handleDomBoxSizeCommit(selection, next, undefined, undefined, coalesceKey),
                 );
                 writes.recordDomResult(result);
               } else cropUndoKey = coalesceKey;
@@ -332,11 +331,8 @@ export function useGsapAwareEditing({
           writes.recordDomResult(anchorResult);
           // Only now is the size live for every caller, drag or not.
           if (cropUndoKey) {
-            const cropResult = await saveCropResize(
-              stageCrop,
-              selection,
-              commitPositionPatchToHtml,
-              cropUndoKey,
+            const cropResult = await writes.drawKeepingUndone(() =>
+              saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey!),
             );
             writes.recordDomResult(cropResult);
           }
