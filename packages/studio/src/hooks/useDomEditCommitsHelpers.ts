@@ -211,7 +211,7 @@ interface AssignAutoIdParams {
   showToast: ShowToast;
 }
 
-/** The id the file holds for the element after proposing `autoId` (server keeps an existing one, else dedupes); null when none. */
+/** The id the file holds for the element after proposing `autoId` (the server keeps or dedupes it); null if none. */
 export async function assignGsapTargetAutoIdIfNeeded({
   projectId,
   targetPath,
