@@ -20,8 +20,8 @@ export function rerenderGsapTimelineAt(
   // A stale duration is recomputed from children's time scales, so settle it before holding any at 0.
   timeline.totalDuration?.();
   const children = timeline.getChildren?.(false, true, true) ?? [];
-  const steps = zeroDurationChildrenIn(timeline).map(
-    (step) => [step, step.ratio, step._zTime] as const,
+  const marked = childrenWithLandingMarksIn(timeline).map(
+    (child) => [child, child.ratio, child._zTime] as const,
   );
   const held = childrenStartingAfter(children, t).map((child) => [child, child._ts] as const);
   for (const [child] of held) child._ts = 0;
@@ -32,10 +32,10 @@ export function rerenderGsapTimelineAt(
   } finally {
     for (const [child, timeScale] of held) child._ts = timeScale;
   }
-  // GSAP reads these to decide whether a zero-duration child fires or redraws when next reached.
-  for (const [step, ratio, zTime] of steps) {
-    step.ratio = ratio;
-    step._zTime = zTime;
+  // GSAP reads these to decide whether a zero-duration child fires or redraws, and a timeline crosses its start.
+  for (const [child, ratio, zTime] of marked) {
+    child.ratio = ratio;
+    child._zTime = zTime;
   }
 }
 
@@ -62,14 +62,16 @@ function childrenStartingAfter(
   return found;
 }
 
-type GsapZeroDurationInternals = { ratio: number; _zTime?: number };
+type GsapLandingMarks = { ratio: number; _zTime?: number };
 
-function zeroDurationChildrenIn(timeline: {
+/** Nested timelines and zero-duration tweens: GSAP remembers which side of their start it last landed on. */
+function childrenWithLandingMarksIn(timeline: {
   getChildren?: RuntimeTimelineLike["getChildren"];
-}): GsapZeroDurationInternals[] {
-  return (timeline.getChildren?.(true, true, true) ?? []).filter(
-    (child) => (child as { totalDuration?: () => number }).totalDuration?.() === 0,
-  ) as unknown as GsapZeroDurationInternals[];
+}): GsapLandingMarks[] {
+  return (timeline.getChildren?.(true, true, true) ?? []).filter((child) => {
+    const animation = child as { totalDuration?: () => number; getChildren?: unknown };
+    return typeof animation.getChildren === "function" || animation.totalDuration?.() === 0;
+  }) as unknown as GsapLandingMarks[];
 }
 
 type GsapAnimation = {

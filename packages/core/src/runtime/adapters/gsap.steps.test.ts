@@ -313,6 +313,20 @@ describe("re-rendering leaves the rest as the seek left it", () => {
     expect(o.x).toBe(100);
   });
 
+  it("undraws a scene's opening set when stepping back off the scene's start", () => {
+    const draws = (redraw: boolean) => {
+      const o = { x: 0 };
+      const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
+      timeline.add(gsap.timeline().set(o, { x: 100 }, 0).to({ z: 0 }, { z: 1, duration: 2 }), 2);
+      timeline.totalTime(3, false);
+      timeline.totalTime(2, false);
+      if (redraw) rerenderGsapTimelineAt(timeline, 2);
+      timeline.totalTime(1.99, false);
+      return o.x;
+    };
+    expect(draws(true)).toBe(draws(false));
+  });
+
   it("keeps the length of a timeline that grew after its last render", () => {
     const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
     timeline.totalTime(1, true);
