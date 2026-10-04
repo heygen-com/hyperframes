@@ -39,6 +39,9 @@ describe("openedGroups", () => {
     expect(
       openedGroups(page(x), page(x, 'tl.set("#target", { y: 30, data: "hf-hold" }, 0);')),
     ).toEqual([]);
+    const marked =
+      'tl.to("#target", { keyframes: { "0%": { width: 240, _auto: 1, transformOrigin: "50% 50%" }, "100%": { width: 300 } }, duration: 2 }, 0);';
+    expect(openedGroups(page(size), page(marked))).toEqual([]);
   });
 
   it("names a property group nothing animated, and ignores a static gsap.set hold", () => {

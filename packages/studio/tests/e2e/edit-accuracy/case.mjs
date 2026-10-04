@@ -1,6 +1,6 @@
 /** Drives one edit accuracy case in the built Studio and measures it. All distances are composition px. */
 import { spawn } from "node:child_process";
-import { classifyPropertyGroup } from "../../../../parsers/src/gsapConstants.ts";
+import { classifyTweenPropertyGroup } from "../../../../parsers/src/gsapConstants.ts";
 import { parseGsapScript } from "../../../../parsers/src/gsapParser.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -360,7 +360,7 @@ function targetGroups(files) {
     .flatMap(scriptsIn)
     .flatMap((script) => parseGsapScript(script).animations.filter(animatesTarget))
     .flatMap(animatedProps);
-  return new Set(props.filter((prop) => prop !== "data").map(classifyPropertyGroup));
+  return new Set(props.map((prop) => classifyTweenPropertyGroup({ [prop]: 0 })).filter(Boolean));
 }
 
 /** Property groups the edit made the timeline animate on #target that it did not animate before. */
