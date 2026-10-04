@@ -240,7 +240,8 @@ async function renderPanel(
     currentTime?: number;
     selectedElementId?: string;
     timelineEdit?: TimelineEditCallbacks;
-    refreshSelection?: () => void;
+    refreshSelection?: (selection: unknown) => void;
+    selectionRef?: { current: unknown };
   } = {},
 ) {
   vi.resetModules();
@@ -254,11 +255,12 @@ async function renderPanel(
     const actual = await vi.importActual<typeof import("../../contexts/DomEditContext")>(
       "../../contexts/DomEditContext",
     );
-    const refresh = options.refreshSelection;
-    return refresh
+    const { refreshSelection: refresh, selectionRef } = options;
+    return refresh && selectionRef
       ? {
           ...actual,
           useDomEditActionsContextOptional: () => ({ refreshDomEditSelectionFromPreview: refresh }),
+          useDomEditSelectionContextOptional: () => ({ domEditSelectionRef: selectionRef }),
         }
       : actual;
   });
@@ -1107,6 +1109,7 @@ describe("PropertyPanel — Motion is for things that move", () => {
         {},
         {
           timelineEdit: { onSetAudioGroupAttributeQuiet },
+          selectionRef: { current: bus(true) },
           refreshSelection: () => render(bus(hidden)),
         },
       );
@@ -1123,6 +1126,35 @@ describe("PropertyPanel — Motion is for things that move", () => {
         ["voiceover", "data-hidden", "", "Mute element"],
         ["voiceover", "data-hidden", null, "Unmute element"],
       ]);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "re-reads the current selection, not the muted bus, once the write lands",
+    async () => {
+      let land = () => {};
+      const onSetAudioGroupAttributeQuiet = vi.fn(
+        () => new Promise<void>((resolve) => (land = resolve)),
+      );
+      const selectionRef: { current: unknown } = { current: audioBusElement() };
+      const refreshSelection = vi.fn();
+      const { host, root } = await renderPanel(
+        true,
+        audioBusElement(),
+        {},
+        {
+          timelineEdit: { onSetAudioGroupAttributeQuiet },
+          selectionRef,
+          refreshSelection,
+        },
+      );
+      act(() => host.querySelector<HTMLElement>('button[aria-label="Mute element"]')!.click());
+      const next = audioClipElement();
+      selectionRef.current = next;
+      await act(async () => land());
+      expect(refreshSelection.mock.calls).toEqual([[next]]);
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

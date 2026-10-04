@@ -10,7 +10,10 @@ import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
 import { HF_AUDIO_GROUP_TAG, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import {
+  useDomEditActionsContextOptional,
+  useDomEditSelectionContextOptional,
+} from "../../contexts/DomEditContext";
 import { hiddenToggleVerb } from "../../player/components/hiddenToggle";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
@@ -202,6 +205,7 @@ export function PropertyPanelFlat({
 
   const { onSetAudioGroupAttributeQuiet } = useTimelineEditContextOptional();
   const domEditActions = useDomEditActionsContextOptional();
+  const domEditSelectionRef = useDomEditSelectionContextOptional()?.domEditSelectionRef;
   /**
    * A lane's reveal request opens the Audio FX section, the same way a focused
    * ease segment opens Motion.
@@ -303,13 +307,14 @@ export function PropertyPanelFlat({
     : selectedElementId && onToggleElementHidden
       ? () => onToggleElementHidden(selectedElementId, !hiddenNow)
       : undefined;
-  // The label reads the selection snapshot, so re-read it once the write lands.
+  // The label reads the selection snapshot, so re-read whatever is selected once the write lands.
   const toggleHidden =
     writeHidden &&
     (() =>
-      void Promise.resolve(writeHidden()).then(() =>
-        domEditActions?.refreshDomEditSelectionFromPreview(element),
-      ));
+      void Promise.resolve(writeHidden()).then(() => {
+        const selection = domEditSelectionRef?.current;
+        if (selection) void domEditActions?.refreshDomEditSelectionFromPreview(selection);
+      }));
   // Gated on the tag, not `sections.animation` (`animationCount > 0`): an audio
   // clip/bus has no tween to move, but a fresh div with no tweens yet must
   // still offer "+ Add" — "has none" and "can have none" differ.
