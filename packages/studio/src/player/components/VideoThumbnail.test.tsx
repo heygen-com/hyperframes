@@ -95,6 +95,67 @@ describe("VideoThumbnail", () => {
     expect(tiles).toEqual(["blob:0", "blob:2", "blob:4", "blob:5", "blob:7"]);
   });
 
+  it("mounts only the tiles in view on a 10-minute clip at full zoom, and follows a scroll", async () => {
+    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
+      value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
+      weight: 256,
+    });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => {
+      frame(0);
+      return 1;
+    });
+    let left = -432_000;
+    host.getBoundingClientRect = () => ({ left }) as DOMRect;
+    const expectTilesCoverTheWindow = () => {
+      const tiles = host.querySelectorAll("img").length;
+      const skipped = parseFloat(
+        (host.querySelector("img")!.closest(".flex") as HTMLElement).style.paddingLeft,
+      );
+      expect(tiles).toBeLessThan(60);
+      expect(skipped).toBeLessThanOrEqual(-left);
+      expect(skipped + tiles * 71).toBeGreaterThanOrEqual(-left + window.innerWidth);
+    };
+
+    await render(600 * 1440, 40);
+    expectTilesCoverTheWindow();
+
+    left = -100_000;
+    await act(async () => {
+      host.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+    });
+    expectTilesCoverTheWindow();
+  });
+
+  it("follows a long clip moved without a scroll", async () => {
+    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
+      value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
+      weight: 256,
+    });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => {
+      frame(0);
+      return 1;
+    });
+    host.className = "timeline-clip";
+    let left = -432_000;
+    host.getBoundingClientRect = () => ({ left }) as DOMRect;
+    await render(600 * 1440, 40);
+
+    left = -400_000;
+    await act(async () => {
+      host.style.left = "32000px";
+      await new Promise((settled) => setTimeout(settled, 0));
+    });
+
+    const skipped = parseFloat(
+      (host.querySelector("img")!.closest(".flex") as HTMLElement).style.paddingLeft,
+    );
+    expect(skipped).toBeLessThanOrEqual(400_000);
+    expect(skipped + host.querySelectorAll("img").length * 71).toBeGreaterThanOrEqual(
+      400_000 + window.innerWidth,
+    );
+  });
+
   it("issues a single decode job for a narrow clip", async () => {
     vi.mocked(decodeVideoThumbnail).mockResolvedValue({
       value: { kind: "image", url: "blob:poster", aspect: 16 / 9 },

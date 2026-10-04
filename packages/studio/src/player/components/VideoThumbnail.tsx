@@ -7,7 +7,7 @@ import {
   type ThumbnailSnapshot,
 } from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
-import { computeThumbnailStrip, quantizeThumbnailFrameCount } from "./thumbnailUtils";
+import { computeThumbnailStrip, quantizeThumbnailFrameCount, tilesInView } from "./thumbnailUtils";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -118,12 +118,14 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     value?.kind === "filmstrip" ? value.urls : value?.kind === "image" ? [value.url] : [];
   const aspect = value?.kind === "image" || value?.kind === "filmstrip" ? value.aspect : 16 / 9;
   const { frameW, frameCount } = computeThumbnailStrip(container.width, aspect, container.height);
+  const { first, end } = tilesInView(container, frameW, frameCount);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       {urls.length > 0 && (
-        <div className="absolute inset-0 flex">
-          {Array.from({ length: frameCount }, (_, index) => {
+        <div className="absolute inset-0 flex" style={{ paddingLeft: first * frameW }}>
+          {Array.from({ length: end - first }, (_, offset) => {
+            const index = first + offset;
             const src = urls[Math.round((index * (urls.length - 1)) / Math.max(1, frameCount - 1))];
             return (
               <div

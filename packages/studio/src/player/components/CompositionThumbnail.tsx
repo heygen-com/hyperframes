@@ -7,7 +7,7 @@ import {
   type ThumbnailRequest,
 } from "../lib/thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
-import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
+import { computeThumbnailStrip, probeImageAspect, tilesInView } from "./thumbnailUtils";
 
 interface CompositionThumbnailProps {
   previewUrl: string;
@@ -164,6 +164,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     container.height,
     48,
   );
+  const { first, end } = tilesInView(container, frameW, frameCount);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
@@ -171,14 +172,15 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
         <div
           className="absolute inset-0 flex"
           style={{
+            paddingLeft: first * frameW,
             animation: "hf-thumb-fade 200ms ease-out",
             mixBlendMode:
               "var(--timeline-composition-thumbnail-blend)" as CSSProperties["mixBlendMode"],
           }}
         >
-          {Array.from({ length: frameCount }, (_, index) => (
+          {Array.from({ length: end - first }, (_, offset) => (
             <div
-              key={index}
+              key={first + offset}
               className="relative h-full shrink-0 overflow-hidden"
               style={{ width: frameW }}
             >

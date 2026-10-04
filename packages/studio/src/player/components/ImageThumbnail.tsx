@@ -3,7 +3,7 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decodeImageThumbnail } from "../lib/thumbnailImageDecoder";
-import { computeThumbnailStrip } from "./thumbnailUtils";
+import { computeThumbnailStrip, tilesInView } from "./thumbnailUtils";
 
 export interface ImageThumbnailProps {
   imageSrc: string;
@@ -42,14 +42,15 @@ export const ImageThumbnail = memo(function ImageThumbnail({
   const value = snapshot.status === "ready" ? snapshot.value : null;
   const aspect = value?.kind === "image" ? value.aspect : 16 / 9;
   const { frameW, frameCount } = computeThumbnailStrip(container.width, aspect, container.height);
+  const { first, end } = tilesInView(container, frameW, frameCount);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       {value?.kind === "image" && (
-        <div className="absolute inset-0 flex">
-          {Array.from({ length: frameCount }, (_, index) => (
+        <div className="absolute inset-0 flex" style={{ paddingLeft: first * frameW }}>
+          {Array.from({ length: end - first }, (_, offset) => (
             <div
-              key={index}
+              key={first + offset}
               className="relative h-full shrink-0 overflow-hidden bg-neutral-900"
               style={{ width: frameW }}
             >
