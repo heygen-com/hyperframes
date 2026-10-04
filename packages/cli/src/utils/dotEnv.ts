@@ -1,6 +1,6 @@
 import { FEEDBACK_EMAIL_ENV } from "./feedbackSource.js";
 
-// A quoted value ends at its closing quote (the rest is dropped); an unquoted one loses a ` # comment`.
+// A quoted value ends at its closing quote; unquoted, `#` starts a comment only after whitespace, so `pass#word` stays.
 function valueOf(raw: string): string {
   const quote = raw.charAt(0);
   if (quote === '"' || quote === "'") {

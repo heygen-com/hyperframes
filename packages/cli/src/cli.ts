@@ -63,11 +63,11 @@ if (rootVersionRequested) {
 // ── Load .env from CWD ─────────────────────────────────────────────────────
 // Agents run from the project directory where .env holds API keys (Gemini,
 // HeyGen, ElevenLabs). Load it automatically so they don't need `source .env`.
+const { applyDotEnv } = await import("./utils/dotEnv.js");
 try {
   const { readFileSync } = await import("node:fs");
   const { resolve } = await import("node:path");
   const envPath = resolve(process.cwd(), ".env");
-  const { applyDotEnv } = await import("./utils/dotEnv.js");
   applyDotEnv(readFileSync(envPath, "utf-8"), process.env);
 } catch {
   /* .env not present — fine, env vars may be set another way */
