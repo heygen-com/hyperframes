@@ -15,6 +15,7 @@ import { fetchParsedAnimations, getAnimationsForElement } from "./useGsapTweenCa
 import {
   existingTweenTargetSelector,
   computeElementPercentage,
+  keyframeEases,
   KEYFRAME_PCT_MATCH,
   isInstantHold,
   resolveEditableTweenDuration,
@@ -266,7 +267,7 @@ async function extendKeyframedTweenToPlayhead(
       position: extended.position,
       duration: extended.duration,
       keyframes: extended.keyframes,
-      ease: anim.ease,
+      ...keyframeEases(anim),
     },
     {
       label: "Add keyframe",

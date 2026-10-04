@@ -1,6 +1,9 @@
+// @vitest-environment happy-dom
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../player";
-import { requestFreezeFrame } from "./useFreezeFrame";
+import { requestFreezeFrame, useFreezeFrame } from "./useFreezeFrame";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,14 +32,15 @@ function stubFetch(freezeResponse: { status: number; body: unknown }) {
 
 describe("requestFreezeFrame", () => {
   it("posts the clip target, file version and an authored-time playhead", async () => {
-    const calls = stubFetch({ status: 200, body: { before: "a", after: "b", version: "v2" } });
+    const frozen = { before: "a", after: "b", version: "v2", stillPath: "assets/freeze/t.png" };
+    const calls = stubFetch({ status: 200, body: frozen });
     const result = await requestFreezeFrame({
       projectId: "p",
       path: "scene.html",
       element,
       playhead: 7.5,
     });
-    expect(result).toEqual({ before: "a", after: "b", version: "v2" });
+    expect(result).toEqual(frozen);
     const post = calls[1];
     expect(post?.url).toContain("/file-mutations/freeze-frame");
     expect(post?.body).toMatchObject({
@@ -52,5 +56,37 @@ describe("requestFreezeFrame", () => {
     await expect(
       requestFreezeFrame({ projectId: "p", path: "index.html", element, playhead: 7 }),
     ).rejects.toThrow("Move the playhead inside a video clip to freeze");
+  });
+});
+
+describe("useFreezeFrame", () => {
+  it("records the still it made with the edit, so Undo removes it", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    stubFetch({
+      status: 200,
+      body: { before: "a", after: "b", version: "v2", stillPath: "assets/freeze/talk.png" },
+    });
+    const recordEdit = vi.fn(async () => {});
+    let freeze!: ReturnType<typeof useFreezeFrame>;
+    function Harness() {
+      freeze = useFreezeFrame({
+        projectId: "p",
+        activeCompPath: "index.html",
+        showToast: () => {},
+        writeProjectFile: async () => {},
+        recordEdit,
+        reloadPreview: () => {},
+      });
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(createElement(Harness)));
+    await act(() => freeze({ ...element, sourceFile: "index.html" }, 7.5));
+    expect(recordEdit).toHaveBeenCalledWith({
+      label: "Freeze frame",
+      files: { "index.html": { before: "a", after: "b" } },
+      created: ["assets/freeze/talk.png"],
+    });
+    act(() => root.unmount());
   });
 });

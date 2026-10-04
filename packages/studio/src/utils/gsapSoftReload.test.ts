@@ -249,7 +249,7 @@ describe("applySoftReload", () => {
     // gsap present but MotionPathPlugin unset → async load path.
     const { iframe, contentWindow } = buildMockIframe({
       MotionPathPlugin: undefined,
-      gsap: { timeline: vi.fn(), registerPlugin: vi.fn() },
+      gsap: { timeline: vi.fn(), registerPlugin: vi.fn(), version: "3.14.2" },
     });
     (iframe.contentDocument as unknown as { head: unknown }).head = head;
 
@@ -260,7 +260,7 @@ describe("applySoftReload", () => {
     // script has NOT executed yet, so the timeline isn't rebound synchronously.
     expect(result).toBe("applied");
     expect(appendedScripts).toHaveLength(1);
-    expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    expect(appendedScripts[0]!.src).toContain("gsap@3.14.2/dist/MotionPathPlugin");
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
 
     // onerror must NOT run the script (that would reference a missing plugin) —
@@ -384,6 +384,16 @@ describe("ensureMotionPathPluginLoaded", () => {
     expect(appendedScripts).toHaveLength(0);
   });
 
+  it("loads the plugin at the composition's own gsap version", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({
+      gsap: { version: "3.14.2", registerPlugin: vi.fn() },
+    });
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts[0]!.src).toBe(
+      "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js",
+    );
+  });
+
   it("appends the plugin script once and registers it on load", () => {
     const { iframe, contentWindow, appendedScripts, registerPlugin } = buildBootstrapIframe();
     ensureMotionPathPluginLoaded(iframe);
@@ -480,6 +490,45 @@ describe("applySoftReload authored-style restore", () => {
     );
     return el.style.getPropertyValue("opacity");
   }
+
+  it("flushes only elements when a tween targets a plain object (the runtime's duration filler)", () => {
+    const el = document.createElement("div");
+    // GSAP's clearProps writes target.style.cssText, which throws on a plain object.
+    const set = vi.fn((targets: Array<{ style: CSSStyleDeclaration }>) => {
+      for (const t of targets) t.style.cssText = "";
+    });
+    const { iframe } = buildIframeWithTarget(el, {
+      gsap: { timeline: vi.fn(), set },
+      __timelines: {
+        root: {
+          kill: vi.fn(),
+          getChildren: () => [{ targets: () => [el] }, { targets: () => [{}] }],
+        },
+      },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("applied");
+    expect(set).toHaveBeenCalledWith([el], { clearProps: "all" });
+  });
+
+  it("falls back to a full reload, and says why, when the flush throws", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { iframe } = buildIframeWithTarget(document.createElement("div"), {
+      gsap: {
+        timeline: vi.fn(),
+        set: vi.fn(() => {
+          throw new Error("flush failed");
+        }),
+      },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("soft reload threw"),
+      expect.any(Error),
+    );
+    error.mockRestore();
+  });
 
   it("restores opacity from the after-write HTML (matched by data-hf-id)", () => {
     const el = document.createElement("img");

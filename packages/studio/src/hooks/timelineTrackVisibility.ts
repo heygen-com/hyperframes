@@ -8,7 +8,8 @@ import {
   trackDisplaySuffix,
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { isAudioTimelineElement } from "../utils/timelineInspector";
+import { isAudioOnlyTrack } from "../utils/timelineInspector";
+import { hiddenToggleVerb } from "../player/components/hiddenToggle";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
   findTimelineElementInIframe,
@@ -206,14 +207,8 @@ export async function toggleTimelineTrackHidden({
     displayNumber ?? trackDisplayNumber(timelineTrackOrder(timelineElements), track),
   );
   const trackElements = timelineElements.filter((element) => element.track === track);
-  const isAudioOnlyTrack = trackElements.length > 0 && trackElements.every(isAudioTimelineElement);
-  const label = isAudioOnlyTrack
-    ? hidden
-      ? `Mute track${suffix}`
-      : `Unmute track${suffix}`
-    : hidden
-      ? `Hide track${suffix}`
-      : `Show track${suffix}`;
+  const hiddenBefore = !hidden;
+  const label = `${hiddenToggleVerb(isAudioOnlyTrack(trackElements), hiddenBefore)} track${suffix}`;
   return setElementsHidden({
     projectId,
     activeCompPath,
@@ -240,19 +235,14 @@ export async function toggleTimelineElementHidden({
 }: ToggleTimelineElementHiddenInput): Promise<string[]> {
   const keys = new Set(typeof elementKey === "string" ? [elementKey] : elementKey);
   const elements = timelineElements.filter((item) => keys.has(item.key ?? item.id));
+  const hiddenBefore = !hidden;
+  const verb = hiddenToggleVerb(isAudioOnlyTrack(elements), hiddenBefore);
   return setElementsHidden({
     projectId,
     activeCompPath,
     elements,
     hidden,
-    label:
-      elements.length > 1
-        ? hidden
-          ? `Hide ${elements.length} elements`
-          : `Show ${elements.length} elements`
-        : hidden
-          ? "Hide element"
-          : "Show element",
+    label: elements.length > 1 ? `${verb} ${elements.length} elements` : `${verb} element`,
     previewIframe,
     writeProjectFile,
     recordEdit,

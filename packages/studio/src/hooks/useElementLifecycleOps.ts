@@ -24,6 +24,7 @@ import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditComm
 import { domEditCommitDeclined, type DomEditCommitOutcome } from "./domEditCommitRunner";
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Route delete through SDK when session resolves the hf-id. */
@@ -156,7 +157,7 @@ export function useElementLifecycleOps({
           writeFile: writeProjectFile,
           recordEdit: editHistory.recordEdit,
           rewrite: async (originalContent) => {
-            const removeResponse = await fetch(
+            const removeResponse = await studioApiFetch(
               buildProjectApiPath(
                 pid,
                 `/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,

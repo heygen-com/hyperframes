@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 /**
  * What the dev server knows about this machine's FFmpeg, as reported by
@@ -59,7 +60,7 @@ function parseStatus(body: unknown): ProbeResult {
 
 async function probe(): Promise<ProbeResult> {
   try {
-    const res = await fetch("/api/environment/ffmpeg");
+    const res = await studioApiFetch("/api/environment/ffmpeg");
     return res.ok ? parseStatus(await res.json()) : null;
   } catch {
     return null;

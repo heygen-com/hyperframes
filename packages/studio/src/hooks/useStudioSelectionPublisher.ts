@@ -3,6 +3,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { buildStudioSelectionSnapshot } from "../utils/studioSelectionSnapshot";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface UseStudioSelectionPublisherParams {
   projectId: string | null;
@@ -26,7 +27,7 @@ function reportSelectionPublishError(error: unknown): void {
 }
 
 function putSelection(projectId: string, selection: unknown, signal?: AbortSignal): Promise<void> {
-  return fetch(`/api/projects/${encodeURIComponent(projectId)}/selection`, {
+  return studioApiFetch(`/api/projects/${encodeURIComponent(projectId)}/selection`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ selection }),

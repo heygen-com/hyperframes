@@ -1,10 +1,10 @@
+import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import { c } from "../ui/colors.js";
 import {
   assertWebGpuAdapterAvailable,
   compositionRequiresWebGpu,
-  resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
   type BrowserGpuMode,
 } from "../browser/gpuPolicy.js";
@@ -179,8 +179,8 @@ export async function openSettledCompositionPage(
   const requestedGpuMode = options.browserGpuMode ?? resolveCliChromeGpuMode();
   const requiresWebGpu = compositionRequiresWebGpu(html);
   const launch = async (executablePath: string): Promise<Browser> => {
-    const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
-    return puppeteer.default.launch({
+    const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, executablePath);
+    return launchManagedBrowser(puppeteer.default, {
       headless: true,
       executablePath,
       args: buildChromeArgs(

@@ -94,6 +94,7 @@ export interface DomEditOverlayProps {
     next: { width: number; height: number },
     offset?: { x: number; y: number },
     restore?: () => void,
+    route?: { plainTranslate: boolean },
   ) => Promise<unknown> | void;
   onRotationCommit: (selection: DomEditSelection, next: RotationCommit) => Promise<unknown> | void;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;

@@ -4,6 +4,7 @@ import type { RecordEditInput } from "./studioFileHistory";
 import { buildProjectApiPath } from "./projectRouting";
 import { studioWriteHeaders } from "./studioFileVersion";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
+import { studioApiFetch } from "./studioApiFetch";
 
 interface TimelineCompositionInsertionResult {
   path: string;
@@ -20,7 +21,7 @@ async function insertTimelineComposition(input: {
   start: number;
   track: number;
 }): Promise<TimelineCompositionInsertionResult> {
-  const current = await fetch(
+  const current = await studioApiFetch(
     buildProjectApiPath(input.projectId, `/files/${encodeURIComponent(input.targetPath)}`),
   );
   if (!current.ok) {
@@ -29,7 +30,7 @@ async function insertTimelineComposition(input: {
   const snapshot = (await current.json()) as { version?: string };
   if (typeof snapshot.version !== "string") throw new Error("Missing composition file version");
 
-  const response = await fetch(
+  const response = await studioApiFetch(
     buildProjectApiPath(
       input.projectId,
       `/file-mutations/insert-composition/${encodeURIComponent(input.targetPath)}`,

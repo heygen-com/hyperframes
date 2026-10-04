@@ -4,8 +4,8 @@ import { trackStudioEditBlocked, trackStudioSaveFailure } from "../utils/studioS
 import { isGsapEditBlockedError } from "./gsapEditOutcome";
 import { wasAlreadyToasted } from "./domEditPersistFailure";
 
-function failureToast(error: unknown): string | null {
-  if (wasAlreadyToasted(error)) return null;
+function failureToast(error: unknown, toast: boolean): string | null {
+  if (!toast || wasAlreadyToasted(error)) return null;
   return isGsapEditBlockedError(error) ? error.message : "Failed to save animated edit.";
 }
 
@@ -14,7 +14,13 @@ export function useGsapInteractionFailureTelemetry(
   showToast: (message: string, tone?: "error" | "info") => void,
 ) {
   return useCallback(
-    (error: unknown, selection: DomEditSelection | null, mutationType: string, label: string) => {
+    (
+      error: unknown,
+      selection: DomEditSelection | null,
+      mutationType: string,
+      label: string,
+      toast?: boolean,
+    ) => {
       const report = isGsapEditBlockedError(error)
         ? trackStudioEditBlocked
         : trackStudioSaveFailure;
@@ -28,7 +34,7 @@ export function useGsapInteractionFailureTelemetry(
         targetSelector: selection?.selector,
         targetSourceFile: selection?.sourceFile,
       });
-      const message = failureToast(error);
+      const message = failureToast(error, toast !== false);
       if (message) showToast(message, "error");
     },
     [activeCompPath, showToast],

@@ -1,3 +1,4 @@
+import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 // Onion-skin motion screenshot: seek the LIVE timeline at N equal-time steps and
 // project the REAL element at each step, so an agent can SELF-VERIFY motion (the
 // rendered result — every channel: position, rotation, scale, opacity, colour),
@@ -17,7 +18,6 @@ import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport
 import {
   assertWebGpuAdapterAvailable,
   compositionRequiresWebGpu,
-  resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
 } from "../browser/gpuPolicy.js";
 import {
@@ -400,9 +400,9 @@ async function openCompositionPage(
   const { buildChromeArgs } = await import("@hyperframes/engine");
   const size = resolveCompositionViewportFromHtml(html);
   const requestedGpuMode = resolveLocalBrowserGpuMode();
-  const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
+  const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, executablePath);
   const requiresWebGpu = compositionRequiresWebGpu(html);
-  const browser = await puppeteer.default.launch({
+  const browser = await launchManagedBrowser(puppeteer.default, {
     headless: true,
     executablePath,
     args: buildChromeArgs(

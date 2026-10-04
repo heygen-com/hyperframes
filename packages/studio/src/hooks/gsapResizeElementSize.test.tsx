@@ -37,6 +37,7 @@ const widthTween = {
   position: 0,
   resolvedStart: 0,
   duration: 4,
+  ease: "none",
 } as unknown as GsapAnimation;
 
 function mount(animations: GsapAnimation[]) {

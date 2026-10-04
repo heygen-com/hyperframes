@@ -112,6 +112,7 @@ export interface TimelineOverlaysState {
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
   clipMenuItems?: TimelineProps["clipMenuItems"];
+  splitShortcut?: TimelineProps["splitShortcut"];
   gapContextMenu: TrackGapContextMenuState | null;
   onDismissGapContextMenu: () => void;
   onCloseTrackGap: () => void;

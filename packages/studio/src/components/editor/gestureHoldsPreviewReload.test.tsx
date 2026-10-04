@@ -289,6 +289,39 @@ describe("a drag moves only with its own pointer pressed", () => {
   );
 });
 
+describe("an outside change during a drag, on a preview that can swap scenes in place", () => {
+  it("leaves the dragged node in place and shows the change after the drop, loaded fresh", async () => {
+    const { live, overlay, box } = mountEditor(false);
+    const swapScenes = vi.fn((html: string) => {
+      live.contentDocument!.body.innerHTML = html.replace(/^[\s\S]*<body>|<\/body>[\s\S]*$/g, "");
+    });
+    Object.assign(live.contentWindow!, { __hfSwapScenes: swapScenes });
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response(served("").contentDocument!.documentElement.outerHTML),
+    );
+    const dragged = byId(live, "title");
+    pointer(box, "pointerdown", 150, 150);
+    pointer(overlay, "pointermove", 190, 170);
+
+    act(() => api().refreshPlayer());
+    await settle();
+    expect(swapScenes, "swapped under the pointer").not.toHaveBeenCalled();
+    expect(byId(live, "title")).toBe(dragged);
+    const beforeDrop = await paintShadow(api, served("?_t=1"));
+    expect(api().iframeRef.current, "promoted under the pointer").toBe(live);
+
+    pointer(overlay, "pointerup", 190, 170);
+    await settle();
+    expect(file.title).toBe("translate: 40px 20px");
+    const fresh = served("?_t=2");
+    expect(await paintShadow(api, fresh)).toBeGreaterThan(beforeDrop);
+    expect(api().iframeRef.current).toBe(fresh);
+    expect(byId(fresh, "title").style.getPropertyValue("translate")).toBe("40px 20px");
+    vi.unstubAllGlobals();
+  });
+});
+
 type Editor = ReturnType<typeof mountEditor>;
 
 describe("every way a drag ends without a drop clears its mark and promotes the held reload", () => {

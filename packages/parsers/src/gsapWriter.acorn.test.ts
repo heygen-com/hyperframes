@@ -13,6 +13,7 @@ import {
   copyAnimationsInScript,
   removeAnimationFromScript,
   removeKeyframeFromScript,
+  replaceTweenWithKeyframesInScript,
   updateAnimationInScript,
   updateKeyframeInScript,
 } from "./gsapWriterAcorn.js";
@@ -533,5 +534,62 @@ tl.from("#goodbye", { opacity: 0 }, 1);`;
 
   it("leaves the script as it was when nothing targets the original", () => {
     expect(copyAnimationsInScript(script, "#tag", "#tag-2", 3)).toBe(script);
+  });
+});
+
+describe("replaceTweenWithKeyframesInScript", () => {
+  const script = `var tl = gsap.timeline({ paused: true });
+tl.fromTo("#a", { x: 0 }, { x: 100, duration: 1, delay: 0.5, onStart: go }, 1);
+tl.set("#b", { x: 5 }, 0);`;
+  const tweenOn = (selector: string) =>
+    parseGsapScriptAcorn(script).animations.find((a) => a.targetSelector === selector)!;
+  const edit = (position: number, extra = {}) => ({
+    targetSelector: "#a",
+    position,
+    duration: 2,
+    keyframes: [
+      { percentage: 100, properties: { x: 100 } },
+      { percentage: 0, properties: { x: 0 } },
+    ],
+    ...extra,
+  });
+  const rewritten = (out: string | null) => out?.split("\n")[1];
+
+  it("leaves a tween it cannot find, or a set(), to the caller", () => {
+    expect(replaceTweenWithKeyframesInScript(script, "#missing", edit(1))).toBeNull();
+    expect(replaceTweenWithKeyframesInScript(script, tweenOn("#b").id, edit(0))).toBeNull();
+  });
+
+  it("rewrites a tween that stays put as to(), keeping its position, delay and callbacks", () => {
+    const { id, resolvedStart } = tweenOn("#a");
+    expect(rewritten(replaceTweenWithKeyframesInScript(script, id, edit(resolvedStart!)))).toBe(
+      'tl.to("#a", { keyframes: { "0%": { x: 0 }, "100%": { x: 100 } }, delay: 0.5, onStart: go, duration: 2 }, 1);',
+    );
+  });
+
+  it("moves a retargeted tween to the new position without its delay, with the edit's ease", () => {
+    const out = replaceTweenWithKeyframesInScript(
+      script,
+      tweenOn("#a").id,
+      edit(3, { targetSelector: "#c", ease: "none", easeEach: "power1.in" }),
+    );
+    expect(rewritten(out)).toBe(
+      'tl.to("#c", { keyframes: { "0%": { x: 0 }, "100%": { x: 100 }, easeEach: "power1.in" }, onStart: go, duration: 2, ease: "none" }, 3);',
+    );
+  });
+});
+
+describe("position argument", () => {
+  it("is added after the last argument, so a call with a trailing comma stays valid", () => {
+    const script = `var tl = gsap.timeline({ paused: true });
+tl.to(
+  "#a",
+  { x: 100, duration: 1 },
+);
+window.__timelines["t"] = tl;`;
+    const id = parseGsapScriptAcorn(script).animations[0]!.id;
+    const result = updateAnimationInScript(script, id, { position: 0.5 });
+    expect(() => new Function("gsap", "window", result)).not.toThrow();
+    expect(parseGsapScriptAcorn(result).animations[0]!.position).toBe(0.5);
   });
 });

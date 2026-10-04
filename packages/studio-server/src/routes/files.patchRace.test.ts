@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { registerFileRoutes } from "./files";
+import { stubAdapter } from "./stubAdapter.test-helpers";
 
 const hooks = vi.hoisted(() => ({
   transforming: undefined as (() => void) | undefined,
@@ -76,15 +77,7 @@ function project() {
   const path = join(dir, "index.html");
   writeFileSync(path, ORIGINAL);
   const app = new Hono();
-  registerFileRoutes(app, {
-    listProjects: () => [],
-    resolveProject: async (id: string) => ({ id, dir }),
-    bundle: async () => null,
-    lint: async () => ({ findings: [] }),
-    runtimeUrl: "/api/runtime.js",
-    rendersDir: () => "/tmp/renders",
-    startRender: () => ({ id: "job", status: "rendering", progress: 0, outputPath: "/tmp/o.mp4" }),
-  });
+  registerFileRoutes(app, stubAdapter(dir));
   const post = (route: string, body: unknown) =>
     app.request(`http://localhost/projects/demo/file-mutations/${route}`, {
       method: "POST",

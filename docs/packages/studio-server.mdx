@@ -35,6 +35,18 @@ export function mountStudioApi(
 }
 ```
 
+When it is served from loopback (`localhost`, `127.0.0.1` or `[::1]`), Studio
+sends its API requests without cookies, so they don't queue behind the
+preview's media. On any other origin it sends them as usual, so remote and
+proxied setups (Codespaces, tunnels, an access proxy) keep their cookies by
+default. A loopback host that authenticates its mounted API with same-origin
+cookies sets `VITE_STUDIO_API_SAME_ORIGIN_CREDENTIALS=true`, at build time or at
+runtime in `window.__HF_STUDIO_ENV__`; it costs that host the connection
+speedup.
+Studio reads the flag once, when its modules load, so set
+`window.__HF_STUDIO_ENV__` before loading Studio; the CLI injects it, but a host
+that mounts the API itself must inject it too.
+
 A `StudioApiAdapter` supplies:
 
 - project listing and resolution;

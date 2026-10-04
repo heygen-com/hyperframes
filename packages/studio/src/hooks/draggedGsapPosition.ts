@@ -75,3 +75,13 @@ export function computeDraggedGsapPosition(
     baseGsapY,
   };
 }
+
+/** Puts the drag's preview offset back once the written position renders instead. */
+export function restoreDragOffset(element: HTMLElement): void {
+  const origin = (axis: "x" | "y") =>
+    Number.parseFloat(element.getAttribute(`data-hf-drag-initial-offset-${axis}`) ?? "") || 0;
+  element.style.setProperty("--hf-studio-offset-x", `${origin("x")}px`);
+  element.style.setProperty("--hf-studio-offset-y", `${origin("y")}px`);
+  element.removeAttribute("data-hf-drag-initial-offset-x");
+  element.removeAttribute("data-hf-drag-initial-offset-y");
+}

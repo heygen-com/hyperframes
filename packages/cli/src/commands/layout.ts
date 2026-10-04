@@ -1,3 +1,4 @@
+import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { existsSync, readFileSync } from "node:fs";
@@ -203,12 +204,8 @@ async function runLayoutAudit(
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
   const { buildChromeArgs } = await import("@hyperframes/engine");
-  const {
-    assertWebGpuAdapterAvailable,
-    compositionRequiresWebGpu,
-    resolveCaptureBrowserGpuMode,
-    resolveLocalBrowserGpuMode,
-  } = await import("../browser/gpuPolicy.js");
+  const { assertWebGpuAdapterAvailable, compositionRequiresWebGpu, resolveLocalBrowserGpuMode } =
+    await import("../browser/gpuPolicy.js");
   const html = await bundleProjectHtml(projectDir);
   const server = await serveStaticProjectHtml(
     projectDir,
@@ -220,12 +217,9 @@ async function runLayoutAudit(
   try {
     const browser = await ensureBrowser();
     const requestedGpuMode = resolveLocalBrowserGpuMode();
-    const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
-      requestedGpuMode,
-      browser.executablePath,
-    );
+    const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
-    chromeBrowser = await puppeteer.default.launch({
+    chromeBrowser = await launchManagedBrowser(puppeteer.default, {
       headless: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(

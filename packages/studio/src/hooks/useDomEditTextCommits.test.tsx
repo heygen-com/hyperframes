@@ -350,6 +350,29 @@ describe("useDomEditTextCommits", () => {
     expect(outcome).toEqual({ ok: true, persistence });
   });
 
+  it("saves a style map on a selection as one patch, so it is one undo step", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
+    const persist = vi.fn().mockResolvedValue({ sourceFile: "index.html", changed: true });
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: null,
+        persistDomEditOperations: persist,
+      }),
+    );
+
+    await act(async () => {
+      await hook.handleDomStyleCommitForSelection(selectionFor(element), {
+        "border-width": "4px",
+        "border-style": "solid",
+      });
+    });
+
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(element.style.borderWidth).toBe("4px");
+    expect(element.style.borderStyle).toBe("solid");
+  });
+
   it("declines a style commit with no selection, without reaching the writer", async () => {
     const persistDomEditOperations = vi.fn().mockResolvedValue(undefined);
     const hook = renderTextCommitHook(

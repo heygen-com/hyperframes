@@ -12,6 +12,7 @@ import { useTimelineEditContextOptional } from "../../contexts/TimelineEditConte
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import { mintGroupId } from "../../components/editor/useFxCarveGrouping";
 import { runtimeAudioId } from "../lib/timelineElementHelpers";
+import { isAudioOnlyTrack } from "../../utils/timelineInspector";
 import { TimelineFxButton } from "./TimelineFxButton";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { elementFxChain, groupAutomationLanes, isCarveLane } from "./automationLaneData";
@@ -203,6 +204,7 @@ export function TimelineTrackHeader({
   // disclosability swapped it for the keyframe-layer row (a `◇`, no indent) the
   // moment an envelope appeared.
   const isKeyframeLayer = !!keyframeClip && disclosable && !isAudioTrack;
+  const isAudioOnly = isAudioOnlyTrack(trackElements);
   // What the lane disclosure calls this row. A row of several clips is named
   // for the TRACK, not for whichever is selected — the lanes are the track's,
   // shared per property, so "Narration 2 lanes" read as if they were that one
@@ -312,6 +314,7 @@ export function TimelineTrackHeader({
               showTrackLabel={showTrackLabel}
               isTrackHidden={isTrackHidden}
               isAudioTrack={isAudioTrack}
+              isAudioOnly={isAudioOnly}
               onToggleTrackHidden={onToggleTrackHidden}
               // On the control line rather than a third row of its own.
               trailing={
@@ -383,8 +386,7 @@ export function TimelineTrackHeader({
               hidden={isTrackHidden}
               trackNumber={trackNumber}
               trackDisplayNumber={trackDisplayNumber}
-              // Audio: only while hidden — see the plain header.
-              visible={!isAudioTrack || isTrackHidden}
+              asMute={isAudioOnly}
               onToggle={onToggleTrackHidden}
             />
           </LayerDisclosureRow>

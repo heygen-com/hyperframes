@@ -1,7 +1,8 @@
 // The edit accuracy grid: one flat-coloured element in a generated project, crossed with one gesture.
 // Projects are written to a tmp dir per case; nothing checked in is edited.
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { dragCases } from "./drags.mjs";
 
 export const COMPOSITION = { width: 1920, height: 1080 };
@@ -10,7 +11,19 @@ export const PLAYHEAD = 1;
 export const TARGET = { width: 240, height: 160, color: "#f0c020" };
 export const BACKGROUND = "#202020";
 const NESTED_HOST = { left: 160, top: 90, width: 1600, height: 900 };
-const GSAP_CDN = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js";
+// Fixtures keep the CDN URL users author; the bench serves it from the repo's gsap (`localAsset`).
+const require = createRequire(import.meta.url);
+export const FIXTURE_CDN = "https://cdn.jsdelivr.net/";
+const GSAP_DIST = `${FIXTURE_CDN}npm/gsap@${require("gsap/package.json").version}/dist/`;
+const GSAP_CDN = `${GSAP_DIST}gsap.min.js`;
+const LOCAL_GSAP_DIST = dirname(require.resolve("gsap/dist/gsap.min.js"));
+
+/** The repo file a CDN URL is served from (the installed gsap's dist), so no case waits on the network. */
+export function localAsset(url) {
+  if (!url.startsWith(GSAP_DIST)) return undefined;
+  const file = join(LOCAL_GSAP_DIST, url.slice(GSAP_DIST.length));
+  return statSync(file, { throwIfNoEntry: false })?.isFile() ? file : undefined;
+}
 
 // Studio has corner handles only (ResizeHandle is nw|ne|sw|se); its edge strips crop, so there is no edge resize.
 const GESTURES = ["move", "resize", "rotate", "crop", "nudge"];

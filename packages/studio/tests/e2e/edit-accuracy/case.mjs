@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { COMPOSITION, PLAYHEAD } from "./grid.mjs";
+import { COMPOSITION, FIXTURE_CDN, PLAYHEAD, localAsset } from "./grid.mjs";
 import {
   angleOf,
   centre,
@@ -19,6 +19,8 @@ import {
   visibleQuad,
 } from "./geometry.mjs";
 import { frameSamplerScript, scoreTeleport, startFrames, stopFrames } from "./teleport.mjs";
+import { terminateWindowsProcessTree } from "../../../../cli/src/utils/processTree.ts";
+import { installWebMcpHost } from "../webmcp-host.mjs";
 
 export const VIEWPORT = { width: 1600, height: 900 };
 const STEPS = 20;
@@ -39,6 +41,12 @@ const up = (port) =>
 const liveServers = new Set();
 /** Signals the server's process group; a group that already exited is not an error. */
 function signalGroup(child, signal) {
+  // Windows has no process groups, so taskkill /T ends the server and its children.
+  if (process.platform === "win32")
+    return void terminateWindowsProcessTree(child.pid).catch((error) => {
+      // taskkill exits 128 when the process is already gone.
+      if (!/status 128$/.test(error.message)) throw error;
+    });
   try {
     process.kill(-child.pid, signal);
   } catch (error) {
@@ -52,16 +60,16 @@ export function killServers() {
 
 const announcedPort = (log) => /http:\/\/localhost:(\d+)/.exec(log.join(""))?.[1];
 
+/** Starts Studio at `port` or, when that is busy, the next free one the CLI binds; returns the port it serves. */
 // fallow-ignore-next-line complexity
 export async function startServer(cli, dir, port, log, home) {
-  // The CLI quietly takes the next free port when asked for a busy one, so only the port it announces counts.
-  if (await up(port)) throw new Error(`port ${port} is already serving`);
   const child = spawn(
     "node",
     [cli, "preview", dir, "--port", String(port), "--no-open", "--foreground", "--force-new"],
     {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
+      windowsHide: true,
       // A per-case HOME keeps Studio's undo history inside the case's tmp dir.
       env: {
         ...process.env,
@@ -78,12 +86,8 @@ export async function startServer(cli, dir, port, log, home) {
   for (const deadline = Date.now() + 60_000; Date.now() < deadline; await sleep(200)) {
     if (child.exitCode !== null)
       throw new Error(`studio exited ${child.exitCode}: ${log.join("").slice(-500)}`);
-    const announced = announcedPort(log);
-    if (announced && announced !== String(port)) {
-      await stopServer(child);
-      throw new Error(`studio moved from port ${port} to ${announced}`);
-    }
-    if (announced && (await up(port))) return child;
+    const announced = Number(announcedPort(log));
+    if (announced && (await up(announced))) return { child, port: announced };
   }
   await stopServer(child);
   throw new Error("studio did not start in 60s");
@@ -98,18 +102,11 @@ export async function stopServer(child) {
   await exited;
 }
 
-/** Runs in the top frame before Studio: the WebMCP host plus a frame-interval and long-task recorder. */
+/** Runs in the top frame after installWebMcpHost("__editBench"): a frame-interval and long-task recorder. */
 function instrumentPage() {
   if (window.top !== window) return;
-  const tools = new Map();
-  Object.defineProperty(document, "modelContext", {
-    configurable: true,
-    value: { registerTool: async (tool) => void tools.set(tool.name, tool) },
-  });
   const rec = { on: false, frames: [], long: [] };
-  const call = (name, input) =>
-    tools.get(name).execute(input, { signal: new AbortController().signal });
-  window.__editBench = { has: (name) => tools.has(name), call, rec };
+  window.__editBench.rec = rec;
   // The callback's own clock: Chrome stamps a late frame with the vsync it missed, which hides a stall.
   const loop = () => {
     if (rec.on) rec.frames.push(performance.now());
@@ -638,6 +635,7 @@ export async function controlDrag(browser, gesture) {
   try {
     const page = await context.newPage();
     await page.setViewport(VIEWPORT);
+    await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
     // The real drags run the frame sampler, so the control pays its cost too.
     await page.evaluateOnNewDocument(frameSamplerScript);
@@ -769,6 +767,34 @@ async function nudgeGesture(ctx, pre) {
   };
 }
 
+const blockedCdnUrls = new Set();
+
+/** Serves the fixtures' CDN requests from the repo; any other CDN URL is blocked and named once. */
+async function serveFixtureAssetsLocally(page) {
+  const cdp = await page.createCDPSession();
+  cdp.on("Fetch.requestPaused", ({ requestId, request }) => {
+    const file = localAsset(request.url);
+    if (!file) {
+      if (!blockedCdnUrls.has(request.url)) console.warn(`edit bench: blocked ${request.url}`);
+      blockedCdnUrls.add(request.url);
+      cdp
+        .send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" })
+        .catch(() => undefined);
+      return;
+    }
+    // A request whose frame went away rejects; that must not end the run.
+    cdp
+      .send("Fetch.fulfillRequest", {
+        requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "text/javascript" }],
+        body: readFileSync(file).toString("base64"),
+      })
+      .catch(() => undefined);
+  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `${FIXTURE_CDN}*` }] });
+}
+
 /**
  * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
  * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
@@ -776,6 +802,7 @@ async function nudgeGesture(ctx, pre) {
 export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
+  await serveFixtureAssetsLocally(page);
   const ctx = {
     page,
     dir,
@@ -791,6 +818,7 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
     (evidence.shots[name] = await page.screenshot({ type: "jpeg", quality: 70 }));
   try {
     await page.setViewport(VIEWPORT);
+    await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
     await page.evaluateOnNewDocument(frameSamplerScript);
     await page.goto(url);

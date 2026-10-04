@@ -593,6 +593,7 @@ describe("a timing edit's soft reload restores what GSAP wrote from the files", 
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/files/compositions%2Fsub.html"),
+      { credentials: "omit" },
     );
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(wt.getAttribute("style")).toBe("left: 700px;");

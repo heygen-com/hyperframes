@@ -12,7 +12,7 @@ import {
   type RefObject,
 } from "react";
 import { Player } from "../../player";
-import type { PreviewIframeSlot } from "../../player/hooks/useTimelineSyncCallbacks";
+import type { NLEContextValue } from "./NLEContext";
 import {
   DEFAULT_PREVIEW_ZOOM,
   canStartPreviewPan,
@@ -29,16 +29,18 @@ import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesS
 import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
-interface NLEPreviewProps {
-  projectId: string;
+interface NLEPreviewProps extends Pick<
+  NLEContextValue,
+  | "projectId"
+  | "onIframeLoad"
+  | "previewSlots"
+  | "onShadowIframeLoad"
+  | "onShadowReadyChange"
+  | "onShadowError"
+  | "setShadowIframeNode"
+  | "resetPreviewSlots"
+> {
   iframeRef: RefObject<HTMLIFrameElement | null>;
-  onIframeLoad: () => void;
-  previewSlots: PreviewIframeSlot[];
-  onShadowIframeLoad: (gen: number) => void;
-  onShadowReadyChange: (gen: number, ready: boolean) => void;
-  onShadowError: (gen: number, message: string) => void;
-  setShadowIframeNode: (node: HTMLIFrameElement | null) => void;
-  resetPreviewSlots: () => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   directUrl?: string;

@@ -219,6 +219,22 @@ describe("ThumbnailScheduler", () => {
     expect(scheduler.getDiagnostics()).toMatchObject({ queued: 0, active: 0, leases: 0 });
   });
 
+  it("frees an aborted job's slot at once, even when its loader ignores the abort", async () => {
+    const scheduler = new ThumbnailScheduler(
+      resolveTimelineViewportBudgets({ concurrentVideoDecodes: 1 }),
+    );
+    const stuck = deferred<ThumbnailLoadedResult>();
+    const lease = scheduler.acquire(
+      request("stuck", () => stuck.promise, "visible", { kind: "video" }),
+      vi.fn(),
+    );
+    lease.release();
+    const nextLoad = vi.fn(async () => result("next"));
+    scheduler.acquire(request("next", nextLoad, "visible", { kind: "video" }), vi.fn());
+    await flush();
+    expect(nextLoad).toHaveBeenCalledTimes(1);
+  });
+
   it("disposes a late result exactly once after its final lease releases", async () => {
     const scheduler = new ThumbnailScheduler();
     const pending = deferred<ThumbnailLoadedResult>();

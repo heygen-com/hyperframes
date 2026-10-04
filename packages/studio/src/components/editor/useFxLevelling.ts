@@ -26,6 +26,7 @@ import { trackLeveller } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
 import { clipSourceWindow, readClipClock } from "./clipAudioClock.js";
 import { useAuditionTransport } from "./useAuditionTransport.js";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 /**
  * Rate the track is decoded at. Analysis is self-consistent because it reads
@@ -63,7 +64,7 @@ export function useFxLevelling(
       (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
         .webkitOfflineAudioContext;
     if (!Ctor) return null;
-    const res = await fetch(new URL(src, doc.baseURI).href);
+    const res = await studioApiFetch(new URL(src, doc.baseURI).href);
     const buffer = await new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(
       await res.arrayBuffer(),
     );

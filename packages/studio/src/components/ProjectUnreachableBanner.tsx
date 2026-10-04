@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface ServedProject {
   id: string;
@@ -24,8 +25,7 @@ interface ProjectUnreachableBannerProps {
  *
  * The wording is deliberately narrower than "this project is gone". We can see
  * which project this server serves; we cannot see why it does not serve this
- * one, and nothing here is lost. See
- * `docs/hyperframes/plans/sdk/2026-09-20-stale-project-id-remaining-doors-plan.md` §C.
+ * one, and nothing here is lost.
  */
 export function ProjectUnreachableBanner({ projectId }: ProjectUnreachableBannerProps) {
   const [served, setServed] = useState<ServedProject[] | null>(null);
@@ -35,7 +35,7 @@ export function ProjectUnreachableBanner({ projectId }: ProjectUnreachableBanner
     // A list we could not read is not evidence of anything, so a failed fetch
     // leaves `served` empty and the banner falls back to the vague wording
     // rather than claiming this Studio serves nothing.
-    fetch("/api/projects")
+    studioApiFetch("/api/projects")
       .then((res) => (res.ok ? res.json() : { projects: [] }))
       .then((data: { projects?: ServedProject[] }) => {
         if (!cancelled) setServed(data.projects ?? []);

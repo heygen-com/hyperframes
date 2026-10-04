@@ -23,7 +23,7 @@ function fakeIframe(elId: string, children: unknown[]): HTMLIFrameElement {
   return {
     contentWindow: {
       __timelines: { "index.html": timeline },
-      gsap: { getProperty: () => 0 },
+      gsap: { getProperty: () => 0, defaults: () => ({ ease: "power1.out" }) },
     },
     contentDocument: { querySelector: (sel: string) => (sel === `#${elId}` ? el : null) },
   } as unknown as HTMLIFrameElement;
@@ -451,7 +451,8 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
       fakeIframe("puck-b", []),
       commitMutation,
     );
-    return { handled, types: commitMutation.mock.calls.map(([, mutation]) => mutation.type) };
+    const mutations = commitMutation.mock.calls.map(([, mutation]) => mutation);
+    return { handled, mutations, types: mutations.map((mutation) => mutation.type) };
   }
 
   it("shifts the whole tween instead of adding a keyframe when the toggle is off", async () => {
@@ -461,10 +462,40 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
     expect(types).not.toContain("add-keyframe");
   });
 
-  it("still adds/updates a keyframe at the playhead when the toggle is on (default)", async () => {
-    const { handled, types } = await runAutoKeyframeDrag(true);
+  it("shifts a linear flat tween as keyframes that stay linear", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 1 });
+    const commitMutation = vi.fn();
+    const linear = { ...stalePositionAnim, ease: "none" } as GsapAnimation;
+    const live = {
+      targets: () => [{ id: "puck-b" }],
+      vars: { x: -180, y: -60, ease: "none" },
+      duration: () => 2,
+      startTime: () => 1,
+    };
+    await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 0 },
+      [linear],
+      fakeIframe("puck-b", [live]),
+      commitMutation,
+    );
+    const [mutation] = commitMutation.mock.calls.map(([, m]) => m);
+    expect(mutation).toMatchObject({ type: "replace-with-keyframes", easeEach: "none" });
+    expect(mutation).not.toHaveProperty("ease", "none");
+  });
+
+  it("still changes only the keyframe at the playhead when the toggle is on (default)", async () => {
+    const { handled, mutations } = await runAutoKeyframeDrag(true);
     expect(handled).toEqual({ status: "persisted" });
-    expect(types).not.toContain("replace-with-keyframes");
+    expect(mutations).toEqual([
+      expect.objectContaining({
+        type: "replace-with-keyframes",
+        keyframes: [
+          { percentage: 0, properties: { x: 0, y: 0 } },
+          { percentage: 100, properties: { x: -50, y: 0 } },
+        ],
+      }),
+    ]);
   });
 });
 
@@ -540,7 +571,11 @@ describe("tryGsapDragIntercept — motion paths", () => {
         ],
         ease: "none",
       },
-      expect.objectContaining({ label: "Move layer (new keyframe)", softReload: true }),
+      expect.objectContaining({
+        label: "Move layer (new keyframe)",
+        keyframeAction: "add",
+        softReload: true,
+      }),
     );
     expect(commitMutation.mock.calls.map(([, mutation]) => mutation.type)).not.toContain(
       "add-motion-path-point",

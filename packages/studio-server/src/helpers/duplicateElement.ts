@@ -4,6 +4,7 @@ import {
   findTargetElement,
   dedupeClonedCompositionId,
   isHTMLElement,
+  nextUniqueId,
   parseSourceDocument,
   type SourceMutationTarget,
 } from "./sourceMutation.js";
@@ -39,13 +40,6 @@ export function duplicateElementInHtml(
   element.parentElement.insertBefore(clone, element.nextSibling);
   const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
   return { html: ensureHfIds(html), matched: true, newId: uniqueId };
-}
-
-function nextUniqueId(document: Document, newId: string): string {
-  let uniqueId = newId;
-  let suffix = 2;
-  while (document.getElementById(uniqueId)) uniqueId = `${newId}-${suffix++}`;
-  return uniqueId;
 }
 
 function rippleElements(

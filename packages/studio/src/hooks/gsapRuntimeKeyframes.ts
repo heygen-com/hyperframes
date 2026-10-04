@@ -449,12 +449,12 @@ export const ROTATION_CHANNELS: string[] = [
 
 /** GSAP owns this element's position: a tween or hold writes it, or GSAP already renders its
  *  transform (a CSS translate would then apply twice). Everything else moves by plain CSS. */
-export function gsapWritesPosition(el: Element): boolean {
+function gsapWritesPosition(el: Element): boolean {
   return gsapRendersTransform(el) || gsapWritesChannels(el, MOVE_CHANNELS);
 }
 
 /** `gsapWritesPosition` for a rotate: everything else turns by its own CSS `rotate`. */
-export function gsapWritesRotation(el: Element): boolean {
+function gsapWritesRotation(el: Element): boolean {
   return gsapRendersTransform(el) || gsapWritesChannels(el, ROTATION_CHANNELS);
 }
 
@@ -474,8 +474,21 @@ const BOX_CHANNELS = [
 ];
 
 /** GSAP owns this element's box: its position, or any property the CSS box writer sets. Else a resize writes CSS. */
-export function gsapWritesBox(el: Element): boolean {
+function gsapWritesBox(el: Element): boolean {
   return gsapWritesPosition(el) || gsapWritesChannels(el, BOX_CHANNELS);
+}
+
+export type EditGesture = "move" | "resize" | "rotate";
+const GSAP_OWNS: Record<EditGesture, (el: Element) => boolean> = {
+  move: gsapWritesPosition,
+  resize: gsapWritesBox,
+  rotate: gsapWritesRotation,
+};
+
+/** The one GSAP-or-CSS route decision. Make it when an edit starts and carry it: mid-gesture
+ *  writes make GSAP render the element, so asking again at commit can flip the route. */
+export function editsPlainCss(el: Element, gesture: EditGesture): boolean {
+  return !GSAP_OWNS[gesture](el);
 }
 
 /** `hasNonHoldTweenForElement` for an element in hand, read from its own window's timelines. */

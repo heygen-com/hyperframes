@@ -12,6 +12,7 @@ import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 import { extendRootDurationInSource } from "./rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
+import { studioApiFetch } from "./studioApiFetch";
 
 function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
   try {
@@ -65,7 +66,7 @@ async function installRegistryItem({
   block: RegistryItem;
   compositionFile: string;
 } | null> {
-  const response = await fetch(buildProjectApiPath(projectId, `/registry/install`), {
+  const response = await studioApiFetch(buildProjectApiPath(projectId, `/registry/install`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ blockName }),

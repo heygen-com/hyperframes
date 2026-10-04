@@ -76,6 +76,8 @@ export type { AudioWaveformProps } from "./player/components/AudioWaveform";
 export { ImageThumbnail } from "./player/components/ImageThumbnail";
 export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
 export { useRenderClipContent } from "./hooks/useRenderClipContent";
+export { useThumbnailStill } from "./hooks/useThumbnailStill";
+export type { ThumbnailStill, UseThumbnailStillOptions } from "./hooks/useThumbnailStill";
 export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
 export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";
 export type {
@@ -208,6 +210,8 @@ export type { DomEditZOrder } from "./components/editor/useDomEditZOrder";
 export type { ZOrderAction } from "./components/editor/canvasContextMenuZOrder";
 export type { DomEditCapabilities, DomEditSelection } from "./components/editor/domEditingTypes";
 export { useDomStyleCommit } from "./hooks/useDomStyleCommit";
+export { ColorField } from "./components/editor/propertyPanelColor";
+export { GradientField } from "./components/editor/propertyPanelFill";
 export type { UseDomStyleCommitOptions } from "./hooks/useDomStyleCommit";
 export type { DomEditCommitDeclineReason, DomEditCommitOutcome } from "./hooks/domEditCommitRunner";
 export { resolveDomEditSelection } from "./components/editor/domEditingLayers";

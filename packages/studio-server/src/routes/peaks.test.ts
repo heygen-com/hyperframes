@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerPeakRoutes } from "./peaks";
-import type { StudioApiAdapter } from "../types";
+import { stubAdapter } from "./stubAdapter.test-helpers";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -15,17 +15,8 @@ function setup(decode: (path: string) => Promise<number[]>) {
   const dir = mkdtempSync(join(tmpdir(), "hf-peaks-route-"));
   dirs.push(dir);
   writeFileSync(join(dir, "talk.mp4"), "video");
-  const adapter: StudioApiAdapter = {
-    listProjects: () => [],
-    resolveProject: async (id: string) => ({ id, dir }),
-    bundle: async () => null,
-    lint: async () => ({ findings: [] }),
-    runtimeUrl: "/api/runtime.js",
-    rendersDir: () => "/tmp/renders",
-    startRender: () => ({ id: "j", status: "rendering", progress: 0, outputPath: "/tmp/o.mp4" }),
-  };
   const app = new Hono();
-  registerPeakRoutes(app, adapter, decode);
+  registerPeakRoutes(app, stubAdapter(dir), decode);
   return app;
 }
 

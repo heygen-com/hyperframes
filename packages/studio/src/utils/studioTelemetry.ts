@@ -4,6 +4,7 @@ import { browserTelemetryAllowed } from "../telemetry/policy";
 import { canaryEventProperties } from "../telemetry/canary";
 import { agentRuntimeProperty } from "../telemetry/agentRuntime";
 import { tabIdProperty } from "../telemetry/tabId";
+import { studioApiFetch } from "./studioApiFetch";
 
 // PostHog public ingest key — write-only, safe to ship in the client bundle
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -149,7 +150,7 @@ async function flushEvents(): Promise<void> {
   const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
 
   try {
-    await fetch(`${POSTHOG_HOST}/batch/`, {
+    await studioApiFetch(`${POSTHOG_HOST}/batch/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: POSTHOG_API_KEY, batch }),

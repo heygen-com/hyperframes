@@ -43,3 +43,10 @@ export function readElementGsapNumber(element: HTMLElement, prop: string): numbe
   const value = Number(gsapOf(element)?.getProperty?.(element, prop));
   return Number.isFinite(value) ? value : null;
 }
+
+/** The targets CSSPlugin styles: not plain objects (the runtime's filler) or XML-namespace elements. */
+export function elementTargets(tween: { targets?: () => unknown[] }): Element[] {
+  return (tween.targets?.() ?? []).filter((t): t is Element =>
+    Boolean((t as HTMLElement | null)?.style && (t as Node).nodeType),
+  );
+}

@@ -129,6 +129,7 @@ describe("useFileManager project ownership", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/index.html",
+      { credentials: "omit" },
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/index.html",
@@ -136,14 +137,18 @@ describe("useFileManager project ownership", () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/missing.html",
+      { credentials: "omit" },
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/missing.html",
       expect.objectContaining({ method: "PUT", body: "A_NEW" }),
     );
-    expect(fetchMock).toHaveBeenCalledWith("/api/projects/project-b%23fragment/files/index.html");
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/project-b%23fragment/files/index.html", {
+      credentials: "omit",
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-b%23fragment/files/index.html?optional=1",
+      { credentials: "omit" },
     );
 
     await act(async () => root.unmount());

@@ -24,7 +24,11 @@ import {
   type ParsedGsapAcornForWrite,
   type TweenCallInfo,
 } from "./gsapParserAcorn.js";
-import { classifyPropertyGroup, isXYPositionWrite } from "./gsapConstants.js";
+import {
+  classifyPropertyGroup,
+  isXYPositionWrite,
+  positionHoldForAnimation,
+} from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
 import {
   findObjectArrayKeyframeIndex,
@@ -443,7 +447,8 @@ function overwritePosition(ms: MagicString, call: TweenCallInfo, position: numbe
   if (call.positionArg) {
     ms.overwrite(call.positionArg.start, call.positionArg.end, valueToCode(position));
   } else {
-    ms.appendLeft(call.node.end - 1, `, ${valueToCode(position)}`);
+    const last = call.node.arguments.at(-1);
+    ms.appendLeft(last ? last.end : call.node.end - 1, `, ${valueToCode(position)}`);
   }
 }
 
@@ -1790,6 +1795,54 @@ export function materializeKeyframesFromScript(
   return ms.toString();
 }
 
+/**
+ * Rewrites a tween as `to()` with these keyframes where it stands: the call keeps its place in the
+ * script and its position argument, so a tween placed after it ('>', '<', '+=', none) stays put.
+ */
+export function replaceTweenWithKeyframesInScript(
+  script: string,
+  animationId: string,
+  edit: {
+    targetSelector: string;
+    position: number;
+    duration: number;
+    keyframes: Array<{
+      percentage: number;
+      properties: Record<string, number | string>;
+      ease?: string;
+      auto?: boolean;
+    }>;
+    ease?: string;
+    easeEach?: string;
+  },
+): string | null {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((l) => l.id === animationId);
+  const call = target?.call;
+  if (!target || call?.varsArg?.type !== "ObjectExpression") return null;
+  const { animation } = target;
+  if (animation.method !== "to" && animation.method !== "from" && animation.method !== "fromTo")
+    return null;
+  const ms = new MagicString(script);
+  const start = animation.resolvedStart ?? animation.position;
+  const moved = typeof start !== "number" || Math.abs(start - edit.position) > 5e-4;
+  const kept = preservedVarsEntries(call.varsArg, script).filter(
+    (e) => !/^\s*duration\s*:/.test(e) && !(moved && /^\s*delay\s*:/.test(e)),
+  );
+  const sorted = [...edit.keyframes].sort((a, b) => a.percentage - b.percentage);
+  const parts = [`keyframes: ${buildKeyframeObjectCode(sorted, edit.easeEach)}`, ...kept];
+  parts.push(`duration: ${valueToCode(edit.duration)}`);
+  if (edit.ease) parts.push(`ease: ${JSON.stringify(edit.ease)}`);
+  if (animation.hasUnresolvedSelector || animation.targetSelector !== edit.targetSelector) {
+    const selectorArg = call.node.arguments[0];
+    ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(edit.targetSelector));
+  }
+  convertMethodToTo(ms, animation, call, call.varsArg);
+  overwriteVarsArg(ms, call, `{ ${parts.join(", ")} }`);
+  if (moved) overwritePosition(ms, call, edit.position);
+  return ms.toString();
+}
+
 // ── Add animation with keyframes ──────────────────────────────────────────────
 
 /** Insert a new keyframed `to()` call and return the new animation ID. */
@@ -2387,7 +2440,8 @@ function insertInheritedStateSetInScript(
   const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   const firstLocated = parsed.located[0];
   if (tlDecl) {
-    ms.appendLeft(tlDecl.end, "\n" + code);
+    const ownLineEnd = script[tlDecl.end] === "\n" ? "" : "\n";
+    ms.appendLeft(tlDecl.end, "\n" + code + ownLineEnd);
   } else if (firstLocated) {
     const firstCall = firstLocated.call;
     const exprStmt = findEnclosingExpressionStatement(firstCall.ancestors);
@@ -2413,36 +2467,6 @@ function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): 
   return ms.toString();
 }
 
-function animationStart(animation: GsapAnimation): number {
-  if (animation.resolvedStart !== undefined) return animation.resolvedStart;
-  return typeof animation.position === "number" ? animation.position : 0;
-}
-
-function positionProperties(
-  properties: Record<string, number | string>,
-): Record<string, number | string> {
-  const position: Record<string, number | string> = {};
-  for (const [property, value] of Object.entries(properties)) {
-    if (classifyPropertyGroup(property) === "position" && typeof value === "number") {
-      position[property] = value;
-    }
-  }
-  return position;
-}
-
-function positionHoldForAnimation(
-  animation: GsapAnimation,
-): Record<string, number | string> | null {
-  if (!animation.keyframes) return null;
-  if (!(animationStart(animation) > 0.001)) return null;
-  const first = [...animation.keyframes.keyframes].sort(
-    (left, right) => left.percentage - right.percentage,
-  )[0];
-  if (!first) return null;
-  const position = positionProperties(first.properties);
-  return Object.keys(position).length > 0 ? position : null;
-}
-
 /** Acorn-native, byte-preserving hold synchronization used after mutations. */
 export function syncPositionHoldsBeforeKeyframes(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
@@ -2450,9 +2474,9 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
   let result = removeStudioHoldSets(script, parsed);
   const current = parseGsapScriptAcornForWrite(result);
   if (!current) return result;
-  for (const entry of current.located) {
-    const animation = entry.animation;
-    const position = positionHoldForAnimation(animation);
+  const animations = current.located.map((entry) => entry.animation);
+  for (const animation of animations) {
+    const position = positionHoldForAnimation(animation, animations);
     if (!position) continue;
     result = insertInheritedStateSetInScript(result, animation.targetSelector, 0, {
       ...position,

@@ -4,6 +4,7 @@ import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { buildStableSelector, getSelectorIndex } from "../components/editor/domEditingDom";
 
 export function installReactActEnvironment(): void {
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
@@ -60,4 +61,26 @@ export function makeSelection(label: string, element: HTMLElement): DomEditSelec
       canApplyManualRotation: false,
     },
   };
+}
+
+/** Built as getDomLayerPatchTarget builds it: a bare class for an element with no id or hf-id. */
+export function stableSelectionFor(el: HTMLElement): DomEditSelection {
+  const selector = buildStableSelector(el);
+  return {
+    element: el,
+    id: el.id || undefined,
+    hfId: el.getAttribute("data-hf-id") || undefined,
+    selector,
+    selectorIndex: getSelectorIndex(document, el, selector, "index.html", null),
+    sourceFile: "index.html",
+    dataAttributes: { start: "0", duration: "2" },
+  } as unknown as DomEditSelection;
+}
+
+export function mountGroupSiblings(count: number, withIds = false): HTMLElement[] {
+  const groups = Array.from({ length: count }, (_, i) =>
+    withIds ? `<div class="group" id="group-${i}"></div>` : `<div class="group"></div>`,
+  );
+  document.body.innerHTML = `<div id="scene" class="clip" data-start="0" data-duration="2">${groups.join("")}</div>`;
+  return Array.from(document.querySelectorAll<HTMLElement>(".group"));
 }

@@ -29,6 +29,7 @@ import {
   scalePositionsInScript,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
+import { syncPositionHoldsBeforeKeyframes as syncPositionHoldsBeforeKeyframesAcorn } from "./gsapWriterAcorn.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
 import type { Keyframe } from "./types.js";
 import {
@@ -1795,6 +1796,64 @@ describe("keyframe mutations", () => {
         `const tl = gsap.timeline({ paused: true });\n` +
         `tl.to("#b", { keyframes: { "0%": { opacity: 0 }, "100%": { opacity: 1 } }, duration: 1 }, 2);`;
       expect(syncPositionHoldsBeforeKeyframes(opacity)).not.toContain("hf-hold");
+    });
+
+    // The from() owns x from t=0 until the keyframed tween; only y is left to hold.
+    const afterEarlierFrom =
+      `const tl = gsap.timeline({ paused: true });\n` +
+      `tl.from("#t", { x: -60, duration: 2, ease: "none" }, 0);\n` +
+      `tl.to("#t", { keyframes: { "0%": { x: -50, y: -3.5 }, "100%": { x: 60, y: 30 } }, duration: 1 }, 2);`;
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds no property an earlier tween on the target already writes", (_, sync) => {
+      const hold = parseGsapScript(sync(afterEarlierFrom)).animations.find(
+        (a) => a.method === "set",
+      );
+      expect(hold!.properties).toEqual({ y: -3.5, data: "hf-hold" });
+    });
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: still holds over a global gsap.set base value", (_, sync) => {
+      const script =
+        `gsap.set("#t", { x: 40 });\n` +
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(script)).animations.find(
+        (a) => a.method === "set" && !a.global,
+      );
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: still holds when the other tween sits at a label after the keyframes", (_, sync) => {
+      const script =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.addLabel("later", 5);\n` +
+        `tl.to("#t", { x: 20, duration: 1 }, "later");\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(script)).animations.find((a) => a.method === "set");
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
+    it("acorn: a re-sync of a one-line script is byte-stable", () => {
+      const once = syncPositionHoldsBeforeKeyframesAcorn(
+        `const tl = gsap.timeline({ paused: true });tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`,
+      );
+      expect(syncPositionHoldsBeforeKeyframesAcorn(once)).toBe(once);
+    });
+
+    it("acorn: holds nothing an earlier label-placed tween already writes", () => {
+      const script =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.addLabel("early", 0);\n` +
+        `tl.from("#t", { x: -60, duration: 1 }, "early+=0.5");\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      expect(syncPositionHoldsBeforeKeyframesAcorn(script)).not.toContain("hf-hold");
     });
 
     it("removes an orphaned hold when its tween is gone", () => {

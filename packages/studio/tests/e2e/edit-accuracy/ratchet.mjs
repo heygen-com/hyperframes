@@ -55,10 +55,7 @@ export function bankable(runs) {
  * Cases a real Studio race flips run to run, with the PR fixing it: measured and listed every run, never gated.
  * The fixing PR deletes its own ids here and re-banks them in the same PR.
  */
-export const QUARANTINED = {
-  // A redo or undo write waits behind preview videos holding all of Chrome's connections to the host.
-  "seqnudge-none-pct-r0-nested-z100": "#4889",
-};
+export const QUARANTINED = {};
 
 /** Every run of every case: each shard's run plus the re-runs of the cases it flipped. */
 // fallow-ignore-next-line complexity

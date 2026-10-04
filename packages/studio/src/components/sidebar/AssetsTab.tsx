@@ -16,6 +16,7 @@ import {
 import { AudioRow } from "./AudioRow";
 import { GlobalAssetsView } from "./GlobalAssetsView";
 import { AssetCard, FontRow } from "./AssetCard";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 interface AssetsTabProps {
   projectId: string;
@@ -217,7 +218,7 @@ export const AssetsTab = memo(function AssetsTab({
   useEffect(() => {
     if (manifest404Ref.current.has(projectId)) return;
     let cancelled = false;
-    fetch(buildProjectApiPath(projectId, `/preview/.media/manifest.jsonl`))
+    studioApiFetch(buildProjectApiPath(projectId, `/preview/.media/manifest.jsonl`))
       .then((r) => {
         if (!r.ok) {
           manifest404Ref.current.add(projectId);

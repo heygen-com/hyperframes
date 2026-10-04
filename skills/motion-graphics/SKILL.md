@@ -121,6 +121,8 @@ Dispatch a subagent (prompt = `agents/director.md` Part 2 + dispatch context inc
 
 ### Step 4 — Build (subagent: Builder, reuse-first)
 
+Include the shared [motion principles](../hyperframes-creative/references/motion-principles.md) in the Builder's dispatch context. For `charts` and `stat`, also include [data in motion](../hyperframes-creative/references/data-in-motion.md). The Builder reads these guides before writing the timeline.
+
 Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot-plan.json`, `catalog-map.md`, the category's `module.md`, `references/motion-vocabulary.md`, `references/builder-contract.md`). **Reuse-first**: `npx hyperframes add <block>` + customize in place; hand-author only gaps + the asset-fusion affordance. Output `compositions/index.html` honoring the HF contract (paused GSAP timeline on `window.__timelines`, `class="clip"` + stable ids, `tl.seek(0)`, deterministic).
 
 ### Step 5 — Verify (Bash → repair subagent on failure)

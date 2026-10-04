@@ -1,3 +1,4 @@
+import { launchManagedBrowser } from "../browser/launch.js";
 import { LottieDiscovery } from "./lottieDiscovery.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 /**
@@ -111,7 +112,7 @@ export async function captureWebsiteAttempt(
   const { ensureBrowser } = await import("../browser/manager.js");
   const browser = await ensureBrowser();
   const puppeteer = await import("puppeteer-core");
-  const chromeBrowser = await puppeteer.default.launch({
+  const chromeBrowser = await launchManagedBrowser(puppeteer.default, {
     headless: true,
     executablePath: browser.executablePath,
     protocolTimeout: captureProtocolTimeoutMs(timeout, budgetMs),

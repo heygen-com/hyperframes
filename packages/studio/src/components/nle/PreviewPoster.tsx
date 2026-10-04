@@ -6,6 +6,7 @@ import {
   type ThumbnailRequest,
 } from "../../player/lib/thumbnailScheduler";
 import type { PreviewCompositionSize } from "../../utils/previewCompositionSize";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 /** Frame 0 as the thumbnail route last rendered it; `cachedOnly` never starts a render. */
 function previewPosterUrl(projectId: string, cachedOnly: boolean): string {
@@ -107,7 +108,7 @@ export function renderPosterForNextOpen(projectId: string): void {
     priority: "overscan",
     discardWhenReleased: true,
     load: async (signal) => {
-      await (await fetch(url, { signal })).arrayBuffer();
+      await (await studioApiFetch(url, { signal })).arrayBuffer();
       return { value: { kind: "image", url, aspect: 16 / 9 }, weight: 0 };
     },
   };
