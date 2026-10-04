@@ -344,6 +344,17 @@ describe("registerPreviewRoutes", () => {
     expect(scripts.some((el) => el.getAttribute("src")?.includes("MotionPathPlugin"))).toBe(true);
   });
 
+  it.each([
+    ["a style block", `<style>/* <script src="x"></script> */ .a { color: red; }</style>`],
+    ["an empty comment", `<!--> <p>text</p>`],
+    ["a comment start inside an attribute", `<div title="<!--"></div>`],
+  ])("still finds the live gsap tag after %s", async (_, before) => {
+    const live = "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js";
+    const scripts = await previewScriptSrcs(`${before}\n  <script src="${live}"></script>`);
+    const liveAt = scripts.findIndex((el) => el.getAttribute("src") === live);
+    expect(scripts[liveAt + 1]?.getAttribute("src")).toContain("MotionPathPlugin");
+  });
+
   it("ignores a gsap-named file that is not gsap core", async () => {
     const scripts = await previewScriptSrcs(
       `<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js.map"></script>`,
@@ -365,7 +376,7 @@ describe("registerPreviewRoutes", () => {
   it.each([
     [
       "a comment",
-      `<!-- <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script> -->`,
+      `<!-- a > b <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script> -->`,
     ],
     [
       "a template",

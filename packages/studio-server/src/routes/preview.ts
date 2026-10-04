@@ -13,7 +13,7 @@ import {
 } from "@hyperframes/core/compiler";
 import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
 import { gsapCdnDist, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
-import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { isProjectRootMissing, resolveWithinProject } from "../helpers/safePath.js";
@@ -172,59 +172,36 @@ function isGsapCoreUrl(src: string): boolean {
 
 type GsapCoreScript = { src: string; type: string | null; defer: boolean; end: number };
 
-// Walks tags with indexOf: one regex over the whole bundle backtracks polynomially on repeated src text.
 function findGsapCoreScript(html: string): GsapCoreScript | null {
-  const tag = /<script\b|<!--|<template\b/gi;
-  for (let found = tag.exec(html); found; found = tag.exec(html)) {
-    const opener = found[0].toLowerCase();
-    const next =
-      opener === "<!--"
-        ? commentEnd(html, found.index)
-        : opener === "<template"
-          ? templateEnd(html, found.index)
-          : html.indexOf(">", found.index) + 1;
-    if (next <= 0) return null;
-    tag.lastIndex = next;
-    const gsap = opener === "<script" ? readGsapCoreScript(html, found.index, next) : null;
-    if (gsap) return gsap;
-  }
-  return null;
+  const scripts = [...parseHTML(html).document.querySelectorAll("script")];
+  // The scanner skips comments, raw text and templates, so its `<script` offsets line up with the DOM's scripts.
+  const starts = findStartTags(html, "script");
+  if (starts.length !== scripts.length) return null;
+  const at = scripts.findIndex((script) =>
+    isGsapCoreUrl(lowerCaseAttributes(script).get("src") ?? ""),
+  );
+  if (at === -1) return null;
+  const attributes = lowerCaseAttributes(scripts[at]!);
+  const end = scriptCloseEnd(html, starts[at]!);
+  if (end === 0) return null;
+  return {
+    src: attributes.get("src")!,
+    type: attributes.get("type") ?? null,
+    defer: attributes.has("defer"),
+    end,
+  };
 }
 
-function readGsapCoreScript(html: string, start: number, tagEnd: number): GsapCoreScript | null {
-  const attributes = openTagAttributes(`${html.slice(start, tagEnd)}</script>`);
-  const src = attributes.get("src");
-  if (!src || !isGsapCoreUrl(src)) return null;
-  const end = closingScriptEnd(html, tagEnd);
-  if (end === -1) return null;
-  return { src, type: attributes.get("type") ?? null, defer: attributes.has("defer"), end };
+function lowerCaseAttributes(el: Element): Map<string, string> {
+  return new Map([...el.attributes].map((a) => [a.name.toLowerCase(), a.value]));
 }
 
-function openTagAttributes(element: string): Map<string, string> {
-  const el = parseHTML(element).document.querySelector("script");
-  return new Map([...(el?.attributes ?? [])].map((a) => [a.name.toLowerCase(), a.value]));
-}
-
-function closingScriptEnd(html: string, from: number): number {
-  let at = from;
-  while (at < html.length && " \t\n\f\r".includes(html[at]!)) at++;
-  return html.slice(at, at + 9).toLowerCase() === "</script>" ? at + 9 : -1;
-}
-
-function commentEnd(html: string, start: number): number {
-  const end = html.indexOf("-->", start + 4);
-  return end === -1 ? -1 : end + 3;
-}
-
-function templateEnd(html: string, start: number): number {
-  const edge = /<\/?template\b/gi;
-  edge.lastIndex = start;
-  let depth = 0;
-  for (let found = edge.exec(html); found; found = edge.exec(html)) {
-    depth += found[0][1] === "/" ? -1 : 1;
-    if (depth === 0) return html.indexOf(">", found.index) + 1;
-  }
-  return -1;
+/** Index just past the `</script>` that closes the script starting at `start`; 0 when it never closes. */
+function scriptCloseEnd(html: string, start: number): number {
+  const close = /<\/script/gi;
+  close.lastIndex = start;
+  const closeAt = close.exec(html)?.index;
+  return closeAt === undefined ? 0 : html.indexOf(">", closeAt) + 1;
 }
 
 function injectStudioMotionDependencies(html: string, manifestContent: string): string {
