@@ -12,8 +12,8 @@ import {
   applyManualOffsetDragDraft,
   endManualOffsetDragMembers,
   restoreManualOffsetDragMembers,
-  manualOffsetMoveRevert,
 } from "./manualOffsetDrag";
+import { manualOffsetMoveRevert, elementLookRevert } from "./gestureUndoRevert";
 import { applyRotationDraft, restoreRotationDraft } from "./rotationDraft";
 import {
   applyStudioBoxSize,
@@ -443,7 +443,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       // Hold the final angle while the commit lands.
       applyRotationDraft(sel.element, finalRotation.angle, g.plainRotation);
       const commit = { ...finalRotation, plain: g.plainRotation };
-      void Promise.resolve(opts.onRotationCommitRef.current(sel, commit))
+      const edit = beginStudioPendingEdit(elementLookRevert(sel.element, g.initialLook));
+      const saved = Promise.resolve(edit.adopt(() => opts.onRotationCommitRef.current(sel, commit)))
         .then((result) => trackPreviewEditResult("rotate", "drag", result))
         .catch((error) => {
           logGestureCommitFailure("rotate commit failed", error);
@@ -454,6 +455,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
             restoreRotation();
         })
         .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
+      edit.settle(saved);
     } else if (g.kind === "drag") {
       // A moved drag (taps returned earlier) must not let the release click
       // re-select whatever now sits under the pointer — dropping over a
@@ -535,9 +537,10 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         restoreStudioBoxSize(sel.element, g.initialBoxSize);
         if (finalOffset) restoreStudioPathOffset(sel.element, g.initialPathOffset);
       };
-      void Promise.resolve(
-        opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined, restore, member),
-      )
+      const commitSize = () =>
+        opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined, restore, member);
+      const edit = beginStudioPendingEdit(elementLookRevert(sel.element, g.initialLook));
+      const saved = Promise.resolve(edit.adopt(commitSize))
         .then((result) => trackPreviewEditResult("resize", "drag", result))
         .catch((error) => {
           logGestureCommitFailure("resize commit failed", error);
@@ -546,6 +549,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           if (member) endManualOffsetDragMembers([member]);
           else endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         });
+      edit.settle(saved);
       logResizeSettle(sel.element, "post-release");
     }
   };

@@ -14,11 +14,24 @@ export type StudioEditRevert = () => () => void;
 interface PendingEdit {
   revert: StudioEditRevert | null;
   landed: () => Promise<boolean>;
+  redraws: Array<() => void>;
+  showAgain: (() => void) | null;
+}
+
+export interface StudioEditInFlight {
+  reverted: () => boolean;
+  within: <T>(run: () => T) => T;
+  drawUnlessUndone: (draw: () => void) => void;
+  drawKeepingUndone: <T>(draw: () => T) => T;
 }
 
 const pendingEdits = new Map<Promise<unknown>, PendingEdit>();
 const NOT_SAVED = () => Promise.resolve(false);
-let adopting = false;
+let adopting: StudioEditInFlight | null = null;
+
+export function adoptingStudioPendingEdit(): StudioEditInFlight | null {
+  return adopting;
+}
 
 function waitForPostBlurEffects(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -73,7 +86,7 @@ export function trackStudioPendingEdit(
   if (!result) return undefined;
   const promise = Promise.resolve(result);
   if (adopting) return promise;
-  pendingEdits.set(promise, { revert: null, landed: NOT_SAVED });
+  pendingEdits.set(promise, { revert: null, landed: NOT_SAVED, redraws: [], showAgain: null });
   promise.then(
     () => pendingEdits.delete(promise),
     () => pendingEdits.delete(promise),
@@ -98,14 +111,36 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
   entry.revert = revert;
   let landed = Promise.resolve(false);
   entry.landed = () => landed;
+  const inFlight: StudioEditInFlight = {
+    reverted: () => entry.revert === null && revert !== null,
+    within(run) {
+      const outer = adopting;
+      adopting = inFlight;
+      try {
+        return run();
+      } finally {
+        adopting = outer;
+      }
+    },
+    drawUnlessUndone(draw) {
+      if (inFlight.reverted()) entry.redraws.push(draw);
+      else draw();
+    },
+    drawKeepingUndone(draw) {
+      if (!inFlight.reverted()) return draw();
+      entry.showAgain?.();
+      const drawn = draw();
+      entry.showAgain = revert!();
+      return drawn;
+    },
+  };
   return {
     settle,
-    reverted: () => entry.revert === null && revert !== null,
+    reverted: inFlight.reverted,
     // Only what `start` registers synchronously is adopted; a registration after an await is a newer edit.
     adopt<T>(start: () => T): T {
-      adopting = true;
       try {
-        const committed = start();
+        const committed = inFlight.within(start);
         landed = Promise.resolve(committed).then(
           () => true,
           () => false,
@@ -114,8 +149,6 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
       } catch (error) {
         settle();
         throw error;
-      } finally {
-        adopting = false;
       }
     },
   };
@@ -129,7 +162,14 @@ export function paintBackNewestStudioPendingEdit(): {
   const revert = newest?.revert;
   if (!newest || !revert) return null;
   newest.revert = null;
-  return { showAgain: revert(), landed: newest.landed };
+  newest.showAgain = revert();
+  return {
+    showAgain: () => {
+      newest.showAgain?.();
+      for (const redraw of newest.redraws.splice(0)) redraw();
+    },
+    landed: newest.landed,
+  };
 }
 
 export function revertNewestStudioPendingEdit(): (() => void) | null {

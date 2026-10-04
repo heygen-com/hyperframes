@@ -32,10 +32,10 @@ import {
   applyManualOffsetNudgeDraft,
   createManualOffsetDragMember,
   endManualOffsetDragMembers,
-  manualOffsetMoveRevert,
   restoreManualOffsetDragMembers,
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
+import { manualOffsetMoveRevert } from "./gestureUndoRevert";
 import { isStudioManualEditGestureCurrent, restoreStudioPathOffset } from "./manualEdits";
 import {
   CANVAS_NUDGE_COMMIT_DEBOUNCE_MS,

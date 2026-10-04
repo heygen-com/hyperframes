@@ -12,8 +12,11 @@ import {
   type KeyframeUsageAction,
 } from "../utils/keyframeUsage";
 import type { GeometryCommitResult } from "../utils/previewFeatureUsage";
+import { adoptingStudioPendingEdit } from "../utils/studioPendingEdits";
 
 export function observeGsapGesture(writer: CommitMutation | null) {
+  const edit = adoptingStudioPendingEdit();
+  const join = <T>(run: () => T): T => (edit ? edit.within(run) : run());
   let changed = false;
   let pendingResults = 0;
   const actions = new Set<KeyframeUsageAction>();
@@ -21,6 +24,7 @@ export function observeGsapGesture(writer: CommitMutation | null) {
     pendingResults += 1;
     return {
       ...options,
+      ...(edit && { pendingEdit: edit }),
       keyframeTelemetry: false,
       onResult: (result: MutationResult) => {
         pendingResults -= 1;
@@ -43,14 +47,15 @@ export function observeGsapGesture(writer: CommitMutation | null) {
   let commit: CommitMutation | null = null;
   if (writer) {
     commit = (selection, mutation, options) =>
-      writer(selection, mutation, observe([{ selection, mutation, options }], options));
+      join(() => writer(selection, mutation, observe([{ selection, mutation, options }], options)));
     if (writer.batch) {
       const batch = writer.batch;
-      commit.batch = (calls, options) => batch(calls, observe(calls, options));
+      commit.batch = (calls, options) => join(() => batch(calls, observe(calls, options)));
     }
   }
   return {
     commit,
+    drawKeepingUndone: <T>(draw: () => T): T => (edit ? edit.drawKeepingUndone(draw) : draw()),
     recordDomResult: (result: { changed: boolean } | undefined) => {
       changed ||= result?.changed === true;
     },

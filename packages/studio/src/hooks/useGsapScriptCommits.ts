@@ -113,9 +113,16 @@ function finishUnchangedMutation(
     !options.skipReload &&
     (instantPatchesFor(options).length > 0 || options.previewFallbackLatch?.pending)
   ) {
-    applyPreviewSync(iframe, result, options, reloadPreview);
+    redrawUnlessPaintedBack(options, () =>
+      applyPreviewSync(iframe, result, options, reloadPreview),
+    );
   }
   return true;
+}
+
+function redrawUnlessPaintedBack(options: CommitMutationOptions, redraw: () => void): void {
+  if (options.pendingEdit) options.pendingEdit.drawUnlessUndone(redraw);
+  else redraw();
 }
 
 function refreshMutationPreview(
@@ -126,8 +133,10 @@ function refreshMutationPreview(
   onCacheInvalidate: () => void,
   nestedFiles?: Map<string, string> | null,
 ): void {
-  options.beforeReload?.();
-  applyPreviewSync(iframe, result, options, reloadPreview, nestedFiles);
+  redrawUnlessPaintedBack(options, () => {
+    options.beforeReload?.();
+    applyPreviewSync(iframe, result, options, reloadPreview, nestedFiles);
+  });
   onCacheInvalidate();
 }
 
