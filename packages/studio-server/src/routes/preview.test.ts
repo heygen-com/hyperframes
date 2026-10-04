@@ -292,6 +292,53 @@ describe("registerPreviewRoutes", () => {
     expect(plugin?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
   });
 
+  async function previewScriptSrcs(bodyGsapTag: string) {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div id="card" class="clip"></div>
+        ${bodyGsapTag}
+        <script>
+          window.__timelines = { index: gsap.timeline({ paused: true }).to("#card", { motionPath: { path: [{ x: 100, y: 50 }] } }) };
+        </script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    return [...parseHTML(html).document.querySelectorAll("script[src]")];
+  }
+
+  it.each([
+    ["a query string", "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js?v=1"],
+    ["a hash", "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.js#core"],
+  ])("puts the MotionPathPlugin right after a body gsap whose URL has %s", async (_, src) => {
+    const scripts = await previewScriptSrcs(`<script src="${src}"></script>`);
+    const gsapAt = scripts.findIndex((el) => el.getAttribute("src") === src);
+    expect(gsapAt).toBeGreaterThan(-1);
+    expect(scripts[gsapAt + 1]?.getAttribute("src")).toContain(
+      "gsap@3/dist/MotionPathPlugin.min.js",
+    );
+  });
+
+  it("defers the MotionPathPlugin with a deferred body gsap, so it runs after gsap", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script defer src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`,
+    );
+    const gsapAt = scripts.findIndex((el) => el.getAttribute("src")?.endsWith("/gsap.min.js"));
+    const plugin = scripts[gsapAt + 1];
+    expect(plugin?.getAttribute("src")).toContain("MotionPathPlugin.min.js");
+    expect(plugin?.hasAttribute("defer")).toBe(true);
+  });
+
+  it("does not read defer out of another attribute value", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script data-note="do not defer this" src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`,
+    );
+    const plugin = scripts.find((el) => el.getAttribute("src")?.includes("MotionPathPlugin"));
+    expect(plugin?.hasAttribute("defer")).toBe(false);
+  });
+
   it("does NOT inject MotionPathPlugin when the composition has no motionPath", async () => {
     const projectDir = createProjectDir();
     writeFileSync(

@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { parseHTML } from "linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
@@ -154,12 +155,15 @@ function injectMotionPathPluginIfNeeded(html: string): string {
   // core gsap script — which often lives at body-end, not <head>. Insert it
   // directly after the gsap script tag; only fall back to <head> if none is found
   // (e.g. gsap is inlined).
-  const gsapScript = /<script\b[^>]*\bsrc=["'][^"']*\/gsap(\.min)?\.js["'][^>]*>\s*<\/script>/i;
+  const gsapScript =
+    /<script\b[^>]*\bsrc=["'][^"']*\/gsap(\.min)?\.js(?:[?#][^"']*)?["'][^>]*>\s*<\/script>/i;
   const match = html.match(gsapScript);
   if (match) {
     const version = match[0].match(/gsap@([\d.]+)/)?.[1];
-    const gsapTagType = match[0].match(/\stype=("[^"]*"|'[^']*')/i)?.[0] ?? "";
-    const pluginTag = `<script${gsapTagType} src="${motionPathPluginUrl(version)}"></script>`;
+    const gsapTag = parseHTML(match[0]).document.querySelector("script");
+    const gsapType = gsapTag?.getAttribute("type");
+    const ordering = `${gsapType ? ` type="${gsapType}"` : ""}${gsapTag?.hasAttribute("defer") ? " defer" : ""}`;
+    const pluginTag = `<script${ordering} src="${motionPathPluginUrl(version)}"></script>`;
     const end = html.indexOf(match[0]) + match[0].length;
     return html.slice(0, end) + "\n" + pluginTag + html.slice(end);
   }
