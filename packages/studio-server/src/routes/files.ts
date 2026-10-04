@@ -378,8 +378,7 @@ const PATCH_CONFLICT_ATTEMPTS = 3;
 
 const ID_ATTRIBUTE = /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
 
-/** Every id the project's HTML files hold: sub-compositions share one preview document. */
-// ponytail: regex over every file; overcounting (an id in a script or text) only costs a suffix.
+/** Every id in the project's HTML files: sub-compositions share one preview document. */
 function projectHtmlIds(projectDir: string): Set<string> {
   const ids = new Set<string>();
   for (const rel of walkDir(projectDir)) {
@@ -3083,7 +3082,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       } catch {
         return c.json({ error: "not found" }, 404);
       }
-      // Read in the same tick as the write, so an add in another file always sees this one.
       const takenIds = parsed.body.operations.some((op) => op.type === "ensure-id")
         ? projectHtmlIds(ctx.project.dir)
         : undefined;
