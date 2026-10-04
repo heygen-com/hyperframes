@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildMotionPathGeometry, nearestPointOnPath } from "./motionPathGeometry";
+import { buildMotionPathGeometry, nearestPointOnPath, nodeCentre } from "./motionPathGeometry";
 import type { ReadTween } from "../../hooks/gsapRuntimeKeyframes";
 
 const kf = (percentage: number, x: number, y: number) => ({ percentage, properties: { x, y } });
@@ -133,5 +133,46 @@ describe("nearestPointOnPath", () => {
 
   it("returns null for fewer than two nodes", () => {
     expect(nearestPointOnPath(0, 0, [{ x: 0, y: 0 }])).toBeNull();
+  });
+});
+
+describe("nodeCentre", () => {
+  // The edit bench's `keys` layer at 1 s: left 560, 260 wide now, GSAP x 50; it reaches x 60 and
+  // width 280 at 2 s, x 120 and width 320 at 3 s, so its centre is then at 760 and 840.
+  const home = { x: 690, y: 380, w: 260, h: 160 };
+  const read: ReadTween = {
+    keyframes: [
+      { percentage: 66.667, properties: { x: 60, width: 280 } },
+      { percentage: 100, properties: { x: 120, width: 320 } },
+    ],
+  };
+
+  it("draws a keyframe that also sets the size where the layer's centre is at that keyframe", () => {
+    const geo = buildMotionPathGeometry(read, { x: 50, y: 30 })!;
+    expect(geo.nodes.map((n) => nodeCentre(n, home, 1))).toEqual([
+      { x: 760, y: 410 },
+      { x: 840, y: 410 },
+    ]);
+  });
+
+  it("keeps a keyframe that sets no size at home plus its offset", () => {
+    const geo = buildMotionPathGeometry({ keyframes: [kf(0, 10, 20), kf(100, 200, 80)] })!;
+    expect(nodeCentre(geo.nodes[1]!, home, 1)).toEqual({ x: 890, y: 460 });
+  });
+});
+
+describe("start", () => {
+  it("keeps where GSAP started a tween whose first keyframe comes later, with the size it had", () => {
+    const read: ReadTween = {
+      keyframes: [kf(66.667, 60, 30), kf(100, 120, 30)],
+      start: { x: 40, y: 30, width: 260 },
+    };
+    expect(buildMotionPathGeometry(read)?.start).toEqual({ x: 40, y: 30, w: 260 });
+  });
+
+  it("draws no start when GSAP has not read one", () => {
+    expect(buildMotionPathGeometry({ keyframes: [kf(50, 60, 30), kf(100, 120, 30)] })?.start).toBe(
+      undefined,
+    );
   });
 });

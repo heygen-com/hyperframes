@@ -8,17 +8,12 @@ import { usePlayerStore } from "../../player/store/playerStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
 import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
-import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
+import { nearestPointOnPath, nodeCentre, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
-import {
-  dotRadius,
-  layerBoxUnder,
-  pressBelongsToLayer,
-  pressSelectedLayer,
-} from "./motionPathLayerNode";
+import { layerBoxUnder, pressBelongsToLayer, pressSelectedLayer } from "./motionPathLayerNode";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
-import { ACCENT, MotionPathNode } from "./MotionPathNode";
+import { ACCENT, MotionPathLine, MotionPathNode } from "./MotionPathNode";
 import {
   KeyframeDiamondContextMenu,
   type KeyframeDiamondContextMenuState,
@@ -290,12 +285,12 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // pivot (transform-origin), so it stays put; only the offsets foreshorten. 2D
   // elements have pScale = 1 (no change). Inverse (de-magnify) applied wherever a
   // pointer position is mapped back to a stored offset (create + node drag).
-  const abs = nodes.map((n) => ({
-    ...n,
-    ax: home.x + n.x * pScale,
-    ay: home.y + n.y * pScale,
-  }));
+  const abs = nodes.map((n) => {
+    const c = nodeCentre(n, home, pScale);
+    return { ...n, ax: c.x, ay: c.y };
+  });
   const points = abs.map((p) => `${p.ax},${p.ay}`).join(" ");
+  const startAt = geometry.start && nodeCentre(geometry.start, home, pScale);
   // Map a VIEWPORT pointer to composition space. Use the iframe's LIVE viewport
   // rect, not `rect` — `rect.left/top` are stored pan-surface-relative (for the
   // absolute-positioned SVG), so subtracting them from a viewport clientX/Y would
@@ -319,9 +314,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     if (e.button !== 0) return;
     e.stopPropagation();
     const live = readGsapPositionFromIframe(iframeRef.current, selectorFor(selection) ?? "");
-    const dotR = dotRadius(nodeR, ref.type === "keyframe" && ref.pct === activeKeyframePct);
-    if (pressBelongsToLayer(e, clientToComp(e), abs[index]!, dotR, live) && pressSelectedLayer(e))
-      return;
+    if (pressBelongsToLayer(e, abs[index]!, live) && pressSelectedLayer(e)) return;
     (e.target as Element).setPointerCapture(e.pointerId);
     dragRef.current = {
       index,
@@ -384,10 +377,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     // high zoom) would commit an identical value — a no-op undo entry. Skip the
     // commit, but don't treat it as a click either (the user did drag).
     if (x === Math.round(d.initX) && y === Math.round(d.initY)) return;
-    // With auto-keyframe off (#1808), dragging a keyframe's node on the motion
-    // path (the common way to nudge a KEYFRAMED element's position on canvas,
-    // since the element renders exactly at its current keyframe) shifts the
-    // whole path instead of moving just that one keyframe.
+    // Auto-keyframe off (#1808): dragging a keyframe's node shifts the whole path.
     const anim =
       d.ref.type === "keyframe" ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
     if (
@@ -411,9 +401,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     } else {
       void commitNode(d.ref, x, y, animId, commitMutation);
     }
-    // Park the playhead on the edited keyframe's time so the element previews AT
-    // that keyframe. Without it, a playhead sitting before the tween renders the
-    // element's base pose — the edit (correct on the path) looks like it vanished.
+    // Park on the edited keyframe, or a playhead before the tween hides the edit.
     if (d.ref.type === "keyframe" && anim) {
       parkPlayheadOnKeyframe(anim, d.ref.pct);
     }
@@ -446,8 +434,9 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       abs.map((p) => ({ x: p.ax, y: p.ay })),
     );
     if (!np) return;
-    const x = Math.round(np.x - home.x);
-    const y = Math.round(np.y - home.y);
+    const [a, b] = [abs[np.segIndex]!, abs[np.segIndex + 1]!];
+    const x = Math.round(a.x + np.t * (b.x - a.x));
+    const y = Math.round(a.y + np.t * (b.y - a.y));
     if (geometry.kind === "arc") {
       e.stopPropagation();
       void commitAddWaypoint(animId, np.segIndex + 1, x, y, commitMutation);
@@ -470,10 +459,8 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   };
 
   const elementId = selection?.id ?? null;
-  // Right-click any path node → the timeline's keyframe context menu (delete this
-  // one / delete all), so path nodes are removable in place. Waypoints open it
-  // too: returning early for them let the browser's own context menu open over
-  // the editor overlay, which is never what a right-click on a node should do.
+  // Right-click any path node → the timeline's keyframe menu. Waypoints too, or the
+  // browser's own context menu opens over the editor.
   const onNodeContextMenu = (e: React.MouseEvent, ref: MotionNodeRef) => {
     if (!animId || !elementId || !timelineElement) return;
     e.preventDefault();
@@ -543,33 +530,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
             onPointerDown={onPathDown}
           />
         )}
-        <polyline
-          points={points}
-          fill="none"
-          style={{ stroke: ACCENT }}
-          strokeWidth={1.5}
-          strokeDasharray="5 5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-          opacity={0.85}
-        />
-        {ghost && (
-          <rect
-            x={ghost.x - nodeR * 0.707}
-            y={ghost.y - nodeR * 0.707}
-            width={nodeR * 1.414}
-            height={nodeR * 1.414}
-            rx={nodeR * 0.24}
-            transform={`rotate(45 ${ghost.x} ${ghost.y})`}
-            fill="none"
-            strokeWidth={1.5}
-            strokeDasharray="2 2"
-            vectorEffect="non-scaling-stroke"
-            className="pointer-events-none"
-            style={{ stroke: ACCENT }}
-          />
-        )}
+        <MotionPathLine points={points} start={startAt} ghost={ghost} r={nodeR} />
         {abs.map((p, i) => (
           <MotionPathNode
             key={i}

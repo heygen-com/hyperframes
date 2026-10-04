@@ -11,10 +11,28 @@ export type MotionNodeRef =
   | { type: "keyframe"; pct: number } // x/y position keyframe at this tween-relative %
   | { type: "waypoint"; index: number }; // motionPath waypoint (anchor) at this index
 
-export interface MotionPathNode {
+/** An offset on the path and the layout width/height set there, when one is. */
+export interface MotionPathPoint {
   x: number;
   y: number;
+  w?: number;
+  h?: number;
+}
+
+export interface MotionPathNode extends MotionPathPoint {
   ref: MotionNodeRef;
+}
+
+/** The live layer's centre without its own transform, and its layout size now. */
+export type MotionPathHome = { x: number; y: number; w: number; h: number };
+
+/** Where the layer's centre is at a node: a size the keyframe sets moves the centre by half the change. */
+export function nodeCentre(n: MotionPathPoint, home: MotionPathHome, pScale: number) {
+  const grow = (to: number | undefined, now: number) => (to === undefined ? 0 : (to - now) / 2);
+  return {
+    x: home.x + (n.x + grow(n.w, home.w)) * pScale,
+    y: home.y + (n.y + grow(n.h, home.h)) * pScale,
+  };
 }
 
 export interface MotionPathGeometry {
@@ -23,6 +41,8 @@ export interface MotionPathGeometry {
   /** SVG polyline points: "x,y x,y ...". */
   points: string;
   nodes: MotionPathNode[];
+  /** Where GSAP started the tween, when its first keyframe comes later: drawn, not draggable. */
+  start?: MotionPathPoint;
 }
 
 /**
@@ -102,18 +122,32 @@ export function buildMotionPathGeometry(
   read.keyframes.forEach((kf, i) => {
     if (tweenHasX && !finite(kf.properties.x)) return;
     if (tweenHasY && !finite(kf.properties.y)) return;
+    const { width, height } = kf.properties;
     nodes.push({
       x: tweenHasX ? (kf.properties.x as number) : base.x,
       y: tweenHasY ? (kf.properties.y as number) : base.y,
+      ...(finite(width) && { w: width }),
+      ...(finite(height) && { h: height }),
       ref: isArc ? { type: "waypoint", index: i } : { type: "keyframe", pct: kf.percentage },
     });
   });
 
   if (nodes.length < 2) return null;
+  const s = read.start;
+  const start =
+    !isArc && s && (!tweenHasX || finite(s.x)) && (!tweenHasY || finite(s.y))
+      ? {
+          x: tweenHasX ? s.x! : base.x,
+          y: tweenHasY ? s.y! : base.y,
+          ...(finite(s.width) && { w: s.width }),
+          ...(finite(s.height) && { h: s.height }),
+        }
+      : undefined;
 
   return {
     kind: isArc ? "arc" : "linear",
     points: nodes.map((n) => `${n.x},${n.y}`).join(" "),
     nodes,
+    ...(start && { start }),
   };
 }

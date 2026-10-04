@@ -3,7 +3,11 @@ import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
-import { buildMotionPathGeometry, type MotionPathGeometry } from "./motionPathGeometry";
+import {
+  buildMotionPathGeometry,
+  type MotionPathGeometry,
+  type MotionPathHome,
+} from "./motionPathGeometry";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
 import { usePlayerStore } from "../../player/store/playerStore";
 
@@ -41,7 +45,7 @@ export function transformWDivisor(el: HTMLElement): number {
   return Number.isFinite(w) && w > 0 ? w : 1;
 }
 
-export function elementHome(el: HTMLElement): { x: number; y: number } {
+export function elementHome(el: HTMLElement): MotionPathHome {
   let left = 0;
   let top = 0;
   let node: HTMLElement | null = el;
@@ -66,7 +70,7 @@ export function elementHome(el: HTMLElement): { x: number; y: number } {
     x += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-x")) || 0;
     y += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
   }
-  return { x, y };
+  return { x, y, w: el.offsetWidth, h: el.offsetHeight };
 }
 
 function rectsClose(a: Rect, b: Rect): boolean {
@@ -96,7 +100,7 @@ export function useMotionPathData(
   geometry: MotionPathGeometry | null;
   geometryResolved: boolean;
   visibleInPreview: boolean;
-  home: { x: number; y: number } | null;
+  home: MotionPathHome | null;
   pScale: number;
 } {
   const [rect, setRect] = useState<Rect | null>(null);
@@ -104,7 +108,7 @@ export function useMotionPathData(
   const resolvedForRef = useRef<string | null>(null);
   const geometryResolved = resolvedForRef.current === selector;
   const [visibleInPreview, setVisibleInPreview] = useState(true);
-  const [home, setHome] = useState<{ x: number; y: number } | null>(null);
+  const [home, setHome] = useState<MotionPathHome | null>(null);
   // Perspective magnification (1/m44) of the selected element — applied to the
   // path's offset points so depth (translateZ) elements' paths track on screen.
   const [pScale, setPScale] = useState(1);
@@ -144,7 +148,13 @@ export function useMotionPathData(
         if (live) {
           const h = elementHome(live);
           setHome((prev) =>
-            prev && Math.abs(prev.x - h.x) < 0.5 && Math.abs(prev.y - h.y) < 0.5 ? prev : h,
+            prev &&
+            Math.abs(prev.x - h.x) < 0.5 &&
+            Math.abs(prev.y - h.y) < 0.5 &&
+            prev.w === h.w &&
+            prev.h === h.h
+              ? prev
+              : h,
           );
           const ps = 1 / transformWDivisor(live);
           setPScale((p) => (Math.abs(p - ps) < 0.001 ? p : ps));
@@ -165,7 +175,9 @@ export function useMotionPathData(
       const base = read ? readGsapPositionFromIframe(iframeRef.current, selector) : null;
       const next = buildMotionPathGeometry(read, base ?? undefined);
       setGeometry((prev) =>
-        prev?.points === next?.points && prev?.kind === next?.kind ? prev : next,
+        prev?.kind === next?.kind && JSON.stringify(prev?.nodes) === JSON.stringify(next?.nodes)
+          ? prev
+          : next,
       );
       resolvedForRef.current = selector;
     };

@@ -31,6 +31,7 @@ vi.mock("./useMotionPathData", async (importOriginal) => ({
         { x: 60, y: 30, ref: { type: "keyframe", pct: 66.667 } },
         { x: 120, y: 30, ref: { type: "keyframe", pct: 100 } },
       ],
+      start: { x: 40, y: 30 },
     },
     geometryResolved: true,
     visibleInPreview: true,
@@ -86,7 +87,7 @@ function mount() {
   return { host, boxPresses, state, captured, fire };
 }
 
-it("the layer's node and another node's ring inside the layer's box press the layer; a dot keeps its node", () => {
+it("the layer's node, and any node inside the layer's box, press the layer; outside it a node keeps the press", () => {
   const { host, boxPresses, state, captured, fire } = mount();
   const press = (node: number, x: number, inBox: boolean) => {
     const hit = [...host.querySelectorAll("circle.pointer-events-auto")].find(
@@ -96,17 +97,15 @@ it("the layer's node and another node's ring inside the layer's box press the la
   };
   press(60, 63, false);
   press(120, 110, true);
-  expect(boxPresses).toEqual([63, 110]);
-  press(120, 118, true);
-  press(120, 110, false);
-  expect(boxPresses).toEqual([63, 110]);
-  // A selected node draws its dot 1.5x as large, and the larger dot is the node's.
+  // On the dot itself: a drag from the layer's middle moves the layer (the edit bench's keys case).
+  press(120, 120, true);
+  expect(boxPresses).toEqual([63, 110, 120]);
   act(() => usePlayerStore.setState({ activeKeyframePct: 100 }));
-  press(120, 112, true);
-  expect(boxPresses).toEqual([63, 110]);
+  press(120, 120, true);
   act(() => usePlayerStore.setState({ activeKeyframePct: null }));
-  press(120, 112, true);
-  expect(boxPresses).toEqual([63, 110, 112]);
+  expect(boxPresses).toEqual([63, 110, 120, 120]);
+  press(120, 118, false);
+  expect(boxPresses).toEqual([63, 110, 120, 120]);
   // A box that starts no gesture leaves the press to the node.
   state.boxStarts = false;
   captured.mockClear();
@@ -132,4 +131,13 @@ it("the path's line inside the layer's box moves the layer and offers no add; ou
   fire(line, "pointerdown", 90, false);
   expect(boxPresses).toEqual([90]);
   await vi.waitFor(() => expect(commitMutation).toHaveBeenCalledTimes(1));
+});
+
+it("draws where GSAP started the tween before the first keyframe, as a mark that takes no press", () => {
+  const { host } = mount();
+  const start = host.querySelector("circle[data-motion-path-start]")!;
+  expect([start.getAttribute("cx"), start.getAttribute("cy")]).toEqual(["40", "30"]);
+  expect(start.classList.contains("pointer-events-none")).toBe(true);
+  const drawn = host.querySelector("polyline:not(.pointer-events-auto)")!;
+  expect(drawn.getAttribute("points")).toBe("40,30 60,30 120,30");
 });

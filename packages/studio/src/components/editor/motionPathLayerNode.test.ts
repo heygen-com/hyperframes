@@ -2,9 +2,9 @@
 import { expect, it } from "vitest";
 import { pressBelongsToLayer, pressSelectedLayer } from "./motionPathLayerNode";
 
-// Keyframe nodes at x 60 and 120 (y 30), drawn from home (500, 400); dots of radius 6.
-const atLayer = { x: 60, y: 30, ax: 560, ay: 430 };
-const other = { x: 120, y: 30, ax: 620, ay: 430 };
+// Keyframe nodes at x 60 and 120 (y 30); GSAP renders the layer at the first.
+const atLayer = { x: 60, y: 30 };
+const other = { x: 120, y: 30 };
 const live = { x: 60, y: 30 };
 
 const box = document.createElement("div");
@@ -12,33 +12,24 @@ box.setAttribute("data-dom-edit-selection-box", "true");
 const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
 document.body.append(box, circle);
 
-/** A press on `circle` at (x, y), with `under` what the document hit-tests there. */
-function press(x: number, y: number, under: Element[]) {
+/** A press on `circle`, with `under` what the document hit-tests there. */
+function press(under: Element[]) {
   document.elementsFromPoint = () => [circle, ...under];
-  return { currentTarget: circle, clientX: x, clientY: y } as unknown as React.PointerEvent;
+  return { currentTarget: circle, clientX: 0, clientY: 0 } as unknown as React.PointerEvent;
 }
 
 it("the node GSAP renders the layer at is the layer, inside the box or out", () => {
-  expect(pressBelongsToLayer(press(562, 431, [box]), { x: 562, y: 431 }, atLayer, 6, live)).toBe(
-    true,
-  );
-  expect(pressBelongsToLayer(press(570, 440, []), { x: 570, y: 440 }, atLayer, 6, live)).toBe(true);
+  expect(pressBelongsToLayer(press([box]), atLayer, live)).toBe(true);
+  expect(pressBelongsToLayer(press([]), atLayer, live)).toBe(true);
 });
 
-it("inside the layer's box another node's grab ring is the layer's; its dot stays the node's", () => {
-  expect(pressBelongsToLayer(press(610, 430, [box]), { x: 610, y: 430 }, other, 6, live)).toBe(
-    true,
-  );
-  expect(pressBelongsToLayer(press(617, 430, [box]), { x: 617, y: 430 }, other, 6, live)).toBe(
-    false,
-  );
+it("inside the layer's box any other node is the layer's, so a drag from its middle moves it", () => {
+  expect(pressBelongsToLayer(press([box]), other, live)).toBe(true);
+  expect(pressBelongsToLayer(press([box]), other, null)).toBe(true);
 });
 
-it("outside the layer's box a node's whole grab ring is the node's", () => {
-  expect(pressBelongsToLayer(press(610, 430, []), { x: 610, y: 430 }, other, 6, live)).toBe(false);
-  expect(pressBelongsToLayer(press(610, 430, [box]), { x: 610, y: 430 }, other, 6, null)).toBe(
-    true,
-  );
+it("outside the layer's box a node is the node's", () => {
+  expect(pressBelongsToLayer(press([]), other, live)).toBe(false);
 });
 
 it("hands a press to the selected layer's box with its pointer and position", () => {

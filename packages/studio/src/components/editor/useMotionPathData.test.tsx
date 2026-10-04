@@ -122,3 +122,30 @@ it("finds the layer whichever window built its node, so the path draws on every 
     act(() => root.unmount());
   }
 });
+
+it("redraws a node whose keyframe changes only its size", () => {
+  const read = (width: number) => ({
+    keyframes: [
+      { percentage: 66.667, properties: { x: 60, width } },
+      { percentage: 100, properties: { x: 120, width: 320 } },
+    ],
+  });
+  runtime.read = read(280);
+  runtime.gsapPosition = { x: 50, y: 30 };
+  let w: number | undefined;
+  function Probe() {
+    const ref = useRef(document.createElement("iframe"));
+    w = useMotionPathData(ref, "#box").geometry?.nodes[0]?.w;
+    return null;
+  }
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  try {
+    act(() => root.render(<Probe />));
+    expect(w).toBe(280);
+    runtime.read = read(300);
+    act(() => vi.advanceTimersByTime(250));
+    expect(w).toBe(300);
+  } finally {
+    act(() => root.unmount());
+  }
+});
