@@ -212,6 +212,7 @@ export function useDomSelection({
         preferClipAncestor?: boolean;
         skipSourceProbe?: boolean;
         exactTarget?: boolean;
+        previous?: DomEditSelection | null;
         // Override the drill-in scope (used by canvas double-click to resolve the
         // child inside a group before the activeGroupElement state has re-rendered).
         activeGroupElement?: HTMLElement | null;
@@ -223,6 +224,7 @@ export function useDomSelection({
         preferClipAncestor: options?.preferClipAncestor,
         skipSourceProbe: options?.skipSourceProbe,
         exactTarget: options?.exactTarget,
+        previous: options?.previous,
         activeGroupElement:
           options && "activeGroupElement" in options
             ? options.activeGroupElement
@@ -384,7 +386,7 @@ export function useDomSelection({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(element);
+      const nextSelection = await buildDomSelectionFromTarget(element, { previous: selection });
       if (nextSelection) {
         applyDomSelection(nextSelection, {
           revealPanel: false,
@@ -411,7 +413,7 @@ export function useDomSelection({
       for (const selection of selections) {
         const element = findElementForSelection(doc, selection, activeCompPath);
         if (!element) continue;
-        const nextSelection = await buildDomSelectionFromTarget(element);
+        const nextSelection = await buildDomSelectionFromTarget(element, { previous: selection });
         if (nextSelection) nextGroup.push(nextSelection);
       }
       if (nextGroup.length === 0) return;

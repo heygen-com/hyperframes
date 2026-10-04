@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectDomEditLayerItems,
   resolveDomEditSelection,
@@ -97,6 +97,34 @@ describe("resolveDomEditSelection — hfId from data-hf-id", () => {
     document.body.removeChild(el);
 
     expect(selection?.hfId).toBeUndefined();
+  });
+});
+
+describe("resolveDomEditSelection — source probe on re-resolve", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const probing = { activeCompositionPath: "index.html", isMasterView: true, projectId: "p" };
+
+  it("asks the server once per node; re-resolving the same node keeps the answer", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ exists: [false] }) }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const el = document.createElement("div");
+    el.id = "generated";
+    document.body.appendChild(el);
+
+    const first = await resolveDomEditSelection(el, probing);
+    const again = await resolveDomEditSelection(el, { ...probing, previous: first });
+    const replaced = document.createElement("div");
+    replaced.id = "generated";
+    el.replaceWith(replaced);
+    await resolveDomEditSelection(replaced, { ...probing, previous: again });
+    replaced.remove();
+
+    expect(first?.existsInSource).toBe(false);
+    expect(again?.existsInSource).toBe(false);
+    expect(again?.capabilities.canMove).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

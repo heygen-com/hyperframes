@@ -24,7 +24,10 @@ interface UseDomEditPreviewSyncParams {
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; preserveGroup?: boolean },
   ) => void;
-  buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
+  buildDomSelectionFromTarget: (
+    element: HTMLElement,
+    options?: { previous?: DomEditSelection | null },
+  ) => Promise<DomEditSelection | null>;
   refreshPreviewDocumentVersion: () => void;
   syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
@@ -96,7 +99,9 @@ export function useDomEditPreviewSync({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(nextElement);
+      const nextSelection = await buildDomSelectionFromTarget(nextElement, {
+        previous: currentSelection,
+      });
       if (nextSelection) {
         applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }
