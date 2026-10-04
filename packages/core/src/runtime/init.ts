@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { RUNTIME_FILLER } from "./protocol";
 import { preloadMedia, releaseMedia, lengthIsAuthored, stopMediaDownload } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
@@ -351,8 +352,6 @@ const MEDIA_URL_ATTRS = new Map([
 ]);
 
 const SLOW_IDLE_HEARTBEAT_MS = 1000;
-// GSAP `data` on the tweens the runtime adds to stretch a timeline; never animation.
-const RUNTIME_FILLER = "hf-runtime-filler";
 
 // One document.getAnimations() per seek and the pause after it, read on first use, shared by all adapters.
 function pageAnimationsForOnePass(): () => Animation[] {

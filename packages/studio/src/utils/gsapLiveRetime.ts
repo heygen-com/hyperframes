@@ -1,5 +1,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
+import { RUNTIME_FILLER } from "@hyperframes/core/runtime/protocol";
 import { findGsapScriptElements, scriptsRegistering, timelineKeys } from "./gsapSoftReload";
 
 /** A tween of the saved script, with where it sat before the edit and where it sits now. */
@@ -80,6 +81,7 @@ export function planLiveRetimeFromPreview(
 
 interface LiveTween {
   duration: (value?: number) => number;
+  data?: unknown;
   targets?: () => unknown[];
 }
 interface LiveTimeline {
@@ -112,9 +114,11 @@ export function applyLiveRetime(
   const [script, ...extra] = scriptsRegistering(findGsapScriptElements(doc), [plan.key]);
   if (!script || extra.length > 0)
     return `${extra.length + (script ? 1 : 0)} scripts register "${plan.key}"`;
-  // Tweens only: the runtime nests each sub-composition's timeline here, and those come from the DOM, not this script.
+  // The script's tweens only: the runtime also nests sub-composition timelines and adds filler tweens here.
   // Paired before anything moves: moving a tween re-sorts the timeline's children.
-  const children = timeline.getChildren(false, true, false);
+  const children = timeline
+    .getChildren(false, true, false)
+    .filter((tween) => tween.data !== RUNTIME_FILLER);
   if (children.length !== plan.tweens.length) {
     return `${children.length} live tweens for ${plan.tweens.length} in the script`;
   }

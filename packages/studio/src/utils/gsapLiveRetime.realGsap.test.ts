@@ -22,8 +22,10 @@ function play(script: string) {
   new Function("gsap", "window", script)(gsap, win);
   const timeline = win.__timelines.t!;
   timeline.progress(0.0001, true).seek(0);
-  // The runtime nests each sub-composition's timeline into its host's; the script does not know them.
+  // The runtime nests each sub-composition's timeline into its host's; the script does not know them...
   timeline.add(gsap.timeline().to({}, { duration: 6.7 }), 0);
+  // ...and pads the timeline to the composition's length with a filler tween.
+  timeline.to({}, { duration: 0, data: "hf-runtime-filler" }, 8);
   return { win, timeline };
 }
 
