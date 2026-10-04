@@ -343,11 +343,29 @@ describe("useDomEditNudge carries the route its press chose", () => {
 });
 
 describe("useDomEditNudge pauses playback before it snapshots the timelines", () => {
+  let reactRoot: ReturnType<typeof createRoot> | null = null;
+  const pause = vi.fn();
+  const mount = (selection: DomEditSelection | null) => {
+    reactRoot = createRoot(document.createElement("div"));
+    act(() => {
+      reactRoot!.render(
+        React.createElement(Harness, {
+          selection,
+          onPathOffsetCommit: vi.fn(),
+          onManualDragStart: pause,
+        }),
+      );
+    });
+  };
   beforeEach(() => {
     vi.useFakeTimers();
     __resetForTests();
+    pause.mockReset();
   });
   afterEach(() => {
+    act(() => reactRoot?.unmount());
+    reactRoot = null;
+    document.body.innerHTML = "";
     vi.useRealTimers();
     delete (window as { __timelines?: unknown }).__timelines;
   });
@@ -356,24 +374,21 @@ describe("useDomEditNudge pauses playback before it snapshots the timelines", ()
     let playing = true;
     const root = { pause: () => void (playing = false), paused: () => !playing };
     (window as { __timelines?: unknown }).__timelines = { root };
-    const host = document.createElement("div");
-    const reactRoot = createRoot(host);
+    pause.mockImplementation(root.pause);
     const element = document.body.appendChild(document.createElement("div"));
-    act(() => {
-      reactRoot.render(
-        React.createElement(Harness, {
-          selection: makeSelection("Dot", element),
-          onPathOffsetCommit: vi.fn(),
-          onManualDragStart: root.pause,
-        }),
-      );
-    });
+    mount(makeSelection("Dot", element));
 
     act(() => dispatchArrowRight());
 
     expect(element.hasAttribute("data-hf-drag-paused-timelines")).toBe(false);
-    act(() => reactRoot.unmount());
-    element.remove();
+  });
+
+  it("leaves playback alone when no layer can move", () => {
+    mount(null);
+
+    act(() => dispatchArrowRight());
+
+    expect(pause).not.toHaveBeenCalled();
   });
 });
 
