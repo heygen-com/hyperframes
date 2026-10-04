@@ -10,22 +10,22 @@ interface StripSize {
 
 const IN_VIEW_CHUNK_PX = 512;
 
-const measure = (target: Element, width: number, height: number) => (prev: StripSize) => {
+const chunk = (px: number, round: (n: number) => number) =>
+  Math.max(0, round(px / IN_VIEW_CHUNK_PX) * IN_VIEW_CHUNK_PX);
+
+const spanInView = (target: Element) => {
   const left = target.getBoundingClientRect().left;
-  const inViewStart = Math.max(
-    0,
-    Math.floor((-left - IN_VIEW_CHUNK_PX) / IN_VIEW_CHUNK_PX) * IN_VIEW_CHUNK_PX,
-  );
-  const inViewEnd = Math.max(
-    0,
-    Math.ceil((window.innerWidth - left + IN_VIEW_CHUNK_PX) / IN_VIEW_CHUNK_PX) * IN_VIEW_CHUNK_PX,
-  );
-  return prev.width === width &&
-    prev.height === height &&
-    prev.inViewStart === inViewStart &&
-    prev.inViewEnd === inViewEnd
+  return {
+    inViewStart: chunk(-left - IN_VIEW_CHUNK_PX, Math.floor),
+    inViewEnd: chunk(window.innerWidth - left + IN_VIEW_CHUNK_PX, Math.ceil),
+  };
+};
+
+const merge = (patch: Partial<StripSize>) => (prev: StripSize) => {
+  const next = { ...prev, ...patch };
+  return (Object.keys(next) as (keyof StripSize)[]).every((key) => next[key] === prev[key])
     ? prev
-    : { width, height, inViewStart, inViewEnd };
+    : next;
 };
 
 /** Size of the thumbnail's parent and its span in the window; kept current on resize, scroll and clip moves. */
@@ -43,9 +43,17 @@ export function useThumbnailStripSize() {
     cleanupRef.current = null;
     if (!element) return;
     const target = element.parentElement ?? element;
-    setSize(measure(target, target.clientWidth, target.clientHeight));
+    setSize(
+      merge({ width: target.clientWidth, height: target.clientHeight, ...spanInView(target) }),
+    );
     const observer = new ResizeObserver(([entry]) =>
-      setSize(measure(target, entry.contentRect.width, entry.contentRect.height)),
+      setSize(
+        merge({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+          ...spanInView(target),
+        }),
+      ),
     );
     observer.observe(target);
     let frame = 0;
@@ -53,7 +61,7 @@ export function useThumbnailStripSize() {
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        setSize((prev) => measure(target, prev.width, prev.height)(prev));
+        setSize(merge(spanInView(target)));
       });
     };
     const clip = target.closest(".timeline-clip");
