@@ -244,6 +244,26 @@ describe("__hfSwapScenes", () => {
     expect(JSON.parse(meta).scenes.a).toBe("ha2");
   });
 
+  it("runs the swapped scene's script only once web fonts are ready", async () => {
+    const { root } = trackingRoot();
+    boot([A1, B], root);
+    await tick();
+    let fontsLoaded = () => {};
+    const ready = new Promise<void>((resolve) => (fontsLoaded = resolve));
+    Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
+    try {
+      const swap = window.__hfSwapScenes!(preview([A2, B]).html);
+      for (let i = 0; i < 5; i++) await tick();
+      expect(window.__timelines.a).not.toBe(made.a2);
+
+      fontsLoaded();
+      await swap;
+      expect(window.__timelines.a).toBe(made.a2);
+    } finally {
+      Reflect.deleteProperty(document, "fonts");
+    }
+  });
+
   it("rejects without touching the film when anything outside the scenes changed", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);

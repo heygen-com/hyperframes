@@ -104,6 +104,30 @@ describe("runtime entry: composition scripts after web fonts", () => {
     expect(log()).toBe(`${before}wrapped `);
   });
 
+  it("runs an inline script after an external one only once the external one has loaded", async () => {
+    serveFonts(Promise.resolve(), []);
+    // jsdom fetches no src: the test loads the library, once the runtime has put its script in place.
+    const library = new MutationObserver((records) => {
+      for (const node of records.flatMap((record) => [...record.addedNodes])) {
+        if (!(node instanceof HTMLScriptElement) || !node.src || node.type) continue;
+        document.body.dataset.lib = "loaded";
+        node.dispatchEvent(new Event("load"));
+      }
+    });
+    library.observe(document.body, { childList: true });
+    document.body.innerHTML =
+      `<output id="log"></output>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}" src="https://cdn.example/lib.js"></script>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}">` +
+      `document.getElementById("log").textContent += "lib:" + document.body.dataset.lib;</script>`;
+
+    await parseThenLoad();
+    await vi.waitFor(() => expect(window.__player).toBeDefined());
+    library.disconnect();
+    delete document.body.dataset.lib;
+    expect(log()).toBe("lib:loaded");
+  });
+
   it("runs the scripts at the font timeout and reports the families still loading", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const posted = vi.spyOn(window.parent, "postMessage").mockImplementation(() => {});
