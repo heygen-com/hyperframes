@@ -451,8 +451,7 @@ if (typeof window !== "undefined") {
   // Expose a synchronous flush so headless renderers can drain the queue
   // instantly instead of waiting for rAF-based batch ticks. Also force-
   // publishes the "timelines built" signal immediately (normally deferred
-  // via setTimeout(0)) — the caller guarantees page scripts have finished
-  // loading, so no more operations can arrive after the flush.
+  // via setTimeout(0)). Scripts waiting on web fonts may queue more; batch ticks drain those.
   (window as Record<string, unknown>).__hfFlushSync = () => {
     flushPendingOperations();
     if (pendingOperations.length === 0 && window.__hfTimelinesBuilding) {
