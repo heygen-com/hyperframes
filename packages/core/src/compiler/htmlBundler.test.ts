@@ -2621,6 +2621,26 @@ describe("bundleToSingleHtml script order", () => {
     expect(scripts.some((el) => el.textContent?.includes("AUTHOR_SEEN"))).toBe(true);
   });
 
+  it("still adds the runtime when an authored script mentions its marker attribute", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.MARKER = document.querySelector("[data-hyperframes-preview-runtime]");</script>
+</body></html>`,
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const scripts = [...document.querySelectorAll("script")];
+      expect(
+        scripts.filter((el) => el.hasAttribute("data-hyperframes-preview-runtime")),
+      ).toHaveLength(1);
+      expect(scripts.some((el) => el.textContent?.includes("window.MARKER"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("still merges adjacent inline scripts into one at the end of the body", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

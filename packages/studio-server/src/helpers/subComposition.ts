@@ -345,13 +345,7 @@ export function buildSubCompositionHtml(
   // injected tag (added next) is never removed.
   headContent = stripEmbeddedRuntimeScripts(headContent);
 
-  // Ensure runtime is present (might differ from the one in index.html)
-  if (
-    !headContent.includes("hyperframe.runtime") &&
-    !headContent.includes("hyperframes-preview-runtime")
-  ) {
-    headContent += `\n<script data-hyperframes-preview-runtime="1" src="${runtimeUrl}"></script>`;
-  }
+  headContent += `\n<script data-hyperframes-preview-runtime="1" src="${runtimeUrl}"></script>`;
 
   // Fallback: if no index.html head was found, add minimal deps
   if (!headContent.includes("gsap")) {

@@ -63,7 +63,6 @@ function getRuntimeScriptUrl(): string {
 
 function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" = "inline"): string {
   const sanitized = stripEmbeddedRuntimeScripts(html);
-  if (sanitized.includes(RUNTIME_BOOTSTRAP_ATTR)) return sanitized;
 
   // Three modes for the runtime <script>:
   //   1. HYPERFRAME_RUNTIME_URL env var set → emit src="<url>" (production CDN deploy).

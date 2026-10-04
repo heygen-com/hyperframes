@@ -79,19 +79,24 @@ describe("bundled local scripts in Chrome", () => {
 </body></html>`,
     );
     writeFileSync(join(cdnDir, "main.js"), "window.SEEN = window.LIB;");
-    const page = await browser.newPage();
-    await page.setRequestInterception(true);
-    page.on("request", (request) =>
-      request.url() === "https://cdn.example/lib.js"
-        ? request.respond({ contentType: "text/javascript", body: "window.LIB = 'loaded';" })
-        : request.continue(),
-    );
-    await page.setContent(await bundleToSingleHtml(cdnDir));
-    await page.waitForFunction(
-      () => (window as unknown as { __playerReady?: boolean }).__playerReady === true,
-    );
-    rmSync(cdnDir, { recursive: true, force: true });
+    try {
+      const page = await browser.newPage();
+      await page.setRequestInterception(true);
+      page.on("request", (request) =>
+        request.url() === "https://cdn.example/lib.js"
+          ? request.respond({ contentType: "text/javascript", body: "window.LIB = 'loaded';" })
+          : request.continue(),
+      );
+      await page.setContent(await bundleToSingleHtml(cdnDir));
+      await page.waitForFunction(
+        () => (window as unknown as { __playerReady?: boolean }).__playerReady === true,
+      );
 
-    expect(await page.evaluate(() => (window as unknown as { SEEN?: string }).SEEN)).toBe("loaded");
+      expect(await page.evaluate(() => (window as unknown as { SEEN?: string }).SEEN)).toBe(
+        "loaded",
+      );
+    } finally {
+      rmSync(cdnDir, { recursive: true, force: true });
+    }
   });
 });
