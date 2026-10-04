@@ -188,6 +188,7 @@ export async function resolvePublishCredential(
     // A checked login can expire during a long proxy bake; refresh it rather than fall back to an API key.
     const expired =
       credential.type === "oauth" && isTokenExpired(credential.expires_at, new Date());
+    if (expired && !credential.refresh_token) throw new Error(LOGIN_EXPIRED);
     return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential);
   } catch (error) {
     if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {

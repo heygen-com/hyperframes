@@ -612,6 +612,7 @@ describe("uploadTimeoutMs", () => {
 // nested in a describe) so the reset logic isn't duplicated per group.
 beforeEach(() => {
   authMocks.tryResolveCredential.mockReset().mockResolvedValue(null);
+  oauthMocks.refreshTokens.mockReset();
   linkMocks.writeProjectLink.mockReset();
   vi.stubEnv("HYPERFRAMES_PUBLISHED_PROJECTS_API_URL", "");
   vi.stubEnv("HEYGEN_API_URL", "");
@@ -1221,6 +1222,24 @@ describe("publishProjectArchive with an expired login it can refresh", () => {
       expect(fetchMock.mock.calls[0]![1].headers).toEqual(
         expect.objectContaining({ authorization: "Bearer fresh-token" }),
       );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("asks for a new login, without sending anything, when a passed login expired and cannot refresh", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { refresh_token: _none, ...noRefresh } = expiredLogin;
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await expect(
+        publishProjectArchive(dir, {
+          credential: { ...noRefresh, expires_at: new Date(Date.now() - 1000), refreshable: false },
+        } as never),
+      ).rejects.toThrow("Your login expired. Run hyperframes auth login, then publish again.");
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
