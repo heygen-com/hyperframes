@@ -366,10 +366,12 @@ async function dragAll(page, name, { edge, dx, steps }) {
     frames.push((await taskMs(cdp)) - t0);
   }
   if (profileDrag) printProfile(`${name} (drag)`, (await cdp.send("Profiler.stop")).profile, []);
+  const dropTask0 = await taskMs(cdp);
   const result = await measure(page, name, async () => {
     await page.mouse.up();
     return settle(page);
   });
+  const dropTaskMs = (await taskMs(cdp)) - dropTask0;
   const after = await clipTimes(page);
   const changed = Object.keys(before).filter((id) => before[id] !== after[id]).length;
   const round = (n) => Math.round(n * 10) / 10;
@@ -377,6 +379,7 @@ async function dragAll(page, name, { edge, dx, steps }) {
     ...result,
     selected,
     changed,
+    dropTaskMs: round(dropTaskMs),
     firstFrameMs: round(frames[0]),
     steadyP95Ms: round(percentile(frames.slice(1), 0.95)),
     frameP95Ms: round(percentile(frames, 0.95)),
@@ -468,7 +471,14 @@ try {
       medianMs: Math.round(median(samples)),
       samplesMs: samples.map(Math.round),
       ...detail,
-      ...medians(results, ["saveMs", "firstFrameMs", "steadyP95Ms", "frameP95Ms", "frameMaxMs"]),
+      ...medians(results, [
+        "saveMs",
+        "dropTaskMs",
+        "firstFrameMs",
+        "steadyP95Ms",
+        "frameP95Ms",
+        "frameMaxMs",
+      ]),
     });
   }
   console.log(JSON.stringify({ project: basename(SOURCE), runs: RUNS, rows }, null, 2));
