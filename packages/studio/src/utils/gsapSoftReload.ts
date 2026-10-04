@@ -37,7 +37,7 @@ type IframeWindow = Window & {
  * studio edits.
  *
  * Idempotent (no-ops once the plugin is present or already loading) and
- * defensive: no-ops without gsap/registerPlugin and tolerates a CDN failure
+ * defensive: without gsap it waits for the runtime's ready, and it tolerates a CDN failure
  * (the soft-reload async fallback in applySoftReload still covers that case).
  */
 export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): void {
@@ -53,7 +53,17 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
     } catch {}
     return;
   }
-  if (!win.gsap?.registerPlugin) return;
+  // A body gsap runs after web fonts, which can be after the iframe's load: retry once the runtime is ready.
+  if (!win.gsap?.registerPlugin) {
+    const retry = (event: MessageEvent) => {
+      const data = event.data as { source?: unknown; type?: unknown } | null;
+      if (event.source !== win || data?.source !== "hf-preview" || data.type !== "ready") return;
+      window.removeEventListener("message", retry);
+      if (win.gsap?.registerPlugin) ensureMotionPathPluginLoaded(iframe);
+    };
+    window.addEventListener("message", retry);
+    return;
+  }
   // A load is already in flight for this iframe — don't queue a second script.
   if (win.__hfMotionPathPluginLoading) return;
 
