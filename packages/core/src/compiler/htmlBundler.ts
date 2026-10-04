@@ -1226,15 +1226,8 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
-    if (el.hasAttribute("defer") || el.hasAttribute("async")) {
-      el.setAttribute("src", `data:text/javascript;charset=utf-8,${encodeURIComponent(js)}`);
-      continue;
-    }
-    const inline = document.createElement("script");
-    for (const { name, value } of [...el.attributes])
-      if (name !== "src") inline.setAttribute(name, value);
-    inline.textContent = escapeInlineScriptSource(js);
-    el.replaceWith(inline);
+    el.removeAttribute("src");
+    el.textContent = escapeInlineScriptSource(js);
   }
 
   for (const link of compExternalLinks) ensureExternalLinkTag(document, link);

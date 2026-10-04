@@ -2,19 +2,10 @@ import { parseHTML } from "linkedom";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
 
-const RUNTIME_SRC_MARKERS = [
+const RUNTIME_FILES = [
   "hyperframe.runtime.iife.js",
   "hyperframes-runtime.modular.inline.js",
   "hyperframe-runtime.modular-runtime.inline.js",
-  RUNTIME_BOOTSTRAP_ATTR,
-];
-
-const RUNTIME_INLINE_MARKERS = [
-  "__hyperframeRuntimeBootstrapped",
-  "__hyperframeRuntime",
-  "__hyperframeRuntimeTeardown",
-  "__HF_EXPORT_RENDER_SEEK_CONFIG",
-  "window.__player =",
 ];
 
 const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
@@ -67,7 +58,7 @@ export function stripEmbeddedRuntimeScripts(html: string): string {
     const closeTagEnd = findScriptCloseTagEnd(loweredHtml, startTagEnd + 1);
     const scriptEnd = closeTagEnd === -1 ? html.length : closeTagEnd;
     const block = html.slice(scriptStart, scriptEnd);
-    if (!shouldStripRuntimeScriptBlock(block)) {
+    if (!shouldStripRuntimeScriptBlock(block, html.slice(scriptStart, startTagEnd + 1))) {
       output += block;
     }
     cursor = scriptEnd;
@@ -142,19 +133,21 @@ function findScriptCloseTagBoundary(loweredHtml: string, from: number): number {
   return loweredHtml[cursor] === ">" ? cursor + 1 : -1;
 }
 
-function shouldStripRuntimeScriptBlock(block: string): boolean {
-  const lowered = block.toLowerCase();
-  for (const marker of RUNTIME_SRC_MARKERS) {
-    if (lowered.includes(marker.toLowerCase())) return true;
-  }
-  for (const marker of RUNTIME_INLINE_MARKERS) {
-    if (block.includes(marker)) return true;
+function shouldStripRuntimeScriptBlock(block: string, startTag: string): boolean {
+  const script = parseHTML(`${startTag}</script>`).document.querySelector("script");
+  if (
+    script?.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) ||
+    isRuntimeFileUrl(script?.getAttribute("src"))
+  ) {
+    return true;
   }
   const scriptSource = getScriptSource(block).trim();
-  for (const pattern of SIMPLE_RUNTIME_FLAG_ASSIGNMENTS) {
-    if (pattern.test(scriptSource)) return true;
-  }
-  return false;
+  return SIMPLE_RUNTIME_FLAG_ASSIGNMENTS.some((pattern) => pattern.test(scriptSource));
+}
+
+function isRuntimeFileUrl(src: string | null | undefined): boolean {
+  const path = lowerAscii(src?.split(/[?#]/, 1)[0] ?? "");
+  return RUNTIME_FILES.some((file) => path === file || path.endsWith(`/${file}`));
 }
 
 function getScriptSource(block: string): string {
@@ -178,7 +171,7 @@ export function escapeInlineScriptSource(source: string): string {
   return escapeCaseInsensitiveToken(
     escapeCaseInsensitiveToken(source, "</script", "<\\/script"),
     "<!--",
-    "<\\!--",
+    "\\x3C!--",
   );
 }
 

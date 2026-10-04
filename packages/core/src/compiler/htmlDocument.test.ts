@@ -69,6 +69,24 @@ describe("htmlDocument helpers", () => {
     expect(stripped).toContain("window.__renderReady");
   });
 
+  it.each([
+    ["reads the runtime global", "if (window.__hyperframeRuntime) window.seen = 1;"],
+    [
+      "queries the bootstrap attribute",
+      'document.querySelector("[data-hyperframes-preview-runtime]");',
+    ],
+    ["names a runtime file", 'console.log("hyperframe.runtime.iife.js");'],
+    ["sets up window.__player", "window.__player = window.__player || {};"],
+  ])("keeps an authored script that %s", (_, source) => {
+    const html = `<script>${source}</script>`;
+    expect(stripEmbeddedRuntimeScripts(html)).toBe(html);
+  });
+
+  it("strips a runtime file linked with a query string or uppercase name", () => {
+    const html = '<script src="/static/HYPERFRAME.RUNTIME.IIFE.JS?v=2"></script><p>kept</p>';
+    expect(stripEmbeddedRuntimeScripts(html)).toBe("<p>kept</p>");
+  });
+
   it("does not treat non-script tags as scripts when stripping runtimes", () => {
     const html = "<scripture>window.__playerReady = true;</scripture>";
 
@@ -99,7 +117,7 @@ describe("htmlDocument helpers", () => {
     );
 
     expect(injected).toContain("<\\/script ><script>window.pwned = true;<\\/script>");
-    expect(injected).toContain("<\\!-- kept as script text");
+    expect(injected).toContain("\\x3C!-- kept as script text");
     expect(injected).not.toContain("</script ><script>window.pwned = true;");
   });
 

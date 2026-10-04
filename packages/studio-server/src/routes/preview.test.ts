@@ -137,6 +137,11 @@ describe("registerPreviewRoutes", () => {
   it.each([
     ["returns nothing", async () => null],
     [
+      "returns its own page without a runtime",
+      async () =>
+        `<!doctype html><html><head></head><body><script>gsap.set("#card", { opacity: 0.5 });</script></body></html>`,
+    ],
+    [
       "throws",
       async () => {
         throw new Error("bundler unavailable");
@@ -160,6 +165,37 @@ describe("registerPreviewRoutes", () => {
       expect(runtimeAt).toBeLessThan(html.indexOf("gsap.set("));
     },
   );
+
+  it("keeps an authored script that reads the runtime global when the page is read from disk", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body>
+        <script>if (window.__hyperframeRuntime) window.AUTHOR_SEEN = 1;</script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html).toContain("window.AUTHOR_SEEN = 1");
+  });
+
+  it("serves one preview runtime when the page on disk already links one", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head>
+        <script src="hyperframe.runtime.iife.js"></script>
+        <script data-hyperframes-preview-runtime="1" src="/old-runtime.js"></script>
+      </head><body><script>window.AUTHOR = 1;</script></body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html.split("data-hyperframes-preview-runtime")).toHaveLength(2);
+    expect(html).toContain('src="/api/runtime.js"');
+    expect(html).not.toMatch(/hyperframe\.runtime\.iife\.js|old-runtime/);
+  });
 
   it("keeps the encoded <base> when the bundler fails and the page is read from disk", async () => {
     const projectDir = createProjectDir();

@@ -44,9 +44,9 @@ const claims = (claimed: boolean) =>
     : delete (window as unknown as Record<string, unknown>)[AFTER_FONTS_CLAIM];
 
 // A page compiled elsewhere and imported, so jsdom runs none of its scripts; the test runs the fallback.
-function compilePage(): void {
+function compilePage(scripts = `<script>${logs("a")}</script><script>${logs("b")}</script>`): void {
   const compiled = new DOMParser().parseFromString(
-    `<output id="log"></output><script>${logs("a")}</script><script>${logs("b")}</script>`,
+    `<output id="log"></output>${scripts}`,
     "text/html",
   );
   deferScriptsUntilFonts(compiled);
@@ -152,6 +152,27 @@ describe("runtime entry: composition scripts after web fonts", () => {
       }),
       "*",
     );
+  });
+
+  it("runs an inlined defer script after the classic scripts that follow it, as the browser defers it", async () => {
+    serveFonts(Promise.resolve(), []);
+    document.body.innerHTML =
+      `<output id="log"></output>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}" defer>${logs("deferred")}</script>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}">${logs("classic")}</script>`;
+
+    await parseThenLoad();
+    await vi.waitFor(() => expect(window.__player).toBeDefined());
+    expect(log()).toBe("classic deferred ");
+  });
+
+  it("runs an inlined defer script last through the fallback too", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    claims(false);
+    compilePage(`<script defer>${logs("deferred")}</script><script>${logs("classic")}</script>`);
+
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    expect(log()).toBe("classic deferred ");
   });
 
   it("runs deferred scripts once and in order through the page's fallback when the runtime predates the gate", () => {

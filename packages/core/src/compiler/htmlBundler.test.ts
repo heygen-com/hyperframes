@@ -2531,10 +2531,6 @@ describe("bundleToSingleHtml script order", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }
-  const dataUrlSource = (el: Element | undefined) =>
-    decodeURIComponent(
-      (el?.getAttribute("src") ?? "").replace(/^data:text\/javascript;charset=utf-8,/, ""),
-    );
 
   it("keeps each local script in its own place around a CDN script", async () => {
     const scripts = await bundledBody(
@@ -2552,21 +2548,18 @@ describe("bundleToSingleHtml script order", () => {
   });
 
   it.each(["defer", "async"])(
-    "keeps a local %s script's own timing, with its file as the source",
+    "inlines a local %s script in its own tag, keeping the attribute so the runtime times it",
     async (when) => {
       const scripts = await bundledBody(
-        `<script defer src="${LOCAL_ORDER_GSAP}"></script>
-  <script ${when} src="main.js"></script>`,
-        { "main.js": "window.MAIN_RAN = gsap.version; // 100% #1" },
+        `<script>window.FIRST = 1;</script>
+  <script ${when} src="main.js"></script>
+  <script>window.LAST = 1;</script>`,
+        { "main.js": "window.MAIN_RAN = 1;" },
       );
-      const gsapAt = scripts.findIndex((el) => el.getAttribute("src") === LOCAL_ORDER_GSAP);
-      const main = scripts[gsapAt + 1];
+      const main = scripts.find((el) => el.textContent?.includes("MAIN_RAN"));
       expect(main?.hasAttribute(when)).toBe(true);
-      expect(main?.getAttribute("src")).toMatch(/^data:text\/javascript;charset=utf-8,[^#]*$/);
-      expect(dataUrlSource(main)).toBe("window.MAIN_RAN = gsap.version; // 100% #1");
-      expect(
-        scripts.some((el) => !el.hasAttribute("src") && el.textContent?.includes("MAIN_RAN")),
-      ).toBe(false);
+      expect(main?.hasAttribute("src")).toBe(false);
+      expect(main?.textContent).not.toMatch(/FIRST|LAST/);
     },
   );
 
@@ -2607,6 +2600,25 @@ describe("bundleToSingleHtml script order", () => {
     });
     const holder = scripts.find((el) => el.textContent?.includes("const App"));
     expect(holder?.getAttribute("type")).toBe("text/babel");
+  });
+
+  it.each(["", ' type="text/babel"'])(
+    "keeps a local file's unicode regex for <!-- valid JavaScript (%s)",
+    async (type) => {
+      const scripts = await bundledBody(`<script${type} src="main.js"></script>`, {
+        "main.js": "window.HAS_COMMENT = /<!--/u.test(document.body.innerHTML);",
+      });
+      const holder = scripts.find((el) => el.textContent?.includes("HAS_COMMENT"));
+      expect(() => new Function(holder?.textContent ?? "")).not.toThrow();
+    },
+  );
+
+  it("keeps an authored script that reads the runtime global", async () => {
+    const scripts = await bundledBody(
+      `<script>if (window.__hyperframeRuntime) window.AUTHOR_SEEN = 1;</script>`,
+      {},
+    );
+    expect(scripts.some((el) => el.textContent?.includes("AUTHOR_SEEN"))).toBe(true);
   });
 
   it("still merges adjacent inline scripts into one at the end of the body", async () => {

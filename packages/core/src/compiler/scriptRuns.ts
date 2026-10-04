@@ -33,6 +33,8 @@ function isClassicInline(el: Element): boolean {
 function isSeparateExecution(el: Element, isPinned: (el: Element) => boolean): boolean {
   return (
     el.hasAttribute("src") ||
+    el.hasAttribute("defer") ||
+    el.hasAttribute("async") ||
     isPinned(el) ||
     (el.getAttribute("type") || "").trim().toLowerCase() === "module"
   );
@@ -73,7 +75,7 @@ const afterFontsFallback = () => `document.addEventListener("DOMContentLoaded", 
   var all = [].slice.call(document.querySelectorAll('${AFTER_FONTS_SCRIPTS}'));
   if (!all.length) return;
   console.warn("[hyperframes] the runtime has no web-font gate; composition scripts run without waiting for fonts");
-  var late = function (el) { return el.type !== T || (el.hasAttribute("src") && el.hasAttribute("defer")); };
+  var late = function (el) { return el.type !== T || el.hasAttribute("defer"); };
   var queue = all.filter(function (el) { return !late(el); }).concat(all.filter(late));
   (function next() {
     var el = queue.shift();

@@ -109,8 +109,8 @@ function parseStudioMotionManifestContent(content: string): {
   }
 }
 
-/** Disk HTML: swap any runtime an export baked in for the preview runtime, placed as the bundler places it. */
-function withDiskRuntime(html: string, runtimeUrl: string): string {
+/** Swaps any runtime already in the page for the preview runtime, placed as the bundler places it. */
+function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
   return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag);
 }
@@ -388,7 +388,6 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     signature: string,
   ): Promise<string | null> {
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
-    const normalizedDisk = diskMain ? ensureHfIds(diskMain.html) : null;
 
     try {
       let bundled = await adapter.bundle(project.dir, {
@@ -398,9 +397,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
-        bundled = withDiskRuntime(normalizedDisk ?? diskMain.html, adapter.runtimeUrl);
+        bundled = ensureHfIds(diskMain.html);
         mainCompositionPath = diskMain.compositionPath;
       }
+      bundled = withPreviewRuntime(bundled, adapter.runtimeUrl);
       recordPreviewReferences(project.dir, bundled);
       recordPreviewBuilt(project.dir);
 
@@ -435,7 +435,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       const fallback = resolveProjectMainHtml(project.dir, project.id);
       if (fallback) {
         const fallbackHtml = withPreviewBase(
-          withDiskRuntime(ensureHfIds(fallback.html), adapter.runtimeUrl),
+          withPreviewRuntime(ensureHfIds(fallback.html), adapter.runtimeUrl),
           project.id,
         );
         let fallbackAugmented = injectStudioPreviewAugmentations(
