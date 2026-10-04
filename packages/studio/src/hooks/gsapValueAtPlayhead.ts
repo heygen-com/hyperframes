@@ -5,11 +5,14 @@ import { resolveTweenDuration, resolveTweenStart } from "../utils/globalTimeComp
 import { roundTo3 } from "../utils/rounding";
 import {
   materializeIfDynamic,
+  stepListBlock,
   parkPlayheadOnKeyframe,
   type GsapDragCommitCallbacks,
 } from "./gsapDragCommit";
 import type { GsapEditOutcome, PlayheadEditRefusal } from "./gsapEditOutcome";
 import {
+  exactKeyframePct,
+  nearestKeyframeIndex,
   findParsedTween,
   parsedImplicitEndValue,
   parsedTweenEase,
@@ -86,6 +89,8 @@ function normalize(edit: PlayheadEdit): Normalized | { reason: PlayheadEditRefus
   if (data) {
     if (data.format === "simple-array") return { reason: "simple-array-keyframes" };
     const arrayStep = data.format === "object-array";
+    const blocked = stepListBlock(anim);
+    if (blocked) return { reason: blocked };
     return {
       runEase: data.ease ?? anim.ease,
       keyframes: data.keyframes.map((kf) => ({
@@ -129,7 +134,7 @@ function valueAt(keyframes: Keyframe[], prop: string, side: "first" | "last") {
 }
 
 const keyframeAt = (keyframes: Keyframe[], percentage: number) =>
-  keyframes.find((kf) => Math.abs(kf.percentage - percentage) <= KEYFRAME_PCT_MATCH);
+  keyframes[nearestKeyframeIndex(keyframes, percentage)];
 
 function upsert(keyframes: Keyframe[], percentage: number, properties: Props, ease?: string) {
   const hit = keyframeAt(keyframes, percentage);
@@ -164,6 +169,27 @@ function heldEnds(
   return held;
 }
 
+/** An array step without a channel holds it, where a percentage keyframe would tween through it. */
+function holdOmittedChannels(
+  steps: Keyframe[],
+  implicit: ImplicitEndValue,
+  backfilled: Record<string, number>,
+): boolean {
+  const props = new Set(steps.flatMap((kf) => Object.keys(kf.properties)));
+  for (const prop of props) {
+    let held: number | string | null | undefined;
+    for (const kf of steps) {
+      if (kf.properties[prop] != null) held = kf.properties[prop];
+      else {
+        held ??= backfilled[prop] ?? implicit(prop, "start");
+        if (held == null) return false;
+        kf.properties[prop] = held;
+      }
+    }
+  }
+  return true;
+}
+
 /** On a keyframe, change it; between two, add one at the playhead; outside the tween, add one there
  *  and keep the authored ends. Values come from the file's tween or GSAP's parse, never the DOM. */
 // fallow-ignore-next-line complexity
@@ -176,6 +202,7 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
   if ("reason" in norm) return refuse(norm.reason);
   const keyframes = norm.keyframes;
   const authored = keyframes.length;
+  const steps = anim.keyframes?.format === "object-array" ? [...keyframes] : [];
   // GSAP runs `scale` beside scaleX/scaleY and the longhands win, so a per-axis edit splits it.
   if ("scaleX" in values || "scaleY" in values) {
     for (const kf of keyframes) {
@@ -184,11 +211,14 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
     }
   }
   const backfilled: Record<string, number> = {};
+  const pauseStepsHoldThePrevious = new Set(
+    steps.filter((kf) => Object.keys(kf.properties).length === 0),
+  );
   for (const [prop, value] of Object.entries(edit.backfill ?? {})) {
     if (!(prop in values) || keyframes.some((kf) => kf.properties[prop] != null)) continue;
     if (edit.holdFromStart && !keyframes.some((kf) => kf.percentage <= 0))
       keyframes.unshift({ percentage: 0, properties: {} });
-    for (const kf of keyframes) kf.properties[prop] = value;
+    for (const kf of keyframes) if (!pauseStepsHoldThePrevious.has(kf)) kf.properties[prop] = value;
     backfilled[prop] = value;
   }
   if (Object.keys(values).some((prop) => !keyframes.some((kf) => kf.properties[prop] != null)))
@@ -204,7 +234,9 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
   if (pct >= -KEYFRAME_PCT_MATCH && pct <= 100 + KEYFRAME_PCT_MATCH) {
     const at = Math.min(100, Math.max(0, pct));
     const hit = keyframeAt(keyframes, at);
-    if (eased && hit?.percentage !== 0 && hit?.percentage !== 100) return refuse("eased-keyframes");
+    // The ease moves where a time lands, not a keyframe's own percentage or the tween's ends.
+    const onKeyframe = "percentage" in edit.at || hit?.percentage === 0 || hit?.percentage === 100;
+    if (eased && !(hit && onKeyframe)) return refuse("eased-keyframes");
     const next = [...keyframes]
       .sort((a, b) => a.percentage - b.percentage)
       .find((kf) => kf.percentage > at + KEYFRAME_PCT_MATCH);
@@ -231,6 +263,8 @@ export function planValueAtPlayhead(edit: PlayheadEdit): PlayheadEditPlan {
     upsert(keyframes, before ? 0 : 100, { ...held, ...values }, before ? undefined : linear);
   }
 
+  if (!holdOmittedChannels(steps, edit.implicitEndValue, backfilled))
+    return refuse("implicit-end-unknown");
   keyframes.sort((a, b) => a.percentage - b.percentage);
   return {
     ok: true,
@@ -263,7 +297,10 @@ export function planValueEdit(
   const timed = withExactStepTimes(anim, tween);
   return planValueAtPlayhead({
     anim: withLiveTiming(timed, tween),
-    at: activeKeyframePct != null ? { percentage: activeKeyframePct } : { time: currentTime },
+    at:
+      activeKeyframePct != null
+        ? { percentage: exactKeyframePct(anim, tween, activeKeyframePct) }
+        : { time: currentTime },
     values,
     backfill,
     holdFromStart,
@@ -286,6 +323,9 @@ export async function commitValueAtPlayhead(
 ): Promise<GsapEditOutcome> {
   await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+  const tween = findParsedTween(iframe, selection.element, anim);
+  const parkAt =
+    activeKeyframePct == null ? null : exactKeyframePct(anim, tween, activeKeyframePct);
   const plan = planValueEdit(selection, anim, values, iframe, options);
   if (!plan.ok) return { status: "blocked", reason: "keyframes-uneditable", detail: plan.reason };
   await callbacks.commitMutation(selection, plan.mutation, {
@@ -294,9 +334,9 @@ export async function commitValueAtPlayhead(
     beforeReload: options.beforeReload,
     ...(plan.added && { keyframeAction: "add" as const }),
   });
-  if (activeKeyframePct != null) {
+  if (parkAt != null) {
     setActiveKeyframePct(null);
-    parkPlayheadOnKeyframe(anim, activeKeyframePct);
+    parkPlayheadOnKeyframe(anim, parkAt);
   }
   return { status: "persisted" };
 }

@@ -909,6 +909,18 @@ describe("native GSAP keyframes parsing", () => {
     expectKeyframe(kfs[2], 100, { x: 200 });
   });
 
+  it("leaves array keyframes it can read only in part to the runtime", () => {
+    for (const step of ["mid", "{ ...mid, y: 20 }", "{ x: 120, runBackwards: true }"]) {
+      const anim = parseSingleAnimation(`
+        const mid = { x: 120 };
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#hero", { keyframes: [{ x: 60 }, ${step}, { x: 180 }], duration: 3 }, 0);
+      `);
+      expect(anim.keyframes).toBeUndefined();
+      expect(anim.hasUnresolvedKeyframes).toBe(true);
+    }
+  });
+
   it("parses simple array keyframes format", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });

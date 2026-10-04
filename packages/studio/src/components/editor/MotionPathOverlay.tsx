@@ -1,13 +1,12 @@
-import { observeGsapGesture } from "../../hooks/gsapGestureOutcome";
-import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
+import { useGsapInteractionFailureTelemetry } from "../../hooks/useGsapInteractionFailureTelemetry";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
-import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, nodeCentre, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
 import { controlForNode, controlUnder, pressControl } from "./motionPathLayerNode";
@@ -23,8 +22,9 @@ import {
   commitAddKeyframe,
   commitAddWaypoint,
   commitCreatePath,
-  commitNode,
+  commitNodeDrop,
   commitRemoveWaypoint,
+  nodeDropLabel,
 } from "./motionPathCommit";
 import { elementHome } from "./motionPathHome";
 import { hasMotionPathPlugin, transformWDivisor, useMotionPathData } from "./useMotionPathData";
@@ -66,6 +66,7 @@ const NODE_PX = 6; // node radius in screen pixels (kept constant across zoom)
 // (select the keyframe); at or above it the gesture commits a move. Screen-space
 // (not composition px) so it behaves identically at any zoom.
 const DRAG_THRESHOLD_PX = 3;
+const noToast = () => {};
 
 /**
  * Draws the selected element's GSAP motion path over the canvas — a dashed
@@ -91,6 +92,11 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     handleGsapRemoveAllKeyframes,
     handleGsapMoveKeyframeToPlayhead,
   } = useDomEditContext();
+  const shell = useStudioShellContextOptional();
+  const reportFailure = useGsapInteractionFailureTelemetry(
+    shell?.activeCompPath ?? null,
+    shell?.showToast ?? noToast,
+  );
   const { rect, geometry, geometryResolved, visibleInPreview, home, pScale } = useMotionPathData(
     iframeRef,
     selectorFor(selection),
@@ -373,30 +379,18 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     // high zoom) would commit an identical value — a no-op undo entry. Skip the
     // commit, but don't treat it as a click either (the user did drag).
     if (x === Math.round(d.initX) && y === Math.round(d.initY)) return;
-    // Auto-keyframe off (#1808): dragging a keyframe's node shifts the whole path.
     const anim =
       d.ref.type === "keyframe" ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
-    if (
-      d.ref.type === "keyframe" &&
-      anim &&
-      selection &&
-      !usePlayerStore.getState().autoKeyframeEnabled
-    ) {
-      const writes = observeGsapGesture((_sel, mutation, options) =>
-        commitMutation(mutation, options),
-      );
-      void commitWholePropertyOffset(
-        selection,
-        anim,
-        { x, y },
-        d.ref.pct,
-        iframeRef.current,
-        { commitMutation: writes.commit! },
-        "Move animation path",
-      ).then(() => trackPreviewEditResult("motion_path", "drag", writes.finish()));
-    } else {
-      void commitNode(d.ref, x, y, animId, commitMutation);
-    }
+    const label = nodeDropLabel(d.ref);
+    commitNodeDrop({
+      ref: d.ref,
+      at: { x, y },
+      animId,
+      anim,
+      selection,
+      iframe: iframeRef.current,
+      commitMutation,
+    }).catch((error: unknown) => reportFailure(error, selection, "drag", label));
     // Park on the edited keyframe, or a playhead before the tween hides the edit.
     if (d.ref.type === "keyframe" && anim) {
       parkPlayheadOnKeyframe(anim, d.ref.pct);

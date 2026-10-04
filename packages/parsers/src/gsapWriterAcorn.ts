@@ -26,6 +26,7 @@ import {
 } from "./gsapParserAcorn.js";
 import {
   classifyPropertyGroup,
+  isTweenConfigKey,
   isXYPositionWrite,
   positionHoldForAnimation,
 } from "./gsapConstants.js";
@@ -199,38 +200,9 @@ function upsertProp(ms: MagicString, objNode: Node, key: string, value: unknown)
   }
 }
 
-/**
- * Vars keys that are NOT editable transform/style props: builtins
- * (duration/ease/delay), dropped callbacks, and extras (stagger/yoyo/repeat/…).
- * The exact union of recast's BUILTIN_VAR_KEYS + DROPPED_VAR_KEYS + EXTRAS_KEYS,
- * so both writers classify vars keys identically. (Distinct from the keyframe-
- * conversion NON_EDITABLE_VAR_KEYS below, which intentionally omits `ease`
- * because that path re-emits ease separately.)
- */
-const NON_EDITABLE_PROP_KEYS = new Set([
-  "duration",
-  "ease",
-  "delay",
-  "onComplete",
-  "onStart",
-  "onUpdate",
-  "onRepeat",
-  "stagger",
-  "yoyo",
-  "repeat",
-  "repeatDelay",
-  "snap",
-  "overwrite",
-  "immediateRender",
-]);
-
-/**
- * Editable transform/style key test: anything NOT a builtin, dropped callback, or
- * extras key. Mirrors recast's isEditablePropertyKey so both writers classify
- * vars keys identically.
- */
+/** Editable transform/style key test, the same split both parsers make. */
 function isEditableVarKey(key: string): boolean {
-  return !NON_EDITABLE_PROP_KEYS.has(key);
+  return !isTweenConfigKey(key);
 }
 
 /**
