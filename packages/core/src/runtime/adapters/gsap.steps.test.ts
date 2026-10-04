@@ -243,23 +243,80 @@ describe("re-rendering onto a call at the playhead", () => {
     "a call in a nested timeline": { build: nestedAt(1), at: 2, to: 3 },
     "a call in a repeating nested timeline": { build: nestedAt(2, 1), at: 7, to: 8 },
     "a call in a nested timeline at double speed": { build: nestedAt(1, 0, 2), at: 1.5, to: 2 },
+    "a call in an otherwise empty nested timeline": {
+      build: (tl, fire) => void tl.add(gsap.timeline().call(fire), 2),
+      at: 2,
+      to: 3,
+    },
   };
 
   it.each(Object.keys(films).flatMap((film) => [false, true].map((silent) => ({ film, silent }))))(
     "fires $film as often as without the redraw (arrived silently: $silent)",
     ({ film, silent }) => {
       const { build, at, to } = films[film]!;
-      const fires = (redraw: boolean) => {
+      const fires = (redraw: boolean, arriveSilently = silent) => {
         let fired = 0;
         const timeline = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 10 });
         build(timeline, () => void fired++);
-        timeline.totalTime(at, silent);
+        timeline.totalTime(at, arriveSilently);
         if (redraw) rerenderGsapTimelineAt(timeline, at);
         timeline.totalTime(to, false);
         return fired;
       };
-      expect(fires(false)).toBeGreaterThan(0);
+      // GSAP itself never fires a call in an otherwise empty nested timeline arrived at silently.
+      expect(fires(false, false)).toBeGreaterThan(0);
       expect(fires(true)).toBe(fires(false));
     },
   );
+});
+
+describe("re-rendering leaves the rest as the seek left it", () => {
+  const shapes: Record<string, (timeline: gsap.core.Timeline, o: { x: number }) => void> = {
+    "a reversed set": (tl, o) => void tl.set(o, { x: 100 }, 2).getChildren().at(-1)!.reversed(true),
+    "an immediateRender set": (tl, o) => void tl.set(o, { x: 100, immediateRender: true }, 2),
+    "a reversed set in a nested timeline playing over the playhead": (tl, o) => {
+      const scene = gsap.timeline().to({ y: 0 }, { y: 1, duration: 4 });
+      scene.set(o, { x: 100 }, 1.5).getChildren().at(-1)!.reversed(true);
+      tl.add(scene, 0.5);
+    },
+    "a reversed nested timeline": (tl, o) => {
+      const scene = gsap.timeline().to(o, { x: 100, duration: 1 });
+      tl.add(scene, 2);
+      scene.reversed(true);
+    },
+  };
+
+  it.each(
+    Object.keys(shapes).flatMap((shape) => [false, true].map((silent) => ({ shape, silent }))),
+  )("draws $shape as without the redraw (arrived silently: $silent)", ({ shape, silent }) => {
+    const draws = (redraw: boolean) => {
+      const o = { x: 0 };
+      const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
+      shapes[shape]!(timeline, o);
+      timeline.totalTime(1, silent);
+      if (redraw) rerenderGsapTimelineAt(timeline, 1);
+      const atPlayhead = o.x;
+      timeline.totalTime(1.01, false);
+      return [atPlayhead, o.x];
+    };
+    expect(draws(true)).toEqual(draws(false));
+  });
+
+  it("keeps two sets on the playhead in authored order on the next seek", () => {
+    const o = { x: 0 };
+    const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
+    timeline.set(o, { x: 50 }, 2).set(o, { x: 100, onComplete: () => {} }, 2);
+    timeline.totalTime(2, false);
+    rerenderGsapTimelineAt(timeline, 2);
+    timeline.totalTime(2.01, false);
+    expect(o.x).toBe(100);
+  });
+
+  it("keeps the length of a timeline that grew after its last render", () => {
+    const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
+    timeline.totalTime(1, true);
+    timeline.set({ x: 0 }, { x: 100 }, 20);
+    rerenderGsapTimelineAt(timeline, 1);
+    expect(timeline.duration()).toBe(20);
+  });
 });

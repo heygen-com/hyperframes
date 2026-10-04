@@ -8,7 +8,7 @@ import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studi
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
-import { createGsapAdapter, GSAP_CALLBACK_NAMES, rerenderGsapTimelineAt } from "./adapters/gsap";
+import { createGsapAdapter, rerenderGsapTimelineAt } from "./adapters/gsap";
 import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
@@ -4251,6 +4251,14 @@ export function initSandboxRuntimeModular(): void {
   const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null;
 
+  const GSAP_CALLBACK_NAMES = [
+    "onStart",
+    "onUpdate",
+    "onComplete",
+    "onReverseComplete",
+    "onRepeat",
+  ];
+
   const readGsapDuration = (child: Record<string, unknown>, property: string): number | null => {
     const getter = child[property];
     if (typeof getter !== "function") return null;
@@ -4343,7 +4351,11 @@ export function initSandboxRuntimeModular(): void {
           if (!suppressEvents && !hasZeroDurationCallbackTween(tl)) {
             // The first seek is the only eventful one; the re-render only refreshes styles.
             rerenderGsapTimelineAt(
-              { totalTime: tl.totalTime.bind(tl), getChildren: tl.getChildren?.bind(tl) },
+              {
+                totalTime: tl.totalTime.bind(tl),
+                totalDuration: tl.totalDuration?.bind(tl),
+                getChildren: tl.getChildren?.bind(tl),
+              },
               tlSeekTime,
             );
           }

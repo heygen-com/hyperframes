@@ -7,44 +7,66 @@ type GsapAdapterDeps = {
 /**
  * Re-renders a timeline already at `t`, silently, from just below (above at 0) so same-time steps apply in authored
  * order. That step skips a keyframed tween already at its start, so each one is first moved across its start alone.
+ * Children starting after `t` sit out both steps: stepping below `t` would draw a reversed one at its end.
  */
 export function rerenderGsapTimelineAt(
   timeline: {
     totalTime: (time: number, suppressEvents?: boolean) => unknown;
+    totalDuration?: () => number;
     getChildren?: RuntimeTimelineLike["getChildren"];
   },
   t: number,
 ): void {
+  // A stale duration is recomputed from children's time scales, so settle it before holding any at 0.
+  timeline.totalDuration?.();
   const children = timeline.getChildren?.(false, true, true) ?? [];
-  const firedStates = callTweensIn(timeline).map(
-    (call) => [call, call.ratio, call._zTime] as const,
+  const steps = zeroDurationChildrenIn(timeline).map(
+    (step) => [step, step.ratio, step._zTime] as const,
   );
-  timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
-  primeKeyframedTweensStartingAt(children, t);
-  timeline.totalTime(t, true);
-  for (const [call, ratio, zTime] of firedStates) Object.assign(call, { ratio, _zTime: zTime });
+  const held = childrenStartingAfter(children, t).map((child) => [child, child._ts] as const);
+  for (const [child] of held) child._ts = 0;
+  try {
+    timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
+    primeKeyframedTweensStartingAt(children, t);
+    timeline.totalTime(t, true);
+  } finally {
+    for (const [child, timeScale] of held) child._ts = timeScale;
+  }
+  // GSAP reads these to decide whether a zero-duration child fires or redraws when next reached.
+  for (const [step, ratio, zTime] of steps) {
+    step.ratio = ratio;
+    step._zTime = zTime;
+  }
 }
 
-type GsapCallInternals = { ratio: number; _zTime?: number };
+type GsapChild = {
+  _ts: number;
+  startTime: () => number;
+  endTime: () => number;
+  time: () => number;
+  getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => unknown[];
+};
 
-export const GSAP_CALLBACK_NAMES = [
-  "onStart",
-  "onUpdate",
-  "onComplete",
-  "onReverseComplete",
-  "onRepeat",
-];
+// Nested local times carry float noise far below this; a child starting at the playhead stays in.
+const AFTER_PLAYHEAD = 1e-6;
 
-function callTweensIn(timeline: {
+/** Children starting after `time`, also inside nested timelines playing over it. GSAP skips one at time scale 0. */
+function childrenStartingAfter(children: unknown[], time: number): GsapChild[] {
+  return (children as GsapChild[]).flatMap((child) => {
+    if (child.startTime() > time + AFTER_PLAYHEAD) return [child];
+    if (!child.getChildren || child.endTime() < time) return [];
+    return childrenStartingAfter(child.getChildren(false, true, true), child.time());
+  });
+}
+
+type GsapZeroDurationInternals = { ratio: number; _zTime?: number };
+
+function zeroDurationChildrenIn(timeline: {
   getChildren?: RuntimeTimelineLike["getChildren"];
-}): GsapCallInternals[] {
-  return (timeline.getChildren?.(true, true, false) ?? []).filter((child) => {
-    const tween = child as { totalDuration?: () => number; vars?: Record<string, unknown> };
-    return (
-      tween.totalDuration?.() === 0 &&
-      GSAP_CALLBACK_NAMES.some((name) => typeof tween.vars?.[name] === "function")
-    );
-  }) as unknown as GsapCallInternals[];
+}): GsapZeroDurationInternals[] {
+  return (timeline.getChildren?.(true, true, true) ?? []).filter(
+    (child) => (child as { totalDuration?: () => number }).totalDuration?.() === 0,
+  ) as unknown as GsapZeroDurationInternals[];
 }
 
 type GsapAnimation = {
@@ -98,6 +120,7 @@ export function createGsapAdapter(deps: GsapAdapterDeps): RuntimeDeterministicAd
         rerenderGsapTimelineAt(
           {
             totalTime: timeline.totalTime.bind(timeline),
+            totalDuration: timeline.totalDuration?.bind(timeline),
             getChildren: timeline.getChildren?.bind(timeline),
           },
           safeTime,
