@@ -9,6 +9,36 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.117"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio", "Engine", "Parsers"]}
+>
+Edits in Studio now stay where you put them: resizes, rotations, undo and drops on animated layers all save and redraw correctly. A render with a broken video frame now fails loudly instead of hiding a blank frame.
+
+## Fixes
+
+- **Studio:** Undoing a freeze frame removes the still it made ([237a984bb8d9](https://github.com/heygen-com/hyperframes/commit/237a984bb8d97f8dff7a5464c78851d633747f54), [#4971](https://github.com/heygen-com/hyperframes/pull/4971)).
+- **Engine:** Fail the render when an injected video frame cannot decode ([8e457d4224c5](https://github.com/heygen-com/hyperframes/commit/8e457d4224c513a8cdcb11b7d63aa204f5af7e0c), [#4974](https://github.com/heygen-com/hyperframes/pull/4974)).
+- **Parsers:** A keyframe edit no longer overrides an earlier tween at the start ([b71aa9338be1](https://github.com/heygen-com/hyperframes/commit/b71aa9338be16edd77ac78392dc95045ac1b4f70), [#4935](https://github.com/heygen-com/hyperframes/pull/4935)).
+- **Studio:** A rotation saves through its press route; a host hook reloads only the host's way ([910677259364](https://github.com/heygen-com/hyperframes/commit/9106772593648367ef5a595171f6cfe570ef99d5), [#4961](https://github.com/heygen-com/hyperframes/pull/4961)).
+- **Skills:** Load shared creative guides for motion graphics ([9031a02cb53d](https://github.com/heygen-com/hyperframes/commit/9031a02cb53d6c1eff7b4ed83b81ed4ee2325508), [#4970](https://github.com/heygen-com/hyperframes/pull/4970)).
+- **Studio:** An undo or drop on an animated layer keeps it where it was ([2cfbe3d2570c](https://github.com/heygen-com/hyperframes/commit/2cfbe3d2570cee5a7499323c9e9c2cadaa160bb2), [#4934](https://github.com/heygen-com/hyperframes/pull/4934)).
+- **Studio:** A resize saves through the route its press chose, as a move does ([e27cae026190](https://github.com/heygen-com/hyperframes/commit/e27cae02619037cc01299fe86877ade974c1b3bb), [#4943](https://github.com/heygen-com/hyperframes/pull/4943)).
+- **Studio:** The preview reloads when any write a commit saved is not patched on screen ([da17c03c0512](https://github.com/heygen-com/hyperframes/commit/da17c03c051286f06ac3ed6c495ca6b3c25f86ea), [#4920](https://github.com/heygen-com/hyperframes/pull/4920)).
+
+## Performance
+
+- **Core:** A paused Studio drag lets the preview loop sleep until the drag ends ([96bc879b5bba](https://github.com/heygen-com/hyperframes/commit/96bc879b5bba459e366c65e84e73973beb9d37a9), [#4938](https://github.com/heygen-com/hyperframes/pull/4938)).
+
+## Internal
+
+- **Studio:** Serve the edit bench GSAP from the repo, never the network ([2f14008b3cc2](https://github.com/heygen-com/hyperframes/commit/2f14008b3cc20562390682e98646b4e48535f3c7), [#4968](https://github.com/heygen-com/hyperframes/pull/4968)).
+- **Studio:** Pin what the one DOM edit writer saves, records and reloads ([248ee7c00a27](https://github.com/heygen-com/hyperframes/commit/248ee7c00a27d2dcce83aac366d24ffb9206a939), [#4947](https://github.com/heygen-com/hyperframes/pull/4947)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.116...v0.8.117).
+</Update>
+
+<Update
   label="HyperFrames v0.8.116"
   description="Released - 2026-10-03"
   tags={["Release", "Studio", "Core"]}
