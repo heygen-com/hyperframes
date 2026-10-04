@@ -47,8 +47,9 @@ describe("renderBox", () => {
       rmSync(dir, { recursive: true });
     }
     expect(sent.map((s) => s.method)).toEqual(["Fetch.enable", "Fetch.fulfillRequest"]);
-    const [{ urlPattern }] = sent[0].params.patterns;
-    expect(gsapUrl).toMatch(chromeUrlPattern(urlPattern));
+    const { patterns } = sent[0].params;
+    expect(patterns).toEqual([{ urlPattern: patterns[0].urlPattern }]);
+    expect(gsapUrl).toMatch(chromeUrlPattern(patterns[0].urlPattern));
     const gsap = readFileSync(require.resolve("gsap/dist/gsap.min.js")).toString("base64");
     expect(sent[1].params.body).toBe(gsap);
     expect(sessionArgs[0][4]).toMatchObject({ staticFrameDedup: false });
