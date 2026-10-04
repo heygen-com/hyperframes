@@ -7,7 +7,7 @@ import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 import { buildAuthHeaders } from "../auth/client.js";
 import { tryResolveCredential } from "../auth/index.js";
 import { isAuthError } from "../auth/errors.js";
-import type { ResolvedCredential } from "../auth/resolver.js";
+import { isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
 import { refreshIfNeeded } from "../cloud/auth.js";
 import { writeProjectLink } from "./projectLink.js";
 
@@ -178,10 +178,17 @@ function rejectedCredentialMessage(credential: ResolvedCredential): string {
   return LOGIN_EXPIRED;
 }
 
-export async function resolvePublishCredential(): Promise<ResolvedCredential | null> {
+/** Resolves the credential, or refreshes `checked` (a credential already resolved) without re-resolving. */
+export async function resolvePublishCredential(
+  checked?: ResolvedCredential | null,
+): Promise<ResolvedCredential | null> {
   try {
-    const credential = await tryResolveCredential();
-    return credential ? await refreshIfNeeded(credential) : null;
+    const credential = checked === undefined ? await tryResolveCredential() : checked;
+    if (!credential) return null;
+    // A checked login can expire during a long proxy bake; refresh it rather than fall back to an API key.
+    const expired =
+      credential.type === "oauth" && isTokenExpired(credential.expires_at, new Date());
+    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential);
   } catch (error) {
     if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {
       throw new Error(LOGIN_EXPIRED);
@@ -761,8 +768,7 @@ export async function publishProjectArchive(
   const title = basename(projectDir);
   const archive = opts.archive ?? createPublishArchive(projectDir);
   const apiBaseUrl = getPublishApiBaseUrl();
-  const credential =
-    opts.credential === undefined ? await resolvePublishCredential() : opts.credential;
+  const credential = await resolvePublishCredential(opts.credential);
   const authHeaders = credential ? buildAuthHeaders(credential) : {};
   // A stable id / team space only mean something to an authenticated owner — the server
   // ignores them otherwise, and anonymous publishes always mint a fresh project.

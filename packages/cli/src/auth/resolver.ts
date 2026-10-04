@@ -98,7 +98,7 @@ function pickOAuth(
   source: CredentialSource,
 ): OAuthCredential | null {
   const expiresAt = parseDate(tokens.expires_at);
-  const expired = expiresAt !== undefined && expiresAt.getTime() - EXPIRY_SKEW_MS < now.getTime();
+  const expired = isTokenExpired(expiresAt, now);
 
   if (expired && !tokens.refresh_token) return null;
 
@@ -112,6 +112,10 @@ function pickOAuth(
   if (expiresAt) out.expires_at = expiresAt;
   if (tokens.scope) out.scope = tokens.scope;
   return out;
+}
+
+export function isTokenExpired(expiresAt: Date | undefined, now: Date): boolean {
+  return expiresAt !== undefined && expiresAt.getTime() - EXPIRY_SKEW_MS < now.getTime();
 }
 
 function parseDate(s: string | undefined): Date | undefined {

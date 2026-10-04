@@ -1202,6 +1202,30 @@ describe("publishProjectArchive with an expired login it can refresh", () => {
     }
   });
 
+  // The command checks the login before a proxy bake that can outlast it.
+  it("refreshes a passed login that expired since it was checked, without resolving again", async () => {
+    oauthMocks.refreshTokens.mockResolvedValueOnce({ access_token: "fresh-token" });
+    const fetchMock = stagedFetch(OWNED);
+    vi.stubGlobal("fetch", fetchMock);
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await publishProjectArchive(dir, {
+        credential: {
+          ...expiredLogin,
+          expires_at: new Date(Date.now() - 1000),
+          refreshable: false,
+        },
+      } as never);
+      expect(authMocks.tryResolveCredential).not.toHaveBeenCalled();
+      expect(fetchMock.mock.calls[0]![1].headers).toEqual(
+        expect.objectContaining({ authorization: "Bearer fresh-token" }),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("asks for a new login, without sending anything, when the refresh is refused", async () => {
     oauthMocks.refreshTokens.mockRejectedValueOnce(ErrRefreshFailed("invalid_grant"));
     authMocks.tryResolveCredential.mockResolvedValue(expiredLogin);
