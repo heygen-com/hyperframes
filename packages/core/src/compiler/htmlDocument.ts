@@ -305,22 +305,26 @@ const COMPOSITION_ID_ATTR = /\sdata-composition-id\s*=/;
 const isDocumentWrapper = (lowered: string, open: number): boolean =>
   isTagAt(lowered, open, "<html") || isTagAt(lowered, open, "<body");
 
+function carriesCompositionId(lowered: string, open: number): boolean {
+  const end = findTagEnd(lowered, open + 1);
+  return end !== -1 && COMPOSITION_ID_ATTR.test(lowered.slice(open, end));
+}
+
 export function hasCompositionOutsideTemplates(html: string): boolean {
   const lowered = lowerAscii(html);
   let depth = 0;
+  let idOnWrapper = false;
+  let idInTemplate = false;
   for (const open of markupStarts(lowered)) {
     if (isTagAt(lowered, open, "<template")) depth++;
     else if (isTagAt(lowered, open, "</template")) depth = Math.max(0, depth - 1);
-    else if (
-      depth === 0 &&
-      /[a-z]/.test(lowered.charAt(open + 1)) &&
-      !isDocumentWrapper(lowered, open)
-    ) {
-      const end = findTagEnd(lowered, open + 1);
-      if (end !== -1 && COMPOSITION_ID_ATTR.test(lowered.slice(open, end))) return true;
+    else if (/[a-z]/.test(lowered.charAt(open + 1)) && carriesCompositionId(lowered, open)) {
+      if (depth > 0) idInTemplate = true;
+      else if (isDocumentWrapper(lowered, open)) idOnWrapper = true;
+      else return true;
     }
   }
-  return false;
+  return idOnWrapper && !idInTemplate;
 }
 
 function insertBeforeDocumentTag(html: string, tag: DocumentTag, markup: string): string | null {
