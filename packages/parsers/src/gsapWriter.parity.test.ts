@@ -2029,15 +2029,36 @@ tl.to("#hero", { opacity: 0, duration: 0.5 }, 0.0004);`;
       "two retimes landing on the same tween, in order",
       [
         { kind: "shift", targetSelector: "#child", delta: -0.3 },
-        { kind: "scale", targetSelector: "#side", oldStart: 0, oldDuration: 8, newStart: 1, newDuration: 3 },
+        {
+          kind: "scale",
+          targetSelector: "#side",
+          oldStart: 0,
+          oldDuration: 8,
+          newStart: 1,
+          newDuration: 3,
+        },
         { kind: "shift", targetSelector: "#side", delta: 0.75 },
       ],
     ],
     [
       "scales then a shift of the parent clip",
       [
-        { kind: "scale", targetSelector: "#scene", oldStart: 1, oldDuration: 4, newStart: 1, newDuration: 7 },
-        { kind: "scale", targetSelector: "#scene", oldStart: 1, oldDuration: 7, newStart: 2, newDuration: 7 },
+        {
+          kind: "scale",
+          targetSelector: "#scene",
+          oldStart: 1,
+          oldDuration: 4,
+          newStart: 1,
+          newDuration: 7,
+        },
+        {
+          kind: "scale",
+          targetSelector: "#scene",
+          oldStart: 1,
+          oldDuration: 7,
+          newStart: 2,
+          newDuration: 7,
+        },
         { kind: "shift", targetSelector: "#scene", delta: -1.5 },
       ],
     ],
@@ -2060,7 +2081,9 @@ tl.to("#hero", { opacity: 0, duration: 0.5 }, 0.0004);`;
       document,
     );
     expect(folded.changed).toEqual([false, true]);
-    const none = retimeClipTweensInScript(script, [{ kind: "shift", targetSelector: "#nobody", delta: 1 }]);
+    const none = retimeClipTweensInScript(script, [
+      { kind: "shift", targetSelector: "#nobody", delta: 1 },
+    ]);
     expect(none.script).toBe(script);
   });
 });

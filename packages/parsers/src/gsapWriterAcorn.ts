@@ -487,7 +487,9 @@ export function retimeClipTweensInScript(
   root?: ParentNode,
 ): { script: string; changed: boolean[] } {
   const changed = retimes.map(() => false);
-  const live = retimes.filter((r) => r.kind === "shift" || (r.oldDuration > 0 && r.newDuration > 0));
+  const live = retimes.filter(
+    (r) => r.kind === "shift" || (r.oldDuration > 0 && r.newDuration > 0),
+  );
   const parsed = live.length > 0 ? parseGsapScriptAcornForWrite(script) : null;
   if (!parsed) return { script, changed };
   const matchers = retimes.map((r) => clipTweenMatcher(r.targetSelector, root));
@@ -517,7 +519,10 @@ export function retimeClipTweensInScript(
           position = true;
         }
         if (typeof animation.duration === "number" && animation.duration > 0) {
-          animation.duration = Math.max(0.001, Math.round(animation.duration * ratio * 1000) / 1000);
+          animation.duration = Math.max(
+            0.001,
+            Math.round(animation.duration * ratio * 1000) / 1000,
+          );
           duration = true;
         }
       }

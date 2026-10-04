@@ -2773,7 +2773,14 @@ tl.to("#k", { keyframes: [{ x: 10 }, { x: 40 }], duration: 2 }, 1.5);
     const mutations = [
       { type: "shift-positions", targetSelector: "#a", delta: 1 },
       { type: "shift-positions", targetSelector: "#nobody", delta: 0 },
-      { type: "scale-positions", targetSelector: "#b", oldStart: 2, oldDuration: 2, newStart: 2.5, newDuration: 3 },
+      {
+        type: "scale-positions",
+        targetSelector: "#b",
+        oldStart: 2,
+        oldDuration: 2,
+        newStart: 2.5,
+        newDuration: 3,
+      },
       { type: "shift-positions", targetSelector: "#k", delta: 0.75 },
     ];
     const post = (app: Hono, path: string, body: unknown) =>
