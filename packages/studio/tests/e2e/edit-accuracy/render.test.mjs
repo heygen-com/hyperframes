@@ -7,6 +7,14 @@ import { FIXTURE_CDN } from "./grid.mjs";
 
 const require = createRequire(import.meta.url);
 const gsapUrl = `${FIXTURE_CDN}npm/gsap@${require("gsap/package.json").version}/dist/gsap.min.js`;
+// Chrome's Fetch urlPattern: the whole URL, `*` any run of characters, `?` one character.
+const chromeUrlPattern = (pattern) =>
+  new RegExp(
+    `^${pattern
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, ".*")
+      .replace(/\?/g, ".")}$`,
+  );
 const sent = [];
 const handlers = {};
 const sessionArgs = [];
@@ -40,7 +48,7 @@ describe("renderBox", () => {
     }
     expect(sent.map((s) => s.method)).toEqual(["Fetch.enable", "Fetch.fulfillRequest"]);
     const [{ urlPattern }] = sent[0].params.patterns;
-    expect(gsapUrl.startsWith(urlPattern.replace(/\*$/, ""))).toBe(true);
+    expect(gsapUrl).toMatch(chromeUrlPattern(urlPattern));
     const gsap = readFileSync(require.resolve("gsap/dist/gsap.min.js")).toString("base64");
     expect(sent[1].params.body).toBe(gsap);
     expect(sessionArgs[0][4]).toMatchObject({ staticFrameDedup: false });
