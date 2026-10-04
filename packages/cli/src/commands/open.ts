@@ -6,7 +6,7 @@ import { downloadHint, openInDesktop, type DesktopOpenResult } from "../utils/de
 import { resolveProject, resolveProjectOrThrow, type ProjectDir } from "../utils/project.js";
 
 export const examples: Example[] = [
-  ["Open this project in HyperFrames Studio", "hyperframes open"],
+  ["Open this project in the HyperFrames desktop app", "hyperframes open"],
   ["Open another project", "hyperframes open ./my-video"],
   ["For agents", "hyperframes open --json"],
 ];
@@ -14,8 +14,8 @@ export const examples: Example[] = [
 const WHY_NOT: Record<Extract<DesktopOpenResult, { opened: false }>["reason"], string | null> = {
   "handoff-unavailable": null,
   "unsupported-platform": "Opening a project from the CLI works on macOS, Windows and Linux only.",
-  "not-installed": "HyperFrames Studio isn't installed on this computer.",
-  "open-failed": "HyperFrames Studio couldn't be started.",
+  "not-installed": "The HyperFrames desktop app isn't installed on this computer.",
+  "open-failed": "The HyperFrames desktop app couldn't be started.",
 };
 
 function printResult(project: ProjectDir, result: DesktopOpenResult): void {
@@ -46,7 +46,7 @@ function projectForJson(dir: string | undefined): ProjectDir | null {
 }
 
 export default defineCommand({
-  meta: { name: "open", description: "Open a project in HyperFrames Studio, the desktop app" },
+  meta: { name: "open", description: "Open a project in the HyperFrames desktop app" },
   args: {
     dir: {
       type: "positional",

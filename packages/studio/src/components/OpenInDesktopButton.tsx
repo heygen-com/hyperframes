@@ -89,7 +89,7 @@ export function OpenInDesktopButton() {
       const res = await studioApiFetch(ROUTE, { method: "POST" });
       const result = (await res.json()) as OpenResult;
       if (result.opened) {
-        showToast("Framey is opening this project in HyperFrames Studio", "info");
+        showToast("Framey is opening this project in the HyperFrames desktop app", "info");
         await new Promise((done) => setTimeout(done, OPENING_MS));
       } else setDownloadUrl(result.downloadUrl);
     } catch {
@@ -119,7 +119,7 @@ export function OpenInDesktopButton() {
           variant="ghost"
           data-testid="header-open-in-desktop"
           data-opening={opening || undefined}
-          title="Open this project in HyperFrames Studio, the desktop app, and edit it with Framey"
+          title="Open this project in the HyperFrames desktop app and edit it with Framey"
           className="hf-framey-trigger gap-1.5 pl-1.5"
           icon={<FrameyGlyph size={20} className="hf-framey" eyeRef={eye} />}
         >
@@ -131,9 +131,7 @@ export function OpenInDesktopButton() {
         <FrameyGlyph size={36} />
         <p className="text-step-12 font-medium text-text-0">Meet Framey</p>
       </div>
-      <p className="mt-2 text-balance text-text-3">
-        I live in HyperFrames Studio, the free desktop app:
-      </p>
+      <p className="mt-2 text-balance text-text-3">I live in the free HyperFrames desktop app:</p>
       <ul className="mt-1.5 grid gap-1 text-text-1">
         <li>Chat to change anything in the video</li>
         <li>Draw on a frame to point at it</li>
@@ -150,7 +148,7 @@ export function OpenInDesktopButton() {
           className={cn(buttonBase, buttonVariants.primary, buttonSizes.md)}
           onClick={() => trackStudioEvent("toolbar_action", { action: "get_desktop_app" })}
         >
-          Get HyperFrames Studio
+          Get the desktop app
         </a>
       </div>
     </Popover>

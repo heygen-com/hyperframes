@@ -45,7 +45,7 @@ async function mount(): Promise<HTMLElement> {
 
 const downloadHref = () =>
   [...document.querySelectorAll("a")]
-    .find((a) => a.textContent?.includes("Get HyperFrames Studio"))
+    .find((a) => a.textContent?.includes("Get the desktop app"))
     ?.getAttribute("href");
 
 const button = () =>
@@ -83,7 +83,7 @@ it("with the app installed but no download (Windows), shows only once the app ca
 it("opens the project in an installed app that has no download (Windows)", async () => {
   serve(Response.json({ available: true, handoff: true, downloadUrl: null }), {
     opened: true,
-    app: "HyperFrames Studio",
+    app: "the HyperFrames desktop app",
   });
   await mount();
   await act(async () => button()!.click());
@@ -103,13 +103,13 @@ it("while the app cannot take a project yet, introduces Framey with the download
 it("opens the project in the app and says so", async () => {
   serve(Response.json({ available: true, handoff: true, downloadUrl: DOWNLOAD }), {
     opened: true,
-    app: "HyperFrames Studio",
+    app: "the HyperFrames desktop app",
   });
   await mount();
   await act(async () => button()!.click());
   expect(posts).toBe(1);
   expect(showToast).toHaveBeenCalledWith(
-    "Framey is opening this project in HyperFrames Studio",
+    "Framey is opening this project in the HyperFrames desktop app",
     "info",
   );
   expect(button()!.dataset.opening).toBe("true");

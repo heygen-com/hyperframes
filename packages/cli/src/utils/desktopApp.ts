@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
 
-// HyperFrames Studio, the desktop app; macOS hands it a folder through `open -b`, Windows and Linux start its
-// executable with the folder. Released app first, then Canary.
+// The HyperFrames desktop app (not "Studio", which is the preview): macOS hands it a folder through `open -b`;
+// Windows and Linux start its executable with the folder. Released app first, then Canary.
 const DESKTOP_BUNDLE_IDS = ["dev.hyperframes.desktop", "dev.hyperframes.desktop.canary"] as const;
 const DESKTOP_APP_NAMES = ["HyperFrames.app", "HyperFrames Canary.app"];
 const APP_NAMES = ["HyperFrames", "HyperFrames Canary"] as const;
@@ -20,7 +20,7 @@ export const desktopDownloadUrl = (platform = process.platform): string | null =
   DOWNLOADS[platform] ?? null;
 
 export const downloadHint = (url: string): string =>
-  `Edit it by chatting with Framey in HyperFrames Studio → ${url}`;
+  `Keep editing by chatting with Framey in the HyperFrames desktop app → ${url}`;
 
 // ponytail: the released Mac app takes a handed-over folder since b254 (hyperframes-internal#2601). The Windows and
 // Linux apps read it from their command line only once the folder-argv change ships; until then those surfaces
@@ -42,7 +42,7 @@ export function agentSession(env: NodeJS.ProcessEnv = process.env): AgentSession
   return null;
 }
 
-type AppName = "HyperFrames Studio" | "HyperFrames Canary";
+type AppName = "the HyperFrames desktop app" | "HyperFrames Canary";
 
 export type DesktopOpenResult =
   | { opened: true; app: AppName; handedOver: AgentSession | null }
@@ -163,7 +163,7 @@ export function openInDesktop(
   });
   const opened = (canary: boolean): DesktopOpenResult => ({
     opened: true,
-    app: canary ? "HyperFrames Canary" : "HyperFrames Studio",
+    app: canary ? "HyperFrames Canary" : "the HyperFrames desktop app",
     handedOver: leaveHandoff(dir, agentSession(env)),
   });
   if (!ready) return notOpened("handoff-unavailable");
@@ -223,7 +223,7 @@ export function desktopHint(
 ): string | null {
   if (env.HYPERFRAMES_DESKTOP_PROJECT) return null;
   if (ready && (installed ?? desktopInstalled({ platform, env })))
-    return `Edit it with Framey: ${openCommandFor(dir)}`;
+    return `Keep editing by chatting with Framey in the desktop app: ${openCommandFor(dir)}`;
   const url = desktopDownloadUrl(platform);
   return url ? downloadHint(url) : null;
 }

@@ -10,7 +10,7 @@ const STUDIO = {
 };
 const OPENED: DesktopOpenResult = {
   opened: true,
-  app: "HyperFrames Studio",
+  app: "the HyperFrames desktop app",
   handedOver: null,
 };
 

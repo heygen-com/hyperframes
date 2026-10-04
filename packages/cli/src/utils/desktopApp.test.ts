@@ -15,7 +15,7 @@ import {
 // The live path (ready) is what ships once the app takes handed-over folders; CI exercises it here.
 const LIVE = { ready: true, platform: "darwin" as const, env: {}, installed: () => true };
 const MAC_DOWNLOAD = "https://hyperframes.dev/studio/download";
-const MAC_HINT = `Edit it by chatting with Framey in HyperFrames Studio → ${MAC_DOWNLOAD}`;
+const MAC_HINT = `Keep editing by chatting with Framey in the HyperFrames desktop app → ${MAC_DOWNLOAD}`;
 const FILM = resolve("films", "a");
 const never = () => {
   throw new Error("must not run");
@@ -38,7 +38,7 @@ describe("openInDesktop", () => {
       ...LIVE,
       open: (id, dir) => (asked.push(`${id} ${dir}`), true),
     });
-    expect(result).toEqual({ opened: true, app: "HyperFrames Studio", handedOver: null });
+    expect(result).toEqual({ opened: true, app: "the HyperFrames desktop app", handedOver: null });
     expect(asked).toEqual([`dev.hyperframes.desktop ${FILM}`]);
   });
 
@@ -76,7 +76,7 @@ describe("openInDesktop on Windows", () => {
       started.push(`${executable} ${dir}`), true
     );
     const result = openInDesktop(FILM, { ...WIN, exists: () => true, launch });
-    expect(result).toEqual({ opened: true, app: "HyperFrames Studio", handedOver: null });
+    expect(result).toEqual({ opened: true, app: "the HyperFrames desktop app", handedOver: null });
     expect(started).toEqual([`${exe("HyperFrames")} ${FILM}`]);
   });
 
@@ -123,7 +123,7 @@ describe("openInDesktop on Linux", () => {
     const env = { XDG_CONFIG_HOME: config };
     expect(openInDesktop(FILM, { ...LINUX, env, read, launch: () => true })).toMatchObject({
       opened: true,
-      app: "HyperFrames Studio",
+      app: "the HyperFrames desktop app",
     });
   });
 
@@ -260,7 +260,7 @@ describe("desktopHint", () => {
 
   it("offers the Linux build on Linux, and nothing on Windows without the app", () => {
     expect(desktopHint(process.cwd(), { env: {}, platform: "linux", installed: false })).toBe(
-      `Edit it by chatting with Framey in HyperFrames Studio → ${MAC_DOWNLOAD}?os=linux`,
+      `Keep editing by chatting with Framey in the HyperFrames desktop app → ${MAC_DOWNLOAD}?os=linux`,
     );
     expect(desktopHint(process.cwd(), { env: {}, platform: "win32", installed: false })).toBeNull();
     expect(desktopHint(process.cwd(), { env: {}, platform: "win32", ready: true })).toBeNull();
@@ -268,12 +268,14 @@ describe("desktopHint", () => {
 
   it("points an installed Windows app to `hyperframes open`", () => {
     const windows = { env: {}, platform: "win32" as const, ready: true, installed: true };
-    expect(desktopHint(process.cwd(), windows)).toBe("Edit it with Framey: hyperframes open .");
+    expect(desktopHint(process.cwd(), windows)).toBe(
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
+    );
   });
 
   it("points an installed app to `hyperframes open` once the app takes handed-over projects", () => {
     expect(desktopHint(process.cwd(), { ...mac, ready: true, installed: true })).toBe(
-      "Edit it with Framey: hyperframes open .",
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
     );
   });
 
