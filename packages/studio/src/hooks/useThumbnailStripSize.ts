@@ -53,8 +53,8 @@ interface Strip {
 
 const NEAR_PX = IN_VIEW_CHUNK_PX / 2;
 
-// Each frame moves every strip's last box by the scroll since that box was read and reads only the
-// boxes that land near the screen, so a jump costs what a short scroll does; reads precede one commit.
+// Each frame reads the strips showing tiles, which a move without a scroll may have carried, and the
+// strips whose last box, moved by the scroll since, lands near the screen; reads precede one commit.
 const strips = new Map<Element, Strip>();
 let users = 0;
 let frame = 0;
@@ -112,8 +112,7 @@ const refresh = () => {
       width: box.width,
       height: box.height,
     };
-    if (isNear(moved)) updates.push([strip.apply, read(target, strip)]);
-    else if (strip.showing) updates.push([strip.apply, NOTHING_IN_VIEW]);
+    if (strip.showing || isNear(moved)) updates.push([strip.apply, read(target, strip)]);
   }
   commit(updates);
 };

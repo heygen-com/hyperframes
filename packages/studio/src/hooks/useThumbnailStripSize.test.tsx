@@ -58,6 +58,7 @@ describe("on a scroll", () => {
   let left = 0;
   let top = 0;
   let scrolled = 0;
+  let scrolledDown = 0;
   let stripWidth = 1_000_000;
   let renders = 0;
 
@@ -108,11 +109,13 @@ describe("on a scroll", () => {
     left = 0;
     top = 0;
     scrolled = 0;
+    scrolledDown = 0;
     stripWidth = 1_000_000;
     renders = 0;
     host = document.body.appendChild(document.createElement("div"));
     host.setAttribute("data-timeline-scroll-viewport", "");
     Object.defineProperty(host, "scrollLeft", { configurable: true, get: () => scrolled });
+    Object.defineProperty(host, "scrollTop", { configurable: true, get: () => scrolledDown });
     root = harness.mount(host);
   });
 
@@ -143,6 +146,37 @@ describe("on a scroll", () => {
     act(() => frames.splice(0).forEach((frame) => frame(0)));
 
     expect(spans()).toEqual(["3072-5000"]);
+  });
+
+  it("keeps a strip on screen measured after a move without a scroll, then a scroll", async () => {
+    await mountStrips(1);
+    expect(spans()).toEqual(["0-1536"]);
+
+    left = -3_000;
+    scrollTo(-1_000);
+    expect(spans()).toEqual(["0-2560"]);
+  });
+
+  it("measures a strip a vertical scroll brings on screen in that same frame", async () => {
+    neverReportedNear();
+    top = 5_000;
+    await mountStrips(1);
+    expect(spans()).toEqual(["0-0"]);
+
+    scrolledDown += 4_900;
+    top = 100;
+    act(() => host.dispatchEvent(new Event("scroll")));
+    act(() => frames.splice(0).forEach((frame) => frame(0)));
+
+    expect(spans()).toEqual(["0-1536"]);
+  });
+
+  it("keeps the tiles of a strip that ends just off screen", async () => {
+    await mountStrips(1);
+
+    scrollTo(-(stripWidth + 100));
+
+    expect(spans()).toEqual(["999424-1000000"]);
   });
 
   it("measures the strips a jump brings on screen in that same frame", async () => {
@@ -178,11 +212,11 @@ describe("on a scroll", () => {
   });
 
   it("keeps every tile of a short clip, even far from the screen", async () => {
-    stripWidth = 300;
+    stripWidth = 4_096;
     top = 5_000;
     await mountStrips(1);
 
-    expect(spans()).toEqual(["0-300"]);
+    expect(spans()).toEqual(["0-4096"]);
   });
 
   it("never re-measures a short clip on a scroll", async () => {
