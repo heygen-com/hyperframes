@@ -5,6 +5,7 @@ import {
   getPreviewTargetFromPointer,
 } from "../utils/studioPreviewHelpers";
 import {
+  domEditSelectionsEqual,
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
   toggleDomEditGroupSelection,
@@ -125,6 +126,12 @@ export function useDomSelection({
         previousGroup.length === 1 &&
         domEditSelectionsTargetSame(currentSelection, selection) &&
         domEditSelectionsTargetSame(previousGroup[0], selection);
+      const isUnchangedRefresh =
+        options?.preserveGroup &&
+        currentSelection !== null &&
+        (previousGroup.length === 0 || previousGroup.includes(currentSelection)) &&
+        domEditSelectionsEqual(currentSelection, selection);
+      if (isUnchangedRefresh) return;
       if (isRepeatedSingleSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);

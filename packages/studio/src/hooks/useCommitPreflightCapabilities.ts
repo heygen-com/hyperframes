@@ -33,6 +33,33 @@ function runCommitPreflights(
 // Studio can hand a narrowed copy back as a new selection; narrowing starts from the resolved one.
 const resolvedSelections = new WeakMap<DomEditSelection, DomEditSelection>();
 
+interface Checked {
+  animations: GsapAnimation[];
+  iframe: HTMLIFrameElement | null;
+  group: boolean;
+  preflight: CommitPreflight;
+  narrowed?: DomEditSelection;
+}
+
+// A member whose selection, parse and preview are unchanged keeps its answer and its narrowed copy.
+const checkedSelections = new WeakMap<DomEditSelection, Checked>();
+
+function checkedPreflight(
+  resolved: DomEditSelection,
+  animations: GsapAnimation[],
+  iframe: HTMLIFrameElement | null,
+  group: boolean,
+): Checked {
+  const known = checkedSelections.get(resolved);
+  if (known?.animations === animations && known.iframe === iframe && known.group === group) {
+    return known;
+  }
+  const preflight = runCommitPreflights(resolved, animations, iframe, group);
+  const checked = { animations, iframe, group, preflight };
+  checkedSelections.set(resolved, checked);
+  return checked;
+}
+
 const resolvedOf = (selection: DomEditSelection) => resolvedSelections.get(selection) ?? selection;
 
 const MANUAL_FLAGS = [
@@ -124,13 +151,14 @@ export function useCommitPreflightCapabilities({
     void parseTick;
     if (!enabled || !projectId) return { selection, groupSelections };
     const group = groupSelections.length > 1;
+    const iframe = previewIframeRef.current;
     const narrow = (target: DomEditSelection) => {
       const file = gsapSourceFileForSelection(target);
       const animations = parsesRef.current.get(parseCacheKey(projectId, file))?.animations;
-      const preflight = animations
-        ? runCommitPreflights(resolvedOf(target), animations, previewIframeRef.current, group)
-        : null;
-      return narrowCapabilities(target, preflight);
+      if (!animations) return narrowCapabilities(target, null);
+      const checked = checkedPreflight(resolvedOf(target), animations, iframe, group);
+      checked.narrowed ??= narrowCapabilities(target, checked.preflight);
+      return checked.narrowed;
     };
     return withTweenIndex(() => ({
       selection: selection && narrow(selection),

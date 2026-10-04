@@ -442,6 +442,25 @@ describe("handles follow what Studio would commit", () => {
     expect(spies.onManualDragStart).not.toHaveBeenCalled();
   });
 
+  it("re-checks only the members that changed when the group is handed back anew", async () => {
+    const a = resolved(element("a"));
+    const b = resolved(element("b"));
+    const { seen, render } = await select([loop({ x: 120 }, "#a")], {
+      selection: a,
+      groups: [a, b],
+    });
+    const [narrowedA, narrowedB] = seen.groups;
+
+    render({ selection: a, groups: [a, b] });
+    expect(seen.groups[0]).toBe(narrowedA);
+    expect(seen.groups[1]).toBe(narrowedB);
+    const movedA = resolved(a.element);
+    render({ selection: movedA, groups: [movedA, b] });
+    expect(seen.groups[0]).not.toBe(narrowedA);
+    expect(flags(seen.groups[0]!)[0]).toBe(false);
+    expect(seen.groups[1]).toBe(narrowedB);
+  });
+
   it.each([
     ["rotation", loop({ rotation: 90 }), [true, true, false], { dots: 4, rotate: false }],
     ["resize", loop({ width: 320, height: 90 }), [true, false, true], { dots: 0, rotate: true }],
