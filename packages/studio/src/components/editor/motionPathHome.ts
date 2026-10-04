@@ -35,9 +35,8 @@ export function elementHome(el: HTMLElement): MotionPathHome {
   while (node) {
     left += node.offsetLeft;
     top += node.offsetTop;
-    // Ancestor transforms (e.g. a group wrapper moved via GSAP) shift where the
-    // element actually renders, so the path must anchor on top of them. The element's
-    // OWN transform is excluded — that's the animated offset the path itself draws.
+    // Ancestor transforms (a group wrapper GSAP moved) shift where the layer renders; its own
+    // transform is the animated offset the path itself draws, so it is left out.
     if (node !== el) {
       const t = transformTranslate(node);
       left += t.x;
