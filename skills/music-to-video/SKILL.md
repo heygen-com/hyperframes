@@ -158,7 +158,7 @@ Run the CLI on the **assembled project** — that's the correct unit (the per-fr
 ( cd "$PROJECT_DIR" && npx hyperframes check . --snapshots )
 ```
 
-Inspect at `t=0`, each frame start, the strongest DROP / SURGE, every `hard_stops[].t`, and the final frame. On failure, make the **cheapest safe fix** yourself: edit the offending `compositions/frames/NN-*.html`. Never change duration or audio timing to hide a sync issue. Once the gates pass, pause for user review, then render only on approval (autonomous mode: ask the one kept question — "preview first, or render?" — then deliver the MP4 with the contact sheet):
+Inspect at `t=0`, each frame start, the strongest DROP / SURGE, every `hard_stops[].t`, and the final frame. On failure, make the **cheapest safe fix** yourself: edit the offending `compositions/frames/NN-*.html`. Never change duration or audio timing to hide a sync issue. Once the gates pass, open the final Studio preview (`( cd "$PROJECT_DIR" && npx hyperframes preview --background )`) and pause for user review — render now, or what changes? Render only on approval (autonomous mode: the same, as the one kept question), then deliver the MP4 with the contact sheet:
 
 ```bash
 ( cd "$PROJECT_DIR" && npx hyperframes render . --skill=music-to-video -q draft -o renders/video.mp4 --fps 30 )

@@ -48,7 +48,7 @@ Default to `collaborative` only when a legacy project lacks enough state to deri
 
 Autonomous mode never silently drops a required capability. If the selected workflow has no local, cached, or offline provider for it, surface the blocker instead of omitting the capability. A credential problem does not relax the quality gates.
 
-Rendering remains user-gated in both modes. After checks pass, collaborative runs ask “render now, or what changes?” Autonomous runs ask “preview first, or render?” Render only after the answer.
+Rendering remains user-gated in both modes. After checks pass, both open the final Studio preview and ask “render now, or what changes?”; in autonomous runs it is the one kept question. Render only after the answer.
 
 ### Checkpoint feedback
 

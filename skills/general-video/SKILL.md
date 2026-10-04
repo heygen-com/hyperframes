@@ -118,7 +118,7 @@ Use this dependency order. Skip a stage only when its input is absent.
 5. **Merge motion sidecars.** Collect the workers' `compositions/<frame_id>.motion.json` files and carry their durations and exit/entry vectors into assembly; where the doctrine chain (`/motion-doctrine`) is installed, translate them into the project ledger before stamping seams.
 6. **Assemble.** Mount scenes, media, transitions, captions, and audio using the production loop. Real voice duration overrides estimates. When a music bed plays under any voice track, carve the bed before verifying: `/hyperframes-audio` → `scripts/carve.mjs --comp index.html`. A volume duck alone does not finish the mix.
 7. **Verify.** Use `npx hyperframes lint` for fast feedback after the first HTML pass and structural changes. For the final gate, run `npx hyperframes check`; it reruns lint internally, so do not run a redundant standalone lint immediately before it. For sub-compositions, inspect midpoint snapshots. For multi-scene work, review the animation map.
-8. **Final approval.** Open the final Studio preview only after checks pass. Ask whether to render or revise. Render only after approval.
+8. **Final approval.** Once checks pass, open the final Studio preview — in autonomous mode too, before any render: opening it asks nothing. Ask whether to render or revise (autonomous: the one kept question). Render only after approval.
 
 ## 6. Gates that always apply
 

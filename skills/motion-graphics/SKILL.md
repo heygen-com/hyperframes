@@ -21,7 +21,7 @@ description: >
 
 > **The front door is `/hyperframes`.** This skill makes a **short, design-led, unnarrated motion graphic** (motion is the message; ~under 10s, no voice-over). Anything longer, narrated, or multi-scene — or any uncertainty → read `/hyperframes` first: the intent layer owns every route decision.
 
-This workflow is **autonomous by design** — at most one clarifying question (`agents/director.md`), then build through verification without intermediate review. The intent layer (`/hyperframes` → `references/intent-interview.md`) routes here directly without run-shape questions; a storyboard and companion session add little to a piece this short. Rendering is still user-gated: after checks and proof snapshots pass, ask the canonical “preview first, or render?” question from `../hyperframes/references/brief-contract.md`. When a `BRIEF.md` exists, read it before the director's question.
+This workflow is **autonomous by design** — at most one clarifying question (`agents/director.md`), then build through verification without intermediate review. The intent layer (`/hyperframes` → `references/intent-interview.md`) routes here directly without run-shape questions; a storyboard and companion session add little to a piece this short. Rendering is still user-gated: after checks and proof snapshots pass, open the Studio preview and ask the canonical “render now, or what changes?” question from `../hyperframes/references/brief-contract.md`. When a `BRIEF.md` exists, read it before the director's question.
 
 A short design-led motion graphic. **Asset-first**: decide the asset strategy and source real material _before_ designing the shot, then design the shot around what you have, then compose by reusing catalog capabilities. All artifacts go to `PROJECT_DIR = videos/<project-name>/` (created in Step 0); all paths below are relative to it.
 
@@ -33,7 +33,7 @@ A short design-led motion graphic. **Asset-first**: decide the asset strategy an
 | design   | subagent — shot design around resolved assets                         | `shot-plan.json` (final: block(s) + layout + motion + positions) | `agents/director.md` (Part 2) |
 | build    | subagent — reuse-first composition                                    | `compositions/index.html`                                        | `agents/builder.md`           |
 | verify   | Bash — `lint`, `check`, proof snapshots; repair on failure            | `snapshots/contact-sheet.jpg`                                    | Step 5                        |
-| approve  | Ask preview or render; wait for the answer                            | explicit render approval                                         | Step 6                        |
+| approve  | Open the preview; ask render or changes; wait for the answer          | explicit render approval                                         | Step 6                        |
 | render   | Bash — `hyperframes render` (MP4, or `--format webm/mov` for overlay) | `renders/video.mp4` or transparent overlay                       | Step 6                        |
 
 `◇ source` runs only when the chosen category declares assets. Pure code/text categories (e.g. `kinetic-type`, most `charts`/`stat`) have `asset_needs: []` and skip straight from plan to design.
@@ -135,7 +135,7 @@ Choose proof times that show the opening state, signature move, and final hold. 
 
 ### Step 6 — Approve and render (Bash)
 
-Ask one question: “preview first, or render?” If the user chooses preview, open Studio and return to the same approval gate after revisions:
+Open Studio, then ask one question: “render now, or what changes?” After revisions, return to the same gate:
 
 ```bash
 (cd "$PROJECT_DIR" && npx hyperframes preview --background)
