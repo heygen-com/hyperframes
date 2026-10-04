@@ -715,6 +715,28 @@ describe("runCommit — instantPatch wiring", () => {
     expect(trackStudioEvent.mock.calls.filter(([event]) => event === "keyframe")).toEqual([]);
   });
 
+  it("rejects a refused write with the server's reason in a toast", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "file changed on disk" }), {
+            status: 409,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    const deps = renderCommitHook();
+
+    await expect(
+      deps.api.commitMutation(selection, { type: "add-keyframe" }, { label: "Add" }),
+    ).rejects.toThrow();
+    expect(deps.showToast).toHaveBeenCalledWith(
+      expect.stringContaining("file changed on disk"),
+      "error",
+    );
+  });
+
   const NESTED_SCRIPT = 'window.__timelines["root"] = tl;';
   const SUB = `<template><div data-composition-id="sub"><div id="nwid" style="left: 40px"></div></div></template>`;
 
@@ -867,6 +889,8 @@ describe("runCommit — instantPatch wiring", () => {
         body: JSON.stringify({ mutations: [firstMutation, lastMutation] }),
       }),
     );
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(new Headers(init?.headers).get("X-Hyperframes-Write-Token")).toBeTruthy();
     expect(deps.recordEdit).toHaveBeenCalledTimes(1);
     expect(deps.recordEdit).toHaveBeenCalledWith(
       expect.objectContaining({ label: "Resize", coalesceKey: "tx:resize:1" }),
