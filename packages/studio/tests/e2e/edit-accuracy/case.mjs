@@ -346,21 +346,20 @@ export function keyframeDrift(before, after) {
   return { ...worst, pass: worst.diff <= KEY_TOLERANCE };
 }
 
+const scriptsIn = (html) => [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+const animatesTarget = (anim) => anim.targetSelector === "#target" && !anim.global;
+const keyframeProps = (anim) => (anim.keyframes?.keyframes ?? []).map((k) => k.properties);
+const animatedProps = (anim) =>
+  [anim.properties, anim.fromProperties, ...keyframeProps(anim)].flatMap((props) =>
+    Object.keys(props ?? {}),
+  );
+
 function targetGroups(files) {
-  const groups = new Set();
-  for (const html of Object.values(files))
-    for (const [, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))
-      for (const anim of parseGsapScript(script).animations.filter(
-        (a) => a.targetSelector === "#target" && !a.global,
-      ))
-        for (const props of [
-          anim.properties,
-          anim.fromProperties,
-          ...(anim.keyframes?.keyframes ?? []).map((k) => k.properties),
-        ])
-          for (const prop of Object.keys(props ?? {}))
-            if (prop !== "data") groups.add(classifyPropertyGroup(prop));
-  return groups;
+  const props = Object.values(files)
+    .flatMap(scriptsIn)
+    .flatMap((script) => parseGsapScript(script).animations.filter(animatesTarget))
+    .flatMap(animatedProps);
+  return new Set(props.filter((prop) => prop !== "data").map(classifyPropertyGroup));
 }
 
 /** Property groups the edit made the timeline animate on #target that it did not animate before. */
