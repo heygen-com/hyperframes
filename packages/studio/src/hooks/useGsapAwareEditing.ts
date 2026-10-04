@@ -269,6 +269,7 @@ export function useGsapAwareEditing({
       await runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
+        draw: writes.drawKeepingUndone,
         settle: () => {
           // Scale resize settles its center-scale residual after the scale commit
           // renders. Width/height can settle its anchored position immediately.

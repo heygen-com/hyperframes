@@ -281,6 +281,36 @@ describe("runGestureTransaction", () => {
     log.mockRestore();
   });
 
+  it("measures a box undo painted back mid-save as the edit drew it, so it reports no change", async () => {
+    const element = document.createElement("div");
+    let undone = false;
+    vi.spyOn(element, "getBoundingClientRect").mockImplementation(() =>
+      undone ? rect(0, 0, 50, 40) : rect(10, 20, 100, 80),
+    );
+    const draw = <T>(run: () => T): T => {
+      undone = false;
+      try {
+        return run();
+      } finally {
+        undone = true;
+      }
+    };
+
+    await runGestureTransaction({
+      element,
+      label: "Resize layer",
+      settle: vi.fn(),
+      persist: async () => void (undone = true),
+      restore: vi.fn(),
+      draw,
+    });
+
+    expect(trackStudioEventMock).not.toHaveBeenCalledWith(
+      "commit_invariant_violation",
+      expect.anything(),
+    );
+  });
+
   it("skips the pixel assertion for live position tweens", async () => {
     const element = document.createElement("div");
     const getRect = vi.spyOn(element, "getBoundingClientRect");

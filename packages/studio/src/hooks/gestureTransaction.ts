@@ -18,6 +18,7 @@ export interface GestureTransaction {
   afterBufferedCommitsSaved?(): Promise<void>;
   restore(): void;
   skipPixelAssert?: boolean;
+  draw?<T>(run: () => T): T;
 }
 
 let transactionCounter = 0;
@@ -150,7 +151,9 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
       const durationMs = Math.round(performance.now() - startedAt);
       logCommit("persisted", { label: tx.label, coalesceKey });
       if (before) {
-        const after = readPixelRect(tx.element);
+        const after = tx.draw
+          ? tx.draw(() => readPixelRect(tx.element))
+          : readPixelRect(tx.element);
         const delta = pixelDelta(before, after);
         if (exceedsPixelTolerance(delta)) {
           logCommit("persist-changed-pixels", { label: tx.label, before, after, delta });
