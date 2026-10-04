@@ -49,14 +49,11 @@ export interface DragCommitDeps {
   /** Atomic multi-clip persist (single undo) for lane changes + track inserts.
    *  `coalesceKey`, when supplied, tags the resulting "Move timeline clips"
    *  history entry so it merges with the lane change's z-reorder entry (see the
-   *  lane-change branch below). `coalesceMs` widens that entry's fold window
-   *  (per-gesture-unique keys make an unbounded window safe) — required when a
-   *  server round-trip sits between the gesture's two records. */
+   *  lane-change branch below). */
   onMoveElements?: (
     edits: TimelineMoveEdit[],
     coalesceKey?: string,
     operation?: TimelineMoveOperation,
-    coalesceMs?: number,
   ) => Promise<void> | void;
   /**
    * The current multi-selection (store.selectedElementIds). When the dragged
@@ -123,7 +120,6 @@ export function persistMoveEdits(
   deps: DragCommitDeps,
   coalesceKey?: string,
   operation: TimelineMoveOperation = "timing",
-  coalesceMs?: number,
 ): Promise<boolean> {
   if (edits.length === 0) return Promise.resolve(true);
   edits = edits.map((e) => {
@@ -211,7 +207,7 @@ export function persistMoveEdits(
     : null;
   const start = () =>
     onMoveElements
-      ? onMoveElements(persistEdits, coalesceKey, operation, coalesceMs)
+      ? onMoveElements(persistEdits, coalesceKey, operation)
       : Promise.all(
           persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))),
         );
@@ -502,12 +498,7 @@ function commitTrackInsert(
  * useCanvasZOrderTimelineMirror).
  *
  * `coalesceKey` MUST be the z persist's key (`z-reorder:<action>:<ids>:g<seq>`)
- * so editHistory folds the z write and this track write into ONE undo entry, and
- * `coalesceMs` MUST widen this record's fold window: the mirror only runs after
- * the z persist's server round-trip resolved, so under real network latency the
- * gap between the two records exceeds the reducer's 300ms default and the fold
- * would never happen live. The key is unique per gesture, so an unbounded
- * window can never merge distinct gestures.
+ * so editHistory folds the z write and this track write into ONE undo entry.
  *
  * Resolves `true` once the move persisted, `false` on rollback / refused insert.
  */
@@ -516,7 +507,6 @@ export function commitZMirrorLaneMove(
   move: NonNullable<ZMirrorLaneMove>,
   deps: DragCommitDeps,
   coalesceKey: string,
-  coalesceMs?: number,
 ): Promise<boolean> {
   if (move.kind === "move") {
     const edit: TimelineMoveEdit = {
@@ -525,14 +515,14 @@ export function commitZMirrorLaneMove(
       persistTrack: move.persistTrack,
     };
     return refreshAfterDurableLaneMove(
-      persistMoveEdits([edit], deps, coalesceKey, "lane-reorder", coalesceMs),
+      persistMoveEdits([edit], deps, coalesceKey, "lane-reorder"),
       deps,
     );
   }
   const built = buildTrackInsertEdits(element, element.start, move.insertRow, null, deps);
   if (!built || built.edits.length === 0) return Promise.resolve(false);
   return refreshAfterDurableLaneMove(
-    persistMoveEdits(built.edits, deps, coalesceKey, "track-insert", coalesceMs),
+    persistMoveEdits(built.edits, deps, coalesceKey, "track-insert"),
     deps,
   );
 }

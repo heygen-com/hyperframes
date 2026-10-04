@@ -190,7 +190,6 @@ export function useTimelineDeleteOps({
           try {
             await handleTimelineGroupMove(rippleChanges, {
               coalesceKey,
-              coalesceMs: Number.POSITIVE_INFINITY,
               // Coalescing keeps the LAST entry's label; without this the undo
               // toast reads "Undid Move timeline clips" after a delete, naming
               // the ripple's mechanics instead of what the user actually did.

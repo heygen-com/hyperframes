@@ -195,11 +195,11 @@ let timingGestures = 0;
 /** One timing gesture's undo step, shared by its timing write and its GSAP fold however long the fold takes. */
 export function timingGestureStep(
   kind: string,
-  given?: { coalesceKey?: string; coalesceMs?: number },
+  given?: { coalesceKey?: string },
 ): { coalesceKey: string; coalesceMs: number } {
   return {
     coalesceKey: given?.coalesceKey ?? `${kind}:${++timingGestures}`,
-    coalesceMs: given?.coalesceMs ?? UNTIL_NEXT_EDIT,
+    coalesceMs: UNTIL_NEXT_EDIT,
   };
 }
 

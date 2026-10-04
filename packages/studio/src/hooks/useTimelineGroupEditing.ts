@@ -51,8 +51,6 @@ export interface TimelineGroupResizeChange {
 export interface TimelineGroupCommitOptions {
   beforeTiming?: Promise<void>;
   coalesceKey?: string;
-  /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
-  coalesceMs?: number;
   /** Overrides the default "Move timeline clips" undo-history label. Coalescing
    *  keeps the LAST entry's label (editHistory.ts), so a mechanical follow-up
    *  move folded into another gesture's coalesceKey (e.g. the ripple after a

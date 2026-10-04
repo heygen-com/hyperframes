@@ -163,13 +163,6 @@ function useMirrorLaneMoveCommit(): (
           // stacking sync must not re-trigger and fight the just-set z values.
         },
         coalesceKey,
-        // Unbounded fold window: this record lands only AFTER the z persist's
-        // server round-trip resolved, so the gap between the gesture's two
-        // records exceeds editHistory's 300ms default under real latency and
-        // the fold would silently split into two undo entries. The shared key
-        // is unique per gesture (zReorderCoalesceKey's gesture seq), so the
-        // unbounded window can never merge two distinct user actions.
-        Number.POSITIVE_INFINITY,
       );
     },
     [onMoveElements],

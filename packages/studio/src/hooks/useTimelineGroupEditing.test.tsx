@@ -159,6 +159,8 @@ it.each([false, true])(
   },
 );
 
+const SLOWER_THAN_THE_DEFAULT_WINDOW_MS = 400;
+
 it("undoes each group move with its GSAP rewrite in one step, however long the rewrite takes", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const dir = mkdtempSync(join(tmpdir(), "hf-group-move-undo-"));
@@ -181,7 +183,7 @@ it("undoes each group move with its GSAP rewrite in one step, however long the r
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (url.includes("/gsap-mutations")) {
       rewriteAsked();
-      await new Promise((wait) => setTimeout(wait, 400));
+      await new Promise((wait) => setTimeout(wait, SLOWER_THAN_THE_DEFAULT_WINDOW_MS));
     }
     return api.request(url.replace(/^\/api/, ""), init);
   });
@@ -204,7 +206,6 @@ it("undoes each group move with its GSAP rewrite in one step, however long the r
   }
   const root = mountReactHarness(<Harness />);
   const file = () => readFileSync(join(dir, "index.html"), "utf8");
-  // The rewrite answers after the move's claim has sat idle longer than a default window.
   const moveTo = (from: number, to: number) =>
     act(async () => {
       const rewriting = new Promise<void>((resolve) => (rewriteAsked = resolve));
@@ -213,7 +214,7 @@ it("undoes each group move with its GSAP rewrite in one step, however long the r
         { element: el("b", from, 2), start: to },
       ]);
       await rewriting;
-      await vi.advanceTimersByTimeAsync(400);
+      await vi.advanceTimersByTimeAsync(SLOWER_THAN_THE_DEFAULT_WINDOW_MS);
       await moved;
     });
   const undo = () =>

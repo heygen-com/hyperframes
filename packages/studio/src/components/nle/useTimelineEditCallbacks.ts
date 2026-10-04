@@ -32,7 +32,6 @@ export interface TimelineEditCallbackDeps {
     edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
     coalesceKey?: string,
     operation?: TimelineMoveOperation,
-    coalesceMs?: number,
   ) => Promise<void> | void;
   handleTimelineElementResize: (
     element: TimelineElement,

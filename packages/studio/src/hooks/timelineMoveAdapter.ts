@@ -27,7 +27,6 @@ export type TimelineMoveEditsHandler = (
   edits: TimelineAtomicMoveEdit[],
   coalesceKey?: string,
   operation?: TimelineMoveOperation,
-  coalesceMs?: number,
 ) => Promise<void>;
 
 export function persistTimelineMoveEditsAtomically(
@@ -35,7 +34,6 @@ export function persistTimelineMoveEditsAtomically(
   coalesceKey: string | undefined,
   operation: TimelineMoveOperation,
   deps: AtomicMoveDeps,
-  coalesceMs?: number,
 ): Promise<void> {
   return deps.handleTimelineGroupMove(
     edits.map(({ element, updates }) => ({
@@ -48,7 +46,7 @@ export function persistTimelineMoveEditsAtomically(
       // ("timing") omit it so they stay eligible for the SDK fast path.
       track: operation === "timing" ? undefined : updates.track,
     })),
-    { coalesceKey, coalesceMs },
+    { coalesceKey },
   );
 }
 
@@ -56,9 +54,9 @@ export function useTimelineMoveEditsHandler(
   handleTimelineGroupMove: AtomicMoveDeps["handleTimelineGroupMove"],
 ): TimelineMoveEditsHandler {
   return useCallback(
-    async (edits, coalesceKey, operation: TimelineMoveOperation = "timing", coalesceMs) => {
+    async (edits, coalesceKey, operation: TimelineMoveOperation = "timing") => {
       const deps = { handleTimelineGroupMove };
-      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, deps, coalesceMs);
+      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, deps);
     },
     [handleTimelineGroupMove],
   );
