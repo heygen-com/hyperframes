@@ -203,10 +203,8 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-const KEPT_HIDDEN_PATHS = new Set<string>([
-  ...STUDIO_SIGNATURE_MANIFEST_PATHS,
-  ".media/manifest.jsonl",
-]);
+const MEDIA_LEDGER = ".media/manifest.jsonl";
+const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
 
 /** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except the kept ones above. */
 function isHistoryPath(path: string): boolean {
@@ -408,6 +406,7 @@ class Engine {
     );
     if (!log) return this.firstOpen();
     this.log = withoutHiddenPaths(log);
+    await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
     const last = this.log.entries.at(-1)?.id ?? START;
     for (const [path, hash] of manifestAt(this.log, last) ?? []) {
@@ -465,6 +464,16 @@ class Engine {
     if (!closed || this.log.entries.some((entry) => entry.id === closed.id)) return;
     const { id, who, label, startedAt, lastWriteAt, idleMs } = closed;
     this.windows.push({ id, who, label, startedAt, lastWriteAt, idleMs, changes: new Map() });
+  }
+
+  async takeInUnnamedLedger(): Promise<void> {
+    const named = (path: string) =>
+      this.log.entries.some((entry) => entry.files.some((file) => file.path === path));
+    if (this.log.baseline.has(MEDIA_LEDGER) || named(MEDIA_LEDGER)) return;
+    const hash = await this.storeIfPresent(MEDIA_LEDGER);
+    if (hash === null) return;
+    this.log.baseline.set(MEDIA_LEDGER, hash);
+    this.persistLog();
   }
 
   async firstOpen(): Promise<void> {

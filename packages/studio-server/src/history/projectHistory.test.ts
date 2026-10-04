@@ -201,6 +201,26 @@ describe("openProjectHistory", () => {
     expect(reopened.next("forward", you)).toBeUndefined();
   });
 
+  it("a log 0.8.123 wrote without the media ledger takes it in, so the first Undo undoes the edit", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      ".media/manifest.jsonl": "{}\n",
+    });
+    await change(history, you, "Your edit", () => write("index.html", "B"));
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    const lines = readFileSync(logFile, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    for (const record of lines)
+      if (record.type === "baseline") delete record.files[".media/manifest.jsonl"];
+    writeFileSync(logFile, lines.map((record) => JSON.stringify(record)).join("\n") + "\n");
+    const reopened = await open(projectDir, historyRoot);
+    expect(await reopened.step("back", you)).toMatchObject({ ok: true });
+    expect([read("index.html"), read(".media/manifest.jsonl")]).toEqual(["A", "{}\n"]);
+  });
+
   it("takes the media ledger back with the film when a change is undone", async () => {
     const { history, write, read } = await project({
       "index.html": "<h1>Hello</h1>",
