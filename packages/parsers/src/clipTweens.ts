@@ -8,8 +8,14 @@ type TweenTime = Pick<GsapAnimation, "position" | "implicitPosition">;
 export function clipTweenMatcher(
   clipSelectors: string | readonly string[],
   root?: ParentNode,
+  queries: Map<string, Element[]> = new Map(),
 ): (tween: TweenTarget) => boolean {
   const own = typeof clipSelectors === "string" ? [clipSelectors] : clipSelectors;
+  const queryAll = (scope: ParentNode, selector: string): Element[] => {
+    let found = queries.get(selector);
+    if (!found) queries.set(selector, (found = queryRoot(scope, selector)));
+    return found;
+  };
   const clips = root ? own.flatMap((selector) => queryAll(root, selector)) : [];
   return ({ targetSelector, hasPartialSelector }) => {
     if (hasPartialSelector) return false;
@@ -38,7 +44,7 @@ export function hasExplicitTime<T extends TweenTime>(
   return typeof animation.position === "number" && !animation.implicitPosition;
 }
 
-function queryAll(root: ParentNode, selector: string): Element[] {
+function queryRoot(root: ParentNode, selector: string): Element[] {
   try {
     return Array.from(root.querySelectorAll(selector));
   } catch {

@@ -492,7 +492,9 @@ export function retimeClipTweensInScript(
   );
   const parsed = live.length > 0 ? parseGsapScriptAcornForWrite(script) : null;
   if (!parsed) return { script, changed };
-  const matchers = retimes.map((r) => clipTweenMatcher(r.targetSelector, root));
+  // Matchers share one query cache: each selector is looked up in the DOM once, not once per clip.
+  const queries = new Map<string, Element[]>();
+  const matchers = retimes.map((r) => clipTweenMatcher(r.targetSelector, root, queries));
   const ms = new MagicString(script);
   let wrote = false;
   for (const entry of parsed.located) {
