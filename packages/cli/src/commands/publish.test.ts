@@ -297,4 +297,66 @@ describe("publish --update / --space ownership preflight", () => {
       expect(output).not.toContain("Claim URL");
     },
   );
+
+  // Another CLI logs in as B while A's publish bakes; refreshing A must not write over B.
+  it("fails without touching a login that replaced the checked one mid-publish", async () => {
+    const { publishProjectArchive } = await vi.importActual<
+      typeof import("../utils/publishProject.js")
+    >("../utils/publishProject.js");
+    const { readStore } = await import("../auth/store.js");
+    vi.stubEnv("HYPERFRAMES_OAUTH_TOKEN_URL", "https://auth.test/token");
+    const fetchMock = vi.fn(async (url: string) =>
+      url === "https://auth.test/token"
+        ? Response.json({ access_token: "a-new", expires_in: 3600 })
+        : Response.json({
+            data: {
+              project_id: "target",
+              title: "test",
+              url: "https://hyperframes.dev/p/target",
+              file_count: 1,
+              claimed: true,
+            },
+          }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const loginB = { access_token: "b-token", refresh_token: "b-refresh" };
+    const errors: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((...parts: unknown[]) => {
+      errors.push(parts.map(String).join(" "));
+    });
+    let stored: Awaited<ReturnType<typeof readStore>> | undefined;
+    try {
+      const { exitCode } = await runWithFlag(
+        { update: "target" },
+        {
+          stored: {
+            oauth: {
+              access_token: "a-token",
+              refresh_token: "a-refresh",
+              expires_at: new Date(Date.now() + 90_000).toISOString(),
+            },
+          },
+        },
+        async (dir, opts) => {
+          await writeStore({ oauth: loginB, user: { email: "b@example.com" } });
+          vi.useFakeTimers({ toFake: ["Date"] });
+          vi.setSystemTime(Date.now() + 10 * 60_000);
+          try {
+            return await publishProjectArchive(dir as string, opts as never);
+          } finally {
+            stored = await readStore();
+            vi.useRealTimers();
+          }
+        },
+      );
+
+      expect(stored?.credentials.oauth).toMatchObject(loginB);
+      expect(stored?.credentials.user?.email).toBe("b@example.com");
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["https://auth.test/token"]);
+      expect(exitCode).toBe(1);
+      expect(errors.join("\n")).toContain("Your login changed during publish. Run publish again.");
+    } finally {
+      error.mockRestore();
+    }
+  });
 });

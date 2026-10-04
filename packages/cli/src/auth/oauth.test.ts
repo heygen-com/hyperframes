@@ -172,6 +172,7 @@ describe("auth/oauth", () => {
   describe("refreshTokens", () => {
     it("posts grant_type=refresh_token and persists the response", async () => {
       process.env["HEYGEN_API_URL"] = "https://api.test.example";
+      await writeStore({ oauth: { access_token: "old_at", refresh_token: "old_rt" } });
       let capturedBody: string | undefined;
       const fetchImpl = (async (_url: string, init?: RequestInit) => {
         capturedBody = init?.body as string;
@@ -214,8 +215,26 @@ describe("auth/oauth", () => {
       expect(credentials.oauth?.refresh_token).toBe("keep_me_rt");
     });
 
+    it("leaves a login that replaced the refreshed one untouched", async () => {
+      const login = {
+        oauth: { access_token: "b_at", refresh_token: "b_rt" },
+        user: { email: "b@example.com" },
+      };
+      await writeStore(login);
+      const fetchImpl = tokenFetch({ access_token: "a_new_at", expires_in: 3600 });
+      await expect(refreshTokens("a_rt", { fetchImpl })).rejects.toSatisfy(
+        (err) => isAuthError(err) && err.code === "LOGIN_CHANGED",
+      );
+      const { credentials } = await readStore();
+      expect(credentials.oauth).toMatchObject(login.oauth);
+      expect(credentials.user?.email).toBe("b@example.com");
+    });
+
     it("preserves an existing api_key when persisting refreshed oauth", async () => {
-      await writeStore({ api_key: "hg_keep" });
+      await writeStore({
+        api_key: "hg_keep",
+        oauth: { access_token: "old_at", refresh_token: "old_rt" },
+      });
       const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 60 });
       await refreshTokens("old_rt", { fetchImpl });
       const { credentials } = await readStore();
@@ -224,7 +243,7 @@ describe("auth/oauth", () => {
     });
 
     it("preserves an unknown key INSIDE the oauth sub-object across a refresh", async () => {
-      // The refresh path is `persistOAuth(preserveMissing: true)`, i.e.
+      // The refresh path is `persistOAuth({ refreshed })`, i.e.
       // `{ ...existing.oauth, ...tokens }` — object spread carries the
       // hidden Symbol-keyed unknown bag from `existing.oauth`, so a key
       // another CLI wrote inside `oauth` (e.g. an `id_token`) must survive

@@ -166,6 +166,7 @@ async function metadataRequestError(response: Response, fallback: string): Promi
 }
 
 const LOGIN_EXPIRED = "Your login expired. Run hyperframes auth login, then publish again.";
+const LOGIN_CHANGED = "Your login changed during publish. Run publish again.";
 export const API_KEY_ENV_VAR = { env: "HEYGEN_API_KEY", env_alias: "HYPERFRAMES_API_KEY" } as const;
 
 function rejectedCredentialMessage(credential: ResolvedCredential): string {
@@ -194,6 +195,7 @@ export async function resolvePublishCredential(
     if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {
       throw new Error(LOGIN_EXPIRED);
     }
+    if (isAuthError(error) && error.code === "LOGIN_CHANGED") throw new Error(LOGIN_CHANGED);
     throw error;
   }
 }

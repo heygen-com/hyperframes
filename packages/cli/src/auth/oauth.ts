@@ -37,6 +37,7 @@ import { failCommand } from "../utils/commandResult.js";
 import {
   ErrApi,
   ErrDeviceAuthFailed,
+  ErrLoginChanged,
   ErrOAuthNotConfigured,
   ErrRefreshFailed,
   isAuthError,
@@ -205,7 +206,7 @@ export async function startAuthorizationCodeFlow(
   });
 
   // Fresh login → clean OAuth block (no inherited refresh_token).
-  await persistOAuth(tokens, { preserveMissing: false });
+  await persistOAuth(tokens);
   return { tokens };
 }
 
@@ -411,7 +412,7 @@ export async function refreshTokens(
   const payload = await readJsonOrThrow(res);
   const tokens = parseTokenResponse(payload);
   // Refresh grant → preserve a refresh_token the server didn't rotate.
-  await persistOAuth(tokens, { preserveMissing: true });
+  await persistOAuth(tokens, { refreshed: refresh_token });
   return tokens;
 }
 
@@ -592,25 +593,22 @@ function numericField(obj: Record<string, unknown>, key: string): number | undef
 }
 
 /**
- * Persist a new OAuth token set, always preserving a co-located
- * `api_key`.
+ * Persist a new OAuth token set, always preserving a co-located `api_key`.
  *
- * `preserveMissing` controls how the new tokens combine with whatever
- * OAuth block is already on disk:
- *   - `false` (fresh authorization-code login): overwrite the OAuth
+ * `refreshed` (the refresh_token that was exchanged) controls how the new
+ * tokens combine with whatever OAuth block is already on disk:
+ *   - absent (fresh authorization-code login): overwrite the OAuth
  *     block entirely. A new interactive login is a clean session — it
  *     must NOT inherit the previous session's refresh_token, or a
  *     response that omits one would pair a new access token with a
  *     stale refresh token and break/misroute the next refresh.
- *   - `true` (refresh grant): keep the prior refresh_token / scope /
+ *   - set (refresh grant): keep the prior refresh_token / scope /
  *     token_type when the response omits them. RFC 6749 §6 lets the
  *     token endpoint skip refresh_token on a no-rotation refresh, and
- *     dropping it would brick future refreshes.
+ *     dropping it would brick future refreshes. Throws `LOGIN_CHANGED`
+ *     without writing if the stored login is no longer the refreshed one.
  */
-async function persistOAuth(
-  tokens: OAuthTokens,
-  opts: { preserveMissing: boolean },
-): Promise<void> {
+async function persistOAuth(tokens: OAuthTokens, opts: { refreshed?: string } = {}): Promise<void> {
   let existing: Credentials = {};
   try {
     const { credentials } = await readStore();
@@ -621,9 +619,11 @@ async function persistOAuth(
     existing = {};
   }
 
-  const oauth: OAuthTokens = opts.preserveMissing
-    ? { ...existing.oauth, ...tokens }
-    : { ...tokens };
+  if (opts.refreshed !== undefined && existing.oauth?.refresh_token !== opts.refreshed) {
+    throw ErrLoginChanged();
+  }
+  const oauth: OAuthTokens =
+    opts.refreshed !== undefined ? { ...existing.oauth, ...tokens } : { ...tokens };
   // Start from the existing record so co-located data survives: the
   // api_key, the friendly-display `user` block, AND any unknown/foreign
   // keys another CLI wrote (carried on a hidden symbol slot by spread).
@@ -633,7 +633,7 @@ async function persistOAuth(
 
 /** Persist a verified fresh OAuth login while preserving cross-CLI fields. */
 export async function persistFreshOAuth(tokens: OAuthTokens): Promise<void> {
-  await persistOAuth(tokens, { preserveMissing: false });
+  await persistOAuth(tokens);
 }
 
 /**
