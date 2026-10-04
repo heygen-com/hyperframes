@@ -17,6 +17,30 @@ HyperFrames can seek Web Animations API animations through its `waapi` runtime a
 
 The adapter calls `document.getAnimations()`, sets each animation's `currentTime` to HyperFrames time in milliseconds, then pauses it.
 
+### Initial Timing
+
+At initial discovery, JavaScript-created animations on `document.timeline` with
+`playbackRate: 1` that are running or finished are anchored to composition time
+zero. Time spent loading scripts before the runtime starts is not part of the
+composition. This also lets a short, filled animation rewind if it finished
+during loading.
+
+Use `delay` for authored timing offsets: `delay: 500` starts the effect half a
+second later; `delay: -500` starts it half a second into the effect. An explicit
+initial position is also preserved when paused before discovery:
+
+```js
+animation.pause();
+animation.currentTime = 500;
+```
+
+Setting `currentTime` and leaving an animation running before initialization
+does not preserve that value as a baseline offset: it cannot be distinguished
+from elapsed loading time. Pause it or encode the offset with `delay` instead.
+This initialization rule does not change CSS animations/transitions, other
+timelines, non-default playback rates, or animations created after discovery.
+Rediscovery preserves the baseline already captured for an animation.
+
 ## Basic Pattern
 
 ```html
