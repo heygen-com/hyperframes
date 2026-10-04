@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
-import { createGsapAdapter } from "./gsap";
+import { createGsapAdapter, rerenderGsapTimelineAt } from "./gsap";
 import type { RuntimeTimelineLike } from "../types";
 
 // Every 0.1 s: hide all three frames, then show one, as frame-by-frame films do.
@@ -213,4 +213,53 @@ describe("gsap adapter at a tween's start", () => {
     for (const time of seeks) adapter.seek({ time });
     expect(o.x).toBeCloseTo(x, 6);
   });
+});
+
+describe("re-rendering onto a call at the playhead", () => {
+  type Film = {
+    build: (timeline: gsap.core.Timeline, fire: () => void) => void;
+    at: number;
+    to: number;
+  };
+  const nestedAt = (callAt: number, repeat = 0, speed = 1): Film["build"] => {
+    return (timeline, fire) => {
+      const scene = gsap.timeline({ repeat }).to({ y: 0 }, { y: 1, duration: 4 });
+      scene.call(fire, [], callAt).timeScale(speed);
+      timeline.add(scene, 1);
+    };
+  };
+  const films: Record<string, Film> = {
+    "a call on the playhead": { build: (tl, fire) => void tl.call(fire, [], 2), at: 2, to: 3 },
+    "a call at 0 on a fresh timeline": {
+      build: (tl, fire) => void tl.call(fire, [], 0),
+      at: 0,
+      to: 1,
+    },
+    "a reversed call": {
+      build: (tl, fire) => void tl.call(fire, [], 2).getChildren().at(-1)!.reversed(true),
+      at: 2,
+      to: 3,
+    },
+    "a call in a nested timeline": { build: nestedAt(1), at: 2, to: 3 },
+    "a call in a repeating nested timeline": { build: nestedAt(2, 1), at: 7, to: 8 },
+    "a call in a nested timeline at double speed": { build: nestedAt(1, 0, 2), at: 1.5, to: 2 },
+  };
+
+  it.each(Object.keys(films).flatMap((film) => [false, true].map((silent) => ({ film, silent }))))(
+    "fires $film as often as without the redraw (arrived silently: $silent)",
+    ({ film, silent }) => {
+      const { build, at, to } = films[film]!;
+      const fires = (redraw: boolean) => {
+        let fired = 0;
+        const timeline = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 10 });
+        build(timeline, () => void fired++);
+        timeline.totalTime(at, silent);
+        if (redraw) rerenderGsapTimelineAt(timeline, at);
+        timeline.totalTime(to, false);
+        return fired;
+      };
+      expect(fires(false)).toBeGreaterThan(0);
+      expect(fires(true)).toBe(fires(false));
+    },
+  );
 });

@@ -422,3 +422,42 @@ describe("TimelineToolbar Linked Selection", () => {
     act(() => useLinkedClipPreferences.getState().setSyncIndicatorsVisible(true));
   });
 });
+
+describe("TimelineToolbar — host right actions", () => {
+  it("draws the host's controls immediately before the thumbnails toggle", () => {
+    const { host, root } = renderToolbar(undefined, {
+      rightActions: <button type="button">Script</button>,
+    });
+    const buttons = [...host.querySelectorAll("button")];
+    const script = buttons.findIndex((b) => b.textContent === "Script");
+    const thumbs = buttons.findIndex((b) => b.getAttribute("aria-label")?.includes("thumbnails"));
+    expect(script).toBeGreaterThan(-1);
+    expect(thumbs).toBe(script + 1);
+    act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar split hint", () => {
+  async function splitTooltip(props: Partial<React.ComponentProps<typeof TimelineToolbar>>) {
+    usePlayerStore.setState({
+      elements: [{ id: "a", domId: "a", tag: "div", start: 0, duration: 4, track: 0 }],
+      selectedElementId: "a",
+      currentTime: 2,
+    });
+    const { host, root } = renderToolbar(undefined, { onSplitElement: vi.fn(), ...props });
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Split at playhead"]');
+    act(() => button?.focus());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const label = document.querySelector('[role="tooltip"]')?.textContent;
+    act(() => root.unmount());
+    usePlayerStore.setState({ elements: [], selectedElementId: null, currentTime: 0 });
+    return label;
+  }
+
+  it("names S unless the host binds Split to another key", async () => {
+    expect(await splitTooltip({})).toBe("Split at playhead (S)");
+    expect(await splitTooltip({ splitShortcut: "⌘B" })).toBe("Split at playhead (⌘B)");
+  });
+});

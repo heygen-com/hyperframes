@@ -133,11 +133,9 @@ function FlatMultiSelectState({
           an empty frame. Grouping is the LAYOUT grouper — a positioned wrapper
           around a bounding box, and an <audio> clip has none (grouping two
           produced a 0x0 div with inline left/top on elements that are never
-          laid out). Hiding is visibility, which for audio doubles as mute; the
-          timeline already withholds the eye on an audio track
-          (`visible={!isAudioTrack}`) and this panel was the way back to the
-          same write. Both handlers refuse it too — they own keyboard paths no
-          hidden button can gate. */}
+          laid out). Hiding is visibility, which for audio is mute, and the
+          timeline owns that as a mute control. Both handlers refuse it too —
+          they own keyboard paths no hidden button can gate. */}
       {!hasAudio && (
         <div className="flex gap-2">
           <button

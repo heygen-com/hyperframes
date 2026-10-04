@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   useDomGeometryCommit,
   usePlayerStore,
@@ -108,6 +108,10 @@ afterEach(() => {
 });
 
 describe("useDomGeometryCommit, from the package entry", () => {
+  it("takes the host's own preview reload, with no fallback", () => {
+    expectTypeOf<UseDomGeometryCommitOptions["reloadPreview"]>().toEqualTypeOf<() => void>();
+  });
+
   it("plugs into DomEditOverlay and saves a move as one GSAP write and one undo step", async () => {
     const mutations = stubServer();
     const { element, recordEdit, hook, unmount } = renderHost();

@@ -44,41 +44,15 @@ import {
   useGsapSaveFailureTelemetry,
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
-import { studioWriteHeaders } from "../utils/studioFileVersion";
-import { studioApiFetch } from "../utils/studioApiFetch";
+import { requestGsapMutation } from "./gsapMutationClient";
 
 async function mutateGsapScript(
   projectId: string,
+  route: "gsap-mutations" | "gsap-mutations-batch",
   sourceFile: string,
-  mutation: Record<string, unknown>,
+  body: unknown,
 ): Promise<MutationResult> {
-  const res = await studioApiFetch(
-    `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(sourceFile)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-      body: JSON.stringify(mutation),
-    },
-  );
-  if (!res.ok) throw new GsapMutationHttpError(res.status, await readJsonResponseBody(res));
-  const result = (await res.json()) as MutationResult;
-  if (!result.ok) throw new Error(`Failed to update GSAP in ${sourceFile}`);
-  return result;
-}
-
-async function mutateGsapScriptBatch(
-  projectId: string,
-  sourceFile: string,
-  mutations: Record<string, unknown>[],
-): Promise<MutationResult> {
-  const res = await studioApiFetch(
-    `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations-batch/${encodeURIComponent(sourceFile)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-      body: JSON.stringify({ mutations }),
-    },
-  );
+  const res = await requestGsapMutation(projectId, route, sourceFile, body);
   if (!res.ok) throw new GsapMutationHttpError(res.status, await readJsonResponseBody(res));
   const result = (await res.json()) as MutationResult;
   if (!result.ok) throw new Error(`Failed to update GSAP in ${sourceFile}`);
@@ -268,7 +242,8 @@ export function applyPreviewSync(
   nestedFiles?: Map<string, string> | null,
 ): void {
   const patches = instantPatchesFor(options);
-  let needsFallback = options.previewFallbackLatch?.pending === true;
+  const writtenWithoutPatch = patches.length === 0;
+  let needsFallback = options.previewFallbackLatch?.pending === true || writtenWithoutPatch;
   if (patches.length > 0) {
     const deferSeek = options.deferPreviewSync === true;
     const missed = patches.find(
@@ -391,7 +366,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
 
   const runCommit = useCallback(async (pid: string, compositionPath: string | null, targetPath: string, selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
     const result = await runMutationRequest([mutation], options, showToast, () =>
-      mutateGsapScript(pid, targetPath, mutation),
+      mutateGsapScript(pid, "gsap-mutations", targetPath, mutation),
     );
     if (!result) return;
     trackKeyframeCommit([mutation], result, options);
@@ -405,18 +380,19 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     if (!first || !last) return;
     const mutations = calls.map(({ mutation }) => mutation);
     const result = await runMutationRequest(mutations, options, showToast, () =>
-      mutateGsapScriptBatch(pid, targetPath, mutations),
+      mutateGsapScript(pid, "gsap-mutations-batch", targetPath, { mutations }),
     );
     if (!result) return;
     trackKeyframeCommit(mutations, result, options, calls.map((call) => call.options));
     options.onResult?.(result);
-    // Each call brings its own fast-path patch; the batch wrote them all, so the
-    // preview sync applies them all rather than just the last call's.
-    const instantPatches = calls
-      .map(({ options: callOptions }) => callOptions.instantPatch)
-      .filter((patch) => patch !== undefined);
+    // The batch wrote every call, so patch in place only when every call brought a patch; one
+    // without (a resize's size write) needs the reload, or the preview keeps the old value.
+    const instantPatches = calls.flatMap(({ options: callOptions }) =>
+      callOptions.instantPatch ? [callOptions.instantPatch] : [],
+    );
     const { instantPatch: _instantPatch, ...batchOptions } = options;
-    await finalizeSuccessfulMutation(pid, compositionPath, last.selection, last.mutation, targetPath, result, instantPatches.length > 0 ? { ...batchOptions, instantPatches } : batchOptions);
+    const allPatched = instantPatches.length === calls.length;
+    await finalizeSuccessfulMutation(pid, compositionPath, last.selection, last.mutation, targetPath, result, allPatched ? { ...batchOptions, instantPatches } : batchOptions);
   }, [showToast, finalizeSuccessfulMutation]);
 
   // Every GSAP-script commit is a read-modify-write of one file. Overlapping

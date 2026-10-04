@@ -59,6 +59,7 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   onDuplicateClip: () => Promise<boolean>;
   canPasteClip: () => boolean;
   clipMenuItems?: TimelineProps["clipMenuItems"];
+  splitShortcut?: TimelineProps["splitShortcut"];
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowMotionPath: boolean;
@@ -111,6 +112,7 @@ export const EditorShell = memo(function EditorShell({
   onDuplicateClip,
   canPasteClip,
   clipMenuItems,
+  splitShortcut,
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowMotionPath,
@@ -211,6 +213,7 @@ export const EditorShell = memo(function EditorShell({
               onDuplicateClip={onDuplicateClip}
               canPasteClip={canPasteClip}
               clipMenuItems={clipMenuItems}
+              splitShortcut={splitShortcut}
               previewOverlay={
                 <PreviewOverlays
                   shouldShowMotionPath={shouldShowMotionPath}
@@ -255,6 +258,7 @@ interface EditorShellBodyProps {
   onDuplicateClip: () => Promise<boolean>;
   canPasteClip: () => boolean;
   clipMenuItems?: TimelineProps["clipMenuItems"];
+  splitShortcut?: TimelineProps["splitShortcut"];
 }
 
 function EditorShellBody({
@@ -276,6 +280,7 @@ function EditorShellBody({
   onDuplicateClip,
   canPasteClip,
   clipMenuItems,
+  splitShortcut,
 }: EditorShellBodyProps) {
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
 
@@ -329,6 +334,7 @@ function EditorShellBody({
             onDuplicateClip={onDuplicateClip}
             canPasteClip={canPasteClip}
             clipMenuItems={clipMenuItems}
+            splitShortcut={splitShortcut}
             onSelectTimelineElement={onSelectTimelineElement}
             timelineFooter={
               captionEditMode ? (

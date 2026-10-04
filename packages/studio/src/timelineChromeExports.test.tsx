@@ -4,6 +4,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AudioMeterStrip,
+  dispatchLinkShortcut,
   TimelineHistoryButtons,
   TimelineToolbar,
   useAudioMetersVisible as exportedAudioMetersVisible,
@@ -13,6 +14,7 @@ import {
 } from "@hyperframes/studio";
 import { installReactActEnvironment, mountReactHarness } from "./hooks/domSelectionTestHarness";
 import { useAudioMetersVisible } from "./utils/audioMeterVisibility";
+import { dispatchLinkShortcut as localDispatchLinkShortcut } from "./hooks/linkShortcuts";
 
 installReactActEnvironment();
 
@@ -50,6 +52,10 @@ describe("timeline chrome package exports, outside Studio's shell", () => {
     const root = mountReactHarness(<AudioMeterStrip previewIframeRef={{ current: null }} />);
     expect(document.querySelector('[data-testid="audio-meter-strip"]')).not.toBeNull();
     await act(async () => root.unmount());
+  });
+
+  it("exports the clip menu's link shortcuts for a host's own key handler", () => {
+    expect(dispatchLinkShortcut).toBe(localDispatchLinkShortcut);
   });
 
   it("exports the meter visibility store a host toggles", () => {

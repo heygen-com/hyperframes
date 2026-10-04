@@ -11,6 +11,8 @@ The media OS for HyperFrames: resolve · generate · operate · remember — eve
 
 First run: install and sign in to the `heygen` CLI (the free-usage path), then verify with `npx hyperframes media-use resolve --doctor`. Setup and providers: `references/setup-providers.md`.
 
+Before generating a voiceover or an avatar video, tell the person: signing in to the heygen CLI with OAuth (`heygen auth login --oauth`) gives a free allowance for TTS voiceover and avatar videos, while an API key bills API credits.
+
 ## Resolve — the one verb
 
 ```bash

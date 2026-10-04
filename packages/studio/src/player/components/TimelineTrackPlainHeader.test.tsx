@@ -1,17 +1,8 @@
 // @vitest-environment happy-dom
 
 /**
- * The visibility control's accessible contract.
- *
- * The wording ran behind the `audio-track-mute` canary at 0%, so it had never
- * rendered in any suite: it returned "Muted" / "Mute", which named the CURRENT
- * state rather than the action, and dropped the track suffix so every audio row
- * shared one accessible name. Pinned here because the label, the icon and the
- * callback's arguments are the whole identity of this control.
- *
- * The mute presentation itself is gone (`remove mute and solo from tracks and
- * groups`): the control is the visibility eye it always was, and an audio row
- * renders it only when already hidden, which is the way back out.
+ * The track toggle's accessible contract: the label names the action, carries
+ * the display row, and reads mute on an audio-only track.
  */
 
 import React, { act } from "react";
@@ -27,7 +18,7 @@ afterEach(() => {
 
 function renderButton(props: {
   hidden: boolean;
-  visible?: boolean;
+  asMute?: boolean;
   trackDisplayNumber: number | null;
 }): { host: HTMLElement; unmount: () => void; onToggle: ReturnType<typeof vi.fn> } {
   const host = document.createElement("div");
@@ -40,7 +31,7 @@ function renderButton(props: {
         hidden: props.hidden,
         trackNumber: 7,
         trackDisplayNumber: props.trackDisplayNumber,
-        visible: props.visible ?? true,
+        asMute: props.asMute ?? false,
         onToggle,
       }),
     ),
@@ -80,13 +71,13 @@ describe("VisibilityButton", () => {
     view.unmount();
   });
 
-  // `visible={false}` renders a SPACER, not nothing: every row's control
-  // columns have to line up whether or not this row offers the control.
-  it("holds the column with a spacer when withheld", () => {
-    const view = renderButton({ hidden: false, visible: false, trackDisplayNumber: 2 });
-    expect(view.host.querySelector("button")).toBeNull();
-    expect(view.host.querySelector("span")).toBeTruthy();
-    view.unmount();
+  it("names a mute on an audio-only track", () => {
+    const audible = renderButton({ hidden: false, asMute: true, trackDisplayNumber: 2 });
+    expect(labelOf(audible.host)).toBe("Mute track 2");
+    audible.unmount();
+    const muted = renderButton({ hidden: true, asMute: true, trackDisplayNumber: 2 });
+    expect(labelOf(muted.host)).toBe("Unmute track 2");
+    muted.unmount();
   });
 });
 
@@ -104,6 +95,7 @@ describe("PlainTrackHeader", () => {
           clipCount: 1,
           isTrackHidden: false,
           isAudioTrack: true,
+          isAudioOnly: true,
           onToggleTrackHidden: vi.fn(),
           showTrackLabel: true,
           ...overrides,
@@ -113,26 +105,20 @@ describe("PlainTrackHeader", () => {
     return { host, unmount: () => act(() => root.unmount()) };
   }
 
-  // A row that says what it is with a speaker does not also need the hide
-  // affordance sitting in the eye's slot.
-  it("withholds the eye from an audible audio track", () => {
+  it("offers a mute on an audible audio track", () => {
     const view = renderHeader();
-    expect(view.host.querySelector("button")).toBeNull();
+    expect(labelOf(view.host)).toBe("Mute track 1");
     view.unmount();
   });
 
-  // Withholding it unconditionally withheld the only way back: `data-hidden`
-  // silences the clip in preview and drops it from the render, and nothing else
-  // writes it, so a track hidden by hand or by "Hide all" was silent with no
-  // control anywhere to restore it.
-  it("offers it back once the audio track is hidden", () => {
+  it("offers the unmute on a muted audio track", () => {
     const view = renderHeader({ isTrackHidden: true });
-    expect(labelOf(view.host)).toBe("Show track 1");
+    expect(labelOf(view.host)).toBe("Unmute track 1");
     view.unmount();
   });
 
   it("keeps the eye on a visual track", () => {
-    const view = renderHeader({ isAudioTrack: false });
+    const view = renderHeader({ isAudioTrack: false, isAudioOnly: false });
     expect(labelOf(view.host)).toBe("Hide track 1");
     view.unmount();
   });

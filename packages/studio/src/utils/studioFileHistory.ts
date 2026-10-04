@@ -9,6 +9,7 @@ export interface RecordEditInput {
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
+  created?: string[];
 }
 
 export interface DomEditCommitBaseParams {

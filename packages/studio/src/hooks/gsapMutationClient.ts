@@ -88,6 +88,22 @@ function readMutationError(value: unknown, fallback: string): string {
   return fallback;
 }
 
+export function requestGsapMutation(
+  projectId: string,
+  route: "gsap-mutations" | "gsap-mutations-batch",
+  filePath: string,
+  body: unknown,
+): Promise<Response> {
+  return studioApiFetch(
+    `/api/projects/${encodeURIComponent(projectId)}/${route}/${encodeURIComponent(filePath)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 export async function postGsapMutation(
   projectId: string,
   filePath: string,
@@ -96,14 +112,7 @@ export async function postGsapMutation(
 ): Promise<GsapMutationStatus> {
   let response: Response;
   try {
-    response = await studioApiFetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(filePath)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-        body: JSON.stringify(mutation),
-      },
-    );
+    response = await requestGsapMutation(projectId, "gsap-mutations", filePath, mutation);
   } catch (error) {
     throw new GsapPreviewConvergenceError(`${fallback}: mutation outcome unknown`, {
       cause: error,

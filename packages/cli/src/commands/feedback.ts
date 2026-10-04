@@ -15,6 +15,7 @@ import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
 import { parseFeedbackRating } from "../utils/feedbackRating.js";
+import { feedbackEmail, parseFeedbackSource } from "../utils/feedbackSource.js";
 import { lintFeedbackComment, type FeedbackLintInput } from "../utils/feedbackLint.js";
 
 export const examples: Example[] = [
@@ -155,7 +156,7 @@ async function fileGithubIssue(opts: {
 }
 
 export default defineCommand({
-  meta: { name: "feedback", description: "Submit anonymous feedback about your experience" },
+  meta: { name: "feedback", description: "Submit feedback about your experience" },
   args: {
     rating: {
       type: "string",
@@ -166,6 +167,10 @@ export default defineCommand({
     comment: {
       type: "string",
       description: "Optional details about your experience",
+    },
+    source: {
+      type: "string",
+      description: 'Who wrote the report: "person" or "agent"',
     },
     "search-miss": {
       type: "string",
@@ -223,6 +228,12 @@ export default defineCommand({
       failCommand();
     }
 
+    const source = parseFeedbackSource(args.source);
+    if (source === null) {
+      console.error(c.error('Source must be "person" or "agent"'));
+      failCommand();
+    }
+
     if (!shouldTrack()) {
       console.log(c.dim("Telemetry is disabled. Feedback not sent."));
       return;
@@ -261,7 +272,14 @@ export default defineCommand({
     // Ack first so the user isn't kept waiting on the best-effort forward (which
     // is bounded to a few seconds and never surfaces an error either way).
     console.log(c.dim("Thanks for the feedback!"));
-    await submitFeedback({ rating, comment, cliVersion: VERSION, env: envWithJoinKeys });
+    await submitFeedback({
+      rating,
+      comment,
+      cliVersion: VERSION,
+      env: envWithJoinKeys,
+      source,
+      email: feedbackEmail(),
+    });
 
     if (args["file-issue"] === true) {
       await fileGithubIssue({

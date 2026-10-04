@@ -28,10 +28,12 @@ import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
   folderGone,
+  isInHiddenOrVendorDir,
   isSafePath,
   mkdirWithinProject,
   pinWithinProject,
   resolveWithinProject,
+  walkDir,
 } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
@@ -373,6 +375,24 @@ function foldElementPatches(
 }
 
 const PATCH_CONFLICT_ATTEMPTS = 3;
+
+const ID_ATTRIBUTE = /[\s"'/]id\s*=\s*(?=(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))/gi;
+
+/** Every id in the project's HTML files: sub-compositions share one preview document. */
+function projectHtmlIds(projectDir: string): Set<string> {
+  const ids = new Set<string>();
+  for (const rel of walkDir(projectDir)) {
+    if (!rel.endsWith(".html") || isInHiddenOrVendorDir(rel)) continue;
+    let html: string;
+    try {
+      html = readFileSync(join(projectDir, rel), "utf-8");
+    } catch {
+      continue;
+    }
+    for (const m of html.matchAll(ID_ATTRIBUTE)) ids.add(m[1] ?? m[2] ?? m[3] ?? "");
+  }
+  return ids;
+}
 
 type ElementPatchCommitResult =
   | { error: "duplicate" | "forbidden" | "not-found" | "conflict"; sourceFile: string }
@@ -3062,7 +3082,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       } catch {
         return c.json({ error: "not found" }, 404);
       }
-      const element = patchElementInHtml(originalContent, parsed.target, parsed.body.operations);
+      const takenIds = parsed.body.operations.some((op) => op.type === "ensure-id")
+        ? projectHtmlIds(ctx.project.dir)
+        : undefined;
+      const element = patchElementInHtml(
+        originalContent,
+        parsed.target,
+        parsed.body.operations,
+        takenIds,
+      );
       const { matched } = element;
       const patched =
         matched && isStudioFontFaceCss(fontFaceCss)
@@ -3075,6 +3103,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           ok: true,
           changed: false,
           matched,
+          elementId: element.elementId,
           content: originalContent,
           path: ctx.filePath,
           version,
@@ -3098,6 +3127,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         ok: true,
         changed: true,
         matched,
+        elementId: element.elementId,
         content: patched,
         path: ctx.filePath,
         version,

@@ -10,7 +10,9 @@ export type AuthErrorCode =
   | "UNAUTHENTICATED"
   | "OAUTH_NOT_CONFIGURED"
   | "DEVICE_AUTH_FAILED"
-  | "REFRESH_FAILED";
+  | "REFRESH_FAILED"
+  | "LOGIN_EXPIRED"
+  | "LOGIN_CHANGED";
 
 export class AuthError extends Error {
   readonly code: AuthErrorCode;
@@ -60,6 +62,20 @@ export const ErrRefreshFailed = (detail?: string) =>
     "REFRESH_FAILED",
     detail ? `Failed to refresh OAuth tokens: ${detail}` : "Failed to refresh OAuth tokens",
     "Run `hyperframes auth login` to re-authenticate.",
+  );
+
+export const ErrLoginExpired = () =>
+  new AuthError(
+    "LOGIN_EXPIRED",
+    "Your HeyGen login expired",
+    "Run `hyperframes auth login` to sign in again.",
+  );
+
+export const ErrLoginChanged = () =>
+  new AuthError(
+    "LOGIN_CHANGED",
+    "Your HeyGen login changed while this command ran",
+    "Run the command again.",
   );
 
 export const ErrDeviceAuthFailed = (detail: string) =>

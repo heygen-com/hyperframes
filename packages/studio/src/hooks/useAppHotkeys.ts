@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import { isTypingTarget } from "../utils/typingTarget";
 import { dispatchLinkShortcut, type LinkShortcutCallbacks } from "./linkShortcuts";
 import { useCaptionStore } from "../captions/store";
 import {
@@ -226,7 +225,7 @@ export function useAppHotkeys({
   const handleAppKeyDown = useCallback((event: KeyboardEvent) => {
     const cb = cbRef.current;
     const key = event.key.toLowerCase();
-    if (!isTypingTarget(event.target) && dispatchLinkShortcut(event, cb)) return;
+    if (dispatchLinkShortcut(event, cb)) return;
     if (event.metaKey || event.ctrlKey) {
       dispatchModifierKey(event, key, cb);
       return;

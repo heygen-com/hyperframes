@@ -15,9 +15,36 @@ export function rerenderGsapTimelineAt(
   },
   t: number,
 ): void {
+  const children = timeline.getChildren?.(false, true, true) ?? [];
+  const firedStates = callTweensIn(timeline).map(
+    (call) => [call, call.ratio, call._zTime] as const,
+  );
   timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
-  primeKeyframedTweensStartingAt(timeline.getChildren?.(false, true, true) ?? [], t);
+  primeKeyframedTweensStartingAt(children, t);
   timeline.totalTime(t, true);
+  for (const [call, ratio, zTime] of firedStates) Object.assign(call, { ratio, _zTime: zTime });
+}
+
+type GsapCallInternals = { ratio: number; _zTime?: number };
+
+export const GSAP_CALLBACK_NAMES = [
+  "onStart",
+  "onUpdate",
+  "onComplete",
+  "onReverseComplete",
+  "onRepeat",
+];
+
+function callTweensIn(timeline: {
+  getChildren?: RuntimeTimelineLike["getChildren"];
+}): GsapCallInternals[] {
+  return (timeline.getChildren?.(true, true, false) ?? []).filter((child) => {
+    const tween = child as { totalDuration?: () => number; vars?: Record<string, unknown> };
+    return (
+      tween.totalDuration?.() === 0 &&
+      GSAP_CALLBACK_NAMES.some((name) => typeof tween.vars?.[name] === "function")
+    );
+  }) as unknown as GsapCallInternals[];
 }
 
 type GsapAnimation = {

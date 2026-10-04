@@ -1,10 +1,8 @@
-// Shared helpers for test-side `fetch` stubs (timelineTimingSync.test.ts,
-// useTimelineEditing.test.tsx): a JSON Response factory and a Request → URL
-// normalizer. Test-only module — imported exclusively from *.test.* files.
+// Test-only helpers for `fetch` stubs: a JSON Response factory and a Request → URL normalizer.
 
-export function jsonResponse(body: unknown): Response {
+export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" },
   });
 }

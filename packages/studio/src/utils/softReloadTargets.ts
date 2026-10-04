@@ -1,8 +1,9 @@
 // Which elements a GSAP soft reload resets, what their tweens wrote, and which file writes each.
 import { parseSavedSource } from "./authoredSource";
+import { elementTargets } from "./elementGsap";
 
 type TweenLike = {
-  targets?: () => Element[];
+  targets?: () => unknown[];
   vars?: Record<string, unknown>;
   getChildren?: (deep: boolean) => TweenLike[];
 };
@@ -36,7 +37,7 @@ export function authoringFile(el: Element): string | null {
 
 function addTweenTargets(tween: TweenLike, targets: Map<Element, Set<string>>): void {
   const props = tweenedProps(tween.vars);
-  for (const el of tween.targets?.() ?? []) {
+  for (const el of elementTargets(tween)) {
     const seen = targets.get(el) ?? new Set<string>();
     for (const prop of props) seen.add(prop);
     targets.set(el, seen);
@@ -68,7 +69,7 @@ function tweenTargetsIn(timelines: Set<unknown>): Set<Element> {
   for (const tl of timelines) {
     try {
       for (const tween of (tl as TweenLike | undefined)?.getChildren?.(true) ?? []) {
-        for (const el of tween.targets?.() ?? []) els.add(el);
+        for (const el of elementTargets(tween)) els.add(el);
       }
     } catch {}
   }

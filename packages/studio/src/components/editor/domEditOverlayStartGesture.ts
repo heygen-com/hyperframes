@@ -32,7 +32,7 @@ import {
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
-import { gsapWritesRotation } from "../../hooks/gsapRuntimeKeyframes";
+import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
 import { logDrag, readDragPositions, resetDragMoveLog } from "../../utils/dragDebug";
 
@@ -234,7 +234,7 @@ export function startGesture(
   try {
     // Rotation base: the angle the element shows. An element GSAP does not turn, or a plain-translate
     // move, never asks GSAP: reading a property makes it bake the CSS into its transform.
-    const plain = !!pathOffsetMember?.plainTranslate || !gsapWritesRotation(sel.element);
+    const plain = !!pathOffsetMember?.plainTranslate || editsPlainCss(sel.element, "rotate");
     const plainRotation = plain && kind === "rotate" ? readCssRotationTarget(sel.element) : null;
     const rotation = { angle: readRotationBase(sel.element, plain) };
     const overlayBounds = overlayEl?.getBoundingClientRect();

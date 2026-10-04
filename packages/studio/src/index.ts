@@ -7,6 +7,8 @@ export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
 export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
+export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
+export type { LinkShortcutCallbacks } from "./hooks/linkShortcuts";
 export type { ShortcutsButtonProps } from "./player/components/ShortcutsPanel";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";

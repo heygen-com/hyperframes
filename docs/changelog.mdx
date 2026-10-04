@@ -9,6 +9,112 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.121"
+  description="Released - 2026-10-04"
+  tags={["Release", "Core", "Media Use"]}
+>
+Media Use no longer crashes when a HeyGen credentials path is a folder. Video length and size now come from one place in the core runtime.
+
+## Fixes
+
+- **Media Use:** A credentials folder means no HeyGen credential, not a crash ([32d2bc6fe030](https://github.com/heygen-com/hyperframes/commit/32d2bc6fe03007c7c8417268522516e3db7a2e87), [#4995](https://github.com/heygen-com/hyperframes/pull/4995)).
+- **Media Use:** Skip a .env folder when loading HeyGen credentials ([5f3191bdc593](https://github.com/heygen-com/hyperframes/commit/5f3191bdc59312b6d6cba231e50207919e22b7cf), [#4988](https://github.com/heygen-com/hyperframes/pull/4988)).
+
+## Internal
+
+- **Core:** One pure owner for composition length and root size ([34ff5ca1dea1](https://github.com/heygen-com/hyperframes/commit/34ff5ca1dea155ad0a29b26b6cb456b12b18b1d5), [#4990](https://github.com/heygen-com/hyperframes/pull/4990)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.120...v0.8.121).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.120"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio", "CLI"]}
+>
+Publishing from the CLI now handles expired or changed logins safely, and feedback can say whether a person or an agent wrote it. Studio picks element ids that never clash across files.
+
+## Features
+
+- **CLI:** Feedback says whether a person or an agent wrote it, with the email an app attaches ([0ca69472d93c](https://github.com/heygen-com/hyperframes/commit/0ca69472d93cf088c836bed3dc7df252247e2101), [#4984](https://github.com/heygen-com/hyperframes/pull/4984)).
+
+## Fixes
+
+- **Studio:** The host can name the Split key shown in the clip menu ([dda0e757b11c](https://github.com/heygen-com/hyperframes/commit/dda0e757b11c486990e483636bdc80115aa8ef6c), [#4985](https://github.com/heygen-com/hyperframes/pull/4985)).
+- **Studio:** The server picks an added effect's element id; one client for patch and gsap writes ([48308e370826](https://github.com/heygen-com/hyperframes/commit/48308e370826380a3053ff1e38fc84899dc05eb1), [#4962](https://github.com/heygen-com/hyperframes/pull/4962)).
+- **CLI:** Publish with a refused login refreshes or asks you to log in again ([de9bf487d421](https://github.com/heygen-com/hyperframes/commit/de9bf487d4219f9021f8e659e13f3935c8b29744), [#4964](https://github.com/heygen-com/hyperframes/pull/4964)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.119...v0.8.120).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.119"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio Server", "Core"]}
+>
+Undoing a freeze frame now removes its still even when extraction is slow. A GSAP call on the playhead fires once when the preview redraws.
+
+## Fixes
+
+- **Studio Server:** Freeze still appears whole, so a slow extraction cannot break its undo ([4e118824b301](https://github.com/heygen-com/hyperframes/commit/4e118824b301cd18b773c28864c2f36ca642ff34), [#4982](https://github.com/heygen-com/hyperframes/pull/4982)).
+- **Core:** A call on the playhead fires once when the preview redraws it ([a8dcdd109a88](https://github.com/heygen-com/hyperframes/commit/a8dcdd109a883f43cadaae26bc1b626335d94ec8), [#4981](https://github.com/heygen-com/hyperframes/pull/4981)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.118...v0.8.119).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.118"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio", "Registry"]}
+>
+Eight ad templates now play a video preview in the catalog. Studio uses one gsap source everywhere, so motion paths line up with your composition.
+
+## Features
+
+- **Studio:** A host can put its own controls before the timeline's thumbnails toggle ([239ea1aecd8a](https://github.com/heygen-com/hyperframes/commit/239ea1aecd8ae6e67e0e7958e33c217410c86549), [#4973](https://github.com/heygen-com/hyperframes/pull/4973)).
+
+## Fixes
+
+- **Studio:** One owner for gsap CDN URLs, so MotionPathPlugin matches the composition's gsap ([cd1a34ceca7f](https://github.com/heygen-com/hyperframes/commit/cd1a34ceca7fd8f31f827dce61d16aa722118534), [#4976](https://github.com/heygen-com/hyperframes/pull/4976)).
+
+## Catalog
+
+- **Registry:** Eight ad templates show their video preview in the catalog ([d2398d686a7f](https://github.com/heygen-com/hyperframes/commit/d2398d686a7fa45b7789e8ad273e64610607b062), [#4979](https://github.com/heygen-com/hyperframes/pull/4979)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.117...v0.8.118).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.117"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio", "Engine", "Parsers"]}
+>
+Edits in Studio now stay where you put them: resizes, rotations, undo and drops on animated layers all save and redraw correctly. A render with a broken video frame now fails loudly instead of hiding a blank frame.
+
+## Fixes
+
+- **Studio:** Undoing a freeze frame removes the still it made ([237a984bb8d9](https://github.com/heygen-com/hyperframes/commit/237a984bb8d97f8dff7a5464c78851d633747f54), [#4971](https://github.com/heygen-com/hyperframes/pull/4971)).
+- **Engine:** Fail the render when an injected video frame cannot decode ([8e457d4224c5](https://github.com/heygen-com/hyperframes/commit/8e457d4224c513a8cdcb11b7d63aa204f5af7e0c), [#4974](https://github.com/heygen-com/hyperframes/pull/4974)).
+- **Parsers:** A keyframe edit no longer overrides an earlier tween at the start ([b71aa9338be1](https://github.com/heygen-com/hyperframes/commit/b71aa9338be16edd77ac78392dc95045ac1b4f70), [#4935](https://github.com/heygen-com/hyperframes/pull/4935)).
+- **Studio:** A rotation saves through its press route; a host hook reloads only the host's way ([910677259364](https://github.com/heygen-com/hyperframes/commit/9106772593648367ef5a595171f6cfe570ef99d5), [#4961](https://github.com/heygen-com/hyperframes/pull/4961)).
+- **Skills:** Load shared creative guides for motion graphics ([9031a02cb53d](https://github.com/heygen-com/hyperframes/commit/9031a02cb53d6c1eff7b4ed83b81ed4ee2325508), [#4970](https://github.com/heygen-com/hyperframes/pull/4970)).
+- **Studio:** An undo or drop on an animated layer keeps it where it was ([2cfbe3d2570c](https://github.com/heygen-com/hyperframes/commit/2cfbe3d2570cee5a7499323c9e9c2cadaa160bb2), [#4934](https://github.com/heygen-com/hyperframes/pull/4934)).
+- **Studio:** A resize saves through the route its press chose, as a move does ([e27cae026190](https://github.com/heygen-com/hyperframes/commit/e27cae02619037cc01299fe86877ade974c1b3bb), [#4943](https://github.com/heygen-com/hyperframes/pull/4943)).
+- **Studio:** The preview reloads when any write a commit saved is not patched on screen ([da17c03c0512](https://github.com/heygen-com/hyperframes/commit/da17c03c051286f06ac3ed6c495ca6b3c25f86ea), [#4920](https://github.com/heygen-com/hyperframes/pull/4920)).
+
+## Performance
+
+- **Core:** A paused Studio drag lets the preview loop sleep until the drag ends ([96bc879b5bba](https://github.com/heygen-com/hyperframes/commit/96bc879b5bba459e366c65e84e73973beb9d37a9), [#4938](https://github.com/heygen-com/hyperframes/pull/4938)).
+
+## Internal
+
+- **Studio:** Serve the edit bench GSAP from the repo, never the network ([2f14008b3cc2](https://github.com/heygen-com/hyperframes/commit/2f14008b3cc20562390682e98646b4e48535f3c7), [#4968](https://github.com/heygen-com/hyperframes/pull/4968)).
+- **Studio:** Pin what the one DOM edit writer saves, records and reloads ([248ee7c00a27](https://github.com/heygen-com/hyperframes/commit/248ee7c00a27d2dcce83aac366d24ffb9206a939), [#4947](https://github.com/heygen-com/hyperframes/pull/4947)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.116...v0.8.117).
+</Update>
+
+<Update
   label="HyperFrames v0.8.116"
   description="Released - 2026-10-03"
   tags={["Release", "Studio", "Core"]}

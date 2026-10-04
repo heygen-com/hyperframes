@@ -74,6 +74,7 @@ function mountResizeHandler(
         size: { width: number; height: number },
         offset?: { x: number; y: number },
         restore?: () => void,
+        route?: { plainTranslate: boolean },
       ) => Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult>)
     | null = null;
   let property: ReturnType<typeof useGsapAwareEditing>["commitAnimatedProperty"] | null = null;
@@ -234,6 +235,21 @@ describe("useGsapAwareEditing keeps the route a gesture chose at press", () => {
   });
 });
 
+describe("useGsapAwareEditing keeps the box route a resize chose at press", () => {
+  it.each([
+    ["the CSS route, on an element GSAP has since taken over", true],
+    ["the GSAP route, on an element that now looks GSAP-free", false],
+  ])("%s", async (_, plainTranslate) => {
+    mocks.resize.mockResolvedValue({ status: "persisted" });
+    const h = mountResizeHandler([], [], plainTranslate);
+    const size = { width: 300, height: 200 };
+    await act(() => h.resize(h.selection, size, undefined, vi.fn(), { plainTranslate }));
+    expect(h.fallback).toHaveBeenCalledTimes(plainTranslate ? 1 : 0);
+    expect(mocks.resize).toHaveBeenCalledTimes(plainTranslate ? 0 : 1);
+    act(() => h.root.unmount());
+  });
+});
+
 describe("useGsapAwareEditing refuses a group GSAP took over before writing any member", () => {
   it("writes no member when one CSS-route member has been folded since the press", async () => {
     const stageElementPositionOffset = vi.fn(() => ({ save: vi.fn(), rollback: vi.fn() }));
@@ -291,6 +307,15 @@ describe("useGsapAwareEditing rotation routing", () => {
     } finally {
       delete (window as { __timelines?: unknown }).__timelines;
     }
+    expect(tryGsapRotationIntercept).toHaveBeenCalledTimes(1);
+    expect(h.handleDomRotationCommit).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
+  it("saves a turn the press sent down the GSAP route there, even once the element looks GSAP-free", async () => {
+    vi.mocked(tryGsapRotationIntercept).mockResolvedValue({ status: "persisted" });
+    const h = rotate(document.createElement("div"));
+    await act(() => h.rotationCommit(h.box, { angle: 55, plain: null }));
     expect(tryGsapRotationIntercept).toHaveBeenCalledTimes(1);
     expect(h.handleDomRotationCommit).not.toHaveBeenCalled();
     act(() => h.root.unmount());
