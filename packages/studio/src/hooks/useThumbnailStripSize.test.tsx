@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
+import { NearScreenIntersectionObserver } from "./intersectionObserverTestUtils";
 import { MockResizeObserver, reportResize } from "./resizeObserverTestUtils";
 import { useThumbnailStripSize } from "./useThumbnailStripSize";
 
@@ -46,7 +47,10 @@ it("does not re-render the strip when the observer reports the size it already h
   }
 });
 
-it("re-measures every strip in one shared frame on a scroll, so a full timeline lays out once", () => {
+it("re-measures every strip in one shared frame on a scroll, so a full timeline lays out once", async () => {
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+  globalThis.IntersectionObserver =
+    NearScreenIntersectionObserver as unknown as typeof IntersectionObserver;
   const originalResizeObserver = globalThis.ResizeObserver;
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
   const frames: FrameRequestCallback[] = [];
@@ -70,7 +74,9 @@ it("re-measures every strip in one shared frame on a scroll, so a full timeline 
     );
   }
   try {
-    act(() => root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)));
+    await act(async () =>
+      root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)),
+    );
 
     left = -10_000;
     act(() => host.dispatchEvent(new Event("scroll")));
@@ -88,10 +94,14 @@ it("re-measures every strip in one shared frame on a scroll, so a full timeline 
     host.remove();
     requestFrame.mockRestore();
     globalThis.ResizeObserver = originalResizeObserver;
+    globalThis.IntersectionObserver = originalIntersectionObserver;
   }
 });
 
-it("does not re-render a strip wholly on screen when a scroll moves it", () => {
+it("does not re-render a strip wholly on screen when a scroll moves it", async () => {
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+  globalThis.IntersectionObserver =
+    NearScreenIntersectionObserver as unknown as typeof IntersectionObserver;
   const originalResizeObserver = globalThis.ResizeObserver;
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
   const frames: FrameRequestCallback[] = [];
@@ -117,7 +127,7 @@ it("does not re-render a strip wholly on screen when a scroll moves it", () => {
     );
   }
   try {
-    act(() => root.render(<Strip />));
+    await act(async () => root.render(<Strip />));
     const settled = renders;
 
     left = 700;
@@ -132,5 +142,50 @@ it("does not re-render a strip wholly on screen when a scroll moves it", () => {
     width.mockRestore();
     requestFrame.mockRestore();
     globalThis.ResizeObserver = originalResizeObserver;
+    globalThis.IntersectionObserver = originalIntersectionObserver;
+  }
+});
+
+it("reads no strip far from the screen on a scroll, however many clips the timeline mounts", async () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  globalThis.IntersectionObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof IntersectionObserver;
+  const frames: FrameRequestCallback[] = [];
+  const requestFrame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((frame) => frames.push(frame));
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  function Strip() {
+    const [, ref] = useThumbnailStripSize();
+    return (
+      <div>
+        <div ref={ref} />
+      </div>
+    );
+  }
+  try {
+    await act(async () =>
+      root.render(Array.from({ length: 50 }, (_, index) => <Strip key={index} />)),
+    );
+    const reads = vi.spyOn(Element.prototype, "getBoundingClientRect");
+
+    act(() => host.dispatchEvent(new Event("scroll")));
+    act(() => frames.splice(0).forEach((frame) => frame(0)));
+
+    expect(reads).not.toHaveBeenCalled();
+    reads.mockRestore();
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+    requestFrame.mockRestore();
+    globalThis.ResizeObserver = originalResizeObserver;
+    globalThis.IntersectionObserver = originalIntersectionObserver;
   }
 });

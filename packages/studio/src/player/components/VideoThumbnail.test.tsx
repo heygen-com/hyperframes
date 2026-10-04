@@ -109,7 +109,7 @@ describe("VideoThumbnail", () => {
       vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => frames.push(frame));
       globalThis.IntersectionObserver = class {
         observed = new Set<Element>();
-        constructor(callback: IntersectionObserverCallback) {
+        constructor(private readonly callback: IntersectionObserverCallback) {
           reportGapNearScreen = () =>
             callback(
               [...this.observed].map(
@@ -120,6 +120,12 @@ describe("VideoThumbnail", () => {
         }
         observe(target: Element) {
           this.observed.add(target);
+          queueMicrotask(() =>
+            this.callback(
+              [{ isIntersecting: true, target } as IntersectionObserverEntry],
+              this as unknown as IntersectionObserver,
+            ),
+          );
         }
         unobserve(target: Element) {
           this.observed.delete(target);
@@ -164,6 +170,16 @@ describe("VideoThumbnail", () => {
         await settle();
         expectTilesCoverTheWindow();
       }
+    });
+
+    it("mounts no tiles once the clip is wholly off screen", async () => {
+      await render(600 * 1440, 40);
+
+      left = -(600 * 1440 + 5_000);
+      host.dispatchEvent(new Event("scroll"));
+      await settle();
+
+      expect(host.querySelectorAll("img")).toHaveLength(0);
     });
 
     it("follows the strip when something else moves it, as a drag moves its ghost", async () => {

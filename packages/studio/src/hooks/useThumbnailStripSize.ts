@@ -42,45 +42,67 @@ const merge = (prev: StripSize, patch: Partial<StripSize>): StripSize => {
 
 type Apply = (patch: Partial<StripSize>) => void;
 
-// One shared frame reads every strip, then commits all updates: one layout per frame, not per clip.
+// A scroll re-measures only strips near the screen, reading all of them before one commit.
 const strips = new Map<Element, Apply>();
+const near = new Set<Element>();
 let users = 0;
 let frame = 0;
-let shared: { resize: ResizeObserver; gaps: IntersectionObserver | null } | null = null;
+let shared: {
+  resize: ResizeObserver;
+  presence: IntersectionObserver | null;
+  gaps: IntersectionObserver | null;
+} | null = null;
 
-const applyAll = (updates: [Apply, Partial<StripSize>][]) =>
-  flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
+const measure = (targets: Iterable<Element>) =>
+  flushSync(() =>
+    [...targets]
+      .flatMap((target) => {
+        const apply = strips.get(target);
+        return apply ? [[apply, spanInView(target)] as const] : [];
+      })
+      .forEach(([apply, span]) => apply(span)),
+  );
 
-const refreshAll = () => {
+const refreshNear = () => {
   frame = 0;
-  applyAll([...strips].map(([target, apply]) => [apply, spanInView(target)]));
+  measure(shared?.presence ? near : strips.keys());
 };
 
 const scheduleRefresh = () => {
-  if (!frame) frame = requestAnimationFrame(refreshAll);
+  if (!frame) frame = requestAnimationFrame(refreshNear);
 };
 
-const onResize = (entries: ResizeObserverEntry[]) =>
-  applyAll(
-    entries.flatMap((entry) => {
-      const apply = strips.get(entry.target);
-      if (!apply) return [];
-      const { width, height } = entry.contentRect;
-      return [[apply, { width, height, ...spanInView(entry.target) }]];
-    }),
-  );
+const onPresence = (entries: IntersectionObserverEntry[]) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) near.add(entry.target);
+    else near.delete(entry.target);
+  }
+  measure(entries.filter((entry) => entry.isIntersecting).map((entry) => entry.target));
+};
+
+const onResize = (entries: ResizeObserverEntry[]) => {
+  const updates = entries.flatMap((entry) => {
+    const apply = strips.get(entry.target);
+    if (!apply) return [];
+    const { width, height } = entry.contentRect;
+    return [[apply, { width, height, ...spanInView(entry.target) }] as const];
+  });
+  flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
+};
+
+const observeIntersections = (callback: IntersectionObserverCallback) =>
+  typeof IntersectionObserver === "undefined"
+    ? null
+    : new IntersectionObserver(callback, GAP_WARNING);
 
 function acquire() {
   if (users++ === 0) {
     shared = {
       resize: new ResizeObserver(onResize),
-      gaps:
-        typeof IntersectionObserver === "undefined"
-          ? null
-          : new IntersectionObserver(
-              (entries) => entries.some((entry) => entry.isIntersecting) && scheduleRefresh(),
-              GAP_WARNING,
-            ),
+      presence: observeIntersections(onPresence),
+      gaps: observeIntersections(
+        (entries) => entries.some((entry) => entry.isIntersecting) && scheduleRefresh(),
+      ),
     };
     window.addEventListener("scroll", scheduleRefresh, { capture: true, passive: true });
   }
@@ -90,8 +112,10 @@ function acquire() {
 function release() {
   if (--users > 0) return;
   shared?.resize.disconnect();
+  shared?.presence?.disconnect();
   shared?.gaps?.disconnect();
   shared = null;
+  near.clear();
   window.removeEventListener("scroll", scheduleRefresh, { capture: true });
   cancelAnimationFrame(frame);
   frame = 0;
@@ -114,7 +138,7 @@ export function useThumbnailStripSize() {
   const ref = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
     const target = element.parentElement ?? element;
-    const { resize } = acquire();
+    const { resize, presence } = acquire();
     let current = EMPTY_STRIP;
     const apply: Apply = (patch) => {
       const next = merge(current, patch);
@@ -125,8 +149,11 @@ export function useThumbnailStripSize() {
     strips.set(target, apply);
     apply({ width: target.clientWidth, height: target.clientHeight, ...spanInView(target) });
     resize.observe(target);
+    presence?.observe(target);
     return () => {
       resize.unobserve(target);
+      presence?.unobserve(target);
+      near.delete(target);
       strips.delete(target);
       release();
     };

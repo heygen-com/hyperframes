@@ -39,6 +39,7 @@ class ViewportObserver {
     const entry = { isIntersecting: true } as IntersectionObserverEntry;
     this.callback([entry], this as unknown as IntersectionObserver);
   }
+  unobserve() {}
   disconnect() {}
 }
 
