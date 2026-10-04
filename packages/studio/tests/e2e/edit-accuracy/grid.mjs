@@ -36,8 +36,7 @@ const AXES = {
   zoom: [50, 100, 200],
 };
 
-// Timelines with keyframes at `times` (0, 2 and 3 s unless set) on the property each animates: `css` is what that property
-// is in CSS.
+// Timelines with keyframes at `times` (0, 2 and 3 s unless set) on the property each animates; `css` is it in CSS.
 const T = '"#target"';
 const KEYFRAMED = {
   size: {
@@ -80,7 +79,6 @@ const KEYFRAMED = {
     props: ["x"],
     css: ["left", "top", "translate", "transform"],
   },
-  // Starts at 1 s, so a playhead can sit before its first keyframe.
   late: {
     lines: [
       `tl.to(${T}, { width: 300, height: 200, duration: 1, ease: "none" }, 1);`,

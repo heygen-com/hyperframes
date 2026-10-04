@@ -346,7 +346,6 @@ export function keyframeDrift(before, after) {
   return { ...worst, pass: worst.diff <= KEY_TOLERANCE };
 }
 
-/** Property groups (position, size, scale, ...) the timelines animate on #target; a static gsap.set hold is not one. */
 function targetGroups(files) {
   const groups = new Set();
   for (const html of Object.values(files))
@@ -384,7 +383,6 @@ const targetCss = (html) => ({
   inline: declarations(capture(/\bstyle="([^"]*)"/, capture(/(<[^>]*\bid="target"[^>]*>)/, html))),
 });
 
-/** The keyframe rule: other keyframes read back unchanged and no property nothing animated starts animating. */
 const keyRule = (drift, opened) => ({ ...drift, opened, pass: drift.pass && opened.length === 0 });
 
 /** Plain CSS the edit wrote for a property GSAP animates: it would override or fight the timeline. */
