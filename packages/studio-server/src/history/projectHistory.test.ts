@@ -70,7 +70,6 @@ async function project(files: Record<string, string | Buffer>, options = {}) {
   return { projectDir, historyRoot, history, write, read, has };
 }
 
-/** Undoes the newest change still in effect, whoever made it; Cmd+Z steps only over the caller's own. */
 /** A log as an older version leaves it: no marker; 0.8.123's baseline also never names the media ledger. */
 function asWrittenBy(version: "0.8.122" | "0.8.123", logFile: string) {
   const lines = readFileSync(logFile, "utf-8")
@@ -84,6 +83,7 @@ function asWrittenBy(version: "0.8.122" | "0.8.123", logFile: string) {
   writeFileSync(logFile, lines.map((record) => JSON.stringify(record)).join("\n") + "\n");
 }
 
+/** Undoes the newest change still in effect, whoever made it; Cmd+Z steps only over the caller's own. */
 async function undoNewest(history: ProjectHistory) {
   const newest = [...history.list()].reverse().find((entry) => !entry.undoes && !entry.undone);
   return history.undo(newest!.id, { who: you });
