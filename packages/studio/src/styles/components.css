@@ -350,7 +350,6 @@
   position: absolute;
   top: 5px;
   left: 6px;
-  z-index: 6;
   width: fit-content;
   max-width: calc(100% - 22px);
   overflow: hidden;

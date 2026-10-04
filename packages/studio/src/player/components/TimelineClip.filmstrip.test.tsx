@@ -155,10 +155,29 @@ describe("Filmstrip clips", () => {
     expect(css).toMatch(/\.timeline-clip:not\(\.is-audio\)\s*\{\s*border-width:\s*0;/);
   });
 
-  it("draws an audio clip's name pill over its waveform", () => {
-    const pill = css.match(
-      /\.timeline-clip\.is-audio \.timeline-clip__label\s*\{[^}]*z-index:\s*(\d+)/,
+  const audioPillZ = () =>
+    Number(
+      css.match(/\.timeline-clip\.is-audio \.timeline-clip__label\s*\{[^}]*z-index:\s*(\d+)/)?.[1],
     );
-    expect(Number(pill?.[1])).toBeGreaterThan(WAVEFORM_LAYER_Z);
+
+  it("draws an audio clip's name pill over its waveform", () => {
+    expect(audioPillZ()).toBeGreaterThan(WAVEFORM_LAYER_Z);
+  });
+
+  it("keeps the out-of-sync badge over the audio name pill", () => {
+    const audio = {
+      id: "clip",
+      domId: "clip",
+      label: "City",
+      tag: "audio",
+      start: 1.7,
+      duration: 4,
+    };
+    const synced = { ...audio, track: 1, playbackStart: 0, syncOrigin: "lk-1" };
+    const video = { ...synced, id: "talk", domId: "talk", tag: "video", start: 1, track: 0 };
+    usePlayerStore.getState().setElements([video, synced]);
+    const badge = render("audio", synced, false).querySelector('[data-testid="out-of-sync-badge"]');
+    usePlayerStore.getState().setElements([]);
+    expect(Number(badge?.className.match(/\bz-\[(\d+)\]/)?.[1])).toBeGreaterThan(audioPillZ());
   });
 });
