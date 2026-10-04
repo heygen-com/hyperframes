@@ -22,7 +22,7 @@ interface ParsedTween {
     seek?: (time: number, suppressEvents?: boolean) => unknown;
     getChildren?: (nested?: boolean, tweens?: boolean, timelines?: boolean) => ParsedTween[];
   };
-  timeline?: { getChildren?: () => ParsedTween[]; duration?: () => number };
+  timeline?: { getChildren?: () => ParsedTween[] };
   targets?: () => unknown[];
   startTime?: () => number;
   duration?: () => number;
@@ -230,14 +230,13 @@ const BUILT_IN_EASES = [
 export function withExactStepTimes(anim: GsapAnimation, tween: ParsedTween | null): GsapAnimation {
   const data = anim.keyframes;
   const parts = tween?.timeline?.getChildren?.() ?? [];
-  const total = tween?.timeline?.duration?.() ?? 0;
-  if (data?.format !== "object-array" || parts.length !== data.keyframes.length || !(total > 0))
-    return anim;
-  const ends = parts.map((part) => ((part.startTime?.() ?? 0) + (part.duration?.() ?? 0)) / total);
-  if (ends.some((end) => !Number.isFinite(end))) return anim;
+  if (data?.format !== "object-array" || parts.length !== data.keyframes.length) return anim;
+  const ends = parts.map((part) => (part.startTime?.() ?? 0) + (part.duration?.() ?? 0));
+  const total = Math.max(...ends);
+  if (!(total > 0) || ends.some((end) => !Number.isFinite(end))) return anim;
   const keyframes = data.keyframes.map((kf, i) => ({
     ...kf,
-    percentage: Math.round(ends[i]! * 100000) / 1000,
+    percentage: Math.round((ends[i]! / total) * 100000) / 1000,
   }));
   return { ...anim, keyframes: { ...data, keyframes } };
 }

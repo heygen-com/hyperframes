@@ -73,10 +73,8 @@ const NO_KEYFRAME_TOGGLE: KeyframeToggleState = {
 function isMotionPathEndpoint(animation: GsapAnimation | undefined, percentage: number): boolean {
   if (!animation?.keyframes) return false;
   const keyframes = animation.keyframes.keyframes;
-  return (
-    [keyframes[0], keyframes.at(-1)].some(
-      (keyframe) => keyframe && playsNear(animation, keyframe.percentage, percentage),
-    )
+  return [keyframes[0], keyframes.at(-1)].some(
+    (keyframe) => keyframe && playsNear(animation, keyframe.percentage, percentage),
   );
 }
 
@@ -100,8 +98,8 @@ function resolveKeyframeToggleState(
 
   const percentage = computeElementPercentage(currentTime, session.domEditSelection, animation);
   const pathEndpoint = isMotionPathEndpoint(arcAnimation, percentage);
-  const active = animation.keyframes.keyframes.some(
-    (keyframe) => playsNear(animation, keyframe.percentage, percentage),
+  const active = animation.keyframes.keyframes.some((keyframe) =>
+    playsNear(animation, keyframe.percentage, percentage),
   );
   return {
     state: pathEndpoint ? "none" : active ? "active" : "inactive",

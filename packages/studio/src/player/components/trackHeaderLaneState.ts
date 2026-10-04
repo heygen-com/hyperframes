@@ -111,7 +111,12 @@ export function resolveLaneHeaderState(
     clipPercentage,
   );
   const values = animation
-    ? valuesAt(animation, lane.group, tweenPercentage, valuesBefore(animation, lane.elementAnimations))
+    ? valuesAt(
+        animation,
+        lane.group,
+        tweenPercentage,
+        valuesBefore(animation, lane.elementAnimations),
+      )
     : {};
 
   return {

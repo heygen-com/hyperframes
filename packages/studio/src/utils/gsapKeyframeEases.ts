@@ -18,7 +18,9 @@ export function keyframedTweenEases(anim: GsapAnimation): {
   const fallback =
     data?.format === "object-array" ? ARRAY_STEP_EASE : (data?.easeEach ?? PERCENTAGE_SEGMENT_EASE);
   return {
-    run: data ? (data.ease ?? anim.ease ?? (anim.arcPath ? MOTION_PATH_RUN_EASE : undefined)) : undefined,
+    run: data
+      ? (data.ease ?? anim.ease ?? (anim.arcPath ? MOTION_PATH_RUN_EASE : undefined))
+      : undefined,
     segment: (arriving) => arriving.ease ?? fallback,
   };
 }

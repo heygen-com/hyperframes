@@ -1865,12 +1865,15 @@ describe("keyframe mutations", () => {
     it.each([
       ["recast", parseGsapScript],
       ["acorn", parseGsapScriptAcorn],
-    ])("%s: a step list with no durations plays 0.5 s a step unless the timeline sets one", (_, parse) => {
-      const steps = `tl.to("#x", { keyframes: [{ x: 1 }, { x: 2 }, { x: 3 }] }, 0);`;
-      expect(parse(`const tl = gsap.timeline();\n${steps}`).animations[0]!.duration).toBe(1.5);
-      const withDefaults = `const tl = gsap.timeline({ defaults: { duration: 2 } });\n${steps}`;
-      expect(parse(withDefaults).animations[0]!.duration).toBe(2);
-    });
+    ])(
+      "%s: a step list with no durations plays 0.5 s a step unless the timeline sets one",
+      (_, parse) => {
+        const steps = `tl.to("#x", { keyframes: [{ x: 1 }, { x: 2 }, { x: 3 }] }, 0);`;
+        expect(parse(`const tl = gsap.timeline();\n${steps}`).animations[0]!.duration).toBe(1.5);
+        const withDefaults = `const tl = gsap.timeline({ defaults: { duration: 2 } });\n${steps}`;
+        expect(parse(withDefaults).animations[0]!.duration).toBe(2);
+      },
+    );
 
     it("acorn: a re-sync of a one-line script is byte-stable", () => {
       const once = syncPositionHoldsBeforeKeyframesAcorn(

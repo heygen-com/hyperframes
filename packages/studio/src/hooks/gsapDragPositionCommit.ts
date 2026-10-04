@@ -171,9 +171,7 @@ export async function commitGsapPositionFromDrag(
     // Same tolerance as applyArcKeyframeAtPlayhead and isMotionPathEndpoint. A
     // tighter one here meant a drag that landed a fraction of a percent off an
     // authored waypoint skipped the update-point branch and appended instead.
-    const pointIndex = keyframes.findIndex(
-      (kf) => playsNear(anim, kf.percentage, pct),
-    );
+    const pointIndex = keyframes.findIndex((kf) => playsNear(anim, kf.percentage, pct));
     if (pointIndex >= 0) {
       await callbacks.commitMutation(
         selection,

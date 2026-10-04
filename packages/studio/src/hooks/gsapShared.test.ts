@@ -149,7 +149,12 @@ describe("toClipKeyframes", () => {
   });
 
   it("matches a keyframe by the time it plays, not its warped progress", () => {
-    const eased = { ...durationless, duration: 1, ease: "power2.in", keyframes: { format: "percentage", keyframes: [] } } as unknown as GsapAnimation;
+    const eased = {
+      ...durationless,
+      duration: 1,
+      ease: "power2.in",
+      keyframes: { format: "percentage", keyframes: [] },
+    } as unknown as GsapAnimation;
     // At 20% of the time power2.in (cubic) shows 0.8% progress: close in progress, far in time.
     expect(playsNear(eased, 0, 0.8)).toBe(false);
     expect(playsNear(eased, 50, 50.5)).toBe(true);

@@ -269,9 +269,7 @@ async function applyKeyframeAtPlayhead(
     start === null
       ? computeElementPercentage(t, sel)
       : (absoluteToPercentageForAnimation(t, kfAnim) ?? 0);
-  const existing = kfAnim.keyframes?.keyframes.find(
-    (k) => playsNear(kfAnim, k.percentage, pct),
-  );
+  const existing = kfAnim.keyframes?.keyframes.find((k) => playsNear(kfAnim, k.percentage, pct));
   if (existing) {
     session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage);
     return;
