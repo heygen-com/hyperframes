@@ -68,6 +68,22 @@ describe("valuesBefore", () => {
     const stepList = { ...tween("object-array", { ease: "none" }), resolvedStart: 1 };
     const relative = at("r", 0.5, "+=50");
     expect(valuesBefore(stepList, [at("s", 1, 300), stepList])).toEqual({ x: 300 });
-    expect(valuesBefore(stepList, [relative, stepList])).toEqual({});
+    expect(valuesBefore(stepList, [stepList, at("s", 1, 300)])).toEqual({});
+    expect(valuesBefore(stepList, [at("s", 0, 300), relative, stepList])).toEqual({});
+  });
+
+  it("skips a tween still running when this one starts", () => {
+    const set = { id: "s", method: "set", resolvedStart: 0, properties: { x: 300 } };
+    const running = {
+      id: "r",
+      method: "to",
+      resolvedStart: 0.5,
+      duration: 1,
+      properties: { x: 900 },
+    };
+    const stepList = { ...tween("object-array", { ease: "none" }), resolvedStart: 1 };
+    const others = [set, running] as unknown as GsapAnimation[];
+    expect(valuesBefore(stepList, [...others, stepList])).toEqual({ x: 300 });
+    expect(valuesBefore({ ...stepList, resolvedStart: undefined }, others)).toEqual({});
   });
 });

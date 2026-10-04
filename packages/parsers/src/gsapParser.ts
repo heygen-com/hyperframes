@@ -1103,7 +1103,7 @@ function tweenCallToAnimation(
         percentage: waypoints.length > 1 ? Math.round((i / (waypoints.length - 1)) * 100) : 0,
         properties: { x: wp.x, y: wp.y },
       }));
-      keyframesData = { format: "percentage", keyframes: kf };
+      keyframesData = { format: "percentage", keyframes: kf, fromMotionPath: true };
     } else {
       // Merge waypoint positions into existing keyframes at matching percentages.
       // If keyframe count matches waypoint count, assign positionally.
@@ -1213,7 +1213,7 @@ function applyTimelineDefaults(
     if (
       anim.ease === undefined &&
       defaults.ease !== undefined &&
-      (!anim.keyframes || anim.arcPath)
+      (!anim.keyframes || anim.keyframes.fromMotionPath)
     ) {
       anim.ease = defaults.ease;
     }

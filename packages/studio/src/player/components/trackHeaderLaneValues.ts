@@ -10,7 +10,7 @@ import {
   type PropertyGroupName,
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "../../hooks/gsapShared";
-import { resolveTweenStart } from "../../utils/globalTimeCompiler";
+import { resolveTweenDuration, resolveTweenStart } from "../../utils/globalTimeCompiler";
 import { easeFunction, keyframedTweenEases } from "../../utils/gsapKeyframeEases";
 
 export type LaneValues = Record<string, number | string>;
@@ -102,22 +102,30 @@ const endValue = (animation: GsapAnimation, property: string) =>
   animation.keyframes?.keyframes.findLast((keyframe) => property in keyframe.properties)
     ?.properties[property] ?? animation.properties[property];
 
-/** Each property's value as `animation` starts: the end of the latest earlier tween writing it. */
+/** Each property's value as `animation` starts: the end of the last tween done writing it by then. */
 export function valuesBefore(
   animation: GsapAnimation,
   animations: readonly GsapAnimation[],
 ): LaneValues {
-  const byStart = [...animations].sort(
-    (a, b) => (resolveTweenStart(a) ?? Infinity) - (resolveTweenStart(b) ?? Infinity),
-  );
-  const index = byStart.indexOf(animation);
-  const earlier = byStart.slice(0, Math.max(index, 0)).filter((other) => other.method !== "from");
+  const start = resolveTweenStart(animation);
+  if (start == null) return {};
+  const endOf = (other: GsapAnimation) =>
+    (resolveTweenStart(other) ?? Infinity) +
+    (other.method === "set" ? 0 : resolveTweenDuration(other));
+  const index = animations.indexOf(animation);
+  const finished = animations
+    .filter((other, i) => {
+      if (other.method === "from" || i === index) return false;
+      return endOf(other) < start || (endOf(other) === start && i < index);
+    })
+    .sort((a, b) => endOf(a) - endOf(b));
   const values: LaneValues = {};
-  for (const other of earlier) {
+  for (const other of finished) {
     for (const keyframe of other.keyframes?.keyframes ?? [{ properties: other.properties }]) {
       for (const property of Object.keys(keyframe.properties)) {
         const value = endValue(other, property);
         if (typeof value === "number") values[property] = value;
+        else delete values[property];
       }
     }
   }

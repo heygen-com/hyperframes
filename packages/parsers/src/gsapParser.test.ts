@@ -1872,16 +1872,18 @@ describe("keyframe mutations", () => {
           `tl.to("#a", { keyframes: [{ x: 1 }, { x: 2 }, { x: 3 }] }, 0);`,
           `tl.to("#b", { keyframes: { "0%": { x: 0 }, "100%": { x: 1 } } }, 0);`,
           `tl.to("#c", { motionPath: { path: [{ x: 0, y: 0 }, { x: 9, y: 9 }] } }, 0);`,
+          `tl.to("#d", { keyframes: { "0%": { x: 0 }, "100%": { x: 9 } }, motionPath: { path: [{ x: 0, y: 0 }, { x: 9, y: 9 }] } }, 0);`,
         ].join("\n");
         const defaults = `{ defaults: { duration: 2, ease: "power2.in" } }`;
-        const [steps, percentages, motionPath] = parse(
+        const [steps, percentages, motionPath, both] = parse(
           `const tl = gsap.timeline(${defaults});\n${tweens}`,
         ).animations;
         expect([steps!.duration, percentages!.duration, motionPath!.duration]).toEqual([1.5, 2, 2]);
-        expect([steps!.ease, percentages!.ease, motionPath!.ease]).toEqual([
+        expect([steps!.ease, percentages!.ease, motionPath!.ease, both!.ease]).toEqual([
           undefined,
           undefined,
           "power2.in",
+          undefined,
         ]);
         expect(parse(`const tl = gsap.timeline();\n${tweens}`).animations[0]!.duration).toBe(1.5);
       },

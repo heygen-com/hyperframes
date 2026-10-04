@@ -10,7 +10,7 @@
  */
 import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-acorn";
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
-import { timeAtProgress } from "../utils/gsapKeyframeEases";
+import { MOTION_PATH_RUN_EASE, timeAtProgress } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
@@ -164,7 +164,7 @@ function readTween(vars: Record<string, unknown>): ReadTween | null {
         percentage: n > 1 ? Math.round((i / (n - 1)) * 100) : 0,
         properties: { x: wp.x, y: wp.y },
       }));
-      return { keyframes, arcPath: shape.arcPath, runEase };
+      return { keyframes, arcPath: shape.arcPath, runEase: runEase ?? MOTION_PATH_RUN_EASE };
     }
   }
   const flat = flatTweenKeyframes(vars);
