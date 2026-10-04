@@ -69,7 +69,7 @@ Key attributes:
 - `data-start` — when the block appears in the host timeline (seconds)
 - `data-duration` — how long the block plays
 - `data-width` / `data-height` — block canvas dimensions
-- `data-track-index` — layer ordering (higher = in front)
+- `data-track-index` — Studio timeline row; display only. Use CSS `z-index` for layering
 
 See [wiring-blocks.md](./references/wiring-blocks.md) for full details.
 

@@ -508,19 +508,13 @@ At handoff, include the local presenter URL printed by the command and the minim
 
 ## Validation
 
-After authoring or editing a slideshow composition, run:
-
-```bash
-npx hyperframes lint
-```
-
-Then run runtime validation:
+After authoring or editing a slideshow composition, run validation (it reruns lint before opening the browser):
 
 ```bash
 npx hyperframes check
 ```
 
-Treat lint errors and validation `StaticGuard` contract messages as blockers even if a command exits successfully. Fix the file and rerun until lint reports `0 error(s)` and validation reports no runtime errors.
+Treat lint errors and validation `StaticGuard` contract messages as blockers even if a command exits successfully. Fix the file and rerun until `check` reports no lint or runtime errors.
 
 The slideshow lint rule checks:
 

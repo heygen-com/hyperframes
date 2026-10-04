@@ -136,5 +136,5 @@ the arc wins.
 
 ## Checking your work
 
-Run `hyperframes lint` and fix every finding. Then open the project in Studio and
+Run `hyperframes check` (it runs lint) and fix every finding. Then open the project in Studio and
 check that the timeline shows a base row, one row per scene host, one caption row and the audio rows.

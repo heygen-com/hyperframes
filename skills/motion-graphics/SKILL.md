@@ -128,7 +128,6 @@ Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot
 ### Step 5 — Verify (Bash → repair subagent on failure)
 
 ```bash
-(cd "$PROJECT_DIR" && npx hyperframes lint .)
 (cd "$PROJECT_DIR" && npx hyperframes check .)
 (cd "$PROJECT_DIR" && npx hyperframes snapshot --at <proof-times>)
 ```

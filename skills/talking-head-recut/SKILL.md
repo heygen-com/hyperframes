@@ -1106,8 +1106,8 @@ clashes with chrome); PiP layouts already have their own pill treatment
 top of `split` / `stack`.
 
 **GSAP target lookup table** for `#video-wrap` per composition layout
-(landscape 1920×1080 — for portrait & 4:5 see `references/layouts/*.html`
-which list all three ratios):
+(landscape 1920×1080; portrait is in `references/layouts/*.html`, and 4:5 is
+derived from portrait by the proportional scaling described above):
 
 | composition layout                   | typical card.zone | `#video-wrap` GSAP target                                                 | extra css class                            |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------- | ------------------------------------------ |

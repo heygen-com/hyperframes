@@ -74,7 +74,7 @@ flowchart TB
 
   subgraph AUTHOR["Authoring — the only things that write attributes"]
     panel["Studio<br/>Voiceover carve control"]
-    script["scripts/carve.mjs<br/>detects the pair, dynamic by default"]
+    script["scripts/carve.mjs<br/>detects the pair"]
     analysis["core/audioCarve.ts<br/>carveProfile · analyseCarveBands<br/>analyseCarveDuck · analyseCarveDynamics"]
     panel --> analysis
     script --> analysis
@@ -84,7 +84,7 @@ flowchart TB
   bed --> analysis
 
   subgraph ATTRS["Written onto the bed element"]
-    carveAttr["data-fx-carve<br/>source · strength · dynamic"]
+    carveAttr["data-fx-carve<br/>sources · strength"]
     chainAttr["data-fx-chain<br/>peaking xN + gain, tagged fromCarve"]
     autoAttr["data-automation<br/>a lane per carved parameter"]
   end
@@ -134,8 +134,6 @@ flowchart LR
   l1["lane fx.n1.gain"] -.->|"envelope of the voice's<br/>level in that band"| p1
   l4["lane fx.n4.gain"] -.->|"how far the bed<br/>ducks overall"| g
 ```
-
-A static carve is the same graph with fixed values and no lanes at all.
 
 ## First, work out what is wrong
 
@@ -383,15 +381,14 @@ which is why the lanes show up in the timeline and can be edited afterwards.
 
 **Level matching is part of it.** Spectral carving cannot fix a bed that is
 simply louder than the voice. So the carve also measures how far over the voice
-the bed sits and writes a `gain` stage: held at one value for a static carve,
-driven by an envelope for a dynamic one. That envelope releases slowly on
+the bed sits and writes a `gain` stage driven by an envelope. That envelope releases slowly on
 purpose — music that snaps back to full the instant a word ends sounds like a
 machine doing it.
 
 **Running it.** In Studio the carve is one module at the top of a track's effect
-rack — voice, strength, dynamic, and the analysis it produced, in one card. It is
+rack — voice, strength, and the analysis it produced, in one card. It is
 there whenever another track could be the voice, and a bed with exactly **one**
-candidate above it is carved by default, dynamically, at the default strength:
+candidate above it is carved by default, at the default strength:
 that is what a bed under narration wants, and the module is where you change or
 switch it off. Several candidates leaves the picker waiting rather than guessing.
 Headless —
@@ -402,12 +399,12 @@ node <SKILL_DIR>/scripts/carve.mjs --comp index.html
 ```
 
 That is the whole command. It finds the voice and the bed itself, carves
-dynamically at the default strength, and prints what it decided:
+at the default strength, and prints what it decided:
 
 ```
 bed    music-bed (name looks like music)
 voice  narration (only track left)
-carve  strength 0.8 dynamic
+carve  strength 0.8, 1 voice
 bands  250Hz -7.4dB q2.06, 400Hz -7.4dB q2.06, 630Hz -7.4dB q2.06, 1000Hz -7.4dB q2.06, 1600Hz -14.8dB q2.06, 2500Hz -7.4dB q2.06
 level  273-point envelope, floor -19.2 dB
 ```
@@ -472,7 +469,7 @@ its source, and the mix is told how much by the chain. So a bed with reverb no
 longer ends exactly at its `data-duration`; that is expected, not a bug.
 
 Beyond that, a mix is verified by rendering and listening. For a carve: the voice
-should be legible without the bed sounding hollowed, and with `dynamic` the bed
+should be legible without the bed sounding hollowed, and the bed
 should come back up between phrases rather than staying flat. If the bed sounds
 notched rather than simply quieter under the voice, the strength is too high —
 that is the one failure mode with an obvious sound.
