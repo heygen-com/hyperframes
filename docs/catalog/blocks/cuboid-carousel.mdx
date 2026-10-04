@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Cuboid Carousel"
   description="A chain of bevelled cuboids rides a travelling wave as a content carousel."
   variables={[{"id":"cardsJson","type":"string","label":"Content - Cards JSON (optional, see CARDS in source)","default":""},{"id":"heroCard","type":"number","label":"Content - Hero card (1-based)","default":4,"min":1,"max":12,"step":1},{"id":"count","type":"number","label":"Content - Repeating card count","default":8,"min":1,"max":12,"step":1},{"id":"gap","type":"number","label":"Layout - Extra gap between cuboids","default":0.01,"min":0,"max":1.5,"step":0.005},{"id":"cuboidWidth","type":"number","label":"Cuboid - Width","default":1.7,"min":0.3,"max":5,"step":0.01},{"id":"cuboidHeight","type":"number","label":"Cuboid - Height","default":2.4,"min":0.3,"max":6,"step":0.01},{"id":"cuboidDepth","type":"number","label":"Cuboid - Thickness (depth)","default":0.14,"min":0.02,"max":2,"step":0.01},{"id":"cornerRadius","type":"number","label":"Cuboid - Corner radius","default":0.105,"min":0,"max":0.6,"step":0.005},{"id":"bevelSize","type":"number","label":"Cuboid - Bevel size (edge chamfer)","default":0.03,"min":0,"max":0.3,"step":0.001},{"id":"bevelThickness","type":"number","label":"Cuboid - Bevel thickness","default":0.04,"min":0,"max":0.3,"step":0.001},{"id":"smoothness","type":"number","label":"Cuboid - Smoothness (segments)","default":32,"min":1,"max":32,"step":1},{"id":"bodyColor","type":"color","label":"Cuboid - Body colour","default":"#242424"},{"id":"roughness","type":"number","label":"Cuboid - Roughness","default":0.6,"min":0,"max":1,"step":0.01},{"id":"metalness","type":"number","label":"Cuboid - Metalness","default":0.4,"min":0,"max":1,"step":0.01},{"id":"heroScale","type":"number","label":"Hero - Isolated scale","default":1,"min":1,"max":1.6,"step":0.01},{"id":"heroFillIntensity","type":"number","label":"Hero - Face light intensity","default":0.55,"min":0,"max":2,"step":0.05,"description":"A soft fill on the detached face keeps its text readable without changing the original chain lighting."},{"id":"heroExitX","type":"number","label":"Hero - Exit X rotation degrees","default":288,"min":-720,"max":720,"step":1},{"id":"heroExitY","type":"number","label":"Hero - Exit Y rotation degrees","default":-234,"min":-720,"max":720,"step":1},{"id":"heroExitZ","type":"number","label":"Hero - Exit Z rotation degrees","default":198,"min":-720,"max":720,"step":1},{"id":"ambientIntensity","type":"number","label":"Lights - Ambient intensity","default":0.35,"min":0,"max":4,"step":0.01},{"id":"ambientColor","type":"color","label":"Lights - Ambient colour","default":"#ffffff"},{"id":"topIntensity","type":"number","label":"Lights - Top rig intensity","default":3.1,"min":0,"max":12,"step":0.05},{"id":"topColor","type":"color","label":"Lights - Top rig colour","default":"#ffffff"},{"id":"bottomIntensity","type":"number","label":"Lights - Bottom rig intensity","default":2.15,"min":0,"max":12,"step":0.05},{"id":"bottomColor","type":"color","label":"Lights - Bottom rig colour","default":"#ffcaad"},{"id":"keyIntensity","type":"number","label":"Lights - Key rig intensity","default":5,"min":0,"max":12,"step":0.05},{"id":"keyColor","type":"color","label":"Lights - Key rig colour","default":"#ffe9d6"},{"id":"shadowRadius","type":"number","label":"Shadows - Softness at map size 2048","default":44.5,"min":0,"max":50,"step":0.5},{"id":"shadowMapSize","type":"number","label":"Shadows - Map size","default":2048,"min":512,"max":4096,"step":256},{"id":"backdrop","type":"color","label":"Background - Colour","default":"#0b0d13"},{"id":"cameraFov","type":"number","label":"Camera - Initial Field of view","default":11,"min":10,"max":90,"step":0.5},{"id":"cameraX","type":"number","label":"Camera - Initial X","default":-1.65,"min":-20,"max":20,"step":0.05},{"id":"cameraY","type":"number","label":"Camera - Initial Y","default":8.5,"min":-20,"max":20,"step":0.05},{"id":"cameraZ","type":"number","label":"Camera - Initial Z (distance)","default":-8.508708,"min":-20,"max":50,"step":0.1},{"id":"cameraSettleFrame","type":"number","label":"Camera - Settle frame (30 fps)","default":70,"min":20,"max":90,"step":1,"description":"Fast-start ease-out along the saved route. Approved value: 70."},{"id":"handheldStrength","type":"number","label":"Camera - Handheld hold strength","default":1,"min":0,"max":1,"step":0.05,"description":"Camera-only motion during frames 90–150; 0 disables it, 1 matches Blender."},{"id":"cameraTargetFov","type":"number","label":"Camera target - Field of view","default":34,"min":10,"max":90,"step":0.5},{"id":"cameraTargetX","type":"number","label":"Camera target - X","default":-7.25,"min":-20,"max":20,"step":0.05},{"id":"cameraTargetY","type":"number","label":"Camera target - Y","default":1.15,"min":-20,"max":20,"step":0.05},{"id":"cameraTargetZ","type":"number","label":"Camera target - Z","default":6.2,"min":2,"max":50,"step":0.1}]}
-  meta={{"duration":6.67,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":873}}
+  meta={{"duration":6.67,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":876}}
   attribution={{"path":"registry/blocks/cuboid-carousel","tags":["3d-motion","carousel","cards","travelling-wave","pbr","shadows","room-environment"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/cuboid-carousel/cuboid-carousel.html"
@@ -37,7 +37,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       {
         "imports": {
           "three": "./assets/three.module.min.js",
-          "three/addons/": "./assets/addons/"
+          "three/addons/": "./assets/addons/",
+          "cuboid-carousel/motion": "./assets/cuboid-motion.js"
         }
       }
     </script>
@@ -128,12 +129,13 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
       import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
-      import { MOTION } from "./assets/cuboid-motion.js";
+      import { MOTION } from "cuboid-carousel/motion";
 
       const DUR = MOTION.endFrame / MOTION.fps;
+      // Bare __hyperframes is this composition's own in a module.
       const V =
-        window.__hyperframes && window.__hyperframes.getVariables
-          ? window.__hyperframes.getVariables()
+        typeof __hyperframes !== "undefined" && __hyperframes.getVariables
+          ? __hyperframes.getVariables()
           : {};
 
       // ---- variable readers (every one clamped to the DialKit range) ----
@@ -837,7 +839,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       tl.addLabel("solo-hold", T_CLEAR);
       tl.addLabel("hero-exit", T_OUT);
       tl.addLabel("empty", T_EMPTY);
-      tl.to(S, { t: DUR, duration: DUR, ease: "none" }, 0);
+      // fromTo: the start is fixed, not whatever warmGpu last left in S.t when the tween first renders.
+      tl.fromTo(S, { t: 0 }, { t: DUR, duration: DUR, ease: "none" }, 0);
       tl.eventCallback("onUpdate", () => renderAt(S.t));
 
       /* Studio's player seeks with GSAP events suppressed and dispatches an
@@ -859,7 +862,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           await new Promise((resolve) => setTimeout(resolve, 0));
           renderAt(DUR * f);
         }
-        renderAt(S.t);
+        renderAt(tl.time());
         renderer.getContext().finish();
       }
       window.__hf = window.__hf || {};

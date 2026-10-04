@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Canopy Part Title"
   description="Leaves sweep through the frame and part to reveal the headline."
   variables={[{"id":"headline1","type":"string","label":"Headline 1","default":"Understory"},{"id":"headline2","type":"string","label":"Headline 2","default":"Move slowly"},{"id":"font","type":"string","label":"Headline font","default":"Helvetica"},{"id":"fontWeight","type":"number","label":"Font weight","default":900,"min":100,"max":900,"step":100},{"id":"fontSize","type":"number","label":"Font size (1 = auto-fit)","default":1,"min":0.3,"max":2,"step":0.01},{"id":"letterSpacing","type":"number","label":"Letter spacing (em)","default":0.01,"min":-0.2,"max":1,"step":0.01},{"id":"background","type":"color","label":"Background","default":"#020805"},{"id":"leafCount","type":"number","label":"Leaves per sweep","default":170,"min":40,"max":320,"step":1},{"id":"stayCount","type":"number","label":"Leaves left behind","default":5,"min":0,"max":20,"step":1},{"id":"sweepSpeed","type":"number","label":"Sweep speed","default":1,"min":0.3,"max":3,"step":0.05},{"id":"retainedBreeze","type":"number","label":"Retained leaf breeze","default":1,"min":0,"max":2,"step":0.05}]}
-  meta={{"duration":12,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":1394}}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":1389}}
   attribution={{"path":"registry/blocks/canopy-part-title","tags":["3d-motion","title-card","leaves","organic","depth-of-field","two-headlines","sweep"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/canopy-part-title/canopy-part-title.html"
@@ -131,16 +131,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           document.getElementById("cpt-scene").appendChild(c);
         })();
 
-        var V = Object.fromEntries(
-          JSON.parse(
-            document
-              .querySelector("[data-composition-variables]")
-              .getAttribute("data-composition-variables"),
-          ).map((e) => [e.id, e.default]),
-        );
+        // getVariables carries the declared defaults, standalone and mounted.
+        var V = {};
         try {
           if (window.__hyperframes && window.__hyperframes.getVariables)
-            V = Object.assign(V, window.__hyperframes.getVariables() || {});
+            V = window.__hyperframes.getVariables() || {};
         } catch (e) {
           /* corrupt declarations must not blank the composition */
         }
@@ -372,31 +367,26 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       const W = 1920,
         H = 1080,
         DUR = 12;
-      let V = Object.fromEntries(
-        JSON.parse(
-          document
-            .querySelector("[data-composition-variables]")
-            .getAttribute("data-composition-variables"),
-        ).map((e) => [e.id, e.default]),
-      );
+      // Bare __hyperframes is this composition's own in a module; getVariables carries the defaults.
+      let V = {};
       try {
-        if (window.__hyperframes && window.__hyperframes.getVariables)
-          V = Object.assign(V, window.__hyperframes.getVariables() || {});
+        if (typeof __hyperframes !== "undefined" && __hyperframes.getVariables)
+          V = __hyperframes.getVariables() || {};
       } catch (e) {
         /* corrupt declarations must not blank the composition */
       }
       const HEADLINE1 = String(V.headline1 ?? "Understory");
-      const HEADLINE2 = String(V.headline2 ?? "MOVE SLOWLY");
+      const HEADLINE2 = String(V.headline2 ?? "Move slowly");
       /* Headline typography is a PARAMETER — never a Design-panel edit. Any
          Google Fonts family name works; falls back through Gelasio/serif
          while (or if never) loading. */
-      const FONT = (String(V.font || "Gelasio").trim() || "Gelasio").replace(/["']/g, "");
+      const FONT = (String(V.font || "Helvetica").trim() || "Helvetica").replace(/["']/g, "");
       const FONT_WEIGHT = Math.max(
         100,
         Math.min(
           900,
           Math.round(
-            isFinite(Number(V.fontWeight)) && Number(V.fontWeight) ? Number(V.fontWeight) : 500,
+            isFinite(Number(V.fontWeight)) && Number(V.fontWeight) ? Number(V.fontWeight) : 900,
           ),
         ),
       );
@@ -411,7 +401,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       );
       const LETTER_SP = Math.max(
         -0.2,
-        Math.min(1, isFinite(Number(V.letterSpacing)) ? Number(V.letterSpacing) : 0.1),
+        Math.min(1, isFinite(Number(V.letterSpacing)) ? Number(V.letterSpacing) : 0.01),
       );
       const FONT_STACK = '"' + FONT + '", Gelasio, Georgia, serif';
       if (!/^(Helvetica|Arial|Gelasio|Georgia|serif|sans-serif|monospace)$/i.test(FONT)) {
@@ -675,10 +665,15 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         return { map, bump };
       }
 
+      // Beside this file when mounted; a runtime without assetUrl keeps the plain path.
+      const assetUrl = (path) =>
+        typeof __hyperframes !== "undefined" && __hyperframes.assetUrl
+          ? __hyperframes.assetUrl(path)
+          : path;
       const textureLoader = new THREE.TextureLoader();
       const [photoSurface, photoNormal] = await Promise.all([
-        textureLoader.loadAsync("assets/leaf-surface-color.webp"),
-        textureLoader.loadAsync("assets/leaf-surface-normal.webp"),
+        textureLoader.loadAsync(assetUrl("assets/leaf-surface-color.webp")),
+        textureLoader.loadAsync(assetUrl("assets/leaf-surface-normal.webp")),
       ]);
       photoSurface.colorSpace = THREE.SRGBColorSpace;
       photoSurface.wrapS = photoSurface.wrapT = THREE.RepeatWrapping;

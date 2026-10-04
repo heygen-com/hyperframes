@@ -1,6 +1,6 @@
 ---
 title: "Oversized Cursor"
-description: "A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits"
+description: "The look-here pointer for a video: the macOS arrow at 3.5x its normal size lands its tip on one control, clicks it on, settles just below it so the result stays in view, then exits off-screen"
 mode: "frame"
 ---
 
@@ -12,10 +12,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionId="oversized-cursor"
   compositionSrc="compositions/components/oversized-cursor.html"
   title="Oversized Cursor"
-  description="A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits"
+  description="The look-here pointer for a video: the macOS arrow at 3.5x its normal size lands its tip on one control, clicks it on, settles just below it so the result stays in view, then exits off-screen"
   variables={[{"id":"cursor_variant","type":"enum","role":"style","label":"Cursor fill","default":"light","options":[{"value":"light","label":"Light (white body)"},{"value":"dark","label":"Dark (near-black body)"}]},{"id":"target_x","type":"number","role":"layout","label":"Target X","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Target Y","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"click_label","type":"string","role":"content","label":"Click label","default":"Generate"},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional whole-stage departure. Default none: the ignited target stays until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
-  meta={{"category":"Motion Scenes","badge":"Stable","codeLines":422}}
-  attribution={{"path":"registry/components/oversized-cursor","tags":["motion-primitive","actor","cursor","pointer","interaction"]}}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":388}}
+  attribution={{"path":"registry/components/oversized-cursor","tags":["cursor","motion-primitive","actor","pointer","interaction"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/oversized-cursor/oversized-cursor.html"
 >
@@ -27,15 +27,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 <!--
   Oversized Cursor (actor primitive), mountable sub-composition
 
-  concept: a deliberately oversized macOS-style pointer that enters the frame
-  from off-screen, travels in one continuous glide to a target, taps it (the
-  click ignites a visible reaction on the target itself), drifts aside during
-  the dwell, then exits off-screen. One mechanic: a pointer-driven click that
-  visibly causes something. Family: pointers. Profile: interaction.
-
-  compiled-from: spec ready (oversized-cursor SKILL.md, ~/Downloads/oversized-cursor);
-  actor file mechanics compose (size/look, entry law, tip-targeting, click-ignition,
-  exit law).
+  concept: the "look here" pointer for a video. The family macOS arrow at 3.5x
+  its normal size enters from off-screen, lands its tip on one control, clicks
+  it (the control switches on), settles just below it so the result stays in
+  view, then exits off-screen. Family: pointers. Profile: interaction.
 
   use-when: kicking off a UI scene, igniting a morph/transition/typing run with a
   causal click, or carrying the eye across a scene that would otherwise read as
@@ -57,20 +52,20 @@ import { InstallCommand } from "/snippets/install-command.jsx";
     exit (enum none|fade|up, default none)  optional whole-stage departure during
       OUT; the cursor's own off-screen exit always plays (it is the mechanic)
 
-  envelope (of data-composition-duration, default 4.2s):
-    IN   0.00s to 1.17s (fixed)     off-screen entry glide (0.85s) then click tap (0.32s)
-    HOLD 1.17s to D-0.60s (elastic) click ignition plays, cursor drifts aside, then dwells
-    OUT  D-0.60s to D (fixed)       cursor accelerates off-screen; with exit fade|up the
+  envelope (of data-composition-duration, default 2.6s):
+    IN   0.00s to 1.02s (fixed)     entry glide (0.5s), aim (0.2s), click tap (0.32s)
+    HOLD 1.02s to D-0.40s (elastic) the control switches on, cursor settles below it, holds
+    OUT  D-0.40s to D (fixed)       cursor accelerates off-screen; with exit fade|up the
                                     whole stage (target included) also departs
 
   sound: one click tap SFX (soft UI click) fires at the click moment, the fixed
-  offset into IN documented below as SYNC POINT. This file never plays audio: it
+  offset into IN set by CLICK_AT below. This file never plays audio: it
   only marks the cue's timing for the mix stage to pick up.
 -->
 <html
   lang="en"
   data-composition-id="oversized-cursor"
-  data-composition-duration="4.2"
+  data-composition-duration="2.6"
   data-composition-variables='[
     { "id": "cursor_variant", "type": "enum", "role": "style", "label": "Cursor fill", "default": "light", "options": [ { "value": "light", "label": "Light (white body)" }, { "value": "dark", "label": "Dark (near-black body)" } ] },
     { "id": "target_x", "type": "number", "role": "layout", "label": "Target X", "default": 55, "min": 15, "max": 85, "step": 1, "unit": "%" },
@@ -123,25 +118,33 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           position: absolute;
           left: 50%;
           top: 50%;
-          display: flex;
-          align-items: center;
-          gap: var(--space-1, 0.6cqw);
-          padding: var(--space-2, 1.5cqw) var(--space-3, 2.4cqw);
-          border-radius: var(--radius, 999px);
-          border: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+          padding: var(--space-2, 0.6cqw) var(--space-3, 1cqw);
+          border-radius: var(--radius, 0.55cqw);
+          border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
           background: color-mix(
             in srgb,
             var(--surface, #f8fafc) calc((1 - var(--oc-ignite, 0)) * 100%),
-            var(--brand, #52525b) calc(var(--oc-ignite, 0) * 100%)
+            var(--brand, #0a84ff) calc(var(--oc-ignite, 0) * 100%)
           );
-          box-shadow: 0 1.2cqw 3.2cqw rgba(2, 6, 23, 0.24);
+          box-shadow:
+            0 1px 2px rgba(0, 0, 0, 0.08),
+            0 0.3cqw 0.8cqw rgba(0, 0, 0, 0.08);
           --oc-ignite: 0;
           z-index: 10;
         }
 
+        /* The check's slot is always laid out; idle, the row shifts left by half of it
+           so the label sits centred, and the check slides in without a layout change. */
+        .oc-target-row {
+          display: flex;
+          align-items: center;
+          gap: 0.45cqw;
+          transform: translateX(calc((var(--oc-ignite, 0) - 1) * 0.725cqw));
+        }
+
         .oc-target-check {
-          width: 1.8cqw;
-          height: 1.8cqw;
+          width: 1cqw;
+          height: 1cqw;
           min-width: 14px;
           min-height: 14px;
           flex: none;
@@ -155,8 +158,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         }
 
         .oc-target-label {
-          font-size: clamp(12px, 1.7cqw, 30px);
-          font-weight: 650;
+          font-size: clamp(12px, 1cqw, 20px);
+          font-weight: 600;
           line-height: 1;
           white-space: nowrap;
           color: color-mix(
@@ -166,20 +169,16 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           );
         }
 
-        /* INVARIANT: cursor size floor is 7cqw for full-frame scenes (house
-           convention). Never go smaller; an actual-size cursor disappears at
-           video scale. */
+        /* 224px at 1920 wide: the family's 64u arrow at 3.5x, shadow scaled with it. */
         .oc-cursor {
           position: absolute;
           left: 0;
           top: 0;
-          width: 7cqw;
-          height: 7cqw;
-          min-width: 34px;
-          min-height: 34px;
+          width: 11.67cqw;
+          height: 11.67cqw;
           pointer-events: none;
           will-change: transform;
-          filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+          filter: drop-shadow(0 0.52cqw 0.73cqw rgba(0, 0, 0, 0.3));
           z-index: 20;
         }
 
@@ -203,34 +202,19 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           stroke: #ffffff;
           stroke-width: 1.4;
         }
-
-        /* INVARIANT: ripple anchors to the arrow's tip point (21%, 14% of the
-           cursor box), the same point transformOrigin pivots the click tap on. */
-        .oc-ripple {
-          position: absolute;
-          left: 21%;
-          top: 14%;
-          width: 2.6cqw;
-          height: 2.6cqw;
-          min-width: 12px;
-          min-height: 12px;
-          border-radius: 999px;
-          border: 0.24cqw solid color-mix(in srgb, var(--fg, #ffffff) 45%, transparent);
-          transform: translate(-50%, -50%);
-          opacity: 0;
-        }
       </style>
 
-      <div id="root" data-composition-id="oversized-cursor" data-duration="4.2">
+      <div id="root" data-composition-id="oversized-cursor" data-duration="2.6">
         <div class="oc-stage">
           <div class="oc-target" id="oc-target">
-            <svg class="oc-target-check" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 13l4 4L19 7" />
-            </svg>
-            <span class="oc-target-label" id="oc-target-label"></span>
+            <div class="oc-target-row">
+              <svg class="oc-target-check" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+              <span class="oc-target-label" id="oc-target-label"></span>
+            </div>
           </div>
           <div class="oc-cursor" id="oc-cursor" data-variant="light" aria-hidden="true">
-            <div class="oc-ripple"></div>
             <svg class="oc-cursor-svg" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
             </svg>
@@ -252,7 +236,6 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           var html = document.documentElement;
           var root = document.getElementById("root");
           var cursor = document.getElementById("oc-cursor");
-          var ripple = cursor.querySelector(".oc-ripple");
           var target = document.getElementById("oc-target");
           var targetLabel = document.getElementById("oc-target-label");
 
@@ -296,7 +279,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           var duration = Math.max(
             0.001,
             parseFloat(
-              root.dataset.duration || html.getAttribute("data-composition-duration") || "4.2",
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "2.6",
             ),
           );
           var variant = vars.cursor_variant === "dark" ? "dark" : "light";
@@ -327,18 +310,15 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             return (percent / 100) * stageH;
           }
 
-          // Tip-targeting: the arrow's visual tip sits at (21%, 14%) inside the
-          // cursor's own box. Anchor the box by that offset once, up front, so
-          // every later x/y tween places the TIP (not the box corner) at the
-          // given stage position. Never tween xPercent/yPercent.
-          gsap.set(cursor, { xPercent: -21, yPercent: -14 });
+          // Tip-targeting: the family arrow's tip sits at (5/24, 3/24) of its box.
+          // Anchoring the box by that offset makes every x/y below place the TIP.
+          gsap.set(cursor, { xPercent: -20.83, yPercent: -12.5 });
           gsap.set(target, { xPercent: -50, yPercent: -50, scale: 1 });
 
-          // RETIME RANGE: IN/OUT are fixed durations (house convention: entry
-          // glide 0.4-0.92s + click tap 0.32s). They only shrink, proportionally,
-          // if the composition duration is too short to hold IN + OUT at all.
-          var IN_BASE = 1.17; // 0.85s glide + 0.1s compress + 0.22s expand
-          var OUT_BASE = 0.6;
+          // entry and exit keep fixed durations; both shrink proportionally only
+          // when the composition is too short to fit them.
+          var IN_BASE = 1.02; // 0.5s glide + 0.2s aim + 0.1s press + 0.22s release
+          var OUT_BASE = 0.4;
           var totalBase = IN_BASE + OUT_BASE;
           var IN = IN_BASE;
           var OUT = OUT_BASE;
@@ -351,21 +331,20 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           var OUT_AT = IN + HOLD;
           var shrinkFactor = IN / IN_BASE;
 
-          var glideDur = 0.85 * shrinkFactor;
+          var glideDur = 0.5 * shrinkFactor;
           var clickInDur = 0.1 * shrinkFactor;
           var clickOutDur = 0.22 * shrinkFactor;
-          // SYNC POINT: click moment (entry settle), a fixed offset into IN,
-          // never inside the elastic HOLD.
-          var CLICK_AT = glideDur;
+          // the click lands at a fixed offset into the entry, never in the stretchable hold.
+          var CLICK_AT = (0.5 + 0.2) * shrinkFactor;
+          var TIP_ORIGIN = "20.83% 12.5%";
 
           var offX = xAt(48);
           var offY = yAt(116); // resting pose IS off-screen, below the stage
 
           var tl = gsap.timeline({ paused: true });
 
-          // ---- IN: off-screen entry, one continuous vector, then the tap ----
+          // ---- IN: off-screen entry, one continuous vector, aim, then the tap ----
           tl.set(cursor, { scale: 1 });
-          tl.set(ripple, { opacity: 0, scale: 0.4 });
           tl.set(target, { "--oc-ignite": 0 });
           tl.fromTo(
             cursor,
@@ -375,59 +354,46 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           );
           tl.to(
             cursor,
-            { scale: 0.84, duration: clickInDur, ease: "power2.in", transformOrigin: "21% 14%" },
+            { scale: 0.9, duration: clickInDur, ease: "power2.in", transformOrigin: TIP_ORIGIN },
             CLICK_AT,
           );
           tl.to(
             cursor,
-            { scale: 1, duration: clickOutDur, ease: "power2.out", transformOrigin: "21% 14%" },
+            { scale: 1, duration: clickOutDur, ease: "power2.out", transformOrigin: TIP_ORIGIN },
             CLICK_AT + clickInDur,
           );
 
-          // ---- the click ignites the target: parallel reaction, same frame ----
-          tl.to(target, { scale: 0.94, duration: clickInDur, ease: "power2.in" }, CLICK_AT);
+          // ---- the click switches the target on, same frame as the release ----
+          tl.to(target, { scale: 0.96, duration: clickInDur, ease: "power2.in" }, CLICK_AT);
           tl.to(
             target,
             { scale: 1, duration: clickOutDur, ease: "power2.out" },
             CLICK_AT + clickInDur,
           );
-          tl.fromTo(
-            ripple,
-            { opacity: 0.85, scale: 0.4 },
-            { opacity: 0, scale: 2.4, duration: 0.42, ease: "power2.out" },
-            CLICK_AT + clickInDur,
-          );
           tl.to(
             target,
-            { "--oc-ignite": 1, duration: 0.34, ease: "back.out(2.2)" },
+            { "--oc-ignite": 1, duration: 0.3, ease: "power2.out" },
             CLICK_AT + clickInDur,
           );
 
-          // ---- HOLD (elastic): drift aside once, then dwell, never wobble ----
-          var driftDelay = Math.min(0.22, HOLD * 0.3);
-          var driftDur = Math.max(0, Math.min(0.7, HOLD - driftDelay));
+          // ---- HOLD (elastic): settle just below the target, still pointing at it ----
+          var driftDur = Math.min(0.4, HOLD);
           if (driftDur > 0.05) {
-            var asideX = clampPercent(targetX + (targetX < 50 ? 16 : -16), targetX);
-            var asideY = clampPercent(targetY + 10, targetY);
+            var cq = stageW / 100;
             tl.to(
               cursor,
               {
-                x: xAt(asideX),
-                y: yAt(asideY),
+                x: xAt(targetX) + 2.5 * cq,
+                y: yAt(targetY) + 2.1 * cq,
                 duration: driftDur,
-                ease: "power2.out",
-                overwrite: "auto",
+                ease: "power2.inOut",
               },
-              IN + driftDelay,
+              IN,
             );
           }
 
           // ---- OUT: leave the frame, physically, never a fade-in-place ----
-          tl.to(
-            cursor,
-            { y: yAt(120), duration: OUT, ease: "power2.in", overwrite: "auto" },
-            OUT_AT,
-          );
+          tl.to(cursor, { y: yAt(120), duration: OUT, ease: "power2.in" }, OUT_AT);
 
           // Optional whole-stage departure on top of the cursor's own exit;
           // exit none leaves the ignited target until the frame cuts.
@@ -492,7 +458,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `actor` `cursor` `pointer` `interaction`.
+Tagged `cursor` `motion-primitive` `actor` `pointer` `interaction`.
 
 ## Related topics
 
