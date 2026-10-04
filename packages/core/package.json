@@ -323,6 +323,12 @@
       "import": "./src/runtime/startResolver.ts",
       "types": "./src/runtime/startResolver.ts"
     },
+    "./runtime/composition-length": {
+      "bun": "./src/runtime/compositionLength.ts",
+      "node": "./dist/runtime/compositionLength.js",
+      "import": "./src/runtime/compositionLength.ts",
+      "types": "./src/runtime/compositionLength.ts"
+    },
     "./runtime/protocol": {
       "bun": "./src/runtime/protocol.ts",
       "node": "./dist/runtime/protocol.js",
@@ -495,7 +501,8 @@
     "./schemas/registry-item.json": "./schemas/registry-item.json"
   },
   "publishConfig": {
-    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "exports": {
       ".": {
         "import": "./dist/index.js",
@@ -699,6 +706,10 @@
         "import": "./dist/runtime/startResolver.js",
         "types": "./dist/runtime/startResolver.d.ts"
       },
+      "./runtime/composition-length": {
+        "import": "./dist/runtime/compositionLength.js",
+        "types": "./dist/runtime/compositionLength.d.ts"
+      },
       "./runtime/protocol": {
         "import": "./dist/runtime/protocol.js",
         "types": "./dist/runtime/protocol.d.ts"
@@ -814,8 +825,7 @@
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json"
     },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
+    "access": "public"
   },
   "scripts": {
     "build": "bun run build:hyperframes-runtime && bun run build:position-edits-render && bun run build:audio-fx-runtime && tsc && tsx scripts/rewrite-esm-extensions.ts",
