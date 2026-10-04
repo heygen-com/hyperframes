@@ -203,23 +203,19 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-/** Whether history keeps a project path: a hidden name anywhere in it (a tool's own record, .DS_Store) is nobody's
- * work, except Studio's two manifests. */
+/** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except Studio's manifests. */
 function isHistoryPath(path: string): boolean {
   if ((STUDIO_SIGNATURE_MANIFEST_PATHS as readonly string[]).includes(path)) return true;
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
 
-/** An older log as history keeps it: hidden paths gone. Every entry stays, emptied or not, since pins, undos, restores
- * and callers name entries by id. */
-function keptPaths(log: HistoryLog): HistoryLog {
+function withoutHiddenPaths(log: HistoryLog): HistoryLog {
   for (const path of log.baseline.keys()) if (!isHistoryPath(path)) log.baseline.delete(path);
   for (const entry of log.entries)
     entry.files = entry.files.filter((file) => isHistoryPath(file.path));
   return log;
 }
 
-/** The project files history keeps. */
 const historyFiles = (dir: string) =>
   listProjectFiles(dir).filter((file) => isHistoryPath(file.path));
 
@@ -406,7 +402,7 @@ class Engine {
       ),
     );
     if (!log) return this.firstOpen();
-    this.log = keptPaths(log);
+    this.log = withoutHiddenPaths(log);
     const cache = this.readStatCache();
     const last = this.log.entries.at(-1)?.id ?? START;
     for (const [path, hash] of manifestAt(this.log, last) ?? []) {
@@ -762,9 +758,9 @@ class Engine {
   }
 
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
-    // Undoing an entry an older log left with no files still lands, so Undo and Redo move past it like any step.
-    const emptied = this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0;
-    if (!group.changes.size && !emptied) return null;
+    const undoesEmptied =
+      this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0;
+    if (!group.changes.size && !undoesEmptied) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry: HistoryEntry = { ...pending, endedAt, ...extra };
@@ -1021,7 +1017,6 @@ class Engine {
     const everyone = this.options.undoScope === "everyone";
     const ofOpenTurn = (entry: HistoryEntry) =>
       this.windows.some((open) => open.parts?.has(entry.id));
-    // Cmd+Z never spends a press on an entry an older log left with no files.
     return stepTarget(
       this.log.entries,
       direction,
