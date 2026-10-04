@@ -14,6 +14,7 @@ type IframeWindow = Window & {
   // reloads (each needing the plugin) don't queue duplicate plugin scripts that
   // re-flash the iframe. Cleared once the plugin loads or errors.
   __hfMotionPathPluginLoading?: boolean;
+  __playerReady?: boolean;
   gsap?: {
     version?: string;
     timeline?: (...args: unknown[]) => unknown;
@@ -54,7 +55,9 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
     return;
   }
   // A body gsap runs after web fonts, which can be after the iframe's load: retry once the runtime is ready.
+  // A booted runtime (`__playerReady`, set in the same task it posts ready) has nothing left to wait for.
   if (!win.gsap?.registerPlugin) {
+    if (win.__playerReady) return;
     const retry = (event: MessageEvent) => {
       const data = event.data as { source?: unknown; type?: unknown } | null;
       if (event.source !== win || data?.source !== "hf-preview" || data.type !== "ready") return;

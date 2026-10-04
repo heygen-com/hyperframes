@@ -384,21 +384,45 @@ describe("ensureMotionPathPluginLoaded", () => {
     expect(appendedScripts).toHaveLength(0);
   });
 
-  it("loads the plugin once the runtime is ready when gsap was not there yet at load", () => {
-    const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
-    ensureMotionPathPluginLoaded(iframe);
-    contentWindow.gsap = { registerPlugin: vi.fn() };
-    const ready = (source: unknown) => {
-      const event = new MessageEvent("message", { data: { source: "hf-preview", type: "ready" } });
+  describe("when gsap is not there yet at load", () => {
+    const post = (source: unknown, type = "ready") => {
+      const event = new MessageEvent("message", { data: { source: "hf-preview", type } });
       Object.defineProperty(event, "source", { value: source });
       window.dispatchEvent(event);
     };
-    ready({});
-    expect(appendedScripts).toHaveLength(0);
-    ready(contentWindow);
-    ready(contentWindow);
-    expect(appendedScripts).toHaveLength(1);
-    expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+
+    it("loads the plugin once that iframe's runtime is ready", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(iframe);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post({});
+      post(contentWindow, "timeline");
+      expect(appendedScripts).toHaveLength(0);
+      post(contentWindow);
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(1);
+      expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    });
+
+    it("stops listening at the first ready, even when it brought no gsap", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(iframe);
+      post(contentWindow);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(0);
+    });
+
+    it("does not wait when the runtime already booted, since its ready has gone out", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({
+        gsap: undefined,
+        __playerReady: true,
+      });
+      ensureMotionPathPluginLoaded(iframe);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(0);
+    });
   });
 
   it("loads the plugin at the composition's own gsap version", () => {
