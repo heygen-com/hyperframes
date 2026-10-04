@@ -46,6 +46,10 @@ describe("openedGroups", () => {
       openedGroups(page(size), page(size, 'tl.to("#target", { y: 20, duration: 2 }, 0);')),
     ).toEqual(["position"]);
     expect(openedGroups(page(size), page(size, 'gsap.set("#target", { x: 20 });'))).toEqual([]);
+    const upper = {
+      "index.html": `<div id="target"></div><SCRIPT type="text/javascript">var tl = gsap.timeline(); ${size} tl.to("#target", { y: 9, duration: 1 }, 0);</SCRIPT >`,
+    };
+    expect(openedGroups(page(size), upper)).toEqual(["position"]);
   });
 });
 

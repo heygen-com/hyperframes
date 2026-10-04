@@ -346,7 +346,8 @@ export function keyframeDrift(before, after) {
   return { ...worst, pass: worst.diff <= KEY_TOLERANCE };
 }
 
-const scriptsIn = (html) => [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+const scriptsIn = (html) =>
+  [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi)].map((m) => m[1]);
 const animatesTarget = (anim) => anim.targetSelector === "#target" && !anim.global;
 const keyframeProps = (anim) => (anim.keyframes?.keyframes ?? []).map((k) => k.properties);
 const animatedProps = (anim) =>
