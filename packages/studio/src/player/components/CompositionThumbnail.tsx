@@ -7,7 +7,8 @@ import {
   type ThumbnailRequest,
 } from "../lib/thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
-import { computeThumbnailStrip, probeImageAspect, tilesInView } from "./thumbnailUtils";
+import { ThumbnailTiles } from "./ThumbnailTiles";
+import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
 
 interface CompositionThumbnailProps {
   previewUrl: string;
@@ -141,7 +142,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   contentRevision = 0,
   priority = "visible",
 }: CompositionThumbnailProps) {
-  const [container, setContainerRef] = useThumbnailStripSize();
+  const [container, setContainerRef, watchGap] = useThumbnailStripSize();
   const url = buildCompositionThumbnailUrl({
     previewUrl,
     seekTime,
@@ -164,23 +165,24 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     container.height,
     48,
   );
-  const { first, end } = tilesInView(container, frameW, frameCount);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       {value && (
-        <div
-          className="absolute inset-0 flex"
+        <ThumbnailTiles
+          strip={container}
+          frameW={frameW}
+          frameCount={frameCount}
+          watchGap={watchGap}
           style={{
-            paddingLeft: first * frameW,
             animation: "hf-thumb-fade 200ms ease-out",
             mixBlendMode:
               "var(--timeline-composition-thumbnail-blend)" as CSSProperties["mixBlendMode"],
           }}
         >
-          {Array.from({ length: end - first }, (_, offset) => (
+          {(index) => (
             <div
-              key={first + offset}
+              key={index}
               className="relative h-full shrink-0 overflow-hidden"
               style={{ width: frameW }}
             >
@@ -192,8 +194,8 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
                 style={{ opacity: "var(--timeline-composition-thumbnail-opacity)" }}
               />
             </div>
-          ))}
-        </div>
+          )}
+        </ThumbnailTiles>
       )}
       {snapshot.status === "loading" && (
         <div className="absolute inset-0 animate-pulse bg-text-0/[0.035]" />

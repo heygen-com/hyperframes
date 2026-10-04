@@ -95,17 +95,55 @@ describe("VideoThumbnail", () => {
     expect(tiles).toEqual(["blob:0", "blob:2", "blob:4", "blob:5", "blob:7"]);
   });
 
-  it("mounts only the tiles in view on a 10-minute clip at full zoom, and follows a scroll", async () => {
-    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
-      value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
-      weight: 256,
-    });
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => {
-      frame(0);
-      return 1;
-    });
+  describe("on a 10-minute clip at full zoom", () => {
+    const frames: FrameRequestCallback[] = [];
+    const originalIntersectionObserver = globalThis.IntersectionObserver;
     let left = -432_000;
-    host.getBoundingClientRect = () => ({ left }) as DOMRect;
+    let reportGapNearScreen: () => void = () => {};
+
+    beforeEach(() => {
+      vi.mocked(decodeVideoThumbnail).mockResolvedValue({
+        value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
+        weight: 256,
+      });
+      vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => frames.push(frame));
+      globalThis.IntersectionObserver = class {
+        observed = new Set<Element>();
+        constructor(callback: IntersectionObserverCallback) {
+          reportGapNearScreen = () =>
+            callback(
+              [...this.observed].map(
+                (target) => ({ isIntersecting: true, target }) as IntersectionObserverEntry,
+              ),
+              this as unknown as IntersectionObserver,
+            );
+        }
+        observe(target: Element) {
+          this.observed.add(target);
+        }
+        unobserve(target: Element) {
+          this.observed.delete(target);
+        }
+        disconnect() {
+          this.observed.clear();
+        }
+      } as unknown as typeof IntersectionObserver;
+      left = -432_000;
+      host.getBoundingClientRect = () => ({ left }) as DOMRect;
+    });
+
+    afterEach(() => {
+      frames.length = 0;
+      vi.restoreAllMocks();
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+    });
+
+    const settle = () =>
+      act(async () => {
+        await Promise.resolve();
+        for (const frame of frames.splice(0)) frame(0);
+      });
+
     const expectTilesCoverTheWindow = () => {
       const tiles = host.querySelectorAll("img").length;
       const skipped = parseFloat(
@@ -116,44 +154,27 @@ describe("VideoThumbnail", () => {
       expect(skipped + tiles * 71).toBeGreaterThanOrEqual(-left + window.innerWidth);
     };
 
-    await render(600 * 1440, 40);
-    expectTilesCoverTheWindow();
+    it("mounts only the tiles in view, and follows each scroll", async () => {
+      await render(600 * 1440, 40);
+      expectTilesCoverTheWindow();
 
-    left = -100_000;
-    await act(async () => {
-      host.dispatchEvent(new Event("scroll"));
-      await Promise.resolve();
-    });
-    expectTilesCoverTheWindow();
-  });
-
-  it("follows a long clip moved without a scroll", async () => {
-    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
-      value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
-      weight: 256,
-    });
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => {
-      frame(0);
-      return 1;
-    });
-    host.className = "timeline-clip";
-    let left = -432_000;
-    host.getBoundingClientRect = () => ({ left }) as DOMRect;
-    await render(600 * 1440, 40);
-
-    left = -400_000;
-    await act(async () => {
-      host.style.left = "32000px";
-      await new Promise((settled) => setTimeout(settled, 0));
+      for (const scrolledTo of [100_000, 300_000]) {
+        left = -scrolledTo;
+        host.dispatchEvent(new Event("scroll"));
+        await settle();
+        expectTilesCoverTheWindow();
+      }
     });
 
-    const skipped = parseFloat(
-      (host.querySelector("img")!.closest(".flex") as HTMLElement).style.paddingLeft,
-    );
-    expect(skipped).toBeLessThanOrEqual(400_000);
-    expect(skipped + host.querySelectorAll("img").length * 71).toBeGreaterThanOrEqual(
-      400_000 + window.innerWidth,
-    );
+    it("follows the strip when something else moves it, as a drag moves its ghost", async () => {
+      await render(600 * 1440, 40);
+
+      left = -430_500;
+      reportGapNearScreen();
+      await settle();
+
+      expectTilesCoverTheWindow();
+    });
   });
 
   it("issues a single decode job for a narrow clip", async () => {

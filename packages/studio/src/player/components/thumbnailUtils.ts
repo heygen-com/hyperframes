@@ -78,16 +78,6 @@ export function computeThumbnailStrip(
   return { frameW, frameCount };
 }
 
-/** Tile indexes [first, end) inside the strip's on-screen span, so a long clip mounts only those. */
-export function tilesInView(
-  strip: { inViewStart: number; inViewEnd: number },
-  frameW: number,
-  frameCount: number,
-): { first: number; end: number } {
-  const end = Math.min(frameCount, Math.ceil(strip.inViewEnd / frameW));
-  return { first: Math.min(end, Math.floor(strip.inViewStart / frameW)), end };
-}
-
 /**
  * Percent-encode each segment of a composition-relative media path so filenames
  * containing spaces, parentheses, a U+202F narrow no-break space (the macOS
