@@ -2421,6 +2421,13 @@ describe("clip timing edits sync GSAP exactly once", () => {
         `tl.from("#scene h1", { y: 20, duration: 1 }, 3.5);`,
         `tl.to("#side", { x: 5, duration: 1 }, 3);`,
       ]);
+      if (!withSdk) {
+        const gsapUrls = h.fetchMock.mock.calls
+          .map((call) => requestUrl(call[0]))
+          .filter((url) => url.includes("/gsap-mutations"));
+        // Both clips live in one file, so their rewrites travel as one request.
+        expect(gsapUrls).toEqual([expect.stringContaining("/gsap-mutations-batch/")]);
+      }
       h.hook.unmount();
     });
   }

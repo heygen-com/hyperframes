@@ -200,7 +200,7 @@ export function persistMoveEdits(
   const saving = onMoveElements
     ? beginStudioPendingEdit(() => {
         restorePrev();
-        return () => edits.forEach((e) => applyEdit(e));
+        return () => edits.forEach((e) => applyEdit(e, true));
       })
     : null;
   const start = () =>

@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryActions";
-import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import { beginStudioPendingEdit, trackStudioPendingEdit } from "../utils/studioPendingEdits";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -106,6 +106,22 @@ describe("useEditHistoryActions", () => {
       paths: ["index.html"],
       files: SERVER_FILES,
     });
+  });
+
+  it("reverts an edit still saving before painting an older predicted step", async () => {
+    const reapply = vi.fn();
+    const revert = vi.fn(() => reapply);
+    const saving = beginStudioPendingEdit(revert);
+    const { deps, actions } = mount(
+      { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e2" },
+      PREDICTED,
+    );
+    const undone = actions.undo();
+    expect(revert).toHaveBeenCalledTimes(1);
+    expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
+    saving.settle();
+    await act(() => undone);
+    expect(reapply).not.toHaveBeenCalled();
   });
 
   it("puts a shown step back when the server refuses it", async () => {

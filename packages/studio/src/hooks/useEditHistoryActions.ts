@@ -78,11 +78,10 @@ export function useEditHistoryActions({
   const apply = useCallback(
     async (direction: "undo" | "redo") => {
       const noun = direction === "undo" ? "Undo" : "Redo";
-      // Paint the step in the key's own task when this tab knows it; the server's answer then confirms or corrects.
-      const predicted = editHistory.predict?.(direction) ?? null;
+      // An edit still saving is newer than any step this tab predicts, so it paints back first.
+      const pendingEditShown = direction === "undo" ? paintBackNewestStudioPendingEdit() : null;
+      const predicted = pendingEditShown ? null : (editHistory.predict?.(direction) ?? null);
       const predictedShown = predicted ? (showHistoryRestoreNow?.(predicted.files) ?? null) : null;
-      const pendingEditShown =
-        !predictedShown && direction === "undo" ? paintBackNewestStudioPendingEdit() : null;
       const putBack = predictedShown ?? pendingEditShown?.showAgain;
       const claimedAfter =
         direction === "undo" && hasStudioPendingEdits() ? editHistory.claims?.() : undefined;
