@@ -54,8 +54,8 @@ export function elementHome(el: HTMLElement): MotionPathHome {
     if (!parent || parent.hasAttribute("data-composition-id")) break;
     node = parent;
   }
-  // A translate composes once GSAP has parsed the layer; before, its parse makes minus half the size
-  // xPercent -50 and folds the rest into x, which a path sets (gsap.js _parseTransform).
+  // A translate composes once GSAP has parsed the layer; before, its parse sums translate and transform,
+  // makes minus half the size xPercent -50 and folds the rest into x, which a path sets (_parseTransform).
   const cache = (
     el as { _gsap?: { x?: unknown; uncache?: unknown; xPercent?: unknown; yPercent?: unknown } }
   )._gsap;
@@ -63,9 +63,10 @@ export function elementHome(el: HTMLElement): MotionPathHome {
   const [tx, ty] = cssTranslate(el);
   const share = (cached: unknown, t: number, size: number) =>
     parsed ? (Number(cached) || 0) / 100 : t && Math.round(size / 2) === Math.round(-t) ? -0.5 : 0;
+  const own = parsed ? { x: 0, y: 0 } : transformTranslate(el);
   const [px, py] = [
-    share(cache?.xPercent, tx, el.offsetWidth),
-    share(cache?.yPercent, ty, el.offsetHeight),
+    share(cache?.xPercent, tx + own.x, el.offsetWidth),
+    share(cache?.yPercent, ty + own.y, el.offsetHeight),
   ];
   const x = left + el.offsetWidth * (0.5 + px) + (parsed ? tx : 0);
   const y = top + el.offsetHeight * (0.5 + py) + (parsed ? ty : 0);

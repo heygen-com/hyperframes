@@ -38,7 +38,7 @@ try {
   });
   const page = await browser.newPage();
   await page.setContent(
-    `<body style="margin:0"><div id="stage" style="position:relative;width:1920px;height:1080px"></div></body>`,
+    `<style>.centred{transform:translate(-50%,-50%)}</style><body style="margin:0"><div id="stage" style="position:relative;width:1920px;height:1080px"></div></body>`,
   );
   await page.addScriptTag({ content: gsapSource });
   await page.addScriptTag({
@@ -58,8 +58,9 @@ try {
       return [r.left + r.width / 2, r.top + r.height / 2];
     };
     // Create mode: a path to (click - home), as the overlay commits it, must end on the click.
-    const create = (css) => {
+    const create = (css, setup = () => {}) => {
       const el = layer(css);
+      setup(el);
       const home = elementHome(el);
       const style = [el.style.translate, el.style.transform];
       const [cx, cy] = [700, 400];
@@ -83,6 +84,14 @@ try {
       centred: create("left: 50%; top: 50%; translate: -50% -50%"),
       halfPx: create("left: 50%; top: 50%; translate: -120px -80px"),
       none: create(""),
+      transformed: create("left: 50%; top: 50%; transform: translate(-50%, -50%)"),
+      classed: create("left: 50%; top: 50%", (el) => el.classList.add("centred")),
+      mixed: create("left: 50%; top: 50%; transform: translate(-50%, -50%); translate: 10px 0"),
+      // A fade's cache holds no transform yet: GSAP's next parse still folds the drag offset into x.
+      faded: create(
+        "--hf-studio-offset-x: 40px; --hf-studio-offset-y: 30px; translate: var(--hf-studio-offset-x) var(--hf-studio-offset-y)",
+        (el) => window.gsap.set(el, { opacity: 0.9 }),
+      ),
       dragged: { home: [draggedHome.x, draggedHome.y], centre: centre(dragged) },
       owned: elementHome(owned),
     };
@@ -90,7 +99,16 @@ try {
 
   assert.deepEqual(got.plain.style, ["40px 30px", ""]);
   assert.deepEqual(got.centred.style, ["-50% -50%", ""]);
-  for (const name of ["plain", "centred", "halfPx", "none"]) {
+  for (const name of [
+    "plain",
+    "centred",
+    "halfPx",
+    "none",
+    "transformed",
+    "classed",
+    "mixed",
+    "faded",
+  ]) {
     assert.deepEqual(got[name].end.map(Math.round), [700, 400], name);
   }
   assert.deepEqual(got.dragged.home, [got.dragged.centre[0] - 20, got.dragged.centre[1]]);

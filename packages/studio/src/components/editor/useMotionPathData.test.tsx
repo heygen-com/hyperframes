@@ -152,8 +152,8 @@ it("redraws a node whose keyframe changes only its size", () => {
   }
 });
 
-/** A layer laid out at (960, 540), 240 x 160, with `css` inline and `percent` in the cache GSAP's parse leaves. */
-function layer(css: Partial<CSSStyleDeclaration>, percent?: Record<string, number>) {
+/** A layer laid out at (960, 540), 240 x 160, with `css` inline and `cache` as GSAP's `_gsap`. */
+function layer(css: Partial<CSSStyleDeclaration>, cache?: Record<string, number>) {
   const el = document.body.appendChild(document.createElement("div"));
   Object.assign(el.style, css);
   const box = {
@@ -164,13 +164,13 @@ function layer(css: Partial<CSSStyleDeclaration>, percent?: Record<string, numbe
     offsetParent: null,
   };
   for (const [key, value] of Object.entries(box)) Object.defineProperty(el, key, { value });
-  return percent ? Object.assign(el, { _gsap: { x: 0, y: 0, ...percent } }) : el;
+  return cache ? Object.assign(el, { _gsap: cache }) : el;
 }
 
 it("anchors a layer GSAP centres with xPercent/yPercent -50 on its centre", () => {
   const el = layer(
     { position: "absolute", left: "50%", top: "50%" },
-    { xPercent: -50, yPercent: -50 },
+    { x: 0, y: 0, xPercent: -50, yPercent: -50 },
   );
   expect(elementHome(el)).toEqual({ x: 960, y: 540, w: 240, h: 160, ax: 0, ay: 0 });
 });
@@ -193,13 +193,14 @@ const resolved = (style: CSSStyleDeclaration) =>
     style.getPropertyValue(name),
   ) || "none";
 
-/** Computes `translate` as Chromium does (happy-dom does not), so GSAP's transform parse would fold it. */
+/** Computes `translate` and `transform` as Chromium does (happy-dom does not), so GSAP's transform parse would fold it. */
 function computeTranslate() {
   const real = window.getComputedStyle.bind(window);
   const computed = (node: Element, pseudo?: string | null) =>
     new Proxy(real(node, pseudo), {
       get(style, key) {
         if (key === "translate") return resolved((node as HTMLElement).style);
+        if (key === "transform") return (node as HTMLElement).style.transform || "none";
         if (key === "scale" || key === "rotate") return "none";
         const value = Reflect.get(style, key);
         return typeof value === "function" ? value.bind(style) : value;
@@ -224,6 +225,9 @@ it("leaves a layer's CSS translate alone and anchors where GSAP's parse will put
       ["-50% -50%", 960, 540],
       ["-120px -80px", 960, 540],
     ];
+    // GSAP sums the layer's own transform with its translate: Chromium's matrix for translate(-50%, -50%).
+    const centred = layer({ position: "absolute", transform: "matrix(1, 0, 0, 1, -120, -80)" });
+    expect(elementHome(centred)).toMatchObject({ x: 960, y: 540 });
     for (const [translate, x, y] of cases) {
       const el = layer({ position: "absolute", left: "10px", top: "10px", translate });
       el.style.setProperty("--hf-studio-offset-x", "40px");
@@ -240,7 +244,9 @@ it("leaves a layer's CSS translate alone and anchors where GSAP's parse will put
     expect(elementHome(dragged)).toMatchObject({ x: 1120, y: 650 });
     // After clearProps GSAP marks its cache uncache and its next parse folds the translate again.
     const css = { position: "absolute", left: "10px", top: "10px", translate: "40px 30px" };
-    expect(elementHome(layer(css, { uncache: 1 }))).toMatchObject({ x: 1080, y: 620 });
+    expect(elementHome(layer(css, { x: 0, y: 0, uncache: 1 }))).toMatchObject({ x: 1080, y: 620 });
+    // A fade gives GSAP a cache with no transform in it yet, so its next parse still folds.
+    expect(elementHome(layer(css, { opacity: 1 }))).toMatchObject({ x: 1080, y: 620 });
     const owned = layer({ position: "absolute", left: "50%", top: "50%" });
     gsap.set(owned, { xPercent: -50, yPercent: -50 });
     expect(elementHome(owned)).toMatchObject({ x: 960, y: 540, ax: 0, ay: 0 });
