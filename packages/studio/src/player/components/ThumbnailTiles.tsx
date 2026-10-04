@@ -19,10 +19,7 @@ export function ThumbnailTiles({
   style,
   children,
 }: ThumbnailTilesProps) {
-  const end =
-    strip.inViewEnd > strip.inViewStart
-      ? Math.min(frameCount, Math.ceil(strip.inViewEnd / frameW))
-      : 0;
+  const end = Math.min(frameCount, Math.ceil(strip.inViewEnd / frameW));
   const first = Math.min(end, Math.floor(strip.inViewStart / frameW));
   return (
     <div className="absolute inset-0 flex" style={{ ...style, paddingLeft: first * frameW }}>

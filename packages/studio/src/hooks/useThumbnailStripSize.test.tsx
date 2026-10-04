@@ -131,6 +131,20 @@ describe("on a scroll", () => {
     expect(spans()).toEqual(Array(50).fill("9216-11776"));
   });
 
+  it("keeps a visible strip measured when it is read after a scroll but before that scroll's frame", async () => {
+    stripWidth = 5_000;
+    left = -1_000;
+    await mountStrips(1);
+
+    scrolled += 3_000;
+    left = -4_000;
+    act(() => reportResize(stripWidth, 40));
+    act(() => host.dispatchEvent(new Event("scroll")));
+    act(() => frames.splice(0).forEach((frame) => frame(0)));
+
+    expect(spans()).toEqual(["3072-5000"]);
+  });
+
   it("measures the strips a jump brings on screen in that same frame", async () => {
     neverReportedNear();
     left = 50_000;

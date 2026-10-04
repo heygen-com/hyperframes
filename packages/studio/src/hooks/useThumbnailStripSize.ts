@@ -30,13 +30,12 @@ const isShort = (width: number) => width <= SHORT_STRIP_MAX_PX;
 
 const EMPTY_STRIP: StripSize = { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 };
 
-// Clamped to a measured strip, and empty off either side, so only strips crossing the edge change.
+// Clamped to a measured strip, so a strip changes only when it crosses the screen's edge.
 const merge = (prev: StripSize, patch: Partial<StripSize>): StripSize => {
   const next = { ...prev, ...patch };
   const width = next.width > 0 ? Math.ceil(next.width) : Infinity;
   next.inViewStart = isShort(width) ? 0 : Math.min(next.inViewStart, width);
   next.inViewEnd = isShort(width) ? width : Math.min(next.inViewEnd, width);
-  if (next.inViewEnd <= next.inViewStart) next.inViewStart = next.inViewEnd = 0;
   return (Object.keys(next) as (keyof StripSize)[]).every((key) => next[key] === prev[key])
     ? prev
     : next;
@@ -48,15 +47,15 @@ interface Strip {
   apply: Apply;
   scroller: Element | null;
   box: { left: number; top: number; width: number; height: number };
+  readAt: { x: number; y: number };
   showing: boolean;
 }
 
 const NEAR_PX = IN_VIEW_CHUNK_PX / 2;
 
-// Each frame moves every strip's last box by its scroller's offset change and reads only the boxes
-// that land near the screen, so a jump costs what a short scroll does; all reads precede one commit.
+// Each frame moves every strip's last box by the scroll since that box was read and reads only the
+// boxes that land near the screen, so a jump costs what a short scroll does; reads precede one commit.
 const strips = new Map<Element, Strip>();
-const offsets = new Map<Element | null, { x: number; y: number }>();
 let users = 0;
 let frame = 0;
 let shared: {
@@ -68,7 +67,17 @@ let shared: {
 const offsetOf = (scroller: Element | null) =>
   scroller ? { x: scroller.scrollLeft, y: scroller.scrollTop } : { x: scrollX, y: scrollY };
 
-const isNear = ({ left, top, width, height }: Strip["box"]) =>
+const isNear = ({
+  left,
+  top,
+  width,
+  height,
+}: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}) =>
   left < innerWidth + NEAR_PX &&
   left + width > -NEAR_PX &&
   top < innerHeight + NEAR_PX &&
@@ -81,6 +90,7 @@ const spanOf = (box: Strip["box"]) => (isNear(box) ? spanAt(box.left) : NOTHING_
 const read = (target: Element, strip: Strip) => {
   const { left, top, width, height } = target.getBoundingClientRect();
   strip.box = { left, top, width, height };
+  strip.readAt = offsetOf(strip.scroller);
   return spanOf(strip.box);
 };
 
@@ -89,21 +99,20 @@ const commit = (updates: (readonly [Apply, Partial<StripSize>])[]) =>
 
 const refresh = () => {
   frame = 0;
-  const moved = new Map<Element | null, { x: number; y: number }>();
-  for (const [scroller, last] of offsets) {
-    const now = offsetOf(scroller);
-    moved.set(scroller, { x: now.x - last.x, y: now.y - last.y });
-    offsets.set(scroller, now);
-  }
+  const offsetsNow = new Map<Element | null, { x: number; y: number }>();
   const updates: (readonly [Apply, Partial<StripSize>])[] = [];
   for (const [target, strip] of strips) {
-    const shift = moved.get(strip.scroller);
-    if (shift) {
-      strip.box.left -= shift.x;
-      strip.box.top -= shift.y;
-    }
     if (isShort(strip.box.width)) continue;
-    if (isNear(strip.box)) updates.push([strip.apply, read(target, strip)]);
+    let now = offsetsNow.get(strip.scroller);
+    if (!now) offsetsNow.set(strip.scroller, (now = offsetOf(strip.scroller)));
+    const { box, readAt } = strip;
+    const moved = {
+      left: box.left - (now.x - readAt.x),
+      top: box.top - (now.y - readAt.y),
+      width: box.width,
+      height: box.height,
+    };
+    if (isNear(moved)) updates.push([strip.apply, read(target, strip)]);
     else if (strip.showing) updates.push([strip.apply, NOTHING_IN_VIEW]);
   }
   commit(updates);
@@ -157,7 +166,6 @@ function release() {
   shared?.presence?.disconnect();
   shared?.gaps?.disconnect();
   shared = null;
-  offsets.clear();
   window.removeEventListener("scroll", scheduleRefresh, { capture: true });
   cancelAnimationFrame(frame);
   frame = 0;
@@ -190,11 +198,11 @@ export function useThumbnailStripSize() {
       setSize(next);
     };
     const scroller = target.closest("[data-timeline-scroll-viewport]");
-    if (!offsets.has(scroller)) offsets.set(scroller, offsetOf(scroller));
     const strip: Strip = {
       apply,
       scroller,
       box: { left: 0, top: 0, width: 0, height: 0 },
+      readAt: { x: 0, y: 0 },
       showing: false,
     };
     strips.set(target, strip);
