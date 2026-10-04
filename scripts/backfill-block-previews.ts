@@ -2,7 +2,7 @@
 /**
  * Backfill preview URLs in registry block + component manifests.
  *
- * - Blocks: adds `preview: { video, poster }` using the deterministic CDN pattern
+ * - Blocks: adds `preview: { video, poster }` using the deterministic CDN pattern, only where none is declared
  * - Components: normalizes bare-string `preview` to `{ video }` object format
  *
  * Usage:
@@ -13,6 +13,7 @@
 import { readdirSync, readFileSync, writeFileSync, type Dirent } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isEntrypoint } from "./entrypoint.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -42,6 +43,15 @@ function writeManifest(manifestPath: string, manifest: Record<string, unknown>):
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
 }
 
+/** The preview to write for a block, or null: a declared preview may point elsewhere and is kept. */
+export function missingBlockPreview(name: string, existing: unknown): Preview | null {
+  if (existing) return null;
+  return {
+    video: `${CDN_BASE}/blocks/${name}.mp4`,
+    poster: `${CDN_BASE}/blocks/${name}.png`,
+  };
+}
+
 function backfillBlocks() {
   const blocksDir = join(registryDir, "blocks");
   let entries: Dirent[];
@@ -57,13 +67,8 @@ function backfillBlocks() {
     const manifest = tryReadManifest(manifestPath);
     if (!manifest) continue;
 
-    const preview: Preview = {
-      video: `${CDN_BASE}/blocks/${entry.name}.mp4`,
-      poster: `${CDN_BASE}/blocks/${entry.name}.png`,
-    };
-
-    const existing = manifest.preview as Preview | undefined;
-    if (existing?.video === preview.video && existing?.poster === preview.poster) {
+    const preview = missingBlockPreview(entry.name, manifest.preview);
+    if (!preview) {
       skipped++;
       continue;
     }
@@ -112,9 +117,11 @@ function normalizeComponents() {
   }
 }
 
-backfillBlocks();
-normalizeComponents();
+if (isEntrypoint(import.meta.url)) {
+  backfillBlocks();
+  normalizeComponents();
 
-console.log(
-  `\n${dryRun ? "[dry-run] " : ""}Done: ${updated} updated, ${skipped} already up-to-date`,
-);
+  console.log(
+    `\n${dryRun ? "[dry-run] " : ""}Done: ${updated} updated, ${skipped} already up-to-date`,
+  );
+}

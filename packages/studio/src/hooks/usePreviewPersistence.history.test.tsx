@@ -79,12 +79,13 @@ describe("undo that re-runs the top-level script over an element of a nested com
     };
   }
 
-  async function undo(fileOk: boolean) {
+  async function undo(fileOk: boolean, projectId: string | null = "p1") {
     const { iframe, nwid } = nestedPreview();
     const reloadPreview = vi.fn();
     const fetch = vi.fn(async () => ({ ok: fileOk, json: async () => ({ content: SUB }) }));
     vi.stubGlobal("fetch", fetch);
-    usePlayerStore.getState().beginTimelineSession("p1");
+    if (projectId) usePlayerStore.getState().beginTimelineSession(projectId);
+    else usePlayerStore.setState({ timelineProjectId: null });
     let sync: ReturnType<typeof usePreviewPersistence>["syncHistoryPreviewAfterApply"] | null =
       null;
     function Harness() {
@@ -109,7 +110,9 @@ describe("undo that re-runs the top-level script over an element of a nested com
   it("restores the element from its own composition file", async () => {
     const { nwid, reloadPreview, fetch } = await undo(true);
 
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/files/compositions%2Fsub.html"));
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/files/compositions%2Fsub.html"), {
+      credentials: "omit",
+    });
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(nwid.getAttribute("style")).toBe("left: 40px;");
   });
@@ -117,6 +120,14 @@ describe("undo that re-runs the top-level script over an element of a nested com
   it("reloads the preview in full when that file cannot be read", async () => {
     const { nwid, reloadPreview } = await undo(false);
 
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(nwid.getAttribute("style")).toBe("left: 40px; width: 337px");
+  });
+
+  it("reloads the preview in full when no project is open to read that file from", async () => {
+    const { nwid, reloadPreview, fetch } = await undo(true, null);
+
+    expect(fetch).not.toHaveBeenCalled();
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(nwid.getAttribute("style")).toBe("left: 40px; width: 337px");
   });

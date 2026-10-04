@@ -30,9 +30,7 @@ import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { MoveCommitOptions } from "../components/editor/domEditOverlayGestures";
 import { runGestureTransaction } from "./gestureTransaction";
 import {
-  gsapWritesBox,
-  gsapWritesPosition,
-  gsapWritesRotation,
+  editsPlainCss,
   hasNonHoldTweenForElement,
   POSITION_CHANNELS,
 } from "./gsapRuntimeKeyframes";
@@ -49,6 +47,7 @@ export interface UseGsapAwareEditingParams {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
   gsapCommitMutation: CommitMutation | null;
+  activeCompPath?: string | null;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
   bumpGsapCache: () => void;
@@ -61,6 +60,7 @@ export interface UseGsapAwareEditingParams {
     selection: DomEditSelection | null,
     mutationType: string,
     label: string,
+    toast?: boolean,
   ) => void;
   // DOM fallbacks (from useDomEditCommits)
   stageElementPositionOffset: (
@@ -117,6 +117,7 @@ export function useGsapAwareEditing({
   domEditSelection,
   selectedGsapAnimations,
   gsapCommitMutation,
+  activeCompPath,
   previewIframeRef,
   showToast,
   bumpGsapCache,
@@ -148,7 +149,7 @@ export function useGsapAwareEditing({
       modifiers?: MoveCommitOptions,
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (modifiers?.plainTranslate ?? !gsapWritesPosition(selection.element)) {
+      if (modifiers?.plainTranslate ?? editsPlainCss(selection.element, "move")) {
         const result = await stageElementPositionOffset(selection, next, true).save();
         return writes.finish(result?.changed === true);
       }
@@ -190,6 +191,7 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareGroupPathOffsetCommit = useGsapAwareGroupMove({
     gsapCommitMutation,
+    activeCompPath,
     previewIframeRef,
     makeFetchFallback,
     trackGsapInteractionFailure,
@@ -203,9 +205,10 @@ export function useGsapAwareEditing({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
+      route?: { plainTranslate: boolean },
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (!gsapWritesBox(selection.element)) {
+      if (route?.plainTranslate ?? editsPlainCss(selection.element, "resize")) {
         const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
         return writes.finish(result?.changed === true);
       }
@@ -254,8 +257,13 @@ export function useGsapAwareEditing({
           );
           // Saved after the size, under its undo key, so the two are one step.
           await saveMove(dragOutcome, async () => {
-            const plain = !gsapWritesPosition(selection.element);
-            anchorMove = stageElementPositionOffset(selection, offset, plain, coalesceKey);
+            const plainAfterSettle = editsPlainCss(selection.element, "move");
+            anchorMove = stageElementPositionOffset(
+              selection,
+              offset,
+              plainAfterSettle,
+              coalesceKey,
+            );
           });
         }
       };
@@ -285,6 +293,7 @@ export function useGsapAwareEditing({
                 previewIframeRef.current,
                 commitMutation,
                 makeFetchFallback(selection),
+                offset,
               );
               assertGsapEditPersisted(outcome);
               // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.
@@ -355,7 +364,7 @@ export function useGsapAwareEditing({
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: RotationCommit) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (next.plain || !gsapWritesRotation(selection.element)) {
+      if (next.plain === undefined ? editsPlainCss(selection.element, "rotate") : next.plain) {
         const result = await handleDomRotationCommit(selection, next);
         return writes.finish(result?.changed === true);
       }

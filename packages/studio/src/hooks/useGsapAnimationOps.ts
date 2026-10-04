@@ -14,10 +14,9 @@ import {
   cutoverCommittedOrThrow,
   type CutoverDeps,
 } from "../utils/sdkCutover";
-import {
-  assignGsapTargetAutoIdIfNeeded,
-  ensureElementAddressable,
-} from "./gsapScriptCommitHelpers";
+import { ensureElementAddressable } from "./gsapScriptCommitHelpers";
+import { idSelector } from "./gsapShared";
+import { assignGsapTargetAutoIdIfNeeded } from "./useDomEditCommitsHelpers";
 import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 
 interface SdkAnimationDeps {
@@ -122,12 +121,14 @@ export function useGsapAnimationOps({
       method: "to" | "from" | "set" | "fromTo",
       _currentTime?: number,
     ) => {
-      const { selector, autoId } = ensureElementAddressable(selection);
+      const address = ensureElementAddressable(selection);
+      const { autoId } = address;
+      let selector = address.selector;
 
       if (autoId) {
         const pid = projectIdRef.current;
-        const targetPath = selection.sourceFile || activeCompPath || "index.html";
         if (!pid) return;
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const assign = () =>
           assignGsapTargetAutoIdIfNeeded({
             projectId: pid,
@@ -136,10 +137,12 @@ export function useGsapAnimationOps({
             autoId,
             showToast,
           });
-        const assigned = await (writeProjectFile
+        const savedId = await (writeProjectFile
           ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
           : assign());
-        if (!assigned) return;
+        if (!savedId) return;
+        selection.element.setAttribute("id", savedId);
+        selector = idSelector(savedId);
       }
 
       const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
@@ -153,10 +156,8 @@ export function useGsapAnimationOps({
         fromTo: { x: 0, y: 0, opacity: 1 },
       };
 
-      // Skip SDK path when an id was just assigned server-side (autoId): the
-      // SDK session hasn't reloaded that write yet, so persisting its
-      // serialization would clobber the new id — let the server add the tween
-      // atomically with the id it wrote.
+      // After an id write (autoId) the SDK session has not reloaded the file yet,
+      // so persisting its serialization would drop the new id.
       if (!autoId && selection.hfId && sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const spec = {

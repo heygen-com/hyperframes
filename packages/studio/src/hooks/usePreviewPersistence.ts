@@ -163,8 +163,9 @@ export function usePreviewPersistence({
   }, [drainPendingDomEditSaves]);
 
   const settlePendingEdits = useCallback(async (): Promise<void> => {
-    await flushStudioPendingEdits();
-    await domEditSaveQueueRef.current?.waitForIdle();
+    const queued = domEditSaveQueueRef.current?.waitForIdle();
+    await flushStudioPendingEdits({ onlyCurrent: true });
+    await queued;
   }, []);
 
   const resetDomEditSaveQueueBreaker = useCallback(() => {
@@ -209,14 +210,15 @@ export function usePreviewPersistence({
       // multi-file, sub-comp, or a permanent soft-reload failure.
       const projectId = usePlayerStore.getState().timelineProjectId;
       const nestedFiles = await settleNestedReads(
-        projectId
-          ? readUndoNestedFiles(
-              previewIframeRef.current,
-              activeCompPathRef.current,
-              restore.files,
-              (path) => readProjectFileContent(projectId, path),
-            )
-          : null,
+        readUndoNestedFiles(
+          previewIframeRef.current,
+          activeCompPathRef.current,
+          restore.files,
+          (path) =>
+            projectId
+              ? readProjectFileContent(projectId, path)
+              : Promise.reject(new Error("No project is open to read nested files from.")),
+        ),
       );
       const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
@@ -258,7 +260,7 @@ export function usePreviewPersistence({
 
   // ── Migrate legacy studio-motion.json ──
   // Projects that used the old JSON-file approach may still have a populated
-  // `.hyperframes/studio-motion.json`. The studio no longer reads from it, but
+  // studio-motion.json in the project's .hyperframes folder. The studio no longer reads it, but
   // the legacy render-script injection in `preview.ts` / `vite.studioMotion.ts`
   // could still fire alongside the new seek-reapply runtime. Empty the file so
   // the legacy codepath no-ops.

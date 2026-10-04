@@ -5,6 +5,7 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 import { ClipFadesContext, type ClipFadeShape } from "./TimelineClipFades";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export interface AudioWaveformProps {
   audioUrl: string;
@@ -124,7 +125,7 @@ async function loadWaveform(
 }
 
 async function fetchWaveformPeaks(url: string, signal: AbortSignal): Promise<number[]> {
-  const response = await fetch(url, { signal });
+  const response = await studioApiFetch(url, { signal });
   if (!response.ok) throw new Error(`Waveform request failed (${response.status})`);
   const data: unknown = await response.json();
   if (
@@ -140,7 +141,7 @@ async function fetchWaveformPeaks(url: string, signal: AbortSignal): Promise<num
 }
 
 async function decodeWaveformPeaks(url: string, signal: AbortSignal): Promise<number[]> {
-  const response = await fetch(url, { signal });
+  const response = await studioApiFetch(url, { signal });
   if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
   const buffer = await response.arrayBuffer();
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");

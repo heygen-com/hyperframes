@@ -13,11 +13,11 @@
  * Expiry policy: an OAuth access_token whose `expires_at` is in the
  * past (60s skew) is considered expired. If a `refresh_token` is also
  * present, callers can still use it via `refreshable: true`. Otherwise
- * the api_key (if any) wins.
+ * the api_key (if any) wins, else `ErrLoginExpired`, not `ErrNotConfigured`.
  */
 
 import { isHeaderSafe, readStore } from "./store.js";
-import { ErrInvalidStore, ErrNotConfigured, isAuthError } from "./errors.js";
+import { ErrInvalidStore, ErrLoginExpired, ErrNotConfigured, isAuthError } from "./errors.js";
 
 type CredentialSource = "env" | "env_alias" | "file_json" | "file_legacy";
 
@@ -70,14 +70,12 @@ export async function resolveCredential(opts: ResolveOptions = {}): Promise<Reso
 
   const fileSource: CredentialSource = source === "file_legacy" ? "file_legacy" : "file_json";
 
-  if (credentials.oauth) {
-    const oauth = pickOAuth(credentials.oauth, now, fileSource);
-    if (oauth) return oauth;
-  }
+  const oauth = credentials.oauth ? pickOAuth(credentials.oauth, now, fileSource) : null;
+  if (oauth) return oauth;
   if (credentials.api_key) {
     return { type: "api_key", key: credentials.api_key, source: fileSource };
   }
-  throw ErrNotConfigured();
+  throw credentials.oauth ? ErrLoginExpired() : ErrNotConfigured();
 }
 
 /** Like `resolveCredential` but returns `null` instead of throwing `NOT_CONFIGURED`. */
@@ -100,7 +98,7 @@ function pickOAuth(
   source: CredentialSource,
 ): OAuthCredential | null {
   const expiresAt = parseDate(tokens.expires_at);
-  const expired = expiresAt !== undefined && expiresAt.getTime() - EXPIRY_SKEW_MS < now.getTime();
+  const expired = isTokenExpired(expiresAt, now);
 
   if (expired && !tokens.refresh_token) return null;
 
@@ -114,6 +112,10 @@ function pickOAuth(
   if (expiresAt) out.expires_at = expiresAt;
   if (tokens.scope) out.scope = tokens.scope;
   return out;
+}
+
+export function isTokenExpired(expiresAt: Date | undefined, now: Date): boolean {
+  return expiresAt !== undefined && expiresAt.getTime() - EXPIRY_SKEW_MS < now.getTime();
 }
 
 function parseDate(s: string | undefined): Date | undefined {

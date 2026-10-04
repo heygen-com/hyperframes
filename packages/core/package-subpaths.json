@@ -80,6 +80,12 @@
       "types": "./dist/studioPreviewMark.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./gsap-cdn": {
+      "source": "./src/gsapCdn.ts",
+      "runtime": "./dist/gsapCdn.js",
+      "types": "./dist/gsapCdn.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./media-timing": {
       "source": "./src/mediaTiming.ts",
       "runtime": "./dist/mediaTiming.js",
@@ -306,6 +312,12 @@
       "source": "./src/runtime/startResolver.ts",
       "runtime": "./dist/runtime/startResolver.js",
       "types": "./dist/runtime/startResolver.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/composition-length": {
+      "source": "./src/runtime/compositionLength.ts",
+      "runtime": "./dist/runtime/compositionLength.js",
+      "types": "./dist/runtime/compositionLength.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./runtime/protocol": {

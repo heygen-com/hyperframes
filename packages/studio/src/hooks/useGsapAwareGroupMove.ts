@@ -5,28 +5,18 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { CommitMutationCall, CommitMutationOptions } from "./gsapScriptCommitTypes";
 import type { UseGsapAwareEditingParams } from "./useGsapAwareEditing";
 import { observeGsapGesture } from "./gsapGestureOutcome";
-import { gsapWritesPosition } from "./gsapRuntimeKeyframes";
+import { editsPlainCss } from "./gsapRuntimeKeyframes";
 import { refuseGsapTakeover } from "./elementOffsetStager";
 import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
 import { assertGsapEditPersisted } from "./gsapEditOutcome";
+import { firstPreflightFailure } from "./gsapGroupPreflight";
 
 // A distinct key keeps consecutive group drags in separate undo entries.
 let groupDragCommitCounter = 0;
 
-function firstPreflightFailure(
-  results: PromiseSettledResult<void>[],
-  updates: DomEditGroupPathOffsetCommit[],
-): { error: unknown; selection: DomEditSelection } | null {
-  for (const [index, result] of results.entries()) {
-    if (result.status !== "rejected") continue;
-    const selection = updates[index]?.selection;
-    if (selection) return { error: result.reason, selection };
-  }
-  return null;
-}
-
 export function useGsapAwareGroupMove({
   gsapCommitMutation,
+  activeCompPath,
   previewIframeRef,
   makeFetchFallback,
   trackGsapInteractionFailure,
@@ -35,6 +25,7 @@ export function useGsapAwareGroupMove({
 }: Pick<
   UseGsapAwareEditingParams,
   | "gsapCommitMutation"
+  | "activeCompPath"
   | "previewIframeRef"
   | "makeFetchFallback"
   | "trackGsapInteractionFailure"
@@ -44,10 +35,12 @@ export function useGsapAwareGroupMove({
   const handleGsapAwareGroupPathOffsetCommit = useCallback(
     async (
       updates: DomEditGroupPathOffsetCommit[],
+      options: { refusalToast?: boolean } = {},
     ): Promise<import("../utils/previewFeatureUsage").GeometryCommitResult> => {
       const writes = observeGsapGesture(gsapCommitMutation);
       const writer = writes.commit;
       if (!writer) return { ok: true, changed: false };
+      const toastRefusal = options.refusalToast !== false;
       // One coalesce key across slow writes keeps the group drag in one undo entry.
       const coalesceKey = `group-drag:${++groupDragCommitCounter}`;
       // Hold the render until every member is saved, or unwritten members snap back.
@@ -87,16 +80,16 @@ export function useGsapAwareGroupMove({
       // mutation, so a blocked member never leaves earlier siblings partially moved. Preflights
       // write nothing and share one in-flight parse per file, so they run together.
       const preflightResults = await Promise.allSettled(
-        updates.map(async ({ selection, plainTranslate }) => {
-          if (plainTranslate ?? !gsapWritesPosition(selection.element)) {
-            refuseGsapTakeover(selection.element, showToast);
+        updates.map(async ({ selection, next, plainTranslate }) => {
+          if (plainTranslate ?? editsPlainCss(selection.element, "move")) {
+            refuseGsapTakeover(selection.element, toastRefusal ? showToast : () => {});
             return void offsetMembers.set(selection, true);
           }
           const animations = await makeFetchFallback(selection, { failOnFetchError: true })();
           preflightAnimations.set(selection, animations);
           const outcome = await tryGsapDragIntercept(
             selection,
-            { x: 0, y: 0 },
+            next,
             animations,
             previewIframeRef.current,
             coalescedCommit,
@@ -107,13 +100,19 @@ export function useGsapAwareGroupMove({
           assertGsapEditPersisted(outcome);
         }),
       );
-      const preflightFailure = firstPreflightFailure(preflightResults, updates);
+      const preflightFailure = firstPreflightFailure(
+        preflightResults,
+        updates,
+        offsetMembers,
+        activeCompPath,
+      );
       if (preflightFailure) {
         trackGsapInteractionFailure(
           preflightFailure.error,
           preflightFailure.selection,
           "drag",
           "Move animated layer (group)",
+          toastRefusal,
         );
         throw preflightFailure.error;
       }
@@ -167,6 +166,7 @@ export function useGsapAwareGroupMove({
     },
     [
       gsapCommitMutation,
+      activeCompPath,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,

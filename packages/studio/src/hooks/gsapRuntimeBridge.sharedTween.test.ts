@@ -121,7 +121,7 @@ describe("tryGsapDragIntercept: which tweens a word's drag may use", () => {
 });
 
 describe("tryGsapDragIntercept: one drag is one undo step", () => {
-  it("records the split and the move under one gesture key", async () => {
+  it("records the move under one gesture key, without splitting the mixed tween", async () => {
     document.body.innerHTML = `<div id="hero"></div>`;
     const hero = document.getElementById("hero")!;
     const mixed = {
@@ -133,12 +133,8 @@ describe("tryGsapDragIntercept: one drag is one undo step", () => {
       position: 0,
       resolvedStart: 0,
       duration: 1,
+      ease: "none",
     } as unknown as GsapAnimation;
-    const split = [
-      { ...mixed, id: "#hero-fromTo-0-position", propertyGroup: "position" },
-      { ...mixed, id: "#hero-fromTo-0-opacity", propertyGroup: "opacity" },
-    ] as GsapAnimation[];
-    let fetches = 0;
     const commitMutation = vi.fn();
     await tryGsapDragIntercept(
       { id: "hero", selector: "#hero", element: hero } as unknown as DomEditSelection,
@@ -146,10 +142,12 @@ describe("tryGsapDragIntercept: one drag is one undo step", () => {
       [mixed],
       null,
       commitMutation,
-      async () => (fetches++ === 0 ? [mixed] : split),
+      async () => [mixed],
     );
+    const types = commitMutation.mock.calls.map((call) => call[1].type);
     const options = commitMutation.mock.calls.map((call) => call[2]);
-    expect(options.length).toBeGreaterThan(1);
+    expect(types).not.toContain("split-into-property-groups");
+    expect(options.length).toBeGreaterThan(0);
     expect(new Set(options.map((o) => o.coalesceKey)).size).toBe(1);
     expect(options[0].coalesceKey).toMatch(/^gsap:drag:/);
     expect(options.every((o) => o.coalesceMs === Number.POSITIVE_INFINITY)).toBe(true);

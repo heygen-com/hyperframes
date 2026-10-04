@@ -448,9 +448,11 @@ export function useExternalFileChangeCoordinator({
     [projectId, pendingTimelineEditPathRef, startDrainLoop, onAcceptedPersistedFileChange],
   );
 
+  const processChangeRef = useRef(processChange);
+  processChangeRef.current = processChange;
   useEffect(() => {
     // One decoder for all three transports; the rungs only choose the channel.
-    const handler = (delivery?: unknown) => processChange(decodeFileChange(delivery));
+    const handler = (delivery?: unknown) => processChangeRef.current(decodeFileChange(delivery));
     const adapter = testHotAdapter();
     if (adapter) {
       adapter.on("hf:file-change", handler);
@@ -461,7 +463,7 @@ export function useExternalFileChangeCoordinator({
       return () => import.meta.hot?.off?.("hf:file-change", handler);
     }
     return sseFileChangeChannel(handler);
-  }, [processChange]);
+  }, []);
 
   const retry = useCallback(async () => {
     const current = blockedRef.current;

@@ -4,6 +4,7 @@ import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { TimelineAssetKind } from "./timelineAssetDrop";
 import { roundToCenti } from "./rounding";
+import { studioApiFetch } from "./studioApiFetch";
 
 export interface EditingFile {
   path: string;
@@ -89,6 +90,11 @@ export function normalizeDomEditStyleValue(property: string, value: string): str
 
 export function isImageBackgroundValue(value: string): boolean {
   return /^url\(/i.test(value.trim());
+}
+
+export function cssPropertyName(property: string): string {
+  if (property.startsWith("--")) return property;
+  return property.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`).replace(/^ms-/, "-ms-");
 }
 
 export function isManualGeometryStyleProperty(property: string): boolean {
@@ -401,7 +407,7 @@ export async function resolveAssetHasAudio(
   assetPath: string,
 ): Promise<boolean | null> {
   try {
-    const response = await fetch(mediaMetadataUrl(projectId, assetPath));
+    const response = await studioApiFetch(mediaMetadataUrl(projectId, assetPath));
     if (!response.ok) return null;
     const data: unknown = await response.json();
     const metadata = isPlainRecord(data) ? data.metadata : undefined;

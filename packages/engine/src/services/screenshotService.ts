@@ -795,11 +795,15 @@ export async function injectVideoFramesBatch(
         img.decoding = "sync";
         if (img.getAttribute("src") !== item.dataUri) {
           img.src = item.dataUri;
+          const source = item.dataUri.startsWith("data:") ? "inline frame" : item.dataUri;
           pendingDecodes.push(
-            img
-              .decode()
-              .catch(() => undefined)
-              .then(() => undefined),
+            img.decode().catch((error: unknown) => {
+              throw new Error(
+                `Video frame for "${item.videoId}" failed to load (${source}): ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }),
           );
         }
         img.style.opacity = String(computedOpacity);

@@ -109,7 +109,11 @@ export function useDomEditTextCommits({
   });
 
   const handleDomStyleCommitForSelection = useCallback(
-    (selection: DomEditSelection, property: string, value: string): Promise<DomEditCommitOutcome> =>
+    (
+      selection: DomEditSelection,
+      propertyOrStylesAsOnePatch: string | Record<string, string>,
+      value = "",
+    ): Promise<DomEditCommitOutcome> =>
       commitDomStyles(
         {
           activeCompPath,
@@ -121,7 +125,9 @@ export function useDomEditTextCommits({
           resync: refreshDomEditSelectionFromPreview,
         },
         selection,
-        { [property]: value },
+        typeof propertyOrStylesAsOnePatch === "string"
+          ? { [propertyOrStylesAsOnePatch]: value }
+          : propertyOrStylesAsOnePatch,
       ),
     [
       activeCompPath,

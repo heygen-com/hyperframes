@@ -850,6 +850,8 @@ jobs:
             packages/studio/data/projects/fade-handles
           cp -R packages/studio/tests/e2e/fixtures/inline-text-caret \
             packages/studio/data/projects/inline-text-caret
+          cp -R packages/studio/tests/e2e/fixtures/undo-socket-pool \
+            packages/studio/data/projects/undo-socket-pool
       - name: Read the base branch's work-count ceilings
         # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
         if: github.event_name == 'pull_request'
@@ -1000,6 +1002,28 @@ jobs:
           STUDIO_URL="http://localhost:5317/#project/inline-text-caret" \
             EVIDENCE_DIR=/tmp/inline-text-caret \
             node packages/studio/tests/e2e/inline-text-caret.mjs
+      - name: Install ffmpeg for the paused-video fixture
+        if: success() || failure()
+        uses: ./.github/actions/install-ffmpeg-linux
+      - name: Undo while paused videos hold the preview's sockets
+        # Counts the undo's wait for a socket, not its total time: unpinned it is 0 ms.
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          NODE_ENV=production bun run --cwd packages/studio dev -- --port 5318 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5318/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          if ! curl -sf "http://localhost:5318/" >/dev/null 2>&1; then
+            echo "FAIL: studio dev server did not start on port 5318"
+            exit 1
+          fi
+          STUDIO_URL="http://localhost:5318/#project/undo-socket-pool" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/undo-socket-pool" \
+            node packages/studio/tests/e2e/undo-socket-pool.mjs | tee /tmp/undo-socket-pool.json
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -1011,6 +1035,7 @@ jobs:
             /tmp/timeline-gate-*.json
             /tmp/studio-open-counts.json
             /tmp/inline-text-caret/*.png
+            /tmp/undo-socket-pool.json
           if-no-files-found: error
 
   # Manual editing accuracy in the built Studio, gated against the base branch's baseline.json.

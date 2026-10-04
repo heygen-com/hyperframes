@@ -378,7 +378,10 @@ function makeElementSelection(): DomEditSelection {
   } as DomEditSelection;
 }
 
-function stubFlatTweenConversion(id: string): {
+function stubFlatTweenConversion(
+  id: string,
+  easeEach?: string,
+): {
   flat: GsapAnimation;
   converted: GsapAnimation;
 } {
@@ -393,6 +396,7 @@ function stubFlatTweenConversion(id: string): {
         { percentage: 0, properties: { x: 0 } },
         { percentage: 100, properties: { x: 10 } },
       ],
+      ...(easeEach && { easeEach }),
     },
   });
   flatTweenResponses(flat, converted);
@@ -435,6 +439,33 @@ describe("useEnableKeyframes — flat tween transaction", () => {
       coalesceKey: convertOptions?.coalesceKey,
     });
     expect(convertOptions?.coalesceKey).toEqual(expect.any(String));
+  });
+
+  it("keeps the converted tween's easeEach when it extends it to the playhead", async () => {
+    window.location.hash = "#/project/test-project";
+    usePlayerStore.setState({ currentTime: 3 });
+    const { flat } = stubFlatTweenConversion("flat-1", "none");
+    const commitMutation = vi.fn(async () => undefined);
+    const enable = renderEnableKeyframes({
+      domEditSelection: makeElementSelection(),
+      selectedGsapAnimations: [flat],
+      previewIframeRef: {
+        current: {
+          contentWindow: { gsap: { getProperty: () => 10 } },
+        } as unknown as HTMLIFrameElement,
+      },
+      handleGsapAddAnimation: vi.fn(),
+      handleGsapConvertToKeyframes: vi.fn(async () => undefined),
+      handleGsapRemoveKeyframe: vi.fn(),
+      commitMutation,
+    });
+
+    await act(async () => enable());
+
+    expect(commitMutation.mock.calls[0]?.[0]).toMatchObject({
+      type: "replace-with-keyframes",
+      easeEach: "none",
+    });
   });
 
   it("passes the convert coalesce key to an inside-range batch edit", async () => {

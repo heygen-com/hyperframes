@@ -10,6 +10,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { TimelineElement } from "../player";
 import type { UseDomEditSessionParams } from "./useDomEditSession";
 import { makeSelection } from "./domSelectionTestHarness";
+import { readTranslatePx } from "../components/editor/plainTranslate";
 
 const styleOp = (property: string, value: string): PatchOperation => ({
   type: "inline-style",
@@ -66,6 +67,7 @@ const groupSelectionSpy = vi.fn();
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
 const neverParsed = new Promise<{ animations: GsapAnimation[] }>(() => undefined);
 const parsedFile = { current: neverParsed };
+const groupCommitSpy = vi.fn(async () => {});
 
 function createSessionParams(
   overrides: Partial<UseDomEditSessionParams> = {},
@@ -256,7 +258,7 @@ vi.mock("./usePreviewInteraction", () => ({
 vi.mock("./useGsapAwareEditing", () => ({
   useGsapAwareEditing: () => ({
     handleGsapAwarePathOffsetCommit: vi.fn(),
-    handleGsapAwareGroupPathOffsetCommit: vi.fn(),
+    handleGsapAwareGroupPathOffsetCommit: groupCommitSpy,
     handleGsapAwareBoxSizeCommit: vi.fn(),
     handleGsapAwareRotationCommit: vi.fn(),
     commitAnimatedProperty: vi.fn(),
@@ -603,5 +605,32 @@ describe("a shadow reload promoted without a host re-render", () => {
     expect(last("selection")).toBe(promoted);
     expect(last("wiring")).toBe(promoted);
     act(() => root.unmount());
+  });
+});
+
+describe("handleDomGroupMoveBy", () => {
+  it("saves through the group drag's commit, leaving a refusal for the host to explain", async () => {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    const element = document.createElement("div");
+    document.body.append(element);
+    element.getBoundingClientRect = () => {
+      const { x, y } = readTranslatePx(element);
+      return new DOMRect(x, y, 40, 20);
+    };
+    const selection = makeSelection("card", element);
+    let moveBy!: ReturnType<typeof useDomEditSession>["handleDomGroupMoveBy"];
+    function Probe() {
+      moveBy = useDomEditSession(createSessionParams()).handleDomGroupMoveBy;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(<Probe />));
+    await act(() => moveBy([{ selection, delta: { x: 10, y: 0 } }]));
+    expect(groupCommitSpy).toHaveBeenCalledWith(
+      [{ selection, next: { x: 10, y: 0 }, plainTranslate: true }],
+      { refusalToast: false },
+    );
+    act(() => root.unmount());
+    element.remove();
   });
 });

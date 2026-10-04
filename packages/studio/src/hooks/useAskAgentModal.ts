@@ -7,6 +7,7 @@ import { toProjectAbsolutePath, type AgentModalAnchorPoint } from "../utils/stud
 import { liveMarkupWithoutPreviewMarks } from "../utils/authoredSource";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 // ── Types ──
 
@@ -55,7 +56,7 @@ export function useAskAgentModal({
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       try {
-        const response = await fetch(
+        const response = await studioApiFetch(
           buildProjectApiPath(pid, `/files/${encodeURIComponent(targetPath)}`),
         );
         if (!response.ok) return;

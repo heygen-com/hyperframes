@@ -1,4 +1,5 @@
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findAuthoredElement } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
 import { authoringFile, collectResetTargets, compositionFile, fileDocs } from "./softReloadTargets";
@@ -14,6 +15,7 @@ type IframeWindow = Window & {
   // re-flash the iframe. Cleared once the plugin loads or errors.
   __hfMotionPathPluginLoading?: boolean;
   gsap?: {
+    version?: string;
     timeline?: (...args: unknown[]) => unknown;
     registerPlugin?: (...plugins: unknown[]) => unknown;
     set?: (targets: Element | Element[], vars: Record<string, unknown>) => void;
@@ -21,14 +23,6 @@ type IframeWindow = Window & {
   };
   MotionPathPlugin?: unknown;
 };
-
-/**
- * CDN URL for the GSAP MotionPathPlugin. Shared between the one-time preview
- * bootstrap (ensureMotionPathPluginLoaded) and the soft-reload fallback so the
- * version is pinned in a single place.
- */
-const MOTION_PATH_PLUGIN_CDN =
-  "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
 
 /**
  * Pre-load + register MotionPathPlugin ONCE in the preview iframe so
@@ -66,7 +60,7 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
   try {
     win.__hfMotionPathPluginLoading = true;
     const pluginScript = doc.createElement("script");
-    pluginScript.src = MOTION_PATH_PLUGIN_CDN;
+    pluginScript.src = motionPathPluginUrl(win.gsap?.version);
     const finalize = () => {
       win.__hfMotionPathPluginLoading = false;
       try {
@@ -152,7 +146,8 @@ function runSuppressed(win: IframeWindow, reload: () => void): boolean {
     if (win.__hfSuppressSceneMutations) win.__hfSuppressSceneMutations(reload);
     else reload();
     return true;
-  } catch {
+  } catch (error) {
+    console.error("[Studio] GSAP soft reload threw; falling back to a full reload", error);
     return false;
   }
 }
@@ -209,7 +204,6 @@ export interface SoftReloadOptions {
   currentTimeOverride?: number;
   /** After-write file HTML — the primary source for the authored opacity and transform restore. */
   authoredHtml?: string;
-  reparse?: Element[];
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
 }
@@ -274,7 +268,7 @@ export function applySoftReload(
   scriptText: string,
   options: SoftReloadOptions = {},
 ): SoftReloadResult {
-  const { onAsyncFailure, currentTimeOverride, authoredHtml, reparse = [] } = options;
+  const { onAsyncFailure, currentTimeOverride, authoredHtml } = options;
   if (!iframe || !scriptText) return "cannot-soft-reload";
 
   const win = iframe.contentWindow as IframeWindow | null;
@@ -347,7 +341,7 @@ export function applySoftReload(
   // fallow-ignore-next-line complexity
   const doReload = () => {
     const timelines = win.__timelines;
-    const targets = collectResetTargets(win, doc, targetKeys, reparse);
+    const targets = collectResetTargets(win, doc, targetKeys);
 
     // Kill ONLY the target composition's timeline(s) — leaving every other
     // composition's timeline (and its children on the global timeline) intact.
@@ -370,16 +364,11 @@ export function applySoftReload(
     // HTML `style=""` attribute. Save → clear → restore → what GSAP wrote, from the file.
     const allTargets = [...targets.keys()];
     if (allTargets.length > 0 && win.gsap?.set) {
-      const saved: Array<[HTMLElement, string]> = [];
-      for (const el of allTargets) {
-        // Iframe-realm node: instanceof HTMLElement fails across realms, and
-        // gsap targets() only yields elements here — style access is duck-typed.
-        const styled = el as HTMLElement;
-        if (styled.style?.cssText != null) saved.push([styled, styled.style.cssText]);
-      }
-      try {
-        win.gsap.set(allTargets, { clearProps: "all" });
-      } catch {}
+      // Iframe-realm nodes: instanceof HTMLElement fails across realms, so style access is duck-typed.
+      const saved = allTargets.map(
+        (el) => [el as HTMLElement, (el as HTMLElement).style.cssText] as const,
+      );
+      win.gsap.set(allTargets, { clearProps: "all" });
       for (const [el, css] of saved) {
         const s = el.style;
         s.cssText = css;
@@ -450,7 +439,7 @@ export function applySoftReload(
       }
       win.__hfMotionPathPluginLoading = true;
       const pluginScript = doc.createElement("script");
-      pluginScript.src = MOTION_PATH_PLUGIN_CDN;
+      pluginScript.src = motionPathPluginUrl(win.gsap?.version);
       pluginScript.onload = () => {
         win.__hfMotionPathPluginLoading = false;
         executeScript();

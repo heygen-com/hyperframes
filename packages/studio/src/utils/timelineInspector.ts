@@ -34,6 +34,13 @@ export function isAudioTimelineElement(
   return Boolean(element.src && AUDIO_SOURCE_EXT_RE.test(element.src));
 }
 
+/** A track whose hide toggle reads as mute: the header button and its undo entry. */
+export function isAudioOnlyTrack(
+  elements: readonly Pick<TimelineElement, "tag" | "src">[],
+): boolean {
+  return elements.length > 0 && elements.every(isAudioTimelineElement);
+}
+
 /** The two tags the property panel lets you put a volume automation lane on.
  * Single owner: `groupAutomationLanes`, `automationLaneCountOf` and
  * `TimelineAutomationLaneSlot`'s clip filter all have to agree on this set. */
@@ -108,11 +115,9 @@ export function resolveBeatSourceTrack(
  * May this multi-selection be hidden as one action?
  *
  * Audio has no visual to hide, and `data-hidden` on an audio element is what
- * MUTES it — preview silences it and the render drops it from the mix. The
- * timeline withholds the eye on an audio track for that reason
- * (`visible={!isAudioTrack}`), and the single-selection panel gates the same
- * write on `audioSelection`. The multi-selection "Hide all" was the one path
- * left back to it, on a control whose label promises visibility.
+ * mutes it: preview silences it and the render drops it from the mix. The timeline
+ * and the single-selection panel offer it as a mute; "Hide all" would reach it on a
+ * control whose label promises visibility.
  *
  * A shared predicate rather than a check in the handler so the panel's button
  * and the handler's refusal cannot disagree — the button is not the only caller.

@@ -36,6 +36,7 @@ import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFi
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
+import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditsDom";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
@@ -486,7 +487,10 @@ export function useTimelinePlayer({
     // A newer edit, or anything replacing the live preview (a reload, a composition switch), wins.
     const isCurrent = () => gen === refreshGenRef.current && slot === previewGeneration();
     const swap = sceneSwapFor(iframe);
-    if (!swap || isRefreshingRef.current) return reloadWholeFilm(url.toString());
+    const swapWouldReplaceGestureNode =
+      !!iframe.contentDocument && isStudioManualEditGestureLiveIn(iframe.contentDocument);
+    if (!swap || isRefreshingRef.current || swapWouldReplaceGestureNode)
+      return reloadWholeFilm(url.toString());
     swap(url.toString(), isCurrent, cancel.signal).catch((error: unknown) => {
       if (!isCurrent()) return;
       logReload("scene-swap-refused", { reason: String(error) });

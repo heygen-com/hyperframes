@@ -96,9 +96,8 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
       />,
     );
     expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
-    // Hiding is visibility, and `data-hidden` on audio is what MUTES it — the
-    // timeline withholds the eye on an audio track for that reason, and this
-    // panel was the way back to the same write.
+    // Hiding is visibility, and `data-hidden` on audio is what mutes it; the
+    // timeline owns that write as a mute.
     expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).toBeNull();
     // The list still names what is selected; only the actions go.
     expect(host.textContent).toContain("2 elements selected");

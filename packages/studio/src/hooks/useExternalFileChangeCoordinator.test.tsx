@@ -83,6 +83,25 @@ describe("external file change coordinator", () => {
     expect(captured.handle?.blocked).toBeNull();
   });
 
+  it("keeps one file-change subscription across re-renders and delivers to the latest callbacks", async () => {
+    const on = vi.fn((_event: string, next: HotHandler) => void (handler = next));
+    vi.stubGlobal("__HF_STUDIO_HOT_TEST_ADAPTER__", { on, off: vi.fn() });
+    const { options } = await mountCoordinator();
+    on.mockClear();
+    const root = createRoot(document.createElement("div"));
+    roots.push(root);
+    function Probe({ onAccepted }: { onAccepted: () => void }) {
+      useExternalFileChangeCoordinator({ ...options, onAcceptedPersistedFileChange: onAccepted });
+      return null;
+    }
+    const latest = vi.fn();
+    await act(async () => root.render(<Probe onAccepted={vi.fn()} />));
+    await act(async () => root.render(<Probe onAccepted={latest} />));
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+    expect(on).toHaveBeenCalledOnce();
+    expect(latest).toHaveBeenCalledOnce();
+  });
+
   // The file tree (useFileTree) is only ever refreshed from Studio's own file
   // operations (create/delete/rename/upload) — never on an external change.
   // Without this call, an agent removing or replacing a composition updates

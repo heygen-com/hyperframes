@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -54,6 +55,7 @@ function fakeBrowser() {
     browser: {
       newPage: vi.fn(async () => page),
       close: vi.fn(async () => undefined),
+      process: vi.fn(() => new EventEmitter()),
     },
     page,
   };

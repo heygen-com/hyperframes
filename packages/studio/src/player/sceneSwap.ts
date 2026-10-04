@@ -1,3 +1,4 @@
+import { studioApiFetch } from "../utils/studioApiFetch";
 type SwapWindow = Window & {
   __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
 };
@@ -72,7 +73,7 @@ export function sceneSwapFor(
     );
     cancel?.addEventListener("abort", () => deadline.abort(cancel.reason), { once: true });
     const swapping = (async () => {
-      const response = await fetch(url, { signal: deadline.signal });
+      const response = await studioApiFetch(url, { signal: deadline.signal });
       if (!response.ok) throw new Error(`preview request failed with ${response.status}`);
       const html = await response.text();
       if (!isCurrent()) throw new Error("superseded by a newer reload");

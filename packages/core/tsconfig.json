@@ -15,6 +15,7 @@
   },
   "files": [
     "src/runtime/clipTree.ts",
+    "src/runtime/compositionLength.ts",
     "src/runtime/customEase.ts",
     "src/runtime/mediaVolumeEnvelope.ts",
     "src/runtime/positionEdits.ts",

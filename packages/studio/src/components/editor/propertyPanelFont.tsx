@@ -20,6 +20,7 @@ import {
 } from "./propertyPanelHelpers";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { runWhenInputIdle } from "./overlayFrameLoop";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 /* ------------------------------------------------------------------ */
 /*  Font helper functions                                              */
@@ -135,7 +136,7 @@ let fontListsRequest: Promise<void> | null = null;
 const fontListListeners = new Set<() => void>();
 
 async function fetchFontList(url: string): Promise<string[]> {
-  const data = (await (await fetch(url)).json()) as { fonts?: unknown };
+  const data = (await (await studioApiFetch(url)).json()) as { fonts?: unknown };
   if (!Array.isArray(data.fonts)) throw new Error(`${url} returned no font list`);
   return data.fonts as string[];
 }
@@ -356,7 +357,7 @@ export function FontFamilyField({
 
   const importSystemFont = async (family: string): Promise<ImportedFontAsset | null> => {
     if (!onImportFonts) return null;
-    const response = await fetch(`/api/fonts/file?family=${encodeURIComponent(family)}`);
+    const response = await studioApiFetch(`/api/fonts/file?family=${encodeURIComponent(family)}`);
     if (!response.ok) return null;
     const blob = await response.blob();
     const ext = response.headers.get("Content-Disposition")?.match(/\.(\w+)"?$/)?.[1] ?? "ttf";

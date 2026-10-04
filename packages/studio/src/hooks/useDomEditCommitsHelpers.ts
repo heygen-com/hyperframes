@@ -7,6 +7,9 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 import type { DomEditPatchBatch } from "./domEditCommitTypes";
 import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { studioApiFetch } from "../utils/studioApiFetch";
+import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 export function formatUnsafeFieldList(fields: Array<{ path: string }>): string {
   return fields.map((field) => field.path).join(", ");
@@ -99,7 +102,7 @@ function isAtomicElementPatchFile(value: unknown): value is AtomicElementPatchFi
 export async function patchElementBatches(projectId: string, batches: DomEditPatchBatch[]) {
   const body = JSON.stringify({ batches });
   try {
-    const response = await fetch(
+    const response = await studioApiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/file-mutations/patch-element-batches`,
       {
         method: "POST",
@@ -168,6 +171,8 @@ export interface PatchElementResponse {
   content?: string;
   path?: string;
   version?: string;
+  /** The patched element's id after the patch; absent when the target was not found. */
+  elementId?: string | null;
 }
 
 type ShowToast = (message: string, tone?: "error" | "info") => void;
@@ -178,7 +183,7 @@ export async function postPatchElement(
   body: unknown,
   showToast: ShowToast,
 ): Promise<PatchElementResponse> {
-  const response = await fetch(
+  const response = await studioApiFetch(
     buildProjectApiPath(
       projectId,
       `/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
@@ -196,6 +201,46 @@ export async function postPatchElement(
     });
   }
   return (await response.json()) as PatchElementResponse;
+}
+
+interface AssignAutoIdParams {
+  projectId: string;
+  targetPath: string;
+  selection: DomEditSelection;
+  autoId: string;
+  showToast: ShowToast;
+}
+
+/** The id the file holds for the element after proposing `autoId` (the server keeps or dedupes it); null if none. */
+export async function assignGsapTargetAutoIdIfNeeded({
+  projectId,
+  targetPath,
+  selection,
+  autoId,
+  showToast,
+}: AssignAutoIdParams): Promise<string | null> {
+  const patchBody = {
+    target: {
+      id: selection.id,
+      hfId: selection.hfId,
+      selector: selection.selector,
+      selectorIndex: selection.selectorIndex,
+    },
+    operations: [{ type: "ensure-id", property: "id", value: autoId }],
+  };
+  if (findUnsafeDomPatchValues(patchBody).length > 0) {
+    showToast("Couldn't assign element id because the patch contains invalid values", "error");
+    return null;
+  }
+  try {
+    const { elementId } = await postPatchElement(projectId, targetPath, patchBody, showToast);
+    if (elementId) return elementId;
+    showToast(`Couldn't assign element id: element not found in ${targetPath}`, "error");
+    return null;
+  } catch (error) {
+    if (error instanceof StudioSaveHttpError && error.alreadyToasted) return null;
+    throw error;
+  }
 }
 
 export async function writePreparedContent(

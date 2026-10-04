@@ -5,7 +5,7 @@ import type { GestureState } from "./domEditOverlayGestures";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import {
   hasStudioPendingEdits,
-  revertNewestStudioPendingEdit,
+  paintBackNewestStudioPendingEdit,
 } from "../../utils/studioPendingEdits";
 
 afterEach(() => {
@@ -59,13 +59,13 @@ it("a drag whose save is still running can be painted back at once, and shown ag
   const moved = element.style.getPropertyValue("translate");
   expect(moved).not.toBe("40px 30px");
 
-  const showAgain = revertNewestStudioPendingEdit();
+  const shown = paintBackNewestStudioPendingEdit();
   expect(element.style.getPropertyValue("translate")).toBe("40px 30px");
-  expect(revertNewestStudioPendingEdit()).toBeNull();
-  showAgain!();
+  expect(paintBackNewestStudioPendingEdit()).toBeNull();
+  shown!.showAgain();
   expect(element.style.getPropertyValue("translate")).toBe(moved);
 
   saved();
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
-  expect(revertNewestStudioPendingEdit()).toBeNull();
+  expect(paintBackNewestStudioPendingEdit()).toBeNull();
 });

@@ -3,7 +3,10 @@ import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
-import { revertNewestStudioPendingEdit } from "../utils/studioPendingEdits";
+import {
+  hasStudioPendingEdits,
+  paintBackNewestStudioPendingEdit,
+} from "../utils/studioPendingEdits";
 
 interface HistoryResult {
   ok: boolean;
@@ -18,11 +21,13 @@ interface HistoryResult {
 interface HistoryFileCallbacks {
   readFile: (path: string) => Promise<string>;
   serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
+  claimedAfter?: number;
 }
 export interface EditHistoryHandle {
   undo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
   redo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
   predict?: (direction: "undo" | "redo") => { id: string; files: RestoreFiles } | null;
+  claims?: () => number;
   state: {
     undo: ReadonlyArray<{ createdAt: number }>;
     redo: ReadonlyArray<{ createdAt: number }>;
@@ -30,7 +35,7 @@ export interface EditHistoryHandle {
 }
 
 export interface UseEditHistoryActionsOptions {
-  editHistory: Pick<EditHistoryHandle, "undo" | "redo" | "predict">;
+  editHistory: Pick<EditHistoryHandle, "undo" | "redo" | "predict" | "claims">;
   readOptionalProjectFile: (path: string) => Promise<string>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -77,22 +82,28 @@ export function useEditHistoryActions({
       const predicted = editHistory.predict?.(direction) ?? null;
       const predictedShown = predicted ? (showHistoryRestoreNow?.(predicted.files) ?? null) : null;
       const pendingEditShown =
-        !predictedShown && direction === "undo" ? revertNewestStudioPendingEdit() : null;
-      const putBack = predictedShown ?? pendingEditShown;
+        !predictedShown && direction === "undo" ? paintBackNewestStudioPendingEdit() : null;
+      const putBack = predictedShown ?? pendingEditShown?.showAgain;
+      const claimedAfter =
+        direction === "undo" && hasStudioPendingEdits() ? editHistory.claims?.() : undefined;
       let result: HistoryResult = { ok: false, reason: "failed" };
       let serverSteppedShown = false;
+      let revertIsTheUndo = false;
       try {
         await waitForPendingDomEditSaves();
+        revertIsTheUndo = Boolean(pendingEditShown && !(await pendingEditShown.landed()));
+        if (revertIsTheUndo) return;
         result = await editHistory[direction]({
           readFile: readHistoryFile,
           serialize: serializeHistoryFiles,
+          claimedAfter,
         });
         const stepped = Boolean(result.ok && result.label);
         serverSteppedShown = predictedShown
           ? stepped && result.undoes === predicted?.id
           : stepped && Boolean(pendingEditShown);
       } finally {
-        if (putBack && !serverSteppedShown) putBack();
+        if (putBack && !serverSteppedShown && !revertIsTheUndo) putBack();
       }
       if (!result.ok && result.reason === "content-mismatch") {
         showToast(

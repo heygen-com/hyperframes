@@ -7,7 +7,8 @@ import { observeGsapGesture } from "./gsapGestureOutcome";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 import { computeCurrentPercentage } from "./gsapDragCommit";
-import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
+import { commitSizeAtPlayhead, tryGsapResizeIntercept } from "./gsapResizeIntercept";
+import { liveTween, previewWith, tween } from "./gsapParsedTween.test-helpers";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
@@ -15,6 +16,8 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
   usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
+  // One #clip per test: leftovers would make every tween on it look shared.
+  document.body.innerHTML = "";
 });
 
 /**
@@ -42,10 +45,18 @@ function fakeIframe(el: HTMLElement, gsapValues: Record<string, number>) {
   // The element's OPACITY intro tween lives on the timeline: unfiltered
   // capture would pick `opacity` up via the other-tween sweep.
   const opacityIntro = { targets: () => [el], vars: { opacity: 0, duration: 0.8 } };
+  const scaleIntro = liveTween(
+    el,
+    { start: 0.2, duration: 0.8, vars: { scale: 0.9 }, ends: { scaleX: [0.9, 1] } },
+    { from: true },
+  );
   return {
     contentWindow: {
-      __timelines: { main: { getChildren: () => [opacityIntro] } },
-      gsap: { getProperty: (_el: Element, prop: string) => gsapValues[prop] ?? 0 },
+      __timelines: { main: { getChildren: () => [opacityIntro, scaleIntro] } },
+      gsap: {
+        getProperty: (_el: Element, prop: string) => gsapValues[prop] ?? 0,
+        defaults: () => ({ ease: "power1.out" }),
+      },
     },
     contentDocument: document,
   } as unknown as HTMLIFrameElement;
@@ -295,24 +306,26 @@ async function runResize(
   return committed;
 }
 
-it("scale-route resize converts via the group filter and commits scale, not width/height", async () => {
+it("scale-route resize keyframes scale through the group filter, not width/height", async () => {
   const el = makeGradedElement();
   const iframe = fakeIframe(el, { scale: 1, scaleX: 1, scaleY: 1, opacity: 0, rotation: 0 });
   // uniform: 800/640 === 450/360
   const committed = await runResize(el, iframe, { width: 800, height: 450 });
 
-  const convert = committed.find((m) => m.type === "convert-to-keyframes");
-  expect(convert).toBeDefined();
-  const fromValues = convert!.resolvedFromValues as Record<string, number>;
-  // Group filter: the opacity intro tween must NOT leak into the conversion.
-  expect(fromValues).not.toHaveProperty("opacity");
-  expect(fromValues).toHaveProperty("scale");
+  const keyframes = committed.find((m) => m.type === "replace-with-keyframes")?.keyframes as
+    | Array<{ properties: Record<string, number> }>
+    | undefined;
+  // Group filter: the opacity intro tween must NOT leak into the scale keyframes.
+  expect(keyframes?.some((k) => "opacity" in k.properties)).toBe(false);
+  expect(keyframes?.some((k) => "scale" in k.properties)).toBe(true);
 
   // Every committed property is scale-group — the resize never writes
   // width/height for a scale-driven element (the double-apply bug class).
   const allProps = committed.flatMap((m) => [
     ...Object.keys((m.properties as Record<string, unknown>) ?? {}),
-    ...Object.keys((m.resolvedFromValues as Record<string, unknown>) ?? {}),
+    ...((m.keyframes as Array<{ properties: object }>) ?? []).flatMap((k) =>
+      Object.keys(k.properties),
+    ),
   ]);
   expect(allProps).not.toContain("width");
   expect(allProps).not.toContain("height");
@@ -559,6 +572,45 @@ it("hands the size to the element's CSS when its only tween is a fade", async ()
   expect(handled).toEqual({ status: "element-size" });
   expect(commitMutation).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["stays put", { x: 0, y: 0 }, { width: 300 }, undefined],
+  ["moves", { x: -40, y: 0 }, { width: 300, x: 10, y: 0 }, true],
+])(
+  "a size written at the playhead carries the anchor only when the box %s",
+  async (_, offset, written, owns) => {
+    const selection = titleSelection();
+    const el = selection.element;
+    el.setAttribute("data-hf-drag-gsap-base-x", "50");
+    el.setAttribute("data-hf-drag-gsap-base-y", "0");
+    const slide = tween({
+      id: "#title-to-0",
+      targetSelector: "#title",
+      propertyGroup: undefined,
+      method: "to",
+      properties: { x: 100, width: 320 },
+      resolvedStart: 0,
+      duration: 2,
+      ease: "none",
+    });
+    usePlayerStore.setState({ currentTime: 1 });
+    const commitMutation = vi.fn();
+    const live = liveTween(el, { start: 0, duration: 2, vars: slide.properties });
+
+    const outcome = await commitSizeAtPlayhead(
+      selection,
+      slide,
+      { width: 300 },
+      previewWith(el, [live]),
+      offset,
+      { commitMutation },
+    );
+
+    expect(outcome.ownsDragOffset).toBe(owns);
+    const mutation = commitMutation.mock.calls[0]![1];
+    expect(mutation.keyframes[0].properties).toEqual(written);
+  },
+);
 
 it.each([
   [5, 1],

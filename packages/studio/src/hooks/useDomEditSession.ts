@@ -25,6 +25,7 @@ import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMemb
 import type { RecordEditInput } from "./domEditDeleteMembers";
 import type { DomEditTimelineParams } from "./useDomSelectionTypes";
 import { useLivePreviewIframe } from "./useLivePreviewIframe";
+import { moveDomGroupBy, type DomGroupMove } from "../components/editor/domGroupMoveBy";
 // Re-exported: the delete rule lives in its own module; callers and its test import it from here.
 export { membersForDelete };
 
@@ -445,6 +446,7 @@ export function useDomEditSession({
     domEditSelection,
     selectedGsapAnimations,
     gsapCommitMutation,
+    activeCompPath,
     previewIframeRef,
     showToast,
     bumpGsapCache,
@@ -459,6 +461,13 @@ export function useDomEditSession({
     setArcPath,
     updateArcSegment,
   });
+  const handleDomGroupMoveBy = useCallback(
+    (moves: DomGroupMove[]) =>
+      moveDomGroupBy(moves, (updates) =>
+        handleGsapAwareGroupPathOffsetCommit(updates, { refusalToast: false }),
+      ),
+    [handleGsapAwareGroupPathOffsetCommit],
+  );
   const { handleUpdateSegmentEase, handleUpdateKeyframeEase, handleSetAllKeyframeEases } =
     useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
   const committable = useCommitPreflightCapabilities({
@@ -497,6 +506,7 @@ export function useDomEditSession({
     handleDomAttributeBatchCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
     handleDomGroupPathOffsetCommit: handleGsapAwareGroupPathOffsetCommit,
+    handleDomGroupMoveBy,
     handleDomZIndexReorderCommit,
     handleDomBoxSizeCommit: handleGsapAwareBoxSizeCommit,
     handleDomRotationCommit: handleGsapAwareRotationCommit,

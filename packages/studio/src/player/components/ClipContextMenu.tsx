@@ -10,6 +10,7 @@ import { ClipMenuAudioItems } from "./clipMenuAudioItems";
 import { ClipMenuLinkItems } from "./clipMenuLinkItems";
 import { menuClasses } from "../../components/ui/menuStyle";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { SPLIT_SHORTCUT_HINT } from "./studioShortcuts";
 
 const MENU_MARGIN = 8;
 
@@ -40,6 +41,7 @@ interface ClipContextMenuProps {
   onDuplicate?: () => Promise<boolean>;
   canPaste?: boolean;
   hostItems?: readonly TimelineClipMenuItem[] | undefined;
+  splitShortcut?: string | undefined;
 }
 
 const itemClass = (enabled: boolean) =>
@@ -95,6 +97,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onDuplicate,
   canPaste,
   hostItems = [],
+  splitShortcut = SPLIT_SHORTCUT_HINT,
 }: ClipContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
   useMenuKeyboardNav(menuRef);
@@ -157,7 +160,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{splitLabel}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">S</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{splitShortcut}</span>
           </button>
         )}
         {tools && splitLabel && (
