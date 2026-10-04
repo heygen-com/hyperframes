@@ -117,10 +117,13 @@ describe("useEditHistoryActions", () => {
       PREDICTED,
     );
     const undone = actions.undo();
-    expect(revert).toHaveBeenCalledTimes(1);
-    expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
-    saving.settle();
-    await act(() => undone);
+    try {
+      expect(revert).toHaveBeenCalledTimes(1);
+      expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
+    } finally {
+      saving.settle();
+      await act(() => undone);
+    }
     expect(reapply).not.toHaveBeenCalled();
   });
 

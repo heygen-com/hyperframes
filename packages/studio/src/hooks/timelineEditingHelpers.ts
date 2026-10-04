@@ -283,7 +283,7 @@ export function buildTimelineMoveTimingPatch(
 ): string {
   const patched = applyTimelineMoveAttributes(original, target, start, duration, track, audioGroup);
   // A non-finite timing skips the patch above; skip the duration sync with it.
-  return patched === original && !(Number.isFinite(start) && Number.isFinite(duration))
+  return !(Number.isFinite(start) && Number.isFinite(duration))
     ? patched
     : syncCompositionDurationToContent(patched);
 }
