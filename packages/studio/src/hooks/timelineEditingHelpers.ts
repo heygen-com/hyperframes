@@ -267,12 +267,8 @@ export function applyTimelineMoveAttributes(
   return patched;
 }
 
-/**
- * Content-driven duration: sync data-duration to the furthest clip end read from the PATCHED
- * SOURCE (raw data-duration), so it grows if a clip moved past the end and shrinks if the
- * furthest clip moved left. Measured from the source, NOT the store: store durations are
- * runtime-truncated to the current comp length, which would ratchet the duration down every edit.
- */
+// Root data-duration follows the furthest clip end in the source; the store's durations are
+// truncated to the current length, so reading them would ratchet the duration down every edit.
 export function syncCompositionDurationToContent(source: string): string {
   return setCompositionDurationToContent(source, furthestClipEndFromSource(source));
 }
