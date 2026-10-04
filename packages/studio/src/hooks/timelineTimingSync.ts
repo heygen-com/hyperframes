@@ -30,6 +30,8 @@ import {
   type StudioProjectFileWriter,
 } from "../utils/studioFileMutationCoordinator";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { applyLiveRetime, planLiveRetimeFromPreview } from "../utils/gsapLiveRetime";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
@@ -131,6 +133,17 @@ function syncTimingEditPreview(
   if (!iframe || !outcome.scriptText) {
     reloadPreview();
     return;
+  }
+  const plan = planLiveRetimeFromPreview(iframe, outcome.scriptText);
+  if (plan.kind === "retime") {
+    const unpaired = applyLiveRetime(iframe, plan);
+    if (!unpaired) {
+      if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
+      return;
+    }
+    // A timing-only edit always pairs with the timeline that script built; not pairing is a bug.
+    console.error(`[timeline] could not move the live tweens for a timing edit: ${unpaired}`);
+    trackStudioEvent("timeline_live_retime_unpaired", { reason: unpaired });
   }
   const result = applySoftReload(iframe, outcome.scriptText, {
     onAsyncFailure: reloadPreview,
