@@ -344,6 +344,46 @@ describe("re-rendering leaves the rest as the seek left it", () => {
     expect(fires(true)).toBe(fires(false));
   });
 
+  it("renders every frame of style-5-prod's paused typed intro as without the redraw", () => {
+    const frames = (redraw: boolean) => {
+      const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
+      const scene = gsap.timeline({ paused: true });
+      const typeLine = (text: string, start: number) => {
+        const chars = text.split("").map(() => ({ opacity: 0 }));
+        const cursor = { opacity: 0 };
+        scene.set(cursor, { opacity: 1 }, start);
+        chars.forEach((char, i) =>
+          scene.to(char, { opacity: 1, duration: 0.01 }, start + i * 0.05),
+        );
+        const end = start + chars.length * 0.05;
+        scene
+          .to(cursor, { opacity: 0.25, duration: 0.1 }, end)
+          .to(cursor, { opacity: 1, duration: 0.1 }, end + 0.1);
+        scene.set(cursor, { opacity: 0 }, end + 0.2);
+        return { chars, cursor, end: end + 0.5 };
+      };
+      const line1 = typeLine("SYSTEM BOOTING...", 0.2);
+      const line2 = typeLine("EDITOR AGENT v1.0", line1.end);
+      const container = { opacity: 0 };
+      scene.fromTo(container, { opacity: 0.92 }, { opacity: 1, duration: 0.6 }, 0);
+      timeline.add(scene, 0);
+      const drawn: number[][] = [];
+      for (let frame = 0; frame < 90; frame++) {
+        scene.paused(false);
+        timeline.totalTime(frame / 30, false);
+        if (redraw) rerenderGsapTimelineAt(timeline, frame / 30);
+        scene.paused(true);
+        drawn.push(
+          [...line1.chars, line1.cursor, ...line2.chars, line2.cursor, container].map(
+            (o) => o.opacity,
+          ),
+        );
+      }
+      return drawn;
+    };
+    expect(frames(true)).toEqual(frames(false));
+  });
+
   it("keeps the length of a timeline that grew after its last render", () => {
     const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
     timeline.totalTime(1, true);

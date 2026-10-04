@@ -28,7 +28,11 @@ export function rerenderGsapTimelineAt(
     primeKeyframedTweensStartingAt(children, t);
     timeline.totalTime(t, true);
   } finally {
-    for (const [child, timeScale] of skipped) child._ts = timeScale;
+    for (const [child, timeScale] of skipped) {
+      child._ts = timeScale;
+      for (let parent = child.parent; parent; parent = parent.parent) parent._dirty = 1;
+    }
+    timeline.totalDuration?.();
   }
   for (const [child, ratio, zTime, active] of marked) {
     child.ratio = ratio;
@@ -37,8 +41,11 @@ export function rerenderGsapTimelineAt(
   }
 }
 
+type GsapParent = { _dirty: number; parent?: GsapParent | null };
+
 type GsapChild = Pick<GsapAnimation, "startTime" | "getChildren"> & {
   _ts: number;
+  parent?: GsapParent | null;
   endTime: () => number;
   time: () => number;
 };
