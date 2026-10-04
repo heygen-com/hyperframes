@@ -19,7 +19,6 @@ export interface ShortcutSection {
 
 const hintKey = (key: string) => key.toUpperCase();
 
-/** Split's key as Studio's own hotkeys bind it; an embedder that binds Split elsewhere passes its own label. */
 export const SPLIT_SHORTCUT_HINT = hintKey(STUDIO_PLAIN_KEYS.split);
 
 /** What PlayerControls' shortcuts panel lists unless an embedder passes its own sections. */
