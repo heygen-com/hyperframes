@@ -9,7 +9,7 @@ import { saveServerRewriteWithHistory, type RecordEditInput } from "../utils/stu
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 import { buildPatchTarget, removeIframeTimelineElements } from "./timelineEditingHelpers";
-import { captureDurationRollback } from "./timelineTimingSync";
+import { captureDurationRollback, timingGestureStep } from "./timelineTimingSync";
 import { setLinkInSource } from "../components/editor/mediaLinkEdits";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
@@ -57,11 +57,6 @@ interface UseTimelineDeleteOpsOptions {
   ) => Promise<void>;
 }
 
-// Per-gesture-unique coalesce key — a monotonic counter, not Date.now() /
-// Math.random() (determinism rules), mirroring gapCloseGestureSeq in
-// timelineGapCommit.ts.
-let deleteGestureSeq = 0;
-
 function unlinkInSource(source: string, survivors: readonly TimelineElement[]): string {
   const targets = survivors.map(buildPatchTarget).filter((target) => target !== null);
   return targets.length > 0 ? setLinkInSource(source, targets, null) : source;
@@ -107,10 +102,8 @@ export function useTimelineDeleteOps({
         (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
       );
       try {
-        // Shared with the ripple move below so a folded ripple is one undo
-        // step with the delete, not two (editHistory.ts coalesces by key +
-        // window across separate recordEdit calls, not by label).
-        const coalesceKey = `main-track-ripple-delete:${deleteGestureSeq++}`;
+        // Shared with the ripple move below so a folded ripple is one undo step with the delete.
+        const step = timingGestureStep("main-track-ripple-delete");
         const deleteHistoryLabel = "Delete timeline clip";
         let rollbackDuration = () => {};
         try {
@@ -118,7 +111,7 @@ export function useTimelineDeleteOps({
             projectId: pid,
             path: targetPath,
             label: deleteHistoryLabel,
-            coalesceKey,
+            ...step,
             writeFile: writeProjectFile,
             recordEdit,
             rewrite: async (originalContent) => {
@@ -189,7 +182,7 @@ export function useTimelineDeleteOps({
         if (rippleChanges) {
           try {
             await handleTimelineGroupMove(rippleChanges, {
-              coalesceKey,
+              coalesceKey: step.coalesceKey,
               // Coalescing keeps the LAST entry's label; without this the undo
               // toast reads "Undid Move timeline clips" after a delete, naming
               // the ripple's mechanics instead of what the user actually did.

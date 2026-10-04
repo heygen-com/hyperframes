@@ -81,6 +81,7 @@ export async function saveServerRewriteWithHistory(input: {
   path: string;
   label: string;
   coalesceKey?: string;
+  coalesceMs?: number;
   writeFile: ProjectFileWriter;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
   rewrite: (original: string) => Promise<{ disk: string; after?: string } | null>;

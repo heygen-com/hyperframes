@@ -62,6 +62,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
   function mountDeleteHarness(overrides: {
     handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"];
     showToast?: DeleteOpsOptions["showToast"];
+    recordEdit?: DeleteOpsOptions["recordEdit"];
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
@@ -72,7 +73,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
         timelineElements: elements,
         showToast: overrides.showToast ?? vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
-        recordEdit: vi.fn().mockResolvedValue(undefined),
+        recordEdit: overrides.recordEdit ?? vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
         handleTimelineGroupMove: overrides.handleTimelineGroupMove,
@@ -117,6 +118,24 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     expect(handleTimelineGroupMove).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ label: "Delete timeline clip" }),
+    );
+  });
+
+  it("holds the delete's undo step open under the key its ripple joins, however late the ripple lands", async () => {
+    stubRemoveElementsFetch(html, html.replace(/<div data-hf-id="hf-b"[^\n]*\n/, ""));
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const recordEdit = vi.fn().mockResolvedValue(undefined);
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, recordEdit });
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+
+    const [[deleted]] = recordEdit.mock.calls;
+    expect(deleted).toMatchObject({ coalesceMs: Infinity });
+    expect(handleTimelineGroupMove).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ coalesceKey: deleted.coalesceKey }),
     );
   });
 
