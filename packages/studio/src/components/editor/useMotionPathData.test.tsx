@@ -92,3 +92,33 @@ it("reads no layout per frame until there is a path or a create ring to draw", (
     act(() => root.unmount());
   }
 });
+
+it("finds the layer whichever window built its node, so the path draws on every load", () => {
+  runtime.read = {
+    keyframes: [
+      { percentage: 0, properties: { x: 0, y: 0 } },
+      { percentage: 100, properties: { x: 100, y: 0 } },
+    ],
+  };
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const box = iframe.contentDocument!.createElement("div");
+  box.id = "box";
+  iframe.contentDocument!.body.append(box);
+  // happy-dom shares one realm, so the frame's own constructor stands in for another window's.
+  Object.defineProperty(iframe.contentWindow!, "HTMLElement", { value: class {} });
+  let home: unknown = null;
+  function Probe() {
+    const ref = useRef(iframe);
+    home = useMotionPathData(ref, "#box").home;
+    return null;
+  }
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  try {
+    act(() => root.render(<Probe />));
+    runFrames(3);
+    expect(home).not.toBeNull();
+  } finally {
+    act(() => root.unmount());
+  }
+});

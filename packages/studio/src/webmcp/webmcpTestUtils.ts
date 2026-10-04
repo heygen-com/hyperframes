@@ -5,6 +5,7 @@
  * existing `hooks/domSelectionTestHarness.ts` convention.
  */
 
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { expect } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { ToolFailure, ToolResult } from "./toolResult";
@@ -31,8 +32,7 @@ export function previewDoc(html: string): Document {
 export function previewElement(html: string, id: string): HTMLElement {
   const doc = previewDoc(html);
   const element = doc.getElementById(id);
-  const HTMLElementCtor = doc.defaultView?.HTMLElement;
-  if (!HTMLElementCtor || !(element instanceof HTMLElementCtor)) {
+  if (!isHtmlElement(element)) {
     throw new Error(`expected preview element #${id}`);
   }
   return element;

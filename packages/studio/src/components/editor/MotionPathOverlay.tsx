@@ -12,6 +12,7 @@ import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
 import { dotRadius, pressBelongsToLayer, pressSelectedLayer } from "./motionPathLayerNode";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { ACCENT, MotionPathNode } from "./MotionPathNode";
 import {
   KeyframeDiamondContextMenu,
@@ -28,7 +29,6 @@ import {
 import {
   elementHome,
   hasMotionPathPlugin,
-  isPreviewHtmlElement,
   transformWDivisor,
   useMotionPathData,
 } from "./useMotionPathData";
@@ -194,7 +194,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       // Resolve the element LIVE from the current iframe document — the selected
       // node may be detached after a soft-reload, which would skew home.
       const live = frame.contentDocument?.querySelector(createSelector);
-      if (!isPreviewHtmlElement(live, frame)) return;
+      if (!isHtmlElement(live)) return;
       e.stopPropagation();
       e.preventDefault();
       const sc = r.width / compW;

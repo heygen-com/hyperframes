@@ -1,4 +1,5 @@
 // Puts Studio's committed edits back after a timeline seek has rendered over them.
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import {
   STUDIO_BOX_SIZE_ATTR,
   STUDIO_HEIGHT_PROP,
@@ -15,15 +16,11 @@ import { STUDIO_MOTION_ATTR, STUDIO_MOTION_TIMELINE_ID } from "./studioMotionTyp
 import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 
 function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
-  const ctor = doc.defaultView?.HTMLElement;
-  if (!ctor) return [];
-  const elements = Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(
-    (el): el is HTMLElement => el instanceof ctor,
-  );
+  const elements = Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(isHtmlElement);
   // Handle legacy HTML files where attributes were persisted with a double data- prefix
   const legacyAttr = `data-${attr}`;
   for (const el of doc.querySelectorAll(`[${legacyAttr}="true"]`)) {
-    if (el instanceof ctor && !el.hasAttribute(attr)) {
+    if (isHtmlElement(el) && !el.hasAttribute(attr)) {
       el.setAttribute(attr, "true");
       el.removeAttribute(legacyAttr);
       elements.push(el);
