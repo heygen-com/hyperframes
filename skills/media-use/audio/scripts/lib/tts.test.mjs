@@ -221,7 +221,10 @@ test("pickProvider heygen with an unreadable credentials path says to fix that p
     mkdirSync(join(dir, "credentials"));
     assert.throws(() => pickProvider("heygen"), /fix or remove that path/);
   } finally {
-    for (const [k, v] of saved) v === undefined ? delete process.env[k] : (process.env[k] = v);
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
     rmSync(dir, { recursive: true, force: true });
   }
 });
