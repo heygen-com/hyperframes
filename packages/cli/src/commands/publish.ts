@@ -15,11 +15,11 @@ import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   buildPublishFileMap,
   publishProjectArchive,
+  resolvePublishCredential,
   zipPublishFileMap,
 } from "../utils/publishProject.js";
 import { bakeMediaProxies } from "../utils/publishProxyBake.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
-import { tryResolveCredential } from "../auth/index.js";
 import {
   ensureProjectId,
   readProjectLink,
@@ -166,7 +166,7 @@ export default defineCommand({
     // --update / --space only take effect for an authenticated owner. Fail loudly rather
     // than silently minting a fresh URL — the exact failure mode this feature removes.
     if (updateTarget || spaceOverride) {
-      const credential = await tryResolveCredential();
+      const credential = await resolvePublishCredential();
       if (!credential) {
         console.log();
         console.log(
@@ -289,27 +289,15 @@ export default defineCommand({
         console.log(`  ${c.dim("Claim URL")}  ${c.accent(claimUrl.toString())}`);
         console.log(`  ${c.dim("Access")}     ${c.accent("Sign in required to claim")}`);
         console.log();
-        if (updateTarget || spaceOverride) {
-          // The pre-publish gate saw a credential, but the server didn't accept it (expired
-          // or invalid) and fell back to anonymous — say so loudly instead of pretending the
-          // requested update happened.
-          console.log(
-            `  ${c.error(`Your login looks expired or invalid, so ${updateTarget ? "--update" : "--space"} was ignored and a NEW url was created above.`)}`,
-          );
-          console.log(
-            `  ${c.dim("Run 'hyperframes auth login' again, then re-publish to update in place.")}`,
-          );
-        } else {
-          console.log(
-            `  ${c.dim("Open the claim URL on hyperframes.dev, sign in, and claim the project to continue editing.")}`,
-          );
-          console.log();
-          const visibilityTip =
-            args.public === true
-              ? "--public applies to the claimed project; this claim URL still requires sign-in."
-              : "Run 'hyperframes auth login' first for a stable link you can re-publish to; add --public to allow signed-out viewing.";
-          console.log(`  ${c.dim(`Tip: ${visibilityTip}`)}`);
-        }
+        console.log(
+          `  ${c.dim("Open the claim URL on hyperframes.dev, sign in, and claim the project to continue editing.")}`,
+        );
+        console.log();
+        const visibilityTip =
+          args.public === true
+            ? "--public applies to the claimed project; this claim URL still requires sign-in."
+            : "Run 'hyperframes auth login' first for a stable link you can re-publish to; add --public to allow signed-out viewing.";
+        console.log(`  ${c.dim(`Tip: ${visibilityTip}`)}`);
         console.log();
       }
       return;

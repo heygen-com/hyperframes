@@ -89,6 +89,14 @@ describe("auth/resolver", () => {
     if (r.type === "api_key") expect(r.key).toBe("fallback");
   });
 
+  it("reports an expired login with no refresh token as expired, not as never signed in", async () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await writeStore({ oauth: { access_token: "stale-at", expires_at: past } });
+    await expect(tryResolveCredential()).rejects.toSatisfy((err) => {
+      return isAuthError(err) && (err as { code: string }).code === "LOGIN_EXPIRED";
+    });
+  });
+
   it("rejects HEYGEN_API_KEY containing CRLF (header-injection guard)", async () => {
     process.env["HEYGEN_API_KEY"] = "hg_x\r\nX-Evil: 1";
     await expect(resolveCredential()).rejects.toSatisfy((err) => {
