@@ -12,7 +12,8 @@
 
 import { readdirSync, readFileSync, writeFileSync, type Dirent } from "node:fs";
 import { join, resolve, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { isEntrypoint } from "./entrypoint.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -116,7 +117,7 @@ function normalizeComponents() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+if (isEntrypoint(import.meta.url)) {
   backfillBlocks();
   normalizeComponents();
 
