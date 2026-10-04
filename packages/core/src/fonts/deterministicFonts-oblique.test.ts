@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
+// @vitest-environment node
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,7 +31,7 @@ it.each(["oblique", "oblique 10deg", "oblique 0deg 10deg", "oblique -12.5deg 2.5
   "embeds every subset of an authored %s face in fail-closed mode",
   async (style) => {
     const subsets = ["U+0000-00FF", "U+0100-017F"];
-    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.startsWith("https://fonts.googleapis.com/")) {
         return new Response(

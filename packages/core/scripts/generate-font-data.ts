@@ -159,7 +159,7 @@ function main() {
   lines.push("]);");
   lines.push("");
 
-  const outputPath = resolve(__dirname, "../src/services/fontData.generated.ts");
+  const outputPath = resolve(__dirname, "../src/fonts/fontData.generated.ts");
   writeFileSync(outputPath, lines.join("\n"), "utf8");
   console.log(
     `[generate-font-data] Wrote ${entries.length} font faces (${Math.round(totalBytes / 1024)}KB) → ${outputPath}`,

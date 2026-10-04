@@ -2,13 +2,12 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultLogger } from "../logger.js";
 
-import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "@hyperframes/core/fonts/aliases";
+import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "./aliases.js";
 import {
   locateSystemFontVariants,
   SYSTEM_FONT_SIZE_LIMIT,
-} from "@hyperframes/core/fonts/system-locator";
+} from "./systemFontLocator.js";
 import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
@@ -68,6 +67,7 @@ const CSS_WIDE_KEYWORDS: ReadonlySet<string> = new Set([
  * Only top-level commas split: a `var(--x, fallback)` expression stays one
  * token, as does a comma inside a quoted family name.
  */
+// fallow-ignore-next-line complexity
 export function parseFontFamilyValue(value: string): string[] {
   const pieces: string[] = [];
   let start = 0;
@@ -472,11 +472,11 @@ const CANONICAL_FONTS: Record<string, CanonicalFontSpec> = {
   },
 };
 
-// FONT_ALIASES derives from the shared alias map in @hyperframes/core.
-// The cast is safe: every value in FONT_ALIAS_MAP is a valid CANONICAL_FONTS key.
+// FONT_ALIASES derives from the shared alias map; every FONT_ALIAS_MAP value is a CANONICAL_FONTS key.
 export const FONT_ALIASES = FONT_ALIAS_MAP as Record<string, keyof typeof CANONICAL_FONTS>;
 
-export { FONT_ALIAS_KEYS } from "@hyperframes/core/fonts/aliases";
+export { FONT_ALIAS_KEYS } from "./aliases.js";
+export { fontToDataUri } from "./fontCompression.js";
 
 function normalizeFamilyName(family: string): string {
   return family
@@ -752,6 +752,7 @@ async function googleFamilyFaceRules(
 async function systemFamilyFaceRules(
   lookupFamily: string,
   emitFamily: string,
+  log: FontLogger,
 ): Promise<string[] | null> {
   const variants = locateSystemFontVariants(lookupFamily);
   if (variants.length === 0) return null;
@@ -764,11 +765,11 @@ async function systemFamilyFaceRules(
     rules.push(buildFontFaceRule(emitFamily, dataUri, variant.weight, variant.style));
   }
   if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
-    defaultLogger.warn(
+    log.warn(
       `[Compiler] System font "${lookupFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${variants.length} variant(s)) — embedding anyway. Consider font subsetting for production.`,
     );
   }
-  defaultLogger.info(
+  log.info(
     `[Compiler] Embedded system font "${lookupFamily}" — ${variants.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,
   );
   return rules;
@@ -799,7 +800,7 @@ async function resolveFamilyFaceRules(
   return (
     (await googleFamilyFaceRules(lookupFamily, emitFamily, optional, options, fontText)) ??
     (options.allowSystemFontCapture && !pageNamedThisFile(lookupFamily, options)
-      ? await systemFamilyFaceRules(lookupFamily, emitFamily)
+      ? await systemFamilyFaceRules(lookupFamily, emitFamily, options.log)
       : null)
   );
 }
@@ -989,7 +990,7 @@ async function resolveDeclaredFamilyAlias(
   }
   if (!rules) return null;
 
-  defaultLogger.warn(
+  options.log.warn(
     `[Compiler] font-family "${authoredFamily}" is not a known family; resolved it to "${declared.family}", ` +
       `which this document declares. Correct the authored font-family to "${declared.family}".`,
   );
@@ -1044,7 +1045,7 @@ async function buildFontFaceCss(
   };
 }
 
-function warnUnresolvedFonts(unresolved: string[]): void {
+function warnUnresolvedFonts(unresolved: string[], log: FontLogger): void {
   const mapped = Object.entries(FONT_ALIASES)
     .reduce<string[]>((acc, [alias, canonical]) => {
       const display = alias === canonical ? alias : `${alias} → ${canonical}`;
@@ -1052,7 +1053,7 @@ function warnUnresolvedFonts(unresolved: string[]): void {
       return acc;
     }, [])
     .sort();
-  defaultLogger.warn(
+  log.warn(
     `[Compiler] No deterministic font mapping for: ${unresolved.join(", ")}\n` +
       `  Mapped fonts: ${mapped.join(", ")}\n` +
       `  To fix, pick one:\n` +
@@ -1109,7 +1110,7 @@ function fontCacheDir(slug: string): string {
       const fallback = join(ephemeralFontCacheRoot, slug);
       mkdirSync(fallback, { recursive: true });
       if (firstFallback) {
-        defaultLogger.warn(
+        STDERR_LOGGER.warn(
           `Font cache directory is unwritable (${dir}). ` +
             `Using temporary fallback — fonts will re-download each run. ` +
             `Fix with: chmod 755 ${resolveFontCacheRoot()}`,
@@ -1213,6 +1214,7 @@ const DEFAULT_FONT_FETCH_RETRY_POLICY: FontFetchRetryPolicy = {
 
 /** Internal threading of the failClosed flag + fetch override through callers. */
 interface InternalFontFetchOptions {
+  log: FontLogger;
   failClosedFontFetch: boolean;
   fetchImpl: typeof fetch;
   allowSystemFontCapture: boolean;
@@ -1613,7 +1615,7 @@ async function fetchGoogleFontStylesheet(
   }
 
   if (faces.length > 0) {
-    defaultLogger.info(
+    options.log.info(
       `[Compiler] Fetched ${faces.length} font face(s) for "${familyName}" from Google Fonts (cached to ${fontCacheDir(slug)})`,
     );
   }
@@ -1638,7 +1640,7 @@ async function fetchFamilyFaces(
     );
   } catch (err) {
     if (!(err instanceof FontFetchUnavailableError)) throw err;
-    defaultLogger.warn(
+    options.log.warn(
       `[Compiler] Optional font "${familyName}" is unavailable, rendering its fallback: ${err.message}`,
     );
     return [];
@@ -1650,7 +1652,18 @@ async function fetchFamilyFaces(
 /**
  * Options for {@link injectDeterministicFontFaces}.
  */
+export interface FontLogger {
+  warn(message: string): void;
+  info(message: string): void;
+}
+
+const STDERR_LOGGER: FontLogger = {
+  warn: (message) => console.warn(`[WARN] ${message}`),
+  info: (message) => console.error(`[INFO] ${message}`),
+};
+
 export interface InjectDeterministicFontFacesOptions {
+  logger?: FontLogger;
   /**
    * When `true`, exhausted transient fetch failures of a required family throw
    * {@link FontFetchUnavailableError} with code `FONT_FETCH_UNAVAILABLE`;
@@ -1863,6 +1876,7 @@ export async function injectDeterministicFontFaces(
   const allowSystemFontCapture = options.allowSystemFontCapture !== false;
   const retryPolicy = resolveFontFetchRetryPolicy(options.fontFetchRetryPolicy);
   const fetchOptions: InternalFontFetchOptions = {
+    log: options.logger ?? STDERR_LOGGER,
     failClosedFontFetch,
     fetchImpl,
     allowSystemFontCapture,
@@ -1910,7 +1924,7 @@ export async function injectDeterministicFontFaces(
   }
   if (!css) {
     if (unresolved.length > 0) {
-      warnUnresolvedFonts(unresolved);
+      warnUnresolvedFonts(unresolved, fetchOptions.log);
     }
     return html;
   }
@@ -1926,11 +1940,11 @@ export async function injectDeterministicFontFaces(
   styleEl.textContent = css;
   placeAfterEveryStylesheet(document, head, styleEl);
 
-  defaultLogger.info(
+  fetchOptions.log.info(
     `[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`,
   );
   if (unresolved.length > 0) {
-    warnUnresolvedFonts(unresolved);
+    warnUnresolvedFonts(unresolved, fetchOptions.log);
   }
 
   return document.toString();

@@ -1,4 +1,5 @@
-import { expect, it } from "bun:test";
+// @vitest-environment node
+import { expect, it } from "vitest";
 import { authoredGoogleFontStylesheets, withPageText } from "./authoredGoogleFonts.js";
 
 const url = "https://fonts.googleapis.com/css2?family=Fraunces:wght@400";

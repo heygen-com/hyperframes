@@ -18,7 +18,7 @@
     "packages/producer/src/perf-gate.ts",
     "packages/producer/src/runtime-conformance.ts",
     "packages/producer/src/benchmark.ts",
-    "packages/producer/scripts/generate-font-data.ts",
+    "packages/core/scripts/generate-font-data.ts",
     "packages/producer/we-render.mjs",
     "packages/producer/scripts/validate-fast-video.ts",
     "packages/cli/scripts/generate-font-data.ts",
@@ -494,6 +494,16 @@
       // new package makes fallow see it as a fresh finding; the underlying clone
       // predates this refactor.
       "packages/parsers/src/hfIds.ts",
+      // Font pipeline: pre-existing duplication moved from packages/producer/src/services/
+      // and producer/scripts/ to core/src/fonts/ and core/scripts/ (the generator mirrors
+      // CANONICAL_FONTS; the tests share arrange/act scaffolds).
+      "packages/core/scripts/generate-font-data.ts",
+      "packages/core/src/fonts/deterministicFonts-aliasSupplement.test.ts",
+      "packages/core/src/fonts/deterministicFonts-authoredResources.test.ts",
+      "packages/core/src/fonts/deterministicFonts-failClosed.test.ts",
+      "packages/core/src/fonts/deterministicFonts-googleSubsets.test.ts",
+      "packages/core/src/fonts/deterministicFonts-retries.test.ts",
+      "packages/core/src/fonts/fontCompression.test.ts",
       // Parser test files: parallel arrange/act/assert test cases — pre-existing
       // duplication moved from packages/core/src/parsers/.
       "packages/parsers/src/gsapParser.test.ts",
@@ -733,6 +743,9 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // generate-font-data.ts: the build-time font data generator moved from producer/scripts;
+      // its CRAP score is coverage-driven (a build script no unit test runs).
+      "packages/core/scripts/generate-font-data.ts",
       // audio-fx-runtime-entry.ts: the browser-side IIFE entry for the offline FX
       // render. It runs only inside the headless page the engine drives, so unit
       // coverage cannot reach it and its CRAP score is coverage-driven rather

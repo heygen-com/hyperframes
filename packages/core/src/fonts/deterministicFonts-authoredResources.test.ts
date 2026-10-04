@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
+// @vitest-environment node
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +19,7 @@ beforeEach(() => {
   process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
   requests.length = 0;
   _clearGoogleFontCssCacheForTests();
-  const mock = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+  const mock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = new URL(String(input));
     requests.push(url.href);
     if (url.hostname === "fonts.googleapis.com") {

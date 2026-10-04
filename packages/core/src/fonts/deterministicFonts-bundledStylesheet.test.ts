@@ -1,4 +1,5 @@
-import { afterEach, expect, it, spyOn } from "bun:test";
+// @vitest-environment node
+import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +10,7 @@ import {
 
 const previousCacheDir = process.env.HYPERFRAMES_FONT_CACHE_DIR;
 const cacheDir = mkdtempSync(join(tmpdir(), "hf-bundled-stylesheet-"));
-const fetchMock = spyOn(globalThis, "fetch");
+const fetchMock = vi.spyOn(globalThis, "fetch");
 
 afterEach(() => {
   fetchMock.mockRestore();

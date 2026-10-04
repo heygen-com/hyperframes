@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for the system font capture path (Path 3) in `buildFontFaceCss`.
  *
@@ -10,7 +11,7 @@
  * not served) so the resolver falls through to the system font path.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { fontFormatHint, injectDeterministicFontFaces } from "./deterministicFonts.js";
 

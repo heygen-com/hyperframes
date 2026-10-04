@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Regression test for the Google Fonts multi-subset cache collision.
  *
@@ -19,7 +20,7 @@
  * so they are hermetic.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";

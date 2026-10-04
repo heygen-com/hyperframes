@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for `injectDeterministicFontFaces`'s `failClosedFontFetch` gate.
  *
@@ -14,8 +15,7 @@
  * The tests inject `fetchImpl` so no real network call happens.
  */
 
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { defaultLogger } from "../logger.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _clearGoogleFontCssCacheForTests,
   FONT_FETCH_FAILED,
@@ -431,10 +431,10 @@ describe("fail-closed fonts named only in an undefined var() fallback", () => {
       `body { font-family: var(--brand, "Acme Brand Sans", sans-serif); }`,
     );
     let warnings: string[] = [];
-    let warnSpy: ReturnType<typeof spyOn>;
+    let warnSpy: ReturnType<typeof vi.spyOn>;
     beforeEach(() => {
       warnings = [];
-      warnSpy = spyOn(defaultLogger, "warn").mockImplementation((message: string) => {
+      warnSpy = vi.spyOn(console, "warn").mockImplementation((message: string) => {
         warnings.push(message);
       });
     });

@@ -500,7 +500,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     async transformPreviewHtml({ html, project }) {
       const { injectDeterministicFontFaces } =
-        await import("../../../producer/src/services/deterministicFonts.js");
+        await import("../../../core/src/fonts/deterministicFonts.js");
       const { prepareAnimatedGifInputs } =
         await import("../../../producer/src/services/animatedGifPrep.js");
       const { downloadToTemp, writeUrlDownloadTelemetry } =

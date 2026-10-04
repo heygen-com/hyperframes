@@ -1,4 +1,4 @@
-// @ts-expect-error -- wawoff2 ships no type declarations; ambient .d.ts only visible to producer's own tsconfig
+// @ts-expect-error -- wawoff2 ships no type declarations
 import wawoff2 from "wawoff2";
 import { createHash } from "node:crypto";
 import {

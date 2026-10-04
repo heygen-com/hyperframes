@@ -1,4 +1,5 @@
-import { describe, expect, it } from "bun:test";
+// @vitest-environment node
+import { describe, expect, it } from "vitest";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
 
 async function requestedGoogleFontUrl(html: string): Promise<URL> {

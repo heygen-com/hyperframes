@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+// @vitest-environment node
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -341,14 +342,20 @@ describe("deterministic Google Fonts retries", () => {
       });
     }) as typeof fetch;
 
-    const result = injectWithRetries(html, fetchImpl, {
-      maxAttempts: 2,
-      attemptTimeoutMs: 70,
-      maxElapsedMs: 100,
-      baseDelayMs: 0,
-    });
-
-    await expect(result).rejects.toMatchObject({ code: FONT_FETCH_UNAVAILABLE });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const result = injectWithRetries(html, fetchImpl, {
+        maxAttempts: 2,
+        attemptTimeoutMs: 70,
+        maxElapsedMs: 100,
+        baseDelayMs: 0,
+      });
+      const settled = expect(result).rejects.toMatchObject({ code: FONT_FETCH_UNAVAILABLE });
+      await vi.advanceTimersByTimeAsync(100);
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
     expect(firstCalls).toBe(1);
     expect(secondCalls).toBe(1);
   });

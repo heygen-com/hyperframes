@@ -282,8 +282,8 @@ export function createViteAdapter(
     },
 
     async transformPreviewHtml({ html }) {
-      const producer = await import("../producer/src/services/deterministicFonts.js");
-      return producer.injectDeterministicFontFaces(html);
+      const fonts = await import("../core/src/fonts/deterministicFonts.js");
+      return fonts.injectDeterministicFontFaces(html);
     },
 
     getProjectSignature(projectDir: string): string {

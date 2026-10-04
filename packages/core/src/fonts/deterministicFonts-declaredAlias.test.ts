@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Declared-family alias resolution.
  *
@@ -15,7 +16,7 @@
  * at a temp dir, so these tests are hermetic.
  */
 
-import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

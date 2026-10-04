@@ -1,4 +1,5 @@
-import { describe, expect, it, spyOn } from "bun:test";
+// @vitest-environment node
+import { describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
@@ -56,7 +57,7 @@ describe("fontToDataUri", () => {
     const raw = Buffer.from("stable-font-content");
     const compressed = Buffer.from("compressed-font-content");
     const compressImpl = async () => compressed;
-    const clock = spyOn(Date, "now").mockReturnValue(1234567890);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1234567890);
     try {
       const first = await fontToDataUri(raw, "ttf", { cacheDir, compressImpl });
       const [cacheName] = readdirSync(cacheDir);

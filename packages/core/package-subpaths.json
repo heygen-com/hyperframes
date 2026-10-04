@@ -482,6 +482,18 @@
       "types": "./dist/fonts/systemFontLocator.d.ts",
       "environments": ["bun", "node"]
     },
+    "./fonts/embed": {
+      "source": "./src/fonts/deterministicFonts.ts",
+      "runtime": "./dist/fonts/deterministicFonts.js",
+      "types": "./dist/fonts/deterministicFonts.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./fonts/embedded-data": {
+      "source": "./src/fonts/fontData.generated.ts",
+      "runtime": "./dist/fonts/fontData.generated.js",
+      "types": "./dist/fonts/fontData.generated.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./figma": {
       "source": "./src/figma/index.ts",
       "runtime": "./dist/figma/index.js",

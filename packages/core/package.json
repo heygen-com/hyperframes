@@ -491,6 +491,18 @@
       "import": "./src/fonts/systemFontLocator.ts",
       "types": "./src/fonts/systemFontLocator.ts"
     },
+    "./fonts/embed": {
+      "bun": "./src/fonts/deterministicFonts.ts",
+      "node": "./dist/fonts/deterministicFonts.js",
+      "import": "./src/fonts/deterministicFonts.ts",
+      "types": "./src/fonts/deterministicFonts.ts"
+    },
+    "./fonts/embedded-data": {
+      "bun": "./src/fonts/fontData.generated.ts",
+      "node": "./dist/fonts/fontData.generated.js",
+      "import": "./src/fonts/fontData.generated.ts",
+      "types": "./src/fonts/fontData.generated.ts"
+    },
     "./figma": {
       "bun": "./src/figma/index.ts",
       "node": "./dist/figma/index.js",
@@ -817,6 +829,14 @@
         "import": "./dist/fonts/systemFontLocator.js",
         "types": "./dist/fonts/systemFontLocator.d.ts"
       },
+      "./fonts/embed": {
+        "import": "./dist/fonts/deterministicFonts.js",
+        "types": "./dist/fonts/deterministicFonts.d.ts"
+      },
+      "./fonts/embedded-data": {
+        "import": "./dist/fonts/fontData.generated.js",
+        "types": "./dist/fonts/fontData.generated.d.ts"
+      },
       "./figma": {
         "import": "./dist/figma/index.js",
         "types": "./dist/figma/index.d.ts"
@@ -828,7 +848,8 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "build": "bun run build:hyperframes-runtime && bun run build:position-edits-render && bun run build:audio-fx-runtime && tsc && tsx scripts/rewrite-esm-extensions.ts",
+    "build": "bun run build:fonts && bun run build:hyperframes-runtime && bun run build:position-edits-render && bun run build:audio-fx-runtime && tsc && tsx scripts/rewrite-esm-extensions.ts",
+    "build:fonts": "node scripts/build-fonts.mjs",
     "test": "bun run check:position-edits-render && bun run build:audio-fx-runtime && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -861,9 +882,28 @@
     "@hyperframes/studio-server": "workspace:*",
     "bpm-detective": "^2.0.5",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.8"
+    "postcss": "^8.5.8",
+    "wawoff2": "^2.0.1"
   },
   "devDependencies": {
+    "@fontsource/archivo-black": "^5.2.8",
+    "@fontsource/eb-garamond": "^5.2.7",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/lato": "^5.2.7",
+    "@fontsource/league-gothic": "^5.2.8",
+    "@fontsource/montserrat": "^5.2.8",
+    "@fontsource/noto-sans-jp": "^5.2.9",
+    "@fontsource/nunito": "^5.2.7",
+    "@fontsource/open-sans": "^5.2.7",
+    "@fontsource/oswald": "^5.2.8",
+    "@fontsource/outfit": "^5.2.8",
+    "@fontsource/playfair-display": "^5.2.8",
+    "@fontsource/poppins": "^5.2.7",
+    "@fontsource/roboto": "^5.2.10",
+    "@fontsource/source-code-pro": "^5.2.7",
+    "@fontsource/space-mono": "^5.2.9",
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.0.10",
     "@vitest/coverage-v8": "^4.1.11",

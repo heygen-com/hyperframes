@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 
-const target = "src/services/fontData.generated.ts";
+const target = "src/fonts/fontData.generated.ts";
 
 if (existsSync(target)) {
   console.log("[build:fonts] skipped — fontData.generated.ts already exists");

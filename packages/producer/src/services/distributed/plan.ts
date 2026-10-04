@@ -661,13 +661,13 @@ export function buildChunkSlices(
  * distributed pipeline needs it.
  */
 async function readFontSnapshotSha(): Promise<string> {
-  const module = (await import("../fontData.generated.js")) as {
+  const module = (await import("@hyperframes/core/fonts/embedded-data")) as {
     EMBEDDED_FONT_DATA?: unknown;
   };
   const data = module.EMBEDDED_FONT_DATA;
   if (!data || typeof data !== "object") {
     throw new Error(
-      "[plan] EMBEDDED_FONT_DATA missing from fontData.generated.js — was `bun run build:fonts` run?",
+      "[plan] EMBEDDED_FONT_DATA missing from @hyperframes/core/fonts/embedded-data — was `bun run build:fonts` run?",
     );
   }
   // Hash a canonical key fingerprint, not the raw font bytes — the bytes are

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Regression test for the coverage a bundled face claims.
  *
@@ -13,7 +14,7 @@
  * `HYPERFRAMES_FONT_CACHE_DIR` so they are hermetic.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -106,7 +107,7 @@ describe("bundled Latin precedence", () => {
     const fetchImpl = (async (input: unknown) => {
       const url = String(input);
       if (url.startsWith("https://fonts.googleapis.com/")) {
-        expect(new URL(url).searchParams.get("family")).toStartWith("Inter:");
+        expect(new URL(url).searchParams.get("family")).toMatch(/^Inter:/);
         return new Response(`@font-face {
           font-family: 'Inter'; font-style: normal; font-weight: 400;
           src: url(https://fonts.gstatic.com/s/inter/text-subset.woff2) format('woff2');

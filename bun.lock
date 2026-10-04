@@ -24,7 +24,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -57,7 +57,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "bin": {
         "hyperframes": "./bin/hyperframes.mjs",
         "hyperframes-localize-fonts": "./bin/hyperframes-localize-fonts.mjs",
@@ -109,7 +109,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@chenglou/pretext": "^0.0.5",
         "@hyperframes/lint": "workspace:*",
@@ -118,8 +118,27 @@
         "bpm-detective": "^2.0.5",
         "linkedom": "^0.18.12",
         "postcss": "^8.5.8",
+        "wawoff2": "^2.0.1",
       },
       "devDependencies": {
+        "@fontsource/archivo-black": "^5.2.8",
+        "@fontsource/eb-garamond": "^5.2.7",
+        "@fontsource/ibm-plex-mono": "^5.2.7",
+        "@fontsource/inter": "^5.2.8",
+        "@fontsource/jetbrains-mono": "^5.2.8",
+        "@fontsource/lato": "^5.2.7",
+        "@fontsource/league-gothic": "^5.2.8",
+        "@fontsource/montserrat": "^5.2.8",
+        "@fontsource/noto-sans-jp": "^5.2.9",
+        "@fontsource/nunito": "^5.2.7",
+        "@fontsource/open-sans": "^5.2.7",
+        "@fontsource/oswald": "^5.2.8",
+        "@fontsource/outfit": "^5.2.8",
+        "@fontsource/playfair-display": "^5.2.8",
+        "@fontsource/poppins": "^5.2.7",
+        "@fontsource/roboto": "^5.2.10",
+        "@fontsource/source-code-pro": "^5.2.7",
+        "@fontsource/space-mono": "^5.2.9",
         "@types/jsdom": "^28.0.0",
         "@types/node": "^25.0.10",
         "@vitest/coverage-v8": "^4.1.11",
@@ -135,7 +154,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@hono/node-server": "^2.0.5",
         "@hyperframes/core": "workspace:^",
@@ -154,7 +173,7 @@
     },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -175,7 +194,7 @@
     },
     "packages/lint": {
       "name": "@hyperframes/lint",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
         "acorn": "^8.17.0",
@@ -195,7 +214,7 @@
     },
     "packages/parsers": {
       "name": "@hyperframes/parsers",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "acorn": "^8.17.0",
@@ -215,7 +234,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
       },
@@ -230,19 +249,8 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
-        "@fontsource/archivo-black": "^5.2.8",
-        "@fontsource/eb-garamond": "^5.2.7",
-        "@fontsource/ibm-plex-mono": "^5.2.7",
-        "@fontsource/inter": "^5.2.8",
-        "@fontsource/jetbrains-mono": "^5.2.8",
-        "@fontsource/league-gothic": "^5.2.8",
-        "@fontsource/montserrat": "^5.2.8",
-        "@fontsource/nunito": "^5.2.7",
-        "@fontsource/oswald": "^5.2.8",
-        "@fontsource/outfit": "^5.2.8",
-        "@fontsource/space-mono": "^5.2.9",
         "@hono/node-server": "^2.0.5",
         "@hyperframes/core": "workspace:^",
         "@hyperframes/engine": "workspace:^",
@@ -254,16 +262,8 @@
         "postcss": "^8.4.0",
         "puppeteer": "^25.2.1",
         "puppeteer-core": "^25.2.1",
-        "wawoff2": "^2.0.1",
       },
       "devDependencies": {
-        "@fontsource/lato": "^5.2.7",
-        "@fontsource/noto-sans-jp": "^5.2.9",
-        "@fontsource/open-sans": "^5.2.7",
-        "@fontsource/playfair-display": "^5.2.8",
-        "@fontsource/poppins": "^5.2.7",
-        "@fontsource/roboto": "^5.2.10",
-        "@fontsource/source-code-pro": "^5.2.7",
         "@hyperframes/aws-lambda": "workspace:*",
         "@types/node": "^25.0.10",
         "@webgpu/types": "^0.1.69",
@@ -275,7 +275,7 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -305,7 +305,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -317,7 +317,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@base-ui/react": "1.7.0",
         "@codemirror/autocomplete": "^6.20.1",
@@ -370,7 +370,7 @@
     },
     "packages/studio-server": {
       "name": "@hyperframes/studio-server",
-      "version": "0.8.119",
+      "version": "0.8.126",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",

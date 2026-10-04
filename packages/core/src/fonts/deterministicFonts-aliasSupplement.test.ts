@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Regression test for cross-typeface alias supplementation.
  *
@@ -16,7 +17,7 @@
  * so they are hermetic.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -294,7 +295,7 @@ describe("aliased font-family supplementation", () => {
     // The supplementary fetch is skipped outright when this lookup fails, so
     // every alias must resolve or its family silently loses Google's weights.
     for (const alias of Object.keys(FONT_ALIAS_MAP)) {
-      expect(resolveAliasDisplayName(alias)).toBeString();
+      expect(resolveAliasDisplayName(alias)).toEqual(expect.any(String));
     }
   });
 

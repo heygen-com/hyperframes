@@ -4,7 +4,7 @@
  * eliminating manual drift between the two.
  *
  * Keys are lowercase font family names. Values are canonical font slugs
- * matching CANONICAL_FONTS keys in the producer's deterministicFonts module.
+ * matching CANONICAL_FONTS keys in core's fonts/deterministicFonts module.
  */
 export const FONT_ALIAS_MAP = {
   // ── Canonical bundled fonts (self-referencing) ────────────────────────

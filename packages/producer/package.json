@@ -42,8 +42,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "bun run build:fonts && bun run build:hf-early-stub && bun run --cwd ../.. build:hyperframes-runtime:modular && node build.mjs",
-    "build:fonts": "node scripts/build-fonts.mjs",
+    "build": "bun run build:hf-early-stub && bun run --cwd ../.. build:hyperframes-runtime:modular && node build.mjs",
     "build:hf-early-stub": "bun run scripts/build-hf-early-stub.ts",
     "typecheck": "tsc --noEmit",
     "parity:check": "tsx src/parity-harness.ts",
@@ -76,17 +75,6 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
-    "@fontsource/archivo-black": "^5.2.8",
-    "@fontsource/eb-garamond": "^5.2.7",
-    "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@fontsource/inter": "^5.2.8",
-    "@fontsource/jetbrains-mono": "^5.2.8",
-    "@fontsource/league-gothic": "^5.2.8",
-    "@fontsource/montserrat": "^5.2.8",
-    "@fontsource/nunito": "^5.2.7",
-    "@fontsource/oswald": "^5.2.8",
-    "@fontsource/outfit": "^5.2.8",
-    "@fontsource/space-mono": "^5.2.9",
     "@hono/node-server": "^2.0.5",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/engine": "workspace:^",
@@ -97,17 +85,9 @@
     "linkedom": "^0.18.12",
     "postcss": "^8.4.0",
     "puppeteer": "^25.2.1",
-    "puppeteer-core": "^25.2.1",
-    "wawoff2": "^2.0.1"
+    "puppeteer-core": "^25.2.1"
   },
   "devDependencies": {
-    "@fontsource/lato": "^5.2.7",
-    "@fontsource/noto-sans-jp": "^5.2.9",
-    "@fontsource/open-sans": "^5.2.7",
-    "@fontsource/playfair-display": "^5.2.8",
-    "@fontsource/poppins": "^5.2.7",
-    "@fontsource/roboto": "^5.2.10",
-    "@fontsource/source-code-pro": "^5.2.7",
     "@hyperframes/aws-lambda": "workspace:*",
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
