@@ -119,7 +119,9 @@ export type CompositionLengthInputs = {
 /** A declared root length is the length (a longer timeline is cut off); else the timeline, the
  *  floors and the fallback, whichever is longest; else the length derived from the clips. */
 export function resolveCompositionLengthSeconds(input: CompositionLengthInputs): number {
-  if (input.declared !== null && input.declared > 0) return input.declared;
+  if (input.declared !== null && Number.isFinite(input.declared) && input.declared > 0) {
+    return input.declared;
+  }
   const timeline = aboveOneFrame(input.timeline());
   const floor = Math.max(0, ...input.floors().map((seconds) => seconds ?? 0));
   const fallback =

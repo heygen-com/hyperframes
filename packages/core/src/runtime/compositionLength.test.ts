@@ -18,10 +18,20 @@ describe("resolveCompositionLengthSeconds", () => {
 
   it("takes a declared length and reads nothing else", () => {
     const timeline = vi.fn(() => 10);
+    const floors = vi.fn(() => [12]);
     const derived = vi.fn(() => 7);
-    expect(resolveCompositionLengthSeconds({ ...base, declared: 4, timeline, derived })).toBe(4);
+    expect(
+      resolveCompositionLengthSeconds({ ...base, declared: 4, timeline, floors, derived }),
+    ).toBe(4);
     expect(timeline).not.toHaveBeenCalled();
+    expect(floors).not.toHaveBeenCalled();
     expect(derived).not.toHaveBeenCalled();
+  });
+
+  it("does not take an infinite declared length", () => {
+    expect(
+      resolveCompositionLengthSeconds({ ...base, declared: Infinity, timeline: () => 6 }),
+    ).toBe(6);
   });
 
   it("takes the longest of timeline, floors and fallback", () => {

@@ -314,6 +314,12 @@
       "types": "./dist/runtime/startResolver.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/composition-length": {
+      "source": "./src/runtime/compositionLength.ts",
+      "runtime": "./dist/runtime/compositionLength.js",
+      "types": "./dist/runtime/compositionLength.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/protocol": {
       "source": "./src/runtime/protocol.ts",
       "runtime": "./dist/runtime/protocol.js",
