@@ -151,6 +151,16 @@ describe("on a scroll", () => {
     expect(renders).toBe(settled);
   });
 
+  it("does not re-render strips that a jump carries from one side of the screen to the other", async () => {
+    left = 50_000;
+    await mountStrips(50);
+    const settled = renders;
+
+    scrollTo(-2_000_000);
+
+    expect(renders).toBe(settled);
+  });
+
   it("measures a strip as it comes near the screen, without waiting for a frame", async () => {
     const reports: IntersectionObserverCallback[] = [];
     globalThis.IntersectionObserver = class {

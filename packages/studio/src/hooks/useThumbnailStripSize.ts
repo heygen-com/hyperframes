@@ -26,12 +26,13 @@ const GAP_WARNING: IntersectionObserverInit & { scrollMargin: string } = {
 
 const EMPTY_STRIP: StripSize = { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 };
 
-// Clamped to a measured strip, so a scroll changes only strips crossing the screen's edge.
+// Clamped to a measured strip, and empty off either side, so only strips crossing the edge change.
 const merge = (prev: StripSize, patch: Partial<StripSize>): StripSize => {
   const next = { ...prev, ...patch };
   const width = next.width > 0 ? Math.ceil(next.width) : Infinity;
   next.inViewStart = Math.min(next.inViewStart, width);
   next.inViewEnd = Math.min(next.inViewEnd, width);
+  if (next.inViewEnd <= next.inViewStart) next.inViewStart = next.inViewEnd = 0;
   return (Object.keys(next) as (keyof StripSize)[]).every((key) => next[key] === prev[key])
     ? prev
     : next;
