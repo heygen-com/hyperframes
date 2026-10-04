@@ -13,6 +13,7 @@ import {
 } from "./timelineGroupEditing";
 import { collectTimelineSnapTargets, type TimelineSnapTarget } from "./timelineSnapping";
 import { getTimelineGridStep, rulerFrameRate } from "./timelineRulerGeometry";
+import { setPreviewFrame } from "../store/previewFrameStore";
 import type { StackingPatch } from "./timelineStackingSync";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import {
@@ -350,9 +351,7 @@ export function useTimelineClipDrag({
       });
       const setResizeState = (v: ResizePreviewResult) => {
         // The preview shows the dragged edge's frame; the playhead stays where it was.
-        usePlayerStore
-          .getState()
-          .setPreviewFrameTime(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration));
+        setPreviewFrame(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration));
         publishResizingClip(
           resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
         );
@@ -399,8 +398,7 @@ export function useTimelineClipDrag({
       cancelAnimationFrame(clipDragScrollRaf.current);
       clipDragScrollRaf.current = 0;
     }
-    const store = usePlayerStore.getState();
-    if (store.previewFrameTime !== null) store.setPreviewFrameTime(null);
+    setPreviewFrame(null);
     // Gesture teardown: drop frozen caches so the next gesture reads fresh state.
     snapTargetsCacheRef.current.clear();
     dragAudioTracksRef.current = null;

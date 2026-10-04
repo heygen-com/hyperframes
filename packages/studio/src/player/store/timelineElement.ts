@@ -8,6 +8,7 @@
  */
 
 import type { ClipManifestClip } from "../lib/playbackTypes";
+import { roundToCenti } from "../../utils/rounding";
 
 export interface TimelineElement {
   id: string;
@@ -114,6 +115,12 @@ type RowClock = Pick<
 >;
 const authoredOffset = (element: RowClock) =>
   element.authoredStartIsMasterTime ? 0 : (element.parentCompositionStart ?? 0);
+
+/** Where a clip's edges sit once saved: its file stores the local start and the duration, each to the centisecond. */
+export function savedClipEdges(element: RowClock, start: number, duration: number) {
+  const savedStart = authoredOffset(element) + roundToCenti(toAuthoredStart(element, start));
+  return { start: savedStart, end: savedStart + roundToCenti(duration) };
+}
 
 /** The earliest master start this row can take: its host's start, or its own if already earlier. */
 export function clampToHostStart(element: RowClock, masterTime: number): number {

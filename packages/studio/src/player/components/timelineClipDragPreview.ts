@@ -5,7 +5,7 @@ import {
   resolveTimelineMinDuration,
 } from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
-import { clampToHostStart } from "../store/timelineElement";
+import { clampToHostStart, savedClipEdges } from "../store/timelineElement";
 import {
   CLIP_Y,
   TRACK_H,
@@ -15,7 +15,6 @@ import {
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
   TIMELINE_SNAP_PX,
-  savesOnTarget,
   snapMoveToTargets,
   snapTimelineTime,
   type TimelineSnapTarget,
@@ -269,6 +268,12 @@ export function computeDragPreview(
     return { ...drag, started: true };
   }
   const { track: previewTrack, insertRow } = placement;
+  const target =
+    placement.start === snap.start && snap.snapTime !== null && snap.snapType !== null
+      ? { time: snap.snapTime, type: snap.snapType }
+      : null;
+  const clip = { start: snap.start, duration: drag.element.duration };
+  const guide = guideIfSaved(drag.element, clip, target, pps);
   return {
     ...drag,
     started: true,
@@ -280,9 +285,22 @@ export function computeDragPreview(
     // tell a deliberate vertical lane change from a horizontal drag.
     desiredTrack: nextMove.track,
     insertRow,
-    snapTime: placement.start === snap.start ? snap.snapTime : null,
-    snapType: placement.start === snap.start ? snap.snapType : null,
+    snapTime: guide?.time ?? null,
+    snapType: guide?.type ?? null,
   };
+}
+
+/** A snap's guide, kept only when the clip's edge as its file will save it is within a pixel of it. */
+export function guideIfSaved(
+  element: TimelineElement,
+  clip: { start: number; duration: number },
+  target: TimelineSnapTarget | null,
+  pps: number,
+): TimelineSnapTarget | null {
+  if (!target) return null;
+  const saved = savedClipEdges(element, clip.start, clip.duration);
+  const off = Math.min(Math.abs(saved.start - target.time), Math.abs(saved.end - target.time));
+  return off * pps < 1 ? target : null;
 }
 
 /** One frame: the last visible frame of a clip sits just before its end time. */
@@ -390,7 +408,7 @@ export function computeResizePreview(
       ) {
         // An edge already on the target still owns the guide; only move it when off.
         if (snapped !== edgeTime) nextResize = { ...nextResize, duration: snappedDuration };
-        if (savesOnTarget(nextResize.start + nextResize.duration, target.time, pps)) snap = target;
+        snap = guideIfSaved(resize.element, nextResize, target, pps);
       }
     } else {
       const { time: snapped, target } = snapTimelineTime(
@@ -404,7 +422,7 @@ export function computeResizePreview(
       const bounds = clipStartTrimDeltaBounds(clip, minStart, resolveTimelineMinDuration());
       if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
         if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
-        if (savesOnTarget(nextResize.start, target.time, pps)) snap = target;
+        snap = guideIfSaved(resize.element, nextResize, target, pps);
       }
     }
   }

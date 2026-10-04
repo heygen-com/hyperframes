@@ -12,6 +12,7 @@ import {
   resetPlayerStore,
 } from "./timelinePlayerTestHarness";
 import { liveTime, usePlayerStore } from "../store/playerStore";
+import { setPreviewFrame } from "../store/previewFrameStore";
 import { setTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -352,7 +353,7 @@ describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
 
 describe("useTimelinePlayer preview frame (a trim's dragged edge)", () => {
   function previewFrame(time: number | null) {
-    act(() => usePlayerStore.getState().setPreviewFrameTime(time));
+    act(() => setPreviewFrame(time));
   }
 
   it("shows the frame without moving the playhead, then puts the playhead's frame back", () => {

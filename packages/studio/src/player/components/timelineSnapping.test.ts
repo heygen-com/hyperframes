@@ -151,12 +151,6 @@ describe("snapMoveToTargets", () => {
     expect(r).toEqual({ start: 3.05, snapTime: 5, snapType: "playhead" });
   });
 
-  it("drops the guide when the snapped start cannot save onto the target", () => {
-    // 1440 px/s: a playhead on frame 31 (1.033s) saves the start at 1.03s, 4px off the guide.
-    const r = snapMoveToTargets(1.035, 2, [{ time: 1.033, type: "playhead" }], 1440, 60);
-    expect(r.snapTime).toBeNull();
-  });
-
   it("TIMELINE_SNAP_PX matches the historical beat-snap threshold", () => {
     expect(TIMELINE_SNAP_PX).toBe(8);
   });

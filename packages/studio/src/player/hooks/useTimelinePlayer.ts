@@ -5,6 +5,8 @@ import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useShadowPreviewReload } from "./useShadowPreviewReload";
 import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
+import { subscribePreviewFrame, transportAdapter } from "../store/previewFrameStore";
+import { clampToDuration } from "../lib/time";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { logReload } from "../../utils/reloadDebug";
 
@@ -48,30 +50,6 @@ export interface UseTimelinePlayerOptions {
   /** A reload was abandoned (cause in the message); the previous preview is still showing. */
   onPreviewReloadFailed?: (message: string) => void;
 }
-
-// A trim's edge frame is on screen, not the transport's time: pause, play and a reload's
-// hand-over read the playhead's time, and play starts from it unless the caller seeked first.
-function showingPreviewFrame(adapter: PlaybackAdapter): PlaybackAdapter {
-  let seeked = false;
-  const time = () => (seeked ? adapter.getTime() : usePlayerStore.getState().currentTime);
-  return {
-    play: () => {
-      adapter.seek(time());
-      adapter.play();
-    },
-    pause: () => adapter.pause(),
-    seek: (t, options) => {
-      seeked = true;
-      adapter.seek(t, options);
-    },
-    getTime: time,
-    getDuration: () => adapter.getDuration(),
-    isPlaying: () => adapter.isPlaying(),
-  };
-}
-
-const clampToDuration = (time: number, duration: number) =>
-  Math.max(0, duration > 0 ? Math.min(duration, time) : time);
 
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
@@ -176,10 +154,7 @@ export function useTimelinePlayer({
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
         });
-        const { previewFrameTime, isPlaying } = usePlayerStore.getState();
-        return adapter && previewFrameTime !== null && !isPlaying
-          ? showingPreviewFrame(adapter)
-          : adapter;
+        return transportAdapter(adapter);
       } catch {
         return null;
       }
@@ -380,12 +355,6 @@ export function useTimelinePlayer({
         seek(state.requestedSeekTime);
         usePlayerStore.getState().clearSeekRequest();
       }
-      // Frame only: the playhead, readout and store time stay where they are.
-      if (state.previewFrameTime !== prev.previewFrameTime && !state.isPlaying) {
-        const adapter = getAdapter();
-        const time = state.previewFrameTime ?? state.currentTime;
-        adapter?.seek(clampToDuration(time, adapter.getDuration()));
-      }
       // Play or stop from outside the loop — the FX rack auditioning a preset
       // while paused, which is silent otherwise. `returnTo` puts the playhead
       // back where the request found it: hovering is not an edit.
@@ -399,7 +368,8 @@ export function useTimelinePlayer({
         usePlayerStore.getState().clearPlaybackRequest();
       }
     });
-  }, [seek, play, pause, getAdapter]);
+  }, [seek, play, pause]);
+  useEffect(() => subscribePreviewFrame(getAdapter), [getAdapter]);
   const { playbackKeyDownRef, playbackKeyUpRef, attachIframeShortcutListeners, togglePlay } =
     usePlaybackKeyboard({
       iframeRef,

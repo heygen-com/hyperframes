@@ -55,12 +55,10 @@ export function collectTimelineSnapTargets(input: {
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
-/** Clip times save to the centisecond: a snap shows its guide only if the saved edge is within a pixel of it. */
-export function savesOnTarget(edge: number, target: number, pixelsPerSecond: number): boolean {
-  return Math.abs(roundToCenti(edge) - target) * pixelsPerSecond < 1;
-}
-
-/** The ruler line nearest `time` within the threshold, at its saved time; `gridStep` 0 means no grid. */
+/**
+ * The ruler line nearest `time` within the threshold; `gridStep` 0 means no grid. Clip times save
+ * to the centisecond, so a line snaps at its saved time, and only when that is within a pixel.
+ */
 function nearestGridLine(
   time: number,
   gridStep: number,
@@ -69,7 +67,8 @@ function nearestGridLine(
   if (!(gridStep > 0)) return null;
   const line = Math.round(time / gridStep) * gridStep;
   const saved = roundToCenti(line);
-  if (!savesOnTarget(line, line, TIMELINE_SNAP_PX / thresholdSecs)) return null;
+  const pixelsPerSecond = TIMELINE_SNAP_PX / thresholdSecs;
+  if (Math.abs(saved - line) * pixelsPerSecond >= 1) return null;
   return Math.abs(saved - time) < thresholdSecs ? { time: saved, type: "grid" } : null;
 }
 
@@ -142,6 +141,5 @@ export function snapMoveToTargets(
   const roundedCandidate = Math.round(candidate * 1000) / 1000;
   const clamped = Math.max(0, Math.min(maxStart, roundedCandidate));
   if (target && Math.abs(clamped - roundedCandidate) > 1e-6) target = null;
-  if (target && !savesOnTarget(clamped, clamped, pixelsPerSecond)) target = null;
   return { start: clamped, snapTime: target?.time ?? null, snapType: target?.type ?? null };
 }

@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
+import { usePreviewFrameStore } from "../store/previewFrameStore";
 import type { BlockedClipState, DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
@@ -26,6 +27,7 @@ function el(id: string, over: Partial<TimelineElement> = {}): TimelineElement {
 afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
+  usePreviewFrameStore.setState({ time: null });
 });
 
 function renderResizeHarness(
@@ -449,7 +451,7 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
 });
 
 describe("useTimelineClipDrag — trim guide and preview frame", () => {
-  const previewFrame = () => usePlayerStore.getState().previewFrameTime;
+  const previewFrame = () => usePreviewFrameStore.getState().time;
 
   /** Clip a (0-2s) with neighbour b starting at 5s, snapping on, a's end edge grabbed. */
   function trimAEndBesideB() {
