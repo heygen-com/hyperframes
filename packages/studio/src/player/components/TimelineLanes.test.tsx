@@ -400,20 +400,24 @@ describe("TimelineLanes disclosure target", () => {
       selectedKeys: selectedElementIds,
     };
     const view = renderLanes({ elements, selectedElementIds });
-    const clipA = view.host.querySelector('[data-el-id="clip-a"]');
+    const clipA = view.host.querySelector<HTMLElement>('[data-el-id="clip-a"]');
     expect(clipA).not.toBeNull();
+    expect(clipA?.parentElement).toBe(
+      view.host.querySelector('[data-el-id="clip-b"]')?.parentElement,
+    );
 
     view.rerender({ elements, selectedElementIds, multiDragPreview: dragging });
     expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
+    expect(clipA?.style.transform).toMatch(/^translateX\([1-9]/);
 
     view.rerender({ elements, selectedElementIds });
     expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
+    expect(clipA?.style.transform).toBe("");
     act(() => view.root.unmount());
   });
 
-  // The passenger branch wraps [clip, lanes] in a transformed div that re-renders
-  // on every pointer move. An unstable key there remounts the lanes and drops the
-  // in-flight drag.
+  // A passenger re-renders on every pointer move. An unstable key there remounts
+  // the lanes and drops the in-flight drag.
   it("does not remount the lanes while a multi-clip drag slides the formation", () => {
     const elements = [element("clip-a", TRACK_A), element("clip-b", TRACK_A)];
     const selectedElementIds = new Set(["clip-a", "clip-b"]);

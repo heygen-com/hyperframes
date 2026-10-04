@@ -1,4 +1,9 @@
-import { useMemo, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import {
+  useMemo,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type RefObject,
+} from "react";
 import {
   classifyPropertyGroup,
   type GsapAnimation,
@@ -23,6 +28,7 @@ export interface TimelinePropertyLanesProps {
   clipDuration: number;
   clipLeftPx: number;
   clipWidthPx: number;
+  passengerStyle?: CSSProperties;
   accentColor: string;
   isSelected: boolean;
   currentPercentage: number;
@@ -184,6 +190,7 @@ export function TimelinePropertyLanes({
   clipDuration,
   clipLeftPx,
   clipWidthPx,
+  passengerStyle,
   accentColor,
   isSelected,
   currentPercentage,
@@ -239,6 +246,7 @@ export function TimelinePropertyLanes({
             top: getTimelineLaneTop(laneIndex),
             width: clipWidthPx,
             height: LANE_H,
+            ...passengerStyle,
           }}
         >
           <TimelineDiamondLane

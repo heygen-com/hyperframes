@@ -20,6 +20,7 @@ import { clipSpeedSuffix } from "./clipToolAttrs";
 interface TimelineClipProps {
   el: TimelineElement;
   pps: number;
+  passengerStyle?: CSSProperties;
   clipY: number;
   clipHeight?: number;
   isSelected: boolean;
@@ -46,6 +47,7 @@ interface TimelineClipProps {
 export const TimelineClip = memo(function TimelineClip({
   el,
   pps,
+  passengerStyle,
   clipY,
   clipHeight,
   isSelected,
@@ -123,6 +125,7 @@ export const TimelineClip = memo(function TimelineClip({
     padding: 0,
     textAlign: "left",
     transform: isDragging ? "translateY(-1px)" : undefined,
+    ...passengerStyle,
   };
 
   return (

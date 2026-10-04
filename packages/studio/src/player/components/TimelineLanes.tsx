@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { Fragment, useId, useMemo, type CSSProperties } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
@@ -35,7 +35,14 @@ import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
 import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
 
-const CONTENTS_STYLE = { display: "contents" } as const;
+function passengerStyle(offsetPx: number): CSSProperties {
+  return {
+    transform: `translateX(${offsetPx}px)`,
+    opacity: 0.85,
+    zIndex: 20,
+    pointerEvents: "none",
+  };
+}
 
 export function TimelineLanes({
   pps,
@@ -392,9 +399,9 @@ export function TimelineLanes({
                     // the passenger's timeline data until the owning drag commits.
                     const isPassenger =
                       multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
-                    const passengerOffsetPx = isPassenger
-                      ? multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview)
-                      : 0;
+                    const riding = isPassenger
+                      ? passengerStyle(multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview))
+                      : undefined;
                     const clipGestures = createClipGestureHandlers(
                       el,
                       elementKey,
@@ -426,6 +433,7 @@ export function TimelineLanes({
                         }}
                         el={previewElement}
                         pps={pps}
+                        passengerStyle={riding}
                         clipY={CLIP_Y}
                         clipHeight={clipBarHeight}
                         isSelected={isSelected}
@@ -471,6 +479,7 @@ export function TimelineLanes({
                         beatsActive={beatStripOnTrack}
                         accentColor={clipStyle.accent}
                         isSelected={isSelected}
+                        passengerStyle={riding}
                         currentTime={currentTime}
                         selectedKeyframes={selectedKeyframes}
                         rovingTargetId={keyboard.rovingTargetId}
@@ -496,6 +505,7 @@ export function TimelineLanes({
                         clipDuration={previewElement.duration}
                         clipLeftPx={previewElement.start * pps}
                         clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                        passengerStyle={riding}
                         accentColor={clipStyle.accent}
                         isSelected={isSelected}
                         currentPercentage={
@@ -522,27 +532,14 @@ export function TimelineLanes({
                       />
                     );
 
-                    // One keyed wrapper per element, the same element type whether or not the
-                    // clip rides a drag, so joining or leaving a drag restyles it, never remounts it.
+                    // No wrapper node per clip, and the same Fragment whether or not it rides a
+                    // drag, so joining or leaving one restyles it, never remounts it.
                     return (
-                      <div
-                        key={clipKey}
-                        className={isPassenger ? "absolute inset-0" : undefined}
-                        style={
-                          isPassenger
-                            ? {
-                                transform: `translateX(${passengerOffsetPx}px)`,
-                                opacity: 0.85,
-                                zIndex: 20,
-                                pointerEvents: "none",
-                              }
-                            : CONTENTS_STYLE
-                        }
-                      >
+                      <Fragment key={clipKey}>
                         {clip}
                         {compactDiamonds}
                         {propertyLanes}
-                      </div>
+                      </Fragment>
                     );
                   })
                 }
