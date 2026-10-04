@@ -4,6 +4,7 @@ import {
   installStudioManualEditSeekReapply,
   reapplyPositionEditsAfterSeek,
 } from "../components/editor/manualEdits";
+import { isStudioManualEditGestureLiveIn } from "../components/editor/manualEditsDom";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
 import {
@@ -199,6 +200,12 @@ export function usePreviewPersistence({
 
   // ── Sync preview after undo/redo ──
 
+  // Undo never repaints under a live gesture: the preview reload waits for it and loads the file after its save.
+  const gestureHoldsPreview = useCallback(() => {
+    const doc = previewIframeRef.current?.contentDocument;
+    return !!doc && isStudioManualEditGestureLiveIn(doc);
+  }, [previewIframeRef]);
+
   const syncHistoryPreviewAfterApply = useCallback(
     async (restore: HistoryPreviewRestore) => {
       // Prefer an in-place soft reload for a soft-reloadable restore (the change
@@ -220,6 +227,7 @@ export function usePreviewPersistence({
               : Promise.reject(new Error("No project is open to read nested files from.")),
         ),
       );
+      if (gestureHoldsPreview()) return reloadPreview();
       const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
         activeCompPathRef.current,
@@ -238,24 +246,30 @@ export function usePreviewPersistence({
       // reload. The full path above waits for the reloaded preview to report instead.
       syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
     },
-    [previewIframeRef, activeCompPathRef, reloadPreview],
+    [previewIframeRef, activeCompPathRef, reloadPreview, gestureHoldsPreview],
   );
 
   // A restore the server has not confirmed yet: in place now, or not at all. A GSAP script re-run is not
   // synchronous, and a pending save would land under it.
   const showHistoryRestoreNow = useCallback(
     (files: RestoreFiles): (() => void) | null => {
-      if (!domEditSaveQueueRef.current?.isIdle() || hasStudioPendingEdits()) return null;
+      if (
+        !domEditSaveQueueRef.current?.isIdle() ||
+        hasStudioPendingEdits() ||
+        gestureHoldsPreview()
+      )
+        return null;
       const iframe = previewIframeRef.current;
       const now = () => usePlayerStore.getState().currentTime;
       const putBack = showRestoreInPlace(iframe, activeCompPathRef.current, files, now());
       if (!putBack) return null;
       return () => {
-        if (putBack(now())) syncStoredAutomationFromPreview(iframe?.contentDocument ?? null);
+        if (!gestureHoldsPreview() && putBack(now()))
+          syncStoredAutomationFromPreview(iframe?.contentDocument ?? null);
         else void syncHistoryPreviewAfterApply({ paths: Object.keys(files) });
       };
     },
-    [previewIframeRef, activeCompPathRef, syncHistoryPreviewAfterApply],
+    [previewIframeRef, activeCompPathRef, syncHistoryPreviewAfterApply, gestureHoldsPreview],
   );
 
   // ── Migrate legacy studio-motion.json ──
