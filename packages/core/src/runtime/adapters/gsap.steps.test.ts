@@ -327,6 +327,23 @@ describe("re-rendering leaves the rest as the seek left it", () => {
     expect(draws(true)).toBe(draws(false));
   });
 
+  it("fires a pause in a reversed repeating scene as often as without the redraw", () => {
+    const fires = (redraw: boolean) => {
+      let fired = 0;
+      const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
+      const scene = gsap.timeline({ repeat: 2, yoyo: true }).to({ z: 0 }, { z: 1, duration: 1 });
+      scene.addPause(0, () => void fired++).timeScale(3);
+      timeline.add(scene, 1);
+      scene.reversed(true);
+      timeline.progress(0.0001, true).totalTime(0, false);
+      timeline.totalTime(3, true);
+      if (redraw) rerenderGsapTimelineAt(timeline, 3);
+      timeline.totalTime(2.99, false);
+      return fired;
+    };
+    expect(fires(true)).toBe(fires(false));
+  });
+
   it("keeps the length of a timeline that grew after its last render", () => {
     const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
     timeline.totalTime(1, true);

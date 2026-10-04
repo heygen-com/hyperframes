@@ -19,7 +19,7 @@ export function rerenderGsapTimelineAt(
   timeline.totalDuration?.();
   const children = timeline.getChildren?.(false, true, true) ?? [];
   const marked = childrenWithLandingMarksIn(timeline).map(
-    (child) => [child, child.ratio, child._zTime] as const,
+    (child) => [child, child.ratio, child._zTime, child._act] as const,
   );
   const skipped = childrenStartingAfter(children, t).map((child) => [child, child._ts] as const);
   for (const [child] of skipped) child._ts = 0;
@@ -30,9 +30,10 @@ export function rerenderGsapTimelineAt(
   } finally {
     for (const [child, timeScale] of skipped) child._ts = timeScale;
   }
-  for (const [child, ratio, zTime] of marked) {
+  for (const [child, ratio, zTime, active] of marked) {
     child.ratio = ratio;
     child._zTime = zTime;
+    child._act = active;
   }
 }
 
@@ -57,7 +58,7 @@ function childrenStartingAfter(
   return found;
 }
 
-type GsapLandingMarks = { ratio: number; _zTime?: number };
+type GsapLandingMarks = { ratio: number; _zTime?: number; _act?: number };
 
 function childrenWithLandingMarksIn(timeline: {
   getChildren?: RuntimeTimelineLike["getChildren"];
