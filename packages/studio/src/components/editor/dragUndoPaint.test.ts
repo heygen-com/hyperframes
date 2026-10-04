@@ -8,6 +8,7 @@ import {
   adoptingStudioPendingEdit,
   hasStudioPendingEdits,
   paintBackNewestStudioPendingEdit,
+  type StudioEditInFlight,
 } from "../../utils/studioPendingEdits";
 
 const gsapOwns = vi.hoisted(() => ({ on: false }));
@@ -212,5 +213,27 @@ it("a GSAP drag saved as a left/top offset stays painted back while that offset 
   expect(element.style.getPropertyValue("left")).toBe("");
   shown!.showAgain();
   expect(element.style.getPropertyValue("left")).toBe("99px");
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+});
+
+it("keeps a GSAP drag's base through every repaint of its undo, so its save adds the drag once", async () => {
+  const gsapOf = fakeGsap({ x: 5, y: 7 });
+  let edit!: StudioEditInFlight;
+  let release!: () => void;
+  const element = dragWithSaveRunning(() => {
+    edit = adoptingStudioPendingEdit()!;
+    return new Promise<void>((resolve) => (release = resolve));
+  });
+  const moved = { ...gsapOf(element) };
+
+  const shown = paintBackNewestStudioPendingEdit();
+  edit.drawKeepingUndone(() => undefined);
+  expect(gsapOf(element)).toMatchObject({ x: 5, y: 7 });
+  expect(element.getAttribute("data-hf-drag-gsap-base-x")).toBe("5");
+  shown!.showAgain();
+  expect(gsapOf(element)).toMatchObject({ x: moved.x, y: moved.y });
+  expect(element.getAttribute("data-hf-drag-gsap-base-x")).toBe("5");
+
+  release();
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
 });

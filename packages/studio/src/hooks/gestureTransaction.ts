@@ -127,7 +127,9 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   tx.settle();
   logCommit("settled", { label: tx.label, coalesceKey });
 
-  const before = !tx.skipPixelAssert ? readPixelRect(tx.element) : null;
+  const measure = () =>
+    tx.draw ? tx.draw(() => readPixelRect(tx.element)) : readPixelRect(tx.element);
+  const before = !tx.skipPixelAssert ? measure() : null;
   const commit: TxCommit = (commitMutation) => {
     const wrapped: CommitMutation = (selection, mutation, options) => {
       mutationCount += 1;
@@ -151,9 +153,7 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
       const durationMs = Math.round(performance.now() - startedAt);
       logCommit("persisted", { label: tx.label, coalesceKey });
       if (before) {
-        const after = tx.draw
-          ? tx.draw(() => readPixelRect(tx.element))
-          : readPixelRect(tx.element);
+        const after = measure();
         const delta = pixelDelta(before, after);
         if (exceedsPixelTolerance(delta)) {
           logCommit("persist-changed-pixels", { label: tx.label, before, after, delta });

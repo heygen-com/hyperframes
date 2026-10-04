@@ -3,7 +3,11 @@ import {
   restoreStudioPathOffset,
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
-import { getOffsetDragGsap, type ManualOffsetDragMember } from "./manualOffsetDrag";
+import {
+  getOffsetDragGsap,
+  stampGestureBase,
+  type ManualOffsetDragMember,
+} from "./manualOffsetDrag";
 import type { StudioEditRevert } from "../../utils/studioPendingEdits";
 
 interface MemberPosition {
@@ -40,17 +44,23 @@ function showMemberPosition(member: ManualOffsetDragMember, position: MemberPosi
   restoreStudioPathOffset(member.element, position.offset);
   showPlacement(member.element, position.placement);
   if (position.gsap) getOffsetDragGsap(member.element)?.set(member.element, { ...position.gsap });
+  // The restore drops the gesture's base stamps; its save still reads them.
+  if (!member.plainTranslate)
+    stampGestureBase(member.element, member.initialOffset, member.baseGsap);
 }
 
-/** Undo's live revert of a move: its members at gesture start (the restore resets GSAP's x/y from the gesture's base). */
+/** Undo's live revert of a move: its members at gesture start. */
 export function manualOffsetMoveRevert(members: ManualOffsetDragMember[]): StudioEditRevert {
   const startPlacement = members.map((member) => placementOf(member.element));
   return () => {
     const shown = members.map(readMemberPosition);
-    members.forEach((member, i) => {
-      restoreStudioPathOffset(member.element, member.initialPathOffset);
-      showPlacement(member.element, startPlacement[i]!);
-    });
+    members.forEach((member, i) =>
+      showMemberPosition(member, {
+        offset: member.initialPathOffset,
+        gsap: member.plainTranslate ? null : member.baseGsap,
+        placement: startPlacement[i]!,
+      }),
+    );
     return () => members.forEach((member, i) => showMemberPosition(member, shown[i]!));
   };
 }

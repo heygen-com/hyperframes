@@ -447,7 +447,7 @@ export function applyManualOffsetDragDraft(
  * the element flies off-screen the instant you drop it. The member holds the
  * true gesture-start values in JS, immune to the re-render.
  */
-function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
+export function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
   el.setAttribute("data-hf-drag-gsap-base-x", String(baseGsap.x));
   el.setAttribute("data-hf-drag-gsap-base-y", String(baseGsap.y));
   el.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
