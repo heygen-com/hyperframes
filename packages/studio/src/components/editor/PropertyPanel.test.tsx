@@ -259,8 +259,10 @@ async function renderPanel(
     return refresh && selectionRef
       ? {
           ...actual,
-          useDomEditActionsContextOptional: () => ({ refreshDomEditSelectionFromPreview: refresh }),
-          useDomEditSelectionContextOptional: () => ({ domEditSelectionRef: selectionRef }),
+          useDomEditActionsContextOptional: () => ({
+            refreshDomEditSelectionFromPreview: refresh,
+            domEditSelectionRef: selectionRef,
+          }),
         }
       : actual;
   });
