@@ -210,12 +210,15 @@ function isHistoryPath(path: string): boolean {
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
 
-/** An older log as history keeps it: hidden paths gone, and with them an entry that changed nothing else. */
+/** An older log as history keeps it: hidden paths gone, and with them an entry that changed nothing else, unless an
+ * undo or restore links it to another entry (an undo left empty still keeps its target undone). */
 function keptPaths(log: HistoryLog): HistoryLog {
   for (const path of log.baseline.keys()) if (!isHistoryPath(path)) log.baseline.delete(path);
+  const linked = new Set(log.entries.flatMap((entry) => [entry.undoes, entry.restoredTo]));
   log.entries = log.entries.flatMap((entry) => {
     const files = entry.files.filter((file) => isHistoryPath(file.path));
-    return files.length || !entry.files.length ? [{ ...entry, files }] : [];
+    const kept = files.length || !entry.files.length || entry.undoes || entry.restoredTo;
+    return kept || linked.has(entry.id) ? [{ ...entry, files }] : [];
   });
   return log;
 }
@@ -1020,10 +1023,11 @@ class Engine {
     const everyone = this.options.undoScope === "everyone";
     const ofOpenTurn = (entry: HistoryEntry) =>
       this.windows.some((open) => open.parts?.has(entry.id));
+    // An entry an older log left with no files has nothing to step back or forward.
     return stepTarget(
       this.log.entries,
       direction,
-      (entry) => mine(entry.who) || (everyone && !ofOpenTurn(entry)),
+      (entry) => entry.files.length > 0 && (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
     );
   }
 
