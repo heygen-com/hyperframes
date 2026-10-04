@@ -33,9 +33,14 @@ describe("renderBox", () => {
     const { renderBox } = await import("./render.mjs");
     const dir = mkdtempSync(join(tmpdir(), "edit-bench-render-"));
     const decoder = { evaluate: async () => ({ left: 0, right: 1, top: 0, bottom: 1, area: 1 }) };
-    await renderBox(dir, decoder);
-    rmSync(dir, { recursive: true });
+    try {
+      await renderBox(dir, decoder);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
     expect(sent.map((s) => s.method)).toEqual(["Fetch.enable", "Fetch.fulfillRequest"]);
+    const [{ urlPattern }] = sent[0].params.patterns;
+    expect(gsapUrl.startsWith(urlPattern.replace(/\*$/, ""))).toBe(true);
     const gsap = readFileSync(require.resolve("gsap/dist/gsap.min.js")).toString("base64");
     expect(sent[1].params.body).toBe(gsap);
     expect(sessionArgs[0][4]).toMatchObject({ staticFrameDedup: false });
