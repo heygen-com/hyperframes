@@ -17,9 +17,9 @@ export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // OAuth-only cli-source header above, which also gates the free allowance.
 export const HEYGEN_CLIENT_SOURCE_HEADERS = { "X-HeyGen-Client-Source": "media-use" };
 
-// A missing file, or a folder where the file should be (some home dirs have a `.env` one), is no file: null. Read
-// without checking first, so the file cannot change between a check and the read.
-function fileTextOrNull(path) {
+// A missing `.env`, or a `.env` folder (some home dirs have one), is no env file: null. Read without checking first,
+// so the file cannot change between a check and the read.
+function envFileText(path) {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {
@@ -32,7 +32,7 @@ function fileTextOrNull(path) {
 export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
   for (let i = 0; i < 5; i++) {
-    const text = fileTextOrNull(join(dir, ".env"));
+    const text = envFileText(join(dir, ".env"));
     if (text != null) {
       for (const raw of text.split("\n")) {
         let line = raw.trim();
@@ -57,18 +57,25 @@ export function loadEnvFromDir(startDir) {
   }
 }
 
-// → { headers } | { expired: true } | null. Throws only when the credentials file exists but cannot be read.
+// → { headers } | { expired: true } | null. Never throws.
 export function heygenCredential() {
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
   if (envKey) return { headers: { "X-Api-Key": envKey } };
 
   const file = join(process.env.HEYGEN_CONFIG_DIR || join(homedir(), ".heygen"), "credentials");
-  const raw = fileTextOrNull(file)?.trim();
+  // Callers only probe for a credential, so any path that cannot be read (missing, a folder, a locked ~/.heygen)
+  // is none. Read without checking first, so the file cannot change between a check and the read.
+  let raw;
+  try {
+    raw = readFileSync(file, "utf8").trim();
+  } catch {
+    return null;
+  }
   if (!raw) return null;
   if (!raw.startsWith("{")) return { headers: { "X-Api-Key": raw } };
 
   // A malformed credentials file (partial write / wrong shape) must degrade to
-  // "no credential", not crash the engine at startup.
+  // "no credential", not crash the engine at startup — this function never throws.
   let cred;
   try {
     cred = JSON.parse(raw);
@@ -87,9 +94,9 @@ export function heygenCredential() {
 
 // → "oauth" | "api_key" | null. Same oauth-vs-api-key check heygenAuthHeaders()
 // makes internally, exposed on its own so callers that only need to *tag* the
-// auth path (telemetry) don't have to parse headers back apart. No credential
-// (or an expired one) is just `null`, same as a fresh resolve with nothing to
-// tag; it throws only when the credentials file exists but cannot be read.
+// auth path (telemetry) don't have to parse headers back apart. Never throws:
+// no credential (or an expired one) is just `null`, same as a fresh resolve
+// with nothing to tag.
 export function heygenAuthMethod() {
   const cred = heygenCredential();
   if (!cred?.headers) return null;
