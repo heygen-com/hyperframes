@@ -5,7 +5,10 @@ import {
   MIN_VALID_TIMELINE_DURATION_SECONDS,
   readStaticCompositionMeta,
   resolveCompositionLengthSeconds,
+  resolveContentDerivedDuration,
+  resolveMediaWindowDurationSeconds,
 } from "./compositionLength";
+import { createRuntimeStartTimeResolver } from "./startResolver";
 
 describe("resolveCompositionLengthSeconds", () => {
   const base = {
@@ -106,5 +109,46 @@ describe("findRootCompositionElement", () => {
       `<div data-composition-id="a"></div><div data-composition-id="b" data-root="true"></div>`,
     );
     expect(findRootCompositionElement(doc)?.getAttribute("data-composition-id")).toBe("b");
+  });
+});
+
+describe("rules moved unchanged from the runtime", () => {
+  const resolverFor = (doc: Document) =>
+    createRuntimeStartTimeResolver({
+      timelineRegistry: {},
+      includeAuthoredTimingAttrs: true,
+      documentRef: doc,
+    });
+
+  it("counts only the root's own sub-compositions in the authored floor", () => {
+    const html =
+      `<div data-composition-id="main"><div data-composition-id="scene" data-start="1" data-duration="2">` +
+      `<div data-composition-id="inner" data-start="0" data-duration="50"></div></div></div>`;
+    expect(readStaticCompositionMeta(parseHTMLContent(html))?.durationSeconds).toBe(3);
+  });
+
+  it("skips a media clip of one frame or less", () => {
+    const doc = parseHTMLContent(
+      `<div data-composition-id="main"><video data-start="5"></video></div>`,
+    );
+    const tooShort = MIN_VALID_TIMELINE_DURATION_SECONDS;
+    expect(
+      resolveMediaWindowDurationSeconds(doc, {
+        mediaStart: () => 5,
+        mediaDuration: () => tooShort,
+      }),
+    ).toBeNull();
+  });
+
+  it("holds the derived length while a declared Lottie source has not registered", () => {
+    const doc = parseHTMLContent(
+      `<div data-composition-id="main"><div data-start="0" data-duration="3"></div>` +
+        `<div data-lottie-src="anim.json"></div></div>`,
+    );
+    const root = findRootCompositionElement(doc)!;
+    const result = resolveContentDerivedDuration(root, resolverFor(doc), {
+      unregisteredLottie: false,
+    });
+    expect(result).toMatchObject({ seconds: null, source: "unresolved" });
   });
 });
