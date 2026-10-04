@@ -4,7 +4,10 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../player/store/playerStore";
 import type { TimelineElement } from "../player/store/timelineElement";
-import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
+import {
+  beginStudioManualEditGesture,
+  endStudioManualEditGesture,
+} from "../components/editor/manualEdits";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { usePreviewPersistence } from "./usePreviewPersistence";
 
@@ -170,7 +173,7 @@ describe("undo that lands while a newer gesture holds an element", () => {
     return { box, win: contentWindow, reloadPreview, hook: () => hook! };
   }
 
-  it("leaves the held element where the gesture drew it and hands the refresh to the preview reload", async () => {
+  it("leaves the held element where the gesture drew it and reloads the preview once it ends", async () => {
     const { box, win, reloadPreview, hook } = heldPreview();
 
     await act(async () => hook().syncHistoryPreviewAfterApply({ paths: ["index.html"], files }));
@@ -178,6 +181,8 @@ describe("undo that lands while a newer gesture holds an element", () => {
     expect(box.style.left).toBe("90px");
     expect(win.__player.seek).not.toHaveBeenCalled();
     expect(win.__hfStudioManualEditsApply).not.toHaveBeenCalled();
+    expect(reloadPreview).not.toHaveBeenCalled();
+    endStudioManualEditGesture(box);
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(usePlayerStore.getState().selectedElementId).toBe("box");
   });
@@ -197,6 +202,9 @@ describe("undo that lands while a newer gesture holds an element", () => {
     win.__player.seek.mockClear();
 
     putBack();
+    await act(async () => {});
+    expect(reloadPreview).not.toHaveBeenCalled();
+    endStudioManualEditGesture(box);
 
     await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledTimes(1));
     expect(win.__player.seek).not.toHaveBeenCalled();

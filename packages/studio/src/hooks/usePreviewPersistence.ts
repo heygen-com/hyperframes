@@ -4,7 +4,10 @@ import {
   installStudioManualEditSeekReapply,
   reapplyPositionEditsAfterSeek,
 } from "../components/editor/manualEdits";
-import { isStudioManualEditGestureLiveIn } from "../components/editor/manualEditsDom";
+import {
+  afterStudioManualEditGestures,
+  isStudioManualEditGestureLiveIn,
+} from "../components/editor/manualEditsDom";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
 import {
@@ -200,10 +203,10 @@ export function usePreviewPersistence({
 
   // ── Sync preview after undo/redo ──
 
-  // Undo never repaints under a live gesture: the preview reload waits for it and loads the file after its save.
-  const gestureHoldsPreview = useCallback(() => {
+  // Undo never repaints under a live gesture; the preview reloads once the last one ends.
+  const heldPreviewDoc = useCallback(() => {
     const doc = previewIframeRef.current?.contentDocument;
-    return !!doc && isStudioManualEditGestureLiveIn(doc);
+    return doc && isStudioManualEditGestureLiveIn(doc) ? doc : null;
   }, [previewIframeRef]);
 
   const syncHistoryPreviewAfterApply = useCallback(
@@ -227,7 +230,8 @@ export function usePreviewPersistence({
               : Promise.reject(new Error("No project is open to read nested files from.")),
         ),
       );
-      if (gestureHoldsPreview()) return reloadPreview();
+      const held = heldPreviewDoc();
+      if (held) return void afterStudioManualEditGestures(held, reloadPreview);
       const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
         activeCompPathRef.current,
@@ -246,30 +250,26 @@ export function usePreviewPersistence({
       // reload. The full path above waits for the reloaded preview to report instead.
       syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
     },
-    [previewIframeRef, activeCompPathRef, reloadPreview, gestureHoldsPreview],
+    [previewIframeRef, activeCompPathRef, reloadPreview, heldPreviewDoc],
   );
 
   // A restore the server has not confirmed yet: in place now, or not at all. A GSAP script re-run is not
   // synchronous, and a pending save would land under it.
   const showHistoryRestoreNow = useCallback(
     (files: RestoreFiles): (() => void) | null => {
-      if (
-        !domEditSaveQueueRef.current?.isIdle() ||
-        hasStudioPendingEdits() ||
-        gestureHoldsPreview()
-      )
+      if (!domEditSaveQueueRef.current?.isIdle() || hasStudioPendingEdits() || heldPreviewDoc())
         return null;
       const iframe = previewIframeRef.current;
       const now = () => usePlayerStore.getState().currentTime;
       const putBack = showRestoreInPlace(iframe, activeCompPathRef.current, files, now());
       if (!putBack) return null;
       return () => {
-        if (!gestureHoldsPreview() && putBack(now()))
+        if (!heldPreviewDoc() && putBack(now()))
           syncStoredAutomationFromPreview(iframe?.contentDocument ?? null);
         else void syncHistoryPreviewAfterApply({ paths: Object.keys(files) });
       };
     },
-    [previewIframeRef, activeCompPathRef, syncHistoryPreviewAfterApply, gestureHoldsPreview],
+    [previewIframeRef, activeCompPathRef, syncHistoryPreviewAfterApply, heldPreviewDoc],
   );
 
   // ── Migrate legacy studio-motion.json ──

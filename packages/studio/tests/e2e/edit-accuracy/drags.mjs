@@ -1,5 +1,5 @@
-// Drag paths (one long move) and sequences (several edits, no settle between), gsap none.
-// Ids keep the grid's scheme with a letters-only gesture token, so `^[a-z]+-none-` selects them.
+// Drag paths (one long move) and sequences (several edits, no settle between), gsap none but for GSAP_SEQUENCES.
+// Ids keep the grid's scheme with a letters-only gesture token, so `^[a-z]+-none-` selects the plain ones.
 
 const MOVE = { do: "drag", gesture: "move", by: [90, 60] };
 const BACK = { do: "drag", gesture: "move", by: [-70, 50] };
@@ -26,16 +26,21 @@ const SEQUENCES = {
   ],
 };
 
+/** On a GSAP-tweened box: the undo is still landing while the next drag holds the box, which must not move. */
+const GSAP_SEQUENCES = {
+  resizeundodrag: [{ do: "drag", gesture: "resize" }, { do: "undo" }, MOVE],
+};
+
 /** Text in place: a double press opens it, Enter commits; `select` first double-clicks a word to replace. */
 const TEXT = {
   edit: [{ do: "text", word: "Teleport" }],
   select: [{ do: "text", word: "Teleport", select: "accuracy" }],
 };
 
-const row = (gesture, c, steps) => ({
-  id: [gesture, "none", c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-"),
+const row = (gesture, c, steps, gsap = "none") => ({
+  id: [gesture, gsap, c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-"),
   gesture,
-  gsap: "none",
+  gsap,
   ...c,
   steps,
   other: Boolean(steps?.some((s) => s.element === "B")),
@@ -57,6 +62,9 @@ export function dragCases() {
   const sequences = Object.entries(SEQUENCES).flatMap(([name, steps]) =>
     everyPlacement.map((c) => row(`seq${name}`, c, steps)),
   );
+  const gsapSequences = Object.entries(GSAP_SEQUENCES).map(([name, steps]) =>
+    row(`seq${name}`, pxRoot(), steps, "tween"),
+  );
   const texts = Object.entries(TEXT).flatMap(([name, steps]) =>
     ["root", "nested"].map((nesting) => ({
       ...row(`text${name}`, { ...base, placement: "px", nesting }, steps),
@@ -71,5 +79,5 @@ export function dragCases() {
       other: false,
     })),
   );
-  return [...paths, ...sequences, ...texts, ...centred];
+  return [...paths, ...sequences, ...gsapSequences, ...texts, ...centred];
 }
