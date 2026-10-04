@@ -351,33 +351,13 @@ export async function tryGsapResizeIntercept(
     const dropPoint = scaleDraftDropPoint;
     const measured = draw(() => {
       clearStudioBoxSize(draftEl);
-      // Put the committed scale on the live element before measuring.
-      //
-      // This step reads where the commit lands the box and shifts the position
-      // hold by the difference. That only works if the commit has actually
-      // rendered, and whether it had was luck: on the FIRST resize of an element
-      // the timeline had not re-seeked yet, so this measured the element at its
-      // natural size, still sitting on the drop point, computed a residual of
-      // zero, and skipped the correction entirely. The scale then landed, GSAP
-      // rendered it around the element's centre, and the element jumped by the
-      // whole drag distance. Elements that had been resized before got a
-      // correction only because their PREVIOUS scale made the residual non-zero.
-      //
-      // Setting it here costs nothing when the commit has already rendered (same
-      // value) and makes the measurement below mean what it says either way.
+      // Draw the committed scale before measuring: on a first resize the timeline has not re-seeked yet,
+      // so the box would read at its natural size and the correction would be skipped.
       if (committedScale) {
         setElementGsapScale(draftEl, committedScale.x, committedScale.y);
       }
-      // Measure from the pre-gesture position, not the draft one.
-      //
-      // The resize draft translates the element to keep the dragged corner under
-      // the cursor, but the scale route never persists that translation — the
-      // element renders back at its pre-gesture position as soon as the commit
-      // lands. Measuring while the draft translation was still applied made the
-      // residual carry the whole drag distance, and the position commit then
-      // composed that residual onto the pre-gesture base (it reads the gesture's
-      // own base attributes, not the live value), so the element landed a full
-      // drag away from the drop point on every scale resize.
+      // Measure from the pre-gesture position: the scale route never saves the draft's translation, and
+      // the position write composes the residual onto that same base.
       const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
       const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
         selection.element,
@@ -410,13 +390,8 @@ export async function tryGsapResizeIntercept(
         base,
         corrected,
       });
-      // Correct the LIVE runtime NOW, synchronously: the soft reload above just
-      // rendered the committed scale around the element center — NOT at the drop
-      // point — and everything up to here runs in the same microtask chain as
-      // that reload, so no frame has painted the uncorrected position yet. The
-      // server persist below costs network round-trips; without this set, the
-      // element visibly sits at the wrong spot for those frames (the drop
-      // "jump"). The persisted commit re-applies the same values (idempotent).
+      // Correct the live box in the same task as the measurement, so no frame shows it off the drop
+      // point while the position write is in flight.
       setElementGsapPosition(draftEl, corrected.x, corrected.y);
       return { base, corrected };
     });
