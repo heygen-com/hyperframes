@@ -139,7 +139,7 @@ describe("nearestPointOnPath", () => {
 describe("nodeCentre", () => {
   // The edit bench's `keys` layer at 1 s: left 560, 260 wide now, GSAP x 50; it reaches x 60 and
   // width 280 at 2 s, x 120 and width 320 at 3 s, so its centre is then at 760 and 840.
-  const home = { x: 690, y: 380, w: 260, h: 160 };
+  const home = { x: 690, y: 380, w: 260, h: 160, ax: 0.5, ay: 0.5 };
   const read: ReadTween = {
     keyframes: [
       { percentage: 66.667, properties: { x: 60, width: 280 } },
@@ -153,6 +153,12 @@ describe("nodeCentre", () => {
       { x: 760, y: 410 },
       { x: 840, y: 410 },
     ]);
+  });
+
+  it("keeps a layer centred by xPercent/yPercent -50 on its centre as a keyframe resizes it", () => {
+    const geo = buildMotionPathGeometry(read, { x: 50, y: 30 })!;
+    const centred = { ...home, ax: 0, ay: 0 };
+    expect(geo.nodes.map((n) => nodeCentre(n, centred, 1).x)).toEqual([750, 810]);
   });
 
   it("keeps a keyframe that sets no size at home plus its offset", () => {

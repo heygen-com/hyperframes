@@ -462,6 +462,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   return (
     <div
       ref={overlayRef}
+      data-dom-edit-overlay="true"
       // Standing aside is the only way the caret below can be reached, and is
       // what keeps selection, drag and marquee from firing mid-edit.
       className={`absolute inset-0 z-10 outline-hidden ${

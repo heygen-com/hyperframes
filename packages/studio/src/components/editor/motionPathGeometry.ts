@@ -23,15 +23,17 @@ export interface MotionPathNode extends MotionPathPoint {
   ref: MotionNodeRef;
 }
 
-/** The live layer's centre without its own transform, and its layout size now. */
-export type MotionPathHome = { x: number; y: number; w: number; h: number };
+/** The live layer's centre without its x/y offset, its layout size now, and the share of a size
+ *  change that moves the centre (0.5 from the left edge; 0 when xPercent -50 centres it). */
+export type MotionPathHome = { x: number; y: number; w: number; h: number; ax: number; ay: number };
 
-/** Where the layer's centre is at a node: a size the keyframe sets moves the centre by half the change. */
+/** Where the layer's centre is at a node, with the size that keyframe sets. */
 export function nodeCentre(n: MotionPathPoint, home: MotionPathHome, pScale: number) {
-  const grow = (to: number | undefined, now: number) => (to === undefined ? 0 : (to - now) / 2);
+  const grow = (to: number | undefined, now: number, share: number) =>
+    to === undefined ? 0 : (to - now) * share;
   return {
-    x: home.x + (n.x + grow(n.w, home.w)) * pScale,
-    y: home.y + (n.y + grow(n.h, home.h)) * pScale,
+    x: home.x + (n.x + grow(n.w, home.w, home.ax)) * pScale,
+    y: home.y + (n.y + grow(n.h, home.h, home.ay)) * pScale,
   };
 }
 

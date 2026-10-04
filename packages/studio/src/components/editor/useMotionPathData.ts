@@ -13,8 +13,7 @@ import { usePlayerStore } from "../../player/store/playerStore";
 
 type Rect = { left: number; top: number; width: number; height: number };
 
-// The translate (e/f) components of an element's computed transform, in comp px.
-// A group wrapper dragged via GSAP carries its offset here, not in offsetLeft/Top.
+// An element's computed transform translate: a group wrapper GSAP moved carries its offset here.
 function transformTranslate(el: HTMLElement): { x: number; y: number } {
   const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
   if (!t || t === "none") return { x: 0, y: 0 };
@@ -45,6 +44,16 @@ export function transformWDivisor(el: HTMLElement): number {
   return Number.isFinite(w) && w > 0 ? w : 1;
 }
 
+/** Centre shift per px grown: 0.5 from a set left/top, -0.5 from a set right/bottom, plus xPercent.
+ *  ponytail: in-flow layers get 0 (layout may centre them); read their anchor if one draws off. */
+function growShare(el: HTMLElement, start: string, end: string, percent: number): number {
+  const style = el.ownerDocument?.defaultView?.getComputedStyle(el);
+  if (!style || !/^(absolute|fixed)$/.test(style.position)) return 0;
+  const map = el.computedStyleMap?.();
+  const auto = (side: string) => String(map?.get(side) ?? "") === "auto";
+  return (auto(start) && !auto(end) ? -0.5 : 0.5) + percent;
+}
+
 export function elementHome(el: HTMLElement): MotionPathHome {
   let left = 0;
   let top = 0;
@@ -64,13 +73,20 @@ export function elementHome(el: HTMLElement): MotionPathHome {
     if (!parent || parent.hasAttribute("data-composition-id")) break;
     node = parent;
   }
-  let x = left + el.offsetWidth / 2;
-  let y = top + el.offsetHeight / 2;
+  const gsap = (
+    el.ownerDocument?.defaultView as { gsap?: { getProperty?: (t: Element, p: string) => unknown } }
+  )?.gsap;
+  const percent = (p: string) => (Number(gsap?.getProperty?.(el, p)) || 0) / 100;
+  const [px, py] = [percent("xPercent"), percent("yPercent")];
+  let x = left + el.offsetWidth * (0.5 + px);
+  let y = top + el.offsetHeight * (0.5 + py);
+  const ax = growShare(el, "left", "right", px);
+  const ay = growShare(el, "top", "bottom", py);
   if ((el.style.translate ?? "").includes("var(")) {
     x += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-x")) || 0;
     y += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
   }
-  return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+  return { x, y, w: el.offsetWidth, h: el.offsetHeight, ax, ay };
 }
 
 function rectsClose(a: Rect, b: Rect): boolean {
@@ -152,7 +168,9 @@ export function useMotionPathData(
             Math.abs(prev.x - h.x) < 0.5 &&
             Math.abs(prev.y - h.y) < 0.5 &&
             prev.w === h.w &&
-            prev.h === h.h
+            prev.h === h.h &&
+            prev.ax === h.ax &&
+            prev.ay === h.ay
               ? prev
               : h,
           );
@@ -175,7 +193,8 @@ export function useMotionPathData(
       const base = read ? readGsapPositionFromIframe(iframeRef.current, selector) : null;
       const next = buildMotionPathGeometry(read, base ?? undefined);
       setGeometry((prev) =>
-        prev?.kind === next?.kind && JSON.stringify(prev?.nodes) === JSON.stringify(next?.nodes)
+        prev?.kind === next?.kind &&
+        JSON.stringify([prev?.nodes, prev?.start]) === JSON.stringify([next?.nodes, next?.start])
           ? prev
           : next,
       );

@@ -32,6 +32,16 @@ it("reads where GSAP started a step list whose first keyframe comes later", () =
   expect(got?.start).toEqual({ x: 40, width: 260 });
 });
 
+it.each([
+  [`{ "50%": { x: 60, y: 20 }, "100%": { x: 120, y: 40 } }, duration: 2`, { x: 40, y: 0 }],
+  [
+    `{ "50%": { x: 60, width: 280 }, "100%": { x: 120, width: 320 } }, duration: 2`,
+    { x: 40, width: 260 },
+  ],
+])("reads every channel's start for a percentage list past 0%: %s", (keyframes, start) => {
+  expect(read(keyframes)?.start).toEqual(start);
+});
+
 it("reads no start for keyframes that begin at 0%, or a step list that begins where GSAP started", () => {
   expect(read(`{ "0%": { x: 10 }, "100%": { x: 120 } }, duration: 3`)?.start).toBeUndefined();
   expect(read(`[{ x: 40, duration: 0 }, { x: 120, duration: 1 }]`)?.start).toBeUndefined();

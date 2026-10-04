@@ -1,28 +1,32 @@
 type Point = { x: number; y: number };
 
 const LAYER_BOX = '[data-dom-edit-selection-box="true"]';
+const OVERLAY = '[data-dom-edit-overlay="true"]';
 
 /** How far a node's dot reaches; a selected node draws it larger. */
 export const dotRadius = (r: number, selected: boolean) => (selected ? r * 1.5 : r);
 
-/** A press on the layer's own node, or anywhere in its box (even on another keyframe's dot), is the layer's. */
-export function pressBelongsToLayer(
+export function controlUnder(e: React.PointerEvent): Element | null {
+  const path = e.currentTarget.closest("svg");
+  const hits = e.currentTarget.ownerDocument.elementsFromPoint(e.clientX, e.clientY);
+  const hit = hits.find((el) => !path?.contains(el));
+  return hit && !hit.matches(OVERLAY) && hit.closest(OVERLAY) ? hit : null;
+}
+
+/** The handle or box above a node, else the box if the layer sits at the node; null: the node. */
+export function controlForNode(
   e: React.PointerEvent,
   pressed: Point,
   live: Point | null,
-): boolean {
-  if (live && Math.abs(pressed.x - live.x) < 0.5 && Math.abs(pressed.y - live.y) < 0.5) return true;
-  return Boolean(layerBoxUnder(e));
+): Element | null {
+  const atLayer = live && Math.abs(pressed.x - live.x) < 0.5 && Math.abs(pressed.y - live.y) < 0.5;
+  return (
+    controlUnder(e) ?? (atLayer ? e.currentTarget.ownerDocument.querySelector(LAYER_BOX) : null)
+  );
 }
 
-export function layerBoxUnder(e: React.PointerEvent): Element | null {
-  const hits = e.currentTarget.ownerDocument.elementsFromPoint(e.clientX, e.clientY);
-  return hits.find((el) => el.closest(LAYER_BOX))?.closest(LAYER_BOX) ?? null;
-}
-
-/** Hands a press to the selected layer's box; true when the box started a gesture with it. */
-export function pressSelectedLayer(e: React.PointerEvent): boolean {
-  const box = e.currentTarget.ownerDocument.querySelector(LAYER_BOX);
-  if (!box || getComputedStyle(box).pointerEvents === "none") return false;
-  return !box.dispatchEvent(new PointerEvent("pointerdown", e.nativeEvent));
+/** Hands a press to `control`; true when it started a gesture with it. */
+export function pressControl(e: React.PointerEvent, control: Element | null): boolean {
+  if (!control || getComputedStyle(control).pointerEvents === "none") return false;
+  return !control.dispatchEvent(new PointerEvent("pointerdown", e.nativeEvent));
 }

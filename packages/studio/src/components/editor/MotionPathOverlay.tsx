@@ -10,7 +10,7 @@ import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
 import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, nodeCentre, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
-import { layerBoxUnder, pressBelongsToLayer, pressSelectedLayer } from "./motionPathLayerNode";
+import { controlForNode, controlUnder, pressControl } from "./motionPathLayerNode";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { ACCENT, MotionPathLine, MotionPathNode } from "./MotionPathNode";
@@ -314,7 +314,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     if (e.button !== 0) return;
     e.stopPropagation();
     const live = readGsapPositionFromIframe(iframeRef.current, selectorFor(selection) ?? "");
-    if (pressBelongsToLayer(e, abs[index]!, live) && pressSelectedLayer(e)) return;
+    if (pressControl(e, controlForNode(e, abs[index]!, live))) return;
     (e.target as Element).setPointerCapture(e.pointerId);
     dragRef.current = {
       index,
@@ -409,18 +409,18 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
 
   // Ghost "add" affordance: project the cursor onto the path; click inserts.
   const onPathHover = (e: React.PointerEvent) => {
-    const box = layerBoxUnder(e);
-    setLineCursor(box ? getComputedStyle(box).cursor : "copy");
+    const control = controlUnder(e);
+    setLineCursor(control ? getComputedStyle(control).cursor : "copy");
     const c = clientToComp(e);
     const np = nearestPointOnPath(
       c.x,
       c.y,
       abs.map((p) => ({ x: p.ax, y: p.ay })),
     );
-    setGhost(np && !box ? { x: np.x, y: np.y, segIndex: np.segIndex } : null);
+    setGhost(np && !control ? { x: np.x, y: np.y, segIndex: np.segIndex } : null);
   };
   const onPathDown = (e: React.PointerEvent) => {
-    if (layerBoxUnder(e) && pressSelectedLayer(e)) {
+    if (pressControl(e, controlUnder(e))) {
       e.stopPropagation();
       return;
     }
