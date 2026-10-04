@@ -376,7 +376,7 @@ function foldElementPatches(
 
 const PATCH_CONFLICT_ATTEMPTS = 3;
 
-const ID_ATTRIBUTE = /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+const ID_ATTRIBUTE = /[\s"'/]id\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
 
 /** Every id in the project's HTML files: sub-compositions share one preview document. */
 function projectHtmlIds(projectDir: string): Set<string> {
