@@ -94,6 +94,16 @@ describe("snapTimelineTime", () => {
     });
   });
 
+  it("snaps a line at its saved centisecond, and not at all when that is a pixel or more off", () => {
+    // 187.5 px/s: 4.625s saves as 4.63s, under a pixel away, so the guide sits where the clip lands.
+    expect(snapTimelineTime(4.627, [], 8 / 187.5, 0.125).target).toEqual({
+      time: 4.63,
+      type: "grid",
+    });
+    // 1440 px/s: 1.025s would save 7px off its line, so the line does not snap.
+    expect(snapTimelineTime(1.026, [], 8 / 1440, 0.025)).toEqual({ time: 1.026, target: null });
+  });
+
   it("lands on whole frames for a frame-spaced grid", () => {
     expect(snapTimelineTime(1.01, [], 0.08, 1 / 30).time).toBe(1);
   });

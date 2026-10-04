@@ -49,6 +49,23 @@ export interface UseTimelinePlayerOptions {
   onPreviewReloadFailed?: (message: string) => void;
 }
 
+// A trim's edge frame is on screen, not the transport's time: pause, play and a reload's
+// hand-over read the playhead's time, and play starts from it.
+function showingPreviewFrame(adapter: PlaybackAdapter): PlaybackAdapter {
+  const time = () => usePlayerStore.getState().currentTime;
+  return {
+    play: () => {
+      adapter.seek(time());
+      adapter.play();
+    },
+    pause: () => adapter.pause(),
+    seek: (t, options) => adapter.seek(t, options),
+    getTime: time,
+    getDuration: () => adapter.getDuration(),
+    isPlaying: () => adapter.isPlaying(),
+  };
+}
+
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
 
@@ -148,10 +165,14 @@ export function useTimelinePlayer({
         const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
         const win = iframe?.contentWindow as IframeWindow | null;
         if (!iframe || !win) return null;
-        return resolvePlaybackAdapter(iframe, win, {
+        const adapter = resolvePlaybackAdapter(iframe, win, {
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
         });
+        const { previewFrameTime, isPlaying } = usePlayerStore.getState();
+        return adapter && previewFrameTime !== null && !isPlaying
+          ? showingPreviewFrame(adapter)
+          : adapter;
       } catch {
         return null;
       }

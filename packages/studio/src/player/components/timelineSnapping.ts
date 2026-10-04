@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../store/playerStore";
+import { roundToCenti } from "../../utils/rounding";
 
 export type TimelineSnapType = "beat" | "playhead" | "clip-edge" | "grid";
 
@@ -54,15 +55,21 @@ export function collectTimelineSnapTargets(input: {
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
-/** The ruler line nearest `time` within the threshold; `gridStep` 0 means no grid. */
+/**
+ * The ruler line nearest `time` within the threshold; `gridStep` 0 means no grid. Clip times
+ * save to the centisecond, so a line snaps at its saved time, and only when that is within a pixel.
+ */
 function nearestGridLine(
   time: number,
   gridStep: number,
   thresholdSecs: number,
 ): TimelineSnapTarget | null {
   if (!(gridStep > 0)) return null;
-  const line = Math.round(Math.round(time / gridStep) * gridStep * 1000) / 1000;
-  return Math.abs(line - time) < thresholdSecs ? { time: line, type: "grid" } : null;
+  const line = Math.round(time / gridStep) * gridStep;
+  const saved = roundToCenti(line);
+  const secsPerPx = thresholdSecs / TIMELINE_SNAP_PX;
+  if (Math.abs(saved - line) >= secsPerPx || Math.abs(saved - time) >= thresholdSecs) return null;
+  return { time: saved, type: "grid" };
 }
 
 /** Snaps to the nearest target; the ruler grid only when no target is in range. */

@@ -369,6 +369,35 @@ describe("useTimelinePlayer preview frame (a trim's dragged edge)", () => {
     unmountWithAct(root);
   });
 
+  it("keeps the playhead's time when paused, played or reloaded over the frame", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    act(() => {
+      getApi().iframeRef.current = makeFakeIframe(makeAdapterWindow().win);
+      getApi().onIframeLoad();
+    });
+    seekWithAct(getApi(), 1.25);
+    previewFrame(3.4);
+    act(() => getApi().pause());
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
+    act(() => getApi().refreshPlayer());
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeFakeIframe(makeAdapterWindow().win);
+    shadow.src = "http://localhost/api/projects/demo/preview?_t=1";
+    act(() => {
+      getApi().setShadowIframeNode(shadow);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow);
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
+    previewFrame(3.5);
+    const live = (shadow.contentWindow as unknown as { __player: { getTime(): number } }).__player;
+    expect(live.getTime()).toBe(3.5);
+    act(() => getApi().play());
+    expect(live.getTime()).toBe(1.25);
+    unmountWithAct(root);
+  });
+
   it("leaves live playback alone", () => {
     const { api, root, adapter } = renderAttachedTimelinePlayer();
     seekWithAct(api, 2);
