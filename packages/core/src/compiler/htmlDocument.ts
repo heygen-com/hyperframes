@@ -169,13 +169,17 @@ function isHtmlWhitespace(char: string): boolean {
 
 export function escapeInlineScriptSource(source: string): string {
   return escapeCaseInsensitiveToken(
-    escapeCaseInsensitiveToken(source, "</script", "<\\/script"),
+    escapeCaseInsensitiveToken(source, "</script", (match) => `<\\/${match.slice(2)}`),
     "<!--",
-    "\\x3C!--",
+    () => "\\x3C!--",
   );
 }
 
-function escapeCaseInsensitiveToken(source: string, token: string, replacement: string): string {
+function escapeCaseInsensitiveToken(
+  source: string,
+  token: string,
+  replacement: (match: string) => string,
+): string {
   const loweredSource = lowerAscii(source);
   const loweredToken = lowerAscii(token);
   let output = "";
@@ -187,7 +191,9 @@ function escapeCaseInsensitiveToken(source: string, token: string, replacement: 
       output += source.slice(cursor);
       break;
     }
-    output += source.slice(cursor, tokenStart) + replacement;
+    output +=
+      source.slice(cursor, tokenStart) +
+      replacement(source.slice(tokenStart, tokenStart + token.length));
     cursor = tokenStart + token.length;
   }
 

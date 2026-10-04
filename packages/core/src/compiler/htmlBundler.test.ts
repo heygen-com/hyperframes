@@ -2622,6 +2622,26 @@ describe("bundleToSingleHtml script order", () => {
     expect(scripts.some((el) => el.textContent?.includes("AUTHOR_SEEN"))).toBe(true);
   });
 
+  it("keeps a run that merges a local file with a legacy <!-- comment valid, every script in order", async () => {
+    const scripts = await bundledBody(
+      `<script src="esc.js"></script>
+  <script src="legacy.js"></script>
+  <script>window.RAN.push("a");</script>
+  <script>window.RAN.push("b");</script>
+  <script src="plain.js"></script>`,
+      {
+        "esc.js": 'window.RAN = ["esc"]; window.CLOSE = "</script>";',
+        "legacy.js": '<!-- a legacy comment\nwindow.RAN.push("legacy");',
+        "plain.js": 'window.RAN.push("plain");',
+      },
+    );
+    const merged = scripts.find((el) => el.textContent?.includes('"plain"'));
+    expect(merged?.textContent).not.toMatch(/<\/script|<!--/i);
+    const page = { RAN: [] as string[] };
+    new Function("window", merged?.textContent ?? "")(page);
+    expect(page.RAN).toEqual(["esc", "legacy", "a", "b", "plain"]);
+  });
+
   it("still adds the runtime when an authored script mentions its marker attribute", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

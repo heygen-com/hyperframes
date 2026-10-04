@@ -116,8 +116,8 @@ export async function runScriptsAfterFonts(
   for (const el of [...scripts.filter((el) => !isLate(el)), ...scripts.filter(isLate)]) {
     const script = runInPlace(el);
     if (script?.hasAttribute("src") && !script.async && !script.noModule) await loaded(script);
+    else if (typeAfterFonts(el) === "module") await afterQueuedModules();
   }
-  if (scripts.some((el) => typeAfterFonts(el) === "module")) await afterQueuedModules();
   for (const undo of release) undo();
   afterRun?.();
   for (const { target, type, listener } of held) {

@@ -166,7 +166,7 @@ describe("htmlDocument helpers", () => {
     expect(stripped).toBe("<p>İİ</p><p>kept</p>");
 
     const escaped = injectScriptsIntoHtml(page, ['x="İİ</SCRIPT>"'], []);
-    expect(escaped).toContain('<script>x="İİ<\\/script>"</script>');
+    expect(escaped).toContain('<script>x="İİ<\\/SCRIPT>"</script>');
   });
 
   it("skips a script tag written inside an attribute value", () => {

@@ -1228,7 +1228,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     if (js == null) continue;
     el.setAttribute(INLINED_FILE_ATTR, src);
     el.removeAttribute("src");
-    el.textContent = escapeInlineScriptSource(js);
+    el.textContent = js;
   }
 
   for (const link of compExternalLinks) ensureExternalLinkTag(document, link);
@@ -1262,6 +1262,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   enforceCompositionPixelSizing(document);
   autoHealMissingCompositionIds(document);
   coalesceHeadStylesAndBodyScripts(document);
+  for (const el of document.querySelectorAll(`script[${INLINED_FILE_ATTR}]`)) {
+    el.textContent = escapeInlineScriptSource(el.textContent ?? "");
+  }
   deferScriptsUntilFonts(document, (el) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR));
   injectTextRenderingRule(document);
 

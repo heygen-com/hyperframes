@@ -71,6 +71,26 @@ ${ROOT}<div id="box"></div></div>
     expect(result).toEqual({ order: ["classic", "deferred"], animationTime: 1000 });
   });
 
+  it("runs a local defer script after the inline module before it", async () => {
+    const html = await bundled(
+      `<!doctype html><html><head></head><body>
+${ROOT}</div>
+<script type="module">window.MODULE_RAN = true;</script>
+<script defer src="main.js"></script>
+</body></html>`,
+      "window.SAW_MODULE = window.MODULE_RAN === true;",
+    );
+    const page = await browser.newPage();
+    await page.setContent(html);
+    await page.waitForFunction(
+      () => (window as unknown as { __playerReady?: boolean }).__playerReady === true,
+    );
+
+    expect(
+      await page.evaluate(() => (window as unknown as { SAW_MODULE?: boolean }).SAW_MODULE),
+    ).toBe(true);
+  });
+
   it("runs a local defer script only after the deferred CDN script before it has loaded", async () => {
     const html = await bundled(
       `<!doctype html><html><head></head><body>
