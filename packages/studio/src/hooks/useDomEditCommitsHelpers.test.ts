@@ -36,31 +36,40 @@ function assign(over: Partial<Parameters<typeof assignGsapTargetAutoIdIfNeeded>[
 describe("assignGsapTargetAutoIdIfNeeded", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("writes the id through the patch-element client and reports a change", async () => {
-    const fetchMock = stubPatch(jsonResponse({ changed: true }));
+  it("asks the patch-element client to ensure the id and returns the one the file holds", async () => {
+    const fetchMock = stubPatch(jsonResponse({ changed: true, elementId: "hf-auto-1-2" }));
     const { result } = assign();
 
-    await expect(result).resolves.toBe(true);
+    await expect(result).resolves.toBe("hf-auto-1-2");
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init?.method).toBe("POST");
     expect(new Headers(init?.headers).get("X-Hyperframes-Write-Token")).toBeTruthy();
     expect(JSON.parse(String(init?.body))).toEqual({
       target: { hfId: "hf-card", selector: '[data-hf-id="hf-card"]', selectorIndex: 0 },
-      operations: [{ type: "html-attribute", property: "id", value: "hf-auto-1" }],
+      operations: [{ type: "ensure-id", property: "id", value: "hf-auto-1" }],
     });
   });
 
-  it("is true when the file already holds the id", async () => {
-    stubPatch(jsonResponse({ changed: false, matched: true }));
-    await expect(assign().result).resolves.toBe(true);
+  it("returns the id the element already holds in the file", async () => {
+    stubPatch(jsonResponse({ changed: false, matched: true, elementId: "div" }));
+    await expect(assign().result).resolves.toBe("div");
   });
 
-  it("is false when the server saved nothing", async () => {
-    stubPatch(jsonResponse({ changed: false }));
-    await expect(assign().result).resolves.toBe(false);
+  it.each([
+    ["the target is not in the file", { changed: false, matched: false }],
+    ["the reply names no id", {}],
+  ])("is null with a toast when %s", async (_name, body) => {
+    stubPatch(jsonResponse(body));
+    const { result, showToast } = assign();
+
+    await expect(result).resolves.toBeNull();
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't assign element id: element not found in index.html",
+      "error",
+    );
   });
 
-  it("is false with the server's reason in a toast when the patch is refused", async () => {
+  it("is null with the server's reason in a toast when the patch is refused", async () => {
     stubPatch(
       new Response(JSON.stringify({ error: "target not found" }), {
         status: 409,
@@ -69,21 +78,16 @@ describe("assignGsapTargetAutoIdIfNeeded", () => {
     );
     const { result, showToast } = assign();
 
-    await expect(result).resolves.toBe(false);
+    await expect(result).resolves.toBeNull();
     expect(showToast).toHaveBeenCalledWith("Couldn't save edit: target not found", "error");
   });
 
-  it("is false with a plain toast when the refusal has no JSON reason", async () => {
+  it("is null with a plain toast when the refusal has no JSON reason", async () => {
     stubPatch(new Response("boom", { status: 500, headers: { "content-type": "text/plain" } }));
     const { result, showToast } = assign();
 
-    await expect(result).resolves.toBe(false);
+    await expect(result).resolves.toBeNull();
     expect(showToast).toHaveBeenCalledWith("Couldn't save edit", "error");
-  });
-
-  it("is false when the response does not say it changed", async () => {
-    stubPatch(jsonResponse({}));
-    await expect(assign().result).resolves.toBe(false);
   });
 
   it("refuses a non-finite target before any request", async () => {
@@ -92,7 +96,7 @@ describe("assignGsapTargetAutoIdIfNeeded", () => {
       selection: { ...selection, selectorIndex: Number.NaN },
     });
 
-    await expect(result).resolves.toBe(false);
+    await expect(result).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(
       "Couldn't assign element id because the patch contains invalid values",

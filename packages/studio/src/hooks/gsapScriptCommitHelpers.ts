@@ -4,8 +4,9 @@ export { PROPERTY_DEFAULTS } from "./gsapShared";
 import { idSelector, matchesExactlyOne } from "./gsapShared";
 
 /**
- * The selector to author a NEW tween against, minting an id on the element when
- * it has no address of its own.
+ * The selector to author a NEW tween against, or an `autoId` to propose when the
+ * element has no address of its own. The proposal is unique in the live preview
+ * only; the server writes the id that is unique in the file (patch op `ensure-id`).
  *
  * `selection.selector` is only usable when it addresses ONE element:
  * `buildStableSelector` hands back a bare class for an id-less element, so
@@ -34,7 +35,6 @@ export function ensureElementAddressable(selection: DomEditSelection): {
     n += 1;
     id = `${tag}-${n}`;
   }
-  el.setAttribute("id", id);
   return { selector: idSelector(id), autoId: id };
 }
 

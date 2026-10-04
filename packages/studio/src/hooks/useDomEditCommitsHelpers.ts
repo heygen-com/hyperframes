@@ -171,6 +171,8 @@ export interface PatchElementResponse {
   content?: string;
   path?: string;
   version?: string;
+  /** The patched element's id after the patch; absent when the target was not found. */
+  elementId?: string | null;
 }
 
 type ShowToast = (message: string, tone?: "error" | "info") => void;
@@ -209,14 +211,14 @@ interface AssignAutoIdParams {
   showToast: ShowToast;
 }
 
-/** Writes `autoId` as the element's id so a GSAP tween can target it; false when the file does not hold it. */
+/** The id the file holds for the element after proposing `autoId` (server keeps an existing one, else dedupes); null when none. */
 export async function assignGsapTargetAutoIdIfNeeded({
   projectId,
   targetPath,
   selection,
   autoId,
   showToast,
-}: AssignAutoIdParams): Promise<boolean> {
+}: AssignAutoIdParams): Promise<string | null> {
   const patchBody = {
     target: {
       id: selection.id,
@@ -224,17 +226,19 @@ export async function assignGsapTargetAutoIdIfNeeded({
       selector: selection.selector,
       selectorIndex: selection.selectorIndex,
     },
-    operations: [{ type: "html-attribute", property: "id", value: autoId }],
+    operations: [{ type: "ensure-id", property: "id", value: autoId }],
   };
   if (findUnsafeDomPatchValues(patchBody).length > 0) {
     showToast("Couldn't assign element id because the patch contains invalid values", "error");
-    return false;
+    return null;
   }
   try {
-    const result = await postPatchElement(projectId, targetPath, patchBody, showToast);
-    return result.changed === true || result.matched === true;
+    const { elementId } = await postPatchElement(projectId, targetPath, patchBody, showToast);
+    if (elementId) return elementId;
+    showToast(`Couldn't assign element id: element not found in ${targetPath}`, "error");
+    return null;
   } catch (error) {
-    if (error instanceof StudioSaveHttpError && error.alreadyToasted) return false;
+    if (error instanceof StudioSaveHttpError && error.alreadyToasted) return null;
     throw error;
   }
 }

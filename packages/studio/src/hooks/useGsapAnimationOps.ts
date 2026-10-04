@@ -15,6 +15,7 @@ import {
   type CutoverDeps,
 } from "../utils/sdkCutover";
 import { ensureElementAddressable } from "./gsapScriptCommitHelpers";
+import { idSelector } from "./gsapShared";
 import { assignGsapTargetAutoIdIfNeeded } from "./useDomEditCommitsHelpers";
 import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 
@@ -120,29 +121,28 @@ export function useGsapAnimationOps({
       method: "to" | "from" | "set" | "fromTo",
       _currentTime?: number,
     ) => {
-      const { selector, autoId } = ensureElementAddressable(selection);
+      const address = ensureElementAddressable(selection);
+      const { autoId } = address;
+      let selector = address.selector;
 
       if (autoId) {
         const pid = projectIdRef.current;
+        if (!pid) return;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
-        let assigned = false;
-        try {
-          if (!pid) return;
-          const assign = () =>
-            assignGsapTargetAutoIdIfNeeded({
-              projectId: pid,
-              targetPath,
-              selection,
-              autoId,
-              showToast,
-            });
-          assigned = await (writeProjectFile
-            ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
-            : assign());
-        } finally {
-          if (!assigned) selection.element.removeAttribute("id");
-        }
-        if (!assigned) return;
+        const assign = () =>
+          assignGsapTargetAutoIdIfNeeded({
+            projectId: pid,
+            targetPath,
+            selection,
+            autoId,
+            showToast,
+          });
+        const savedId = await (writeProjectFile
+          ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
+          : assign());
+        if (!savedId) return;
+        selection.element.setAttribute("id", savedId);
+        selector = idSelector(savedId);
       }
 
       const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;

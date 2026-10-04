@@ -182,7 +182,14 @@ export function dedupeClonedCompositionId(document: Document, clone: Element): v
 }
 
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "html-attribute" | "text-content" | "rich-text";
+  /** `ensure-id` keeps the element's id, else writes `value` made unique in this file. */
+  type:
+    | "inline-style"
+    | "attribute"
+    | "html-attribute"
+    | "text-content"
+    | "rich-text"
+    | "ensure-id";
   property: string;
   value: string | null;
   childSelector?: string;
@@ -239,7 +246,7 @@ export function patchElementInHtml(
   source: string,
   target: SourceMutationTarget,
   operations: PatchOperation[],
-): { html: string; matched: boolean } {
+): { html: string; matched: boolean; elementId?: string | null } {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
@@ -285,6 +292,11 @@ export function patchElementInHtml(
           opTarget.removeAttribute(op.property);
         }
         break;
+      case "ensure-id":
+        if (opTarget.getAttribute("id") || !op.value) break;
+        if (!isSafeAttributeValue("id", op.value)) break;
+        opTarget.setAttribute("id", nextUniqueId(document, op.value));
+        break;
       case "text-content":
         if (op.value != null) {
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
@@ -307,8 +319,16 @@ export function patchElementInHtml(
   }
 
   const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
-  if (html === originalHtml) return { html: source, matched: true };
-  return { html: ensureHfIds(html), matched: true };
+  const elementId = htmlEl.getAttribute("id");
+  if (html === originalHtml) return { html: source, matched: true, elementId };
+  return { html: ensureHfIds(html), matched: true, elementId };
+}
+
+export function nextUniqueId(document: Document, base: string): string {
+  let id = base;
+  let suffix = 2;
+  while (document.getElementById(id)) id = `${base}-${suffix++}`;
+  return id;
 }
 
 /** Whether each target exists in `source`; the document is parsed once however many targets ask. */
@@ -392,13 +412,7 @@ export function splitElementInHtml(
     return { html: source, matched: false, newId: null };
   }
 
-  if (document.getElementById(newId)) {
-    let suffix = 2;
-    const base = newId;
-    while (document.getElementById(newId)) {
-      newId = `${base}-${suffix++}`;
-    }
-  }
+  newId = nextUniqueId(document, newId);
 
   const firstDuration = splitTime - start;
   const secondDuration = duration - firstDuration;

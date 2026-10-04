@@ -73,6 +73,9 @@ describe("ensureElementAddressable — add-animation button", () => {
     const { selector, autoId } = ensureElementAddressable(selection);
 
     expect(autoId).toBeTruthy();
+    expect(el.hasAttribute("id")).toBe(false);
+    // addGsapAnimation sets the id the server confirms; the proposal is free in the preview.
+    el.setAttribute("id", autoId!);
     expect(document.querySelectorAll(selector)).toHaveLength(1);
     expect(document.querySelector(selector)).toBe(el);
     expect(attributedTo(selector)).toEqual([autoId]);

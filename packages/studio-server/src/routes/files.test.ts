@@ -643,6 +643,35 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
   });
 
+  it("reports the id ensure-id leaves on the element, saved or already there", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<div data-hf-id="hf-a" id="div"></div><div data-hf-id="hf-b"></div>',
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const ensureId = async (hfId: string) => {
+      const response = await app.request(
+        "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target: { hfId },
+            operations: [{ type: "ensure-id", property: "id", value: "div" }],
+          }),
+        },
+      );
+      const { changed, elementId } = (await response.json()) as Record<string, unknown>;
+      return { changed, elementId };
+    };
+
+    expect(await ensureId("hf-b")).toEqual({ changed: true, elementId: "div-2" });
+    expect(await ensureId("hf-a")).toEqual({ changed: false, elementId: "div" });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain('id="div-2"');
+  });
+
   it("writes the font an edit uses in the same write as the edit", async () => {
     const projectDir = createProjectDir();
     const original = '<html><head></head><body><div id="title">Before</div></body></html>';

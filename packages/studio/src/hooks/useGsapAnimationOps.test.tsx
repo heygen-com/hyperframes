@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { patchElementInHtml } from "../../../studio-server/src/helpers/sourceMutation.js";
 import { useGsapAnimationOps } from "./useGsapAnimationOps";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -43,6 +44,54 @@ function renderOps(
   cleanup = () => act(() => root.unmount());
   if (!captured.api) throw new Error("hook did not initialize");
   return captured.api;
+}
+
+const CARDS = `<div data-hf-id="hf-a" class="card"></div><div data-hf-id="hf-b" class="card"></div>`;
+
+function mountCards(): HTMLElement[] {
+  document.body.innerHTML = CARDS;
+  return [...document.body.querySelectorAll<HTMLElement>(".card")];
+}
+
+function addTo(api: HookApi, element: HTMLElement, hfId: string): Promise<void> {
+  return api.addGsapAnimation({ element, hfId } as unknown as DomEditSelection, "from");
+}
+
+function jsonReply(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** The patch-element route over an in-memory copy of CARDS, patched by the server's own code. */
+function serveCards() {
+  let html = CARDS;
+  return {
+    handle(init?: RequestInit): Response {
+      const { target, operations } = JSON.parse(String(init?.body));
+      const result = patchElementInHtml(html, target, operations);
+      const changed = result.html !== html;
+      html = result.html;
+      return jsonReply({ ok: true, changed, matched: result.matched, elementId: result.elementId });
+    },
+    stub(route: (init: RequestInit | undefined, call: number) => Promise<Response>) {
+      let calls = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: unknown, init?: RequestInit) => route(init, ++calls)),
+      );
+    },
+    ids(): Record<string, string | null> {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return Object.fromEntries(
+        [...doc.querySelectorAll("[data-hf-id]")].map((el) => [
+          el.getAttribute("data-hf-id"),
+          el.getAttribute("id"),
+        ]),
+      );
+    },
+  };
 }
 
 function deferredCommit() {
@@ -90,21 +139,15 @@ describe("useGsapAnimationOps settlement", () => {
   });
 
   it.each([
-    ["saved", { status: 200, body: { changed: true } }, "div"],
-    ["refused", { status: 409, body: { error: "file changed" } }, null],
+    ["saved", true, "div"],
+    ["refused", false, null],
   ])(
-    "an id-less element keeps its minted id only when the id write is %s",
-    async (_name, reply, id) => {
-      const element = document.body.appendChild(document.createElement("div"));
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(
-          async () =>
-            new Response(JSON.stringify(reply.body), {
-              status: reply.status,
-              headers: { "content-type": "application/json" },
-            }),
-        ),
+    "an id-less element takes the file's id only when the id write is %s",
+    async (_name, saved, id) => {
+      const server = serveCards();
+      const [element] = mountCards();
+      server.stub(async (init) =>
+        saved ? server.handle(init) : jsonReply({ error: "file changed" }, 409),
       );
       const commitMutation = vi.fn(async () => undefined);
       const api = renderOps(
@@ -112,45 +155,84 @@ describe("useGsapAnimationOps settlement", () => {
         commitMutation,
       );
 
-      await api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from");
+      await addTo(api, element!, "hf-a");
 
-      expect(element.getAttribute("id")).toBe(id);
+      expect(element!.getAttribute("id")).toBe(id);
+      expect(server.ids()).toEqual({ "hf-a": id, "hf-b": null });
       expect(commitMutation).toHaveBeenCalledTimes(id ? 1 : 0);
     },
   );
 
-  it("mints different ids for two adds whose id writes overlap", async () => {
-    const first = document.body.appendChild(document.createElement("div"));
-    const second = document.body.appendChild(document.createElement("div"));
+  it("a reply lost after the id is saved never lets a sibling reuse that id", async () => {
+    const server = serveCards();
+    const [first, second] = mountCards();
+    server.stub(async (init, call) => {
+      const reply = server.handle(init);
+      if (call === 1) throw new TypeError("connection reset");
+      return reply;
+    });
+    const api = renderOps(vi.fn(async () => undefined));
+
+    await expect(addTo(api, first!, "hf-a")).rejects.toThrow("connection reset");
+    await addTo(api, second!, "hf-b");
+
+    expect(server.ids()).toEqual({ "hf-a": "div", "hf-b": "div-2" });
+    expect(second!.id).toBe("div-2");
+
+    await addTo(api, first!, "hf-a");
+
+    expect(server.ids()).toEqual({ "hf-a": "div", "hf-b": "div-2" });
+    expect(first!.id).toBe("div");
+  });
+
+  it("a refused add never strips the id an overlapping saved add gave the same element", async () => {
+    const server = serveCards();
+    const [element] = mountCards();
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const fetchMock = vi.fn(async (_input: unknown, _init?: RequestInit) => {
-      if (fetchMock.mock.calls.length === 1) await held;
-      return new Response(JSON.stringify({ changed: true }), {
-        headers: { "content-type": "application/json" },
-      });
+    server.stub(async (init, call) => {
+      if (call !== 1) return server.handle(init);
+      await held;
+      return jsonReply({ error: "file changed" }, 409);
     });
-    vi.stubGlobal("fetch", fetchMock);
     const api = renderOps(vi.fn(async () => undefined));
-    const add = (element: HTMLElement, hfId: string) =>
-      api.addGsapAnimation({ element, hfId } as unknown as DomEditSelection, "from");
 
-    const adding = add(first, "hf-1");
-    await add(second, "hf-2");
+    const refused = addTo(api, element!, "hf-a");
+    await addTo(api, element!, "hf-a");
+    release();
+    await refused;
+
+    expect(server.ids()["hf-a"]).toBeTruthy();
+    expect(element!.id).toBe(server.ids()["hf-a"]);
+  });
+
+  it("overlapping adds on siblings take the ids the file holds, never one id twice", async () => {
+    const server = serveCards();
+    const [first, second] = mountCards();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.stub(async (init, call) => {
+      if (call === 1) await held;
+      return server.handle(init);
+    });
+    const api = renderOps(vi.fn(async () => undefined));
+
+    const adding = addTo(api, first!, "hf-a");
+    await addTo(api, second!, "hf-b");
     release();
     await adding;
 
-    const ids = fetchMock.mock.calls.map(
-      ([, init]) => JSON.parse(String(init?.body)).operations[0].value,
-    );
-    expect(ids).toEqual(["div", "div-2"]);
-    expect([first.id, second.id]).toEqual(["div", "div-2"]);
+    const ids = server.ids();
+    expect(new Set([ids["hf-a"], ids["hf-b"]])).toEqual(new Set(["div", "div-2"]));
+    expect([first!.id, second!.id]).toEqual([ids["hf-a"], ids["hf-b"]]);
   });
 
-  it("drops the minted id when the id write fails on the network", async () => {
-    const element = document.body.appendChild(document.createElement("div"));
+  it("leaves no id when the id write never reaches the file", async () => {
+    const [element] = mountCards();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -159,23 +241,21 @@ describe("useGsapAnimationOps settlement", () => {
     );
     const api = renderOps(vi.fn(async () => undefined));
 
-    await expect(
-      api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from"),
-    ).rejects.toThrow("offline");
-    expect(element.hasAttribute("id")).toBe(false);
+    await expect(addTo(api, element!, "hf-a")).rejects.toThrow("offline");
+    expect(element!.hasAttribute("id")).toBe(false);
   });
 
-  it("drops the minted id when there is no project to save it to", async () => {
-    const element = document.body.appendChild(document.createElement("div"));
+  it("leaves no id when there is no project to save it to", async () => {
+    const [element] = mountCards();
     const api = renderOps(
       vi.fn(async () => undefined),
       undefined,
       null,
     );
 
-    await api.addGsapAnimation({ element, hfId: "hf-1" } as unknown as DomEditSelection, "from");
+    await addTo(api, element!, "hf-a");
 
-    expect(element.hasAttribute("id")).toBe(false);
+    expect(element!.hasAttribute("id")).toBe(false);
   });
 
   it("soft-reloads the preview when deleting an animation", async () => {
