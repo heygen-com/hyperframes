@@ -68,9 +68,16 @@ describe("waitForRuntimeReady", () => {
 
   it("is what layout, motion-shot and validate wait on before they sample the page", () => {
     const commands = join(dirname(fileURLToPath(import.meta.url)), "../commands");
-    for (const name of ["layout", "motionShot", "validate"]) {
+    const firstSample = {
+      layout: "getCompositionDuration(page)",
+      motionShot: "installSeekHelper(page)",
+      validate: "auditClipDurations(page,",
+    };
+    for (const [name, sample] of Object.entries(firstSample)) {
       const source = readFileSync(join(commands, `${name}.ts`), "utf8");
-      expect(source, name).toContain("await waitForRuntimeReady(page, ");
+      const wait = source.indexOf("await waitForRuntimeReady(page, ");
+      expect(wait, name).toBeGreaterThan(-1);
+      expect(source.indexOf(sample), name).toBeGreaterThan(wait);
       expect(source, name).not.toContain("__timelines?: unknown }).__timelines");
     }
   });
