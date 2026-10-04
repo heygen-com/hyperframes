@@ -53,6 +53,7 @@ export {
   injectTagsAtHeadStart,
   injectScriptsIntoHtml,
   insertBeforeCloseTag,
+  insertRuntimeTag,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";

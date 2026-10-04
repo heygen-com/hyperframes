@@ -174,7 +174,7 @@ function isHtmlWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\t" || char === "\r" || char === "\f";
 }
 
-function escapeInlineScriptSource(source: string): string {
+export function escapeInlineScriptSource(source: string): string {
   return escapeCaseInsensitiveToken(
     escapeCaseInsensitiveToken(source, "</script", "<\\/script"),
     "<!--",
@@ -341,6 +341,22 @@ export function insertBeforeCloseTag(
   markup: string,
 ): string | null {
   return insertBeforeDocumentTag(html, `</${name}`, markup);
+}
+
+export function insertRuntimeTag(html: string, tag: string): string {
+  const withHead = insertBeforeCloseTag(html, "head", `${tag}\n`);
+  if (withHead !== null) return withHead;
+  const htmlOpenMatch = html.match(/<html\b[^>]*>/i);
+  if (htmlOpenMatch?.index != null) {
+    const insertPos = htmlOpenMatch.index + htmlOpenMatch[0].length;
+    return `${html.slice(0, insertPos)}<head>${tag}</head>${html.slice(insertPos)}`;
+  }
+  const doctypeIdx = html.toLowerCase().indexOf("<!doctype");
+  if (doctypeIdx >= 0) {
+    const insertPos = html.indexOf(">", doctypeIdx) + 1;
+    return html.slice(0, insertPos) + tag + html.slice(insertPos);
+  }
+  return tag + html;
 }
 
 /**

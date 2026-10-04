@@ -134,6 +134,33 @@ describe("registerPreviewRoutes", () => {
     expect(await baseOf("/projects/a%22b/preview")).toBe("/api/projects/a%22b/preview/");
   });
 
+  it.each([
+    ["returns nothing", async () => null],
+    [
+      "throws",
+      async () => {
+        throw new Error("bundler unavailable");
+      },
+    ],
+  ])(
+    "loads the runtime before the composition's scripts when the bundler %s",
+    async (_, bundle) => {
+      const projectDir = createProjectDir();
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!doctype html><html><head></head><body><div id="card"></div>
+        <script>gsap.set("#card", { opacity: 0.5 }); window.__timelines = { index: gsap.timeline() };</script>
+      </body></html>`,
+      );
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+      const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+      const runtimeAt = html.indexOf('src="/api/runtime.js"');
+      expect(runtimeAt).toBeGreaterThan(-1);
+      expect(runtimeAt).toBeLessThan(html.indexOf("gsap.set("));
+    },
+  );
+
   it("keeps the encoded <base> when the bundler fails and the page is read from disk", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

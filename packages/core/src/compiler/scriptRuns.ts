@@ -4,10 +4,30 @@ export interface InlineScriptRun {
   anchor: Element | null;
 }
 
+// The HTML spec's JavaScript MIME type essence matches: a script with any of these types runs as classic.
+const JAVASCRIPT_TYPES = new Set([
+  "",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
+
 function isClassicInline(el: Element): boolean {
   if (el.hasAttribute("nomodule")) return false;
-  const type = (el.getAttribute("type") || "").trim().toLowerCase();
-  return !type || type === "text/javascript" || type === "application/javascript";
+  return JAVASCRIPT_TYPES.has((el.getAttribute("type") || "").trim().toLowerCase());
 }
 
 function isSeparateExecution(el: Element, isPinned: (el: Element) => boolean): boolean {

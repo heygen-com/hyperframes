@@ -28,7 +28,8 @@ import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
   RUNTIME_BOOTSTRAP_ATTR,
-  insertBeforeCloseTag,
+  escapeInlineScriptSource,
+  insertRuntimeTag,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
@@ -82,19 +83,7 @@ function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" =
     const inlinedRuntime = getHyperframeRuntimeScript();
     tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1">${inlinedRuntime}</script>`;
   }
-  const withHead = insertBeforeCloseTag(sanitized, "head", `${tag}\n`);
-  if (withHead !== null) return withHead;
-  const htmlOpenMatch = sanitized.match(/<html\b[^>]*>/i);
-  if (htmlOpenMatch?.index != null) {
-    const insertPos = htmlOpenMatch.index + htmlOpenMatch[0].length;
-    return `${sanitized.slice(0, insertPos)}<head>${tag}</head>${sanitized.slice(insertPos)}`;
-  }
-  const doctypeIdx = sanitized.toLowerCase().indexOf("<!doctype");
-  if (doctypeIdx >= 0) {
-    const insertPos = sanitized.indexOf(">", doctypeIdx) + 1;
-    return sanitized.slice(0, insertPos) + tag + sanitized.slice(insertPos);
-  }
-  return tag + sanitized;
+  return insertRuntimeTag(sanitized, tag);
 }
 
 function isRelativeUrl(url: string): boolean {
@@ -749,7 +738,7 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     for (const el of members) el.remove();
     if (!mergedJs) continue;
     const inlineScript = document.createElement("script");
-    inlineScript.textContent = stripJsCommentsParserSafe(mergedJs);
+    inlineScript.textContent = escapeInlineScriptSource(stripJsCommentsParserSafe(mergedJs));
     if (anchor) anchor.before(inlineScript);
     else document.body.appendChild(inlineScript);
   }
@@ -1244,7 +1233,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const inline = document.createElement("script");
     for (const { name, value } of [...el.attributes])
       if (name !== "src") inline.setAttribute(name, value);
-    inline.textContent = js;
+    inline.textContent = escapeInlineScriptSource(js);
     el.replaceWith(inline);
   }
 

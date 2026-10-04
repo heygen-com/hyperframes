@@ -6,7 +6,9 @@ import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
   addScenePartsManifest,
+  RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
+  insertRuntimeTag,
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
 } from "@hyperframes/core/compiler";
@@ -105,6 +107,12 @@ function parseStudioMotionManifestContent(content: string): {
   } catch {
     return { hasMotion: false, hasCustomEase: false };
   }
+}
+
+/** Disk HTML: swap any runtime an export baked in for the preview runtime, placed as the bundler places it. */
+function withDiskRuntime(html: string, runtimeUrl: string): string {
+  const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
+  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag);
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {
@@ -390,24 +398,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
-        // Disk HTML may carry a baked inline runtime from a prior export; strip
-        // it so the preview runtime injected below isn't double-loaded (the
-        // bundled path already strips via htmlBundler). Idempotent if absent.
-        bundled = stripEmbeddedRuntimeScripts(normalizedDisk ?? diskMain.html);
+        bundled = withDiskRuntime(normalizedDisk ?? diskMain.html, adapter.runtimeUrl);
         mainCompositionPath = diskMain.compositionPath;
       }
       recordPreviewReferences(project.dir, bundled);
       recordPreviewBuilt(project.dir);
-
-      // Inject runtime if not already present (check URL pattern and bundler attribute)
-      if (
-        !bundled.includes("hyperframe.runtime") &&
-        !bundled.includes("hyperframes-preview-runtime")
-      ) {
-        const runtimeTag = `<script src="${adapter.runtimeUrl}"></script>`;
-        bundled =
-          insertBeforeCloseTag(bundled, "body", `${runtimeTag}\n`) ?? `${bundled}\n${runtimeTag}`;
-      }
 
       // Inject <base> for relative asset resolution
       bundled = withPreviewBase(bundled, project.id);
@@ -439,7 +434,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);
       if (fallback) {
-        const fallbackHtml = withPreviewBase(ensureHfIds(fallback.html), project.id);
+        const fallbackHtml = withPreviewBase(
+          withDiskRuntime(ensureHfIds(fallback.html), adapter.runtimeUrl),
+          project.id,
+        );
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
           adapter,

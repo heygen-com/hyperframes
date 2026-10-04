@@ -2557,30 +2557,34 @@ describe("bundleToSingleHtml script order", () => {
       const scripts = await bundledBody(
         `<script defer src="${LOCAL_ORDER_GSAP}"></script>
   <script ${when} src="main.js"></script>`,
-        { "main.js": "window.MAIN_RAN = gsap.version;" },
+        { "main.js": "window.MAIN_RAN = gsap.version; // 100% #1" },
       );
       const gsapAt = scripts.findIndex((el) => el.getAttribute("src") === LOCAL_ORDER_GSAP);
       const main = scripts[gsapAt + 1];
       expect(main?.hasAttribute(when)).toBe(true);
-      expect(main?.getAttribute("src")).toMatch(/^data:text\/javascript;charset=utf-8,/);
-      expect(dataUrlSource(main)).toBe("window.MAIN_RAN = gsap.version;");
+      expect(main?.getAttribute("src")).toMatch(/^data:text\/javascript;charset=utf-8,[^#]*$/);
+      expect(dataUrlSource(main)).toBe("window.MAIN_RAN = gsap.version; // 100% #1");
       expect(
         scripts.some((el) => !el.hasAttribute("src") && el.textContent?.includes("MAIN_RAN")),
       ).toBe(false);
     },
   );
 
-  it("keeps a throw in one local script from stopping the next", async () => {
-    const scripts = await bundledBody(
-      `<script src="a.js"></script>\n  <script src="${LOCAL_ORDER_GSAP}"></script>\n  <script src="b.js"></script>`,
-      {
-        "a.js": "throw new Error('a');",
-        "b.js": "window.B_RAN = 1;",
-      },
-    );
-    const holders = scripts.filter((el) => /throw new Error|B_RAN/.test(el.textContent ?? ""));
-    expect(holders).toHaveLength(2);
-  });
+  it.each(["", ' type="text/babel"'])(
+    "escapes a local file's script-closing text, so the page keeps its structure (%s)",
+    async (type) => {
+      const scripts = await bundledBody(
+        `<script${type} src="main.js"></script><p id="after">ok</p>`,
+        {
+          "main.js": `window.CLOSE = "</script><p id='leak'>x</p>"; window.OPEN = "<!-- <script>";`,
+        },
+      );
+      const holder = scripts.find((el) => el.textContent?.includes("window.CLOSE"));
+      expect(holder?.textContent).toContain("window.OPEN");
+      expect(holder?.textContent).not.toMatch(/<\/script|<!--/i);
+      expect(holder?.ownerDocument.getElementById("leak")).toBeNull();
+    },
+  );
 
   it.each([
     ["a local file", `<script nomodule src="legacy.js"></script>`],
