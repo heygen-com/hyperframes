@@ -26,6 +26,22 @@ const SEQUENCES = {
   ],
 };
 
+// A plain element animated the way a person does it: auto-record on, a keyframe added at the playhead (1 s),
+// then edits at a later keyframe (3 s) and between (2 s); seeks back check each keyframe kept its box.
+const PLAIN_TO_KEYS = [
+  MOVE,
+  { do: "autokey" },
+  { do: "addkey" },
+  { do: "seek", time: 3 },
+  BACK,
+  { do: "drag", gesture: "resize" },
+  { do: "seek", time: 2 },
+  { do: "drag", gesture: "resize" },
+  UP,
+  { do: "seek", time: 3 },
+  { do: "seek", time: 1 },
+];
+
 /** Text in place: a double press opens it, Enter commits; `select` first double-clicks a word to replace. */
 const TEXT = {
   edit: [{ do: "text", word: "Teleport" }],
@@ -63,6 +79,13 @@ export function dragCases() {
       text: true,
     })),
   );
+  const plainToKeys = [0, 30].flatMap((rotation) =>
+    everyPlacement.map((c) => ({
+      ...row("seqplainkeys", { ...c, rotation }, PLAIN_TO_KEYS),
+      settle: true,
+      keyRender: 3,
+    })),
+  );
   // Rotate on the common centring idiom, a transform rather than the translate property.
   const centred = [0, 30].flatMap((rotation) =>
     ["root", "nested"].map((nesting) => ({
@@ -71,5 +94,5 @@ export function dragCases() {
       other: false,
     })),
   );
-  return [...paths, ...sequences, ...texts, ...centred];
+  return [...paths, ...sequences, ...plainToKeys, ...texts, ...centred];
 }
