@@ -264,6 +264,10 @@ describe("createFileAtomically", () => {
         fs.writeFileSync(target, "ht");
         throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
       },
+      closeSync: (fd: number) => {
+        fs.closeSync(fd);
+        throw Object.assign(new Error("EIO"), { code: "EIO" });
+      },
     };
 
     expect(() => createFileAtomically(file, "html", operations)).toThrow("ENOSPC");
@@ -273,9 +277,11 @@ describe("createFileAtomically", () => {
   it("removes the file when a network share reports its quota only at close", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
+    const closed: number[] = [];
     const operations = {
       ...failingLink("EXDEV"),
       closeSync: (fd: number) => {
+        closed.push(fd);
         fs.closeSync(fd);
         throw Object.assign(new Error("EDQUOT"), { code: "EDQUOT" });
       },
@@ -283,6 +289,8 @@ describe("createFileAtomically", () => {
 
     expect(() => createFileAtomically(file, "html", operations)).toThrow("EDQUOT");
     expect(fs.readdirSync(dir)).toEqual([]);
+    // A second close could hit a descriptor another request has reused since.
+    expect(closed).toHaveLength(1);
   });
 
   it("keeps another writer's file when the direct write finds the name taken", () => {
