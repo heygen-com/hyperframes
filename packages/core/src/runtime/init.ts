@@ -4333,11 +4333,10 @@ export function initSandboxRuntimeModular(): void {
       // timeline's full extent so it holds the final computed frame instead.
       // Adapters still receive the raw `t` (their media may run longer).
       // totalDuration() includes repeats; Infinity (infinite repeat) → no clamp.
-      const tlWithTotal = tl as RuntimeTimelineLike & { totalDuration?: () => number };
       let tlSeekTime = t;
-      if (typeof tlWithTotal.totalDuration === "function") {
+      if (typeof tl.totalDuration === "function") {
         try {
-          const total = Number(tlWithTotal.totalDuration());
+          const total = Number(tl.totalDuration());
           if (Number.isFinite(total) && total > 0 && t > total) {
             tlSeekTime = total;
           }

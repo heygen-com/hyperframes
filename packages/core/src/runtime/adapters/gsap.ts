@@ -39,24 +39,27 @@ export function rerenderGsapTimelineAt(
   }
 }
 
-type GsapChild = {
+type GsapChild = Pick<GsapAnimation, "startTime" | "getChildren"> & {
   _ts: number;
-  startTime: () => number;
   endTime: () => number;
   time: () => number;
-  getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => unknown[];
 };
 
 // Nested local times carry float noise far below this; a child starting at the playhead stays in.
 const AFTER_PLAYHEAD = 1e-6;
 
 /** Children starting after `time`, also inside nested timelines playing over it. GSAP skips one at time scale 0. */
-function childrenStartingAfter(children: unknown[], time: number): GsapChild[] {
-  return (children as GsapChild[]).flatMap((child) => {
-    if (child.startTime() > time + AFTER_PLAYHEAD) return [child];
-    if (!child.getChildren || child.endTime() < time) return [];
-    return childrenStartingAfter(child.getChildren(false, true, true), child.time());
-  });
+function childrenStartingAfter(
+  children: unknown[],
+  time: number,
+  found: GsapChild[] = [],
+): GsapChild[] {
+  for (const child of children as GsapChild[]) {
+    if (child.startTime() > time + AFTER_PLAYHEAD) found.push(child);
+    else if (child.getChildren && child.endTime() >= time)
+      childrenStartingAfter(child.getChildren(false, true, true), child.time(), found);
+  }
+  return found;
 }
 
 type GsapZeroDurationInternals = { ratio: number; _zTime?: number };

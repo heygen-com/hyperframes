@@ -305,6 +305,7 @@ describe("re-rendering leaves the rest as the seek left it", () => {
   it("keeps two sets on the playhead in authored order on the next seek", () => {
     const o = { x: 0 };
     const timeline = gsap.timeline({ paused: true }).to({ y: 0 }, { y: 1, duration: 10 });
+    // Only the second set has a callback, so restoring callback tweens alone breaks the order.
     timeline.set(o, { x: 50 }, 2).set(o, { x: 100, onComplete: () => {} }, 2);
     timeline.totalTime(2, false);
     rerenderGsapTimelineAt(timeline, 2);
