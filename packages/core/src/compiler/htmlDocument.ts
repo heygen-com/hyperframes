@@ -316,8 +316,10 @@ export function hasCompositionOutsideTemplates(html: string): boolean {
   let idOnWrapper = false;
   let idInTemplate = false;
   for (const open of markupStarts(lowered)) {
-    if (isTagAt(lowered, open, "<template")) depth++;
-    else if (isTagAt(lowered, open, "</template")) depth = Math.max(0, depth - 1);
+    if (isTagAt(lowered, open, "<template")) {
+      depth++;
+      if (carriesCompositionId(lowered, open)) idInTemplate = true;
+    } else if (isTagAt(lowered, open, "</template")) depth = Math.max(0, depth - 1);
     else if (/[a-z]/.test(lowered.charAt(open + 1)) && carriesCompositionId(lowered, open)) {
       if (depth > 0) idInTemplate = true;
       else if (isDocumentWrapper(lowered, open)) idOnWrapper = true;

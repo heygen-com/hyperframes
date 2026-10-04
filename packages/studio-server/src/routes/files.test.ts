@@ -1969,6 +1969,15 @@ const tl = gsap.timeline({ paused: true });
     expect(html.slice(close)).toBe("</template></body></html>\n");
   });
 
+  it("a first animation lands inside the template when the <template> tag carries the composition id", async () => {
+    const html = await addFirstAnimation(
+      '<!DOCTYPE html><html data-composition-id="sub"><body><template data-composition-id="sub"><div id="card"></div></template></body></html>\n',
+    );
+    const close = html.indexOf("</template>");
+    expect(html.lastIndexOf("</script>")).toBeLessThan(close);
+    expect(html.slice(close)).toBe("</template></body></html>\n");
+  });
+
   it("a first animation in a file whose composition is in <body> lands before </body>", async () => {
     const html = await addFirstAnimation(
       '<body><div data-composition-id="main"><div id="card"></div></div><template id="other-template"><div data-composition-id="other"></div></template></body>\n',

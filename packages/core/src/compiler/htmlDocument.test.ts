@@ -289,6 +289,11 @@ describe("hasCompositionOutsideTemplates", () => {
     ],
     ["a bare template", '<template><div data-composition-id="s"></div></template>', false],
     [
+      "an id on <html> and on the <template> tag itself",
+      '<html data-composition-id="s"><body><template data-composition-id="s"><div></div></template></body></html>',
+      false,
+    ],
+    [
       "a root id on <html> beside a template with no composition",
       '<html data-composition-id="main"><body><template><p>clone me</p></template></body></html>',
       true,
