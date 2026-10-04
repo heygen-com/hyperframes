@@ -213,12 +213,33 @@ describe("openProjectHistory", () => {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    for (const record of lines)
-      if (record.type === "baseline") delete record.files[".media/manifest.jsonl"];
+    for (const record of lines.filter((line) => line.type === "baseline")) {
+      delete record.files[".media/manifest.jsonl"];
+      delete record.keepsLedger;
+    }
     writeFileSync(logFile, lines.map((record) => JSON.stringify(record)).join("\n") + "\n");
     const reopened = await open(projectDir, historyRoot);
     expect(await reopened.step("back", you)).toMatchObject({ ok: true });
     expect([read("index.html"), read(".media/manifest.jsonl")]).toEqual(["A", "{}\n"]);
+  });
+
+  it("a ledger made while the project was closed is a change like any file, once a log keeps the ledger", async () => {
+    const { history, write, read, has, projectDir, historyRoot } = await project(
+      { "index.html": "A" },
+      { quietMs: 30 },
+    );
+    await history.close();
+    write("index.html", "B");
+    write(".media/manifest.jsonl", "{}\n");
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    const [outside] = reopened.list();
+    expect(outside!.files.map((file) => file.path).sort()).toEqual([
+      ".media/manifest.jsonl",
+      "index.html",
+    ]);
+    expect((await reopened.undo(outside!.id, { who: you })).ok).toBe(true);
+    expect([read("index.html"), has(".media/manifest.jsonl")]).toEqual(["A", false]);
   });
 
   it("takes the media ledger back with the film when a change is undone", async () => {
