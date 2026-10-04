@@ -44,6 +44,7 @@ interface Strip {
   apply: Apply;
   scroller: Element | null;
   box: { left: number; top: number; width: number; height: number };
+  showing: boolean;
 }
 
 const NEAR_PX = IN_VIEW_CHUNK_PX / 2;
@@ -90,12 +91,16 @@ const refresh = () => {
     moved.set(scroller, { x: now.x - last.x, y: now.y - last.y });
     offsets.set(scroller, now);
   }
-  const updates = [...strips].map(([target, strip]) => {
+  const updates: (readonly [Apply, Partial<StripSize>])[] = [];
+  for (const [target, strip] of strips) {
     const shift = moved.get(strip.scroller);
-    if (shift)
-      strip.box = { ...strip.box, left: strip.box.left - shift.x, top: strip.box.top - shift.y };
-    return [strip.apply, isNear(strip.box) ? read(target, strip) : spanOf(strip.box)] as const;
-  });
+    if (shift) {
+      strip.box.left -= shift.x;
+      strip.box.top -= shift.y;
+    }
+    if (isNear(strip.box)) updates.push([strip.apply, read(target, strip)]);
+    else if (strip.showing) updates.push([strip.apply, NOTHING_IN_VIEW]);
+  }
   commit(updates);
 };
 
@@ -176,11 +181,17 @@ export function useThumbnailStripSize() {
       const next = merge(current, patch);
       if (next === current) return;
       current = next;
+      strip.showing = next.inViewEnd > 0;
       setSize(next);
     };
     const scroller = target.closest("[data-timeline-scroll-viewport]");
     if (!offsets.has(scroller)) offsets.set(scroller, offsetOf(scroller));
-    const strip: Strip = { apply, scroller, box: { left: 0, top: 0, width: 0, height: 0 } };
+    const strip: Strip = {
+      apply,
+      scroller,
+      box: { left: 0, top: 0, width: 0, height: 0 },
+      showing: false,
+    };
     strips.set(target, strip);
     apply({ width: target.clientWidth, height: target.clientHeight, ...read(target, strip) });
     resize.observe(target);
