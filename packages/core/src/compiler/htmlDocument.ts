@@ -302,7 +302,6 @@ function findOuterTemplateClose(html: string): number {
 
 const COMPOSITION_ID_ATTR = /\sdata-composition-id\s*=/;
 
-/** True when an element outside every `<template>` carries `data-composition-id`: the composition lives in `<body>`. */
 export function hasCompositionOutsideTemplates(html: string): boolean {
   const lowered = lowerAscii(html);
   let depth = 0;

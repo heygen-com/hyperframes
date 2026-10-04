@@ -1460,7 +1460,6 @@ async function prepareGsapMutationScript(
       `window.__timelines["${compId}"] = tl;`,
       "</script>",
     ].join("\n");
-    // The loader runs a sub-composition's <template> content, not its <body>.
     const [first, second] = hasCompositionOutsideTemplates(html)
       ? (["body", "template"] as const)
       : (["template", "body"] as const);
