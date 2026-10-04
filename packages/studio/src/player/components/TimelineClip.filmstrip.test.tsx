@@ -24,6 +24,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanupMounted();
   usePlayerStore.getState().setLintFindingsByElement(new Map());
+  usePlayerStore.getState().setElements([]);
   document.body.innerHTML = "";
 });
 
@@ -177,7 +178,6 @@ describe("Filmstrip clips", () => {
     const video = { ...synced, id: "talk", domId: "talk", tag: "video", start: 1, track: 0 };
     usePlayerStore.getState().setElements([video, synced]);
     const badge = render("audio", synced, false).querySelector('[data-testid="out-of-sync-badge"]');
-    usePlayerStore.getState().setElements([]);
     expect(Number(badge?.className.match(/\bz-\[(\d+)\]/)?.[1])).toBeGreaterThan(audioPillZ());
   });
 });
