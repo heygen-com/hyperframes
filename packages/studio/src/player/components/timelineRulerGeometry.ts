@@ -87,6 +87,22 @@ function appendMinorTicks(
   }
 }
 
+function tickSpacing(duration: number, pixelsPerSecond?: number, frameRate?: number) {
+  const majorInterval = getTimelineMajorTickInterval(duration, pixelsPerSecond, frameRate);
+  const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond, frameRate);
+  return { majorInterval, subdivisions };
+}
+
+/** Seconds between neighbouring ruler lines (minor ticks when drawn, else major): the snap grid. */
+export function getTimelineGridStep(
+  duration: number,
+  pixelsPerSecond?: number,
+  frameRate?: number,
+): number {
+  const { majorInterval, subdivisions } = tickSpacing(duration, pixelsPerSecond, frameRate);
+  return subdivisions > 0 ? majorInterval / subdivisions : majorInterval;
+}
+
 export function generateTicks(
   duration: number,
   pixelsPerSecond?: number,
@@ -94,8 +110,7 @@ export function generateTicks(
   range?: TimelineTimeRange,
 ): { major: number[]; minor: number[] } {
   if (!isSupportedTickDuration(duration)) return { major: [], minor: [] };
-  const majorInterval = getTimelineMajorTickInterval(duration, pixelsPerSecond, frameRate);
-  const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond, frameRate);
+  const { majorInterval, subdivisions } = tickSpacing(duration, pixelsPerSecond, frameRate);
   const minorInterval = subdivisions > 0 ? majorInterval / subdivisions : 0;
   const major: number[] = [];
   const minor: number[] = [];

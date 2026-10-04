@@ -10,7 +10,7 @@ export type TimelinePlayerApi = ReturnType<typeof useTimelinePlayer>;
 
 export function resetPlayerStore() {
   usePlayerStore.getState().reset();
-  usePlayerStore.setState({ requestedSeekTime: null });
+  usePlayerStore.setState({ requestedSeekTime: null, previewFrameTime: null });
 }
 
 function TimelinePlayerHarness({

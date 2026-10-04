@@ -352,6 +352,13 @@ export function useTimelinePlayer({
         seek(state.requestedSeekTime);
         usePlayerStore.getState().clearSeekRequest();
       }
+      // Frame only: the playhead, readout and store time stay where they are.
+      if (state.previewFrameTime !== prev.previewFrameTime && !state.isPlaying) {
+        const adapter = getAdapter();
+        const duration = adapter?.getDuration() ?? 0;
+        const time = state.previewFrameTime ?? state.currentTime;
+        adapter?.seek(Math.max(0, duration > 0 ? Math.min(duration, time) : time));
+      }
       // Play or stop from outside the loop — the FX rack auditioning a preset
       // while paused, which is silent otherwise. `returnTo` puts the playhead
       // back where the request found it: hovering is not an edit.
@@ -365,7 +372,7 @@ export function useTimelinePlayer({
         usePlayerStore.getState().clearPlaybackRequest();
       }
     });
-  }, [seek, play, pause]);
+  }, [seek, play, pause, getAdapter]);
   const { playbackKeyDownRef, playbackKeyUpRef, attachIframeShortcutListeners, togglePlay } =
     usePlaybackKeyboard({
       iframeRef,

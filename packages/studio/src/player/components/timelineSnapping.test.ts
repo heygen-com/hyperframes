@@ -27,18 +27,6 @@ describe("collectTimelineSnapTargets", () => {
     expect(targets).toContainEqual({ time: 0.5, type: "beat" });
   });
 
-  it("omits the playhead when includePlayhead is false, for a trim", () => {
-    const targets = collectTimelineSnapTargets({
-      elements,
-      playheadTime: 7.25,
-      beatTimes: [0.5],
-      includePlayhead: false,
-    });
-    expect(targets.some((t) => t.type === "playhead")).toBe(false);
-    expect(targets).toContainEqual({ time: 2, type: "clip-edge" });
-    expect(targets).toContainEqual({ time: 0.5, type: "beat" });
-  });
-
   it("excludes the dragged element's own edges", () => {
     const targets = collectTimelineSnapTargets({
       elements,
@@ -90,6 +78,25 @@ describe("snapTimelineTime", () => {
   it("returns input unchanged when nothing is within threshold", () => {
     expect(snapTimelineTime(6, targets, 0.1)).toEqual({ time: 6, target: null });
   });
+
+  it("snaps to the nearest ruler line when no target is in range", () => {
+    expect(snapTimelineTime(6.27, targets, 0.08, 0.25)).toEqual({
+      time: 6.25,
+      target: { time: 6.25, type: "grid" },
+    });
+    expect(snapTimelineTime(6.37, targets, 0.08, 0.25)).toEqual({ time: 6.37, target: null });
+  });
+
+  it("prefers a target in range over a nearer ruler line", () => {
+    expect(snapTimelineTime(5.24, targets, 0.08, 0.25).target).toEqual({
+      time: 5.3,
+      type: "playhead",
+    });
+  });
+
+  it("lands on whole frames for a frame-spaced grid", () => {
+    expect(snapTimelineTime(1.01, [], 0.08, 1 / 30).time).toBe(1);
+  });
 });
 
 describe("snapMoveToTargets", () => {
@@ -118,6 +125,20 @@ describe("snapMoveToTargets", () => {
     // pps=10 → threshold 0.8s: 5.5 snaps; pps=1000 → threshold 0.008s: it does not
     expect(snapMoveToTargets(5.5, 2, targets, 10, 60).snapTime).toBe(5);
     expect(snapMoveToTargets(5.5, 2, targets, 1000, 60).snapTime).toBeNull();
+  });
+
+  it("snaps a clip edge to the ruler grid when no target is near", () => {
+    expect(snapMoveToTargets(1.02, 2, [], 100, 60, 0.25)).toEqual({
+      start: 1,
+      snapTime: 1,
+      snapType: "grid",
+    });
+  });
+
+  it("prefers the edge on a real target over the other edge nearer a ruler line", () => {
+    // start 2.99 is 1px from the 3s line; the end 4.94 is 6px from the playhead at 5
+    const r = snapMoveToTargets(2.99, 1.95, targets, 100, 60, 0.25);
+    expect(r).toEqual({ start: 3.05, snapTime: 5, snapType: "playhead" });
   });
 
   it("TIMELINE_SNAP_PX matches the historical beat-snap threshold", () => {

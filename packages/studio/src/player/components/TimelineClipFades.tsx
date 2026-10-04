@@ -48,6 +48,7 @@ const SNAP_LABEL: Record<TimelineSnapType, string> = {
   playhead: "playhead",
   "clip-edge": "clip edge",
   beat: "beat",
+  grid: "grid line",
 };
 
 export type ClipFadeShape = AudioFades & { duration: number };

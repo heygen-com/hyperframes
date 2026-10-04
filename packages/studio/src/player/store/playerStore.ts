@@ -161,6 +161,11 @@ interface PlayerState extends PlayerStoreSlices {
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
 
+  /** A frame the preview shows without moving the playhead (a trim's dragged edge);
+   *  null puts back the playhead's frame. useTimelinePlayer applies it while paused. */
+  previewFrameTime: number | null;
+  setPreviewFrameTime: (time: number | null) => void;
+
   /** Request the transport start or stop from outside the player loop: the FX
    *  rack starts playback to audition a preset (silent while paused) and
    *  restores the playhead on leave, without costing the author their place.
@@ -326,6 +331,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
+  previewFrameTime: null,
+  setPreviewFrameTime: (time) => set({ previewFrameTime: time }),
 
   playbackRequest: null,
   requestPlayback: (playing, returnTo = null) =>

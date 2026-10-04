@@ -350,6 +350,35 @@ describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
   });
 });
 
+describe("useTimelinePlayer preview frame (a trim's dragged edge)", () => {
+  function previewFrame(time: number | null) {
+    act(() => usePlayerStore.getState().setPreviewFrameTime(time));
+  }
+
+  it("shows the frame without moving the playhead, then puts the playhead's frame back", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 1.25);
+    const seeks = liveTime.seekCount();
+    previewFrame(3.4);
+    expect(adapter.getTime()).toBe(3.4);
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
+    expect(liveTime.latest()).toBe(1.25);
+    previewFrame(null);
+    expect(adapter.getTime()).toBe(1.25);
+    expect(liveTime.seekCount()).toBe(seeks);
+    unmountWithAct(root);
+  });
+
+  it("leaves live playback alone", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 2);
+    setStorePlaying();
+    previewFrame(5);
+    expect(adapter.getTime()).toBe(2);
+    unmountWithAct(root);
+  });
+});
+
 describe("useTimelinePlayer RAF loop wrap-around", () => {
   type SeekCall = { time: number; options?: { keepPlaying?: boolean } };
 

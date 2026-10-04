@@ -12,6 +12,8 @@ import {
   type TimelineGroupResizeSession,
 } from "./timelineGroupEditing";
 import { collectTimelineSnapTargets, type TimelineSnapTarget } from "./timelineSnapping";
+import { getTimelineGridStep } from "./timelineRulerGeometry";
+import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import type { StackingPatch } from "./timelineStackingSync";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import {
@@ -76,8 +78,6 @@ interface UseTimelineClipDragInput {
   onResizeElements?: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
   onLinkEdit?: TimelineEditCallbacks["onLinkEdit"];
-  /** Seeks the preview; a trim shows the frame at its dragged edge. */
-  onSeek?: (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => void;
   setShowPopover: (show: boolean) => void;
   /** Stable ref to the range selection setter — wired after mount to break circular dependency. */
   setRangeSelectionRef: React.RefObject<((sel: null) => void) | null>;
@@ -108,7 +108,6 @@ export function useTimelineClipDrag({
   onResizeElements,
   onBlockedEditAttempt,
   onLinkEdit,
-  onSeek,
   setShowPopover,
   setRangeSelectionRef,
   readZIndex,
@@ -165,15 +164,11 @@ export function useTimelineClipDrag({
   const dragAudioTracksRef = useRef<ReadonlySet<number> | null>(null);
 
   const buildSnapTargets = useCallback(
-    (
-      excludeElementKey: string | null,
-      includeBeats: boolean,
-      includePlayhead = true,
-    ): TimelineSnapTarget[] => {
+    (excludeElementKey: string | null, includeBeats: boolean): TimelineSnapTarget[] => {
       // Magnet off ⇒ no targets and no scan; do NOT cache so a mid-gesture toggle
       // back on starts scanning immediately (preserves the existing skip).
       if (!snapContextRef.current.enabled) return [];
-      const cacheKey = `${excludeElementKey ?? ""}|${includeBeats ? 1 : 0}|${includePlayhead ? 1 : 0}`;
+      const cacheKey = `${excludeElementKey ?? ""}|${includeBeats ? 1 : 0}`;
       const cached = snapTargetsCacheRef.current.get(cacheKey);
       if (cached) return cached;
       const targets = collectTimelineSnapTargets({
@@ -181,13 +176,19 @@ export function useTimelineClipDrag({
         playheadTime: usePlayerStore.getState().currentTime,
         beatTimes: includeBeats ? snapContextRef.current.beatTimes : [],
         excludeElementKey,
-        includePlayhead,
       });
       snapTargetsCacheRef.current.set(cacheKey, targets);
       return targets;
     },
     [],
   );
+  // The ruler's line spacing at the current zoom; 0 with the magnet off, like the targets.
+  const snapGridStep = useCallback(() => {
+    if (!snapContextRef.current.enabled) return 0;
+    const frameRate =
+      usePlayerStore.getState().timeDisplayMode === "frame" ? STUDIO_PREVIEW_FPS : undefined;
+    return getTimelineGridStep(durationRef.current, ppsRef.current, frameRate);
+  }, [durationRef, ppsRef]);
 
   const [draggedClip, setDraggedClipState] = useState<DraggedClipState | null>(null);
   const draggedClipRef = useRef<DraggedClipState | null>(null);
@@ -285,10 +286,6 @@ export function useTimelineClipDrag({
   onResizeElementRef.current = onResizeElement;
   const onResizeElementsRef = useRef(onResizeElements);
   onResizeElementsRef.current = onResizeElements;
-  const onSeekRef = useRef(onSeek);
-  onSeekRef.current = onSeek;
-  // Playhead time before the first trim preview seek; restored when the gesture ends.
-  const trimSeekOriginRef = useRef<number | null>(null);
   const readZIndexRef = useRef(readZIndex);
   readZIndexRef.current = readZIndex;
   const onStackingPatchesRef = useRef(onStackingPatches);
@@ -325,6 +322,7 @@ export function useTimelineClipDrag({
         selectedKeys: gestureSelectedKeysRef.current,
         buildSnapTargets,
         audioTracks: dragAudioTracksRef.current,
+        gridStep: snapGridStep(),
       });
     },
     [
@@ -335,6 +333,7 @@ export function useTimelineClipDrag({
       trackInsertLayoutRef,
       rowGeometryRef,
       buildSnapTargets,
+      snapGridStep,
     ],
   );
 
@@ -349,15 +348,13 @@ export function useTimelineClipDrag({
         buildSnapTargets,
         elements: elementsRef.current,
         gestureKeys: gestureSelectedKeysRef.current,
+        gridStep: snapGridStep(),
       });
-      trimSeekOriginRef.current ??= usePlayerStore.getState().currentTime;
       const setResizeState = (v: ResizePreviewResult) => {
-        // A trim never changes the play state: keepPlaying lets seek() decide,
-        // and it only resumes playback if it was already playing.
-        onSeekRef.current?.(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration), {
-          keepPlaying: true,
-          follow: false,
-        });
+        // The preview shows the dragged edge's frame; the playhead stays where it was.
+        usePlayerStore
+          .getState()
+          .setPreviewFrameTime(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration));
         publishResizingClip(
           resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
         );
@@ -393,7 +390,7 @@ export function useTimelineClipDrag({
       }
       previewGroupResize(session, next, setResizeState);
     },
-    [scrollRef, ppsRef, buildSnapTargets, publishResizingClip],
+    [scrollRef, ppsRef, buildSnapTargets, snapGridStep, publishResizingClip],
   );
   const applyResizePointerRef = useRef(applyResizePointer);
   applyResizePointerRef.current = applyResizePointer;
@@ -404,13 +401,8 @@ export function useTimelineClipDrag({
       cancelAnimationFrame(clipDragScrollRaf.current);
       clipDragScrollRaf.current = 0;
     }
-    if (trimSeekOriginRef.current != null) {
-      // Paused: put the playhead back. Playing: leave it, a backward jump would rewind live playback.
-      if (!usePlayerStore.getState().isPlaying) {
-        onSeekRef.current?.(trimSeekOriginRef.current, { keepPlaying: true, follow: false });
-      }
-      trimSeekOriginRef.current = null;
-    }
+    const store = usePlayerStore.getState();
+    if (store.previewFrameTime !== null) store.setPreviewFrameTime(null);
     // Gesture teardown: drop frozen caches so the next gesture reads fresh state.
     snapTargetsCacheRef.current.clear();
     dragAudioTracksRef.current = null;

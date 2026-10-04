@@ -1,6 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 
-export type TimelineSnapType = "beat" | "playhead" | "clip-edge";
+export type TimelineSnapType = "beat" | "playhead" | "clip-edge" | "grid";
 
 export interface TimelineSnapTarget {
   time: number;
@@ -24,6 +24,7 @@ const TYPE_PRIORITY: Record<TimelineSnapType, number> = {
   playhead: 0,
   "clip-edge": 1,
   beat: 2,
+  grid: 3,
 };
 
 export function collectTimelineSnapTargets(input: {
@@ -31,8 +32,6 @@ export function collectTimelineSnapTargets(input: {
   playheadTime: number | null;
   beatTimes: readonly number[];
   excludeElementKey?: string | null;
-  /** A trim excludes the playhead: the dragged edge drives it, so snapping to it is circular. */
-  includePlayhead?: boolean;
 }): TimelineSnapTarget[] {
   const byTime = new Map<number, TimelineSnapTarget>();
   const add = (time: number, type: TimelineSnapType) => {
@@ -50,16 +49,28 @@ export function collectTimelineSnapTargets(input: {
     add(el.start, "clip-edge");
     add(el.start + el.duration, "clip-edge");
   }
-  if (input.playheadTime != null && input.includePlayhead !== false)
-    add(input.playheadTime, "playhead");
+  if (input.playheadTime != null) add(input.playheadTime, "playhead");
 
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
+/** The ruler line nearest `time` within the threshold; `gridStep` 0 means no grid. */
+function nearestGridLine(
+  time: number,
+  gridStep: number,
+  thresholdSecs: number,
+): TimelineSnapTarget | null {
+  if (!(gridStep > 0)) return null;
+  const line = Math.round(Math.round(time / gridStep) * gridStep * 1000) / 1000;
+  return Math.abs(line - time) < thresholdSecs ? { time: line, type: "grid" } : null;
+}
+
+/** Snaps to the nearest target; the ruler grid only when no target is in range. */
 export function snapTimelineTime(
   time: number,
   targets: readonly TimelineSnapTarget[],
   thresholdSecs: number,
+  gridStep = 0,
 ): { time: number; target: TimelineSnapTarget | null } {
   let best: TimelineSnapTarget | null = null;
   let bestDist = thresholdSecs;
@@ -73,6 +84,7 @@ export function snapTimelineTime(
       best = target;
     }
   }
+  best ??= nearestGridLine(time, gridStep, thresholdSecs);
   return best ? { time: best.time, target: best } : { time, target: null };
 }
 
@@ -88,23 +100,26 @@ export function snapMoveToTargets(
   targets: readonly TimelineSnapTarget[],
   pixelsPerSecond: number,
   timelineDuration: number,
+  gridStep = 0,
 ): { start: number; snapTime: number | null; snapType: TimelineSnapType | null } {
-  if (targets.length === 0) return { start, snapTime: null, snapType: null };
+  if (targets.length === 0 && !(gridStep > 0)) return { start, snapTime: null, snapType: null };
   const thresholdSecs = TIMELINE_SNAP_PX / Math.max(pixelsPerSecond, 1);
-  const startSnap = snapTimelineTime(start, targets, thresholdSecs);
-  const endSnap = snapTimelineTime(start + duration, targets, thresholdSecs);
-  const startMoved = startSnap.target !== null;
-  const endMoved = endSnap.target !== null;
+  const startSnap = snapTimelineTime(start, targets, thresholdSecs, gridStep);
+  const endSnap = snapTimelineTime(start + duration, targets, thresholdSecs, gridStep);
+  // The nearer edge wins, but a grid line only when neither edge has a real target.
+  const rank = (snap: typeof startSnap, edgeTime: number) =>
+    snap.target === null
+      ? Infinity
+      : Math.abs(snap.time - edgeTime) + (snap.target.type === "grid" ? thresholdSecs : 0);
+  const startRank = rank(startSnap, start);
+  const endRank = rank(endSnap, start + duration);
 
   let candidate = start;
   let target: TimelineSnapTarget | null = null;
-  if (
-    startMoved &&
-    (!endMoved || Math.abs(startSnap.time - start) <= Math.abs(endSnap.time - (start + duration)))
-  ) {
+  if (startRank !== Infinity && startRank <= endRank) {
     candidate = startSnap.time;
     target = startSnap.target;
-  } else if (endMoved) {
+  } else if (endRank !== Infinity) {
     candidate = endSnap.time - duration;
     target = endSnap.target;
   }
