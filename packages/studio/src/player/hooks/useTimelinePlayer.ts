@@ -5,6 +5,8 @@ import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useShadowPreviewReload } from "./useShadowPreviewReload";
 import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
+import { subscribePreviewFrame, transportAdapter } from "../store/previewFrameStore";
+import { clampToDuration } from "../lib/time";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { logReload } from "../../utils/reloadDebug";
 
@@ -148,10 +150,11 @@ export function useTimelinePlayer({
         const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
         const win = iframe?.contentWindow as IframeWindow | null;
         if (!iframe || !win) return null;
-        return resolvePlaybackAdapter(iframe, win, {
+        const adapter = resolvePlaybackAdapter(iframe, win, {
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
         });
+        return transportAdapter(adapter);
       } catch {
         return null;
       }
@@ -301,7 +304,7 @@ export function useTimelinePlayer({
         return false;
       }
       const duration = Math.max(0, adapter.getDuration());
-      const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+      const nextTime = clampToDuration(time, duration);
       const keepPlaying = options?.keepPlaying === true;
       const shouldResumeAfterSeek = shouldResumeForwardPlaybackAfterSeek({
         keepPlaying,
@@ -366,6 +369,7 @@ export function useTimelinePlayer({
       }
     });
   }, [seek, play, pause]);
+  useEffect(() => subscribePreviewFrame(getAdapter), [getAdapter]);
   const { playbackKeyDownRef, playbackKeyUpRef, attachIframeShortcutListeners, togglePlay } =
     usePlaybackKeyboard({
       iframeRef,

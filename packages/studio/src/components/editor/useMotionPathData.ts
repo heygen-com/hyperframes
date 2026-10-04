@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
+import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
 import { buildMotionPathGeometry, type MotionPathGeometry } from "./motionPathGeometry";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
@@ -169,7 +170,8 @@ export function useMotionPathData(
     const recompute = () => {
       // Position-only: never let a co-located size/scale tween shadow the path.
       const read = readRuntimeKeyframes(iframeRef.current, selector, undefined, ["x", "y"]);
-      const next = buildMotionPathGeometry(read);
+      const base = read ? readGsapPositionFromIframe(iframeRef.current, selector) : null;
+      const next = buildMotionPathGeometry(read, base ?? undefined);
       setGeometry((prev) =>
         prev?.points === next?.points && prev?.kind === next?.kind ? prev : next,
       );

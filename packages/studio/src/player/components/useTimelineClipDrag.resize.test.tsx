@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
+import { usePreviewFrameStore } from "../store/previewFrameStore";
 import type { BlockedClipState, DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
@@ -26,6 +27,7 @@ function el(id: string, over: Partial<TimelineElement> = {}): TimelineElement {
 afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
+  usePreviewFrameStore.setState({ time: null });
 });
 
 function renderResizeHarness(
@@ -34,7 +36,6 @@ function renderResizeHarness(
   options: {
     wireGroupResize?: boolean;
     snap?: boolean;
-    onSeek?: (time: number, seekOptions?: { keepPlaying?: boolean }) => void;
   } = {},
 ) {
   usePlayerStore.getState().setElements(elements);
@@ -65,7 +66,6 @@ function renderResizeHarness(
       onMoveElement,
       onBlockedEditAttempt,
       onResizeElements: options.wireGroupResize === false ? undefined : onResizeElements,
-      onSeek: options.onSeek,
       setShowPopover: vi.fn(),
       setRangeSelectionRef: { current: vi.fn() },
       sessionEpoch,
@@ -451,16 +451,7 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
 });
 
 describe("useTimelineClipDrag — trim guide and preview frame", () => {
-  /** Playhead at 1.25s that follows preview seeks; clip a's end edge grabbed and dragged once. */
-  function trimEndWithSeekingPlayhead(state: { isPlaying?: boolean } = {}) {
-    usePlayerStore.setState({ currentTime: 1.25, ...state });
-    const onSeek = vi.fn((t: number) => usePlayerStore.setState({ currentTime: t }));
-    const a = el("a", { start: 1, duration: 2 });
-    const h = renderResizeHarness([a], [], { onSeek });
-    h.startResize(a, "end");
-    h.movePointer(50);
-    return { onSeek, h };
-  }
+  const previewFrame = () => usePreviewFrameStore.getState().time;
 
   /** Clip a (0-2s) with neighbour b starting at 5s, snapping on, a's end edge grabbed. */
   function trimAEndBesideB() {
@@ -487,45 +478,78 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
 
   it("publishes no snap target when the trimmed edge is free", () => {
     const h = trimAEndBesideB();
-    h.movePointer(150);
+    h.movePointer(162); // 3.62s: 12px from the 3.5s ruler line, 13px from 3.75s
     expect(h.getResizingClip()).toMatchObject({ snapTime: null, snapType: null });
     h.unmount();
   });
 
-  it("never snaps a trimmed edge to the playhead — the edge drives its own seek", () => {
-    usePlayerStore.setState({ currentTime: 5 }); // no clip edge or beat nearby, only the playhead
+  it("snaps a trimmed edge to the playhead, which stays where it was", () => {
+    usePlayerStore.setState({ currentTime: 5.1 }); // off the ruler grid; no clip edge or beat nearby
     const a = el("a", { start: 0, duration: 2 });
     const h = renderResizeHarness([a], [], { snap: true });
     h.startResize(a, "end");
-    h.movePointer(296); // a's end lands at 4.96s, 4px from the playhead
+    h.movePointer(306); // a's end lands at 5.06s, 4px from the playhead
     expect(h.getResizingClip()).toMatchObject({
-      snapTime: null,
-      snapType: null,
-      previewDuration: 4.96,
+      snapTime: 5.1,
+      snapType: "playhead",
+      previewDuration: 5.1,
+    });
+    expect(usePlayerStore.getState().currentTime).toBe(5.1);
+    h.unmount();
+  });
+
+  it("snaps a trimmed edge to the ruler's grid line when no clip edge is near", () => {
+    const h = trimAEndBesideB();
+    h.movePointer(152); // 3.52s, 2px from the 3.5s line (0.25s apart at 100px/s)
+    expect(h.getResizingClip()).toMatchObject({
+      snapTime: 3.5,
+      snapType: "grid",
+      previewDuration: 3.5,
     });
     h.unmount();
   });
 
-  it("shows the frame at the dragged edge, then puts the playhead back on release", async () => {
+  it("does not snap to the grid with the magnet off", () => {
+    const a = el("a", { start: 0, duration: 2 });
+    const h = renderResizeHarness([a], []);
+    h.startResize(a, "end");
+    h.movePointer(152);
+    expect(h.getResizingClip()).toMatchObject({ snapTime: null, previewDuration: 3.52 });
+    h.unmount();
+  });
+
+  it("shows the dragged edge's frame without moving the playhead, and drops it on release", async () => {
     usePlayerStore.setState({ currentTime: 1.25 });
-    const onSeek = vi.fn();
     const a = el("a", { start: 1, duration: 2 });
-    const h = renderResizeHarness([a], [], { onSeek });
+    const h = renderResizeHarness([a], []);
     h.startResize(a, "end");
     h.movePointer(50);
-    expect(onSeek).toHaveBeenLastCalledWith(3.5 - 1 / 30, { keepPlaying: true, follow: false });
+    expect(previewFrame()).toBeCloseTo(3.5 - 1 / 30, 6);
+    h.movePointer(120);
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
     await h.dropPointer();
-    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true, follow: false });
+    expect(previewFrame()).toBeNull();
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
+    h.unmount();
+  });
+
+  it("drops the preview frame when the trim is cancelled", () => {
+    const a = el("a", { start: 1, duration: 2 });
+    const h = renderResizeHarness([a], []);
+    h.startResize(a, "end");
+    h.movePointer(50);
+    expect(previewFrame()).not.toBeNull();
+    h.pressEscape();
+    expect(previewFrame()).toBeNull();
     h.unmount();
   });
 
   it("previews the new in-point when the start edge is trimmed", () => {
-    const onSeek = vi.fn();
     const a = el("a", { start: 1, duration: 2 });
-    const h = renderResizeHarness([a], [], { onSeek });
+    const h = renderResizeHarness([a], []);
     h.startResize(a, "start");
     h.movePointer(50);
-    expect(onSeek).toHaveBeenLastCalledWith(1.5, { keepPlaying: true, follow: false });
+    expect(previewFrame()).toBe(1.5);
     h.unmount();
   });
 
@@ -540,41 +564,17 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     h.unmount();
   });
 
-  it("restores the playhead it had before the first preview seek, not a seeked time", async () => {
-    const { onSeek, h } = trimEndWithSeekingPlayhead();
-    h.movePointer(80);
-    h.movePointer(120);
-    await h.dropPointer();
-    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true, follow: false });
-    h.unmount();
-  });
-
-  it("leaves the playhead where playback is when a trim is released while playing", async () => {
-    const { onSeek, h } = trimEndWithSeekingPlayhead({ isPlaying: true });
-    h.movePointer(120);
-    const callsBeforeRelease = onSeek.mock.calls.length;
-    await h.dropPointer();
-    expect(onSeek).toHaveBeenCalledTimes(callsBeforeRelease);
-    expect(onSeek).not.toHaveBeenCalledWith(1.25, expect.anything());
-    usePlayerStore.setState({ isPlaying: false });
-    h.unmount();
-  });
-
-  it("draws no guide and seeks to the rendered edge when a group member clamps the trim", () => {
-    const onSeek = vi.fn();
+  it("draws no guide and previews the rendered edge when a group member clamps the trim", () => {
     const a = el("a", { start: 0, duration: 4 });
     const b = el("b", { start: 0, duration: 1 });
     const c = el("c", { start: 2, duration: 1 });
-    const h = renderResizeHarness([a, b, c], ["a", "b"], { snap: true, onSeek });
+    const h = renderResizeHarness([a, b, c], ["a", "b"], { snap: true });
     h.startResize(a, "end");
     h.movePointer(-198); // a's raw end 2.02s snaps to c at 2s; b clamps the shared delta
     const clip = h.getResizingClip()!;
     expect(clip.previewStart + clip.previewDuration).toBeCloseTo(3.1, 3);
     expect(clip).toMatchObject({ snapTime: null, snapType: null });
-    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(3.1 - 1 / 30, 3), {
-      keepPlaying: true,
-      follow: false,
-    });
+    expect(previewFrame()).toBeCloseTo(3.1 - 1 / 30, 3);
     h.unmount();
   });
 });

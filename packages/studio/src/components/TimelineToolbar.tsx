@@ -35,6 +35,8 @@ import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 import { isTypingTarget } from "../utils/typingTarget";
+import { SPLIT_SHORTCUT_HINT } from "../player/components/studioShortcuts";
+import type { TimelineProps } from "../player/components/TimelineTypes";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
@@ -44,6 +46,7 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
 export interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
+  splitShortcut?: TimelineProps["splitShortcut"];
   history?: TimelineHistoryButtonsProps;
   showHistory?: boolean;
   showSelectAroundPlayhead?: boolean;
@@ -145,6 +148,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 export const TimelineToolbar = memo(function TimelineToolbar({
   domEditSession,
   onSplitElement,
+  splitShortcut = SPLIT_SHORTCUT_HINT,
   history,
   showHistory = true,
   showSelectAroundPlayhead = true,
@@ -382,7 +386,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                 <Tooltip
                   label={
                     canSplit
-                      ? "Split at playhead (S)"
+                      ? `Split at playhead (${splitShortcut})`
                       : splittable
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"

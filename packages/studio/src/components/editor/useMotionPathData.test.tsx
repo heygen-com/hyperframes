@@ -8,6 +8,12 @@ import { usePlayerStore } from "../../player/store/playerStore";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
+const runtime = vi.hoisted(() => ({ read: null as unknown, gsapPosition: null as unknown }));
+vi.mock("../../hooks/gsapRuntimeKeyframes", () => ({ readRuntimeKeyframes: () => runtime.read }));
+vi.mock("../../hooks/gsapPositionDetection", () => ({
+  readGsapPositionFromIframe: () => runtime.gsapPosition,
+}));
+
 const originalRaf = window.requestAnimationFrame;
 let frames: Array<() => void> = [];
 const runFrames = (count: number) => {
@@ -36,6 +42,30 @@ afterEach(() => {
   vi.useRealTimers();
   usePlayerStore.setState({ previewBooted: false, motionPathArmed: false });
   document.body.innerHTML = "";
+  runtime.read = runtime.gsapPosition = null;
+});
+
+it("draws an axis the tween leaves alone where GSAP renders it, so the playhead node sits on the layer", () => {
+  runtime.read = {
+    keyframes: [
+      { percentage: 66.667, properties: { x: 60 } },
+      { percentage: 100, properties: { x: 120 } },
+    ],
+  };
+  runtime.gsapPosition = { x: 60, y: 30 };
+  let points: string | undefined;
+  function Probe() {
+    const ref = useRef(document.createElement("iframe"));
+    points = useMotionPathData(ref, "#box").geometry?.points;
+    return null;
+  }
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  try {
+    act(() => root.render(<Probe />));
+    expect(points).toBe("60,30 120,30");
+  } finally {
+    act(() => root.unmount());
+  }
 });
 
 it("reads no layout per frame until there is a path or a create ring to draw", () => {

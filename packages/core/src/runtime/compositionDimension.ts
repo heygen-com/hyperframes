@@ -14,9 +14,9 @@ export function parseCompositionDimension(value: string | null | undefined): num
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function findRootCompositionElement(): HTMLElement | null {
-  const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
+export function findRootCompositionElement(doc: ParentNode = document): HTMLElement | null {
+  const explicitRoot = doc.querySelector('[data-composition-id][data-root="true"]');
   if (isHtmlElement(explicitRoot)) return explicitRoot;
   // The first composition in document order never sits inside another one.
-  return document.querySelector<HTMLElement>("[data-composition-id]");
+  return doc.querySelector<HTMLElement>("[data-composition-id]");
 }

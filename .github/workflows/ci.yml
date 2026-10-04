@@ -848,6 +848,8 @@ jobs:
             packages/studio/data/projects/studio-open
           cp -R packages/studio/tests/e2e/fixtures/fade-handles \
             packages/studio/data/projects/fade-handles
+          cp -R packages/studio/tests/e2e/fixtures/timeline-trim-snap \
+            packages/studio/data/projects/timeline-trim-snap
           cp -R packages/studio/tests/e2e/fixtures/inline-text-caret \
             packages/studio/data/projects/inline-text-caret
           cp -R packages/studio/tests/e2e/fixtures/undo-socket-pool \
@@ -960,7 +962,7 @@ jobs:
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
             packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
             /tmp/base-perf-ceilings.json
-      - name: Check fade handles, render selects and thumbnail connection release
+      - name: Check fade handles, render selects, thumbnail connection release and trim snapping
         if: success() || failure()
         run: |
           set -euo pipefail
@@ -983,6 +985,8 @@ jobs:
             node packages/studio/tests/e2e/render-selects.mjs || rc=1
           STUDIO_URL="http://localhost:5316/" \
             node packages/studio/tests/e2e/thumbnail-save.mjs || rc=1
+          STUDIO_URL="http://localhost:5316/#project/timeline-trim-snap" \
+            node packages/studio/tests/e2e/timeline-trim-snap.mjs || rc=1
           exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()

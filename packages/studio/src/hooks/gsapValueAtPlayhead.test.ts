@@ -527,9 +527,52 @@ describe("planValueAtPlayhead", () => {
     ]);
   });
 
-  it("refuses keyframes eased as a whole, whose segment curves it cannot keep", () => {
-    const anim = { ...kf([{ percentage: 100, properties: { x: 20 } }]), ease: "power2.out" };
-    expect(plan({ anim, values: { x: 5 } })).toEqual({ ok: false, reason: "eased-keyframes" });
+  describe("keyframes eased as a whole", () => {
+    const eased = {
+      ...kf([
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 20 } },
+      ]),
+      ease: "power2.out",
+    };
+
+    it("changes the keyframe under the playhead and writes the ease back", () => {
+      const result = plan({ anim: eased, at: { time: 4 }, values: { x: 5 } });
+      expect(result.ok && result.mutation.keyframes.map((k) => k.properties.x)).toEqual([0, 5]);
+      expect(result.ok && result.mutation.ease).toBe("power2.out");
+    });
+
+    it("writes the keyframes' own ease as the tween's, as GSAP prefers it", () => {
+      const anim = { ...eased, keyframes: { ...eased.keyframes!, ease: "expo.in" } };
+      const result = plan({ anim, at: { time: 0 }, values: { x: 5 } });
+      expect(result.ok && result.mutation.ease).toBe("expo.in");
+    });
+
+    it("refuses an inner keyframe, which the ease shows at another time", () => {
+      const anim = {
+        ...kf([
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 50, properties: { x: 100 } },
+          { percentage: 100, properties: { x: 300 } },
+        ]),
+        ease: "power2.out",
+      };
+      expect(plan({ anim, at: { time: 2 }, values: { x: 5 } })).toEqual({
+        ok: false,
+        reason: "eased-keyframes",
+      });
+    });
+
+    it("refuses to add a keyframe, whose time the ease would move", () => {
+      expect(plan({ anim: eased, at: { time: 2 }, values: { x: 5 } })).toEqual({
+        ok: false,
+        reason: "eased-keyframes",
+      });
+      expect(plan({ anim: eased, at: { time: 6 }, values: { x: 5 } })).toEqual({
+        ok: false,
+        reason: "eased-keyframes",
+      });
+    });
   });
 });
 

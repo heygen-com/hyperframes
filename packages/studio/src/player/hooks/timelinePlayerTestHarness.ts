@@ -5,12 +5,14 @@ import { createRoot } from "react-dom/client";
 import { vi } from "vitest";
 import { useTimelinePlayer, type UseTimelinePlayerOptions } from "./useTimelinePlayer";
 import { usePlayerStore } from "../store/playerStore";
+import { setPreviewFrame } from "../store/previewFrameStore";
 
 export type TimelinePlayerApi = ReturnType<typeof useTimelinePlayer>;
 
 export function resetPlayerStore() {
   usePlayerStore.getState().reset();
   usePlayerStore.setState({ requestedSeekTime: null });
+  setPreviewFrame(null);
 }
 
 function TimelinePlayerHarness({

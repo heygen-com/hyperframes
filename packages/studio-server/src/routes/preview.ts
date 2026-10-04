@@ -4,8 +4,8 @@ import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
+  AFTER_FONTS_SCRIPT_TYPE,
   addScenePartsManifest,
-  injectScriptsIntoHtml,
   insertBeforeCloseTag,
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
@@ -158,7 +158,8 @@ function injectMotionPathPluginIfNeeded(html: string): string {
   const match = html.match(gsapScript);
   if (match) {
     const version = match[0].match(/gsap@([\d.]+)/)?.[1];
-    const pluginTag = `<script src="${motionPathPluginUrl(version)}"></script>`;
+    const gsapTagType = match[0].match(/\stype=("[^"]*"|'[^']*')/i)?.[0] ?? "";
+    const pluginTag = `<script${gsapTagType} src="${motionPathPluginUrl(version)}"></script>`;
     const end = html.indexOf(match[0]) + match[0].length;
     return html.slice(0, end) + "\n" + pluginTag + html.slice(end);
   }
@@ -186,12 +187,9 @@ function injectStudioMotionScript(
     activeCompositionPath,
   });
   if (!script) return html;
-  return injectScriptsIntoHtml(
-    injectStudioMotionDependencies(html, manifestContent),
-    [],
-    [script],
-    false,
-  );
+  const withDependencies = injectStudioMotionDependencies(html, manifestContent);
+  const tag = `<script type="${AFTER_FONTS_SCRIPT_TYPE}">${script.replace(/<\/script/gi, "<\\/script")}</script>`;
+  return insertBeforeCloseTag(withDependencies, "body", tag) ?? `${withDependencies}${tag}`;
 }
 
 const GSAP_FALLBACK_ATTR = "data-hf-gsap-fallback";

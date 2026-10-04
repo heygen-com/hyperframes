@@ -185,7 +185,6 @@ export function startGesture(
 
   if (kind === "drag") {
     opts.onManualDragStartRef.current?.();
-    opts.rafPausedRef.current = true;
     const result = createManualOffsetDragMember({
       key: selectionCacheKey(sel),
       selection: sel,
@@ -195,6 +194,7 @@ export function startGesture(
     });
     if (!result.ok) {
       opts.onBlockedMoveRef.current(result.selection, result.reason);
+      e.preventDefault();
       return false;
     }
     pathOffsetMember = result.member;

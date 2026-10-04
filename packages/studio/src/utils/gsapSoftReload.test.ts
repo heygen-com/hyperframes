@@ -384,6 +384,56 @@ describe("ensureMotionPathPluginLoaded", () => {
     expect(appendedScripts).toHaveLength(0);
   });
 
+  describe("when gsap is not there yet at load", () => {
+    const post = (source: unknown, type = "ready") => {
+      const event = new MessageEvent("message", { data: { source: "hf-preview", type } });
+      Object.defineProperty(event, "source", { value: source });
+      window.dispatchEvent(event);
+    };
+
+    it("loads the plugin once that iframe's runtime is ready", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(iframe);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post({});
+      post(contentWindow, "timeline");
+      expect(appendedScripts).toHaveLength(0);
+      post(contentWindow);
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(1);
+      expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    });
+
+    it("stops listening at the first ready, even when it brought no gsap", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(iframe);
+      post(contentWindow);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(0);
+    });
+
+    it("drops a preview that never became ready once a newer one loads", () => {
+      const stale = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(stale.iframe);
+      ensureMotionPathPluginLoaded(buildBootstrapIframe({ gsap: undefined }).iframe);
+      stale.contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(stale.contentWindow);
+      expect(stale.appendedScripts).toHaveLength(0);
+    });
+
+    it("does not wait when the runtime already booted, since its ready has gone out", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({
+        gsap: undefined,
+        __playerReady: true,
+      });
+      ensureMotionPathPluginLoaded(iframe);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(0);
+    });
+  });
+
   it("loads the plugin at the composition's own gsap version", () => {
     const { iframe, appendedScripts } = buildBootstrapIframe({
       gsap: { version: "3.14.2", registerPlugin: vi.fn() },

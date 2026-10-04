@@ -61,6 +61,22 @@ describe("dispatchLinkShortcut", () => {
     expect(handleTimelineElementDeleteOnly).toHaveBeenCalledWith(video);
   });
 
+  it("leaves ⌥⌫ to a text field the user is typing in", () => {
+    const video = clip("talk", "video", { muted: true, link: "lk-1" });
+    select([video, clip("talk-audio", "audio", { link: "lk-1" })], "talk");
+    const input = document.createElement("input");
+    document.body.append(input);
+    const event = key({ altKey: true, key: "Backspace", bubbles: true });
+    const handleTimelineElementDeleteOnly = vi.fn();
+    input.addEventListener("keydown", (e) =>
+      dispatchLinkShortcut(e, { handleLinkEdit: vi.fn(), handleTimelineElementDeleteOnly }),
+    );
+    input.dispatchEvent(event);
+    input.remove();
+    expect(handleTimelineElementDeleteOnly).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
   it("leaves the key alone when no link item applies", () => {
     select([clip("title", "div")], "title");
     const event = key({ metaKey: true, key: "l" });

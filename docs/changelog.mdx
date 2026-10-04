@@ -9,6 +9,48 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.122"
+  description="Released - 2026-10-04"
+  tags={["Release", "Media Use", "Core", "Studio"]}
+>
+Studio trims keep the playhead still and clips snap to the ruler, and a host can show its own Split key. Renders wait for web fonts, so text-sized layouts repeat exactly. Media Use gives clearer credential errors and no longer leaves empty assets after a slow download.
+
+## Fixes
+
+- **Media Use:** Say to fix an unreadable credentials path, not to log in again ([981bcf455332](https://github.com/heygen-com/hyperframes/commit/981bcf455332a18e951e323c78395d30df32ea66), [#4998](https://github.com/heygen-com/hyperframes/pull/4998)).
+- **Core:** Composition scripts start after web fonts are ready, so renders repeat ([44b583625095](https://github.com/heygen-com/hyperframes/commit/44b5836250953fd34fa1d85b4843db34efd2232c), [#4980](https://github.com/heygen-com/hyperframes/pull/4980)).
+- **Studio:** Trimming keeps the playhead still; clips snap to the ruler grid ([7859c0f0037a](https://github.com/heygen-com/hyperframes/commit/7859c0f0037a1e07988e6f5fba31a2c8bc6f9456), [#4986](https://github.com/heygen-com/hyperframes/pull/4986)).
+- **Studio:** The host can name Split's key on the toolbar and bind the clip menu's link keys ([b04081b376a3](https://github.com/heygen-com/hyperframes/commit/b04081b376a3c2c549b7df71c8be0afb22001b03), [#4994](https://github.com/heygen-com/hyperframes/pull/4994)).
+- **Media Use:** A slow download no longer leaves an empty asset that undo brings back ([18a922f43342](https://github.com/heygen-com/hyperframes/commit/18a922f43342a3afb6e03e80ab7174d78552da95), [#4989](https://github.com/heygen-com/hyperframes/pull/4989)).
+
+## Internal
+
+- **Studio:** The edit bench render serves GSAP from the repo, never the CDN ([7f3464921c7d](https://github.com/heygen-com/hyperframes/commit/7f3464921c7dad4ed66930661147b12225f23440), [#4996](https://github.com/heygen-com/hyperframes/pull/4996)).
+- **Core:** Pin three composition-length rules that no test covered ([351d389c0bcc](https://github.com/heygen-com/hyperframes/commit/351d389c0bcc60dcabcd8e7aaf4592923efde179), [#5000](https://github.com/heygen-com/hyperframes/pull/5000)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.121...v0.8.122).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.121"
+  description="Released - 2026-10-04"
+  tags={["Release", "Core", "Media Use"]}
+>
+Media Use no longer crashes when a HeyGen credentials path is a folder. Video length and size now come from one place in the core runtime.
+
+## Fixes
+
+- **Media Use:** A credentials folder means no HeyGen credential, not a crash ([32d2bc6fe030](https://github.com/heygen-com/hyperframes/commit/32d2bc6fe03007c7c8417268522516e3db7a2e87), [#4995](https://github.com/heygen-com/hyperframes/pull/4995)).
+- **Media Use:** Skip a .env folder when loading HeyGen credentials ([5f3191bdc593](https://github.com/heygen-com/hyperframes/commit/5f3191bdc59312b6d6cba231e50207919e22b7cf), [#4988](https://github.com/heygen-com/hyperframes/pull/4988)).
+
+## Internal
+
+- **Core:** One pure owner for composition length and root size ([34ff5ca1dea1](https://github.com/heygen-com/hyperframes/commit/34ff5ca1dea155ad0a29b26b6cb456b12b18b1d5), [#4990](https://github.com/heygen-com/hyperframes/pull/4990)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.120...v0.8.121).
+</Update>
+
+<Update
   label="HyperFrames v0.8.120"
   description="Released - 2026-10-04"
   tags={["Release", "Studio", "CLI"]}

@@ -3,6 +3,7 @@ import type { TimelineElement } from "../store/playerStore";
 import {
   computeDragPreview,
   computeResizePreview,
+  guideIfSaved,
   getTimelineDragOverlayPosition,
   type DragPreviewContext,
 } from "./timelineClipDragPreview";
@@ -293,6 +294,52 @@ describe("computeDragPreview — a clip landing on an empty main track keeps its
   });
 });
 
+describe("guideIfSaved — a guide only where the clip saves", () => {
+  const grid = { time: 3.25, type: "grid" as const };
+
+  it("drops the guide when start and duration round apart from the target", () => {
+    // 1440 px/s: 1.125s + 2.125s saves as 1.13s + 2.13s, 14px past the 3.25s guide.
+    const el = clip("a", 0, 1.125, 2, 0, "div");
+    expect(guideIfSaved(el, { start: 1.125, duration: 2.125 }, grid, 1440)).toBeNull();
+  });
+
+  it("drops the guide when a nested clip's local start rounds off it", () => {
+    const el = { ...clip("a", 0, 2, 1, 0, "div"), parentCompositionStart: 1 / 30 };
+    const target = { time: 2.1, type: "playhead" as const };
+    expect(guideIfSaved(el, { start: 2.1, duration: 1 }, target, 1440)).toBeNull();
+  });
+
+  it("keeps the guide when the saved edge is on it", () => {
+    const el = clip("a", 0, 1, 2, 0, "div");
+    expect(guideIfSaved(el, { start: 1, duration: 2.25 }, grid, 1440)).toBe(grid);
+  });
+
+  it("judges a move by the duration it keeps, not a rounded one", () => {
+    // A 31/30 s clip moved so its end meets 3.25s saves its start at 2.22s and ends 4.8px past.
+    const el = clip("a", 0, 1, 31 / 30, 0, "div");
+    const edge = { time: 3.25, type: "clip-edge" as const };
+    expect(guideIfSaved(el, { start: 2.217 }, edge, 1440)).toBeNull();
+  });
+
+  it("draws no guide for a move whose saved start misses the target", () => {
+    const nested = { ...moodboard, parentCompositionStart: 1 / 30 };
+    const { drag } = horizontalDrag(nested, 0.5, 0);
+    const context = {
+      ...ctx(),
+      pps: 1440,
+      buildSnapTargets: () => [{ time: 21, type: "playhead" as const }],
+    };
+    const next = computeDragPreview(
+      drag,
+      drag.originClientX + 2 * 1440,
+      drag.originClientY,
+      context,
+    );
+    expect(next.previewStart).toBe(21);
+    expect(next.snapTime).toBeNull();
+  });
+});
+
 describe("computeResizePreview — composition source continuity", () => {
   it("seeds a legacy composition offset and advances it at playback rate", () => {
     const element = {
@@ -318,6 +365,27 @@ describe("computeResizePreview — composition source continuity", () => {
       previewDuration: 3,
       previewPlaybackStart: 2,
     });
+  });
+
+  it("draws no guide when the trimmed start cannot save onto the target", () => {
+    // 1440 px/s: a playhead on frame 31 (1.033s) saves a start of 1.03s, 4px off the guide.
+    const result = computeResizePreview(
+      {
+        element: clip("a", 0, 1, 2, 0, "div"),
+        edge: "start",
+        originClientX: 0,
+        previewStart: 1,
+        previewDuration: 2,
+        started: true,
+      },
+      48,
+      {
+        scroll: fakeScroll(),
+        pps: 1440,
+        buildSnapTargets: () => [{ time: 1.033, type: "playhead" }],
+      },
+    );
+    expect(result).toMatchObject({ previewStart: 1.03, snapTime: null, snapType: null });
   });
 
   it("does not let a tail snap shrink a clip below the drag's minimum duration", () => {

@@ -11,40 +11,82 @@ type GsapAdapterDeps = {
 export function rerenderGsapTimelineAt(
   timeline: {
     totalTime: (time: number, suppressEvents?: boolean) => unknown;
+    totalDuration?: () => number;
     getChildren?: RuntimeTimelineLike["getChildren"];
   },
   t: number,
 ): void {
+  timeline.totalDuration?.();
   const children = timeline.getChildren?.(false, true, true) ?? [];
-  const firedStates = callTweensIn(timeline).map(
-    (call) => [call, call.ratio, call._zTime] as const,
+  const marked = childrenWithLandingMarksIn(timeline).map(
+    (child) => [child, child.ratio, child._zTime, child._act] as const,
   );
-  timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
-  primeKeyframedTweensStartingAt(children, t);
-  timeline.totalTime(t, true);
-  for (const [call, ratio, zTime] of firedStates) Object.assign(call, { ratio, _zTime: zTime });
+  const skipped = childrenStartingAfter(children, t).map((child) => [child, child._ts] as const);
+  const parents = new Set<GsapParent>();
+  for (const [child] of skipped) {
+    for (let parent = child.parent; parent && !parents.has(parent); parent = parent.parent)
+      parents.add(parent);
+  }
+  const lengths = [...parents].map(
+    (parent) => [parent, parent._dur, parent._tDur, parent._end, parent._dirty] as const,
+  );
+  for (const [child] of skipped) child._ts = 0;
+  try {
+    timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
+    primeKeyframedTweensStartingAt(children, t);
+    timeline.totalTime(t, true);
+  } finally {
+    for (const [child, timeScale] of skipped) child._ts = timeScale;
+    for (const [parent, dur, tDur, end, dirty] of lengths) {
+      Object.assign(parent, { _dur: dur, _tDur: tDur, _end: end, _dirty: dirty });
+    }
+  }
+  for (const [child, ratio, zTime, active] of marked) {
+    child.ratio = ratio;
+    child._zTime = zTime;
+    child._act = active;
+  }
 }
 
-type GsapCallInternals = { ratio: number; _zTime?: number };
+type GsapParent = {
+  _dur: number;
+  _tDur: number;
+  _end: number;
+  _dirty: number;
+  parent?: GsapParent | null;
+};
 
-export const GSAP_CALLBACK_NAMES = [
-  "onStart",
-  "onUpdate",
-  "onComplete",
-  "onReverseComplete",
-  "onRepeat",
-];
+type GsapChild = Pick<GsapAnimation, "startTime" | "getChildren"> & {
+  _ts: number;
+  parent?: GsapParent | null;
+  endTime: () => number;
+  time: () => number;
+};
 
-function callTweensIn(timeline: {
+const PLAYHEAD_FLOAT_NOISE = 1e-6;
+
+function childrenStartingAfter(
+  children: unknown[],
+  time: number,
+  found: GsapChild[] = [],
+): GsapChild[] {
+  for (const child of children as GsapChild[]) {
+    if (child.startTime() > time + PLAYHEAD_FLOAT_NOISE) found.push(child);
+    else if (child.getChildren && child.endTime() >= time)
+      childrenStartingAfter(child.getChildren(false, true, true), child.time(), found);
+  }
+  return found;
+}
+
+type GsapLandingMarks = { ratio: number; _zTime?: number; _act?: number };
+
+function childrenWithLandingMarksIn(timeline: {
   getChildren?: RuntimeTimelineLike["getChildren"];
-}): GsapCallInternals[] {
-  return (timeline.getChildren?.(true, true, false) ?? []).filter((child) => {
-    const tween = child as { totalDuration?: () => number; vars?: Record<string, unknown> };
-    return (
-      tween.totalDuration?.() === 0 &&
-      GSAP_CALLBACK_NAMES.some((name) => typeof tween.vars?.[name] === "function")
-    );
-  }) as unknown as GsapCallInternals[];
+}): GsapLandingMarks[] {
+  return (timeline.getChildren?.(true, true, true) ?? []).filter((child) => {
+    const animation = child as { totalDuration?: () => number; getChildren?: unknown };
+    return typeof animation.getChildren === "function" || animation.totalDuration?.() === 0;
+  }) as unknown as GsapLandingMarks[];
 }
 
 type GsapAnimation = {
@@ -98,6 +140,7 @@ export function createGsapAdapter(deps: GsapAdapterDeps): RuntimeDeterministicAd
         rerenderGsapTimelineAt(
           {
             totalTime: timeline.totalTime.bind(timeline),
+            totalDuration: timeline.totalDuration?.bind(timeline),
             getChildren: timeline.getChildren?.bind(timeline),
           },
           safeTime,

@@ -15,6 +15,7 @@ import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { waitForRuntimeReady } from "../capture/captureCompositionFrame.js";
 import {
   assertWebGpuAdapterAvailable,
   compositionRequiresWebGpu,
@@ -415,11 +416,7 @@ async function openCompositionPage(
   await page.setViewport(size);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
   await assertWebGpuAdapterAvailable(page, requiresWebGpu);
-  await page
-    .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {
-      timeout: 10000,
-    })
-    .catch(() => {});
+  await waitForRuntimeReady(page, 10000);
   await page
     .evaluate(async () => {
       const d = document as unknown as { fonts?: { ready?: Promise<unknown> } };

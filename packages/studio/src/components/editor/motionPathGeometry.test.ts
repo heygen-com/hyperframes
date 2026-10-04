@@ -17,6 +17,16 @@ describe("buildMotionPathGeometry", () => {
     ]);
   });
 
+  it("puts an axis the tween does not animate where GSAP renders it, a folded CSS translate", () => {
+    const read: ReadTween = {
+      keyframes: [
+        { percentage: 66.667, properties: { x: 60 } },
+        { percentage: 100, properties: { x: 120 } },
+      ],
+    };
+    expect(buildMotionPathGeometry(read, { x: 40, y: 30 })!.points).toBe("60,30 120,30");
+  });
+
   it("preserves order and percentages for intermediate keyframes", () => {
     const read: ReadTween = { keyframes: [kf(0, 0, 0), kf(50, 50, 90), kf(100, 100, 0)] };
     const geo = buildMotionPathGeometry(read);

@@ -34,9 +34,11 @@ let flushNudge = () => {};
 function Harness({
   selection,
   onPathOffsetCommit,
+  onManualDragStart = () => {},
 }: {
   selection: DomEditSelection | null;
   onPathOffsetCommit: UseDomEditNudgeParams["onPathOffsetCommitRef"]["current"];
+  onManualDragStart?: () => void;
 }) {
   flushNudge = useDomEditNudge({
     selection,
@@ -48,7 +50,7 @@ function Harness({
     gestureRef: makeRef(null),
     groupGestureRef: makeRef(null),
     blockedMoveRef: makeRef(null),
-    onManualDragStartRef: makeRef(() => {}),
+    onManualDragStartRef: makeRef(onManualDragStart),
     onBlockedMoveRef: makeRef(() => {}),
     onPathOffsetCommitRef: makeRef(onPathOffsetCommit),
     onGroupPathOffsetCommitRef: makeRef(async () => {}),
@@ -337,6 +339,56 @@ describe("useDomEditNudge carries the route its press chose", () => {
     );
     act(() => root.unmount());
     element.remove();
+  });
+});
+
+describe("useDomEditNudge pauses playback before it snapshots the timelines", () => {
+  let reactRoot: ReturnType<typeof createRoot> | null = null;
+  const pause = vi.fn();
+  const mount = (selection: DomEditSelection | null) => {
+    reactRoot = createRoot(document.createElement("div"));
+    act(() => {
+      reactRoot!.render(
+        React.createElement(Harness, {
+          selection,
+          onPathOffsetCommit: vi.fn(),
+          onManualDragStart: pause,
+        }),
+      );
+    });
+  };
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetForTests();
+    pause.mockReset();
+  });
+  afterEach(() => {
+    act(() => reactRoot?.unmount());
+    reactRoot = null;
+    document.body.innerHTML = "";
+    vi.useRealTimers();
+    delete (window as { __timelines?: unknown }).__timelines;
+  });
+
+  it("does not resume a timeline the playback pause stopped", () => {
+    let playing = true;
+    const root = { pause: () => void (playing = false), paused: () => !playing };
+    (window as { __timelines?: unknown }).__timelines = { root };
+    pause.mockImplementation(root.pause);
+    const element = document.body.appendChild(document.createElement("div"));
+    mount(makeSelection("Dot", element));
+
+    act(() => dispatchArrowRight());
+
+    expect(element.hasAttribute("data-hf-drag-paused-timelines")).toBe(false);
+  });
+
+  it("leaves playback alone when no layer can move", () => {
+    mount(null);
+
+    act(() => dispatchArrowRight());
+
+    expect(pause).not.toHaveBeenCalled();
   });
 });
 

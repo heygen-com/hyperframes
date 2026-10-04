@@ -223,7 +223,6 @@ export function useTimelineProviderState({
     onResizeElements: pinnedOnResizeElements,
     onBlockedEditAttempt: oneShotEdits.onBlockedEditAttempt,
     onLinkEdit: oneShotEdits.onLinkEdit,
-    onSeek,
     setShowPopover,
     setRangeSelectionRef,
     readZIndex: zSyncEnabled ? readClipZIndex : undefined,

@@ -770,7 +770,7 @@ async function nudgeGesture(ctx, pre) {
 const blockedCdnUrls = new Set();
 
 /** Serves the fixtures' CDN requests from the repo; any other CDN URL is blocked and named once. */
-async function serveFixtureAssetsLocally(page) {
+export async function serveFixtureAssetsLocally(page) {
   const cdp = await page.createCDPSession();
   cdp.on("Fetch.requestPaused", ({ requestId, request }) => {
     const file = localAsset(request.url);
