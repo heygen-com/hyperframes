@@ -211,7 +211,8 @@ function isHistoryPath(path: string): boolean {
 }
 
 /** The project files history keeps. */
-const historyFiles = (dir: string) => listProjectFiles(dir).filter((file) => isHistoryPath(file.path));
+const historyFiles = (dir: string) =>
+  listProjectFiles(dir).filter((file) => isHistoryPath(file.path));
 
 const sameWho = (a: HistoryWho, b: HistoryWho) => a.kind === b.kind && a.name === b.name;
 
@@ -400,6 +401,7 @@ class Engine {
     const cache = this.readStatCache();
     const last = this.log.entries.at(-1)?.id ?? START;
     for (const [path, hash] of manifestAt(this.log, last) ?? []) {
+      if (!isHistoryPath(path)) continue; // an older log may still name one
       const cached = cache.get(path);
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
@@ -501,7 +503,6 @@ class Engine {
     const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
-      .filter(isHistoryPath)
       .filter((path) => !present.has(path))
       .map((path) => {
         const standing = this.standingAt(path);
@@ -923,6 +924,8 @@ class Engine {
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
     this.assertWritable();
+    // History never writes a path it does not keep: an older log's hidden file holds bytes it no longer sees.
+    for (const path of target.keys()) if (!isHistoryPath(path)) target.delete(path);
     const changes = [...target]
       .filter(([path, hash]) => (this.tracked.get(path)?.hash ?? null) !== hash)
       .sort(([, a], [, b]) => Number(a !== null) - Number(b !== null));
@@ -997,7 +1000,11 @@ class Engine {
   }
 
   movedOn(entry: HistoryEntry): HistoryFileChange[] {
-    return entry.files.filter((file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after);
+    // A hidden file an older entry names is not kept any more, so it never stands in the way.
+    return entry.files.filter(
+      (file) =>
+        isHistoryPath(file.path) && (this.tracked.get(file.path)?.hash ?? null) !== file.after,
+    );
   }
 
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined {

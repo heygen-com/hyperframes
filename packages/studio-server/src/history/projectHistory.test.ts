@@ -104,6 +104,32 @@ async function change(history: ProjectHistory, who: HistoryWho, label: string, w
 }
 
 describe("openProjectHistory", () => {
+  it("never writes a hidden file an older log still names, on undo or restore", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({
+      "index.html": "v1",
+      "turn-record": "A",
+    });
+    const turn = await change(history, agent, "Agent turn", () => {
+      write("index.html", "v2");
+      write("turn-record", "B");
+    });
+    await history.close();
+    // What an older log holds: the record under its hidden name, as history filed it before.
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    write(".turn-record", "C");
+    expect((await reopened.undo(turn.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("v1");
+    expect(read(".turn-record")).toBe("C");
+    await reopened.restore(START, you);
+    expect(read(".turn-record")).toBe("C");
+  });
+
   it("never files a hidden file name as a change, but keeps Studio's two manifests", async () => {
     const { history, write } = await project({ "index.html": "<h1>Hello</h1>" }, { quietMs: 30 });
     const turn = await history.beginWindow(agent, "Agent turn");
