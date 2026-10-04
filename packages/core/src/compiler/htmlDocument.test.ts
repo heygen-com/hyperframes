@@ -289,6 +289,11 @@ describe("hasCompositionOutsideTemplates", () => {
     ],
     ["a bare template", '<template><div data-composition-id="s"></div></template>', false],
     [
+      "a full document whose <html> carries the id",
+      '<html data-composition-id="s"><body data-composition-id="s"><template><div data-composition-id="s"></div></template></body></html>',
+      false,
+    ],
+    [
       "the attribute only in a comment or text",
       '<body><!-- <div data-composition-id="a"> --><p>data-composition-id="b"</p></body>',
       false,

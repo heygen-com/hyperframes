@@ -302,13 +302,20 @@ function findOuterTemplateClose(html: string): number {
 
 const COMPOSITION_ID_ATTR = /\sdata-composition-id\s*=/;
 
+const isDocumentWrapper = (lowered: string, open: number): boolean =>
+  isTagAt(lowered, open, "<html") || isTagAt(lowered, open, "<body");
+
 export function hasCompositionOutsideTemplates(html: string): boolean {
   const lowered = lowerAscii(html);
   let depth = 0;
   for (const open of markupStarts(lowered)) {
     if (isTagAt(lowered, open, "<template")) depth++;
     else if (isTagAt(lowered, open, "</template")) depth = Math.max(0, depth - 1);
-    else if (depth === 0 && /[a-z]/.test(lowered.charAt(open + 1))) {
+    else if (
+      depth === 0 &&
+      /[a-z]/.test(lowered.charAt(open + 1)) &&
+      !isDocumentWrapper(lowered, open)
+    ) {
       const end = findTagEnd(lowered, open + 1);
       if (end !== -1 && COMPOSITION_ID_ATTR.test(lowered.slice(open, end))) return true;
     }
