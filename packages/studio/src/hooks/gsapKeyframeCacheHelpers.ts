@@ -5,6 +5,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { sameData } from "../utils/sameData";
 import { resolveClipTimingBasis, resolveSelectorElementIds, toClipKeyframes } from "./gsapShared";
 import {
   deduplicateKeyframes,
@@ -16,6 +17,14 @@ import {
 export interface KeyframeCacheDraft {
   keyframeCache: Map<string, KeyframeCacheEntry>;
   gsapAnimations: Map<string, GsapAnimation[]>;
+}
+
+// A rebuilt entry equal to the one shown keeps its object, so re-reading an unchanged file publishes nothing.
+function keepEqualEntries<V>(before: ReadonlyMap<string, V>, draft: Map<string, V>): void {
+  for (const [key, value] of draft) {
+    const shown = before.get(key);
+    if (shown !== undefined && shown !== value && sameData(shown, value)) draft.set(key, shown);
+  }
 }
 
 function sameEntries<V>(before: ReadonlyMap<string, V>, after: ReadonlyMap<string, V>): boolean {
@@ -42,6 +51,8 @@ export function publishKeyframeCache(edit: (draft: KeyframeCacheDraft) => void):
     gsapAnimations: new Map(gsapAnimations),
   };
   edit(draft);
+  keepEqualEntries(keyframeCache, draft.keyframeCache);
+  keepEqualEntries(gsapAnimations, draft.gsapAnimations);
   if (
     sameEntries(keyframeCache, draft.keyframeCache) &&
     sameEntries(gsapAnimations, draft.gsapAnimations)
@@ -174,10 +185,14 @@ function cachedElementIdsForFile(
 ): Set<string> {
   const sfPrefix = `${sourceFile}#`;
   const ids = new Set<string>();
+  const othersIds = new Set<string>();
   for (const key of [...keyframeCache.keys(), ...gsapAnimations.keys()]) {
-    if (!key.startsWith(sfPrefix)) continue;
-    ids.add(key.slice(sfPrefix.length));
+    const hash = key.indexOf("#");
+    if (key.startsWith(sfPrefix)) ids.add(key.slice(sfPrefix.length));
+    else if (hash > 0) othersIds.add(key.slice(hash + 1));
   }
+  // Another file's elements also write the `index.html#id` fallback; that file owns them.
+  if (sourceFile === "index.html") for (const id of othersIds) ids.delete(id);
   return ids;
 }
 
