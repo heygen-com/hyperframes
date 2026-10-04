@@ -4,6 +4,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AudioMeterStrip,
+  dispatchLinkShortcut,
   TimelineHistoryButtons,
   TimelineToolbar,
   useAudioMetersVisible as exportedAudioMetersVisible,
@@ -50,6 +51,17 @@ describe("timeline chrome package exports, outside Studio's shell", () => {
     const root = mountReactHarness(<AudioMeterStrip previewIframeRef={{ current: null }} />);
     expect(document.querySelector('[data-testid="audio-meter-strip"]')).not.toBeNull();
     await act(async () => root.unmount());
+  });
+
+  it("exports the clip menu's link shortcuts for a host's own key handler", () => {
+    const video = { id: "talk", tag: "video", start: 0, duration: 4, track: 0, link: "lk-1" };
+    const audio = { ...video, id: "talk-audio", tag: "audio" };
+    usePlayerStore.getState().setElements([video, audio]);
+    usePlayerStore.getState().setSelection(["talk"], "talk");
+    const handleLinkEdit = vi.fn();
+    const event = new KeyboardEvent("keydown", { metaKey: true, key: "l", cancelable: true });
+    expect(dispatchLinkShortcut(event, { handleLinkEdit })).toBe(true);
+    expect(handleLinkEdit).toHaveBeenCalledWith({ kind: "unlink", elements: [video, audio] });
   });
 
   it("exports the meter visibility store a host toggles", () => {

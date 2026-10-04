@@ -436,3 +436,28 @@ describe("TimelineToolbar — host right actions", () => {
     act(() => root.unmount());
   });
 });
+
+describe("TimelineToolbar split hint", () => {
+  async function splitTooltip(props: Partial<React.ComponentProps<typeof TimelineToolbar>>) {
+    usePlayerStore.setState({
+      elements: [{ id: "a", domId: "a", tag: "div", start: 0, duration: 4, track: 0 }],
+      selectedElementId: "a",
+      currentTime: 2,
+    });
+    const { host, root } = renderToolbar(undefined, { onSplitElement: vi.fn(), ...props });
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Split at playhead"]');
+    act(() => button?.focus());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const label = document.querySelector('[role="tooltip"]')?.textContent;
+    act(() => root.unmount());
+    usePlayerStore.setState({ elements: [], selectedElementId: null, currentTime: 0 });
+    return label;
+  }
+
+  it("names S unless the host binds Split to another key", async () => {
+    expect(await splitTooltip({})).toBe("Split at playhead (S)");
+    expect(await splitTooltip({ splitShortcut: "⌘B" })).toBe("Split at playhead (⌘B)");
+  });
+});
