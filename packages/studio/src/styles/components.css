@@ -411,6 +411,7 @@
 .timeline-clip.is-audio .timeline-clip__label {
   top: 11px;
   left: 9px;
+  z-index: 11;
   background: var(--timeline-clip-chip-audio-bg);
 }
 

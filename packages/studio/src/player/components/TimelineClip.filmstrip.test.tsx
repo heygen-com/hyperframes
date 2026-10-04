@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { loadStylesheet, STYLES_DIR } from "../../styles/styleSources";
 import { cleanupMounted, trackedRoot } from "../../components/ui/mountHost.testHelpers";
 import { TimelineClip } from "./TimelineClip";
+import { WAVEFORM_LAYER_Z } from "./AudioWaveform";
 import { renderClipChildren } from "./timelineClipChildren";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
@@ -152,5 +153,12 @@ describe("Filmstrip clips", () => {
       /\.timeline-clip\.is-selected,\s*\.timeline-clip\[data-active\]\.is-selected\s*\{[^}]*outline:\s*1px solid var\(--timeline-clip-selection\);[^}]*outline-offset:\s*0;/,
     );
     expect(css).toMatch(/\.timeline-clip:not\(\.is-audio\)\s*\{\s*border-width:\s*0;/);
+  });
+
+  it("draws an audio clip's name pill over its waveform", () => {
+    const pill = css.match(
+      /\.timeline-clip\.is-audio \.timeline-clip__label\s*\{[^}]*z-index:\s*(\d+)/,
+    );
+    expect(Number(pill?.[1])).toBeGreaterThan(WAVEFORM_LAYER_Z);
   });
 });
