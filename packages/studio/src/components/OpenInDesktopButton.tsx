@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStudioShellContext } from "../contexts/StudioContext";
+import { studioApiFetch } from "../utils/studioApiFetch";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { FrameyGlyph } from "./FrameyGlyph";
 import { Button, buttonBase, buttonSizes, buttonVariants, cn, Popover } from "./ui";
@@ -20,7 +21,7 @@ function useDesktopRoute(): { handoff: boolean } | null {
   const [route, setRoute] = useState<{ handoff: boolean } | null>(null);
   useEffect(() => {
     let live = true;
-    fetch(ROUTE)
+    studioApiFetch(ROUTE)
       .then((res) => (res.ok ? res.json() : null))
       .then((body: { available?: unknown; handoff?: unknown } | null) => {
         if (live && body?.available === true) setRoute({ handoff: body.handoff === true });
@@ -80,7 +81,7 @@ export function OpenInDesktopButton() {
     setOpening(true);
     trackStudioEvent("toolbar_action", { action: "open_in_desktop" });
     try {
-      const res = await fetch(ROUTE, { method: "POST" });
+      const res = await studioApiFetch(ROUTE, { method: "POST" });
       const result = (await res.json()) as OpenResult;
       if (result.opened) {
         showToast("Framey is opening this project in HyperFrames Studio", "info");
