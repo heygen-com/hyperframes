@@ -672,6 +672,34 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain('id="div-2"');
   });
 
+  it("never lets ensure-id save an id another composition file in the preview holds", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), '<div data-hf-id="hf-a"></div>');
+    mkdirSync(join(projectDir, "compositions"));
+    writeFileSync(join(projectDir, "compositions/b.html"), '<div data-hf-id="hf-b"></div>');
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    // Both adds proposed "div": neither preview knew of the other's write.
+    const ensureId = async (file: string, hfId: string) => {
+      const response = await app.request(
+        `http://localhost/projects/demo/file-mutations/patch-element/${file}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target: { hfId },
+            operations: [{ type: "ensure-id", property: "id", value: "div" }],
+          }),
+        },
+      );
+      return ((await response.json()) as Record<string, unknown>).elementId;
+    };
+
+    expect(await ensureId("compositions/b.html", "hf-b")).toBe("div");
+    expect(await ensureId("index.html", "hf-a")).toBe("div-2");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain('id="div-2"');
+  });
+
   it("writes the font an edit uses in the same write as the edit", async () => {
     const projectDir = createProjectDir();
     const original = '<html><head></head><body><div id="title">Before</div></body></html>';

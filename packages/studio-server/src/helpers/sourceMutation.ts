@@ -182,7 +182,7 @@ export function dedupeClonedCompositionId(document: Document, clone: Element): v
 }
 
 export interface PatchOperation {
-  /** `ensure-id` keeps the element's id, else writes `value` made unique in this file. */
+  /** `ensure-id` keeps the element's id, else writes `value` made unique in this file and `takenIds`. */
   type:
     | "inline-style"
     | "attribute"
@@ -246,6 +246,7 @@ export function patchElementInHtml(
   source: string,
   target: SourceMutationTarget,
   operations: PatchOperation[],
+  takenIds?: ReadonlySet<string>,
 ): { html: string; matched: boolean; elementId?: string | null } {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
@@ -294,7 +295,7 @@ export function patchElementInHtml(
         break;
       case "ensure-id":
         if (opTarget.getAttribute("id") || !op.value) break;
-        opTarget.setAttribute("id", nextUniqueId(document, op.value));
+        opTarget.setAttribute("id", nextUniqueId(document, op.value, takenIds));
         break;
       case "text-content":
         if (op.value != null) {
@@ -323,10 +324,14 @@ export function patchElementInHtml(
   return { html: ensureHfIds(html), matched: true, elementId };
 }
 
-export function nextUniqueId(document: Document, base: string): string {
+export function nextUniqueId(
+  document: Document,
+  base: string,
+  takenIds?: ReadonlySet<string>,
+): string {
   let id = base;
   let suffix = 2;
-  while (document.getElementById(id)) id = `${base}-${suffix++}`;
+  while (document.getElementById(id) || takenIds?.has(id)) id = `${base}-${suffix++}`;
   return id;
 }
 
