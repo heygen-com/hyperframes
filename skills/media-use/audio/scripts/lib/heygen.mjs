@@ -5,7 +5,7 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
 // overrides the dir). Vendored so the skill ships standalone. Pure node.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -17,9 +17,9 @@ export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // OAuth-only cli-source header above, which also gates the free allowance.
 export const HEYGEN_CLIENT_SOURCE_HEADERS = { "X-HeyGen-Client-Source": "media-use" };
 
-// A missing `.env`, or a `.env` folder (some home dirs have one), is no env file: null. Read without checking first,
-// so the file cannot change between a check and the read.
-function envFileText(path) {
+// A missing file, or a folder where the file should be (some home dirs have a `.env` one), is no file: null. Read
+// without checking first, so the file cannot change between a check and the read.
+function fileTextOrNull(path) {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {
@@ -32,7 +32,7 @@ function envFileText(path) {
 export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
   for (let i = 0; i < 5; i++) {
-    const text = envFileText(join(dir, ".env"));
+    const text = fileTextOrNull(join(dir, ".env"));
     if (text != null) {
       for (const raw of text.split("\n")) {
         let line = raw.trim();
@@ -57,19 +57,18 @@ export function loadEnvFromDir(startDir) {
   }
 }
 
-// → { headers } | { expired: true } | null. Never throws.
+// → { headers } | { expired: true } | null. Throws only when the credentials file exists but cannot be read.
 export function heygenCredential() {
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
   if (envKey) return { headers: { "X-Api-Key": envKey } };
 
   const file = join(process.env.HEYGEN_CONFIG_DIR || join(homedir(), ".heygen"), "credentials");
-  if (!existsSync(file)) return null;
-  const raw = readFileSync(file, "utf8").trim();
+  const raw = fileTextOrNull(file)?.trim();
   if (!raw) return null;
   if (!raw.startsWith("{")) return { headers: { "X-Api-Key": raw } };
 
   // A malformed credentials file (partial write / wrong shape) must degrade to
-  // "no credential", not crash the engine at startup — this function never throws.
+  // "no credential", not crash the engine at startup.
   let cred;
   try {
     cred = JSON.parse(raw);
@@ -88,9 +87,9 @@ export function heygenCredential() {
 
 // → "oauth" | "api_key" | null. Same oauth-vs-api-key check heygenAuthHeaders()
 // makes internally, exposed on its own so callers that only need to *tag* the
-// auth path (telemetry) don't have to parse headers back apart. Never throws:
-// no credential (or an expired one) is just `null`, same as a fresh resolve
-// with nothing to tag.
+// auth path (telemetry) don't have to parse headers back apart. No credential
+// (or an expired one) is just `null`, same as a fresh resolve with nothing to
+// tag; it throws only when the credentials file exists but cannot be read.
 export function heygenAuthMethod() {
   const cred = heygenCredential();
   if (!cred?.headers) return null;

@@ -115,3 +115,16 @@ test("loadEnvFromDir skips a .env folder and loads the .env file above it", () =
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("heygenAuthMethod returns null when the credentials path is a folder", () => {
+  withCleanHeygenEnv(() => {
+    const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
+    try {
+      mkdirSync(join(dir, "credentials"));
+      process.env.HEYGEN_CONFIG_DIR = dir;
+      assert.equal(heygenAuthMethod(), null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
