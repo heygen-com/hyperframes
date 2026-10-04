@@ -9,6 +9,26 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.125"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio", "Core", "Skills"]}
+>
+A cropped layer's edge now stays exact while GSAP animates it, in preview and export, and undoing a resize, rotate or GSAP edit shows the change undone at once while it saves.
+
+## Fixes
+
+- **Studio:** Undo shows a resize, rotate or GSAP edit undone at once while it saves ([49333a882d34](https://github.com/heygen-com/hyperframes/commit/49333a882d343cef768f16739a84643296e9da5d), [#5022](https://github.com/heygen-com/hyperframes/pull/5022)).
+- **Core:** A cropped element's edge stays exact while GSAP tweens it ([99c389bce9fd](https://github.com/heygen-com/hyperframes/commit/99c389bce9fd893f3c0052c11f6e4844a5da33ab), [#5010](https://github.com/heygen-com/hyperframes/pull/5010)).
+
+## Docs & Examples
+
+- **Skills:** Fix wrong facts and broken paths from the doctrine audit ([0c3e244269aa](https://github.com/heygen-com/hyperframes/commit/0c3e244269aae698149214379280377a9f7a2f2b), [#5026](https://github.com/heygen-com/hyperframes/pull/5026)).
+- **Skills:** Resolve cross-skill contradictions from the doctrine audit ([173103dfdec5](https://github.com/heygen-com/hyperframes/commit/173103dfdec5738f85733e6796d56932ad2a7436), [#5028](https://github.com/heygen-com/hyperframes/pull/5028)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.124...v0.8.125).
+</Update>
+
+<Update
   label="HyperFrames v0.8.124"
   description="Released - 2026-10-04"
   tags={["Release", "Studio Server", "Studio", "CLI"]}

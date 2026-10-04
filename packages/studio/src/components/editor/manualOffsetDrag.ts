@@ -1,3 +1,4 @@
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import type { DomEditSelection } from "./domEditing";
 import {
   applyStudioPathOffset,
@@ -131,9 +132,7 @@ function getFrameElement(win: Window): HTMLElement | null {
   try {
     const frameElement = win.frameElement;
     if (!frameElement) return null;
-    const ownerWin = frameElement.ownerDocument.defaultView;
-    const htmlElement = ownerWin?.HTMLElement;
-    return htmlElement && frameElement instanceof htmlElement ? frameElement : null;
+    return isHtmlElement(frameElement) ? frameElement : null;
   } catch {
     return null;
   }

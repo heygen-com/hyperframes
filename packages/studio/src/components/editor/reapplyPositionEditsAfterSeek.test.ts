@@ -130,6 +130,26 @@ describe("reapplyPositionEditsAfterSeek", () => {
     delete win.__timelines;
   });
 
+  it("reapplies and migrates marks in the preview, whichever window built its node", () => {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    const doc = frame.contentDocument!;
+    // The frame builds one node; the editor builds the other, as on loads where they differ.
+    const nodes = [doc.createElement("div"), document.createElement("div")];
+    for (const el of nodes) {
+      el.setAttribute(`data-${STUDIO_PATH_OFFSET_ATTR}`, "true");
+      el.setAttribute(STUDIO_ROTATION_ATTR, "true");
+      el.style.setProperty(STUDIO_ROTATION_PROP, "8deg");
+      doc.body.append(el);
+    }
+
+    reapplyPositionEditsAfterSeek(doc);
+
+    for (const el of nodes) {
+      expect(el.getAttribute(STUDIO_PATH_OFFSET_ATTR)).toBe("true");
+      expect(el.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
+    }
+  });
+
   it("still migrates a legacy double-prefixed edit mark", () => {
     document.body.innerHTML = `<div id="a" data-${STUDIO_PATH_OFFSET_ATTR}="true"></div>`;
 

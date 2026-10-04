@@ -1,3 +1,4 @@
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
 import { toAuthoredStart } from "../player/store/timelineElement";
 import {
@@ -35,14 +36,6 @@ import {
 } from "../components/editor/domEditingElement";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
-function isHTMLElement(element: Element | null): element is HTMLElement {
-  if (!element) return false;
-  // Use the element's OWN realm's HTMLElement: timeline clips live in the preview
-  // iframe, and cross-realm `element instanceof HTMLElement` (main window) is
-  // always false — which silently dropped every timeline z-index commit.
-  const Ctor = element.ownerDocument?.defaultView?.HTMLElement ?? globalThis.HTMLElement;
-  return element instanceof Ctor;
-}
 /**
  * Resolve a timeline vertical move to a z-index stacking reorder and commit it
  * through the shared layers-panel reorder path. Reads live sibling z-index from
@@ -96,7 +89,7 @@ export function applyTimelineStackingReorder(input: {
           input.activeCompPath,
         )
       : null;
-    if (!isHTMLElement(element)) return Promise.resolve();
+    if (!isHtmlElement(element)) return Promise.resolve();
     if (getElementZIndex(element) === change.zIndex) continue;
     commitEntries.push({
       element,
