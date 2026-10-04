@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 /**
- * "Edit with Framey": shown only where the preview server answers on macOS; a press opens the project in the app,
+ * "Edit with Framey": shown where the preview server has the app or its download to offer; a press opens the project in the app,
  * or introduces Framey with the download while the app cannot take it or is missing.
  */
 import React, { act } from "react";
@@ -68,25 +68,42 @@ it("stays hidden where the server has no hand-off (the desktop's own Studio)", a
   expect(button()).toBeNull();
 });
 
-it("stays hidden when the server says it cannot open the app (not macOS)", async () => {
-  serve(Response.json({ available: false }));
+it("stays hidden when the app has no build for this machine (Windows)", async () => {
+  serve(Response.json({ available: false, handoff: true, downloadUrl: null }));
   await mount();
   expect(button()).toBeNull();
 });
 
+it("with the app installed but no download (Windows), shows only once the app can take the project", async () => {
+  serve(Response.json({ available: true, handoff: false, downloadUrl: null }));
+  await mount();
+  expect(button()).toBeNull();
+});
+
+it("opens the project in an installed app that has no download (Windows)", async () => {
+  serve(Response.json({ available: true, handoff: true, downloadUrl: null }), {
+    opened: true,
+    app: "HyperFrames Studio",
+  });
+  await mount();
+  await act(async () => button()!.click());
+  expect(posts).toBe(1);
+});
+
 it("while the app cannot take a project yet, introduces Framey with the download and opens nothing", async () => {
-  serve(Response.json({ available: true, handoff: false }), { opened: true });
+  const linux = `${DOWNLOAD}?os=linux`;
+  serve(Response.json({ available: true, handoff: false, downloadUrl: linux }), { opened: true });
   await mount();
   await act(async () => button()!.click());
   expect(posts).toBe(0);
   expect(document.body.textContent).toContain("Meet Framey");
-  expect(downloadHref()).toBe(DOWNLOAD);
+  expect(downloadHref()).toBe(linux);
 });
 
 it("opens the project in the app and says so", async () => {
-  serve(Response.json({ available: true, handoff: true }), {
+  serve(Response.json({ available: true, handoff: true, downloadUrl: DOWNLOAD }), {
     opened: true,
-    bundleId: "dev.hyperframes.desktop",
+    app: "HyperFrames Studio",
   });
   await mount();
   await act(async () => button()!.click());
@@ -100,7 +117,7 @@ it("opens the project in the app and says so", async () => {
 });
 
 it("introduces Framey and offers the download when the app is missing", async () => {
-  serve(Response.json({ available: true, handoff: true }), {
+  serve(Response.json({ available: true, handoff: true, downloadUrl: DOWNLOAD }), {
     opened: false,
     reason: "not-installed",
     downloadUrl: DOWNLOAD,

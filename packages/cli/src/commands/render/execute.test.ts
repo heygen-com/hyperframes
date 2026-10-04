@@ -43,10 +43,9 @@ describe("renderOptionsFromPlan", () => {
 });
 
 describe("the desktop-app line after a render", () => {
-  it("comes after a delivered render, never after a draft or a batch row", () => {
-    expect(wantsDesktopHint({ quality: "high" })).toBe(true);
-    expect(wantsDesktopHint({ quality: "draft" })).toBe(false);
-    expect(wantsDesktopHint({ quality: "high", desktopHint: false })).toBe(false);
+  it("comes after every render but a batch row", () => {
+    expect(wantsDesktopHint({})).toBe(true);
+    expect(wantsDesktopHint({ desktopHint: false })).toBe(false);
     const projectDir = mkdtempSync(join(tmpdir(), "hf-render-batch-"));
     try {
       writeFileSync(join(projectDir, "index.html"), '<main data-composition-id="main"></main>');

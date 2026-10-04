@@ -2,7 +2,7 @@ import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
-import { DOWNLOAD_HINT, openInDesktop, type DesktopOpenResult } from "../utils/desktopApp.js";
+import { downloadHint, openInDesktop, type DesktopOpenResult } from "../utils/desktopApp.js";
 import { resolveProject, resolveProjectOrThrow, type ProjectDir } from "../utils/project.js";
 
 export const examples: Example[] = [
@@ -13,14 +13,14 @@ export const examples: Example[] = [
 
 const WHY_NOT: Record<Extract<DesktopOpenResult, { opened: false }>["reason"], string | null> = {
   "handoff-unavailable": null,
-  "unsupported-platform": "Opening a project from the CLI works on macOS only.",
-  "not-installed": "HyperFrames Studio isn't installed on this Mac.",
-  "open-failed": "macOS couldn't open HyperFrames Studio.",
+  "unsupported-platform": "Opening a project from the CLI works on macOS, Windows and Linux only.",
+  "not-installed": "HyperFrames Studio isn't installed on this computer.",
+  "open-failed": "HyperFrames Studio couldn't be started.",
 };
 
 function printResult(project: ProjectDir, result: DesktopOpenResult): void {
   if (result.opened) {
-    console.log(`${c.success("◇")}  Opening ${c.accent(project.name)} in HyperFrames Studio`);
+    console.log(`${c.success("◇")}  Opening ${c.accent(project.name)} in ${result.app}`);
     if (result.handedOver) {
       const agent = result.handedOver.engine === "claude" ? "Claude Code" : "Codex";
       console.log(`   ${c.dim(`Its chat picks up this ${agent} conversation.`)}`);
@@ -28,7 +28,7 @@ function printResult(project: ProjectDir, result: DesktopOpenResult): void {
     return;
   }
   const why = WHY_NOT[result.reason];
-  if (!why) return console.log(`${c.warn("◇")}  ${DOWNLOAD_HINT}`);
+  if (!why) return console.log(`${c.warn("◇")}  ${downloadHint(result.downloadUrl)}`);
   console.log(`${c.warn("◇")}  ${why}`);
   console.log(`   Download it: ${c.accent(result.downloadUrl)}`);
 }

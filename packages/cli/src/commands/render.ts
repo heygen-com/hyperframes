@@ -1905,9 +1905,9 @@ function readOutputFootprint(outputPath: string): { fileSize: string; isDirector
   }
 }
 
-/** A delivered render points to the desktop app; a draft or a batch row does not. */
-export function wantsDesktopHint(options: Pick<RenderOptions, "desktopHint" | "quality">): boolean {
-  return options.desktopHint !== false && options.quality !== "draft";
+/** A render points to the desktop app; a batch row does not. Drafts do too: music-to-video delivers one. */
+export function wantsDesktopHint(options: Pick<RenderOptions, "desktopHint">): boolean {
+  return options.desktopHint !== false;
 }
 
 function printRenderComplete(input: {

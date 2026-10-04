@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { DesktopOpenResult } from "../utils/desktopApp.js";
+import { desktopDownloadUrl, type DesktopOpenResult } from "../utils/desktopApp.js";
 import { mountDesktopRoutes, sameOriginPost } from "./desktopRoutes.js";
 
 const STUDIO = {
@@ -10,14 +10,17 @@ const STUDIO = {
 };
 const OPENED: DesktopOpenResult = {
   opened: true,
-  bundleId: "dev.hyperframes.desktop",
+  app: "HyperFrames Studio",
   handedOver: null,
 };
 
-function server(ready: boolean) {
+function server(
+  ready: boolean,
+  place: { platform?: NodeJS.Platform; installed?: () => boolean } = {},
+) {
   const app = new Hono();
   const open = vi.fn((_dir: string): DesktopOpenResult => OPENED);
-  mountDesktopRoutes(app, "/films/a", { ready, open });
+  mountDesktopRoutes(app, "/films/a", { ready, open, ...place });
   const post = (headers: Record<string, string>) =>
     app.request("/api/open-in-desktop", { method: "POST", headers });
   return { app, open, post };
@@ -25,8 +28,22 @@ function server(ready: boolean) {
 
 describe("open-in-desktop routes", () => {
   it("tells Studio whether to show the button and whether the app can take the project", async () => {
-    const body = await (await server(false).app.request("/api/open-in-desktop")).json();
-    expect(body).toEqual({ available: process.platform === "darwin", handoff: false });
+    const body = await (
+      await server(false, { installed: () => false }).app.request("/api/open-in-desktop")
+    ).json();
+    const downloadUrl = desktopDownloadUrl();
+    expect(body).toEqual({ available: downloadUrl !== null, handoff: false, downloadUrl });
+  });
+
+  it("shows the button where the app is installed even without a download (Windows)", async () => {
+    const get = async (installed: boolean) =>
+      (
+        await server(true, { platform: "win32", installed: () => installed }).app.request(
+          "/api/open-in-desktop",
+        )
+      ).json();
+    expect(await get(true)).toEqual({ available: true, handoff: true, downloadUrl: null });
+    expect(await get(false)).toMatchObject({ available: false });
   });
 
   it("refuses a POST from another site, or through a rebound host name", async () => {

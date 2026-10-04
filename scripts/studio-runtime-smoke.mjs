@@ -53,7 +53,14 @@ const GET_RESPONSES = new Map([
   // notice renders. The notice has its own tests.
   ["/api/environment/ffmpeg", json({ ok: true })],
   // The header's Edit with Framey asks this on load; shown, so the shell mounts with it.
-  ["/api/open-in-desktop", json({ available: true, handoff: false })],
+  [
+    "/api/open-in-desktop",
+    json({
+      available: true,
+      handoff: false,
+      downloadUrl: "https://hyperframes.dev/studio/download",
+    }),
+  ],
 ]);
 const MUTATION_RESPONSES = new Map([
   [`${PROJECT_PATH}/selection`, json({ ok: true, selection: null, updatedAt: null })],
