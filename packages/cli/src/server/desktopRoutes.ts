@@ -19,8 +19,7 @@ export function sameOriginPost(headers: {
   return origin === undefined || origin === `http://${host}`;
 }
 
-/** Studio's Edit with Framey: the GET says whether to show it (the app is installed here or has a build to download),
- * where to get it, and whether the app can take the project. */
+/** Edit with Framey's route: whether to show it, where to download, and whether the app takes the project. */
 export function mountDesktopRoutes(
   app: Hono,
   projectDir: string,

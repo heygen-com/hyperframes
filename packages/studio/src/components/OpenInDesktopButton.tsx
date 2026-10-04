@@ -17,8 +17,7 @@ type OpenResult = { opened: true } | { opened: false; reason: string; downloadUr
 
 type DesktopRoute = { handoff: boolean; downloadUrl: string | null };
 
-/** Null hides the button: no such route (the app's own Studio), or nothing to offer here (no app to open the project
- * in yet, and no build to download). */
+/** Null hides the button: no route (the app's own Studio), or nothing here to open or download. */
 function useDesktopRoute(): DesktopRoute | null {
   const [route, setRoute] = useState<DesktopRoute | null>(null);
   useEffect(() => {

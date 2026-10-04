@@ -3,12 +3,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
 
-// The HyperFrames desktop app (not "Studio", which is the preview): macOS hands it a folder through `open -b`;
-// Windows and Linux start its executable with the folder. Released app first, then Canary.
+// The HyperFrames desktop app (not "Studio"): `open -b` on macOS, its executable elsewhere; released, then Canary.
 const DESKTOP_BUNDLE_IDS = ["dev.hyperframes.desktop", "dev.hyperframes.desktop.canary"] as const;
 const DESKTOP_APP_NAMES = ["HyperFrames.app", "HyperFrames Canary.app"];
 const APP_NAMES = ["HyperFrames", "HyperFrames Canary"] as const;
-// The app's page lists every build; the download route redirects straight to one (a DMG unless it names Linux).
 const STUDIO_PAGE = "https://hyperframes.dev/studio";
 const DOWNLOADS: Partial<Record<NodeJS.Platform, string>> = {
   darwin: `${STUDIO_PAGE}/download`,
@@ -22,9 +20,8 @@ export const desktopDownloadUrl = (platform = process.platform): string | null =
 export const downloadHint = (url: string): string =>
   `Keep editing by chatting with Framey in the HyperFrames desktop app → ${url}`;
 
-// ponytail: the released Mac app takes a handed-over folder since b254 (hyperframes-internal#2601). The Windows and
-// Linux apps read it from their command line only once the folder-argv change ships; until then those surfaces
-// (CLI, preview route, Studio's button) offer the download and nothing opens or writes a hand-off.
+// ponytail: the Mac app takes a handed-over folder since b254 (hyperframes-internal#2601); Windows and Linux join
+// once its folder-argv change ships. Until then every surface offers the download and writes no hand-off.
 export const HANDOFF_READY = process.platform === "darwin";
 
 export interface AgentSession {
@@ -55,8 +52,7 @@ export type DesktopOpenResult =
 const openWithBundle = (bundleId: string, dir: string): boolean =>
   spawnSync("open", ["-b", bundleId, dir], { stdio: "ignore" }).status === 0;
 
-/** The app is single-instance: a copy already running is forwarded the folder. A bad executable fails after the
- * spawn returns, so only a refused spawn counts as failed. */
+/** Single-instance app: a running copy is forwarded the folder. Only a refused spawn counts as failed. */
 function launchApp(executable: string, dir: string): boolean {
   try {
     const child = spawn(executable, [dir], { detached: true, stdio: "ignore" });
@@ -98,8 +94,7 @@ interface AppLookup {
   read?: (path: string) => string | null;
 }
 
-/** The app's executables here, released first: where the Windows installer puts them, or the AppImage each Linux
- * build last started from (it records itself in launcher.json). Null where there is no lookup (macOS uses bundle ids). */
+/** Released then Canary: the Windows install path, or the AppImage Linux records in launcher.json; null on macOS. */
 function desktopApps({
   platform = process.platform,
   env = process.env,
@@ -191,8 +186,7 @@ const spotlightFinds = (bundleId: string): boolean =>
     .stdout?.split("\n")
     .some((path) => path.endsWith(".app") && !basename(path).startsWith(".")) ?? false;
 
-/** Whether this machine has the app, without launching it. On a Mac: where the DMG and the installer put it, else
- * Spotlight. */
+/** Whether this machine has the app, without launching it (on a Mac: install folders, then Spotlight). */
 export function desktopInstalled({
   spotlight = spotlightFinds,
   ...where
@@ -205,8 +199,7 @@ export function desktopInstalled({
   return DESKTOP_BUNDLE_IDS.some(spotlight);
 }
 
-/** The line render and preview print about the app; null inside the app (its agent runs set the variable) and
- * where it is neither installed nor downloadable. */
+/** The app line render and preview print; null inside the app, or with nothing here to open or download. */
 export function desktopHint(
   dir: string,
   {
