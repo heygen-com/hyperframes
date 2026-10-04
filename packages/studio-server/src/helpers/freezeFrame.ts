@@ -40,7 +40,23 @@ export function freezeFrameMediaTime(input: {
 }
 
 export function freezeExtractArgs(src: string, mediaTime: number, output: string): string[] {
-  return ["-y", "-ss", String(round3(mediaTime)), "-i", src, "-frames:v", "1", output];
+  // The output name need not end in .png, so the format is named.
+  return [
+    "-y",
+    "-ss",
+    String(round3(mediaTime)),
+    "-i",
+    src,
+    "-frames:v",
+    "1",
+    "-c:v",
+    "png",
+    "-f",
+    "image2",
+    "-update",
+    "1",
+    output,
+  ];
 }
 
 export const randomStillToken = (): string => randomBytes(4).toString("hex");

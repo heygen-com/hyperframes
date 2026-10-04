@@ -61,8 +61,10 @@ describe("freezeFrameMediaTime", () => {
 });
 
 describe("freezeExtractArgs", () => {
-  it("seeks before the input and writes one frame into the file the route claimed", () => {
-    expect(freezeExtractArgs("/p/a.mp4", 7.2004, "/p/assets/freeze/a-3200.png")).toEqual([
+  it("seeks before the input and writes one PNG frame to an output of any name", () => {
+    expect(
+      freezeExtractArgs("/p/a.mp4", 7.2004, "/p/assets/freeze/a-3200.png.hf0a1b2c.tmp"),
+    ).toEqual([
       "-y",
       "-ss",
       "7.2",
@@ -70,7 +72,13 @@ describe("freezeExtractArgs", () => {
       "/p/a.mp4",
       "-frames:v",
       "1",
-      "/p/assets/freeze/a-3200.png",
+      "-c:v",
+      "png",
+      "-f",
+      "image2",
+      "-update",
+      "1",
+      "/p/assets/freeze/a-3200.png.hf0a1b2c.tmp",
     ]);
   });
 });

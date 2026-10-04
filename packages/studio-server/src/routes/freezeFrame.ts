@@ -1,11 +1,15 @@
 import { execFile } from "node:child_process";
-import { closeSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { readFileSync, rmSync, statSync } from "node:fs";
+import { basename, dirname, join, relative, sep } from "node:path";
 import type { Hono } from "hono";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import type { StudioApiAdapter } from "../types.js";
 import { mkdirWithinProject, pinWithinProject } from "../helpers/safePath.js";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import {
+  atomicTempPath,
+  createFileAtomically,
+  replaceFileAtomically,
+} from "@hyperframes/core/atomic-file";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   createWriteToken,
@@ -80,13 +84,44 @@ function readExpected(absPath: string, expectedVersion: string): { content: stri
     : { error: "file conflict", status: 409 };
 }
 
-function claimStillNameBeforeExtracting(path: string): boolean {
+function readFrame(path: string): Buffer | null {
   try {
-    closeSync(openSync(path, "wx"));
+    return readFileSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function publishStill(path: string, frame: Buffer): boolean {
+  try {
+    createFileAtomically(path, frame);
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
     throw error;
+  }
+}
+
+/** ffmpeg writes under a temp name the project history skips, so the still appears whole or not at all. */
+async function extractAndPublish(
+  extract: FrameExtractor,
+  mediaPath: string,
+  mediaTime: number,
+  imagePath: string,
+): Promise<Failure | null> {
+  const tempPath = atomicTempPath(imagePath);
+  try {
+    const extracted = await extract(freezeExtractArgs(mediaPath, mediaTime, tempPath));
+    const frame = extracted.ok ? readFrame(tempPath) : null;
+    if (!frame?.length) {
+      const reason = extracted.ok ? "no frame at this time" : (extracted.error ?? "ffmpeg failed");
+      return { error: `Could not extract the frame: ${reason}`, status: 500 };
+    }
+    if (publishStill(imagePath, frame)) return null;
+    return { error: `freeze still already exists: ${basename(imagePath)}`, status: 409 };
+  } finally {
+    rmSync(tempPath, { force: true });
   }
 }
 
@@ -107,15 +142,8 @@ async function extractStill(
   if (!imagePath || dirname(imagePath) !== freezeDir) {
     return { error: `forbidden freeze path: ${fileName}`, status: 403 };
   }
-  if (!claimStillNameBeforeExtracting(imagePath))
-    return { error: `freeze still already exists: ${fileName}`, status: 409 };
-  const extracted = await tools.extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
-  const partialOrNoFrame = !extracted.ok || statSync(imagePath).size === 0;
-  if (partialOrNoFrame) {
-    rmSync(imagePath, { force: true });
-    const reason = extracted.ok ? "no frame at this time" : (extracted.error ?? "ffmpeg failed");
-    return { error: `Could not extract the frame: ${reason}`, status: 500 };
-  }
+  const failed = await extractAndPublish(tools.extract, mediaPath, source.mediaTime, imagePath);
+  if (failed) return failed;
   const depth = relative(projectDir, fileDir).split(sep).filter(Boolean).length;
   const stillPath = `${FREEZE_DIR.join("/")}/${fileName}`;
   return { imageSrc: `${"../".repeat(depth)}${stillPath}`, stillPath, imagePath };

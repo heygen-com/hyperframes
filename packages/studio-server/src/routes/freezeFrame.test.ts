@@ -1,14 +1,26 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import { registerFreezeFrameRoutes, type FrameExtractor } from "./freezeFrame";
 import { fileContentVersion } from "../helpers/fileVersion";
+import { openProjectHistory, type ProjectHistory } from "../history";
 import { stubAdapter } from "./stubAdapter.test-helpers";
 
 const tempDirs: string[] = [];
-afterEach(() => {
+const histories: ProjectHistory[] = [];
+afterEach(async () => {
+  for (const history of histories.splice(0)) await history.close();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -36,14 +48,22 @@ function setup(
   return { dir, post };
 }
 
+function pngWriter(calls: string[][]): FrameExtractor {
+  return async (args) => {
+    calls.push(args);
+    writeFileSync(args.at(-1) ?? "", "png");
+    return { ok: true };
+  };
+}
+
+const stillOf = (output: string) => output.replace(/\.hf[0-9a-f]{6}\.tmp$/, "");
+const freezeFiles = (dir: string) =>
+  existsSync(join(dir, "assets/freeze")) ? readdirSync(join(dir, "assets/freeze")) : [];
+
 describe("freeze-frame route", () => {
   it("extracts the frame under the playhead and writes split + still in one write", async () => {
     const calls: string[][] = [];
-    const { dir, post } = setup(async (args) => {
-      calls.push(args);
-      writeFileSync(args.at(-1) ?? "", "png");
-      return { ok: true };
-    });
+    const { dir, post } = setup(pngWriter(calls));
     const res = await post({
       path: "index.html",
       expectedVersion: fileContentVersion(html),
@@ -54,23 +74,46 @@ describe("freeze-frame route", () => {
       await res.json();
     expect(res.status).toBe(200);
     const output = calls[0]?.at(-1) ?? "";
-    expect(calls[0]).toEqual([
-      "-y",
-      "-ss",
-      "2.5",
-      "-i",
-      join(dir, "media/talk.mp4"),
-      "-frames:v",
-      "1",
-      output,
-    ]);
-    expect(dirname(output)).toBe(join(dir, "assets/freeze"));
-    expect(basename(output)).toMatch(/^talk-[0-9a-f]{10}-2500-[0-9a-f]{8}\.png$/);
-    expect(body.imageSrc).toBe(`assets/freeze/${basename(output)}`);
-    expect(body.stillPath).toBe(`assets/freeze/${basename(output)}`);
+    expect(calls[0]?.slice(0, 5)).toEqual(["-y", "-ss", "2.5", "-i", join(dir, "media/talk.mp4")]);
+    expect(isAtomicTempPath(output)).toBe(true);
+    const still = stillOf(output);
+    expect(dirname(still)).toBe(join(dir, "assets/freeze"));
+    expect(basename(still)).toMatch(/^talk-[0-9a-f]{10}-2500-[0-9a-f]{8}\.png$/);
+    expect(body.imageSrc).toBe(`assets/freeze/${basename(still)}`);
+    expect(body.stillPath).toBe(`assets/freeze/${basename(still)}`);
+    expect(readFileSync(still, "utf-8")).toBe("png");
+    expect(freezeFiles(dir)).toEqual([basename(still)]);
     expect(body.before).toBe(html);
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(body.after);
     expect(body.after).toContain('id="talk-freeze"');
+  });
+
+  it("keeps the still out of history until it is whole, so undo removes it after a slow extraction", async () => {
+    let history: ProjectHistory | undefined;
+    const { dir, post } = setup(async (args) => {
+      // ffmpeg outlasting the watcher's quiet time: history commits whatever stands in the project now.
+      await history?.flush();
+      writeFileSync(args.at(-1) ?? "", "png");
+      return { ok: true };
+    });
+    const historyRoot = mkdtempSync(join(tmpdir(), "hf-freeze-history-"));
+    tempDirs.push(historyRoot);
+    history = await openProjectHistory({ projectDir: dir, historyRoot });
+    histories.push(history);
+    const res = await post({
+      path: "index.html",
+      expectedVersion: fileContentVersion(html),
+      target: { id: "talk" },
+      playhead: 2.5,
+    });
+    const { stillPath = "" }: { stillPath?: string } = await res.json();
+    expect(res.status).toBe(200);
+    const you = { kind: "person" as const, name: "You" };
+    const claimed = await history.claim(you, "Freeze frame", ["index.html", stillPath]);
+    expect(await history.undo(claimed?.id ?? "", { who: you })).toMatchObject({ ok: true });
+    expect(existsSync(join(dir, stillPath))).toBe(false);
+    expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
+    expect(history.list().map((entry) => entry.who.kind)).not.toContain("outside");
   });
 
   it("refuses a stale version without extracting", async () => {
@@ -89,30 +132,15 @@ describe("freeze-frame route", () => {
     expect(calls).toEqual([]);
   });
 
-  it("leaves the file untouched, and no partial still, when extraction fails", async () => {
-    let still = "";
+  it.each([
+    ["extraction fails after a partial write", "partial", false],
+    ["ffmpeg succeeds without writing a frame", null, true],
+  ] as const)("leaves the file untouched, and no still, when %s", async (_, written, ok) => {
+    let output = "";
     const { dir, post } = setup(async (args) => {
-      still = args.at(-1) ?? "";
-      writeFileSync(still, "partial");
-      return { ok: false, error: "boom" };
-    });
-    const res = await post({
-      path: "index.html",
-      expectedVersion: fileContentVersion(html),
-      target: { id: "talk" },
-      playhead: 1,
-    });
-    expect(res.status).toBe(500);
-    expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
-    expect(still).not.toBe("");
-    expect(existsSync(still)).toBe(false);
-  });
-
-  it("refuses, leaving nothing behind, when ffmpeg succeeds without writing a frame", async () => {
-    let still = "";
-    const { dir, post } = setup(async (args) => {
-      still = args.at(-1) ?? "";
-      return { ok: true };
+      output = args.at(-1) ?? "";
+      if (written) writeFileSync(output, written);
+      return ok ? { ok } : { ok, error: "boom" };
     });
     const res = await post({
       path: "index.html",
@@ -122,8 +150,8 @@ describe("freeze-frame route", () => {
     });
     expect(res.status).toBe(500);
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
-    expect(still).not.toBe("");
-    expect(existsSync(still)).toBe(false);
+    expect(output).not.toBe("");
+    expect(freezeFiles(dir)).toEqual([]);
   });
 
   it("removes the still it extracted when the page changed before the write", async () => {
@@ -142,20 +170,16 @@ describe("freeze-frame route", () => {
     });
     expect(res.status).toBe(409);
     expect(still).not.toBe("");
-    expect(existsSync(still)).toBe(false);
+    expect(freezeFiles(dir)).toEqual([]);
   });
 
   it("keeps a traversal clip id inside assets/freeze, for the ffmpeg output and the still's src", async () => {
     const evil = html.replace('id="talk"', 'id="../../../../outside/frame"');
     const calls: string[][] = [];
-    const { dir, post } = setup(
-      async (args) => {
-        calls.push(args);
-        writeFileSync(args.at(-1) ?? "", "png");
-        return { ok: true };
-      },
-      { path: "scenes/a.html", html: evil.replace('src="media/', 'src="../media/') },
-    );
+    const { dir, post } = setup(pngWriter(calls), {
+      path: "scenes/a.html",
+      html: evil.replace('src="media/', 'src="../media/'),
+    });
     const res = await post({
       path: "scenes/a.html",
       expectedVersion: fileContentVersion(evil.replace('src="media/', 'src="../media/')),
@@ -164,7 +188,7 @@ describe("freeze-frame route", () => {
     });
     const body: { imageSrc?: string; after?: string; stillPath?: string } = await res.json();
     expect(res.status).toBe(200);
-    const output = calls[0]?.at(-1) ?? "";
+    const output = stillOf(calls[0]?.at(-1) ?? "");
     // The history names project files from the project root, not from the page that shows the still.
     expect(body.stillPath).toBe(`assets/freeze/${basename(output)}`);
     expect(basename(output)).toMatch(/^____________outside_frame-[0-9a-f]{10}-2500-/);
@@ -186,7 +210,7 @@ describe("freeze-frame route", () => {
     function writingExtractor(outputs: string[]): FrameExtractor {
       return async (args) => {
         const output = args.at(-1) ?? "";
-        outputs.push(output);
+        outputs.push(stillOf(output));
         await new Promise((resolve) => setTimeout(resolve, 5));
         try {
           writeFileSync(output, `frame of ${args[4]} #${outputs.length}`, {
@@ -197,6 +221,18 @@ describe("freeze-frame route", () => {
           return { ok: false, error: String(error) };
         }
       };
+    }
+
+    /** Freezes talk, puts the page back, and freezes it again: the first still's bytes and the second reply. */
+    async function freezeTalkTwice(
+      post: (body: unknown) => Promise<Response>,
+      dir: string,
+      outputs: string[],
+    ) {
+      expect((await freeze(post, dir, "talk")).status).toBe(200);
+      const first = readFileSync(outputs[0] ?? "", "utf-8");
+      writeFileSync(join(dir, "index.html"), html);
+      return { first, second: await freeze(post, dir, "talk") };
     }
 
     function freeze(post: (body: unknown) => Promise<Response>, dir: string, id: string) {
@@ -232,10 +268,8 @@ describe("freeze-frame route", () => {
     it("writes a new still when the same clip is frozen again at the same time", async () => {
       const outputs: string[] = [];
       const { dir, post } = setup(writingExtractor(outputs));
-      expect((await freeze(post, dir, "talk")).status).toBe(200);
-      const first = readFileSync(outputs[0] ?? "", "utf-8");
-      writeFileSync(join(dir, "index.html"), html);
-      expect((await freeze(post, dir, "talk")).status).toBe(200);
+      const { first, second } = await freezeTalkTwice(post, dir, outputs);
+      expect(second.status).toBe(200);
       expect(outputs[1]).not.toBe(outputs[0]);
       expect(readFileSync(outputs[0] ?? "", "utf-8")).toBe(first);
     });
@@ -257,20 +291,18 @@ describe("freeze-frame route", () => {
       const { dir, post } = setup(writingExtractor(outputs), undefined, () => "fixed");
       const results = await Promise.all([freeze(post, dir, "talk"), freeze(post, dir, "talk")]);
       expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
-      expect(outputs).toHaveLength(1);
-      expect(existsSync(outputs[0] ?? "")).toBe(true);
+      expect(new Set(outputs).size).toBe(1);
+      expect(freezeFiles(dir)).toEqual([basename(outputs[0] ?? "")]);
       expect(readFileSync(join(dir, "index.html"), "utf-8")).toContain(basename(outputs[0] ?? ""));
     });
 
-    it("refuses, without extracting, when the still's name is already taken", async () => {
+    it("refuses, keeping the first still, when the still's name is already taken", async () => {
       const outputs: string[] = [];
       const { dir, post } = setup(writingExtractor(outputs), undefined, () => "fixed");
-      expect((await freeze(post, dir, "talk")).status).toBe(200);
-      const first = readFileSync(outputs[0] ?? "", "utf-8");
-      writeFileSync(join(dir, "index.html"), html);
-      expect((await freeze(post, dir, "talk")).status).toBe(409);
-      expect(outputs).toHaveLength(1);
+      const { first, second } = await freezeTalkTwice(post, dir, outputs);
+      expect(second.status).toBe(409);
       expect(readFileSync(outputs[0] ?? "", "utf-8")).toBe(first);
+      expect(freezeFiles(dir)).toEqual([basename(outputs[0] ?? "")]);
       expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
     });
   });
