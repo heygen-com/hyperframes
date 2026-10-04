@@ -7,12 +7,16 @@ const atLayer = { x: 60, y: 30 };
 const other = { x: 120, y: 30 };
 const live = { x: 60, y: 30 };
 
+// The editor overlay: the selection's chrome (box and a handle) and another layer's off-canvas marker.
 const overlay = document.createElement("div");
-overlay.setAttribute("data-dom-edit-overlay", "true");
+const chrome = document.createElement("div");
+chrome.setAttribute("data-dom-edit-chrome", "true");
 const box = document.createElement("div");
 box.setAttribute("data-dom-edit-selection-box", "true");
 const handle = document.createElement("button");
-overlay.append(box, handle);
+const marker = document.createElement("div");
+chrome.append(box, handle);
+overlay.append(chrome, marker);
 const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
 const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
@@ -37,11 +41,13 @@ it("inside the layer's box any other node is the layer's, so a drag from its mid
 
 it("a handle above the box under a node takes the press, not the box or the node", () => {
   expect(controlForNode(press([handle, box, overlay]), other, live)).toBe(handle);
+  expect(controlForNode(press([handle, box, overlay]), atLayer, live)).toBe(handle);
   expect(controlUnder(press([handle, overlay]))).toBe(handle);
 });
 
 it("outside the layer's box and its handles a node is the node's", () => {
   expect(controlForNode(press([overlay]), other, live)).toBeNull();
+  expect(controlForNode(press([marker, overlay]), other, live)).toBeNull();
   expect(controlForNode(press([document.body]), other, live)).toBeNull();
 });
 

@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
+import { gsap } from "gsap";
 import { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { elementHome, useMotionPathData } from "./useMotionPathData";
+import { elementHome } from "./motionPathHome";
+import { useMotionPathData } from "./useMotionPathData";
 import { resetOverlayFrameLoopForTests } from "./overlayFrameLoop";
 import { usePlayerStore } from "../../player/store/playerStore";
 
@@ -150,8 +152,8 @@ it("redraws a node whose keyframe changes only its size", () => {
   }
 });
 
-/** A layer laid out at (960, 540), 240 x 160, with `css` inline and GSAP reporting `percent`. */
-function layer(css: Partial<CSSStyleDeclaration>, percent: Record<string, number> = {}) {
+/** A layer laid out at (960, 540), 240 x 160, with `css` inline and `percent` in GSAP's cache. */
+function layer(css: Partial<CSSStyleDeclaration>, percent?: Record<string, number>) {
   const el = document.body.appendChild(document.createElement("div"));
   Object.assign(el.style, css);
   const box = {
@@ -162,36 +164,67 @@ function layer(css: Partial<CSSStyleDeclaration>, percent: Record<string, number
     offsetParent: null,
   };
   for (const [key, value] of Object.entries(box)) Object.defineProperty(el, key, { value });
-  vi.stubGlobal("gsap", { getProperty: (_: Element, prop: string) => percent[prop] ?? 0 });
-  return el;
+  return percent ? Object.assign(el, { _gsap: percent }) : el;
 }
 
 it("anchors a layer that xPercent/yPercent -50 centres (CSS translate -50% folds into them) on its centre", () => {
-  try {
-    const el = layer(
-      { position: "absolute", left: "50%", top: "50%" },
-      { xPercent: -50, yPercent: -50 },
-    );
-    expect(elementHome(el)).toEqual({ x: 960, y: 540, w: 240, h: 160, ax: 0, ay: 0 });
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  const el = layer(
+    { position: "absolute", left: "50%", top: "50%" },
+    { xPercent: -50, yPercent: -50 },
+  );
+  expect(elementHome(el)).toEqual({ x: 960, y: 540, w: 240, h: 160, ax: 0, ay: 0 });
 });
 
 it("moves a resized layer's centre by half the change from a set left, against it from a set right, and not in flow", () => {
+  const fromLeft = layer({ position: "absolute", left: "10px", top: "10px" });
+  expect(elementHome(fromLeft)).toMatchObject({ x: 1080, y: 620, ax: 0.5, ay: 0.5 });
+  const fromRight = layer({ position: "absolute", right: "10px", bottom: "10px" });
+  const auto = new Set(["left", "top"]);
+  fromRight.computedStyleMap = () =>
+    ({
+      get: (side: string) => (auto.has(side) ? "auto" : "10px"),
+    }) as unknown as StylePropertyMapReadOnly;
+  expect(elementHome(fromRight)).toMatchObject({ ax: -0.5, ay: -0.5 });
+  expect(elementHome(layer({}))).toMatchObject({ x: 1080, ax: 0, ay: 0 });
+});
+
+/** Computes `translate` as Chromium does (happy-dom does not), so GSAP's transform parse would fold it. */
+function computeTranslate() {
+  const real = window.getComputedStyle.bind(window);
+  const computed = (node: Element, pseudo?: string | null) =>
+    new Proxy(real(node, pseudo), {
+      get(style, key) {
+        if (key === "translate") return (node as HTMLElement).style.translate || "none";
+        if (key === "scale" || key === "rotate") return "none";
+        const value = Reflect.get(style, key);
+        return typeof value === "function" ? value.bind(style) : value;
+      },
+    });
+  vi.stubGlobal("getComputedStyle", computed);
+  vi.spyOn(window, "getComputedStyle").mockImplementation(
+    computed as typeof window.getComputedStyle,
+  );
+}
+
+it("leaves the plain CSS translate Studio wrote alone, and reads the percent GSAP owns (real GSAP)", () => {
+  vi.stubGlobal("gsap", gsap);
+  computeTranslate();
   try {
-    const fromLeft = layer({ position: "absolute", left: "10px", top: "10px" });
-    expect(elementHome(fromLeft)).toMatchObject({ x: 1080, y: 620, ax: 0.5, ay: 0.5 });
-    const fromRight = layer({ position: "absolute", right: "10px", bottom: "10px" });
-    const auto = new Set(["left", "top"]);
-    fromRight.computedStyleMap = () =>
-      ({
-        get: (side: string) => (auto.has(side) ? "auto" : "10px"),
-      }) as unknown as StylePropertyMapReadOnly;
-    expect(elementHome(fromRight)).toMatchObject({ ax: -0.5, ay: -0.5 });
-    expect(elementHome(layer({}))).toMatchObject({ x: 1080, ax: 0, ay: 0 });
+    const offset = "var(--hf-studio-offset-x) var(--hf-studio-offset-y)";
+    for (const translate of ["40px 30px", offset]) {
+      const el = layer({ position: "absolute", left: "10px", top: "10px", translate });
+      el.style.setProperty("--hf-studio-offset-x", "40px");
+      el.style.setProperty("--hf-studio-offset-y", "30px");
+      const home = elementHome(el);
+      expect([el.style.translate, el.style.transform]).toEqual([translate, ""]);
+      if (translate === offset) expect(home).toMatchObject({ x: 1120, y: 650 });
+    }
+    const owned = layer({ position: "absolute", left: "50%", top: "50%" });
+    gsap.set(owned, { xPercent: -50, yPercent: -50 });
+    expect(elementHome(owned)).toMatchObject({ x: 960, y: 540, ax: 0, ay: 0 });
   } finally {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   }
 });
 
@@ -223,7 +256,7 @@ it("redraws the start ring when only GSAP's start changes", () => {
   }
 });
 
-it("updates the home when the layer's size changes but its centre does not", () => {
+it("updates the home when the layer's size or anchoring changes but its centre does not", () => {
   runtime.read = {
     keyframes: [
       { percentage: 0, properties: { x: 0, width: 200 } },
@@ -239,9 +272,10 @@ it("updates the home when the layer's size changes but its centre does not", () 
   for (const key of ["offsetLeft", "offsetWidth"] as const)
     Object.defineProperty(box, key, { get: () => layout[key] });
   let w: number | undefined;
+  let ax: number | undefined;
   function Probe() {
     const ref = useRef(iframe);
-    w = useMotionPathData(ref, "#box").home?.w;
+    ({ w, ax } = useMotionPathData(ref, "#box").home ?? {});
     return null;
   }
   const root = createRoot(document.body.appendChild(document.createElement("div")));
@@ -252,6 +286,16 @@ it("updates the home when the layer's size changes but its centre does not", () 
     Object.assign(layout, { offsetLeft: 80, offsetWidth: 240 });
     runFrames(2);
     expect(w).toBe(240);
+    // Re-anchored from the left to the right edge without moving: the share a size change moves changes.
+    Object.assign(box.style, { position: "absolute", left: "10px" });
+    runFrames(2);
+    expect(ax).toBe(0.5);
+    box.computedStyleMap = () =>
+      ({
+        get: (side: string) => (side === "left" ? "auto" : "0px"),
+      }) as unknown as StylePropertyMapReadOnly;
+    runFrames(2);
+    expect(ax).toBe(-0.5);
   } finally {
     act(() => root.unmount());
   }

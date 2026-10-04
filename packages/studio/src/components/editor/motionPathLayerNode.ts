@@ -1,7 +1,7 @@
 type Point = { x: number; y: number };
 
 const LAYER_BOX = '[data-dom-edit-selection-box="true"]';
-const OVERLAY = '[data-dom-edit-overlay="true"]';
+export const SELECTION_CHROME = `${LAYER_BOX}, [data-dom-edit-chrome="true"], [data-dom-edit-crop-frame="true"]`;
 
 /** How far a node's dot reaches; a selected node draws it larger. */
 export const dotRadius = (r: number, selected: boolean) => (selected ? r * 1.5 : r);
@@ -10,7 +10,7 @@ export function controlUnder(e: React.PointerEvent): Element | null {
   const path = e.currentTarget.closest("svg");
   const hits = e.currentTarget.ownerDocument.elementsFromPoint(e.clientX, e.clientY);
   const hit = hits.find((el) => !path?.contains(el));
-  return hit && !hit.matches(OVERLAY) && hit.closest(OVERLAY) ? hit : null;
+  return hit?.closest(SELECTION_CHROME) ? hit : null;
 }
 
 /** The handle or box above a node, else the box if the layer sits at the node; null: the node. */

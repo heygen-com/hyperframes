@@ -8,27 +8,11 @@ import {
   type MotionPathGeometry,
   type MotionPathHome,
 } from "./motionPathGeometry";
+import { elementHome } from "./motionPathHome";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
 import { usePlayerStore } from "../../player/store/playerStore";
 
 type Rect = { left: number; top: number; width: number; height: number };
-
-// An element's computed transform translate: a group wrapper GSAP moved carries its offset here.
-function transformTranslate(el: HTMLElement): { x: number; y: number } {
-  const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
-  if (!t || t === "none") return { x: 0, y: 0 };
-  const m3 = t.match(/matrix3d\(([^)]+)\)/);
-  if (m3) {
-    const v = m3[1].split(",").map(Number);
-    return { x: v[12] || 0, y: v[13] || 0 };
-  }
-  const m = t.match(/matrix\(([^)]+)\)/);
-  if (m) {
-    const v = m[1].split(",").map(Number);
-    return { x: v[4] || 0, y: v[5] || 0 };
-  }
-  return { x: 0, y: 0 };
-}
 
 // Perspective foreshortening of the element's OWN transform (matrix3d m44). A
 // depth element (translateZ toward the viewer) renders 1/m44× larger, so its
@@ -42,51 +26,6 @@ export function transformWDivisor(el: HTMLElement): number {
   const v = t.slice("matrix3d(".length, -1).split(",");
   const w = Number.parseFloat(v[15] ?? "");
   return Number.isFinite(w) && w > 0 ? w : 1;
-}
-
-/** Centre shift per px grown: 0.5 from a set left/top, -0.5 from a set right/bottom, plus xPercent.
- *  ponytail: in-flow layers get 0 (layout may centre them); read their anchor if one draws off. */
-function growShare(el: HTMLElement, start: string, end: string, percent: number): number {
-  const style = el.ownerDocument?.defaultView?.getComputedStyle(el);
-  if (!style || !/^(absolute|fixed)$/.test(style.position)) return 0;
-  const map = el.computedStyleMap?.();
-  const auto = (side: string) => String(map?.get(side) ?? "") === "auto";
-  return (auto(start) && !auto(end) ? -0.5 : 0.5) + percent;
-}
-
-export function elementHome(el: HTMLElement): MotionPathHome {
-  let left = 0;
-  let top = 0;
-  let node: HTMLElement | null = el;
-  while (node) {
-    left += node.offsetLeft;
-    top += node.offsetTop;
-    // Ancestor transforms (e.g. a group wrapper moved via GSAP) shift where the
-    // element actually renders, so the path must anchor on top of them. The element's
-    // OWN transform is excluded — that's the animated offset the path itself draws.
-    if (node !== el) {
-      const t = transformTranslate(node);
-      left += t.x;
-      top += t.y;
-    }
-    const parent = node.offsetParent as HTMLElement | null;
-    if (!parent || parent.hasAttribute("data-composition-id")) break;
-    node = parent;
-  }
-  const gsap = (
-    el.ownerDocument?.defaultView as { gsap?: { getProperty?: (t: Element, p: string) => unknown } }
-  )?.gsap;
-  const percent = (p: string) => (Number(gsap?.getProperty?.(el, p)) || 0) / 100;
-  const [px, py] = [percent("xPercent"), percent("yPercent")];
-  let x = left + el.offsetWidth * (0.5 + px);
-  let y = top + el.offsetHeight * (0.5 + py);
-  const ax = growShare(el, "left", "right", px);
-  const ay = growShare(el, "top", "bottom", py);
-  if ((el.style.translate ?? "").includes("var(")) {
-    x += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-x")) || 0;
-    y += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
-  }
-  return { x, y, w: el.offsetWidth, h: el.offsetHeight, ax, ay };
 }
 
 function rectsClose(a: Rect, b: Rect): boolean {

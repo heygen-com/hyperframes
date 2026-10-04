@@ -26,12 +26,8 @@ import {
   commitNode,
   commitRemoveWaypoint,
 } from "./motionPathCommit";
-import {
-  elementHome,
-  hasMotionPathPlugin,
-  transformWDivisor,
-  useMotionPathData,
-} from "./useMotionPathData";
+import { elementHome } from "./motionPathHome";
+import { hasMotionPathPlugin, transformWDivisor, useMotionPathData } from "./useMotionPathData";
 
 interface MotionPathOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;

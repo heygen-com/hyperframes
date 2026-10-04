@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
+import { SELECTION_CHROME } from "./motionPathLayerNode";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -127,6 +128,10 @@ describe("DomEditSelectionChrome crop composition", () => {
     }
     expect(rotations).toHaveLength(1);
     expect(Number.parseFloat(rotations[0]!.slice("rotate(".length))).toBeCloseTo(30, 5);
+    // A motion-path node over any of these hands its press to it.
+    const controls = [...host.querySelectorAll(".pointer-events-auto, button")];
+    expect(controls.length).toBeGreaterThan(8);
+    for (const control of controls) expect(control.closest(SELECTION_CHROME)).not.toBeNull();
     act(() => root.unmount());
   });
 });
