@@ -353,3 +353,14 @@ describe("an edit undo painted back while it saves", () => {
     landSave();
   });
 });
+
+it("counts an edit whose later write failed as saved once an earlier write landed, so undo still steps it", async () => {
+  const edit = beginStudioPendingEdit(() => () => undefined);
+  const committed = edit.adopt(async () => {
+    adoptingStudioPendingEdit()!.markSaved();
+    throw new Error("the crop save failed");
+  });
+  edit.settle(committed.catch(() => undefined));
+  const shown = paintBackNewestStudioPendingEdit()!;
+  await expect(shown.landed()).resolves.toBe(true);
+});

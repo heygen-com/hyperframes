@@ -23,6 +23,7 @@ export interface StudioEditInFlight {
   within: <T>(run: () => T) => T;
   drawUnlessUndone: (draw: () => void) => void;
   drawKeepingUndone: <T>(draw: () => T) => T;
+  markSaved: () => void;
 }
 
 const pendingEdits = new Map<Promise<unknown>, PendingEdit>();
@@ -110,6 +111,7 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
   const entry = pendingEdits.get(promise)!;
   entry.revert = revert;
   let landed = Promise.resolve(false);
+  let saved = false;
   entry.landed = () => landed;
   const inFlight: StudioEditInFlight = {
     reverted: () => entry.revert === null && revert !== null,
@@ -129,21 +131,24 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
     drawKeepingUndone(draw) {
       if (!inFlight.reverted()) return draw();
       entry.showAgain?.();
-      const drawn = draw();
-      entry.showAgain = revert!();
-      return drawn;
+      try {
+        return draw();
+      } finally {
+        entry.showAgain = revert!();
+      }
     },
+    markSaved: () => void (saved = true),
   };
   return {
     settle,
     reverted: inFlight.reverted,
-    // Only what `start` registers synchronously is adopted; a registration after an await is a newer edit.
+    // Only what `start` registers synchronously is adopted; a later write joins only through `within`.
     adopt<T>(start: () => T): T {
       try {
         const committed = inFlight.within(start);
         landed = Promise.resolve(committed).then(
           () => true,
-          () => false,
+          () => saved,
         );
         return committed;
       } catch (error) {

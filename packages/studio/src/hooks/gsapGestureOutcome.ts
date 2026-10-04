@@ -31,6 +31,7 @@ export function observeGsapGesture(writer: CommitMutation | null) {
         options.onResult?.(result);
         if (!result.ok || result.changed !== true) return;
         changed = true;
+        edit?.markSaved();
         const members = changedMutationIndices(
           result,
           calls.length,
@@ -58,6 +59,7 @@ export function observeGsapGesture(writer: CommitMutation | null) {
     drawKeepingUndone: <T>(draw: () => T): T => (edit ? edit.drawKeepingUndone(draw) : draw()),
     recordDomResult: (result: { changed: boolean } | undefined) => {
       changed ||= result?.changed === true;
+      if (result?.changed) edit?.markSaved();
     },
     finish: (domChanged = false): GeometryCommitResult => {
       if (pendingResults !== 0) return { ok: true, changed: false };
