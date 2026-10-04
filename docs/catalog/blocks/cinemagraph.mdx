@@ -1,0 +1,369 @@
+---
+title: "Cinemagraph"
+description: "A still photograph with one living region: the frame is frozen while a single feathered window keeps moving - here, steam rising over a cup - drawn from the seek time alone with a period that divides the duration, so the render loops seamlessly. Swap the placeholder scene for a freeze-frame still masked over a looping video to cinemagraph real footage."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/cinemagraph.json"
+  compositionId="cinemagraph"
+  compositionSrc="compositions/cinemagraph.html"
+  title="Cinemagraph"
+  description="A still photograph with one living region: the frame is frozen while a single feathered window keeps moving - here, steam rising over a cup - drawn from the seek time alone with a period that divides the duration, so the render loops seamlessly. Swap the placeholder scene for a freeze-frame still masked over a looping video to cinemagraph real footage."
+  variables={[]}
+  meta={{"duration":10,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":298}}
+  attribution={{"path":"registry/blocks/cinemagraph","tags":["effect","cinemagraph","photo","loop","freeze-frame"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/cinemagraph/cinemagraph.html"
+>
+
+<CatalogSlot slot="code">
+
+```html cinemagraph.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <!--
+      cinemagraph — a still photograph with ONE living region.
+
+      The frame is a frozen scene; a single masked window keeps moving — the classic
+      cinemagraph gesture: the camera stops, the world keeps breathing. The living
+      region here is the steam over a cup, drawn deterministically on a canvas from
+      the seek time alone, with a period that divides the duration, so the last
+      frame matches the first and the render loops seamlessly.
+
+      Using it with real media: keep the structure and swap the layers —
+        1. Put your looping <video> (or the animated source) as the BASE layer.
+        2. Put a freeze-frame still of it (an <img>) ABOVE, full-frame.
+        3. Move #cmg-window (the feathered mask) onto the still so the window
+           reveals the video beneath, and delete the placeholder scene + canvas.
+      One living region per frame. Two is a gif.
+    -->
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #0b0e14;
+        overflow: hidden;
+      }
+      #root-cinemagraph {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0e14;
+        --hf-ink: #f8fafc;
+      }
+      /* ---- the still photograph (placeholder scene, monochrome ink ramp) ---- */
+      .cmg-photo {
+        position: absolute;
+        inset: 0;
+      }
+      /* window light falling across the scene */
+      .cmg-lightfall {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          115deg,
+          color-mix(in srgb, var(--hf-ink) 8%, transparent) 0%,
+          transparent 46%
+        );
+      }
+      /* table surface */
+      .cmg-table {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 320px;
+        background: color-mix(in srgb, var(--hf-ink) 8%, transparent);
+        border-top: 1px solid color-mix(in srgb, var(--hf-ink) 14%, transparent);
+      }
+      /* window frame in the far wall */
+      .cmg-pane {
+        position: absolute;
+        left: 1210px;
+        top: 130px;
+        width: 420px;
+        height: 520px;
+        background: color-mix(in srgb, var(--hf-ink) 18%, transparent);
+        border: 1px solid color-mix(in srgb, var(--hf-ink) 14%, transparent);
+      }
+      .cmg-pane::before,
+      .cmg-pane::after {
+        content: "";
+        position: absolute;
+        background: color-mix(in srgb, var(--hf-ink) 14%, transparent);
+      }
+      .cmg-pane::before {
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+      }
+      .cmg-pane::after {
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+      }
+      /* saucer + cup, the photograph's subject */
+      .cmg-saucer {
+        position: absolute;
+        left: 760px;
+        bottom: 236px;
+        width: 400px;
+        height: 56px;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--hf-ink) 45%, transparent);
+      }
+      .cmg-cup {
+        position: absolute;
+        left: 830px;
+        bottom: 262px;
+        width: 260px;
+        height: 190px;
+        border-radius: 0 0 118px 118px;
+        background: color-mix(in srgb, var(--hf-ink) 72%, transparent);
+      }
+      .cmg-cup::after {
+        content: "";
+        position: absolute;
+        right: -64px;
+        top: 18px;
+        width: 88px;
+        height: 96px;
+        border: 22px solid color-mix(in srgb, var(--hf-ink) 72%, transparent);
+        border-radius: 50%;
+      }
+      .cmg-rim {
+        position: absolute;
+        left: 822px;
+        bottom: 436px;
+        width: 276px;
+        height: 34px;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--hf-ink) 45%, transparent);
+      }
+      /* a closed book beside the cup */
+      .cmg-book {
+        position: absolute;
+        left: 1180px;
+        bottom: 250px;
+        width: 330px;
+        height: 44px;
+        background: color-mix(in srgb, var(--hf-ink) 18%, transparent);
+        border: 1px solid color-mix(in srgb, var(--hf-ink) 14%, transparent);
+        transform: rotate(-2deg);
+      }
+      .cmg-book::after {
+        content: "";
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        top: 12px;
+        height: 1px;
+        background: color-mix(in srgb, var(--hf-ink) 14%, transparent);
+      }
+      /* skeleton caption lines, bottom left — content lives here */
+      .cmg-line {
+        position: absolute;
+        left: 160px;
+        height: 22px;
+        border-radius: 11px;
+        background: color-mix(in srgb, var(--hf-ink) 18%, transparent);
+      }
+      /* ---- the ONE living region: a feathered window where steam moves ---- */
+      #cmg-window {
+        position: absolute;
+        left: 790px;
+        bottom: 430px;
+        width: 340px;
+        height: 420px;
+        -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 55%, #000 55%, transparent 78%);
+        mask-image: radial-gradient(ellipse 50% 50% at 50% 55%, #000 55%, transparent 78%);
+      }
+      #cmg-canvas {
+        position: absolute;
+        inset: 0;
+        width: 340px;
+        height: 420px;
+      }
+      /* still vignette over everything, part of the photograph */
+      .cmg-vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 78% 72% at 50% 46%,
+          transparent 62%,
+          rgba(4, 6, 10, 0.5) 100%
+        );
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root-cinemagraph"
+      data-composition-id="cinemagraph"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="cmg-photo" id="cmg-photo">
+        <div class="cmg-lightfall"></div>
+        <div class="cmg-pane"></div>
+        <div class="cmg-table"></div>
+        <div class="cmg-saucer"></div>
+        <div class="cmg-cup"></div>
+        <div class="cmg-rim"></div>
+        <div class="cmg-book"></div>
+        <div class="cmg-line" style="bottom: 150px; width: 460px"></div>
+        <div class="cmg-line" style="bottom: 108px; width: 300px"></div>
+      </div>
+      <div id="cmg-window">
+        <canvas id="cmg-canvas" width="340" height="420"></canvas>
+      </div>
+      <div class="cmg-vignette"></div>
+      <div
+        id="drv-cinemagraph"
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // Seeded PRNG — never Math.random()
+        function mulberry32(a) {
+          return function () {
+            a |= 0;
+            a = (a + 0x6d2b79f5) | 0;
+            var t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+        var rng = mulberry32(1897);
+
+        var DUR = 10;
+        // Each wisp cycles an integer number of times over DUR, so the frame at
+        // t = DUR equals the frame at t = 0 and the render loops seamlessly.
+        var WISPS = [];
+        for (var i = 0; i < 14; i++) {
+          WISPS.push({
+            x0: 90 + rng() * 160, // birth x inside the window
+            cycles: 1 + Math.floor(rng() * 2), // 1 or 2 full rises over DUR
+            phase: rng(), // where in its cycle it starts
+            sway: 14 + rng() * 26, // horizontal sway amplitude
+            swayFreq: 1 + Math.floor(rng() * 2), // integer — keeps the loop seam clean
+            width: 10 + rng() * 22, // wisp thickness
+            rise: 300 + rng() * 80, // how far it climbs before dissolving
+            alpha: 0.05 + rng() * 0.09,
+          });
+        }
+
+        var canvas = document.getElementById("cmg-canvas");
+        var ctx = canvas.getContext("2d");
+        var W = 340,
+          H = 420;
+
+        // State proxy — GSAP animates t, the render function reads it.
+        var st = { t: 0 };
+
+        function renderScene() {
+          ctx.clearRect(0, 0, W, H);
+          for (var i = 0; i < WISPS.length; i++) {
+            var w = WISPS[i];
+            // p in [0,1): this wisp's position in its own rise cycle
+            var p = (st.t / DUR) * w.cycles + w.phase;
+            p = p - Math.floor(p);
+            var y = H - 40 - p * w.rise;
+            var sway = Math.sin(2 * Math.PI * (p * w.swayFreq + w.phase)) * w.sway * p;
+            var x = w.x0 + sway;
+            // born faint, fullest mid-rise, dissolves at the top
+            var a = w.alpha * Math.sin(Math.PI * p);
+            var r = w.width * (0.7 + p * 1.6);
+            var g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
+            g.addColorStop(0, "rgba(248,250,252," + a.toFixed(4) + ")");
+            g.addColorStop(1, "rgba(248,250,252,0)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(x, y, r * 1.1, r * 2.2, sway * 0.004, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        }
+
+        var tl = gsap.timeline({ paused: true });
+        tl.to(st, { t: DUR, duration: DUR, ease: "none" }, 0);
+
+        window.__timelines["cinemagraph"] = tl;
+
+        // Render from the timeline only — no requestAnimationFrame.
+        tl.eventCallback("onUpdate", renderScene);
+        renderScene();
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add cinemagraph" item="cinemagraph" />
+
+That writes one file: `compositions/cinemagraph.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="cinemagraph"
+  data-composition-src="compositions/cinemagraph.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `effect` `cinemagraph` `photo` `loop` `freeze-frame`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

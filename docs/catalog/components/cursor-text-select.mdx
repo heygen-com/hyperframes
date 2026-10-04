@@ -1,0 +1,522 @@
+---
+title: "Text Select Cursor"
+description: "An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/components/cursor-text-select.json"
+  compositionId="cursor-text-select"
+  compositionSrc="compositions/components/cursor-text-select.html"
+  title="Text Select Cursor"
+  description="An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold."
+  variables={[{"id":"title","type":"string","role":"content","label":"Heading","default":"Spring release notes"},{"id":"text","type":"string","role":"content","label":"Paragraph","default":"Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half."},{"id":"phrase","type":"string","role":"content","label":"Phrase to select","default":"approve the final cut"},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#0a84ff"}]}
+  meta={{"category":"Cursors","badge":"Stable","codeLines":440}}
+  attribution={{"path":"registry/components/cursor-text-select","tags":["cursor","motion-primitive","text","selection","editor","toolbar"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/cursor-text-select/cursor-text-select.html"
+>
+
+<CatalogSlot slot="code">
+
+```html cursor-text-select.html
+<!doctype html>
+<!--
+  Text Select Cursor (actor primitive), mountable sub-composition
+
+  concept: an arrow glides onto a document and turns into an I-beam as its tip enters
+  the text, presses before a phrase and drags the selection across it character by
+  character, releases (the selection snaps to the word end), a format toolbar fades
+  up centred above the selection, the pointer turns back into an arrow, clicks Bold, and the
+  phrase turns bold.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip (inset:0) and draws its own document card.
+
+  variables:
+    title (string)   the document heading
+    text (string)    the paragraph
+    phrase (string)  the words to select; must appear in text, else the middle words are used
+    accent (color)   selection tint and the active Bold button
+
+  envelope (default 4.2s): glide 0-0.5s, drag 0.65-1.6s, release 1.65s, toolbar 1.75s,
+  click Bold 2.7s, cursor drifts aside by 3.4s, hold. Shorter durations compress every beat evenly.
+-->
+<html
+  lang="en"
+  data-composition-id="cursor-text-select"
+  data-composition-duration="4.2"
+  data-composition-variables='[
+    { "id": "title", "type": "string", "role": "content", "label": "Heading", "default": "Spring release notes" },
+    { "id": "text", "type": "string", "role": "content", "label": "Paragraph", "default": "Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half." },
+    { "id": "phrase", "type": "string", "role": "content", "label": "Phrase to select", "default": "approve the final cut" },
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#0a84ff" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Text Select Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          container-type: size;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --ts-accent: #0a84ff;
+        }
+        .ts-stage {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .ts-card {
+          position: relative;
+          width: 70cqw;
+          padding: 4cqw 4.6cqw 4.4cqw;
+          border-radius: 1.4cqw;
+          background: #ffffff;
+          box-shadow:
+            0 2.4cqw 6cqw rgba(8, 12, 28, 0.35),
+            0 0 0 1px rgba(15, 23, 42, 0.06);
+        }
+        .ts-meta {
+          font-size: 1.1cqw;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: #8a90a2;
+        }
+        .ts-title {
+          margin: 0.9cqw 0 1.8cqw;
+          font-size: 3.1cqw;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: #0f1222;
+        }
+        .ts-para {
+          position: relative;
+          margin: 0;
+          font-size: 2.05cqw;
+          line-height: 1.6;
+          color: #30354a;
+        }
+        .ts-ch.is-sel {
+          background: color-mix(in srgb, var(--ts-accent) 26%, transparent);
+        }
+        .ts-ch.is-bold {
+          font-weight: 700;
+          color: #0f1222;
+        }
+        .ts-toolbar {
+          position: absolute;
+          left: 0;
+          top: 0;
+          display: flex;
+          gap: 0.3cqw;
+          padding: 0.4cqw;
+          border-radius: 0.9cqw;
+          background: #15182a;
+          box-shadow: 0 1cqw 2.4cqw rgba(8, 12, 28, 0.35);
+          transform-origin: 50% 100%;
+          opacity: 0;
+          will-change: transform, opacity;
+        }
+        .ts-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 3.5cqw;
+          height: 3.5cqw;
+          border-radius: 0.6cqw;
+          color: #e7e9f2;
+        }
+        .ts-btn svg {
+          width: 1.8cqw;
+          height: 1.8cqw;
+          fill: none;
+          stroke: currentColor;
+          stroke-width: 2.2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .ts-btn.is-on {
+          background: var(--ts-accent);
+          color: #ffffff;
+        }
+        .ts-cursor {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 0;
+          height: 0;
+          transform-origin: 0 0;
+          will-change: transform;
+        }
+        .ts-arrow,
+        .ts-ibeam {
+          position: absolute;
+          overflow: visible;
+          filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
+        }
+        .ts-arrow path {
+          fill: #ffffff;
+          stroke: #141414;
+          stroke-width: 1.4;
+          stroke-linejoin: round;
+        }
+        .ts-ibeam path {
+          fill: none;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+      </style>
+
+      <div id="root" data-composition-id="cursor-text-select" data-duration="4.2">
+        <div class="ts-stage">
+          <div class="ts-card">
+            <div class="ts-meta">Draft &middot; edited just now</div>
+            <h2 class="ts-title" id="ts-title"></h2>
+            <p class="ts-para" id="ts-para"></p>
+          </div>
+        </div>
+        <div class="ts-toolbar" id="ts-toolbar">
+          <div class="ts-btn" id="ts-bold">
+            <svg viewBox="0 0 24 24">
+              <path d="M7 4h6.5a4 4 0 0 1 0 8H7zM7 12h7.5a4 4 0 0 1 0 8H7z" />
+            </svg>
+          </div>
+          <div class="ts-btn">
+            <svg viewBox="0 0 24 24"><path d="M14 4h-4M14 20h-4M13.5 4 10.5 20" /></svg>
+          </div>
+          <div class="ts-btn">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"
+              />
+            </svg>
+          </div>
+          <div class="ts-btn">
+            <svg viewBox="0 0 24 24"><path d="M5 5h14v10H10l-5 4z" /></svg>
+          </div>
+        </div>
+        <div class="ts-cursor" id="ts-cursor" aria-hidden="true">
+          <svg class="ts-arrow" id="ts-arrow" viewBox="0 0 24 24">
+            <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
+          </svg>
+          <svg class="ts-ibeam" id="ts-ibeam" viewBox="0 0 12 32">
+            <path
+              d="M2.5 2Q6 2 6 4.5Q6 2 9.5 2M2.5 30Q6 30 6 27.5Q6 30 9.5 30M6 4.5V27.5"
+              stroke="#ffffff"
+              stroke-width="3.4"
+            />
+            <path
+              d="M2.5 2Q6 2 6 4.5Q6 2 9.5 2M2.5 30Q6 30 6 27.5Q6 30 9.5 30M6 4.5V27.5"
+              stroke="#141414"
+              stroke-width="1.3"
+            />
+          </svg>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var para = document.getElementById("ts-para");
+          var toolbar = document.getElementById("ts-toolbar");
+          var boldBtn = document.getElementById("ts-bold");
+          var cursor = document.getElementById("ts-cursor");
+          var arrow = document.getElementById("ts-arrow");
+          var ibeam = document.getElementById("ts-ibeam");
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "cursor-text-select";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "4.2",
+            ),
+          );
+          var text = String(vars.text || DEFAULTS.text || "");
+          var phrase = String(vars.phrase || "");
+          if (vars.accent) root.style.setProperty("--ts-accent", String(vars.accent));
+          document.getElementById("ts-title").textContent = String(vars.title || "");
+
+          // The phrase must be in the text; otherwise select the middle three words.
+          var at = phrase ? text.indexOf(phrase) : -1;
+          if (at < 0) {
+            var words = text.split(" ");
+            var from = Math.max(0, Math.floor(words.length / 2) - 1);
+            phrase = words.slice(from, from + 3).join(" ");
+            at = words.slice(0, from).join(" ").length + (from > 0 ? 1 : 0);
+          }
+          para.appendChild(document.createTextNode(text.slice(0, at)));
+          var chars = [];
+          for (var i = 0; i < phrase.length; i++) {
+            var span = document.createElement("span");
+            span.className = "ts-ch";
+            span.textContent = phrase[i];
+            para.appendChild(span);
+            chars.push(span);
+          }
+          para.appendChild(document.createTextNode(text.slice(at + phrase.length)));
+
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var u = W / 1920;
+          var ARROW = 64 * u;
+          arrow.style.width = arrow.style.height = ARROW + "px";
+          arrow.style.left = (-5 / 24) * ARROW + "px";
+          arrow.style.top = (-3 / 24) * ARROW + "px";
+          // macOS proportion: the I-beam's drawn height (28 of 32 units) is 1.2x the arrow's (19 of 24).
+          var BEAM = (1.2 * ARROW * (19 / 24) * 32) / 28;
+          ibeam.style.height = BEAM + "px";
+          ibeam.style.width = BEAM * 0.375 + "px";
+          ibeam.style.left = -BEAM * 0.1875 + "px";
+          ibeam.style.top = -BEAM / 2 + "px";
+
+          // Layout-space offsets, which ignore any transform a host puts on the player.
+          function offsetIn(el) {
+            var x = 0;
+            var y = 0;
+            while (el && el !== root) {
+              x += el.offsetLeft;
+              y += el.offsetTop;
+              el = el.offsetParent;
+            }
+            return { x: x, y: y };
+          }
+          function charBox(k) {
+            var o = offsetIn(chars[k]);
+            return { l: o.x, r: o.x + chars[k].offsetWidth, t: o.y, h: chars[k].offsetHeight };
+          }
+          // Tip point for a fractional character count f: between the edges of character floor(f).
+          function boundary(f) {
+            var n = chars.length;
+            var k = Math.min(n - 1, Math.max(0, Math.floor(f)));
+            var box = charBox(k);
+            var frac = Math.min(1, Math.max(0, f - k));
+            return { x: box.l + (box.r - box.l) * frac, y: box.t + box.h / 2 };
+          }
+
+          var squeeze = Math.min(1, duration / 4.2);
+          var T = {
+            inEnd: 0.5,
+            press: 0.6,
+            drag0: 0.65,
+            drag1: 1.6,
+            release: 1.65,
+            bar: 1.75,
+            move0: 2.0,
+            move1: 2.5,
+            click: 2.7,
+            bold: 2.77,
+            away0: 2.95,
+            away1: 3.4,
+          };
+          for (var key in T) T[key] *= squeeze;
+          var DRAG_REACH = 0.9;
+
+          var easeOut = gsap.parseEase("power3.out");
+          var easeInOut = gsap.parseEase("power2.inOut");
+          function seg(t, a, b) {
+            return Math.max(0, Math.min(1, (t - a) / (b - a)));
+          }
+          function lerp(a, b, k) {
+            return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+          }
+          function dip(t, at) {
+            var d = 0.07 * squeeze;
+            if (t < at || t > at + d * 3.3) return 1;
+            return t < at + d
+              ? 1 - 0.12 * seg(t, at, at + d)
+              : 0.88 + 0.12 * easeOut(seg(t, at + d, at + d * 3.3));
+          }
+
+          function render(t) {
+            var n = chars.length;
+            var bold = t >= T.bold;
+            var f = t < T.drag0 ? 0 : n * DRAG_REACH * easeInOut(seg(t, T.drag0, T.drag1));
+            var selected = t >= T.release ? n : Math.round(f);
+            for (var i = 0; i < n; i++) {
+              chars[i].classList.toggle("is-sel", i < selected);
+              chars[i].classList.remove("is-bold");
+            }
+
+            // Anchor on the regular-weight layout so the toolbar does not shift when Bold lands.
+            var first = charBox(0);
+            var lineR = first.r;
+            for (var j = 1; j < n && charBox(j).t === first.t; j++) lineR = charBox(j).r;
+            var card = offsetIn(para.parentNode);
+            var cardRight = card.x + para.parentNode.offsetWidth;
+            var barW = toolbar.offsetWidth;
+            var barX = Math.max(
+              card.x + 16 * u,
+              Math.min((first.l + lineR) / 2 - barW / 2, cardRight - 16 * u - barW),
+            );
+            var barY = first.t - 12 * u - toolbar.offsetHeight;
+            for (i = 0; i < n; i++) chars[i].classList.toggle("is-bold", bold);
+            var barK = easeOut(seg(t, T.bar, T.bar + 0.18 * squeeze));
+            toolbar.style.opacity = String(barK);
+            toolbar.style.transform =
+              "translate(" +
+              barX +
+              "px," +
+              (barY + 4 * u * (1 - barK)) +
+              "px) scale(" +
+              (0.96 + 0.04 * barK) +
+              ")";
+            var pressed = t >= T.click && t < T.click + 0.12 * squeeze;
+            boldBtn.style.transform = pressed ? "scale(0.92)" : "";
+            boldBtn.classList.toggle("is-on", bold);
+
+            var start = { x: W * 1.08, y: H * 0.34 };
+            var press = boundary(0);
+            var release = boundary(n * DRAG_REACH);
+            var target = {
+              x: barX + boldBtn.offsetLeft + boldBtn.offsetWidth * 0.55,
+              y: barY + boldBtn.offsetTop + boldBtn.offsetHeight * 0.6,
+            };
+            var aside = { x: cardRight + 80 * u, y: target.y + 140 * u };
+            var p;
+            if (t < T.inEnd) p = lerp(start, press, easeOut(seg(t, 0, T.inEnd)));
+            else if (t < T.drag0) p = press;
+            else if (t < T.move0) p = boundary(f);
+            else if (t < T.move1) p = lerp(release, target, easeOut(seg(t, T.move0, T.move1)));
+            else if (t < T.away0) p = target;
+            else p = lerp(target, aside, easeInOut(seg(t, T.away0, T.away1)));
+
+            // The I-beam takes over while the tip is inside the paragraph box.
+            var box = offsetIn(para);
+            var inside = Math.min(
+              p.x - box.x,
+              box.x + para.offsetWidth - p.x,
+              p.y - box.y,
+              box.y + para.offsetHeight - p.y,
+            );
+            var m = seg(inside, -24 * u, 0);
+            var overBar =
+              barK > 0 &&
+              p.x > barX - 10 * u &&
+              p.x < barX + toolbar.offsetWidth + 10 * u &&
+              p.y > barY - 10 * u &&
+              p.y < barY + toolbar.offsetHeight + 10 * u;
+            if (overBar) m = 0;
+            arrow.style.opacity = String(1 - m);
+            ibeam.style.opacity = String(m);
+
+            var s = dip(t, T.press) * dip(t, T.click);
+            cursor.style.transform = "translate(" + p.x + "px," + p.y + "px) scale(" + s + ")";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add cursor-text-select" item="cursor-text-select" />
+
+That writes one file: `compositions/components/cursor-text-select.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/cursor-text-select.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `title` | `Spring release notes` | string |  |
+| `text` | `Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half.` | string |  |
+| `phrase` | `approve the final cut` | string |  |
+| `accent` | `#0a84ff` | color |  |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="cursor-text-select"
+  data-composition-src="compositions/components/cursor-text-select.html"
+  data-variable-values='{"title":"Spring release notes","text":"Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half.","phrase":"approve the final cut","accent":"#0a84ff"}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `cursor` `motion-primitive` `text` `selection` `editor` `toolbar`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>
