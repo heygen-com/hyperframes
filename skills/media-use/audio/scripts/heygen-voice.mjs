@@ -1,13 +1,6 @@
 #!/usr/bin/env node
-// HeyGen voice clones: create one from an audio file, delete one, list yours.
-// The clone id works as `heygen-tts.mjs --voice <id>`.
-//
-// Usage:
-//   node heygen-voice.mjs clone <audio.mp3|audio.wav> --name <name>   # → {"voice_id":"..."}
-//   node heygen-voice.mjs delete <voice_id>
-//   node heygen-voice.mjs list --prefix <name-prefix>   # → [{voice_id,name,created_at}]
-//
-// Any API refusal prints HeyGen's own error message to stderr and exits 1.
+// HeyGen voice clones: `clone <audio> --name <n>`, `delete <voice_id>`, `list --prefix <p>` (references/tts.md).
+// The clone id works as `heygen-tts.mjs --voice <id>`. A refusal prints HeyGen's own message and exits 1.
 // Auth: same resolver as heygen-tts.mjs (lib/heygen.mjs).
 
 import { readFileSync } from "node:fs";
