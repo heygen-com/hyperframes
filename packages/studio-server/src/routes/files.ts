@@ -78,6 +78,8 @@ import {
   splitIntoPropertyGroupsFromScript,
   shiftPositionsInScript,
   scalePositionsInScript,
+  retimeClipTweensInScript,
+  type ClipTweenRetime,
   dedupePositionWritesInScript,
   syncPositionHoldsBeforeKeyframes,
   clipQueryRoot,
@@ -1491,6 +1493,48 @@ async function prepareGsapMutationScript(
   return { html, beforeHtml, block };
 }
 
+/** Clip retimes keyed by the index their run starts at; a request that would be a no-op stays out of the run. */
+type RetimeSlot = ClipTweenRetime | "no-op";
+
+function retimeRuns(mutations: readonly GsapMutationRequest[]): Map<number, RetimeSlot[]> {
+  const runs = new Map<number, RetimeSlot[]>();
+  let start = -1;
+  mutations.forEach((mutation, index) => {
+    const retime = clipRetimeOf(mutation);
+    if (!retime) return void (start = -1);
+    if (start < 0) runs.set((start = index), []);
+    runs.get(start)!.push(retime);
+  });
+  return runs;
+}
+
+// The same no-op rules executeGsapMutationAcorn applies; a no-op keeps its slot so flags line up.
+function clipRetimeOf(mutation: GsapMutationRequest): RetimeSlot | null {
+  if (mutation.type === "shift-positions") {
+    const { targetSelector, delta } = mutation;
+    return targetSelector && Number.isFinite(delta) && delta !== 0
+      ? { kind: "shift", targetSelector, delta }
+      : "no-op";
+  }
+  if (mutation.type !== "scale-positions") return null;
+  const { targetSelector, oldStart, oldDuration, newStart, newDuration } = mutation;
+  const finite = [oldStart, oldDuration, newStart, newDuration].every(Number.isFinite);
+  if (!targetSelector || !finite || oldDuration <= 0 || newDuration <= 0) return "no-op";
+  if (oldStart === newStart && oldDuration === newDuration) return "no-op";
+  return { kind: "scale", targetSelector, oldStart, oldDuration, newStart, newDuration };
+}
+
+/** Folds a run's live retimes in one parse, then syncs holds once; flags come back per slot. */
+function retimeRun(script: string, run: readonly RetimeSlot[], root: ParentNode | undefined) {
+  const live = run.filter((slot): slot is ClipTweenRetime => slot !== "no-op");
+  const retimed = retimeClipTweensInScript(script, live, root);
+  const synced = syncPositionHoldsBeforeKeyframes(retimed.script);
+  let next = 0;
+  const changed = run.map((slot) => slot !== "no-op" && retimed.changed[next++]!);
+  if (synced !== retimed.script) changed[changed.length - 1] = true;
+  return { script: synced, changed: synced === script ? changed.map(() => false) : changed };
+}
+
 async function applyGsapMutations(
   c: RouteContext,
   res: ResolvedGsapFile,
@@ -1516,7 +1560,18 @@ async function applyGsapMutations(
   }
 
   const mutationChanges: boolean[] = [];
-  for (const mutation of mutations) {
+  // A run of clip retimes is one parse and one hold sync, not one of each per clip.
+  const retimes = writer === "acorn" ? retimeRuns(mutations) : new Map<number, RetimeSlot[]>();
+  for (let index = 0; index < mutations.length; index++) {
+    const run = retimes.get(index);
+    if (run) {
+      const retimed = retimeRun(block.scriptText, run, block.root);
+      mutationChanges.push(...retimed.changed);
+      block.scriptText = retimed.script;
+      index += run.length - 1;
+      continue;
+    }
+    const mutation = mutations[index]!;
     const previousScript = block.scriptText;
     const result = await executeGsapMutation(mutation, block, respond, writer);
     if (result instanceof Response) return result;

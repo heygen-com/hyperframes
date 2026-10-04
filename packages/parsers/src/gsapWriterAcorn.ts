@@ -463,17 +463,71 @@ export function shiftPositionsInScript(
   delta: number,
   root?: ParentNode,
 ): string {
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return script;
-  const carries = clipTweenMatcher(targetSelector, root);
+  return retimeClipTweensInScript(script, [{ kind: "shift", targetSelector, delta }], root).script;
+}
+
+export type ClipTweenRetime =
+  | { kind: "shift"; targetSelector: string; delta: number }
+  | {
+      kind: "scale";
+      targetSelector: string;
+      oldStart: number;
+      oldDuration: number;
+      newStart: number;
+      newDuration: number;
+    };
+
+/**
+ * Applies `retimes` in order with one parse: the bytes equal running shift/scalePositionsInScript once
+ * per retime. `changed[i]` says whether retime i moved a value.
+ */
+export function retimeClipTweensInScript(
+  script: string,
+  retimes: readonly ClipTweenRetime[],
+  root?: ParentNode,
+): { script: string; changed: boolean[] } {
+  const changed = retimes.map(() => false);
+  const live = retimes.filter((r) => r.kind === "shift" || (r.oldDuration > 0 && r.newDuration > 0));
+  const parsed = live.length > 0 ? parseGsapScriptAcornForWrite(script) : null;
+  if (!parsed) return { script, changed };
+  const matchers = retimes.map((r) => clipTweenMatcher(r.targetSelector, root));
   const ms = new MagicString(script);
-  let changed = false;
+  let wrote = false;
   for (const entry of parsed.located) {
-    if (!carries(entry.animation) || !hasExplicitTime(entry.animation)) continue;
-    overwritePosition(ms, entry.call, shiftedPosition(entry.animation.position, delta));
-    changed = true;
+    const animation = { ...entry.animation };
+    let position = false;
+    let duration = false;
+    retimes.forEach((retime, i) => {
+      if (!matchers[i]!(animation)) return;
+      const before = [animation.position, animation.duration];
+      if (retime.kind === "shift") {
+        if (!hasExplicitTime(animation)) return;
+        animation.position = shiftedPosition(animation.position, retime.delta);
+        position = true;
+      } else {
+        if (retime.oldDuration <= 0 || retime.newDuration <= 0) return;
+        if (typeof animation.position !== "number") return;
+        const ratio = retime.newDuration / retime.oldDuration;
+        if (hasExplicitTime(animation)) {
+          animation.position = Math.max(
+            0,
+            Math.round((retime.newStart + (animation.position - retime.oldStart) * ratio) * 1000) /
+              1000,
+          );
+          position = true;
+        }
+        if (typeof animation.duration === "number" && animation.duration > 0) {
+          animation.duration = Math.max(0.001, Math.round(animation.duration * ratio * 1000) / 1000);
+          duration = true;
+        }
+      }
+      if (before[0] !== animation.position || before[1] !== animation.duration) changed[i] = true;
+    });
+    if (position) overwritePosition(ms, entry.call, animation.position as number);
+    if (duration) upsertProp(ms, entry.call.varsArg, "duration", animation.duration);
+    wrote ||= position || duration;
   }
-  return changed ? ms.toString() : script;
+  return { script: wrote ? ms.toString() : script, changed };
 }
 
 /** Copies each tween on `fromSelector` for `toSelector`, `delta` seconds later, in its own argument text. Exact or
@@ -587,29 +641,11 @@ export function scalePositionsInScript(
   newDuration: number,
   root?: ParentNode,
 ): string {
-  if (oldDuration <= 0 || newDuration <= 0) return script;
-  const ratio = newDuration / oldDuration;
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return script;
-  const carries = clipTweenMatcher(targetSelector, root);
-  const ms = new MagicString(script);
-  let changed = false;
-  for (const entry of parsed.located) {
-    if (!carries(entry.animation) || typeof entry.animation.position !== "number") continue;
-    if (hasExplicitTime(entry.animation)) {
-      const newPos = Math.max(
-        0,
-        Math.round((newStart + (entry.animation.position - oldStart) * ratio) * 1000) / 1000,
-      );
-      overwritePosition(ms, entry.call, newPos);
-    }
-    if (typeof entry.animation.duration === "number" && entry.animation.duration > 0) {
-      const newDur = Math.max(0.001, Math.round(entry.animation.duration * ratio * 1000) / 1000);
-      upsertProp(ms, entry.call.varsArg, "duration", newDur);
-    }
-    changed = true;
-  }
-  return changed ? ms.toString() : script;
+  return retimeClipTweensInScript(
+    script,
+    [{ kind: "scale", targetSelector, oldStart, oldDuration, newStart, newDuration }],
+    root,
+  ).script;
 }
 
 export function addAnimationToScript(
