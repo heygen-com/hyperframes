@@ -59,7 +59,7 @@ asked you to change nothing at all, write nothing: put the plan in the reply and
 
 The root composition holds only timed hosts, media and audio. Any scene with nested
 structure (a div containing children, a title with a subtitle, a chart) is its own
-file loaded with `data-composition-src`, wiring in
+file loaded with `data-composition-src`, wiring in `/hyperframes-core`
 `references/sub-compositions.md`.
 
 Nested markup left inside the root does not become a row of its own. It hides inside

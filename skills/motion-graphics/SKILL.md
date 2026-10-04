@@ -98,7 +98,7 @@ npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=mo
 Dispatch one subagent. prompt = full `agents/director.md` + `## Dispatch context` (`SKILL_DIR` / `PROJECT_DIR` / the user's request / `Schema: <SKILL_DIR>/references/shot-plan-ir.md`). It must:
 
 1. **Decide: does this need a search?** (the first fork)
-   - **No** → pick a **form category** (kinetic-type / stat / charts / logo-reveal / lower-thirds); content is user-supplied; `asset_needs: []`.
+   - **No** → pick a **form category** (kinetic-type / stat / charts / logo-reveal / lower-thirds / maps); content is user-supplied; `asset_needs: []`.
    - **Yes** → emit a **search plan** into `asset_needs[]` (news / web / tweet / image; two-pole queries). The specific **search-driven category** (webpage / news / tweet / asset-fusion) is confirmed by the content type returned in Step 2, and finalized in Step 3.
 2. Write a draft `shot-plan.json` (envelope + chosen form category _or_ search intent + `asset_needs` + a one-paragraph shot brief). Schema: `references/shot-plan-ir.md`.
 
@@ -107,11 +107,6 @@ Validation: `[ -s "$PROJECT_DIR/shot-plan.json" ] && echo ok || echo missing`.
 ### Step 2 — Source ◇ (Bash: media-use, conditional)
 
 If `shot-plan.json.asset_needs` is non-empty, resolve assets (search / generate / fetch → frozen project-local paths + ledger). See `phases/source/guide.md` (wraps `media-use resolve`; the search-driven categories use the news/web/tweet/image search). If `asset_needs` is empty, **skip to Step 3**.
-
-```bash
-# illustrative — see phases/source/guide.md
-(cd "$PROJECT_DIR" && node <SKILL_DIR>/phases/source/resolve.mjs --plan ./shot-plan.json --out ./assets)
-```
 
 Degrade gracefully: if a search/provider is unavailable, the category falls back to asset-free (note it in `context.log`).
 
