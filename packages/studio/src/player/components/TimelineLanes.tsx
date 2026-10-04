@@ -35,7 +35,7 @@ import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
 import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
 
-function passengerStyle(offsetPx: number): CSSProperties {
+function passengerStyleAt(offsetPx: number): CSSProperties {
   return {
     transform: `translateX(${offsetPx}px)`,
     opacity: 0.85,
@@ -399,8 +399,8 @@ export function TimelineLanes({
                     // the passenger's timeline data until the owning drag commits.
                     const isPassenger =
                       multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
-                    const riding = isPassenger
-                      ? passengerStyle(multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview))
+                    const passengerStyle = isPassenger
+                      ? passengerStyleAt(multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview))
                       : undefined;
                     const clipGestures = createClipGestureHandlers(
                       el,
@@ -433,7 +433,7 @@ export function TimelineLanes({
                         }}
                         el={previewElement}
                         pps={pps}
-                        passengerStyle={riding}
+                        passengerStyle={passengerStyle}
                         clipY={CLIP_Y}
                         clipHeight={clipBarHeight}
                         isSelected={isSelected}
@@ -479,7 +479,7 @@ export function TimelineLanes({
                         beatsActive={beatStripOnTrack}
                         accentColor={clipStyle.accent}
                         isSelected={isSelected}
-                        passengerStyle={riding}
+                        passengerStyle={passengerStyle}
                         currentTime={currentTime}
                         selectedKeyframes={selectedKeyframes}
                         rovingTargetId={keyboard.rovingTargetId}
@@ -505,7 +505,7 @@ export function TimelineLanes({
                         clipDuration={previewElement.duration}
                         clipLeftPx={previewElement.start * pps}
                         clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                        passengerStyle={riding}
+                        passengerStyle={passengerStyle}
                         accentColor={clipStyle.accent}
                         isSelected={isSelected}
                         currentPercentage={
