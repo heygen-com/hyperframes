@@ -8,7 +8,7 @@ vi.mock("./plainTranslate", async (importOriginal) => ({
   readTranslatePx: () => ({ x: Number.NaN, y: 0 }),
 }));
 
-it("a drag press the layer cannot take gets the notice alone, counts as handled, and pauses nothing", () => {
+it("a drag press the layer cannot take gets the notice, counts as handled, and leaves the box live", () => {
   const element = document.body.appendChild(document.createElement("div"));
   const ref = <T>(current: T) => ({ current });
   const onBlockedMove = vi.fn();
@@ -50,5 +50,6 @@ it("a drag press the layer cannot take gets the notice alone, counts as handled,
   expect(press.defaultPrevented).toBe(true);
   // The release lands outside the box, so nothing would ever resume it.
   expect(opts.rafPausedRef.current).toBe(false);
-  expect(opts.onManualDragStartRef.current).not.toHaveBeenCalled();
+  // Playback pauses before setup reads which timelines are running.
+  expect(opts.onManualDragStartRef.current).toHaveBeenCalledTimes(1);
 });

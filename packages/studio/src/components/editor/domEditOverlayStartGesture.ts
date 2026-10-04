@@ -184,6 +184,7 @@ export function startGesture(
   let pathOffsetMember: ManualOffsetDragMember | undefined;
 
   if (kind === "drag") {
+    opts.onManualDragStartRef.current?.();
     const result = createManualOffsetDragMember({
       key: selectionCacheKey(sel),
       selection: sel,
@@ -196,8 +197,6 @@ export function startGesture(
       e.preventDefault();
       return false;
     }
-    opts.onManualDragStartRef.current?.();
-    opts.rafPausedRef.current = true;
     pathOffsetMember = result.member;
     initialPathOffset = result.member.initialPathOffset;
     manualEditDragToken = result.member.gestureToken;
