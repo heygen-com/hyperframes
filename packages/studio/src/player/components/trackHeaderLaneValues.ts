@@ -107,17 +107,17 @@ export function valuesBefore(
   animation: GsapAnimation,
   animations: readonly GsapAnimation[],
 ): LaneValues {
-  const start = resolveTweenStart(animation) ?? 0;
-  const earlier = animations
-    .filter((other) => other !== animation && other.method !== "from")
-    .filter((other) => (resolveTweenStart(other) ?? Infinity) < start)
-    .sort((a, b) => (resolveTweenStart(a) ?? 0) - (resolveTweenStart(b) ?? 0));
+  const byStart = [...animations].sort(
+    (a, b) => (resolveTweenStart(a) ?? Infinity) - (resolveTweenStart(b) ?? Infinity),
+  );
+  const index = byStart.indexOf(animation);
+  const earlier = byStart.slice(0, Math.max(index, 0)).filter((other) => other.method !== "from");
   const values: LaneValues = {};
   for (const other of earlier) {
     for (const keyframe of other.keyframes?.keyframes ?? [{ properties: other.properties }]) {
       for (const property of Object.keys(keyframe.properties)) {
         const value = endValue(other, property);
-        if (value !== undefined) values[property] = value;
+        if (typeof value === "number") values[property] = value;
       }
     }
   }

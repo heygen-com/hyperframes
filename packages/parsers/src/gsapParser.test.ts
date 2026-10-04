@@ -1866,12 +1866,24 @@ describe("keyframe mutations", () => {
       ["recast", parseGsapScript],
       ["acorn", parseGsapScriptAcorn],
     ])(
-      "%s: a step list with no durations plays 0.5 s a step unless the timeline sets one",
+      "%s: takes timeline defaults as GSAP 3.15 does, never onto a step list or a keyframed ease",
       (_, parse) => {
-        const steps = `tl.to("#x", { keyframes: [{ x: 1 }, { x: 2 }, { x: 3 }] }, 0);`;
-        expect(parse(`const tl = gsap.timeline();\n${steps}`).animations[0]!.duration).toBe(1.5);
-        const withDefaults = `const tl = gsap.timeline({ defaults: { duration: 2 } });\n${steps}`;
-        expect(parse(withDefaults).animations[0]!.duration).toBe(2);
+        const tweens = [
+          `tl.to("#a", { keyframes: [{ x: 1 }, { x: 2 }, { x: 3 }] }, 0);`,
+          `tl.to("#b", { keyframes: { "0%": { x: 0 }, "100%": { x: 1 } } }, 0);`,
+          `tl.to("#c", { motionPath: { path: [{ x: 0, y: 0 }, { x: 9, y: 9 }] } }, 0);`,
+        ].join("\n");
+        const defaults = `{ defaults: { duration: 2, ease: "power2.in" } }`;
+        const [steps, percentages, motionPath] = parse(
+          `const tl = gsap.timeline(${defaults});\n${tweens}`,
+        ).animations;
+        expect([steps!.duration, percentages!.duration, motionPath!.duration]).toEqual([1.5, 2, 2]);
+        expect([steps!.ease, percentages!.ease, motionPath!.ease]).toEqual([
+          undefined,
+          undefined,
+          "power2.in",
+        ]);
+        expect(parse(`const tl = gsap.timeline();\n${tweens}`).animations[0]!.duration).toBe(1.5);
       },
     );
 

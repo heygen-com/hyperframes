@@ -1209,8 +1209,12 @@ function applyTimelineDefaults(
 ): void {
   for (const anim of anims) {
     if (anim.method === "set") continue;
-    if (anim.duration === undefined) anim.duration = defaults.duration ?? stepListDuration(anim);
-    if (anim.ease === undefined && defaults.ease !== undefined) {
+    if (anim.duration === undefined) anim.duration = stepListDuration(anim) ?? defaults.duration;
+    if (
+      anim.ease === undefined &&
+      defaults.ease !== undefined &&
+      (!anim.keyframes || anim.arcPath)
+    ) {
       anim.ease = defaults.ease;
     }
   }

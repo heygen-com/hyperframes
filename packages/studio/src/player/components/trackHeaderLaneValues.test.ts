@@ -61,4 +61,13 @@ describe("valuesBefore", () => {
     expect(start).toEqual({ x: 300 });
     expect(valuesAt(stepList, "position", 25, start)).toEqual({ x: 300 });
   });
+
+  it("takes a set placed at the tween's own start, and never a relative string", () => {
+    const at = (id: string, resolvedStart: number, x: number | string) =>
+      ({ id, method: "set", resolvedStart, properties: { x } }) as unknown as GsapAnimation;
+    const stepList = { ...tween("object-array", { ease: "none" }), resolvedStart: 1 };
+    const relative = at("r", 0.5, "+=50");
+    expect(valuesBefore(stepList, [at("s", 1, 300), stepList])).toEqual({ x: 300 });
+    expect(valuesBefore(stepList, [relative, stepList])).toEqual({});
+  });
 });

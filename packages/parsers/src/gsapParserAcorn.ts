@@ -1650,11 +1650,15 @@ function applyTimelineDefaults(
   for (const anim of anims) {
     if (anim.method === "set") continue;
     if (anim.duration === undefined && !anim.durationUnresolved) {
-      if (defaults.duration !== undefined) anim.duration = defaults.duration;
-      else if (defaults.durationUnresolved) anim.durationUnresolved = true;
-      else anim.duration = stepListDuration(anim);
+      anim.duration = stepListDuration(anim) ?? defaults.duration;
+      if (anim.duration === undefined && defaults.durationUnresolved)
+        anim.durationUnresolved = true;
     }
-    if (anim.ease === undefined && defaults.ease !== undefined && !anim.keyframes) {
+    if (
+      anim.ease === undefined &&
+      defaults.ease !== undefined &&
+      (!anim.keyframes || anim.arcPath)
+    ) {
       anim.ease = defaults.ease;
     }
   }

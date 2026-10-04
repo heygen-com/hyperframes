@@ -2,7 +2,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveTweenDuration, resolveTweenStart } from "../utils/globalTimeCompiler";
-import { ARRAY_STEP_EASE, PERCENTAGE_SEGMENT_EASE } from "../utils/gsapKeyframeEases";
+import { ARRAY_STEP_EASE, PERCENTAGE_SEGMENT_EASE, runEaseOf } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import {
   materializeIfDynamic,
@@ -86,7 +86,7 @@ function normalize(edit: PlayheadEdit): Normalized | { reason: PlayheadEditRefus
     if (data.format === "simple-array") return { reason: "simple-array-keyframes" };
     const arrayStep = data.format === "object-array";
     return {
-      runEase: data.ease ?? anim.ease,
+      runEase: runEaseOf(anim),
       keyframes: data.keyframes.map((kf) => ({
         ...kf,
         properties: { ...kf.properties },

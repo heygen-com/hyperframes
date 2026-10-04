@@ -563,6 +563,21 @@ describe("planValueAtPlayhead", () => {
       });
     });
 
+    it("refuses an inner node of a motionPath tween, which GSAP runs power1.out", () => {
+      const anim = {
+        ...kf([
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 50, properties: { x: 100 } },
+          { percentage: 100, properties: { x: 300 } },
+        ]),
+        arcPath: { enabled: true, autoRotate: false, segments: [] },
+      };
+      expect(plan({ anim, at: { time: 2 }, values: { x: 5 } })).toEqual({
+        ok: false,
+        reason: "eased-keyframes",
+      });
+    });
+
     it("refuses to add a keyframe, whose time the ease would move", () => {
       expect(plan({ anim: eased, at: { time: 2 }, values: { x: 5 } })).toEqual({
         ok: false,
