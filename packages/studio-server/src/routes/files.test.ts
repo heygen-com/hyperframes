@@ -2759,6 +2759,53 @@ tl.to("#b", { duration: 1, x: 200 }, 2);
     expect(batch.after).toBe(seqAfter);
   });
 
+  it("a gsap-mutations-batch of clip retimes writes what single requests in turn write", async () => {
+    // #k is keyframed after t=0, so every write re-syncs its position hold.
+    const SCENE = `<!DOCTYPE html><html><body>
+<div id="a" data-start="1" data-duration="2"></div><div id="b" data-start="2" data-duration="2"></div>
+<div id="k" data-start="0" data-duration="6"></div>
+<script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, x: 100 }, 1);
+tl.to("#b", { duration: 1.5, x: 200 }, 2);
+tl.to("#k", { keyframes: [{ x: 10 }, { x: 40 }], duration: 2 }, 1.5);
+</script></body></html>`;
+    const mutations = [
+      { type: "shift-positions", targetSelector: "#a", delta: 1 },
+      { type: "shift-positions", targetSelector: "#nobody", delta: 0 },
+      { type: "scale-positions", targetSelector: "#b", oldStart: 2, oldDuration: 2, newStart: 2.5, newDuration: 3 },
+      { type: "shift-positions", targetSelector: "#k", delta: 0.75 },
+    ];
+    const post = (app: Hono, path: string, body: unknown) =>
+      app.request(`http://localhost/projects/demo/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    const seqDir = createProjectDir();
+    writeHtml(seqDir, "scene.html", SCENE);
+    const seqApp = new Hono();
+    registerFileRoutes(seqApp, createAdapter(seqDir));
+    let seqAfter = "";
+    for (const mutation of mutations) {
+      const res = await post(seqApp, "gsap-mutations/scene.html", mutation);
+      seqAfter = ((await res.json()) as { after: string }).after;
+    }
+
+    const batchDir = createProjectDir();
+    writeHtml(batchDir, "scene.html", SCENE);
+    const batchApp = new Hono();
+    registerFileRoutes(batchApp, createAdapter(batchDir));
+    const res = await post(batchApp, "gsap-mutations-batch/scene.html", { mutations });
+    const batch = (await res.json()) as { after: string; mutationChanges: boolean[] };
+
+    expect(res.status).toBe(200);
+    expect(batch.after).toBe(seqAfter);
+    expect(batch.after).not.toBe(SCENE);
+    expect(batch.mutationChanges).toEqual([true, false, true, true]);
+  });
+
   it("reports no GSAP mutation for shift-positions-batch in a file with no GSAP script", async () => {
     // Same contract as its shift-positions / scale-positions siblings: a file with
     // no GSAP block is a no-op {ok, changed:false}, not a 400.
