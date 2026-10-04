@@ -23,7 +23,7 @@ export function loadEnvFromDir(startDir) {
   for (let i = 0; i < 5; i++) {
     const envPath = join(dir, ".env");
     // A `.env` folder (some home dirs have one) is not an env file: keep walking up.
-    if (statSync(envPath, { throwIfNoEntry: false })?.isFile()) {
+    if (existsSync(envPath) && !statSync(envPath).isDirectory()) {
       for (const raw of readFileSync(envPath, "utf8").split("\n")) {
         let line = raw.trim();
         if (!line || line.startsWith("#")) continue;
