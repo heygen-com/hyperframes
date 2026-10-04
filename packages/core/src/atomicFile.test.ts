@@ -187,6 +187,8 @@ describe("createFileAtomically", () => {
         return fs.writeFileSync(path, ...args);
       },
       chmodSync: fs.chmodSync,
+      openSync: fs.openSync,
+      closeSync: fs.closeSync,
       linkSync: (from: fs.PathLike, to: fs.PathLike) => {
         expect(readFileSync(from, "utf-8")).toBe("complete html");
         return fs.linkSync(from, to);
@@ -230,6 +232,8 @@ describe("createFileAtomically", () => {
     return {
       writeFileSync: fs.writeFileSync,
       chmodSync: fs.chmodSync,
+      openSync: fs.openSync,
+      closeSync: fs.closeSync,
       linkSync: () => {
         throw Object.assign(new Error(code), { code });
       },
@@ -266,6 +270,21 @@ describe("createFileAtomically", () => {
     expect(fs.readdirSync(dir)).toEqual([]);
   });
 
+  it("removes the file when a network share reports its quota only at close", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    const operations = {
+      ...failingLink("EXDEV"),
+      closeSync: (fd: number) => {
+        fs.closeSync(fd);
+        throw Object.assign(new Error("EDQUOT"), { code: "EDQUOT" });
+      },
+    };
+
+    expect(() => createFileAtomically(file, "html", operations)).toThrow("EDQUOT");
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
   it("keeps another writer's file when the direct write finds the name taken", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
@@ -293,6 +312,8 @@ describe("createFileAtomically", () => {
     const operations = {
       writeFileSync: fs.writeFileSync,
       chmodSync: fs.chmodSync,
+      openSync: fs.openSync,
+      closeSync: fs.closeSync,
       linkSync: fs.linkSync,
       unlinkSync: () => {
         throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });

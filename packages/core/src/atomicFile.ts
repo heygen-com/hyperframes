@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
 
 type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
+type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeSync">;
 
 // Codes a volume without hard links (FAT, exFAT, some network shares) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
@@ -41,7 +42,7 @@ export function replaceFileAtomically(
 export function createFileAtomically(
   filePath: string,
   content: string | Uint8Array,
-  operations: SiblingFileSystem & Pick<typeof fs, "linkSync"> = fs,
+  operations: DirectFileSystem & Pick<typeof fs, "linkSync"> = fs,
 ): void {
   publishSibling(filePath, content, undefined, operations, (tempPath) => {
     try {
@@ -62,13 +63,21 @@ export function createFileAtomically(
 function createDirectly(
   filePath: string,
   content: string | Uint8Array,
-  operations: SiblingFileSystem,
+  operations: DirectFileSystem,
 ): void {
-  const fd = fs.openSync(filePath, "wx");
+  const fd = operations.openSync(filePath, "wx");
+  let open = true;
   try {
     operations.writeFileSync(fd, content);
+    open = false;
+    // A network share may report a full disk or quota only here.
+    operations.closeSync(fd);
   } catch (error) {
-    fs.closeSync(fd);
+    try {
+      if (open) operations.closeSync(fd);
+    } catch {
+      // Preserve the write error; cleanup is best effort.
+    }
     try {
       operations.unlinkSync(filePath);
     } catch {
@@ -76,7 +85,6 @@ function createDirectly(
     }
     throw error;
   }
-  fs.closeSync(fd);
 }
 
 /** The file a write to `filePath` lands on: folder links and file links followed as the system does. */
