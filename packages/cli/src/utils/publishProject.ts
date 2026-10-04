@@ -749,6 +749,8 @@ export interface PublishOptions {
    * minimal-repro publish) keep today's behavior unchanged.
    */
   archive?: PublishArchiveResult;
+  /** The credential the caller already checked; `null` publishes anonymously. Resolved here when omitted. */
+  credential?: ResolvedCredential | null;
 }
 
 export async function publishProjectArchive(
@@ -759,7 +761,8 @@ export async function publishProjectArchive(
   const title = basename(projectDir);
   const archive = opts.archive ?? createPublishArchive(projectDir);
   const apiBaseUrl = getPublishApiBaseUrl();
-  const credential = await resolvePublishCredential();
+  const credential =
+    opts.credential === undefined ? await resolvePublishCredential() : opts.credential;
   const authHeaders = credential ? buildAuthHeaders(credential) : {};
   // A stable id / team space only mean something to an authenticated owner — the server
   // ignores them otherwise, and anonymous publishes always mint a fresh project.

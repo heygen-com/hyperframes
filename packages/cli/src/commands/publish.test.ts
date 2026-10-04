@@ -188,6 +188,7 @@ describe("publish --update / --space ownership preflight", () => {
   async function runWithFlag(
     flag: { update?: string; space?: string },
     credentials: { env?: string; stored?: Parameters<typeof writeStore>[0] },
+    publish?: (...args: unknown[]) => Promise<unknown>,
   ): Promise<{ output: string; exitCode: number }> {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-owner-"));
     const config = mkdtempSync(join(tmpdir(), "hf-publish-owner-config-"));
@@ -197,6 +198,7 @@ describe("publish --update / --space ownership preflight", () => {
     vi.stubEnv("HYPERFRAMES_API_KEY", "");
     if (credentials.stored) await writeStore(credentials.stored, join(config, "credentials"));
     mockPublished({ projectId: "target", url: "https://hyperframes.dev/p/target" });
+    if (publish) publishState.publish.mockImplementation(publish);
     try {
       consumeCommandResult();
       const output = await captureLog(() =>
@@ -207,6 +209,7 @@ describe("publish --update / --space ownership preflight", () => {
       return { output, exitCode: consumeCommandResult().exitCode };
     } finally {
       vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
       rmSync(project, { recursive: true, force: true });
       rmSync(config, { recursive: true, force: true });
     }
@@ -247,4 +250,51 @@ describe("publish --update / --space ownership preflight", () => {
     expect(exitCode).toBe(0);
     expect(output).toContain("Updated existing project");
   });
+
+  // The login expires while proxies bake; a second credential lookup at upload time would
+  // fall back to the saved API key, publish unowned and drop the flag without a word.
+  it.each([{ update: "target" }, { space: "space-1" }])(
+    "uploads with the checked login even if it expires mid-publish (%o)",
+    async (flag) => {
+      const { publishProjectArchive } = await vi.importActual<
+        typeof import("../utils/publishProject.js")
+      >("../utils/publishProject.js");
+      const fetchMock = vi.fn(async (url: string) =>
+        url.endsWith("/publish/upload")
+          ? new Response(null, { status: 404 })
+          : Response.json({
+              data: {
+                project_id: "anon",
+                title: "test",
+                url: "https://hyperframes.dev/p/anon",
+                file_count: 1,
+                claimed: false,
+                claim_token: "claim-secret",
+              },
+            }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+      const { output, exitCode } = await runWithFlag(
+        flag,
+        { stored: { oauth: { access_token: "token" }, api_key: "valid-key" } },
+        async (dir, opts) => {
+          await writeStore({
+            oauth: { access_token: "token", expires_at: past },
+            api_key: "valid-key",
+          });
+          return publishProjectArchive(dir as string, opts as never);
+        },
+      );
+
+      for (const [, init] of fetchMock.mock.calls as unknown as [string, RequestInit][]) {
+        expect(init.headers).toMatchObject({ authorization: "Bearer token" });
+        expect(init.headers).not.toHaveProperty("x-api-key");
+      }
+      expect(fetchMock).toHaveBeenCalled();
+      expect(exitCode).toBe(1);
+      expect(output).not.toContain("Claim URL");
+    },
+  );
 });

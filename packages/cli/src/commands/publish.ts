@@ -20,6 +20,7 @@ import {
   zipPublishFileMap,
 } from "../utils/publishProject.js";
 import { bakeMediaProxies } from "../utils/publishProxyBake.js";
+import type { ResolvedCredential } from "../auth/resolver.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import {
   ensureProjectId,
@@ -164,10 +165,22 @@ export default defineCommand({
     const spaceOverride =
       typeof args.space === "string" && args.space.trim() ? args.space.trim() : undefined;
 
+    // Resolved once and passed to the upload: a second lookup after the bake could fall back
+    // from an expired login to a saved API key and silently drop --update / --space.
+    let credential: ResolvedCredential | null;
+    try {
+      credential = await resolvePublishCredential();
+    } catch (err: unknown) {
+      console.error();
+      console.error(`  ${(err as Error).message}`);
+      console.error();
+      setCommandExitCode(1);
+      return;
+    }
+
     // --update / --space only take effect for a login (an API-key publish is never owned).
     // Fail loudly rather than silently minting a fresh URL.
     if (updateTarget || spaceOverride) {
-      const credential = await resolvePublishCredential();
       if (credential?.type !== "oauth") {
         const flag = updateTarget ? "--update" : "--space";
         const envKey =
@@ -227,6 +240,7 @@ export default defineCommand({
         projectId: requestedProjectId,
         spaceId,
         archive,
+        credential,
       });
       publishSpinner.stop(c.success("Project published"));
 
