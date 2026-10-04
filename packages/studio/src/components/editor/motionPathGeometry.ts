@@ -98,6 +98,16 @@ export function nearestPointOnPath(
   return best;
 }
 
+const finiteNumber = (v: unknown): v is number => typeof v === "number" && isFinite(v);
+
+/** The layout width/height a keyframe sets, when it sets one. */
+function sizeAt(p: Record<string, unknown>): { w?: number; h?: number } {
+  return {
+    ...(finiteNumber(p.width) && { w: p.width }),
+    ...(finiteNumber(p.height) && { h: p.height }),
+  };
+}
+
 export function buildMotionPathGeometry(
   read: ReadTween | null,
   base: { x: number; y: number } = { x: 0, y: 0 },
@@ -114,35 +124,27 @@ export function buildMotionPathGeometry(
   // translate it folded in, else 0), so we default it and still draw a path. But if the tween
   // DOES animate an axis and a given keyframe omits it, that value is interpolated
   // (not 0) and can't be placed here → skip that node (the prior behavior).
-  const finite = (v: unknown): v is number => typeof v === "number" && isFinite(v);
-  const tweenHasX = read.keyframes.some((kf) => finite(kf.properties.x));
-  const tweenHasY = read.keyframes.some((kf) => finite(kf.properties.y));
+  const tweenHasX = read.keyframes.some((kf) => finiteNumber(kf.properties.x));
+  const tweenHasY = read.keyframes.some((kf) => finiteNumber(kf.properties.y));
   if (!tweenHasX && !tweenHasY) return null; // no positional motion (opacity/scale only)
 
+  const pointAt = (p: Record<string, unknown>): MotionPathPoint | null => {
+    if ((tweenHasX && !finiteNumber(p.x)) || (tweenHasY && !finiteNumber(p.y))) return null;
+    const x = tweenHasX ? (p.x as number) : base.x;
+    const y = tweenHasY ? (p.y as number) : base.y;
+    return { x, y, ...sizeAt(p) };
+  };
   read.keyframes.forEach((kf, i) => {
-    if (tweenHasX && !finite(kf.properties.x)) return;
-    if (tweenHasY && !finite(kf.properties.y)) return;
-    const { width, height } = kf.properties;
+    const at = pointAt(kf.properties);
+    if (!at) return;
     nodes.push({
-      x: tweenHasX ? (kf.properties.x as number) : base.x,
-      y: tweenHasY ? (kf.properties.y as number) : base.y,
-      ...(finite(width) && { w: width }),
-      ...(finite(height) && { h: height }),
+      ...at,
       ref: isArc ? { type: "waypoint", index: i } : { type: "keyframe", pct: kf.percentage },
     });
   });
 
   if (nodes.length < 2) return null;
-  const s = read.start;
-  const start =
-    !isArc && s && (!tweenHasX || finite(s.x)) && (!tweenHasY || finite(s.y))
-      ? {
-          x: tweenHasX ? s.x! : base.x,
-          y: tweenHasY ? s.y! : base.y,
-          ...(finite(s.width) && { w: s.width }),
-          ...(finite(s.height) && { h: s.height }),
-        }
-      : undefined;
+  const start = !isArc && read.start ? pointAt(read.start) : null;
 
   return {
     kind: isArc ? "arc" : "linear",
