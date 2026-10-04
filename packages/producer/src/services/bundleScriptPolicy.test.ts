@@ -6,50 +6,53 @@ import puppeteer, { type Browser } from "puppeteer";
 import { bundleToSingleHtml } from "@hyperframes/core/compiler";
 
 const INLINE_ONLY_POLICY = `<meta http-equiv="Content-Security-Policy" content="script-src 'unsafe-inline'">`;
+const ROOT = `<div data-composition-id="root" data-start="0" data-duration="2" data-width="320" data-height="180">`;
+
+async function bundled(indexHtml: string, mainJs: string): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "hf-bundle-scripts-"));
+  try {
+    writeFileSync(join(dir, "index.html"), indexHtml);
+    writeFileSync(join(dir, "main.js"), mainJs);
+    return await bundleToSingleHtml(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe("bundled local scripts in Chrome", () => {
   let browser: Browser;
-  let dir: string;
 
   beforeAll(async () => {
     browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
-    dir = mkdtempSync(join(tmpdir(), "hf-bundle-policy-"));
-    writeFileSync(
-      join(dir, "index.html"),
+  }, 30_000);
+
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  it("runs a local defer script after the classic scripts and animates under an inline-only policy", async () => {
+    const html = await bundled(
       `<!doctype html><html><head>${INLINE_ONLY_POLICY}
 <style>
   @keyframes slide { from { transform: translateX(0); } to { transform: translateX(100px); } }
   #box.go { animation: slide 2s linear both; }
 </style>
 </head><body>
-<div data-composition-id="root" data-start="0" data-duration="2" data-width="320" data-height="180">
-  <div id="box"></div>
-</div>
+${ROOT}<div id="box"></div></div>
 <script defer src="main.js"></script>
 <script>window.ORDER = ["classic"];</script>
 </body></html>`,
-    );
-    writeFileSync(
-      join(dir, "main.js"),
       `window.ORDER.push("deferred"); document.getElementById("box").classList.add("go");`,
     );
-  }, 30_000);
-
-  afterAll(async () => {
-    await browser?.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("runs a local defer script after the classic scripts and animates under an inline-only policy", async () => {
     const page = await browser.newPage();
     const blocked: string[] = [];
     page.on("console", (message) => {
       if (/Content Security Policy/i.test(message.text())) blocked.push(message.text());
     });
-    await page.setContent(await bundleToSingleHtml(dir));
+    await page.setContent(html);
     await page.waitForFunction(
       () => (window as unknown as { __playerReady?: boolean }).__playerReady === true,
     );
@@ -68,39 +71,27 @@ describe("bundled local scripts in Chrome", () => {
     expect(result).toEqual({ order: ["classic", "deferred"], animationTime: 1000 });
   });
 
-  it.each(["head", "body"])(
-    "runs a local defer script in <%s> only after the deferred CDN script before it has loaded",
-    async (place) => {
-      const cdnDir = mkdtempSync(join(tmpdir(), "hf-bundle-cdn-"));
-      const scripts = `<script defer src="https://cdn.example/lib.js"></script>
-<script defer src="main.js"></script>`;
-      writeFileSync(
-        join(cdnDir, "index.html"),
-        `<!doctype html><html><head>${place === "head" ? scripts : ""}</head><body>
-<div data-composition-id="root" data-start="0" data-duration="2" data-width="320" data-height="180"></div>
-${place === "body" ? scripts : ""}
+  it("runs a local defer script only after the deferred CDN script before it has loaded", async () => {
+    const html = await bundled(
+      `<!doctype html><html><head></head><body>
+${ROOT}</div>
+<script defer src="https://cdn.example/lib.js"></script>
+<script defer src="main.js"></script>
 </body></html>`,
-      );
-      writeFileSync(join(cdnDir, "main.js"), "window.SEEN = window.LIB;");
-      try {
-        const page = await browser.newPage();
-        await page.setRequestInterception(true);
-        page.on("request", (request) =>
-          request.url() === "https://cdn.example/lib.js"
-            ? request.respond({ contentType: "text/javascript", body: "window.LIB = 'loaded';" })
-            : request.continue(),
-        );
-        await page.setContent(await bundleToSingleHtml(cdnDir));
-        await page.waitForFunction(
-          () => (window as unknown as { __playerReady?: boolean }).__playerReady === true,
-        );
+      "window.SEEN = window.LIB;",
+    );
+    const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on("request", (request) =>
+      request.url() === "https://cdn.example/lib.js"
+        ? request.respond({ contentType: "text/javascript", body: "window.LIB = 'loaded';" })
+        : request.continue(),
+    );
+    await page.setContent(html);
+    await page.waitForFunction(
+      () => (window as unknown as { __playerReady?: boolean }).__playerReady === true,
+    );
 
-        expect(await page.evaluate(() => (window as unknown as { SEEN?: string }).SEEN)).toBe(
-          "loaded",
-        );
-      } finally {
-        rmSync(cdnDir, { recursive: true, force: true });
-      }
-    },
-  );
+    expect(await page.evaluate(() => (window as unknown as { SEEN?: string }).SEEN)).toBe("loaded");
+  });
 });

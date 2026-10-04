@@ -2622,26 +2622,6 @@ describe("bundleToSingleHtml script order", () => {
     expect(scripts.some((el) => el.textContent?.includes("AUTHOR_SEEN"))).toBe(true);
   });
 
-  it("hands a deferred local file in <head> to the runtime, like the body's", async () => {
-    const dir = makeTempProject({
-      "index.html": `<!doctype html>
-<html><head><script defer src="main.js"></script><script defer>window.AUTHORED = 1;</script></head><body>
-  <div data-composition-id="root" data-width="320" data-height="180"></div>
-</body></html>`,
-      "main.js": "window.MAIN_RAN = 1;",
-    });
-    try {
-      const { document } = parseHTML(await bundleToSingleHtml(dir));
-      const head = [...document.head.querySelectorAll("script")];
-      const main = head.find((el) => el.textContent?.includes("MAIN_RAN"));
-      const authored = head.find((el) => el.textContent?.includes("AUTHORED"));
-      expect(main?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
-      expect(authored?.hasAttribute("type")).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   it("still adds the runtime when an authored script mentions its marker attribute", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

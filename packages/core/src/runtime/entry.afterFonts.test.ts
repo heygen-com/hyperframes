@@ -176,15 +176,18 @@ describe("runtime entry: composition scripts after web fonts", () => {
     expect(log()).toBe(expected);
   });
 
-  it("runs an inlined deferred file last through the fallback too", () => {
+  it.each([
+    ["an inlined deferred file last", ' data-hf-inlined-src="main.js"', "classic deferred "],
+    ["an authored inline defer script in place", "", "deferred classic "],
+  ])("runs %s through the fallback too", (_, inlined, expected) => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     claims(false);
     compilePage(
-      `<script defer data-hf-inlined-src="main.js">${logs("deferred")}</script><script>${logs("classic")}</script>`,
+      `<script defer${inlined}>${logs("deferred")}</script><script>${logs("classic")}</script>`,
     );
 
     document.dispatchEvent(new Event("DOMContentLoaded"));
-    expect(log()).toBe("classic deferred ");
+    expect(log()).toBe(expected);
   });
 
   it("runs deferred scripts once and in order through the page's fallback when the runtime predates the gate", () => {
