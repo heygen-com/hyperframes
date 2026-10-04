@@ -52,6 +52,8 @@ const GET_RESPONSES = new Map([
   // interesting assertion is that the shell mounts clean, not that a blocking
   // notice renders. The notice has its own tests.
   ["/api/environment/ffmpeg", json({ ok: true })],
+  // The header's Edit with Framey asks this on load; shown, so the shell mounts with it.
+  ["/api/open-in-desktop", json({ available: true, handoff: false })],
 ]);
 const MUTATION_RESPONSES = new Map([
   [`${PROJECT_PATH}/selection`, json({ ok: true, selection: null, updatedAt: null })],

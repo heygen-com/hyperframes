@@ -20,6 +20,7 @@ describe("loadExternalCompositions", () => {
     delete (window as Window & { __hyperframes?: unknown }).__hyperframes;
     delete (window as Window & { __timelines?: unknown }).__timelines;
     delete (window as WindowWithScopedVars).__hfVariablesByComp;
+    delete (document as { fonts?: unknown }).fonts;
     vi.restoreAllMocks();
   });
 
@@ -501,6 +502,28 @@ describe("loadExternalCompositions", () => {
 
     expect(injectedScripts.length).toBeGreaterThan(0);
     expect(injectedScripts[0].textContent).toContain("console.log");
+  });
+
+  it("mounts the content, then runs its scripts only once web fonts are ready", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/comp.html");
+    document.body.appendChild(host);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(`<html><body><p>Text</p><script>void 0</script></body></html>`, {
+        status: 200,
+      }),
+    );
+    let fontsLoaded = () => {};
+    const ready = new Promise<void>((resolve) => (fontsLoaded = resolve));
+    Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
+    const injectedScripts: HTMLScriptElement[] = [];
+
+    const loading = loadExternalCompositions({ ...defaultParams, injectedScripts });
+    await vi.waitFor(() => expect(host.textContent).toContain("Text"));
+    expect(injectedScripts).toHaveLength(0);
+    fontsLoaded();
+    await loading;
+    expect(injectedScripts).toHaveLength(1);
   });
 
   it("scopes injected styles and document selectors to the mounted composition root", async () => {

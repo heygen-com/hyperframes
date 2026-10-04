@@ -1,6 +1,7 @@
 import {
   compositionStyle,
   cssStyleMergeKey,
+  deferScriptsUntilFonts,
   UNCONDITIONAL_CSS_KEY,
   headStyleRuns,
   inlineScriptRuns,
@@ -1293,6 +1294,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   enforceCompositionPixelSizing(document);
   autoHealMissingCompositionIds(document);
   coalesceHeadStylesAndBodyScripts(document);
+  deferScriptsUntilFonts(document, (el) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR));
   injectTextRenderingRule(document);
 
   // Inline textual assets

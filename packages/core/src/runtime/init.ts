@@ -8,7 +8,7 @@ import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studi
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
-import { createGsapAdapter, GSAP_CALLBACK_NAMES, rerenderGsapTimelineAt } from "./adapters/gsap";
+import { createGsapAdapter, rerenderGsapTimelineAt } from "./adapters/gsap";
 import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
@@ -65,6 +65,7 @@ import {
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
+import { runScriptsAfterFonts } from "./afterFonts";
 import {
   applyCaptionOverrides,
   applyFetchedCaptionOverrides,
@@ -3600,24 +3601,22 @@ export function initSandboxRuntimeModular(): void {
         .forEach((el, i) => el.replaceWith(document.importNode(newStyles[i]!, true)));
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
+      // Text only: a live script that ran no longer carries the deferred type its new copy has.
       const scripts = (parts: Element[]) =>
-        parts.flatMap((el) => (el.tagName === "SCRIPT" ? el.outerHTML : [])).join("");
+        JSON.stringify(parts.flatMap((el) => (el.tagName === "SCRIPT" ? el.textContent : [])));
       keepUnchangedMedia(oldHost, host, scripts(oldParts) === scripts(newParts));
       oldHost.replaceWith(host);
       swappedHosts.push(host);
       if (host.querySelector(".caption-group")) captionHosts.push(host);
     }
     // Run once every host is replaced, so no new script binds to a scene still to be swapped.
-    for (const { newParts } of swaps) {
-      for (const el of newParts) {
-        if (el.tagName !== "SCRIPT") continue;
-        // An imported <script> never runs; a created one does.
-        const script = document.createElement("script");
-        for (const attr of Array.from(el.attributes)) script.setAttribute(attr.name, attr.value);
-        script.textContent = el.textContent;
-        document.body.appendChild(script);
-      }
-    }
+    const sceneScripts = swaps.flatMap(({ newParts }) =>
+      newParts
+        .filter((el) => el.tagName === "SCRIPT")
+        .map((el) => document.body.appendChild(document.importNode(el, true))),
+    );
+    await runScriptsAfterFonts(sceneScripts);
+    if (state.tornDown) throw new Error("the preview was torn down during the swap");
     document
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
       ?.setAttribute("content", JSON.stringify(nextParts));
@@ -4175,6 +4174,14 @@ export function initSandboxRuntimeModular(): void {
   const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null;
 
+  const GSAP_CALLBACK_NAMES = [
+    "onStart",
+    "onUpdate",
+    "onComplete",
+    "onReverseComplete",
+    "onRepeat",
+  ];
+
   const readGsapDuration = (child: Record<string, unknown>, property: string): number | null => {
     const getter = child[property];
     if (typeof getter !== "function") return null;
@@ -4249,11 +4256,10 @@ export function initSandboxRuntimeModular(): void {
       // timeline's full extent so it holds the final computed frame instead.
       // Adapters still receive the raw `t` (their media may run longer).
       // totalDuration() includes repeats; Infinity (infinite repeat) → no clamp.
-      const tlWithTotal = tl as RuntimeTimelineLike & { totalDuration?: () => number };
       let tlSeekTime = t;
-      if (typeof tlWithTotal.totalDuration === "function") {
+      if (typeof tl.totalDuration === "function") {
         try {
-          const total = Number(tlWithTotal.totalDuration());
+          const total = Number(tl.totalDuration());
           if (Number.isFinite(total) && total > 0 && t > total) {
             tlSeekTime = total;
           }
@@ -4267,7 +4273,11 @@ export function initSandboxRuntimeModular(): void {
           if (!suppressEvents && !hasZeroDurationCallbackTween(tl)) {
             // The first seek is the only eventful one; the re-render only refreshes styles.
             rerenderGsapTimelineAt(
-              { totalTime: tl.totalTime.bind(tl), getChildren: tl.getChildren?.bind(tl) },
+              {
+                totalTime: tl.totalTime.bind(tl),
+                totalDuration: tl.totalDuration?.bind(tl),
+                getChildren: tl.getChildren?.bind(tl),
+              },
               tlSeekTime,
             );
           }

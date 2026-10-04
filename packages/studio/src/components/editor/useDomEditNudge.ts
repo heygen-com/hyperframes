@@ -212,6 +212,8 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       ? resolveGroupNudgeTargets(groupItems)
       : resolveSingleNudgeTarget(p.selectionRef.current, p.overlayRectRef.current);
     if (!targets) return null;
+    // Same side effect a drag start has (pauses preview playback).
+    p.onManualDragStartRef.current?.();
     const members: ManualOffsetDragMember[] = [];
     for (const target of targets) {
       const result = createManualOffsetDragMember({ ...target, gesture: "nudge" });
@@ -223,8 +225,6 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       members.push(result.member);
     }
     if (members.length === 0) return null;
-    // Same side effect a drag start has (pauses preview playback).
-    p.onManualDragStartRef.current?.();
     const edit = beginStudioPendingEdit(manualOffsetMoveRevert(members));
     return { members, isGroup, accum: { x: 0, y: 0 }, timer: null, edit };
   };

@@ -14,6 +14,7 @@ type IframeWindow = Window & {
   // reloads (each needing the plugin) don't queue duplicate plugin scripts that
   // re-flash the iframe. Cleared once the plugin loads or errors.
   __hfMotionPathPluginLoading?: boolean;
+  __playerReady?: boolean;
   gsap?: {
     version?: string;
     timeline?: (...args: unknown[]) => unknown;
@@ -37,10 +38,15 @@ type IframeWindow = Window & {
  * studio edits.
  *
  * Idempotent (no-ops once the plugin is present or already loading) and
- * defensive: no-ops without gsap/registerPlugin and tolerates a CDN failure
+ * defensive: without gsap it waits for the runtime's ready, and it tolerates a CDN failure
  * (the soft-reload async fallback in applySoftReload still covers that case).
  */
+// At most one preview waits for its runtime; a newer load replaces it, so a frame that never boots is not kept alive.
+let pendingReadyRetry: ((event: MessageEvent) => void) | null = null;
+
 export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): void {
+  if (pendingReadyRetry) window.removeEventListener("message", pendingReadyRetry);
+  pendingReadyRetry = null;
   if (!iframe?.contentWindow || !iframe.contentDocument) return;
   const win = iframe.contentWindow as IframeWindow;
   const doc = iframe.contentDocument;
@@ -53,7 +59,21 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
     } catch {}
     return;
   }
-  if (!win.gsap?.registerPlugin) return;
+  // A body gsap runs after web fonts, which can be after the iframe's load: retry once the runtime is ready.
+  // A booted runtime (`__playerReady`, set in the same task it posts ready) has nothing left to wait for.
+  if (!win.gsap?.registerPlugin) {
+    if (win.__playerReady) return;
+    const retry = (event: MessageEvent) => {
+      const data = event.data as { source?: unknown; type?: unknown } | null;
+      if (event.source !== win || data?.source !== "hf-preview" || data.type !== "ready") return;
+      window.removeEventListener("message", retry);
+      pendingReadyRetry = null;
+      if (win.gsap?.registerPlugin) ensureMotionPathPluginLoaded(iframe);
+    };
+    pendingReadyRetry = retry;
+    window.addEventListener("message", retry);
+    return;
+  }
   // A load is already in flight for this iframe — don't queue a second script.
   if (win.__hfMotionPathPluginLoading) return;
 

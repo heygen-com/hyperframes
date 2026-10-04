@@ -104,6 +104,123 @@ async function change(history: ProjectHistory, who: HistoryWho, label: string, w
 }
 
 describe("openProjectHistory", () => {
+  it("never writes a hidden file an older log still names, on undo or restore", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({
+      "index.html": "v1",
+      "turn-record": "A",
+    });
+    const turn = await change(history, agent, "Agent turn", () => {
+      write("index.html", "v2");
+      write("turn-record", "B");
+    });
+    await history.close();
+    // What an older log holds: the record under its hidden name, as history filed it before.
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    write(".turn-record", "C");
+    expect((await reopened.undo(turn.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("v1");
+    expect(read(".turn-record")).toBe("C");
+    await reopened.restore(START, you);
+    expect(read(".turn-record")).toBe("C");
+  });
+
+  it("steps Undo past an older log's entry that changed only a hidden file", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project(
+      { "index.html": "v1", "turn-record": "A" },
+      { quietMs: 30 },
+    );
+    await change(history, you, "Your edit", () => write("index.html", "v2"));
+    write("turn-record", "B");
+    history.noteChange("turn-record");
+    await history.flush();
+    expect(history.list().map((entry) => entry.who.kind)).toEqual(["person", "outside"]);
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.list().map((entry) => entry.files.length)).toEqual([1, 0]);
+    expect(await reopened.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("v1");
+  });
+
+  it("keeps every entry an older log names, emptied ones too, and undoing one still lands", async () => {
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "v1", "turn-record": "A" },
+      { quietMs: 30 },
+    );
+    write("turn-record", "B");
+    history.noteChange("turn-record");
+    await history.flush();
+    const [hidden] = history.list();
+    await history.pin(hidden!.id, true);
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.list()).toMatchObject([{ id: hidden!.id, files: [], pinned: true }]);
+    const undone = await reopened.undo(hidden!.id, { who: you });
+    expect(undone).toMatchObject({ ok: true, entry: { undoes: hidden!.id, files: [] } });
+  });
+
+  it("keeps an older log's Undo that only reverted a hidden file, so its target stays undone", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      "turn-record": "H0",
+    });
+    const yours = await change(history, you, "Your edit", () => {
+      write("index.html", "B");
+      write("turn-record", "H1");
+    });
+    await change(history, agent, "Agent turn", () => write("index.html", "C"));
+    const keep = { who: you, mode: "keep-later-edits" } as const;
+    expect(await history.undo(yours.id, keep)).toMatchObject({ ok: true });
+    expect(history.next("back", you)).toBeUndefined();
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.next("back", you)).toBeUndefined();
+    expect(reopened.next("forward", you)).toBeUndefined();
+  });
+
+  it("never files a hidden file name as a change, but keeps Studio's two manifests", async () => {
+    const { history, write } = await project({ "index.html": "<h1>Hello</h1>" }, { quietMs: 30 });
+    const turn = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "<h1>Bye</h1>");
+    write(".turn-record", "a tool's own record");
+    write("sub/.DS_Store", "finder");
+    write(".hyperframes/studio-motion.json", "{}");
+    const entry = await turn.close();
+    expect(entry!.files.map((file) => file.path)).toEqual([
+      ".hyperframes/studio-motion.json",
+      "index.html",
+    ]);
+    const records = await history.beginWindow(agent, "Records only");
+    write(".spawn-record", "pid");
+    expect(await records.close()).toBeNull();
+    history.noteChange(".spawn-record");
+    await history.flush();
+    expect(history.list()).toHaveLength(1);
+  });
+
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
     const { history, write, read, projectDir } = await project(
       { "index.html": "<h1>Hello</h1>", "assets/logo.png": Buffer.from([1, 2, 3]) },

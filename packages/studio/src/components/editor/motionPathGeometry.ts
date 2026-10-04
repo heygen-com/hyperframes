@@ -78,7 +78,10 @@ export function nearestPointOnPath(
   return best;
 }
 
-export function buildMotionPathGeometry(read: ReadTween | null): MotionPathGeometry | null {
+export function buildMotionPathGeometry(
+  read: ReadTween | null,
+  base: { x: number; y: number } = { x: 0, y: 0 },
+): MotionPathGeometry | null {
   if (!read) return null;
   const isArc = Boolean(read.arcPath);
   const nodes: MotionPathNode[] = [];
@@ -87,8 +90,8 @@ export function buildMotionPathGeometry(read: ReadTween | null): MotionPathGeome
   // anchor. Arc waypoints always carry x/y (never filtered), so source index
   // and node order stay aligned.
   // Which axes does the tween animate at all? A single-axis tween (e.g.
-  // `to({ x: -260 })`) only carries x; its y stays at the base (0, the GSAP
-  // transform identity), so we default it and still draw a path. But if the tween
+  // `to({ x: -260 })`) only carries x; its y stays at `base`, GSAP's live y (a CSS
+  // translate it folded in, else 0), so we default it and still draw a path. But if the tween
   // DOES animate an axis and a given keyframe omits it, that value is interpolated
   // (not 0) and can't be placed here → skip that node (the prior behavior).
   const finite = (v: unknown): v is number => typeof v === "number" && isFinite(v);
@@ -100,8 +103,8 @@ export function buildMotionPathGeometry(read: ReadTween | null): MotionPathGeome
     if (tweenHasX && !finite(kf.properties.x)) return;
     if (tweenHasY && !finite(kf.properties.y)) return;
     nodes.push({
-      x: tweenHasX ? (kf.properties.x as number) : 0,
-      y: tweenHasY ? (kf.properties.y as number) : 0,
+      x: tweenHasX ? (kf.properties.x as number) : base.x,
+      y: tweenHasY ? (kf.properties.y as number) : base.y,
       ref: isArc ? { type: "waypoint", index: i } : { type: "keyframe", pct: kf.percentage },
     });
   });

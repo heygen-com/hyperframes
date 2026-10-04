@@ -43,6 +43,7 @@ import {
   inlineSubCompositions as inlineSubCompositionsShared,
   ensureExternalLinkTag,
   ensureExternalScriptTag,
+  deferScriptsUntilFonts,
   emitMountedModuleScripts,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
@@ -125,6 +126,12 @@ const INFERRED_MEDIA_DURATION_ATTR = "data-hf-inferred-duration";
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
   return parseHTML(html).document as unknown as ParsableDocumentLike;
+}
+
+function deferBodyScriptsUntilFonts(html: string): string {
+  const { document } = parseHTML(html);
+  deferScriptsUntilFonts(document as unknown as Document);
+  return document.toString();
 }
 
 export function injectSdkPositionEditsRenderScript(html: string): string {
@@ -2036,7 +2043,9 @@ export async function compileForRender(
         `<script>${createStudioPositionSeekReapplyScript()}</script>`,
       ) ?? assembledHtml)
     : assembledHtml;
-  const htmlWithSdkPositionScript = injectSdkPositionEditsRenderScript(htmlWithPositionScript);
+  const htmlWithDeferredScripts = deferBodyScriptsUntilFonts(
+    injectSdkPositionEditsRenderScript(htmlWithPositionScript),
+  );
 
   // Download remote <video> and <audio> sources to compiledDir and rewrite the
   // src attributes so the renderer reads from localhost. Remote S3 URLs cause
@@ -2044,7 +2053,7 @@ export async function compileForRender(
   // over the network; any that don't reach readyState >= 2 in time render as
   // blank black frames. Localising them eliminates the race.
   const { html: htmlWithLocalMedia, remoteMediaAssets } = await localizeRemoteMediaSources(
-    htmlWithSdkPositionScript,
+    htmlWithDeferredScripts,
     downloadDir,
   );
 

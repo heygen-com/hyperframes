@@ -125,14 +125,21 @@ function shaderTransitionsReadyInBrowser(): boolean {
   return shaderTransitionRegistryReady() ?? shaderLoadingOverlayReady();
 }
 
+export function waitForRuntimeReady(
+  page: Required<Pick<CompositionSeekPage, "waitForFunction">>,
+  timeoutMs: number,
+): Promise<boolean> {
+  return page
+    .waitForFunction(compositionRuntimeReadyInBrowser, { timeout: timeoutMs })
+    .then(() => true)
+    .catch(() => false);
+}
+
 async function waitForCompositionSettle(
   page: Page,
   options: OpenSettledCompositionPageOptions,
 ): Promise<boolean> {
-  const runtimeReady = await page
-    .waitForFunction(compositionRuntimeReadyInBrowser, { timeout: options.renderReadyTimeoutMs })
-    .then(() => true)
-    .catch(() => false);
+  const runtimeReady = await waitForRuntimeReady(page, options.renderReadyTimeoutMs);
 
   if (!runtimeReady) {
     console.warn(

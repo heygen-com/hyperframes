@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
+import { parseHTML } from "linkedom";
+import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { buildSubCompositionHtml, hasBaseElement } from "./subComposition";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -119,6 +121,33 @@ describe("buildSubCompositionHtml", () => {
     const body = html!.indexOf("<body");
     expect(html!.slice(0, body)).toContain("data-composition-variables=");
     expect(html!.slice(body)).not.toContain("<html");
+  });
+
+  it.each([
+    ["a template", (body: string) => `<template>${body}</template>`],
+    ["a full document", (body: string) => `<!doctype html><html><body>${body}</body></html>`],
+    ["a fragment", (body: string) => body],
+  ])("defers the scripts of %s composition until fonts, but not the preview's own", (_, wrap) => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body></body></html>`,
+      "compositions/card.html": wrap(
+        `<div data-composition-id="card" data-width="400" data-height="300"><p>Hi</p>` +
+          `<script>window.CARD = 1;</script><script type="module">window.CARD_MODULE = 1;</script></div>`,
+      ),
+    });
+
+    const html = buildSubCompositionHtml(dir, "compositions/card.html", "/api/runtime.js")!;
+    const types = [...parseHTML(html).document.querySelectorAll("script")].map((el) => [
+      el.textContent?.trim() || el.getAttribute("src"),
+      el.getAttribute("type"),
+    ]);
+    expect(types).toEqual([
+      ["/api/runtime.js", null],
+      [`${gsapCdnDist()}gsap.min.js`, null],
+      ["window.__timelines=window.__timelines||{};", null],
+      ["window.CARD = 1;", AFTER_FONTS_SCRIPT_TYPE],
+      ["window.CARD_MODULE = 1;", `${AFTER_FONTS_SCRIPT_TYPE}+module`],
+    ]);
   });
 
   it("handles raw fragment compositions (no template, no full document)", () => {

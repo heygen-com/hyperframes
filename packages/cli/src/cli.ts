@@ -129,6 +129,7 @@ const commandLoaders = {
   preview: () =>
     assertStudioWorkspaceBuilt().then(() => import("./commands/preview.js").then((m) => m.default)),
   publish: () => import("./commands/publish.js").then((m) => m.default),
+  open: () => import("./commands/open.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
   check: () => import("./commands/check.js").then((m) => m.default),

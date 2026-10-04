@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  chmodSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -9,6 +17,7 @@ import {
   synthesizeOne,
   synthesizeHeygen,
   synthResult,
+  pickProvider,
 } from "./tts.mjs";
 
 test("parseFfmpegDurationBanner reads ffmpeg's stderr Duration line", () => {
@@ -198,3 +207,24 @@ test(
     assert.ok(!(await kokoroArgv({})).includes("--speed"));
   },
 );
+
+test("pickProvider heygen with an unreadable credentials path says to fix that path", () => {
+  const saved = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_CONFIG_DIR"].map((k) => [
+    k,
+    process.env[k],
+  ]);
+  const dir = mkdtempSync(join(tmpdir(), "tts-cred-"));
+  try {
+    delete process.env.HEYGEN_API_KEY;
+    delete process.env.HYPERFRAMES_API_KEY;
+    process.env.HEYGEN_CONFIG_DIR = dir;
+    mkdirSync(join(dir, "credentials"));
+    assert.throws(() => pickProvider("heygen"), /fix or remove that path/);
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

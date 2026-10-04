@@ -9,6 +9,50 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.123"
+  description="Released - 2026-10-04"
+  tags={["Release", "Studio Server", "Core", "Studio,cli"]}
+>
+
+Studio gets an Edit with Framey button, and `hyperframes open` opens HyperFrames Studio. Dragging a keyframed layer and redrawing the preview now keep animations where you left them.
+
+## Features
+
+- **Studio,cli:** Add an Edit with Framey button and `hyperframes open` for HyperFrames Studio ([bd0dc8c3aeb0](https://github.com/heygen-com/hyperframes/commit/bd0dc8c3aeb08868f15a95631e5aab7790cce926), [#4951](https://github.com/heygen-com/hyperframes/pull/4951)).
+
+## Fixes
+
+- **Studio Server:** History never files a hidden file as a change ([cad3db47d2d3](https://github.com/heygen-com/hyperframes/commit/cad3db47d2d38b3c083a7340140e0fd59a864c98), [#4966](https://github.com/heygen-com/hyperframes/pull/4966)).
+- **Core:** The preview redraw leaves animations after the playhead as the seek drew them ([805cf60b036b](https://github.com/heygen-com/hyperframes/commit/805cf60b036b5357e0dfaba9e91135063a6c2b21), [#4997](https://github.com/heygen-com/hyperframes/pull/4997)).
+- **Studio:** Dragging a keyframed layer from its middle moves the layer, not a path node ([7faf2cc6c31f](https://github.com/heygen-com/hyperframes/commit/7faf2cc6c31ff473f5f52748f2f103c39fcc4aea), [#4941](https://github.com/heygen-com/hyperframes/pull/4941)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.122...v0.8.123).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.122"
+  description="Released - 2026-10-04"
+  tags={["Release", "Media Use", "Core", "Studio"]}
+>
+Studio trims keep the playhead still and clips snap to the ruler, and a host can show its own Split key. Renders wait for web fonts, so text-sized layouts repeat exactly. Media Use gives clearer credential errors and no longer leaves empty assets after a slow download.
+
+## Fixes
+
+- **Media Use:** Say to fix an unreadable credentials path, not to log in again ([981bcf455332](https://github.com/heygen-com/hyperframes/commit/981bcf455332a18e951e323c78395d30df32ea66), [#4998](https://github.com/heygen-com/hyperframes/pull/4998)).
+- **Core:** Composition scripts start after web fonts are ready, so renders repeat ([44b583625095](https://github.com/heygen-com/hyperframes/commit/44b5836250953fd34fa1d85b4843db34efd2232c), [#4980](https://github.com/heygen-com/hyperframes/pull/4980)).
+- **Studio:** Trimming keeps the playhead still; clips snap to the ruler grid ([7859c0f0037a](https://github.com/heygen-com/hyperframes/commit/7859c0f0037a1e07988e6f5fba31a2c8bc6f9456), [#4986](https://github.com/heygen-com/hyperframes/pull/4986)).
+- **Studio:** The host can name Split's key on the toolbar and bind the clip menu's link keys ([b04081b376a3](https://github.com/heygen-com/hyperframes/commit/b04081b376a3c2c549b7df71c8be0afb22001b03), [#4994](https://github.com/heygen-com/hyperframes/pull/4994)).
+- **Media Use:** A slow download no longer leaves an empty asset that undo brings back ([18a922f43342](https://github.com/heygen-com/hyperframes/commit/18a922f43342a3afb6e03e80ab7174d78552da95), [#4989](https://github.com/heygen-com/hyperframes/pull/4989)).
+
+## Internal
+
+- **Studio:** The edit bench render serves GSAP from the repo, never the CDN ([7f3464921c7d](https://github.com/heygen-com/hyperframes/commit/7f3464921c7dad4ed66930661147b12225f23440), [#4996](https://github.com/heygen-com/hyperframes/pull/4996)).
+- **Core:** Pin three composition-length rules that no test covered ([351d389c0bcc](https://github.com/heygen-com/hyperframes/commit/351d389c0bcc60dcabcd8e7aaf4592923efde179), [#5000](https://github.com/heygen-com/hyperframes/pull/5000)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.121...v0.8.122).
+</Update>
+
+<Update
   label="HyperFrames v0.8.121"
   description="Released - 2026-10-04"
   tags={["Release", "Core", "Media Use"]}

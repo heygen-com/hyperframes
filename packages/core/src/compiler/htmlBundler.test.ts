@@ -10,6 +10,7 @@ import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { ensureHfIds } from "../parsers/hfIds";
+import { AFTER_FONTS_SCRIPT_TYPE, AFTER_FONTS_SCRIPTS } from "./scriptRuns";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-bundler-test-"));
@@ -215,6 +216,33 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('document.getElementById("scene")');
   });
 
+  it("defers the root's and every mounted composition's scripts until fonts, but not the runtime", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="main" data-width="320" data-height="180">
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html"></div>
+  </div>
+  <script>window.ROOT_SCRIPT = 1;</script>
+  <script type="module">window.ROOT_MODULE = 1;</script>
+</body></html>`,
+      "compositions/scene.html": `<template><div data-composition-id="scene" data-width="320" data-height="180">
+  <script>window.SCENE_SCRIPT = 1;</script>
+</div></template>`,
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const deferred = [...document.querySelectorAll(AFTER_FONTS_SCRIPTS)].map(
+      (el) => el.textContent,
+    );
+    for (const mark of ["SCENE_SCRIPT", "ROOT_SCRIPT", "ROOT_MODULE"]) {
+      expect(deferred.some((text) => text?.includes(mark))).toBe(true);
+    }
+    expect([...document.querySelectorAll("body script")].length).toBe(deferred.length);
+    const runtime = document.querySelector("script[data-hyperframes-preview-runtime]");
+    expect(runtime?.getAttribute("type")).toBeNull();
+  });
+
   it("binds a mounted composition's scripts to its own file for __hyperframes.assetUrl", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -257,8 +285,13 @@ describe("bundleToSingleHtml", () => {
 
     const { document } = parseHTML(await bundleToSingleHtml(dir));
     const importMaps = [...document.querySelectorAll('script[type="importmap"]')];
-    const modules = [...document.querySelectorAll('script[type="module"]')];
-    const classic = [...document.querySelectorAll("script:not([type])")].map((s) => s.textContent);
+    // Deferred until fonts: the runtime runs each as the type its marker names.
+    const modules = [
+      ...document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}+module"]`),
+    ];
+    const classic = [...document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}"]`)].map(
+      (s) => s.textContent,
+    );
 
     expect(importMaps).toHaveLength(1);
     expect(JSON.parse(importMaps[0]!.textContent || "")).toEqual({
@@ -599,7 +632,9 @@ describe("bundleToSingleHtml", () => {
 
     const bundled = await bundleToSingleHtml(dir);
 
-    expect(bundled).toMatch(/<script\b[^>]*\btype="module"[^>]*\bsrc="\.\/module\.js"/);
+    expect(bundled).toMatch(
+      /<script\b[^>]*\btype="text\/hf-after-fonts\+module"[^>]*\bsrc="\.\/module\.js"/,
+    );
     expect(bundled).not.toContain('import { value } from "./value.js"');
   });
 

@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
+import { desktopHint } from "../utils/desktopApp.js";
 import { isDevMode } from "../utils/env.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
@@ -365,7 +366,7 @@ export default defineCommand({
           );
           return;
         }
-        printStudioSummary(project.name, previewBaseUrl(status.port), {
+        printStudioSummary(project.name, previewBaseUrl(status.port), project.dir, {
           details: [`Background preview running (PID ${status.pid}).`, `Log: ${status.logPath}`],
         });
         return;
@@ -539,7 +540,7 @@ export default defineCommand({
         );
       } else {
         clack.intro(c.bold("hyperframes preview"));
-        printStudioSummary(projectName, url, {
+        printStudioSummary(projectName, url, dir, {
           details: [
             background.type === "reused"
               ? "Reusing the background server already running for this project."
@@ -1282,6 +1283,7 @@ function openStudioBrowser(url: string, projectName: string, options?: BrowserLa
 function printStudioSummary(
   projectName: string,
   serverUrl: string,
+  projectDir: string,
   opts: { details?: string[]; footer?: string } = {},
 ): void {
   const urls = studioSummaryUrls(projectName, serverUrl);
@@ -1289,6 +1291,8 @@ function printStudioSummary(
   console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
   console.log(`  ${c.dim("Studio")}    ${c.accent(urls.studioUrl)}`);
   console.log(`  ${c.dim("Server")}    ${c.accent(urls.serverUrl)}`);
+  const hint = desktopHint(projectDir);
+  if (hint) console.log(`  ${c.dim("Desktop")}   ${hint}`);
   console.log();
   for (const detail of opts.details ?? []) {
     console.log(`  ${c.dim(detail)}`);
@@ -1395,7 +1399,7 @@ function attachStudioReadyHandler(
       );
     } else {
       spinner.stop(c.success("Studio running"));
-      printStudioSummary(projectName, url, {
+      printStudioSummary(projectName, url, projectDir, {
         footer: "Press Ctrl+C to stop",
       });
     }
@@ -1629,7 +1633,7 @@ async function runEmbeddedMode(
       );
     } else {
       s.stop(c.success("Already running"));
-      printStudioSummary(pName, url, {
+      printStudioSummary(pName, url, dir, {
         details: ["Reusing existing server. Use --force-new to start a fresh instance."],
       });
     }
@@ -1647,7 +1651,7 @@ async function runEmbeddedMode(
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${result.port} instead`)}`);
       console.log();
     }
-    printStudioSummary(pName, url, {
+    printStudioSummary(pName, url, dir, {
       details: [
         "Edit with your AI agent — it has HyperFrames skills installed.",
         "Changes reload automatically in the studio.",
