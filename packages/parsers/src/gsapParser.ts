@@ -858,6 +858,7 @@ function computeKeyframesTotalDuration(
     const r = objectExpressionToRecord(el, scope);
     durations.push(r.duration);
   }
+  if (durations.every((duration) => duration === undefined)) return undefined;
   return getObjectArrayKeyframeTiming(durations)?.totalDuration;
 }
 
@@ -1197,16 +1198,18 @@ function resolvePositionString(pos: string, cursor: number, prevStart: number): 
   return Number.isFinite(n) ? n : null;
 }
 
+const stepListDuration = (anim: Omit<GsapAnimation, "id">) =>
+  anim.keyframes?.format === "object-array"
+    ? anim.keyframes.keyframes.length * GSAP_DEFAULT_DURATION
+    : undefined;
+
 function applyTimelineDefaults(
   anims: Omit<GsapAnimation, "id">[],
-  defaults?: TimelineDefaults,
+  defaults: TimelineDefaults = {},
 ): void {
-  if (!defaults) return;
   for (const anim of anims) {
     if (anim.method === "set") continue;
-    if (anim.duration === undefined && defaults.duration !== undefined) {
-      anim.duration = defaults.duration;
-    }
+    if (anim.duration === undefined) anim.duration = defaults.duration ?? stepListDuration(anim);
     if (anim.ease === undefined && defaults.ease !== undefined) {
       anim.ease = defaults.ease;
     }

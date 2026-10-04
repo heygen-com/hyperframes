@@ -232,6 +232,7 @@ describe("applyArcKeyframeAtPlayhead", () => {
     id: "#el-to-0-position",
     position: 0,
     duration: 10,
+    ease: "none",
     keyframes: {
       format: "object-array",
       keyframes: [

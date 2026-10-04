@@ -8,6 +8,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { getIframeGsap, KEYFRAME_PCT_MATCH, queryIframeElement } from "./gsapShared";
+import { runEaseOf, timeAtProgress } from "../utils/gsapKeyframeEases";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 
 // fallow-ignore-next-line complexity
@@ -60,7 +61,7 @@ export function findGsapPositionAnimation(
 
 function playheadProximity(a: GsapAnimation, currentTime: number): number {
   const pos = a.resolvedStart ?? (typeof a.position === "number" ? a.position : 0);
-  const dur = a.duration ?? 0;
+  const dur = resolveTweenDuration(a);
   if (currentTime >= pos - 0.05 && currentTime <= pos + dur + 0.05) return 50;
   return -Math.round(Math.min(Math.abs(currentTime - pos), Math.abs(currentTime - pos - dur)) * 5);
 }
@@ -71,7 +72,9 @@ function statesValueAt(anim: GsapAnimation, time: number): boolean {
   if (!(duration > 0)) return false;
   const pct = ((time - (resolveTweenStart(anim) ?? 0)) / duration) * 100;
   const near = (keyframe: number) => Math.abs(keyframe - pct) <= KEYFRAME_PCT_MATCH;
-  if (anim.keyframes) return anim.keyframes.keyframes.some((kf) => near(kf.percentage));
+  const runEase = runEaseOf(anim);
+  if (anim.keyframes)
+    return anim.keyframes.keyframes.some((kf) => near(timeAtProgress(runEase, kf.percentage)));
   if (anim.method === "from") return near(0);
   return near(100) || (anim.method === "fromTo" && near(0));
 }

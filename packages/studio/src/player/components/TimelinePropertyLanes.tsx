@@ -173,6 +173,7 @@ export function getTimelinePropertyLanes(
   return Array.from(sourceGroups(animations), ([group, groupAnimations]) => ({
     group,
     animations: groupAnimations,
+    elementAnimations: animations,
     keyframes: groupKeyframes(groupAnimations, group, clipStart, clipDuration),
   })).filter((lane) => lane.keyframes.length > 0);
 }

@@ -18,6 +18,7 @@ import {
   keyframeEases,
   KEYFRAME_PCT_MATCH,
   isInstantHold,
+  playsNear,
   writeTargetSelector,
 } from "./gsapShared";
 import {
@@ -269,7 +270,7 @@ async function applyKeyframeAtPlayhead(
       ? computeElementPercentage(t, sel)
       : (absoluteToPercentageForAnimation(t, kfAnim) ?? 0);
   const existing = kfAnim.keyframes?.keyframes.find(
-    (k) => Math.abs(k.percentage - pct) <= KEYFRAME_PCT_MATCH,
+    (k) => playsNear(kfAnim, k.percentage, pct),
   );
   if (existing) {
     session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage);

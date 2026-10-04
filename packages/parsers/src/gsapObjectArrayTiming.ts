@@ -10,40 +10,30 @@ const OBJECT_ARRAY_PERCENTAGE_TOLERANCE = 2;
 
 /**
  * Resolve GSAP object-array keyframe positions exactly once for parsers and writers.
- * Each step's keyframe sits at its cumulative end: authored per-step durations, or
- * equal steps when none is authored. A partially-authored or invalid duration
- * sequence is unresolved: callers must preserve the source rather than silently
- * invent different timing.
+ * Each step's keyframe sits at its cumulative end; a step without a duration plays
+ * GSAP's default. A non-positive or unresolved duration leaves the timing unresolved:
+ * callers must preserve the source rather than silently invent different timing.
  */
 export function getObjectArrayKeyframeTiming(
   durations: ReadonlyArray<unknown>,
 ): ObjectArrayKeyframeTiming | null {
-  const hasAuthoredDuration = durations.some((duration) => duration !== undefined);
-  if (hasAuthoredDuration) {
-    if (
-      !durations.every(
-        (duration): duration is number =>
-          typeof duration === "number" && Number.isFinite(duration) && duration > 0,
-      )
-    ) {
-      return null;
-    }
-    const totalDuration = durations.reduce<number>((sum, duration) => sum + duration, 0);
-    let cumulative = 0;
-    return {
-      percentages: durations.map((duration) => {
-        cumulative += duration;
-        return roundPercentage((cumulative / totalDuration) * 100);
-      }),
-      totalDuration,
-    };
+  const steps = durations.map((duration) => duration ?? GSAP_DEFAULT_DURATION);
+  if (
+    !steps.every(
+      (duration): duration is number =>
+        typeof duration === "number" && Number.isFinite(duration) && duration > 0,
+    )
+  ) {
+    return null;
   }
-
+  const totalDuration = steps.reduce((sum, duration) => sum + duration, 0);
+  let cumulative = 0;
   return {
-    percentages: durations.map((_, index) =>
-      roundPercentage(((index + 1) / durations.length) * 100),
-    ),
-    totalDuration: durations.length * GSAP_DEFAULT_DURATION,
+    percentages: steps.map((duration) => {
+      cumulative += duration;
+      return roundPercentage((cumulative / totalDuration) * 100);
+    }),
+    totalDuration,
   };
 }
 

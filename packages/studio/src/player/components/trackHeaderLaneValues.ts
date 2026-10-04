@@ -10,6 +10,7 @@ import {
   type PropertyGroupName,
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "../../hooks/gsapShared";
+import { resolveTweenStart } from "../../utils/globalTimeCompiler";
 import { easeFunction, keyframedTweenEases } from "../../utils/gsapKeyframeEases";
 
 export type LaneValues = Record<string, number | string>;
@@ -28,9 +29,13 @@ interface PropertyStop {
   ease?: string;
 }
 
-/** Before its first keyframe a tween animates from the pre-tween value, taken as the
+/** Before its first keyframe a tween animates from the value it starts at (`start`), or the
  *  property's base value as for a flat tween (synthesizeFlatTweenKeyframes). */
-function propertyStops(animation: GsapAnimation, property: string): PropertyStop[] {
+function propertyStops(
+  animation: GsapAnimation,
+  property: string,
+  start?: number | string,
+): PropertyStop[] {
   const stops = (animation.keyframes?.keyframes ?? [])
     .filter((keyframe) => property in keyframe.properties)
     .map((keyframe) => ({
@@ -40,7 +45,7 @@ function propertyStops(animation: GsapAnimation, property: string): PropertyStop
     }));
   const first = stops[0];
   if (!first || first.percentage <= 0 || typeof first.value !== "number") return stops;
-  return [{ percentage: 0, value: PROPERTY_DEFAULTS[property] ?? 0 }, ...stops];
+  return [{ percentage: 0, value: start ?? PROPERTY_DEFAULTS[property] ?? 0 }, ...stops];
 }
 
 /** A pair only interpolates when both ends are numeric and actually span time;
@@ -59,8 +64,9 @@ function propertyValueAt(
   animation: GsapAnimation,
   property: string,
   tweenPercentage: number,
+  start?: number | string,
 ): number | string | undefined {
-  const stops = propertyStops(animation, property);
+  const stops = propertyStops(animation, property, start);
   const before = stops.filter((stop) => stop.percentage <= tweenPercentage).at(-1);
   const after = stops.find((stop) => stop.percentage >= tweenPercentage);
   if (!before) return after?.value;
@@ -76,6 +82,7 @@ export function valuesAt(
   animation: GsapAnimation,
   group: PropertyGroupName,
   tweenPercentage: number,
+  startValues: LaneValues = {},
 ): LaneValues {
   const propertyNames = new Set<string>();
   for (const keyframe of animation.keyframes?.keyframes ?? []) {
@@ -85,8 +92,34 @@ export function valuesAt(
   }
   const values: LaneValues = {};
   for (const property of propertyNames) {
-    const value = propertyValueAt(animation, property, tweenPercentage);
+    const value = propertyValueAt(animation, property, tweenPercentage, startValues[property]);
     if (value !== undefined) values[property] = value;
+  }
+  return values;
+}
+
+const endValue = (animation: GsapAnimation, property: string) =>
+  animation.keyframes?.keyframes.findLast((keyframe) => property in keyframe.properties)
+    ?.properties[property] ?? animation.properties[property];
+
+/** Each property's value as `animation` starts: the end of the latest earlier tween writing it. */
+export function valuesBefore(
+  animation: GsapAnimation,
+  animations: readonly GsapAnimation[],
+): LaneValues {
+  const start = resolveTweenStart(animation) ?? 0;
+  const earlier = animations
+    .filter((other) => other !== animation && other.method !== "from")
+    .filter((other) => (resolveTweenStart(other) ?? Infinity) < start)
+    .sort((a, b) => (resolveTweenStart(a) ?? 0) - (resolveTweenStart(b) ?? 0));
+  const values: LaneValues = {};
+  for (const other of earlier) {
+    for (const keyframe of other.keyframes?.keyframes ?? [{ properties: other.properties }]) {
+      for (const property of Object.keys(keyframe.properties)) {
+        const value = endValue(other, property);
+        if (value !== undefined) values[property] = value;
+      }
+    }
   }
   return values;
 }

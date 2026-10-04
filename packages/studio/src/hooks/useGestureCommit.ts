@@ -8,6 +8,7 @@ import { simplifyGestureSamples } from "../utils/rdpSimplify";
 import { fitEasesFromVelocity } from "../utils/velocityEaseFitter";
 import { smoothGestureKeyframes } from "../utils/gestureSmoother";
 import { usePlayerStore } from "../player";
+import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
@@ -258,7 +259,7 @@ export function useGestureCommit({
             );
           } else {
             const tweenStart = existingPositionTween.resolvedStart ?? 0;
-            const tweenDur = existingPositionTween.duration ?? duration;
+            const tweenDur = resolveTweenDuration(existingPositionTween);
             const tweenEnd = tweenStart + tweenDur;
             const recEnd = recStart + duration;
 

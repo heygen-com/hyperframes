@@ -1,7 +1,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { describe, expect, it } from "vitest";
 import { progressAtTime, runEaseOf } from "../../utils/gsapKeyframeEases";
-import { valuesAt } from "./trackHeaderLaneValues";
+import { valuesAt, valuesBefore } from "./trackHeaderLaneValues";
 
 const tween = (format: string, vars: { ease?: string; easeEach?: string }) =>
   ({
@@ -46,5 +46,19 @@ describe("valuesAt at the playhead", () => {
     ],
   ])("reads %s as GSAP plays it", (_, animation, expected) => {
     expect([12.5, 37.5, 62.5, 87.5].map((at) => xAt(animation, at))).toEqual(expected);
+  });
+});
+
+describe("valuesBefore", () => {
+  it("starts a step list from the value an earlier set left, not a default", () => {
+    const set = { id: "s", method: "set", position: 0, resolvedStart: 0, properties: { x: 300 } };
+    const stepList = { ...tween("object-array", { ease: "none" }), position: 1, resolvedStart: 1 };
+    stepList.keyframes!.keyframes = [
+      { percentage: 50, properties: { x: 300 } },
+      { percentage: 100, properties: { x: 500 } },
+    ];
+    const start = valuesBefore(stepList, [set as unknown as GsapAnimation, stepList]);
+    expect(start).toEqual({ x: 300 });
+    expect(valuesAt(stepList, "position", 25, start)).toEqual({ x: 300 });
   });
 });

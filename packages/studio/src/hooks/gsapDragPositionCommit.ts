@@ -6,7 +6,7 @@ import {
   resolveTweenDuration,
   resolveTweenStart,
 } from "../utils/globalTimeCompiler";
-import { KEYFRAME_PCT_MATCH } from "./gsapShared";
+import { KEYFRAME_PCT_MATCH, playsNear } from "./gsapShared";
 import { progressAtTime, runEaseOf, timeAtProgress } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
@@ -172,7 +172,7 @@ export async function commitGsapPositionFromDrag(
     // tighter one here meant a drag that landed a fraction of a percent off an
     // authored waypoint skipped the update-point branch and appended instead.
     const pointIndex = keyframes.findIndex(
-      (kf) => Math.abs(kf.percentage - pct) <= KEYFRAME_PCT_MATCH,
+      (kf) => playsNear(anim, kf.percentage, pct),
     );
     if (pointIndex >= 0) {
       await callbacks.commitMutation(

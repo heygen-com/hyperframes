@@ -11,7 +11,7 @@ import {
   isPlayheadWithinTween,
   type EnableKeyframesSession,
 } from "../hooks/useEnableKeyframes";
-import { computeElementPercentage, KEYFRAME_PCT_MATCH } from "../hooks/gsapShared";
+import { computeElementPercentage, playsNear } from "../hooks/gsapShared";
 import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import {
   getNextTimelineZoomPercent,
@@ -74,8 +74,9 @@ function isMotionPathEndpoint(animation: GsapAnimation | undefined, percentage: 
   if (!animation?.keyframes) return false;
   const keyframes = animation.keyframes.keyframes;
   return (
-    Math.abs((keyframes[0]?.percentage ?? -Infinity) - percentage) <= KEYFRAME_PCT_MATCH ||
-    Math.abs((keyframes.at(-1)?.percentage ?? Infinity) - percentage) <= KEYFRAME_PCT_MATCH
+    [keyframes[0], keyframes.at(-1)].some(
+      (keyframe) => keyframe && playsNear(animation, keyframe.percentage, percentage),
+    )
   );
 }
 
@@ -100,7 +101,7 @@ function resolveKeyframeToggleState(
   const percentage = computeElementPercentage(currentTime, session.domEditSelection, animation);
   const pathEndpoint = isMotionPathEndpoint(arcAnimation, percentage);
   const active = animation.keyframes.keyframes.some(
-    (keyframe) => Math.abs(keyframe.percentage - percentage) <= KEYFRAME_PCT_MATCH,
+    (keyframe) => playsNear(animation, keyframe.percentage, percentage),
   );
   return {
     state: pathEndpoint ? "none" : active ? "active" : "inactive",

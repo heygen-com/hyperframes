@@ -6,6 +6,7 @@ import {
   isInstantHold,
   parsePercentageKeyframes,
   resolveClipTimingBasis,
+  playsNear,
   toClipKeyframes,
   toClipPercentage,
 } from "./gsapShared";
@@ -145,6 +146,13 @@ describe("toClipKeyframes", () => {
   it("places a duration-less tween's keyframes where GSAP plays them, not across the clip", () => {
     const rows = toClipKeyframes([{ percentage: 0 }, { percentage: 100 }], durationless, 0, 4);
     expect(rows.map((row) => row.percentage)).toEqual([0, 12.5]);
+  });
+
+  it("matches a keyframe by the time it plays, not its warped progress", () => {
+    const eased = { ...durationless, duration: 1, ease: "power2.in", keyframes: { format: "percentage", keyframes: [] } } as unknown as GsapAnimation;
+    // At 20% of the time power2.in (cubic) shows 0.8% progress: close in progress, far in time.
+    expect(playsNear(eased, 0, 0.8)).toBe(false);
+    expect(playsNear(eased, 50, 50.5)).toBe(true);
   });
 
   it("places a keyframe where an outer ease makes GSAP reach it", () => {

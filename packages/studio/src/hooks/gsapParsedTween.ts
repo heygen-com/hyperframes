@@ -22,7 +22,7 @@ interface ParsedTween {
     seek?: (time: number, suppressEvents?: boolean) => unknown;
     getChildren?: (nested?: boolean, tweens?: boolean, timelines?: boolean) => ParsedTween[];
   };
-  timeline?: { getChildren?: () => ParsedTween[] };
+  timeline?: { getChildren?: () => ParsedTween[]; duration?: () => number };
   targets?: () => unknown[];
   startTime?: () => number;
   duration?: () => number;
@@ -230,7 +230,7 @@ const BUILT_IN_EASES = [
 export function withExactStepTimes(anim: GsapAnimation, tween: ParsedTween | null): GsapAnimation {
   const data = anim.keyframes;
   const parts = tween?.timeline?.getChildren?.() ?? [];
-  const total = tween?.duration?.() ?? 0;
+  const total = tween?.timeline?.duration?.() ?? 0;
   if (data?.format !== "object-array" || parts.length !== data.keyframes.length || !(total > 0))
     return anim;
   const ends = parts.map((part) => ((part.startTime?.() ?? 0) + (part.duration?.() ?? 0)) / total);

@@ -4,6 +4,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { clipToTweenPercentage } from "../../components/editor/KeyframeNavigation";
+import { progressAtTime, runEaseOf, timeAtProgress } from "../../utils/gsapKeyframeEases";
 import {
   KEYFRAME_DRAG_THRESHOLD_PX,
   previewClipPct,
@@ -162,6 +163,15 @@ export function subscribeTimelineKeyframeRetimePreview(
   return () => coordinator.previewListeners.delete(listener);
 }
 
+function retimedRunEase(actor: TimelineKeyframeRetimeActor): string | undefined {
+  const id = actor.target.animationId;
+  if (id === undefined) return undefined;
+  const { gsapAnimations } = usePlayerStore.getState();
+  const animations = gsapAnimations.get(actor.elementId) ?? [...gsapAnimations.values()].flat();
+  const animation = animations.find((candidate) => candidate.id === id);
+  return animation ? runEaseOf(animation) : undefined;
+}
+
 function resolveRetimeTweenPercentage(
   actor: TimelineKeyframeRetimeActor,
   toClipPercentage: number,
@@ -173,7 +183,14 @@ function resolveRetimeTweenPercentage(
   const tweenPercentages = animationKeyframes
     .map((keyframe) => keyframe.tweenPercentage)
     .filter((value): value is number => typeof value === "number");
-  const mapped = clipToTweenPercentage(animationKeyframes, toClipPercentage);
+  // Clip position is linear in time; the run ease maps time to keyframe progress.
+  const runEase = retimedRunEase(actor);
+  const timed = animationKeyframes.map((keyframe) =>
+    keyframe.tweenPercentage === undefined
+      ? keyframe
+      : { ...keyframe, tweenPercentage: timeAtProgress(runEase, keyframe.tweenPercentage) },
+  );
+  const mapped = progressAtTime(runEase, clipToTweenPercentage(timed, toClipPercentage));
   if (tweenPercentages.length === 0) return mapped;
   return Math.max(Math.min(...tweenPercentages), Math.min(Math.max(...tweenPercentages), mapped));
 }

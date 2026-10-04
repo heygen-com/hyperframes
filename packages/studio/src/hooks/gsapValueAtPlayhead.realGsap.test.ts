@@ -227,3 +227,20 @@ it.each([
 function parseGsapScriptAcornAnimation(file: string) {
   return parseGsapScriptAcorn(file).animations.find((a) => a.keyframes)!;
 }
+
+it("keeps a step list's steps where GSAP plays them when an outer duration stretches it", () => {
+  const { plan, written } = dragAndReplay(
+    script(`keyframes: [{ x: 100 }, { x: 200 }], duration: 2, ease: "none"`),
+    70,
+    0.5,
+  );
+  expect(plan.ok).toBe(true);
+  const box = document.getElementById("x")!;
+  const xAt = (at: number) => {
+    const { timeline } = play(written!, at);
+    const x = gsap.getProperty(box, "x");
+    timeline.kill();
+    return x;
+  };
+  expect([xAt(0.5), xAt(1), xAt(2)]).toEqual([70, 100, 200]);
+});

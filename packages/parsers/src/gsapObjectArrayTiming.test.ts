@@ -17,6 +17,13 @@ describe("getObjectArrayKeyframeTiming", () => {
     });
   });
 
+  it("gives a step without a duration GSAP's 0.5 s beside authored ones", () => {
+    expect(getObjectArrayKeyframeTiming([1, undefined, 1])).toEqual({
+      percentages: [40, 60, 100],
+      totalDuration: 2.5,
+    });
+  });
+
   it("maps positive authored durations to cumulative percentages", () => {
     expect(getObjectArrayKeyframeTiming([1, 2, 1])).toEqual({
       percentages: [25, 75, 100],
@@ -29,7 +36,6 @@ describe("getObjectArrayKeyframeTiming", () => {
     [[1, -1, 1], "negative"],
     [[1, Number.NaN, 1], "non-finite"],
     [[1, "__raw:total * 0.5", 1], "expression"],
-    [[1, undefined, 1], "partial"],
   ])("rejects %s duration timing (%s)", (durations) => {
     expect(getObjectArrayKeyframeTiming(durations)).toBeNull();
   });

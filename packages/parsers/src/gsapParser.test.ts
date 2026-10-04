@@ -31,6 +31,7 @@ import {
 import type { GsapAnimation } from "./gsapParser.js";
 import { syncPositionHoldsBeforeKeyframes as syncPositionHoldsBeforeKeyframesAcorn } from "./gsapWriterAcorn.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
+import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import type { Keyframe } from "./types.js";
 import {
   parseAndSerialize,
@@ -1859,6 +1860,16 @@ describe("keyframe mutations", () => {
         `tl.to("#x", { keyframes: { "0%": { x: -50 }, "50%": { y: 30 }, "100%": { x: 60, y: 0 } }, duration: 1 }, 2);`;
       const hold = parseGsapScript(sync(partial)).animations.find((a) => a.method === "set");
       expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
+    it.each([
+      ["recast", parseGsapScript],
+      ["acorn", parseGsapScriptAcorn],
+    ])("%s: a step list with no durations plays 0.5 s a step unless the timeline sets one", (_, parse) => {
+      const steps = `tl.to("#x", { keyframes: [{ x: 1 }, { x: 2 }, { x: 3 }] }, 0);`;
+      expect(parse(`const tl = gsap.timeline();\n${steps}`).animations[0]!.duration).toBe(1.5);
+      const withDefaults = `const tl = gsap.timeline({ defaults: { duration: 2 } });\n${steps}`;
+      expect(parse(withDefaults).animations[0]!.duration).toBe(2);
     });
 
     it("acorn: a re-sync of a one-line script is byte-stable", () => {

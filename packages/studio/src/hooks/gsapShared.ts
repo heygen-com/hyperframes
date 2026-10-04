@@ -89,6 +89,13 @@ const SAFE_HASH_ID = /^-?[A-Za-z_][\w-]*$/;
  */
 export const KEYFRAME_PCT_MATCH = 1;
 
+/** Whether the keyframe at `percentage` plays within KEYFRAME_PCT_MATCH of the time where GSAP shows `progress`. */
+export function playsNear(anim: GsapAnimation, percentage: number, progress: number): boolean {
+  const runEase = runEaseOf(anim);
+  const gap = timeAtProgress(runEase, percentage) - timeAtProgress(runEase, progress);
+  return Math.abs(gap) <= KEYFRAME_PCT_MATCH;
+}
+
 export function idSelector(id: string): string {
   // A `#id` selector is only valid for a CSS identifier. IDs that start with a
   // digit (e.g. "01-hook-hero-word") make `document.querySelector("#01-...")` and

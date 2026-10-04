@@ -5,6 +5,8 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 // GSAP 3.15 defaults: a percentage keyframe eases its segment power1.inOut; an array step is linear.
 export const PERCENTAGE_SEGMENT_EASE = "power1.inOut";
 export const ARRAY_STEP_EASE = "none";
+// A motionPath tween is a plain tween to GSAP, so it runs GSAP's default tween ease.
+const MOTION_PATH_RUN_EASE = "power1.out";
 
 /** `run` warps a keyframed tween's whole progress; a segment eases with the keyframe it arrives
  *  at, else easeEach, else GSAP's default for the form. A flat tween has no run ease. */
@@ -16,7 +18,7 @@ export function keyframedTweenEases(anim: GsapAnimation): {
   const fallback =
     data?.format === "object-array" ? ARRAY_STEP_EASE : (data?.easeEach ?? PERCENTAGE_SEGMENT_EASE);
   return {
-    run: data ? (data.ease ?? anim.ease) : undefined,
+    run: data ? (data.ease ?? anim.ease ?? (anim.arcPath ? MOTION_PATH_RUN_EASE : undefined)) : undefined,
     segment: (arriving) => arriving.ease ?? fallback,
   };
 }
