@@ -97,6 +97,7 @@ describe("VideoThumbnail", () => {
     const frames: FrameRequestCallback[] = [];
     const originalIntersectionObserver = globalThis.IntersectionObserver;
     let left = -432_000;
+    let scrolled = 0;
     let reportGapNearScreen: () => void = () => {};
 
     beforeEach(() => {
@@ -133,8 +134,20 @@ describe("VideoThumbnail", () => {
         }
       } as unknown as typeof IntersectionObserver;
       left = -432_000;
-      host.getBoundingClientRect = () => ({ left }) as DOMRect;
+      scrolled = 0;
+      host.getBoundingClientRect = () =>
+        ({ left, top: 0, width: 600 * 1440, height: 40 }) as DOMRect;
+      const scroller = document.body.appendChild(document.createElement("div"));
+      scroller.setAttribute("data-timeline-scroll-viewport", "");
+      Object.defineProperty(scroller, "scrollLeft", { configurable: true, get: () => scrolled });
+      scroller.append(host);
     });
+
+    const scrollTo = (nextLeft: number) => {
+      scrolled += left - nextLeft;
+      left = nextLeft;
+      host.dispatchEvent(new Event("scroll"));
+    };
 
     afterEach(() => {
       frames.length = 0;
@@ -163,8 +176,7 @@ describe("VideoThumbnail", () => {
       expectTilesCoverTheWindow();
 
       for (const scrolledTo of [100_000, 300_000]) {
-        left = -scrolledTo;
-        host.dispatchEvent(new Event("scroll"));
+        scrollTo(-scrolledTo);
         await settle();
         expectTilesCoverTheWindow();
       }
@@ -173,8 +185,7 @@ describe("VideoThumbnail", () => {
     it("mounts no tiles once the clip is wholly off screen", async () => {
       await render(600 * 1440, 40);
 
-      left = -(600 * 1440 + 5_000);
-      host.dispatchEvent(new Event("scroll"));
+      scrollTo(-(600 * 1440 + 5_000));
       await settle();
 
       expect(host.querySelectorAll("img")).toHaveLength(0);

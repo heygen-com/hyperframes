@@ -56,6 +56,8 @@ describe("on a scroll", () => {
   let host: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
   let left = 0;
+  let scrolled = 0;
+  let stripWidth = 1_000_000;
   let renders = 0;
 
   function Strip() {
@@ -63,7 +65,7 @@ describe("on a scroll", () => {
     const [size, ref] = useThumbnailStripSize();
     return (
       <div>
-        <div ref={ref} data-in-view-start={size.inViewStart} />
+        <div ref={ref} data-in-view={`${size.inViewStart}-${size.inViewEnd}`} />
       </div>
     );
   }
@@ -73,9 +75,24 @@ describe("on a scroll", () => {
       root.render(Array.from({ length: count }, (_, index) => <Strip key={index} />)),
     );
 
-  const scrollAndSettle = () => {
+  const spans = () =>
+    [...host.querySelectorAll("[data-in-view]")].map((strip) => strip.getAttribute("data-in-view"));
+
+  /** The timeline scrolls so the strips' left edge lands at `nextLeft`, then one frame runs. */
+  const scrollTo = (nextLeft: number) => {
+    scrolled += left - nextLeft;
+    left = nextLeft;
     act(() => host.dispatchEvent(new Event("scroll")));
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
     act(() => frames.splice(0).forEach((frame) => frame(0)));
+  };
+
+  const neverReportedNear = () => {
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver;
   };
 
   beforeEach(() => {
@@ -84,11 +101,16 @@ describe("on a scroll", () => {
       NearScreenIntersectionObserver as unknown as typeof IntersectionObserver;
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => frames.push(frame));
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
-      () => ({ left }) as DOMRect,
+      () => ({ left, top: 0, width: stripWidth, height: 40 }) as DOMRect,
     );
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => stripWidth);
     left = 0;
+    scrolled = 0;
+    stripWidth = 1_000_000;
     renders = 0;
     host = document.body.appendChild(document.createElement("div"));
+    host.setAttribute("data-timeline-scroll-viewport", "");
+    Object.defineProperty(host, "scrollLeft", { configurable: true, get: () => scrolled });
     root = harness.mount(host);
   });
 
@@ -100,28 +122,31 @@ describe("on a scroll", () => {
   });
 
   it("re-measures every near strip in one shared frame, so a full timeline lays out once", async () => {
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_000_000);
     await mountStrips(50);
 
-    left = -10_000;
-    act(() => host.dispatchEvent(new Event("scroll")));
-    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
-    act(() => frames.splice(0).forEach((frame) => frame(0)));
+    scrollTo(-10_000);
 
-    const starts = [...host.querySelectorAll("[data-in-view-start]")].map((strip) =>
-      strip.getAttribute("data-in-view-start"),
-    );
-    expect(starts).toEqual(Array(50).fill("9216"));
+    expect(spans()).toEqual(Array(50).fill("9216-11776"));
+  });
+
+  it("measures the strips a jump brings on screen in that same frame", async () => {
+    neverReportedNear();
+    left = 50_000;
+    await mountStrips(50);
+    expect(spans()).toEqual(Array(50).fill("0-0"));
+
+    scrollTo(0);
+
+    expect(spans()).toEqual(Array(50).fill("0-1536"));
   });
 
   it("does not re-render a strip wholly on screen when it moves", async () => {
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(300);
+    stripWidth = 300;
     left = 100;
     await mountStrips(1);
     const settled = renders;
 
-    left = 700;
-    scrollAndSettle();
+    scrollTo(700);
 
     expect(renders).toBe(settled);
   });
@@ -136,9 +161,8 @@ describe("on a scroll", () => {
       unobserve() {}
       disconnect() {}
     } as unknown as typeof IntersectionObserver;
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1_000_000);
     await mountStrips(1);
-    const strip = host.querySelector("[data-in-view-start]")!;
+    const strip = host.querySelector("[data-in-view]")!;
 
     left = -10_000;
     const [presence] = reports;
@@ -155,20 +179,16 @@ describe("on a scroll", () => {
     );
 
     expect(frames).toHaveLength(0);
-    expect(strip.getAttribute("data-in-view-start")).toBe("9216");
+    expect(strip.getAttribute("data-in-view")).toBe("9216-11776");
   });
 
   it("reads no strip far from the screen, however many clips the timeline mounts", async () => {
-    globalThis.IntersectionObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof IntersectionObserver;
+    left = 50_000;
     await mountStrips(50);
     const reads = vi.mocked(Element.prototype.getBoundingClientRect);
     reads.mockClear();
 
-    scrollAndSettle();
+    scrollTo(49_900);
 
     expect(reads).not.toHaveBeenCalled();
   });
