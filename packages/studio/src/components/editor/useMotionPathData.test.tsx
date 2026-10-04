@@ -193,7 +193,7 @@ const resolved = (style: CSSStyleDeclaration) =>
     style.getPropertyValue(name),
   ) || "none";
 
-/** Computes `translate` and `transform` as Chromium does (happy-dom does not), so GSAP's transform parse would fold it. */
+/** Computes `translate` and `transform` as Chromium does (happy-dom does not), so GSAP's parse would fold them. */
 function computeTranslate() {
   const real = window.getComputedStyle.bind(window);
   const computed = (node: Element, pseudo?: string | null) =>
