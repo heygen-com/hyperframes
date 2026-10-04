@@ -314,6 +314,13 @@ describe("guideIfSaved — a guide only where the clip saves", () => {
     expect(guideIfSaved(el, { start: 1, duration: 2.25 }, grid, 1440)).toBe(grid);
   });
 
+  it("judges a move by the duration it keeps, not a rounded one", () => {
+    // A 31/30 s clip moved so its end meets 3.25s saves its start at 2.22s and ends 4.8px past.
+    const el = clip("a", 0, 1, 31 / 30, 0, "div");
+    const edge = { time: 3.25, type: "clip-edge" as const };
+    expect(guideIfSaved(el, { start: 2.217 }, edge, 1440)).toBeNull();
+  });
+
   it("draws no guide for a move whose saved start misses the target", () => {
     const nested = { ...moodboard, parentCompositionStart: 1 / 30 };
     const { drag } = horizontalDrag(nested, 0.5, 0);

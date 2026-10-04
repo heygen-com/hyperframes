@@ -272,8 +272,7 @@ export function computeDragPreview(
     placement.start === snap.start && snap.snapTime !== null && snap.snapType !== null
       ? { time: snap.snapTime, type: snap.snapType }
       : null;
-  const clip = { start: snap.start, duration: drag.element.duration };
-  const guide = guideIfSaved(drag.element, clip, target, pps);
+  const guide = guideIfSaved(drag.element, { start: snap.start }, target, pps);
   return {
     ...drag,
     started: true,
@@ -293,7 +292,7 @@ export function computeDragPreview(
 /** A snap's guide, kept only when the clip's edge as its file will save it is within a pixel of it. */
 export function guideIfSaved(
   element: TimelineElement,
-  clip: { start: number; duration: number },
+  clip: { start: number; duration?: number },
   target: TimelineSnapTarget | null,
   pps: number,
 ): TimelineSnapTarget | null {
