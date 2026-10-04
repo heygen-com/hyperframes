@@ -41,7 +41,12 @@ type IframeWindow = Window & {
  * defensive: without gsap it waits for the runtime's ready, and it tolerates a CDN failure
  * (the soft-reload async fallback in applySoftReload still covers that case).
  */
+// At most one preview waits for its runtime; a newer load replaces it, so a frame that never boots is not kept alive.
+let pendingReadyRetry: ((event: MessageEvent) => void) | null = null;
+
 export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): void {
+  if (pendingReadyRetry) window.removeEventListener("message", pendingReadyRetry);
+  pendingReadyRetry = null;
   if (!iframe?.contentWindow || !iframe.contentDocument) return;
   const win = iframe.contentWindow as IframeWindow;
   const doc = iframe.contentDocument;
@@ -62,8 +67,10 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
       const data = event.data as { source?: unknown; type?: unknown } | null;
       if (event.source !== win || data?.source !== "hf-preview" || data.type !== "ready") return;
       window.removeEventListener("message", retry);
+      pendingReadyRetry = null;
       if (win.gsap?.registerPlugin) ensureMotionPathPluginLoaded(iframe);
     };
+    pendingReadyRetry = retry;
     window.addEventListener("message", retry);
     return;
   }

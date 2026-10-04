@@ -413,6 +413,15 @@ describe("ensureMotionPathPluginLoaded", () => {
       expect(appendedScripts).toHaveLength(0);
     });
 
+    it("drops a preview that never became ready once a newer one loads", () => {
+      const stale = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(stale.iframe);
+      ensureMotionPathPluginLoaded(buildBootstrapIframe({ gsap: undefined }).iframe);
+      stale.contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(stale.contentWindow);
+      expect(stale.appendedScripts).toHaveLength(0);
+    });
+
     it("does not wait when the runtime already booted, since its ready has gone out", () => {
       const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({
         gsap: undefined,
