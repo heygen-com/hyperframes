@@ -170,45 +170,45 @@ function isGsapCoreUrl(src: string): boolean {
   return URL.canParse(src, base) && /\/gsap(\.min)?\.js$/i.test(new URL(src, base).pathname);
 }
 
+type GsapCoreScript = { src: string; type: string | null; defer: boolean; end: number };
+
 // Walks tags with indexOf: one regex over the whole bundle backtracks polynomially on repeated src text.
-function findGsapCoreScript(
-  html: string,
-): { src: string; type: string | null; defer: boolean; end: number } | null {
+function findGsapCoreScript(html: string): GsapCoreScript | null {
   const tag = /<script\b|<!--|<template\b/gi;
   for (let found = tag.exec(html); found; found = tag.exec(html)) {
-    const skipTo =
-      found[0] === "<!--"
+    const opener = found[0].toLowerCase();
+    const next =
+      opener === "<!--"
         ? commentEnd(html, found.index)
-        : found[0].toLowerCase() === "<template"
+        : opener === "<template"
           ? templateEnd(html, found.index)
-          : null;
-    if (skipTo !== null) {
-      if (skipTo === -1) return null;
-      tag.lastIndex = skipTo;
-      continue;
-    }
-    const tagEnd = html.indexOf(">", found.index);
-    if (tagEnd === -1) return null;
-    tag.lastIndex = tagEnd + 1;
-    const script = parseHTML(
-      `${html.slice(found.index, tagEnd + 1)}</script>`,
-    ).document.querySelector("script");
-    const attributes = new Map(
-      [...(script?.attributes ?? [])].map((a) => [a.name.toLowerCase(), a.value]),
-    );
-    const src = attributes.get("src");
-    if (!src || !isGsapCoreUrl(src)) continue;
-    const close = /\s*<\/script>/iy;
-    close.lastIndex = tagEnd + 1;
-    if (!close.test(html)) continue;
-    return {
-      src,
-      type: attributes.get("type") ?? null,
-      defer: attributes.has("defer"),
-      end: close.lastIndex,
-    };
+          : html.indexOf(">", found.index) + 1;
+    if (next <= 0) return null;
+    tag.lastIndex = next;
+    const gsap = opener === "<script" ? readGsapCoreScript(html, found.index, next) : null;
+    if (gsap) return gsap;
   }
   return null;
+}
+
+function readGsapCoreScript(html: string, start: number, tagEnd: number): GsapCoreScript | null {
+  const attributes = openTagAttributes(`${html.slice(start, tagEnd)}</script>`);
+  const src = attributes.get("src");
+  if (!src || !isGsapCoreUrl(src)) return null;
+  const end = closingScriptEnd(html, tagEnd);
+  if (end === -1) return null;
+  return { src, type: attributes.get("type") ?? null, defer: attributes.has("defer"), end };
+}
+
+function openTagAttributes(element: string): Map<string, string> {
+  const el = parseHTML(element).document.querySelector("script");
+  return new Map([...(el?.attributes ?? [])].map((a) => [a.name.toLowerCase(), a.value]));
+}
+
+function closingScriptEnd(html: string, from: number): number {
+  let at = from;
+  while (at < html.length && " \t\n\f\r".includes(html[at]!)) at++;
+  return html.slice(at, at + 9).toLowerCase() === "</script>" ? at + 9 : -1;
 }
 
 function commentEnd(html: string, start: number): number {
@@ -217,12 +217,12 @@ function commentEnd(html: string, start: number): number {
 }
 
 function templateEnd(html: string, start: number): number {
-  const edge = /<template\b|<\/template\s*>/gi;
+  const edge = /<\/?template\b/gi;
   edge.lastIndex = start;
   let depth = 0;
   for (let found = edge.exec(html); found; found = edge.exec(html)) {
     depth += found[0][1] === "/" ? -1 : 1;
-    if (depth === 0) return edge.lastIndex;
+    if (depth === 0) return html.indexOf(">", found.index) + 1;
   }
   return -1;
 }
