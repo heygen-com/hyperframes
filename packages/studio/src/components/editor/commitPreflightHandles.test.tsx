@@ -461,6 +461,22 @@ describe("handles follow what Studio would commit", () => {
     expect(seen.groups[1]).toBe(narrowedB);
   });
 
+  it("checks again on a new cache version even when that re-read fails", async () => {
+    const a = resolved(element("a"));
+    const b = resolved(element("b"));
+    const { seen, render } = await select([loop({ x: 120 }, "#a")], {
+      selection: a,
+      groups: [a, b],
+    });
+    const [narrowedA] = seen.groups;
+
+    parses.fetch.mockResolvedValueOnce(null);
+    render({ selection: a, groups: [a, b], version: 1 });
+    await settle();
+    expect(seen.groups[0]).not.toBe(narrowedA);
+    expect(flags(seen.groups[0]!)[0]).toBe(false);
+  });
+
   it.each([
     ["rotation", loop({ rotation: 90 }), [true, true, false], { dots: 4, rotate: false }],
     ["resize", loop({ width: 320, height: 90 }), [true, false, true], { dots: 0, rotate: true }],

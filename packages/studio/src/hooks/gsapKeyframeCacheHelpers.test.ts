@@ -114,6 +114,18 @@ describe("replaceKeyframeCacheForFile re-reads", () => {
       expect(cache().has(key)).toBe(true);
     }
   });
+
+  it("still drops index.html's own element that shares an id with a sub-composition", () => {
+    const one = (id: string) => new Map([[id, entry()]]);
+    const anims = (id: string) => new Map([[id, [animWithKeyframes(id)]]]);
+    const own = { format: "percentage", keyframes: [{ percentage: 0, properties: { x: 9 } }] };
+    replaceKeyframeCacheForFile("comp.html", one("title"), anims("title"));
+    replaceKeyframeCacheForFile("index.html", new Map([["title", own]]), anims("title"));
+    replaceKeyframeCacheForFile("index.html", new Map(), new Map());
+
+    expect(cache().has("index.html#title")).toBe(false);
+    expect(cache().has("comp.html#title")).toBe(true);
+  });
 });
 
 describe("clearKeyframeCacheForElement", () => {

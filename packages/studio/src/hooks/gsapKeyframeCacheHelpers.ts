@@ -185,14 +185,18 @@ function cachedElementIdsForFile(
 ): Set<string> {
   const sfPrefix = `${sourceFile}#`;
   const ids = new Set<string>();
-  const othersIds = new Set<string>();
   for (const key of [...keyframeCache.keys(), ...gsapAnimations.keys()]) {
-    const hash = key.indexOf("#");
     if (key.startsWith(sfPrefix)) ids.add(key.slice(sfPrefix.length));
-    else if (hash > 0) othersIds.add(key.slice(hash + 1));
   }
-  // Another file's elements also write the `index.html#id` fallback; that file owns them.
-  if (sourceFile === "index.html") for (const id of othersIds) ids.delete(id);
+  if (sourceFile !== "index.html") return ids;
+  // Another file's element also writes the `index.html#id` fallback, as the very same entry object.
+  for (const [key, entry] of keyframeCache) {
+    const hash = key.indexOf("#");
+    const id = key.slice(hash + 1);
+    if (hash > 0 && !key.startsWith(sfPrefix) && keyframeCache.get(sfPrefix + id) === entry) {
+      ids.delete(id);
+    }
+  }
   return ids;
 }
 

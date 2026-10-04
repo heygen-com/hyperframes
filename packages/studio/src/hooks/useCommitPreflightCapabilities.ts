@@ -33,29 +33,34 @@ function runCommitPreflights(
 // Studio can hand a narrowed copy back as a new selection; narrowing starts from the resolved one.
 const resolvedSelections = new WeakMap<DomEditSelection, DomEditSelection>();
 
-interface Checked {
+interface CheckInputs {
   animations: GsapAnimation[];
   iframe: HTMLIFrameElement | null;
   group: boolean;
+  version: number;
+}
+
+interface Checked extends CheckInputs {
   preflight: CommitPreflight;
   narrowed?: DomEditSelection;
 }
 
-// A member whose selection, parse and preview are unchanged keeps its answer and its narrowed copy.
+// A member whose selection, parse, preview and cache version are unchanged keeps its answer.
 const checkedSelections = new WeakMap<DomEditSelection, Checked>();
 
-function checkedPreflight(
-  resolved: DomEditSelection,
-  animations: GsapAnimation[],
-  iframe: HTMLIFrameElement | null,
-  group: boolean,
-): Checked {
+function checkedPreflight(resolved: DomEditSelection, inputs: CheckInputs): Checked {
   const known = checkedSelections.get(resolved);
-  if (known?.animations === animations && known.iframe === iframe && known.group === group) {
-    return known;
-  }
-  const preflight = runCommitPreflights(resolved, animations, iframe, group);
-  const checked = { animations, iframe, group, preflight };
+  const same =
+    known?.animations === inputs.animations &&
+    known.iframe === inputs.iframe &&
+    known.group === inputs.group &&
+    known.version === inputs.version;
+  if (same) return known;
+  const { animations, iframe, group } = inputs;
+  const checked = {
+    ...inputs,
+    preflight: runCommitPreflights(resolved, animations, iframe, group),
+  };
   checkedSelections.set(resolved, checked);
   return checked;
 }
@@ -156,7 +161,8 @@ export function useCommitPreflightCapabilities({
       const file = gsapSourceFileForSelection(target);
       const animations = parsesRef.current.get(parseCacheKey(projectId, file))?.animations;
       if (!animations) return narrowCapabilities(target, null);
-      const checked = checkedPreflight(resolvedOf(target), animations, iframe, group);
+      const inputs = { animations, iframe, group, version };
+      const checked = checkedPreflight(resolvedOf(target), inputs);
       checked.narrowed ??= narrowCapabilities(target, checked.preflight);
       return checked.narrowed;
     };
@@ -164,5 +170,5 @@ export function useCommitPreflightCapabilities({
       selection: selection && narrow(selection),
       groupSelections: groupSelections.map(narrow),
     }));
-  }, [enabled, projectId, selection, groupSelections, parseTick, previewIframeRef]);
+  }, [enabled, projectId, selection, groupSelections, parseTick, previewIframeRef, version]);
 }

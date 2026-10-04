@@ -104,7 +104,7 @@ describe("resolveDomEditSelection — source probe on re-resolve", () => {
   afterEach(() => vi.unstubAllGlobals());
   const probing = { activeCompositionPath: "index.html", isMasterView: true, projectId: "p" };
 
-  it("asks the server once per node; re-resolving the same node keeps the answer", async () => {
+  it("asks the server once per node and target; re-resolving the same pair keeps the answer", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({ exists: [false] }) }),
     );
@@ -115,6 +115,9 @@ describe("resolveDomEditSelection — source probe on re-resolve", () => {
 
     const first = await resolveDomEditSelection(el, probing);
     const again = await resolveDomEditSelection(el, { ...probing, previous: first });
+    el.id = "renamed";
+    await resolveDomEditSelection(el, { ...probing, previous: again });
+    el.id = "generated";
     const replaced = document.createElement("div");
     replaced.id = "generated";
     el.replaceWith(replaced);
@@ -124,7 +127,7 @@ describe("resolveDomEditSelection — source probe on re-resolve", () => {
     expect(first?.existsInSource).toBe(false);
     expect(again?.existsInSource).toBe(false);
     expect(again?.capabilities.canMove).toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 
