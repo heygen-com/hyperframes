@@ -339,6 +339,45 @@ describe("registerPreviewRoutes", () => {
     expect(plugin?.hasAttribute("defer")).toBe(false);
   });
 
+  it("finds no gsap tag in a long run of gsap-like src text without stalling", async () => {
+    const scripts = await previewScriptSrcs(`<script src="${"/gsap.js#".repeat(50_000)}`);
+    expect(scripts.some((el) => el.getAttribute("src")?.includes("MotionPathPlugin"))).toBe(true);
+  });
+
+  it("ignores a gsap-named file that is not gsap core", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js.map"></script>`,
+    );
+    const plugin = scripts.findIndex((el) => el.getAttribute("src")?.includes("MotionPathPlugin"));
+    const map = scripts.findIndex((el) => el.getAttribute("src")?.endsWith(".map"));
+    expect(plugin).toBeLessThan(map);
+  });
+
+  it("reads DEFER and TYPE written in capitals", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script TYPE="text/javascript" DEFER SRC="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`,
+    );
+    const plugin = scripts.find((el) => el.getAttribute("src")?.includes("MotionPathPlugin"));
+    expect(plugin?.hasAttribute("defer")).toBe(true);
+    expect(plugin?.getAttribute("type")).toBe("text/javascript");
+  });
+
+  it.each([
+    [
+      "a comment",
+      `<!-- <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script> -->`,
+    ],
+    [
+      "a template",
+      `<template><template></template><script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script></template>`,
+    ],
+  ])("skips a gsap tag inside %s and follows the live one", async (_, inert) => {
+    const live = "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js?live";
+    const scripts = await previewScriptSrcs(`${inert}\n  <script src="${live}"></script>`);
+    const liveAt = scripts.findIndex((el) => el.getAttribute("src") === live);
+    expect(scripts[liveAt + 1]?.getAttribute("src")).toContain("MotionPathPlugin");
+  });
+
   it("does NOT inject MotionPathPlugin when the composition has no motionPath", async () => {
     const projectDir = createProjectDir();
     writeFileSync(

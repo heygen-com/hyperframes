@@ -155,19 +155,76 @@ function injectMotionPathPluginIfNeeded(html: string): string {
   // core gsap script — which often lives at body-end, not <head>. Insert it
   // directly after the gsap script tag; only fall back to <head> if none is found
   // (e.g. gsap is inlined).
-  const gsapScript =
-    /<script\b[^>]*\bsrc=["'][^"']*\/gsap(\.min)?\.js(?:[?#][^"']*)?["'][^>]*>\s*<\/script>/i;
-  const match = html.match(gsapScript);
-  if (match) {
-    const version = match[0].match(/gsap@([\d.]+)/)?.[1];
-    const gsapTag = parseHTML(match[0]).document.querySelector("script");
-    const gsapType = gsapTag?.getAttribute("type");
-    const ordering = `${gsapType ? ` type="${gsapType}"` : ""}${gsapTag?.hasAttribute("defer") ? " defer" : ""}`;
+  const gsap = findGsapCoreScript(html);
+  if (gsap) {
+    const version = gsap.src.match(/gsap@([\d.]+)/)?.[1];
+    const ordering = `${gsap.type ? ` type="${gsap.type}"` : ""}${gsap.defer ? " defer" : ""}`;
     const pluginTag = `<script${ordering} src="${motionPathPluginUrl(version)}"></script>`;
-    const end = html.indexOf(match[0]) + match[0].length;
-    return html.slice(0, end) + "\n" + pluginTag + html.slice(end);
+    return html.slice(0, gsap.end) + "\n" + pluginTag + html.slice(gsap.end);
   }
   return injectScriptTagIntoHead(html, GSAP_MOTION_PATH_CDN_SCRIPT);
+}
+
+function isGsapCoreUrl(src: string): boolean {
+  const base = "http://localhost/";
+  return URL.canParse(src, base) && /\/gsap(\.min)?\.js$/i.test(new URL(src, base).pathname);
+}
+
+// Walks tags with indexOf: one regex over the whole bundle backtracks polynomially on repeated src text.
+function findGsapCoreScript(
+  html: string,
+): { src: string; type: string | null; defer: boolean; end: number } | null {
+  const tag = /<script\b|<!--|<template\b/gi;
+  for (let found = tag.exec(html); found; found = tag.exec(html)) {
+    const skipTo =
+      found[0] === "<!--"
+        ? commentEnd(html, found.index)
+        : found[0].toLowerCase() === "<template"
+          ? templateEnd(html, found.index)
+          : null;
+    if (skipTo !== null) {
+      if (skipTo === -1) return null;
+      tag.lastIndex = skipTo;
+      continue;
+    }
+    const tagEnd = html.indexOf(">", found.index);
+    if (tagEnd === -1) return null;
+    tag.lastIndex = tagEnd + 1;
+    const script = parseHTML(
+      `${html.slice(found.index, tagEnd + 1)}</script>`,
+    ).document.querySelector("script");
+    const attributes = new Map(
+      [...(script?.attributes ?? [])].map((a) => [a.name.toLowerCase(), a.value]),
+    );
+    const src = attributes.get("src");
+    if (!src || !isGsapCoreUrl(src)) continue;
+    const close = /\s*<\/script>/iy;
+    close.lastIndex = tagEnd + 1;
+    if (!close.test(html)) continue;
+    return {
+      src,
+      type: attributes.get("type") ?? null,
+      defer: attributes.has("defer"),
+      end: close.lastIndex,
+    };
+  }
+  return null;
+}
+
+function commentEnd(html: string, start: number): number {
+  const end = html.indexOf("-->", start + 4);
+  return end === -1 ? -1 : end + 3;
+}
+
+function templateEnd(html: string, start: number): number {
+  const edge = /<template\b|<\/template\s*>/gi;
+  edge.lastIndex = start;
+  let depth = 0;
+  for (let found = edge.exec(html); found; found = edge.exec(html)) {
+    depth += found[0][1] === "/" ? -1 : 1;
+    if (depth === 0) return edge.lastIndex;
+  }
+  return -1;
 }
 
 function injectStudioMotionDependencies(html: string, manifestContent: string): string {
