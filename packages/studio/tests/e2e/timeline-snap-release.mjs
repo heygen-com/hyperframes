@@ -107,8 +107,12 @@ try {
   await page.$eval(actorSel, (el) => (el.style.visibility = ""));
   evidence.step = "release";
   await page.mouse.up();
+  // Release first shows the drag's own start; the saved one is always a whole centisecond.
   await page.waitForFunction(
-    (sel, start) => Number(document.querySelector(sel)?.dataset.clipStart) !== start,
+    (sel, start) => {
+      const saved = Number(document.querySelector(sel)?.dataset.clipStart);
+      return saved !== start && Math.abs(saved * 100 - Math.round(saved * 100)) < 1e-6;
+    },
     { timeout: 10_000 },
     clipSelector("card-c"),
     C_START_S,
@@ -116,8 +120,15 @@ try {
   // The save re-fits the zoom and resets the view.
   await scrollToD();
   await frames();
-  const c1 = await box(clipSelector("card-c"));
-  const d1 = await box(clipSelector("card-d"));
+  const [c1, d1] = await page.evaluate(
+    (...sels) =>
+      sels.map((sel) => {
+        const r = document.querySelector(sel).getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }),
+    clipSelector("card-c"),
+    clipSelector("card-d"),
+  );
   if (OUT_DIR) await page.screenshot({ path: `${OUT_DIR}/after-move.png` });
   await closeUp("landing-after", d1);
 
