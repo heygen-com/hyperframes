@@ -4,17 +4,8 @@ export { PROPERTY_DEFAULTS } from "./gsapShared";
 import { idSelector, matchesExactlyOne } from "./gsapShared";
 
 /**
- * The selector to author a NEW tween against, or an `autoId` to propose when the
- * element has no address of its own. The proposal is unique in the live preview
- * only; the server writes the id that is unique in the file (patch op `ensure-id`).
- *
- * `selection.selector` is only usable when it addresses ONE element:
- * `buildStableSelector` hands back a bare class for an id-less element, so
- * returning it unconditionally aimed "add animation" at every sibling sharing
- * the class (the attribution blow-up that collapsed the timeline to one row,
- * see writeTargetSelector). A non-unique selector falls through to the id mint
- * below, which is the stronger fix here than a structural path: the id it writes
- * back to the source also makes every later lookup for this element exact.
+ * The selector for a NEW tween; a shared-class selector would hit every sibling, so an
+ * element without a unique one gets an `autoId` proposal the server makes unique (`ensure-id`).
  */
 export function ensureElementAddressable(selection: DomEditSelection): {
   selector: string;

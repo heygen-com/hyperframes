@@ -36,6 +36,7 @@ import type {
   MutationResult,
 } from "./gsapScriptCommitTypes";
 import { persistSdkSerialize } from "../utils/sdkCutover";
+import { jsonResponse } from "./fetchStubTestUtils";
 import { applyPreviewSync, useGsapScriptCommits } from "./useGsapScriptCommits";
 import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
 
@@ -718,13 +719,7 @@ describe("runCommit — instantPatch wiring", () => {
   it("rejects a refused write with the server's reason in a toast", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ error: "file changed on disk" }), {
-            status: 409,
-            headers: { "content-type": "application/json" },
-          }),
-      ),
+      vi.fn(async () => jsonResponse({ error: "file changed on disk" }, 409)),
     );
     const deps = renderCommitHook();
 

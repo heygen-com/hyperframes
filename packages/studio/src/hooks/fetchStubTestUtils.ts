@@ -2,9 +2,9 @@
 // useTimelineEditing.test.tsx): a JSON Response factory and a Request → URL
 // normalizer. Test-only module — imported exclusively from *.test.* files.
 
-export function jsonResponse(body: unknown): Response {
+export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" },
   });
 }

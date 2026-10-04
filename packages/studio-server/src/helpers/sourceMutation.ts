@@ -294,7 +294,6 @@ export function patchElementInHtml(
         break;
       case "ensure-id":
         if (opTarget.getAttribute("id") || !op.value) break;
-        if (!isSafeAttributeValue("id", op.value)) break;
         opTarget.setAttribute("id", nextUniqueId(document, op.value));
         break;
       case "text-content":
@@ -549,13 +548,7 @@ function uniqueGroupDomId(document: Document, groupId: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       // Normalization above leaves at most one hyphen at either edge.
       .replace(/^-|-$/g, "") || "group";
-  let id = base;
-  let n = 2;
-  while (document.getElementById(id)) {
-    id = `${base}-${n}`;
-    n += 1;
-  }
-  return id;
+  return nextUniqueId(document, base);
 }
 
 // fallow-ignore-next-line complexity

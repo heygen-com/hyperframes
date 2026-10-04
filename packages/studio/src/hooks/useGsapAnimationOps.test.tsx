@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { patchElementInHtml } from "../../../studio-server/src/helpers/sourceMutation.js";
+import { jsonResponse } from "./fetchStubTestUtils";
 import { useGsapAnimationOps } from "./useGsapAnimationOps";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -57,13 +58,6 @@ function addTo(api: HookApi, element: HTMLElement, hfId: string): Promise<void> 
   return api.addGsapAnimation({ element, hfId } as unknown as DomEditSelection, "from");
 }
 
-function jsonReply(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 /** The patch-element route over an in-memory copy of CARDS, patched by the server's own code. */
 function serveCards() {
   let html = CARDS;
@@ -73,7 +67,12 @@ function serveCards() {
       const result = patchElementInHtml(html, target, operations);
       const changed = result.html !== html;
       html = result.html;
-      return jsonReply({ ok: true, changed, matched: result.matched, elementId: result.elementId });
+      return jsonResponse({
+        ok: true,
+        changed,
+        matched: result.matched,
+        elementId: result.elementId,
+      });
     },
     stub(route: (init: RequestInit | undefined, call: number) => Promise<Response>) {
       let calls = 0;
@@ -147,7 +146,7 @@ describe("useGsapAnimationOps settlement", () => {
       const server = serveCards();
       const [element] = mountCards();
       server.stub(async (init) =>
-        saved ? server.handle(init) : jsonReply({ error: "file changed" }, 409),
+        saved ? server.handle(init) : jsonResponse({ error: "file changed" }, 409),
       );
       const commitMutation = vi.fn(async () => undefined);
       const api = renderOps(
@@ -171,13 +170,22 @@ describe("useGsapAnimationOps settlement", () => {
       if (call === 1) throw new TypeError("connection reset");
       return reply;
     });
-    const api = renderOps(vi.fn(async () => undefined));
+    const commitMutation = vi.fn(async () => undefined);
+    const api = renderOps(
+      vi.fn(async () => undefined),
+      commitMutation,
+    );
 
     await expect(addTo(api, first!, "hf-a")).rejects.toThrow("connection reset");
     await addTo(api, second!, "hf-b");
 
     expect(server.ids()).toEqual({ "hf-a": "div", "hf-b": "div-2" });
     expect(second!.id).toBe("div-2");
+    expect(commitMutation).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetSelector: "#div-2" }),
+      expect.anything(),
+    );
 
     await addTo(api, first!, "hf-a");
 
@@ -195,7 +203,7 @@ describe("useGsapAnimationOps settlement", () => {
     server.stub(async (init, call) => {
       if (call !== 1) return server.handle(init);
       await held;
-      return jsonReply({ error: "file changed" }, 409);
+      return jsonResponse({ error: "file changed" }, 409);
     });
     const api = renderOps(vi.fn(async () => undefined));
 

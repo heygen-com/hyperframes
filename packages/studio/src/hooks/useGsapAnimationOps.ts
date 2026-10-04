@@ -156,10 +156,8 @@ export function useGsapAnimationOps({
         fromTo: { x: 0, y: 0, opacity: 1 },
       };
 
-      // Skip SDK path when an id was just assigned server-side (autoId): the
-      // SDK session hasn't reloaded that write yet, so persisting its
-      // serialization would clobber the new id — let the server add the tween
-      // atomically with the id it wrote.
+      // After an id write (autoId) the SDK session has not reloaded the file yet,
+      // so persisting its serialization would drop the new id.
       if (!autoId && selection.hfId && sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const spec = {
