@@ -125,7 +125,6 @@ function shaderTransitionsReadyInBrowser(): boolean {
   return shaderTransitionRegistryReady() ?? shaderLoadingOverlayReady();
 }
 
-/** True once the runtime has booted, after the composition's scripts ran; false at the timeout. */
 export function waitForRuntimeReady(
   page: Required<Pick<CompositionSeekPage, "waitForFunction">>,
   timeoutMs: number,

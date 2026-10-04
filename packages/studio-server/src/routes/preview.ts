@@ -158,9 +158,8 @@ function injectMotionPathPluginIfNeeded(html: string): string {
   const match = html.match(gsapScript);
   if (match) {
     const version = match[0].match(/gsap@([\d.]+)/)?.[1];
-    // A deferred gsap runs from the runtime's ordered queue; the plugin joins it with the same type.
-    const type = match[0].match(/\stype=("[^"]*"|'[^']*')/i)?.[0] ?? "";
-    const pluginTag = `<script${type} src="${motionPathPluginUrl(version)}"></script>`;
+    const gsapTagType = match[0].match(/\stype=("[^"]*"|'[^']*')/i)?.[0] ?? "";
+    const pluginTag = `<script${gsapTagType} src="${motionPathPluginUrl(version)}"></script>`;
     const end = html.indexOf(match[0]) + match[0].length;
     return html.slice(0, end) + "\n" + pluginTag + html.slice(end);
   }
