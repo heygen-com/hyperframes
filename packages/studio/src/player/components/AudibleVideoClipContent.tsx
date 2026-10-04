@@ -19,7 +19,7 @@ export function AudibleVideoClipContent({
       </div>
       {/* The audio clip's own surface, so the strip reads like an audio row in every theme. */}
       <div
-        className="absolute inset-x-0 bottom-0"
+        className="audible-video-wave absolute inset-x-0 bottom-0"
         data-testid="audible-video-wave"
         style={{ height: waveHeight, backgroundColor: "var(--timeline-clip-audio-bg)" }}
       >
