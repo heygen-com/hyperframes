@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
+import { readTranslatePx } from "./plainTranslate";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 
 vi.mock("./plainTranslate", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./plainTranslate")>()),
-  readTranslatePx: () => ({ x: Number.NaN, y: 0 }),
+  readTranslatePx: vi.fn(() => ({ x: Number.NaN, y: 0 })),
 }));
 
 it("a drag press the layer cannot take gets the notice, counts as handled, and leaves the box live", () => {
@@ -51,5 +52,6 @@ it("a drag press the layer cannot take gets the notice, counts as handled, and l
   // The release lands outside the box, so nothing would ever resume it.
   expect(opts.rafPausedRef.current).toBe(false);
   // Playback pauses before setup reads which timelines are running.
-  expect(opts.onManualDragStartRef.current).toHaveBeenCalledTimes(1);
+  const [paused] = opts.onManualDragStartRef.current.mock.invocationCallOrder;
+  expect(paused).toBeLessThan(vi.mocked(readTranslatePx).mock.invocationCallOrder[0]!);
 });

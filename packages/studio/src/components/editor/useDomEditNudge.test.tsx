@@ -34,9 +34,11 @@ let flushNudge = () => {};
 function Harness({
   selection,
   onPathOffsetCommit,
+  onManualDragStart = () => {},
 }: {
   selection: DomEditSelection | null;
   onPathOffsetCommit: UseDomEditNudgeParams["onPathOffsetCommitRef"]["current"];
+  onManualDragStart?: () => void;
 }) {
   flushNudge = useDomEditNudge({
     selection,
@@ -48,7 +50,7 @@ function Harness({
     gestureRef: makeRef(null),
     groupGestureRef: makeRef(null),
     blockedMoveRef: makeRef(null),
-    onManualDragStartRef: makeRef(() => {}),
+    onManualDragStartRef: makeRef(onManualDragStart),
     onBlockedMoveRef: makeRef(() => {}),
     onPathOffsetCommitRef: makeRef(onPathOffsetCommit),
     onGroupPathOffsetCommitRef: makeRef(async () => {}),
@@ -336,6 +338,41 @@ describe("useDomEditNudge carries the route its press chose", () => {
       expect.objectContaining({ plainTranslate: true }),
     );
     act(() => root.unmount());
+    element.remove();
+  });
+});
+
+describe("useDomEditNudge pauses playback before it snapshots the timelines", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetForTests();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (window as { __timelines?: unknown }).__timelines;
+  });
+
+  it("does not resume a timeline the playback pause stopped", () => {
+    let playing = true;
+    const root = { pause: () => void (playing = false), paused: () => !playing };
+    (window as { __timelines?: unknown }).__timelines = { root };
+    const host = document.createElement("div");
+    const reactRoot = createRoot(host);
+    const element = document.body.appendChild(document.createElement("div"));
+    act(() => {
+      reactRoot.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: vi.fn(),
+          onManualDragStart: root.pause,
+        }),
+      );
+    });
+
+    act(() => dispatchArrowRight());
+
+    expect(element.hasAttribute("data-hf-drag-paused-timelines")).toBe(false);
+    act(() => reactRoot.unmount());
     element.remove();
   });
 });
