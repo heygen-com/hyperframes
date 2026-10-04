@@ -17,6 +17,7 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 
 import type { FeedbackContext } from "./feedbackTrigger";
 import { isMediaFile } from "../../utils/mediaTypes";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 /** Written by `hyperframes init`; absent in a hand-made or copied project. */
 const CONFIG_FILE = "hyperframes.json";
@@ -53,7 +54,7 @@ export async function captureProjectProvenance(
   if (!scaffolded) return;
 
   try {
-    const res = await fetch(
+    const res = await studioApiFetch(
       buildProjectApiPath(projectId, `/files/${encodeURIComponent(CONFIG_FILE)}`),
     );
     if (!res.ok) return;

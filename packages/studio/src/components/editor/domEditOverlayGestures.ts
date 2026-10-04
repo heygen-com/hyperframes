@@ -275,6 +275,7 @@ export type UseDomEditOverlayGesturesOptions = {
       n: { width: number; height: number },
       offset?: { x: number; y: number },
       restore?: () => void,
+      route?: { plainTranslate: boolean },
     ) => Promise<unknown> | void
   >;
   onRotationCommitRef: RefObject<

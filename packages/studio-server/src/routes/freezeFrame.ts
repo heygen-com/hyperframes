@@ -1,11 +1,15 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { readFileSync, rmSync, statSync } from "node:fs";
+import { basename, dirname, join, relative, sep } from "node:path";
 import type { Hono } from "hono";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import type { StudioApiAdapter } from "../types.js";
 import { mkdirWithinProject, pinWithinProject } from "../helpers/safePath.js";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import {
+  atomicTempPath,
+  createFileAtomically,
+  replaceFileAtomically,
+} from "@hyperframes/core/atomic-file";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   createWriteToken,
@@ -80,13 +84,53 @@ function readExpected(absPath: string, expectedVersion: string): { content: stri
     : { error: "file conflict", status: 409 };
 }
 
+function readFrame(path: string): Buffer | null {
+  try {
+    return readFileSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function publishStill(path: string, frame: Buffer): boolean {
+  try {
+    createFileAtomically(path, frame);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+}
+
+async function extractThenPublishWhole(
+  extract: FrameExtractor,
+  mediaPath: string,
+  mediaTime: number,
+  imagePath: string,
+): Promise<Failure | null> {
+  const unseenByHistory = atomicTempPath(imagePath);
+  try {
+    const extracted = await extract(freezeExtractArgs(mediaPath, mediaTime, unseenByHistory));
+    const frame = extracted.ok ? readFrame(unseenByHistory) : null;
+    if (!frame?.length) {
+      const reason = extracted.ok ? "no frame at this time" : (extracted.error ?? "ffmpeg failed");
+      return { error: `Could not extract the frame: ${reason}`, status: 500 };
+    }
+    if (publishStill(imagePath, frame)) return null;
+    return { error: `freeze still already exists: ${basename(imagePath)}`, status: 409 };
+  } finally {
+    rmSync(unseenByHistory, { force: true });
+  }
+}
+
 async function extractStill(
   projectDir: string,
   absPath: string,
   source: FreezeSource,
   playhead: number,
   tools: { extract: FrameExtractor; stillToken: () => string },
-): Promise<{ imageSrc: string } | Failure> {
+): Promise<{ imageSrc: string; stillPath: string; imagePath: string } | Failure> {
   const fileDir = dirname(absPath);
   const mediaPath = pinWithinProject(projectDir, relative(projectDir, join(fileDir, source.src)));
   if (!mediaPath) return { error: `forbidden media path: ${source.src}`, status: 403 };
@@ -97,17 +141,16 @@ async function extractStill(
   if (!imagePath || dirname(imagePath) !== freezeDir) {
     return { error: `forbidden freeze path: ${fileName}`, status: 403 };
   }
-  if (existsSync(imagePath))
-    return { error: `freeze still already exists: ${fileName}`, status: 409 };
-  const extracted = await tools.extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
-  if (!extracted.ok) {
-    return {
-      error: `Could not extract the frame: ${extracted.error ?? "ffmpeg failed"}`,
-      status: 500,
-    };
-  }
+  const failed = await extractThenPublishWhole(
+    tools.extract,
+    mediaPath,
+    source.mediaTime,
+    imagePath,
+  );
+  if (failed) return failed;
   const depth = relative(projectDir, fileDir).split(sep).filter(Boolean).length;
-  return { imageSrc: `${"../".repeat(depth)}${FREEZE_DIR.join("/")}/${fileName}` };
+  const stillPath = `${FREEZE_DIR.join("/")}/${fileName}`;
+  return { imageSrc: `${"../".repeat(depth)}${stillPath}`, stillPath, imagePath };
 }
 
 function writeFolded(
@@ -160,17 +203,21 @@ export function registerFreezeFrameRoutes(
       stillToken,
     });
     if ("error" in still) return c.json({ error: still.error }, still.status);
-    const { imageSrc } = still;
+    const { imageSrc, stillPath, imagePath } = still;
     const folded = applyFreezeFrameToHtml(before, {
       target: body.target,
       playhead: body.playhead,
       imageSrc,
     });
-    if (!folded) return c.json({ error: "Freeze target was not found in the file" }, 400);
+    const failAndRemoveStill = (error: string, status: 400 | Failure["status"]) => {
+      rmSync(imagePath, { force: true });
+      return c.json({ error }, status);
+    };
+    if (!folded) return failAndRemoveStill("Freeze target was not found in the file", 400);
     const written = writeFolded(project.dir, absPath, body.path, before, folded.html, {
       token: body.transactionToken ?? c.req.header("X-Hyperframes-Write-Token"),
     });
-    if ("error" in written) return c.json({ error: written.error }, written.status);
+    if ("error" in written) return failAndRemoveStill(written.error, written.status);
     const { version, writeToken, backupPath } = written;
     return c.json({
       ok: true,
@@ -182,6 +229,7 @@ export function registerFreezeFrameRoutes(
       backupPath,
       freezeId: folded.freezeId,
       imageSrc,
+      stillPath,
     });
   });
 }

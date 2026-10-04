@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, useRef, type MouseEvent } from "react";
 import { useMountEffect } from "./useMountEffect";
 import { liveTime, usePlayerStore } from "../player";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "../utils/frameCapture";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface UseFrameCaptureParams {
   projectId: string | null;
@@ -67,7 +68,10 @@ export function useFrameCapture({
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000);
         try {
-          const response = await fetch(href, { cache: "no-store", signal: controller.signal });
+          const response = await studioApiFetch(href, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
           clearTimeout(timeout);
           if (!response.ok) {
             let msg = `Capture failed (${response.status})`;

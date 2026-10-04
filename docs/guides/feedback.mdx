@@ -62,7 +62,7 @@ Do not include API keys, access tokens, credentials, private media, or customer 
 
 HyperFrames may occasionally show a short rating prompt after a render or during a Studio session. You can ignore or dismiss it.
 
-Feedback can include the rating, an optional comment, and basic environment information used to understand the problem. It does not include your composition HTML, video files, project names, file paths, or environment-variable values beyond the short agent and app names listed under [`telemetry`](/packages/cli#telemetry), such as `client=example-app/1.2.3/stable` when another app launched the CLI.
+Feedback can include the rating, an optional comment, and basic environment information used to understand the problem. It does not include your composition HTML, video files, project names, file paths, or environment-variable values beyond the short agent and app names listed under [`telemetry`](/packages/cli#telemetry), such as `client=example-app/1.2.3/stable` when another app launched the CLI. When an app launches it for a signed-in person, the report can also carry that person's email, set by the app through `HYPERFRAMES_FEEDBACK_EMAIL`, and whether a person or an agent wrote it.
 
 To turn off CLI telemetry:
 

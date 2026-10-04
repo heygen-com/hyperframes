@@ -398,20 +398,17 @@ export function applyUndoRestoreToPreview(
   const active = files[activeDocPath];
   const restoredScript = active ? extractGsapScriptText(active.restored) : null;
   const previousScript = active ? extractGsapScriptText(active.previous) : null;
-  const reparse = plan.scripted
-    ? plan.targets.map(({ live }) => live).filter((el) => "_gsap" in el)
-    : [];
-  if (reparse.length && !restoredScript) {
+  const reparse = plan.scripted && plan.targets.some(({ live }) => "_gsap" in live);
+  if (reparse && !restoredScript) {
     reloadPreview();
     return "full";
   }
-  if (restoredScript && (restoredScript !== previousScript || reparse.length)) {
+  if (restoredScript && (restoredScript !== previousScript || reparse)) {
     syncStaleEditMarks(doc, active);
     const result = applySoftReload(iframe, restoredScript, {
       onAsyncFailure: reloadPreview,
       currentTimeOverride: currentTime,
       authoredHtml: active.restored,
-      reparse,
       nestedFiles,
     });
     if (result === "cannot-soft-reload") {

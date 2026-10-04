@@ -6,6 +6,7 @@ import { MEDIA_LINK_ATTR as LINK_ATTR, relinkSplitHalves } from "@hyperframes/co
 import {
   findTargetElement,
   isHTMLElement,
+  nextUniqueId,
   parseSourceDocument,
   splitElementInHtml,
   type SourceMutationTarget,
@@ -40,7 +41,22 @@ export function freezeFrameMediaTime(input: {
 }
 
 export function freezeExtractArgs(src: string, mediaTime: number, output: string): string[] {
-  return ["-n", "-ss", String(round3(mediaTime)), "-i", src, "-frames:v", "1", output];
+  return [
+    "-y",
+    "-ss",
+    String(round3(mediaTime)),
+    "-i",
+    src,
+    "-frames:v",
+    "1",
+    "-c:v",
+    "png",
+    "-f",
+    "image2",
+    "-update",
+    "1",
+    output,
+  ];
 }
 
 export const randomStillToken = (): string => randomBytes(4).toString("hex");
@@ -98,12 +114,6 @@ function spans(el: Element, time: number): boolean {
   const duration = numberAttr(el, "data-duration");
   if (start === null || duration === null) return false;
   return time > start + EPSILON && time < start + duration - EPSILON;
-}
-
-function uniqueId(document: Document, base: string): string {
-  let id = base;
-  for (let n = 2; document.getElementById(id); n++) id = `${base}-${n}`;
-  return id;
 }
 
 function shiftTracks(document: Document, tracks: Set<number>, from: number, by: number): void {
@@ -226,7 +236,7 @@ export function applyFreezeFrameToHtml(
   shiftTracks(document, tracks, input.playhead, hold);
   const leftHalf = findTargetElement(document, input.target);
   if (!leftHalf?.parentElement) return null;
-  const freezeId = uniqueId(document, `${video.getAttribute("id") || "clip"}-freeze`);
+  const freezeId = nextUniqueId(document, `${video.getAttribute("id") || "clip"}-freeze`);
   const still = buildStill(document, leftHalf, {
     id: freezeId,
     imageSrc: input.imageSrc,

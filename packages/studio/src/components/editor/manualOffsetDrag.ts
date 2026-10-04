@@ -11,7 +11,7 @@ import {
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
-import { gsapWritesBox, gsapWritesPosition } from "../../hooks/gsapRuntimeKeyframes";
+import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
 import type { StudioEditRevert } from "../../utils/studioPendingEdits";
 
@@ -146,12 +146,12 @@ function getRectCenter(element: HTMLElement): Point | null {
     return null;
   }
 
-  let point = {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
+  const point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  return toTopScreenPoint(element.ownerDocument, point);
+}
 
-  let win: Window | null = element.ownerDocument.defaultView;
+export function toTopScreenPoint(doc: Document, point: Point): Point | null {
+  let win: Window | null = doc.defaultView;
   while (win) {
     const frameElement = getFrameElement(win);
     if (!frameElement) break;
@@ -166,7 +166,6 @@ function getRectCenter(element: HTMLElement): Point | null {
     };
     win = frameElement.ownerDocument.defaultView;
   }
-
   return point;
 }
 
@@ -319,8 +318,8 @@ export function createManualOffsetDragMember(input: {
   rect: ManualOffsetDragRect;
   gesture?: "drag" | "nudge" | "resize"; // resize: the anchor that keeps its centre planted
 }): ManualOffsetDragMemberResult {
-  const gsapOwns = input.gesture === "resize" ? gsapWritesBox : gsapWritesPosition;
-  const plainTranslate = !!input.gesture && !gsapOwns(input.element);
+  const plainTranslate =
+    !!input.gesture && editsPlainCss(input.element, input.gesture === "resize" ? "resize" : "move");
   // The APPLIED offset, never a dormant var, so a stale one can't fling the element off-screen.
   const initialOffset = plainTranslate
     ? readTranslatePx(input.element)

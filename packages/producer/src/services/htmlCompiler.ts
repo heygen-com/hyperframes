@@ -34,6 +34,7 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import {
   assignBundledRuntimeCompositionIds,
   assignMediaRenderIds,
@@ -1884,7 +1885,7 @@ export interface CompileForRenderOptions {
   variables?: Record<string, unknown>;
 }
 
-const GSAP_CDN_BASE = "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/";
+const GSAP_CDN_BASE = gsapCdnDist();
 
 function rewriteUnresolvableGsapToCdn(html: string, projectDir: string): string {
   return html.replace(

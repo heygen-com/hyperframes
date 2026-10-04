@@ -216,4 +216,22 @@ describe("TimelineOverlays context lifecycle", () => {
     expect(clipMenuItems).toHaveBeenCalledExactlyOnceWith(current);
     expect(document.body.querySelector('[role="menuitem"]')?.textContent).toBe("Ask");
   });
+
+  it("hints Split in the clip menu with the host's key", () => {
+    const video = { ...captured, domId: "child", tag: "video" };
+    renderOverlay({
+      capturedElement: video,
+      currentElement: video,
+      overlays: {
+        kfContextMenu: null,
+        clipContextMenu: { x: 10, y: 10, sessionEpoch: 2, element: video },
+        currentTime: 2,
+        splitShortcut: "⌥S",
+      },
+    });
+    const rows = [...document.body.querySelectorAll('[role="menuitem"]')].map(
+      (row) => row.textContent,
+    );
+    expect(rows).toContain("Split at 2.00s⌥S");
+  });
 });

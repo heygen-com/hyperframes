@@ -148,17 +148,18 @@ function positionAnimation(
   } as unknown as GsapAnimation;
 }
 
-/** Every x/y a run wrote, in commit order. */
+/** Every x/y a run wrote AT THE PLAYHEAD (percentage 0 here), in commit order. */
 function persistedPositions(calls: unknown[][]): Array<{ x?: number; y?: number }> {
   const written: Array<{ x?: number; y?: number }> = [];
   for (const call of calls) {
     const mutation = call[1] as {
       properties?: Record<string, number>;
-      keyframes?: Array<{ properties: Record<string, number> }>;
+      keyframes?: Array<{ percentage: number; properties: Record<string, number> }>;
       x?: number;
       y?: number;
     };
-    const sources = [mutation.properties, ...(mutation.keyframes ?? []).map((k) => k.properties)];
+    const atPlayhead = (mutation.keyframes ?? []).filter((k) => k.percentage === 0);
+    const sources = [mutation.properties, ...atPlayhead.map((k) => k.properties)];
     if (mutation.x != null || mutation.y != null) written.push({ x: mutation.x, y: mutation.y });
     for (const source of sources) {
       if (source && (source.x != null || source.y != null))

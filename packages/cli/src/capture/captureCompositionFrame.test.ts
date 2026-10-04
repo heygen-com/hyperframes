@@ -236,9 +236,9 @@ describe("screenshot Chrome arguments", () => {
     );
     const layoutSource = readFileSync(new URL("../commands/layout.ts", import.meta.url), "utf8");
 
-    expect(captureSource).toContain("resolveCaptureBrowserGpuMode(");
+    expect(captureSource).toContain("resolveManagedGpuMode(");
     expect(captureSource).toContain("{ browserGpuMode: resolvedGpuMode }");
-    expect(layoutSource).toContain("resolveCaptureBrowserGpuMode(");
+    expect(layoutSource).toContain("resolveManagedGpuMode(");
     expect(layoutSource).toContain("{ browserGpuMode: resolvedGpuMode }");
   });
 });

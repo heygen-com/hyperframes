@@ -5,6 +5,7 @@ import { useCaptionStore } from "../captions/store";
 import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
 import { useCaptionSync } from "../captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "../captions/parser";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface UseCaptionDetectionParams {
   projectId: string | null;
@@ -110,7 +111,7 @@ export function useCaptionDetection({
 
       activating = true;
       const srcPath = captionSrcPath;
-      fetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(srcPath)}`))
+      studioApiFetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(srcPath)}`))
         .then((r) => r.json())
         .then((data: { content?: string }) => {
           if (!data.content || !doc || !win || useCaptionStore.getState().isEditMode) return;

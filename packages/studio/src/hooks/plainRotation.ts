@@ -27,7 +27,11 @@ export function savePlainRotation(
     ? buildClearRotationPatches(element)
     : [];
   if (patches.length) clearStudioRotation(element);
-  const drawn = applyCssRotation(element, next.angle, patches.length ? undefined : next.plain);
+  const drawn = applyCssRotation(
+    element,
+    next.angle,
+    patches.length ? undefined : (next.plain ?? undefined),
+  );
   patches.push(...drawn);
   const turn = drawn.at(-1)!;
   return commitPositionPatchToHtml(selection, patches, {

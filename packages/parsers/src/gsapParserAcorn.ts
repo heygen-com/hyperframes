@@ -1903,7 +1903,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
       tweenCallToAnimation(call, scope, script, identifierBindings),
     );
     applyTimelineDefaults(rawAnims, detection.defaults);
-    resolveTimelinePositions(rawAnims);
+    resolveTimelinePositions(rawAnims, collectAddLabelDefs(ast, ref, scope, calls));
     const animations = assignStableIds(rawAnims);
     const located = calls.map((call, i) => ({
       id: animations[i]!.id,

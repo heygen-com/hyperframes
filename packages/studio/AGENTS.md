@@ -149,7 +149,7 @@ bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-
 - **Before and After captures.** A PR that changes code under `packages/studio`
   or `packages/player` needs `## Before` and `## After` sections in its
   description, each with an image or video. The exemptions (a small change with
-  no visible effect, Markdown) are defined in `scripts/check-pr-captures.mjs`.
+  no visible effect, Markdown, tests) are defined in `scripts/check-pr-captures.mjs`.
 
 ## Traps worth knowing
 

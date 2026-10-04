@@ -34,6 +34,13 @@ export const PROPERTY_DEFAULTS: Record<string, number> = {
   height: 100,
 };
 
+/** A tween's eases for re-writing it as keyframes: a flat tween's ease must become easeEach,
+ *  since GSAP eases each percentage segment power1.inOut whatever the tween-level ease says. */
+export function keyframeEases(anim: GsapAnimation): { ease?: string; easeEach?: string } {
+  if (!anim.keyframes) return { easeEach: anim.ease };
+  return { ease: anim.ease, easeEach: anim.keyframes.easeEach };
+}
+
 /**
  * A timeline write that applies an instantaneous value and then holds it.
  * `set()` is always a hold; authored `to()` / `fromTo()` tweens are holds only

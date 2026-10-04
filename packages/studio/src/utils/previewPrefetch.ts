@@ -1,5 +1,6 @@
 import { applyPreviewVariablesToUrl } from "../hooks/previewVariablesStore";
 import { buildProjectApiPath, parseProjectIdFromHash } from "./projectRouting";
+import { studioApiFetch } from "./studioApiFetch";
 
 let prefetched: string | null = null;
 
@@ -10,5 +11,5 @@ export function prefetchPreviewForHash(hash: string): void {
   prefetched = projectId;
   const url = new URL(buildProjectApiPath(projectId, "/preview"), window.location.origin);
   applyPreviewVariablesToUrl(url);
-  fetch(url).catch(() => undefined);
+  studioApiFetch(url).catch(() => undefined);
 }

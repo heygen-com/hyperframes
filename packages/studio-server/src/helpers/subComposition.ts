@@ -8,6 +8,7 @@ import {
 } from "@hyperframes/core";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
 import { isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 
 /**
  * Rewrite relative asset paths in a parsed DOM tree. Shared across all
@@ -349,7 +350,7 @@ export function buildSubCompositionHtml(
 
   // Fallback: if no index.html head was found, add minimal deps
   if (!headContent.includes("gsap")) {
-    headContent += `\n<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`;
+    headContent += `\n<script src="${gsapCdnDist()}gsap.min.js"></script>`;
   }
 
   const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : "<html>";

@@ -63,35 +63,12 @@ if (rootVersionRequested) {
 // ── Load .env from CWD ─────────────────────────────────────────────────────
 // Agents run from the project directory where .env holds API keys (Gemini,
 // HeyGen, ElevenLabs). Load it automatically so they don't need `source .env`.
+const { applyDotEnv } = await import("./utils/dotEnv.js");
 try {
   const { readFileSync } = await import("node:fs");
   const { resolve } = await import("node:path");
   const envPath = resolve(process.cwd(), ".env");
-  const envContent = readFileSync(envPath, "utf-8");
-  for (const rawLine of envContent.split("\n")) {
-    let line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    // Tolerate `export FOO=bar` (common in dotfile-style .env files).
-    if (line.startsWith("export ")) line = line.slice(7).trim();
-    const eqIdx = line.indexOf("=");
-    if (eqIdx < 1) continue;
-    const key = line.slice(0, eqIdx).trim();
-    let val = line.slice(eqIdx + 1).trim();
-    if (val.startsWith('"') || val.startsWith("'")) {
-      // Quoted value: take until the matching closing quote; leave the rest.
-      // Anything after a closing quote (including `# comment`) is dropped.
-      const quote = val.charAt(0);
-      const end = val.indexOf(quote, 1);
-      if (end > 0) val = val.slice(1, end);
-      else val = val.slice(1); // unterminated quote — best-effort, strip opener
-    } else {
-      // Unquoted value: strip inline `# comment` (requires whitespace before #
-      // to avoid eating `pass#word` style values).
-      const commentMatch = val.match(/\s+#/);
-      if (commentMatch?.index !== undefined) val = val.slice(0, commentMatch.index).trim();
-    }
-    if (key && !(key in process.env)) process.env[key] = val;
-  }
+  applyDotEnv(readFileSync(envPath, "utf-8"), process.env);
 } catch {
   /* .env not present — fine, env vars may be set another way */
 }

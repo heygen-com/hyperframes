@@ -2920,6 +2920,23 @@ describe("initSandboxRuntimeModular", () => {
     expect(fired).toHaveBeenCalledTimes(1);
   });
 
+  it("fires a call on the playhead once when a readiness pass runs between seeks", () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080"></div>`;
+    const fired = vi.fn();
+    const main = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 10 });
+    main.call(fired, [], 2);
+    window.__timelines = { main };
+    initSandboxRuntimeModular();
+
+    window.__player?.renderSeek(2);
+    vi.runOnlyPendingTimers();
+    window.__player?.renderSeek(3);
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("shows pip video at global start time even when host composition starts late", () => {
     // Regression: resolveStartForElement used to add the host composition's start on top of
     // the video's own data-start, causing double-offset. A pip video with data-start="45.40"
@@ -3796,6 +3813,29 @@ describe("initSandboxRuntimeModular", () => {
     await Promise.resolve();
 
     expect(window.__renderReady).toBe(true);
+  });
+
+  it("a torn-down runtime's pending readiness check leaves the next document alone", () => {
+    vi.useFakeTimers();
+    try {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      document.body.appendChild(root);
+      window.__timelines = { main: createMockTimeline(10) };
+
+      initSandboxRuntimeModular();
+      window.__hfRuntimeTeardown?.();
+      // The next document is still batching its timelines when the old check fires.
+      delete window.__renderReady;
+      window.__hfTimelinesBuilding = true;
+      vi.runAllTimers();
+
+      expect(window.__renderReady).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sets __renderReady even without a GSAP timeline (CSS/WAAPI compositions)", () => {

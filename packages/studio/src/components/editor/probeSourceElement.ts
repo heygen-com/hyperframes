@@ -1,4 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 type ProbeTarget = { id?: string; hfId?: string; selector?: string; selectorIndex?: number };
 
@@ -12,7 +13,7 @@ const pending = new Map<string, PendingProbe[]>();
 async function sendBatch(projectId: string, sourceFile: string, probes: PendingProbe[]) {
   let exists: boolean[] = [];
   try {
-    const response = await fetch(
+    const response = await studioApiFetch(
       buildProjectApiPath(
         projectId,
         `/file-mutations/probe-elements/${encodeURIComponent(sourceFile)}`,

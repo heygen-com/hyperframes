@@ -9,12 +9,13 @@
  * easing, or seek position.
  */
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
-import { isXYPositionWrite } from "@hyperframes/parsers/gsap-constants";
+import { isXYPositionWrite, PROPERTY_GROUPS } from "@hyperframes/parsers/gsap-constants";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
-import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
+import { commitGsapPositionFromDrag, gsapPositionFromDragOutcome } from "./gsapDragPositionCommit";
+import { commitValueAtPlayhead } from "./gsapValueAtPlayhead";
 import {
   commitStaticGsapPosition,
   commitStaticGsapRotation,
@@ -22,7 +23,6 @@ import {
   computeCurrentPercentage,
   findExistingPositionWrite,
   findRotationSetAnimation,
-  materializeIfDynamic,
 } from "./gsapDragCommit";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { isGestureTransactionCommit } from "./gestureTransaction";
@@ -54,64 +54,29 @@ const ROTATION_CHANNEL_SET = new Set<string>(ROTATION_CHANNELS);
 // ── Property-group tween resolution ───────────────────────────────────────
 
 /**
- * Find the tween for a given property group, splitting a legacy mixed tween
- * if necessary. Returns the resolved animation or null if none exists.
- *
- * Resolution order:
- * 1. Tween already tagged with `propertyGroup === group`
- * 2. Legacy mixed tween (`!propertyGroup`) → split via server mutation,
- *    re-fetch, then return the group tween
- * 3. null — caller must handle the missing-tween case
+ * The tween to edit for a property group: a tween tagged with it, else a legacy tween that mixes
+ * it with other groups. A mixed tween is edited in place, never split first: inside a gesture the
+ * split is only buffered, so ids read after it are stale and the edit lands beside the old tween.
  */
 export async function resolveGroupTween(
   group: PropertyGroupName,
   animations: GsapAnimation[],
-  selection: DomEditSelection,
-  commitMutation: GsapDragCommitCallbacks["commitMutation"],
+  _selection: DomEditSelection,
+  _commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<{ anim: GsapAnimation; animations: GsapAnimation[] } | null> {
-  // 1. Already-split group tween — pick the one closest to the current
-  // playhead so a drag at t=6s edits the tween at 4s, not the one at 1.5s.
-  const groupAnims = animations.filter((a) => a.propertyGroup === group);
-  const groupAnim = pickClosestToPlayhead(groupAnims);
-  if (groupAnim) return { anim: groupAnim, animations };
-
-  // 2. Legacy mixed tween — split it, then re-fetch
-  const legacyMixed = animations.find((a) => !a.propertyGroup);
-  if (legacyMixed) {
-    await commitMutation(
-      selection,
-      { type: "split-into-property-groups", animationId: legacyMixed.id },
-      { label: "Split mixed tween into property groups", skipReload: true },
-    );
-    if (fetchFallbackAnimations) {
-      const fresh = await fetchFallbackAnimations();
-      const freshGroupAnim = fresh.find((a) => a.propertyGroup === group);
-      if (freshGroupAnim) return { anim: freshGroupAnim, animations: fresh };
-    }
-  }
-
-  // 3. Try fallback fetch (no split needed, just wasn't in the initial list)
-  if (!legacyMixed && fetchFallbackAnimations) {
-    const fresh = await fetchFallbackAnimations();
-    const freshGroupAnim = fresh.find((a) => a.propertyGroup === group);
-    if (freshGroupAnim) return { anim: freshGroupAnim, animations: fresh };
-
-    // Fallback: legacy mixed in the fresh list
-    const freshLegacy = fresh.find((a) => !a.propertyGroup);
-    if (freshLegacy) {
-      await commitMutation(
-        selection,
-        { type: "split-into-property-groups", animationId: freshLegacy.id },
-        { label: "Split mixed tween into property groups", skipReload: true },
-      );
-      const reFetched = await fetchFallbackAnimations();
-      const reFetchedGroup = reFetched.find((a) => a.propertyGroup === group);
-      if (reFetchedGroup) return { anim: reFetchedGroup, animations: reFetched };
-    }
-  }
-
-  return null;
+  const inGroup = (list: GsapAnimation[]) => {
+    const tagged = list.filter((a) => a.propertyGroup === group);
+    const props = new Set(PROPERTY_GROUPS[group]);
+    const mixed = list.filter((a) => !a.propertyGroup && animationWritesAnyProperty(a, props));
+    return pickClosestToPlayhead(tagged.length > 0 ? tagged : mixed);
+  };
+  const anim = inGroup(animations);
+  if (anim) return { anim, animations };
+  if (!fetchFallbackAnimations) return null;
+  const fresh = await fetchFallbackAnimations();
+  const freshAnim = inGroup(fresh);
+  return freshAnim ? { anim: freshAnim, animations: fresh } : null;
 }
 
 // ── High-level intercept ───────────────────────────────────────────────────
@@ -205,6 +170,59 @@ function oneUndoStep(
     commit(selection, mutation, { ...options, coalesceKey, coalesceMs: Number.POSITIVE_INFINITY });
 }
 
+const isPositionWriteOf = (selector: string) => (a: GsapAnimation) =>
+  a.targetSelector === selector && isXYPositionWrite(a);
+
+/** The one position write a self-heal keeps when holds fight over `selector`, else null. */
+function positionWriteKeeper(animations: GsapAnimation[], selector: string): GsapAnimation | null {
+  const dupes = animations.filter(isPositionWriteOf(selector));
+  // Real tweens one after another are a motion, not a conflict: only holds can fight.
+  if (dupes.length < 2 || dupes.filter((a) => !isInstantHold(a)).length > 1) return null;
+  return dupes.find((a) => a.keyframes) ?? dupes.find((a) => (a.duration ?? 0) > 0) ?? dupes[0]!;
+}
+
+/** Where a drag writes. With no live motion and no keyframed tween (a hold, or a
+ *  zero-length keyframed tween) the position belongs in a `tl.set`, never keyframes. */
+function dragRoute(
+  posAnim: GsapAnimation | null,
+  iframe: HTMLIFrameElement | null,
+  selector: string,
+  altKey?: boolean,
+): "static" | "whole-path" | "at-playhead" {
+  const hasNonHold = hasNonHoldTweenForElement(iframe, selector, undefined, POSITION_CHANNELS);
+  const hasKeyframedPosTween = !!posAnim?.keyframes && resolveTweenDuration(posAnim) > 0;
+  if (!hasNonHold && !hasKeyframedPosTween) return "static";
+  // Alt-drag shifts the whole path; with auto-keyframe off (#1808) that is the default.
+  return altKey || !usePlayerStore.getState().autoKeyframeEnabled ? "whole-path" : "at-playhead";
+}
+
+/** The commit's route and keyframe plan, writing nothing, so a group refuses whole. */
+async function planDrag(
+  selection: DomEditSelection,
+  offset: { x: number; y: number },
+  allAnimations: GsapAnimation[],
+  iframe: HTMLIFrameElement | null,
+  options: { altKey?: boolean },
+): Promise<GsapEditOutcome> {
+  const selector = selectorFromSelection(selection);
+  if (!selector) return { status: "blocked", reason: "no-selector" };
+  const own = tweensForThisElement(selection, allAnimations);
+  const keeper = positionWriteKeeper(own, selector);
+  const animations = keeper
+    ? own.filter((a) => a === keeper || !isPositionWriteOf(selector)(a))
+    : own;
+  const resolved = await resolveGroupTween("position", animations, selection, async () => {});
+  const posAnim = resolved?.anim ?? findGsapPositionAnimation(animations, selector);
+  const route = dragRoute(posAnim, iframe, selector, options.altKey);
+  if (route === "static") return { status: "persisted" };
+  if (!posAnim) {
+    return { status: "blocked", reason: "source-uneditable", detail: "no-position-tween" };
+  }
+  if (route === "whole-path") return { status: "persisted" };
+  const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
+  return gsapPositionFromDragOutcome(selection, posAnim, offset, gsapPos, iframe);
+}
+
 /** Commits a drag through the GSAP script. Callers reject `blocked` (the gesture layer
  *  restores its drafts) and save `element-offset` on the element itself. */
 export async function tryGsapDragIntercept(
@@ -229,7 +247,12 @@ export async function tryGsapDragIntercept(
       fetchAllAnimations,
       options?.group,
     );
-    if (preflight.status !== "persisted" || options?.preflightOnly) return preflight;
+    if (preflight.status !== "persisted") return preflight;
+    if (options?.preflightOnly) {
+      return options.group
+        ? planDrag(selection, offset, allAnimations, iframe, options)
+        : preflight;
+    }
   }
   const animations = tweensForThisElement(selection, allAnimations);
   const fetchFallbackAnimations =
@@ -246,13 +269,10 @@ export async function tryGsapDragIntercept(
   // the live keyframed/real tween if present (else any), strip the rest, so the
   // commit below updates ONE write instead of fighting duplicates.
   let workingAnimations = animations;
-  const isPosWrite = (a: GsapAnimation) => a.targetSelector === selector && isXYPositionWrite(a);
-  if (animations.filter(isPosWrite).length > 1 && fetchFallbackAnimations) {
+  if (animations.filter(isPositionWriteOf(selector)).length > 1 && fetchFallbackAnimations) {
     const fresh = await fetchFallbackAnimations();
-    const dupes = fresh.filter(isPosWrite);
-    if (dupes.length > 1) {
-      const keeper =
-        dupes.find((a) => a.keyframes) ?? dupes.find((a) => (a.duration ?? 0) > 0) ?? dupes[0]!;
+    const keeper = positionWriteKeeper(fresh, selector);
+    if (keeper) {
       await commitMutation(
         selection,
         {
@@ -288,26 +308,8 @@ export async function tryGsapDragIntercept(
   }
 
   const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
-
-  // STATIC case (single source of truth = GSAP timeline): the element has no LIVE
-  // keyframed/tweened position motion. Use the strict non-hold check — a leftover
-  // position-hold `set` (after a delete-all, or a stale parse that lags it) must
-  // NOT count as live motion. Either way the position belongs in a
-  // `tl.set("#el",{x,y})`, not a keyframe conversion: re-nudge an existing set in
-  // place (idempotent), else add a new one. This also covers the stale-cache
-  // phantom — committing a set is correct because the element genuinely has no live motion.
-  const hasNonHold = hasNonHoldTweenForElement(iframe, selector, undefined, POSITION_CHANNELS);
-  // A KEYFRAMED position tween — even one that's currently a flat constant ("hold",
-  // e.g. 0% and 100% identical) — is still an animation the user is building, so a
-  // drag must add/update a keyframe, NOT fall back to a static `set`. Without this,
-  // dragging an element whose position tween is constant writes a `gsap.set` that
-  // fights the tween (the "drag didn't create a keyframe / didn't persist" bug). The
-  // static path is only for elements with NO keyframed position tween (truly static,
-  // or just a leftover position-hold `set`).
-  // A zero-duration keyframed tween is a static HOLD, not a live animation —
-  // treat it as static so the drag heals it instead of feeding it more keyframes.
-  const hasKeyframedPosTween = !!posAnim?.keyframes && resolveTweenDuration(posAnim) > 0;
-  if (!hasNonHold && !hasKeyframedPosTween) {
+  const route = dragRoute(posAnim, iframe, selector, options?.altKey);
+  if (route === "static") {
     const existingSet =
       posAnim && isInstantHold(posAnim) && posAnim.targetSelector === selector
         ? posAnim
@@ -329,27 +331,26 @@ export async function tryGsapDragIntercept(
   // current ID and avoid a stale-ID remove that creates duplicate tweens.
   if (fetchFallbackAnimations) {
     const fresh = await fetchFallbackAnimations();
-    const freshMatch = fresh.find(
-      (a) =>
-        a.targetSelector === posAnim!.targetSelector &&
-        a.propertyGroup === posAnim!.propertyGroup &&
-        isXYPositionWrite(a) === isXYPositionWrite(posAnim!),
-    );
+    const freshMatch =
+      fresh.find((a) => a.id === posAnim!.id) ??
+      pickClosestToPlayhead(
+        fresh.filter(
+          (a) =>
+            a.targetSelector === posAnim!.targetSelector &&
+            a.propertyGroup === posAnim!.propertyGroup &&
+            isXYPositionWrite(a) === isXYPositionWrite(posAnim!),
+        ),
+      );
     if (freshMatch && freshMatch.id !== posAnim.id) {
       posAnim = freshMatch;
     }
   }
 
   const cbs = { commitMutation, fetchAnimations: fetchFallbackAnimations };
-  // Alt-drag already means "shift the whole path" — the global auto-keyframe
-  // toggle (#1808) just makes that the default while it's off, so a manual
-  // edit on an already-animated element nudges the animation instead of
-  // inserting/updating a keyframe at the playhead.
-  const autoKeyframeEnabled = usePlayerStore.getState().autoKeyframeEnabled;
-  if (options?.altKey || !autoKeyframeEnabled) {
+  if (route === "whole-path") {
     await commitWholePathOffset(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
   } else {
-    await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
+    return commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, cbs);
   }
   return { status: "persisted" };
 }
@@ -428,8 +429,9 @@ export async function tryGsapRotationIntercept(
       ? resolved.anim
       : null;
   if (!anim) {
-    anim =
-      workingAnimations.find((a) => animationWritesAnyProperty(a, ROTATION_CHANNEL_SET)) ?? null;
+    anim = pickClosestToPlayhead(
+      workingAnimations.filter((a) => animationWritesAnyProperty(a, ROTATION_CHANNEL_SET)),
+    );
   }
 
   // `angle` is the ABSOLUTE target rotation resolved by the gesture (gsap base +
@@ -469,42 +471,14 @@ export async function tryGsapRotationIntercept(
     return { status: "persisted" };
   }
 
-  // fallow-ignore-next-line code-duplication
-  if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
-    const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
-    if (newId) anim = { ...anim, id: newId };
-  } else if (!anim.keyframes) {
-    const resolvedFromValues = selector
-      ? readAllAnimatedProperties(iframe, selector, anim, "rotation")
-      : undefined;
-    await commitMutation(
-      selection,
-      { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
-      { label: "Convert to keyframes for rotation", skipReload: true },
-    );
-  }
-
-  const runtimeProps = readAllAnimatedProperties(iframe, selector, anim, "rotation");
-
-  const backfillDefaults: Record<string, number> = { ...runtimeProps };
-  if (!("rotation" in runtimeProps)) {
-    backfillDefaults.rotation = readGsapProperty(iframe, selector, "rotation") ?? 0;
-  }
-
-  const properties = { ...runtimeProps, rotation: newRotation };
-
-  await commitMutation(
+  return commitValueAtPlayhead(
     selection,
-    {
-      type: "add-keyframe",
-      animationId: anim.id,
-      percentage: pct,
-      properties,
-      backfillDefaults,
-    },
-    { label: `Rotate (keyframe ${pct}%)`, softReload: true },
+    anim,
+    { rotation: newRotation },
+    iframe,
+    { commitMutation, fetchAnimations: fetchFallbackAnimations },
+    { label: "Rotate", backfill: { rotation: newRotation }, holdFromStart: true },
   );
-  return { status: "persisted" };
 }
 
 export { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";

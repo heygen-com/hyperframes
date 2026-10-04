@@ -48,6 +48,17 @@ describe("submitFeedback", () => {
     );
   });
 
+  it("sends who wrote it and the attached email, the email capped like the backend's", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitFeedback({ rating: 5, cliVersion: "1", source: "person", email: "e".repeat(300) });
+
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(body.source).toBe("person");
+    expect(body.email).toHaveLength(254);
+  });
+
   it.each([0, 10])("serializes the NPS boundary %i without changing it", async (rating) => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);

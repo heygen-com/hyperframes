@@ -28,12 +28,13 @@ import {
   serializeStudioFileMutations,
   type StudioProjectFileWriter,
 } from "../utils/studioFileMutationCoordinator";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
     throw new Error(`Unsafe path: ${targetPath}`);
   }
-  const response = await fetch(
+  const response = await studioApiFetch(
     `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(targetPath)}`,
   );
   if (!response.ok) {

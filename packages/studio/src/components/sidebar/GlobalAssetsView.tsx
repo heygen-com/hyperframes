@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 // Cross-project asset view — the global media-use cache (~/.media), fetched from
 // /api/assets/global. Self-contained (owns its fetch + state) so AssetsTab stays
@@ -43,7 +44,7 @@ export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
   const [records, setRecords] = useState<GlobalAssetRecord[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/assets/global")
+    studioApiFetch("/api/assets/global")
       .then((r) => (r.ok ? r.json() : { assets: [] }))
       .then((d) => {
         if (!cancelled) setRecords(Array.isArray(d.assets) ? d.assets : []);

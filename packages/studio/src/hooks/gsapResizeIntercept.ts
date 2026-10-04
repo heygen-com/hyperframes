@@ -14,43 +14,34 @@ import {
 } from "../components/editor/manualEditsTypes";
 import { setElementGsapPosition, setElementGsapScale } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
-import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
+import { readGsapProperty } from "./gsapRuntimeReaders";
 import {
   commitStaticGsapPosition,
   commitStaticGsapSize,
-  commitKeyframedSizeFromResize,
   computeCurrentPercentage,
   findExistingPositionWrite,
   findSizeSetAnimation,
-  materializeIfDynamic,
 } from "./gsapDragCommit";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import { computeDraggedGsapPosition } from "./draggedGsapPosition";
+import { computeDraggedGsapPosition, restoreDragOffset } from "./draggedGsapPosition";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
-import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { isInstantHold, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import { roundTo3, roundToLayoutPx } from "../utils/rounding";
 import { resolveGroupTween } from "./gsapRuntimeBridge";
 import { logResize } from "../utils/resizeDebug";
-import { animationWritesAnyProperty, type GsapEditOutcome } from "./gsapEditOutcome";
+import {
+  animationWritesAnyProperty,
+  assertGsapEditPersisted,
+  type GsapEditOutcome,
+} from "./gsapEditOutcome";
+import { commitValueAtPlayhead } from "./gsapValueAtPlayhead";
 import { preflightGsapResizeIntercept, resizeRoute } from "./gsapResizePreflight";
 
-const IDENTITY_ONE_PROPS = new Set(["opacity", "autoAlpha", "scale", "scaleX", "scaleY"]);
 const SIZE_PROPS = new Set(["width", "height"]);
-
-/** Build identity (zero / one) values for each property in `source`. */
-function synthesizeIdentityProps(
-  source: Record<string, number | string>,
-): Record<string, number | string> {
-  const id: Record<string, number | string> = {};
-  for (const [k, v] of Object.entries(source)) {
-    if (typeof v === "number") id[k] = IDENTITY_ONE_PROPS.has(k) ? 1 : 0;
-    else id[k] = v;
-  }
-  return id;
-}
+const POSITION_XY = new Set(["x", "y"]);
 
 /**
  * The element's box before the resize draft ran, in CSS pixels.
@@ -70,6 +61,51 @@ function originalBoxSize(
     el?.getAttribute(`data-hf-studio-original-${inlineProperty}`) ?? "",
   );
   return Number.isFinite(inline) && inline > 0 ? inline : null;
+}
+
+/** The box's width and height before the draft, for a size tween that animates only one. */
+function preGestureBoxSize(el: HTMLElement): Record<string, number> {
+  const width = originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width");
+  const height = originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height");
+  return { ...(width != null && { width }), ...(height != null && { height }) };
+}
+
+/** A size write at the playhead. When the same tween animates position, the resize's anchor move
+ *  goes into this one write: a second write to the tween in the same gesture would plan on stale ids. */
+export async function commitSizeAtPlayhead(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  size: Record<string, number>,
+  iframe: HTMLIFrameElement | null,
+  dragOffset: { x: number; y: number } | undefined,
+  callbacks: GsapDragCommitCallbacks,
+): Promise<GsapEditOutcome> {
+  const selector = selectorFromSelection(selection);
+  const moves = !!dragOffset && (dragOffset.x !== 0 || dragOffset.y !== 0) && !!selector;
+  const anchor =
+    moves && animationWritesAnyProperty(anim, POSITION_XY)
+      ? computeDraggedGsapPosition(
+          selection.element,
+          dragOffset,
+          readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 },
+        )
+      : null;
+  const written = await commitValueAtPlayhead(
+    selection,
+    anim,
+    anchor ? { ...size, x: anchor.newX, y: anchor.newY } : size,
+    iframe,
+    callbacks,
+    {
+      label: "Resize",
+      backfill: {
+        ...preGestureBoxSize(selection.element),
+        ...(anchor && { x: anchor.baseGsapX, y: anchor.baseGsapY }),
+      },
+      ...(anchor && { beforeReload: () => restoreDragOffset(selection.element) }),
+    },
+  );
+  return written.status === "persisted" && anchor ? { ...written, ownsDragOffset: true } : written;
 }
 
 /**
@@ -98,6 +134,7 @@ export async function tryGsapResizeIntercept(
   iframe: HTMLIFrameElement | null,
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+  dragOffset?: { x: number; y: number },
 ): Promise<GsapEditOutcome> {
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
   const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
@@ -120,7 +157,7 @@ export async function tryGsapResizeIntercept(
     postSplitFetch,
   );
 
-  let anim =
+  const anim =
     resolved?.anim && animationWritesAnyProperty(resolved.anim, resizeProperties)
       ? resolved.anim
       : null;
@@ -166,15 +203,11 @@ export async function tryGsapResizeIntercept(
       );
       if (animatedTween) {
         logResize("intercept-route", { route: "keyframed-size", tweenId: animatedTween.id });
-        const handled = await commitKeyframedSizeFromResize(
-          selection,
-          size,
-          sel,
-          sizeSet,
-          animatedTween,
-          { commitMutation, fetchAnimations: fetchFallbackAnimations },
-        );
-        if (handled) return { status: "persisted" };
+        const sized = { width: roundToLayoutPx(size.width), height: roundToLayoutPx(size.height) };
+        return commitSizeAtPlayhead(selection, animatedTween, sized, iframe, dragOffset, {
+          commitMutation,
+          fetchAnimations: fetchFallbackAnimations,
+        });
       }
     }
 
@@ -196,16 +229,10 @@ export async function tryGsapResizeIntercept(
 
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
-  if (activeKeyframePct != null) setActiveKeyframePct(null);
   const selector = selectorFromSelection(selection);
-  // Scope every capture to the resize group — same contract as the rotation
-  // intercept. Unfiltered, an opacity-touching intro tween on the element
-  // would ride into resize conversions/backfills (the Fix-2 bake class).
-  const runtimeProps = selector
-    ? readAllAnimatedProperties(iframe, selector, anim, resizeGroup)
-    : {};
 
   let resizeProps: Record<string, number>;
+  let resizeBackfill: Record<string, number>;
   let scaleDraftEl: HTMLElement | null = null;
   let scaleDraftDropPoint: { x: number; y: number } | null = null;
   /** The scale this commit is putting on the element, for the finalize step. */
@@ -262,6 +289,7 @@ export async function tryGsapResizeIntercept(
     resizeProps = useScaleLonghands
       ? { scaleX: newScaleX, scaleY: newScaleY }
       : { scale: newScaleX };
+    resizeBackfill = { scaleX: liveScaleX, scaleY: liveScaleY };
     logResize("intercept-route", {
       route: "scale-tween",
       cssW,
@@ -295,6 +323,7 @@ export async function tryGsapResizeIntercept(
       width: roundToLayoutPx(size.width),
       height: roundToLayoutPx(size.height),
     };
+    resizeBackfill = preGestureBoxSize(selection.element);
   }
   // Finalize a scale-route commit: tear down the gesture's inline width/height
   // draft (leaving it applied compounds with the committed scale — the element
@@ -404,10 +433,12 @@ export async function tryGsapResizeIntercept(
     );
     if (positionTween) {
       logResize("scale-finalize", { route: "position-keyframe", tweenId: positionTween.id });
-      await commitGsapPositionFromDrag(selection, positionTween, delta, base, iframe, selector, {
-        commitMutation,
-        fetchAnimations: fetchFallbackAnimations,
-      });
+      assertGsapEditPersisted(
+        await commitGsapPositionFromDrag(selection, positionTween, delta, base, iframe, {
+          commitMutation,
+          fetchAnimations: fetchFallbackAnimations,
+        }),
+      );
       return true;
     }
     const existingSet = findExistingPositionWrite(currentAnimations, selector, selection.element);
@@ -435,135 +466,14 @@ export async function tryGsapResizeIntercept(
     return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
   }
 
-  const ct = usePlayerStore.getState().currentTime;
-  const ts = resolveTweenStart(anim);
-  const td = tweenDuration;
-  const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01); // Convert flat tweens to keyframes only for in-range resizes.
-  // Outside-range uses the extend path which handles everything atomically.
-  if (!outsideRange) {
-    // fallow-ignore-next-line code-duplication
-    if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
-      const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
-      if (newId) anim = { ...anim, id: newId };
-    } else if (!anim.keyframes) {
-      const resolvedFromValues = selector
-        ? readAllAnimatedProperties(iframe, selector, anim, resizeGroup)
-        : undefined;
-      await commitMutation(
-        selection,
-        { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
-        { label: "Convert to keyframes for resize" },
-      );
-      if (fetchFallbackAnimations) {
-        const fresh = await fetchFallbackAnimations();
-        const refreshed = fresh.find(
-          (a) => a.targetSelector === anim!.targetSelector && a.keyframes,
-        );
-        if (refreshed) anim = refreshed;
-      }
-    }
-  }
-
-  // A NON-uniform scale must also take the full-rewrite path: it mixes
-  // scaleX/scaleY into a tween whose existing keyframes may carry the uniform
-  // `scale` shorthand, and GSAP's percentage keyframes animate each property
-  // name independently — a shorthand/longhand mix would leave the old `scale`
-  // sub-tween running against the new scaleX/scaleY. The rewrite below
-  // normalizes every keyframe to the longhands. For an in-range resize the
-  // min/max window math below degenerates to the tween's own start/duration,
-  // so timing is unchanged.
-  if ((outsideRange || useScaleLonghands) && ts !== null) {
-    // For flat tweens, synthesize the keyframes from the tween's properties
-    const kfs =
-      anim.keyframes?.keyframes ??
-      (() => {
-        const fromProps =
-          anim.method === "from" || anim.method === "fromTo"
-            ? { ...anim.properties }
-            : synthesizeIdentityProps(anim.properties);
-        const toProps =
-          anim.method === "from"
-            ? synthesizeIdentityProps(anim.properties)
-            : { ...anim.properties };
-        return [
-          { percentage: 0, properties: fromProps },
-          { percentage: 100, properties: toProps },
-        ];
-      })();
-    const newStart = Math.min(ct, ts);
-    const newEnd = Math.max(ct, ts + td);
-    const newDuration = Math.max(0.01, newEnd - newStart);
-    const existingKfs = kfs;
-    const remapped: Array<{ percentage: number; properties: Record<string, number | string> }> = [];
-    for (const kf of existingKfs) {
-      const absTime = ts + (kf.percentage / 100) * td;
-      const newPct = Math.round(((absTime - newStart) / newDuration) * 1000) / 10;
-      const props = { ...kf.properties };
-      // Normalize the uniform `scale` shorthand to longhands when this commit
-      // writes scaleX/scaleY, so the tween never mixes the two forms.
-      if (nonUniformScale && "scale" in props) {
-        const uniform = props.scale;
-        if (typeof uniform === "number") {
-          props.scaleX = uniform;
-          props.scaleY = uniform;
-        }
-        delete props.scale;
-      }
-      // Only backfill properties that the animation already had (x, y, scale).
-      // Don't backfill width/height — they should only appear on the resize keyframe.
-      for (const k of Object.keys(resizeProps)) {
-        if (k in props) continue;
-        if (k === "width" || k === "height") continue;
-        props[k] = IDENTITY_ONE_PROPS.has(k) ? 1 : 0;
-      }
-      remapped.push({ percentage: newPct, properties: props });
-    }
-    const targetPct = Math.round(((ct - newStart) / newDuration) * 1000) / 10;
-    // An in-range rewrite can land on an existing keyframe's percentage —
-    // merge into it instead of emitting a duplicate step.
-    const collidingKf = remapped.find((kf) => Math.abs(kf.percentage - targetPct) < 0.05);
-    if (collidingKf) Object.assign(collidingKf.properties, resizeProps);
-    else remapped.push({ percentage: targetPct, properties: resizeProps });
-    remapped.sort((a, b) => a.percentage - b.percentage);
-
-    await commitMutation(
-      selection,
-      {
-        type: "replace-with-keyframes",
-        animationId: anim.id,
-        targetSelector: anim.targetSelector,
-        position: roundTo3(newStart),
-        duration: roundTo3(newDuration),
-        keyframes: remapped,
-      },
-      {
-        label: outsideRange
-          ? `Resize (extended to ${ct.toFixed(2)}s)`
-          : `Resize (keyframe ${Math.round(((ct - newStart) / newDuration) * 1000) / 10}%)`,
-        softReload: true,
-        ...(!collidingKf ? { keyframeAction: "add" as const } : {}),
-      },
-    );
-    return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
-  }
-
-  const backfillDefaults: Record<string, number> = {};
-  for (const k of Object.keys(runtimeProps)) {
-    if (SIZE_PROPS.has(k)) continue;
-    backfillDefaults[k] = IDENTITY_ONE_PROPS.has(k) ? 1 : 0;
-  }
-
-  await commitMutation(
-    selection,
-    {
-      type: "add-keyframe",
-      animationId: anim.id,
-      percentage: pct,
-      properties: resizeProps,
-      backfillDefaults,
-    },
-    { label: `Resize (keyframe ${pct}%)`, softReload: true },
-  );
+  const callbacks = { commitMutation, fetchAnimations: fetchFallbackAnimations };
+  if (resizeGroup === "size")
+    return commitSizeAtPlayhead(selection, anim, resizeProps, iframe, dragOffset, callbacks);
+  const written = await commitValueAtPlayhead(selection, anim, resizeProps, iframe, callbacks, {
+    label: "Resize",
+    backfill: resizeBackfill,
+  });
+  if (written.status !== "persisted") return written;
   return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
 }
 

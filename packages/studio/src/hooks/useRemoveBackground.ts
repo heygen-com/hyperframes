@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { waitForMediaJob } from "../components/studioMediaJobs";
 import type { BackgroundRemovalProgress } from "../components/editor/propertyPanelTypes";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface RemoveBackgroundOptions {
   createBackgroundPlate?: boolean;
@@ -31,7 +32,7 @@ export function useRemoveBackground(
   return useCallback(
     // fallow-ignore-next-line complexity
     async (inputPath: string, options: RemoveBackgroundOptions) => {
-      const response = await fetch(
+      const response = await studioApiFetch(
         `/api/projects/${encodeURIComponent(projectId)}/media/remove-background`,
         {
           method: "POST",

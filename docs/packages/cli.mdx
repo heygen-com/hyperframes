@@ -1232,7 +1232,8 @@ Topics: `data-attributes`, `examples`, `rendering`, `gsap`, `troubleshooting`,
 
 ### `feedback`
 
-Send anonymous feedback about how it went.
+Send feedback about how it went. It is anonymous unless the app that launched
+the CLI attaches your email (below).
 
 ```bash
 npx hyperframes feedback --rating 10
@@ -1240,7 +1241,9 @@ npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timelin
 npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
 ```
 
-`--rating` is required, 0–10. `--comment` adds free text. `--file-issue`
+`--rating` is required, 0–10. `--comment` adds free text. `--source person`
+or `--source agent` says who wrote a rating report (a `--search-miss` report
+carries neither), so the team can tell a person's feedback from an agent's. `--file-issue`
 also opens a GitHub issue, `--dir` picks the project published as its repro
 (default: current directory), and `--yes, -y` skips the consent prompt for
 scripts.
@@ -1252,7 +1255,12 @@ submit yourself. No token, no backend. See
 
 Agents can call this after a render;
 [About feedback data](/guides/feedback#about-feedback-data) covers what the
-surface includes. With telemetry disabled it prints
+surface includes. An app that launches the CLI can attach its signed-in
+person's email with the `HYPERFRAMES_FEEDBACK_EMAIL` environment variable. It
+is never a flag and never read from a project `.env`, and it goes only into
+the feedback report, not telemetry. It is not verified: treat it as a way to
+reply, not as proof of who sent the report. With
+telemetry disabled it prints
 `Telemetry is disabled. Feedback not sent.` and exits cleanly.
 
 ### `telemetry`

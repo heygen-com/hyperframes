@@ -43,6 +43,7 @@ export interface TimelineProps
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
   clipMenuItems?: (element: TimelineElement) => readonly TimelineClipMenuItem[];
+  splitShortcut?: string;
   theme?: Partial<TimelineTheme>;
   showAudioEffects?: boolean;
   showKeyframes?: boolean;

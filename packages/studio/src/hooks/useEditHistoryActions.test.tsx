@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryActions";
+import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -30,6 +31,7 @@ function mount(
     undo: vi.fn<EditHistoryHandle["undo"]>(async () => result),
     redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
     predict: () => predicted ?? null,
+    claims: () => 7,
   };
   const putBack = vi.fn();
   const deps = {
@@ -60,6 +62,19 @@ const PREDICTED = { id: "e1", files: { "index.html": { previous: "B", restored: 
 const SERVER_FILES = { "index.html": { previous: "B", restored: "A2" } };
 
 describe("useEditHistoryActions", () => {
+  it("asks for the edit claimed after the key's claim count only when an edit was saving at the key", async () => {
+    const { deps, actions } = mount({ ok: false, reason: "empty" });
+    await act(() => actions.undo());
+    expect(deps.editHistory.undo.mock.calls[0]![0].claimedAfter).toBeUndefined();
+
+    let land!: () => void;
+    trackStudioPendingEdit(new Promise<void>((resolve) => (land = resolve)));
+    const undone = actions.undo();
+    land();
+    await act(() => undone);
+    expect(deps.editHistory.undo.mock.calls[1]![0].claimedAfter).toBe(7);
+  });
+
   it("corrects a shown step from the server's restore, diffed from what the preview shows", async () => {
     const { deps, actions } = mount(
       { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e1", files: SERVER_FILES },
