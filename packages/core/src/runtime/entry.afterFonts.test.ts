@@ -70,6 +70,7 @@ describe("runtime entry: composition scripts after web fonts", () => {
     delete (window as { __hyperframeRuntimeBootstrapped?: boolean })
       .__hyperframeRuntimeBootstrapped;
     delete (document as { fonts?: unknown }).fonts;
+    delete (document as { addEventListener?: unknown }).addEventListener;
   });
 
   it("runs deferred scripts once fonts are ready, in order and in place, then boots and fires their DOMContentLoaded", async () => {
@@ -86,6 +87,21 @@ describe("runtime entry: composition scripts after web fonts", () => {
     await vi.waitFor(() => expect(window.__player).toBeDefined());
     expect(log()).toBe("a in-place b ready ");
     expect(document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}"]`)).toHaveLength(0);
+  });
+
+  it("keeps an addEventListener wrapper a deferred script installs while its load events are held", async () => {
+    serveFonts(Promise.resolve(), []);
+    document.body.innerHTML =
+      `<output id="log"></output>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}">var add = document.addEventListener;` +
+      `document.addEventListener = function () { ${logs("wrapped")} return add.apply(this, arguments); };` +
+      `</script>`;
+
+    await parseThenLoad();
+    await vi.waitFor(() => expect(window.__player).toBeDefined());
+    const before = log();
+    document.addEventListener("hf-later", () => {});
+    expect(log()).toBe(`${before}wrapped `);
   });
 
   it("runs the scripts at the font timeout and reports the families still loading", async () => {

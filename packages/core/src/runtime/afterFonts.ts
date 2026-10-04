@@ -47,18 +47,22 @@ type HeldListener = {
 function holdPassedLoadEvents(target: Document | Window, held: HeldListener[]): () => void {
   const own = Object.getOwnPropertyDescriptor(target, "addEventListener");
   const add = target.addEventListener;
-  target.addEventListener = (
+  const hold = (
     type: string,
     listener: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions,
   ) => {
+    if (!listener) return;
     const passed =
       type === "DOMContentLoaded" ||
       (type === "load" && target === window && document.readyState === "complete");
-    if (passed && listener) held.push({ target, type, listener });
+    if (passed) held.push({ target, type, listener });
     else add.call(target, type, listener, options);
   };
+  target.addEventListener = hold;
   return () => {
+    // A script that wrapped it meanwhile keeps its wrapper.
+    if (target.addEventListener !== hold) return;
     if (own) Object.defineProperty(target, "addEventListener", own);
     else delete (target as { addEventListener?: unknown }).addEventListener;
   };
