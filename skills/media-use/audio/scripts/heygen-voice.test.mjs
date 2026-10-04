@@ -168,6 +168,10 @@ test("list skips a nameless voice and stops on a page token HeyGen repeats", asy
       [200, { data: [], has_more: true, next_token: "t2" }],
     ],
   });
+  // A fake answers at once, so a list that never stops would starve any timeout: cap the calls instead.
+  const answer = globalThis.fetch;
+  globalThis.fetch = (...args) =>
+    calls.length >= 10 ? Promise.reject(new Error("paged forever")) : answer(...args);
   const r = await run(["list", "--prefix", "desk-"]);
   assert.deepEqual(r, { code: 1, out: "", err: "HeyGen returned page token t2 twice" });
 });
