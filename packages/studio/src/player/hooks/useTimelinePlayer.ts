@@ -50,21 +50,28 @@ export interface UseTimelinePlayerOptions {
 }
 
 // A trim's edge frame is on screen, not the transport's time: pause, play and a reload's
-// hand-over read the playhead's time, and play starts from it.
+// hand-over read the playhead's time, and play starts from it unless the caller seeked first.
 function showingPreviewFrame(adapter: PlaybackAdapter): PlaybackAdapter {
-  const time = () => usePlayerStore.getState().currentTime;
+  let seeked = false;
+  const time = () => (seeked ? adapter.getTime() : usePlayerStore.getState().currentTime);
   return {
     play: () => {
       adapter.seek(time());
       adapter.play();
     },
     pause: () => adapter.pause(),
-    seek: (t, options) => adapter.seek(t, options),
+    seek: (t, options) => {
+      seeked = true;
+      adapter.seek(t, options);
+    },
     getTime: time,
     getDuration: () => adapter.getDuration(),
     isPlaying: () => adapter.isPlaying(),
   };
 }
+
+const clampToDuration = (time: number, duration: number) =>
+  Math.max(0, duration > 0 ? Math.min(duration, time) : time);
 
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
@@ -322,7 +329,7 @@ export function useTimelinePlayer({
         return false;
       }
       const duration = Math.max(0, adapter.getDuration());
-      const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+      const nextTime = clampToDuration(time, duration);
       const keepPlaying = options?.keepPlaying === true;
       const shouldResumeAfterSeek = shouldResumeForwardPlaybackAfterSeek({
         keepPlaying,
@@ -376,9 +383,8 @@ export function useTimelinePlayer({
       // Frame only: the playhead, readout and store time stay where they are.
       if (state.previewFrameTime !== prev.previewFrameTime && !state.isPlaying) {
         const adapter = getAdapter();
-        const duration = adapter?.getDuration() ?? 0;
         const time = state.previewFrameTime ?? state.currentTime;
-        adapter?.seek(Math.max(0, duration > 0 ? Math.min(duration, time) : time));
+        adapter?.seek(clampToDuration(time, adapter.getDuration()));
       }
       // Play or stop from outside the loop — the FX rack auditioning a preset
       // while paused, which is silent otherwise. `returnTo` puts the playhead

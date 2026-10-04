@@ -12,8 +12,7 @@ import {
   type TimelineGroupResizeSession,
 } from "./timelineGroupEditing";
 import { collectTimelineSnapTargets, type TimelineSnapTarget } from "./timelineSnapping";
-import { getTimelineGridStep } from "./timelineRulerGeometry";
-import { STUDIO_PREVIEW_FPS } from "../lib/time";
+import { getTimelineGridStep, rulerFrameRate } from "./timelineRulerGeometry";
 import type { StackingPatch } from "./timelineStackingSync";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import {
@@ -185,8 +184,7 @@ export function useTimelineClipDrag({
   // The ruler's line spacing at the current zoom; 0 with the magnet off, like the targets.
   const snapGridStep = useCallback(() => {
     if (!snapContextRef.current.enabled) return 0;
-    const frameRate =
-      usePlayerStore.getState().timeDisplayMode === "frame" ? STUDIO_PREVIEW_FPS : undefined;
+    const frameRate = rulerFrameRate(usePlayerStore.getState().timeDisplayMode);
     return getTimelineGridStep(durationRef.current, ppsRef.current, frameRate);
   }, [durationRef, ppsRef]);
 

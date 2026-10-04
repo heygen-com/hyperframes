@@ -60,6 +60,11 @@ describe("horizontal timeline window", () => {
     }
   });
 
+  it("has no snap grid where the ruler draws no lines", () => {
+    expect(generateTicks(20_000, 100)).toEqual({ major: [], minor: [] });
+    expect(getTimelineGridStep(20_000, 100)).toBe(0);
+  });
+
   it("slices beat records with original strength indexes and unions a pinned beat", () => {
     expect(
       getTimelineBeatEntries(

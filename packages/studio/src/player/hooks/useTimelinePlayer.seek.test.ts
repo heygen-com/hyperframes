@@ -371,10 +371,7 @@ describe("useTimelinePlayer preview frame (a trim's dragged edge)", () => {
 
   it("keeps the playhead's time when paused, played or reloaded over the frame", () => {
     const { getApi, root } = renderTimelinePlayerHarness();
-    act(() => {
-      getApi().iframeRef.current = makeFakeIframe(makeAdapterWindow().win);
-      getApi().onIframeLoad();
-    });
+    attachIframeWindow(getApi(), makeAdapterWindow().win);
     seekWithAct(getApi(), 1.25);
     previewFrame(3.4);
     act(() => getApi().pause());
@@ -395,6 +392,16 @@ describe("useTimelinePlayer preview frame (a trim's dragged edge)", () => {
     expect(live.getTime()).toBe(3.5);
     act(() => getApi().play());
     expect(live.getTime()).toBe(1.25);
+    unmountWithAct(root);
+  });
+
+  it("plays from the in-point when play rewinds from the end over the frame", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 30);
+    act(() => usePlayerStore.setState({ inPoint: 3 }));
+    previewFrame(12);
+    act(() => api.play());
+    expect(adapter.getTime()).toBe(3);
     unmountWithAct(root);
   });
 

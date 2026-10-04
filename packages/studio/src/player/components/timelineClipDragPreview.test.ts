@@ -320,6 +320,27 @@ describe("computeResizePreview — composition source continuity", () => {
     });
   });
 
+  it("draws no guide when the trimmed start cannot save onto the target", () => {
+    // 1440 px/s: a playhead on frame 31 (1.033s) saves a start of 1.03s, 4px off the guide.
+    const result = computeResizePreview(
+      {
+        element: clip("a", 0, 1, 2, 0, "div"),
+        edge: "start",
+        originClientX: 0,
+        previewStart: 1,
+        previewDuration: 2,
+        started: true,
+      },
+      48,
+      {
+        scroll: fakeScroll(),
+        pps: 1440,
+        buildSnapTargets: () => [{ time: 1.033, type: "playhead" }],
+      },
+    );
+    expect(result).toMatchObject({ previewStart: 1.03, snapTime: null, snapType: null });
+  });
+
   it("does not let a tail snap shrink a clip below the drag's minimum duration", () => {
     const result = computeResizePreview(
       {

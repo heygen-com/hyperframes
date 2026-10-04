@@ -23,7 +23,7 @@ try {
   await page.setViewport({ width: 1440, height: 900 });
   await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(clipSelector("card-b"), { timeout: 60_000 });
-  await page.waitForSelector('[data-timeline-playhead-layer] > *', { timeout: 30_000 });
+  await page.waitForSelector("[data-timeline-playhead-layer] > *", { timeout: 30_000 });
 
   const frames = () =>
     page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -42,9 +42,9 @@ try {
       start: Number(el.dataset.clipStart),
       end: Number(el.dataset.clipEnd),
     }));
-  // Screen x of every ruler line, and the seconds-to-pixels map read off clip a.
+  // Screen x of every ruler line (beat lines excluded).
   const rulerLines = () =>
-    page.$$eval("[data-timeline-grid-cell]", (cells) =>
+    page.$$eval('[data-timeline-grid-cell="major"], [data-timeline-grid-cell="minor"]', (cells) =>
       cells.map((c) => c.getBoundingClientRect().x + 0.5).sort((a, b) => a - b),
     );
   // Seconds-to-pixels map from the two clips' left edges (a clip's width carries its own inset).
@@ -71,7 +71,8 @@ try {
   await page.mouse.move(edgeX - 20, midY);
   await page.mouse.move(edgeX, midY);
   await page.waitForFunction(
-    (sel) => [...document.querySelectorAll(`${sel} div`)].some((d) => d.style.cursor === "col-resize"),
+    (sel) =>
+      [...document.querySelectorAll(`${sel} div`)].some((d) => d.style.cursor === "col-resize"),
     { timeout: 10_000 },
     clipSelector("card-a"),
   );
@@ -108,12 +109,11 @@ try {
   }
 
   // Drag b so its start sits 6 px past the ruler line nearest 4.6 s, clear of every other target.
-  const map = after;
   const b0 = await clipTimes("card-b");
   const bBox = await box(clipSelector("card-b"));
   const nearest = (lines, x) =>
     lines.reduce((best, l) => (Math.abs(l - x) < Math.abs(best - x) ? l : best));
-  const line = nearest(await rulerLines(), map.originX + 4.6 * map.pps);
+  const line = nearest(await rulerLines(), after.originX + 4.6 * after.pps);
   const grabX = bBox.x + bBox.width / 2;
   const grabY = bBox.y + bBox.height / 2;
   const dropDx = line + DROP_PAST_LINE_PX - bBox.x;

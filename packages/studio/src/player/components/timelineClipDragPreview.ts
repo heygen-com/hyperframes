@@ -15,6 +15,7 @@ import {
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
   TIMELINE_SNAP_PX,
+  savesOnTarget,
   snapMoveToTargets,
   snapTimelineTime,
   type TimelineSnapTarget,
@@ -378,12 +379,7 @@ export function computeResizePreview(
     const snapSecs = TIMELINE_SNAP_PX / Math.max(pps, 1);
     if (resize.edge === "end") {
       const edgeTime = nextResize.start + nextResize.duration;
-      const { time: snapped, target } = snapTimelineTime(
-        edgeTime,
-        trimTargets,
-        snapSecs,
-        gridStep,
-      );
+      const { time: snapped, target } = snapTimelineTime(edgeTime, trimTargets, snapSecs, gridStep);
       // Stay within [start+minDuration, maxEnd] so the snap can't create a
       // degenerate clip or run past the source/composition limit.
       const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
@@ -394,7 +390,7 @@ export function computeResizePreview(
       ) {
         // An edge already on the target still owns the guide; only move it when off.
         if (snapped !== edgeTime) nextResize = { ...nextResize, duration: snappedDuration };
-        snap = target;
+        if (savesOnTarget(nextResize.start + nextResize.duration, target.time, pps)) snap = target;
       }
     } else {
       const { time: snapped, target } = snapTimelineTime(
@@ -408,7 +404,7 @@ export function computeResizePreview(
       const bounds = clipStartTrimDeltaBounds(clip, minStart, resolveTimelineMinDuration());
       if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
         if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
-        snap = target;
+        if (savesOnTarget(nextResize.start, target.time, pps)) snap = target;
       }
     }
   }

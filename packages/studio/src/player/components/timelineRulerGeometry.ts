@@ -1,4 +1,5 @@
-import { formatTime } from "../lib/time";
+import { formatTime, STUDIO_PREVIEW_FPS } from "../lib/time";
+import type { TimelineTimeDisplayMode } from "../../utils/studioUiPreferences";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
 // fallow-ignore-next-line complexity
@@ -93,12 +94,18 @@ function tickSpacing(duration: number, pixelsPerSecond?: number, frameRate?: num
   return { majorInterval, subdivisions };
 }
 
+/** The ruler counts whole preview frames in frame display mode. */
+export function rulerFrameRate(mode: TimelineTimeDisplayMode): number | undefined {
+  return mode === "frame" ? STUDIO_PREVIEW_FPS : undefined;
+}
+
 /** Seconds between neighbouring ruler lines (minor ticks when drawn, else major): the snap grid. */
 export function getTimelineGridStep(
   duration: number,
   pixelsPerSecond?: number,
   frameRate?: number,
 ): number {
+  if (!isSupportedTickDuration(duration)) return 0;
   const { majorInterval, subdivisions } = tickSpacing(duration, pixelsPerSecond, frameRate);
   return subdivisions > 0 ? majorInterval / subdivisions : majorInterval;
 }
