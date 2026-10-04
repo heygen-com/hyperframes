@@ -119,10 +119,15 @@ export function OpenInDesktopButton() {
           data-testid="header-open-in-desktop"
           data-opening={opening || undefined}
           title="Open this project in the HyperFrames desktop app and edit it with Framey"
-          className="hf-framey-trigger gap-1.5 pl-1.5"
-          icon={<FrameyGlyph size={20} className="hf-framey" eyeRef={eye} />}
+          className="hf-framey-trigger gap-1.5 border border-accent/40 bg-accent/10 pl-1 font-semibold text-text-0 enabled:hover:bg-accent/20"
+          icon={<FrameyGlyph size={24} className="hf-framey" eyeRef={eye} />}
         >
           {opening ? "Opening in the app…" : "Edit with Framey"}
+          {!opening && (
+            <span className="rounded-full bg-accent px-1.5 text-[10px] leading-4 font-bold text-on-accent">
+              New
+            </span>
+          )}
         </Button>
       }
     >

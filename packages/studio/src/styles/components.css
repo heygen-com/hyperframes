@@ -952,8 +952,8 @@
   }
 }
 
-/* Framey on the header's "Edit with Framey" (OpenInDesktopButton.tsx): a wiggle on hover, a flight towards
- * the app while it opens. The eye follows the pointer from script. */
+/* Framey on the header's "Edit with Framey" (OpenInDesktopButton.tsx): a pulse as the page opens, a wiggle
+ * on hover, a flight towards the app while it opens. The eye follows the pointer from script. */
 @keyframes hf-framey-wiggle {
   0%,
   100% {
@@ -977,6 +977,19 @@
   }
 }
 
+@keyframes hf-framey-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+.hf-framey-trigger {
+  animation: hf-framey-pulse 1.6s ease-out 3;
+}
+
 .hf-framey {
   transform-origin: 30% 30%;
 }
@@ -994,6 +1007,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hf-framey-trigger,
   .hf-framey-trigger:hover .hf-framey,
   .hf-framey-trigger[data-opening] .hf-framey {
     animation: none;
