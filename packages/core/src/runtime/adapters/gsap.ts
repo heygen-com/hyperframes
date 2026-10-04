@@ -7,7 +7,6 @@ type GsapAdapterDeps = {
 /**
  * Re-renders a timeline already at `t`, silently, from just below (above at 0) so same-time steps apply in authored
  * order. That step skips a keyframed tween already at its start, so each one is first moved across its start alone.
- * Children starting after `t` sit out both steps: stepping below `t` would draw a reversed one at its end.
  */
 export function rerenderGsapTimelineAt(
   timeline: {
@@ -17,22 +16,20 @@ export function rerenderGsapTimelineAt(
   },
   t: number,
 ): void {
-  // A stale duration is recomputed from children's time scales, so settle it before holding any at 0.
   timeline.totalDuration?.();
   const children = timeline.getChildren?.(false, true, true) ?? [];
   const marked = childrenWithLandingMarksIn(timeline).map(
     (child) => [child, child.ratio, child._zTime] as const,
   );
-  const held = childrenStartingAfter(children, t).map((child) => [child, child._ts] as const);
-  for (const [child] of held) child._ts = 0;
+  const skipped = childrenStartingAfter(children, t).map((child) => [child, child._ts] as const);
+  for (const [child] of skipped) child._ts = 0;
   try {
     timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
     primeKeyframedTweensStartingAt(children, t);
     timeline.totalTime(t, true);
   } finally {
-    for (const [child, timeScale] of held) child._ts = timeScale;
+    for (const [child, timeScale] of skipped) child._ts = timeScale;
   }
-  // GSAP reads these to decide whether a zero-duration child fires or redraws, and a timeline crosses its start.
   for (const [child, ratio, zTime] of marked) {
     child.ratio = ratio;
     child._zTime = zTime;
@@ -45,17 +42,15 @@ type GsapChild = Pick<GsapAnimation, "startTime" | "getChildren"> & {
   time: () => number;
 };
 
-// Nested local times carry float noise far below this; a child starting at the playhead stays in.
-const AFTER_PLAYHEAD = 1e-6;
+const PLAYHEAD_FLOAT_NOISE = 1e-6;
 
-/** Children starting after `time`, also inside nested timelines playing over it. GSAP skips one at time scale 0. */
 function childrenStartingAfter(
   children: unknown[],
   time: number,
   found: GsapChild[] = [],
 ): GsapChild[] {
   for (const child of children as GsapChild[]) {
-    if (child.startTime() > time + AFTER_PLAYHEAD) found.push(child);
+    if (child.startTime() > time + PLAYHEAD_FLOAT_NOISE) found.push(child);
     else if (child.getChildren && child.endTime() >= time)
       childrenStartingAfter(child.getChildren(false, true, true), child.time(), found);
   }
@@ -64,7 +59,6 @@ function childrenStartingAfter(
 
 type GsapLandingMarks = { ratio: number; _zTime?: number };
 
-/** Nested timelines and zero-duration tweens: GSAP remembers which side of their start it last landed on. */
 function childrenWithLandingMarksIn(timeline: {
   getChildren?: RuntimeTimelineLike["getChildren"];
 }): GsapLandingMarks[] {
