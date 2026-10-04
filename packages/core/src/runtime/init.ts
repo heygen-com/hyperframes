@@ -1930,20 +1930,22 @@ export function initSandboxRuntimeModular(): void {
         // clock not yet initialized — duration will be set during TransportClock setup
       }
 
+      // Seek to the prior playhead (state.currentTime) so a rebind after a user
+      // scrub or soft-reload restore doesn't snap back to 0.
+      const seekTime = Math.max(0, state.currentTime || 0);
       if (typeof state.capturedTimeline.totalTime === "function") {
         // GSAP won't render tl.set() at position 0 when the paused timeline
         // starts there — play/pause/seek/totalTime are all no-ops at the
         // creation position. Force the set to render by cycling progress past
-        // 0 (when the timeline implements it), then seek to the prior playhead
-        // (state.currentTime) so a rebind after a user scrub or soft-reload
-        // restore doesn't snap back to 0.
+        // 0 (when the timeline implements it).
         if (typeof state.capturedTimeline.progress === "function") {
           state.capturedTimeline.progress(0.0001, true);
         }
-        const seekTime = Math.max(0, state.currentTime || 0);
         state.capturedTimeline.totalTime(seekTime, false);
-        pauseTimelineIfPossible(state.capturedTimeline);
+      } else {
+        state.capturedTimeline.seek(seekTime, false);
       }
+      pauseTimelineIfPossible(state.capturedTimeline);
 
       // GSAP bakes the CSS `translate` into style.transform on seek.
       // The Studio seek wrapper (installStudioManualEditSeekReapply) calls
@@ -3298,6 +3300,9 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  const isSeekedByRoot = (adapter: RuntimeDeterministicAdapter): boolean =>
+    adapter.name === "gsap" && Boolean(state.capturedTimeline);
+
   const runAdapters = (
     method: "discover" | "pause" | "play",
     timeSeconds = 0,
@@ -3312,7 +3317,7 @@ export function initSandboxRuntimeModular(): void {
         // keep runtime resilient against adapter-specific failures
         swallow("runtime.init.site8", err);
       }
-      if (method === "discover") {
+      if (method === "discover" && !isSeekedByRoot(adapter)) {
         try {
           adapter.seek({ time: timeSeconds, suppressEvents: true });
         } catch (err) {
@@ -3969,7 +3974,7 @@ export function initSandboxRuntimeModular(): void {
     onStatePost: postState,
     onDeterministicSeek: (timeSeconds, options) => {
       for (const adapter of state.deterministicAdapters) {
-        if (adapter.name === "gsap" && state.capturedTimeline) continue;
+        if (isSeekedByRoot(adapter)) continue;
         try {
           adapter.seek({
             time: Number(timeSeconds) || 0,
@@ -4154,9 +4159,10 @@ export function initSandboxRuntimeModular(): void {
   // timelines in __timelines haven't executed yet (they run in the browser's next
   // microtask). Defer a rebinding attempt to catch them.
   if (externalCompositionsReady) {
-    setTimeout(() => {
+    const deferredRebindTimerId = window.setTimeout(() => {
       maybePublishRenderReady();
     }, 0);
+    registerRuntimeCleanup(() => window.clearTimeout(deferredRebindTimerId));
   }
   let transportTickCount = 0;
   let inTransportTick = false;
@@ -4372,7 +4378,7 @@ export function initSandboxRuntimeModular(): void {
     seekStandaloneRegisteredTimelines(t, opts);
     const pageAnimations = pageAnimationsForOnePass();
     for (const adapter of state.deterministicAdapters) {
-      if (adapter.name === "gsap" && tl) continue;
+      if (isSeekedByRoot(adapter)) continue;
       try {
         adapter.seek({ time: t, suppressEvents, pageAnimations });
       } catch (err) {

@@ -2920,6 +2920,88 @@ describe("initSandboxRuntimeModular", () => {
     expect(fired).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves the next runtime's timeline alone after a runtime is torn down", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="30"></div>`;
+    window.__timelines = { main: createMockTimeline(30) };
+    initSandboxRuntimeModular();
+    window.__player?.seek(16.2);
+    window.__hfForceTimelineRebind?.();
+    window.__hfRuntimeTeardown?.();
+
+    const next = createMockTimeline(30);
+    window.__timelines = { main: next };
+    initSandboxRuntimeModular();
+    window.__player?.seek(0.25);
+    vi.runOnlyPendingTimers();
+
+    expect(next.time()).toBeCloseTo(0.25, 1);
+    vi.useRealTimers();
+  });
+
+  it("fires a call on the playhead once when a readiness pass runs between seeks", () => {
+    vi.useFakeTimers();
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const fired = vi.fn();
+    const main = gsap.timeline({ paused: true }).to({ x: 0 }, { x: 1, duration: 10 });
+    main.call(fired, [], 2);
+    window.__timelines = { main };
+    initSandboxRuntimeModular();
+
+    window.__player?.renderSeek(2);
+    vi.runOnlyPendingTimers();
+    window.__player?.renderSeek(3);
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("shows the playhead's frame when a seek-only root binds late during a paused drag", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+    document.body.innerHTML = `
+      <div data-composition-id="main" data-root="true" data-duration="10" data-width="1920" data-height="1080">
+        <div id="sibling"></div>
+        <div id="dragged" data-hf-studio-manual-edit-gesture="tok-1"></div>
+      </div>
+    `;
+    window.__hfTimelinesBuilding = true;
+    initSandboxRuntimeModular();
+    window.__player?.seek(5);
+
+    const tl = gsap
+      .timeline({ paused: true })
+      .to("#sibling", { x: 100, duration: 10, ease: "none" });
+    const seekOnly: RuntimeTimelineLike = {
+      play: () => tl.play(),
+      pause: () => tl.pause(),
+      seek: (time, suppressEvents) => tl.seek(time ?? 0, suppressEvents),
+      time: () => tl.time(),
+      duration: () => tl.duration(),
+      add: (child, at) => tl.add(child as unknown as gsap.core.Timeline, at),
+      paused: (paused) => tl.paused(paused),
+      set: (target, vars, at) => tl.set(target, vars, at),
+    };
+    window.__timelines = { main: seekOnly };
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+    raf.step(16);
+    raf.step(16);
+
+    expect(tl.time()).toBeCloseTo(5);
+    expect(gsap.getProperty("#sibling", "x")).toBeCloseTo(50);
+  });
+
   it("shows pip video at global start time even when host composition starts late", () => {
     // Regression: resolveStartForElement used to add the host composition's start on top of
     // the video's own data-start, causing double-offset. A pip video with data-start="45.40"
