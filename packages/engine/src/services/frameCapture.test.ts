@@ -56,42 +56,56 @@ describe("classifyPageError", () => {
     columnNumber: 0,
     url,
     exception: { type: description ? "object" : "string", description, value },
-    stackTrace: { callFrames: frames.map((frameUrl) => ({ url: frameUrl }) as Protocol.Runtime.CallFrame) },
+    stackTrace: {
+      callFrames: frames.map((frameUrl) => ({ url: frameUrl }) as Protocol.Runtime.CallFrame),
+    },
   });
 
   it("records an error thrown by a script served with the composition, by its first line", () => {
-    const error = "TypeError: Cannot read properties of null (reading 'timeline')\n    at build (comp.js:1:37)";
-    expect(classifyPageError(thrown(error, `${server}/comp.js`, [`${server}/comp.js`]), server)).toBe(
-      "runtime-error:TypeError: Cannot read properties of null (reading 'timeline')",
-    );
+    const error =
+      "TypeError: Cannot read properties of null (reading 'timeline')\n    at build (comp.js:1:37)";
+    expect(
+      classifyPageError(thrown(error, `${server}/comp.js`, [`${server}/comp.js`]), server),
+    ).toBe("runtime-error:TypeError: Cannot read properties of null (reading 'timeline')");
   });
 
   it("records a syntax error and a thrown string, which carry no error stack", () => {
     const syntax = thrown("SyntaxError: Unexpected token ';'", `${server}/comp.js`, []);
-    const plain = thrown(undefined, `${server}/index.html`, [`${server}/index.html`], "plain string");
-    expect(classifyPageError(syntax, server)).toBe("runtime-error:SyntaxError: Unexpected token ';'");
+    const plain = thrown(
+      undefined,
+      `${server}/index.html`,
+      [`${server}/index.html`],
+      "plain string",
+    );
+    expect(classifyPageError(syntax, server)).toBe(
+      "runtime-error:SyntaxError: Unexpected token ';'",
+    );
     expect(classifyPageError(plain, server)).toBe("runtime-error:plain string");
   });
 
   it("records a foreign library throwing when the composition called it", () => {
     const lib = "https://cdn.example/lib.js";
-    expect(classifyPageError(thrown("TypeError: x", lib, [lib, `${server}/index.html`]), server)).toBe(
-      "runtime-error:TypeError: x",
-    );
+    expect(
+      classifyPageError(thrown("TypeError: x", lib, [lib, `${server}/index.html`]), server),
+    ).toBe("runtime-error:TypeError: x");
   });
 
   it("ignores errors from other origins and the benign play/pause race", () => {
     const widget = "http://127.0.0.1:4100/widget.js";
-    const abort = "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22";
+    const abort =
+      "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22";
     expect(classifyPageError(thrown("Error: widget failed", widget, [widget]), server)).toBeNull();
-    expect(classifyPageError(thrown(abort, `${server}/index.html`, [`${server}/index.html`]), server)).toBeNull();
+    expect(
+      classifyPageError(thrown(abort, `${server}/index.html`, [`${server}/index.html`]), server),
+    ).toBeNull();
   });
 
   // initializeSession registers its listeners before the incomplete fake session makes it throw.
   it("records the page's uncaught errors from the runtime exception events", async () => {
     const runtimeListeners = new Map<string, (event: unknown) => void>();
     const client = {
-      on: (event: string, listener: (event: unknown) => void) => runtimeListeners.set(event, listener),
+      on: (event: string, listener: (event: unknown) => void) =>
+        runtimeListeners.set(event, listener),
       send: async () => ({}),
     };
     const page = { on: () => {}, createCDPSession: async () => client };
@@ -104,7 +118,9 @@ describe("classifyPageError", () => {
       browserConsoleBuffer: [],
     };
     await initializeSession(session as unknown as CaptureSession).catch(() => {});
-    const error = thrown("ReferenceError: gsap is not defined", `${server}/index.html`, [`${server}/index.html`]);
+    const error = thrown("ReferenceError: gsap is not defined", `${server}/index.html`, [
+      `${server}/index.html`,
+    ]);
     runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
     runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
     expect(session.pageErrors).toEqual(["runtime-error:ReferenceError: gsap is not defined"]);

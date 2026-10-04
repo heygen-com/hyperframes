@@ -48,7 +48,9 @@ async function timelineWarningCodes(files: Record<string, string>): Promise<stri
   );
   try {
     await initializeSession(session);
-    return session.warnings.map((warning) => warning.code).filter((code) => code.startsWith("sub_"));
+    return session.warnings
+      .map((warning) => warning.code)
+      .filter((code) => code.startsWith("sub_"));
   } finally {
     await closeCaptureSession(session).catch(() => {});
     server.close();
@@ -57,7 +59,10 @@ async function timelineWarningCodes(files: Record<string, string>): Promise<stri
 
 describe("which uncaught errors fail a timeline that never registers", () => {
   it.each([
-    ["an inline script in the composition throws", { "index.html": composition("<script>null.timeline;</script>") }],
+    [
+      "an inline script in the composition throws",
+      { "index.html": composition("<script>null.timeline;</script>") },
+    ],
     [
       "a script file from the project throws",
       {
@@ -69,10 +74,17 @@ describe("which uncaught errors fail a timeline that never registers", () => {
       "a script file from the project does not parse",
       { "index.html": composition('<script src="comp.js"></script>'), "comp.js": "var x = {;" },
     ],
-    ["a script from the project is missing", { "index.html": composition('<script src="missing.js"></script>') }],
-  ])("fails when %s", async (_case, files) => {
-    expect(await timelineWarningCodes(files)).toEqual(["sub_timeline_script_failure"]);
-  }, 30_000);
+    [
+      "a script from the project is missing",
+      { "index.html": composition('<script src="missing.js"></script>') },
+    ],
+  ])(
+    "fails when %s",
+    async (_case, files) => {
+      expect(await timelineWarningCodes(files)).toEqual(["sub_timeline_script_failure"]);
+    },
+    30_000,
+  );
 
   it("keeps a cross-origin widget's error a readiness warning", async () => {
     const files = { "index.html": composition(`<script src="${widgetUrl}"></script>`) };

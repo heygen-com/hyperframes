@@ -2037,10 +2037,10 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
             ? `A sub-composition timeline script failed to load (${failures.join(", ")})`
             : `A composition script threw during execution — timeline registration never arrived (${failures.join(", ")})`
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
-          `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
-          `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
-          `Otherwise, a composition that sets up asynchronously must register window.__timelines[id] ` +
-          `once setup completes.`,
+            `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
+            `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
+            `Otherwise, a composition that sets up asynchronously must register window.__timelines[id] ` +
+            `once setup completes.`,
       details: {
         timeoutMs,
         sources: failures,
