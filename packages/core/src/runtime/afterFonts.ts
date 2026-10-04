@@ -111,17 +111,13 @@ export async function runScriptsAfterFonts(
 ): Promise<void> {
   await waitForFonts();
   const isLate = (el: Element) => typeAfterFonts(el) === "module" || el.hasAttribute("defer");
-  const late = scripts.filter(isLate);
   const held: HeldListener[] = [];
   const release = [document, window].map((target) => holdPassedLoadEvents(target, held));
-  for (const el of scripts.filter((el) => !isLate(el))) {
+  for (const el of [...scripts.filter((el) => !isLate(el)), ...scripts.filter(isLate)]) {
     const script = runInPlace(el);
     if (script?.hasAttribute("src") && !script.async && !script.noModule) await loaded(script);
   }
-  for (const el of late) runInPlace(el);
-  if (late.some((el) => el.hasAttribute("src") || typeAfterFonts(el) === "module")) {
-    await afterQueuedModules();
-  }
+  if (scripts.some((el) => typeAfterFonts(el) === "module")) await afterQueuedModules();
   for (const undo of release) undo();
   afterRun?.();
   for (const { target, type, listener } of held) {

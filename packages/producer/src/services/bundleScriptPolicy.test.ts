@@ -7,7 +7,7 @@ import { bundleToSingleHtml } from "@hyperframes/core/compiler";
 
 const INLINE_ONLY_POLICY = `<meta http-equiv="Content-Security-Policy" content="script-src 'unsafe-inline'">`;
 
-describe("bundled local scripts under a page policy that allows inline scripts only", () => {
+describe("bundled local scripts in Chrome", () => {
   let browser: Browser;
   let dir: string;
 
@@ -43,7 +43,7 @@ describe("bundled local scripts under a page policy that allows inline scripts o
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("runs a local defer script after the classic scripts and animates", async () => {
+  it("runs a local defer script after the classic scripts and animates under an inline-only policy", async () => {
     const page = await browser.newPage();
     const blocked: string[] = [];
     page.on("console", (message) => {
@@ -66,5 +66,32 @@ describe("bundled local scripts under a page policy that allows inline scripts o
 
     expect(blocked).toEqual([]);
     expect(result).toEqual({ order: ["classic", "deferred"], animationTime: 1000 });
+  });
+
+  it("runs a local defer script only after the deferred CDN script before it has loaded", async () => {
+    const cdnDir = mkdtempSync(join(tmpdir(), "hf-bundle-cdn-"));
+    writeFileSync(
+      join(cdnDir, "index.html"),
+      `<!doctype html><html><head></head><body>
+<div data-composition-id="root" data-start="0" data-duration="2" data-width="320" data-height="180"></div>
+<script defer src="https://cdn.example/lib.js"></script>
+<script defer src="main.js"></script>
+</body></html>`,
+    );
+    writeFileSync(join(cdnDir, "main.js"), "window.SEEN = window.LIB;");
+    const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on("request", (request) =>
+      request.url() === "https://cdn.example/lib.js"
+        ? request.respond({ contentType: "text/javascript", body: "window.LIB = 'loaded';" })
+        : request.continue(),
+    );
+    await page.setContent(await bundleToSingleHtml(cdnDir));
+    await page.waitForFunction(
+      () => (window as unknown as { __playerReady?: boolean }).__playerReady === true,
+    );
+    rmSync(cdnDir, { recursive: true, force: true });
+
+    expect(await page.evaluate(() => (window as unknown as { SEEN?: string }).SEEN)).toBe("loaded");
   });
 });
