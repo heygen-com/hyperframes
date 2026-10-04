@@ -27,16 +27,11 @@ function showMemberPosition(member: ManualOffsetDragMember, position: MemberPosi
   if (position.gsap) getOffsetDragGsap(member.element)?.set(member.element, { ...position.gsap });
 }
 
-/** Undo's live revert of a move: its members at gesture start. */
+/** Undo's live revert of a move: its members at gesture start (the restore resets GSAP's x/y from the gesture's base). */
 export function manualOffsetMoveRevert(members: ManualOffsetDragMember[]): StudioEditRevert {
   return () => {
     const shown = members.map(readMemberPosition);
-    for (const member of members) {
-      showMemberPosition(member, {
-        offset: member.initialPathOffset,
-        gsap: member.plainTranslate ? null : member.baseGsap,
-      });
-    }
+    for (const member of members) restoreStudioPathOffset(member.element, member.initialPathOffset);
     return () => members.forEach((member, i) => showMemberPosition(member, shown[i]!));
   };
 }
