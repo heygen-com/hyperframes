@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateProjectScaffold } from "./scaffolding.js";
+import { generateProjectScaffold, loadEnvFile } from "./scaffolding.js";
 import type { DesignTokens } from "./types.js";
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -122,4 +122,27 @@ describe("generateProjectScaffold metadata", () => {
       expect(progress).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("loadEnvFile", () => {
+  const keys = ["hyperframes_feedback_email", "HyperFrames_Feedback_Email", "HF_SCAFFOLD_TEST_KEY"];
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(join(tmpdir(), "hf-scaffold-env-"));
+  });
+
+  afterEach(() => {
+    for (const key of keys) delete process.env[key];
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("never takes the feedback email from a project file, in any letter case", () => {
+    fs.writeFileSync(
+      join(dir, ".env"),
+      'hyperframes_feedback_email=a@example.com\nHyperFrames_Feedback_Email=b@example.com\nHF_SCAFFOLD_TEST_KEY="kept"\n',
+    );
+    loadEnvFile(join(dir, "out"));
+    expect(keys.map((key) => process.env[key])).toEqual([undefined, undefined, "kept"]);
+  });
 });
