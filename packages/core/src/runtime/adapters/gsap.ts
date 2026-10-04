@@ -22,17 +22,24 @@ export function rerenderGsapTimelineAt(
     (child) => [child, child.ratio, child._zTime, child._act] as const,
   );
   const skipped = childrenStartingAfter(children, t).map((child) => [child, child._ts] as const);
+  const parents = new Set<GsapParent>();
+  for (const [child] of skipped) {
+    for (let parent = child.parent; parent && !parents.has(parent); parent = parent.parent)
+      parents.add(parent);
+  }
+  const lengths = [...parents].map(
+    (parent) => [parent, parent._dur, parent._tDur, parent._end, parent._dirty] as const,
+  );
   for (const [child] of skipped) child._ts = 0;
   try {
     timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
     primeKeyframedTweensStartingAt(children, t);
     timeline.totalTime(t, true);
   } finally {
-    for (const [child, timeScale] of skipped) {
-      child._ts = timeScale;
-      for (let parent = child.parent; parent; parent = parent.parent) parent._dirty = 1;
+    for (const [child, timeScale] of skipped) child._ts = timeScale;
+    for (const [parent, dur, tDur, end, dirty] of lengths) {
+      Object.assign(parent, { _dur: dur, _tDur: tDur, _end: end, _dirty: dirty });
     }
-    timeline.totalDuration?.();
   }
   for (const [child, ratio, zTime, active] of marked) {
     child.ratio = ratio;
@@ -41,7 +48,13 @@ export function rerenderGsapTimelineAt(
   }
 }
 
-type GsapParent = { _dirty: number; parent?: GsapParent | null };
+type GsapParent = {
+  _dur: number;
+  _tDur: number;
+  _end: number;
+  _dirty: number;
+  parent?: GsapParent | null;
+};
 
 type GsapChild = Pick<GsapAnimation, "startTime" | "getChildren"> & {
   _ts: number;
