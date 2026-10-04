@@ -134,6 +134,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
           lane + snapped start), parallel to the ghost. Hidden in insert mode. */}
       {draggedClip?.started && draggedClip.insertRow == null && draggedRowIndex >= 0 && (
         <div
+          data-testid="timeline-drag-landing"
           className="absolute pointer-events-none"
           style={{
             top: props.rowGeometry.getRowTop(draggedRowIndex) + CLIP_Y,
