@@ -5,7 +5,7 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
 // overrides the dir). Vendored so the skill ships standalone. Pure node.
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -17,14 +17,24 @@ export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // OAuth-only cli-source header above, which also gates the free allowance.
 export const HEYGEN_CLIENT_SOURCE_HEADERS = { "X-HeyGen-Client-Source": "media-use" };
 
+// A missing `.env`, or a `.env` folder (some home dirs have one), is no env file: null. Read without checking first,
+// so the file cannot change between a check and the read.
+function envFileText(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (["ENOENT", "ENOTDIR", "EISDIR"].includes(error.code)) return null;
+    throw error;
+  }
+}
+
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
   for (let i = 0; i < 5; i++) {
-    const envPath = join(dir, ".env");
-    // A `.env` folder (some home dirs have one) is not an env file: keep walking up.
-    if (existsSync(envPath) && !statSync(envPath).isDirectory()) {
-      for (const raw of readFileSync(envPath, "utf8").split("\n")) {
+    const text = envFileText(join(dir, ".env"));
+    if (text != null) {
+      for (const raw of text.split("\n")) {
         let line = raw.trim();
         if (!line || line.startsWith("#")) continue;
         if (line.startsWith("export ")) line = line.slice(7).trim();
