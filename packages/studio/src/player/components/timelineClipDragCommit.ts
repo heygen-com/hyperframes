@@ -26,6 +26,7 @@ import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
+import { batchElementUpdates } from "../store/batchElementUpdates";
 
 type StartTrack = TimelineAtomicMoveUpdates;
 export interface TimelineMoveEdit extends TimelineAtomicMoveEdit {
@@ -176,7 +177,9 @@ export function persistMoveEdits(
     }
     if (Object.keys(updates).length) updateElement(key, updates);
   };
-  for (const e of edits) applyEdit(e);
+  const applyEdits = (reassert = false) =>
+    batchElementUpdates(() => edits.forEach((e) => applyEdit(e, reassert)));
+  applyEdits();
   // The store above gets DISPLAY lanes; the file below gets the authored-space
   // track when one was resolved (see TimelineMoveEdit.persistTrack).
   const persistEdits = edits.map((e) =>
@@ -184,23 +187,26 @@ export function persistMoveEdits(
       ? e
       : { element: e.element, updates: { ...e.updates, track: e.persistTrack } },
   );
-  const restorePrev = () => {
-    for (const p of prev) {
-      const { audioGroup, ...timing } = p.updates;
-      const updates: Partial<TimelineElement> = {};
-      if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-        Object.assign(updates, timing);
+  const restorePrev = () =>
+    batchElementUpdates(() => {
+      for (const p of prev) {
+        const { audioGroup, ...timing } = p.updates;
+        const updates: Partial<TimelineElement> = {};
+        if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
+          Object.assign(updates, timing);
+        }
+        if (
+          isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership")
+        )
+          updates.audioGroup = audioGroup;
+        if (Object.keys(updates).length) updateElement(p.key, updates);
       }
-      if (isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership"))
-        updates.audioGroup = audioGroup;
-      if (Object.keys(updates).length) updateElement(p.key, updates);
-    }
-  };
+    });
   // Cmd+Z while the save is in flight shows the old lanes at once; the returned fn re-applies the move.
   const saving = onMoveElements
     ? beginStudioPendingEdit(() => {
         restorePrev();
-        return () => edits.forEach((e) => applyEdit(e, true));
+        return () => applyEdits(true);
       })
     : null;
   const start = () =>
@@ -216,7 +222,7 @@ export function persistMoveEdits(
       // restore the preview manifest's pre-gesture lane. Reassert the durable
       // result after persistence, but only while this remains the latest
       // optimistic gesture so an older save can never clobber a newer drag.
-      if (!saving?.reverted()) for (const e of edits) applyEdit(e, true);
+      if (!saving?.reverted()) applyEdits(true);
       return true;
     },
     (error) => {

@@ -21,6 +21,7 @@ import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 import { createPlaybackReadinessSlice } from "./readinessSlice";
 import { createRangeSelectionSlice, type RangeSelectionSlice } from "./rangeSelectionSlice";
 import { createTimelineResetState } from "./timelineResetState";
+import { patchElements, queueElementPatch } from "./elementPatchQueue";
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
 import { liveTime } from "./liveTime";
@@ -547,12 +548,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         focusedEaseSegment: id === s.selectedElementId ? s.focusedEaseSegment : null,
       };
     }),
-  updateElement: (elementId, updates) =>
-    set((state) => ({
-      elements: state.elements.map((el) =>
-        (el.key ?? el.id) === elementId ? { ...el, ...updates } : el,
-      ),
-    })),
+  updateElement: (elementId, updates) => {
+    if (queueElementPatch(elementId, updates)) return;
+    set((state) => ({ elements: patchElements(state.elements, new Map([[elementId, updates]])) }));
+  },
   // UI preferences intentionally survive reset. So do timelineSessionEpoch and
   // focusedEaseRequestNonce: the epoch advances only when project identity
   // changes, while a monotonic nonce prevents collisions with stale consumers.
