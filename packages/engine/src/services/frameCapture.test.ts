@@ -47,19 +47,17 @@ describe("classifyPageError", () => {
     );
   });
 
-  // The listeners go on before navigation, so a page whose goto fails still hands them over.
-  it("is what the page's error listener records, so the timeline wait stops for it", async () => {
+  // The listeners go on first; the fake session then stops initialization.
+  it("is what the page's error listener records, apart from the fail-fast script failures", async () => {
     const listeners = new Map<string, (arg: unknown) => void>();
     const page = {
       on: (event: string, listener: (arg: unknown) => void) => listeners.set(event, listener),
-      goto: async () => {
-        throw new Error("navigation stopped by the test");
-      },
     };
     const session = {
       page,
       serverUrl: "http://127.0.0.1:1",
       scriptLoadFailures: [],
+      pageErrors: [],
       warnings: [],
       browserConsoleBuffer: [],
     };
@@ -70,9 +68,8 @@ describe("classifyPageError", () => {
       listeners.get("pageerror")?.(
         new Error("AbortError: The play() request was interrupted by pause()"),
       );
-      expect(session.scriptLoadFailures).toEqual([
-        "runtime-error:ReferenceError: gsap is not defined",
-      ]);
+      expect(session.pageErrors).toEqual(["runtime-error:ReferenceError: gsap is not defined"]);
+      expect(session.scriptLoadFailures).toEqual([]);
     } finally {
       quiet.mockRestore();
     }

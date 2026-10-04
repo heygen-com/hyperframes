@@ -165,6 +165,8 @@ export interface CaptureSession {
    * were hitting that wall — a 705-render spike at the 45s setup bucket).
    */
   scriptLoadFailures: string[];
+  /** Uncaught page errors: a timeline wait that times out with any is a script failure. */
+  pageErrors: string[];
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
   /**
@@ -1503,6 +1505,7 @@ async function constructCaptureSession(
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
+    pageErrors: [],
     warnings: [],
     capturePerf: {
       frames: 0,
@@ -1785,10 +1788,10 @@ export async function pollSubCompositionTimelines(
     if (failures.length > 0 && now - start >= scriptFailureGraceMs) {
       scriptFailureBail = true;
       console.warn(
-        `[FrameCapture] Timeline wait cut short after ${now - start}ms: ` +
-          `script(s) failed to load or threw (${failures.join(", ")}) — ` +
+        `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
+          `script resource(s) failed to load (${failures.join(", ")}) — ` +
           `the timeline registration they carry can never arrive. ` +
-          `Fix the script; the render fails rather than ship without those animations.`,
+          `Fix the script reference; the render proceeds without those animations.`,
       );
       break;
     }
@@ -2008,9 +2011,13 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
 }
 
 export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
+  if (session.subTimelineWaitOutcome === "timeout" && session.pageErrors.length > 0) {
+    session.subTimelineWaitOutcome = "script_failure";
+  }
   if (session.subTimelineWaitOutcome === "ready" || !session.subTimelineWaitOutcome) return;
   const scriptFailure = session.subTimelineWaitOutcome === "script_failure";
-  const hasRuntimeErrors = session.scriptLoadFailures.some((f) => f.startsWith("runtime-error:"));
+  const failures = [...session.scriptLoadFailures, ...session.pageErrors];
+  const hasRuntimeErrors = failures.some((f) => f.startsWith("runtime-error:"));
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   recordCaptureWarnings(session, [
@@ -2018,8 +2025,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: scriptFailure
         ? hasRuntimeErrors
-          ? `A composition script threw during execution — timeline registration never arrived (${session.scriptLoadFailures.join(", ")})`
-          : `A sub-composition timeline script failed to load (${session.scriptLoadFailures.join(", ")})`
+          ? `A composition script threw during execution — timeline registration never arrived (${failures.join(", ")})`
+          : `A sub-composition timeline script failed to load (${failures.join(", ")})`
         : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
           `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
           `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2027,7 +2034,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
           `once setup completes.`,
       details: {
         timeoutMs,
-        sources: [...session.scriptLoadFailures],
+        sources: failures,
         pendingCompositionIds: [...pending],
       },
     },
@@ -2203,7 +2210,6 @@ export function classifyConsoleScriptFailure(type: string, text: string): string
   return null;
 }
 
-/** An uncaught page error is a script that stopped; a timeline it was to register never arrives. */
 export function classifyPageError(message: string): string | null {
   // Benign play/pause race during frame capture.
   if (/^AbortError:/.test(message) && message.includes("play()") && message.includes("pause()")) {
@@ -2237,10 +2243,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("pageerror", (err) => {
     const message = err instanceof Error ? err.message : String(err);
     const text = `[Browser:PAGEERROR] ${message}`;
-    const scriptFailure = classifyPageError(message);
-    if (scriptFailure) {
+    const pageError = classifyPageError(message);
+    if (pageError) {
       console.error(text);
-      recordScriptLoadFailure(session, scriptFailure);
+      if (!session.pageErrors.includes(pageError)) session.pageErrors.push(pageError);
     }
     appendBrowserDiagnostic(session, text);
   });
