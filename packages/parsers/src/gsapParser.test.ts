@@ -1889,6 +1889,12 @@ describe("keyframe mutations", () => {
       },
     );
 
+    it("acorn: a step list whose tween duration is a variable leaves its length unresolved", () => {
+      const script = `const tl = gsap.timeline();\ntl.to("#a", { keyframes: [{ x: 1, duration: 1 }, { x: 2, duration: 1 }], duration: D }, 0);`;
+      const anim = parseGsapScriptAcorn(script).animations[0]!;
+      expect([anim.duration, anim.durationUnresolved]).toEqual([undefined, true]);
+    });
+
     it("acorn: a re-sync of a one-line script is byte-stable", () => {
       const once = syncPositionHoldsBeforeKeyframesAcorn(
         `const tl = gsap.timeline({ paused: true });tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`,
