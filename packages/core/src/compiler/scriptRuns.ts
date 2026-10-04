@@ -25,9 +25,12 @@ const JAVASCRIPT_TYPES = new Set([
   "text/x-javascript",
 ]);
 
-function isClassicInline(el: Element): boolean {
-  if (el.hasAttribute("nomodule")) return false;
+export function isJavaScriptType(el: Element): boolean {
   return JAVASCRIPT_TYPES.has((el.getAttribute("type") || "").trim().toLowerCase());
+}
+
+function isClassicInline(el: Element): boolean {
+  return !el.hasAttribute("nomodule") && isJavaScriptType(el);
 }
 
 function isSeparateExecution(el: Element, isPinned: (el: Element) => boolean): boolean {

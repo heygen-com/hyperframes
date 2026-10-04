@@ -2642,6 +2642,33 @@ describe("bundleToSingleHtml script order", () => {
     expect(page.RAN).toEqual(["esc", "legacy", "a", "b", "plain"]);
   });
 
+  it.each([
+    ["in <head>", `<script src="legacy.js"></script>`, ""],
+    ["deferred in <body>", "", `<script defer src="legacy.js"></script>`],
+  ])(
+    "keeps a local file with a legacy <!-- comment valid when it is inlined on its own (%s)",
+    async (_, head, body) => {
+      const dir = makeTempProject({
+        "index.html": `<!doctype html>
+<html><head>${head}</head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  ${body}
+</body></html>`,
+        "legacy.js": '<!-- a legacy comment\nwindow.RAN = ["legacy"];',
+      });
+      try {
+        const { document } = parseHTML(await bundleToSingleHtml(dir));
+        const file = document.querySelector("script[data-hf-inlined-src]");
+        expect(file?.textContent).not.toContain("<!--");
+        const page = { RAN: [] as string[] };
+        new Function("window", file?.textContent ?? "")(page);
+        expect(page.RAN).toEqual(["legacy"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("still adds the runtime when an authored script mentions its marker attribute", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

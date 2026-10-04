@@ -6,6 +6,7 @@ import {
   headStyleRuns,
   INLINED_FILE_ATTR,
   inlineScriptRuns,
+  isJavaScriptType,
   styleElementsFor,
   type CompositionStyle,
 } from "./scriptRuns";
@@ -1263,7 +1264,10 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   autoHealMissingCompositionIds(document);
   coalesceHeadStylesAndBodyScripts(document);
   for (const el of document.querySelectorAll(`script[${INLINED_FILE_ATTR}]`)) {
-    el.textContent = escapeInlineScriptSource(el.textContent ?? "");
+    const js = el.textContent ?? "";
+    el.textContent = escapeInlineScriptSource(
+      isJavaScriptType(el) ? stripJsCommentsParserSafe(js) : js,
+    );
   }
   deferScriptsUntilFonts(document, (el) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR));
   injectTextRenderingRule(document);
