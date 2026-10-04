@@ -500,6 +500,30 @@ export function initSandboxRuntimeModular(): void {
       // falling back to GSAP's default ease is preferable to a broken runtime
     }
   };
+  // Mid-tween, GSAP's default force3D writes translate3d, and Chrome snaps a crop edge on it to whole pixels.
+  // Set as the bundle assigns window.gsap, before a composition's set() or from() parses an element;
+  // chains to an accessor already there (the producer's early stub traps the same assignment).
+  const flattenGsapTransforms = (): void => {
+    const flatten = (g: Window["gsap"]) => g?.config?.({ force3D: false });
+    const prior = Object.getOwnPropertyDescriptor(window, "gsap");
+    let loaded = window.gsap;
+    flatten(loaded);
+    if ((prior?.get as { hfFlat?: true } | undefined)?.hfFlat) return;
+    const get = Object.assign(() => (prior?.get ? prior.get.call(window) : loaded), {
+      hfFlat: true,
+    });
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      enumerable: true,
+      get,
+      set: (g: Window["gsap"]) => {
+        if (prior?.set) prior.set.call(window, g);
+        else loaded = g;
+        flatten(g);
+      },
+    });
+  };
+  flattenGsapTransforms();
   ensureAutoMarkerNoop();
   ensureStudioCustomEase();
   // Normalize html/body so browser defaults (8px margin, white background) never

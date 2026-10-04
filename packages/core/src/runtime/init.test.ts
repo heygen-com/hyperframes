@@ -1792,6 +1792,91 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  describe("mid-tween transforms under real GSAP", () => {
+    type Timeline = ReturnType<typeof gsap.timeline>;
+    afterEach(() => {
+      gsap.config({ force3D: "auto" });
+    });
+    // Page order: the runtime (end of <head>), then the GSAP bundle, then the composition's script.
+    const transformAt = (time: number, build: (box: HTMLElement) => Timeline) => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-duration", "4");
+      const box = document.createElement("div");
+      box.style.clipPath = "inset(0px 35.55px 0px 0px)";
+      root.appendChild(box);
+      document.body.appendChild(root);
+      const raf = createManualRaf();
+      const now = vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      try {
+        window.__timelines = {};
+        initSandboxRuntimeModular();
+        window.gsap = gsap as unknown as typeof window.gsap;
+        window.__timelines.main = build(box) as unknown as RuntimeTimelineLike;
+        for (let frame = 0; frame < 60; frame += 1) raf.step(16);
+        window.__player?.seek(time);
+        return box.style.transform;
+      } finally {
+        now.mockRestore();
+      }
+    };
+
+    // A 3D transform puts the element on its own layer, where Chrome snaps a crop edge to whole pixels.
+    it.each([
+      [
+        "a to() tween",
+        (box: HTMLElement) =>
+          gsap.timeline({ paused: true }).to(box, { scale: 1.25, duration: 2, ease: "none" }, 0),
+      ],
+      [
+        "a from() tween, which renders when the script runs",
+        (box: HTMLElement) =>
+          gsap.timeline({ paused: true }).from(box, { scale: 1.25, duration: 2, ease: "none" }, 0),
+      ],
+      [
+        "a tween on an element set() when the script runs",
+        (box: HTMLElement) => {
+          gsap.set(box, { scale: 1 });
+          return gsap
+            .timeline({ paused: true })
+            .to(box, { scale: 1.25, duration: 2, ease: "none" }, 0);
+        },
+      ],
+    ])("draws %s in 2D mid-tween", (_name, build) => {
+      expect(transformAt(1, build)).toBe("scale(1.125, 1.125)");
+    });
+
+    it("leaves an element GSAP only fades without an inline transform", () => {
+      const transform = transformAt(1, (box) =>
+        gsap.timeline({ paused: true }).to(box, { opacity: 0.5, duration: 2, ease: "none" }, 0),
+      );
+      expect(transform).toBe("");
+    });
+
+    it("still hands GSAP to an accessor that trapped window.gsap before the runtime", () => {
+      const seen: unknown[] = [];
+      let held: unknown;
+      Object.defineProperty(window, "gsap", {
+        configurable: true,
+        get: () => held,
+        set: (g) => {
+          seen.push(g);
+          held = g;
+        },
+      });
+      const transform = transformAt(1, (box) =>
+        gsap.timeline({ paused: true }).to(box, { scale: 1.25, duration: 2, ease: "none" }, 0),
+      );
+      expect(seen).toEqual([gsap]);
+      expect(window.gsap).toBe(gsap);
+      expect(transform).toBe("scale(1.125, 1.125)");
+    });
+  });
+
   // #6: a single timeline registered under a key that does NOT match the root's
   // data-composition-id must still bind (sole-timeline fallback) instead of
   // silently rendering the frozen t=0 DOM.

@@ -138,6 +138,7 @@ declare global {
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
       set?: (target: Element, vars: Record<string, unknown>) => unknown;
+      config?: (vars: Record<string, unknown>) => unknown;
       parseEase?: (
         ease: string | ((progress: number) => number),
         ...args: unknown[]
