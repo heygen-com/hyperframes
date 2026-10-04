@@ -469,8 +469,9 @@ class Engine {
   async takeInUnnamedLedger(): Promise<void> {
     const named = (path: string) =>
       this.log.entries.some((entry) => entry.files.some((file) => file.path === path));
+    const listed = () => historyFiles(this.dir).some((file) => file.path === MEDIA_LEDGER);
     const hash =
-      this.log.baseline.has(MEDIA_LEDGER) || named(MEDIA_LEDGER)
+      this.log.baseline.has(MEDIA_LEDGER) || named(MEDIA_LEDGER) || !listed()
         ? null
         : await this.storeIfPresent(MEDIA_LEDGER);
     if (hash !== null) this.log.baseline.set(MEDIA_LEDGER, hash);

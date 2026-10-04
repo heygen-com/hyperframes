@@ -71,6 +71,19 @@ async function project(files: Record<string, string | Buffer>, options = {}) {
 }
 
 /** Undoes the newest change still in effect, whoever made it; Cmd+Z steps only over the caller's own. */
+/** What 0.8.123 leaves: a log whose baseline never names the media ledger and carries no marker. */
+function asWrittenBy0_8_123(logFile: string) {
+  const lines = readFileSync(logFile, "utf-8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  for (const record of lines.filter((line) => line.type === "baseline")) {
+    delete record.files[".media/manifest.jsonl"];
+    delete record.keepsLedger;
+  }
+  writeFileSync(logFile, lines.map((record) => JSON.stringify(record)).join("\n") + "\n");
+}
+
 async function undoNewest(history: ProjectHistory) {
   const newest = [...history.list()].reverse().find((entry) => !entry.undoes && !entry.undone);
   return history.undo(newest!.id, { who: you });
@@ -208,20 +221,30 @@ describe("openProjectHistory", () => {
     });
     await change(history, you, "Your edit", () => write("index.html", "B"));
     await history.close();
-    const logFile = join(historyRoot, history.projectId, "log.jsonl");
-    const lines = readFileSync(logFile, "utf-8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    for (const record of lines.filter((line) => line.type === "baseline")) {
-      delete record.files[".media/manifest.jsonl"];
-      delete record.keepsLedger;
-    }
-    writeFileSync(logFile, lines.map((record) => JSON.stringify(record)).join("\n") + "\n");
+    asWrittenBy0_8_123(join(historyRoot, history.projectId, "log.jsonl"));
     const reopened = await open(projectDir, historyRoot);
     expect(await reopened.step("back", you)).toMatchObject({ ok: true });
     expect([read("index.html"), read(".media/manifest.jsonl")]).toEqual(["A", "{}\n"]);
   });
+
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "a log 0.8.123 wrote never takes in a ledger behind a link",
+    async () => {
+      const { history, projectDir, historyRoot } = await project(
+        { "index.html": "A" },
+        { quietMs: 30 },
+      );
+      await history.close();
+      asWrittenBy0_8_123(join(historyRoot, history.projectId, "log.jsonl"));
+      const outside = tempDir("hf-history-linked-");
+      writeFileSync(join(outside, "manifest.jsonl"), "{}\n");
+      symlinkSync(outside, join(projectDir, ".media"), "dir");
+      const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+      await reopened.flush();
+      expect(reopened.list()).toEqual([]);
+    },
+  );
 
   it("a ledger made while the project was closed is a change like any file, once a log keeps the ledger", async () => {
     const { history, write, read, has, projectDir, historyRoot } = await project(
@@ -250,8 +273,10 @@ describe("openProjectHistory", () => {
     const cutout = await change(history, agent, "Cut out the logo", () => {
       write("index.html", "<h1>Hello</h1><img src='logo.png'>");
       write(".media/manifest.jsonl", '{}\n{"id":"logo"}\n');
+      write(".media/images/logo.png", "png");
+      write(".tools/manifest.jsonl", "{}\n");
     });
-    expect(cutout.files.map((file) => file.path)).toContain(".media/manifest.jsonl");
+    expect(cutout.files.map((file) => file.path)).toEqual([".media/manifest.jsonl", "index.html"]);
     expect((await history.undo(cutout.id, { who: you })).ok).toBe(true);
     expect(read(".media/manifest.jsonl")).toBe("{}\n");
   });
