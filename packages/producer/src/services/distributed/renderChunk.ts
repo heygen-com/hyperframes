@@ -63,6 +63,7 @@ import {
   resolveConfig,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
+import { applyRenderWarningPolicy } from "../renderOrchestrator.js";
 import { runEncodeStage } from "../render/stages/encodeStage.js";
 import { runCaptureStage } from "../render/stages/captureStage.js";
 import { resolveVideoCaptureBeyondViewport } from "../render/captureBeyondViewport.js";
@@ -924,6 +925,11 @@ export async function renderChunk(
         },
       });
       captureStageMs = Date.now() - captureStarted;
+      applyRenderWarningPolicy(
+        job,
+        capturePerfs.flatMap((perf) => perf.warnings ?? []),
+        log,
+      );
       framesEncoded = framesInChunk;
 
       // ── Encode the chunk ──

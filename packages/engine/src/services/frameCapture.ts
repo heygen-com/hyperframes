@@ -8,7 +8,13 @@
  * via Chrome's BeginFrame API or Page.captureScreenshot fallback.
  */
 
-import { type Browser, type Page, type Viewport, type ConsoleMessage } from "puppeteer-core";
+import {
+  type Browser,
+  type Page,
+  type Protocol,
+  type Viewport,
+  type ConsoleMessage,
+} from "puppeteer-core";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
@@ -165,7 +171,7 @@ export interface CaptureSession {
    * were hitting that wall — a 705-render spike at the 45s setup bucket).
    */
   scriptLoadFailures: string[];
-  /** Uncaught page errors: a timeline wait that times out with any is a script failure. */
+  /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
@@ -2011,23 +2017,26 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
 }
 
 export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
-  if (session.subTimelineWaitOutcome === "timeout" && session.pageErrors.length > 0) {
-    session.subTimelineWaitOutcome = "script_failure";
-  }
-  if (session.subTimelineWaitOutcome === "ready" || !session.subTimelineWaitOutcome) return;
-  const scriptFailure = session.subTimelineWaitOutcome === "script_failure";
+  const outcome = session.subTimelineWaitOutcome;
+  if (outcome === "ready" || !outcome) return;
+  const threwThenTimedOut = outcome === "timeout" && session.pageErrors.length > 0;
+  const scriptFailure = outcome === "script_failure" || threwThenTimedOut;
   const failures = [...session.scriptLoadFailures, ...session.pageErrors];
-  const hasRuntimeErrors = failures.some((f) => f.startsWith("runtime-error:"));
+  const loadFailed = session.scriptLoadFailures.some((f) => !f.startsWith("runtime-error:"));
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   recordCaptureWarnings(session, [
     {
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
-      message: scriptFailure
-        ? hasRuntimeErrors
-          ? `A composition script threw during execution — timeline registration never arrived (${failures.join(", ")})`
-          : `A sub-composition timeline script failed to load (${failures.join(", ")})`
-        : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
+      message: threwThenTimedOut
+        ? `A composition script threw and no timeline registered within ${timeoutMs}ms` +
+          `${pendingSuffix} (${failures.join(", ")}). A composition animated by CSS or rAF ` +
+          `rather than a GSAP timeline must mark its host with data-no-timeline.`
+        : scriptFailure
+          ? loadFailed
+            ? `A sub-composition timeline script failed to load (${failures.join(", ")})`
+            : `A composition script threw during execution — timeline registration never arrived (${failures.join(", ")})`
+          : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
           `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
           `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
           `Otherwise, a composition that sets up asynchronously must register window.__timelines[id] ` +
@@ -2210,12 +2219,24 @@ export function classifyConsoleScriptFailure(type: string, text: string): string
   return null;
 }
 
-export function classifyPageError(message: string): string | null {
-  // Benign play/pause race during frame capture.
-  if (/^AbortError:/.test(message) && message.includes("play()") && message.includes("pause()")) {
-    return null;
-  }
-  return `runtime-error:${message.split("\n")[0]}`;
+/** Benign play/pause race during frame capture. */
+function isPlayPauseAbort(message: string): boolean {
+  return /^AbortError:/.test(message) && message.includes("play()") && message.includes("pause()");
+}
+
+/** `runtime-error:<first line>` when a script served with the composition threw; null for other origins. */
+export function classifyPageError(
+  details: Protocol.Runtime.ExceptionDetails,
+  serverUrl: string,
+): string | null {
+  const exception = details.exception;
+  const [firstLine = ""] = String(exception?.description ?? exception?.value ?? details.text).split(
+    "\n",
+  );
+  if (isPlayPauseAbort(firstLine)) return null;
+  const origin = new URL(serverUrl).origin;
+  const urls = [details.url, ...(details.stackTrace?.callFrames ?? []).map((frame) => frame.url)];
+  return urls.some((url) => url?.startsWith(`${origin}/`)) ? `runtime-error:${firstLine}` : null;
 }
 
 // fallow-ignore-next-line unit-size
@@ -2243,11 +2264,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("pageerror", (err) => {
     const message = err instanceof Error ? err.message : String(err);
     const text = `[Browser:PAGEERROR] ${message}`;
-    const pageError = classifyPageError(message);
-    if (pageError) {
-      console.error(text);
-      if (!session.pageErrors.includes(pageError)) session.pageErrors.push(pageError);
-    }
+
+    // Benign play/pause race during frame capture — suppress terminal noise, keep in buffer.
+    if (!isPlayPauseAbort(message)) console.error(text);
+
     appendBrowserDiagnostic(session, text);
   });
 
@@ -2289,6 +2309,14 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       }),
     );
   });
+
+  // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
+  const runtimeClient = await getCdpSession(page);
+  runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
+    const pageError = classifyPageError(exceptionDetails, serverUrl);
+    if (pageError && !session.pageErrors.includes(pageError)) session.pageErrors.push(pageError);
+  });
+  await runtimeClient.send("Runtime.enable");
 
   // Navigate to the file server
   const url = `${serverUrl}/index.html`;

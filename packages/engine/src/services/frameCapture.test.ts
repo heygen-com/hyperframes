@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import type { Protocol } from "puppeteer-core";
 import type { CaptureSession } from "./frameCapture.js";
 import {
   buildZeroDurationDiagnostic,
@@ -41,46 +42,73 @@ describe("classifyConsoleScriptFailure", () => {
 });
 
 describe("classifyPageError", () => {
-  it("records an uncaught composition script error by its first line", () => {
-    expect(classifyPageError("ReferenceError: gsap is not defined\n    at main.js:1:12")).toBe(
-      "runtime-error:ReferenceError: gsap is not defined",
+  const server = "http://localhost:4100";
+  // Shapes as Chromium 152 reports them through Runtime.exceptionThrown.
+  const thrown = (
+    description: string | undefined,
+    url: string,
+    frames: string[],
+    value?: string,
+  ): Protocol.Runtime.ExceptionDetails => ({
+    exceptionId: 1,
+    text: "Uncaught",
+    lineNumber: 0,
+    columnNumber: 0,
+    url,
+    exception: { type: description ? "object" : "string", description, value },
+    stackTrace: { callFrames: frames.map((frameUrl) => ({ url: frameUrl }) as Protocol.Runtime.CallFrame) },
+  });
+
+  it("records an error thrown by a script served with the composition, by its first line", () => {
+    const error = "TypeError: Cannot read properties of null (reading 'timeline')\n    at build (comp.js:1:37)";
+    expect(classifyPageError(thrown(error, `${server}/comp.js`, [`${server}/comp.js`]), server)).toBe(
+      "runtime-error:TypeError: Cannot read properties of null (reading 'timeline')",
     );
   });
 
-  // The listeners go on first; the fake session then stops initialization.
-  it("is what the page's error listener records, apart from the fail-fast script failures", async () => {
-    const listeners = new Map<string, (arg: unknown) => void>();
-    const page = {
-      on: (event: string, listener: (arg: unknown) => void) => listeners.set(event, listener),
+  it("records a syntax error and a thrown string, which carry no error stack", () => {
+    const syntax = thrown("SyntaxError: Unexpected token ';'", `${server}/comp.js`, []);
+    const plain = thrown(undefined, `${server}/index.html`, [`${server}/index.html`], "plain string");
+    expect(classifyPageError(syntax, server)).toBe("runtime-error:SyntaxError: Unexpected token ';'");
+    expect(classifyPageError(plain, server)).toBe("runtime-error:plain string");
+  });
+
+  it("records a foreign library throwing when the composition called it", () => {
+    const lib = "https://cdn.example/lib.js";
+    expect(classifyPageError(thrown("TypeError: x", lib, [lib, `${server}/index.html`]), server)).toBe(
+      "runtime-error:TypeError: x",
+    );
+  });
+
+  it("ignores errors from other origins and the benign play/pause race", () => {
+    const widget = "http://127.0.0.1:4100/widget.js";
+    const abort = "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22";
+    expect(classifyPageError(thrown("Error: widget failed", widget, [widget]), server)).toBeNull();
+    expect(classifyPageError(thrown(abort, `${server}/index.html`, [`${server}/index.html`]), server)).toBeNull();
+  });
+
+  // initializeSession registers its listeners before the incomplete fake session makes it throw.
+  it("records the page's uncaught errors from the runtime exception events", async () => {
+    const runtimeListeners = new Map<string, (event: unknown) => void>();
+    const client = {
+      on: (event: string, listener: (event: unknown) => void) => runtimeListeners.set(event, listener),
+      send: async () => ({}),
     };
+    const page = { on: () => {}, createCDPSession: async () => client };
     const session = {
       page,
-      serverUrl: "http://127.0.0.1:1",
+      serverUrl: server,
       scriptLoadFailures: [],
       pageErrors: [],
       warnings: [],
       browserConsoleBuffer: [],
     };
-    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      await initializeSession(session as unknown as CaptureSession).catch(() => {});
-      listeners.get("pageerror")?.(new Error("ReferenceError: gsap is not defined"));
-      listeners.get("pageerror")?.(
-        new Error("AbortError: The play() request was interrupted by pause()"),
-      );
-      expect(session.pageErrors).toEqual(["runtime-error:ReferenceError: gsap is not defined"]);
-      expect(session.scriptLoadFailures).toEqual([]);
-    } finally {
-      quiet.mockRestore();
-    }
-  });
-
-  it("ignores the benign play/pause race", () => {
-    expect(
-      classifyPageError(
-        "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22",
-      ),
-    ).toBeNull();
+    await initializeSession(session as unknown as CaptureSession).catch(() => {});
+    const error = thrown("ReferenceError: gsap is not defined", `${server}/index.html`, [`${server}/index.html`]);
+    runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
+    runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
+    expect(session.pageErrors).toEqual(["runtime-error:ReferenceError: gsap is not defined"]);
+    expect(session.scriptLoadFailures).toEqual([]);
   });
 });
 

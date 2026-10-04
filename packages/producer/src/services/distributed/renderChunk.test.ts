@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CaptureOptions } from "@hyperframes/engine";
 import { HOST_CHROME_FAILURE_PATTERNS } from "./__test_utils__/hostChromeFailures.js";
+import { RenderQualityError } from "../renderOrchestrator.js";
 import { plan } from "./plan.js";
 import {
   CHUNK_INDEX_OUT_OF_RANGE,
@@ -481,6 +482,57 @@ describe("renderChunk() — requiresWebGpu wiring", () => {
       expect(capturedOptions?.requiresWebGpu).toBe(true);
     },
     TIMEOUT_MS,
+  );
+});
+
+describe("renderChunk() — script failure", () => {
+  it(
+    "fails the chunk, as a local render fails, when the timeline script never loads",
+    async () => {
+      if (!hasChrome) {
+        console.warn(
+          "[renderChunk.test] skipping script-failure test — chrome-headless-shell not available on this host",
+        );
+        return;
+      }
+
+      const failingDir = join(runRoot, "project-missing-script");
+      mkdirSync(failingDir, { recursive: true });
+      writeFileSync(
+        join(failingDir, "index.html"),
+        FIXTURE_HTML.replace(" data-no-timeline", "").replace(
+          "</body>",
+          '<script src="missing-timeline.js"></script>\n</body>',
+        ),
+        "utf-8",
+      );
+      const failingPlanDir = join(runRoot, "plan-missing-script");
+      mkdirSync(failingPlanDir, { recursive: true });
+      await plan(
+        failingDir,
+        { fps: 30, width: 160, height: 120, format: "png-sequence" },
+        failingPlanDir,
+      );
+
+      const error = await renderChunk(
+        failingPlanDir,
+        0,
+        join(runRoot, "chunk-missing-script"),
+      ).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      if (error instanceof Error && HOST_CHROME_FAILURE_PATTERNS.test(error.message)) {
+        console.warn(
+          "[renderChunk.test] skipping script-failure test — host Chrome stack can't render. Diagnostic:",
+          error.message.slice(0, 240),
+        );
+        return;
+      }
+      expect(error).toBeInstanceOf(RenderQualityError);
+      expect((error as Error).message).toContain("sub_timeline_script_failure");
+    },
+    60_000,
   );
 });
 
