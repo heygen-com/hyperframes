@@ -257,6 +257,7 @@ describe("createFileAtomically", () => {
   it("removes the partial file a direct write leaves on a full disk, keeping the error", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
+    const closed: number[] = [];
     const operations = {
       ...failingLink("EXDEV"),
       writeFileSync: (target: fs.PathOrFileDescriptor, ...args: any[]) => {
@@ -265,6 +266,7 @@ describe("createFileAtomically", () => {
         throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
       },
       closeSync: (fd: number) => {
+        closed.push(fd);
         fs.closeSync(fd);
         throw Object.assign(new Error("EIO"), { code: "EIO" });
       },
@@ -272,6 +274,8 @@ describe("createFileAtomically", () => {
 
     expect(() => createFileAtomically(file, "html", operations)).toThrow("ENOSPC");
     expect(fs.readdirSync(dir)).toEqual([]);
+    // Unlinking an open file succeeds, so only the count shows the descriptor was not leaked.
+    expect(closed).toHaveLength(1);
   });
 
   it("removes the file when a network share reports its quota only at close", () => {
