@@ -1,4 +1,4 @@
-import { AFTER_FONTS_CLAIM, typeAfterFonts } from "../compiler/scriptRuns";
+import { AFTER_FONTS_CLAIM, DEFERRED_FILE, typeAfterFonts } from "../compiler/scriptRuns";
 import { postRuntimeMessage } from "./bridge";
 
 /** Past the 3 s a font-display:block face holds text back, far under the engine's 45 s player-ready wait. */
@@ -110,17 +110,14 @@ export async function runScriptsAfterFonts(
   afterRun?: () => void,
 ): Promise<void> {
   await waitForFonts();
-  const isLate = (el: Element) =>
-    typeAfterFonts(el) === "module" || (el.hasAttribute("src") && el.hasAttribute("defer"));
-  const late = scripts.filter(isLate);
+  const isLate = (el: Element) => typeAfterFonts(el) === "module" || el.matches(DEFERRED_FILE);
   const held: HeldListener[] = [];
   const release = [document, window].map((target) => holdPassedLoadEvents(target, held));
-  for (const el of scripts.filter((el) => !isLate(el))) {
+  for (const el of [...scripts.filter((el) => !isLate(el)), ...scripts.filter(isLate)]) {
     const script = runInPlace(el);
     if (script?.hasAttribute("src") && !script.async && !script.noModule) await loaded(script);
+    else if (typeAfterFonts(el) === "module") await afterQueuedModules();
   }
-  for (const el of late) runInPlace(el);
-  if (late.length > 0) await afterQueuedModules();
   for (const undo of release) undo();
   afterRun?.();
   for (const { target, type, listener } of held) {

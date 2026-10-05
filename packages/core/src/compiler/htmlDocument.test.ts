@@ -11,6 +11,54 @@ import {
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument.js";
 
+type Cost = (self: string, args: unknown[], result: unknown) => number;
+const untilFound: Cost = (self, [, from], result) =>
+  Math.max(0, (result === -1 ? self.length : Number(result)) - Number(from ?? 0));
+const STRING_COSTS: Record<string, Cost> = {
+  indexOf: untilFound,
+  lastIndexOf: (self) => self.length,
+  includes: (self) => self.length,
+  startsWith: (_, [search]) => String(search).length,
+  charAt: () => 1,
+  replace: (self) => self.length,
+  toLowerCase: (self) => self.length,
+};
+
+/**
+ * Characters the scanner's string calls and regex searches examine during `run`: its work, counted
+ * instead of timed. Blind to bracket reads, `for..of` and spreads over a string.
+ */
+function scannedChars(run: () => void): number {
+  const proto = String.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const originals = Object.keys(STRING_COSTS).map((name) => [name, proto[name]!] as const);
+  const exec = RegExp.prototype.exec;
+  let chars = 0;
+  for (const [name, original] of originals) {
+    proto[name] = function (this: string, ...args: unknown[]) {
+      const result = original.apply(this, args);
+      chars += STRING_COSTS[name]!(this, args, result);
+      return result;
+    };
+  }
+  RegExp.prototype.exec = function (this: RegExp, input: string) {
+    const from = this.global || this.sticky ? this.lastIndex : 0;
+    const found = exec.call(this, input);
+    chars += Math.max(0, (found ? found.index + found[0].length : String(input).length) - from);
+    return found;
+  };
+  try {
+    run();
+  } finally {
+    for (const [name, original] of originals) proto[name] = original;
+    RegExp.prototype.exec = exec;
+  }
+  return chars;
+}
+
+/** How much more work an input twice as long takes: about 2 when linear, about 4 when quadratic. */
+const workGrowth = (scan: (n: number) => void) =>
+  scannedChars(() => scan(20_000)) / scannedChars(() => scan(10_000));
+
 describe("htmlDocument helpers", () => {
   it("keeps a document's <html> attributes when a comment comes before the doctype", () => {
     const doc = parseHTMLContent(
@@ -69,6 +117,24 @@ describe("htmlDocument helpers", () => {
     expect(stripped).toContain("window.__renderReady");
   });
 
+  it.each([
+    ["reads the runtime global", "if (window.__hyperframeRuntime) window.seen = 1;"],
+    [
+      "queries the bootstrap attribute",
+      'document.querySelector("[data-hyperframes-preview-runtime]");',
+    ],
+    ["names a runtime file", 'console.log("hyperframe.runtime.iife.js");'],
+    ["sets up window.__player", "window.__player = window.__player || {};"],
+  ])("keeps an authored script that %s", (_, source) => {
+    const html = `<script>${source}</script>`;
+    expect(stripEmbeddedRuntimeScripts(html)).toBe(html);
+  });
+
+  it("strips a runtime file linked with a query string or uppercase name", () => {
+    const html = '<script src="/static/HYPERFRAME.RUNTIME.IIFE.JS?v=2"></script><p>kept</p>';
+    expect(stripEmbeddedRuntimeScripts(html)).toBe("<p>kept</p>");
+  });
+
   it("does not treat non-script tags as scripts when stripping runtimes", () => {
     const html = "<scripture>window.__playerReady = true;</scripture>";
 
@@ -99,7 +165,7 @@ describe("htmlDocument helpers", () => {
     );
 
     expect(injected).toContain("<\\/script ><script>window.pwned = true;<\\/script>");
-    expect(injected).toContain("<\\!-- kept as script text");
+    expect(injected).toContain("\\x3C!-- kept as script text");
     expect(injected).not.toContain("</script ><script>window.pwned = true;");
   });
 
@@ -148,7 +214,7 @@ describe("htmlDocument helpers", () => {
     expect(stripped).toBe("<p>İİ</p><p>kept</p>");
 
     const escaped = injectScriptsIntoHtml(page, ['x="İİ</SCRIPT>"'], []);
-    expect(escaped).toContain('<script>x="İİ<\\/script>"</script>');
+    expect(escaped).toContain('<script>x="İİ<\\/SCRIPT>"</script>');
   });
 
   it("skips a script tag written inside an attribute value", () => {
@@ -214,12 +280,12 @@ describe("htmlDocument helpers", () => {
   });
 
   it("stays linear over many unclosed raw-text tags and an unfinished quoted attribute", () => {
-    const many = `<body>${"<script/>".repeat(40_000)}</body>`;
-    const unfinished = `<body>${'<p data-if="a>b" '.repeat(20_000)}`;
-    const started = performance.now();
-    expect(insertBeforeCloseTag(many, "body", "X")).toBe(many.replace("</body>", "X</body>"));
-    expect(insertBeforeCloseTag(unfinished, "body", "X")).toBeNull();
-    expect(performance.now() - started).toBeLessThan(500);
+    const many = (n: number) => `<body>${"<script/>".repeat(n)}</body>`;
+    const unfinished = (n: number) => `<body>${'<p data-if="a>b" '.repeat(n)}`;
+    expect(insertBeforeCloseTag(many(3), "body", "X")).toBe(many(3).replace("</body>", "X</body>"));
+    expect(insertBeforeCloseTag(unfinished(3), "body", "X")).toBeNull();
+    expect(workGrowth((n) => insertBeforeCloseTag(many(n), "body", "X"))).toBeLessThan(2.5);
+    expect(workGrowth((n) => insertBeforeCloseTag(unfinished(n), "body", "X"))).toBeLessThan(2.5);
   });
 
   it("finds no head end past an unclosed script", () => {
@@ -252,25 +318,22 @@ describe("findStartTags", () => {
 });
 
 describe("injectTagsAtHeadStart on long adversarial input", () => {
-  const M = 2_000_000;
-  it.each([
-    ["an unclosed double quote", `<html data-x="${"a".repeat(M)}`],
-    ["an unclosed single quote", `<html data-x='${"a".repeat(M)}`],
-    ["many quoted values", `<html ${'"a" '.repeat(M / 4)}`],
-    ["many <", "<".repeat(M)],
-    ["many <html>", "<html>".repeat(M / 6)],
-    ["many comments", `${"<!--x-->".repeat(M / 8)}<head>`],
-    ["an unclosed comment", `<!--${"a".repeat(M)}`],
-    ["an unclosed comment of <", `<!--${"<".repeat(M)}`],
-    ["an unclosed comment of quotes", `<!--${'"'.repeat(M)}`],
-    ["alternating quotes", `<html ${`"'`.repeat(M / 2)}`],
-    ["leading spaces", `${" ".repeat(M)}x`],
-    ["a tag that never closes", `<html ${"a ".repeat(M / 2)}`],
-    ["an unclosed tag name", `<${"a".repeat(M)}`],
-  ])("stays fast on %s", (_, html) => {
-    const started = performance.now();
-    injectTagsAtHeadStart(html, "<meta>");
-    expect(performance.now() - started).toBeLessThan(1500);
+  it.each<[string, (n: number) => string]>([
+    ["an unclosed double quote", (n) => `<html data-x="${"a".repeat(n)}`],
+    ["an unclosed single quote", (n) => `<html data-x='${"a".repeat(n)}`],
+    ["many quoted values", (n) => `<html ${'"a" '.repeat(n / 4)}`],
+    ["many <", (n) => "<".repeat(n)],
+    ["many <html>", (n) => "<html>".repeat(n / 6)],
+    ["many comments", (n) => `${"<!--x-->".repeat(n / 8)}<head>`],
+    ["an unclosed comment", (n) => `<!--${"a".repeat(n)}`],
+    ["an unclosed comment of <", (n) => `<!--${"<".repeat(n)}`],
+    ["an unclosed comment of quotes", (n) => `<!--${'"'.repeat(n)}`],
+    ["alternating quotes", (n) => `<html ${`"'`.repeat(n / 2)}`],
+    ["leading spaces", (n) => `${" ".repeat(n)}x`],
+    ["a tag that never closes", (n) => `<html ${"a ".repeat(n / 2)}`],
+    ["an unclosed tag name", (n) => `<${"a".repeat(n)}`],
+  ])("does linear work on %s", (_, make) => {
+    expect(workGrowth((n) => injectTagsAtHeadStart(make(n), "<meta>"))).toBeLessThan(2.5);
   });
 });
 

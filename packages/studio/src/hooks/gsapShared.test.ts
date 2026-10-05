@@ -64,6 +64,7 @@ describe("parsePercentageKeyframes", () => {
       { x: 1480, y: 160 },
     ] as unknown as Record<string, unknown>);
     expect(out?.keyframes.map((k) => k.percentage)).toEqual([0, 33.3, 66.7, 100]);
+    expect(out?.keyframes.map((k) => k.step)).toEqual([0, 1, 2, 3]);
     expect(out?.keyframes[1]!.properties).toEqual({ x: 520, y: 120 });
   });
 

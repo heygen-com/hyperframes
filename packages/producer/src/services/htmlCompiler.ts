@@ -53,6 +53,7 @@ import {
   inlineScriptRuns,
   styleElementsFor,
   insertBeforeCloseTag,
+  isRuntimeFileUrl,
 } from "@hyperframes/core/compiler";
 import {
   checkSubCompositionUsability,
@@ -1208,7 +1209,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 
   for (const el of scripts) {
     const src = (el.getAttribute("src") || "").trim();
-    if (src && isHttpUrl(src)) {
+    if (src && isHttpUrl(src) && !isRuntimeFileUrl(src)) {
       externalScripts.push({ el: el as unknown as Element, src });
     }
   }

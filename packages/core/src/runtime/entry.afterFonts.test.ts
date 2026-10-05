@@ -44,9 +44,9 @@ const claims = (claimed: boolean) =>
     : delete (window as unknown as Record<string, unknown>)[AFTER_FONTS_CLAIM];
 
 // A page compiled elsewhere and imported, so jsdom runs none of its scripts; the test runs the fallback.
-function compilePage(): void {
+function compilePage(scripts = `<script>${logs("a")}</script><script>${logs("b")}</script>`): void {
   const compiled = new DOMParser().parseFromString(
-    `<output id="log"></output><script>${logs("a")}</script><script>${logs("b")}</script>`,
+    `<output id="log"></output>${scripts}`,
     "text/html",
   );
   deferScriptsUntilFonts(compiled);
@@ -104,29 +104,32 @@ describe("runtime entry: composition scripts after web fonts", () => {
     expect(log()).toBe(`${before}wrapped `);
   });
 
-  it("runs an inline script after an external one only once the external one has loaded", async () => {
-    serveFonts(Promise.resolve(), []);
-    // jsdom fetches no src: the test loads the library, once the runtime has put its script in place.
-    const library = new MutationObserver((records) => {
-      for (const node of records.flatMap((record) => [...record.addedNodes])) {
-        if (!(node instanceof HTMLScriptElement) || !node.src || node.type) continue;
-        document.body.dataset.lib = "loaded";
-        node.dispatchEvent(new Event("load"));
-      }
-    });
-    library.observe(document.body, { childList: true });
-    document.body.innerHTML =
-      `<output id="log"></output>` +
-      `<script type="${AFTER_FONTS_SCRIPT_TYPE}" src="https://cdn.example/lib.js"></script>` +
-      `<script type="${AFTER_FONTS_SCRIPT_TYPE}">` +
-      `document.getElementById("log").textContent += "lib:" + document.body.dataset.lib;</script>`;
+  it.each(["", " defer"])(
+    "runs an inline script after an external one only once the external one has loaded (%s)",
+    async (when) => {
+      serveFonts(Promise.resolve(), []);
+      // jsdom fetches no src: the test loads the library, once the runtime has put its script in place.
+      const library = new MutationObserver((records) => {
+        for (const node of records.flatMap((record) => [...record.addedNodes])) {
+          if (!(node instanceof HTMLScriptElement) || !node.src || node.type) continue;
+          document.body.dataset.lib = "loaded";
+          node.dispatchEvent(new Event("load"));
+        }
+      });
+      library.observe(document.body, { childList: true });
+      document.body.innerHTML =
+        `<output id="log"></output>` +
+        `<script type="${AFTER_FONTS_SCRIPT_TYPE}"${when} src="https://cdn.example/lib.js"></script>` +
+        `<script type="${AFTER_FONTS_SCRIPT_TYPE}"${when}${when && ' data-hf-inlined-src="main.js"'}>` +
+        `document.getElementById("log").textContent += "lib:" + document.body.dataset.lib;</script>`;
 
-    await parseThenLoad();
-    await vi.waitFor(() => expect(window.__player).toBeDefined());
-    library.disconnect();
-    delete document.body.dataset.lib;
-    expect(log()).toBe("lib:loaded");
-  });
+      await parseThenLoad();
+      await vi.waitFor(() => expect(window.__player).toBeDefined());
+      library.disconnect();
+      delete document.body.dataset.lib;
+      expect(log()).toBe("lib:loaded");
+    },
+  );
 
   it("runs the scripts at the font timeout and reports the families still loading", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -152,6 +155,39 @@ describe("runtime entry: composition scripts after web fonts", () => {
       }),
       "*",
     );
+  });
+
+  it.each([
+    [
+      "an inlined deferred file after the classic scripts",
+      ' data-hf-inlined-src="main.js"',
+      "classic deferred ",
+    ],
+    ["an authored inline defer script in place, as the browser does", "", "deferred classic "],
+  ])("runs %s", async (_, inlined, expected) => {
+    serveFonts(Promise.resolve(), []);
+    document.body.innerHTML =
+      `<output id="log"></output>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}" defer${inlined}>${logs("deferred")}</script>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}">${logs("classic")}</script>`;
+
+    await parseThenLoad();
+    await vi.waitFor(() => expect(window.__player).toBeDefined());
+    expect(log()).toBe(expected);
+  });
+
+  it.each([
+    ["an inlined deferred file last", ' data-hf-inlined-src="main.js"', "classic deferred "],
+    ["an authored inline defer script in place", "", "deferred classic "],
+  ])("runs %s through the fallback too", (_, inlined, expected) => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    claims(false);
+    compilePage(
+      `<script defer${inlined}>${logs("deferred")}</script><script>${logs("classic")}</script>`,
+    );
+
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    expect(log()).toBe(expected);
   });
 
   it("runs deferred scripts once and in order through the page's fallback when the runtime predates the gate", () => {

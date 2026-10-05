@@ -29,6 +29,18 @@ describe("buildSubCompositionHtml", () => {
     expect(html).toContain(`<script src="${gsapCdnDist()}gsap.min.js"></script>`);
   });
 
+  it("adds the preview runtime even when the project head's script mentions a runtime file", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><script>console.log("hyperframe.runtime.iife.js");</script></head><body></body></html>`,
+      "compositions/scene.html": `<div data-composition-id="scene" data-width="320" data-height="180"></div>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/api/runtime.js");
+    expect(html).toContain(
+      '<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>',
+    );
+    expect(html).toContain('console.log("hyperframe.runtime.iife.js")');
+  });
+
   it("adds the preview base even when the project head's script mentions a <base>", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head><script>if (0) document.write('<base href="../">');</script></head><body></body></html>`,

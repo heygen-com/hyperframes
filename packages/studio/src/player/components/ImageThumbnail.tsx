@@ -3,6 +3,7 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decodeImageThumbnail } from "../lib/thumbnailImageDecoder";
+import { ThumbnailTiles } from "./ThumbnailTiles";
 import { computeThumbnailStrip } from "./thumbnailUtils";
 
 export interface ImageThumbnailProps {
@@ -25,7 +26,7 @@ export const ImageThumbnail = memo(function ImageThumbnail({
   priority = "visible",
   rich = false,
 }: ImageThumbnailProps) {
-  const [container, setContainerRef] = useThumbnailStripSize();
+  const [container, setContainerRef, watchGap] = useThumbnailStripSize();
   const request = useMemo(
     () => ({
       key: createThumbnailKey({ kind: "image", source: imageSrc, rich: Number(rich) }),
@@ -46,8 +47,13 @@ export const ImageThumbnail = memo(function ImageThumbnail({
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       {value?.kind === "image" && (
-        <div className="absolute inset-0 flex">
-          {Array.from({ length: frameCount }, (_, index) => (
+        <ThumbnailTiles
+          strip={container}
+          frameW={frameW}
+          frameCount={frameCount}
+          watchGap={watchGap}
+        >
+          {(index) => (
             <div
               key={index}
               className="relative h-full shrink-0 overflow-hidden bg-neutral-900"
@@ -61,8 +67,8 @@ export const ImageThumbnail = memo(function ImageThumbnail({
                 className="absolute inset-0 h-full w-full object-cover"
               />
             </div>
-          ))}
-        </div>
+          )}
+        </ThumbnailTiles>
       )}
       {snapshot.status === "loading" && (
         <div

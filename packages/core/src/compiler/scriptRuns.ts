@@ -4,14 +4,40 @@ export interface InlineScriptRun {
   anchor: Element | null;
 }
 
+// The HTML spec's JavaScript MIME type essence matches: a script with any of these types runs as classic.
+const JAVASCRIPT_TYPES = new Set([
+  "",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
+
+export function isJavaScriptType(el: Element): boolean {
+  return JAVASCRIPT_TYPES.has((el.getAttribute("type") || "").trim().toLowerCase());
+}
+
 function isClassicInline(el: Element): boolean {
-  const type = (el.getAttribute("type") || "").trim().toLowerCase();
-  return !type || type === "text/javascript" || type === "application/javascript";
+  return !el.hasAttribute("nomodule") && isJavaScriptType(el);
 }
 
 function isSeparateExecution(el: Element, isPinned: (el: Element) => boolean): boolean {
   return (
     el.hasAttribute("src") ||
+    el.hasAttribute("defer") ||
+    el.hasAttribute("async") ||
     isPinned(el) ||
     (el.getAttribute("type") || "").trim().toLowerCase() === "module"
   );
@@ -43,6 +69,9 @@ const AFTER_FONTS_MODULE_TYPE = `${AFTER_FONTS_SCRIPT_TYPE}+module`;
 export const AFTER_FONTS_SCRIPTS = `script[type="${AFTER_FONTS_SCRIPT_TYPE}"], script[type="${AFTER_FONTS_MODULE_TYPE}"]`;
 
 export const AFTER_FONTS_CLAIM = "__hfAfterFontsClaimed";
+export const INLINED_FILE_ATTR = "data-hf-inlined-src";
+
+export const DEFERRED_FILE = `[defer][src], [defer][${INLINED_FILE_ATTR}]`;
 const AFTER_FONTS_FALLBACK_ATTR = "data-hf-after-fonts-fallback";
 
 // For a runtime older than the gate: at DOMContentLoaded, before that runtime boots, run them in parser order.
@@ -52,7 +81,7 @@ const afterFontsFallback = () => `document.addEventListener("DOMContentLoaded", 
   var all = [].slice.call(document.querySelectorAll('${AFTER_FONTS_SCRIPTS}'));
   if (!all.length) return;
   console.warn("[hyperframes] the runtime has no web-font gate; composition scripts run without waiting for fonts");
-  var late = function (el) { return el.type !== T || (el.hasAttribute("src") && el.hasAttribute("defer")); };
+  var late = function (el) { return el.type !== T || el.matches('${DEFERRED_FILE}'); };
   var queue = all.filter(function (el) { return !late(el); }).concat(all.filter(late));
   (function next() {
     var el = queue.shift();

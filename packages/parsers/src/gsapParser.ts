@@ -56,6 +56,7 @@ import {
   positionHoldForAnimation,
 } from "./gsapConstants";
 import type { PropertyGroupName } from "./gsapConstants";
+import { BUILTIN_VAR_KEYS, DROPPED_VAR_KEYS, EXTRAS_KEYS, isTweenConfigKey } from "./gsapConstants";
 import { clipTweenMatcher, hasExplicitTime } from "./clipTweens";
 import {
   findObjectArrayKeyframeIndex,
@@ -706,23 +707,6 @@ function findAllTweenCalls(
   });
   return results;
 }
-
-/** Keys that are stored on dedicated GsapAnimation fields (not in properties/extras). */
-const BUILTIN_VAR_KEYS = new Set(["duration", "ease", "delay"]);
-
-/** Keys that are never preserved (callbacks / advanced patterns). */
-const DROPPED_VAR_KEYS = new Set(["onComplete", "onStart", "onUpdate", "onRepeat"]);
-
-/** Keys that belong in `extras` — non-editable GSAP config that must survive round-trips. */
-const EXTRAS_KEYS = new Set([
-  "stagger",
-  "yoyo",
-  "repeat",
-  "repeatDelay",
-  "snap",
-  "overwrite",
-  "immediateRender",
-]);
 
 /**
  * Extract raw source text for a property in an ObjectExpression AST node.
@@ -1387,7 +1371,7 @@ function isObjectProperty(prop: AstNode): boolean {
 
 /** A key the inspector treats as an editable transform/style property. */
 function isEditablePropertyKey(key: string): boolean {
-  return !BUILTIN_VAR_KEYS.has(key) && !DROPPED_VAR_KEYS.has(key) && !EXTRAS_KEYS.has(key);
+  return !isTweenConfigKey(key);
 }
 
 function makeObjectProperty(key: string, value: number | string | boolean): AstNode {

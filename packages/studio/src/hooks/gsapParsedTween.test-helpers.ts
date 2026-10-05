@@ -22,7 +22,7 @@ export function liveTween(
     vars: tween.vars,
     _from: from,
     ...(head && { _pt: { d: { _pt: head } } }),
-    ...(parts && { timeline: { getChildren: () => parts } }),
+    ...(parts && { timeline: { getChildren: () => parts, duration: () => tween.duration } }),
   };
 }
 
@@ -46,6 +46,33 @@ export function previewWith(
 
 export const tween = (fields: Partial<GsapAnimation>): GsapAnimation =>
   ({ targetSelector: "#box", propertyGroup: "position", ...fields }) as GsapAnimation;
+
+/** `#box`'s position as a keyframe step list, parsed and run by GSAP (step `[duration, props]`). */
+export function boxSteps(steps: Array<[number, Record<string, number | string>]>) {
+  const duration = steps.reduce((sum, [d]) => sum + d, 0);
+  let end = 0;
+  const keyframes = steps.map(([d, properties]) => {
+    end += d;
+    return { percentage: Math.round((end / duration) * 1000) / 10, properties };
+  });
+  const keys = tween({
+    id: "#box-to-0-position",
+    method: "to",
+    properties: {},
+    resolvedStart: 0,
+    duration,
+    keyframes: { format: "object-array", keyframes },
+  });
+  let start = 0;
+  const parts = steps.map(([d]) => {
+    const at = start;
+    start += d;
+    return { startTime: () => at, duration: () => d };
+  });
+  const live = (el: Element) =>
+    liveTween(el, { start: 0, duration, vars: { keyframes: [] } }, { parts });
+  return { keys, live };
+}
 
 /** A `to` tween on `#el` from 0, grouped as the parser would; duration 0 is an immediate-render hold. */
 export function elTween(
