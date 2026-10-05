@@ -1999,7 +1999,8 @@ function addGroupAnimToScript(
       pos,
       anim.duration ?? 0.5,
       groupKeyframes,
-      anim.keyframes.easeEach ?? anim.ease,
+      anim.keyframes.ease ?? anim.ease,
+      anim.keyframes.easeEach,
     );
   }
   const groupProperties = filterGroupProperties(anim.properties, propSet);

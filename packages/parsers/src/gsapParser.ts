@@ -3362,7 +3362,8 @@ export function splitIntoPropertyGroups(
         typeof anim.position === "number" ? anim.position : 0,
         anim.duration ?? 0.5,
         groupKeyframes,
-        anim.keyframes.easeEach ?? anim.ease,
+        anim.keyframes.ease ?? anim.ease,
+        anim.keyframes.easeEach,
       );
       result = addResult.script;
     } else {

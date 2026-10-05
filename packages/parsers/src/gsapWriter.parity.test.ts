@@ -1473,6 +1473,18 @@ tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0 }, "50%": { x: 5 }, "100%":
       expect(kf.easeEach).toBe("power2.out");
     });
 
+    it(`${writer}: splitting into property groups keeps the keyframes' eases`, () => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0, opacity: 0 }, "100%": { x: 10, opacity: 1 }, ease: "sine.inOut", easeEach: "power2.out" } }, 0);`;
+      const splitGroups = writer === "acorn" ? splitGroupsAcorn : splitGroupsRecast;
+      const groups = parseGsapScriptAcorn(splitGroups(script, acornId(script)).script).animations;
+      expect(groups).toHaveLength(2);
+      for (const group of groups) {
+        expect(group.keyframes?.easeEach).toBe("power2.out");
+        expect(group.keyframes?.ease ?? group.ease).toBe("sine.inOut");
+      }
+    });
+
     it(`${writer}: an ease authored on the keyframes survives a diamond drag`, () => {
       const script = `const tl = gsap.timeline({ paused: true });
 tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0 }, "50%": { x: 5 }, "100%": { x: 10 }, ease: "sine.inOut" } }, 0);`;
