@@ -50,6 +50,8 @@ function timingEase(runEase: string | undefined): ((progress: number) => number)
   return timingEases.get(runEase) ?? null;
 }
 
+export const warpsTime = (runEase: string | undefined) => timingEase(runEase) !== null;
+
 /** The keyframe progress (0-100) GSAP shows at `timePercentage` of a tween with this run ease. */
 export function progressAtTime(runEase: string | undefined, timePercentage: number): number {
   const run = timingEase(runEase);

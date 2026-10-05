@@ -24,7 +24,7 @@ import {
   tweenTargetsElement,
 } from "./gsapShared";
 import { useStableHandlers } from "./useStableHandlers";
-import { progressAtTime, runEaseOf } from "../utils/gsapKeyframeEases";
+import { progressAtTime, runEaseOf, timeAtProgress, warpsTime } from "../utils/gsapKeyframeEases";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -281,13 +281,13 @@ export function useGestureCommit({
               const endTimePct =
                 tweenDur > 0 ? Math.min(100, ((recEnd - tweenStart) / tweenDur) * 100) : 100;
               const runEase = runEaseOf(existingPositionTween);
-              const rangeStartPct = progressAtTime(runEase, startTimePct);
-              const rangeEndPct = progressAtTime(runEase, endTimePct);
+              const roundPct = warpsTime(runEase) ? (pct: number) => pct : roundTo3;
 
               const preserved = existingKfs
-                .filter(
-                  (kf) => kf.percentage < rangeStartPct - 0.5 || kf.percentage > rangeEndPct + 0.5,
-                )
+                .filter((kf) => {
+                  const playsAt = timeAtProgress(runEase, kf.percentage);
+                  return playsAt < startTimePct - 0.5 || playsAt > endTimePct + 0.5;
+                })
                 .map((kf) => ({
                   percentage: kf.percentage,
                   properties: kf.properties,
@@ -296,7 +296,7 @@ export function useGestureCommit({
 
               const constantSpeed = { ease: "none" };
               const mapped = keyframes.map((kf, index) => ({
-                percentage: roundTo3(
+                percentage: roundPct(
                   progressAtTime(
                     runEase,
                     startTimePct + (kf.percentage / 100) * (endTimePct - startTimePct),
