@@ -177,6 +177,31 @@ describe("AnimationCard", () => {
     act(() => view.root.unmount());
   });
 
+  it("labels segments with rounded percentages, never float noise or exponents", () => {
+    const animation: GsapAnimation = {
+      ...ANIMATION,
+      keyframes: {
+        format: "percentage",
+        keyframes: [
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 1.2860082304526747e-7, properties: { x: 1 } },
+          { percentage: 0.13484773662551455, properties: { x: 2 } },
+          { percentage: 100, properties: { x: 200 } },
+        ],
+      },
+    };
+    const view = renderFocusCard(null, vi.fn(), true, animation);
+    const labels = [
+      ...view.host.querySelectorAll("[data-ease-segment-pct] button span:first-child"),
+    ];
+    expect(labels.map((label) => label.textContent)).toEqual([
+      "0% → <0.001%",
+      "<0.001% → 0.135%",
+      "0.135% → 100%",
+    ]);
+    act(() => view.root.unmount());
+  });
+
   it("labels an unset segment with the ease GSAP plays, not the tween's run ease", () => {
     const view = renderFocusCard(null, vi.fn(), true);
     const labels = [...view.host.querySelectorAll("[data-ease-segment-pct] button span.ml-auto")];
