@@ -4,10 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "./aliases.js";
-import {
-  locateSystemFontVariants,
-  SYSTEM_FONT_SIZE_LIMIT,
-} from "./systemFontLocator.js";
+import { locateSystemFontVariants, SYSTEM_FONT_SIZE_LIMIT } from "./systemFontLocator.js";
 import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";

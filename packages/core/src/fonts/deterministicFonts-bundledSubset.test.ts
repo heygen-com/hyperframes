@@ -4,11 +4,9 @@
  *
  * `scripts/generate-font-data.ts` embeds the `-latin-` subset file of every
  * canonical family, so an embedded face carries only Google's `latin` subset.
- * The emitted `@font-face` used to omit `unicode-range` — advertising full
- * coverage — and the supplementary Google fetch then skipped every subset of a
- * weight the bundle "covered". A bundled family therefore could not render the
- * scripts its own subset omits: `Noto Sans JP` weight 400 carries 218
- * codepoints with no kana and no kanji.
+ * The emitted `@font-face` therefore carries the latin `unicode-range`, and the
+ * supplementary Google fetch fills the subsets it omits: `Noto Sans JP` weight
+ * 400 carries 218 codepoints with no kana and no kanji.
  *
  * These tests inject `fetchImpl` (no network) and a temp
  * `HYPERFRAMES_FONT_CACHE_DIR` so they are hermetic.
