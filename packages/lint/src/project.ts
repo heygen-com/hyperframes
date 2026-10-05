@@ -89,6 +89,10 @@ function isLocalStylesheetHref(href: string): boolean {
   return !!href && !/^(https?:|data:|blob:|\/\/)/i.test(href);
 }
 
+function staysInsideProjectRoot(href: string): boolean {
+  return !href.startsWith("/") && !href.split("/").includes("..");
+}
+
 function collectLocalStylesheets(
   projectDir: string,
   document: ParentNode,
@@ -100,14 +104,16 @@ function collectLocalStylesheets(
     if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
     const href = link.getAttribute("href") ?? "";
     if (!isLocalStylesheetHref(href)) continue;
-    const rootRelative = compSrcPath ? join(dirname(compSrcPath), href) : href;
-    const stylesheet = resolveExistingLocalAsset(projectDir, rootRelative);
+    const besideFile = compSrcPath ? join(dirname(compSrcPath), href) : href;
+    const stylesheet =
+      resolveExistingLocalAsset(projectDir, besideFile) ??
+      (compSrcPath && staysInsideProjectRoot(href)
+        ? resolveExistingLocalAsset(projectDir, href)
+        : null);
     if (!stylesheet) continue;
-    styles.push({
-      href,
-      content: readFileSync(stylesheet.resolved, "utf-8"),
-      rootRelativePath: stylesheet.rootRelativePath,
-    });
+    const read = readProjectFile(stylesheet.resolved);
+    if (read.kind !== "file") continue;
+    styles.push({ href, content: read.text, rootRelativePath: stylesheet.rootRelativePath });
   }
   return styles;
 }
