@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, vi } from "vitest";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   applyUndoRestoreToPreview,
   diffSoftReloadableRestore,
@@ -99,6 +100,23 @@ function buildLiveIframe(bodyHtml: string) {
 
 describe("applyUndoRestoreToPreview", () => {
   const ROOT = "index.html";
+
+  it("repaints in place an undo back to the film before Studio first stamped it", () => {
+    const film = (color: string) =>
+      `<div id="root" data-composition-id="root"><div id="target" style="background-color: ${color}">T</div><p>caption</p></div>`;
+    // The preview stamped the film as it loaded; the first edit wrote those stamps with its red.
+    const edited = ensureHfIds(film("blue")).replace(
+      "background-color: blue",
+      "background-color: red",
+    );
+    const { iframe, doc } = buildLiveIframe(edited);
+    const reloadPreview = vi.fn();
+    const files = { [ROOT]: { previous: wrap(edited), restored: wrap(film("blue")) } };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("soft");
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect((doc.getElementById("target") as HTMLElement).style.backgroundColor).toBe("blue");
+  });
 
   it("soft-applies an attribute/style-only restore: syncs the live element, no full reload", () => {
     const { iframe, contentWindow, doc } = buildLiveIframe(

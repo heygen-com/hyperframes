@@ -122,8 +122,19 @@ try {
     throw new Error(`studio_look found no #target: ${JSON.stringify(look).slice(0, 400)}`);
 
   const colors = ["#ff0000", "#00ff00", "#0000ff", "#ff00ff", "#00ffff"];
+  // What the preview paints for #target: an undo must show the edit taken back, not only write the file.
+  const previewColor = async () => {
+    for (const frame of page.frames()) {
+      const color = await frame
+        .$eval("#target", (el) => getComputedStyle(el).backgroundColor)
+        .catch(() => null);
+      if (color) return color;
+    }
+    return null;
+  };
   for (let round = 0; round < ROUNDS; round++) {
     const before = readIndex();
+    const shownBefore = await previewColor();
     await call("studio_set_style", {
       handle: target.handle,
       styles: { backgroundColor: colors[round % colors.length] },
@@ -152,9 +163,12 @@ try {
     await until(() => step()?.done, 15_000);
     const undo = step();
     const reverted = await until(() => readIndex() === before, 5_000);
+    const repainted = await until(async () => (await previewColor()) === shownBefore, 3_000);
     const stallMs = undo?.timing ? Math.round(undo.timing.sendStart) : null;
-    rounds.push({ round, pinned, stallMs, reverted });
+    rounds.push({ round, pinned, stallMs, reverted, repainted });
     if (!reverted) failures.push(`round ${round}: the undo did not restore the file`);
+    if (!repainted)
+      failures.push(`round ${round}: the preview still showed the edit 3 s after the undo`);
     if (stallMs == null)
       failures.push(`round ${round}: the undo's POST history/step never answered`);
     else if (stallMs > STALL_LIMIT_MS)
