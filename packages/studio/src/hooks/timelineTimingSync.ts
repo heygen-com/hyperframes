@@ -84,7 +84,7 @@ function rebindPreviewTiming(iframe: HTMLIFrameElement | null, currentTime: numb
 }
 
 /**
- * Sync the live preview after a TIMING-ONLY edit (move / resize): move the live tweens when only
+ * Sync the live preview after a timing-only edit (move / resize): move the live tweens when only
  * their timing changed, else a soft reload rather than the full reload that flashes every clip.
  *
  * Why this is safe WITHOUT re-deriving timeline elements: a move/resize commit has

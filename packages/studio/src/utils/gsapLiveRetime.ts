@@ -21,9 +21,8 @@ interface TweenTiming {
 }
 
 /**
- * How a saved script differs from the live one. `retime`: only tween starts and lengths moved,
- * so the live tweens can be moved in place; `tweens` is in the live timeline's child order.
- * `rerun`: anything else, which only re-running the script reproduces.
+ * How a saved script differs from the live one: `retime` when only tween starts and lengths moved
+ * (`tweens` in the live timeline's child order), `rerun` for anything only a re-run reproduces.
  */
 export type LiveRetimePlan =
   | { kind: "retime"; key: string; after: string; tweens: TweenTiming[] }
