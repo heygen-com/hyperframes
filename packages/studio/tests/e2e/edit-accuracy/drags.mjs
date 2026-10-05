@@ -1,5 +1,5 @@
-// Drag paths (one long move) and sequences (several edits, no settle between), gsap none.
-// Ids keep the grid's scheme with a letters-only gesture token, so `^[a-z]+-none-` selects them.
+// Drag paths (one long move) and sequences (several edits, no settle between), gsap none but for GSAP_SEQUENCES.
+// Ids keep the grid's scheme with a letters-only gesture token, so `^[a-z]+-none-` selects the plain ones.
 
 const MOVE = { do: "drag", gesture: "move", by: [90, 60] };
 const BACK = { do: "drag", gesture: "move", by: [-70, 50] };
@@ -42,16 +42,22 @@ const PLAIN_TO_KEYS = [
   { do: "seek", time: 1 },
 ];
 
+/** On a GSAP-tweened box: a resize, then a drag (with or without an undo between) must save where it is let go. */
+const GSAP_SEQUENCES = {
+  resizeundodrag: [{ do: "drag", gesture: "resize" }, { do: "undo" }, MOVE],
+  resizedrag: [{ do: "drag", gesture: "resize" }, MOVE],
+};
+
 /** Text in place: a double press opens it, Enter commits; `select` first double-clicks a word to replace. */
 const TEXT = {
   edit: [{ do: "text", word: "Teleport" }],
   select: [{ do: "text", word: "Teleport", select: "accuracy" }],
 };
 
-const row = (gesture, c, steps) => ({
-  id: [gesture, "none", c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-"),
+const row = (gesture, c, steps, gsap = "none") => ({
+  id: [gesture, gsap, c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-"),
   gesture,
-  gsap: "none",
+  gsap,
   ...c,
   steps,
   other: Boolean(steps?.some((s) => s.element === "B")),
@@ -86,6 +92,9 @@ export function dragCases() {
       keyRender: 3,
     })),
   );
+  const gsapSequences = Object.entries(GSAP_SEQUENCES).flatMap(([name, steps]) =>
+    ["root", "nested"].map((nesting) => row(`seq${name}`, pxRoot({ nesting }), steps, "tween")),
+  );
   // Rotate on the common centring idiom, a transform rather than the translate property.
   const centred = [0, 30].flatMap((rotation) =>
     ["root", "nested"].map((nesting) => ({
@@ -94,5 +103,5 @@ export function dragCases() {
       other: false,
     })),
   );
-  return [...paths, ...sequences, ...plainToKeys, ...texts, ...centred];
+  return [...paths, ...sequences, ...plainToKeys, ...gsapSequences, ...texts, ...centred];
 }
