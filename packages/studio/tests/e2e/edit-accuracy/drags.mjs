@@ -93,8 +93,12 @@ export function dragCases() {
       keyRender: 3,
     })),
   );
+  // Settled: a resize on a tween saves its size and its anchor separately, still one undo.
   const gsapSequences = Object.entries(GSAP_SEQUENCES).flatMap(([name, steps]) =>
-    ["root", "nested"].map((nesting) => row(`seq${name}`, pxRoot({ nesting }), steps, "tween")),
+    ["root", "nested"].map((nesting) => ({
+      ...row(`seq${name}`, pxRoot({ nesting }), steps, "tween"),
+      settle: true,
+    })),
   );
   // Rotate on the common centring idiom, a transform rather than the translate property.
   const centred = [0, 30].flatMap((rotation) =>

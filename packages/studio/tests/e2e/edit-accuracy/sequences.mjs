@@ -311,17 +311,28 @@ const round = (m) => m.visible.map((p) => p.map((v) => Math.round(v * 100) / 100
  */
 async function settleStep(c, steps, step, state, keyBoxes, watcher) {
   await untilSaved(watcher, steps.filter(saves).length);
-  const held = heldSize(state.sizeKeys, state.time);
-  const kept = keyBoxes.get(state.time);
-  if (step.do === "seek") state.intended = sizeError(kept?.size, held) ? null : kept?.visible;
+  if (step.do === "seek") state.intended = seekIntended(state, keyBoxes);
   const m = await settled(c);
-  const size = step.do === "seek" ? sizeError(held, m.size) : undefined;
+  const held = heldSize(state.sizeKeys, state.time);
   Object.assign(steps.at(-1), {
     saves: watcher.versions.length - 1,
     box: boxError(state, m),
-    size,
+    size: step.do === "seek" ? sizeError(held, m.size) : undefined,
   });
+  rememberSizeKey(step, state, m);
+  rememberBox(step, state, keyBoxes, m);
+}
+
+const seekIntended = (state, keyBoxes) => {
+  const kept = keyBoxes.get(state.time);
+  return kept && !sizeError(kept.size, heldSize(state.sizeKeys, state.time)) ? kept.visible : null;
+};
+
+function rememberSizeKey(step, state, m) {
   if (step.gesture === "resize" && state.autokey) state.sizeKeys.set(state.time, m.size);
+}
+
+function rememberBox(step, state, keyBoxes, m) {
   if (saves(step)) keyBoxes.set(state.time, { visible: state.intended ?? m.visible, size: m.size });
 }
 
