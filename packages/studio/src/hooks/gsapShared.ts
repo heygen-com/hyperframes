@@ -41,7 +41,7 @@ export const PROPERTY_DEFAULTS: Record<string, number> = {
  *  since GSAP eases each percentage segment power1.inOut whatever the tween-level ease says. */
 export function keyframeEases(anim: GsapAnimation): { ease?: string; easeEach?: string } {
   if (!anim.keyframes) return { easeEach: anim.ease };
-  return { ease: anim.ease, easeEach: anim.keyframes.easeEach };
+  return { ease: runEaseOf(anim), easeEach: anim.keyframes.easeEach };
 }
 
 /**

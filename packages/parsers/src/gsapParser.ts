@@ -1073,11 +1073,6 @@ function tweenCallToAnimation(
     }
   }
 
-  // Apply tween-level easeEach to keyframes data.
-  if (keyframesData && typeof vars.easeEach === "string") {
-    keyframesData.easeEach = vars.easeEach as string;
-  }
-
   // When motionPath is present, reconstruct x/y as keyframe waypoints.
   if (motionPathResult) {
     const { waypoints } = motionPathResult;

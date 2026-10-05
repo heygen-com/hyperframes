@@ -243,6 +243,47 @@ it.each([
   },
 );
 
+it("keeps the tween's eases when a recording merges into it", async () => {
+  const eased = {
+    id: "card-position",
+    targetSelector: "#card",
+    propertyGroup: "position",
+    method: "to",
+    properties: { x: 0, y: 0 },
+    resolvedStart: 0,
+    position: 0,
+    duration: 2,
+    ease: "back.out",
+    keyframes: {
+      easeEach: "power2.out",
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 100 } },
+      ],
+    },
+  } as unknown as GsapAnimation;
+  const writer = vi.fn(
+    async (_mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+      options.onResult?.({ ok: true, changed: true });
+    },
+  );
+  const hook = mountRecording(writer, [eased]);
+  act(() => hook().handleToggleRecording("button"));
+  await act(async () => {
+    hook().handleToggleRecording();
+    await vi.waitFor(() => expect(writer).toHaveBeenCalled());
+  });
+  expect(writer).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "replace-with-keyframes",
+      ease: "back.out",
+      easeEach: "power2.out",
+    }),
+    expect.objectContaining({ label: "Gesture recording (merge)" }),
+    expect.anything(),
+  );
+});
+
 it("keeps a pending recording isolated until its writer settles", async () => {
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {

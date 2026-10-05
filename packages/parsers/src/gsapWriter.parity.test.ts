@@ -1454,6 +1454,17 @@ describe("parity: moveKeyframeInScript (recast vs acorn)", () => {
   });
 });
 
+describe("a tween-level easeEach, which GSAP ignores", () => {
+  const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, keyframes: { "0%": { x: 0 }, "100%": { x: 10 } }, easeEach: "power4.in" }, 0);`;
+  it.each([
+    ["recast", parseGsapScript],
+    ["acorn", parseGsapScriptAcorn],
+  ])("is not reported as the keyframes' ease (%s)", (_name, parse) => {
+    expect(parse(script).animations[0]!.keyframes?.easeEach).toBeUndefined();
+  });
+});
+
 describe("a keyframe drag keeps the keyframes' eases", () => {
   const writers = [
     ["recast", updateAnimRecast, moveKeyframeRecast],

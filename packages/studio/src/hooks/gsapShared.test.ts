@@ -4,12 +4,23 @@ import {
   idFromSelector,
   idSelector,
   isInstantHold,
+  keyframeEases,
   parsePercentageKeyframes,
   resolveClipTimingBasis,
   playsNear,
   toClipKeyframes,
   toClipPercentage,
 } from "./gsapShared";
+
+describe("keyframeEases", () => {
+  it("carries the keyframes' own ease into the tween ease, which GSAP plays the same", () => {
+    const anim = {
+      ease: "back.out",
+      keyframes: { keyframes: [], ease: "sine.inOut", easeEach: "power2.out" },
+    } as unknown as GsapAnimation;
+    expect(keyframeEases(anim)).toEqual({ ease: "sine.inOut", easeEach: "power2.out" });
+  });
+});
 
 describe("isInstantHold", () => {
   const animation = (method: GsapAnimation["method"], duration?: number) =>

@@ -1607,9 +1607,8 @@ describe("native GSAP keyframes parsing", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
       tl.to("#hero", {
-        keyframes: { "0%": { x: 0 }, "50%": { x: 100, ease: "back.out(1.7)" }, "100%": { x: 200 } },
+        keyframes: { "0%": { x: 0 }, "50%": { x: 100, ease: "back.out(1.7)" }, "100%": { x: 200 }, easeEach: "power2.out" },
         ease: "none",
-        easeEach: "power2.out",
         duration: 5
       }, 0);
     `;
@@ -1618,7 +1617,7 @@ describe("native GSAP keyframes parsing", () => {
 
     // Tween-level ease
     expect(anim.ease).toBe("none");
-    // easeEach on keyframes data (set from tween-level)
+    // easeEach inside the keyframes object, the only place GSAP reads it
     expect(anim.keyframes!.easeEach).toBe("power2.out");
     // Per-keyframe ease
     expect(anim.keyframes!.keyframes[1].ease).toBe("back.out(1.7)");

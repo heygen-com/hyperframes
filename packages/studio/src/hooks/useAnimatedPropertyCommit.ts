@@ -18,6 +18,7 @@ import {
   selectorFromSelection,
   computeElementPercentage,
   isInstantHold,
+  keyframeEases,
   writeTargetSelector,
   tweenTargetsElement,
 } from "./gsapShared";
@@ -375,7 +376,7 @@ async function commitKeyframeProps(
       for (const k of Object.keys(properties)) {
         if (!(k in p) && backfillDefaults[k] != null) p[k] = backfillDefaults[k];
       }
-      return { percentage: newPct, properties: p };
+      return { percentage: newPct, properties: p, ...(kf.ease ? { ease: kf.ease } : {}) };
     });
     remapped.push({ percentage: toNewPct(ct), properties });
     remapped.sort((a, b) => a.percentage - b.percentage);
@@ -388,6 +389,7 @@ async function commitKeyframeProps(
         position: roundTo3(newStart),
         duration: roundTo3(newDuration),
         keyframes: remapped,
+        ...keyframeEases(anim),
       },
       { label: `Edit ${primaryProp} (extended keyframe)`, keyframeAction: "add", softReload: true },
     );

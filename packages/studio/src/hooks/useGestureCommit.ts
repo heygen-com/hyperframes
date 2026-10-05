@@ -16,7 +16,13 @@ import { trackPreviewEditResult } from "../utils/previewFeatureUsage";
 import { observeGsapGesture } from "./gsapGestureOutcome";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
-import { isInstantHold, idSelector, writeTargetSelector, tweenTargetsElement } from "./gsapShared";
+import {
+  isInstantHold,
+  idSelector,
+  keyframeEases,
+  writeTargetSelector,
+  tweenTargetsElement,
+} from "./gsapShared";
 import { useStableHandlers } from "./useStableHandlers";
 
 type RecordedKeyframe = {
@@ -303,6 +309,7 @@ export function useGestureCommit({
                       : tweenStart,
                   duration: tweenDur,
                   keyframes: merged,
+                  ...keyframeEases(existingPositionTween),
                 },
                 { label: "Gesture recording (merge)", softReload: true, keyframeAction: "add" },
               );
