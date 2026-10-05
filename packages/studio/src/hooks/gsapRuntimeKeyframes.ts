@@ -45,7 +45,7 @@ export interface RuntimeTimeline {
   to?: (targets: Element[], vars: GsapVars, position?: number) => RuntimeTween;
 }
 
-type Pct = { percentage: number; properties: Record<string, number | string> };
+type Pct = { percentage: number; properties: Record<string, number | string>; step?: number };
 export type ReadTween = {
   keyframes: Pct[];
   easeEach?: string;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
+import { commitWholePathOffset, type GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 
 // Regression (#1808): with auto-keyframe recording off, a manual edit on an
@@ -202,4 +202,75 @@ describe("commitWholePropertyOffset", () => {
     });
     expect(mutations[0]).toMatchObject({ easeEach: "none" });
   });
+});
+
+it.each([
+  [{ rotation: "+=40" }, "array-step-relative"],
+  [{ rotation: 40, onComplete: "__raw:done" }, "array-step-callback"],
+  [{ rotation: "random(0, 90)" }, "array-step-random"],
+])("refuses to rewrite a step list holding %o and writes nothing", async (last, detail) => {
+  const steps = [{ rotation: 10 }, last].map((properties, i) => ({
+    percentage: (i + 1) * 50,
+    properties,
+  }));
+  const anim = {
+    id: "#box-steps",
+    targetSelector: "#box",
+    method: "to",
+    resolvedStart: 0,
+    duration: 2,
+    keyframes: { format: "object-array", keyframes: steps },
+  } as unknown as GsapAnimation;
+  const { mutations, callbacks } = recordingCallbacks();
+  const rotate = commitWholePropertyOffset(
+    selection(),
+    anim,
+    { rotation: 50 },
+    100,
+    null,
+    callbacks,
+    "Rotate",
+  );
+  await expect(rotate).rejects.toMatchObject({ reason: "keyframes-uneditable", detail });
+  expect(mutations).toEqual([]);
+});
+
+it("refuses to shift a layer's step list whose step has its own delay, writing nothing", async () => {
+  // No drag baseline on the element: the move starts from a zero offset.
+  const el = {
+    style: { getPropertyValue: () => "", setProperty: () => {} },
+    getAttribute: () => null,
+    removeAttribute: () => {},
+    getBoundingClientRect: () => ({ top: 0, left: 0 }),
+  };
+  const anim = {
+    id: "#box-steps",
+    targetSelector: "#box",
+    method: "to",
+    resolvedStart: 0,
+    duration: 2,
+    keyframes: {
+      format: "object-array",
+      keyframes: [
+        { percentage: 50, properties: { x: 100, delay: 0.5 } },
+        { percentage: 100, properties: { x: 200 } },
+      ],
+    },
+  } as unknown as GsapAnimation;
+  const { mutations, callbacks } = recordingCallbacks();
+  const sel = { ...selection(), element: el } as DomEditSelection;
+  const move = commitWholePathOffset(
+    sel,
+    anim,
+    { x: 40, y: 0 },
+    { x: 0, y: 0 },
+    null,
+    "#box",
+    callbacks,
+  );
+  await expect(move).rejects.toMatchObject({
+    reason: "keyframes-uneditable",
+    detail: "array-step-delay",
+  });
+  expect(mutations).toEqual([]);
 });

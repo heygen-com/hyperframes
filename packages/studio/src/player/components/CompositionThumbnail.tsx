@@ -7,6 +7,7 @@ import {
   type ThumbnailRequest,
 } from "../lib/thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
+import { ThumbnailTiles } from "./ThumbnailTiles";
 import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 
@@ -142,7 +143,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   contentRevision = 0,
   priority = "visible",
 }: CompositionThumbnailProps) {
-  const [container, setContainerRef] = useThumbnailStripSize();
+  const [container, setContainerRef, watchGap] = useThumbnailStripSize();
   const url = buildCompositionThumbnailUrl({
     previewUrl,
     seekTime,
@@ -169,15 +170,18 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       {value && (
-        <div
-          className="absolute inset-0 flex"
+        <ThumbnailTiles
+          strip={container}
+          frameW={frameW}
+          frameCount={frameCount}
+          watchGap={watchGap}
           style={{
             animation: "hf-thumb-fade 200ms ease-out",
             mixBlendMode:
               "var(--timeline-composition-thumbnail-blend)" as CSSProperties["mixBlendMode"],
           }}
         >
-          {Array.from({ length: frameCount }, (_, index) => (
+          {(index) => (
             <div
               key={index}
               className="relative h-full shrink-0 overflow-hidden"
@@ -191,8 +195,8 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
                 style={{ opacity: "var(--timeline-composition-thumbnail-opacity)" }}
               />
             </div>
-          ))}
-        </div>
+          )}
+        </ThumbnailTiles>
       )}
       {snapshot.status === "loading" && (
         <div className="absolute inset-0 animate-pulse bg-text-0/[0.035]" />

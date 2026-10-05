@@ -3,7 +3,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { dragEditOutcome, preflightGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { preflightGsapResizeIntercept } from "./gsapResizePreflight";
-import { GSAP_EDIT_BLOCK_COPY, type GsapEditOutcome } from "./gsapEditOutcome";
+import { gsapEditBlockMessage, type GsapEditOutcome } from "./gsapEditOutcome";
 import { fetchParsedAnimations, parseCacheKey } from "./keyframeCacheAstLoad";
 import { getAnimationsForElement } from "./gsapElementMatch";
 import { gsapSourceFileForSelection } from "./useGsapAnimationFetchFallback";
@@ -44,7 +44,7 @@ const MANUAL_FLAGS = [
 function refusal(preflight: CommitPreflight | null, check: keyof CommitPreflight): string | null {
   const outcome = preflight?.[check];
   if (!outcome) return "";
-  return outcome.status === "blocked" ? GSAP_EDIT_BLOCK_COPY[outcome.reason] : null;
+  return outcome.status === "blocked" ? gsapEditBlockMessage(outcome.reason, outcome.detail) : null;
 }
 
 /** Closes each manual flag whose commit Studio would refuse, and says why. */

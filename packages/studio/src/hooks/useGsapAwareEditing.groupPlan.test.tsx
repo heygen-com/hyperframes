@@ -127,6 +127,31 @@ describe("a group drag plans every member before its first write", () => {
     act(() => h.root.unmount());
   });
 
+  it("with auto-keyframe off, refuses the whole group when one member's step list holds a step delay", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false });
+    const steps = {
+      format: "object-array",
+      keyframes: [
+        { percentage: 50, properties: { x: 100, y: 0, delay: 0.5 } },
+        { percentage: 100, properties: { x: 200, y: 0 } },
+      ],
+    };
+    const h = mountGroup([
+      positionTween("a"),
+      positionTween("b", { keyframes: steps } as Partial<GsapAnimation>),
+      positionTween("c"),
+    ]);
+
+    await expect(h.groupCommit(h.updates)).rejects.toMatchObject({
+      reason: "keyframes-uneditable",
+      detail: "array-step-delay",
+    });
+
+    expect(h.written()).toEqual([]);
+    expect(trackStudioEditBlocked).toHaveBeenCalledWith(expect.objectContaining({ targetId: "b" }));
+    act(() => h.root.unmount());
+  });
+
   it("refuses members animated in two files, since the batch writes one file", async () => {
     const h = mountGroup(["a", "b", "c"].map((id) => positionTween(id)));
     const updates = h.updates.map((u, i) => ({

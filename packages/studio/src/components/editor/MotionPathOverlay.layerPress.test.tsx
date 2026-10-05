@@ -2,8 +2,10 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { GsapEditBlockedError } from "../../hooks/gsapEditOutcome";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { MotionPathOverlay } from "./MotionPathOverlay";
+import { commitNodeDrop } from "./motionPathCommit";
 import type { DomEditSelection } from "./domEditing";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -13,6 +15,14 @@ const { commitMutation } = vi.hoisted(() => ({
 }));
 vi.mock("../../contexts/DomEditContext", () => ({
   useDomEditContext: () => ({ selectedGsapAnimations: [], commitMutation }),
+}));
+const showToast = vi.hoisted(() => vi.fn());
+vi.mock("../../contexts/StudioContext", () => ({
+  useStudioShellContextOptional: () => ({ showToast }),
+}));
+vi.mock("./motionPathCommit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./motionPathCommit")>()),
+  commitNodeDrop: vi.fn(),
 }));
 vi.mock("./motionPathSelection", () => ({
   selectorFor: () => "#box",
@@ -188,4 +198,36 @@ it("draws where GSAP started the tween before the first keyframe, as a mark that
   expect(start.classList.contains("pointer-events-none")).toBe(true);
   const drawn = host.querySelector("polyline:not(.pointer-events-auto)")!;
   expect(drawn.getAttribute("points")).toBe("50,30 60,30 140,30");
+});
+
+it("a node drop the writer refuses says why", async () => {
+  const refusal = new GsapEditBlockedError("keyframes-uneditable");
+  vi.mocked(commitNodeDrop).mockRejectedValue(refusal);
+  vi.spyOn(Element.prototype, "setPointerCapture").mockImplementation(() => {});
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  const selection = { element: document.createElement("div") } as unknown as DomEditSelection;
+  try {
+    act(() =>
+      root.render(
+        <MotionPathOverlay
+          iframeRef={{ current: null }}
+          selection={selection}
+          compositionSize={{ width: 1920, height: 1080 }}
+          isPlaying={false}
+        />,
+      ),
+    );
+    const node = host.querySelector('circle.pointer-events-auto[cx="140"]')!;
+    document.elementsFromPoint = () => [node];
+    const at = (clientX: number) => ({ bubbles: true, button: 0, clientX, clientY: 30 });
+    act(() => void node.dispatchEvent(new PointerEvent("pointerdown", at(140))));
+    act(() => void node.dispatchEvent(new PointerEvent("pointermove", at(180))));
+    await act(async () => void node.dispatchEvent(new PointerEvent("pointerup", at(180))));
+    expect(commitNodeDrop).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(refusal.message, "error");
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+  }
 });

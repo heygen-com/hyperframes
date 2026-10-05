@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
-import { GSAP_EDIT_BLOCK_COPY } from "./gsapEditOutcome";
-import { liveTween, previewWith, tween } from "./gsapParsedTween.test-helpers";
+import { GSAP_EDIT_BLOCK_COPY, GsapEditBlockedError } from "./gsapEditOutcome";
+import { boxSteps, liveTween, previewWith, tween } from "./gsapParsedTween.test-helpers";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { planValueAtPlayhead, planValueEdit, type PlayheadEdit } from "./gsapValueAtPlayhead";
@@ -166,31 +166,12 @@ describe("a move on a GSAP-animated layer, at the playhead", () => {
   });
 
   it("adds a keyframe between two steps of a keyframes array", async () => {
-    const keys = tween({
-      id: "#box-to-0-position",
-      method: "to",
-      properties: {},
-      resolvedStart: 0,
-      duration: 3,
-      keyframes: {
-        format: "object-array",
-        keyframes: [
-          // The parse rounds the step to 66.7%; GSAP times it at 2 s of 3.
-          { percentage: 66.7, properties: { x: 60 } },
-          { percentage: 100, properties: { x: 120 } },
-        ],
-      },
-    });
-    const steps = [
-      { startTime: () => 0, duration: () => 2 },
-      { startTime: () => 2, duration: () => 1 },
-    ];
-    const live = liveTween(
-      el,
-      { start: 0, duration: 3, vars: { keyframes: [] } },
-      { parts: steps },
-    );
-    const { mutations } = await drag([keys], [live], { time: 1, base: [30, 0], dx: 10 });
+    // The parse rounds the first step to 66.7%; GSAP times it at 2 s of 3.
+    const { keys, live } = boxSteps([
+      [2, { x: 60 }],
+      [1, { x: 120 }],
+    ]);
+    const { mutations } = await drag([keys], [live(el)], { time: 1, base: [30, 0], dx: 10 });
     expect(mutations.map((m) => m.type)).toEqual(["replace-with-keyframes"]);
     // An array step eases linearly unless it says otherwise; percentage keyframes would not.
     expect(mutations[0].keyframes).toEqual([
@@ -527,6 +508,30 @@ describe("planValueAtPlayhead", () => {
     ]);
   });
 
+  it("refuses a step that leaves a channel out when GSAP's start for it is unknown", () => {
+    const anim = kf([
+      { percentage: 50, properties: {} },
+      { percentage: 100, properties: { x: 20 } },
+    ]);
+    const steps = { ...anim, keyframes: { ...anim.keyframes!, format: "object-array" as const } };
+    expect(plan({ anim: steps, at: { percentage: 100 }, values: { x: 5 } })).toEqual({
+      ok: false,
+      reason: "implicit-end-unknown",
+    });
+  });
+
+  it("changes the nearer of two keyframes under 1% apart", () => {
+    const anim = kf([
+      { percentage: 50, properties: { x: 100 } },
+      { percentage: 50.5, properties: { x: 100 } },
+      { percentage: 100, properties: { x: 100 } },
+    ]);
+    const result = plan({ anim, at: { percentage: 50.5 }, values: { x: 150 } });
+    expect(result.ok && result.mutation.keyframes.map((k) => k.properties.x)).toEqual([
+      100, 150, 100,
+    ]);
+  });
+
   describe("keyframes eased as a whole", () => {
     const eased = {
       ...kf([
@@ -576,6 +581,29 @@ describe("planValueAtPlayhead", () => {
       });
     });
 
+    it("changes an inner keyframe picked by its percentage, which the ease does not move", () => {
+      const anim = {
+        ...kf([
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 50, properties: { x: 100 } },
+          { percentage: 100, properties: { x: 300 } },
+        ]),
+        ease: "power2.out",
+      };
+      const result = plan({ anim, at: { percentage: 50 }, values: { x: 5 } });
+      expect(result.ok && result.mutation.keyframes.map((k) => k.properties.x)).toEqual([
+        0, 5, 300,
+      ]);
+      expect(result.ok && result.mutation.ease).toBe("power2.out");
+    });
+
+    it("refuses to add a keyframe at a percentage, whose time the ease would move", () => {
+      expect(plan({ anim: eased, at: { percentage: 40 }, values: { x: 5 } })).toEqual({
+        ok: false,
+        reason: "eased-keyframes",
+      });
+    });
+
     it("refuses to add a keyframe, whose time the ease would move", () => {
       expect(plan({ anim: eased, at: { time: 2 }, values: { x: 5 } })).toEqual({
         ok: false,
@@ -605,4 +633,78 @@ it("refuses a tween whose selector also animates a sibling, before it plans anyt
     reason: "shared-tween",
   });
   sibling.remove();
+});
+
+describe("a keyframes array the percentage rewrite would change", () => {
+  const steps = (
+    properties: Array<Record<string, number | string>>,
+    edit: Partial<PlayheadEdit> = {},
+  ) =>
+    planValueAtPlayhead({
+      anim: tween({
+        method: "to",
+        properties: {},
+        resolvedStart: 0,
+        duration: 3,
+        keyframes: {
+          format: "object-array",
+          keyframes: properties.map((p, i) => ({ percentage: ((i + 1) / 3) * 100, properties: p })),
+        },
+      }),
+      at: { percentage: 100 },
+      values: { x: 50 },
+      implicitEndValue: () => 0,
+      ...edit,
+    });
+
+  it.each([
+    ["a step delay", { x: 100, delay: 0.5 }, "array-step-delay", "its own delay"],
+    ["a step callback", { x: 100, onComplete: "__raw:done" }, "array-step-callback", "runs code"],
+    [
+      "an unlisted callback",
+      { x: 100, onInterrupt: "__raw:stop" },
+      "array-step-callback",
+      "runs code",
+    ],
+    [
+      "a step repeat",
+      { x: 100, repeat: 2 },
+      "array-step-config",
+      "tween setting (like repeat or stagger)",
+    ],
+    ["a computed value", { x: "__raw:offset()" }, "array-step-computed", "comes from code"],
+    ["a relative value", { x: "-=40" }, "array-step-relative", '"+=40"'],
+    ["a random value", { x: "random(0, 300)" }, "array-step-random", "random()"],
+    [
+      "a random value inside a string",
+      { filter: "blur(random(1, 9)px)" },
+      "array-step-random",
+      "random()",
+    ],
+  ] as const)("refuses %s and says so", (_, step, reason, says) => {
+    expect(steps([{ x: 60 }, step, { x: 180 }])).toEqual({ ok: false, reason });
+    const message = new GsapEditBlockedError("keyframes-uneditable", reason).message;
+    expect(message).toContain(says);
+    expect(message).toContain("Code tab");
+  });
+
+  it("rewrites absolute values, colours included", () => {
+    const result = steps([{ x: 60, color: "#fff" }, { x: 120, color: "rgb(0, 0, 0)" }, { x: 180 }]);
+    expect(result.ok && result.mutation.keyframes.map((k) => k.properties.x)).toEqual([
+      60, 120, 50,
+    ]);
+  });
+
+  it("holds a pause step at the dropped value of a channel the drop starts animating", () => {
+    const result = steps([{ x: 60 }, {}, { x: 180 }], {
+      at: { percentage: 100 / 3 },
+      values: { x: 37, y: 11 },
+      backfill: { y: 0 },
+    });
+    expect(result.ok && result.mutation.keyframes.map((k) => k.properties)).toEqual([
+      { x: 37, y: 11 },
+      { x: 37, y: 11 },
+      { x: 180, y: 0 },
+    ]);
+  });
 });

@@ -8,7 +8,11 @@ import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeComp
 import { roundTo3 } from "../utils/rounding";
 import { keyframeEases, PROPERTY_DEFAULTS } from "./gsapShared";
 import { synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
-import { materializeIfDynamic, type GsapDragCommitCallbacks } from "./gsapDragCommit";
+import {
+  materializeIfDynamic,
+  refuseStepListRewrite,
+  type GsapDragCommitCallbacks,
+} from "./gsapDragCommit";
 
 /**
  * Generic sibling of commitWholePathOffset for property groups other than
@@ -32,6 +36,7 @@ export async function commitWholePropertyOffset(
   // fallow-ignore-next-line code-duplication
   let effectiveAnim = anim;
   if (anim.keyframes) {
+    refuseStepListRewrite(anim);
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
     if (newId) effectiveAnim = { ...anim, id: newId };
   }

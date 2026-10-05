@@ -50,6 +50,29 @@ export const SUPPORTED_PROPS = [
   "innerText",
 ];
 
+/** Keys stored on dedicated GsapAnimation fields (not in properties/extras). */
+export const BUILTIN_VAR_KEYS: ReadonlySet<string> = new Set(["duration", "ease", "delay"]);
+export const DROPPED_VAR_KEYS: ReadonlySet<string> = new Set([
+  "onComplete",
+  "onStart",
+  "onUpdate",
+  "onRepeat",
+]);
+/** Keys that go in `extras`: non-editable GSAP config that must survive round-trips. */
+export const EXTRAS_KEYS: ReadonlySet<string> = new Set([
+  "stagger",
+  "yoyo",
+  "repeat",
+  "repeatDelay",
+  "snap",
+  "overwrite",
+  "immediateRender",
+]);
+
+export function isTweenConfigKey(key: string): boolean {
+  return BUILTIN_VAR_KEYS.has(key) || DROPPED_VAR_KEYS.has(key) || EXTRAS_KEYS.has(key);
+}
+
 // ── Property Groups ─────────────────────────────────────────────────────────
 // Each group maps to an independent GSAP tween so editing one property
 // (e.g. drag → x/y) never contaminates another (e.g. scale, rotation).

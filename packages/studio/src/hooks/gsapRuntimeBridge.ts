@@ -23,6 +23,7 @@ import {
   computeCurrentPercentage,
   findExistingPositionWrite,
   findRotationSetAnimation,
+  stepListBlock,
 } from "./gsapDragCommit";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { isGestureTransactionCommit } from "./gestureTransaction";
@@ -218,7 +219,12 @@ async function planDrag(
   if (!posAnim) {
     return { status: "blocked", reason: "source-uneditable", detail: "no-position-tween" };
   }
-  if (route === "whole-path") return { status: "persisted" };
+  if (route === "whole-path") {
+    const step = stepListBlock(posAnim);
+    return step
+      ? { status: "blocked", reason: "keyframes-uneditable", detail: step }
+      : { status: "persisted" };
+  }
   const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
   return gsapPositionFromDragOutcome(selection, posAnim, offset, gsapPos, iframe);
 }

@@ -8,7 +8,7 @@ import type { ReadTween } from "../../hooks/gsapRuntimeKeyframes";
 
 /** Which source edit a dragged node maps to. */
 export type MotionNodeRef =
-  | { type: "keyframe"; pct: number } // x/y position keyframe at this tween-relative %
+  | { type: "keyframe"; pct: number; step?: number } // x/y keyframe at this tween-relative %, array slot
   | { type: "waypoint"; index: number }; // motionPath waypoint (anchor) at this index
 
 /** An offset on the path and the layout width/height set there, when one is. */
@@ -141,7 +141,9 @@ export function buildMotionPathGeometry(
     if (!at) return;
     nodes.push({
       ...at,
-      ref: isArc ? { type: "waypoint", index: i } : { type: "keyframe", pct: kf.percentage },
+      ref: isArc
+        ? { type: "waypoint", index: i }
+        : { type: "keyframe", pct: kf.percentage, ...(kf.step == null ? {} : { step: kf.step }) },
     });
   });
 
