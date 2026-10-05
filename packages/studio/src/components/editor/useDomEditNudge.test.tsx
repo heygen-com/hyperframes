@@ -457,7 +457,7 @@ describe("useDomEditNudge — undo right after a burst", () => {
 });
 
 describe("useDomEditNudge — a Design-panel edit during a burst", () => {
-  it("commits the burst before the panel edit, so one undo takes back the panel edit", () => {
+  it("commits the burst before the panel edit, so one undo takes back the panel edit", async () => {
     __resetForTests();
     vi.useFakeTimers();
     const root = createRoot(document.body.appendChild(document.createElement("div")));
@@ -474,7 +474,9 @@ describe("useDomEditNudge — a Design-panel edit during a burst", () => {
     });
     try {
       act(() => dispatchArrowRight());
-      trackedStudioEdit(async () => void order.push("width"))();
+      const panelEdit = trackedStudioEdit(async () => void order.push("width"))();
+      vi.useRealTimers();
+      await panelEdit;
       expect(order).toEqual(["nudge", "width"]);
     } finally {
       vi.useRealTimers();

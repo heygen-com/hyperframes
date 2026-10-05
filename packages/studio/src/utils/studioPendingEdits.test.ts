@@ -210,6 +210,21 @@ describe("a new edit after a debounced one", () => {
     remove();
     expect(order).toEqual(["nudge", "panel", "nudge", "drag"]);
   });
+  it("starts a new edit only after a flushed save that was still waiting has written", async () => {
+    const order: string[] = [];
+    let fetched!: () => void;
+    // A nudge on an animated layer: its save waits on the animation fetch before it writes.
+    const remove = addStudioPendingEditFlushListener(async () => {
+      await new Promise<void>((resolve) => (fetched = resolve));
+      order.push("nudge write");
+    });
+    const panelEdit = trackedStudioEdit(async () => void order.push("width write"))();
+    fetched();
+    await panelEdit;
+    remove();
+    expect(order).toEqual(["nudge write", "width write"]);
+  });
+
   it("never flushes from inside an edit's own save, where a flushed save would go untracked", () => {
     let flushes = 0;
     const remove = addStudioPendingEditFlushListener(() => void (flushes += 1));
