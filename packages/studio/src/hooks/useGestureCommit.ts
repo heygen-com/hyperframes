@@ -291,7 +291,9 @@ export function useGestureCommit({
                 }));
 
               const mapped = keyframes.map((kf) => ({
-                percentage: rangeStartPct + (kf.percentage / 100) * (rangeEndPct - rangeStartPct),
+                percentage: roundTo3(
+                  rangeStartPct + (kf.percentage / 100) * (rangeEndPct - rangeStartPct),
+                ),
                 properties: kf.properties,
                 ...(kf.ease ? { ease: kf.ease } : {}),
               }));

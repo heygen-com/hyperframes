@@ -284,6 +284,38 @@ it("keeps the tween's eases when a recording merges into it", async () => {
   );
 });
 
+it("writes merged keyframe percentages rounded, not as float noise", async () => {
+  const threeSeconds = {
+    id: "card-position",
+    targetSelector: "#card",
+    propertyGroup: "position",
+    method: "to",
+    properties: { x: 0, y: 0 },
+    resolvedStart: 0,
+    position: 0,
+    duration: 3,
+    keyframes: {
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 100 } },
+      ],
+    },
+  } as unknown as GsapAnimation;
+  const writer = vi.fn(
+    async (_mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+      options.onResult?.({ ok: true, changed: true });
+    },
+  );
+  const hook = mountRecording(writer, [threeSeconds]);
+  act(() => hook().handleToggleRecording("button"));
+  await act(async () => {
+    hook().handleToggleRecording();
+    await vi.waitFor(() => expect(writer).toHaveBeenCalled());
+  });
+  const merge = writer.mock.calls[0]![0] as { keyframes: Array<{ percentage: number }> };
+  expect(merge.keyframes.map((kf) => kf.percentage)).toEqual([0, 16.667, 33.333, 100]);
+});
+
 it("keeps a pending recording isolated until its writer settles", async () => {
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {
