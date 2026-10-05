@@ -18,6 +18,10 @@ const w = { x: window.innerWidth - 40 }
     expect(same(written, printed)).toBe(true);
   });
 
+  it("matches an untagged template to the line break esbuild prints for its escape", () => {
+    expect(same("const s = `a\\nb`", "const s = `a\nb`")).toBe(true);
+  });
+
   it.each([
     ["an operator", `x = w - 40`, `x = w + 40`],
     ["a comparison", `a === b`, `a !== b`],
