@@ -63,6 +63,40 @@ describe("runtime sub-composition placement", () => {
     expect(scene.startTime()).toBe(2);
   });
 
+  it("leaves a scene that a script moved into another timeline where that timeline put it", () => {
+    const { root, scene } = load(1);
+    const holder = gsap.timeline({ paused: true });
+    root.add(holder, 0);
+    holder.add(scene, 2);
+
+    document.getElementById("host")!.setAttribute("data-start", "4");
+    window.__hfForceTimelineRebind?.();
+
+    expect(scene.parent).toBe(holder);
+    expect(scene.startTime()).toBe(2);
+  });
+
+  it("still moves a runtime-placed scene when the root script placed another one itself", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="10">` +
+      `<div class="clip" data-composition-id="intro" data-start="2" data-duration="2"></div>` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="1" data-duration="3"></div></div>`;
+    const intro = gsap.timeline({ paused: true }).to({}, { duration: 2 }, 0);
+    const scene = gsap.timeline({ paused: true }).to({}, { duration: 3 }, 0);
+    const root = gsap.timeline({ paused: true }).to({}, { duration: 1 }, 0).add(intro, 2);
+    window.__timelines = { main: root, intro, scene } as unknown as Record<
+      string,
+      RuntimeTimelineLike
+    >;
+    initSandboxRuntimeModular();
+
+    document.getElementById("host")!.setAttribute("data-start", "4");
+    window.__hfForceTimelineRebind?.();
+
+    expect(scene.startTime()).toBe(4);
+    expect(intro.startTime()).toBe(2);
+  });
+
   it("leaves an unmoved scene in place on a rebind, whatever its start rounds to", () => {
     const { root, scene } = load("0.33333333");
     const remove = vi.spyOn(root, "remove");

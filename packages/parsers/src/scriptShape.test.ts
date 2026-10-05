@@ -43,6 +43,11 @@ const w = { x: window.innerWidth - 40 }
     expect(same(`tl.to("#a", {}, 1)`, `tl.to("#a", {}, 2)`, true)).toBe(true);
   });
 
+  it("tells apart big integers", () => {
+    expect(same("a = 1n", "a = 2n")).toBe(false);
+    expect(same("a = 1n", "a = 1n")).toBe(true);
+  });
+
   it("is null for a script that does not parse", () => {
     expect(scriptShape("tl.to(")).toBeNull();
   });
