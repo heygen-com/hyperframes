@@ -308,19 +308,23 @@ export function useTimelinePlayer({
       const duration = Math.max(0, adapter.getDuration());
       const nextTime = clampToDuration(time, duration);
       const keepPlaying = options?.keepPlaying === true;
+      const { playLocked, isPlaying: storeWasPlaying } = usePlayerStore.getState();
       const shouldResumeAfterSeek =
-        !usePlayerStore.getState().playLocked &&
+        !playLocked &&
         shouldResumeForwardPlaybackAfterSeek({
           keepPlaying,
           wasReverseShuttle,
-          storeWasPlaying: usePlayerStore.getState().isPlaying,
+          storeWasPlaying,
           duration,
           nextTime,
         });
       adapter.seek(nextTime, options);
       publishSeek(nextTime, options); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
-      if (!shouldResumeAfterSeek && !keepPlaying) scrubMusicAtSeek(iframeRef.current, nextTime);
+      // Scrub audio is playback too: a held player moves only the picture.
+      if (!shouldResumeAfterSeek && !keepPlaying && !playLocked) {
+        scrubMusicAtSeek(iframeRef.current, nextTime);
+      }
       if (shouldResumeAfterSeek) {
         stopRAFLoop();
         applyPlaybackRate(usePlayerStore.getState().playbackRate);

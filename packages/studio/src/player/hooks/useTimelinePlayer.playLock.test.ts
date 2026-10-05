@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act } from "react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   makeAdapterWindow,
   makeFakeIframe,
@@ -9,6 +9,12 @@ import {
   resetPlayerStore,
 } from "./timelinePlayerTestHarness";
 import { usePlayerStore } from "../store/playerStore";
+import { scrubMusicAtSeek } from "../lib/playbackScrub";
+
+vi.mock("../lib/playbackScrub", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/playbackScrub")>()),
+  scrubMusicAtSeek: vi.fn(),
+}));
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -16,6 +22,7 @@ afterEach(() => {
   document.body.innerHTML = "";
   resetPlayerStore();
   usePlayerStore.setState({ playLocked: false });
+  vi.mocked(scrubMusicAtSeek).mockClear();
 });
 
 function readyPlayer() {
@@ -54,6 +61,21 @@ it("a seek that would keep playing does not resume while the host holds playback
     api.seek(5, { keepPlaying: true });
   });
   expect(adapter.play).not.toHaveBeenCalled();
+  act(() => root.unmount());
+});
+
+it("a seek while the host holds playback moves the picture without scrub audio", () => {
+  const { api, root, adapter } = readyPlayer();
+  act(() => {
+    api.seek(2);
+  });
+  expect(scrubMusicAtSeek).toHaveBeenCalledTimes(1);
+  act(() => usePlayerStore.getState().setPlayLocked(true));
+  act(() => {
+    api.seek(4);
+  });
+  expect(adapter.getTime()).toBe(4);
+  expect(scrubMusicAtSeek).toHaveBeenCalledTimes(1);
   act(() => root.unmount());
 });
 
