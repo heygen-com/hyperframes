@@ -2669,6 +2669,48 @@ tl.to("#box", { motionPath: { path: [{ x: 0, y: 0 }, { x: 100, y: 100 }] }, dura
     expect(result.after).not.toContain("motionPath");
   });
 
+  it("a keyframe write ends the tween it edits on its last key and leaves other tails alone", async () => {
+    const projectDir = createProjectDir();
+    const authored = `tl.to("#other", { keyframes: { "0%": { x: 0 }, "50%": { x: 90 } }, duration: 2 }, 0);`;
+    writeHtml(
+      projectDir,
+      "keys.html",
+      `<!DOCTYPE html><html><body data-duration="8">
+<div id="box"></div><div id="other"></div>
+<script data-hyperframes-gsap>
+const tl = gsap.timeline();
+tl.to("#box", { keyframes: { "0%": { x: 300 } }, duration: 3 }, 1);
+${authored}
+</script>
+</body></html>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "keys.html");
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/keys.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "replace-with-keyframes",
+        animationId: anim.id,
+        targetSelector: "#box",
+        position: 1,
+        duration: 3,
+        keyframes: [
+          { percentage: 0, properties: { x: 300 } },
+          { percentage: 33.333, properties: { x: 48 } },
+        ],
+      }),
+    });
+    const result = (await res.json()) as { ok: boolean; after: string };
+
+    expect(result.ok).toBe(true);
+    expect(result.after).toContain('"100%": { x: 48 }');
+    expect(result.after).toContain("duration: 1 }, 1);");
+    expect(result.after).toContain(authored);
+  });
+
   it("edits a template-wrapped tween in place, preserving gsap.set and the IIFE", async () => {
     const projectDir = createProjectDir();
     writeComp(projectDir, "scene.html", TEMPLATE_COMP);

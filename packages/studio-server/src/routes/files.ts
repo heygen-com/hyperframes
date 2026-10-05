@@ -80,6 +80,7 @@ import {
   type ClipTweenRetime,
   dedupePositionWritesInScript,
   syncPositionHoldsBeforeKeyframes,
+  trimTrailingKeyframeSpans,
   clipQueryRoot,
 } from "@hyperframes/parsers/gsap-writer-acorn";
 import {
@@ -1575,6 +1576,7 @@ async function applyGsapMutations(
       for (const selector of result.skippedSelectors) skippedSelectors.add(selector);
     }
     if (HOLD_SYNC_MUTATION_TYPES.has(mutation.type)) {
+      newScript = trimTrailingKeyframeSpans(previousScript, newScript);
       newScript =
         writer === "acorn"
           ? syncPositionHoldsBeforeKeyframes(newScript)
