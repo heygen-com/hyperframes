@@ -262,13 +262,57 @@ it.each([
     ),
     at: 2,
   },
+  {
+    name: "a trim of an element with an entrance and an exit, rounded as the writer writes it",
+    path: "retime",
+    before: script(
+      'tl.to("#a", { y: 40, duration: 1 }, 0);',
+      'tl.to("#a", { x: 50, duration: 1 }, 2);',
+    ),
+    after: script(
+      'tl.to("#a", { y: 40, duration: 0.833 }, 0);',
+      'tl.to("#a", { x: 50, duration: 0.833 }, 1.667);',
+    ),
+  },
+  {
+    name: "a trim of an element whose tween has a delay",
+    path: "rerun",
+    before: script(
+      'tl.to("#a", { x: 100, duration: 1, delay: 1 }, 0);',
+      'tl.to("#a", { x: 200, duration: 1 }, 2);',
+    ),
+    after: script(
+      'tl.to("#a", { x: 100, duration: 0.5, delay: 1 }, 0);',
+      'tl.to("#a", { x: 200, duration: 0.5 }, 1);',
+    ),
+  },
+  {
+    name: "a move of a sub-composition's host",
+    path: "rerun",
+    before: script('tl.to("#a", { y: 40, duration: 1 }, 0);'),
+    after: script('tl.to("#a", { y: 40, duration: 1 }, 2);'),
+    setup: () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", "scene");
+      document.getElementById("a")!.appendChild(host);
+    },
+  },
+  {
+    name: "a set that never played moved onto a playhead at 0",
+    path: "retime",
+    before: script('tl.set("#a", { x: 30 }, 2);', 'tl.to("#b", { x: 1, duration: 1 }, 3);'),
+    after: script('tl.set("#a", { x: 30 }, 0);', 'tl.to("#b", { x: 1, duration: 1 }, 3);'),
+    unplayed: true,
+  },
 ])(
   "after a drop over $name, the live preview equals a fresh load or the script re-runs",
-  async ({ before, after, nested = "", at = 0, path }) => {
+  async ({ before, after, nested = "", at = 0, path, setup, unplayed }) => {
+    setup?.();
     const error = vi.spyOn(console, "error");
     const live = preview(before, nested);
     // Played through once, then parked: every tween has recorded its start values.
-    live.timeline.totalTime(live.timeline.duration(), false).totalTime(at, false);
+    if (!unplayed) live.timeline.totalTime(live.timeline.duration(), false);
+    live.timeline.totalTime(at, false);
     const reloadPreview = await dropInto(live.iframe, after);
     expect(error).not.toHaveBeenCalled();
     if (reloadPreview.mock.calls.length === 0) {
@@ -379,6 +423,15 @@ it("syncs a timeline move by moving the live tweens and rebinding, without re-ru
   live.timeline.revert();
   expect(got).toEqual(observe(play(after).timeline));
   expect(document.querySelectorAll("script")).toHaveLength(1);
+});
+
+it("moves the live tweens when the preview runs a reformatted copy of the saved script", async () => {
+  const live = preview(BEFORE);
+  live.tag.textContent = `\n${BEFORE.replace(/^/gm, "      ")}\n`;
+
+  const reloadPreview = await dropInto(live.iframe, moveA());
+
+  expect(reloadPreview).not.toHaveBeenCalled();
 });
 
 it("pairs by start time, so a second move after a reorder still lands on the right tweens", async () => {
