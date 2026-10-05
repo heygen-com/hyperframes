@@ -141,16 +141,15 @@ describe("htmlDocument helpers", () => {
     expect(stripEmbeddedRuntimeScripts(html)).toBe(html);
   });
 
-  // Injected framework code is named off the page's origin, so page errors never attribute to it.
-  const script = (code: string) =>
+  const injectedTag = (code: string) =>
     `<script>${code}\n//# sourceURL=hyperframes://injected/0</script>`;
 
   it("injects head and body scripts without replacement-token interpolation", () => {
     const html = "<html><head></head><body></body></html>";
     const injected = injectScriptsIntoHtml(html, ["window.x = '$&';"], ["window.y = '$&';"]);
 
-    expect(injected).toContain(`${script("window.x = '$&';")}\n</head>`);
-    expect(injected).toContain(`${script("window.y = '$&';")}\n</body>`);
+    expect(injected).toContain(`${injectedTag("window.x = '$&';")}\n</head>`);
+    expect(injected).toContain(`${injectedTag("window.y = '$&';")}\n</body>`);
   });
 
   it("injects early head scripts before authored head scripts", () => {
@@ -179,8 +178,8 @@ describe("htmlDocument helpers", () => {
     const injected = injectScriptsIntoHtml(html, ["window.h = 1;"], ["window.b = 1;"]);
 
     expect(injected.split(`<script>${vendor}</script>`)).toHaveLength(3);
-    expect(injected).toContain(`${script("window.h = 1;")}\n</HEAD >`);
-    expect(injected).toContain(`${script("window.b = 1;")}\n</body></html>`);
+    expect(injected).toContain(`${injectedTag("window.h = 1;")}\n</HEAD >`);
+    expect(injected).toContain(`${injectedTag("window.b = 1;")}\n</body></html>`);
   });
 
   it("falls back to the document's own <body> when </head> is omitted", () => {
@@ -188,7 +187,7 @@ describe("htmlDocument helpers", () => {
     const html = `<html><head><script>${vendor}</script><body><p>x</p></body></html>`;
     const injected = injectScriptsIntoHtml(html, ["window.h = 1;"], []);
 
-    expect(injected).toContain(`<script>${vendor}</script>${script("window.h = 1;")}\n<body>`);
+    expect(injected).toContain(`<script>${vendor}</script>${injectedTag("window.h = 1;")}\n<body>`);
   });
 
   it("injects at head start past a script that prints <head>, and before <body> without a head", () => {
@@ -209,8 +208,8 @@ describe("htmlDocument helpers", () => {
   it("keeps indexes right after a character that lowercases to two (İ)", () => {
     const page = "<html><head><title>İzmir</title></head><body><h1>İstanbul</h1></body></html>";
     const injected = injectScriptsIntoHtml(page, ["a=1"], ["b=2"]);
-    expect(injected).toContain(`${script("a=1")}\n</head>`);
-    expect(injected).toContain(`${script("b=2")}\n</body></html>`);
+    expect(injected).toContain(`${injectedTag("a=1")}\n</head>`);
+    expect(injected).toContain(`${injectedTag("b=2")}\n</body></html>`);
 
     const stripped = stripEmbeddedRuntimeScripts(
       '<p>İİ</p><script src="hyperframe.runtime.iife.js"></script><p>kept</p>',
@@ -218,7 +217,7 @@ describe("htmlDocument helpers", () => {
     expect(stripped).toBe("<p>İİ</p><p>kept</p>");
 
     const escaped = injectScriptsIntoHtml(page, ['x="İİ</SCRIPT>"'], []);
-    expect(escaped).toContain(script('x="İİ<\\/SCRIPT>"'));
+    expect(escaped).toContain(injectedTag('x="İİ<\\/SCRIPT>"'));
   });
 
   it("skips a script tag written inside an attribute value", () => {
@@ -246,7 +245,7 @@ describe("htmlDocument helpers", () => {
   it("treats a quote as a value only after =, like the browser", () => {
     const page = "<html><head><meta name=it's></head><body><p>don't</p></body></html>";
     expect(injectScriptsIntoHtml(page, ["H"], [])).toContain(
-      `<meta name=it's>${script("H")}\n</head>`,
+      `<meta name=it's>${injectedTag("H")}\n</head>`,
     );
 
     for (const meta of [

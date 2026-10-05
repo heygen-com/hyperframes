@@ -72,10 +72,6 @@ export const AFTER_FONTS_CLAIM = "__hfAfterFontsClaimed";
 export const INLINED_FILE_ATTR = "data-hf-inlined-src";
 
 export const DEFERRED_FILE = `[defer][src], [defer][${INLINED_FILE_ATTR}]`;
-
-export function withSourceUrl(code: string, url: string): string {
-  return /\/\/[#@] ?sourceURL=\S+\s*$/.test(code) ? code : `${code}\n//# sourceURL=${url}`;
-}
 const AFTER_FONTS_FALLBACK_ATTR = "data-hf-after-fonts-fallback";
 
 // For a runtime older than the gate: at DOMContentLoaded, before that runtime boots, run them in parser order.
@@ -100,7 +96,8 @@ const afterFontsFallback = () => `document.addEventListener("DOMContentLoaded", 
     el.replaceWith(s);
     if (!waits) next();
   })();
-});`;
+});
+//# sourceURL=hyperframes://after-fonts-fallback`;
 
 /** Gives each body script a type the browser does not run, so the runtime can run it once web fonts are ready. */
 export function deferScriptsUntilFonts(
@@ -125,7 +122,7 @@ export function deferScriptsUntilFonts(
   }
   const fallback = document.createElement("script");
   fallback.setAttribute(AFTER_FONTS_FALLBACK_ATTR, "");
-  fallback.textContent = withSourceUrl(afterFontsFallback(), "hyperframes://after-fonts-fallback");
+  fallback.textContent = afterFontsFallback();
   document.head.insertBefore(fallback, document.head.firstChild);
 }
 

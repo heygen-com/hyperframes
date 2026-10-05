@@ -55,8 +55,11 @@ async function timelineWarningCodes(files: Record<string, string>): Promise<stri
     join(workDir, "downloads"),
   );
   writeCompiledArtifacts(compiled, workDir, false);
-  const compiledDir = join(workDir, "compiled");
-  const server = await createFileServer({ projectDir, compiledDir, port: 0 });
+  const server = await createFileServer({
+    projectDir,
+    compiledDir: join(workDir, "compiled"),
+    port: 0,
+  });
   const session = await createCaptureSession(
     server.url,
     join(workDir, "frames"),

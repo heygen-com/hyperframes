@@ -44,7 +44,6 @@ import {
   ensureExternalLinkTag,
   ensureExternalScriptTag,
   deferScriptsUntilFonts,
-  withSourceUrl,
   emitMountedModuleScripts,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
@@ -141,7 +140,7 @@ export function injectSdkPositionEditsRenderScript(html: string): string {
     return html;
   }
   const scriptBody = getPositionEditsRenderScript().replace(/<\/script/gi, "<\\/script");
-  const script = `<script>${scriptBody}</script>`;
+  const script = `<script>${scriptBody}\n//# sourceURL=hyperframes://position-edits</script>`;
   return insertBeforeCloseTag(html, "body", script) ?? `${html}${script}`;
 }
 
@@ -1244,7 +1243,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
         if (attr.name.toLowerCase() === "src") continue;
         inlineScript.setAttribute(attr.name, attr.value);
       }
-      inlineScript.textContent = withSourceUrl(`/* inlined: ${src} */\n${safeText}\n`, src);
+      inlineScript.textContent = `/* inlined: ${src} */\n${safeText}\n//# sourceURL=${new URL(src).href}\n`;
       el.replaceWith(inlineScript);
       defaultLogger.info(`[Compiler] Inlined CDN script: ${src}`);
     } else {
@@ -2043,7 +2042,7 @@ export async function compileForRender(
     ? (insertBeforeCloseTag(
         assembledHtml,
         "body",
-        `<script>${createStudioPositionSeekReapplyScript()}</script>`,
+        `<script>${createStudioPositionSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply</script>`,
       ) ?? assembledHtml)
     : assembledHtml;
   const htmlWithDeferredScripts = deferBodyScriptsUntilFonts(

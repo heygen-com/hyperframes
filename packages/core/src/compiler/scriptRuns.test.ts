@@ -6,7 +6,6 @@ import {
   deferScriptsUntilFonts,
   inlineScriptRuns,
   typeAfterFonts,
-  withSourceUrl,
 } from "./scriptRuns";
 
 function runsOf(bodyHtml: string, isPinned?: (el: Element) => boolean) {
@@ -108,22 +107,5 @@ describe("deferScriptsUntilFonts", () => {
       null,
       "module",
     ]);
-  });
-});
-
-describe("withSourceUrl", () => {
-  it("names code once, keeping a name it already ends with", () => {
-    expect(withSourceUrl("a()", "https://cdn.test/a.js")).toBe(
-      "a()\n//# sourceURL=https://cdn.test/a.js",
-    );
-    expect(withSourceUrl("a()\n//# sourceURL=own.js\n", "x")).toBe("a()\n//# sourceURL=own.js\n");
-  });
-
-  // The runtime carries this function's own source text; that must not count as its name.
-  it("names code that only mentions a sourceURL directive mid-text", () => {
-    const runtime = "var t = `//# sourceURL=${u}`; run();";
-    expect(withSourceUrl(runtime, "hyperframes://injected/0")).toBe(
-      `${runtime}\n//# sourceURL=hyperframes://injected/0`,
-    );
   });
 });
