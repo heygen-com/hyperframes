@@ -180,16 +180,6 @@ function sharesOneStretch(tweens: TweenTiming[]): boolean {
   return stretch > 0 && fits;
 }
 
-/** The runtime places a sub-composition's timeline at its host's start once; moving the host leaves it there. */
-function inOrHostsSubComposition(target: unknown, ownId: string): boolean {
-  const element = target as Element;
-  const owner = element.closest?.("[data-composition-id]");
-  return (
-    (owner != null && owner.getAttribute("data-composition-id") !== ownId) ||
-    element.querySelector?.("[data-composition-id]") != null
-  );
-}
-
 /** Tweens on one element still start in the order they did, an equal start in script order. */
 const keepsOrder = (tweens: TweenTiming[]) =>
   tweens.every(
@@ -216,7 +206,6 @@ function movesKeepEachElementsHistory(
   const moved = new Set<unknown>();
   for (const [target, indexes] of byElement) {
     if (!indexes.some((i) => plan.tweens[i]!.moved)) continue;
-    if (inOrHostsSubComposition(target, plan.key)) return false;
     const tweens = indexes.map((i) => plan.tweens[i]!);
     // GSAP adds delays to the schedule unstretched; a shift keeps every length.
     const shifted = tweens.every((t) => t.duration === t.wasDuration);

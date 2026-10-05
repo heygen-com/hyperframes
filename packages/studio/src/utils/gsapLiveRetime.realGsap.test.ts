@@ -300,7 +300,7 @@ it.each([
   },
   {
     name: "a move of a sub-composition's host",
-    path: "rerun",
+    path: "retime",
     before: script('tl.to("#a", { y: 40, duration: 1 }, 0);'),
     after: script('tl.to("#a", { y: 40, duration: 1 }, 2);'),
     setup: () => {
@@ -311,7 +311,7 @@ it.each([
   },
   {
     name: "a tween on an element inside a sub-composition's host",
-    path: "rerun",
+    path: "retime",
     before: script('tl.to("#a", { y: 40, duration: 1 }, 0);'),
     after: script('tl.to("#a", { y: 40, duration: 1 }, 2);'),
     setup: () => inComposition("t", inComposition("scene", document.getElementById("a")!)),
