@@ -837,7 +837,7 @@ export default defineCommand({
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
-      const tooLong = nameTooLongMessage(name);
+      const tooLong = nameTooLongMessage(destDir);
       if (tooLong) {
         console.error(c.error(tooLong));
         failCommand();
@@ -1020,7 +1020,7 @@ export default defineCommand({
 
     const destDir = resolve(name);
 
-    const tooLong = nameTooLongMessage(name);
+    const tooLong = nameTooLongMessage(destDir);
     if (tooLong) {
       clack.log.error(tooLong);
       clack.cancel("Setup cancelled.");

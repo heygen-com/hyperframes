@@ -409,6 +409,23 @@ describe("hyperframes init flag rename", () => {
     expect(nameTooLongMessage(`parent/${"a".repeat(256)}`, "linux")).toContain("256 bytes");
   });
 
+  it("validates the resolved destination after parent segments remove a long folder", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = `${dir}/${"a".repeat(256)}/../project`;
+    try {
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(0);
+      expect(existsSync(join(dir, "project", "index.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("measures Windows backslash-separated folders individually", () => {
+    expect(nameTooLongMessage(`parent\\${"a".repeat(255)}`, "win32")).toBeNull();
+    expect(nameTooLongMessage(`parent\\${"a".repeat(256)}`, "win32")).toContain("256 characters");
+  });
+
   it("-V prints a migration error instead of version fast-path", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
