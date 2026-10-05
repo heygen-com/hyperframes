@@ -135,13 +135,13 @@ function classicBundle(
   const code = outputFiles[0]?.text;
   if (!code) throw new Error("catalog-script-inlining: esbuild produced no output.");
   if (external.length === 0) return `"use strict";${code}`;
-  const shared = `(s)=>globalThis.${SHARED_MODULES_GLOBAL}[${JSON.stringify(SHARED_ALIASES)}[s]??s]`;
+  const shared = `(s)=>globalThis.${SHARED_MODULES_GLOBAL}[${jsLiteral(SHARED_ALIASES)}[s]??s]`;
   return `(function(require){"use strict";${code}})(${shared});`;
 }
 
-/** A JS string literal safe to embed inside a `<script>` body. */
-function jsStringLiteral(text: string): string {
-  return JSON.stringify(text)
+/** A JSON literal safe to embed inside a `<script>` body. */
+function jsLiteral(value: string | Readonly<Record<string, string>>): string {
+  return JSON.stringify(value)
     .replaceAll("<", "\\u003c")
     .replaceAll("\u2028", "\\u2028")
     .replaceAll("\u2029", "\\u2029");
@@ -161,7 +161,7 @@ function vendorStep(vendorUrls: Record<string, string>, key: string): string {
 
 /** A step running `code`, inlined into the payload, under `name` in stack traces. */
 function codeStep(code: string, name: string): string {
-  return `run(${jsStringLiteral(code)},${JSON.stringify(name)});`;
+  return `run(${jsLiteral(code)},${JSON.stringify(name)});`;
 }
 
 /** One bootstrap `<script>` running `steps` in order, each piece as its own inline <script> so an error
@@ -282,7 +282,7 @@ function inlineGlassScripts(html: string, projectDir: string): string {
     throw new Error("catalog-script-inlining: glass-shard-title's hdr <link> was not inlined.");
   }
   const glassText = readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8");
-  const bootstrap = `<script>(0,eval)(${jsStringLiteral(glassText)});</script>`;
+  const bootstrap = `<script>(0,eval)(${jsLiteral(glassText)});</script>`;
   return replaceOnce(
     html,
     `<script src="assets/glass-main.js"></script>`,
