@@ -6,7 +6,7 @@ description: "How the HyperFrames Studio app updates itself, and what to do when
 
 ## How updates arrive
 
-The app checks for a new version when it opens and every few minutes after that. When one is ready, you get a Mac
+The app checks for a new version when it opens and every few minutes after that. When one is ready, you get a
 notification, a round update button appears in the bottom-right corner, and Framey points at it: **There's a new
 update. Click here.**
 
@@ -14,8 +14,8 @@ update. Click here.**
 2. The app restarts by itself as soon as nothing is running: no agent run, export, or setup in progress. It reopens
    the project you had open, and you do not lose anything.
 
-To check by hand, choose **HyperFrames** > **Check for Updates…** in the menu bar, or open **Settings** >
-**Updates** and choose **Check for updates**. After an update, a short video shows what is new.
+To check by hand, open **Settings** > **Updates** and choose **Check for updates**. On a Mac, **HyperFrames** >
+**Check for Updates…** in the menu bar does the same. After an update, a short video shows what is new.
 
 If an update stops with **The update did not finish.**, choose **Try again**. If it says **Could not check for
 updates.**, check your internet connection, then try again.
@@ -31,7 +31,7 @@ sign you in**, choose **Try again**.
 The chat shows a sign-in card. Your message is kept. Choose **Sign in**, finish in your browser, and the message
 sends as soon as you are back. Choose **Use Codex instead** to send it with Codex if Codex is ready.
 
-For Codex, the chat says **Codex is not signed in.** Choose **Copy sign-in command**, run it in Terminal, then
+For Codex, the chat says **Codex is not signed in.** Choose **Copy sign-in command**, run it in a terminal, then
 choose **Try again**.
 
 ## My agent hit its usage limit
@@ -55,7 +55,7 @@ switch to **Full access** and send the request again.
 
 ## The agent is not installed or won't start
 
-The chat says **Claude Code is not installed on this Mac.** Choose **Try again** and the app sets it up for you. If
+The chat says Claude Code **is not installed**. Choose **Try again** and the app sets it up for you. If
 it says the agent is installed but will not start, choose **Reinstall** in **Settings** > **Permissions**. See
 [Connect your agent](/studio-app/connect-your-agent) for the manual commands.
 
@@ -67,6 +67,17 @@ it says the agent is installed but will not start, choose **Reinstall** in **Set
 | **… needs an update to use** a model | Choose **Update**. |
 | **… could not reach the internet.** | Check your connection, then **Try again**. |
 | **… could not finish this change.** | Choose **Try again**, or say the change differently. |
+
+## Where your work is kept
+
+| What | Mac | Linux |
+| --- | --- | --- |
+| Your projects | `~/.hyperframes-studio` | `~/.hyperframes-studio` |
+| App settings and sign-in | `~/Library/Application Support/HyperFrames` | `~/.config/HyperFrames` |
+| Exported videos | `~/Downloads` | `~/Downloads` |
+
+Each project is a plain HyperFrames project folder, so it also opens in the
+[Studio web editor](/studio/index) and with the [command line](/developers/cli).
 
 ## Related topics
 

@@ -1,12 +1,12 @@
 ---
 title: "Get the HyperFrames Studio app"
 sidebarTitle: "Get the app"
-description: "Download the HyperFrames Studio app for Mac, open it for the first time, and sign in with your HeyGen account."
+description: "Download the HyperFrames Studio app for Mac or Linux, open it for the first time, and sign in with your HeyGen account."
 ---
 
-The HyperFrames Studio app for Mac is the easiest way to make a video with HyperFrames. You describe the video, an
+The HyperFrames Studio app for Mac and Linux is the easiest way to make a video with HyperFrames. You describe the video, an
 agent on your computer builds it, and you change it by typing, pointing at the picture, drawing, or commenting.
-It does not need a terminal.
+You do not need to write code.
 
 <Frame caption="Home: the prompt box, your projects on the left, and Get inspired below.">
   <img
@@ -17,18 +17,40 @@ It does not need a terminal.
 
 ## Download and install
 
-<Steps>
-  <Step title="Download">
-    Go to [hyperframes.dev/studio](https://hyperframes.dev/studio) and choose **Download for macOS**.
-  </Step>
-  <Step title="Install">
-    Open the downloaded file. The **Install HyperFrames** window copies the app into Applications and checks its
-    signature. When it says **HyperFrames is in Applications.**, choose **Open HyperFrames**.
-  </Step>
-</Steps>
+<Tabs>
+  <Tab title="Mac">
+    <Steps>
+      <Step title="Download">
+        Go to [hyperframes.dev/studio](https://hyperframes.dev/studio) and choose **Download for macOS**.
+      </Step>
+      <Step title="Install">
+        Open the downloaded file. The **Install HyperFrames** window copies the app into Applications and checks its
+        signature. When it says **HyperFrames is in Applications.**, choose **Open HyperFrames**.
+      </Step>
+    </Steps>
 
-If your Mac's Applications folder is locked for your account, the installer puts the app in the Applications folder
-inside your home folder instead.
+    If your Mac's Applications folder is locked for your account, the installer puts the app in the Applications
+    folder inside your home folder instead.
+  </Tab>
+  <Tab title="Linux">
+    <Steps>
+      <Step title="Download">
+        Go to [hyperframes.dev/studio](https://hyperframes.dev/studio) and choose **Download** next to Linux. You get
+        one file, `HyperFrames-x86_64.AppImage`, for 64-bit Intel and AMD computers.
+      </Step>
+      <Step title="Make it runnable and open it">
+        In a terminal, in the folder you downloaded it to:
+
+        ```bash
+        chmod +x HyperFrames-x86_64.AppImage
+        ./HyperFrames-x86_64.AppImage
+        ```
+      </Step>
+    </Steps>
+
+    The AppImage is the whole app. Keep it anywhere you like and open it the same way next time.
+  </Tab>
+</Tabs>
 
 ## First launch
 

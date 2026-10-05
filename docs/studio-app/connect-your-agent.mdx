@@ -9,7 +9,7 @@ once. After that, every request you send goes to it.
 | Agent | You need | How the app sets it up |
 | --- | --- | --- |
 | Claude Code | A Claude account or an Anthropic Console account | The app installs it and opens the sign-in for you |
-| Codex | A ChatGPT account | You paste two commands into Terminal |
+| Codex | A ChatGPT account | You paste two commands into a terminal |
 
 Each run uses your agent's own plan, the account you signed the agent in with.
 
@@ -33,8 +33,8 @@ The first time you send a request without an agent, the **Connect Claude Code** 
   </Step>
 </Steps>
 
-If a step fails, the app shows a command you can run yourself. Choose **Copy command**, then **Open Terminal**, and
-paste it:
+If a step fails, the app shows a command you can run yourself. Choose **Copy command** and paste it into a terminal.
+On a Mac, **Open Terminal** opens one for you.
 
 ```bash
 # Install Claude Code
@@ -49,11 +49,11 @@ claude auth login
 The app does not install Codex for you. Open **Settings** > **Agent** or the agent picker in the chat header, find
 Codex, and use its buttons:
 
-1. **Copy install command**, then paste it into Terminal:
+1. **Copy install command**, then paste it into a terminal:
    ```bash
    curl -fsSL https://chatgpt.com/codex/install.sh | sh
    ```
-2. **Copy sign-in command** (`codex`), run it in Terminal, and sign in with your ChatGPT account.
+2. **Copy sign-in command** (`codex`), run it in a terminal, and sign in with your ChatGPT account.
 3. Back in the app, choose **Check again**. Codex shows **Ready**.
 
 ## Switch agents
