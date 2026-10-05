@@ -23,6 +23,7 @@ import {
   resolveConversionProps,
   mergePercentageKeyframes,
   authorsKeyframes,
+  plainPercentKey,
 } from "./gsapSerialize";
 
 export type {
@@ -2071,7 +2072,7 @@ function buildKeyframeObjectCode(
     const props = keyframePropsToCode(kf);
     if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
-    return `${JSON.stringify(`${kf.percentage}%`)}: { ${props.join(", ")} }`;
+    return `${JSON.stringify(plainPercentKey(kf.percentage))}: { ${props.join(", ")} }`;
   });
   if (options?.easeEach) entries.push(`easeEach: ${JSON.stringify(options.easeEach)}`);
   return `{ ${entries.join(", ")} }`;
@@ -2233,7 +2234,7 @@ function convertArrayKeyframesToObjectNode(varsArg: AstNode, scope: ScopeBinding
     el.properties = (el.properties ?? []).filter(
       (property: AstNode) => !isObjectProperty(property) || propKeyName(property) !== "duration",
     );
-    return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recast.print(el).code}`;
+    return `${JSON.stringify(plainPercentKey(timing.percentages[i]!))}: ${recast.print(el).code}`;
   });
   prop.value = parseExpr(`{ ${entries.join(", ")}, easeEach: "none" }`);
   return prop.value;
@@ -2272,7 +2273,7 @@ function locateKeyframeCtx(script: string, animationId: string, percentage: numb
   if (!loc) return null;
   const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
   if (!kfNode) return null;
-  return { loc, kfNode, pctKey: `${percentage}%` };
+  return { loc, kfNode, pctKey: plainPercentKey(percentage) };
 }
 
 /**
@@ -2305,7 +2306,7 @@ export function addKeyframeToScript(
     kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
     if (!kfNode) return script;
   }
-  const pctKey = `${percentage}%`;
+  const pctKey = plainPercentKey(percentage);
 
   const newValueNode = buildKeyframeValueNode(properties, ease);
 
@@ -2511,7 +2512,7 @@ export function moveKeyframeInScript(
   const kept = (kfNode.properties ?? []).filter((p: AstNode) => !pctProps.has(p));
   kfNode.properties = [
     ...entries.map((e) => {
-      const p = parseExpr(`{ ${JSON.stringify(`${e.pct}%`)}: {} }`).properties[0];
+      const p = parseExpr(`{ ${JSON.stringify(plainPercentKey(e.pct))}: {} }`).properties[0];
       p.value = e.value;
       return p;
     }),
@@ -2553,7 +2554,7 @@ export function resizeKeyframedTweenInScript(
     seen.add(match.prop);
     // Replace only the key node; the value node (incl. _auto + per-keyframe ease)
     // stays verbatim. easeEach is a sibling non-percentage prop, left untouched.
-    match.prop.key = parseExpr(`{ ${JSON.stringify(`${to}%`)}: 0 }`).properties[0].key;
+    match.prop.key = parseExpr(`{ ${JSON.stringify(plainPercentKey(to))}: 0 }`).properties[0].key;
   }
 
   applyUpdatesToCall(loc.target.call, {

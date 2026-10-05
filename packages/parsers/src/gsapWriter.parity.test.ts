@@ -62,6 +62,7 @@ import {
   retimeClipTweensInScript,
   type ClipTweenRetime,
   dedupePositionWritesInScript as dedupePosAcorn,
+  replaceTweenWithKeyframesInScript as replaceTweenWithKeyframesAcorn,
 } from "./gsapWriterAcorn.js";
 
 function acornId(script: string): string {
@@ -1451,6 +1452,41 @@ describe("parity: moveKeyframeInScript (recast vs acorn)", () => {
 
   it("sub-2% retime agrees between writers (regression for the swallow bug)", () => {
     expectParity(MOVE_KF_SCRIPT, 50, 51);
+  });
+});
+
+describe("a keyframe percentage below 1e-6", () => {
+  const tiny = 1.2860082304526747e-7;
+  const readBack = (out: string) =>
+    parseGsapScriptAcorn(out).animations[0]!.keyframes?.keyframes.map((kf) => kf.percentage);
+
+  const steps = [
+    { percentage: 0, properties: { x: 0 } },
+    { percentage: tiny, properties: { x: 1 } },
+    { percentage: 100, properties: { x: 10 } },
+  ];
+
+  it.each([
+    ["recast", addWithKfRecast],
+    ["acorn", addWithKfAcorn],
+  ])("is written as a decimal key apart from 0% (%s)", (_name, add) => {
+    const base = `const tl = gsap.timeline({ paused: true });`;
+    const out = add(base, "#a", 0, 2, steps).script;
+    expect(out).not.toMatch(/\de-\d/);
+    expect(readBack(out)).toEqual([0, expect.closeTo(tiny, 12), 100]);
+  });
+
+  it("stays apart from 0% when replace-with-keyframes writes both", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, x: 10, ease: "power4.in" }, 0);`;
+    const out = replaceTweenWithKeyframesAcorn(script, acornId(script), {
+      targetSelector: "#a",
+      position: 0,
+      duration: 2,
+      ease: "power4.in",
+      keyframes: steps,
+    })!;
+    expect(readBack(out)).toEqual([0, expect.closeTo(tiny, 12), 100]);
   });
 });
 

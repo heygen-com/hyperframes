@@ -18,7 +18,11 @@ import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
 import MagicString from "magic-string";
 import type { GsapAnimation } from "./gsapSerialize.js";
-import { serializeValue as valueToCode, safeJsKey as safeKey } from "./gsapSerialize.js";
+import {
+  serializeValue as valueToCode,
+  safeJsKey as safeKey,
+  plainPercentKey,
+} from "./gsapSerialize.js";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import { isFunctionNode, isTimelineRooted } from "./gsapInline.js";
 
@@ -43,7 +47,7 @@ function keyframesEntry(anim: GsapAnimation): string {
   const kfs = (anim.keyframes?.keyframes ?? []).map((k) => {
     const body = propEntries(k.properties);
     if (k.ease) body.push(`ease: ${valueToCode(k.ease)}`);
-    return `"${k.percentage}%": { ${body.join(", ")} }`;
+    return `${JSON.stringify(plainPercentKey(k.percentage))}: { ${body.join(", ")} }`;
   });
   if (anim.keyframes?.easeEach) kfs.push(`easeEach: ${valueToCode(anim.keyframes.easeEach)}`);
   return `keyframes: { ${kfs.join(", ")} }`;
