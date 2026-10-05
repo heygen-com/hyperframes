@@ -278,14 +278,11 @@ describe("deterministic Google Fonts retries", () => {
       calls += 1;
       return new Response("", {
         status: 429,
-        headers: { "Retry-After": "1" },
+        headers: { "Retry-After": "60" },
       });
     }) as typeof fetch;
 
-    const result = injectWithRetries(html, fetchImpl, {
-      ...FAST_RETRY,
-      maxElapsedMs: 100,
-    });
+    const result = injectWithRetries(html, fetchImpl);
 
     await expect(result).rejects.toMatchObject({ code: FONT_FETCH_UNAVAILABLE });
     expect(calls).toBe(1);
