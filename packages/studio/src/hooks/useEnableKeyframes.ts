@@ -31,6 +31,7 @@ import {
 import { POSITION_PROPS } from "./gsapRuntimeReaders";
 import { findParsedTween, withLiveTiming } from "./gsapParsedTween";
 import { roundTo3 } from "../utils/rounding";
+import { readTranslatePxLeavingPercent } from "../components/editor/plainTranslate";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import {
   buildExtendedKeyframes,
@@ -80,14 +81,6 @@ export function animatedProps(anim: GsapAnimation | null): string[] {
     if (keys.size > 0) return [...keys];
   }
   return ["x", "y"];
-}
-
-export function cssTranslatePx(element: HTMLElement): { x: number; y: number } {
-  const view = element.ownerDocument.defaultView;
-  const parts = (view?.getComputedStyle(element).translate ?? "").match(/calc\([^)]*\)|\S+/g) ?? [];
-  const px = (part = "") =>
-    roundTo3([...part.matchAll(/(-?[\d.]+)px/g)].reduce((sum, m) => sum + Number(m[1]), 0));
-  return { x: px(parts[0]), y: px(parts[1]) };
 }
 
 /**
@@ -203,9 +196,8 @@ export function singleKeyTweenMutation(
     sel.dataAttributes?.duration,
     currentTime,
   );
-  // One keyframe at the playhead — a single diamond capturing the current
-  // value. Motion comes from the user adding/dragging more keyframes later;
-  // creating 0%+100% up front showed two diamonds for a single "add keyframe".
+  // One keyframe at the playhead, a single diamond capturing the current value;
+  // motion comes from the keyframes the user adds or drags later.
   return {
     type: "add-with-keyframes",
     targetSelector,
@@ -549,7 +541,8 @@ export function useEnableKeyframes(
       }
     } else {
       const position = readElementPosition(iframe, sel, null);
-      if (Object.keys(position).length === 0) Object.assign(position, cssTranslatePx(sel.element));
+      if (Object.keys(position).length === 0)
+        Object.assign(position, readTranslatePxLeavingPercent(sel.element));
       const mutation = singleKeyTweenMutation(sel, position, t);
       if (mutation && session.commitMutation) {
         await session.commitMutation(mutation, { label: "Enable keyframes", softReload: true });
