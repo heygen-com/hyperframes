@@ -26,6 +26,8 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 
+let boxSizeCommitCounter = 0;
+
 // ── Hook ──
 
 export interface UseDomGeometryCommitsParams {
@@ -90,7 +92,10 @@ export function useDomGeometryCommits({
         label: "Resize layer box",
         ...(undoKey
           ? { coalesceKey: undoKey, coalesceMs: Number.POSITIVE_INFINITY, deferRender: true }
-          : { coalesceKey: `box-size:${getDomEditTargetKey(selection)}` }),
+          : {
+              coalesceKey: `box-size:${++boxSizeCommitCounter}`,
+              coalesceMs: Number.POSITIVE_INFINITY,
+            }),
       }).catch((error) => {
         restoreStudioBoxSize(element, beforeSize);
         if (offset) restoreStudioPathOffset(element, beforeOffset);

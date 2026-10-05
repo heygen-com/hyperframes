@@ -376,6 +376,27 @@ describe("Reset after a plain move puts the author's translate back", () => {
   });
 });
 
+describe("useDomGeometryCommits undo steps", () => {
+  it("never merges a resize with the next size edit of the same element", async () => {
+    const element = document.createElement("div");
+    element.id = "box";
+    document.body.append(element);
+    const selection = { id: "box", selector: "#box", element } as unknown as DomEditSelection;
+    const commitPositionPatchToHtml = vi
+      .fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>()
+      .mockResolvedValue(undefined);
+    const { commits, unmount } = mountCommits(commitPositionPatchToHtml);
+
+    await commits().handleDomBoxSizeCommit(selection, { width: 418, height: 200 });
+    await commits().handleDomBoxSizeCommit(selection, { width: 280, height: 200 });
+
+    const [resize, field] = commitPositionPatchToHtml.mock.calls.map(([, , options]) => options);
+    expect(resize!.coalesceKey).not.toBe(field!.coalesceKey);
+    unmount();
+    element.remove();
+  });
+});
+
 describe("useDomGeometryCommits resize of a cropped element", () => {
   it("saves the crop scaled per axis with the box in the resize's own commit", async () => {
     const element = withInlineLayoutBox(document.createElement("div"));
