@@ -1319,7 +1319,7 @@ async function capturePreviewThenPaint(
   await Promise.all(entries.map((entry) => capturePaintedHost(entry, t, seq, speculative)));
 }
 
-/** A `.hf-vfx-in` first laid out at 0×0 and then sized can stay blank in its capture until re-inserted (measured). */
+/** A `.hf-vfx-in` first painted at 0×0 and then sized can stay blank in its capture until re-inserted (measured). */
 function reinsertRegrownSources(): void {
   for (const src of registry.flatMap(entrySources)) {
     const empty = deviceSize(src.inner) === null;

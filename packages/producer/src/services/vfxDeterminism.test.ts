@@ -578,8 +578,8 @@ describe("data-vfx-chain in the browser", () => {
     errors: string[],
     registeredStyle?: string,
   ): Promise<void> {
-    if (registeredStyle === undefined) await page.addScriptTag({ content: runtime });
     // The wrapper registers with `registeredStyle` and gets its own back before any paint.
+    if (registeredStyle === undefined) await page.addScriptTag({ content: runtime });
     else
       await page.evaluate(
         (src: string, style: string) => {
@@ -710,9 +710,8 @@ describe("data-vfx-chain in the browser", () => {
   }, 60_000);
 
   const CLEAR = [0, 0, 0, 0];
-  // Per frame: the wrapper's style and the probe pixel, null while the host is outside its
-  // window; then how many one-frame reports the shot makes, and the wrapper's style at page
-  // load and at registration, and when the host starts, where they differ.
+  // `pixel` null: the host has not started yet. The options override the wrapper's style at
+  // load and at registration, and the host's start.
   it.each<
     [
       string,
@@ -761,7 +760,7 @@ describe("data-vfx-chain in the browser", () => {
         ["", red],
       ],
       0,
-      { hostStart: 0.02 },
+      { registered: "", hostStart: 0.02 },
     ],
     [
       "is 0×0 at load and sized before the first seek: it paints on that seek",
