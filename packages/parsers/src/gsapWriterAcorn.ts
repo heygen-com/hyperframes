@@ -2520,8 +2520,11 @@ function linearPercentageKeys(animation: GsapAnimation) {
   return data.keyframes;
 }
 
+const loops = (animation: GsapAnimation) =>
+  Boolean(animation.extras?.repeat || animation.extras?.yoyo);
+
 function trimmableKeyframes(animation: GsapAnimation) {
-  const keyframes = linearPercentageKeys(animation);
+  const keyframes = loops(animation) ? null : linearPercentageKeys(animation);
   const { duration, position } = animation;
   if (!keyframes || typeof position !== "number" || typeof duration !== "number") return null;
   return duration > 0 ? { keyframes, duration, position } : null;
@@ -2547,13 +2550,17 @@ function trailingSpanTrim(animation: GsapAnimation) {
  *  each tween this mutation wrote or edited ends on its last key instead. Tweens it left alone keep their tail. */
 export function trimTrailingKeyframeSpans(previous: string, script: string): string {
   if (script === previous) return script;
-  const trims = parseGsapScriptAcornForWrite(script)?.located.flatMap((entry) => {
+  const located = parseGsapScriptAcornForWrite(script)?.located ?? [];
+  // A shorter tween moves every tween placed after its end ("+=", ">", no position).
+  if (located.some(({ animation: a }) => a.implicitPosition || typeof a.position !== "number"))
+    return script;
+  const trims = located.flatMap((entry) => {
     const trim = trailingSpanTrim(entry.animation);
     return trim ? [{ entry, trim }] : [];
   });
-  if (!trims?.length) return script;
+  if (!trims.length) return script;
   const source = (text: string, { call }: { call: TweenCallInfo }) =>
-    text.slice(call.node.start, call.node.end);
+    `${call.method}${text.slice(call.node.arguments[0]?.start, call.node.end)}`;
   const previousTweens = parseGsapScriptAcornForWrite(previous)?.located ?? [];
   const untouched = new Set(previousTweens.map((entry) => source(previous, entry)));
   let result = script;

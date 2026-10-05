@@ -28,6 +28,14 @@ describe("trimTrailingKeyframeSpans", () => {
     });
   });
 
+  it("leaves a chained tween the mutation did not touch when it edits the link before", () => {
+    const chain = (x: number) =>
+      `tl.to("#a", { x: ${x}, duration: 1 }, 0).to("#t", { keyframes: { "0%": { x: 300 }, "50%": { x: 48 } }, duration: 2 }, 1);`;
+    expect(trimTrailingKeyframeSpans(timeline + chain(1), timeline + chain(2))).toBe(
+      timeline + chain(2),
+    );
+  });
+
   it("leaves a tween the mutation did not touch, and the bytes around it", () => {
     const script = timeline + shortOfEnd;
     expect(trimTrailingKeyframeSpans(script, script)).toBe(script);
@@ -39,6 +47,14 @@ describe("trimTrailingKeyframeSpans", () => {
     [
       "an outer ease, whose curve the tail is part of",
       tween(`"0%": { x: 300 }, "50%": { x: 48 }`, 3, `, ease: "power2.in"`),
+    ],
+    [
+      "a looping tween, whose tail is part of every cycle",
+      tween(`"0%": { x: 300 }, "50%": { x: 48 }`, 3, ", repeat: -1"),
+    ],
+    [
+      "every tween when one is placed after another's end",
+      `${shortOfEnd}\ntl.to("#u", { opacity: 1, duration: 1 }, ">");`,
     ],
   ])("leaves %s", (_, written) => {
     expect(trimTrailingKeyframeSpans(timeline, timeline + written)).toBe(timeline + written);
