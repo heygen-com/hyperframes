@@ -24,12 +24,37 @@ import { HistoryIdError } from "./historyId";
 import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
+// A test can hold a media copy, and run work after its blob is stored but before history records it.
+const mediaCopy = vi.hoisted(() => ({
+  held: null as Promise<void> | null,
+  stored: null as (() => Promise<unknown>) | null,
+}));
+vi.mock("./blobStore", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./blobStore")>();
+  return {
+    ...real,
+    openBlobStore: async (dir: string) => {
+      const store = await real.openBlobStore(dir);
+      return {
+        ...store,
+        put: async (path: string) => {
+          if (path.endsWith(".mp4")) await mediaCopy.held;
+          const hash = await store.put(path);
+          if (path.endsWith(".mp4")) await mediaCopy.stored?.();
+          return hash;
+        },
+      };
+    },
+  };
+});
+
 const you: HistoryWho = { kind: "person", name: "You" };
 const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
 const agent: HistoryWho = { kind: "agent", name: "Agent" };
 const cleanup: Array<() => unknown> = [];
 
 afterEach(async () => {
+  Object.assign(mediaCopy, { held: null, stored: null });
   for (const step of cleanup.splice(0).reverse()) await step();
 });
 
@@ -263,6 +288,49 @@ describe("openProjectHistory", () => {
     ]);
     expect((await reopened.undo(outside!.id, { who: you })).ok).toBe(true);
     expect([read("index.html"), has(".media/manifest.jsonl")]).toEqual(["A", false]);
+  });
+
+  it("a ledger made while closed is still a change after the project's media was copied in the background", async () => {
+    const { history, write, has, projectDir, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": Buffer.alloc(2 * 1024 ** 2, 7) },
+      { quietMs: 30 },
+    );
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    await history.close();
+    write("b.png", "png");
+    write(".media/manifest.jsonl", '{"path":"b.png"}\n');
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    const [outside] = reopened.list();
+    expect(outside!.files.map((file) => file.path).sort()).toEqual([
+      ".media/manifest.jsonl",
+      "b.png",
+    ]);
+    expect((await reopened.undo(outside!.id, { who: you })).ok).toBe(true);
+    expect([has("b.png"), has(".media/manifest.jsonl")]).toEqual([false, false]);
+  });
+
+  it("keeps a media copy that a budget prune ran into before history recorded it", async () => {
+    const clip = Buffer.alloc(2 * 1024 ** 2, 7);
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const { history, write } = await project(
+      { "index.html": "A", "clip.mp4": clip },
+      { budgetBytes: 1, quietMs: 30 },
+    );
+    // The copy is stored; an edit commits and prunes before history records the copy.
+    mediaCopy.stored = () => {
+      mediaCopy.stored = null;
+      return change(history, you, "Color", () => write("index.html", "B"));
+    };
+    release();
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    const start = history.peek(START)["clip.mp4"]!;
+    expect((await history.readBlob(start)).equals(clip)).toBe(true);
   });
 
   it("a log 0.8.123 wrote without a ledger takes none in, and one made later while closed is a change", async () => {

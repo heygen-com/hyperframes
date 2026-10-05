@@ -43,6 +43,7 @@ import {
 import { takeHistoryOwnership } from "./ownerLock.js";
 import {
   START,
+  baselineRecord,
   foldOldest,
   manifestAround,
   manifestAt,
@@ -522,18 +523,21 @@ class Engine {
 
   async adopt(file: ListedFile, sweptAt: number) {
     try {
-      const hash = await this.storeIfPresent(file.path);
+      const stored = await this.storeIfPresent(file.path);
       await this.queue(async () => {
         this.adopting.delete(file.path);
         this.saveAdopting();
-        if (hash === null || this.whereFolder() !== "here") return;
+        if (stored === null || this.whereFolder() !== "here") return;
+        // A prune that ran while this copy waited for the queue may have taken its bytes.
+        const hash = this.blobs.has(stored) ? stored : await this.storeIfPresent(file.path);
+        if (hash === null) return;
         const change = { path: file.path, before: null, after: hash };
         const found = this.overwrittenBy(change, undefined, new Set());
         const start = found && this.blobs.has(found) ? found : hash;
         this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
         this.log.baseline.set(file.path, start);
         if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
-        this.persistLog({ type: "baseline", files: Object.fromEntries(this.log.baseline) });
+        this.persistLog(baselineRecord(this.log));
         this.saveStatCache();
       });
     } catch (error) {

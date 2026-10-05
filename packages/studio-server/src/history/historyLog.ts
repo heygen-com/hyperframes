@@ -100,13 +100,17 @@ export function saveRecord(file: string, log: HistoryLog, record: LogRecord): vo
   }
 }
 
+export function baselineRecord(log: HistoryLog): LogRecord {
+  return {
+    type: "baseline",
+    files: Object.fromEntries(log.baseline),
+    ...(log.keepsLedger && { keepsLedger: true }),
+  };
+}
+
 export function writeLog(file: string, log: HistoryLog): void {
   const records: LogRecord[] = [
-    {
-      type: "baseline",
-      files: Object.fromEntries(log.baseline),
-      ...(log.keepsLedger && { keepsLedger: true }),
-    },
+    baselineRecord(log),
     ...log.entries.map((entry) => ({ type: "entry" as const, entry })),
     ...[...log.pins].map((id) => ({ type: "pin" as const, id, pinned: true })),
   ];
