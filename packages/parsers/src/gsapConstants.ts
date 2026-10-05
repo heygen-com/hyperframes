@@ -134,22 +134,24 @@ export function classifyTweenPropertyGroup(
   return undefined;
 }
 
+const HELD_GROUPS = new Set<PropertyGroupName>(["position", "size"]);
+
 function knownStart(animation: GsapAnimation): number | undefined {
   if (animation.resolvedStart !== undefined) return animation.resolvedStart;
   return typeof animation.position === "number" ? animation.position : undefined;
 }
 
 /**
- * What a Studio hold pins from t=0 before a later keyframed tween: its 0% keyframe's position props,
- * minus those an earlier timeline tween on the target writes (a global `gsap.set` is a base value).
+ * What a Studio hold pins from t=0 under a lone keyframe (GSAP renders none) or before a later keyframed tween:
+ * its 0% keyframe's position and size props, minus those an earlier timeline tween writes (a global set is a base).
  */
-export function positionHoldForAnimation(
+export function keyframeHoldForAnimation(
   animation: GsapAnimation,
   animations: readonly GsapAnimation[],
 ): Record<string, number> | null {
   if (!animation.keyframes) return null;
   const start = knownStart(animation) ?? 0;
-  if (!(start > 0.001)) return null;
+  if (!(start > 0.001) && animation.keyframes.keyframes.length > 1) return null;
   const atStart = animation.keyframes.keyframes.find((keyframe) => keyframe.percentage === 0);
   if (!atStart) return null;
   // A tween whose start the parser could not resolve (a label, say) is not known to come first.
@@ -165,7 +167,7 @@ export function positionHoldForAnimation(
   });
   const position: Record<string, number> = {};
   for (const [property, value] of Object.entries(atStart.properties)) {
-    if (classifyPropertyGroup(property) !== "position" || typeof value !== "number") continue;
+    if (!HELD_GROUPS.has(classifyPropertyGroup(property)) || typeof value !== "number") continue;
     if (earlier.some((other) => writesProperty(other, property))) continue;
     position[property] = value;
   }

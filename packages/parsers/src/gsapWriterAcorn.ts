@@ -29,7 +29,7 @@ import {
   classifyPropertyGroup,
   isTweenConfigKey,
   isXYPositionWrite,
-  positionHoldForAnimation,
+  keyframeHoldForAnimation,
 } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
 import {
@@ -2498,12 +2498,56 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
   if (!current) return result;
   const animations = current.located.map((entry) => entry.animation);
   for (const animation of animations) {
-    const position = positionHoldForAnimation(animation, animations);
+    const position = keyframeHoldForAnimation(animation, animations);
     if (!position) continue;
     result = insertInheritedStateSetInScript(result, animation.targetSelector, 0, {
       ...position,
       data: STUDIO_HOLD_MARKER,
     });
+  }
+  return result;
+}
+
+const roundPct = (pct: number) => Math.round(pct * 1000) / 1000;
+
+/** The keyless tail of a keyframe tween, as the remap that ends it on its last key; null when it has none. */
+function trailingSpanTrim(animation: GsapAnimation) {
+  const data = animation.keyframes;
+  const { duration, position, ease } = animation;
+  if (data?.format !== "percentage" || data.fromMotionPath || animation.arcPath) return null;
+  if (typeof position !== "number" || typeof duration !== "number" || !(duration > 0)) return null;
+  if (animation.durationUnresolved || (ease && ease !== "none" && ease !== "linear")) return null;
+  const last = Math.max(...data.keyframes.map((keyframe) => keyframe.percentage));
+  if (data.keyframes.length < 2 || !(last > 0) || last >= 99.999) return null;
+  return {
+    position,
+    duration: Math.round(duration * last * 10) / 1000,
+    pctRemap: data.keyframes.map(({ percentage: from }) => ({
+      from,
+      to: roundPct((from / last) * 100),
+    })),
+  };
+}
+
+/** GSAP 3.15 stretches a keyframe tween that stops short of 100% on its first render, unlike once played:
+ *  each tween this mutation wrote or edited ends on its last key instead. Tweens it left alone keep their tail. */
+export function trimTrailingKeyframeSpans(previous: string, script: string): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const source = (text: string) => (entry: { call: TweenCallInfo }) =>
+    text.slice(entry.call.node.start, entry.call.node.end);
+  const untouched = new Set(parseGsapScriptAcornForWrite(previous)?.located.map(source(previous)));
+  let result = script;
+  for (const entry of parsed.located) {
+    const trim = untouched.has(source(script)(entry)) ? null : trailingSpanTrim(entry.animation);
+    if (trim)
+      result = resizeKeyframedTweenInScript(
+        result,
+        entry.id,
+        trim.position,
+        trim.duration,
+        trim.pctRemap,
+      );
   }
   return result;
 }

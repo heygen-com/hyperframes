@@ -39,6 +39,13 @@ export function setElementGsapScale(element: HTMLElement, x: number, y: number):
 }
 
 /** The element's GSAP numeric property, or null when unreadable. */
+export function setElementGsapSize(element: HTMLElement, width: number, height: number): boolean {
+  const gsap = gsapOf(element);
+  if (!gsap?.set) return false;
+  gsap.set(element, { width, height });
+  return true;
+}
+
 export function readElementGsapNumber(element: HTMLElement, prop: string): number | null {
   const value = Number(gsapOf(element)?.getProperty?.(element, prop));
   return Number.isFinite(value) ? value : null;

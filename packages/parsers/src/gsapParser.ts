@@ -55,7 +55,7 @@ import {
   classifyTweenPropertyGroup,
   GSAP_DEFAULT_DURATION,
   isXYPositionWrite,
-  positionHoldForAnimation,
+  keyframeHoldForAnimation,
 } from "./gsapConstants";
 import type { PropertyGroupName } from "./gsapConstants";
 import { BUILTIN_VAR_KEYS, DROPPED_VAR_KEYS, EXTRAS_KEYS, isTweenConfigKey } from "./gsapConstants";
@@ -1886,7 +1886,7 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
     return result;
   }
   for (const anim of reparsed.animations) {
-    const posProps = positionHoldForAnimation(anim, reparsed.animations);
+    const posProps = keyframeHoldForAnimation(anim, reparsed.animations);
     if (!posProps) continue;
     result = insertInheritedStateSet(result, anim.targetSelector, 0, {
       ...posProps,

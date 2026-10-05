@@ -187,7 +187,8 @@ async function driveStep(ctx, step, state) {
     const pressed = () =>
       page.$eval(AUTO_KEYFRAME, (b) => b.getAttribute("aria-pressed") === "true");
     if (!(await pressed())) await page.click(AUTO_KEYFRAME);
-    return { do: "autokey", on: await pressed() };
+    state.autokey = await pressed();
+    return { do: "autokey", on: state.autokey };
   }
   if (step.do === "addkey") {
     // The toolbar's own button, pressed where a person would; the box must not move.
@@ -306,19 +307,41 @@ const round = (m) => m.visible.map((p) => p.map((v) => Math.round(v * 100) / 100
 
 /**
  * A person's pace: wait for the step's save, then score the settled box against where the step put it
- * (a seek: the box its keyframe time was left with), and remember that box for the playhead's time.
+ * (a seek: the box its keyframe time was left with, unless a size key since holds another size there).
  */
 async function settleStep(c, steps, step, state, keyBoxes, watcher) {
-  const owed = steps.filter(saves).length;
-  for (const deadline = Date.now() + 10_000; Date.now() < deadline; await sleep(50))
-    if (watcher.versions.length - 1 >= owed) break;
-  if (step.do === "seek") state.intended = keyBoxes.get(step.time) ?? null;
+  await untilSaved(watcher, steps.filter(saves).length);
+  const held = heldSize(state.sizeKeys, state.time);
+  const kept = keyBoxes.get(state.time);
+  if (step.do === "seek") state.intended = sizeError(kept?.size, held) ? null : kept?.visible;
   const m = await settled(c);
-  const s = steps.at(-1);
-  s.saves = watcher.versions.length - 1;
-  if (state.intended) s.box = quadDistance(state.intended, m.visible);
-  if (saves(step)) keyBoxes.set(state.time, state.intended ?? m.visible);
+  const size = step.do === "seek" ? sizeError(held, m.size) : undefined;
+  Object.assign(steps.at(-1), {
+    saves: watcher.versions.length - 1,
+    box: boxError(state, m),
+    size,
+  });
+  if (step.gesture === "resize" && state.autokey) state.sizeKeys.set(state.time, m.size);
+  if (saves(step)) keyBoxes.set(state.time, { visible: state.intended ?? m.visible, size: m.size });
 }
+
+/** Under auto-record, size keys hold their nearest value before the first and after the last. */
+export function heldSize(sizeKeys, time) {
+  const times = [...sizeKeys.keys()].sort((a, b) => a - b);
+  if (!times.length) return undefined;
+  return sizeKeys.get(Math.min(Math.max(time, times[0]), times.at(-1)));
+}
+
+const sizeError = (a, b) =>
+  a && b ? Math.max(Math.abs(a.width - b.width), Math.abs(a.height - b.height)) : 0;
+
+async function untilSaved(watcher, owed) {
+  for (const deadline = Date.now() + 10_000; Date.now() < deadline; await sleep(50))
+    if (watcher.versions.length - 1 >= owed) return;
+}
+
+const boxError = (state, m) =>
+  state.intended ? quadDistance(state.intended, m.visible) : undefined;
 
 /** One path or sequence case, end to end, against a Studio already serving `dir`. */
 export async function runSequence(args) {
@@ -349,6 +372,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     start: pre.visible,
     intended: null,
     text: null,
+    autokey: false,
+    sizeKeys: new Map(),
     time: spec.playhead ?? PLAYHEAD,
   };
   // Settled cases only: the box each keyframe time was left with, which a later seek there must show.
@@ -440,7 +465,7 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   return {
     ...(spec.keyRender !== undefined &&
       keyBoxes.has(spec.keyRender) && {
-        keyRender: { time: spec.keyRender, visible: keyBoxes.get(spec.keyRender) },
+        keyRender: { time: spec.keyRender, visible: keyBoxes.get(spec.keyRender).visible },
       }),
     zoom,
     saved: versions.length > 1,
@@ -451,7 +476,10 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     teleport: worst ? { ...worst.teleport, trace: undefined, step: steps.indexOf(worst) } : null,
     // Against the box the last step left: its drag's last frame, the box after its keys, or the start when
     // undone; a settled case also fails on any step whose settled box left where that step put it.
-    drop: Math.max(quadDistance(intended, committed.visible), ...steps.map((s) => s.box ?? 0)),
+    drop: Math.max(
+      quadDistance(intended, committed.visible),
+      ...steps.map((s) => Math.max(s.box ?? 0, s.size ?? 0)),
+    ),
     reload: Math.max(
       quadDistance(committed.visible, reloaded.visible),
       quadDistance(intended, reloaded.visible),

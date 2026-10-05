@@ -1792,6 +1792,20 @@ describe("keyframe mutations", () => {
       expect(syncPositionHoldsBeforeKeyframes(posTweenAt(0))).not.toContain("hf-hold");
     });
 
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds a lone size keyframe from t=0, wherever its tween starts", (_, sync) => {
+      for (const start of [0, 1.5]) {
+        const script =
+          `const tl = gsap.timeline({ paused: true });\n` +
+          `tl.to("#s", { keyframes: { "0%": { width: 440, height: 294 } }, duration: 3 }, ${start});`;
+        const hold = parseGsapScript(sync(script)).animations.find((a) => a.method === "set");
+        expect(hold!.position).toBe(0);
+        expect(hold!.properties).toEqual({ width: 440, height: 294, data: "hf-hold" });
+      }
+    });
+
     it("adds no hold for an opacity-only keyframed tween (position-scoped)", () => {
       const opacity =
         `const tl = gsap.timeline({ paused: true });\n` +

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { swapPending, unsettledBy } from "./case.mjs";
+import { heldSize } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -43,5 +44,20 @@ describe("settling on the shown preview", () => {
   it("never waits on a swap in a case without keyframes, so its undo keeps main's timing", async () => {
     expect(await swapPending({ page: swapping })).toBe(false);
     expect(await swapPending({ page: swapping, keys: undefined, selector: "#other" })).toBe(false);
+  });
+});
+
+describe("the size auto-record keys hold", () => {
+  const keys = new Map([
+    [3, { width: 440, height: 294 }],
+    [2, { width: 380, height: 250 }],
+  ]);
+
+  it("holds the first key before it and the last after it, and leaves eased spans unscored", () => {
+    expect(heldSize(keys, 1)).toEqual({ width: 380, height: 250 });
+    expect(heldSize(keys, 3)).toEqual({ width: 440, height: 294 });
+    expect(heldSize(keys, 5)).toEqual({ width: 440, height: 294 });
+    expect(heldSize(keys, 2.5)).toBeUndefined();
+    expect(heldSize(new Map(), 1)).toBeUndefined();
   });
 });
