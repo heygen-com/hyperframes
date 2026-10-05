@@ -1000,11 +1000,24 @@ function tryResolveStringProp(
 }
 
 // fallow-ignore-next-line complexity
+function staticKeyName(prop: any): string | undefined {
+  if (prop.type !== "ObjectProperty" && prop.type !== "Property") return undefined;
+  const key = prop.computed
+    ? prop.key?.type === "Literal" && prop.key.value
+    : (prop.key?.name ?? prop.key?.value);
+  return typeof key === "string" ? key : undefined;
+}
+
+const isPlainStep = (node: any) =>
+  node?.type === "Literal" ||
+  (node?.type === "ObjectExpression" &&
+    (node.properties ?? []).every((p: any) => staticKeyName(p) !== undefined));
+
 function parsePercentageKeyframes(
   node: any,
   scope: ScopeBindings,
   source: string,
-): GsapKeyframesData {
+): GsapKeyframesData | undefined {
   const keyframes: GsapPercentageKeyframe[] = [];
   let ease: string | undefined;
   let easeEach: string | undefined;
@@ -1016,6 +1029,7 @@ function parsePercentageKeyframes(
 
     const pctMatch = PERCENTAGE_KEY_RE.exec(key);
     if (pctMatch) {
+      if (!isPlainStep(prop.value)) return undefined;
       const percentage = Number.parseFloat(pctMatch[1] ?? "0");
       const record = objectExpressionToRecord(prop.value, scope, source);
       const properties: Record<string, number | string> = {};
@@ -1182,9 +1196,7 @@ function parseKeyframesNode(
   if (node.type !== "ObjectExpression") return undefined;
 
   const props = node.properties ?? [];
-  const unreadableKey = (p: any) =>
-    p.type === "SpreadElement" || (p.computed && p.key?.type !== "Literal");
-  if (props.some(unreadableKey)) return undefined;
+  if (!props.every((p: any) => staticKeyName(p) !== undefined)) return undefined;
   let hasPercentageKey = false;
   let hasArrayValue = false;
 

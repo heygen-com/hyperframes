@@ -685,6 +685,22 @@ tl.to("#a", { duration: 1, keyframes: { [k]: { x: 10 }, "100%": { x: 50 } } }, 0
     expect(removeKeyframeAcorn(script, id, 100)).toBe(script);
   });
 
+  it.each([
+    ["a named step", '{ "0%": { x: 0 }, "100%": last }'],
+    ["a spread inside a step", '{ "0%": { x: 0 }, "100%": { ...base, x: 10 } }'],
+    ["a numeric key", '{ "0%": { x: 0 }, [50]: { x: 5 }, "100%": { x: 10 } }'],
+  ])(
+    "treats object keyframes with %s as unreadable, so drags and deletes keep them",
+    (_shape, keyframes) => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0);`;
+      const id = acornId(script);
+      expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+      expect(moveKeyframeAcorn(script, id, 100, 80)).toBe(script);
+      expect(removeKeyframeAcorn(script, id, 0)).toBe(script);
+    },
+  );
+
   it("recast property edit leaves keyframes from a call unchanged", () => {
     const script = `const tl = gsap.timeline({ paused: true });
 tl.to("#a", { x: 5, duration: 1, keyframes: steps() }, 0);`;
