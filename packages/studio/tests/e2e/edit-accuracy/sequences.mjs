@@ -350,6 +350,7 @@ const sizeError = (a, b) =>
 async function untilSaved(watcher, owed) {
   for (const deadline = Date.now() + 10_000; Date.now() < deadline; await sleep(50))
     if (watcher.versions.length - 1 >= owed) return;
+  throw new Error(`save ${owed} never landed`);
 }
 
 const boxError = (state, m) =>
