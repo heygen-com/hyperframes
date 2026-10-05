@@ -154,6 +154,15 @@ import { audibleVideoNeedsWebAudio, isAudibleVideoElement } from "../audibleVide
  * composition author can find the partial timeline.
  */
 let warnedTimelineMissingPause = false;
+/** A timeline the runtime already padded is padded again from scratch, as a fresh load pads it. */
+function dropRuntimeFillers(timeline: RuntimeTimelineLike): void {
+  const removable = timeline as RuntimeTimelineLike & { remove?: (child: unknown) => unknown };
+  if (typeof removable.remove !== "function") return;
+  for (const child of timeline.getChildren?.(false, true, false) ?? []) {
+    if (child.data === RUNTIME_FILLER) removable.remove(child);
+  }
+}
+
 function pauseTimelineIfPossible(tl: RuntimeTimelineLike | null | undefined): void {
   if (!tl) return;
   if (typeof tl.pause !== "function") {
@@ -1599,6 +1608,7 @@ export function initSandboxRuntimeModular(): void {
           /* ignore */
         }
       }
+      dropRuntimeFillers(rootTimeline);
       const rootDurationSeconds = getTimelineDurationSeconds(rootTimeline);
       if (!isUsableTimelineDuration(rootDurationSeconds) && rootChildCandidates.length > 0) {
         const selectedTimelineIds = rootChildCandidates.map((candidate) => candidate.compositionId);
@@ -2034,6 +2044,12 @@ export function initSandboxRuntimeModular(): void {
     if (state.capturedTimeline !== resolution.timeline) {
       childrenBound = false;
       bindRootTimelineIfAvailable();
+    } else {
+      const length = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+      if (length > 0 && length !== clock.getDuration()) {
+        clock.setDuration(length);
+        postTimeline();
+      }
     }
     syncTimedElementVisibility(state.currentTime);
   };

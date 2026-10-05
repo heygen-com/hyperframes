@@ -1,5 +1,7 @@
+import gsap from "gsap";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
+import { RUNTIME_FILLER } from "./protocol";
 import type { RuntimeTimelineLike } from "./types";
 import {
   createMockTimeline,
@@ -45,6 +47,28 @@ describe("runtime composition length and size", () => {
   it("cuts a longer timeline at the root's declared length", () => {
     const html = `<div data-composition-id="main" data-root="true" data-duration="4"></div>`;
     expect(lengthOf(html, { main: createMockTimeline(10) })).toBe(4);
+  });
+
+  it("re-pads a timeline that survives a rebind to the root's new length, as a fresh load does", () => {
+    // GSAP's ticker re-enters an animation frame that runs at once.
+    window.requestAnimationFrame = originalRequestAnimationFrame;
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="6"><div id="a"></div></div>`;
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to("#a", { x: 1, duration: 1 }, 0);
+    window.__timelines = { main: timeline as unknown as RuntimeTimelineLike };
+    initSandboxRuntimeModular();
+    const fillers = () =>
+      timeline
+        .getChildren(false, true, false)
+        .filter((child) => child.data === RUNTIME_FILLER)
+        .map((child) => child.startTime());
+    expect(fillers()).toEqual([6]);
+
+    document.getElementById("a")!.parentElement!.setAttribute("data-duration", "9");
+    window.__hfForceTimelineRebind?.();
+
+    expect(fillers()).toEqual([9]);
+    expect(window.__player?.getDuration()).toBe(9);
   });
 
   it("takes the timeline's length when the root declares none", () => {
