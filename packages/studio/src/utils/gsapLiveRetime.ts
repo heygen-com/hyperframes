@@ -3,7 +3,6 @@ import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
 import { RUNTIME_FILLER } from "@hyperframes/core/runtime/protocol";
 import { findGsapScriptElements, scriptsRegistering, timelineKeys } from "./gsapSoftReload";
 
-/** A tween of the saved script, with where it sat before the edit and where it sits now. */
 interface TweenTiming {
   selector: string;
   start: number;
@@ -24,8 +23,7 @@ export type LiveRetimePlan =
 
 const RERUN: LiveRetimePlan = { kind: "rerun" };
 
-/** Everything about a tween except where it sits and how long it runs. */
-function shape(animation: GsapAnimation): string {
+function untimedShape(animation: GsapAnimation): string {
   const { id: _id, position: _p, resolvedStart: _s, duration: _d, ...rest } = animation;
   return JSON.stringify(rest);
 }
@@ -42,7 +40,7 @@ export function planLiveRetime(before: string, after: string): LiveRetimePlan {
   const tweens: (TweenTiming & { was: number })[] = [];
   for (const [index, next] of now.entries()) {
     const prev = was[index]!;
-    if (shape(prev) !== shape(next)) return RERUN;
+    if (untimedShape(prev) !== untimedShape(next)) return RERUN;
     if (typeof next.resolvedStart !== "number" || typeof prev.resolvedStart !== "number") {
       return RERUN;
     }

@@ -84,6 +84,25 @@ function rebindPreviewTiming(iframe: HTMLIFrameElement | null, currentTime: numb
   return applySoftReloadFinalization(iframe, currentTime);
 }
 
+function movedLiveTweens(
+  iframe: HTMLIFrameElement,
+  scriptText: string,
+  currentTime: number,
+  reloadPreview: () => void,
+): boolean {
+  const plan = planLiveRetimeFromPreview(iframe, scriptText);
+  if (plan.kind !== "retime") return false;
+  const unpaired = applyLiveRetime(iframe, plan);
+  if (unpaired) {
+    // A timing-only edit always pairs with the timeline that script built; not pairing is a bug.
+    console.error(`[timeline] could not move the live tweens for a timing edit: ${unpaired}`);
+    trackStudioEvent("timeline_live_retime_unpaired", { reason: unpaired });
+    return false;
+  }
+  if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
+  return true;
+}
+
 /**
  * Sync the live preview after a TIMING-ONLY edit (move / resize), preferring a
  * soft reload over the full iframe reload that flashes every clip.
@@ -134,17 +153,7 @@ function syncTimingEditPreview(
     reloadPreview();
     return;
   }
-  const plan = planLiveRetimeFromPreview(iframe, outcome.scriptText);
-  if (plan.kind === "retime") {
-    const unpaired = applyLiveRetime(iframe, plan);
-    if (!unpaired) {
-      if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
-      return;
-    }
-    // A timing-only edit always pairs with the timeline that script built; not pairing is a bug.
-    console.error(`[timeline] could not move the live tweens for a timing edit: ${unpaired}`);
-    trackStudioEvent("timeline_live_retime_unpaired", { reason: unpaired });
-  }
+  if (movedLiveTweens(iframe, outcome.scriptText, currentTime, reloadPreview)) return;
   const result = applySoftReload(iframe, outcome.scriptText, {
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime,

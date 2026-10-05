@@ -1,6 +1,5 @@
 export const RUNTIME_PROTOCOL_VERSION = 1 as const;
 
-/** GSAP `data` on the tweens the runtime adds to stretch a timeline; never animation, never in a script. */
 export const RUNTIME_FILLER = "hf-runtime-filler";
 
 export const RUNTIME_PROTOCOL_CAPABILITIES = [

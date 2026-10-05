@@ -296,6 +296,7 @@ export function scriptsRegistering(
   );
 }
 
+// fallow-ignore-next-line complexity
 export function applySoftReload(
   iframe: HTMLIFrameElement | null,
   scriptText: string,
