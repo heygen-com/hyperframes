@@ -116,6 +116,12 @@ it("a seek while the host holds playback moves the picture without scrub audio",
   act(() => root.unmount());
 });
 
+it("a timeline reset keeps the hold: the host owns it", () => {
+  act(() => usePlayerStore.getState().setPlayLocked(true));
+  act(() => usePlayerStore.getState().reset());
+  expect(usePlayerStore.getState().playLocked).toBe(true);
+});
+
 it("turning the hold on pauses a playing film; turning it off lets Play start again", () => {
   const { api, root, adapter } = readyPlayer();
   act(() => api.play());
