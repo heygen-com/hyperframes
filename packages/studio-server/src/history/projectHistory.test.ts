@@ -1581,6 +1581,19 @@ describe("claim: a writer that records after writing", () => {
     expect(history.list()[0]).toMatchObject({ id: first!.id, files: [{ path: "index.html" }] });
   });
 
+  it("dates a held claim by its last write, not by the later edit that commits it", async () => {
+    let clock = 1_000;
+    const { history, write } = await project({ "index.html": "A" }, { now: () => clock });
+    const held = { idleMs: Number.POSITIVE_INFINITY };
+    write("index.html", "B");
+    await history.claim(you, "Moved clip", ["index.html"], { ...held, coalesceKey: "move:1" });
+    clock = 600_000;
+    write("index.html", "C");
+    await history.claim(you, "Moved clip", ["index.html"], { ...held, coalesceKey: "move:2" });
+
+    expect(history.list().map((entry) => entry.endedAt)).toEqual([1_000]);
+  });
+
   it("a coalescing claim whose writes net to nothing returns null and records nothing", async () => {
     const { history, write } = await project({ "index.html": "A" });
     write("index.html", "B");

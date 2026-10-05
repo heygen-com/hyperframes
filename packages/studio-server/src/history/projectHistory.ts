@@ -734,6 +734,7 @@ class Engine {
       ? setTimeout(() => this.background(() => this.commitClaim()), idleMs)
       : undefined;
     timer?.unref?.();
+    group.lastWriteAt = this.now();
     this.claimed = { group, key, timer };
     return group.changes.size ? { id: group.id } : null;
   }
