@@ -11,7 +11,8 @@ once. After that, every request you send goes to it.
 | Claude Code | A Claude account or an Anthropic Console account | The app installs it and opens the sign-in for you |
 | Codex | A ChatGPT account | You paste two commands into a terminal |
 
-Each run uses your agent's own plan, the account you signed the agent in with.
+Runs bill to the plan of the account your agent is signed in with. To use an API key instead, change **Bill runs
+to** in **Settings** > **Permissions**.
 
 If both are ready and you have not picked one, the app uses Claude Code.
 
@@ -29,12 +30,13 @@ The first time you send a request without an agent, the **Connect Claude Code** 
     account, then come back to the app.
   </Step>
   <Step title="Check that it answers">
-    The app checks that Claude Code runs. When it shows **Claude Code is connected**, you can send your request.
+    The app checks that Claude Code runs. When it shows **Claude Code is connected**, it sends the request you
+    started with.
   </Step>
 </Steps>
 
-If a step fails, the app shows a command you can run yourself. Choose **Copy command** and paste it into a terminal.
-On a Mac, **Open Terminal** opens one for you.
+If a step fails, the app shows a command you can run yourself. Choose **Copy command**, then **Open Terminal**, and
+paste it:
 
 ```bash
 # Install Claude Code
