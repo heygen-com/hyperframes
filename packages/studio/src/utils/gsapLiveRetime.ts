@@ -50,15 +50,38 @@ const placedAlone = (animation: GsapAnimation) =>
 const lengthOf = (animation: GsapAnimation) =>
   animation.method === "set" ? 0 : animation.durationUnresolved ? undefined : animation.duration;
 
+interface ReadScript {
+  shape: string | null;
+  animations?: GsapAnimation[];
+}
+
+/** The last two scripts read, by text: a repeat drag starts from the script the last one saved. */
+const readScripts = new Map<string, ReadScript>();
+
+function readScript(code: string): ReadScript {
+  let read = readScripts.get(code);
+  if (!read) {
+    read = { shape: scriptShape(code, true) };
+    if (readScripts.size >= 2) readScripts.delete(readScripts.keys().next().value!);
+    readScripts.set(code, read);
+  }
+  return read;
+}
+
+const timedAnimations = (code: string): GsapAnimation[] => {
+  const read = readScript(code);
+  return (read.animations ??= parseGsapScriptAcorn(code).animations.filter(onTimeline));
+};
+
 /** Decides, from the two scripts alone, whether a saved edit moved tweens and nothing else. */
 export function planLiveRetime(before: string, after: string): LiveRetimePlan {
   // The preview runs the script re-printed by the bundler; a timing edit rewrites numbers only.
-  const shape = scriptShape(before, true);
-  if (shape === null || shape !== scriptShape(after, true)) return RERUN;
+  const { shape } = readScript(before);
+  if (shape === null || shape !== readScript(after).shape) return RERUN;
   const keys = timelineKeys(after);
   if (keys.length !== 1 || timelineKeys(before).join() !== keys.join()) return RERUN;
-  const was = parseGsapScriptAcorn(before).animations.filter(onTimeline);
-  const now = parseGsapScriptAcorn(after).animations.filter(onTimeline);
+  const was = timedAnimations(before);
+  const now = timedAnimations(after);
   if (was.length !== now.length) return RERUN;
   const tweens: TweenTiming[] = [];
   for (const [index, next] of now.entries()) {
