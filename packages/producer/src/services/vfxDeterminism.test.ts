@@ -62,7 +62,7 @@ function waveWarpChain(params: Record<string, number>): string {
  * collapses to 0×0 and `drawElementImage` silently draws nothing — the same
  * collapse the page-side compositor avoids by staging scene copies in a sized frame.
  */
-function fixture(chain: string, innerStyle = "", hostStyle = ""): string {
+function fixture(chain: string, innerStyle = "", hostStart = 0): string {
   return `<!doctype html>
 <style>
   html, body { margin: 0; background: #0000ff; }
@@ -77,8 +77,8 @@ function fixture(chain: string, innerStyle = "", hostStyle = ""): string {
 </style>
 <div data-composition-id="root" data-start="0" data-duration="4"
      data-width="${HOST_W}" data-height="${HOST_H}">
-  <div id="host" class="clip" data-start="0" data-duration="4"
-       data-vfx-chain='${chain}' style="${hostStyle}">
+  <div id="host" class="clip" data-start="${hostStart}" data-duration="4"
+       data-vfx-chain='${chain}'>
     <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in" style="${innerStyle}"><div id="square"></div></div></canvas>
     <canvas class="hf-vfx-out"></canvas>
   </div>
@@ -573,8 +573,27 @@ describe("data-vfx-chain in the browser", () => {
     return errors;
   }
 
-  async function bootRuntime(page: Page, errors: string[]): Promise<void> {
-    await page.addScriptTag({ content: runtime });
+  async function bootRuntime(
+    page: Page,
+    errors: string[],
+    registeredStyle?: string,
+  ): Promise<void> {
+    if (registeredStyle === undefined) await page.addScriptTag({ content: runtime });
+    // The wrapper registers with `registeredStyle` and gets its own back before any paint.
+    else
+      await page.evaluate(
+        (src: string, style: string) => {
+          const inner = document.querySelector(".hf-vfx-in") as HTMLElement;
+          const own = inner.style.cssText;
+          inner.style.cssText = style;
+          const script = document.createElement("script");
+          script.textContent = src;
+          document.head.append(script);
+          inner.style.cssText = own;
+        },
+        runtime,
+        registeredStyle,
+      );
     await page.waitForFunction(
       () =>
         (window as CompositeWindow).__playerReady === true &&
@@ -583,12 +602,16 @@ describe("data-vfx-chain in the browser", () => {
     expect(errors).toEqual([]);
   }
 
-  async function open(html: string, viewport = { width: 320, height: 240 }): Promise<Page> {
+  async function open(
+    html: string,
+    viewport = { width: 320, height: 240 },
+    registeredStyle?: string,
+  ): Promise<Page> {
     const page = await browser.newPage();
     const errors = watchPage(page);
     await page.setViewport({ ...viewport, deviceScaleFactor: 1 });
     await page.setContent(html);
-    await bootRuntime(page, errors);
+    await bootRuntime(page, errors, registeredStyle);
     return page;
   }
 
@@ -687,10 +710,17 @@ describe("data-vfx-chain in the browser", () => {
   }, 60_000);
 
   const CLEAR = [0, 0, 0, 0];
-  // Per frame: the wrapper's style and the probe pixel, or null to hide the host the way the
-  // clip runtime does (`!important` so its own visibility pass cannot undo it). Then how many
-  // one-frame reports the shot makes.
-  it.each<[string, [string, number[] | null][], number]>([
+  // Per frame: the wrapper's style and the probe pixel, null while the host is outside its
+  // window; then how many one-frame reports the shot makes, and the wrapper's style at page
+  // load and at registration, and when the host starts, where they differ.
+  it.each<
+    [
+      string,
+      [style: string, pixel: number[] | null][],
+      number,
+      { load?: string; registered?: string; hostStart?: number }?,
+    ]
+  >([
     [
       "grows from 0×0: it paints on the next frame, not empty for the rest",
       [
@@ -698,6 +728,15 @@ describe("data-vfx-chain in the browser", () => {
         ["", red],
       ],
       1,
+    ],
+    [
+      "is sized at registration but first painted at 0×0 (a GSAP fromTo): it paints once it grows",
+      [
+        ["width:0px", CLEAR],
+        ["", red],
+      ],
+      1,
+      { registered: "" },
     ],
     [
       "shrinks to 0×0: it paints empty, not the previous frame again",
@@ -722,26 +761,25 @@ describe("data-vfx-chain in the browser", () => {
         ["", red],
       ],
       0,
+      { hostStart: 0.02 },
+    ],
+    [
+      "is 0×0 at load and sized before the first seek: it paints on that seek",
+      [["", red]],
+      0,
+      { load: "width:0px" },
     ],
   ])(
     "a layer that %s",
-    async (_case, frames, reports) => {
-      const page = await open(fixture(waveWarpChain({ height: 0, width: 93.4 }), frames[0]![0]));
+    async (_case, frames, reports, { load = frames[0]![0], registered, hostStart } = {}) => {
+      const chain = waveWarpChain({ height: 0, width: 93.4 });
+      const page = await open(fixture(chain, load, hostStart), undefined, registered);
       const reported: string[] = [];
       try {
         for (const [i, [innerStyle, pixel]] of frames.entries()) {
-          await page.evaluate(
-            (style: string, hidden: boolean) => {
-              (document.querySelector(".hf-vfx-in") as HTMLElement).style.cssText = style;
-              document.getElementById("host-off")?.remove();
-              if (hidden) {
-                const off = `<style id="host-off">#host { visibility: hidden !important }</style>`;
-                document.head.insertAdjacentHTML("beforeend", off);
-              }
-            },
-            innerStyle,
-            pixel === null,
-          );
+          await page.evaluate((style: string) => {
+            (document.querySelector(".hf-vfx-in") as HTMLElement).style.cssText = style;
+          }, innerStyle);
           if (pixel === null) {
             const armed = await page.evaluate((t: number) => {
               (window as CompositeWindow).__player!.renderSeek(t);
