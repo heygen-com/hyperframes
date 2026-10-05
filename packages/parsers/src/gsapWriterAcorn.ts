@@ -1506,9 +1506,14 @@ export function moveKeyframeInScript(
   entries.push({ pct: toPercentage, record: valueNodeToRecord(match.prop.value, src) });
   entries.sort((a, b) => a.pct - b.pct);
 
-  const body = entries
-    .map((e) => `${JSON.stringify(`${e.pct}%`)}: ${recordToCode(e.record)}`)
-    .join(", ");
+  const pctProps = new Set(percentagePropsOf(kfNode));
+  const kept = (kfNode.properties ?? [])
+    .filter((p: Node) => !pctProps.has(p))
+    .map((p: Node) => src.slice(p.start, p.end));
+  const body = [
+    ...entries.map((e) => `${JSON.stringify(`${e.pct}%`)}: ${recordToCode(e.record)}`),
+    ...kept,
+  ].join(", ");
   const ms = new MagicString(src);
   ms.overwrite(kfNode.start, kfNode.end, `{ ${body} }`);
   return ms.toString();

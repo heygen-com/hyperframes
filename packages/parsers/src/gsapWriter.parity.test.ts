@@ -1454,6 +1454,36 @@ describe("parity: moveKeyframeInScript (recast vs acorn)", () => {
   });
 });
 
+describe("a keyframe drag keeps the keyframes' eases", () => {
+  const writers = [
+    ["recast", updateAnimRecast, moveKeyframeRecast],
+    ["acorn", updateAnimAcorn, moveKeyframeAcorn],
+  ] as const;
+
+  for (const [writer, update, move] of writers) {
+    it(`${writer}: an ease set with Studio's ease control survives a diamond drag`, () => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0 }, "50%": { x: 5 }, "100%": { x: 10 } } }, 0);`;
+      const id = acornId(script);
+      const eased = update(script, id, { easeEach: "power2.out", resetKeyframeEases: true });
+      expect(parseGsapScriptAcorn(eased).animations[0]!.keyframes?.easeEach).toBe("power2.out");
+
+      const kf = parseGsapScriptAcorn(move(eased, id, 50, 60)).animations[0]!.keyframes!;
+      expect(kf.keyframes.map((k) => k.percentage)).toEqual([0, 60, 100]);
+      expect(kf.easeEach).toBe("power2.out");
+    });
+
+    it(`${writer}: an ease authored on the keyframes survives a diamond drag`, () => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0 }, "50%": { x: 5 }, "100%": { x: 10 }, ease: "sine.inOut" } }, 0);`;
+      const kf = parseGsapScriptAcorn(move(script, acornId(script), 50, 60)).animations[0]!
+        .keyframes!;
+      expect(kf.keyframes.map((k) => k.percentage)).toEqual([0, 60, 100]);
+      expect(kf.ease).toBe("sine.inOut");
+    });
+  }
+});
+
 // Regression: array-form `keyframes: [...]` has no explicit percentages, so
 // locateWithKeyframes/findKeyframesObjectNode (which only match the object
 // form) resolved to nothing and the move silently no-op'd — Studio's "Move to

@@ -2512,11 +2512,16 @@ export function moveKeyframeInScript(
   entries.push({ pct: toPercentage, value: movedValue });
   entries.sort((a, b) => a.pct - b.pct);
 
-  kfNode.properties = entries.map((e) => {
-    const p = parseExpr(`{ ${JSON.stringify(`${e.pct}%`)}: {} }`).properties[0];
-    p.value = e.value;
-    return p;
-  });
+  const pctProps = new Set(filterPercentageProps(kfNode));
+  const kept = (kfNode.properties ?? []).filter((p: AstNode) => !pctProps.has(p));
+  kfNode.properties = [
+    ...entries.map((e) => {
+      const p = parseExpr(`{ ${JSON.stringify(`${e.pct}%`)}: {} }`).properties[0];
+      p.value = e.value;
+      return p;
+    }),
+    ...kept,
+  ];
   return recast.print(loc.parsed.ast).code;
 }
 
