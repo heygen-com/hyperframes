@@ -28,8 +28,9 @@ const SEQUENCES = {
 
 // A plain element animated the way a person does it: auto-record on, a keyframe added at the playhead (1 s),
 // then edits at a later keyframe (3 s) and between (2 s); seeks back check each keyframe kept its box.
+// Upward moves keep the grown, rotated box inside the nested frame, which clips it in preview and render alike.
 const PLAIN_TO_KEYS = [
-  MOVE,
+  { do: "drag", gesture: "move", by: [90, -40] },
   { do: "autokey" },
   { do: "addkey" },
   { do: "seek", time: 3 },
@@ -37,7 +38,7 @@ const PLAIN_TO_KEYS = [
   { do: "drag", gesture: "resize" },
   { do: "seek", time: 2 },
   { do: "drag", gesture: "resize" },
-  UP,
+  { do: "drag", gesture: "move", by: [60, -30] },
   { do: "seek", time: 3 },
   { do: "seek", time: 1 },
 ];
