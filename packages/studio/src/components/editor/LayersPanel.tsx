@@ -20,7 +20,17 @@ import {
   findMatchingTimelineElementId,
   resolveTimelineSelectionSeekTime,
 } from "../../utils/studioHelpers";
-import { Layers } from "../../icons/SystemIcons";
+import {
+  Film,
+  Folder,
+  ImageIcon,
+  Layers,
+  Music,
+  Square,
+  Type,
+  Vector,
+} from "../../icons/SystemIcons";
+import { layerKindOf } from "./layerKind";
 import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
 import { getVisibleLayers, sortLayersByZIndex } from "./layersPanelSort";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
@@ -34,34 +44,18 @@ import { useLayerRevealOverride } from "./useLayerRevealOverride";
 // Rows this panel renders before it stops. A display budget, not a document limit.
 const LAYERS_PANEL_MAX_ROWS = 80;
 
-const TAG_ICONS: Record<string, string> = {
-  video: "Vi",
-  audio: "Au",
-  img: "Im",
-  svg: "Sv",
-  canvas: "Cn",
-  div: "Di",
-  section: "Se",
-  span: "Sp",
-  p: "P",
-  h1: "H1",
-  h2: "H2",
-  h3: "H3",
-  h4: "H4",
-  h5: "H5",
-  h6: "H6",
-  a: "A",
-  button: "Bt",
-  ul: "Ul",
-  ol: "Ol",
-  li: "Li",
-  style: "St",
-  template: "Te",
-};
+// A caret and its gap: a group's children sit under the group's own icon.
+const LAYER_INDENT = 22;
 
-function getTagBadge(tagName: string): string {
-  return TAG_ICONS[tagName] ?? tagName.slice(0, 2).toUpperCase();
-}
+const KIND_ICON = {
+  image: ImageIcon,
+  video: Film,
+  audio: Music,
+  vector: Vector,
+  group: Folder,
+  text: Type,
+  shape: Square,
+} as const;
 
 function isCompositionHost(el: HTMLElement): boolean {
   return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
@@ -467,6 +461,8 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           const isCollapsed = collapsed[layer.key] ?? false;
           const hasChildren = layer.childCount > 0;
           const isCompHost = isCompositionHost(layer.element);
+          const kind = layerKindOf(layer.element);
+          const KindIcon = KIND_ICON[kind];
 
           return (
             <div
@@ -484,14 +480,14 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
                   handleSelectLayer(layer);
                 }
               }}
-              className={`group flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors ${
+              className={`group mx-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors ${
                 isDragged
                   ? "opacity-40"
                   : selected
                     ? "bg-panel-accent/14 text-accent-ink"
                     : "text-panel-text-2 hover:bg-panel-hover/40 hover:text-panel-text-1"
               } ${dragKey ? "cursor-grabbing" : "cursor-pointer"}`}
-              style={{ paddingLeft: 8 + layer.depth * 16 }}
+              style={{ paddingLeft: 8 + layer.depth * LAYER_INDENT }}
               title={
                 draggable
                   ? layer.element.hasAttribute("data-hf-group")
@@ -518,11 +514,11 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
                     <path d="M2 1l4 3-4 3z" />
                   </svg>
                 </button>
-              ) : (
-                <span className="w-4 shrink-0" />
-              )}
+              ) : null}
               <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[8px] font-bold uppercase ${
+                data-layer-kind={kind}
+                title={kind[0].toUpperCase() + kind.slice(1)}
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${
                   selected
                     ? "bg-panel-accent/18 text-accent-ink"
                     : isCompHost
@@ -530,7 +526,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
                       : "bg-panel-hover text-panel-text-4"
                 }`}
               >
-                {getTagBadge(layer.tagName)}
+                <KindIcon size={12} />
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px]">{layer.label}</span>
               {hasChildren && (

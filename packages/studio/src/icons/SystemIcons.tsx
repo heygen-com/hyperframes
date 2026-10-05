@@ -24,6 +24,9 @@ import {
   Link as PhLink,
   Eyedropper as PhEyedropper,
   Trash as PhTrash,
+  Image as PhImage,
+  BezierCurve,
+  FolderSimple,
 } from "@phosphor-icons/react";
 import type { Icon as PhosphorIcon, IconProps as PhosphorIconProps } from "@phosphor-icons/react";
 
@@ -75,3 +78,6 @@ export const Scissors = makeIcon(PhScissors);
 export const Link = makeIcon(PhLink);
 export const Eyedropper = makeIcon(PhEyedropper);
 export const Trash = makeIcon(PhTrash);
+export const ImageIcon = makeIcon(PhImage);
+export const Vector = makeIcon(BezierCurve);
+export const Folder = makeIcon(FolderSimple);
