@@ -1199,7 +1199,7 @@ function locateWithKeyframes(
   const target =
     parsed.located.find((l) => l.id === animationId) ??
     parsed.located.find((l) => l.id === convertedId);
-  if (!target) return null;
+  if (!target || target.animation.hasUnresolvedKeyframes) return null;
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode || kfPropNode.value?.type !== "ObjectExpression") return null;
   return { script, parsed, target, kfNode: kfPropNode.value };

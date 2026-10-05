@@ -654,6 +654,17 @@ tl.to("#a", { opacity: 1, x: 5, duration: 1, keyframes: ${keyframes} }, 0);`;
     });
   }
 
+  it.each(["{ x: v }", "{ [v]: { x: 1 } }", "{ ...o }"])(
+    "acorn add and resize leave object keyframes %s unchanged",
+    (keyframes) => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, keyframes: ${keyframes} }, 0);`;
+      expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+      expect(addKeyframeAcorn(script, acornId(script), 50, { x: 5 })).toBe(script);
+      expect(resizeKeyframedTweenAcorn(script, acornId(script), 0, 2, [])).toBe(script);
+    },
+  );
+
   it("recast property edit leaves keyframes from a call unchanged", () => {
     const script = `const tl = gsap.timeline({ paused: true });
 tl.to("#a", { x: 5, duration: 1, keyframes: steps() }, 0);`;
