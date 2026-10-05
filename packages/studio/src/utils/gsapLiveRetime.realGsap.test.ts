@@ -17,9 +17,11 @@ const BEFORE = [
 const SAMPLES = Array.from({ length: 25 }, (_, i) => i * 0.25);
 
 /** Runs a composition script and binds its timeline at `at`, as the preview's runtime does. */
-function play(script: string, at = 0, nested = "") {
+function play(script: string, at = 0, nested = "", registered = "") {
   const win = { __timelines: {} as Record<string, gsap.core.Timeline> };
   new Function("gsap", "window", script)(gsap, win);
+  // Another composition's script, which registers its own timeline beside this one.
+  new Function("gsap", "window", registered)(gsap, win);
   const timeline = win.__timelines.t!;
   // The runtime nests each sub-composition's timeline into its host's; the script does not know them...
   const sub = gsap.timeline().to({}, { duration: 6.7 });
@@ -52,12 +54,12 @@ const shownNow = () =>
   );
 
 /** A preview iframe whose live script is `script`, built and bound. */
-function preview(script: string, nested = "") {
+function preview(script: string, nested = "", registered = "") {
   const tag = document.createElement("script");
   tag.type = "text/plain"; // the runtime already ran it; happy-dom must not run it again
   tag.textContent = script;
   document.body.appendChild(tag);
-  const { win, timeline } = play(script, 0, nested);
+  const { win, timeline } = play(script, 0, nested, registered);
   const rebind = vi.fn();
   // The runtime hooks a rebind needs; a soft reload would also need `gsap`, which this preview lacks.
   Object.assign(win, { __hfForceTimelineRebind: rebind, __player: { seek: vi.fn() } });
@@ -246,6 +248,14 @@ it.each([
     nested: 'sub.to("#a", { x: 50, duration: 1 }, 2);',
   },
   {
+    name: "another composition's timeline on the moved tween's element",
+    path: "rerun",
+    before: script('tl.to("#a", { x: 100, duration: 1 }, 0);'),
+    after: script('tl.to("#a", { x: 100, duration: 1 }, 3);'),
+    registered:
+      'window.__timelines.scene = gsap.timeline({ paused: true }).to("#a", { x: 50, duration: 1 }, 2);',
+  },
+  {
     name: "a delayed tween that GSAP orders after the moved one",
     path: "rerun",
     before: script(
@@ -317,13 +327,6 @@ it.each([
     setup: () => inComposition("t", inComposition("scene", document.getElementById("a")!)),
   },
   {
-    name: "a tween on an element of the timeline's own composition",
-    path: "retime",
-    before: script('tl.to("#a", { y: 40, duration: 1 }, 0);'),
-    after: script('tl.to("#a", { y: 40, duration: 1 }, 2);'),
-    setup: () => inComposition("t", document.getElementById("a")!),
-  },
-  {
     name: "a set and a tween on one element that round to the same start",
     path: "rerun",
     before: script(
@@ -358,10 +361,10 @@ it.each([
   },
 ])(
   "after a drop over $name, the live preview equals a fresh load or the script re-runs",
-  async ({ before, after, nested = "", at = 0, path, setup, unplayed }) => {
+  async ({ before, after, nested = "", registered = "", at = 0, path, setup, unplayed }) => {
     setup?.();
     const error = vi.spyOn(console, "error");
-    const live = preview(before, nested);
+    const live = preview(before, nested, registered);
     // Played through once, then parked: every tween has recorded its start values.
     if (!unplayed) live.timeline.totalTime(live.timeline.duration(), false);
     live.timeline.totalTime(at, false);
@@ -371,7 +374,7 @@ it.each([
       const shown = shownNow();
       const got = observe(live.timeline);
       live.timeline.revert();
-      const fresh = play(after, at, nested).timeline;
+      const fresh = play(after, at, nested, registered).timeline;
       expect(shown).toEqual(shownNow());
       expect(got).toEqual(observe(fresh));
     }
@@ -512,6 +515,15 @@ it("syncs a timeline move by moving the live tweens and rebinding, without re-ru
   live.timeline.revert();
   expect(got).toEqual(observe(play(after).timeline));
   expect(document.querySelectorAll("script")).toHaveLength(1);
+});
+
+it("moves the live tweens when the preview runs the saved script re-printed without its comments", async () => {
+  const live = preview(BEFORE);
+  const saved = `// Seams between sections.\n${moveA().replaceAll('"', "'")}\n/* end */`;
+
+  const reloadPreview = await dropInto(live.iframe, saved);
+
+  expect(reloadPreview).not.toHaveBeenCalled();
 });
 
 it("moves the live tweens when the preview runs a reformatted copy of the saved script", async () => {
