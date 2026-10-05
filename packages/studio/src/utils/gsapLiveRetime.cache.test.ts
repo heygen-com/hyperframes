@@ -6,8 +6,12 @@ vi.mock("@hyperframes/parsers/gsap-parser-acorn", async (importOriginal) => {
   const real = await importOriginal<typeof import("@hyperframes/parsers/gsap-parser-acorn")>();
   return {
     ...real,
-    parseGsapScriptAcorn: (code: string) => (reads.parse.push(code), real.parseGsapScriptAcorn(code)),
-    scriptShape: (code: string, mask?: boolean) => (reads.shape.push(code), real.scriptShape(code, mask)),
+    parseGsapScriptAcorn: (code: string) => (
+      reads.parse.push(code), real.parseGsapScriptAcorn(code)
+    ),
+    scriptShape: (code: string, mask?: boolean) => (
+      reads.shape.push(code), real.scriptShape(code, mask)
+    ),
   };
 });
 
