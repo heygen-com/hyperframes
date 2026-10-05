@@ -453,6 +453,20 @@ it("moves the live tweens beside a helper-built tween in a reformatted copy of t
   expect(reloadPreview).not.toHaveBeenCalled();
 });
 
+it("moves the live tweens beside a multi-line value in a reformatted copy of the script", async () => {
+  const raw = 'tl.to("#b", { x: [\n  1,\n  2,\n].length, duration: 1 }, 2);';
+  const before = script('tl.to("#a", { y: 1, duration: 1 }, 0);', raw);
+  const live = preview(before);
+  live.tag.textContent = `\n${before.replace(/^/gm, "      ")}\n`;
+
+  const reloadPreview = await dropInto(
+    live.iframe,
+    script('tl.to("#a", { y: 1, duration: 1 }, 0.5);', raw),
+  );
+
+  expect(reloadPreview).not.toHaveBeenCalled();
+});
+
 it("re-runs the script when the edit adds a tween", () => {
   const after = BEFORE.replace(
     "window.__timelines",

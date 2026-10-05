@@ -31,11 +31,20 @@ export type LiveRetimePlan =
 
 const RERUN = { kind: "rerun" } as const;
 
+/** The preview runs a reformatted copy of the script: compare code, not its layout. */
+const withoutLayout = (code: string) =>
+  code
+    .replace(/\s+/g, " ")
+    .replace(/ ?([^\w$ ]) ?/g, "$1")
+    .trim();
+
 function untimedShape(animation: GsapAnimation): string {
   const { id: _id, position: _p, resolvedStart: _s, duration: _d, ...rest } = animation;
   // An offset into the text, which moves when the preview reformats its copy of the script.
   const provenance = rest.provenance && { ...rest.provenance, sourceRange: undefined };
-  return JSON.stringify({ ...rest, provenance });
+  return JSON.stringify({ ...rest, provenance }, (_key, value) =>
+    typeof value === "string" && value.startsWith("__raw:") ? withoutLayout(value) : value,
+  );
 }
 
 const onTimeline = (animation: GsapAnimation) => !animation.global;
@@ -49,11 +58,7 @@ const lengthOf = (animation: GsapAnimation) =>
 
 /** A timing edit rewrites numbers only; anything else may be code the parser does not read. */
 const withoutNumbers = (script: string) =>
-  script
-    .replace(/(?<![\w$#.])\d*\.?\d+/g, "0")
-    .replace(/\s+/g, " ")
-    .replace(/ ?([^\w$ ]) ?/g, "$1")
-    .trim();
+  withoutLayout(script.replace(/(?<![\w$#.])\d*\.?\d+/g, "0"));
 
 /** Decides, from the two scripts alone, whether a saved edit moved tweens and nothing else. */
 export function planLiveRetime(before: string, after: string): LiveRetimePlan {
