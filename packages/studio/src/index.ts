@@ -206,6 +206,8 @@ export type { UsePreviewPersistenceParams } from "./hooks/usePreviewPersistence"
 export { DomEditProvider, useDomEditSelectionContext } from "./contexts/DomEditContext";
 export { PreviewReadOnlyProvider } from "./components/editor/previewReadOnlyContext";
 export { ConnectedDomEditOverlay } from "./components/editor/ConnectedDomEditOverlay";
+export { LayersPanel } from "./components/editor/LayersPanel";
+export type { LayersPanelHost } from "./components/editor/LayersPanel";
 export type { ConnectedDomEditOverlayProps } from "./components/editor/ConnectedDomEditOverlay";
 export { useDomEditZOrder } from "./components/editor/useDomEditZOrder";
 export type { DomEditZOrder } from "./components/editor/useDomEditZOrder";

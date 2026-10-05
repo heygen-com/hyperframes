@@ -1,6 +1,6 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { onPreviewContentReplaced } from "../../player/sceneSwap";
-import { memo, useState, useCallback, useEffect, useRef } from "react";
+import { memo, useState, useCallback, useEffect, useRef, type RefObject } from "react";
 import {
   collectDomEditLayerItems,
   getDomEditLayerKey,
@@ -8,9 +8,12 @@ import {
   resolveDomEditSelection,
   type DomEditLayerItem,
 } from "./domEditing";
-import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
+import {
+  useStudioPlaybackContextOptional,
+  useStudioShellContextOptional,
+} from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
-import { usePlayerStore, liveTime } from "../../player";
+import { usePlayerStore, liveTime, type TimelineElement } from "../../player";
 import {
   findMatchingTimelineElementId,
   resolveTimelineSelectionSeekTime,
@@ -94,11 +97,39 @@ interface CollapsedState {
   [key: string]: boolean;
 }
 
+/** The Studio state the panel reads. A host outside EditorShell passes it; inside, it comes from Studio's contexts. */
+export interface LayersPanelHost {
+  previewIframeRef: RefObject<HTMLIFrameElement | null>;
+  activeCompPath: string | null;
+  showToast: (message: string, tone?: "error" | "info") => void;
+  timelineElements: TimelineElement[];
+  isPlaying: boolean;
+  /** Bumped by the host when the preview document is rebuilt without an iframe load. */
+  refreshKey?: number;
+  compositionLoading?: boolean;
+}
+
+function useLayersPanelHost(host: LayersPanelHost | undefined): LayersPanelHost {
+  const shell = useStudioShellContextOptional();
+  const playback = useStudioPlaybackContextOptional();
+  if (host) return host;
+  if (!shell || !playback) {
+    throw new Error("LayersPanel needs a host prop outside Studio's shell and playback providers");
+  }
+  return { ...shell, ...playback };
+}
+
 // fallow-ignore-next-line complexity
-export const LayersPanel = memo(function LayersPanel() {
-  const { previewIframeRef, activeCompPath, showToast } = useStudioShellContext();
-  const { refreshKey, compositionLoading, timelineElements, isPlaying } =
-    useStudioPlaybackContext();
+export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPanelHost }) {
+  const {
+    previewIframeRef,
+    activeCompPath,
+    showToast,
+    refreshKey,
+    compositionLoading,
+    timelineElements,
+    isPlaying,
+  } = useLayersPanelHost(host);
   const currentTime = usePlayerStore((s) => s.currentTime);
   // Flashless z commits (canvas menu, timeline lane-drag z-sync) mutate iframe
   // z-indexes with no reload and no refreshKey bump — while paused, nothing

@@ -21,12 +21,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../contexts/StudioContext", () => ({
-  useStudioShellContext: () => ({
+  useStudioShellContextOptional: () => ({
     previewIframeRef: mocks.previewIframeRef,
     activeCompPath: "index.html",
     showToast: mocks.showToast,
   }),
-  useStudioPlaybackContext: () => ({
+  useStudioPlaybackContextOptional: () => ({
     refreshKey: 0,
     compositionLoading: true,
     timelineElements: [],
