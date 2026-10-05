@@ -143,9 +143,8 @@ function diffRestoreDocs(prevDoc: Document, nextDoc: Document): string[] | null 
   return prevRest === nextRest ? changedElementKeys : null;
 }
 
-/** Copies `source`'s attributes onto `target` (keepDrawn under a gesture); a reload requested before is stale. */
+/** Copies `source`'s attributes onto `target`; under a gesture mark it merges them (keepDrawn). */
 function syncElementAttributes(target: Element, source: Element, base?: Element): void {
-  countStudioPreviewChange(target.ownerDocument);
   const draws = base && studioGestureDraws(target);
   const merged = draws ? keepDrawn(target, source, base, draws) : source;
   for (const name of [...target.getAttributeNames()]) {
@@ -313,7 +312,8 @@ export function showRestoreInPlace(
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;
   const plan = doc && win ? planRestoreTargets(doc, activeCompPath ?? "index.html", files) : null;
-  if (!iframe || !win || !plan || plan.scripted) return null;
+  if (!iframe || !doc || !win || !plan || plan.scripted) return null;
+  countStudioPreviewChange(doc);
   const before = plan.targets.map(
     ({ live, restored }) => [live, live.cloneNode(false) as Element, restored] as const,
   );
@@ -394,6 +394,7 @@ export function applyUndoRestoreToPreview(
     reloadPreview();
     return "full";
   }
+  countStudioPreviewChange(doc);
   // Sync each changed element's attributes onto the live DOM from the restored
   // markup, so the runtime's seek-reapply reads the reverted values.
   for (const target of plan.targets)

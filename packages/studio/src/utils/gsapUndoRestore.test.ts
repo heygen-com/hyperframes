@@ -282,6 +282,16 @@ describe("applyUndoRestoreToPreview", () => {
     expect(doc.getElementById("a")!.getAttribute("style")).toBe("z-index: 8");
   });
 
+  it("counts a script-only restore applied in place, so a reload requested before it loads again", () => {
+    const script = (x: number) => `window.__timelines["root"]=gsap.timeline().to("#a",{x:${x}});`;
+    const page = (x: number) => `<div id="a">t</div><script>${script(x)}</script>`;
+    const { iframe, doc } = buildLiveIframe(page(2));
+    const before = studioManualEditSavesIn(doc);
+    const files = { [ROOT]: { previous: wrap(page(2)), restored: wrap(page(1)) } };
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+    expect(studioManualEditSavesIn(doc)).toBeGreaterThan(before);
+  });
+
   it("does NOT re-run an UNCHANGED GSAP script for an attribute-only restore", () => {
     // The live doc holds a script element; a re-run would mutate/remove it
     // (applySoftReload removes stale script elements before re-running).
