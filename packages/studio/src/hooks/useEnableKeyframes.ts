@@ -82,6 +82,15 @@ export function animatedProps(anim: GsapAnimation | null): string[] {
   return ["x", "y"];
 }
 
+/** The px GSAP folds into x/y from an element's CSS `translate` when it first animates it; a % stays xPercent. */
+export function cssTranslatePx(element: HTMLElement): { x: number; y: number } {
+  const view = element.ownerDocument.defaultView;
+  const parts = (view?.getComputedStyle(element).translate ?? "").match(/calc\([^)]*\)|\S+/g) ?? [];
+  const px = (part = "") =>
+    roundTo3([...part.matchAll(/(-?[\d.]+)px/g)].reduce((sum, m) => sum + Number(m[1]), 0));
+  return { x: px(parts[0]), y: px(parts[1]) };
+}
+
 /**
  * Whether the playhead sits inside an animation's tween range. When the tween's
  * start can't be resolved we don't block (the percentage falls back to clip range,
@@ -529,10 +538,7 @@ export function useEnableKeyframes(
         return;
       }
 
-      if (Object.keys(position).length === 0) {
-        position.x = 0;
-        position.y = 0;
-      }
+      if (Object.keys(position).length === 0) Object.assign(position, cssTranslatePx(sel.element));
 
       // One keyframe at the playhead — a single diamond capturing the current
       // value. Motion comes from the user adding/dragging more keyframes later;

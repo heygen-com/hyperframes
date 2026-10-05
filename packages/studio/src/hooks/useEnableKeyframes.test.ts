@@ -7,6 +7,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
   applyArcKeyframeAtPlayhead,
   animatedProps,
+  cssTranslatePx,
   isPlayheadWithinTween,
   promoteSetToKeyframes,
   resolveNewTweenRange,
@@ -36,6 +37,23 @@ function anim(overrides: Partial<GsapAnimation>): GsapAnimation {
     ...overrides,
   };
 }
+
+describe("cssTranslatePx", () => {
+  it("seeds a first tween from the px a plain move left in CSS translate, leaving % to xPercent", () => {
+    const el = document.body.appendChild(document.createElement("div"));
+    // happy-dom computes no `translate`; Chromium resolves it to these strings.
+    const computed = (translate: string) =>
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({ translate } as CSSStyleDeclaration);
+    computed("299.893px 203.262px");
+    expect(cssTranslatePx(el)).toEqual({ x: 299.893, y: 203.262 });
+    computed("calc(-50% + 120px) -50%");
+    expect(cssTranslatePx(el)).toEqual({ x: 120, y: 0 });
+    computed("none");
+    expect(cssTranslatePx(el)).toEqual({ x: 0, y: 0 });
+    vi.restoreAllMocks();
+    el.remove();
+  });
+});
 
 describe("resolveNewTweenRange", () => {
   // Regression: "add a keyframe" must land at the PLAYHEAD. The runtime auto-stamps
