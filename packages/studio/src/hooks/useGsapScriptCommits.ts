@@ -6,6 +6,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import {
   applySoftReload,
   extractGsapScriptText,
+  noteScriptWritten,
   readNestedFiles,
   settleNestedReads,
 } from "../utils/gsapSoftReload";
@@ -175,6 +176,7 @@ function syncCommittedGsapMutation({
   nestedFiles?: Map<string, string> | null;
 }): void {
   if (result.after != null) onFileContentChanged?.(targetPath, result.after);
+  noteScriptWritten(iframe, result.scriptText);
   // Server wrote the file; the in-memory SDK doc is now stale. Resync it so a
   // later SDK-routed edit doesn't serialize the pre-write doc and revert this.
   forceReloadSdkSession?.();

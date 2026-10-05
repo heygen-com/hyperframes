@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -11,6 +12,7 @@ const patchRuntimeTweenInPlace = vi.fn<(...args: unknown[]) => boolean>();
 const applySoftReload = vi.fn<(...args: unknown[]) => string>();
 const trackStudioEvent = vi.fn();
 const readNestedFiles = vi.fn<(...args: unknown[]) => unknown>(() => null);
+const noteScriptWritten = vi.fn();
 
 vi.mock("./gsapRuntimePatch", () => ({
   patchRuntimeTweenInPlace: (...args: unknown[]) => patchRuntimeTweenInPlace(...args),
@@ -20,6 +22,7 @@ vi.mock("../utils/gsapSoftReload", async (importOriginal) => ({
   applySoftReload: (...args: unknown[]) => applySoftReload(...args),
   extractGsapScriptText: () => "",
   readNestedFiles: (...args: unknown[]) => readNestedFiles(...args),
+  noteScriptWritten: (...args: unknown[]) => noteScriptWritten(...args),
 }));
 vi.mock("../utils/studioTelemetry", () => ({
   trackStudioEvent: (...args: unknown[]) => trackStudioEvent(...args),
@@ -78,6 +81,7 @@ describe("applyPreviewSync", () => {
   beforeEach(() => {
     patchRuntimeTweenInPlace.mockReset();
     applySoftReload.mockReset();
+    noteScriptWritten.mockReset();
     trackStudioEvent.mockReset();
   });
 
@@ -691,6 +695,7 @@ describe("runCommit — instantPatch wiring", () => {
   beforeEach(() => {
     patchRuntimeTweenInPlace.mockReset();
     applySoftReload.mockReset();
+    noteScriptWritten.mockReset();
     trackStudioEvent.mockReset();
     readNestedFiles.mockReset().mockReturnValue(null);
   });
@@ -741,6 +746,19 @@ describe("runCommit — instantPatch wiring", () => {
     const deps = renderCommitHook();
     await deps.api.commitMutation(selection, { type: "add-keyframe" }, { label: "Add" });
     expect(trackStudioEvent.mock.calls.filter(([event]) => event === "keyframe")).toEqual([]);
+  });
+
+  it("notes the script a commit wrote though it skips the reload, so the next one clears its sets", async () => {
+    const written = 'gsap.set("#a", { width: 300 });';
+    mockFetchResult({ scriptText: written });
+    const deps = renderCommitHook();
+    await deps.api.commitMutation(
+      selection,
+      { type: "set" },
+      { label: "Resize", skipReload: true },
+    );
+    expect(noteScriptWritten).toHaveBeenCalledWith(FAKE_IFRAME, written);
+    expect(applySoftReload).not.toHaveBeenCalled();
   });
 
   it("does not count a failed write that skipReload suppresses", async () => {

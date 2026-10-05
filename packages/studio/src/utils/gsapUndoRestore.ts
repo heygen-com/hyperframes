@@ -413,7 +413,6 @@ export function applyUndoRestoreToPreview(
       currentTimeOverride: currentTime,
       authoredHtml: active.restored,
       nestedFiles,
-      replacedScript: previousScript ?? undefined,
     });
     if (result === "cannot-soft-reload") {
       reloadPreview();

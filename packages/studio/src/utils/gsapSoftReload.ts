@@ -226,8 +226,19 @@ export interface SoftReloadOptions {
   authoredHtml?: string;
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
-  /** The script the file held before this write; a live edit can apply a set the preview never ran. */
-  replacedScript?: string;
+}
+
+// The first and latest script written since the preview last ran one; a live patch applies its sets.
+const writtenUnrun = new WeakMap<Element, [string, string]>();
+
+export function noteScriptWritten(
+  iframe: HTMLIFrameElement | null,
+  scriptText?: string | null,
+): void {
+  const doc = iframe?.contentDocument;
+  if (!doc || !scriptText?.includes("gsap.set(")) return;
+  for (const script of scriptsRegistering(findGsapScriptElements(doc), timelineKeys(scriptText)))
+    writtenUnrun.set(script, [writtenUnrun.get(script)?.[0] ?? scriptText, scriptText]);
 }
 
 /**
@@ -372,10 +383,11 @@ export function applySoftReload(
   // fallow-ignore-next-line complexity
   const doReload = () => {
     const timelines = win.__timelines;
-    const targets = collectResetTargets(win, doc, targetKeys, [
-      ...staleScripts.map((script) => script.textContent ?? ""),
-      options.replacedScript ?? "",
+    const outgoing = staleScripts.flatMap((s) => [
+      s.textContent ?? "",
+      ...(writtenUnrun.get(s) ?? []),
     ]);
+    const targets = collectResetTargets(win, doc, targetKeys, [...new Set(outgoing)]);
 
     // Kill ONLY the target composition's timeline(s) — leaving every other
     // composition's timeline (and its children on the global timeline) intact.
