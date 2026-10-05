@@ -2510,19 +2510,33 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
 
 const roundPct = (pct: number) => Math.round(pct * 1000) / 1000;
 
+const LINEAR_RUN = new Set(["none", "linear"]);
+
+/** A percentage keyframe list whose timing is known and whose run is linear, so a trim keeps its render. */
+function linearPercentageKeys(animation: GsapAnimation) {
+  const data = animation.keyframes;
+  if (data?.format !== "percentage" || data.fromMotionPath || animation.arcPath) return null;
+  if (animation.durationUnresolved || !LINEAR_RUN.has(animation.ease || "none")) return null;
+  return data.keyframes;
+}
+
+function trimmableKeyframes(animation: GsapAnimation) {
+  const keyframes = linearPercentageKeys(animation);
+  const { duration, position } = animation;
+  if (!keyframes || typeof position !== "number" || typeof duration !== "number") return null;
+  return duration > 0 ? { keyframes, duration, position } : null;
+}
+
 /** The keyless tail of a keyframe tween, as the remap that ends it on its last key; null when it has none. */
 function trailingSpanTrim(animation: GsapAnimation) {
-  const data = animation.keyframes;
-  const { duration, position, ease } = animation;
-  if (data?.format !== "percentage" || data.fromMotionPath || animation.arcPath) return null;
-  if (typeof position !== "number" || typeof duration !== "number" || !(duration > 0)) return null;
-  if (animation.durationUnresolved || (ease && ease !== "none" && ease !== "linear")) return null;
-  const last = Math.max(...data.keyframes.map((keyframe) => keyframe.percentage));
-  if (data.keyframes.length < 2 || !(last > 0) || last >= 99.999) return null;
+  const tween = trimmableKeyframes(animation);
+  if (!tween) return null;
+  const last = Math.max(...tween.keyframes.map((keyframe) => keyframe.percentage));
+  if (tween.keyframes.length < 2 || !(last > 0) || last >= 99.999) return null;
   return {
-    position,
-    duration: Math.round(duration * last * 10) / 1000,
-    pctRemap: data.keyframes.map(({ percentage: from }) => ({
+    position: tween.position,
+    duration: Math.round(tween.duration * last * 10) / 1000,
+    pctRemap: tween.keyframes.map(({ percentage: from }) => ({
       from,
       to: roundPct((from / last) * 100),
     })),

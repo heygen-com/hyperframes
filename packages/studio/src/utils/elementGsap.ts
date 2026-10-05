@@ -46,11 +46,6 @@ export function setElementGsapSize(element: HTMLElement, width: number, height: 
   return true;
 }
 
-export function readElementGsapNumber(element: HTMLElement, prop: string): number | null {
-  const value = Number(gsapOf(element)?.getProperty?.(element, prop));
-  return Number.isFinite(value) ? value : null;
-}
-
 /** The targets CSSPlugin styles: not plain objects (the runtime's filler) or XML-namespace elements. */
 export function elementTargets(tween: { targets?: () => unknown[] }): Element[] {
   return (tween.targets?.() ?? []).filter((t): t is Element =>
