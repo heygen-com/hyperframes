@@ -1,21 +1,10 @@
+import { isRichTextFormattingTag } from "@hyperframes/core/rich-text-sanitize";
+
 export type LayerKind = "image" | "video" | "audio" | "vector" | "group" | "text" | "shape";
 
-const PHRASING_TAGS = new Set([
-  "b",
-  "strong",
-  "i",
-  "em",
-  "u",
-  "s",
-  "span",
-  "a",
-  "br",
-  "sup",
-  "sub",
-  "mark",
-  "small",
-  "code",
-]);
+export function isCompositionHost(el: Element): boolean {
+  return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
+}
 
 /** What a Layers row tells a person an element is: its media tag, a group, text, or else a shape. */
 export function layerKindOf(el: Element): LayerKind {
@@ -24,9 +13,9 @@ export function layerKindOf(el: Element): LayerKind {
   if (tag === "video") return "video";
   if (tag === "audio") return "audio";
   if (tag === "svg") return "vector";
-  if (el.hasAttribute("data-hf-group") || el.hasAttribute("data-composition-src")) return "group";
-  const inlineOnly = [...el.querySelectorAll("*")].every((child) =>
-    PHRASING_TAGS.has(child.tagName.toLowerCase()),
+  if (el.hasAttribute("data-hf-group") || isCompositionHost(el)) return "group";
+  const textOnly = [...el.querySelectorAll("*")].every((child) =>
+    isRichTextFormattingTag(child.tagName),
   );
-  return inlineOnly && el.textContent?.trim() ? "text" : "shape";
+  return textOnly && el.textContent?.trim() ? "text" : "shape";
 }

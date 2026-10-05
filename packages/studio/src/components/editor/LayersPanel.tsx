@@ -30,7 +30,7 @@ import {
   Type,
   Vector,
 } from "../../icons/SystemIcons";
-import { layerKindOf } from "./layerKind";
+import { isCompositionHost, layerKindOf } from "./layerKind";
 import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
 import { getVisibleLayers, sortLayersByZIndex } from "./layersPanelSort";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
@@ -55,10 +55,6 @@ const KIND_ICON = {
   text: Type,
   shape: Square,
 } as const;
-
-function isCompositionHost(el: HTMLElement): boolean {
-  return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
-}
 
 /**
  * A trailing-rAF + cooldown throttle: `invoke` runs `run` at most once per

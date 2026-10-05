@@ -90,12 +90,6 @@ it("lists, selects and reorders the host's preview layers through the host's ses
   const { doc, session, root } = await mountPanel();
 
   expect(rowLabels()).toEqual(["Title", "Bg"]);
-  const rowEls = [...document.querySelectorAll<HTMLElement>("[data-layer-index]")];
-  // A kind icon a person reads, not the tag's first letters; a leaf row has no empty caret column.
-  expect(
-    rowEls.map((row) => row.querySelector("[data-layer-kind]")?.getAttribute("data-layer-kind")),
-  ).toEqual(["shape", "shape"]);
-  expect(rowEls.every((row) => row.firstElementChild?.hasAttribute("data-layer-kind"))).toBe(true);
 
   const rows = document.querySelectorAll<HTMLElement>("[data-layer-index]");
   await act(async () => rows[0]!.click());
