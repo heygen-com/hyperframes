@@ -1428,6 +1428,20 @@ export function initSandboxRuntimeModular(): void {
       parent.add(candidate.timeline, resolveCompositionStartSeconds(candidate.compositionId));
       autoNestedHostIds.set(candidate.timeline, candidate.compositionId);
     };
+    /** A host moved since the runtime nested its timeline: nested again at its start, as a fresh load nests it. */
+    const followHostStart = (
+      root: RuntimeTimelineLike,
+      candidate: { compositionId: string; timeline: RuntimeTimelineLike },
+    ): void => {
+      const nested = candidate.timeline as RuntimeTimelineLike & RuntimeTimelineChildLike;
+      const removable = root as RuntimeTimelineLike & { remove?: (child: unknown) => unknown };
+      if (!autoNestedHostIds.has(nested) || nested.parent !== (root as unknown)) return;
+      if (typeof nested.startTime !== "function" || typeof removable.remove !== "function") return;
+      if (nested.startTime() === resolveCompositionStartSeconds(candidate.compositionId)) return;
+      // GSAP renders a re-added child at its parent's time.
+      removable.remove(nested);
+      nestAtHostStart(root, candidate);
+    };
     const createCompositeTimelineFromCandidates = (
       candidates: Array<{
         compositionId: string;
@@ -1506,7 +1520,10 @@ export function initSandboxRuntimeModular(): void {
         const addedIds: string[] = [];
         for (const candidate of candidates) {
           const alreadyIncluded = existingChildren.some((child) => child === candidate.timeline);
-          if (alreadyIncluded) continue;
+          if (alreadyIncluded) {
+            followHostStart(rootTimeline, candidate);
+            continue;
+          }
           try {
             nestAtHostStart(rootTimeline, candidate);
             addedIds.push(candidate.compositionId);
