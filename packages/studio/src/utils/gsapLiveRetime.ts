@@ -1,6 +1,5 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
-import { codeTokens } from "@hyperframes/parsers/gsap-parser-acorn";
+import { parseGsapScriptAcorn, scriptShape } from "@hyperframes/parsers/gsap-parser-acorn";
 import { hasExplicitTime } from "@hyperframes/parsers/gsap-writer-acorn";
 import { RUNTIME_FILLER } from "@hyperframes/core/runtime/protocol";
 import {
@@ -37,7 +36,7 @@ function untimedShape(animation: GsapAnimation): string {
   const provenance = rest.provenance && { ...rest.provenance, sourceRange: undefined };
   return JSON.stringify({ ...rest, provenance }, (_key, value) =>
     typeof value === "string" && value.startsWith("__raw:")
-      ? (codeTokens(value.slice(6)) ?? value)
+      ? (scriptShape(`(${value.slice(6)}\n)`) ?? value)
       : value,
   );
 }
@@ -54,8 +53,8 @@ const lengthOf = (animation: GsapAnimation) =>
 /** Decides, from the two scripts alone, whether a saved edit moved tweens and nothing else. */
 export function planLiveRetime(before: string, after: string): LiveRetimePlan {
   // The preview runs the script re-printed by the bundler; a timing edit rewrites numbers only.
-  const code = codeTokens(before, true);
-  if (code === null || code !== codeTokens(after, true)) return RERUN;
+  const shape = scriptShape(before, true);
+  if (shape === null || shape !== scriptShape(after, true)) return RERUN;
   const keys = timelineKeys(after);
   if (keys.length !== 1 || timelineKeys(before).join() !== keys.join()) return RERUN;
   const was = parseGsapScriptAcorn(before).animations.filter(onTimeline);

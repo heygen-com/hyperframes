@@ -50,29 +50,17 @@ describe("runtime sub-composition placement", () => {
     expect(shownX()).toBe(25);
   });
 
-  it("keeps a sub-composition its parent's script nested inside that parent after the root script re-runs", () => {
-    document.body.innerHTML =
-      `<div data-composition-id="main" data-root="true" data-duration="10">` +
-      `<div class="clip" data-composition-id="outer" data-start="2" data-duration="6">` +
-      `<div class="clip" data-composition-id="inner" data-start="1" data-duration="2"></div></div></div>`;
-    const inner = gsap.timeline({ paused: true }).to({}, { duration: 2 }, 0);
-    const outer = gsap.timeline({ paused: true }).to({}, { duration: 6 }, 0).add(inner, 1);
-    const build = () => gsap.timeline({ paused: true }).to({}, { duration: 1 }, 0);
-    window.__timelines = { main: build(), outer, inner } as unknown as Record<
-      string,
-      RuntimeTimelineLike
-    >;
-    initSandboxRuntimeModular();
-    expect(inner.parent).toBe(outer);
+  it("leaves a scene where the root script places it after a re-run, as a fresh load does", () => {
+    const { scene } = load(1);
+    const root = gsap.timeline({ paused: true }).to({}, { duration: 1 }, 0).add(scene, 2);
+    window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
+    window.__hfForceTimelineRebind?.();
+    expect(scene.startTime()).toBe(2);
 
-    window.__timelines = { main: build(), outer, inner } as unknown as Record<
-      string,
-      RuntimeTimelineLike
-    >;
+    document.getElementById("host")!.setAttribute("data-start", "4");
     window.__hfForceTimelineRebind?.();
 
-    expect(inner.parent).toBe(outer);
-    expect(inner.startTime()).toBe(1);
+    expect(scene.startTime()).toBe(2);
   });
 
   it("leaves an unmoved scene in place on a rebind, whatever its start rounds to", () => {

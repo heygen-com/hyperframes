@@ -32,7 +32,7 @@ import { getObjectArrayKeyframeTiming } from "./gsapObjectArrayTiming.js";
 // Browser-safe re-exports so studio code can build arc config without importing
 // the recast parser (this acorn module is the browser-safe gsap subpath).
 export { buildArcPath, editabilityForProvenance } from "./gsapSerialize.js";
-export { codeTokens } from "./scriptTokens.js";
+export { scriptShape } from "./scriptShape.js";
 export type {
   ArcPathConfig,
   ArcPathSegment,
