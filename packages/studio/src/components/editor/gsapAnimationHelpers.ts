@@ -11,6 +11,14 @@ function formatPropValue(prop: string, v: number | string): string {
 const easeLabel = (ease: string) =>
   ease.startsWith("custom(") ? "custom" : (EASE_LABELS[ease] ?? ease);
 
+export function uniformSegmentEase(animation: GsapAnimation): string | null {
+  const eases = keyframedTweenEases(animation);
+  const steps = animation.keyframes?.keyframes ?? [];
+  const segmentEases = new Set(steps.slice(1).map((kf) => eases.segment(kf)));
+  if (segmentEases.size === 0) return eases.segment({});
+  return segmentEases.size === 1 ? [...segmentEases][0]! : null;
+}
+
 function keyframedTweenSummary(
   animation: GsapAnimation,
   pos: number | string,
@@ -19,15 +27,15 @@ function keyframedTweenSummary(
   const steps = animation.keyframes?.keyframes ?? [];
   const props = [...new Set(steps.flatMap((kf) => Object.keys(kf.properties)))];
   const propText = props.map((p) => (PROP_LABELS[p] ?? p).toLowerCase()).join(", ");
-  const eases = keyframedTweenEases(animation);
-  const segmentEases = new Set(steps.slice(1).map((kf) => eases.segment(kf)));
+  const segmentEase = uniformSegmentEase(animation);
   const segmentText =
-    segmentEases.size === 1
-      ? `, each segment eased ${easeLabel([...segmentEases][0]!)}`
-      : segmentEases.size > 1
-        ? ", with per-keyframe easing"
-        : "";
-  const runText = eases.run && eases.run !== "none" ? `, across a ${easeLabel(eases.run)} run` : "";
+    steps.length < 2
+      ? ""
+      : segmentEase
+        ? `, each segment eased ${easeLabel(segmentEase)}`
+        : ", with per-keyframe easing";
+  const run = keyframedTweenEases(animation).run;
+  const runText = run && run !== "none" ? `, across a ${easeLabel(run)} run` : "";
   const count = `${steps.length} keyframe${steps.length === 1 ? "" : "s"}`;
   return `Starting at ${pos}s, over ${dur}s, animate ${animation.targetSelector}'s ${propText || "no properties yet"} through ${count}${segmentText}${runText}.`;
 }

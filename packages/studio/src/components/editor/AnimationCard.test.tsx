@@ -149,6 +149,34 @@ function restoreScrollIntoView(descriptor: PropertyDescriptor | undefined): void
 }
 
 describe("AnimationCard", () => {
+  it("heads a keyframed card with the segment ease and names the run ease on its own line", () => {
+    const view = renderFocusCard(null, vi.fn(), true);
+    expect(view.host.querySelector("[data-card-ease]")?.textContent).toBe("power1.inOut");
+    expect(view.host.querySelector("[data-card-run-ease]")?.textContent).toBe(
+      "Run ease: power1.out",
+    );
+    act(() => view.root.unmount());
+  });
+
+  it("heads a keyframed card Mixed when its segments differ, with no run line for a linear run", () => {
+    const animation: GsapAnimation = {
+      ...ANIMATION,
+      ease: undefined,
+      keyframes: {
+        format: "percentage",
+        keyframes: [
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 50, properties: { x: 100 }, ease: "expo.in" },
+          { percentage: 100, properties: { x: 200 } },
+        ],
+      },
+    };
+    const view = renderFocusCard(null, vi.fn(), true, animation);
+    expect(view.host.querySelector("[data-card-ease]")?.textContent).toBe("Mixed");
+    expect(view.host.querySelector("[data-card-run-ease]")).toBeNull();
+    act(() => view.root.unmount());
+  });
+
   it("labels an unset segment with the ease GSAP plays, not the tween's run ease", () => {
     const view = renderFocusCard(null, vi.fn(), true);
     const labels = [...view.host.querySelectorAll("[data-ease-segment-pct] button span.ml-auto")];
