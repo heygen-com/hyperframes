@@ -436,8 +436,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   };
 
   // Opened on first use, so a server that never serves Studio's history never writes one. A failed open stays off
-  // for this run; one another process was holding is tried again on the next request, without waiting for it,
-  // since every write to the project waits on that open.
+  // for this run; one another process was holding is tried again on the next request, which no write waits for.
   let ownerWaitMs: number | undefined;
   const histories = historyCache(() =>
     openProjectHistory({

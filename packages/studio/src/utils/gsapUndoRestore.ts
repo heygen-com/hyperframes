@@ -252,10 +252,11 @@ function fileTargets(
   isActive: boolean,
   file: UndoRestoreFile,
 ): RestorePlan | null {
-  // The preview stamps the film it shows, so a source from before Studio first stamped it is stamped to match.
-  const asShown = doc.querySelector("[data-hf-id]") ? ensureHfIds : (html: string) => html;
-  const prevDoc = parseRestoreSource(asShown(file.previous));
-  const nextDoc = parseRestoreSource(asShown(file.restored));
+  const stampedLikeThePreview = doc.querySelector("[data-hf-id]")
+    ? ensureHfIds
+    : (html: string) => html;
+  const prevDoc = parseRestoreSource(stampedLikeThePreview(file.previous));
+  const nextDoc = parseRestoreSource(stampedLikeThePreview(file.restored));
   const scripted = restoreScripted(prevDoc, nextDoc, isActive);
   if (scripted === null) return null;
   const keys = diffRestoreDocs(prevDoc, nextDoc);
