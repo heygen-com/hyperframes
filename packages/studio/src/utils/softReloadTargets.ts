@@ -1,4 +1,5 @@
 // Which elements a GSAP soft reload resets, what their tweens wrote, and which file writes each.
+import { parseGsapScript } from "@hyperframes/parsers/gsap-parser";
 import { parseSavedSource } from "./authoredSource";
 import { elementTargets } from "./elementGsap";
 
@@ -49,6 +50,7 @@ export function collectResetTargets(
   win: { __timelines?: Record<string, unknown> },
   doc: Document,
   targetKeys: string[],
+  outgoingScripts: readonly Element[] = [],
 ): Map<Element, Set<string>> {
   const targets = new Map<Element, Set<string>>();
   const timelines = (win.__timelines ?? {}) as Record<string, TweenLike | undefined>;
@@ -61,6 +63,8 @@ export function collectResetTargets(
     } catch {}
   }
   sweepHeldElements(doc, targetKeys, others, targets);
+  for (const script of outgoingScripts)
+    addStandaloneSetTargets(doc, script.textContent ?? "", targets);
   return targets;
 }
 
@@ -101,6 +105,29 @@ function sweepHeldElements(
       if (targets.has(el) || elsewhere.has(el) || !("_gsap" in el)) continue;
       if (el === root || roots.has(el.parentElement?.closest("[data-composition-id]")))
         targets.set(el, new Set());
+    }
+  }
+}
+
+/** Adds what each standalone `gsap.set` in the outgoing script wrote, which no timeline child records. */
+function addStandaloneSetTargets(
+  doc: Document,
+  outgoingScript: string,
+  targets: Map<Element, Set<string>>,
+): void {
+  if (!outgoingScript.includes("gsap.set(")) return;
+  for (const set of parseGsapScript(outgoingScript).animations) {
+    if (set.method !== "set" || !set.global) continue;
+    let els: Element[];
+    try {
+      els = [...doc.querySelectorAll(set.targetSelector)];
+    } catch {
+      continue;
+    }
+    for (const el of els) {
+      const seen = targets.get(el) ?? new Set<string>();
+      for (const prop of tweenedProps(set.properties)) seen.add(prop);
+      targets.set(el, seen);
     }
   }
 }

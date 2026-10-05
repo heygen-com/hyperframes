@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 
 import { afterEach, describe, it, expect, vi } from "vitest";
@@ -70,6 +71,29 @@ function buildMockIframe(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** A mock iframe whose document holds one GSAP script and one composition root; `byId` answers id selectors. */
+function iframeWithComposition(script: string, root: Element, byId: Record<string, Element> = {}) {
+  const scriptEl = document.createElement("script");
+  scriptEl.textContent = script;
+  const container = document.createElement("div");
+  container.appendChild(scriptEl);
+  const { iframe } = buildMockIframe({ gsap: { timeline: vi.fn(), set: vi.fn() } });
+  (iframe as unknown as { contentDocument: unknown }).contentDocument = {
+    querySelectorAll: (sel: string) =>
+      sel === "script:not([src])"
+        ? [scriptEl]
+        : sel.includes("composition-id")
+          ? [root]
+          : byId[sel]
+            ? [byId[sel]]
+            : [],
+    createElement: (tag: string) => document.createElement(tag),
+    body: container,
+    head: document.createElement("div"),
+  };
+  return iframe;
+}
+
 describe("applySoftReload", () => {
   it('returns "cannot-soft-reload" when iframe is null', () => {
     expect(applySoftReload(null, SCRIPT_TEXT)).toBe("cannot-soft-reload");
@@ -127,28 +151,49 @@ describe("applySoftReload", () => {
     orphan.style.cssText = "left: 1240px; top: 200px; transform: translate(449px, 0px)";
     Object.assign(orphan, { _gsap: {} }); // GSAP cache marker (set by gsap.set)
 
-    const scriptEl = document.createElement("script");
-    scriptEl.textContent = 'const tl = gsap.timeline({ paused: true }); tl.to("#x", { x: 1 });';
-    const container = document.createElement("div");
-    container.appendChild(scriptEl);
-
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "root");
     root.appendChild(orphan);
-
-    const { iframe } = buildMockIframe({ gsap: { timeline: vi.fn(), set: vi.fn() } });
-    (iframe as unknown as { contentDocument: unknown }).contentDocument = {
-      querySelectorAll: (sel: string) =>
-        sel === "script:not([src])" ? [scriptEl] : sel.includes("composition-id") ? [root] : [],
-      createElement: (tag: string) => document.createElement(tag),
-      body: container,
-      head: document.createElement("div"),
-    };
+    const iframe = iframeWithComposition(
+      'const tl = gsap.timeline({ paused: true }); tl.to("#x", { x: 1 });',
+      root,
+    );
 
     applySoftReload(iframe, SCRIPT_TEXT);
 
     expect(orphan.style.transform).toBe(""); // stale GSAP transform stripped
     expect(orphan.style.left).toBe("1240px"); // authored CSS base preserved
+  });
+
+  it("clears what a standalone gsap.set wrote once the new script no longer sets it", () => {
+    // An undo of a Design-panel W edit on an animated box removes its gsap.set width.
+    const target = document.createElement("div");
+    target.id = "target";
+    target.style.cssText = "left: 10px; width: 300px";
+    Object.assign(target, { _gsap: {} });
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.appendChild(target);
+    const iframe = iframeWithComposition(
+      `window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#target", { x: 100 });
+gsap.set("#target", { width: 300 });
+window.__timelines["root"] = tl;`,
+      root,
+      { "#target": target },
+    );
+    const restored = `window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#target", { x: 100 });
+window.__timelines["root"] = tl;`;
+
+    applySoftReload(iframe, restored, {
+      authoredHtml: `<html><body><div data-composition-id="root"><div id="target" style="left: 10px"></div></div><script>${restored}</script></body></html>`,
+    });
+
+    expect(target.style.width).toBe("");
+    expect(target.style.left).toBe("10px");
   });
 
   it("wraps execution in __hfSuppressSceneMutations when available", () => {

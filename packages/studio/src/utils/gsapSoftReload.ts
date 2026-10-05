@@ -370,7 +370,7 @@ export function applySoftReload(
   // fallow-ignore-next-line complexity
   const doReload = () => {
     const timelines = win.__timelines;
-    const targets = collectResetTargets(win, doc, targetKeys);
+    const targets = collectResetTargets(win, doc, targetKeys, staleScripts);
 
     // Kill ONLY the target composition's timeline(s) — leaving every other
     // composition's timeline (and its children on the global timeline) intact.
