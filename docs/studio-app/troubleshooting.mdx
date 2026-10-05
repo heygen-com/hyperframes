@@ -1,0 +1,74 @@
+---
+title: "Updates and troubleshooting"
+sidebarTitle: "Updates and troubleshooting"
+description: "How the HyperFrames Studio app updates itself, and what to do when it says your agent is signed out, out of usage, or blocked."
+---
+
+## How updates arrive
+
+The app checks for a new version when it opens and every few minutes after that. When one is ready, you get a Mac
+notification, a round update button appears in the bottom-right corner, and Framey points at it: **There's a new
+update. Click here.**
+
+1. Click the update button. It fills up as the update downloads.
+2. The app restarts by itself as soon as nothing is running: no agent run, export, or setup in progress. It reopens
+   the project you had open, and you do not lose anything.
+
+To check by hand, choose **HyperFrames** > **Check for Updates…** in the menu bar, or open **Settings** >
+**Updates** and choose **Check for updates**. After an update, a short video shows what is new.
+
+If an update stops with **The update did not finish.**, choose **Try again**. If it says **Could not check for
+updates.**, check your internet connection, then try again.
+
+## The app asks me to sign in to HyperFrames
+
+Sending a request needs your HeyGen account. Choose **Continue with HeyGen** and finish in your browser within two
+minutes. If you see **No connection**, check your internet. If you see **The sign-in expired** or **HeyGen didn't
+sign you in**, choose **Try again**.
+
+## You're signed out of Claude Code
+
+The chat shows a sign-in card. Your message is kept. Choose **Sign in**, finish in your browser, and the message
+sends as soon as you are back. Choose **Use Codex instead** to send it with Codex if Codex is ready.
+
+For Codex, the chat says **Codex is not signed in.** Choose **Copy sign-in command**, run it in Terminal, then
+choose **Try again**.
+
+## My agent hit its usage limit
+
+The chat says, for example, **Claude Code hit its usage limit. It resets** at a time. This is your agent's own plan
+limit, not a HyperFrames one. Wait until it resets and choose **Try again**, or choose **Switch to Codex** (or
+**Switch to Claude Code**) if the other agent is set up.
+
+If the chat says the agent **had a problem on its side**, the agent's service is busy or down. Try again in a few
+minutes.
+
+## Claude Code blocked a step
+
+**Agent access** in **Settings** > **Agent** decides what Claude Code may do:
+
+- **Full access**, the default: it can install, use the internet, and run anything, with no checks.
+- **Auto**: it works in your project and blocks risky steps on its own.
+
+With **Auto**, a step Claude Code refuses shows as blocked in the run's work log. If the change needed that step,
+switch to **Full access** and send the request again.
+
+## The agent is not installed or won't start
+
+The chat says **Claude Code is not installed on this Mac.** Choose **Try again** and the app sets it up for you. If
+it says the agent is installed but will not start, choose **Reinstall** in **Settings** > **Permissions**. See
+[Connect your agent](/studio-app/connect-your-agent) for the manual commands.
+
+## Other messages
+
+| The chat says | Do this |
+| --- | --- |
+| **… ran out of room in this chat.** | Choose **Start a fresh session**. |
+| **… needs an update to use** a model | Choose **Update**. |
+| **… could not reach the internet.** | Check your connection, then **Try again**. |
+| **… could not finish this change.** | Choose **Try again**, or say the change differently. |
+
+## Related topics
+
+- [Connect your agent](/studio-app/connect-your-agent)
+- [Export your video](/studio-app/export)

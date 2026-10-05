@@ -1,0 +1,70 @@
+---
+title: "Connect your agent"
+description: "Set up Claude Code or Codex once so the HyperFrames Studio app can build and change your videos."
+---
+
+The app makes your videos with an agent that runs on your computer: **Claude Code** or **Codex**. You set one up
+once. After that, every request you send goes to it.
+
+| Agent | You need | How the app sets it up |
+| --- | --- | --- |
+| Claude Code | A Claude account or an Anthropic Console account | The app installs it and opens the sign-in for you |
+| Codex | A ChatGPT account | You paste two commands into Terminal |
+
+Each run uses your agent's own plan, the account you signed the agent in with.
+
+If both are ready and you have not picked one, the app uses Claude Code.
+
+## Claude Code
+
+The first time you send a request without an agent, the **Connect Claude Code** screen opens with three steps.
+
+<Steps>
+  <Step title="Install Claude Code">
+    Choose **Install Claude Code**, then **Install** in the dialog. The app runs Anthropic's official installer,
+    which puts Claude Code in your home folder. It takes about a minute.
+  </Step>
+  <Step title="Sign in">
+    Choose **Sign in to Claude**. Your browser opens Claude's sign-in. Use your Claude account or an Anthropic Console
+    account, then come back to the app.
+  </Step>
+  <Step title="Check that it answers">
+    The app checks that Claude Code runs. When it shows **Claude Code is connected**, you can send your request.
+  </Step>
+</Steps>
+
+If a step fails, the app shows a command you can run yourself. Choose **Copy command**, then **Open Terminal**, and
+paste it:
+
+```bash
+# Install Claude Code
+curl -fsSL https://claude.ai/install.sh | bash
+
+# Sign in
+claude auth login
+```
+
+## Codex
+
+The app does not install Codex for you. Open **Settings** > **Agent** or the agent picker in the chat header, find
+Codex, and use its buttons:
+
+1. **Copy install command**, then paste it into Terminal:
+   ```bash
+   curl -fsSL https://chatgpt.com/codex/install.sh | sh
+   ```
+2. **Copy sign-in command** (`codex`), run it in Terminal, and sign in with your ChatGPT account.
+3. Back in the app, choose **Check again**. Codex shows **Ready**.
+
+## Switch agents
+
+Use the agent picker in the chat header, or **Settings** > **Agent**, and choose **Use** next to the agent you want.
+The choice applies to your next request.
+
+Each agent row shows its state: **Ready**, **Not signed in**, **Not installed**, or **Installed, but won't start**,
+with the button that fixes it.
+
+## Related topics
+
+- [Make your first video](/studio-app/first-video)
+- [Updates and troubleshooting](/studio-app/troubleshooting)
