@@ -22,9 +22,10 @@ beforeAll(async () => {
   widgetServer = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/javascript" });
     response.end(
-      request.url === "/decode.js"
-        ? "var image = new Image(); image.src = 'data:image/png;base64,AAAA'; image.decode();"
-        : "setTimeout(function widget() { throw new Error('widget failed'); }, 0);",
+      request.url === "/widget.js"
+        ? "setTimeout(function widget() { throw new Error('widget failed'); }, 0);"
+        : `${request.url === "/hash-decode.js" ? "location.hash = 'consent';" : ""}` +
+            "var image = new Image(); image.src = 'data:image/png;base64,AAAA'; image.decode();",
     );
   });
   await new Promise<void>((resolve) => widgetServer.listen(0, "127.0.0.1", resolve));
@@ -90,7 +91,7 @@ describe("which uncaught errors fail a timeline that never registers", () => {
     30_000,
   );
 
-  it.each(["widget.js", "decode.js"])(
+  it.each(["widget.js", "decode.js", "hash-decode.js"])(
     "keeps the error a readiness warning when a cross-origin %s throws or rejects",
     async (script) => {
       const files = {

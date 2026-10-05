@@ -2234,7 +2234,8 @@ export function classifyPageError(
   if (isPlayPauseAbort(firstLine)) return null;
   const origin = new URL(documentUrl).origin;
   const frames = (details.stackTrace?.callFrames ?? []).map((frame) => frame.url);
-  // Frameless: a parse error names its script; a browser API rejection names only the document.
+  // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
+  if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url].filter((url) => url !== documentUrl);
   return urls.some((url) => url?.startsWith(`${origin}/`)) ? `runtime-error:${firstLine}` : null;
 }

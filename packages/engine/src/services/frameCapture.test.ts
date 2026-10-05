@@ -84,10 +84,18 @@ describe("classifyPageError", () => {
     );
   });
 
-  // A widget's failed img.decode() and the composition's failed r.json() report the same shape.
-  it("ignores a frameless rejection that names only the document", () => {
-    const rejection = thrown("EncodingError: The source image cannot be decoded.", doc, []);
-    expect(classifyPageError(rejection, doc)).toBeNull();
+  // A widget's failed img.decode() and the composition's failed r.json() report the same shape,
+  // naming the current document: after a hash change, a replaceState, or inside an iframe.
+  it.each([doc, `${doc}#consent`, `${server}/frame.html`])(
+    "ignores a frameless rejection naming %s",
+    (url) => {
+      const decode = thrown("EncodingError: The source image cannot be decoded.", url, []);
+      expect(classifyPageError({ ...decode, text: "Uncaught (in promise)" }, doc)).toBeNull();
+    },
+  );
+
+  it("ignores a frameless error naming the document itself", () => {
+    expect(classifyPageError(thrown("SyntaxError: Unexpected token ';'", doc, []), doc)).toBeNull();
   });
 
   it("ignores errors from other origins and the benign play/pause race", () => {
