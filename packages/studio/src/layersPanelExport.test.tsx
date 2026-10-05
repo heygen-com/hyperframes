@@ -92,10 +92,9 @@ it("lists, selects and reorders the host's preview layers through the host's ses
   expect(rowLabels()).toEqual(["Title", "Bg"]);
   const rowEls = [...document.querySelectorAll<HTMLElement>("[data-layer-index]")];
   // A kind icon a person reads, not the tag's first letters; a leaf row has no empty caret column.
-  expect(rowEls.map((row) => row.querySelector("[data-layer-kind]")?.getAttribute("data-layer-kind"))).toEqual([
-    "shape",
-    "shape",
-  ]);
+  expect(
+    rowEls.map((row) => row.querySelector("[data-layer-kind]")?.getAttribute("data-layer-kind")),
+  ).toEqual(["shape", "shape"]);
   expect(rowEls.every((row) => row.firstElementChild?.hasAttribute("data-layer-kind"))).toBe(true);
 
   const rows = document.querySelectorAll<HTMLElement>("[data-layer-index]");
@@ -134,11 +133,9 @@ it("puts a caret only on a group's row and indents its children under the group'
   );
   const rows = [...document.querySelectorAll<HTMLElement>("[data-layer-index]")];
   const byLabel = (label: string) => rows.find((row) => row.textContent?.startsWith(label))!;
-  expect(rows.map((row) => row.querySelector("[data-layer-kind]")?.getAttribute("data-layer-kind"))).toEqual([
-    "text",
-    "group",
-    "image",
-  ]);
+  expect(
+    rows.map((row) => row.querySelector("[data-layer-kind]")?.getAttribute("data-layer-kind")),
+  ).toEqual(["text", "group", "image"]);
   expect(byLabel("Title").firstElementChild?.hasAttribute("data-layer-kind")).toBe(true);
   expect(byLabel("Intro").firstElementChild?.getAttribute("aria-label")).toBe("Collapse children");
   expect(byLabel("Title").style.paddingLeft).toBe("8px");
