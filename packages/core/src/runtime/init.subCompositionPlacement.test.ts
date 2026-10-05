@@ -20,7 +20,7 @@ describe("runtime sub-composition placement", () => {
   });
 
   /** A root with one scene clip at `hostStart`, whose timeline slides `#s` from 0 to 100 over 2 s. */
-  function load(hostStart: number) {
+  function load(hostStart: number | string) {
     document.body.innerHTML =
       `<div data-composition-id="main" data-root="true" data-duration="10">` +
       `<div id="host" class="clip" data-composition-id="scene" data-start="${hostStart}" data-duration="3">` +
@@ -31,13 +31,13 @@ describe("runtime sub-composition placement", () => {
     const root = gsap.timeline({ paused: true }).to({}, { duration: 1 }, 0);
     window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
     initSandboxRuntimeModular();
-    return scene;
+    return { scene, root };
   }
 
   const shownX = () => Number(gsap.getProperty("#s", "x"));
 
   it("places the scene at its host's new start when a rebind follows a host move, as a fresh load does", () => {
-    const scene = load(1);
+    const { scene } = load(1);
     window.__player?.seek(5);
     expect(shownX()).toBe(100);
 
@@ -48,5 +48,39 @@ describe("runtime sub-composition placement", () => {
     expect(shownX()).toBe(50);
     window.__player?.seek(4.5);
     expect(shownX()).toBe(25);
+  });
+
+  it("keeps a sub-composition its parent's script nested inside that parent after the root script re-runs", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="10">` +
+      `<div class="clip" data-composition-id="outer" data-start="2" data-duration="6">` +
+      `<div class="clip" data-composition-id="inner" data-start="1" data-duration="2"></div></div></div>`;
+    const inner = gsap.timeline({ paused: true }).to({}, { duration: 2 }, 0);
+    const outer = gsap.timeline({ paused: true }).to({}, { duration: 6 }, 0).add(inner, 1);
+    const build = () => gsap.timeline({ paused: true }).to({}, { duration: 1 }, 0);
+    window.__timelines = { main: build(), outer, inner } as unknown as Record<
+      string,
+      RuntimeTimelineLike
+    >;
+    initSandboxRuntimeModular();
+    expect(inner.parent).toBe(outer);
+
+    window.__timelines = { main: build(), outer, inner } as unknown as Record<
+      string,
+      RuntimeTimelineLike
+    >;
+    window.__hfForceTimelineRebind?.();
+
+    expect(inner.parent).toBe(outer);
+    expect(inner.startTime()).toBe(1);
+  });
+
+  it("leaves an unmoved scene in place on a rebind, whatever its start rounds to", () => {
+    const { root, scene } = load("0.33333333");
+    const remove = vi.spyOn(root, "remove");
+
+    window.__hfForceTimelineRebind?.();
+
+    expect(remove).not.toHaveBeenCalledWith(scene);
   });
 });

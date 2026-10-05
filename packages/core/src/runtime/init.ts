@@ -1428,18 +1428,18 @@ export function initSandboxRuntimeModular(): void {
       parent.add(candidate.timeline, resolveCompositionStartSeconds(candidate.compositionId));
       autoNestedHostIds.set(candidate.timeline, candidate.compositionId);
     };
-    /** A host moved since the runtime nested its timeline: nested again at its start, as a fresh load nests it. */
     const followHostStart = (
       root: RuntimeTimelineLike,
       candidate: { compositionId: string; timeline: RuntimeTimelineLike },
     ): void => {
-      const nested = candidate.timeline as RuntimeTimelineLike & RuntimeTimelineChildLike;
-      const removable = root as RuntimeTimelineLike & { remove?: (child: unknown) => unknown };
+      const nested = candidate.timeline as RuntimeTimelineLike &
+        RuntimeTimelineChildLike & { delay?: () => number };
       if (!autoNestedHostIds.has(nested) || nested.parent !== (root as unknown)) return;
-      if (typeof nested.startTime !== "function" || typeof removable.remove !== "function") return;
-      if (nested.startTime() === resolveCompositionStartSeconds(candidate.compositionId)) return;
-      // GSAP renders a re-added child at its parent's time.
-      removable.remove(nested);
+      if (typeof nested.startTime !== "function") return;
+      const placedAt = nested.startTime() - (nested.delay?.() ?? 0);
+      if (Math.abs(placedAt - resolveCompositionStartSeconds(candidate.compositionId)) < 1e-6)
+        return;
+      // GSAP takes a child out of its parent before adding it; the rebind's unpause aligns it to the root.
       nestAtHostStart(root, candidate);
     };
     const createCompositeTimelineFromCandidates = (
@@ -1515,12 +1515,12 @@ export function initSandboxRuntimeModular(): void {
       const none = { addedIds: [], nested: [] };
       if (typeof rootWithChildren.getChildren !== "function") return none;
       try {
-        const existingChildren = rootWithChildren.getChildren(true, true, true) ?? [];
-        if (!Array.isArray(existingChildren)) return none;
         const addedIds: string[] = [];
         for (const candidate of candidates) {
-          const alreadyIncluded = existingChildren.some((child) => child === candidate.timeline);
-          if (alreadyIncluded) {
+          // Read per candidate: nesting a parent earlier in the loop also brings in what its script nested.
+          const existingChildren = rootWithChildren.getChildren(true, true, true) ?? [];
+          if (!Array.isArray(existingChildren)) return none;
+          if (existingChildren.includes(candidate.timeline)) {
             followHostStart(rootTimeline, candidate);
             continue;
           }
