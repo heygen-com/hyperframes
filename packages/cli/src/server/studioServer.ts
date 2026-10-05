@@ -443,13 +443,18 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       projectDir,
       historyRoot: options.historyRoot ?? DEFAULT_HISTORY_ROOT,
       ownerWaitMs,
-    }).catch((error: unknown) => {
-      console.warn(`[studio] Project history is off: ${String(error)}`);
-      if (error instanceof HistoryBusyError) ownerWaitMs = 0;
-      if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
-        histories.forget(projectDir);
-      return null;
-    }),
+    })
+      .then((history) => {
+        ownerWaitMs = undefined;
+        return history;
+      })
+      .catch((error: unknown) => {
+        console.warn(`[studio] Project history is off: ${String(error)}`);
+        if (error instanceof HistoryBusyError) ownerWaitMs = 0;
+        if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
+          histories.forget(projectDir);
+        return null;
+      }),
   );
   const projectHistory = () => histories.get(projectDir);
   watcher.addListener((changedPath) => {

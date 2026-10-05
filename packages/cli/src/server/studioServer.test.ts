@@ -201,6 +201,28 @@ describe("createStudioServer project history (D-491)", () => {
     await server.shutdown();
   });
 
+  it("waits for the history lock again once a history opened after a busy one", async () => {
+    const waits: unknown[] = [];
+    const reopenable = { replacedAtPath: () => true, close: async () => {} };
+    let opens = 0;
+    historyState.open = async (options) => {
+      waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);
+      opens += 1;
+      if (opens === 1) throw new HistoryBusyError(1);
+      if (opens === 2) return reopenable;
+      historyState.open = null;
+      throw new HistoryBusyError(1);
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    await server.app.request(historyUrl);
+    await server.app.request(historyUrl);
+    historyState.open = null;
+    expect(waits).toEqual([undefined, 0, undefined]);
+    await server.shutdown();
+  });
+
   it("opens a new project's own history once it takes the folder's path", async () => {
     const projectDir = tmpProject();
     writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
