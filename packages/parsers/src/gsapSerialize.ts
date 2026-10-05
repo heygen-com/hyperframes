@@ -47,6 +47,10 @@ export function editabilityForProvenance(provenance?: GsapProvenance): KeyframeE
   return "unroll";
 }
 
+export function authorsKeyframes(anim: GsapAnimation): boolean {
+  return anim.keyframes !== undefined || anim.hasUnresolvedKeyframes === true;
+}
+
 export interface GsapAnimation {
   id: string;
   targetSelector: string;

@@ -22,6 +22,7 @@ import {
   safeJsKey as safeKey,
   resolveConversionProps,
   mergePercentageKeyframes,
+  authorsKeyframes,
 } from "./gsapSerialize";
 
 export type {
@@ -1940,7 +1941,7 @@ export function splitAnimationsInScript(
     const dur = anim.duration ?? 0;
     const animEnd = pos + dur;
 
-    if (anim.keyframes || anim.hasUnresolvedKeyframes) {
+    if (authorsKeyframes(anim)) {
       if (pos >= opts.splitTime) {
         result = updateAnimationSelector(result, anim.id, newSelector);
       } else if (animEnd > opts.splitTime) {
@@ -1958,6 +1959,9 @@ export function splitAnimationsInScript(
         }
       } else {
         // Entirely before split — extract final keyframe properties
+        if (anim.hasUnresolvedKeyframes) {
+          skippedSelectors.push(`${originalSelector} (unreadable keyframes before split)`);
+        }
         const kfs = anim.keyframes?.keyframes ?? [];
         if (kfs.length > 0) {
           for (const [k, v] of Object.entries(kfs[kfs.length - 1]!.properties)) {
@@ -2714,7 +2718,7 @@ export function convertToKeyframesInScript(
   if (!loc) return script;
 
   const anim = loc.target.animation;
-  if (anim.keyframes) return script;
+  if (authorsKeyframes(anim)) return script;
 
   const { fromProps, toProps } = resolveConversionProps(anim, resolvedFromValues);
   const varsArg = loc.target.call.varsArg;
@@ -3263,6 +3267,7 @@ export function splitIntoPropertyGroups(
   if (!loc) return { script, ids: [animationId] };
 
   const anim = loc.target.animation;
+  if (anim.hasUnresolvedKeyframes) return { script, ids: [animationId] };
 
   // Collect the properties to partition. For keyframed tweens, gather the
   // union of all properties across all keyframes. For flat tweens, use the

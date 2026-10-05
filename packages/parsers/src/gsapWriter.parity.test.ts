@@ -55,6 +55,7 @@ import {
   resizeKeyframedTweenInScript as resizeKeyframedTweenAcorn,
   addAnimationWithKeyframesToScript as addWithKfAcorn,
   removeAnimationFromScript as removeAnimAcorn,
+  updateAnimationInScript as updateAnimAcorn,
   shiftPositionsInScript as shiftAcorn,
   scalePositionsInScript as scaleAcorn,
   retimeClipTweensInScript,
@@ -603,6 +604,53 @@ tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0);`;
         );
       });
     }
+  }
+});
+
+describe("writers leave keyframes they cannot read as authored", () => {
+  const UNREADABLE = [
+    ["a step with a flag", "[{ x: 0 }, { x: 100, runBackwards: true }]"],
+    ["keyframes from a call", "steps()"],
+  ] as const;
+  const opts = { originalId: "a", newId: "a-2", elementStart: 0, elementDuration: 4 };
+
+  for (const [shape, keyframes] of UNREADABLE) {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { opacity: 1, x: 5, duration: 1, keyframes: ${keyframes} }, 0);`;
+    const id = () => acornId(script);
+
+    for (const [writer, split] of [
+      ["recast", splitAnimsRecast],
+      ["acorn", splitAnimsAcorn],
+    ] as const) {
+      if (writer === "recast" && keyframes !== "steps()") continue;
+      it(`${writer}: a split after ${shape} reports that the new clip's start is unknown`, () => {
+        const result = split(`${script}\ntl.to("#a", { duration: 2, x: 200 }, 1);`, {
+          ...opts,
+          splitTime: 2,
+        });
+        expect(result.skippedSelectors).toContain("#a (unreadable keyframes before split)");
+      });
+    }
+
+    it.each([
+      ["recast convert to keyframes", () => convertRecast(script, id())],
+      ["acorn convert to keyframes", () => convertAcorn(script, id())],
+      ["recast split into property groups", () => splitGroupsRecast(script, id()).script],
+      ["acorn split into property groups", () => splitGroupsAcorn(script, id()).script],
+      ["acorn add keyframe", () => addKeyframeAcorn(script, id(), 50, { x: 10 })],
+      ["acorn update keyframe", () => updateKeyframeAcorn(script, id(), 100, { x: 10 })],
+      ["acorn remove keyframe", () => removeKeyframeAcorn(script, id(), 100)],
+      ["acorn move keyframe", () => moveKeyframeAcorn(script, id(), 100, 80)],
+      ["acorn resize keyframed tween", () => resizeKeyframedTweenAcorn(script, id(), 0, 2, [])],
+      [
+        "acorn property edit",
+        () => updateAnimAcorn(script, id(), { properties: { opacity: 0.5 } }),
+      ],
+    ])(`%s leaves ${shape} unchanged`, (_name, write) => {
+      expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+      expect(write()).toBe(script);
+    });
   }
 });
 

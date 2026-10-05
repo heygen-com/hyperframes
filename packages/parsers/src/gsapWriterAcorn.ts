@@ -14,6 +14,7 @@ import type {
   ArcPathSegment,
 } from "./gsapSerialize.js";
 import {
+  authorsKeyframes,
   resolveConversionProps,
   extractArcWaypoints,
   buildMotionPathObjectCode,
@@ -329,7 +330,7 @@ export function updateAnimationInScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
+  if (!target || (updates.properties && target.animation.hasUnresolvedKeyframes)) return script;
 
   const ms = new MagicString(script);
   const { call }: { call: TweenCallInfo } = target;
@@ -1078,7 +1079,7 @@ export function updateKeyframeInScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
+  if (!target || target.animation.hasUnresolvedKeyframes) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode) {
@@ -1198,7 +1199,7 @@ function locateWithKeyframes(
   const target =
     parsed.located.find((l) => l.id === animationId) ??
     parsed.located.find((l) => l.id === convertedId);
-  if (!target) return null;
+  if (!target || target.animation.hasUnresolvedKeyframes) return null;
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode || kfPropNode.value?.type !== "ObjectExpression") return null;
   return { script, parsed, target, kfNode: kfPropNode.value };
@@ -1245,7 +1246,7 @@ function ensureKeyframesNode(
 
   const parsed = parseGsapScriptAcornForWrite(script);
   const target = parsed?.located.find((l) => l.id === animationId);
-  if (!target) return null;
+  if (!target || target.animation.hasUnresolvedKeyframes) return null;
 
   // Array-form keyframes → normalize to object form, then re-locate.
   const kfProp = findPropertyNode(target.call.varsArg, "keyframes");
@@ -1421,7 +1422,7 @@ export function removeKeyframeFromScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
+  if (!target || target.animation.hasUnresolvedKeyframes) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode) return script;
@@ -1690,7 +1691,7 @@ export function convertToKeyframesFromScript(
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return script;
   const { animation, call } = target;
-  if (animation.keyframes) return script;
+  if (authorsKeyframes(animation)) return script;
   const isSet = call.method === "set";
 
   const { fromProps, toProps } = resolveConversionProps(animation, resolvedFromValues);
@@ -2027,6 +2028,7 @@ export function splitIntoPropertyGroupsFromScript(
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return { script, ids: [animationId] };
   const { animation } = target;
+  if (animation.hasUnresolvedKeyframes) return { script, ids: [animationId] };
 
   const allPropKeys = collectPropertyKeys(animation);
   const groupProps = partitionPropertyGroups(allPropKeys);
@@ -2612,9 +2614,6 @@ type SplitCtx = {
   newElementStart: number;
 };
 
-// Keyframed tweens move whole or stay; one spanning the split is skipped, since
-// its keyframes cannot be cut without renormalizing them. Inherited state for
-// them is handled by computeForwardBaselines.
 function applyKeyframedTweenSplit(
   result: string,
   anim: GsapAnimation,
@@ -2627,6 +2626,8 @@ function applyKeyframedTweenSplit(
     return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
   if (animEnd > ctx.splitTime) {
     skippedSelectors.push(`${ctx.originalSelector} (keyframes spanning split)`);
+  } else if (anim.hasUnresolvedKeyframes) {
+    skippedSelectors.push(`${ctx.originalSelector} (unreadable keyframes before split)`);
   }
   return result;
 }
@@ -2646,7 +2647,7 @@ function applyTweenSplit(
   const dur = anim.duration ?? 0;
   const animEnd = pos + dur;
 
-  if (anim.keyframes || anim.hasUnresolvedKeyframes) {
+  if (authorsKeyframes(anim)) {
     return applyKeyframedTweenSplit(result, anim, pos, animEnd, ctx, skippedSelectors);
   }
   // Wholly before the split — kept on the original element.
