@@ -2227,21 +2227,20 @@ function isPlayPauseAbort(message: string): boolean {
 /** `runtime-error:<first line>` when a script served with the composition threw; null if not attributable to one. */
 export function classifyPageError(
   details: Protocol.Runtime.ExceptionDetails,
-  documentUrl: string,
+  projectScripts: ReadonlySet<string>,
 ): string | null {
   const exception = details.exception;
   const message = String(exception?.description ?? exception?.value ?? details.text);
   const [firstLine = ""] = message.split("\n");
   if (isPlayPauseAbort(firstLine)) return null;
-  const origin = new URL(documentUrl).origin;
   const frames = (details.stackTrace?.callFrames ?? []).map((frame) => frame.url);
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
-  const urls = frames.length > 0 ? frames : [details.url].filter((url) => url !== documentUrl);
-  // In a render the runtime names the composition scripts it re-runs; unnamed code (eval, inserted) has no owner.
-  const onPage = (url: string | undefined) =>
-    url?.startsWith(`${origin}/`) || url?.startsWith(COMPOSITION_SOURCE_URL);
-  return urls.some(onPage) ? `runtime-error:${firstLine}` : null;
+  const urls = frames.length > 0 ? frames : [details.url];
+  // The render compiler names the composition's inline code. Inline handlers report the document, which a widget can move.
+  const owned = (url: string | undefined) =>
+    url !== undefined && (projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL));
+  return urls.some(owned) ? `runtime-error:${firstLine}` : null;
 }
 
 // fallow-ignore-next-line unit-size
@@ -2295,11 +2294,16 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
   });
 
+  const projectScripts = new Set<string>();
   page.on("response", (response) => {
     const status = response.status();
-    if (status < 400) return;
-
     const request = response.request();
+    if (status < 400) {
+      const fromServer = response.url().startsWith(`${serverUrl}/`);
+      if (fromServer && request.resourceType() === "script") projectScripts.add(response.url());
+      return;
+    }
+
     if (request.resourceType() === "script") {
       recordScriptLoadFailure(session, response.url());
     }
@@ -2321,7 +2325,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    const pageError = classifyPageError(exceptionDetails, url);
+    const pageError = classifyPageError(exceptionDetails, projectScripts);
     if (pageError && !session.pageErrors.includes(pageError)) session.pageErrors.push(pageError);
   });
   await runtimeClient.send("Runtime.enable");

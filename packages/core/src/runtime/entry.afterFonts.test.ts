@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AFTER_FONTS_CLAIM,
   AFTER_FONTS_SCRIPT_TYPE,
-  COMPOSITION_SOURCE_URL,
   deferScriptsUntilFonts,
 } from "../compiler/scriptRuns";
 import { FONT_WAIT_TIMEOUT_MS } from "./afterFonts";
@@ -88,48 +87,6 @@ describe("runtime entry: composition scripts after web fonts", () => {
     await vi.waitFor(() => expect(window.__player).toBeDefined());
     expect(log()).toBe("a in-place b ready ");
     expect(document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}"]`)).toHaveLength(0);
-  });
-
-  // Studio reads and compares live script text, so only a render names it for page-error attribution.
-  it.each([true, false])(
-    "names the re-run scripts for page errors only in a render (%s)",
-    async (rendering) => {
-      const flags = window as { __HF_RENDER_CAPTURE_MODE?: boolean };
-      flags.__HF_RENDER_CAPTURE_MODE = rendering;
-      try {
-        serveFonts(Promise.resolve(), []);
-        mountDeferredScripts();
-        await parseThenLoad();
-        await vi.waitFor(() => expect(window.__player).toBeDefined());
-        const named = Array.from(document.body.querySelectorAll("script"), (script) =>
-          script.text.endsWith(`\n//# sourceURL=${COMPOSITION_SOURCE_URL}`),
-        );
-        expect(named).toEqual([rendering, rendering]);
-        expect(log()).toBe("a in-place b ready ");
-      } finally {
-        delete flags.__HF_RENDER_CAPTURE_MODE;
-      }
-    },
-  );
-
-  it("keeps the name an inlined CDN script already carries when a render re-runs it", async () => {
-    const flags = window as { __HF_RENDER_CAPTURE_MODE?: boolean };
-    flags.__HF_RENDER_CAPTURE_MODE = true;
-    try {
-      serveFonts(Promise.resolve(), []);
-      mountDeferredScripts();
-      document.body.insertAdjacentHTML(
-        "beforeend",
-        `<script type="${AFTER_FONTS_SCRIPT_TYPE}">${logs("cdn")}\n//# sourceURL=https://cdn.test/w.js\n</script>`,
-      );
-      await parseThenLoad();
-      await vi.waitFor(() => expect(window.__player).toBeDefined());
-      expect(log()).toBe("a in-place b cdn ready ");
-      const cdn = Array.from(document.body.querySelectorAll("script")).at(-1);
-      expect(cdn?.text.trimEnd().endsWith("//# sourceURL=https://cdn.test/w.js")).toBe(true);
-    } finally {
-      delete flags.__HF_RENDER_CAPTURE_MODE;
-    }
   });
 
   it("keeps an addEventListener wrapper a deferred script installs while its load events are held", async () => {

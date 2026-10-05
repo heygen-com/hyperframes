@@ -69,6 +69,7 @@ export {
   deferScriptsUntilFonts,
   headStyleRuns,
   inlineScriptRuns,
+  isJavaScriptType,
   styleElementsFor,
   type CompositionStyle,
   type InlineScriptRun,

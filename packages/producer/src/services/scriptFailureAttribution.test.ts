@@ -16,6 +16,8 @@ const composition = (scripts: string) => `<!doctype html>
   ${scripts}
 </body></html>`;
 
+const handler =
+  "document.body.insertAdjacentHTML('beforeend', '<img src=\"data:,\" onerror=\"null.timeline\">');";
 const decode = "var image = new Image(); image.src = 'data:image/png;base64,AAAA'; image.decode();";
 const widgetScripts: Record<string, string> = {
   "/sync.js": "throw new Error('widget failed at load');",
@@ -27,6 +29,8 @@ const widgetScripts: Record<string, string> = {
   "/insert-later.js":
     "var s = document.createElement('script'); s.text = 'setTimeout(function () { null.timeline; }, 0)'; document.body.appendChild(s);",
   "/string-timer.js": "setTimeout('null.timeline', 0);",
+  "/inline-handler.js": handler,
+  "/moved-inline-handler.js": `history.replaceState(null, '', '/elsewhere/page'); ${handler}`,
 };
 
 let root: string;
@@ -101,6 +105,26 @@ describe("which uncaught errors fail a timeline that never registers", () => {
     [
       "the composition evals its own throw",
       { "index.html": composition(`<script>eval("null.timeline");</script>`) },
+    ],
+    [
+      "an inline script in the composition's head throws",
+      {
+        "index.html": composition("").replace(
+          "<html>",
+          "<html><head><script>null.timeline;</script></head>",
+        ),
+      },
+    ],
+    [
+      "a sub-composition's inline script throws",
+      {
+        "index.html": composition("").replace(
+          "></div>",
+          '><div data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="1"></div></div>',
+        ),
+        "scene.html":
+          '<template><div data-composition-id="scene" data-width="160" data-height="120"><script>null.timeline;</script></div></template>',
+      },
     ],
     [
       "a script file from the project throws",

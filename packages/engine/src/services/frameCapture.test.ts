@@ -63,24 +63,33 @@ describe("classifyPageError", () => {
     },
   });
 
-  it("records an error thrown by a script served with the composition, by its first line", () => {
+  const comp = `${server}/comp.js`;
+  const served = new Set([comp]);
+  const named = COMPOSITION_SOURCE_URL;
+
+  it("records an error thrown by a script file the page loaded from the server, by its first line", () => {
     const error =
       "TypeError: Cannot read properties of null (reading 'timeline')\n    at build (comp.js:1:37)";
-    expect(classifyPageError(thrown(error, `${server}/comp.js`, [`${server}/comp.js`]), doc)).toBe(
+    expect(classifyPageError(thrown(error, comp, [comp]), served)).toBe(
       "runtime-error:TypeError: Cannot read properties of null (reading 'timeline')",
     );
   });
 
   it("records a syntax error and a thrown string, which carry no error stack", () => {
-    const syntax = thrown("SyntaxError: Unexpected token ';'", `${server}/comp.js`, []);
-    const plain = thrown(undefined, doc, [doc], "plain string");
-    expect(classifyPageError(syntax, doc)).toBe("runtime-error:SyntaxError: Unexpected token ';'");
-    expect(classifyPageError(plain, doc)).toBe("runtime-error:plain string");
+    const syntax = thrown("SyntaxError: Unexpected token ';'", comp, []);
+    const plain = thrown(undefined, named, [named], "plain string");
+    expect(classifyPageError(syntax, served)).toBe(
+      "runtime-error:SyntaxError: Unexpected token ';'",
+    );
+    expect(classifyPageError(plain, served)).toBe("runtime-error:plain string");
   });
 
-  it("records a foreign library throwing when the composition called it", () => {
+  it("records the composition's inline code, named by the render compiler, and a library it called", () => {
     const lib = "https://cdn.example/lib.js";
-    expect(classifyPageError(thrown("TypeError: x", lib, [lib, doc]), doc)).toBe(
+    expect(classifyPageError(thrown("TypeError: x", named, [named]), served)).toBe(
+      "runtime-error:TypeError: x",
+    );
+    expect(classifyPageError(thrown("TypeError: x", lib, [lib, named]), served)).toBe(
       "runtime-error:TypeError: x",
     );
   });
@@ -91,57 +100,67 @@ describe("classifyPageError", () => {
     "ignores a frameless rejection naming %s",
     (url) => {
       const decode = thrown("EncodingError: The source image cannot be decoded.", url, []);
-      expect(classifyPageError({ ...decode, text: "Uncaught (in promise)" }, doc)).toBeNull();
+      expect(classifyPageError({ ...decode, text: "Uncaught (in promise)" }, served)).toBeNull();
     },
   );
 
-  it("records an error from a composition script the runtime re-ran, named for the render", () => {
-    const frames = [COMPOSITION_SOURCE_URL, "hyperframes://injected/0"];
-    expect(classifyPageError(thrown("TypeError: x", COMPOSITION_SOURCE_URL, frames), doc)).toBe(
-      "runtime-error:TypeError: x",
-    );
-  });
+  // An inline handler a widget inserts reports the current document, which the widget can move anywhere on the server.
+  it.each([doc, `${doc}#c`, `${server}/elsewhere/page?q=1`])(
+    "ignores an inline handler reporting the document at %s",
+    (url) => {
+      expect(classifyPageError(thrown("TypeError: x", url, [url]), served)).toBeNull();
+    },
+  );
 
   // Chromium names no URL for eval'd or script-inserted code, so it has no owner unless a named frame calls it.
   it("ignores unnamed code a widget evals or inserts, even when the widget's frame is on the stack", () => {
     const widget = "http://127.0.0.1:4200/w.js";
-    expect(classifyPageError(thrown("TypeError: x", "", [""]), doc)).toBeNull();
-    expect(classifyPageError(thrown("TypeError: x", "", ["", widget]), doc)).toBeNull();
+    expect(classifyPageError(thrown("TypeError: x", "", [""]), served)).toBeNull();
+    expect(classifyPageError(thrown("TypeError: x", "", ["", widget]), served)).toBeNull();
   });
 
   it("ignores an error whose frames are all named off the page: an inlined CDN script and the runtime", () => {
     const cdn = "http://127.0.0.1:4200/sync.js";
     expect(
-      classifyPageError(thrown("Error: w", cdn, [cdn, "hyperframes://injected/0"]), doc),
+      classifyPageError(thrown("Error: w", cdn, [cdn, "hyperframes://injected/0"]), served),
     ).toBeNull();
   });
 
   it("records a rejection that carries the composition's frames", () => {
-    const rejected = { ...thrown("Error: init failed", doc, [doc]), text: "Uncaught (in promise)" };
-    expect(classifyPageError(rejected, doc)).toBe("runtime-error:Error: init failed");
+    const rejected = {
+      ...thrown("Error: init failed", comp, [comp]),
+      text: "Uncaught (in promise)",
+    };
+    expect(classifyPageError(rejected, served)).toBe("runtime-error:Error: init failed");
   });
 
   it("ignores a frameless error naming the document itself", () => {
-    expect(classifyPageError(thrown("SyntaxError: Unexpected token ';'", doc, []), doc)).toBeNull();
+    expect(
+      classifyPageError(thrown("SyntaxError: Unexpected token ';'", doc, []), served),
+    ).toBeNull();
   });
 
   it("ignores errors from other origins and the benign play/pause race", () => {
     const widget = "http://127.0.0.1:4100/widget.js";
     const abort =
       "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22";
-    expect(classifyPageError(thrown("Error: widget failed", widget, [widget]), doc)).toBeNull();
-    expect(classifyPageError(thrown(abort, doc, [doc]), doc)).toBeNull();
+    expect(classifyPageError(thrown("Error: widget failed", widget, [widget]), served)).toBeNull();
+    expect(classifyPageError(thrown(abort, named, [named]), served)).toBeNull();
   });
 
   // initializeSession registers its listeners before the incomplete fake session makes it throw.
-  it("records the page's uncaught errors from the runtime exception events", async () => {
+  it("records the page's uncaught errors from scripts it loaded from the server", async () => {
     const runtimeListeners = new Map<string, (event: unknown) => void>();
+    const pageListeners = new Map<string, (event: unknown) => void>();
     const client = {
       on: (event: string, listener: (event: unknown) => void) =>
         runtimeListeners.set(event, listener),
       send: async () => ({}),
     };
-    const page = { on: () => {}, createCDPSession: async () => client };
+    const page = {
+      on: (event: string, listener: (event: unknown) => void) => pageListeners.set(event, listener),
+      createCDPSession: async () => client,
+    };
     const session = {
       page,
       serverUrl: server,
@@ -151,10 +170,19 @@ describe("classifyPageError", () => {
       browserConsoleBuffer: [],
     };
     await initializeSession(session as unknown as CaptureSession).catch(() => {});
-    const error = thrown("ReferenceError: gsap is not defined", doc, [doc]);
-    runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
-    runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
-    expect(session.pageErrors).toEqual(["runtime-error:ReferenceError: gsap is not defined"]);
+    const loaded = (url: string, resourceType: string) => ({
+      status: () => 200,
+      url: () => url,
+      request: () => ({ resourceType: () => resourceType }),
+    });
+    pageListeners.get("response")?.(loaded(comp, "script"));
+    pageListeners.get("response")?.(loaded(`${server}/data.js`, "fetch"));
+    const exception = (url: string) =>
+      runtimeListeners.get("Runtime.exceptionThrown")?.({
+        exceptionDetails: thrown(`ReferenceError: ${url}`, url, [url]),
+      });
+    for (const url of [comp, comp, `${server}/data.js`, doc]) exception(url);
+    expect(session.pageErrors).toEqual([`runtime-error:ReferenceError: ${comp}`]);
     expect(session.scriptLoadFailures).toEqual([]);
   });
 });
