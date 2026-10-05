@@ -563,7 +563,6 @@ function syncStackingForEdit(
     stackingContextId: el.stackingContextId ?? null,
   }));
 
-  // Only the dragged clip changes row; selected clips that shifted in time keep their z.
   const patches = computeStackingPatches(
     stackingEls,
     [dragKey],
