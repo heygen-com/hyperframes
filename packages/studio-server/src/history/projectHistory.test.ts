@@ -28,6 +28,8 @@ import { START, type HistoryWho } from "./historyLog";
 const mediaCopy = vi.hoisted(() => ({
   held: null as Promise<void> | null,
   stored: null as (() => Promise<unknown>) | null,
+  copies: [] as string[],
+  fails: null as ((copy: number) => boolean) | null,
 }));
 vi.mock("./blobStore", async (importOriginal) => {
   const real = await importOriginal<typeof import("./blobStore")>();
@@ -38,7 +40,11 @@ vi.mock("./blobStore", async (importOriginal) => {
       return {
         ...store,
         put: async (path: string) => {
-          if (path.endsWith(".mp4")) await mediaCopy.held;
+          if (path.endsWith(".mp4")) {
+            await mediaCopy.held;
+            mediaCopy.copies.push(basename(path));
+            if (mediaCopy.fails?.(mediaCopy.copies.length)) throw new Error("The disk is full.");
+          }
           const hash = await store.put(path);
           if (path.endsWith(".mp4")) await mediaCopy.stored?.();
           return hash;
@@ -54,8 +60,8 @@ const agent: HistoryWho = { kind: "agent", name: "Agent" };
 const cleanup: Array<() => unknown> = [];
 
 afterEach(async () => {
-  Object.assign(mediaCopy, { held: null, stored: null });
   for (const step of cleanup.splice(0).reverse()) await step();
+  Object.assign(mediaCopy, { held: null, stored: null, copies: [], fails: null });
 });
 
 const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
@@ -310,6 +316,60 @@ describe("openProjectHistory", () => {
     ]);
     expect((await reopened.undo(outside!.id, { who: you })).ok).toBe(true);
     expect([has("b.png"), has(".media/manifest.jsonl")]).toEqual([false, false]);
+  });
+
+  it("names media in adopting.json until its copy is recorded, so an exit mid-copy resumes it", async () => {
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const { history, historyRoot } = await project({
+      "index.html": "A",
+      "clip.mp4": Buffer.alloc(2 * 1024 ** 2, 7),
+    });
+    const adopting = join(historyRoot, history.projectId, "adopting.json");
+    expect(JSON.parse(readFileSync(adopting, "utf-8"))).toEqual(["clip.mp4"]);
+    release();
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    expect(existsSync(adopting)).toBe(false);
+  });
+
+  it("keeps media whose recording failed for the next open, rather than log it as added", async () => {
+    const { history, write, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": Buffer.alloc(2 * 1024 ** 2, 7) },
+      { budgetBytes: 1, quietMs: 30 },
+    );
+    // The edit's prune takes the first copy; storing it again then fails.
+    mediaCopy.fails = (copy) => copy === 2;
+    mediaCopy.stored = () => {
+      mediaCopy.stored = null;
+      return change(history, you, "Color", () => write("index.html", "B"));
+    };
+    await vi.waitFor(() => expect(mediaCopy.copies).toHaveLength(2), { timeout: 10_000 });
+    await history.flush();
+    expect(history.list().flatMap((entry) => entry.files.map((file) => file.path))).not.toContain(
+      "clip.mp4",
+    );
+    const adopting = join(historyRoot, history.projectId, "adopting.json");
+    expect(JSON.parse(readFileSync(adopting, "utf-8"))).toEqual(["clip.mp4"]);
+  });
+
+  it("never copies the media of a folder that replaced the project", async () => {
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const media = {
+      "a.mp4": Buffer.alloc(2 * 1024 ** 2, 1),
+      "b.mp4": Buffer.alloc(2 * 1024 ** 2, 2),
+    };
+    const { history, write, projectDir } = await project({ "index.html": "A", ...media });
+    renameSync(projectDir, `${projectDir}-moved`);
+    cleanup.push(() => rmSync(`${projectDir}-moved`, { recursive: true, force: true }));
+    mkdirSync(projectDir);
+    for (const [path, bytes] of Object.entries(media)) write(path, bytes);
+    release();
+    await history.close();
+    // Only the copy already running when the folder changed may finish.
+    expect(mediaCopy.copies).toEqual(["a.mp4"]);
   });
 
   it("undoes a clip replaced while closed, though the history closed before its copy finished", async () => {

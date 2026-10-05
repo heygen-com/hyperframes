@@ -523,15 +523,13 @@ class Engine {
 
   async adopt(file: ListedFile, sweptAt: number) {
     try {
-      if (this.closed) return;
+      if (this.whereFolder() !== "here") return;
       const stored = await this.storeIfPresent(file.path);
       await this.queue(async () => {
-        try {
-          await this.recordAdopted(file, sweptAt, stored);
-        } finally {
-          this.adopting.delete(file.path);
-          this.saveAdopting();
-        }
+        // Still named for the next open until recorded, so a failed record is never logged as added.
+        await this.recordAdopted(file, sweptAt, stored);
+        this.adopting.delete(file.path);
+        this.saveAdopting();
       });
     } catch (error) {
       if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
