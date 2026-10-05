@@ -117,7 +117,7 @@ interface VfxCaptureSource {
   visible: boolean;
   /** `.hf-vfx-in` measured 0×0 and that has already been reported once. */
   emptyBoxReported: boolean;
-  /** `.hf-vfx-in` measured 0×0 at the last seek, whether or not anything captured it. */
+  /** `.hf-vfx-in` measured 0×0 at registration or the last seek, captured or not. */
   laidOutEmpty: boolean;
 }
 
@@ -1319,7 +1319,7 @@ async function capturePreviewThenPaint(
   await Promise.all(entries.map((entry) => capturePaintedHost(entry, t, seq, speculative)));
 }
 
-/** A `.hf-vfx-in` laid out at 0×0 and then sized stays blank in its capture until it is re-inserted (measured). */
+/** A `.hf-vfx-in` first laid out at 0×0 and then sized can stay blank in its capture until re-inserted (measured). */
 function reinsertRegrownSources(): void {
   for (const src of registry.flatMap(entrySources)) {
     const empty = deviceSize(src.inner) === null;

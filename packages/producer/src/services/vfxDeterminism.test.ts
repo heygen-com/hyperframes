@@ -686,52 +686,75 @@ describe("data-vfx-chain in the browser", () => {
     }
   }, 60_000);
 
-  const RED = [255, 0, 0, 255];
   const CLEAR = [0, 0, 0, 0];
-  // The wrapper's style before and after; how many one-frame reports the shot makes.
-  it.each([
+  // Per frame: the wrapper's style and the probe pixel, or null to hide the host the way the
+  // clip runtime does (`!important` so its own visibility pass cannot undo it). Then how many
+  // one-frame reports the shot makes.
+  it.each<[string, [string, number[] | null][], number]>([
     [
       "grows from 0×0: it paints on the next frame, not empty for the rest",
-      "width:0px",
-      "",
-      CLEAR,
-      RED,
+      [
+        ["width:0px", CLEAR],
+        ["", red],
+      ],
       1,
     ],
     [
       "shrinks to 0×0: it paints empty, not the previous frame again",
-      "",
-      "width:0px",
-      RED,
-      CLEAR,
+      [
+        ["", red],
+        ["width:0px", CLEAR],
+      ],
       1,
     ],
     [
       "is hidden at 0×0, then shown and sized: it paints on that frame",
-      "width:0px;visibility:hidden",
-      "",
-      CLEAR,
-      RED,
+      [
+        ["width:0px;visibility:hidden", CLEAR],
+        ["", red],
+      ],
+      0,
+    ],
+    [
+      "is 0×0 under a host that starts later, then sized: it paints once the host shows",
+      [
+        ["width:0px", null],
+        ["", red],
+      ],
       0,
     ],
   ])(
     "a layer that %s",
-    async (_case, before, after, firstPixel, nextPixel, reports) => {
-      const page = await open(fixture(waveWarpChain({ height: 0, width: 93.4 }), before));
-      const restyle = (css: string) =>
-        page.evaluate((style: string) => {
-          (document.querySelector(".hf-vfx-in") as HTMLElement).style.cssText = style;
-        }, css);
+    async (_case, frames, reports) => {
+      const page = await open(fixture(waveWarpChain({ height: 0, width: 93.4 }), frames[0]![0]));
+      const reported: string[] = [];
       try {
-        expect(await seekAndResolve(page, 0)).toBe(true);
-        expect((await sample(page, [60])).left).toEqual(firstPixel);
-        const reported = [...pageErrors.get(page)!];
-        pageErrors.get(page)!.length = 0;
-        await restyle(after);
-        expect(await seekAndResolve(page, 1 / 30)).toBe(true);
-        expect((await sample(page, [60])).left).toEqual(nextPixel);
-        const frameReports = [...reported, ...pageErrors.get(page)!];
-        expect(frameReports).toEqual(Array(reports).fill(expect.stringContaining("vfx-frame:")));
+        for (const [i, [innerStyle, pixel]] of frames.entries()) {
+          await page.evaluate(
+            (style: string, hidden: boolean) => {
+              (document.querySelector(".hf-vfx-in") as HTMLElement).style.cssText = style;
+              document.getElementById("host-off")?.remove();
+              if (hidden) {
+                const off = `<style id="host-off">#host { visibility: hidden !important }</style>`;
+                document.head.insertAdjacentHTML("beforeend", off);
+              }
+            },
+            innerStyle,
+            pixel === null,
+          );
+          if (pixel === null) {
+            const armed = await page.evaluate((t: number) => {
+              (window as CompositeWindow).__player!.renderSeek(t);
+              return (window as CompositeWindow).__hf_page_composite_pending === true;
+            }, i / 30);
+            expect(armed).toBe(false);
+            continue;
+          }
+          expect(await seekAndResolve(page, i / 30)).toBe(true);
+          expect((await sample(page, [60])).left).toEqual(pixel);
+          reported.push(...pageErrors.get(page)!.splice(0));
+        }
+        expect(reported).toEqual(Array(reports).fill(expect.stringContaining("vfx-frame:")));
       } finally {
         await page.close();
       }
