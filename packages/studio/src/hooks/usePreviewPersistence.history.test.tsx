@@ -144,6 +144,7 @@ describe("undo that lands while a newer gesture holds an element", () => {
 
   function heldPreview(held = true) {
     const doc = document.implementation.createHTMLDocument("");
+    doc.head.innerHTML = `<meta name="hf-scene-parts" content='{"shared":"s1","scenes":{}}'>`;
     doc.body.innerHTML = `<div id="root" data-composition-id="root"><div id="box" data-hf-id="hf-b" style="left: 90px"></div></div>`;
     const box = doc.getElementById("box")!;
     if (held) beginStudioManualEditGesture(box, "move");
@@ -170,11 +171,13 @@ describe("undo that lands while a newer gesture holds an element", () => {
     }
     mountReactHarness(<Harness />);
     usePlayerStore.getState().setSelectedElementId("box");
-    return { box, win: contentWindow, reloadPreview, hook: () => hook! };
+    const sharedPart = () =>
+      JSON.parse(doc.querySelector<HTMLMetaElement>('meta[name="hf-scene-parts"]')!.content).shared;
+    return { box, win: contentWindow, reloadPreview, sharedPart, hook: () => hook! };
   }
 
   it("leaves the held element where the gesture drew it and reloads the preview once it ends", async () => {
-    const { box, win, reloadPreview, hook } = heldPreview();
+    const { box, win, reloadPreview, sharedPart, hook } = heldPreview();
 
     await act(async () => hook().syncHistoryPreviewAfterApply({ paths: ["index.html"], files }));
 
@@ -184,6 +187,8 @@ describe("undo that lands while a newer gesture holds an element", () => {
     expect(reloadPreview).not.toHaveBeenCalled();
     endStudioManualEditGesture(box);
     expect(reloadPreview).toHaveBeenCalledTimes(1);
+    // The scene swap must load the restored file again, not keep the part it showed before the undo.
+    expect(sharedPart()).toBe("");
     expect(usePlayerStore.getState().selectedElementId).toBe("box");
   });
 
@@ -206,7 +211,7 @@ describe("undo that lands while a newer gesture holds an element", () => {
     expect(reloadPreview).not.toHaveBeenCalled();
     endStudioManualEditGesture(box);
 
-    await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledTimes(1));
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(win.__player.seek).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@ import {
   isStudioManualEditGestureLiveIn,
 } from "../components/editor/manualEditsDom";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
+import { markScenesStale } from "../player/sceneSwap";
 import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
 import {
   flushStudioPendingEdits,
@@ -231,7 +232,14 @@ export function usePreviewPersistence({
         ),
       );
       const held = heldPreviewDoc();
-      if (held) return void afterStudioManualEditGestures(held, reloadPreview);
+      if (held) {
+        const paths = restore.paths ?? Object.keys(restore.files ?? {});
+        afterStudioManualEditGestures(held, () => {
+          markScenesStale(previewIframeRef.current, paths);
+          reloadPreview();
+        });
+        return;
+      }
       const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
         activeCompPathRef.current,
