@@ -18,6 +18,7 @@ import {
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
+  COMPOSITION_SOURCE_URL,
   quantizeSeekTime,
   quantizeTimeToFrame,
   fpsToNumber,
@@ -2237,8 +2238,9 @@ export function classifyPageError(
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url].filter((url) => url !== documentUrl);
-  // The runtime re-runs body scripts unnamed, while inlined CDN and framework code is named.
-  const onPage = (url: string | undefined) => url === "" || url?.startsWith(`${origin}/`);
+  // In a render the runtime names the composition scripts it re-runs; unnamed code (eval, inserted) has no owner.
+  const onPage = (url: string | undefined) =>
+    url?.startsWith(`${origin}/`) || url?.startsWith(COMPOSITION_SOURCE_URL);
   return urls.some(onPage) ? `runtime-error:${firstLine}` : null;
 }
 

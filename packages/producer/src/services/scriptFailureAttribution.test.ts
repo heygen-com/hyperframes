@@ -22,6 +22,11 @@ const widgetScripts: Record<string, string> = {
   "/widget.js": "setTimeout(function widget() { throw new Error('widget failed'); }, 0);",
   "/decode.js": decode,
   "/hash-decode.js": `location.hash = 'consent'; ${decode}`,
+  "/eval.js": "eval('null.timeline');",
+  "/eval-later.js": "eval('setTimeout(function () { null.timeline; }, 0)');",
+  "/insert-later.js":
+    "var s = document.createElement('script'); s.text = 'setTimeout(function () { null.timeline; }, 0)'; document.body.appendChild(s);",
+  "/string-timer.js": "setTimeout('null.timeline', 0);",
 };
 
 let root: string;
@@ -92,6 +97,10 @@ describe("which uncaught errors fail a timeline that never registers", () => {
           "<script>(async function () { await new Promise(function (r) { setTimeout(r, 50); }); null.timeline; })();</script>",
         ),
       },
+    ],
+    [
+      "the composition evals its own throw",
+      { "index.html": composition(`<script>eval("null.timeline");</script>`) },
     ],
     [
       "a script file from the project throws",

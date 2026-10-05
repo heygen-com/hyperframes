@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Protocol } from "puppeteer-core";
+import { COMPOSITION_SOURCE_URL } from "@hyperframes/core";
 import type { CaptureSession } from "./frameCapture.js";
 import {
   buildZeroDurationDiagnostic,
@@ -94,10 +95,18 @@ describe("classifyPageError", () => {
     },
   );
 
-  it("records an error from a body script the runtime re-ran, which Chromium leaves unnamed", () => {
-    expect(
-      classifyPageError(thrown("TypeError: x", "", ["", "hyperframes://injected/0"]), doc),
-    ).toBe("runtime-error:TypeError: x");
+  it("records an error from a composition script the runtime re-ran, named for the render", () => {
+    const frames = [COMPOSITION_SOURCE_URL, "hyperframes://injected/0"];
+    expect(classifyPageError(thrown("TypeError: x", COMPOSITION_SOURCE_URL, frames), doc)).toBe(
+      "runtime-error:TypeError: x",
+    );
+  });
+
+  // Chromium names no URL for eval'd or script-inserted code, so it has no owner unless a named frame calls it.
+  it("ignores unnamed code a widget evals or inserts, even when the widget's frame is on the stack", () => {
+    const widget = "http://127.0.0.1:4200/w.js";
+    expect(classifyPageError(thrown("TypeError: x", "", [""]), doc)).toBeNull();
+    expect(classifyPageError(thrown("TypeError: x", "", ["", widget]), doc)).toBeNull();
   });
 
   it("ignores an error whose frames are all named off the page: an inlined CDN script and the runtime", () => {

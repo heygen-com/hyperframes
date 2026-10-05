@@ -1,4 +1,9 @@
-import { AFTER_FONTS_CLAIM, DEFERRED_FILE, typeAfterFonts } from "../compiler/scriptRuns";
+import {
+  AFTER_FONTS_CLAIM,
+  COMPOSITION_SOURCE_URL,
+  DEFERRED_FILE,
+  typeAfterFonts,
+} from "../compiler/scriptRuns";
 import { postRuntimeMessage } from "./bridge";
 
 /** Past the 3 s a font-display:block face holds text back, far under the engine's 45 s player-ready wait. */
@@ -68,6 +73,12 @@ function holdPassedLoadEvents(target: Document | Window, held: HeldListener[]): 
   };
 }
 
+function endsWithSourceUrl(code: string): boolean {
+  const trimmed = code.trimEnd();
+  const lastLine = trimmed.slice(trimmed.lastIndexOf("\n") + 1).trimStart();
+  return lastLine.startsWith("//# sourceURL=") || lastLine.startsWith("//@ sourceURL=");
+}
+
 function runInPlace(el: Element): HTMLScriptElement | undefined {
   if (!el.isConnected) return;
   const script = document.createElement("script");
@@ -77,7 +88,11 @@ function runInPlace(el: Element): HTMLScriptElement | undefined {
   else script.setAttribute("type", type);
   // Not async: inserted src and module scripts then run in insertion order.
   script.async = el.hasAttribute("async");
-  script.text = el.textContent ?? "";
+  const text = el.textContent ?? "";
+  const rendering = (window as Window & { __HF_RENDER_CAPTURE_MODE?: boolean })
+    .__HF_RENDER_CAPTURE_MODE;
+  const nameForPageErrors = rendering && !script.hasAttribute("src") && !endsWithSourceUrl(text);
+  script.text = nameForPageErrors ? `${text}\n//# sourceURL=${COMPOSITION_SOURCE_URL}` : text;
   el.replaceWith(script);
   return script;
 }
