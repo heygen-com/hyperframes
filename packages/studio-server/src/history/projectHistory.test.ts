@@ -312,6 +312,41 @@ describe("openProjectHistory", () => {
     expect([has("b.png"), has(".media/manifest.jsonl")]).toEqual([false, false]);
   });
 
+  it("undoes a clip replaced while closed, though the history closed before its copy finished", async () => {
+    const clip = Buffer.alloc(2 * 1024 ** 2, 7);
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": clip },
+      { quietMs: 30 },
+    );
+    const closed = history.close();
+    release();
+    await closed;
+    write("clip.mp4", Buffer.alloc(2 * 1024 ** 2, 9));
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    expect(reopened.list().map((entry) => entry.files.map((file) => file.path))).toEqual([
+      ["clip.mp4"],
+    ]);
+    expect(await reopened.step("back", you)).toMatchObject({ ok: true });
+    expect(readFileSync(join(projectDir, "clip.mp4")).equals(clip)).toBe(true);
+  });
+
+  it("adopts media whose copy a process exit cut short, rather than log it as added", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "A" });
+    await history.close();
+    // What an exit mid-copy leaves: the clip on disk, named as still being copied, not in the baseline.
+    write("clip.mp4", Buffer.alloc(2 * 1024 ** 2, 7));
+    writeFileSync(join(historyRoot, history.projectId, "adopting.json"), '["clip.mp4"]');
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await vi.waitFor(() => expect(reopened.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    await reopened.flush();
+    expect(reopened.list()).toEqual([]);
+  });
+
   it("keeps a media copy that a budget prune ran into before history recorded it", async () => {
     const clip = Buffer.alloc(2 * 1024 ** 2, 7);
     let release = () => {};

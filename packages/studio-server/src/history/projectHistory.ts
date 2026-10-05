@@ -523,26 +523,34 @@ class Engine {
 
   async adopt(file: ListedFile, sweptAt: number) {
     try {
+      if (this.closed) return;
       const stored = await this.storeIfPresent(file.path);
       await this.queue(async () => {
-        this.adopting.delete(file.path);
-        this.saveAdopting();
-        if (stored === null || this.whereFolder() !== "here") return;
-        // A prune that ran while this copy waited for the queue may have taken its bytes.
-        const hash = this.blobs.has(stored) ? stored : await this.storeIfPresent(file.path);
-        if (hash === null) return;
-        const change = { path: file.path, before: null, after: hash };
-        const found = this.overwrittenBy(change, undefined, new Set());
-        const start = found && this.blobs.has(found) ? found : hash;
-        this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
-        this.log.baseline.set(file.path, start);
-        if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
-        this.persistLog(baselineRecord(this.log));
-        this.saveStatCache();
+        try {
+          await this.recordAdopted(file, sweptAt, stored);
+        } finally {
+          this.adopting.delete(file.path);
+          this.saveAdopting();
+        }
       });
     } catch (error) {
       if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
     }
+  }
+
+  async recordAdopted(file: ListedFile, sweptAt: number, stored: string | null) {
+    if (stored === null || this.whereFolder() !== "here") return;
+    // A prune that ran while this copy waited for the queue may have taken its bytes.
+    const hash = this.blobs.has(stored) ? stored : await this.storeIfPresent(file.path);
+    if (hash === null) return;
+    const change = { path: file.path, before: null, after: hash };
+    const found = this.overwrittenBy(change, undefined, new Set());
+    const start = found && this.blobs.has(found) ? found : hash;
+    this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
+    this.log.baseline.set(file.path, start);
+    if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
+    this.persistLog(baselineRecord(this.log));
+    this.saveStatCache();
   }
 
   manifest(): Manifest {
@@ -1227,6 +1235,8 @@ class Engine {
       replacedAtPath: () => this.whereFolder() === "replaced",
       close: () =>
         (this.closing ??= (async () => {
+          // A copy cut short would leave its media out of the baseline, so a change made while closed is lost.
+          await Promise.all(this.adopting.values());
           if (this.notedTimer) clearTimeout(this.notedTimer);
           this.stopHearing?.();
           const settled = this.queue(() => this.settleAll());

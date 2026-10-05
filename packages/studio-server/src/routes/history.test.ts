@@ -452,23 +452,6 @@ describe("history routes", () => {
     expect(readFileSync(clip).equals(original)).toBe(true);
   });
 
-  it("adopt media whose copy a restart cut short, rather than log it as added", async () => {
-    mediaCopy.held = new Promise<void>(() => {});
-    const { projectDir, post, histories } = lazyHistoryProject();
-    writeFileSync(join(projectDir, "clip.mp4"), Buffer.alloc(4 * 1024 ** 2, 7));
-    await post("/claim", { label: "Nothing", paths: [] });
-    await histories.closeAll();
-    histories.forget(projectDir);
-
-    mediaCopy.held = null;
-    const history = (await histories.get(projectDir))!;
-    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
-      timeout: 10_000,
-    });
-    await history.flush();
-    expect(history.list()).toEqual([]);
-  });
-
   it("end a window given idleMs by itself once its writes stop", async () => {
     const { projectDir, call } = await demoProject();
 
