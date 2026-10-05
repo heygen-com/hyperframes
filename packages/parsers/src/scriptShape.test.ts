@@ -28,6 +28,8 @@ const w = { x: window.innerWidth - 40 }
     ["an array hole", `f([1, , 2])`, `f([1, 2])`],
     ["a comma that joins two calls", `if (c) f(), g()`, `if (c) f(); g()`],
     ["a semicolon that splits a call", `a;\n(b)`, `a\n(b)`],
+    ["a tagged template's raw text", "String.raw`p\\nq`", "String.raw`p\nq`"],
+    ["a prototype written as a key", `({ __proto__: __proto__ })`, `({ __proto__ })`],
   ])("tells scripts apart that differ only in %s", (_name, a, b) => {
     expect(same(a, b)).toBe(false);
   });

@@ -1,7 +1,6 @@
 import * as acorn from "acorn";
 
-/** Source details a bundler's re-print changes without changing what the code does. */
-const PRINT_ONLY = new Set(["start", "end", "raw", "shorthand"]);
+type Shape = { type?: unknown; key?: { name?: unknown } };
 
 /**
  * A script's syntax tree as one string, or null when it does not parse. Comments, layout, quote
@@ -14,8 +13,11 @@ export function scriptShape(code: string, maskNumbers = false): string | null {
   } catch {
     return null;
   }
-  return JSON.stringify(tree, function (this: { type?: unknown }, key: string, value: unknown) {
-    if (PRINT_ONLY.has(key)) return undefined;
+  return JSON.stringify(tree, function (this: Shape, key: string, value: unknown) {
+    // What a re-print changes without changing behaviour; a tagged template reads its raw text.
+    if (key === "start" || key === "end") return undefined;
+    if (key === "raw" && this.type === "Literal") return undefined;
+    if (key === "shorthand" && this.key?.name !== "__proto__") return undefined;
     if (typeof value === "bigint") return `${value}n`;
     if (maskNumbers && key === "value" && typeof value === "number" && this.type === "Literal")
       return "num";
