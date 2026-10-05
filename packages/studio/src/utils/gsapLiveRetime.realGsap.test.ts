@@ -104,6 +104,9 @@ function inComposition(id: string, element: Element) {
   return host;
 }
 
+/** `code` as the preview serves it: indented inside the page, with the blank lines around it. */
+const reformatted = (code: string) => `\n${code.replace(/^/gm, "      ")}\n`;
+
 const script = (...lines: string[]) =>
   ["var tl = gsap.timeline({ paused: true });", ...lines, 'window.__timelines["t"] = tl;'].join(
     "\n",
@@ -443,7 +446,7 @@ it("moves the live tweens beside a helper-built tween in a reformatted copy of t
   ];
   const before = script('tl.to("#a", { x: 1, duration: 1 }, 0);', ...lines);
   const live = preview(before);
-  live.tag.textContent = `\n${before.replace(/^/gm, "      ")}\n`;
+  live.tag.textContent = reformatted(before);
 
   const reloadPreview = await dropInto(
     live.iframe,
@@ -457,7 +460,7 @@ it("moves the live tweens beside a multi-line value in a reformatted copy of the
   const raw = 'tl.to("#b", { x: [\n  1,\n  2,\n].length, duration: 1 }, 2);';
   const before = script('tl.to("#a", { y: 1, duration: 1 }, 0);', raw);
   const live = preview(before);
-  live.tag.textContent = `\n${before.replace(/^/gm, "      ")}\n`;
+  live.tag.textContent = reformatted(before);
 
   const reloadPreview = await dropInto(
     live.iframe,
@@ -513,7 +516,7 @@ it("syncs a timeline move by moving the live tweens and rebinding, without re-ru
 
 it("moves the live tweens when the preview runs a reformatted copy of the saved script", async () => {
   const live = preview(BEFORE);
-  live.tag.textContent = `\n${BEFORE.replace(/^/gm, "      ")}\n`;
+  live.tag.textContent = reformatted(BEFORE);
 
   const reloadPreview = await dropInto(live.iframe, moveA());
 

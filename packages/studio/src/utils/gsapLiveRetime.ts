@@ -160,11 +160,10 @@ function pairedLiveTweens(timeline: LiveTimeline, plan: LiveRetime): LiveTween[]
 /** The writer rounds every time it writes to 3 decimals. */
 const near = (a: number, b: number) => Math.abs(a - b) <= 2e-3;
 
-/** The one stretch every tween shares (start = shift + stretch × old start, length = stretch × old length), else null. */
-function sharedStretch(tweens: TweenTiming[]): number | null {
-  const byStart = [...tweens].sort((x, y) => x.wasStart - y.wasStart);
-  const first = byStart[0]!;
-  const last = byStart.at(-1)!;
+/** One stretch for every tween (start = shift + stretch × old start, length = stretch × old length), in old order. */
+function sharesOneStretch(tweens: TweenTiming[]): boolean {
+  const first = tweens[0]!;
+  const last = tweens.at(-1)!;
   const longest = tweens.reduce((x, y) => (y.wasDuration > x.wasDuration ? y : x));
   const spread = last.wasStart - first.wasStart;
   // Taken over the widest span, so the writer's rounding cannot push it past `near`.
@@ -179,7 +178,7 @@ function sharedStretch(tweens: TweenTiming[]): number | null {
       near(t.start, first.start + stretch * (t.wasStart - first.wasStart)) &&
       near(t.duration, stretch * t.wasDuration),
   );
-  return stretch > 0 && fits ? stretch : null;
+  return stretch > 0 && fits;
 }
 
 /** The runtime places a sub-composition's timeline at its host's start once; moving the host leaves it there. */
@@ -208,26 +207,31 @@ function movesKeepEachElementsHistory(
   children: LiveTween[],
 ): boolean {
   const byElement = new Map<unknown, number[]>();
-  plan.tweens.forEach((_, i) => {
-    for (const target of children[i]!.targets?.() ?? []) {
-      byElement.set(target, [...(byElement.get(target) ?? []), i]);
+  children.forEach((child, i) => {
+    for (const target of child.targets?.() ?? []) {
+      const indexes = byElement.get(target);
+      if (indexes) indexes.push(i);
+      else byElement.set(target, [i]);
     }
   });
-  const animatedElsewhere = new Set(
-    timeline
-      .getChildren(false, false, true)
-      .flatMap((sub) => sub.getChildren(true, true, false))
-      .flatMap((tween) => tween.targets?.() ?? []),
-  );
-  return [...byElement].every(([target, indexes]) => {
-    if (!indexes.some((i) => plan.tweens[i]!.moved)) return true;
-    if (animatedElsewhere.has(target) || inOrHostsSubComposition(target, plan.key)) return false;
+  const moved = new Set<unknown>();
+  for (const [target, indexes] of byElement) {
+    if (!indexes.some((i) => plan.tweens[i]!.moved)) continue;
+    if (inOrHostsSubComposition(target, plan.key)) return false;
     const tweens = indexes.map((i) => plan.tweens[i]!);
     // GSAP adds delays to the schedule unstretched; a shift keeps every length.
     const shifted = tweens.every((t) => t.duration === t.wasDuration);
     const undelayed = indexes.every((i) => !children[i]!.delay() && !children[i]!.repeatDelay?.());
-    return keepsOrder(tweens) && sharedStretch(tweens) !== null && (shifted || undelayed);
-  });
+    if (!keepsOrder(tweens) || !sharesOneStretch(tweens) || !(shifted || undelayed)) return false;
+    moved.add(target);
+  }
+  return !timeline
+    .getChildren(false, false, true)
+    .some((sub) =>
+      sub
+        .getChildren(true, true, false)
+        .some((tween) => tween.targets?.().some((t) => moved.has(t))),
+    );
 }
 
 /**
