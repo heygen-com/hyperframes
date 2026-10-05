@@ -1,6 +1,6 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { onPreviewContentReplaced } from "../../player/sceneSwap";
-import { memo, useState, useCallback, useEffect, useRef, type RefObject } from "react";
+import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
   getDomEditLayerKey,
@@ -11,9 +11,11 @@ import {
 import {
   useStudioPlaybackContextOptional,
   useStudioShellContextOptional,
+  type StudioPlaybackValue,
+  type StudioShellValue,
 } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
-import { usePlayerStore, liveTime, type TimelineElement } from "../../player";
+import { usePlayerStore, liveTime } from "../../player";
 import {
   findMatchingTimelineElementId,
   resolveTimelineSelectionSeekTime,
@@ -97,17 +99,14 @@ interface CollapsedState {
   [key: string]: boolean;
 }
 
-/** The Studio state the panel reads. A host outside EditorShell passes it; inside, it comes from Studio's contexts. */
-export interface LayersPanelHost {
-  previewIframeRef: RefObject<HTMLIFrameElement | null>;
-  activeCompPath: string | null;
-  showToast: (message: string, tone?: "error" | "info") => void;
-  timelineElements: TimelineElement[];
-  isPlaying: boolean;
-  /** Bumped by the host when the preview document is rebuilt without an iframe load. */
-  refreshKey?: number;
-  compositionLoading?: boolean;
-}
+/** Studio state the panel reads; passed by hosts outside Studio's providers. Keep previewIframeRef stable,
+ * and bump refreshKey when the preview document is rebuilt without an iframe load. */
+export type LayersPanelHost = Pick<
+  StudioShellValue,
+  "previewIframeRef" | "activeCompPath" | "showToast"
+> &
+  Pick<StudioPlaybackValue, "timelineElements" | "isPlaying"> &
+  Partial<Pick<StudioPlaybackValue, "refreshKey" | "compositionLoading">>;
 
 function useLayersPanelHost(host: LayersPanelHost | undefined): LayersPanelHost {
   const shell = useStudioShellContextOptional();
