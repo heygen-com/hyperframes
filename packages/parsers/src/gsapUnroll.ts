@@ -227,7 +227,7 @@ function declaredFunctions(stmt: Node): Array<[string, Node[]]> {
 const collectHelperBodies = (statements: Node[]): Map<string, Node[]> =>
   new Map(statements.flatMap(declaredFunctions));
 
-/** Statements stay as authored when literal tweens cannot encode their timing or keyframes, or they do more than add tweens. */
+/** Left as authored when literal tweens can't encode the timing or keyframes, or it does more than add tweens. */
 function dropStatementsUnsafeToUnroll(
   byStatement: Map<Node, GsapAnimation[]>,
   ctx: UnrollScope,
