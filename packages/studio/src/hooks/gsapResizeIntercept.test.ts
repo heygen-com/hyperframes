@@ -182,6 +182,7 @@ it("reuses the ownership parse instead of fetching a resolved size group twice",
   await expect(
     tryGsapResizeIntercept(
       selection,
+      // fallow-ignore-next-line code-duplication
       { width: 344, height: 344 },
       [],
       null,
@@ -592,6 +593,7 @@ describe("the first resize of a keyframed element under auto-record", () => {
     const selection = titleSelection();
     selection.element.setAttribute("data-hf-studio-box-size", "true");
 
+    // fallow-ignore-next-line code-duplication
     const handled = await tryGsapResizeIntercept(
       selection,
       { width: 424.2, height: 237 },

@@ -31,6 +31,7 @@ import { tweenReach, tweensForThisElement } from "./gsapTweenReach";
 import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
+import type { DragStamp } from "./draggedGsapPosition";
 import { isInstantHold, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import {
   findGsapPositionAnimation,
@@ -243,6 +244,7 @@ export async function tryGsapDragIntercept(
     preflightOnly?: boolean;
     preflightPassed?: boolean;
     group?: boolean;
+    stamp?: DragStamp;
   },
 ): Promise<GsapEditOutcome> {
   if (!options?.preflightPassed) {
@@ -323,6 +325,7 @@ export async function tryGsapDragIntercept(
     await commitStaticGsapPosition(selection, offset, gsapPos, selector, existingSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,
+      stamp: options?.stamp,
     });
     return { status: "persisted" };
   }
@@ -352,7 +355,7 @@ export async function tryGsapDragIntercept(
     }
   }
 
-  const cbs = { commitMutation, fetchAnimations: fetchFallbackAnimations };
+  const cbs = { commitMutation, fetchAnimations: fetchFallbackAnimations, stamp: options?.stamp };
   if (route === "whole-path") {
     await commitWholePathOffset(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
   } else {

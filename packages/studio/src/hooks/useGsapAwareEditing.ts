@@ -16,7 +16,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
-import { computeDraggedGsapPosition } from "./draggedGsapPosition";
+import { computeDraggedGsapPosition, freezeDragStamp } from "./draggedGsapPosition";
 import { readGsapPositionFromIframe } from "./gsapPositionDetection";
 import { selectorFromSelection } from "./gsapShared";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
@@ -209,6 +209,7 @@ export function useGsapAwareEditing({
       restore: () => void = () => undefined,
       route?: { plainTranslate: boolean },
     ) => {
+      const stamp = freezeDragStamp(selection.element);
       const writes = observeGsapGesture(gsapCommitMutation);
       if (route?.plainTranslate ?? editsPlainCss(selection.element, "resize")) {
         const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
@@ -256,6 +257,7 @@ export function useGsapAwareEditing({
             previewIframeRef.current,
             commitMutation,
             makeFetchFallback(selection),
+            { stamp },
           );
           // Saved after the size, under its undo key, so the two are one step.
           await saveMove(dragOutcome, async () => {
@@ -279,7 +281,12 @@ export function useGsapAwareEditing({
               x: 0,
               y: 0,
             };
-            const { newX, newY } = computeDraggedGsapPosition(selection.element, offset, gsapPos);
+            const { newX, newY } = computeDraggedGsapPosition(
+              selection.element,
+              offset,
+              gsapPos,
+              stamp,
+            );
             logResize("sync-settle", { gsapPos, offset, newX, newY });
             setElementGsapPosition(selection.element, newX, newY);
           });
@@ -297,6 +304,7 @@ export function useGsapAwareEditing({
                 makeFetchFallback(selection),
                 offset,
                 writes.drawKeepingUndone,
+                stamp,
               );
               assertGsapEditPersisted(outcome);
               // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.

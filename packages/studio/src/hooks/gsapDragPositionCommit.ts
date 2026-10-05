@@ -9,7 +9,11 @@ import {
 import { KEYFRAME_PCT_MATCH, playsNear } from "./gsapShared";
 import { progressAtTime, runEaseOf, timeAtProgress } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
-import { computeDraggedGsapPosition } from "./draggedGsapPosition";
+import {
+  computeDraggedGsapPosition,
+  readDragStamp,
+  restoreDragOffset,
+} from "./draggedGsapPosition";
 import {
   type GsapDragCommitCallbacks,
   computeCurrentPercentage,
@@ -117,20 +121,15 @@ export async function commitGsapPositionFromDrag(
   callbacks: GsapDragCommitCallbacks,
 ): Promise<GsapEditOutcome> {
   const el = selection.element;
+  const stamp = callbacks.stamp ?? readDragStamp(el);
   // fallow-ignore-next-line code-duplication
   const { newX, newY, baseGsapX, baseGsapY } = computeDraggedGsapPosition(
     el,
     studioOffset,
     gsapPos,
+    stamp,
   );
-  const origX = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
-  const origY = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
-  const restoreOffset = () => {
-    el.style.setProperty("--hf-studio-offset-x", `${origX}px`);
-    el.style.setProperty("--hf-studio-offset-y", `${origY}px`);
-    el.removeAttribute("data-hf-drag-initial-offset-x");
-    el.removeAttribute("data-hf-drag-initial-offset-y");
-  };
+  const restoreOffset = () => restoreDragOffset(el, stamp);
 
   if (anim.arcPath?.enabled) {
     const { activeKeyframePct, currentTime, setActiveKeyframePct } = usePlayerStore.getState();

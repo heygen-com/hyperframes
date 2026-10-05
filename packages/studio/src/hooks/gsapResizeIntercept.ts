@@ -27,7 +27,11 @@ import {
   findSizeSetAnimation,
 } from "./gsapDragCommit";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import { computeDraggedGsapPosition, restoreDragOffset } from "./draggedGsapPosition";
+import {
+  computeDraggedGsapPosition,
+  restoreDragOffset,
+  type DragStamp,
+} from "./draggedGsapPosition";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
@@ -93,6 +97,7 @@ export async function commitSizeAtPlayhead(
           selection.element,
           dragOffset,
           readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 },
+          callbacks.stamp,
         )
       : null;
   const written = await commitValueAtPlayhead(
@@ -107,7 +112,7 @@ export async function commitSizeAtPlayhead(
         ...preGestureBoxSize(selection.element),
         ...(anchor && { x: anchor.baseGsapX, y: anchor.baseGsapY }),
       },
-      ...(anchor && { beforeReload: () => restoreDragOffset(selection.element) }),
+      ...(anchor && { beforeReload: () => restoreDragOffset(selection.element, callbacks.stamp) }),
     },
   );
   return written.status === "persisted" && anchor ? { ...written, ownsDragOffset: true } : written;
@@ -170,6 +175,7 @@ export async function tryGsapResizeIntercept(
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
   dragOffset?: { x: number; y: number },
   draw: <T>(run: () => T) => T = (run) => run(),
+  stamp?: DragStamp,
 ): Promise<GsapEditOutcome> {
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
   const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
@@ -253,6 +259,7 @@ export async function tryGsapResizeIntercept(
           {
             commitMutation,
             fetchAnimations: fetchFallbackAnimations,
+            stamp,
           },
         );
         return handOverDraftSize(selection, written, sized, draw);
@@ -409,6 +416,7 @@ export async function tryGsapResizeIntercept(
         selection.element,
         { x: 0, y: 0 },
         gsapPos,
+        stamp,
       );
       const base = { x: baseGsapX, y: baseGsapY };
       setElementGsapPosition(draftEl, base.x, base.y);
@@ -470,6 +478,7 @@ export async function tryGsapResizeIntercept(
         await commitGsapPositionFromDrag(selection, positionTween, delta, base, iframe, {
           commitMutation,
           fetchAnimations: fetchFallbackAnimations,
+          stamp,
         }),
       );
       return true;
@@ -478,6 +487,7 @@ export async function tryGsapResizeIntercept(
     await commitStaticGsapPosition(selection, delta, base, selector, existingSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,
+      stamp,
     });
     return true;
   };
@@ -499,7 +509,7 @@ export async function tryGsapResizeIntercept(
     return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
   }
 
-  const callbacks = { commitMutation, fetchAnimations: fetchFallbackAnimations };
+  const callbacks = { commitMutation, fetchAnimations: fetchFallbackAnimations, stamp };
   if (resizeGroup === "size") {
     const written = await commitSizeAtPlayhead(
       selection,

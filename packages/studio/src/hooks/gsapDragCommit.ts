@@ -12,7 +12,12 @@ import {
 } from "../utils/globalTimeCompiler";
 import { roundTo3, roundToLayoutPx } from "../utils/rounding";
 import { computeElementPercentage, keyframeEases, writeTargetSelector } from "./gsapShared";
-import { computeDraggedGsapPosition } from "./draggedGsapPosition";
+import {
+  computeDraggedGsapPosition,
+  readDragStamp,
+  restoreDragOffset,
+  type DragStamp,
+} from "./draggedGsapPosition";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 import { isGestureTransactionCommit, runGestureTransaction } from "./gestureTransaction";
 import { setPatchFromUpdateProperty } from "./gsapDragStaticSetHelpers";
@@ -26,6 +31,8 @@ export {
 export interface GsapDragCommitCallbacks {
   commitMutation: CommitMutation;
   fetchAnimations?: () => Promise<GsapAnimation[]>;
+  /** The gesture's drag stamp, when its commit can outlive it; else read from the element. */
+  stamp?: DragStamp;
 }
 
 /**
@@ -169,7 +176,12 @@ export async function commitStaticGsapPosition(
   existingSet: GsapAnimation | null,
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
-  const { newX, newY } = computeDraggedGsapPosition(selection.element, studioOffset, gsapPos);
+  const { newX, newY } = computeDraggedGsapPosition(
+    selection.element,
+    studioOffset,
+    gsapPos,
+    callbacks.stamp,
+  );
   if (existingSet) {
     if (existingSet.keyframes) {
       // Keyframed zero-duration hold (drag-path corruption): can't update-property
@@ -344,22 +356,17 @@ export async function commitWholePathOffset(
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
   const el = selection.element;
+  const stamp = callbacks.stamp ?? readDragStamp(el);
   const { newX, newY, baseGsapX, baseGsapY } = computeDraggedGsapPosition(
     el,
     studioOffset,
     gsapPos,
+    stamp,
   );
   const deltaX = newX - baseGsapX;
   // fallow-ignore-next-line code-duplication
   const deltaY = newY - baseGsapY;
-  const origX = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
-  const origY = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
-  const restoreOffset = () => {
-    el.style.setProperty("--hf-studio-offset-x", `${origX}px`);
-    el.style.setProperty("--hf-studio-offset-y", `${origY}px`);
-    el.removeAttribute("data-hf-drag-initial-offset-x");
-    el.removeAttribute("data-hf-drag-initial-offset-y");
-  };
+  const restoreOffset = () => restoreDragOffset(el, stamp);
 
   // fallow-ignore-next-line code-duplication
   let effectiveAnim = anim;
