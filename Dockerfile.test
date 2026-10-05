@@ -122,9 +122,6 @@ RUN bun run --filter @hyperframes/core build:hyperframes-runtime:modular
 COPY packages/engine/ packages/engine/
 COPY packages/producer/ packages/producer/
 
-# Generate embedded font data (deterministicFonts.ts imports this at runtime)
-RUN cd packages/producer && bunx tsx scripts/generate-font-data.ts
-
 WORKDIR /app/packages/producer
 
 # Skip fixtures tagged `transparency` (Chrome alpha-channel PSNR quirks not

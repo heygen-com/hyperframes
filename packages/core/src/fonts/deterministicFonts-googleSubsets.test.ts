@@ -25,12 +25,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { _clearGoogleFontCssCacheForTests } from "./deterministicFonts.js";
+import { fontDirectories } from "./systemFontLocator.js";
 
 beforeEach(() => _clearGoogleFontCssCacheForTests());
 
 let cacheDir: string;
 let prevCacheEnv: string | undefined;
-const LOCAL_FONT_DIR = join(homedir(), ".local", "share", "fonts");
+const LOCAL_FONT_DIR = fontDirectories().find((dir) => dir.startsWith(homedir()))!;
 const LOCAL_FONT_FILE = join(LOCAL_FONT_DIR, "hf-authored-fail-test.woff2");
 const LOCAL_FONT_BYTES = "LOCAL_ONLY_BYTES";
 

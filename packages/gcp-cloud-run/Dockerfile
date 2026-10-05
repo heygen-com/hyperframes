@@ -152,7 +152,6 @@ RUN bun run --cwd packages/parsers build \
     && bun run --cwd packages/sdk build \
     && bun run --cwd packages/sdk-playground build \
     && bun run --cwd packages/engine build \
-    && (cd packages/producer && bunx tsx scripts/generate-font-data.ts) \
     && bun run --cwd packages/producer build \
     && bun run --cwd packages/gcp-cloud-run build
 

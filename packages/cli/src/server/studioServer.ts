@@ -499,8 +499,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async transformPreviewHtml({ html, project }) {
-      const { injectDeterministicFontFaces } =
-        await import("../../../core/src/fonts/deterministicFonts.js");
+      const { injectDeterministicFontFaces } = await import("@hyperframes/core/fonts/embed");
       const { prepareAnimatedGifInputs } =
         await import("../../../producer/src/services/animatedGifPrep.js");
       const { downloadToTemp, writeUrlDownloadTelemetry } =

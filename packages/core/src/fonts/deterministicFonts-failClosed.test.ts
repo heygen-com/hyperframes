@@ -106,6 +106,20 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)"
     expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);
   });
 
+  it("sends its warnings to the caller's logger instead of the console", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.fn();
+    await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+      failClosedFontFetch: false,
+      allowSystemFontCapture: false,
+      fetchImpl: makeFailingFetch(),
+      logger: { warn, info: vi.fn() },
+    });
+    expect(warn).toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+    consoleWarn.mockRestore();
+  });
+
   it("swallows a 404 response and returns the original HTML (no throw)", async () => {
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
       failClosedFontFetch: false,

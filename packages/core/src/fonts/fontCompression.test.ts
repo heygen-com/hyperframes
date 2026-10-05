@@ -1,44 +1,21 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { compressToWoff2, fontToDataUri } from "./fontCompression.js";
 
-/**
- * Locate a system TTF font for real compression tests. macOS ships plenty
- * of .ttf files in /System/Library/Fonts/Supplemental; we pick the first
- * one found from a short list. Returns null on Linux CI or any environment
- * without the expected fonts — those tests are skipped gracefully.
- */
-function findSystemTtf(): Buffer | null {
-  const candidates = [
-    "/System/Library/Fonts/Supplemental/Andale Mono.ttf",
-    "/System/Library/Fonts/Supplemental/Courier New.ttf",
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-  ];
-  for (const path of candidates) {
-    if (existsSync(path)) return readFileSync(path);
-  }
-  return null;
-}
+const GEIST_TTF = fileURLToPath(
+  new URL(
+    "../../../../docs/public/catalog/items/frost-sequence-camera-orbit/assets/fonts/Geist-Regular.ttf",
+    import.meta.url,
+  ),
+);
 
 describe("compressToWoff2", () => {
   it("compresses a TTF buffer to a smaller woff2 buffer", async () => {
-    const ttf = findSystemTtf();
-    if (!ttf) {
-      console.warn("Skipping: no system TTF font available");
-      return;
-    }
+    const ttf = readFileSync(GEIST_TTF);
     const woff2 = await compressToWoff2(ttf);
     expect(woff2).toBeInstanceOf(Buffer);
     expect(woff2.length).toBeGreaterThan(0);
@@ -140,11 +117,7 @@ describe("fontToDataUri", () => {
   });
 
   it("compresses a TTF and returns a woff2 data URI", async () => {
-    const ttf = findSystemTtf();
-    if (!ttf) {
-      console.warn("Skipping: no system TTF font available");
-      return;
-    }
+    const ttf = readFileSync(GEIST_TTF);
     const uri = await fontToDataUri(ttf, "ttf");
     expect(uri).toMatch(/^data:font\/woff2;base64,/);
     const naiveLength = `data:font/ttf;base64,${ttf.toString("base64")}`.length;
