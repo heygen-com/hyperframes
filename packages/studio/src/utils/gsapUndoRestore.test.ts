@@ -214,9 +214,9 @@ describe("applyUndoRestoreToPreview", () => {
   describe("an undo that re-runs a changed script matches a fresh load of the restored file", () => {
     const script = (extra: string) => `window.__timelines["root"]=gsap.timeline();${extra}`;
     const root = (body: string) => `<div data-composition-id="root">${body}</div>`;
-    const undoScriptEdit = (live: string, authored: string, edit: string) => {
+    const undoScriptEdit = (live: string, authored: string, edit: string, ran = edit) => {
       const { iframe, contentWindow, doc } = buildLiveIframe(
-        `${root(live)}<script>${script(edit)}</script>`,
+        `${root(live)}<script>${script(ran)}</script>`,
       );
       const clearProps = (targets: HTMLElement[]) =>
         targets.forEach((t) => t.removeAttribute("style"));
@@ -240,6 +240,18 @@ describe("applyUndoRestoreToPreview", () => {
       );
       expect(doc.getElementById("a")!.hasAttribute("data-hf-studio-box-size")).toBe(false);
       expect(doc.getElementById("a")!.getAttribute("style")).toBe("width: 300px");
+    });
+
+    it("drops the width a W edit set live, though the preview never ran its gsap.set", () => {
+      // The Design panel applies W to the live element and writes the set only to the file.
+      const doc = undoScriptEdit(
+        `<div id="a" style="left: 10px; width: 300px">t</div>`,
+        `<div id="a" style="left: 10px">t</div>`,
+        `gsap.set("#a",{width:300});`,
+        "",
+      );
+      const { style } = doc.getElementById("a")!;
+      expect([style.width, style.left]).toEqual(["", "10px"]);
     });
 
     it("keeps the authored inline rotation of an element GSAP moved", () => {

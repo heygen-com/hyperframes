@@ -50,7 +50,7 @@ export function collectResetTargets(
   win: { __timelines?: Record<string, unknown> },
   doc: Document,
   targetKeys: string[],
-  outgoingScripts: readonly Element[] = [],
+  outgoingScripts: readonly string[] = [],
 ): Map<Element, Set<string>> {
   const targets = new Map<Element, Set<string>>();
   const timelines = (win.__timelines ?? {}) as Record<string, TweenLike | undefined>;
@@ -63,8 +63,7 @@ export function collectResetTargets(
     } catch {}
   }
   sweepHeldElements(doc, targetKeys, others, targets);
-  for (const script of outgoingScripts)
-    addStandaloneSetTargets(doc, script.textContent ?? "", targets);
+  for (const script of outgoingScripts) addStandaloneSetTargets(doc, script, targets);
   return targets;
 }
 

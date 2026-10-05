@@ -226,6 +226,8 @@ export interface SoftReloadOptions {
   authoredHtml?: string;
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
+  /** The script the file held before this write; a live edit can apply a set the preview never ran. */
+  replacedScript?: string;
 }
 
 /**
@@ -370,7 +372,10 @@ export function applySoftReload(
   // fallow-ignore-next-line complexity
   const doReload = () => {
     const timelines = win.__timelines;
-    const targets = collectResetTargets(win, doc, targetKeys, staleScripts);
+    const targets = collectResetTargets(win, doc, targetKeys, [
+      ...staleScripts.map((script) => script.textContent ?? ""),
+      options.replacedScript ?? "",
+    ]);
 
     // Kill ONLY the target composition's timeline(s) — leaving every other
     // composition's timeline (and its children on the global timeline) intact.
