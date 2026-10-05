@@ -165,13 +165,13 @@ export function keyframeHoldForAnimation(
       otherStart < start - 0.001
     );
   });
-  const position: Record<string, number> = {};
+  const held: Record<string, number> = {};
   for (const [property, value] of Object.entries(atStart.properties)) {
     if (!HELD_GROUPS.has(classifyPropertyGroup(property)) || typeof value !== "number") continue;
     if (earlier.some((other) => writesProperty(other, property))) continue;
-    position[property] = value;
+    held[property] = value;
   }
-  return Object.keys(position).length > 0 ? position : null;
+  return Object.keys(held).length > 0 ? held : null;
 }
 
 export const SUPPORTED_EASES = [

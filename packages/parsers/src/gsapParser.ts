@@ -1862,9 +1862,9 @@ export function isStudioHoldSet(anim: GsapAnimation): boolean {
  * so this pass owns it: every call wipes the prior holds and recomputes from the
  * current keyframes, keeping them in sync as keyframes are added/moved/deleted.
  *
- * Idempotent. Only position props (x/y/xPercent/yPercent) are held — opacity/scale
- * keep their authored pre-tween behavior. A tween already starting at 0 needs no
- * hold (no gap before it).
+ * Idempotent. Only position and size props are held — opacity/scale keep their
+ * authored pre-tween behavior. A tween already starting at 0 needs no hold, unless
+ * it is a lone keyframe, which GSAP never renders by itself.
  */
 export function syncPositionHoldsBeforeKeyframes(script: string): string {
   let parsed: ParsedGsap;
@@ -1878,7 +1878,7 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
   const staleHoldIds = parsed.animations.filter(isStudioHoldSet).map((a) => a.id);
   for (const id of staleHoldIds) result = removeAnimationFromScript(result, id);
 
-  // 2. Re-add a hold for each position-keyframed tween that starts after t=0.
+  // 2. Re-add a hold for each keyframed tween keyframeHoldForAnimation pins.
   let reparsed: ParsedGsap;
   try {
     reparsed = parseGsapScript(result);

@@ -5,7 +5,7 @@
  * frame can't jump. Split from gsapRuntimeBridge, which owns the shared
  * group-tween resolution used by the drag/resize/rotate intercepts.
  */
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { clearStudioBoxSize } from "../components/editor/manualEdits";
 import {
@@ -138,7 +138,7 @@ function handOverDraftSize(
 function firstSizeKey(
   selection: DomEditSelection,
   size: { width: number; height: number },
-  resizeGroup: string,
+  resizeGroup: PropertyGroupName,
   animations: GsapAnimation[],
 ): Record<string, unknown> | null {
   const { autoKeyframeEnabled, currentTime } = usePlayerStore.getState();
@@ -210,11 +210,11 @@ export async function tryGsapResizeIntercept(
     size,
   });
   if (!anim || isInstantHold(anim)) {
+    const sized = { width: roundToLayoutPx(size.width), height: roundToLayoutPx(size.height) };
     const scriptWritesSize = allKnownAnimations.some((a) =>
       animationWritesAnyProperty(a, SIZE_PROPS),
     );
     if (!scriptWritesSize) {
-      const sized = { width: roundToLayoutPx(size.width), height: roundToLayoutPx(size.height) };
       const firstKey = firstSizeKey(selection, sized, resizeGroup, workingAnimations);
       if (!firstKey) return { status: "element-size" };
       await commitMutation(selection, firstKey, { label: "Resize", softReload: true });
@@ -249,7 +249,6 @@ export async function tryGsapResizeIntercept(
       );
       if (animatedTween) {
         logResize("intercept-route", { route: "keyframed-size", tweenId: animatedTween.id });
-        const sized = { width: roundToLayoutPx(size.width), height: roundToLayoutPx(size.height) };
         const written = await commitSizeAtPlayhead(
           selection,
           animatedTween,

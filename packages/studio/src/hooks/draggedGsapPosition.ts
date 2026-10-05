@@ -36,17 +36,6 @@ export function readCssRotation(element: HTMLElement, withRotate = true): number
   }
 }
 
-/**
- * Translate a studio drag offset into absolute GSAP x/y, accounting for the
- * element's rotation and its drag-start base pose. Reads the drag-start
- * attributes stamped by `createManualOffsetDragMember`
- * (`data-hf-drag-initial-offset-*`, `data-hf-drag-gsap-base-*`); `fallbackBase`
- * is used when the base attributes are absent (e.g. a static element that GSAP
- * hasn't given an x/y yet).
- *
- * Used by both the tweened commit and the static `set` commit / live preview, so
- * the preview and the committed value agree by construction.
- */
 export interface DragStamp {
   origX: number;
   origY: number;
@@ -72,6 +61,17 @@ export const freezeDragStamp = (element: HTMLElement): DragStamp => ({
   frozen: true,
 });
 
+/**
+ * Translate a studio drag offset into absolute GSAP x/y, accounting for the
+ * element's rotation and its drag-start base pose. Reads the drag-start
+ * stamp (`readDragStamp` by default) set by `createManualOffsetDragMember`
+ * (`data-hf-drag-initial-offset-*`, `data-hf-drag-gsap-base-*`); `fallbackBase`
+ * is used when the base attributes are absent (e.g. a static element that GSAP
+ * hasn't given an x/y yet).
+ *
+ * Used by both the tweened commit and the static `set` commit / live preview, so
+ * the preview and the committed value agree by construction.
+ */
 // fallow-ignore-next-line complexity
 export function computeDraggedGsapPosition(
   element: HTMLElement,

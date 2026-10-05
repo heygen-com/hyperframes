@@ -309,9 +309,9 @@ const round = (m) => m.visible.map((p) => p.map((v) => Math.round(v * 100) / 100
  * A person's pace: wait for the step's save, then score the settled box against where the step put it
  * (a seek: the box its keyframe time was left with, unless a size key since holds another size there).
  */
-async function settleStep(c, steps, step, state, keyBoxes, watcher) {
+async function settleStep(c, steps, step, state, watcher) {
   await untilSaved(watcher, steps.filter(saves).length);
-  if (step.do === "seek") state.intended = seekIntended(state, keyBoxes);
+  if (step.do === "seek") state.intended = seekIntended(state);
   const m = await settled(c);
   const held = heldSize(state.sizeKeys, state.time);
   Object.assign(steps.at(-1), {
@@ -320,11 +320,11 @@ async function settleStep(c, steps, step, state, keyBoxes, watcher) {
     size: step.do === "seek" ? sizeError(held, m.size) : undefined,
   });
   rememberSizeKey(step, state, m);
-  rememberBox(step, state, keyBoxes, m);
+  rememberBox(step, state, m);
 }
 
-const seekIntended = (state, keyBoxes) => {
-  const kept = keyBoxes.get(state.time);
+const seekIntended = (state) => {
+  const kept = state.keyBoxes.get(state.time);
   return kept && !sizeError(kept.size, heldSize(state.sizeKeys, state.time)) ? kept.visible : null;
 };
 
@@ -332,8 +332,9 @@ function rememberSizeKey(step, state, m) {
   if (step.gesture === "resize" && state.autokey) state.sizeKeys.set(state.time, m.size);
 }
 
-function rememberBox(step, state, keyBoxes, m) {
-  if (saves(step)) keyBoxes.set(state.time, { visible: state.intended ?? m.visible, size: m.size });
+function rememberBox(step, state, m) {
+  if (saves(step))
+    state.keyBoxes.set(state.time, { visible: state.intended ?? m.visible, size: m.size });
 }
 
 /** Under auto-record, size keys hold their nearest value before the first and after the last. */
@@ -385,10 +386,10 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     text: null,
     autokey: false,
     sizeKeys: new Map(),
+    // Settled cases only: the box each keyframe time was left with, which a later seek there must show.
+    keyBoxes: new Map(),
     time: spec.playhead ?? PLAYHEAD,
   };
-  // Settled cases only: the box each keyframe time was left with, which a later seek there must show.
-  const keyBoxes = new Map();
   const steps = [];
   // Back-to-back drags share one recording, so a drag's frames run up to the next press: a jump in
   // the gap fails the earlier drag, whose box must stay where it was let go. Other steps end it.
@@ -400,7 +401,7 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   for (const step of spec.steps) {
     if (step.do !== "drag") await collect();
     steps.push(await driveStep(ctx, step, state));
-    if (spec.settle) await settleStep(ctx.A, steps, step, state, keyBoxes, watcher);
+    if (spec.settle) await settleStep(ctx.A, steps, step, state, watcher);
   }
   // Every saving step saves once (a nudge burst saves once); wait for all of them. An undo may
   // cancel the save it follows, so one ending undone stops once the file has stayed original for 3 s.
@@ -475,8 +476,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   };
   return {
     ...(spec.keyRender !== undefined &&
-      keyBoxes.has(spec.keyRender) && {
-        keyRender: { time: spec.keyRender, visible: keyBoxes.get(spec.keyRender).visible },
+      state.keyBoxes.has(spec.keyRender) && {
+        keyRender: { time: spec.keyRender, visible: state.keyBoxes.get(spec.keyRender).visible },
       }),
     zoom,
     saved: versions.length > 1,

@@ -2546,22 +2546,26 @@ function trailingSpanTrim(animation: GsapAnimation) {
 /** GSAP 3.15 stretches a keyframe tween that stops short of 100% on its first render, unlike once played:
  *  each tween this mutation wrote or edited ends on its last key instead. Tweens it left alone keep their tail. */
 export function trimTrailingKeyframeSpans(previous: string, script: string): string {
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return script;
-  const source = (text: string) => (entry: { call: TweenCallInfo }) =>
-    text.slice(entry.call.node.start, entry.call.node.end);
-  const untouched = new Set(parseGsapScriptAcornForWrite(previous)?.located.map(source(previous)));
+  if (script === previous) return script;
+  const trims = parseGsapScriptAcornForWrite(script)?.located.flatMap((entry) => {
+    const trim = trailingSpanTrim(entry.animation);
+    return trim ? [{ entry, trim }] : [];
+  });
+  if (!trims?.length) return script;
+  const source = (text: string, { call }: { call: TweenCallInfo }) =>
+    text.slice(call.node.start, call.node.end);
+  const previousTweens = parseGsapScriptAcornForWrite(previous)?.located ?? [];
+  const untouched = new Set(previousTweens.map((entry) => source(previous, entry)));
   let result = script;
-  for (const entry of parsed.located) {
-    const trim = untouched.has(source(script)(entry)) ? null : trailingSpanTrim(entry.animation);
-    if (trim)
-      result = resizeKeyframedTweenInScript(
-        result,
-        entry.id,
-        trim.position,
-        trim.duration,
-        trim.pctRemap,
-      );
+  for (const { entry, trim } of trims) {
+    if (untouched.has(source(script, entry))) continue;
+    result = resizeKeyframedTweenInScript(
+      result,
+      entry.id,
+      trim.position,
+      trim.duration,
+      trim.pctRemap,
+    );
   }
   return result;
 }
