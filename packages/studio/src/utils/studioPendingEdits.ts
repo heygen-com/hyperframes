@@ -133,7 +133,7 @@ export function trackedStudioEdit<Args extends unknown[], R>(
 ): (...args: Args) => R {
   return (...args) => {
     commitOlderDebouncedEdits();
-    const deferred = waits ? afterOlderSaves(() => edit(...args)) : null;
+    const deferred = waits && !adopting ? afterOlderSaves(() => edit(...args)) : null;
     if (deferred) return trackStudioPendingEdit(deferred) as R;
     const result = edit(...args);
     if (result instanceof Promise) trackStudioPendingEdit(result);

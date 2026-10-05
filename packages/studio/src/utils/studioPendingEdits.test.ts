@@ -273,6 +273,44 @@ describe("a new edit after a debounced one", () => {
     expect(isStudioEditSaving()).toBe(false);
   });
 
+  it("lets a second burst flushed behind the first one save, though its commit is a panel action", async () => {
+    const order: string[] = [];
+    let fetched!: () => void;
+    const commitNudge = trackedStudioEdit(
+      async (name: string) => {
+        if (name === "nudge A") await new Promise<void>((resolve) => (fetched = resolve));
+        else await Promise.resolve();
+        order.push(name);
+      },
+      { afterOlderSaves: true },
+    );
+    let burst: { name: string; edit: ReturnType<typeof beginStudioPendingEdit> } | null = null;
+    const startBurst = (name: string) => {
+      const edit = beginStudioPendingEdit(null);
+      burst = { name, edit };
+    };
+    const remove = addStudioPendingEditFlushListener(() => {
+      if (!burst) return undefined;
+      const { name, edit } = burst;
+      burst = null;
+      const saved = edit.adopt(() => commitNudge(name));
+      edit.settle(saved);
+      return saved;
+    });
+    const panelEdit = trackedStudioEdit(async (name: string) => void order.push(name), {
+      afterOlderSaves: true,
+    });
+    startBurst("nudge A");
+    const first = panelEdit("W 200");
+    startBurst("nudge B");
+    const second = panelEdit("W 300");
+    fetched();
+    await Promise.all([first, second]);
+    remove();
+    expect(order).toEqual(["nudge A", "W 200", "nudge B", "W 300"]);
+    expect(isStudioEditSaving()).toBe(false);
+  });
+
   it("never flushes from inside an edit's own save, where a flushed save would go untracked", () => {
     let flushes = 0;
     const remove = addStudioPendingEditFlushListener(() => void (flushes += 1));
