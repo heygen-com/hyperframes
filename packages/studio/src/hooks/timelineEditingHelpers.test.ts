@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  applyTimelineMoveAttributes,
   applyTimelineStackingReorder,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
@@ -314,6 +315,26 @@ describe("persistTimelineBatchEdit", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("syncs each file's root duration once, landing where per-member sync would", async () => {
+    const source = `<div id="root" data-composition-id="main" data-duration="4"><video id="a" class="clip" data-start="1" data-duration="1"></video><video id="b" class="clip" data-start="2" data-duration="1"></video><video id="c" class="clip" data-start="3" data-duration="1"></video></div>`;
+    const members = ["a", "b", "c"].map((id, i) => ({
+      element: el({ id, tag: "video", domId: id, start: i + 1, duration: 1 }),
+      buildPatches: (original: string, target: Parameters<typeof applyTimelineMoveAttributes>[1]) =>
+        applyTimelineMoveAttributes(original, target, i + 6, 1),
+    }));
+    stubReadFileContent(source);
+    const writes: Array<[string, string]> = [];
+    await persistTimelineBatchEdit(batchInput(members, writes));
+
+    const perMember = members.reduce(
+      (current, { element }, i) =>
+        buildTimelineMoveTimingPatch(current, { id: element.id }, i + 6, 1),
+      source,
+    );
+    expect(writes).toEqual([["index.html", perMember]]);
+    expect(perMember).toContain('data-duration="9"');
   });
 
   it("skips no-op members instead of aborting the batch (track-insert renumber)", async () => {

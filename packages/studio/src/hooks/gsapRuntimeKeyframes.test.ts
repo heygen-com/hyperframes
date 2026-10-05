@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hasNonHoldTweenForElement, readRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { arcPathFromMotionPathValue } from "./gsapRuntimeMotionPath";
+import { tweensTargeting, withTweenIndex } from "./gsapRuntimeTweenIndex";
 
 // Build a fake preview iframe whose runtime timeline holds the given child tweens
 // and resolves `selector` to `el`.
@@ -282,5 +283,55 @@ describe("readRuntimeKeyframes — a motion path runs GSAP's default tween ease"
       readRuntimeKeyframes(fakeIframe(el, [arcTween(ease)]), "#arc")?.runEase;
     expect(read()).toBe("power1.out");
     expect(read("none")).toBe("none");
+  });
+});
+
+describe("withTweenIndex — many elements, one scan of the tweens", () => {
+  const ids = Array.from({ length: 20 }, (_, i) => `clip-${i}`);
+  const tweens = ids.map((id) => ({
+    targets: vi.fn(() => [{ id }]),
+    vars: { x: 10, duration: 1 },
+    duration: () => 1,
+    startTime: () => 0,
+  }));
+  const timeline = { getChildren: () => tweens };
+  const preview = {
+    contentWindow: { __timelines: { "index.html": timeline } },
+    contentDocument: { querySelector: (sel: string) => ({ id: sel.slice(1) }) },
+  } as unknown as HTMLIFrameElement;
+  const askAll = () => ids.map((id) => hasNonHoldTweenForElement(preview, `#${id}`));
+
+  it("answers the same as the plain scan", () => {
+    const plain = askAll();
+    expect(withTweenIndex(askAll)).toEqual(plain);
+    expect(plain.every(Boolean)).toBe(true);
+  });
+
+  it("reads each tween's targets once per pass instead of once per element", () => {
+    for (const tween of tweens) tween.targets.mockClear();
+    withTweenIndex(askAll);
+    expect(tweens.every((tween) => tween.targets.mock.calls.length === 1)).toBe(true);
+  });
+
+  it("skips a timelines entry that is not an object", () => {
+    const odd = {
+      contentWindow: {
+        __timelines: { stray: null, label: "x", main: { getChildren: () => tweens } },
+      },
+      contentDocument: { querySelector: (sel: string) => ({ id: sel.slice(1) }) },
+    } as unknown as HTMLIFrameElement;
+    expect(withTweenIndex(() => hasNonHoldTweenForElement(odd, "#clip-3"))).toBe(true);
+    expect(withTweenIndex(() => hasNonHoldTweenForElement(odd, "#nobody"))).toBe(false);
+  });
+
+  it("returns the plain scan's tweens, once each and in timeline order", () => {
+    const el = { id: "clip-2" } as unknown as Element;
+    const byElement = { targets: () => [el], vars: {}, duration: () => 1 };
+    const byId = { targets: () => [{ id: "clip-2" }], vars: {}, duration: () => 1 };
+    const both = { targets: () => [el, { id: "clip-2" }], vars: {}, duration: () => 1 };
+    const tl = { getChildren: () => [byId, byElement, both] };
+    const plain = tweensTargeting(tl, el);
+    expect(withTweenIndex(() => tweensTargeting(tl, el))).toEqual(plain);
+    expect(plain).toEqual([byId, byElement, both]);
   });
 });

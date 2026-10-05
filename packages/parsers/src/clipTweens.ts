@@ -8,14 +8,27 @@ type TweenTime = Pick<GsapAnimation, "position" | "implicitPosition">;
 export function clipTweenMatcher(
   clipSelectors: string | readonly string[],
   root?: ParentNode,
+  queries: Map<string, Element[]> = new Map(),
 ): (tween: TweenTarget) => boolean {
   const own = typeof clipSelectors === "string" ? [clipSelectors] : clipSelectors;
-  const clips = root ? own.flatMap((selector) => queryAll(root, selector)) : [];
+  if (!root)
+    return ({ targetSelector, hasPartialSelector }) =>
+      !hasPartialSelector && own.includes(targetSelector);
+  const queryAll = (selector: string): Element[] => {
+    if (ID_SELECTOR.test(selector)) {
+      if (!queries.has(ALL_IDS)) indexIds(root, queries);
+      return queries.get(selector) ?? [];
+    }
+    let found = queries.get(selector);
+    if (!found) queries.set(selector, (found = queryRoot(root, selector)));
+    return found;
+  };
+  const clips = own.flatMap((selector) => queryAll(selector));
   return ({ targetSelector, hasPartialSelector }) => {
     if (hasPartialSelector) return false;
     if (own.includes(targetSelector)) return true;
-    if (!root || clips.length === 0) return false;
-    const targets = queryAll(root, targetSelector);
+    if (clips.length === 0) return false;
+    const targets = queryAll(targetSelector);
     return (
       targets.length > 0 &&
       targets.every((target) => {
@@ -38,7 +51,23 @@ export function hasExplicitTime<T extends TweenTime>(
   return typeof animation.position === "number" && !animation.implicitPosition;
 }
 
-function queryAll(root: ParentNode, selector: string): Element[] {
+const ID_SELECTOR = /^#-?[A-Za-z_][\w-]*$/;
+const ALL_IDS = "[id]";
+
+// One DOM walk answers every `#id` lookup; a query per clip cost ~3 ms each on a 100-clip file.
+function indexIds(root: ParentNode, queries: Map<string, Element[]>): void {
+  const all = queryRoot(root, ALL_IDS);
+  queries.set(ALL_IDS, all);
+  for (const el of all) {
+    const key = `#${el.id}`;
+    if (!ID_SELECTOR.test(key)) continue;
+    const list = queries.get(key);
+    if (list) list.push(el);
+    else queries.set(key, [el]);
+  }
+}
+
+function queryRoot(root: ParentNode, selector: string): Element[] {
   try {
     return Array.from(root.querySelectorAll(selector));
   } catch {

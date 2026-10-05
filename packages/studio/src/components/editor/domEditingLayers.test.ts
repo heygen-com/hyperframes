@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectDomEditLayerItems,
   resolveDomEditSelection,
@@ -97,6 +97,37 @@ describe("resolveDomEditSelection — hfId from data-hf-id", () => {
     document.body.removeChild(el);
 
     expect(selection?.hfId).toBeUndefined();
+  });
+});
+
+describe("resolveDomEditSelection — source probe on re-resolve", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const probing = { activeCompositionPath: "index.html", isMasterView: true, projectId: "p" };
+
+  it("asks the server once per node and target; re-resolving the same pair keeps the answer", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ exists: [false] }) }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const el = document.createElement("div");
+    el.id = "generated";
+    document.body.appendChild(el);
+
+    const first = await resolveDomEditSelection(el, probing);
+    const again = await resolveDomEditSelection(el, { ...probing, previous: first });
+    el.id = "renamed";
+    await resolveDomEditSelection(el, { ...probing, previous: again });
+    el.id = "generated";
+    const replaced = document.createElement("div");
+    replaced.id = "generated";
+    el.replaceWith(replaced);
+    await resolveDomEditSelection(replaced, { ...probing, previous: again });
+    replaced.remove();
+
+    expect(first?.existsInSource).toBe(false);
+    expect(again?.existsInSource).toBe(false);
+    expect(again?.capabilities.canMove).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -236,17 +267,19 @@ describe("buildTextFieldChildLocator", () => {
   });
 });
 
-describe("collectDomEditLayerItems item budget", () => {
-  function documentWith(count: number): HTMLElement {
-    const root = document.createElement("div");
-    root.setAttribute("data-composition-id", "index.html");
-    for (let i = 0; i < count; i++) {
-      const child = document.createElement("div");
-      child.id = `el-${i}`;
-      root.append(child);
-    }
-    return root;
+function compositionWith(count: number, child: (el: HTMLElement, i: number) => void): HTMLElement {
+  const root = document.createElement("div");
+  root.setAttribute("data-composition-id", "index.html");
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("div");
+    child(el, i);
+    root.append(el);
   }
+  return root;
+}
+
+describe("collectDomEditLayerItems item budget", () => {
+  const documentWith = (count: number) => compositionWith(count, (el, i) => (el.id = `el-${i}`));
 
   it("returns the whole document by default", () => {
     // A default cap here silently truncated the marquee's candidate list: a drag
@@ -264,13 +297,7 @@ describe("collectDomEditLayerItems selector-index cost", () => {
   // Attached, unlike the fixture above: a detached subtree is invisible to
   // document.querySelectorAll, so the occurrence lookup would find nothing.
   function attachedRootWithSharedClass(count: number): HTMLElement {
-    const root = document.createElement("div");
-    root.setAttribute("data-composition-id", "index.html");
-    for (let i = 0; i < count; i++) {
-      const child = document.createElement("div");
-      child.className = "box";
-      root.append(child);
-    }
+    const root = compositionWith(count, (el) => (el.className = "box"));
     document.body.append(root);
     return root;
   }

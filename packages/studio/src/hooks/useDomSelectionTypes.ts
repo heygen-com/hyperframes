@@ -23,6 +23,7 @@ export interface ResolveDomSelectionOptions {
   activeGroupElement?: HTMLElement | null;
   /** Resolve this node itself instead of applying human group-capture behavior. */
   exactTarget?: boolean;
+  previous?: DomEditSelection | null;
 }
 
 // Shared by every hook that needs the project/timeline/panel context a DOM

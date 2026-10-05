@@ -5,6 +5,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { sameData } from "../utils/sameData";
 import { resolveClipTimingBasis, resolveSelectorElementIds, toClipKeyframes } from "./gsapShared";
 import {
   deduplicateKeyframes,
@@ -16,6 +17,14 @@ import {
 export interface KeyframeCacheDraft {
   keyframeCache: Map<string, KeyframeCacheEntry>;
   gsapAnimations: Map<string, GsapAnimation[]>;
+}
+
+// A rebuilt entry equal to the one shown keeps its object, so re-reading an unchanged file publishes nothing.
+function keepEqualEntries<V>(before: ReadonlyMap<string, V>, draft: Map<string, V>): void {
+  for (const [key, value] of draft) {
+    const shown = before.get(key);
+    if (shown !== undefined && shown !== value && sameData(shown, value)) draft.set(key, shown);
+  }
 }
 
 function sameEntries<V>(before: ReadonlyMap<string, V>, after: ReadonlyMap<string, V>): boolean {
@@ -42,6 +51,8 @@ export function publishKeyframeCache(edit: (draft: KeyframeCacheDraft) => void):
     gsapAnimations: new Map(gsapAnimations),
   };
   edit(draft);
+  keepEqualEntries(keyframeCache, draft.keyframeCache);
+  keepEqualEntries(gsapAnimations, draft.gsapAnimations);
   if (
     sameEntries(keyframeCache, draft.keyframeCache) &&
     sameEntries(gsapAnimations, draft.gsapAnimations)
@@ -175,8 +186,16 @@ function cachedElementIdsForFile(
   const sfPrefix = `${sourceFile}#`;
   const ids = new Set<string>();
   for (const key of [...keyframeCache.keys(), ...gsapAnimations.keys()]) {
-    if (!key.startsWith(sfPrefix)) continue;
-    ids.add(key.slice(sfPrefix.length));
+    if (key.startsWith(sfPrefix)) ids.add(key.slice(sfPrefix.length));
+  }
+  if (sourceFile !== "index.html") return ids;
+  // Another file's element also writes the `index.html#id` fallback, as the very same entry object.
+  for (const [key, entry] of keyframeCache) {
+    const hash = key.indexOf("#");
+    const id = key.slice(hash + 1);
+    if (hash > 0 && !key.startsWith(sfPrefix) && keyframeCache.get(sfPrefix + id) === entry) {
+      ids.delete(id);
+    }
   }
   return ids;
 }

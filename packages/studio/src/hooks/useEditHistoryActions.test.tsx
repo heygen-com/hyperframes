@@ -5,12 +5,19 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryActions";
-import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import {
+  beginStudioPendingEdit,
+  setStudioPendingEditClaimClock,
+  trackStudioPendingEdit,
+} from "../utils/studioPendingEdits";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | null = null;
-afterEach(() => act(() => root?.unmount()));
+afterEach(() => {
+  act(() => root?.unmount());
+  setStudioPendingEditClaimClock(null);
+});
 
 type RestoreFiles = Record<string, { previous: string; restored: string }>;
 type Prediction = { id: string; files: RestoreFiles };
@@ -26,12 +33,13 @@ function mount(
     files?: RestoreFiles;
   },
   predicted?: Prediction,
+  claims: () => number = () => 7,
 ) {
   const editHistory = {
     undo: vi.fn<EditHistoryHandle["undo"]>(async () => result),
     redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
     predict: () => predicted ?? null,
-    claims: () => 7,
+    claims,
   };
   const putBack = vi.fn();
   const deps = {
@@ -106,6 +114,49 @@ describe("useEditHistoryActions", () => {
       paths: ["index.html"],
       files: SERVER_FILES,
     });
+  });
+
+  it("reverts an edit still saving before painting an older predicted step", async () => {
+    const reapply = vi.fn();
+    const revert = vi.fn(() => reapply);
+    const saving = beginStudioPendingEdit(revert);
+    const { deps, actions } = mount(
+      { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e2" },
+      PREDICTED,
+    );
+    const undone = actions.undo();
+    expect(revert).toHaveBeenCalledTimes(1);
+    expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
+    saving.settle();
+    await act(() => undone);
+    expect(deps.editHistory.undo).not.toHaveBeenCalled();
+    expect(reapply).not.toHaveBeenCalled();
+  });
+
+  // Claim counts: when the edit began, at the key, and once its save landed.
+  it.each([
+    ["its claim counted while undo waited, the server undo is the shown revert", 7, 7, 8, 0],
+    ["its claim counted before the key, the server undo is the shown revert", 7, 8, 8, 0],
+    ["its claim never counted, the move is shown again", 7, 7, 7, 1],
+  ])("an edit that lands while undo waits: %s", async (_, atBegin, atKey, atLand, reapplied) => {
+    let claimCount = atBegin;
+    setStudioPendingEditClaimClock(() => claimCount);
+    const reapply = vi.fn();
+    const saving = beginStudioPendingEdit(() => reapply);
+    claimCount = atKey;
+    const { deps, actions } = mount(
+      { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e8" },
+      PREDICTED,
+      () => claimCount,
+    );
+    const undone = actions.undo();
+    saving.settle(saving.adopt(() => Promise.resolve()));
+    claimCount = atLand;
+    await act(() => undone);
+    expect(deps.editHistory.undo).toHaveBeenCalledTimes(1);
+    expect(deps.editHistory.undo.mock.calls[0]![0].claimedAfter).toBe(atBegin);
+    expect(deps.showHistoryRestoreNow).not.toHaveBeenCalled();
+    expect(reapply).toHaveBeenCalledTimes(reapplied);
   });
 
   it("puts a shown step back when the server refuses it", async () => {

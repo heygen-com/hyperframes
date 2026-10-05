@@ -3,7 +3,9 @@ import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server"
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { setStudioPendingEditClaimClock } from "../utils/studioPendingEdits";
 import type { RecordEditInput } from "../utils/studioFileHistory";
+import { generateId } from "../utils/generateId";
 
 interface ApplyCallbacks {
   readFile: (path: string) => Promise<string>;
@@ -206,6 +208,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const [own] = useState(createOwnHistory);
+  const [pageKeyScope] = useState(generateId);
 
   const refresh = useCallback(async () => {
     if (!projectId) return;
@@ -228,6 +231,11 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     void refresh().finally(() => setLoaded(true));
   }, [refresh, own]);
 
+  useEffect(() => {
+    setStudioPendingEditClaimClock(own.claimCount);
+    return () => setStudioPendingEditClaimClock(null);
+  }, [own]);
+
   const recordEdit = useCallback(
     async ({ label, coalesceKey, coalesceMs, files, created = [] }: RecordEditInput) => {
       if (!projectId) return;
@@ -237,7 +245,10 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
         label,
         paths,
         overwrote: await overwroteVersions(files),
-        ...(coalesceKey && { coalesceKey, idleMs: coalesceMs ?? DEFAULT_COALESCE_MS }),
+        ...(coalesceKey && {
+          coalesceKey: `${pageKeyScope}:${coalesceKey}`,
+          idleMs: coalesceMs ?? DEFAULT_COALESCE_MS,
+        }),
       });
       const claimed = claimHeld(reply, label);
       if (claimed) {
@@ -247,7 +258,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       heldClaimRef.current = claimed && coalesceKey ? { paths, at: Date.now() } : null;
       await refresh();
     },
-    [projectId, refresh, own],
+    [projectId, refresh, own, pageKeyScope],
   );
 
   const step = useCallback(

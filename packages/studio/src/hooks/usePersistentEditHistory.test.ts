@@ -14,6 +14,10 @@ import {
   type StudioApiAdapter,
 } from "@hyperframes/studio-server";
 import { consumeStudioWriteToken } from "../utils/studioFileVersion";
+import {
+  beginStudioPendingEdit,
+  paintBackNewestStudioPendingEdit,
+} from "../utils/studioPendingEdits";
 import { usePersistentEditHistory } from "./usePersistentEditHistory";
 
 const cleanup: Array<() => unknown> = [];
@@ -86,6 +90,22 @@ it("an edit Studio saved is undone and redone by the project's history, with the
   const redone = await act(() => hook().redo({ readFile }));
   expect(redone).toMatchObject({ ok: true, label: "Redid: Moved Title" });
   expect(file()).toBe("B");
+});
+
+it("gives an edit that begins the history's claim count, so undo can tell its claims from older ones", async () => {
+  const { hook, save } = await studio();
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Moved Title",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  const saving = beginStudioPendingEdit(() => () => {});
+
+  expect(paintBackNewestStudioPendingEdit()?.claimsAtBegin).toBe(hook().claims());
+  expect(hook().claims()).toBe(1);
+  saving.settle();
 });
 
 it("undoes the edit claimed since the key, not a later edit the server took in first", async () => {
@@ -364,6 +384,31 @@ it("a drag's edits under one key undo as one step, even before the drag goes idl
     files: { "index.html": { previous: "C", restored: "A" } },
   });
   expect(file()).toBe("A");
+});
+
+it("a key one page holds does not join another page's edit under the same key", async () => {
+  const { hook, file, save, readFile } = await studio();
+  let reloaded!: ReturnType<typeof usePersistentEditHistory>;
+  function Reloaded() {
+    reloaded = usePersistentEditHistory({ projectId: "demo" });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => root.render(createElement(Reloaded)));
+  cleanup.push(() => act(() => root.unmount()));
+  const held = { label: "Moved Title", coalesceKey: "timeline-move:1", coalesceMs: Infinity };
+  save("B");
+  await act(() =>
+    hook().recordEdit({ ...held, files: { "index.html": { before: "A", after: "B" } } }),
+  );
+  save("C");
+  await act(() =>
+    reloaded.recordEdit({ ...held, files: { "index.html": { before: "B", after: "C" } } }),
+  );
+
+  await act(() => reloaded.undo({ readFile }));
+
+  expect(file()).toBe("B");
 });
 
 it("an undo before the history view shows a drag's held claim still waits on the files it wrote", async () => {

@@ -92,6 +92,7 @@ export interface DomEditSelection extends PatchTarget {
   computedStyles: Record<string, string>;
   textFields: DomEditTextField[];
   capabilities: DomEditCapabilities;
+  existsInSource?: boolean;
   gsapAnimations?: GsapAnimation[];
 }
 

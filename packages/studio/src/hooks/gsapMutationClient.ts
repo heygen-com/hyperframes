@@ -88,9 +88,11 @@ function readMutationError(value: unknown, fallback: string): string {
   return fallback;
 }
 
+type GsapMutationRoute = "gsap-mutations" | "gsap-mutations-batch";
+
 export function requestGsapMutation(
   projectId: string,
-  route: "gsap-mutations" | "gsap-mutations-batch",
+  route: GsapMutationRoute,
   filePath: string,
   body: unknown,
 ): Promise<Response> {
@@ -104,23 +106,49 @@ export function requestGsapMutation(
   );
 }
 
-export async function postGsapMutation(
+async function postOwnedGsapMutation(
+  route: GsapMutationRoute,
   projectId: string,
   filePath: string,
-  mutation: Record<string, unknown>,
+  body: Record<string, unknown>,
   fallback: string,
 ): Promise<GsapMutationStatus> {
   let response: Response;
   try {
-    response = await requestGsapMutation(projectId, "gsap-mutations", filePath, mutation);
+    response = await requestGsapMutation(projectId, route, filePath, body);
   } catch (error) {
     throw new GsapPreviewConvergenceError(`${fallback}: mutation outcome unknown`, {
       cause: error,
     });
   }
-  const body: unknown = await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new GsapPreviewConvergenceError(readMutationError(body, fallback));
+    throw new GsapPreviewConvergenceError(readMutationError(payload, fallback));
   }
-  return readMutationStatus(body);
+  return readMutationStatus(payload);
+}
+
+export function postGsapMutation(
+  projectId: string,
+  filePath: string,
+  mutation: Record<string, unknown>,
+  fallback: string,
+): Promise<GsapMutationStatus> {
+  return postOwnedGsapMutation("gsap-mutations", projectId, filePath, mutation, fallback);
+}
+
+/** Every mutation in one request: the file is parsed and written once, with one ownership pair. */
+export function postGsapMutations(
+  projectId: string,
+  filePath: string,
+  mutations: readonly Record<string, unknown>[],
+  fallback: string,
+): Promise<GsapMutationStatus> {
+  return postOwnedGsapMutation(
+    "gsap-mutations-batch",
+    projectId,
+    filePath,
+    { mutations },
+    fallback,
+  );
 }

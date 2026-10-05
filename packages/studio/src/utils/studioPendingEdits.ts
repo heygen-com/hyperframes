@@ -16,6 +16,7 @@ interface PendingEdit {
   landed: () => Promise<boolean>;
   redraws: Array<() => void>;
   showAgain: (() => void) | null;
+  claimsAtBegin: number;
 }
 
 export interface StudioEditInFlight {
@@ -27,6 +28,11 @@ export interface StudioEditInFlight {
 }
 
 const pendingEdits = new Map<Promise<unknown>, PendingEdit>();
+let historyClaims: () => number = () => 0;
+
+export function setStudioPendingEditClaimClock(read: (() => number) | null): void {
+  historyClaims = read ?? (() => 0);
+}
 const NOT_SAVED = () => Promise.resolve(false);
 let adopting: StudioEditInFlight | null = null;
 
@@ -87,7 +93,13 @@ export function trackStudioPendingEdit(
   if (!result) return undefined;
   const promise = Promise.resolve(result);
   if (adopting) return promise;
-  pendingEdits.set(promise, { revert: null, landed: NOT_SAVED, redraws: [], showAgain: null });
+  pendingEdits.set(promise, {
+    revert: null,
+    landed: NOT_SAVED,
+    redraws: [],
+    showAgain: null,
+    claimsAtBegin: historyClaims(),
+  });
   promise.then(
     () => pendingEdits.delete(promise),
     () => pendingEdits.delete(promise),
@@ -162,6 +174,7 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
 export function paintBackNewestStudioPendingEdit(): {
   showAgain: () => void;
   landed: () => Promise<boolean>;
+  claimsAtBegin: number;
 } | null {
   const newest = [...pendingEdits.values()].at(-1);
   const revert = newest?.revert;
@@ -174,6 +187,7 @@ export function paintBackNewestStudioPendingEdit(): {
       for (const redraw of newest.redraws.splice(0)) redraw();
     },
     landed: newest.landed,
+    claimsAtBegin: newest.claimsAtBegin,
   };
 }
 

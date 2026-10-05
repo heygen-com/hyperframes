@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../store/playerStore";
+import { batchElementUpdates } from "../store/batchElementUpdates";
 
 type UpdateElement = (key: string, updates: Partial<TimelineElement>) => void;
 type RevisionScope = "timing" | "membership";
@@ -45,9 +46,11 @@ export function rollbackLatestTimelineOptimisticGesture(
   gesture: ReadonlyMap<string, number>,
   rollbacks: ReadonlyArray<{ key: string; updates: Partial<TimelineElement> }>,
 ): void {
-  for (const rollback of rollbacks) {
-    if (isLatestTimelineOptimisticGesture(updateElement, gesture, rollback.key)) {
-      updateElement(rollback.key, rollback.updates);
+  batchElementUpdates(() => {
+    for (const rollback of rollbacks) {
+      if (isLatestTimelineOptimisticGesture(updateElement, gesture, rollback.key)) {
+        updateElement(rollback.key, rollback.updates);
+      }
     }
-  }
+  });
 }

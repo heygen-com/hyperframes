@@ -25,6 +25,8 @@ import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
+import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
+import { batchElementUpdates } from "../store/batchElementUpdates";
 
 type StartTrack = TimelineAtomicMoveUpdates;
 export interface TimelineMoveEdit extends TimelineAtomicMoveEdit {
@@ -47,14 +49,11 @@ export interface DragCommitDeps {
   /** Atomic multi-clip persist (single undo) for lane changes + track inserts.
    *  `coalesceKey`, when supplied, tags the resulting "Move timeline clips"
    *  history entry so it merges with the lane change's z-reorder entry (see the
-   *  lane-change branch below). `coalesceMs` widens that entry's fold window
-   *  (per-gesture-unique keys make an unbounded window safe) — required when a
-   *  server round-trip sits between the gesture's two records. */
+   *  lane-change branch below). */
   onMoveElements?: (
     edits: TimelineMoveEdit[],
     coalesceKey?: string,
     operation?: TimelineMoveOperation,
-    coalesceMs?: number,
   ) => Promise<void> | void;
   /**
    * The current multi-selection (store.selectedElementIds). When the dragged
@@ -121,7 +120,6 @@ export function persistMoveEdits(
   deps: DragCommitDeps,
   coalesceKey?: string,
   operation: TimelineMoveOperation = "timing",
-  coalesceMs?: number,
 ): Promise<boolean> {
   if (edits.length === 0) return Promise.resolve(true);
   edits = edits.map((e) => {
@@ -175,7 +173,9 @@ export function persistMoveEdits(
     }
     if (Object.keys(updates).length) updateElement(key, updates);
   };
-  for (const e of edits) applyEdit(e);
+  const applyEdits = (reassert = false) =>
+    batchElementUpdates(() => edits.forEach((e) => applyEdit(e, reassert)));
+  applyEdits();
   // The store above gets DISPLAY lanes; the file below gets the authored-space
   // track when one was resolved (see TimelineMoveEdit.persistTrack).
   const persistEdits = edits.map((e) =>
@@ -183,19 +183,8 @@ export function persistMoveEdits(
       ? e
       : { element: e.element, updates: { ...e.updates, track: e.persistTrack } },
   );
-  const persisted = onMoveElements
-    ? onMoveElements(persistEdits, coalesceKey, operation, coalesceMs)
-    : Promise.all(persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
-  return Promise.resolve(persisted).then(
-    () => {
-      // Runtime timeline messages can arrive while the save is in flight and
-      // restore the preview manifest's pre-gesture lane. Reassert the durable
-      // result after persistence, but only while this remains the latest
-      // optimistic gesture so an older save can never clobber a newer drag.
-      for (const e of edits) applyEdit(e, true);
-      return true;
-    },
-    (error) => {
+  const restorePrev = () =>
+    batchElementUpdates(() => {
       for (const p of prev) {
         const { audioGroup, ...timing } = p.updates;
         const updates: Partial<TimelineElement> = {};
@@ -208,10 +197,38 @@ export function persistMoveEdits(
           updates.audioGroup = audioGroup;
         if (Object.keys(updates).length) updateElement(p.key, updates);
       }
+    });
+  // Cmd+Z while the save is in flight shows the old lanes at once; the returned fn re-applies the move.
+  const saving = onMoveElements
+    ? beginStudioPendingEdit(() => {
+        restorePrev();
+        return () => applyEdits(true);
+      })
+    : null;
+  const start = () =>
+    onMoveElements
+      ? onMoveElements(persistEdits, coalesceKey, operation)
+      : Promise.all(
+          persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))),
+        );
+  const persisted = saving ? saving.adopt(start) : start();
+  const done = Promise.resolve(persisted).then(
+    () => {
+      // Runtime timeline messages can arrive while the save is in flight and
+      // restore the preview manifest's pre-gesture lane. Reassert the durable
+      // result after persistence, but only while this remains the latest
+      // optimistic gesture so an older save can never clobber a newer drag.
+      if (!saving?.reverted()) applyEdits(true);
+      return true;
+    },
+    (error) => {
+      if (!saving?.reverted()) restorePrev();
       console.error("[Timeline] Failed to persist clip edits", error);
       return false;
     },
   );
+  saving?.settle(done);
+  return done;
 }
 
 /**
@@ -481,12 +498,7 @@ function commitTrackInsert(
  * useCanvasZOrderTimelineMirror).
  *
  * `coalesceKey` MUST be the z persist's key (`z-reorder:<action>:<ids>:g<seq>`)
- * so editHistory folds the z write and this track write into ONE undo entry, and
- * `coalesceMs` MUST widen this record's fold window: the mirror only runs after
- * the z persist's server round-trip resolved, so under real network latency the
- * gap between the two records exceeds the reducer's 300ms default and the fold
- * would never happen live. The key is unique per gesture, so an unbounded
- * window can never merge distinct gestures.
+ * so editHistory folds the z write and this track write into ONE undo entry.
  *
  * Resolves `true` once the move persisted, `false` on rollback / refused insert.
  */
@@ -495,7 +507,6 @@ export function commitZMirrorLaneMove(
   move: NonNullable<ZMirrorLaneMove>,
   deps: DragCommitDeps,
   coalesceKey: string,
-  coalesceMs?: number,
 ): Promise<boolean> {
   if (move.kind === "move") {
     const edit: TimelineMoveEdit = {
@@ -504,14 +515,14 @@ export function commitZMirrorLaneMove(
       persistTrack: move.persistTrack,
     };
     return refreshAfterDurableLaneMove(
-      persistMoveEdits([edit], deps, coalesceKey, "lane-reorder", coalesceMs),
+      persistMoveEdits([edit], deps, coalesceKey, "lane-reorder"),
       deps,
     );
   }
   const built = buildTrackInsertEdits(element, element.start, move.insertRow, null, deps);
   if (!built || built.edits.length === 0) return Promise.resolve(false);
   return refreshAfterDurableLaneMove(
-    persistMoveEdits(built.edits, deps, coalesceKey, "track-insert", coalesceMs),
+    persistMoveEdits(built.edits, deps, coalesceKey, "track-insert"),
     deps,
   );
 }
