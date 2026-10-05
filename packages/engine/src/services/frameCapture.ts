@@ -2207,7 +2207,7 @@ function assertVfxIntact(session: CaptureSession): void {
   if (session.vfxFailure) throw new VfxFailureError(session.vfxFailure);
 }
 
-// The VFX runtime logs its errors under the script error label with a `vfx:` detail.
+// A `vfx:` detail is a chain that cannot paint, so every frame is wrong; `vfx-frame:` is one frame, a page error.
 function recordConsoleScriptError(session: CaptureSession, error: string | null): void {
   if (!error?.startsWith("runtime-error:vfx:")) {
     recordPageError(session, error);

@@ -224,10 +224,14 @@ describe("classifyPageError", () => {
       });
     logged("vfx: #host: unknown effect");
     logged("vfx: #host: WebGL context lost.");
+    logged("vfx-frame: #host: no paint arrived");
     logged("scene TypeError: x");
     expect(session.vfxFailure).toBe("runtime-error:vfx: #host: unknown effect");
     expect(session.warnings.map((warning) => warning.code)).toEqual(["vfx_failure"]);
-    expect(session.pageErrors).toEqual(["runtime-error:scene TypeError: x"]);
+    expect(session.pageErrors).toEqual([
+      "runtime-error:vfx-frame: #host: no paint arrived",
+      "runtime-error:scene TypeError: x",
+    ]);
   });
 
   it("refuses to capture another frame once a VFX chain has failed", async () => {

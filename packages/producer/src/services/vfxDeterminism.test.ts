@@ -686,6 +686,23 @@ describe("data-vfx-chain in the browser", () => {
     }
   }, 60_000);
 
+  it("paints the layer empty, not the previous frame again, once it shrinks to 0×0", async () => {
+    const page = await open(fixture(waveWarpChain({ height: 0, width: 93.4 })));
+    try {
+      expect(await seekAndResolve(page, 0)).toBe(true);
+      expect((await sample(page, [60])).left).toEqual([255, 0, 0, 255]);
+
+      await page.evaluate(() => {
+        (document.querySelector(".hf-vfx-in") as HTMLElement).style.width = "0px";
+      });
+      await seekAndResolve(page, 1 / 30);
+      expect((await sample(page, [60])).left).toEqual([0, 0, 0, 0]);
+      expect(pageErrors.get(page)).toEqual([expect.stringContaining("vfx-frame:")]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
   /**
    * `hyperframes snapshot` (and `check`/`compare`/`validate`/`layout`, and
    * Studio's thumbnail capture) seek through the same `renderSeek` the engine

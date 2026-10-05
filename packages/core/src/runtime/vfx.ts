@@ -212,6 +212,12 @@ function reportVfxError(message: string): void {
   console.error(VFX_ERROR_LABEL, `vfx: ${message}`);
 }
 
+/** One frame's capture failed; later frames may still paint, so the engine does not stop the render on it. */
+function reportVfxFrameError(message: string): void {
+  // eslint-disable-next-line no-console
+  console.error(VFX_ERROR_LABEL, `vfx-frame: ${message}`);
+}
+
 function compileShader(
   gl: WebGL2RenderingContext,
   type: number,
@@ -929,6 +935,18 @@ function resizeCaptureCanvas(src: VfxCaptureSource, size: { width: number; heigh
  * its OWN box, since it is a layer on the page and must paint at its own
  * size, not the host's.
  */
+function captureEmpty(
+  entry: VfxEntry,
+  src: VfxCaptureSource,
+  size: { width: number; height: number },
+  mode: CaptureMode,
+): true {
+  resizeCaptureCanvas(src, size);
+  src.ctx.clearRect(0, 0, size.width, size.height);
+  if (mode.upload) uploadCaptureTexture(entry.gl, src);
+  return true;
+}
+
 function captureSource(
   entry: VfxEntry,
   src: VfxCaptureSource,
@@ -944,28 +962,23 @@ function captureSource(
   // first. An empty `u_src2` is also the right answer — under Alpha the layer
   // it mattes disappears, under Alpha Inverted it passes, which is what After
   // Effects does with a matte that is not there yet.
-  if (!isPaintableSource(src)) {
-    resizeCaptureCanvas(src, size);
-    src.ctx.clearRect(0, 0, size.width, size.height);
-    if (mode.upload) uploadCaptureTexture(entry.gl, src);
-    return true;
-  }
+  if (!isPaintableSource(src)) return captureEmpty(entry, src, size, mode);
   // The one capture failure Chrome does NOT report: inside a `layoutsubtree`
   // canvas a child sized by `inset`/percentages measures 0×0, and
   // `drawElementImage` then succeeds and draws nothing at all — no throw, no
   // warning, a blank layer. Measured (vault `layoutsubtree-capture-rules`),
-  // so it is checked here and said out loud, once per source rather than once
-  // per frame.
+  // so it is said out loud once per source, and the frame paints from an empty
+  // capture rather than repeating the last one.
   if (deviceSize(src.inner) === null) {
     if (!src.emptyBoxReported) {
       src.emptyBoxReported = true;
-      reportVfxError(
+      reportVfxFrameError(
         `${describeHost(entry.host)}: the .hf-vfx-in wrapper measures 0×0, so its capture ` +
           `would be empty. Inside a layoutsubtree canvas an inset or percentage box has no ` +
           `size — the wrapper must state an explicit width and height in px.`,
       );
     }
-    return false;
+    return captureEmpty(entry, src, size, mode);
   }
   resizeCaptureCanvas(src, size);
   src.ctx.clearRect(0, 0, size.width, size.height);
@@ -978,7 +991,7 @@ function captureSource(
     // render. The authoritative attempt (preview paint, or `resolveVfxCapture`)
     // still owns the loud error contract.
     if (!quiet) {
-      reportVfxError(
+      reportVfxFrameError(
         `${describeHost(entry.host)}: drawElementImage failed: ${(err as Error).message} ` +
           `In Studio, enable chrome://flags/#canvas-draw-element.`,
       );
@@ -1200,7 +1213,7 @@ function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<"painted" | "timeo
 async function awaitSourcePaints(entry: VfxEntry, sources: VfxCaptureSource[]): Promise<boolean> {
   const outcomes = await Promise.all(sources.map((source) => awaitCanvasPaint(source.canvas)));
   if (!outcomes.includes("timeout")) return true;
-  reportVfxError(
+  reportVfxFrameError(
     `${describeHost(entry.host)}: no paint arrived within ${CAPTURE_PAINT_TIMEOUT_MS}ms, so ` +
       `this frame's capture was skipped (a BeginFrame-controlled compositor without a tick ` +
       `for this frame is a known cause).`,

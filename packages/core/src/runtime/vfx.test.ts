@@ -281,6 +281,7 @@ describe("vfx runtime", () => {
 
     expect(initVfx(document.body, 30)).toHaveLength(0);
     expect(String(errors[0]![1])).toMatch(/unknown effect type/);
+    expect(String(errors[0]![1]).startsWith("vfx: ")).toBe(true);
   });
 
   it("reports an unavailable WebGL2 context loudly and registers nothing", () => {
@@ -722,6 +723,7 @@ describe("vfx runtime — self capture", () => {
       expect(errors[0]![0]).toBe(LABEL);
       expect(String(errors[0]![1])).toMatch(/#cap-stalled/);
       expect(String(errors[0]![1])).toMatch(/no paint arrived within 2000ms/);
+      expect(String(errors[0]![1]).startsWith("vfx-frame: ")).toBe(true);
       expect(String(errors[0]![1])).toMatch(/BeginFrame/);
     } finally {
       vi.useRealTimers();
@@ -839,6 +841,8 @@ describe("vfx runtime — backdrop capture", () => {
     expect(errors).toHaveLength(1);
     expect(String(errors[0]![1])).toMatch(/measures 0×0/);
     expect(String(errors[0]![1])).toMatch(/explicit width and height in px/);
+    // One frame's empty capture: later frames may paint, so the engine must not stop the render on it.
+    expect(String(errors[0]![1]).startsWith("vfx-frame: ")).toBe(true);
   });
 
   it("refuses a .hf-vfx-in that is not the capture canvas's immediate child", () => {

@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  captureFrameToBuffer,
   closeCaptureSession,
   createCaptureSession,
   initializeSession,
@@ -63,13 +64,20 @@ interface SessionErrors {
   codes: string[];
   scriptLoadFailures: string[];
   pageErrors: string[];
+  vfxFailure?: string;
 }
 
 async function timelineWarningCodes(files: Record<string, string>): Promise<string[]> {
   return (await sessionErrors(files)).codes;
 }
 
-async function sessionErrors(files: Record<string, string>): Promise<SessionErrors> {
+// Console errors can land after the session is ready, so a case that expects one waits for it.
+// VFX layers first paint when a frame is captured, so a VFX case captures `frames` first.
+async function sessionErrors(
+  files: Record<string, string>,
+  expectedPageError?: string,
+  frames = 0,
+): Promise<SessionErrors> {
   const projectDir = mkdtempSync(join(root, "case-"));
   const workDir = mkdtempSync(join(root, "work-"));
   for (const [name, body] of Object.entries(files)) writeFileSync(join(projectDir, name), body);
@@ -94,12 +102,21 @@ async function sessionErrors(files: Record<string, string>): Promise<SessionErro
   );
   try {
     await initializeSession(session);
+    for (let frame = 0; frame < frames; frame++)
+      await captureFrameToBuffer(session, frame, frame / 30);
+    if (expectedPageError) {
+      await vi.waitFor(() => expect(session.pageErrors.join("\n")).toContain(expectedPageError), {
+        timeout: 10_000,
+        interval: 50,
+      });
+    }
     return {
       codes: session.warnings
         .map((warning) => warning.code)
         .filter((code) => code.startsWith("sub_")),
       scriptLoadFailures: session.scriptLoadFailures,
       pageErrors: session.pageErrors,
+      vfxFailure: session.vfxFailure,
     };
   } finally {
     await closeCaptureSession(session).catch(() => {});
@@ -108,13 +125,13 @@ async function sessionErrors(files: Record<string, string>): Promise<SessionErro
 }
 
 // A CSS-only page (nothing waits on a timeline) whose one layer runs a VFX chain.
-const vfxComposition = (chain: string) => `<!doctype html>
+const vfxComposition = (chain: string, innerStyle = "") => `<!doctype html>
 <html><head><style>
   #host, #host > canvas, .hf-vfx-in { position: absolute; left: 0; top: 0; width: 160px; height: 120px; }
 </style></head><body style="margin:0">
   <div data-composition-id="main" data-start="0" data-duration="1" data-width="160" data-height="120" data-no-timeline>
     <div id="host" class="clip" data-start="0" data-duration="1" data-vfx-chain='${chain}'>
-      <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in"><div style="width:80px;height:120px;background:red"></div></div></canvas>
+      <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in" style="${innerStyle}"><div style="width:80px;height:120px;background:red"></div></div></canvas>
       <canvas class="hf-vfx-out"></canvas>
     </div>
   </div>
@@ -129,18 +146,20 @@ describe("a failed VFX chain", () => {
     await expect(timelineWarningCodes(files)).rejects.toBeInstanceOf(VfxFailureError);
   }, 30_000);
 
+  const warp = { waveType: 1, direction: 0, speed: 0, pinning: 1, phase: 0, height: 30, width: 60 };
+
   it("leaves a working chain alone", async () => {
-    const warp = {
-      waveType: 1,
-      direction: 0,
-      speed: 0,
-      pinning: 1,
-      phase: 0,
-      height: 30,
-      width: 60,
-    };
     const files = { "index.html": vfxComposition(vfxNode("wave-warp", warp)) };
     expect(await timelineWarningCodes(files)).toEqual([]);
+  }, 30_000);
+
+  // A layer animated in from zero width is empty on its first frame, which is correct; later frames paint.
+  it("keeps one frame's empty capture a page error, not a stop", async () => {
+    const files = { "index.html": vfxComposition(vfxNode("wave-warp", warp), "width:0") };
+    const errors = await sessionErrors(files, "vfx-frame:", 2);
+    expect(errors.codes).toEqual([]);
+    expect(errors.vfxFailure).toBeUndefined();
+    expect(errors.pageErrors).toEqual([expect.stringContaining("vfx-frame:")]);
   }, 30_000);
 });
 
@@ -215,7 +234,7 @@ describe("which uncaught errors fail a timeline that never registers", () => {
       ),
       "scene.html": `<template><div data-composition-id="scene" data-width="160" data-height="120"><script>${register("scene")} null.optionalBadge;</script></div></template>`,
     };
-    const errors = await sessionErrors(files);
+    const errors = await sessionErrors(files, "optionalBadge");
     expect(errors.codes).toEqual([]);
     expect(errors.scriptLoadFailures).toEqual([]);
     expect(errors.pageErrors).toEqual([expect.stringContaining("optionalBadge")]);
