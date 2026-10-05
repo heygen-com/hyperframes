@@ -1549,7 +1549,7 @@ export function updateAnimationInScript(
     return script;
   }
   const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
+  if (!target || (updates.properties && target.animation.hasUnresolvedKeyframes)) return script;
   applyUpdatesToCall(target.call, updates);
   return recast.print(parsed.ast).code;
 }

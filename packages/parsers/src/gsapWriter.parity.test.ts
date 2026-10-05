@@ -18,6 +18,7 @@ import {
   materializeKeyframesInScript as materializeRecast,
   splitIntoPropertyGroups as splitGroupsRecast,
   splitAnimationsInScript as splitAnimsRecast,
+  updateAnimationInScript as updateAnimRecast,
   setArcPathInScript as setArcRecast,
   updateArcSegmentInScript as updateArcSegmentRecast,
   removeArcPathFromScript as removeArcRecast,
@@ -652,6 +653,12 @@ tl.to("#a", { opacity: 1, x: 5, duration: 1, keyframes: ${keyframes} }, 0);`;
       expect(write()).toBe(script);
     });
   }
+
+  it("recast property edit leaves keyframes from a call unchanged", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { x: 5, duration: 1, keyframes: steps() }, 0);`;
+    expect(updateAnimRecast(script, acornId(script), { properties: { x: 9 } })).toBe(script);
+  });
 });
 
 // ─── arc path parity ──────────────────────────────────────────────────────────
