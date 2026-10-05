@@ -10,6 +10,7 @@ import { mountReactHarness, withInlineLayoutBox } from "./domSelectionTestHarnes
 import { writeSizeWithCrop } from "../components/editor/cropResize";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { trackKeyframeCommit } from "../utils/keyframeUsage";
+import { xAtTime } from "./gsapPlaybackTestHarness";
 import type { CommitMutationOptions, CommitMutation } from "./gsapScriptCommitTypes";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
@@ -210,7 +211,7 @@ describe("useAnimatedPropertyCommit — extending a keyframed tween to the playh
     usePlayerStore.setState({ autoKeyframeEnabled: true, currentTime: 3, activeKeyframePct: null });
     const eased = {
       ...keyframedAnim,
-      ease: "back.out",
+      ease: "power2.inOut",
       keyframes: {
         easeEach: "power2.out",
         keyframes: [
@@ -230,8 +231,10 @@ describe("useAnimatedPropertyCommit — extending a keyframed tween to the playh
     act(() => root.unmount());
 
     const replace = mutations.find((m) => m.type === "replace-with-keyframes")!;
-    expect(replace).toMatchObject({ ease: "back.out", easeEach: "power2.out" });
+    expect(replace).toMatchObject({ ease: "power2.inOut", easeEach: "power2.out" });
     expect((replace.keyframes as Array<{ ease?: string }>)[0]!.ease).toBe("expo.in");
+    // The old end keyframe still plays at 2 s once the tween runs to the playhead at 3 s.
+    expect(xAtTime(replace as unknown as Parameters<typeof xAtTime>[0], 2)).toBeCloseTo(100, 0);
   });
 });
 
