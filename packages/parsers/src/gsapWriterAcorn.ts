@@ -2528,8 +2528,8 @@ function computeForwardBaselines(
     const dur = anim.duration ?? 0;
     const animEnd = pos + dur;
 
-    if (anim.keyframes) {
-      const kfs = anim.keyframes.keyframes;
+    if (authorsKeyframes(anim)) {
+      const kfs = anim.keyframes?.keyframes ?? [];
       if (pos >= splitTime) {
         // Moves wholly to the new element — contributes nothing to the baseline.
       } else if (animEnd > splitTime) {

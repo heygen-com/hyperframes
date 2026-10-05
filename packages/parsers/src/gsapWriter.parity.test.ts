@@ -665,6 +665,26 @@ tl.to("#a", { duration: 1, keyframes: ${keyframes} }, 0);`;
     },
   );
 
+  it.each([
+    ["recast", splitAnimsRecast],
+    ["acorn", splitAnimsAcorn],
+  ] as const)("%s: a split across unreadable keyframes writes no start value", (_writer, split) => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { opacity: 0.5, duration: 2, keyframes: steps() }, 0);`;
+    const result = split(script, { ...opts, splitTime: 1 });
+    expect(result.script).not.toContain('"#a-2"');
+    expect(result.skippedSelectors).toContain("#a (keyframes spanning split)");
+  });
+
+  it("treats keyframes with a computed percentage key as unreadable", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, keyframes: { [k]: { x: 10 }, "100%": { x: 50 } } }, 0);`;
+    const id = acornId(script);
+    expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+    expect(updateAnimAcorn(script, id, { properties: { opacity: 0.5 } })).toBe(script);
+    expect(removeKeyframeAcorn(script, id, 100)).toBe(script);
+  });
+
   it("recast property edit leaves keyframes from a call unchanged", () => {
     const script = `const tl = gsap.timeline({ paused: true });
 tl.to("#a", { x: 5, duration: 1, keyframes: steps() }, 0);`;

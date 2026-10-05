@@ -1182,6 +1182,9 @@ function parseKeyframesNode(
   if (node.type !== "ObjectExpression") return undefined;
 
   const props = node.properties ?? [];
+  const unreadableKey = (p: any) =>
+    p.type === "SpreadElement" || (p.computed && p.key?.type !== "Literal");
+  if (props.some(unreadableKey)) return undefined;
   let hasPercentageKey = false;
   let hasArrayValue = false;
 
