@@ -615,14 +615,24 @@ describe("the first resize of a keyframed element under auto-record", () => {
     expect(selection.element.hasAttribute("data-hf-studio-box-size")).toBe(false);
   });
 
-  it("hands the size to CSS with auto-record off", async () => {
-    usePlayerStore.setState({ autoKeyframeEnabled: false });
+  const fadeKeys = {
+    ...positionKeys,
+    id: "#title-to-1-visual",
+    propertyGroup: "visual",
+    keyframes: { keyframes: [{ percentage: 0, properties: { opacity: 0 } }] },
+  } as unknown as GsapAnimation;
+
+  it.each([
+    ["with auto-record off", positionKeys, false],
+    ["on an element whose only keyframes fade it", fadeKeys, true],
+  ])("hands the size to CSS %s", async (_, keyed, autoKeyframeEnabled) => {
+    usePlayerStore.setState({ autoKeyframeEnabled });
     const commitMutation = vi.fn();
     try {
       const handled = await tryGsapResizeIntercept(
         titleSelection(),
         { width: 424, height: 237 },
-        [positionKeys],
+        [keyed],
         null,
         commitMutation,
       );

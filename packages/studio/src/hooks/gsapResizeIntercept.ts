@@ -51,6 +51,7 @@ import { singleKeyTweenMutation } from "./useEnableKeyframes";
 
 const SIZE_PROPS = new Set(["width", "height"]);
 const POSITION_XY = new Set(["x", "y"]);
+const MOVED_OR_SIZED = new Set(["x", "y", "xPercent", "yPercent", "width", "height"]);
 
 /**
  * The element's box before the resize draft ran, in CSS pixels.
@@ -142,7 +143,9 @@ function firstSizeKey(
   animations: GsapAnimation[],
 ): Record<string, unknown> | null {
   const { autoKeyframeEnabled, currentTime } = usePlayerStore.getState();
-  const keyframed = animations.some((a) => a.keyframes);
+  const keyframed = animations.some(
+    (a) => a.keyframes && animationWritesAnyProperty(a, MOVED_OR_SIZED),
+  );
   if (resizeGroup !== "size" || !autoKeyframeEnabled || !keyframed) return null;
   return singleKeyTweenMutation(selection, size, currentTime);
 }
