@@ -62,8 +62,11 @@ function preview(script: string) {
 }
 
 beforeEach(() => {
-  for (const id of ["a", "b", "c"])
-    document.body.appendChild(document.createElement("div")).id = id;
+  for (const id of ["a", "b", "c"]) {
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = id;
+    element.className = "item";
+  }
 });
 
 afterEach(() => {
@@ -87,6 +90,139 @@ async function dropInto(iframe: HTMLIFrameElement, after: string) {
   });
   return reloadPreview;
 }
+
+const script = (...lines: string[]) =>
+  ["var tl = gsap.timeline({ paused: true });", ...lines, 'window.__timelines["t"] = tl;'].join(
+    "\n",
+  );
+
+const shownNow = () =>
+  ["#a", "#b", "#c"].map((id) =>
+    ["x", "y", "opacity"].map((p) => round(Number(gsap.getProperty(id, p)))),
+  );
+
+it.each([
+  {
+    name: "a tween with no written length",
+    before: script('tl.to("#a", { x: 100 }, 0);', 'tl.to("#b", { x: 50, duration: 1 }, 1);'),
+    after: script('tl.to("#a", { x: 100 }, 0);', 'tl.to("#b", { x: 50, duration: 1 }, 2);'),
+  },
+  {
+    name: "a step list with no lengths",
+    before: script(
+      'tl.to("#a", { keyframes: [{ x: 10 }, { x: 20 }] }, 0);',
+      'tl.to("#b", { x: 5, duration: 1 }, 1);',
+    ),
+    after: script(
+      'tl.to("#a", { keyframes: [{ x: 10 }, { x: 20 }] }, 0);',
+      'tl.to("#b", { x: 5, duration: 1 }, 2);',
+    ),
+  },
+  {
+    name: "a stagger beside the moved tween",
+    before: script(
+      'tl.to(".item", { x: 100, duration: 1, stagger: 0.2 }, 0);',
+      'tl.to("#a", { y: 5, duration: 1 }, 2);',
+    ),
+    after: script(
+      'tl.to(".item", { x: 100, duration: 1, stagger: 0.2 }, 0);',
+      'tl.to("#a", { y: 5, duration: 1 }, 3);',
+    ),
+  },
+  {
+    name: "a repeat before an implicit position",
+    before: script(
+      'tl.to("#a", { x: 1, duration: 1, repeat: 1 }, 0);',
+      'tl.to("#b", { x: 1, duration: 1 });',
+    ),
+    after: script(
+      'tl.to("#a", { x: 1, duration: 1, repeat: 1 }, 0.5);',
+      'tl.to("#b", { x: 1, duration: 1 });',
+    ),
+  },
+  {
+    name: "a delay before a '<' position",
+    before: script(
+      'tl.to("#a", { x: 1, duration: 1, delay: 0.5 }, 0);',
+      'tl.to("#b", { x: 1, duration: 1 }, "<");',
+    ),
+    after: script(
+      'tl.to("#a", { x: 1, duration: 1, delay: 0.5 }, 1);',
+      'tl.to("#b", { x: 1, duration: 1 }, "<");',
+    ),
+  },
+  {
+    name: "two tweens on one element whose live order differs from the script's",
+    before: script(
+      'tl.to("#a", { x: 100, duration: 1, delay: 1 }, 0);',
+      'tl.to("#a", { y: 50, duration: 1 }, 0.5);',
+    ),
+    after: script(
+      'tl.to("#a", { x: 100, duration: 1, delay: 1 }, 0);',
+      'tl.to("#a", { y: 50, duration: 1 }, 1.5);',
+    ),
+  },
+  {
+    name: "two tweens on one element that swap order",
+    before: script(
+      'tl.to("#a", { x: 100, duration: 1 }, 0);',
+      'tl.to("#a", { x: 200, duration: 1 }, 2);',
+    ),
+    after: script(
+      'tl.to("#a", { x: 100, duration: 1 }, 3);',
+      'tl.to("#a", { x: 200, duration: 1 }, 2);',
+    ),
+  },
+  {
+    name: "a call in the timeline",
+    before: script(
+      'tl.to("#a", { x: 1, duration: 1 }, 0);',
+      "tl.call(() => {}, [], 1);",
+      'tl.to("#b", { x: 1, duration: 1 }, 2);',
+    ),
+    after: script(
+      'tl.to("#a", { x: 1, duration: 1 }, 0);',
+      "tl.call(() => {}, [], 1);",
+      'tl.to("#b", { x: 1, duration: 1 }, 3);',
+    ),
+  },
+  {
+    name: "a counter tween on a plain object",
+    before: script(
+      "var counter = { n: 0 };",
+      "tl.to(counter, { n: 10, duration: 1 }, 0);",
+      'tl.to("#b", { x: 1, duration: 1 }, 1);',
+    ),
+    after: script(
+      "var counter = { n: 0 };",
+      "tl.to(counter, { n: 10, duration: 1 }, 0);",
+      'tl.to("#b", { x: 1, duration: 1 }, 2);',
+    ),
+  },
+  {
+    name: "a paused playhead past the moved tween",
+    before: script('tl.to("#a", { x: 100, duration: 1 }, 0.5);'),
+    after: script('tl.to("#a", { x: 100, duration: 1 }, 1.5);'),
+    at: 2,
+  },
+])(
+  "after a drop over $name, the live preview equals a fresh load or the script re-runs",
+  async ({ before, after, at = 0 }) => {
+    const error = vi.spyOn(console, "error");
+    const live = preview(before);
+    live.timeline.seek(at);
+    const reloadPreview = await dropInto(live.iframe, after);
+    expect(error).not.toHaveBeenCalled();
+    if (reloadPreview.mock.calls.length > 0) return;
+    const shown = shownNow();
+    const got = observe(live.timeline);
+    live.timeline.revert();
+    const fresh = play(after).timeline;
+    fresh.seek(at);
+    expect(shown).toEqual(shownNow());
+    expect(got).toEqual(observe(fresh));
+  },
+);
 
 it("leaves the live preview equal to a fresh load of the saved script after a move and a resize", () => {
   const { script: after } = retimeClipTweensInScript(
@@ -113,7 +249,7 @@ it("leaves the live preview equal to a fresh load of the saved script after a mo
   expect(plan.kind).toBe("retime");
   if (plan.kind !== "retime") return;
   expect(plan.tweens.filter((t) => t.moved).map((t) => t.selector)).toEqual(["#a", "#c"]);
-  expect(applyLiveRetime(live.iframe, plan)).toBeNull();
+  expect(applyLiveRetime(live.iframe, plan)).toBe(true);
 
   expect(observe(live.timeline)).toEqual(want);
   expect(live.tag.textContent).toBe(after);
@@ -132,7 +268,7 @@ it("re-runs the script when the edit adds a tween", () => {
   expect(planLiveRetime(BEFORE, after).kind).toBe("rerun");
 });
 
-it("reports, without moving anything, a live timeline that does not pair with its script", () => {
+it("leaves a live timeline that does not pair with its script untouched", () => {
   // The preview runs a script with one more tween than the text it claims to be running.
   const ran = BEFORE.replace(
     "window.__timelines",
@@ -150,7 +286,7 @@ it("reports, without moving anything, a live timeline that does not pair with it
   if (plan.kind !== "retime") return;
   const starts = live.timeline.getChildren(false, true, false).map((t) => t.startTime());
 
-  expect(applyLiveRetime(live.iframe, plan)).toBe("5 live tweens for 4 in the script");
+  expect(applyLiveRetime(live.iframe, plan)).toBe(false);
   expect(live.timeline.getChildren(false, true, false).map((t) => t.startTime())).toEqual(starts);
   expect(live.tag.textContent).toBe(BEFORE);
 });
@@ -166,22 +302,6 @@ it("syncs a timeline move by moving the live tweens and rebinding, without re-ru
   live.timeline.revert();
   expect(got).toEqual(observe(play(after).timeline));
   expect(document.querySelectorAll("script")).toHaveLength(1);
-});
-
-it("logs a timing edit whose live tweens do not pair, naming why", async () => {
-  const ran = BEFORE.replace(
-    "window.__timelines",
-    'tl.to("#b", { x: 5, duration: 1 }, 0);\nwindow.__timelines',
-  );
-  const live = preview(ran);
-  live.tag.textContent = BEFORE;
-  const error = vi.spyOn(console, "error").mockImplementation(() => {});
-
-  await dropInto(live.iframe, moveA());
-
-  expect(error).toHaveBeenCalledWith(
-    "[timeline] could not move the live tweens for a timing edit: 5 live tweens for 4 in the script",
-  );
 });
 
 it("pairs by start time, so a second move after a reorder still lands on the right tweens", async () => {

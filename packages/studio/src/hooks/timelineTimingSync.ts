@@ -31,7 +31,6 @@ import {
 } from "../utils/studioFileMutationCoordinator";
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { applyLiveRetime, planLiveRetimeFromPreview } from "../utils/gsapLiveRetime";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
@@ -91,14 +90,7 @@ function movedLiveTweens(
   reloadPreview: () => void,
 ): boolean {
   const plan = planLiveRetimeFromPreview(iframe, scriptText);
-  if (plan.kind !== "retime") return false;
-  const unpaired = applyLiveRetime(iframe, plan);
-  if (unpaired) {
-    // A timing-only edit always pairs with the timeline that script built; not pairing is a bug.
-    console.error(`[timeline] could not move the live tweens for a timing edit: ${unpaired}`);
-    trackStudioEvent("timeline_live_retime_unpaired", { reason: unpaired });
-    return false;
-  }
+  if (plan.kind !== "retime" || !applyLiveRetime(iframe, plan)) return false;
   if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
   return true;
 }
