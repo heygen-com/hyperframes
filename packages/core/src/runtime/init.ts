@@ -154,15 +154,6 @@ import { audibleVideoNeedsWebAudio, isAudibleVideoElement } from "../audibleVide
  * composition author can find the partial timeline.
  */
 let warnedTimelineMissingPause = false;
-/** A timeline the runtime already padded is padded again from scratch, as a fresh load pads it. */
-function dropRuntimeFillers(timeline: RuntimeTimelineLike): void {
-  const removable = timeline as RuntimeTimelineLike & { remove?: (child: unknown) => unknown };
-  if (typeof removable.remove !== "function") return;
-  for (const child of timeline.getChildren?.(false, true, false) ?? []) {
-    if (child.data === RUNTIME_FILLER) removable.remove(child);
-  }
-}
-
 function pauseTimelineIfPossible(tl: RuntimeTimelineLike | null | undefined): void {
   if (!tl) return;
   if (typeof tl.pause !== "function") {
@@ -176,6 +167,15 @@ function pauseTimelineIfPossible(tl: RuntimeTimelineLike | null | undefined): vo
     tl.pause();
   } catch (err) {
     swallow("runtime.timeline.pause", err);
+  }
+}
+
+/** A timeline the runtime already padded is padded again from scratch, as a fresh load pads it. */
+function dropRuntimeFillers(timeline: RuntimeTimelineLike): void {
+  const removable = timeline as RuntimeTimelineLike & { remove?: (child: unknown) => unknown };
+  if (typeof removable.remove !== "function") return;
+  for (const child of timeline.getChildren?.(false, true, false) ?? []) {
+    if (child.data === RUNTIME_FILLER) removable.remove(child);
   }
 }
 

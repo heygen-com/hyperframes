@@ -1,5 +1,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
+import { hasExplicitTime } from "@hyperframes/parsers/gsap-writer-acorn";
 import { RUNTIME_FILLER } from "@hyperframes/core/runtime/protocol";
 import { findGsapScriptElements, scriptsRegistering, timelineKeys } from "./gsapSoftReload";
 
@@ -7,7 +8,7 @@ interface TweenTiming {
   selector: string;
   start: number;
   duration: number;
-  was: number;
+  wasStart: number;
   wasDuration: number;
   moved: boolean;
   /** Its place in the script, which is the order a fresh run adds it to the timeline. */
@@ -33,17 +34,11 @@ function untimedShape(animation: GsapAnimation): string {
 const onTimeline = (animation: GsapAnimation) => !animation.global;
 
 const placedAlone = (animation: GsapAnimation) =>
-  typeof animation.position === "number" &&
-  !animation.implicitPosition &&
-  typeof animation.resolvedStart === "number";
+  hasExplicitTime(animation) && typeof animation.resolvedStart === "number";
 
-/** NaN when only GSAP knows it: an unwritten length takes `gsap.defaults`, which a script may change. */
+/** Undefined when only GSAP knows it: an unwritten length takes `gsap.defaults`, which a script may change. */
 const lengthOf = (animation: GsapAnimation) =>
-  animation.method === "set"
-    ? 0
-    : animation.durationUnresolved
-      ? Number.NaN
-      : (animation.duration ?? Number.NaN);
+  animation.method === "set" ? 0 : animation.durationUnresolved ? undefined : animation.duration;
 
 /** Decides, from the two scripts alone, whether a saved edit moved tweens and nothing else. */
 export function planLiveRetime(before: string, after: string): LiveRetimePlan {
@@ -60,18 +55,19 @@ export function planLiveRetime(before: string, after: string): LiveRetimePlan {
     if (!placedAlone(next) || !placedAlone(prev)) return RERUN;
     const duration = lengthOf(next);
     const wasDuration = lengthOf(prev);
+    if (duration === undefined || wasDuration === undefined) return RERUN;
     tweens.push({
       selector: next.targetSelector,
       start: next.resolvedStart!,
       duration,
-      was: prev.resolvedStart!,
+      wasStart: prev.resolvedStart!,
       wasDuration,
-      moved: next.resolvedStart !== prev.resolvedStart || !Object.is(duration, wasDuration),
+      moved: next.resolvedStart !== prev.resolvedStart || duration !== wasDuration,
       source: index,
     });
   }
   // A GSAP timeline keeps its children sorted by start, an equal start after the earlier one: pair in that order.
-  tweens.sort((x, y) => x.was - y.was || x.source - y.source);
+  tweens.sort((x, y) => x.wasStart - y.wasStart || x.source - y.source);
   return { kind: "retime", key: keys[0]!, after, tweens };
 }
 
@@ -115,7 +111,7 @@ const targetsMatch = (tween: LiveTween, selector: string) => {
   try {
     return targets.length > 0 && targets.every((t) => (t as Element).matches?.(selector) === true);
   } catch {
-    return false; // not a selector the DOM can read
+    return false;
   }
 };
 
@@ -130,27 +126,22 @@ function pairedLiveTweens(timeline: LiveTimeline, plan: LiveRetime): LiveTween[]
     const live = children[i]!;
     return (
       targetsMatch(live, t.selector) &&
-      same(live.startTime() - live.delay(), t.was) &&
+      same(live.startTime() - live.delay(), t.wasStart) &&
       same(live.duration(), t.wasDuration)
     );
   });
   return paired ? children : null;
 }
 
-/** Tweens on one element that trade places would play from start values recorded in the old order. */
+/** Tweens on one element that trade places (`plan.tweens` is the old order) play from stale start values. */
 function swapsOrderOnAnElement(plan: LiveRetime, children: LiveTween[]): boolean {
-  const targets = children.map((tween) => new Set(tween.targets?.() ?? []));
-  const before = (a: TweenTiming, b: TweenTiming) =>
-    Math.sign(a.was - b.was || a.source - b.source);
-  const after = (a: TweenTiming, b: TweenTiming) =>
-    Math.sign(a.start - b.start || a.source - b.source);
+  const sharesTarget = (i: number, j: number) => {
+    const targets = new Set(children[j]!.targets?.() ?? []);
+    return (children[i]!.targets?.() ?? []).some((target) => targets.has(target));
+  };
   return plan.tweens.some((a, i) =>
     plan.tweens.some(
-      (b, j) =>
-        j > i &&
-        (a.moved || b.moved) &&
-        before(a, b) !== after(a, b) &&
-        [...targets[i]!].some((target) => targets[j]!.has(target)),
+      (b, j) => j > i && (a.start - b.start || a.source - b.source) > 0 && sharesTarget(i, j),
     ),
   );
 }
@@ -165,8 +156,9 @@ export function applyLiveRetime(iframe: HTMLIFrameElement | null, plan: LiveReti
   if (typeof timeline?.getChildren !== "function") return false;
   // Paired before anything moves: moving a tween re-sorts the timeline's children.
   const children = pairedLiveTweens(timeline, plan);
-  if (!children || swapsOrderOnAnElement(plan, children)) return false;
+  if (!children) return false;
   if (plan.tweens.some((t) => t.moved)) {
+    if (swapsOrderOnAnElement(plan, children)) return false;
     // Re-added in script order: GSAP orders equal starts by when they were added, as a fresh run does.
     const bySource = plan.tweens
       .map((t, i) => ({ ...t, tween: children[i]! }))

@@ -36,16 +36,18 @@ function observe(timeline: gsap.core.Timeline) {
     .map((t) => [round(t.startTime()), round(t.duration())]);
   const shown = SAMPLES.map((at) => {
     timeline.seek(at);
-    return ["#a", "#b", "#c"].map((id) => [
-      round(Number(gsap.getProperty(id, "x"))),
-      round(Number(gsap.getProperty(id, "y"))),
-      round(Number(gsap.getProperty(id, "opacity"))),
-    ]);
+    return shownNow();
   });
   return { tweens, length: round(timeline.duration()), shown };
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
+
+/** What every element shows now. */
+const shownNow = () =>
+  ["#a", "#b", "#c"].map((id) =>
+    ["x", "y", "opacity"].map((p) => round(Number(gsap.getProperty(id, p)))),
+  );
 
 /** A preview iframe whose live script is `script`, built and bound. */
 function preview(script: string) {
@@ -94,11 +96,6 @@ async function dropInto(iframe: HTMLIFrameElement, after: string) {
 const script = (...lines: string[]) =>
   ["var tl = gsap.timeline({ paused: true });", ...lines, 'window.__timelines["t"] = tl;'].join(
     "\n",
-  );
-
-const shownNow = () =>
-  ["#a", "#b", "#c"].map((id) =>
-    ["x", "y", "opacity"].map((p) => round(Number(gsap.getProperty(id, p)))),
   );
 
 it.each([
