@@ -41,6 +41,24 @@ describe("pollSubCompositionTimelines fail-fast", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
   });
 
+  it("stops at once when the caller says so, without waiting out the timeout", async () => {
+    const page = makeMockPage((expr) =>
+      expr.includes("__hfForceTimelineRebind") ? undefined : false,
+    );
+    const shouldStop = vi.fn(() => true);
+    const outcome = await pollSubCompositionTimelines(
+      page,
+      60_000,
+      10,
+      () => [],
+      undefined,
+      undefined,
+      shouldStop,
+    );
+    expect(outcome).toBe("timeout");
+    expect(shouldStop).toHaveBeenCalledTimes(1);
+  });
+
   it("waits the full timeout when timelines are missing but no script failed", async () => {
     const page = makeMockPage(() => false);
     const outcome = await pollSubCompositionTimelines(page, 120, 10, () => []);

@@ -3,7 +3,12 @@ import { createServer, type Server } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeCaptureSession, createCaptureSession, initializeSession } from "@hyperframes/engine";
+import {
+  closeCaptureSession,
+  createCaptureSession,
+  initializeSession,
+  VfxFailureError,
+} from "@hyperframes/engine";
 import { createFileServer } from "./fileServer.js";
 import { compileForRender } from "./htmlCompiler.js";
 import { writeCompiledArtifacts } from "./render/shared.js";
@@ -54,7 +59,17 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
+interface SessionErrors {
+  codes: string[];
+  scriptLoadFailures: string[];
+  pageErrors: string[];
+}
+
 async function timelineWarningCodes(files: Record<string, string>): Promise<string[]> {
+  return (await sessionErrors(files)).codes;
+}
+
+async function sessionErrors(files: Record<string, string>): Promise<SessionErrors> {
   const projectDir = mkdtempSync(join(root, "case-"));
   const workDir = mkdtempSync(join(root, "work-"));
   for (const [name, body] of Object.entries(files)) writeFileSync(join(projectDir, name), body);
@@ -79,14 +94,55 @@ async function timelineWarningCodes(files: Record<string, string>): Promise<stri
   );
   try {
     await initializeSession(session);
-    return session.warnings
-      .map((warning) => warning.code)
-      .filter((code) => code.startsWith("sub_"));
+    return {
+      codes: session.warnings
+        .map((warning) => warning.code)
+        .filter((code) => code.startsWith("sub_")),
+      scriptLoadFailures: session.scriptLoadFailures,
+      pageErrors: session.pageErrors,
+    };
   } finally {
     await closeCaptureSession(session).catch(() => {});
     server.close();
   }
 }
+
+// A CSS-only page (nothing waits on a timeline) whose one layer runs a VFX chain.
+const vfxComposition = (chain: string) => `<!doctype html>
+<html><head><style>
+  #host, #host > canvas, .hf-vfx-in { position: absolute; left: 0; top: 0; width: 160px; height: 120px; }
+</style></head><body style="margin:0">
+  <div data-composition-id="main" data-start="0" data-duration="1" data-width="160" data-height="120" data-no-timeline>
+    <div id="host" class="clip" data-start="0" data-duration="1" data-vfx-chain='${chain}'>
+      <canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in"><div style="width:80px;height:120px;background:red"></div></div></canvas>
+      <canvas class="hf-vfx-out"></canvas>
+    </div>
+  </div>
+</body></html>`;
+const vfxNode = (type: string, params: Record<string, number>) =>
+  JSON.stringify({ version: 1, nodes: [{ type, id: "n1", params }] });
+
+// Measured: with a failed chain the layer is not drawn at all, so every frame is wrong.
+describe("a failed VFX chain", () => {
+  it("fails the render at once, whether or not anything waits on a timeline", async () => {
+    const files = { "index.html": vfxComposition(vfxNode("no-such-effect", {})) };
+    await expect(timelineWarningCodes(files)).rejects.toBeInstanceOf(VfxFailureError);
+  }, 30_000);
+
+  it("leaves a working chain alone", async () => {
+    const warp = {
+      waveType: 1,
+      direction: 0,
+      speed: 0,
+      pinning: 1,
+      phase: 0,
+      height: 30,
+      width: 60,
+    };
+    const files = { "index.html": vfxComposition(vfxNode("wave-warp", warp)) };
+    expect(await timelineWarningCodes(files)).toEqual([]);
+  }, 30_000);
+});
 
 describe("which uncaught errors fail a timeline that never registers", () => {
   it.each([
@@ -149,19 +205,20 @@ describe("which uncaught errors fail a timeline that never registers", () => {
     30_000,
   );
 
-  // Past the 2 s grace in which a failed script cuts the wait short.
-  it("renders when a scene throws after registering its timeline and the root registers late", async () => {
+  // A load failure cuts the timeline wait short; a scene that threw may still register, so it must not.
+  it("keeps a scene's throw after it registered as a page error, never a load failure", async () => {
     const register = (id: string) => `(window.__timelines = window.__timelines || {}).${id} = {};`;
     const files = {
-      "index.html": composition(
-        `<script>setTimeout(function () { ${register("main")} }, 2500);</script>`,
-      ).replace(
+      "index.html": composition(`<script>${register("main")}</script>`).replace(
         "></div>",
         '><div data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="1"></div></div>',
       ),
       "scene.html": `<template><div data-composition-id="scene" data-width="160" data-height="120"><script>${register("scene")} null.optionalBadge;</script></div></template>`,
     };
-    expect(await timelineWarningCodes(files)).toEqual([]);
+    const errors = await sessionErrors(files);
+    expect(errors.codes).toEqual([]);
+    expect(errors.scriptLoadFailures).toEqual([]);
+    expect(errors.pageErrors).toEqual([expect.stringContaining("optionalBadge")]);
   }, 30_000);
 
   it.each(Object.keys(widgetScripts))(

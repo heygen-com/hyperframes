@@ -134,6 +134,7 @@ export {
   type BeforeCaptureHook,
   type DiscardWarmupInnerCapture,
   type StaticVerificationOutcome,
+  VfxFailureError,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,

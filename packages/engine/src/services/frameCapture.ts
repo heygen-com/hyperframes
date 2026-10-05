@@ -174,6 +174,8 @@ export interface CaptureSession {
   scriptLoadFailures: string[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
+  /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
+  vfxFailure?: string;
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
   /**
@@ -1765,6 +1767,8 @@ export async function pollSubCompositionTimelines(
   // Reports the composition ids still unregistered at bail time, so the caller
   // can put them in the structured warning as well as in stderr.
   onPending?: (ids: readonly string[]) => void,
+  // Ends the wait at once; the caller then fails the render for its own reason.
+  shouldStop?: () => boolean,
 ): Promise<SubTimelineWaitOutcome> {
   // Hosts may opt out of the timeline wait with `data-no-timeline` —
   // compositions driven purely by CSS animations / rAF (the render-compat
@@ -1788,7 +1792,7 @@ export async function pollSubCompositionTimelines(
   let scriptFailureBail = false;
   for (;;) {
     ready = Boolean(await page.evaluate(expression));
-    if (ready) break;
+    if (ready || shouldStop?.()) break;
     const now = Date.now();
     if (now >= deadline) break;
     const failures = getScriptLoadFailures?.() ?? [];
@@ -2191,14 +2195,38 @@ async function waitForOptionalTailwindReady(page: Page, timeoutMs: number): Prom
   }
 }
 
-// A 4xx `response` and a `requestfailed` can both fire for the same script
-// (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
-// the same URL duplicate it further — dedupe so the fail-fast warning names
-// each failed URL once.
+/** Thrown once a VFX chain fails: the frames it paints would render without the effect. */
+export class VfxFailureError extends Error {
+  constructor(readonly detail: string) {
+    super(`A VFX chain failed, so its frames would render without the effect (${detail})`);
+    this.name = "VfxFailureError";
+  }
+}
+
+function assertVfxIntact(session: CaptureSession): void {
+  if (session.vfxFailure) throw new VfxFailureError(session.vfxFailure);
+}
+
+// The VFX runtime logs its errors under the script error label with a `vfx:` detail.
+function recordConsoleScriptError(session: CaptureSession, error: string | null): void {
+  if (!error?.startsWith("runtime-error:vfx:")) {
+    recordPageError(session, error);
+    return;
+  }
+  if (session.vfxFailure) return;
+  session.vfxFailure = error;
+  const message = new VfxFailureError(error).message;
+  recordCaptureWarnings(session, [{ code: "vfx_failure", message, details: { sources: [error] } }]);
+}
+
 function recordPageError(session: CaptureSession, error: string | null): void {
   if (error && !session.pageErrors.includes(error)) session.pageErrors.push(error);
 }
 
+// A 4xx `response` and a `requestfailed` can both fire for the same script
+// (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
+// the same URL duplicate it further — dedupe so the fail-fast warning names
+// each failed URL once.
 function recordScriptLoadFailure(session: CaptureSession, url: string): void {
   if (!session.scriptLoadFailures.includes(url)) {
     session.scriptLoadFailures.push(url);
@@ -2207,11 +2235,11 @@ function recordScriptLoadFailure(session: CaptureSession, url: string): void {
 
 const SCRIPT_ERROR_LABEL = "[HyperFrames] composition script error:";
 
-/** `runtime-error:<id> <error>` for the error a framework wrapper logs when a composition script throws. */
+/** `runtime-error:<first line>` for the error a framework wrapper logs when a composition script throws. */
 export function classifyConsoleScriptError(type: string, text: string): string | null {
   if (type !== "error" || !text.startsWith(SCRIPT_ERROR_LABEL)) return null;
   const [detail = ""] = text.slice(SCRIPT_ERROR_LABEL.length).trim().split("\n");
-  return `runtime-error:${detail || "unknown"}`;
+  return `runtime-error:${detail.trimEnd() || "unknown"}`;
 }
 
 export function classifyConsoleScriptFailure(type: string, text: string): string | null {
@@ -2266,7 +2294,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     // A blocked script can never register its timeline (#3352); a thrown one may still, so it only counts on timeout.
     const scriptFailure = classifyConsoleScriptFailure(type, text);
     if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
-    recordPageError(session, classifyConsoleScriptError(type, text));
+    recordConsoleScriptError(session, classifyConsoleScriptError(type, text));
   });
 
   page.on("pageerror", (err) => {
@@ -2392,8 +2420,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       (ids) => {
         session.pendingTimelineIds = [...ids];
       },
+      () => session.vfxFailure !== undefined,
     );
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
+    assertVfxIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -2556,8 +2586,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       (ids) => {
         session.pendingTimelineIds = [...ids];
       },
+      () => session.vfxFailure !== undefined,
     );
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
+    assertVfxIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -2771,6 +2803,7 @@ async function prepareFrameForCapture(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
+  assertVfxIntact(session);
 
   const quantizedTime = quantizeSeekTime(
     time,
@@ -4496,6 +4529,7 @@ export async function captureFramesBatchPipelined(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
+  assertVfxIntact(session);
   const startTime = Date.now();
   const fps = fpsToNumber(options.fps);
   const quantized = times.map((t) => quantizeTimeToFrame(t, fps));

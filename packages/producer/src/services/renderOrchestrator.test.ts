@@ -65,6 +65,9 @@ import {
   shouldUseStreamingEncode,
   resolveObservedCaptureMode,
   createCaptureObservabilityUpdater,
+  applyRenderWarningPolicy,
+  createRenderJob,
+  RenderQualityError,
 } from "./renderOrchestrator.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
@@ -3885,5 +3888,17 @@ describe("isParallelStreamForced: the plan carries the manual interleave opt-in"
     expect(isParallelStreamForced({}, { ...flagsOff, captureParallelStreamForced: true })).toBe(
       true,
     );
+  });
+});
+
+describe("applyRenderWarningPolicy", () => {
+  it("fails a best-effort render whose VFX chain failed, since its layer renders without the effect", () => {
+    const job = createRenderJob({ fps: 30, quality: "standard" });
+    const vfx = {
+      code: "vfx_failure" as const,
+      message: "A VFX chain failed",
+      details: { sources: ["runtime-error:vfx: #host: unknown effect"] },
+    };
+    expect(() => applyRenderWarningPolicy(job, [vfx])).toThrow(RenderQualityError);
   });
 });

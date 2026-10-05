@@ -4,6 +4,8 @@ import { COMPOSITION_SOURCE_URL } from "@hyperframes/core";
 import type { CaptureSession } from "./frameCapture.js";
 import {
   buildZeroDurationDiagnostic,
+  captureFramesBatchPipelined,
+  captureFrameToBufferPipelined,
   classifyConsoleScriptError,
   classifyConsoleScriptFailure,
   classifyPageError,
@@ -19,6 +21,7 @@ import {
   isFontResourceError,
   isDrawElementVerificationError,
   sanitizeDiagnosticUrl,
+  VfxFailureError,
   shouldIgnoreRequestFailureDiagnostic,
 } from "./frameCapture.js";
 
@@ -46,7 +49,7 @@ describe("classifyConsoleScriptFailure", () => {
   it("leaves a composition script's logged throw to classifyConsoleScriptError", () => {
     const logged = "[HyperFrames] composition script error: scene TypeError: x";
     expect(classifyConsoleScriptFailure("error", logged)).toBeNull();
-    expect(classifyConsoleScriptError("error", `${logged}\n    at scene.js:1`)).toBe(
+    expect(classifyConsoleScriptError("error", `${logged}\r\n    at scene.js:1`)).toBe(
       "runtime-error:scene TypeError: x",
     );
     expect(classifyConsoleScriptError("warning", logged)).toBeNull();
@@ -195,6 +198,50 @@ describe("classifyPageError", () => {
     for (const url of [comp, comp, `${server}/data.js`, doc]) exception(url);
     expect(session.pageErrors).toEqual([`runtime-error:ReferenceError: ${comp}`]);
     expect(session.scriptLoadFailures).toEqual([]);
+  });
+
+  it("records the first VFX error to stop the render, and a scene's logged throw as a page error", async () => {
+    const pageListeners = new Map<string, (event: unknown) => void>();
+    const client = { on: () => {}, send: async () => ({}) };
+    const page = {
+      on: (event: string, listener: (event: unknown) => void) => pageListeners.set(event, listener),
+      createCDPSession: async () => client,
+    };
+    const session = {
+      page,
+      serverUrl: server,
+      scriptLoadFailures: [] as string[],
+      pageErrors: [] as string[],
+      warnings: [] as { code: string }[],
+      browserConsoleBuffer: [],
+    } as unknown as CaptureSession;
+    await initializeSession(session).catch(() => {});
+    const logged = (detail: string) =>
+      pageListeners.get("console")?.({
+        type: () => "error",
+        text: () => `[HyperFrames] composition script error: ${detail}`,
+        location: () => ({}),
+      });
+    logged("vfx: #host: unknown effect");
+    logged("vfx: #host: WebGL context lost.");
+    logged("scene TypeError: x");
+    expect(session.vfxFailure).toBe("runtime-error:vfx: #host: unknown effect");
+    expect(session.warnings.map((warning) => warning.code)).toEqual(["vfx_failure"]);
+    expect(session.pageErrors).toEqual(["runtime-error:scene TypeError: x"]);
+  });
+
+  it("refuses to capture another frame once a VFX chain has failed", async () => {
+    const session = {
+      isInitialized: true,
+      vfxFailure: "runtime-error:vfx: #host: unknown effect",
+      options: { fps: { num: 30, den: 1 } },
+    } as unknown as CaptureSession;
+    await expect(captureFrameToBufferPipelined(session, 0, 0)).rejects.toBeInstanceOf(
+      VfxFailureError,
+    );
+    await expect(captureFramesBatchPipelined(session, [0], [0])).rejects.toBeInstanceOf(
+      VfxFailureError,
+    );
   });
 });
 

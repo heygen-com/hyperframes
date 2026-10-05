@@ -111,6 +111,16 @@ describe("recordSubTimelineWarning", () => {
     expect(session.warnings[0].message).toContain("failed to load");
   });
 
+  it("names an integrity-blocked script as one that failed to load", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "script_failure",
+      scriptLoadFailures: ["runtime-error:subresource-integrity"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(session.warnings[0].message).toContain("failed to load");
+  });
+
   // An unrelated error on a page whose timelines did register must not fail the render.
   it("ignores an uncaught page error when the timelines registered", () => {
     const session = makeSession({
