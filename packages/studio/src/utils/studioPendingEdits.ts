@@ -108,7 +108,7 @@ export function trackStudioPendingEdit(
 }
 
 function commitOlderDebouncedEdits(): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || adopting) return;
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),

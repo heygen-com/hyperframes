@@ -210,6 +210,15 @@ describe("a new edit after a debounced one", () => {
     remove();
     expect(order).toEqual(["nudge", "panel", "nudge", "drag"]);
   });
+  it("never flushes from inside an edit's own save, where a flushed save would go untracked", () => {
+    let flushes = 0;
+    const remove = addStudioPendingEditFlushListener(() => void (flushes += 1));
+    const drag = beginStudioPendingEdit(null);
+    drag.adopt(() => trackedStudioEdit(() => undefined)());
+    drag.settle();
+    remove();
+    expect(flushes).toBe(1);
+  });
 });
 
 describe("trackedStudioEdit", () => {
