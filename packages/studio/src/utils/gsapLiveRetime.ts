@@ -33,7 +33,9 @@ const RERUN = { kind: "rerun" } as const;
 
 function untimedShape(animation: GsapAnimation): string {
   const { id: _id, position: _p, resolvedStart: _s, duration: _d, ...rest } = animation;
-  return JSON.stringify(rest);
+  // An offset into the text, which moves when the preview reformats its copy of the script.
+  const provenance = rest.provenance && { ...rest.provenance, sourceRange: undefined };
+  return JSON.stringify({ ...rest, provenance });
 }
 
 const onTimeline = (animation: GsapAnimation) => !animation.global;
@@ -47,7 +49,11 @@ const lengthOf = (animation: GsapAnimation) =>
 
 /** A timing edit rewrites numbers only; anything else may be code the parser does not read. */
 const withoutNumbers = (script: string) =>
-  script.replace(/(?<![\w$#.])\d*\.?\d+/g, "0").replace(/\s+/g, "");
+  script
+    .replace(/(?<![\w$#.])\d*\.?\d+/g, "0")
+    .replace(/\s+/g, " ")
+    .replace(/ ?([^\w$ ]) ?/g, "$1")
+    .trim();
 
 /** Decides, from the two scripts alone, whether a saved edit moved tweens and nothing else. */
 export function planLiveRetime(before: string, after: string): LiveRetimePlan {
@@ -172,9 +178,20 @@ function sharedStretch(tweens: TweenTiming[]): number | null {
 }
 
 /** The runtime places a sub-composition's timeline at its host's start once; moving the host leaves it there. */
-const hostsComposition = (target: unknown) =>
-  (target as Element).matches?.("[data-composition-id]") === true ||
-  (target as Element).querySelector?.("[data-composition-id]") != null;
+function inOrHostsSubComposition(target: unknown, ownId: string): boolean {
+  const element = target as Element;
+  const owner = element.closest?.("[data-composition-id]");
+  return (
+    (owner != null && owner.getAttribute("data-composition-id") !== ownId) ||
+    element.querySelector?.("[data-composition-id]") != null
+  );
+}
+
+/** Tweens on one element still start in the order they did, an equal start in script order. */
+const keepsOrder = (tweens: TweenTiming[]) =>
+  tweens.every(
+    (t, k) => k === 0 || (tweens[k - 1]!.start - t.start || tweens[k - 1]!.source - t.source) < 0,
+  );
 
 /**
  * A tween keeps the start values it recorded when it first played, so every element a move touches
@@ -199,11 +216,12 @@ function movesKeepEachElementsHistory(
   );
   return [...byElement].every(([target, indexes]) => {
     if (!indexes.some((i) => plan.tweens[i]!.moved)) return true;
-    if (animatedElsewhere.has(target) || hostsComposition(target)) return false;
-    const stretch = sharedStretch(indexes.map((i) => plan.tweens[i]!));
-    // GSAP adds delays to the schedule unstretched.
+    if (animatedElsewhere.has(target) || inOrHostsSubComposition(target, plan.key)) return false;
+    const tweens = indexes.map((i) => plan.tweens[i]!);
+    // GSAP adds delays to the schedule unstretched; a shift keeps every length.
+    const shifted = tweens.every((t) => t.duration === t.wasDuration);
     const undelayed = indexes.every((i) => !children[i]!.delay() && !children[i]!.repeatDelay?.());
-    return stretch !== null && (near(stretch, 1) || undelayed);
+    return keepsOrder(tweens) && sharedStretch(tweens) !== null && (shifted || undelayed);
   });
 }
 

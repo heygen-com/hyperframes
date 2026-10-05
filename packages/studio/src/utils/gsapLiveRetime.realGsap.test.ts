@@ -95,6 +95,15 @@ async function dropInto(iframe: HTMLIFrameElement, after: string) {
   return reloadPreview;
 }
 
+/** Wraps `element` in a composition host with id `id`, and returns the host. */
+function inComposition(id: string, element: Element) {
+  const host = document.createElement("div");
+  host.setAttribute("data-composition-id", id);
+  element.replaceWith(host);
+  host.appendChild(element);
+  return host;
+}
+
 const script = (...lines: string[]) =>
   ["var tl = gsap.timeline({ paused: true });", ...lines, 'window.__timelines["t"] = tl;'].join(
     "\n",
@@ -298,6 +307,46 @@ it.each([
     },
   },
   {
+    name: "a tween on an element inside a sub-composition's host",
+    path: "rerun",
+    before: script('tl.to("#a", { y: 40, duration: 1 }, 0);'),
+    after: script('tl.to("#a", { y: 40, duration: 1 }, 2);'),
+    setup: () => inComposition("t", inComposition("scene", document.getElementById("a")!)),
+  },
+  {
+    name: "a tween on an element of the timeline's own composition",
+    path: "retime",
+    before: script('tl.to("#a", { y: 40, duration: 1 }, 0);'),
+    after: script('tl.to("#a", { y: 40, duration: 1 }, 2);'),
+    setup: () => inComposition("t", document.getElementById("a")!),
+  },
+  {
+    name: "a set and a tween on one element that round to the same start",
+    path: "rerun",
+    before: script(
+      'tl.to("#a", { x: 50, duration: 1 }, 0);',
+      'tl.set("#a", { x: 0 }, 2.0004);',
+      'tl.to("#a", { x: 100, duration: 1 }, 2);',
+    ),
+    after: script(
+      'tl.to("#a", { x: 50, duration: 1 }, 1);',
+      'tl.set("#a", { x: 0 }, 3);',
+      'tl.to("#a", { x: 100, duration: 1 }, 3);',
+    ),
+  },
+  {
+    name: "a slight trim of an element whose tween has a delay",
+    path: "rerun",
+    before: script(
+      'tl.to("#a", { x: 100, duration: 1, delay: 1 }, 0);',
+      'tl.to("#a", { x: 200, duration: 1 }, 2);',
+    ),
+    after: script(
+      'tl.to("#a", { x: 100, duration: 0.999, delay: 1 }, 0);',
+      'tl.to("#a", { x: 200, duration: 0.999 }, 1.998);',
+    ),
+  },
+  {
     name: "a set that never played moved onto a playhead at 0",
     path: "retime",
     before: script('tl.set("#a", { x: 30 }, 2);', 'tl.to("#b", { x: 1, duration: 1 }, 3);'),
@@ -379,6 +428,29 @@ it("reloads the preview, and says so, when moving the live tweens throws", async
 
   expect(reloadPreview).toHaveBeenCalledTimes(1);
   expect(error).toHaveBeenCalledTimes(1);
+});
+
+it("re-runs the script when the edit also joins two words of code", () => {
+  const before = script('tl.to("#a", { x: 1, duration: 1 }, 0);', "var b = typeof a;");
+  const after = script('tl.to("#a", { x: 1, duration: 1 }, 1);', "var b = typeofa;");
+  expect(planLiveRetime(before, after).kind).toBe("rerun");
+});
+
+it("moves the live tweens beside a helper-built tween in a reformatted copy of the script", async () => {
+  const lines = [
+    "function pop(sel, at) { tl.to(sel, { x: 5, duration: 1 }, at); }",
+    'pop("#b", 2);',
+  ];
+  const before = script('tl.to("#a", { x: 1, duration: 1 }, 0);', ...lines);
+  const live = preview(before);
+  live.tag.textContent = `\n${before.replace(/^/gm, "      ")}\n`;
+
+  const reloadPreview = await dropInto(
+    live.iframe,
+    script('tl.to("#a", { x: 1, duration: 1 }, 0.5);', ...lines),
+  );
+
+  expect(reloadPreview).not.toHaveBeenCalled();
 });
 
 it("re-runs the script when the edit adds a tween", () => {
