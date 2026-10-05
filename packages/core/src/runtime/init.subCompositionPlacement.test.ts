@@ -79,7 +79,8 @@ describe("runtime sub-composition placement", () => {
   it("still moves a runtime-placed scene when the root script placed another one itself", () => {
     document.body.innerHTML =
       `<div data-composition-id="main" data-root="true" data-duration="10">` +
-      `<div class="clip" data-composition-id="intro" data-start="2" data-duration="2"></div>` +
+      // Listed first, so a throw on the script-placed intro would stop the loop before the scene.
+      `<div class="clip" data-composition-id="intro" data-start="2.5" data-duration="2"></div>` +
       `<div id="host" class="clip" data-composition-id="scene" data-start="1" data-duration="3"></div></div>`;
     const intro = gsap.timeline({ paused: true }).to({}, { duration: 2 }, 0);
     const scene = gsap.timeline({ paused: true }).to({}, { duration: 3 }, 0);

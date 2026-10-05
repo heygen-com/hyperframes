@@ -43,7 +43,7 @@ const w = { x: window.innerWidth - 40 }
     expect(same(`tl.to("#a", {}, 1)`, `tl.to("#a", {}, 2)`, true)).toBe(true);
   });
 
-  it("tells apart big integers", () => {
+  it("compares big integers by value without throwing", () => {
     expect(same("a = 1n", "a = 2n")).toBe(false);
     expect(same("a = 1n", "a = 1n")).toBe(true);
   });
