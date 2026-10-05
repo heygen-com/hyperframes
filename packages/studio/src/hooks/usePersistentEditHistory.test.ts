@@ -62,7 +62,7 @@ async function studio({ withHistory = true } = {}) {
   const file = () => readFileSync(join(dir, "index.html"), "utf8");
   const save = (content: string) => writeFileSync(join(dir, "index.html"), content);
   const readFile = async (path: string) => readFileSync(join(dir, path), "utf8");
-  return { dir, hook: () => hook, file, save, readFile };
+  return { dir, history, hook: () => hook, file, save, readFile };
 }
 
 it("an edit Studio saved is undone and redone by the project's history, with the preview's before and after", async () => {
@@ -409,6 +409,30 @@ it("a key one page holds does not join another page's edit under the same key", 
   await act(() => reloaded.undo({ readFile }));
 
   expect(file()).toBe("B");
+});
+
+it("a host's write claimed under claimKey joins Studio's save under the same key: one undo takes back both", async () => {
+  const { dir, history, hook, file, save, readFile } = await studio();
+  const key = "drop:1";
+  writeFileSync(join(dir, "clip.mp4"), "media");
+  await history.claim({ kind: "person", name: "You" }, "Dropped on timeline", ["clip.mp4"], {
+    coalesceKey: hook().claimKey(key),
+    idleMs: Infinity,
+  });
+  save("B");
+  await act(() =>
+    hook().recordEdit({
+      label: "Dropped on timeline",
+      coalesceKey: key,
+      coalesceMs: Infinity,
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+
+  await act(() => hook().undo({ readFile }));
+
+  expect(file()).toBe("A");
+  expect(existsSync(join(dir, "clip.mp4"))).toBe(false);
 });
 
 it("an undo before the history view shows a drag's held claim still waits on the files it wrote", async () => {
