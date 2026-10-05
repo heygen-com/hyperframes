@@ -2612,6 +2612,25 @@ type SplitCtx = {
   newElementStart: number;
 };
 
+// Keyframed tweens move whole or stay; one spanning the split is skipped, since
+// its keyframes cannot be cut without renormalizing them. Inherited state for
+// them is handled by computeForwardBaselines.
+function applyKeyframedTweenSplit(
+  result: string,
+  anim: GsapAnimation,
+  pos: number,
+  animEnd: number,
+  ctx: SplitCtx,
+  skippedSelectors: string[],
+): string {
+  if (pos >= ctx.splitTime)
+    return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
+  if (animEnd > ctx.splitTime) {
+    skippedSelectors.push(`${ctx.originalSelector} (keyframes spanning split)`);
+  }
+  return result;
+}
+
 // Decide what one matching tween does at the split point: move to the new
 // element (wholly after), stay (wholly before / keyframes before), get skipped
 // (keyframes spanning), or get interpolated in half (spanning). Returns the
@@ -2628,13 +2647,7 @@ function applyTweenSplit(
   const animEnd = pos + dur;
 
   if (anim.keyframes || anim.hasUnresolvedKeyframes) {
-    if (pos >= ctx.splitTime)
-      return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
-    if (animEnd > ctx.splitTime) {
-      skippedSelectors.push(`${ctx.originalSelector} (keyframes spanning split)`);
-    }
-    // Inherited-state for kf tweens is handled by computeForwardBaselines.
-    return result;
+    return applyKeyframedTweenSplit(result, anim, pos, animEnd, ctx, skippedSelectors);
   }
   // Wholly before the split — kept on the original element.
   if (animEnd <= ctx.splitTime) return result;
