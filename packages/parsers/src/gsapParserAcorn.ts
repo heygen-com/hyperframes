@@ -1644,8 +1644,7 @@ function applyTimelineDefaults(
   if (!defaults) return;
   for (const anim of anims) {
     if (anim.method === "set") continue;
-    const stepList = anim.keyframes?.format === "object-array";
-    if (anim.duration === undefined && !anim.durationUnresolved && !stepList) {
+    if (anim.duration === undefined && !anim.durationUnresolved) {
       if (defaults.duration !== undefined) anim.duration = defaults.duration;
       else if (defaults.durationUnresolved) anim.durationUnresolved = true;
     }

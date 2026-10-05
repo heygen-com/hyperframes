@@ -31,18 +31,34 @@ export function easeFunction(name: string | undefined): ((progress: number) => n
 
 export const runEaseOf = (anim: GsapAnimation) => keyframedTweenEases(anim).run;
 
+const SCAN_STEPS = 200;
+const BISECT_STEPS = 40;
+const timingEases = new Map<string, ((progress: number) => number) | null>();
+
+/** The run ease as a one-to-one time/progress map; an ease that overshoots 0-1 or stalls times keys linearly. */
+function timingEase(runEase: string | undefined): ((progress: number) => number) | null {
+  if (!runEase) return null;
+  if (!timingEases.has(runEase)) {
+    const run = easeFunction(runEase);
+    const samples = Array.from(
+      { length: SCAN_STEPS + 1 },
+      (_, step) => run?.(step / SCAN_STEPS) ?? 0,
+    );
+    const oneToOne = samples.every((v, i) => v >= 0 && v <= 1 && (i === 0 || v > samples[i - 1]!));
+    timingEases.set(runEase, run && oneToOne ? run : null);
+  }
+  return timingEases.get(runEase) ?? null;
+}
+
 /** The keyframe progress (0-100) GSAP shows at `timePercentage` of a tween with this run ease. */
 export function progressAtTime(runEase: string | undefined, timePercentage: number): number {
-  const run = easeFunction(runEase);
+  const run = timingEase(runEase);
   return run ? run(timePercentage / 100) * 100 : timePercentage;
 }
 
-const SCAN_STEPS = 200;
-const BISECT_STEPS = 40;
-
 /** The time (0-100 of the tween) at which GSAP first reaches keyframe progress `percentage`. */
 export function timeAtProgress(runEase: string | undefined, percentage: number): number {
-  const run = easeFunction(runEase);
+  const run = timingEase(runEase);
   if (!run || percentage <= 0 || percentage >= 100) return percentage;
   const target = percentage / 100;
   let low = 0;

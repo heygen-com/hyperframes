@@ -12,6 +12,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { findParsedTween, parsedImplicitEndValue, parsedTweenEase } from "./gsapParsedTween";
 import { toClipKeyframes } from "./gsapShared";
 import { planValueEdit } from "./gsapValueAtPlayhead";
+import { applyKeyframeAtPlayhead, type EnableKeyframesSession } from "./useEnableKeyframes";
 
 /** Runs a composition script as the preview does: a paused timeline, bound, then seeked to `at`. */
 function play(script: string, at: number) {
@@ -243,4 +244,25 @@ it("keeps a step list's steps where GSAP plays them when an outer duration stret
     return x;
   };
   expect([xAt(0.5), xAt(1), xAt(2)]).toEqual([70, 100, 200]);
+});
+
+it("adds a keyframe where GSAP plays a tween whose duration is an expression, keeping the expression", async () => {
+  const src = `var dur = () => 2;\nvar tl = gsap.timeline({ paused: true });\ntl.to("#x", { keyframes: { "0%": { x: 0 }, "100%": { x: 300 } }, duration: dur() }, 1);\nwindow.__timelines["t"] = tl;`;
+  const box = document.body.appendChild(document.createElement("div"));
+  box.id = "x";
+  const { timeline, iframe } = play(src, 2);
+  const anim = parseGsapScriptAcorn(src).animations[0]!;
+  const writes: Array<[string, unknown]> = [];
+  const session = {
+    commitMutation: async (mutation: unknown) => void writes.push(["replace", mutation]),
+    handleGsapRemoveKeyframe: () => void writes.push(["remove", null]),
+    handleGsapAddKeyframeBatch: async (_id: string, pct: number) => void writes.push(["add", pct]),
+  } as unknown as EnableKeyframesSession;
+  const selection = { id: "x", selector: "#x", element: box } as DomEditSelection;
+
+  await applyKeyframeAtPlayhead(session, selection, anim, 2, iframe);
+  timeline.kill();
+
+  expect(anim.durationUnresolved).toBe(true);
+  expect(writes).toEqual([["add", 50]]);
 });

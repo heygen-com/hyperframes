@@ -29,6 +29,7 @@ import {
   isTimeWithinTween,
 } from "../utils/globalTimeCompiler";
 import { POSITION_PROPS } from "./gsapRuntimeReaders";
+import { findParsedTween, withLiveTiming } from "./gsapParsedTween";
 import { roundTo3 } from "../utils/rounding";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import {
@@ -243,7 +244,7 @@ async function extendKeyframedTweenToPlayhead(
  * buildExtendedKeyframes). Shared by native keyframe tweens and flat tweens that
  * were just converted, so both behave identically.
  */
-async function applyKeyframeAtPlayhead(
+export async function applyKeyframeAtPlayhead(
   session: EnableKeyframesSession,
   sel: DomEditSelection,
   kfAnim: GsapAnimation,
@@ -251,9 +252,14 @@ async function applyKeyframeAtPlayhead(
   iframe: HTMLIFrameElement | null,
   commitOverrides?: Partial<CommitMutationOptions>,
 ): Promise<void> {
+  const keepAuthoredDuration = kfAnim.durationUnresolved === true;
+  if (keepAuthoredDuration) {
+    kfAnim = withLiveTiming(kfAnim, findParsedTween(iframe, sel.element, kfAnim));
+  }
   const duration = resolveTweenDuration(kfAnim);
   const start = resolveTweenStart(kfAnim);
   if (start !== null && !isTimeWithinTween(t, start, duration)) {
+    if (keepAuthoredDuration) return;
     await extendKeyframedTweenToPlayhead(
       session,
       sel,
