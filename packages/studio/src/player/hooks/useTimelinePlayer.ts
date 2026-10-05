@@ -227,7 +227,6 @@ export function useTimelinePlayer({
   ]);
   const playBackward = useCallback(
     (rate: number) => {
-      if (usePlayerStore.getState().playLocked) return;
       stopRAFLoop();
       stopReverseLoop();
       const adapter = getAdapter();
@@ -287,10 +286,10 @@ export function useTimelinePlayer({
   );
   const pause = useCallback(() => {
     stopReverseLoop();
+    // With no adapter yet nothing plays, but the frame loop and the store's playing flag still stop.
     const adapter = getAdapter();
-    if (!adapter) return;
-    adapter.pause();
-    setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
+    adapter?.pause();
+    if (adapter) setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
     setIsPlaying(false);
     shuttleDirectionRef.current = null;
     shuttleSpeedIndexRef.current = 0;

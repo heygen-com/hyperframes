@@ -81,6 +81,14 @@ it("a looping film reaching its end while held stops instead of starting again",
   act(() => root.unmount());
 });
 
+it("turning the hold on before the preview has a player still clears playing", () => {
+  const { root } = renderTimelinePlayerHarness();
+  act(() => usePlayerStore.setState({ isPlaying: true }));
+  act(() => usePlayerStore.getState().setPlayLocked(true));
+  expect(usePlayerStore.getState().isPlaying).toBe(false);
+  act(() => root.unmount());
+});
+
 it("a seek that would keep playing does not resume while the host holds playback", () => {
   const { api, root, adapter } = readyPlayer();
   act(() => usePlayerStore.getState().setPlayLocked(true));
