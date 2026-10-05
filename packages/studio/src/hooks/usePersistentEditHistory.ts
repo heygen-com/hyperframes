@@ -209,7 +209,6 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
   projectIdRef.current = projectId;
   const [own] = useState(createOwnHistory);
   const [pageKeyScope] = useState(generateId);
-  // The key recordEdit claims under: a host that claims its own writes under it joins this page's edit.
   const claimKey = useCallback((key: string) => `${pageKeyScope}:${key}`, [pageKeyScope]);
 
   const refresh = useCallback(async () => {
