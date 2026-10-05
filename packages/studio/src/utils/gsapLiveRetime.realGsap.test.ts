@@ -16,16 +16,18 @@ const BEFORE = [
 
 const SAMPLES = Array.from({ length: 25 }, (_, i) => i * 0.25);
 
-/** Runs a composition script as the preview does, against the elements in the document. */
-function play(script: string) {
+/** Runs a composition script and binds its timeline at `at`, as the preview's runtime does. */
+function play(script: string, at = 0, nested = "") {
   const win = { __timelines: {} as Record<string, gsap.core.Timeline> };
   new Function("gsap", "window", script)(gsap, win);
   const timeline = win.__timelines.t!;
-  timeline.progress(0.0001, true).seek(0);
   // The runtime nests each sub-composition's timeline into its host's; the script does not know them...
-  timeline.add(gsap.timeline().to({}, { duration: 6.7 }), 0);
+  const sub = gsap.timeline().to({}, { duration: 6.7 });
+  new Function("gsap", "sub", nested)(gsap, sub);
+  timeline.add(sub, 0);
   // ...and pads the timeline to the composition's length with a filler tween.
   timeline.to({}, { duration: 0, data: "hf-runtime-filler" }, 8);
+  timeline.progress(0.0001, true).totalTime(at, false);
   return { win, timeline };
 }
 
@@ -50,12 +52,12 @@ const shownNow = () =>
   );
 
 /** A preview iframe whose live script is `script`, built and bound. */
-function preview(script: string) {
+function preview(script: string, nested = "") {
   const tag = document.createElement("script");
   tag.type = "text/plain"; // the runtime already ran it; happy-dom must not run it again
   tag.textContent = script;
   document.body.appendChild(tag);
-  const { win, timeline } = play(script);
+  const { win, timeline } = play(script, 0, nested);
   const rebind = vi.fn();
   // The runtime hooks a rebind needs; a soft reload would also need `gsap`, which this preview lacks.
   Object.assign(win, { __hfForceTimelineRebind: rebind, __player: { seek: vi.fn() } });
@@ -101,11 +103,13 @@ const script = (...lines: string[]) =>
 it.each([
   {
     name: "a tween with no written length",
+    path: "rerun",
     before: script('tl.to("#a", { x: 100 }, 0);', 'tl.to("#b", { x: 50, duration: 1 }, 1);'),
     after: script('tl.to("#a", { x: 100 }, 0);', 'tl.to("#b", { x: 50, duration: 1 }, 2);'),
   },
   {
     name: "a step list with no lengths",
+    path: "retime",
     before: script(
       'tl.to("#a", { keyframes: [{ x: 10 }, { x: 20 }] }, 0);',
       'tl.to("#b", { x: 5, duration: 1 }, 1);',
@@ -117,6 +121,7 @@ it.each([
   },
   {
     name: "a stagger beside the moved tween",
+    path: "rerun",
     before: script(
       'tl.to(".item", { x: 100, duration: 1, stagger: 0.2 }, 0);',
       'tl.to("#a", { y: 5, duration: 1 }, 2);',
@@ -128,6 +133,7 @@ it.each([
   },
   {
     name: "a repeat before an implicit position",
+    path: "rerun",
     before: script(
       'tl.to("#a", { x: 1, duration: 1, repeat: 1 }, 0);',
       'tl.to("#b", { x: 1, duration: 1 });',
@@ -139,6 +145,7 @@ it.each([
   },
   {
     name: "a delay before a '<' position",
+    path: "rerun",
     before: script(
       'tl.to("#a", { x: 1, duration: 1, delay: 0.5 }, 0);',
       'tl.to("#b", { x: 1, duration: 1 }, "<");',
@@ -150,6 +157,7 @@ it.each([
   },
   {
     name: "two tweens on one element whose live order differs from the script's",
+    path: "rerun",
     before: script(
       'tl.to("#a", { x: 100, duration: 1, delay: 1 }, 0);',
       'tl.to("#a", { y: 50, duration: 1 }, 0.5);',
@@ -161,6 +169,7 @@ it.each([
   },
   {
     name: "two tweens on one element that swap order",
+    path: "rerun",
     before: script(
       'tl.to("#a", { x: 100, duration: 1 }, 0);',
       'tl.to("#a", { x: 200, duration: 1 }, 2);',
@@ -172,6 +181,7 @@ it.each([
   },
   {
     name: "a call in the timeline",
+    path: "rerun",
     before: script(
       'tl.to("#a", { x: 1, duration: 1 }, 0);',
       "tl.call(() => {}, [], 1);",
@@ -185,6 +195,7 @@ it.each([
   },
   {
     name: "a counter tween on a plain object",
+    path: "rerun",
     before: script(
       "var counter = { n: 0 };",
       "tl.to(counter, { n: 10, duration: 1 }, 0);",
@@ -198,26 +209,77 @@ it.each([
   },
   {
     name: "a paused playhead past the moved tween",
+    path: "retime",
     before: script('tl.to("#a", { x: 100, duration: 1 }, 0.5);'),
     after: script('tl.to("#a", { x: 100, duration: 1 }, 1.5);'),
     at: 2,
   },
+  {
+    name: "an unmoved tween on the same element that overlaps the moved one",
+    path: "rerun",
+    before: script(
+      'tl.to(".item", { x: 100, duration: 2 }, 0);',
+      'tl.to("#a", { x: 0, duration: 1 }, 4);',
+    ),
+    after: script(
+      'tl.to(".item", { x: 100, duration: 2 }, 0);',
+      'tl.to("#a", { x: 0, duration: 1 }, 1);',
+    ),
+  },
+  {
+    name: "a sub-composition tween on the moved tween's element",
+    path: "rerun",
+    before: script('tl.to("#a", { x: 100, duration: 1 }, 0);'),
+    after: script('tl.to("#a", { x: 100, duration: 1 }, 3);'),
+    nested: 'sub.to("#a", { x: 50, duration: 1 }, 2);',
+  },
+  {
+    name: "a delayed tween that GSAP orders after the moved one",
+    path: "rerun",
+    before: script(
+      'tl.to("#a", { opacity: 0.5, duration: 1, delay: 2 }, 0);',
+      'tl.to("#a", { x: 100, duration: 1 }, 0);',
+    ),
+    after: script(
+      'tl.to("#a", { opacity: 0.5, duration: 1, delay: 2 }, 0);',
+      'tl.to("#a", { x: 100, duration: 1 }, 3);',
+    ),
+  },
+  {
+    name: "a set moved onto a playhead at 0",
+    path: "retime",
+    before: script('tl.set("#a", { x: 30 }, 2);', 'tl.to("#b", { x: 1, duration: 1 }, 3);'),
+    after: script('tl.set("#a", { x: 30 }, 0);', 'tl.to("#b", { x: 1, duration: 1 }, 3);'),
+  },
+  {
+    name: "a tween whose callback draws another element",
+    path: "retime",
+    before: script(
+      'tl.to("#a", { x: 100, duration: 2, onUpdate: function () { gsap.set("#c", { y: Math.round(this.progress() * 100) }); } }, 1);',
+    ),
+    after: script(
+      'tl.to("#a", { x: 100, duration: 2, onUpdate: function () { gsap.set("#c", { y: Math.round(this.progress() * 100) }); } }, 1.5);',
+    ),
+    at: 2,
+  },
 ])(
   "after a drop over $name, the live preview equals a fresh load or the script re-runs",
-  async ({ before, after, at = 0 }) => {
+  async ({ before, after, nested = "", at = 0, path }) => {
     const error = vi.spyOn(console, "error");
-    const live = preview(before);
-    live.timeline.seek(at);
+    const live = preview(before, nested);
+    // Played through once, then parked: every tween has recorded its start values.
+    live.timeline.totalTime(live.timeline.duration(), false).totalTime(at, false);
     const reloadPreview = await dropInto(live.iframe, after);
     expect(error).not.toHaveBeenCalled();
-    if (reloadPreview.mock.calls.length > 0) return;
-    const shown = shownNow();
-    const got = observe(live.timeline);
-    live.timeline.revert();
-    const fresh = play(after).timeline;
-    fresh.seek(at);
-    expect(shown).toEqual(shownNow());
-    expect(got).toEqual(observe(fresh));
+    if (reloadPreview.mock.calls.length === 0) {
+      const shown = shownNow();
+      const got = observe(live.timeline);
+      live.timeline.revert();
+      const fresh = play(after, at, nested).timeline;
+      expect(shown).toEqual(shownNow());
+      expect(got).toEqual(observe(fresh));
+    }
+    expect(reloadPreview.mock.calls.length > 0 ? "rerun" : "retime").toBe(path);
   },
 );
 
@@ -255,6 +317,24 @@ it("leaves the live preview equal to a fresh load of the saved script after a mo
 it("re-runs the script for an edit that changes more than timing", () => {
   const after = BEFORE.replace("x: 100", "x: 140").replace(", 0.5);", ", 0.9);");
   expect(planLiveRetime(BEFORE, after).kind).toBe("rerun");
+});
+
+it("re-runs the script when the edit also changes code the parser does not read", () => {
+  const before = script('tl.to("#a", { x: 1, duration: 1 }, 0);', 'document.title = "one";');
+  const after = script('tl.to("#a", { x: 1, duration: 1 }, 1);', 'document.title = "two";');
+  expect(planLiveRetime(before, after).kind).toBe("rerun");
+});
+
+it("reloads the preview, and says so, when moving the live tweens throws", async () => {
+  const before = script('tl.to("#a", { x: () => { throw new Error("boom"); }, duration: 1 }, 5);');
+  const live = preview(before);
+  live.timeline.totalTime(3, false);
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  const reloadPreview = await dropInto(live.iframe, before.replace("}, 5);", "}, 1);"));
+
+  expect(reloadPreview).toHaveBeenCalledTimes(1);
+  expect(error).toHaveBeenCalledTimes(1);
 });
 
 it("re-runs the script when the edit adds a tween", () => {

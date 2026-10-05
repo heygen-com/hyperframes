@@ -30,7 +30,7 @@ import {
   type StudioProjectFileWriter,
 } from "../utils/studioFileMutationCoordinator";
 import { studioApiFetch } from "../utils/studioApiFetch";
-import { applyLiveRetime, planLiveRetimeFromPreview } from "../utils/gsapLiveRetime";
+import { moveLiveTweens } from "../utils/gsapLiveRetime";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
@@ -81,18 +81,6 @@ export function captureDurationRollback(iframe: HTMLIFrameElement | null): () =>
  * Works for zero-GSAP compositions; false asks the caller to full-reload. */
 function rebindPreviewTiming(iframe: HTMLIFrameElement | null, currentTime: number): boolean {
   return applySoftReloadFinalization(iframe, currentTime);
-}
-
-function movedLiveTweens(
-  iframe: HTMLIFrameElement,
-  scriptText: string,
-  currentTime: number,
-  reloadPreview: () => void,
-): boolean {
-  const plan = planLiveRetimeFromPreview(iframe, scriptText);
-  if (plan.kind !== "retime" || !applyLiveRetime(iframe, plan)) return false;
-  if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
-  return true;
 }
 
 /**
@@ -146,7 +134,7 @@ async function syncTimingEditPreview(
     reloadPreview();
     return;
   }
-  if (movedLiveTweens(iframe, scriptText, currentTime(), reloadPreview)) return;
+  if (moveLiveTweens(iframe, scriptText, currentTime(), reloadPreview)) return;
   const nestedFiles = await settleNestedReads(
     projectId
       ? readNestedFiles(iframe, scriptText, (path) => readFileContent(projectId, path))

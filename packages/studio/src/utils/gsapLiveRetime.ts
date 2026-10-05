@@ -2,7 +2,12 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
 import { hasExplicitTime } from "@hyperframes/parsers/gsap-writer-acorn";
 import { RUNTIME_FILLER } from "@hyperframes/core/runtime/protocol";
-import { findGsapScriptElements, scriptsRegistering, timelineKeys } from "./gsapSoftReload";
+import {
+  applySoftReloadFinalization,
+  findGsapScriptElements,
+  scriptsRegistering,
+  timelineKeys,
+} from "./gsapSoftReload";
 
 interface TweenTiming {
   selector: string;
@@ -40,8 +45,12 @@ const placedAlone = (animation: GsapAnimation) =>
 const lengthOf = (animation: GsapAnimation) =>
   animation.method === "set" ? 0 : animation.durationUnresolved ? undefined : animation.duration;
 
+/** A timing edit rewrites numbers only; anything else may be code the parser does not read. */
+const withoutNumbers = (script: string) => script.replace(/\d*\.?\d+/g, "0");
+
 /** Decides, from the two scripts alone, whether a saved edit moved tweens and nothing else. */
 export function planLiveRetime(before: string, after: string): LiveRetimePlan {
+  if (withoutNumbers(before) !== withoutNumbers(after)) return RERUN;
   const keys = timelineKeys(after);
   if (keys.length !== 1 || timelineKeys(before).join() !== keys.join()) return RERUN;
   const was = parseGsapScriptAcorn(before).animations.filter(onTimeline);
@@ -97,11 +106,13 @@ interface LiveTween {
   targets?: () => unknown[];
 }
 interface LiveTimeline {
-  getChildren: (nested: boolean, tweens: boolean, timelines: boolean) => LiveTween[];
+  getChildren(nested: boolean, tweens: true, timelines: false): LiveTween[];
+  getChildren(nested: false, tweens: false, timelines: true): LiveTimeline[];
   remove: (child: LiveTween) => unknown;
   add: (child: LiveTween, position: number) => unknown;
   time: () => number;
-  seek: (time: number, suppressEvents: boolean) => unknown;
+  progress: (value: number, suppressEvents: boolean) => unknown;
+  totalTime: (time: number, suppressEvents: boolean) => unknown;
 }
 
 const same = (a: number, b: number) => Math.abs(a - b) < 1e-6;
@@ -133,16 +144,44 @@ function pairedLiveTweens(timeline: LiveTimeline, plan: LiveRetime): LiveTween[]
   return paired ? children : null;
 }
 
-/** Tweens on one element that trade places (`plan.tweens` is the old order) play from stale start values. */
-function swapsOrderOnAnElement(plan: LiveRetime, children: LiveTween[]): boolean {
-  const sharesTarget = (i: number, j: number) => {
-    const targets = new Set(children[j]!.targets?.() ?? []);
-    return (children[i]!.targets?.() ?? []).some((target) => targets.has(target));
-  };
-  return plan.tweens.some((a, i) =>
-    plan.tweens.some(
-      (b, j) => j > i && (a.start - b.start || a.source - b.source) > 0 && sharesTarget(i, j),
-    ),
+/** One shift and stretch for every tween: start = shift + stretch × old start, length = stretch × old length. */
+function keepsSpacing(tweens: TweenTiming[]): boolean {
+  const timed = tweens.find((t) => t.wasDuration > 0);
+  const stretch = timed ? timed.duration / timed.wasDuration : 1;
+  const shift = tweens[0]!.start - stretch * tweens[0]!.wasStart;
+  return (
+    stretch > 0 &&
+    tweens.every(
+      (t) =>
+        same(t.start, shift + stretch * t.wasStart) && same(t.duration, stretch * t.wasDuration),
+    )
+  );
+}
+
+/**
+ * A tween keeps the start values it recorded when it first played, so every element a move touches
+ * must keep its tweens' spacing, and no timeline the script does not own may animate it.
+ */
+function movesKeepEachElementsHistory(
+  timeline: LiveTimeline,
+  plan: LiveRetime,
+  children: LiveTween[],
+): boolean {
+  const byElement = new Map<unknown, TweenTiming[]>();
+  plan.tweens.forEach((t, i) => {
+    for (const target of children[i]!.targets?.() ?? []) {
+      byElement.set(target, [...(byElement.get(target) ?? []), t]);
+    }
+  });
+  const animatedElsewhere = new Set(
+    timeline
+      .getChildren(false, false, true)
+      .flatMap((sub) => sub.getChildren(true, true, false))
+      .flatMap((tween) => tween.targets?.() ?? []),
+  );
+  return [...byElement].every(
+    ([target, tweens]) =>
+      !tweens.some((t) => t.moved) || (!animatedElsewhere.has(target) && keepsSpacing(tweens)),
   );
 }
 
@@ -158,7 +197,7 @@ export function applyLiveRetime(iframe: HTMLIFrameElement | null, plan: LiveReti
   const children = pairedLiveTweens(timeline, plan);
   if (!children) return false;
   if (plan.tweens.some((t) => t.moved)) {
-    if (swapsOrderOnAnElement(plan, children)) return false;
+    if (!movesKeepEachElementsHistory(timeline, plan, children)) return false;
     // Re-added in script order: GSAP orders equal starts by when they were added, as a fresh run does.
     const bySource = plan.tweens
       .map((t, i) => ({ ...t, tween: children[i]! }))
@@ -168,12 +207,32 @@ export function applyLiveRetime(iframe: HTMLIFrameElement | null, plan: LiveReti
       if (tween.duration() !== duration) tween.duration(duration);
       timeline.add(tween, start);
     }
-    // Seeking to the time it already shows renders nothing; replay to it as a fresh load does.
+    // Replayed to the playhead as the runtime binds a fresh load, callbacks included.
     const at = timeline.time();
-    timeline.seek(0, true);
-    timeline.seek(at, true);
+    timeline.progress(0.0001, true);
+    timeline.totalTime(at, false);
   }
   // A script element runs once, so this only keeps the next comparison honest; nothing re-executes.
   plan.script.textContent = plan.after;
+  return true;
+}
+
+/** Syncs a saved timing edit by moving the live tweens; false when only re-running the script can. */
+export function moveLiveTweens(
+  iframe: HTMLIFrameElement,
+  scriptText: string,
+  currentTime: number,
+  reloadPreview: () => void,
+): boolean {
+  const plan = planLiveRetimeFromPreview(iframe, scriptText);
+  if (plan.kind !== "retime") return false;
+  try {
+    if (!applyLiveRetime(iframe, plan)) return false;
+  } catch (error) {
+    console.error("[Studio] Moving the live tweens threw; reloading the preview", error);
+    reloadPreview();
+    return true;
+  }
+  if (!applySoftReloadFinalization(iframe, currentTime)) reloadPreview();
   return true;
 }
