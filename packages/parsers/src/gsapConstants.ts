@@ -134,8 +134,6 @@ export function classifyTweenPropertyGroup(
   return undefined;
 }
 
-const HELD_GROUPS = new Set<PropertyGroupName>(["position", "size"]);
-
 function knownStart(animation: GsapAnimation): number | undefined {
   if (animation.resolvedStart !== undefined) return animation.resolvedStart;
   return typeof animation.position === "number" ? animation.position : undefined;
@@ -143,15 +141,16 @@ function knownStart(animation: GsapAnimation): number | undefined {
 
 /**
  * What a Studio hold pins from t=0 under a lone keyframe (GSAP renders none) or before a later keyframed tween:
- * its 0% keyframe's position and size props, minus those an earlier timeline tween writes (a global set is a base).
+ * its 0% keyframe's position props, and size props of a lone key only, minus those an earlier tween writes.
  */
 export function keyframeHoldForAnimation(
   animation: GsapAnimation,
   animations: readonly GsapAnimation[],
 ): Record<string, number> | null {
   if (!animation.keyframes) return null;
-  const start = knownStart(animation) ?? 0;
-  if (!(start > 0.001) && animation.keyframes.keyframes.length > 1) return null;
+  const start = knownStart(animation);
+  const lone = animation.keyframes.keyframes.length === 1;
+  if (start === undefined || (!(start > 0.001) && !lone)) return null;
   const atStart = animation.keyframes.keyframes.find((keyframe) => keyframe.percentage === 0);
   if (!atStart) return null;
   // A tween whose start the parser could not resolve (a label, say) is not known to come first.
@@ -167,7 +166,9 @@ export function keyframeHoldForAnimation(
   });
   const held: Record<string, number> = {};
   for (const [property, value] of Object.entries(atStart.properties)) {
-    if (!HELD_GROUPS.has(classifyPropertyGroup(property)) || typeof value !== "number") continue;
+    const group = classifyPropertyGroup(property);
+    if (!(group === "position" || (group === "size" && lone)) || typeof value !== "number")
+      continue;
     if (earlier.some((other) => writesProperty(other, property))) continue;
     held[property] = value;
   }

@@ -1806,6 +1806,22 @@ describe("keyframe mutations", () => {
       }
     });
 
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])(
+      "%s: pins no size from t=0 for a tween of two size keys or a lone key after a size tween",
+      (_, sync) => {
+        const timeline = `const tl = gsap.timeline({ paused: true });\n`;
+        const keys = `"0%": { width: 100 }, "100%": { width: 400 }`;
+        expect(
+          sync(`${timeline}tl.to("#s", { keyframes: { ${keys} }, duration: 1 }, 2);`),
+        ).not.toContain("hf-hold");
+        const atLabel = `${timeline}tl.to("#s", { width: 300, duration: 1 }, 1);\ntl.to("#s", { keyframes: { "0%": { width: 500 } }, duration: 1 }, "later");`;
+        expect(sync(atLabel)).not.toContain("hf-hold");
+      },
+    );
+
     it("adds no hold for an opacity-only keyframed tween (position-scoped)", () => {
       const opacity =
         `const tl = gsap.timeline({ paused: true });\n` +
