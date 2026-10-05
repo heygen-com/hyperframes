@@ -52,6 +52,35 @@ describe("buildTweenSummary", () => {
     expect(s).toContain("opacity");
   });
 
+  it("describes a keyframed tween by its keyframes and the segment ease it plays", () => {
+    const keyframes = {
+      easeEach: "power3.out",
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 50, properties: { x: 300, opacity: 0.5 } },
+        { percentage: 100, properties: { x: 600 } },
+      ],
+    };
+    expect(buildTweenSummary(anim({ ease: undefined, keyframes } as Partial<GsapAnimation>))).toBe(
+      "Starting at 0s, over 1s, animate #box's move x, opacity through 3 keyframes, each segment eased power3.out.",
+    );
+  });
+
+  it("names a keyframed tween's run ease and mixed segment eases", () => {
+    const keyframes = {
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 50, properties: { x: 300 }, ease: "expo.in" },
+        { percentage: 100, properties: { x: 600 } },
+      ],
+    };
+    expect(
+      buildTweenSummary(anim({ ease: "sine.inOut", keyframes } as Partial<GsapAnimation>)),
+    ).toBe(
+      "Starting at 0s, over 1s, animate #box's move x through 3 keyframes, with per-keyframe easing, across a sine.inOut run.",
+    );
+  });
+
   it("describes a set tween", () => {
     const s = buildTweenSummary(anim({ method: "set", properties: { opacity: 0 } }));
     expect(s).toMatch(/^At 0s, instantly set/);
