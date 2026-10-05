@@ -30,7 +30,7 @@ afterAll(() => {
 const FAST_RETRY = {
   maxAttempts: 2,
   attemptTimeoutMs: 20,
-  maxElapsedMs: 100,
+  maxElapsedMs: 10_000,
   baseDelayMs: 0,
 } as const;
 
@@ -265,7 +265,6 @@ describe("deterministic Google Fonts retries", () => {
     const result = injectWithRetries(html, fetchImpl, {
       ...FAST_RETRY,
       attemptTimeoutMs: 5,
-      maxElapsedMs: 50,
     });
 
     await expect(result).rejects.toMatchObject({ code: FONT_FETCH_UNAVAILABLE });

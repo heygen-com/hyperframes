@@ -142,8 +142,8 @@ COPY packages/studio-server/ packages/studio-server/
 
 # Build workspace dependencies before the producer bundle. The published
 # workspace packages are not prebuilt in a fresh clone, so producer's esbuild
-# resolution otherwise fails on parsers/core compiler entrypoints. Generate
-# embedded font data so glyph layout matches production.
+# resolution otherwise fails on parsers/core compiler entrypoints. Core's build
+# also generates the embedded font data, so glyph layout matches production.
 RUN bun run --cwd packages/parsers build \
     && bun run --cwd packages/lint build \
     && bun run --cwd packages/studio-server build \
