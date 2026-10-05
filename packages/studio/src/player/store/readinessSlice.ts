@@ -13,8 +13,6 @@ export interface PlaybackReadinessSlice {
   previewBooted: boolean;
   setTimelineReady: (ready: boolean) => void;
   markPreviewBooted: () => void;
-  /** The host holds playback (a desktop app while its agent edits the project): nothing starts, and turning it on
-   *  pauses. Owned by the host, so a timeline reset leaves it. */
   playLocked: boolean;
   setPlayLocked: (locked: boolean) => void;
   /** Sets timelineReady once doc's readiness inputs settle, or immediately

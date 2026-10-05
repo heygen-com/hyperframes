@@ -286,7 +286,6 @@ export function useTimelinePlayer({
   );
   const pause = useCallback(() => {
     stopReverseLoop();
-    // With no adapter yet nothing plays, but the frame loop and the store's playing flag still stop.
     const adapter = getAdapter();
     adapter?.pause();
     if (adapter) setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
@@ -320,7 +319,6 @@ export function useTimelinePlayer({
       adapter.seek(nextTime, options);
       publishSeek(nextTime, options); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
-      // Scrub audio is playback too: a held player moves only the picture.
       if (!shouldResumeAfterSeek && !keepPlaying && !playLocked) {
         scrubMusicAtSeek(iframeRef.current, nextTime);
       }
