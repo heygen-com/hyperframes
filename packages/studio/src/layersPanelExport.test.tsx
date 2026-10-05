@@ -119,20 +119,28 @@ it("mirrors the reorder into the timeline rows through the host's move handler",
   await act(async () => root.unmount());
 });
 
-it("puts a caret only on a group's row and indents its children under the group's icon", async () => {
+it("puts a caret only on a group's row and starts each child's icon where its parent's label starts", async () => {
   const { root } = await mountPanel(
     undefined,
     '<div data-composition-id="main"><h1 id="title" style="z-index:2">Hi</h1>' +
-      '<div id="intro" data-hf-group="Intro" style="z-index:1"><img id="logo"></div></div>',
+      '<div id="intro" data-hf-group="Intro" style="z-index:1"><img id="logo">' +
+      '<div id="inner" data-hf-group="Inner"><img id="mark"></div></div></div>',
   );
   const rows = [...document.querySelectorAll<HTMLElement>("[data-layer-index]")];
   const byLabel = (label: string) => rows.find((row) => row.textContent?.startsWith(label))!;
-  expect(
-    rows.map((row) => row.querySelector("[data-layer-kind]")?.getAttribute("data-layer-kind")),
-  ).toEqual(["text", "group", "image"]);
+  const kind = (label: string) =>
+    byLabel(label).querySelector("[data-layer-kind]")?.getAttribute("data-layer-kind");
+  expect(["Title", "Intro", "Logo", "Inner", "Mark"].map(kind)).toEqual([
+    "text",
+    "group",
+    "image",
+    "group",
+    "image",
+  ]);
   expect(byLabel("Title").firstElementChild?.hasAttribute("data-layer-kind")).toBe(true);
   expect(byLabel("Intro").firstElementChild?.getAttribute("aria-label")).toBe("Collapse children");
-  expect(byLabel("Title").style.paddingLeft).toBe("8px");
-  expect(byLabel("Logo").style.paddingLeft).toBe("30px");
+  expect(
+    ["Title", "Intro", "Logo", "Inner", "Mark"].map((l) => byLabel(l).style.paddingLeft),
+  ).toEqual(["8px", "8px", "56px", "56px", "104px"]);
   await act(async () => root.unmount());
 });

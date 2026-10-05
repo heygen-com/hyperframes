@@ -44,7 +44,8 @@ import { useLayerRevealOverride } from "./useLayerRevealOverride";
 // Rows this panel renders before it stops. A display budget, not a document limit.
 const LAYERS_PANEL_MAX_ROWS = 80;
 
-const CARET_AND_GAP = 22;
+const [CARET, ICON, GAP] = [16, 20, 6];
+const CHILD_INDENT = CARET + GAP + ICON + GAP;
 
 const KIND_ICON = {
   image: ImageIcon,
@@ -482,7 +483,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
                     ? "bg-panel-accent/14 text-accent-ink"
                     : "text-panel-text-2 hover:bg-panel-hover/40 hover:text-panel-text-1"
               } ${dragKey ? "cursor-grabbing" : "cursor-pointer"}`}
-              style={{ paddingLeft: 8 + layer.depth * CARET_AND_GAP }}
+              style={{ paddingLeft: 8 + layer.depth * CHILD_INDENT }}
               title={
                 draggable
                   ? layer.element.hasAttribute("data-hf-group")
