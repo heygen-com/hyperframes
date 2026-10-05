@@ -7,7 +7,11 @@ import { installReactActEnvironment, makeSelection } from "../../hooks/domSelect
 import { useDomEditNudge, type UseDomEditNudgeParams } from "./useDomEditNudge";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
-import { flushStudioPendingEdits, hasStudioPendingEdits } from "../../utils/studioPendingEdits";
+import {
+  flushStudioPendingEdits,
+  hasStudioPendingEdits,
+  trackedStudioEdit,
+} from "../../utils/studioPendingEdits";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -449,6 +453,33 @@ describe("useDomEditNudge — undo right after a burst", () => {
     saved();
     await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
     act(() => root.unmount());
+  });
+});
+
+describe("useDomEditNudge — a Design-panel edit during a burst", () => {
+  it("commits the burst before the panel edit, so one undo takes back the panel edit", () => {
+    __resetForTests();
+    vi.useFakeTimers();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "dot-panel";
+    const order: string[] = [];
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: async () => void order.push("nudge"),
+        }),
+      );
+    });
+    try {
+      act(() => dispatchArrowRight());
+      trackedStudioEdit(async () => void order.push("width"))();
+      expect(order).toEqual(["nudge", "width"]);
+    } finally {
+      vi.useRealTimers();
+      act(() => root.unmount());
+    }
   });
 });
 

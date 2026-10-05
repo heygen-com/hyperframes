@@ -199,6 +199,19 @@ describe("a drain that meets a conflict", () => {
   });
 });
 
+describe("a new edit after a debounced one", () => {
+  it("commits the debounced edit first, so history records them in the order they were made", () => {
+    const order: string[] = [];
+    const remove = addStudioPendingEditFlushListener(() => void order.push("nudge"));
+    trackedStudioEdit(() => void order.push("panel"))();
+    const drag = beginStudioPendingEdit(null);
+    drag.adopt(() => void order.push("drag"));
+    drag.settle();
+    remove();
+    expect(order).toEqual(["nudge", "panel", "nudge", "drag"]);
+  });
+});
+
 describe("trackedStudioEdit", () => {
   it("counts each call as a pending edit until it settles, and reports a failure to the drain", async () => {
     let fail!: () => void;

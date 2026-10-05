@@ -107,10 +107,19 @@ export function trackStudioPendingEdit(
   return promise;
 }
 
+function commitOlderDebouncedEdits(): void {
+  if (typeof window === "undefined") return;
+  const detail: StudioFlushPendingEditsDetail = { promises: [] };
+  window.dispatchEvent(
+    new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
+  );
+}
+
 export function trackedStudioEdit<Args extends unknown[], R>(
   edit: (...args: Args) => R,
 ): (...args: Args) => R {
   return (...args) => {
+    commitOlderDebouncedEdits();
     const result = edit(...args);
     if (result instanceof Promise) trackStudioPendingEdit(result);
     return result;
@@ -118,6 +127,7 @@ export function trackedStudioEdit<Args extends unknown[], R>(
 }
 
 export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
+  commitOlderDebouncedEdits();
   let settle!: (saved?: Promise<unknown>) => void;
   const promise = trackStudioPendingEdit(new Promise<unknown>((resolve) => (settle = resolve)))!;
   const entry = pendingEdits.get(promise)!;
