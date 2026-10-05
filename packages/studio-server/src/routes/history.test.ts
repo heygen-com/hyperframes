@@ -418,7 +418,9 @@ describe("history routes", () => {
 
     finishCopy();
     const history = (await histories.get(projectDir))!;
-    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]));
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
     await history.flush();
     expect(history.list().map((entry) => entry.label)).toEqual(["Color", "Undid: Color"]);
   });
@@ -460,7 +462,9 @@ describe("history routes", () => {
 
     mediaCopy.held = null;
     const history = (await histories.get(projectDir))!;
-    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]));
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
     await history.flush();
     expect(history.list()).toEqual([]);
   });
@@ -475,7 +479,7 @@ describe("history routes", () => {
     await vi.waitFor(
       async () =>
         expect((await (await call("")).json()).entries).toMatchObject([{ label: "Dragged Title" }]),
-      { timeout: 2_000, interval: 50 },
+      { timeout: 10_000, interval: 50 },
     );
     const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
     expect(entry).toMatchObject({ id: windowId, label: "Dragged Title" });

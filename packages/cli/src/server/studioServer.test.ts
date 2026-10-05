@@ -185,6 +185,22 @@ describe("createStudioServer project history (D-491)", () => {
     },
   );
 
+  it("never makes a request wait on another process's history lock again once it was busy", async () => {
+    const waits: unknown[] = [];
+    historyState.open = async (options) => {
+      waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);
+      throw new HistoryBusyError(1);
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    await server.app.request(historyUrl);
+    await server.app.request(historyUrl);
+    historyState.open = null;
+    expect(waits).toEqual([undefined, 0]);
+    await server.shutdown();
+  });
+
   it("opens a new project's own history once it takes the folder's path", async () => {
     const projectDir = tmpProject();
     writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
