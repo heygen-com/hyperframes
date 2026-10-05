@@ -532,8 +532,8 @@ export function commitZMirrorLaneMove(
  * vertical lane change. Projects the drop-intent element set (`candidate`: the
  * dragged clip at its new / fractional-insert lane, others at their current tracks)
  * onto StackingElement using the caller-supplied live z-index reader, then
- * delegates the minimal-z resolution to computeStackingPatches — a clip on the
- * upper lane paints above every clip it time-overlaps. No-op unless both z-sync
+ * delegates to computeStackingPatches — the moved clip alone rises (moved up) or
+ * sinks (moved down) past the clips it time-overlaps. No-op unless both z-sync
  * deps are present, and never when the gesture aimed at the clip's OWN current
  * lane (`aimedLane === currentLane` — not a relocation).
  */
@@ -570,7 +570,11 @@ function syncStackingForEdit(
   const editedKeys = [dragKey];
   if (multiKeys) for (const k of multiKeys) if (k !== dragKey) editedKeys.push(k);
 
-  const patches = computeStackingPatches(stackingEls, editedKeys);
+  const patches = computeStackingPatches(
+    stackingEls,
+    editedKeys,
+    aimedLane < currentLane ? "up" : "down",
+  );
   if (patches.length === 0) return Promise.resolve();
   return Promise.resolve(onStackingPatches(patches, coalesceKey)).then(() => undefined);
 }

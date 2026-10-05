@@ -24,8 +24,9 @@ it("restacks the host's preview when a lane move puts a clip below another", asy
   const iframe = document.createElement("iframe");
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument!;
-  // No authored z: DOM order paints tag over title, which matches the rows until the move.
-  doc.body.innerHTML = '<div id="title"></div><div id="tag"></div><div id="note"></div>';
+  // Tag (top row) paints over title, matching the rows until the move.
+  doc.body.innerHTML =
+    '<div id="title" style="z-index: 2"></div><div id="tag" style="z-index: 3"></div><div id="note"></div>';
   const clip = (id: string, start: number, duration: number, track: number) =>
     ({ id, key: id, domId: id, tag: "div", start, duration, track }) as const;
   usePlayerStore.setState({
