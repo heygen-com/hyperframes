@@ -200,7 +200,8 @@ export function useTimelinePlayer({
     applyPreviewAudioFlags(iframeRef.current, audioMuted, audioVolume);
   }, []);
   const play = useCallback(() => {
-    if (!usePlayerStore.getState().timelineReady) return;
+    const { timelineReady, playLocked } = usePlayerStore.getState();
+    if (!timelineReady || playLocked) return;
     stopRAFLoop();
     stopReverseLoop();
     stopScrubPreviewAudio();
@@ -226,6 +227,7 @@ export function useTimelinePlayer({
   ]);
   const playBackward = useCallback(
     (rate: number) => {
+      if (usePlayerStore.getState().playLocked) return;
       stopRAFLoop();
       stopReverseLoop();
       const adapter = getAdapter();
@@ -306,13 +308,15 @@ export function useTimelinePlayer({
       const duration = Math.max(0, adapter.getDuration());
       const nextTime = clampToDuration(time, duration);
       const keepPlaying = options?.keepPlaying === true;
-      const shouldResumeAfterSeek = shouldResumeForwardPlaybackAfterSeek({
-        keepPlaying,
-        wasReverseShuttle,
-        storeWasPlaying: usePlayerStore.getState().isPlaying,
-        duration,
-        nextTime,
-      });
+      const shouldResumeAfterSeek =
+        !usePlayerStore.getState().playLocked &&
+        shouldResumeForwardPlaybackAfterSeek({
+          keepPlaying,
+          wasReverseShuttle,
+          storeWasPlaying: usePlayerStore.getState().isPlaying,
+          duration,
+          nextTime,
+        });
       adapter.seek(nextTime, options);
       publishSeek(nextTime, options); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
@@ -351,6 +355,7 @@ export function useTimelinePlayer({
 
   useEffect(() => {
     return usePlayerStore.subscribe((state, prev) => {
+      if (state.playLocked && !prev.playLocked && state.isPlaying) pause();
       if (state.requestedSeekTime !== null && state.requestedSeekTime !== prev.requestedSeekTime) {
         seek(state.requestedSeekTime);
         usePlayerStore.getState().clearSeekRequest();
