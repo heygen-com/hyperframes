@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 
+import { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   readNestedFiles,
@@ -960,5 +961,43 @@ describe("applySoftReload over a composition's own markup", () => {
     };
 
     expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
+  });
+});
+
+describe("a gsap.set a live patch applied", () => {
+  it("is cleared by the next soft reload once the new script no longer sets it, and only once", () => {
+    const markup = `<div data-composition-id="root"><div id="a" style="left: 10px"></div></div>`;
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = `${markup}<script>window.__timelines["root"]=gsap.timeline();</script>`;
+    const set = (target: HTMLElement | HTMLElement[], vars: Record<string, unknown>) => {
+      for (const el of [target].flat()) {
+        if (vars.clearProps) el.removeAttribute("style");
+        else for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, `${v}px`);
+      }
+    };
+    const iframe = {
+      contentDocument: doc,
+      contentWindow: {
+        gsap: { timeline: () => {}, set },
+        __hfForceTimelineRebind: () => {},
+        __timelines: {},
+        __player: { getTime: () => 0, seek: () => {} },
+      },
+    } as unknown as HTMLIFrameElement;
+    const el = doc.getElementById("a")!;
+    const reload = () => {
+      const script = `window.__timelines["root"]=gsap.timeline();gsap.set("#a",{width:300});`;
+      applySoftReload(iframe, script, { authoredHtml: `${markup}<script>${script}</script>` });
+    };
+
+    // W 300, then H 200, then a commit that removes height from the set.
+    patchRuntimeTweenInPlace(iframe, "#a", { kind: "global-set", props: { width: 300 } });
+    patchRuntimeTweenInPlace(iframe, "#a", { kind: "global-set", props: { height: 200 } });
+    reload();
+    expect([el.style.height, el.style.left]).toEqual(["", "10px"]);
+
+    el.style.height = "50px";
+    reload();
+    expect(el.style.height).toBe("50px");
   });
 });

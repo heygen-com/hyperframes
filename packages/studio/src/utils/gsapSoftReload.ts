@@ -2,7 +2,13 @@ import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-gradin
 import { motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findAuthoredElement } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
-import { authoringFile, collectResetTargets, compositionFile, fileDocs } from "./softReloadTargets";
+import {
+  authoringFile,
+  collectResetTargets,
+  compositionFile,
+  fileDocs,
+  forgetLiveSets,
+} from "./softReloadTargets";
 
 type IframeWindow = Window & {
   __timelines?: Record<string, { kill?: () => void; pause?: () => void }>;
@@ -228,19 +234,6 @@ export interface SoftReloadOptions {
   nestedFiles?: Map<string, string> | null;
 }
 
-// The first and latest script written since the preview last ran one; a live patch applies its sets.
-const writtenUnrun = new WeakMap<Element, [string, string]>();
-
-export function noteScriptWritten(
-  iframe: HTMLIFrameElement | null,
-  scriptText?: string | null,
-): void {
-  const doc = iframe?.contentDocument;
-  if (!doc || !scriptText?.includes("gsap.set(")) return;
-  for (const script of scriptsRegistering(findGsapScriptElements(doc), timelineKeys(scriptText)))
-    writtenUnrun.set(script, [writtenUnrun.get(script)?.[0] ?? scriptText, scriptText]);
-}
-
 /**
  * The soft reload's finalization step, shared with the rebind-only preview sync
  * below: seek → force timeline rebind → reapply studio manual edits.
@@ -383,11 +376,12 @@ export function applySoftReload(
   // fallow-ignore-next-line complexity
   const doReload = () => {
     const timelines = win.__timelines;
-    const outgoing = staleScripts.flatMap((s) => [
-      s.textContent ?? "",
-      ...(writtenUnrun.get(s) ?? []),
-    ]);
-    const targets = collectResetTargets(win, doc, targetKeys, [...new Set(outgoing)]);
+    const targets = collectResetTargets(
+      win,
+      doc,
+      targetKeys,
+      staleScripts.map((script) => script.textContent ?? ""),
+    );
 
     // Kill ONLY the target composition's timeline(s) — leaving every other
     // composition's timeline (and its children on the global timeline) intact.
@@ -440,6 +434,7 @@ export function applySoftReload(
         }
       }
     }
+    forgetLiveSets(targets);
 
     for (const script of staleScripts) script.remove();
 

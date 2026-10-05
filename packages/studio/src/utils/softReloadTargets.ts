@@ -63,6 +63,7 @@ export function collectResetTargets(
     } catch {}
   }
   sweepHeldElements(doc, targetKeys, others, targets);
+  addLiveSetTargets(doc, targetKeys, targets);
   for (const script of outgoingScripts) addStandaloneSetTargets(doc, script, targets);
   return targets;
 }
@@ -106,6 +107,35 @@ function sweepHeldElements(
         targets.set(el, new Set());
     }
   }
+}
+
+// What a live patch set on each element since its last reload; no script in the preview ran it.
+const liveSets = new WeakMap<Document, Map<Element, Set<string>>>();
+
+export function recordLiveSet(el: Element, vars: Record<string, unknown>): void {
+  const byElement = liveSets.get(el.ownerDocument) ?? new Map<Element, Set<string>>();
+  liveSets.set(el.ownerDocument, byElement);
+  const props = byElement.get(el) ?? new Set<string>();
+  for (const prop of tweenedProps(vars)) props.add(prop);
+  byElement.set(el, props);
+}
+
+function addLiveSetTargets(
+  doc: Document,
+  targetKeys: string[],
+  targets: Map<Element, Set<string>>,
+): void {
+  const roots = new Set<Element | null | undefined>(targetKeys.map((k) => compositionRoot(doc, k)));
+  for (const [el, props] of liveSets.get(doc) ?? []) {
+    if (!roots.has(el) && !roots.has(el.parentElement?.closest("[data-composition-id]"))) continue;
+    const seen = targets.get(el) ?? new Set<string>();
+    for (const prop of props) seen.add(prop);
+    targets.set(el, seen);
+  }
+}
+
+export function forgetLiveSets(reset: Map<Element, unknown>): void {
+  for (const el of reset.keys()) liveSets.get(el.ownerDocument)?.delete(el);
 }
 
 /** Adds what each standalone `gsap.set` in the outgoing script wrote, which no timeline child records. */

@@ -19,7 +19,7 @@ import {
   diffSoftReloadableRestore,
   showRestoreInPlace,
 } from "./gsapUndoRestore";
-import { noteScriptWritten } from "./gsapSoftReload";
+import { recordLiveSet } from "./softReloadTargets";
 import { applyPatch } from "./sourcePatcher";
 import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
 import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
@@ -215,11 +215,16 @@ describe("applyUndoRestoreToPreview", () => {
   describe("an undo that re-runs a changed script matches a fresh load of the restored file", () => {
     const script = (extra: string) => `window.__timelines["root"]=gsap.timeline();${extra}`;
     const root = (body: string) => `<div data-composition-id="root">${body}</div>`;
-    const undoScriptEdit = (live: string, authored: string, edit: string, patchedLive = false) => {
+    const undoScriptEdit = (
+      live: string,
+      authored: string,
+      edit: string,
+      patchedLive?: (doc: Document) => void,
+    ) => {
       const { iframe, contentWindow, doc } = buildLiveIframe(
         `${root(live)}<script>${script(patchedLive ? "" : edit)}</script>`,
       );
-      if (patchedLive) noteScriptWritten(iframe, script(edit));
+      patchedLive?.(doc);
       const clearProps = (targets: HTMLElement[]) =>
         targets.forEach((t) => t.removeAttribute("style"));
       Object.assign(contentWindow.gsap, { set: clearProps });
@@ -250,7 +255,7 @@ describe("applyUndoRestoreToPreview", () => {
         `<div id="a" style="left: 10px; width: 300px">t</div>`,
         `<div id="a" style="left: 10px">t</div>`,
         `gsap.set("#a",{width:300});`,
-        true,
+        (live) => recordLiveSet(live.getElementById("a")!, { width: 300 }),
       );
       const { style } = doc.getElementById("a")!;
       expect([style.width, style.left]).toEqual(["", "10px"]);

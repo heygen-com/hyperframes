@@ -19,6 +19,7 @@ import {
   type RuntimeTween,
   type RuntimeTimeline,
 } from "./gsapRuntimeKeyframes";
+import { recordLiveSet } from "../utils/softReloadTargets";
 
 /** Value-only channels a `tl.set(...)` patch may touch. */
 export interface SetPatchProps {
@@ -101,6 +102,7 @@ function applyGlobalSet(
     const numeric = finiteNumericProps(props);
     if (!gsapLib?.set || !el || !numeric) return false;
     gsapLib.set(el, numeric);
+    recordLiveSet(el, numeric);
     return true;
   } catch {
     return false;
