@@ -107,37 +107,33 @@ export function trackStudioPendingEdit(
   return promise;
 }
 
-function commitOlderDebouncedEdits(): Promise<unknown> | null {
-  if (typeof window === "undefined" || adopting) return null;
+let flushedSavesStillWriting: Promise<unknown> | null = null;
+
+function commitOlderDebouncedEdits(): void {
+  if (typeof window === "undefined" || adopting) return;
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
   );
-  return detail.promises.length ? Promise.allSettled(detail.promises) : null;
+  if (!detail.promises.length) return;
+  const saves = Promise.allSettled([flushedSavesStillWriting, ...detail.promises]);
+  flushedSavesStillWriting = saves;
+  void saves.then(() => {
+    if (flushedSavesStillWriting === saves) flushedSavesStillWriting = null;
+  });
 }
 
-let deferredTail: Promise<unknown> | null = null;
-
-function runAfterOlderEdits<T>(run: () => T, flush = true): Promise<T> | null {
-  const waits = [flush ? commitOlderDebouncedEdits() : null, deferredTail].filter(Boolean);
-  if (!waits.length) return null;
-  const ran = Promise.allSettled(waits).then(run);
-  const settled: Promise<unknown> = ran.then(
-    () => undefined,
-    () => undefined,
-  );
-  deferredTail = settled;
-  void settled.then(() => {
-    if (deferredTail === settled) deferredTail = null;
-  });
-  return ran;
+function afterOlderSaves<T>(run: () => T): Promise<T> | null {
+  return flushedSavesStillWriting && flushedSavesStillWriting.then(run);
 }
 
 export function trackedStudioEdit<Args extends unknown[], R>(
   edit: (...args: Args) => R,
+  { afterOlderSaves: waits = false } = {},
 ): (...args: Args) => R {
   return (...args) => {
-    const deferred = runAfterOlderEdits(() => edit(...args));
+    commitOlderDebouncedEdits();
+    const deferred = waits ? afterOlderSaves(() => edit(...args)) : null;
     if (deferred) return trackStudioPendingEdit(deferred) as R;
     const result = edit(...args);
     if (result instanceof Promise) trackStudioPendingEdit(result);
@@ -186,7 +182,7 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
     // Only what `start` registers synchronously is adopted; a later write joins only through `within`.
     adopt<T>(start: () => T): T {
       try {
-        const deferred = runAfterOlderEdits(() => inFlight.within(start), false);
+        const deferred = afterOlderSaves(() => inFlight.within(start));
         const committed = (deferred ?? inFlight.within(start)) as T;
         landed = Promise.resolve(committed).then(
           () => true,

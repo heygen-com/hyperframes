@@ -460,7 +460,9 @@ describe("useDomEditNudge — a Design-panel edit during a burst", () => {
     const root = mountBurstHarness("dot-panel", async () => void order.push("nudge"));
     try {
       act(() => dispatchArrowRight());
-      const panelEdit = trackedStudioEdit(async () => void order.push("width"))();
+      const panelEdit = trackedStudioEdit(async () => void order.push("width"), {
+        afterOlderSaves: true,
+      })();
       vi.useRealTimers();
       await panelEdit;
       expect(order).toEqual(["nudge", "width"]);
