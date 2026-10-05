@@ -29,6 +29,7 @@ import {
   classifyPropertyGroup,
   isTweenConfigKey,
   isXYPositionWrite,
+  holdScope,
   keyframeHoldForAnimation,
 } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
@@ -2490,15 +2491,21 @@ function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): 
 }
 
 /** Acorn-native, byte-preserving hold synchronization used after mutations. */
-export function syncPositionHoldsBeforeKeyframes(script: string): string {
+export function syncPositionHoldsBeforeKeyframes(script: string, previous?: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
+  const tweensOf = (text: string) =>
+    parseGsapScriptAcornForWrite(text)?.located.map((entry) => entry.animation) ?? null;
+  const scope = holdScope(
+    parsed.located.map((entry) => entry.animation),
+    previous === undefined ? null : tweensOf(previous),
+  );
   let result = removeStudioHoldSets(script, parsed);
   const current = parseGsapScriptAcornForWrite(result);
   if (!current) return result;
   const animations = current.located.map((entry) => entry.animation);
   for (const animation of animations) {
-    const position = keyframeHoldForAnimation(animation, animations);
+    const position = keyframeHoldForAnimation(animation, animations, scope);
     if (!position) continue;
     result = insertInheritedStateSetInScript(result, animation.targetSelector, 0, {
       ...position,
@@ -2511,6 +2518,9 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
 const roundPct = (pct: number) => Math.round(pct * 1000) / 1000;
 
 const LINEAR_RUN = new Set(["none", "linear"]);
+// ponytail: any .add( .duration( repeat: or yoyo: in the script skips the trim, classList.add included.
+const PLACED_BY_TIMELINE =
+  /\.(?:add|addLabel|addPause|call|repeat|yoyo|duration|timeScale)\s*\(|\b(?:repeat|yoyo)\s*:/;
 
 /** A percentage keyframe list whose timing is known and whose run is linear, so a trim keeps its render. */
 function linearPercentageKeys(animation: GsapAnimation) {
@@ -2551,9 +2561,10 @@ function trailingSpanTrim(animation: GsapAnimation) {
 export function trimTrailingKeyframeSpans(previous: string, script: string): string {
   if (script === previous) return script;
   const located = parseGsapScriptAcornForWrite(script)?.located ?? [];
-  // A shorter tween moves every tween placed after its end ("+=", ">", no position).
-  if (located.some(({ animation: a }) => a.implicitPosition || typeof a.position !== "number"))
-    return script;
+  // A shorter tween moves what is placed after its end ("+=", ">", no position, add/call/addLabel).
+  const placedAfter = ({ animation: a }: { animation: GsapAnimation }) =>
+    !a.global && (a.implicitPosition || typeof a.position !== "number");
+  if (PLACED_BY_TIMELINE.test(script) || located.some(placedAfter)) return script;
   const trims = located.flatMap((entry) => {
     const trim = trailingSpanTrim(entry.animation);
     return trim ? [{ entry, trim }] : [];

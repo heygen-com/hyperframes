@@ -2669,13 +2669,92 @@ tl.to("#box", { motionPath: { path: [{ x: 0, y: 0 }, { x: 100, y: 100 }] }, dura
     expect(result.after).not.toContain("motionPath");
   });
 
-  it("a keyframe write ends the tween it edits on its last key and leaves other tails alone", async () => {
-    const projectDir = createProjectDir();
-    const authored = `tl.to("#other", { keyframes: { "0%": { x: 0 }, "50%": { x: 90 } }, duration: 2 }, 0);`;
-    writeHtml(
-      projectDir,
-      "keys.html",
-      `<!DOCTYPE html><html><body data-duration="8">
+  const trimmed = ['"100%": { x: 48 }', "duration: 1 }, 1);"];
+  const kept = ['"33.333%": { x: 48 }', "duration: 3 }, 1);"];
+  const host = (length: string, root = 'data-duration="8"') => ({
+    "index.html": `<!DOCTYPE html><html><body><div data-composition-id="main" ${root}><div data-composition-id="sub" data-composition-src="sub.html" ${length}></div></div></body></html>`,
+  });
+  const scopedStyle = '<head><style>[data-composition-id="main"] div { color: red }</style></head>';
+  it.each([
+    [
+      "ends the tween it edits on its last key",
+      "index.html",
+      'data-composition-id="main" data-duration="8"',
+      {},
+      trimmed,
+    ],
+    [
+      "ends it past a scoped style naming the root",
+      "index.html",
+      'data-composition-id="main" data-duration="8"',
+      {},
+      trimmed,
+      scopedStyle,
+    ],
+    ["ends it in a file with no composition root", "index.html", 'data-duration="8"', {}, trimmed],
+    [
+      "keeps the tail of a root whose length is its timeline",
+      "index.html",
+      'data-composition-id="main"',
+      {},
+      kept,
+    ],
+    [
+      "ends it in a sub-composition whose host gives its length",
+      "sub.html",
+      'data-composition-id="sub"',
+      host('data-duration="4"'),
+      trimmed,
+    ],
+    [
+      "ends it in a sub-composition whose host gives its end",
+      "sub.html",
+      'data-composition-id="sub"',
+      host('data-end="4"'),
+      trimmed,
+    ],
+    [
+      "keeps the tail of a sub-composition whose host gives none",
+      "sub.html",
+      'data-composition-id="sub"',
+      host(""),
+      kept,
+    ],
+    [
+      "keeps the tail of a sub-composition in an unsized root",
+      "sub.html",
+      'data-composition-id="sub"',
+      host('data-duration="4"', ""),
+      kept,
+    ],
+    [
+      "keeps the tail of an unsized root no host mounts",
+      "demo.html",
+      'data-composition-id="main"',
+      {},
+      kept,
+    ],
+    [
+      "keeps the tail of a composition its template-wrapped host gives no length",
+      "inner.html",
+      "",
+      {
+        ...host('data-duration="4"'),
+        "sub.html":
+          '<template><div data-composition-id="sub"><div data-composition-src="inner.html"></div></div></template>',
+      },
+      kept,
+    ],
+  ])(
+    "a keyframe write %s, and leaves other tails alone",
+    async (_, file, root, mounts, written, head = "") => {
+      const projectDir = createProjectDir();
+      for (const [name, html] of Object.entries(mounts)) writeHtml(projectDir, name, html);
+      const authored = `tl.to("#other", { keyframes: { "0%": { x: 0 }, "50%": { x: 90 } }, duration: 2 }, 0);`;
+      writeHtml(
+        projectDir,
+        file,
+        `<!DOCTYPE html><html>${head}<body ${root}>
 <div id="box"></div><div id="other"></div>
 <script data-hyperframes-gsap>
 const tl = gsap.timeline();
@@ -2683,33 +2762,33 @@ tl.to("#box", { keyframes: { "0%": { x: 300 } }, duration: 3 }, 1);
 ${authored}
 </script>
 </body></html>`,
-    );
-    const app = new Hono();
-    registerFileRoutes(app, createAdapter(projectDir));
+      );
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
 
-    const anim = await getFirstAnimation(app, "keys.html");
-    const res = await app.request("http://localhost/projects/demo/gsap-mutations/keys.html", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "replace-with-keyframes",
-        animationId: anim.id,
-        targetSelector: "#box",
-        position: 1,
-        duration: 3,
-        keyframes: [
-          { percentage: 0, properties: { x: 300 } },
-          { percentage: 33.333, properties: { x: 48 } },
-        ],
-      }),
-    });
-    const result = (await res.json()) as { ok: boolean; after: string };
+      const anim = await getFirstAnimation(app, file);
+      const res = await app.request(`http://localhost/projects/demo/gsap-mutations/${file}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "replace-with-keyframes",
+          animationId: anim.id,
+          targetSelector: "#box",
+          position: 1,
+          duration: 3,
+          keyframes: [
+            { percentage: 0, properties: { x: 300 } },
+            { percentage: 33.333, properties: { x: 48 } },
+          ],
+        }),
+      });
+      const result = (await res.json()) as { ok: boolean; after: string };
 
-    expect(result.ok).toBe(true);
-    expect(result.after).toContain('"100%": { x: 48 }');
-    expect(result.after).toContain("duration: 1 }, 1);");
-    expect(result.after).toContain(authored);
-  });
+      expect(result.ok).toBe(true);
+      for (const text of written) expect(result.after).toContain(text);
+      expect(result.after).toContain(authored);
+    },
+  );
 
   it("edits a template-wrapped tween in place, preserving gsap.set and the IIFE", async () => {
     const projectDir = createProjectDir();

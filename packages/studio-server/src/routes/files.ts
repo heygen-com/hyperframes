@@ -23,6 +23,7 @@ import {
 import { resolve, dirname, join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
+import { lengthIsTimeline } from "../helpers/compositionInputs.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
@@ -1542,6 +1543,7 @@ async function applyGsapMutations(
   const prepared = await prepareGsapMutationScript(c, res, firstMutation);
   if (prepared instanceof Response) return prepared;
   const { html, beforeHtml, block } = prepared;
+  let lengthIsAuthored: boolean | undefined;
 
   const initialScript = block.scriptText;
   const skippedSelectors = new Set<string>();
@@ -1576,11 +1578,12 @@ async function applyGsapMutations(
       for (const selector of result.skippedSelectors) skippedSelectors.add(selector);
     }
     if (HOLD_SYNC_MUTATION_TYPES.has(mutation.type)) {
-      newScript = trimTrailingKeyframeSpans(previousScript, newScript);
+      lengthIsAuthored ??= !lengthIsTimeline(res.project.dir, res.filePath);
+      if (lengthIsAuthored) newScript = trimTrailingKeyframeSpans(previousScript, newScript);
       newScript =
         writer === "acorn"
-          ? syncPositionHoldsBeforeKeyframes(newScript)
-          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(newScript);
+          ? syncPositionHoldsBeforeKeyframes(newScript, previousScript)
+          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(newScript, previousScript);
     }
     mutationChanges.push(newScript !== previousScript);
     block.scriptText = newScript;
@@ -2387,8 +2390,8 @@ async function foldAtomicCutFile(
     if (script !== block.scriptText) {
       script =
         writer === "acorn"
-          ? syncPositionHoldsBeforeKeyframes(script)
-          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(script);
+          ? syncPositionHoldsBeforeKeyframes(script, block.scriptText)
+          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(script, block.scriptText);
       after = block.replaceScript(script);
     }
   }

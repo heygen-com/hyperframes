@@ -1796,11 +1796,14 @@ describe("keyframe mutations", () => {
       ["recast", syncPositionHoldsBeforeKeyframes],
       ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
     ])("%s: holds a lone size keyframe from t=0, wherever its tween starts", (_, sync) => {
+      const timeline = `const tl = gsap.timeline({ paused: true });\n`;
       for (const start of [0, 1.5]) {
         const script =
           `const tl = gsap.timeline({ paused: true });\n` +
           `tl.to("#s", { keyframes: { "0%": { width: 440, height: 294 } }, duration: 3 }, ${start});`;
-        const hold = parseGsapScript(sync(script)).animations.find((a) => a.method === "set");
+        const hold = parseGsapScript(sync(script, timeline)).animations.find(
+          (a) => a.method === "set",
+        );
         expect(hold!.position).toBe(0);
         expect(hold!.properties).toEqual({ width: 440, height: 294, data: "hf-hold" });
       }
@@ -1814,11 +1817,33 @@ describe("keyframe mutations", () => {
       (_, sync) => {
         const timeline = `const tl = gsap.timeline({ paused: true });\n`;
         const keys = `"0%": { width: 100 }, "100%": { width: 400 }`;
-        expect(
-          sync(`${timeline}tl.to("#s", { keyframes: { ${keys} }, duration: 1 }, 2);`),
-        ).not.toContain("hf-hold");
+        const twoKeys = `${timeline}tl.to("#s", { keyframes: { ${keys} }, duration: 1 }, 2);`;
+        expect(sync(twoKeys, timeline)).not.toContain("hf-hold");
         const atLabel = `${timeline}tl.to("#s", { width: 300, duration: 1 }, 1);\ntl.to("#s", { keyframes: { "0%": { width: 500 } }, duration: 1 }, "later");`;
-        expect(sync(atLabel)).not.toContain("hf-hold");
+        expect(sync(atLabel, timeline)).not.toContain("hf-hold");
+      },
+    );
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])(
+      "%s: keeps a size hold when its lone key gains a second, and adds none to a tween left alone",
+      (_, sync) => {
+        const timeline = `const tl = gsap.timeline({ paused: true });\n`;
+        const held = `tl.set("#s", { width: 440, height: 294, data: "hf-hold" }, 0);\n`;
+        const lone = `tl.to("#s", { keyframes: { "0%": { width: 440, height: 294 } }, duration: 2 }, 3);`;
+        const two = `tl.to("#s", { keyframes: { "0%": { width: 380, height: 250 }, "100%": { width: 440, height: 294 } }, duration: 1 }, 2);`;
+        const hold = parseGsapScript(
+          sync(timeline + held + two, timeline + held + lone),
+        ).animations.find((a) => a.method === "set");
+        expect(hold?.properties).toEqual({ width: 380, height: 250, data: "hf-hold" });
+
+        const untouched = `${timeline}tl.to("#u", { keyframes: { "0%": { width: 500 } }, duration: 1 }, 1);\n`;
+        const edited = `${untouched}tl.to("#v", { opacity: 1, duration: 1 }, 0);`;
+        const deleted = `${timeline}${held}tl.to("#s", { keyframes: { "0%": { width: 600 }, "100%": { width: 700 } }, duration: 1 }, 6);`;
+        expect(sync(deleted, deleted + `\n${lone}`)).not.toContain("hf-hold");
+        expect(sync(edited, untouched)).not.toContain("hf-hold");
       },
     );
 

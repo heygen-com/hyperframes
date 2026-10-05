@@ -28,6 +28,19 @@ describe("trimTrailingKeyframeSpans", () => {
     });
   });
 
+  it("trims beside a static gsap.set, which no tween's length moves", () => {
+    const out = trimTrailingKeyframeSpans(
+      timeline,
+      `${timeline}gsap.set("#g", { x: 5 });\n${shortOfEnd}`,
+    );
+    expect(keyed(out).duration).toBe(2);
+  });
+
+  it("leaves a looping timeline, whose cycle the tail is part of", () => {
+    const looping = `const tl = gsap.timeline({ paused: true, repeat: -1 });\n`;
+    expect(trimTrailingKeyframeSpans(looping, looping + shortOfEnd)).toBe(looping + shortOfEnd);
+  });
+
   it("leaves a chained tween the mutation did not touch when it edits the link before", () => {
     const chain = (x: number) =>
       `tl.to("#a", { x: ${x}, duration: 1 }, 0).to("#t", { keyframes: { "0%": { x: 300 }, "50%": { x: 48 } }, duration: 2 }, 1);`;
@@ -56,6 +69,13 @@ describe("trimTrailingKeyframeSpans", () => {
       "every tween when one is placed after another's end",
       `${shortOfEnd}\ntl.to("#u", { opacity: 1, duration: 1 }, ">");`,
     ],
+    ["a yoyo tween", tween(`"0%": { x: 300 }, "50%": { x: 48 }`, 3, ", yoyo: true")],
+    [
+      "a tween whose repeat key is quoted",
+      tween(`"0%": { x: 300 }, "50%": { x: 48 }`, 3, `, "repeat": -1`),
+    ],
+    ["every tween when a label sits at the timeline's end", `${shortOfEnd}\ntl.addLabel("end");`],
+    ["every tween when the timeline is set to repeat later", `${shortOfEnd}\ntl.repeat(-1);`],
   ])("leaves %s", (_, written) => {
     expect(trimTrailingKeyframeSpans(timeline, timeline + written)).toBe(timeline + written);
   });

@@ -55,6 +55,7 @@ import {
   classifyTweenPropertyGroup,
   GSAP_DEFAULT_DURATION,
   isXYPositionWrite,
+  holdScope,
   keyframeHoldForAnimation,
 } from "./gsapConstants";
 import type { PropertyGroupName } from "./gsapConstants";
@@ -1866,7 +1867,15 @@ export function isStudioHoldSet(anim: GsapAnimation): boolean {
  * authored pre-tween behavior. A tween already starting at 0 needs no hold, unless
  * it is a lone keyframe, which GSAP never renders by itself.
  */
-export function syncPositionHoldsBeforeKeyframes(script: string): string {
+function animationsOf(script: string): GsapAnimation[] | null {
+  try {
+    return parseGsapScript(script).animations;
+  } catch {
+    return null;
+  }
+}
+
+export function syncPositionHoldsBeforeKeyframes(script: string, previous?: string): string {
   let parsed: ParsedGsap;
   try {
     parsed = parseGsapScript(script);
@@ -1885,8 +1894,12 @@ export function syncPositionHoldsBeforeKeyframes(script: string): string {
   } catch {
     return result;
   }
+  const scope = holdScope(
+    parsed.animations,
+    previous === undefined ? null : animationsOf(previous),
+  );
   for (const anim of reparsed.animations) {
-    const posProps = keyframeHoldForAnimation(anim, reparsed.animations);
+    const posProps = keyframeHoldForAnimation(anim, reparsed.animations, scope);
     if (!posProps) continue;
     result = insertInheritedStateSet(result, anim.targetSelector, 0, {
       ...posProps,

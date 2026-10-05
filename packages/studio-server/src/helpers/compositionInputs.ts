@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { parseHTML } from "linkedom";
 import { createProjectSignature } from "./projectSignature.js";
 import { rootHeadContent } from "./subComposition.js";
 import { resolveWithinProject } from "./safePath.js";
+import { descendants } from "./compositionInsertion.js";
 
 const ROOT_COMPOSITION = "index.html";
 // A regex, not a parser: a stray match (say, inside a script string) only widens what a
@@ -47,6 +49,33 @@ function closureOf(read: SourceReader, compPath: string): Set<string> {
   };
   visit(compPath);
   return closure;
+}
+
+/** Whether `compPath` lasts as long as its own timeline (so a trim there could end the film early). */
+export function lengthIsTimeline(projectDir: string, compPath: string): boolean {
+  const read = projectReader(projectDir);
+  const documents = new Map<string, Document>();
+  const elements = (path: string, selector: string) => {
+    let document = documents.get(path);
+    if (!document) documents.set(path, (document = parseHTML(read(path) ?? "").document));
+    return descendants(document, selector);
+  };
+  const comp = normalizeSource(compPath) ?? compPath;
+  const unsized = (path: string) => {
+    const [root] = elements(path, "[data-composition-id]");
+    return Boolean(root && !root.hasAttribute("data-duration"));
+  };
+  // An unsized root lasts as long as every timeline it plays, its compositions' included.
+  if (unsized(ROOT_COMPOSITION)) return true;
+  const hosts = [...closureOf(read, ROOT_COMPOSITION)].flatMap((path) =>
+    elements(path, "[data-composition-src]").filter(
+      (host) => normalizeSource(host.getAttribute("data-composition-src") ?? "") === comp,
+    ),
+  );
+  if (comp === ROOT_COMPOSITION || hosts.length === 0) return unsized(comp);
+  return hosts.some(
+    (host) => !host.hasAttribute("data-duration") && !host.hasAttribute("data-end"),
+  );
 }
 
 // ponytail: this and projectSignature's per-exclusion cache keep one small entry per (project,
