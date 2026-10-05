@@ -4,6 +4,7 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import {
+  beginStudioShownRestore,
   hasStudioPendingEdits,
   paintBackNewestStudioPendingEdit,
 } from "../utils/studioPendingEdits";
@@ -82,6 +83,7 @@ export function useEditHistoryActions({
       const pendingEditShown = direction === "undo" ? paintBackNewestStudioPendingEdit() : null;
       const predicted = pendingEditShown ? null : (editHistory.predict?.(direction) ?? null);
       const predictedShown = predicted ? (showHistoryRestoreNow?.(predicted.files) ?? null) : null;
+      const shownLanded = predictedShown ? beginStudioShownRestore() : null;
       const putBack = predictedShown ?? pendingEditShown?.showAgain;
       const claimedAfter =
         pendingEditShown?.claimsAtBegin ??
@@ -107,6 +109,7 @@ export function useEditHistoryActions({
           : stepped && editClaimed;
       } finally {
         if (putBack && !serverSteppedShown && !revertIsTheUndo) putBack();
+        shownLanded?.();
       }
       if (!result.ok && result.reason === "content-mismatch") {
         showToast(

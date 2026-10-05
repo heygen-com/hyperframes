@@ -66,8 +66,18 @@ export function hasStudioPendingEdits(): boolean {
   return pendingEdits.size > 0 || focusedField() !== null;
 }
 
+const shownRestores = new Set<Promise<void>>();
+
+export function beginStudioShownRestore(): () => void {
+  let end = () => {};
+  const landed = new Promise<void>((resolve) => (end = resolve));
+  shownRestores.add(landed);
+  void landed.then(() => shownRestores.delete(landed));
+  return end;
+}
+
 export function isStudioEditSaving(): boolean {
-  return pendingEdits.size > 0;
+  return pendingEdits.size > 0 || shownRestores.size > 0;
 }
 
 export function afterStudioPendingEdits(run: () => void): () => void {
@@ -75,7 +85,7 @@ export function afterStudioPendingEdits(run: () => void): () => void {
   const check = () => {
     if (!waiting) return;
     if (isStudioEditSaving()) {
-      void Promise.allSettled([...pendingEdits.keys()]).then(check);
+      void Promise.allSettled([...pendingEdits.keys(), ...shownRestores]).then(check);
       return;
     }
     waiting = false;

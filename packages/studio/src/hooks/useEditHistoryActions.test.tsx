@@ -7,6 +7,7 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryActions";
 import {
   beginStudioPendingEdit,
+  isStudioEditSaving,
   setStudioPendingEditClaimClock,
   trackStudioPendingEdit,
 } from "../utils/studioPendingEdits";
@@ -95,6 +96,25 @@ describe("useEditHistoryActions", () => {
       paths: ["index.html"],
       files: { "index.html": { previous: "A", restored: "A2" } },
     });
+  });
+
+  it("counts a shown step as saving until the server takes it, so a preview reload waits for its write", async () => {
+    const { deps, actions } = mount(
+      { ok: true, label: "Undid: Move", paths: ["index.html"], undoes: "e1", files: SERVER_FILES },
+      PREDICTED,
+    );
+    let step!: () => void;
+    const stepped = new Promise<void>((resolve) => (step = resolve));
+    const undo = deps.editHistory.undo.getMockImplementation()!;
+    deps.editHistory.undo.mockImplementation(async (cb) => (await stepped, undo(cb)));
+
+    const undone = actions.undo();
+    expect(deps.showHistoryRestoreNow).toHaveBeenCalledWith(PREDICTED.files);
+    expect(isStudioEditSaving()).toBe(true);
+    step();
+    await act(() => undone);
+    await Promise.resolve();
+    expect(isStudioEditSaving()).toBe(false);
   });
 
   it("puts a shown step back and applies the server's own restore when it stepped another entry", async () => {
