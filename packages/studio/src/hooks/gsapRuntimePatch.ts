@@ -35,6 +35,8 @@ export interface SetPatchProps {
   scaleY?: number;
   scale?: number;
   opacity?: number;
+  width?: number;
+  height?: number;
 }
 
 /** A single keyframe step's numeric channels (the GSAP array-keyframe form). */
