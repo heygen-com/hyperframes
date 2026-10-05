@@ -149,6 +149,21 @@ describe("which uncaught errors fail a timeline that never registers", () => {
     30_000,
   );
 
+  // Past the 2 s grace in which a failed script cuts the wait short.
+  it("renders when a scene throws after registering its timeline and the root registers late", async () => {
+    const register = (id: string) => `(window.__timelines = window.__timelines || {}).${id} = {};`;
+    const files = {
+      "index.html": composition(
+        `<script>setTimeout(function () { ${register("main")} }, 2500);</script>`,
+      ).replace(
+        "></div>",
+        '><div data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="1"></div></div>',
+      ),
+      "scene.html": `<template><div data-composition-id="scene" data-width="160" data-height="120"><script>${register("scene")} null.optionalBadge;</script></div></template>`,
+    };
+    expect(await timelineWarningCodes(files)).toEqual([]);
+  }, 30_000);
+
   it.each(Object.keys(widgetScripts))(
     "keeps the error a readiness warning when the cross-origin script %s throws or rejects",
     async (script) => {

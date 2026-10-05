@@ -2204,13 +2204,15 @@ function recordScriptLoadFailure(session: CaptureSession, url: string): void {
   }
 }
 
+/** `runtime-error:<id>` for the error a framework wrapper logs when a composition script throws. */
+export function classifyConsoleScriptError(type: string, text: string): string | null {
+  if (type !== "error" || !text.startsWith("[HyperFrames] composition script error:")) return null;
+  const detail = text.slice("[HyperFrames] composition script error:".length).trim();
+  return `runtime-error:${detail.split(" ")[0] || "unknown"}`;
+}
+
 export function classifyConsoleScriptFailure(type: string, text: string): string | null {
   if (type !== "error") return null;
-  if (text.startsWith("[HyperFrames] composition script error:")) {
-    const detail = text.slice("[HyperFrames] composition script error:".length).trim();
-    const compId = detail.split(" ")[0] || "unknown";
-    return `runtime-error:${compId}`;
-  }
   if (
     /failed to find a valid digest in the ['"]integrity['"] attribute/i.test(text) &&
     /resource has been blocked/i.test(text)
@@ -2258,12 +2260,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     if (!diagnostic.suppressHostLog) console.log(diagnostic.text);
     appendBrowserDiagnostic(session, diagnostic.text);
 
-    // Composition script runtime errors mean the GSAP timeline registration
-    // can never arrive — same fail-fast treatment as script load failures.
-    // Without this, pollSubCompositionTimelines burns the full timeout and
-    // the render silently succeeds with a degenerate 2-frame output (#3352).
+    // A blocked script can never register its timeline (#3352); a thrown one may still, so it only counts on timeout.
     const scriptFailure = classifyConsoleScriptFailure(type, text);
     if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
+    const scriptError = classifyConsoleScriptError(type, text);
+    if (scriptError && !session.pageErrors.includes(scriptError))
+      session.pageErrors.push(scriptError);
   });
 
   page.on("pageerror", (err) => {

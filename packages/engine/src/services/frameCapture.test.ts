@@ -4,6 +4,7 @@ import { COMPOSITION_SOURCE_URL } from "@hyperframes/core";
 import type { CaptureSession } from "./frameCapture.js";
 import {
   buildZeroDurationDiagnostic,
+  classifyConsoleScriptError,
   classifyConsoleScriptFailure,
   classifyPageError,
   DrawElementVerificationError,
@@ -39,6 +40,14 @@ describe("classifyConsoleScriptFailure", () => {
       ),
     ).toBeNull();
     expect(classifyConsoleScriptFailure("error", "Integrity metadata is present.")).toBeNull();
+  });
+
+  // A thrown composition script may still register its timeline, so it is a page error, not a load failure.
+  it("leaves a composition script's logged throw to classifyConsoleScriptError", () => {
+    const logged = "[HyperFrames] composition script error: scene TypeError: x";
+    expect(classifyConsoleScriptFailure("error", logged)).toBeNull();
+    expect(classifyConsoleScriptError("error", logged)).toBe("runtime-error:scene");
+    expect(classifyConsoleScriptError("warning", logged)).toBeNull();
   });
 });
 
