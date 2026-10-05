@@ -22,7 +22,7 @@ function el(
 function patchMap(
   elements: StackingElement[],
   edited: string[],
-  direction: StackingDirection = "up",
+  direction: StackingDirection,
 ): Record<string, number> {
   const out: Record<string, number> = {};
   for (const p of computeStackingPatches(elements, edited, direction)) out[p.key] = p.zIndex;
@@ -63,7 +63,7 @@ describe("stacking-context partitioning", () => {
       stackingContextId: null,
     };
 
-    expect(patchMap([root, scene], ["root"])).toEqual({});
+    expect(patchMap([root, scene], ["root"], "up")).toEqual({});
   });
 
   it("never compares or patches across stacking contexts", () => {
@@ -91,7 +91,7 @@ describe("stacking-context partitioning", () => {
     };
     // X edited: only same-context neighbours participate — none here, so X keeps
     // its z (nothing to fix WITHIN its context) and Y is never touched.
-    expect(patchMap([x, y], ["x"])).toEqual({});
+    expect(patchMap([x, y], ["x"], "up")).toEqual({});
   });
 
   it("still resolves within the edited clip's own context", () => {
@@ -120,7 +120,7 @@ describe("stacking-context partitioning", () => {
     // by flipping z so a MUST be lifted).
     const aWrong = { ...a, track: 0, zIndex: 1 };
     const bLow = { ...b, track: 1, zIndex: 5 };
-    const patches = patchMap([aWrong, bLow], ["a"]);
+    const patches = patchMap([aWrong, bLow], ["a"], "up");
     expect(patches.a).toBeGreaterThan(5);
   });
 });
@@ -137,7 +137,7 @@ describe("computeStackingPatches", () => {
   it("no overlapping clips → no patch", () => {
     // a (0..5 on track 0) and b (10..15 on track 1) never overlap in time.
     const elements = [el("a", 0, 0, 5, 10), el("b", 1, 10, 5, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({});
+    expect(patchMap(elements, ["a"], "up")).toEqual({});
   });
 
   it("moved up with z too low → raised above the clip it now sits above", () => {

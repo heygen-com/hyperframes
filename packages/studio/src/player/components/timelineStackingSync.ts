@@ -38,7 +38,7 @@ export interface StackingElement {
    * (e.g. an unmounted / nested sub-comp element, or one outside the active file).
    * A non-finite-z clip is EXCLUDED from the computation — it is neither a stacking
    * neighbour nor resolvable as an edit — so an unresolved node never fabricates a
-   * z=0 neighbour that poisons the boundary math (item 13). The reader signals a
+   * z=0 neighbour. The reader signals a
    * miss with NaN rather than null so the value stays assignable to the existing
    * `(el) => number` reader contract the drag hook / commit deps declare.
    */
@@ -57,10 +57,9 @@ export interface StackingElement {
   /**
    * Discovery / DOM document position (optional). Two clips with EQUAL z paint by
    * DOM order — the one LATER in the DOM paints ON TOP. When supplied, "is A above
-   * B" uses (zIndex, domIndex); without it equal-z is ambiguous and the sync can
-   * under-patch (the reported bug: a clip dragged to the bottom lane over an
-   * equal-z neighbour changed nothing on canvas). Callers pass the index of the
-   * element in the discovery order array.
+   * B" uses (zIndex, domIndex); without it equal z counts as "not above", so the
+   * move writes a z. Callers pass the index of the element in the discovery order
+   * array.
    */
   domIndex?: number;
 }
@@ -74,7 +73,7 @@ export interface StackingPatch {
 /**
  * Canonical paint-scope key: leaf z-indexes are comparable only within the same
  * source document and CSS stacking context. The ONLY place this normalization
- * lives — partitioning, membership checks, and pairwise equality all use it.
+ * lives; samePaintScope compares with it.
  */
 const paintScopeKey = (el: { sourceFile?: string; stackingContextId?: string | null }): string =>
   JSON.stringify([el.sourceFile ?? null, el.stackingContextId ?? null]);
@@ -169,7 +168,7 @@ export function computeStackingPatches(
   const patches: StackingPatch[] = [];
   for (const clip of edited) {
     const overlapping = live.filter(
-      (o) => o.key !== clip.key && samePaintScope(clip, o) && overlapsInTime(clip, o),
+      (o) => o.key !== clip.key && overlapsInTime(clip, o) && samePaintScope(clip, o),
     );
     const zIndex = direction === "up" ? raisedZ(clip, overlapping) : loweredZ(clip, overlapping);
     if (zIndex === null) continue;
