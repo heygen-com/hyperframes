@@ -137,12 +137,20 @@ function raisedZ(clip: StackingElement, overlapping: StackingElement[]): number 
   return Math.max(...below.map((o) => o.zIndex)) + 1;
 }
 
-/** Moved down: one below the lowest clip it now sits under, never under z 0 (a negative z can paint behind the
- * composition's own background), or null when it already paints under them all or cannot go lower. */
+/** Moved down: one below the lowest clip it now sits under, but never under z 0 (a negative z can paint behind the
+ * composition's own background) and never under a clip on a lower row it paints over now, so the move cannot hide it.
+ * Null when it already paints under them all or cannot go lower. */
 function loweredZ(clip: StackingElement, overlapping: StackingElement[]): number | null {
   const above = overlapping.filter((o) => laneIsAbove(o, clip));
   if (above.every((o) => paintsAbove(o, clip))) return null;
-  const z = Math.max(0, Math.min(...above.map((o) => o.zIndex)) - 1);
+  const keepOver = overlapping.filter((o) => laneIsAbove(clip, o) && paintsAbove(clip, o));
+  const floor = Math.max(
+    0,
+    ...keepOver.map((o) =>
+      paintsAbove({ ...clip, zIndex: o.zIndex }, o) ? o.zIndex : o.zIndex + 1,
+    ),
+  );
+  const z = Math.max(floor, Math.min(...above.map((o) => o.zIndex)) - 1);
   return z < clip.zIndex ? z : null;
 }
 

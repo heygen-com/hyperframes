@@ -337,7 +337,6 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
     return e;
   });
-  const multiKeys = multi ? multi.keys : null;
   if (!isVertical || !deps.readZIndex || !deps.onStackingPatches) {
     void refreshAfterDurableLaneMove(
       persistMoveEdits(edits, deps, coalesceKey, "lane-reorder"),
@@ -354,7 +353,6 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
           dragKey,
           drag.element.track,
           drag.previewTrack,
-          multiKeys,
           deps,
           coalesceKey,
         ),
@@ -472,7 +470,6 @@ function commitTrackInsert(
           dragKey,
           drag.element.track,
           drag.insertRow!,
-          multi ? multi.keys : null,
           deps,
           coalesceKey,
         ),
@@ -542,7 +539,6 @@ function syncStackingForEdit(
   dragKey: string,
   currentLane: number,
   aimedLane: number,
-  multiKeys: ReadonlySet<string> | null,
   deps: DragCommitDeps,
   coalesceKey?: string,
 ): Promise<void> {
@@ -567,12 +563,10 @@ function syncStackingForEdit(
     stackingContextId: el.stackingContextId ?? null,
   }));
 
-  const editedKeys = [dragKey];
-  if (multiKeys) for (const k of multiKeys) if (k !== dragKey) editedKeys.push(k);
-
+  // Only the dragged clip changes row; selected clips that shifted in time keep their z.
   const patches = computeStackingPatches(
     stackingEls,
-    editedKeys,
+    [dragKey],
     aimedLane < currentLane ? "up" : "down",
   );
   if (patches.length === 0) return Promise.resolve();

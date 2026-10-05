@@ -262,6 +262,26 @@ describe("computeStackingPatches — only the moved clip changes", () => {
     expect(patchMap(elements, ["v"], "down")).toEqual({});
   });
 
+  it("moved down never goes under a clip on a lower row it paints over now", () => {
+    // v cannot get under r (z0, earlier in the file); dropping it to 0 would hide it under w.
+    const elements = [
+      el("r", 0, 0, 10, 0, false, 0),
+      el("v", 1, 0, 10, 2, false, 1),
+      el("w", 2, 0, 10, 1, false, 2),
+    ];
+    expect(patchMap(elements, ["v"], "down")).toEqual({});
+  });
+
+  it("moved down sinks only as far as the clips on lower rows allow", () => {
+    const elements = [el("s", 0, 0, 10, 5), el("v", 1, 0, 10, 9), el("w", 2, 0, 10, 7)];
+    expect(patchMap(elements, ["v"], "down")).toEqual({ v: 8 });
+  });
+
+  it("moved down with equal z: the clip above, later in the file, already paints over it", () => {
+    const elements = [el("v", 1, 0, 10, 3, false, 0), el("r", 0, 0, 10, 3, false, 1)];
+    expect(patchMap(elements, ["v"], "down")).toEqual({});
+  });
+
   it("#2198: an untouched pair keeps its order because neighbours never move", () => {
     // e overlaps n [5,10); n overlaps m [12,15); e does not overlap m.
     const elements = [

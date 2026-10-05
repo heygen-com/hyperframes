@@ -588,6 +588,28 @@ describe("commitDraggedClipMove", () => {
       expectZLiftedToSix(onStackingPatches);
     });
 
+    it("a multi-selection lane move restacks only the dragged clip", async () => {
+      // a moves up from row 2 to row 1 over c; the selected scene keeps its row, so it keeps its z.
+      const elements = [
+        el("scene", 0, 0, 10),
+        el("b", 1, 5, 5),
+        el("a", 2, 0, 4),
+        el("c", 3, 0, 4),
+      ];
+      const z: Record<string, number> = { scene: 0, b: 2, a: 1, c: 3 };
+      const onStackingPatches = vi.fn();
+      runClipMove(drag(elements[2], { previewStart: 0, previewTrack: 1 }), {
+        elements,
+        trackOrder: [0, 1, 2, 3],
+        selectedKeys: new Set(["a", "scene"]),
+        readZIndex: (e) => z[e.key ?? e.id] ?? 0,
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+      expect(onStackingPatches.mock.calls[0][0]).toEqual([{ key: "a", zIndex: 4 }]);
+    });
+
     it("partial z-sync deps (no readZIndex) → move persists but no stacking call", async () => {
       const elements = [el("a", 1, 0, 10), el("b", 0, 0, 10)];
       // onStackingPatches present but readZIndex absent → syncStackingForEdit needs
