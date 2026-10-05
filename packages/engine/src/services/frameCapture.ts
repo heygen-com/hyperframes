@@ -2235,7 +2235,7 @@ export function classifyPageError(
   const origin = new URL(documentUrl).origin;
   const frames = (details.stackTrace?.callFrames ?? []).map((frame) => frame.url);
   // Frameless: a parse error names its script; a browser API rejection names only the document.
-  const urls = frames.length > 0 ? frames : details.url === documentUrl ? [] : [details.url];
+  const urls = frames.length > 0 ? frames : [details.url].filter((url) => url !== documentUrl);
   return urls.some((url) => url?.startsWith(`${origin}/`)) ? `runtime-error:${firstLine}` : null;
 }
 
@@ -2310,16 +2310,17 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
   });
 
+  // Navigate to the file server
+  const url = `${serverUrl}/index.html`;
+
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    const pageError = classifyPageError(exceptionDetails, `${serverUrl}/index.html`);
+    const pageError = classifyPageError(exceptionDetails, url);
     if (pageError && !session.pageErrors.includes(pageError)) session.pageErrors.push(pageError);
   });
   await runtimeClient.send("Runtime.enable");
 
-  // Navigate to the file server
-  const url = `${serverUrl}/index.html`;
   const pageNavigationTimeout =
     session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
   const initStart = Date.now();

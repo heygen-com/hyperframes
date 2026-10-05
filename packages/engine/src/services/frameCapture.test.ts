@@ -72,19 +72,14 @@ describe("classifyPageError", () => {
 
   it("records a syntax error and a thrown string, which carry no error stack", () => {
     const syntax = thrown("SyntaxError: Unexpected token ';'", `${server}/comp.js`, []);
-    const plain = thrown(
-      undefined,
-      `${server}/index.html`,
-      [`${server}/index.html`],
-      "plain string",
-    );
+    const plain = thrown(undefined, doc, [doc], "plain string");
     expect(classifyPageError(syntax, doc)).toBe("runtime-error:SyntaxError: Unexpected token ';'");
     expect(classifyPageError(plain, doc)).toBe("runtime-error:plain string");
   });
 
   it("records a foreign library throwing when the composition called it", () => {
     const lib = "https://cdn.example/lib.js";
-    expect(classifyPageError(thrown("TypeError: x", lib, [lib, `${server}/index.html`]), doc)).toBe(
+    expect(classifyPageError(thrown("TypeError: x", lib, [lib, doc]), doc)).toBe(
       "runtime-error:TypeError: x",
     );
   });
@@ -100,9 +95,7 @@ describe("classifyPageError", () => {
     const abort =
       "AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22";
     expect(classifyPageError(thrown("Error: widget failed", widget, [widget]), doc)).toBeNull();
-    expect(
-      classifyPageError(thrown(abort, `${server}/index.html`, [`${server}/index.html`]), doc),
-    ).toBeNull();
+    expect(classifyPageError(thrown(abort, doc, [doc]), doc)).toBeNull();
   });
 
   // initializeSession registers its listeners before the incomplete fake session makes it throw.
@@ -123,9 +116,7 @@ describe("classifyPageError", () => {
       browserConsoleBuffer: [],
     };
     await initializeSession(session as unknown as CaptureSession).catch(() => {});
-    const error = thrown("ReferenceError: gsap is not defined", `${server}/index.html`, [
-      `${server}/index.html`,
-    ]);
+    const error = thrown("ReferenceError: gsap is not defined", doc, [doc]);
     runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
     runtimeListeners.get("Runtime.exceptionThrown")?.({ exceptionDetails: error });
     expect(session.pageErrors).toEqual(["runtime-error:ReferenceError: gsap is not defined"]);
