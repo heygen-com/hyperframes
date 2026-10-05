@@ -251,11 +251,13 @@ export async function applyKeyframeAtPlayhead(
   t: number,
   iframe: HTMLIFrameElement | null,
   commitOverrides?: Partial<CommitMutationOptions>,
+  liveTween?: ReturnType<typeof findParsedTween>,
 ): Promise<void> {
   const keepAuthoredDuration = kfAnim.durationUnresolved === true;
   if (keepAuthoredDuration) {
-    kfAnim = withLiveTiming(kfAnim, findParsedTween(iframe, sel.element, kfAnim));
+    kfAnim = withLiveTiming(kfAnim, liveTween ?? findParsedTween(iframe, sel.element, kfAnim));
   }
+  if (keepAuthoredDuration && kfAnim.duration == null) return;
   const duration = resolveTweenDuration(kfAnim);
   const start = resolveTweenStart(kfAnim);
   if (start !== null && !isTimeWithinTween(t, start, duration)) {
@@ -472,6 +474,9 @@ export function useEnableKeyframes(
       // resolvedFromValues, so the 0%/100% stops keep the real start→end motion
       // (passing the playhead value would flatten it). Then apply uniformly so an
       // out-of-range playhead extends the range just like a keyframe tween.
+      const flatLive = flatAnim.durationUnresolved
+        ? findParsedTween(iframe, sel.element, flatAnim)
+        : undefined;
       enableKeyframesTransactionCounter += 1;
       const coalesceKey = `enable-keyframes:${flatAnim.id}:${enableKeyframesTransactionCounter}`;
       const convertCommitOverrides: Partial<CommitMutationOptions> = {
@@ -497,7 +502,15 @@ export function useEnableKeyframes(
           // conversion splits into two undo entries under real latency.
           coalesceMs: Number.POSITIVE_INFINITY,
         };
-        await applyKeyframeAtPlayhead(session, sel, converted, t, iframe, applyCommitOverrides);
+        await applyKeyframeAtPlayhead(
+          session,
+          sel,
+          converted,
+          t,
+          iframe,
+          applyCommitOverrides,
+          flatLive,
+        );
       }
     } else {
       const position = readElementPosition(iframe, sel, null);

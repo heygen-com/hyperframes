@@ -80,10 +80,10 @@ it("reads plain array nodes where the lane puts them, though GSAP fills in step 
 });
 
 // Three default 0.5 s steps stretched over 3 s: GSAP reaches the middle one at 2 s, where the parse
-// places it at 50%.
+// places it at 66.7%.
 it.each([
   ["at the playhead, timing array steps on their own timeline", undefined],
-  ["selected in the lane, in place", 50],
+  ["selected in the lane, in place", 66.7],
 ])("changes the middle array keyframe %s", (_, selectedPct) => {
   const { plan, shown } = dragAndReplay(
     script("keyframes: [{ x: 60 }, { x: 120 }, { x: 180 }], duration: 3"),
@@ -312,7 +312,7 @@ it("keeps a step list's steps where GSAP plays them when an outer duration stret
   expect([xAt(0.5), xAt(1), xAt(2)]).toEqual([70, 100, 200]);
 });
 
-it("adds a keyframe where GSAP plays a tween whose duration is an expression, keeping the expression", async () => {
+it("adds a keyframe where GSAP plays a tween whose duration is an expression, and never rewrites the expression", async () => {
   const src = `var dur = () => 2;\nvar tl = gsap.timeline({ paused: true });\ntl.to("#x", { keyframes: { "0%": { x: 0 }, "100%": { x: 300 } }, duration: dur() }, 1);\nwindow.__timelines["t"] = tl;`;
   const box = document.body.appendChild(document.createElement("div"));
   box.id = "x";
@@ -327,6 +327,7 @@ it("adds a keyframe where GSAP plays a tween whose duration is an expression, ke
   const selection = { id: "x", selector: "#x", element: box } as DomEditSelection;
 
   await applyKeyframeAtPlayhead(session, selection, anim, 2, iframe);
+  await applyKeyframeAtPlayhead(session, selection, anim, 3.5, iframe);
   timeline.kill();
 
   expect(anim.durationUnresolved).toBe(true);
