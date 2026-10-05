@@ -91,10 +91,14 @@ export function studioManualEditSavesIn(doc: Document): number {
   return gestureSaves.get(doc) ?? 0;
 }
 
+export function countStudioPreviewChange(doc: Document): void {
+  gestureSaves.set(doc, studioManualEditSavesIn(doc) + 1);
+}
+
 /** Runs a gesture's save, counted as it starts and as it settles: a reload requested before shows the old file. */
 export function countStudioManualEditSave<R>(element: HTMLElement, save: () => R): R {
   const doc = element.ownerDocument;
-  const count = () => void gestureSaves.set(doc, studioManualEditSavesIn(doc) + 1);
+  const count = () => countStudioPreviewChange(doc);
   count();
   const result = save();
   void Promise.resolve(result).then(count, count);

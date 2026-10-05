@@ -21,6 +21,7 @@ import {
 } from "./gsapUndoRestore";
 import { applyPatch } from "./sourcePatcher";
 import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
+import { studioManualEditSavesIn } from "../components/editor/manualEditsDom";
 import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
 
 // ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
@@ -561,6 +562,17 @@ describe("an undo that lands while the layer is being dragged", () => {
 
     expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
     expect(el.style.getPropertyValue("width")).toBe("100px");
+  });
+
+  it("counts an undo shown or applied in place, so a reload requested before it loads again", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const before = studioManualEditSavesIn(doc);
+
+    showRestoreInPlace(iframe, ROOT, files, 3);
+    expect(studioManualEditSavesIn(doc)).toBeGreaterThan(before);
+    const shown = studioManualEditSavesIn(doc);
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+    expect(studioManualEditSavesIn(doc)).toBeGreaterThan(shown);
   });
 
   it("keeps a drag that started after the undo was shown when the undo is put back", () => {

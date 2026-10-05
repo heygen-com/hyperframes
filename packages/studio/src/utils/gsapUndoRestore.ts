@@ -14,7 +14,7 @@ import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { markScenesStale } from "../player/sceneSwap";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
-import { studioGestureDraws } from "../components/editor/manualEditsDom";
+import { countStudioPreviewChange, studioGestureDraws } from "../components/editor/manualEditsDom";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -143,8 +143,9 @@ function diffRestoreDocs(prevDoc: Document, nextDoc: Document): string[] | null 
   return prevRest === nextRest ? changedElementKeys : null;
 }
 
-/** Copies `source`'s attributes onto `target`; under a gesture mark it merges them (keepDrawn). */
+/** Copies `source`'s attributes onto `target` (keepDrawn under a gesture); a reload requested before is stale. */
 function syncElementAttributes(target: Element, source: Element, base?: Element): void {
+  countStudioPreviewChange(target.ownerDocument);
   const draws = base && studioGestureDraws(target);
   const merged = draws ? keepDrawn(target, source, base, draws) : source;
   for (const name of [...target.getAttributeNames()]) {
