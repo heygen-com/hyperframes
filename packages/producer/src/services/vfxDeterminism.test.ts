@@ -686,6 +686,25 @@ describe("data-vfx-chain in the browser", () => {
     }
   }, 60_000);
 
+  // Chrome draws nothing of a child it first painted at 0×0 until it is re-inserted (measured in 152).
+  it("paints a layer that grows from 0×0 on the next frame, not empty for the rest of the shot", async () => {
+    const page = await open(fixture(waveWarpChain({ height: 0, width: 93.4 }), "width:0px"));
+    try {
+      expect(await seekAndResolve(page, 0)).toBe(true);
+      expect((await sample(page, [60])).left).toEqual([0, 0, 0, 0]);
+      expect(pageErrors.get(page)).toEqual([expect.stringContaining("vfx-frame:")]);
+
+      pageErrors.get(page)!.length = 0;
+      await page.evaluate(() => {
+        (document.querySelector(".hf-vfx-in") as HTMLElement).style.width = "";
+      });
+      expect(await seekAndResolve(page, 1 / 30)).toBe(true);
+      expect((await sample(page, [60])).left).toEqual([255, 0, 0, 255]);
+    } finally {
+      await page.close();
+    }
+  }, 60_000);
+
   it("paints the layer empty, not the previous frame again, once it shrinks to 0×0", async () => {
     const page = await open(fixture(waveWarpChain({ height: 0, width: 93.4 })));
     try {
@@ -695,7 +714,7 @@ describe("data-vfx-chain in the browser", () => {
       await page.evaluate(() => {
         (document.querySelector(".hf-vfx-in") as HTMLElement).style.width = "0px";
       });
-      await seekAndResolve(page, 1 / 30);
+      expect(await seekAndResolve(page, 1 / 30)).toBe(true);
       expect((await sample(page, [60])).left).toEqual([0, 0, 0, 0]);
       expect(pageErrors.get(page)).toEqual([expect.stringContaining("vfx-frame:")]);
     } finally {

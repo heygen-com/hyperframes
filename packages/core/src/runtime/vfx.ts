@@ -117,6 +117,8 @@ interface VfxCaptureSource {
   visible: boolean;
   /** `.hf-vfx-in` measured 0×0 and that has already been reported once. */
   emptyBoxReported: boolean;
+  /** The last capture found `.hf-vfx-in` 0×0; Chrome draws nothing of it until it is re-inserted (measured). */
+  capturedEmpty: boolean;
 }
 
 /**
@@ -516,6 +518,7 @@ function resolveCaptureSource(
     // Only a `ref` source may be visible; `resolveRefSource` sets it.
     visible: false,
     emptyBoxReported: false,
+    capturedEmpty: false,
   };
 }
 
@@ -912,6 +915,18 @@ function resizeCaptureCanvas(src: VfxCaptureSource, size: { width: number; heigh
   if (src.canvas.height !== size.height) src.canvas.height = size.height;
 }
 
+function captureEmpty(
+  entry: VfxEntry,
+  src: VfxCaptureSource,
+  size: { width: number; height: number },
+  mode: CaptureMode,
+): true {
+  resizeCaptureCanvas(src, size);
+  src.ctx.clearRect(0, 0, size.width, size.height);
+  if (mode.upload) uploadCaptureTexture(entry.gl, src);
+  return true;
+}
+
 /**
  * Read one source's pixels into its texture. Both `clearRect`s matter: the
  * first because `drawElementImage` composites onto whatever is there, the
@@ -935,18 +950,6 @@ function resizeCaptureCanvas(src: VfxCaptureSource, size: { width: number; heigh
  * its OWN box, since it is a layer on the page and must paint at its own
  * size, not the host's.
  */
-function captureEmpty(
-  entry: VfxEntry,
-  src: VfxCaptureSource,
-  size: { width: number; height: number },
-  mode: CaptureMode,
-): true {
-  resizeCaptureCanvas(src, size);
-  src.ctx.clearRect(0, 0, size.width, size.height);
-  if (mode.upload) uploadCaptureTexture(entry.gl, src);
-  return true;
-}
-
 function captureSource(
   entry: VfxEntry,
   src: VfxCaptureSource,
@@ -978,6 +981,7 @@ function captureSource(
           `size — the wrapper must state an explicit width and height in px.`,
       );
     }
+    src.capturedEmpty = true;
     return captureEmpty(entry, src, size, mode);
   }
   resizeCaptureCanvas(src, size);
@@ -991,7 +995,7 @@ function captureSource(
     // render. The authoritative attempt (preview paint, or `resolveVfxCapture`)
     // still owns the loud error contract.
     if (!quiet) {
-      reportVfxFrameError(
+      reportVfxError(
         `${describeHost(entry.host)}: drawElementImage failed: ${(err as Error).message} ` +
           `In Studio, enable chrome://flags/#canvas-draw-element.`,
       );
@@ -1370,6 +1374,11 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
     else paintEntry(entry, t);
   }
   if (capturing.length === 0) return;
+  for (const src of capturing.flatMap(entrySources)) {
+    if (!src.capturedEmpty || deviceSize(src.inner) === null) continue;
+    src.capturedEmpty = false;
+    src.canvas.insertBefore(src.inner, src.inner.nextSibling);
+  }
   // Engine mode arms the page-composite protocol AND the preview-side capture,
   // then paints on whichever completes first. Arming alone was a bet that every
   // capture host runs under `frameCapture.ts`, and it does not: `hyperframes
