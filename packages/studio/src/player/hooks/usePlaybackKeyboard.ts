@@ -60,6 +60,7 @@ export function usePlaybackKeyboard({
 
   const shuttle = useCallback(
     (direction: "forward" | "backward") => {
+      if (usePlayerStore.getState().playLocked) return;
       if (shuttleDirectionRef.current === direction) {
         shuttleSpeedIndexRef.current = Math.min(
           shuttleSpeedIndexRef.current + 1,

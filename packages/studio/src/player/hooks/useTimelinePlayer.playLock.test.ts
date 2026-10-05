@@ -21,7 +21,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 afterEach(() => {
   document.body.innerHTML = "";
   resetPlayerStore();
-  usePlayerStore.setState({ playLocked: false });
+  usePlayerStore.setState({ playLocked: false, loopEnabled: false, playbackRate: 1 });
   vi.mocked(scrubMusicAtSeek).mockClear();
 });
 
@@ -49,6 +49,35 @@ it("starts nothing while the host holds playback: Play, a playback request or pl
   press("j");
   expect(adapter.play).not.toHaveBeenCalled();
   expect(usePlayerStore.getState().isPlaying).toBe(false);
+  act(() => root.unmount());
+});
+
+it("J and L keep the chosen speed while the host holds playback", () => {
+  const { root } = readyPlayer();
+  act(() => usePlayerStore.getState().setPlaybackRate(0.5));
+  act(() => usePlayerStore.getState().setPlayLocked(true));
+  press("l");
+  press("j");
+  expect(usePlayerStore.getState().playbackRate).toBe(0.5);
+  act(() => root.unmount());
+});
+
+it("a looping film reaching its end while held stops instead of starting again", () => {
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((tick) => {
+    frames.push(tick);
+    return frames.length;
+  });
+  const { api, root, adapter } = readyPlayer();
+  act(() => usePlayerStore.setState({ loopEnabled: true }));
+  act(() => api.play());
+  // Held with the store already reading stopped, so nothing pauses the frame loop first.
+  act(() => usePlayerStore.setState({ playLocked: true, isPlaying: false }));
+  adapter.seek(30);
+  act(() => frames.at(-1)!(0));
+  expect(adapter.play).toHaveBeenCalledTimes(1);
+  expect(usePlayerStore.getState().isPlaying).toBe(false);
+  raf.mockRestore();
   act(() => root.unmount());
 });
 
