@@ -153,8 +153,8 @@ describe("a failed VFX chain", () => {
     expect(await timelineWarningCodes(files)).toEqual([]);
   }, 30_000);
 
-  // A layer animated in from zero width is empty on its first frame, which is correct; later frames paint.
-  it("keeps one frame's empty capture a page error, not a stop", async () => {
+  // A wrapper with no size reports one empty capture per source: a page error, not a stop.
+  it("keeps a wrapper with no size a page error, not a stop", async () => {
     const files = { "index.html": vfxComposition(vfxNode("wave-warp", warp), "width:0") };
     const errors = await sessionErrors(files, "vfx-frame:", 2);
     expect(errors.codes).toEqual([]);

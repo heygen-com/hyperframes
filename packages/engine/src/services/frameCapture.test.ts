@@ -163,27 +163,28 @@ describe("classifyPageError", () => {
   });
 
   // initializeSession registers its listeners before the incomplete fake session makes it throw.
-  it("records the page's uncaught errors from scripts it loaded from the server", async () => {
+  async function listenedSession() {
     const runtimeListeners = new Map<string, (event: unknown) => void>();
     const pageListeners = new Map<string, (event: unknown) => void>();
-    const client = {
-      on: (event: string, listener: (event: unknown) => void) =>
-        runtimeListeners.set(event, listener),
-      send: async () => ({}),
-    };
-    const page = {
-      on: (event: string, listener: (event: unknown) => void) => pageListeners.set(event, listener),
-      createCDPSession: async () => client,
-    };
+    const listen =
+      (listeners: typeof pageListeners) => (event: string, listener: (event: unknown) => void) =>
+        listeners.set(event, listener);
+    const client = { on: listen(runtimeListeners), send: async () => ({}) };
+    const page = { on: listen(pageListeners), createCDPSession: async () => client };
     const session = {
       page,
       serverUrl: server,
-      scriptLoadFailures: [],
-      pageErrors: [],
-      warnings: [],
+      scriptLoadFailures: [] as string[],
+      pageErrors: [] as string[],
+      warnings: [] as { code: string }[],
       browserConsoleBuffer: [],
-    };
-    await initializeSession(session as unknown as CaptureSession).catch(() => {});
+    } as unknown as CaptureSession;
+    await initializeSession(session).catch(() => {});
+    return { session, pageListeners, runtimeListeners };
+  }
+
+  it("records the page's uncaught errors from scripts it loaded from the server", async () => {
+    const { session, pageListeners, runtimeListeners } = await listenedSession();
     const loaded = (url: string, resourceType: string) => ({
       status: () => 200,
       url: () => url,
@@ -201,21 +202,7 @@ describe("classifyPageError", () => {
   });
 
   it("records the first VFX error to stop the render, and a scene's logged throw as a page error", async () => {
-    const pageListeners = new Map<string, (event: unknown) => void>();
-    const client = { on: () => {}, send: async () => ({}) };
-    const page = {
-      on: (event: string, listener: (event: unknown) => void) => pageListeners.set(event, listener),
-      createCDPSession: async () => client,
-    };
-    const session = {
-      page,
-      serverUrl: server,
-      scriptLoadFailures: [] as string[],
-      pageErrors: [] as string[],
-      warnings: [] as { code: string }[],
-      browserConsoleBuffer: [],
-    } as unknown as CaptureSession;
-    await initializeSession(session).catch(() => {});
+    const { session, pageListeners } = await listenedSession();
     const logged = (detail: string) =>
       pageListeners.get("console")?.({
         type: () => "error",

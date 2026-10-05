@@ -117,8 +117,8 @@ interface VfxCaptureSource {
   visible: boolean;
   /** `.hf-vfx-in` measured 0×0 and that has already been reported once. */
   emptyBoxReported: boolean;
-  /** The last capture found `.hf-vfx-in` 0×0; Chrome draws nothing of it until it is re-inserted (measured). */
-  capturedEmpty: boolean;
+  /** `.hf-vfx-in` measured 0×0 at the last seek, whether or not anything captured it. */
+  laidOutEmpty: boolean;
 }
 
 /**
@@ -518,7 +518,7 @@ function resolveCaptureSource(
     // Only a `ref` source may be visible; `resolveRefSource` sets it.
     visible: false,
     emptyBoxReported: false,
-    capturedEmpty: false,
+    laidOutEmpty: deviceSize(inner) === null,
   };
 }
 
@@ -981,7 +981,6 @@ function captureSource(
           `size — the wrapper must state an explicit width and height in px.`,
       );
     }
-    src.capturedEmpty = true;
     return captureEmpty(entry, src, size, mode);
   }
   resizeCaptureCanvas(src, size);
@@ -1320,6 +1319,15 @@ async function capturePreviewThenPaint(
   await Promise.all(entries.map((entry) => capturePaintedHost(entry, t, seq, speculative)));
 }
 
+/** A `.hf-vfx-in` laid out at 0×0 and then sized stays blank in its capture until it is re-inserted (measured). */
+function reinsertRegrownSources(): void {
+  for (const src of registry.flatMap(entrySources)) {
+    const empty = deviceSize(src.inner) === null;
+    if (src.laidOutEmpty && !empty) src.canvas.insertBefore(src.inner, src.inner.nextSibling);
+    src.laidOutEmpty = empty;
+  }
+}
+
 /**
  * Repaint every registered chain for composition-local time `t`. Called from
  * the runtime transport's `seek` (preview) and `renderSeek` (engine) — the two
@@ -1353,6 +1361,7 @@ async function capturePreviewThenPaint(
 export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   lastPaintTime = t;
   const seq = ++paintSeq;
+  reinsertRegrownSources();
   const capturing: VfxEntry[] = [];
   for (const entry of registry) {
     // Reported once, at the moment of loss; repeating it per frame is spam.
@@ -1374,11 +1383,6 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
     else paintEntry(entry, t);
   }
   if (capturing.length === 0) return;
-  for (const src of capturing.flatMap(entrySources)) {
-    if (!src.capturedEmpty || deviceSize(src.inner) === null) continue;
-    src.capturedEmpty = false;
-    src.canvas.insertBefore(src.inner, src.inner.nextSibling);
-  }
   // Engine mode arms the page-composite protocol AND the preview-side capture,
   // then paints on whichever completes first. Arming alone was a bet that every
   // capture host runs under `frameCapture.ts`, and it does not: `hyperframes

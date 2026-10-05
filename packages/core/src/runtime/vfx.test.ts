@@ -225,6 +225,12 @@ function clearCompositeSlot(): void {
   delete compositeWindow().__hf_page_composite_resolve;
 }
 
+/** The chain registers nothing, and its one error matches every pattern. */
+function expectRefused(...patterns: RegExp[]): void {
+  expect(initVfx(document.body, 30)).toHaveLength(0);
+  for (const pattern of patterns) expect(String(errors[0]![1])).toMatch(pattern);
+}
+
 describe("vfx runtime", () => {
   beforeEach(() => installVfxHarness(null));
   afterEach(releaseVfxHarness);
@@ -279,9 +285,7 @@ describe("vfx runtime", () => {
   it("reports an unknown effect type loudly", () => {
     makeHost('{"version":1,"nodes":[{"type":"nope","id":"n1","params":{}}]}');
 
-    expect(initVfx(document.body, 30)).toHaveLength(0);
-    expect(String(errors[0]![1])).toMatch(/unknown effect type/);
-    expect(String(errors[0]![1]).startsWith("vfx: ")).toBe(true);
+    expectRefused(/unknown effect type/, /^vfx: /);
   });
 
   it("reports an unavailable WebGL2 context loudly and registers nothing", () => {
@@ -493,8 +497,7 @@ describe("vfx runtime — self capture", () => {
   it("names the Chrome flag when drawElementImage is missing", () => {
     makeCaptureHost({ clearRect: () => {} });
 
-    expect(initVfx(document.body, 30)).toHaveLength(0);
-    expect(String(errors[0]![1])).toMatch(/chrome:\/\/flags\/#canvas-draw-element/);
+    expectRefused(/chrome:\/\/flags\/#canvas-draw-element/);
   });
 
   it("arms the page-composite protocol instead of painting inline in engine mode", () => {
@@ -943,24 +946,19 @@ describe("vfx runtime — ref (second source) params", () => {
     makeRefTarget(undefined, "matte-1", false);
     makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
 
-    expect(initVfx(document.body, 30)).toHaveLength(0);
-    expect(String(errors[0]![1])).toMatch(/"matte" source/);
-    expect(String(errors[0]![1])).toMatch(/hf-vfx-src/);
+    expectRefused(/"matte" source/, /hf-vfx-src/);
   });
 
   it("refuses a ref naming an element that is not in the composition", () => {
     makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
 
-    expect(initVfx(document.body, 30)).toHaveLength(0);
-    expect(String(errors[0]![1])).toMatch(/#matte-1/);
-    expect(String(errors[0]![1])).toMatch(/not in the composition/);
+    expectRefused(/#matte-1/, /not in the composition/);
   });
 
   it("refuses a node that names no ref element at all", () => {
     makeCaptureHost(createMockCtx2d(), "cap", ONE_NODE);
 
-    expect(initVfx(document.body, 30)).toHaveLength(0);
-    expect(String(errors[0]![1])).toMatch(/needs a "matte" param/);
+    expectRefused(/needs a "matte" param/);
   });
 
   it("captures a hidden matte as empty instead of failing the frame", async () => {
