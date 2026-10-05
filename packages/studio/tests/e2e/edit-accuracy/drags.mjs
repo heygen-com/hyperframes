@@ -43,6 +43,17 @@ const PLAIN_TO_KEYS = [
   { do: "seek", time: 1 },
 ];
 
+/** Add keyframe, then moves pressed before its tween reaches the preview: each must key where it is let go. */
+const FAST_KEYS = [
+  { do: "drag", gesture: "move", by: [90, -40] },
+  { do: "autokey" },
+  { do: "addkey" },
+  { do: "seek", time: 2 },
+  { do: "drag", gesture: "move", by: [60, -30] },
+  { do: "seek", time: 3 },
+  { do: "drag", gesture: "move", by: [-50, 20] },
+];
+
 /** On a GSAP-tweened box: a resize, then a drag (with or without an undo between) must save where it is let go. */
 const GSAP_SEQUENCES = {
   resizeundodrag: [{ do: "drag", gesture: "resize" }, { do: "undo" }, MOVE],
@@ -93,6 +104,7 @@ export function dragCases() {
       keyRender: 3,
     })),
   );
+  const fastKeys = [row("seqfastkeys", pxRoot(), FAST_KEYS)];
   // Settled: a resize on a tween saves its size and its anchor separately, still one undo.
   const gsapSequences = Object.entries(GSAP_SEQUENCES).flatMap(([name, steps]) =>
     ["root", "nested"].map((nesting) => ({
@@ -108,5 +120,5 @@ export function dragCases() {
       other: false,
     })),
   );
-  return [...paths, ...sequences, ...plainToKeys, ...gsapSequences, ...texts, ...centred];
+  return [...paths, ...sequences, ...plainToKeys, ...fastKeys, ...gsapSequences, ...texts, ...centred];
 }
