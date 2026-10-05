@@ -124,7 +124,8 @@ it("puts a caret only on a group's row and starts each child's icon where its pa
     undefined,
     '<div data-composition-id="main"><h1 id="title" style="z-index:2">Hi</h1>' +
       '<div id="intro" data-hf-group="Intro" style="z-index:1"><img id="logo">' +
-      '<div id="inner" data-hf-group="Inner"><img id="mark"></div></div></div>',
+      '<div id="inner" data-hf-group="Inner"><img id="mark"></div></div>' +
+      '<div id="wrap" style="z-index:0"><div id="box"></div></div></div>',
   );
   const rows = [...document.querySelectorAll<HTMLElement>("[data-layer-index]")];
   const byLabel = (label: string) => rows.find((row) => row.textContent?.startsWith(label))!;
@@ -137,6 +138,15 @@ it("puts a caret only on a group's row and starts each child's icon where its pa
     "group",
     "image",
   ]);
+  expect([kind("Wrap"), kind("Box")]).toEqual(["group", "shape"]);
+  expect(byLabel("Wrap").firstElementChild?.getAttribute("aria-label")).toBe("Collapse children");
+  const icons = ["Title", "Intro", "Logo", "Box"].map(
+    (l) => byLabel(l).querySelector("[data-layer-kind]")!.innerHTML,
+  );
+  expect(new Set(icons).size).toBe(4);
+  for (const row of rows.filter((r) => r.title)) {
+    expect(row.querySelector<HTMLElement>("[data-layer-kind]")!.title).toContain(row.title);
+  }
   expect(byLabel("Title").firstElementChild?.hasAttribute("data-layer-kind")).toBe(true);
   expect(byLabel("Intro").firstElementChild?.getAttribute("aria-label")).toBe("Collapse children");
   expect(

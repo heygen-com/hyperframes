@@ -457,8 +457,14 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           const isCollapsed = collapsed[layer.key] ?? false;
           const hasChildren = layer.childCount > 0;
           const isCompHost = isCompositionHost(layer.element);
-          const kind = layerKindOf(layer.element);
+          const kind = layerKindOf(layer.element, hasChildren);
           const KindIcon = KIND_ICON[kind];
+          const kindName = kind[0].toUpperCase() + kind.slice(1);
+          const hint = draggable
+            ? layer.element.hasAttribute("data-hf-group")
+              ? "Double-click to enter group"
+              : undefined
+            : "This layer can't be reordered";
 
           return (
             <div
@@ -484,13 +490,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
                     : "text-panel-text-2 hover:bg-panel-hover/40 hover:text-panel-text-1"
               } ${dragKey ? "cursor-grabbing" : "cursor-pointer"}`}
               style={{ paddingLeft: 8 + layer.depth * CHILD_INDENT }}
-              title={
-                draggable
-                  ? layer.element.hasAttribute("data-hf-group")
-                    ? "Double-click to enter group"
-                    : undefined
-                  : "This layer can't be reordered"
-              }
+              title={hint}
             >
               {hasChildren ? (
                 <button
@@ -513,7 +513,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
               ) : null}
               <span
                 data-layer-kind={kind}
-                title={kind[0].toUpperCase() + kind.slice(1)}
+                title={hint ? `${kindName} · ${hint}` : kindName}
                 className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${
                   selected
                     ? "bg-panel-accent/18 text-accent-ink"

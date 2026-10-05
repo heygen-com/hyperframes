@@ -11,6 +11,7 @@ const el = (html: string) => {
 describe("layerKindOf", () => {
   it.each([
     ['<img src="a.png">', "image"],
+    ['<picture><img src="a.png"></picture>', "image"],
     ['<video src="a.mp4"></video>', "video"],
     ['<audio src="a.mp3"></audio>', "audio"],
     ['<svg viewBox="0 0 10 10"><path d="M0 0h10"/></svg>', "vector"],
@@ -27,6 +28,10 @@ describe("layerKindOf", () => {
     ["<div>   </div>", "shape"],
     ["<canvas></canvas>", "shape"],
   ])("%s is %s", (html, kind) => {
-    expect(layerKindOf(el(html))).toBe(kind);
+    expect(layerKindOf(el(html), false)).toBe(kind);
   });
+});
+
+it("a row with layer children is a group, whatever its tag", () => {
+  expect(layerKindOf(el("<div><div></div></div>"), true)).toBe("group");
 });
