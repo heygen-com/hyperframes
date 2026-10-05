@@ -53,6 +53,15 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
       .catch(() => null);
     if (project) adapter.invalidateProjectSignature?.(project.dir);
   });
+  api.use("/projects/:id/*", async function openHistorySoNoWriteBecomesItsBaseline(c, next) {
+    if (c.req.method !== "GET" && c.req.method !== "HEAD" && adapter.history) {
+      await Promise.resolve()
+        .then(() => adapter.resolveProject(c.req.param("id")))
+        .then((project) => project && adapter.history?.(project))
+        .catch(() => null);
+    }
+    await next();
+  });
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);
