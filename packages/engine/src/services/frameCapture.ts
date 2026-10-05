@@ -2237,7 +2237,9 @@ export function classifyPageError(
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url].filter((url) => url !== documentUrl);
-  return urls.some((url) => url?.startsWith(`${origin}/`)) ? `runtime-error:${firstLine}` : null;
+  // The runtime re-runs body scripts unnamed, while inlined CDN and framework code is named.
+  const onPage = (url: string | undefined) => url === "" || url?.startsWith(`${origin}/`);
+  return urls.some(onPage) ? `runtime-error:${firstLine}` : null;
 }
 
 // fallow-ignore-next-line unit-size

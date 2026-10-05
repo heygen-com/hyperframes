@@ -44,6 +44,7 @@ import {
   ensureExternalLinkTag,
   ensureExternalScriptTag,
   deferScriptsUntilFonts,
+  withSourceUrl,
   emitMountedModuleScripts,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
@@ -1243,7 +1244,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
         if (attr.name.toLowerCase() === "src") continue;
         inlineScript.setAttribute(attr.name, attr.value);
       }
-      inlineScript.textContent = `/* inlined: ${src} */\n${safeText}\n`;
+      inlineScript.textContent = withSourceUrl(`/* inlined: ${src} */\n${safeText}\n`, src);
       el.replaceWith(inlineScript);
       defaultLogger.info(`[Compiler] Inlined CDN script: ${src}`);
     } else {

@@ -1,4 +1,5 @@
 import { parseHTML } from "linkedom";
+import { withSourceUrl } from "./scriptRuns";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
 
@@ -200,8 +201,13 @@ function escapeCaseInsensitiveToken(
   return output;
 }
 
+const OFF_PAGE_INJECTED_SOURCE_URL = "hyperframes://injected";
+
 function inlineScriptTags(scripts: readonly string[]): string {
-  return scripts.map((source) => `<script>${escapeInlineScriptSource(source)}</script>`).join("\n");
+  return scripts
+    .map((source, index) => withSourceUrl(source, `${OFF_PAGE_INJECTED_SOURCE_URL}/${index}`))
+    .map((source) => `<script>${escapeInlineScriptSource(source)}</script>`)
+    .join("\n");
 }
 
 const RAW_TEXT_TAGS = ["script", "style", "title", "textarea"] as const;

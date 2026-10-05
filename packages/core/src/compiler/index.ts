@@ -72,6 +72,7 @@ export {
   styleElementsFor,
   type CompositionStyle,
   type InlineScriptRun,
+  withSourceUrl,
 } from "./scriptRuns";
 
 // Static guard

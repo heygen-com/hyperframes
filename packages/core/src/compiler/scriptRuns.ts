@@ -72,6 +72,10 @@ export const AFTER_FONTS_CLAIM = "__hfAfterFontsClaimed";
 export const INLINED_FILE_ATTR = "data-hf-inlined-src";
 
 export const DEFERRED_FILE = `[defer][src], [defer][${INLINED_FILE_ATTR}]`;
+
+export function withSourceUrl(code: string, url: string): string {
+  return /\/\/[#@] ?sourceURL=\S+\s*$/.test(code) ? code : `${code}\n//# sourceURL=${url}`;
+}
 const AFTER_FONTS_FALLBACK_ATTR = "data-hf-after-fonts-fallback";
 
 // For a runtime older than the gate: at DOMContentLoaded, before that runtime boots, run them in parser order.
@@ -121,7 +125,7 @@ export function deferScriptsUntilFonts(
   }
   const fallback = document.createElement("script");
   fallback.setAttribute(AFTER_FONTS_FALLBACK_ATTR, "");
-  fallback.textContent = afterFontsFallback();
+  fallback.textContent = withSourceUrl(afterFontsFallback(), "hyperframes://after-fonts-fallback");
   document.head.insertBefore(fallback, document.head.firstChild);
 }
 

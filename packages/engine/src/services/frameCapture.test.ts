@@ -94,6 +94,24 @@ describe("classifyPageError", () => {
     },
   );
 
+  it("records an error from a body script the runtime re-ran, which Chromium leaves unnamed", () => {
+    expect(
+      classifyPageError(thrown("TypeError: x", "", ["", "hyperframes://injected/0"]), doc),
+    ).toBe("runtime-error:TypeError: x");
+  });
+
+  it("ignores an error whose frames are all named off the page: an inlined CDN script and the runtime", () => {
+    const cdn = "http://127.0.0.1:4200/sync.js";
+    expect(
+      classifyPageError(thrown("Error: w", cdn, [cdn, "hyperframes://injected/0"]), doc),
+    ).toBeNull();
+  });
+
+  it("records a rejection that carries the composition's frames", () => {
+    const rejected = { ...thrown("Error: init failed", doc, [doc]), text: "Uncaught (in promise)" };
+    expect(classifyPageError(rejected, doc)).toBe("runtime-error:Error: init failed");
+  });
+
   it("ignores a frameless error naming the document itself", () => {
     expect(classifyPageError(thrown("SyntaxError: Unexpected token ';'", doc, []), doc)).toBeNull();
   });
