@@ -22,6 +22,8 @@ describe("layerKindOf", () => {
     ["<p>Rich <b>bold</b> and <em>soft</em> words</p>", "text"],
     ['<div style="background:red"></div>', "shape"],
     ["<div><img></div>", "shape"],
+    ["<div>Caption<img></div>", "shape"],
+    ["<p>H<sub>2</sub>O</p>", "shape"],
     ["<div>   </div>", "shape"],
     ["<canvas></canvas>", "shape"],
   ])("%s is %s", (html, kind) => {

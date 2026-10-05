@@ -53,7 +53,7 @@ export function canEditElementTextInline(element: HTMLElement | null): boolean {
   return (element.textContent ?? "").trim().length > 0;
 }
 
-function hasOnlyFormattingChildren(element: HTMLElement): boolean {
+export function hasOnlyFormattingChildren(element: HTMLElement): boolean {
   for (const child of Array.from(element.children)) {
     if (!isRichTextFormattingTag(child.tagName)) return false;
     if (!isHtmlFromAnyWindow(child)) return false;

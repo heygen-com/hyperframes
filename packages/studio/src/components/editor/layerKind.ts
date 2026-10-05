@@ -1,4 +1,4 @@
-import { isRichTextFormattingTag } from "@hyperframes/core/rich-text-sanitize";
+import { hasOnlyFormattingChildren } from "./domEditInlineText";
 
 export type LayerKind = "image" | "video" | "audio" | "vector" | "group" | "text" | "shape";
 
@@ -14,8 +14,5 @@ export function layerKindOf(el: Element): LayerKind {
   if (tag === "audio") return "audio";
   if (tag === "svg") return "vector";
   if (el.hasAttribute("data-hf-group") || isCompositionHost(el)) return "group";
-  const textOnly = [...el.querySelectorAll("*")].every((child) =>
-    isRichTextFormattingTag(child.tagName),
-  );
-  return textOnly && el.textContent?.trim() ? "text" : "shape";
+  return hasOnlyFormattingChildren(el as HTMLElement) && el.textContent?.trim() ? "text" : "shape";
 }
