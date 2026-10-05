@@ -2237,7 +2237,8 @@ export function classifyPageError(
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url];
-  // The render compiler names the composition's inline code. Inline handlers report the document, which a widget can move.
+  // The render compiler names the composition's inline code.
+  // Inline handlers report the document, which a widget can move.
   const owned = (url: string | undefined) =>
     url !== undefined && (projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL));
   return urls.some(owned) ? `runtime-error:${firstLine}` : null;
@@ -2298,15 +2299,14 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("response", (response) => {
     const status = response.status();
     const request = response.request();
+    const isScript = request.resourceType() === "script";
+    const responseUrl = response.url();
     if (status < 400) {
-      const fromServer = response.url().startsWith(`${serverUrl}/`);
-      if (fromServer && request.resourceType() === "script") projectScripts.add(response.url());
+      if (isScript && responseUrl.startsWith(`${serverUrl}/`)) projectScripts.add(responseUrl);
       return;
     }
 
-    if (request.resourceType() === "script") {
-      recordScriptLoadFailure(session, response.url());
-    }
+    if (isScript) recordScriptLoadFailure(session, responseUrl);
     appendBrowserDiagnostic(
       session,
       formatHttpErrorDiagnostic({

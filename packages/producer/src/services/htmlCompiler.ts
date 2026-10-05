@@ -142,9 +142,9 @@ function prepareCompositionScripts(html: string): string {
   const { document } = parseHTML(html);
   for (const el of document.querySelectorAll("script:not([src])")) {
     const isModule = (el.getAttribute("type") || "").trim().toLowerCase() === "module";
+    const runsAsScript = isModule || isJavaScriptType(el as unknown as Element);
     const code = el.textContent ?? "";
-    if ((!isModule && !isJavaScriptType(el as unknown as Element)) || endsWithSourceUrl(code))
-      continue;
+    if (!runsAsScript || endsWithSourceUrl(code)) continue;
     el.textContent = `${code}\n//# sourceURL=${COMPOSITION_SOURCE_URL}`;
   }
   deferScriptsUntilFonts(document as unknown as Document);
