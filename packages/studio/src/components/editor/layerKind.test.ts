@@ -32,6 +32,7 @@ describe("layerKindOf", () => {
   });
 });
 
-it("a row with layer children is a group, whatever its tag", () => {
+it("a row with layer children is a group unless it is text", () => {
   expect(layerKindOf(el("<div><div></div></div>"), true)).toBe("group");
+  expect(layerKindOf(el('<p>Hi <span class="x">there</span></p>'), true)).toBe("text");
 });

@@ -13,6 +13,7 @@ export function layerKindOf(el: Element, hasChildren: boolean): LayerKind {
   if (tag === "video") return "video";
   if (tag === "audio") return "audio";
   if (tag === "svg") return "vector";
-  if (hasChildren || el.hasAttribute("data-hf-group") || isCompositionHost(el)) return "group";
-  return hasOnlyFormattingChildren(el as HTMLElement) && el.textContent?.trim() ? "text" : "shape";
+  if (el.hasAttribute("data-hf-group") || isCompositionHost(el)) return "group";
+  if (hasOnlyFormattingChildren(el as HTMLElement) && el.textContent?.trim()) return "text";
+  return hasChildren ? "group" : "shape";
 }
