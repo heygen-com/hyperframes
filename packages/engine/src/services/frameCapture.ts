@@ -2023,20 +2023,17 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
   const threwThenTimedOut = outcome === "timeout" && session.pageErrors.length > 0;
   const scriptFailure = outcome === "script_failure" || threwThenTimedOut;
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
-  const loadFailed = session.scriptLoadFailures.some((f) => !f.startsWith("runtime-error:"));
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   recordCaptureWarnings(session, [
     {
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: threwThenTimedOut
-        ? `A composition script threw and no timeline registered within ${timeoutMs}ms` +
-          `${pendingSuffix} (${sources.join(", ")}). A composition animated by CSS or rAF ` +
-          `rather than a GSAP timeline must mark its host with data-no-timeline.`
+        ? `A composition script threw and a timeline did not register within ${timeoutMs}ms` +
+          `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
+          `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
-          ? loadFailed
-            ? `A sub-composition timeline script failed to load (${sources.join(", ")})`
-            : `A composition script threw during execution — timeline registration never arrived (${sources.join(", ")})`
+          ? `A sub-composition timeline script failed to load (${sources.join(", ")})`
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2198,17 +2195,23 @@ async function waitForOptionalTailwindReady(page: Page, timeoutMs: number): Prom
 // (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
 // the same URL duplicate it further — dedupe so the fail-fast warning names
 // each failed URL once.
+function recordPageError(session: CaptureSession, error: string | null): void {
+  if (error && !session.pageErrors.includes(error)) session.pageErrors.push(error);
+}
+
 function recordScriptLoadFailure(session: CaptureSession, url: string): void {
   if (!session.scriptLoadFailures.includes(url)) {
     session.scriptLoadFailures.push(url);
   }
 }
 
-/** `runtime-error:<id>` for the error a framework wrapper logs when a composition script throws. */
+const SCRIPT_ERROR_LABEL = "[HyperFrames] composition script error:";
+
+/** `runtime-error:<id> <error>` for the error a framework wrapper logs when a composition script throws. */
 export function classifyConsoleScriptError(type: string, text: string): string | null {
-  if (type !== "error" || !text.startsWith("[HyperFrames] composition script error:")) return null;
-  const detail = text.slice("[HyperFrames] composition script error:".length).trim();
-  return `runtime-error:${detail.split(" ")[0] || "unknown"}`;
+  if (type !== "error" || !text.startsWith(SCRIPT_ERROR_LABEL)) return null;
+  const [detail = ""] = text.slice(SCRIPT_ERROR_LABEL.length).trim().split("\n");
+  return `runtime-error:${detail || "unknown"}`;
 }
 
 export function classifyConsoleScriptFailure(type: string, text: string): string | null {
@@ -2263,9 +2266,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     // A blocked script can never register its timeline (#3352); a thrown one may still, so it only counts on timeout.
     const scriptFailure = classifyConsoleScriptFailure(type, text);
     if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
-    const scriptError = classifyConsoleScriptError(type, text);
-    if (scriptError && !session.pageErrors.includes(scriptError))
-      session.pageErrors.push(scriptError);
+    recordPageError(session, classifyConsoleScriptError(type, text));
   });
 
   page.on("pageerror", (err) => {
@@ -2327,8 +2328,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    const pageError = classifyPageError(exceptionDetails, projectScripts);
-    if (pageError && !session.pageErrors.includes(pageError)) session.pageErrors.push(pageError);
+    recordPageError(session, classifyPageError(exceptionDetails, projectScripts));
   });
   await runtimeClient.send("Runtime.enable");
 

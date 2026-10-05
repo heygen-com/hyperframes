@@ -46,7 +46,9 @@ describe("classifyConsoleScriptFailure", () => {
   it("leaves a composition script's logged throw to classifyConsoleScriptError", () => {
     const logged = "[HyperFrames] composition script error: scene TypeError: x";
     expect(classifyConsoleScriptFailure("error", logged)).toBeNull();
-    expect(classifyConsoleScriptError("error", logged)).toBe("runtime-error:scene");
+    expect(classifyConsoleScriptError("error", `${logged}\n    at scene.js:1`)).toBe(
+      "runtime-error:scene TypeError: x",
+    );
     expect(classifyConsoleScriptError("warning", logged)).toBeNull();
   });
 });

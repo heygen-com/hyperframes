@@ -11,9 +11,8 @@
  * randomness, no state carried between paints. That is the determinism
  * contract the exporter's gate depends on.
  *
- * Every failure is loud: the `[HyperFrames] composition script error:` prefix
- * is what the engine turns into `runtime-error:<compId>` and fails fast on, so
- * a broken chain stops a render instead of silently rendering the wrong frame.
+ * Every failure is loud: the engine records the `[HyperFrames] composition script error:`
+ * prefix as a composition script error, which fails a render whose timeline wait times out.
  */
 
 import {
@@ -44,7 +43,7 @@ import { isCanvasElement, isHtmlElement } from "./domRealm";
  */
 const VFX_REF_VISIBLE_ATTR = "data-vfx-ref-visible";
 
-/** The prefix `frameCapture.ts` matches to fail a render fast. */
+/** The prefix `frameCapture.ts` records as a composition script error. */
 const VFX_ERROR_LABEL = "[HyperFrames] composition script error:";
 
 /**
