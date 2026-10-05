@@ -145,8 +145,7 @@ function useMirrorLaneMoveCommit(): (
     (selectionKey, coalesceKey, resolveMove) => {
       const els = elementsRef.current;
       const element = selectionKey ? els.find((e) => (e.key ?? e.id) === selectionKey) : undefined;
-      // Not a timeline clip (canvas-only decoration) → z-only action, unchanged.
-      // No move handler (no TimelineEditProvider): the lane move would reach the store only, unsaved.
+      // Canvas-only decoration, or no handler to save a lane move (no TimelineEditProvider): z-only.
       if (!element || !onMoveElements) return Promise.resolve(false);
 
       const move = resolveMove(element, els);
