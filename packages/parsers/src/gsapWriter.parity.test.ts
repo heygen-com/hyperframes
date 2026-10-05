@@ -689,8 +689,16 @@ tl.to("#a", { duration: 1, keyframes: { [k]: { x: 10 }, "100%": { x: 50 } } }, 0
     ["a named step", '{ "0%": { x: 0 }, "100%": last }'],
     ["a spread inside a step", '{ "0%": { x: 0 }, "100%": { ...base, x: 10 } }'],
     ["a numeric key", '{ "0%": { x: 0 }, [50]: { x: 5 }, "100%": { x: 10 } }'],
+    ["a template key in an array step", "[{ x: 0 }, { x: 10, [`y`]: 5 }]"],
+    ["a variable key in an array step", "[{ x: 0 }, { x: 10, [k]: 5 }]"],
+    ["a getter in a step", '{ "0%": { x: 0 }, "100%": { get x() { return 10; } } }'],
+    ["a method in an array step", "[{ x: 0 }, { x: 10, y() {} }]"],
+    ["an array channel beside % steps", '{ "0%": { x: 0 }, "100%": { x: 10 }, y: [0, 5] }'],
+    ["an unresolved array value", "{ x: [0, 10, v] }"],
+    ["a spread in an array channel", "{ x: [0, ...rest] }"],
+    ["a hole in an array channel", "{ x: [0, , 10] }"],
   ])(
-    "treats object keyframes with %s as unreadable, so drags and deletes keep them",
+    "treats keyframes with %s as unreadable, so drags and deletes keep them",
     (_shape, keyframes) => {
       const script = `const tl = gsap.timeline({ paused: true });
 tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0);`;
