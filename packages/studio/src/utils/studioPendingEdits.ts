@@ -116,13 +116,29 @@ function commitOlderDebouncedEdits(): Promise<unknown> | null {
   return detail.promises.length ? Promise.allSettled(detail.promises) : null;
 }
 
+let deferredTail: Promise<unknown> | null = null;
+
+function runAfterOlderEdits<T>(run: () => T, flush = true): Promise<T> | null {
+  const waits = [flush ? commitOlderDebouncedEdits() : null, deferredTail].filter(Boolean);
+  if (!waits.length) return null;
+  const ran = Promise.allSettled(waits).then(run);
+  const settled: Promise<unknown> = ran.then(
+    () => undefined,
+    () => undefined,
+  );
+  deferredTail = settled;
+  void settled.then(() => {
+    if (deferredTail === settled) deferredTail = null;
+  });
+  return ran;
+}
+
 export function trackedStudioEdit<Args extends unknown[], R>(
   edit: (...args: Args) => R,
 ): (...args: Args) => R {
   return (...args) => {
-    const olderSavesStillWriting = commitOlderDebouncedEdits();
-    if (olderSavesStillWriting)
-      return trackStudioPendingEdit(olderSavesStillWriting.then(() => edit(...args))) as R;
+    const deferred = runAfterOlderEdits(() => edit(...args));
+    if (deferred) return trackStudioPendingEdit(deferred) as R;
     const result = edit(...args);
     if (result instanceof Promise) trackStudioPendingEdit(result);
     return result;
@@ -170,7 +186,8 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
     // Only what `start` registers synchronously is adopted; a later write joins only through `within`.
     adopt<T>(start: () => T): T {
       try {
-        const committed = inFlight.within(start);
+        const deferred = runAfterOlderEdits(() => inFlight.within(start), false);
+        const committed = (deferred ?? inFlight.within(start)) as T;
         landed = Promise.resolve(committed).then(
           () => true,
           () => saved,

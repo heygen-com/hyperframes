@@ -225,6 +225,28 @@ describe("a new edit after a debounced one", () => {
     expect(order).toEqual(["nudge write", "width write"]);
   });
 
+  it("keeps every later edit behind one that waits on a flushed save, so the newest value lands last", async () => {
+    const order: string[] = [];
+    let fetched!: () => void;
+    let saving = false;
+    const remove = addStudioPendingEditFlushListener(() => {
+      if (saving) return undefined;
+      saving = true;
+      return new Promise<void>((resolve) => (fetched = resolve)).then(
+        () => void order.push("nudge"),
+      );
+    });
+    const first = trackedStudioEdit(async () => void order.push("W 200"))();
+    const second = trackedStudioEdit(async () => void order.push("W 300"))();
+    const drag = beginStudioPendingEdit(null);
+    const dragged = drag.adopt(() => Promise.resolve().then(() => void order.push("resize")));
+    fetched();
+    await Promise.all([first, second, dragged]);
+    drag.settle();
+    remove();
+    expect(order).toEqual(["nudge", "W 200", "W 300", "resize"]);
+  });
+
   it("never flushes from inside an edit's own save, where a flushed save would go untracked", () => {
     let flushes = 0;
     const remove = addStudioPendingEditFlushListener(() => void (flushes += 1));
