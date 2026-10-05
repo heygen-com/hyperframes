@@ -7,6 +7,7 @@ import { MetricField, SelectField } from "./propertyPanelPrimitives";
 import { controlPointsForGsapEase } from "./studioMotion";
 import { EASE_LABELS, METHOD_LABELS, METHOD_TOOLTIPS, PROP_LABELS } from "./gsapAnimationConstants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
+import { keyframedTweenEases } from "../../utils/gsapKeyframeEases";
 import { EaseCurveSection } from "./EaseCurveSection";
 import { ArcPathControls } from "./ArcPathControls";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
@@ -296,7 +297,7 @@ export const AnimationCard = memo(function AnimationCard({
                 {animation.keyframes && onUpdateKeyframeEase ? (
                   <KeyframeEaseList
                     keyframes={animation.keyframes.keyframes}
-                    globalEase={animation.keyframes.easeEach ?? animation.ease ?? "none"}
+                    globalEase={keyframedTweenEases(animation).segment({})}
                     expandedPct={expandedKfPct}
                     collidingAnimationTargets={focusedCollidingAnimationTargets}
                     onToggle={(pct) => {

@@ -149,6 +149,13 @@ function restoreScrollIntoView(descriptor: PropertyDescriptor | undefined): void
 }
 
 describe("AnimationCard", () => {
+  it("labels an unset segment with the ease GSAP plays, not the tween's run ease", () => {
+    const view = renderFocusCard(null, vi.fn(), true);
+    const labels = [...view.host.querySelectorAll("[data-ease-segment-pct] button span.ml-auto")];
+    expect(labels.map((label) => label.textContent)).toEqual(["power1.inOut", "power1.inOut"]);
+    act(() => view.root.unmount());
+  });
+
   it("scrolls a focused segment into view but not a manually toggled segment", () => {
     const originalScrollIntoView = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
