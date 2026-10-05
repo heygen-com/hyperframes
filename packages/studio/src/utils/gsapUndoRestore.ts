@@ -252,9 +252,9 @@ function fileTargets(
   isActive: boolean,
   file: UndoRestoreFile,
 ): RestorePlan | null {
-  const stampedLikeThePreview = doc.querySelector("[data-hf-id]")
-    ? ensureHfIds
-    : (html: string) => html;
+  const previewStamped = doc.querySelector("[data-hf-id]") !== null;
+  const stampedLikeThePreview = (html: string) =>
+    previewStamped && !html.includes("data-hf-id") ? ensureHfIds(html) : html;
   const prevDoc = parseRestoreSource(stampedLikeThePreview(file.previous));
   const nextDoc = parseRestoreSource(stampedLikeThePreview(file.restored));
   const scripted = restoreScripted(prevDoc, nextDoc, isActive);
