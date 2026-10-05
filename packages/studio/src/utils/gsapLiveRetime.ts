@@ -21,7 +21,7 @@ export type LiveRetimePlan =
   | { kind: "retime"; key: string; after: string; tweens: TweenTiming[] }
   | { kind: "rerun" };
 
-const RERUN: LiveRetimePlan = { kind: "rerun" };
+const RERUN = { kind: "rerun" } as const;
 
 function untimedShape(animation: GsapAnimation): string {
   const { id: _id, position: _p, resolvedStart: _s, duration: _d, ...rest } = animation;
@@ -65,16 +65,22 @@ export function planLiveRetime(before: string, after: string): LiveRetimePlan {
   };
 }
 
+export type LiveRetime = Extract<LiveRetimePlan, { kind: "retime" }> & {
+  script: HTMLScriptElement;
+};
+
 /** Plans against the script the preview is running now; `rerun` when no single live script owns the timeline. */
 export function planLiveRetimeFromPreview(
   iframe: HTMLIFrameElement | null,
   after: string,
-): LiveRetimePlan {
+): LiveRetime | typeof RERUN {
   const doc = iframe?.contentDocument;
   const [key] = timelineKeys(after);
   if (!doc || !key) return RERUN;
-  const live = scriptsRegistering(findGsapScriptElements(doc), [key]);
-  return live.length === 1 ? planLiveRetime(live[0]!.textContent ?? "", after) : RERUN;
+  const [script, ...extra] = scriptsRegistering(findGsapScriptElements(doc), [key]);
+  if (!script || extra.length > 0) return RERUN;
+  const plan = planLiveRetime(script.textContent ?? "", after);
+  return plan.kind === "retime" ? { ...plan, script } : RERUN;
 }
 
 interface LiveTween {
@@ -101,17 +107,10 @@ const targetsMatch = (tween: LiveTween, selector: string) => {
  * Moves the live tweens a `retime` plan names and records the saved script as the live one.
  * Returns the reason when the live timeline does not pair one-to-one with the saved script.
  */
-export function applyLiveRetime(
-  iframe: HTMLIFrameElement | null,
-  plan: Extract<LiveRetimePlan, { kind: "retime" }>,
-): string | null {
+export function applyLiveRetime(iframe: HTMLIFrameElement | null, plan: LiveRetime): string | null {
   const win = iframe?.contentWindow as { __timelines?: Record<string, unknown> } | null;
-  const doc = iframe?.contentDocument;
   const timeline = win?.__timelines?.[plan.key] as LiveTimeline | undefined;
-  if (!doc || typeof timeline?.getChildren !== "function") return `no live timeline "${plan.key}"`;
-  const [script, ...extra] = scriptsRegistering(findGsapScriptElements(doc), [plan.key]);
-  if (!script || extra.length > 0)
-    return `${extra.length + (script ? 1 : 0)} scripts register "${plan.key}"`;
+  if (typeof timeline?.getChildren !== "function") return `no live timeline "${plan.key}"`;
   // The script's tweens only: the runtime also nests sub-composition timelines and adds filler tweens here.
   // Paired before anything moves: moving a tween re-sorts the timeline's children.
   const children = timeline
@@ -123,20 +122,18 @@ export function applyLiveRetime(
   const unpaired = plan.tweens.findIndex((t, i) => !targetsMatch(children[i]!, t.selector));
   if (unpaired >= 0)
     return `live tween ${unpaired} does not target ${plan.tweens[unpaired]!.selector}`;
-  if (!plan.tweens.some((t) => t.moved)) {
-    script.textContent = plan.after;
-    return null;
-  }
-  // Re-added in script order: GSAP orders equal starts by when they were added, as a fresh run does.
-  const bySource = plan.tweens
-    .map((t, i) => ({ ...t, tween: children[i]! }))
-    .sort((a, b) => a.source - b.source);
-  for (const { tween } of bySource) timeline.remove(tween);
-  for (const { tween, start, duration } of bySource) {
-    if (tween.duration() !== duration) tween.duration(duration);
-    timeline.add(tween, start);
+  if (plan.tweens.some((t) => t.moved)) {
+    // Re-added in script order: GSAP orders equal starts by when they were added, as a fresh run does.
+    const bySource = plan.tweens
+      .map((t, i) => ({ ...t, tween: children[i]! }))
+      .sort((a, b) => a.source - b.source);
+    for (const { tween } of bySource) timeline.remove(tween);
+    for (const { tween, start, duration } of bySource) {
+      if (tween.duration() !== duration) tween.duration(duration);
+      timeline.add(tween, start);
+    }
   }
   // A script element runs once, so this only keeps the next comparison honest; nothing re-executes.
-  script.textContent = plan.after;
+  plan.script.textContent = plan.after;
   return null;
 }

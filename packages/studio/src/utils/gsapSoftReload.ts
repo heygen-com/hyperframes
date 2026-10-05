@@ -288,12 +288,12 @@ export function scriptsRegistering(
   scripts: readonly HTMLScriptElement[],
   keys: readonly string[],
 ): HTMLScriptElement[] {
-  return scripts.filter((script) =>
-    keys.some((key) => {
-      const text = script.textContent || "";
-      return text.includes(`__timelines["${key}"]`) || text.includes(`__timelines['${key}']`);
-    }),
-  );
+  return scripts.filter((script) => {
+    const text = script.textContent || "";
+    return keys.some(
+      (key) => text.includes(`__timelines["${key}"]`) || text.includes(`__timelines['${key}']`),
+    );
+  });
 }
 
 // fallow-ignore-next-line complexity

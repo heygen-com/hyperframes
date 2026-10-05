@@ -104,8 +104,8 @@ function movedLiveTweens(
 }
 
 /**
- * Sync the live preview after a TIMING-ONLY edit (move / resize), preferring a
- * soft reload over the full iframe reload that flashes every clip.
+ * Sync the live preview after a TIMING-ONLY edit (move / resize): move the live tweens when only
+ * their timing changed, else a soft reload rather than the full reload that flashes every clip.
  *
  * Why this is safe WITHOUT re-deriving timeline elements: a move/resize commit has
  * already (a) patched the live DOM timing attributes, (b) updated the store's
@@ -137,26 +137,32 @@ function movedLiveTweens(
  *   script is now stale, so a rebind against it would show wrong positions →
  *   full-reload.
  */
-function syncTimingEditPreview(
+async function syncTimingEditPreview(
   iframe: HTMLIFrameElement | null,
   outcome: GsapMutationStatus,
-  currentTime: number,
+  projectId: string | null,
   reloadPreview: () => void,
   rebindWhenUnmutated: boolean,
-  nestedFiles: Map<string, string> | null | undefined,
-): void {
+): Promise<void> {
+  const currentTime = () => usePlayerStore.getState().currentTime;
   if (!outcome.mutated && rebindWhenUnmutated) {
-    if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
+    if (!rebindPreviewTiming(iframe, currentTime())) reloadPreview();
     return;
   }
-  if (!iframe || !outcome.scriptText) {
+  const { scriptText } = outcome;
+  if (!iframe || !scriptText) {
     reloadPreview();
     return;
   }
-  if (movedLiveTweens(iframe, outcome.scriptText, currentTime, reloadPreview)) return;
-  const result = applySoftReload(iframe, outcome.scriptText, {
+  if (movedLiveTweens(iframe, scriptText, currentTime(), reloadPreview)) return;
+  const nestedFiles = await settleNestedReads(
+    projectId
+      ? readNestedFiles(iframe, scriptText, (path) => readFileContent(projectId, path))
+      : null,
+  );
+  const result = applySoftReload(iframe, scriptText, {
     onAsyncFailure: reloadPreview,
-    currentTimeOverride: currentTime,
+    currentTimeOverride: currentTime(),
     authoredHtml: outcome.after,
     nestedFiles,
   });
@@ -192,21 +198,12 @@ export async function finishTimelineTimingFallback(input: {
       return;
     }
   }
-  const { projectId } = input;
-  const nestedFiles = await settleNestedReads(
-    projectId && outcome.scriptText
-      ? readNestedFiles(input.iframe, outcome.scriptText, (path) =>
-          readFileContent(projectId, path),
-        )
-      : null,
-  );
-  syncTimingEditPreview(
+  await syncTimingEditPreview(
     input.iframe,
     outcome,
-    usePlayerStore.getState().currentTime,
+    input.projectId,
     input.reloadPreview,
     input.rebindWhenUnmutated,
-    nestedFiles,
   );
 }
 
