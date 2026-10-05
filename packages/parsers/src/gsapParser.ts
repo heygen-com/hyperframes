@@ -1940,14 +1940,14 @@ export function splitAnimationsInScript(
     const dur = anim.duration ?? 0;
     const animEnd = pos + dur;
 
-    if (anim.keyframes) {
+    if (anim.keyframes || anim.hasUnresolvedKeyframes) {
       if (pos >= opts.splitTime) {
         result = updateAnimationSelector(result, anim.id, newSelector);
       } else if (animEnd > opts.splitTime) {
         // Spanning keyframes can't be correctly split without renormalizing
         // percentages and durations — leave on original, warn the caller.
         skippedSelectors.push(`${originalSelector} (keyframes spanning split)`);
-        const kfs = anim.keyframes.keyframes;
+        const kfs = anim.keyframes?.keyframes ?? [];
         for (const kf of kfs) {
           const kfTime = pos + (kf.percentage / 100) * dur;
           if (kfTime <= opts.splitTime) {
@@ -1958,7 +1958,7 @@ export function splitAnimationsInScript(
         }
       } else {
         // Entirely before split — extract final keyframe properties
-        const kfs = anim.keyframes.keyframes;
+        const kfs = anim.keyframes?.keyframes ?? [];
         if (kfs.length > 0) {
           for (const [k, v] of Object.entries(kfs[kfs.length - 1]!.properties)) {
             inheritedProps[k] = v;

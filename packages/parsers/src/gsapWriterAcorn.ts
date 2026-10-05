@@ -2627,7 +2627,7 @@ function applyTweenSplit(
   const dur = anim.duration ?? 0;
   const animEnd = pos + dur;
 
-  if (anim.keyframes) {
+  if (anim.keyframes || anim.hasUnresolvedKeyframes) {
     if (pos >= ctx.splitTime)
       return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
     if (animEnd > ctx.splitTime) {

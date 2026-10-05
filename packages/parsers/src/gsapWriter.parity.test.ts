@@ -570,6 +570,42 @@ describe("parity: splitAnimationsInScript (recast vs acorn)", () => {
   });
 });
 
+describe("splitAnimationsInScript keeps keyframes the parser cannot read", () => {
+  const STEP_SHAPES = [
+    ["a step with a flag", "", "[{ x: 0 }, { x: 100, runBackwards: true }]"],
+    ["a spread step", "const base = { x: 0 };", "[{ ...base }, { x: 100 }]"],
+    ["a named step", "const last = { x: 100 };", "[{ x: 0 }, last]"],
+    ["keyframes from a call", "", "steps()"],
+  ] as const;
+  const opts = { originalId: "a", newId: "a-2", elementStart: 0, elementDuration: 4 };
+  const writers = [
+    ["recast", splitAnimsRecast],
+    ["acorn", splitAnimsAcorn],
+  ] as const;
+
+  for (const [writer, split] of writers) {
+    for (const [shape, decl, keyframes] of STEP_SHAPES) {
+      const script = `const tl = gsap.timeline({ paused: true });
+${decl}
+tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0);`;
+
+      it(`${writer}: leaves ${shape} spanning the split as authored`, () => {
+        expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+        const result = split(script, { ...opts, splitTime: 1 });
+        expect(result.script).toContain(`tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0)`);
+        expect(result.skippedSelectors).toContain("#a (keyframes spanning split)");
+      });
+
+      it(`${writer}: moves ${shape} after the split whole`, () => {
+        const result = split(script, { ...opts, splitTime: 0 });
+        expect(result.script).toContain(
+          `tl.to("#a-2", { duration: 2, keyframes: ${keyframes} }, 0)`,
+        );
+      });
+    }
+  }
+});
+
 // ─── arc path parity ──────────────────────────────────────────────────────────
 
 const ARC_FLAT_SCRIPT = `

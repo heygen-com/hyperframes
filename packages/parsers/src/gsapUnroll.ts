@@ -227,14 +227,18 @@ function declaredFunctions(stmt: Node): Array<[string, Node[]]> {
 const collectHelperBodies = (statements: Node[]): Map<string, Node[]> =>
   new Map(statements.flatMap(declaredFunctions));
 
-/** Statements stay as authored when literal tweens cannot encode their timing, or they do more than add tweens. */
+/** Statements stay as authored when literal tweens cannot encode their timing or keyframes, or they do more than add tweens. */
 function dropStatementsUnsafeToUnroll(
   byStatement: Map<Node, GsapAnimation[]>,
   ctx: UnrollScope,
 ): void {
   for (const [stmt, anims] of byStatement) {
     const unknownTiming = anims.some(
-      (a) => a.durationUnresolved || a.resolvedStart === undefined || a.hasUnresolvedSelector,
+      (a) =>
+        a.durationUnresolved ||
+        a.resolvedStart === undefined ||
+        a.hasUnresolvedSelector ||
+        a.hasUnresolvedKeyframes,
     );
     const bodyStmts = unknownTiming ? null : bodyOf(stmt, ctx.helpers);
     if (bodyStmts === null || !onlyAddsTweens(bodyStmts, ctx)) byStatement.delete(stmt);
