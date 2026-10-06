@@ -116,16 +116,16 @@ function makeTimeline(onTo?: () => void): Fake {
   return { tl, currentTime: () => now, fire: () => onUpdate?.(), trackers: () => trackers };
 }
 
-/**
- * happy-dom resolves no transforms of its own, so the element's computed style is the trajectory.
- * The stub also answers the declaration enumeration the style replay uses, and the perspective.
- */
 /** What the browser resolves for the target: the marker's !important rule wins, else the inline value. */
 function wordVisibility(word: Element): string {
   if (word.hasAttribute(HIDING)) return "hidden";
   return (word as HTMLElement).style.visibility || "visible";
 }
 
+/**
+ * happy-dom resolves no transforms of its own, so the element's computed style is the trajectory.
+ * The stub also answers the declaration enumeration the style replay uses, and the perspective.
+ */
 function installComputedStyle(
   word: Element,
   currentTime: () => number,
@@ -581,6 +581,36 @@ describe("motion-blur declarative attribute", () => {
     await Promise.resolve();
 
     expect(target.groups()[0]?.children).toHaveLength(5);
+  });
+
+  it("keeps a descendant's own visibility in a copy, not one it only inherits", async () => {
+    const target = declare("");
+    const own = document.createElement("span");
+    const inheriting = document.createElement("span");
+    target.word.append(own, inheriting);
+    const visibility = new Map<Element, string>([
+      [target.word, "hidden"],
+      [own, "visible"],
+      [inheriting, "hidden"],
+    ]);
+    const mocked = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((element: Element) => {
+      const value = visibility.get(element);
+      if (value === undefined) return mocked(element);
+      return Object.assign(Object.create(mocked(element)), ["visibility"], {
+        length: 1,
+        getPropertyValue: (name: string) => (name === "visibility" ? value : ""),
+      });
+    }) as typeof globalThis.getComputedStyle;
+
+    target.register();
+    target.fire();
+    await Promise.resolve();
+
+    const copy = target.groups()[0]?.children[0];
+    if (!copy) throw new Error("motion-blur group carries no copies");
+    expect((copy.children[0] as HTMLElement).style.visibility).toBe("visible");
+    expect((copy.children[1] as HTMLElement).style.visibility).toBe("");
   });
 
   it("leaves a target alone when another composition registers", async () => {
