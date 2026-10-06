@@ -66,3 +66,22 @@ it("keeps listening after reading a preview's very long error list", async () =>
   expect(shown()?.length).toBe(raised.length + 1);
   expect(shown()?.at(-1)).toBe("Uncaught Error: raised after attach");
 });
+
+it("clears a document's errors when its load replaces it, and when the preview goes away", async () => {
+  const { iframe, previewWindow } = previewFrame();
+  const NullableHarness = ({ frame }: { frame: HTMLIFrameElement | null }) => {
+    capture = useConsoleErrorCapture(frame);
+    return null;
+  };
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(React.createElement(NullableHarness, { frame: iframe })));
+  await act(async () =>
+    previewWindow.dispatchEvent(new ErrorEvent("error", { message: "Uncaught Error: old" })),
+  );
+  Object.assign(previewWindow, { [STUDIO_PREVIEW_ERRORS]: ["Uncaught Error: new"] });
+  await act(async () => iframe.dispatchEvent(new Event("load")));
+  expect(shown()).toEqual(["Uncaught Error: new"]);
+
+  await act(async () => root?.render(React.createElement(NullableHarness, { frame: null })));
+  expect(capture.consoleErrors).toBeNull();
+});

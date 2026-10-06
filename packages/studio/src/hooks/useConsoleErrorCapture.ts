@@ -17,6 +17,7 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
+    resetErrors();
     if (!previewIframe) return;
 
     let patchedWin: (Window & typeof globalThis) | null = null;
@@ -41,8 +42,7 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
 
     const attachErrorCapture = () => {
       detachErrorCapture();
-      consoleErrorsRef.current = [];
-      setConsoleErrors(null);
+      resetErrors();
       try {
         const win = previewIframe.contentWindow as (Window & typeof globalThis) | null;
         if (!win) return;
@@ -78,7 +78,7 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
       previewIframe.removeEventListener("load", attachErrorCapture);
       detachErrorCapture();
     };
-  }, [previewIframe]);
+  }, [previewIframe, resetErrors]);
 
-  return { consoleErrors, setConsoleErrors, resetErrors };
+  return { consoleErrors, setConsoleErrors };
 }

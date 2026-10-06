@@ -357,11 +357,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
   });
   const frameCapture = useStableHandlers(frameCaptureResult, projectId);
-  const {
-    consoleErrors,
-    setConsoleErrors,
-    resetErrors: resetConsoleErrors,
-  } = useConsoleErrorCapture(previewIframe);
+  const { consoleErrors, setConsoleErrors } = useConsoleErrorCapture(previewIframe);
   const fileDrop = useGlobalFileDrop(timelineEditing.handleTimelineFileDrop);
   const handleToggleRecordingRef = useRef<(method?: "button" | "keyboard") => void>(() => {});
   const domEditSessionRef = useRef(domEditSession);
@@ -385,10 +381,9 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
       previewIframeRef.current = iframe;
       usePreviewIframeStore.getState().setIframe(iframe);
       appHotkeys.syncPreviewHotkeys(iframe);
-      resetConsoleErrors();
       refreshPreviewDocumentVersion();
     },
-    [appHotkeys, resetConsoleErrors, refreshPreviewDocumentVersion],
+    [appHotkeys, refreshPreviewDocumentVersion],
   );
   const rightPanel = useRightPanelIntent();
   const { inspectorPanelActive, shouldShowMotionPath, shouldShowSelectedDomBounds } =
