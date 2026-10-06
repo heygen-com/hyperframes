@@ -30,16 +30,11 @@ export function parseHTMLContent(html: string): Document {
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
 }
 
-/** ASCII-only folding preserves UTF-16 offsets; chunks bound V8 callback match arrays. */
+/** ASCII-only chunks bound match arrays; starting at uppercase preserves unchanged spans. */
 function lowerAscii(text: string): string {
-  const chunkSize = 64 * 1024;
-  let lowered = "";
-  for (let offset = 0; offset < text.length; offset += chunkSize) {
-    lowered += text
-      .slice(offset, offset + chunkSize)
-      .replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
-  }
-  return lowered;
+  return text.replace(/[A-Z][\s\S]{0,65535}/g, (chunk) =>
+    chunk.replace(/[A-Z]+/g, (letters) => letters.toLowerCase()),
+  );
 }
 
 export function stripEmbeddedRuntimeScripts(html: string): string {

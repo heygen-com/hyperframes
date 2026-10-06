@@ -88,6 +88,40 @@ describe("htmlDocument helpers", () => {
     expect(result.stdout).toContain("large HTML preserved; runtime removed");
   }, 65_000);
 
+  it.each([
+    { first: "a", oldSpace: 96 },
+    { first: "A", oldSpace: 128 },
+  ])(
+    "preserves a large authored script starting with $first within $oldSpace MiB old-space",
+    ({ first, oldSpace }) => {
+      const moduleUrl = pathToFileURL(resolve(__dirname, "htmlDocument.ts")).href;
+      const result = spawnSync(
+        process.execPath,
+        [
+          `--max-old-space-size=${oldSpace}`,
+          "--max-semi-space-size=4",
+          "--import=tsx",
+          "--input-type=module",
+          "--eval",
+          `
+        import { strict as assert } from "node:assert";
+        import { stripEmbeddedRuntimeScripts } from ${JSON.stringify(moduleUrl)};
+        const data = ${JSON.stringify(first)} + "a".repeat(48 * 1024 * 1024 - 1);
+        const html = '<!doctype html><html><head></head><body><script>const embeddeddata="' + data + '";</script></body></html>';
+        assert.ok(stripEmbeddedRuntimeScripts(html) === html);
+        assert.equal(data.length, 48 * 1024 * 1024);
+        console.log("authored script preserved");
+      `,
+        ],
+        { encoding: "utf8", timeout: 60_000 },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("authored script preserved");
+    },
+    65_000,
+  );
+
   it("keeps a document's <html> attributes when a comment comes before the doctype", () => {
     const doc = parseHTMLContent(
       '<!-- hyperframes-registry-item: blk -->\n<!doctype html>\n<html lang="en" data-composition-variables="[]"><body></body></html>',
@@ -330,9 +364,9 @@ describe("htmlDocument helpers", () => {
 
 describe("findStartTags", () => {
   it("preserves Unicode offsets and mixed-case tags across chunk boundaries", () => {
-    const prefix = "a".repeat(65_535) + "😀İ";
-    const html = prefix + "<ImG src=x>" + "A".repeat(65_521) + "<IMG src=y>";
-    expect(findStartTags(html, "iMg")).toEqual([65_538, 131_070]);
+    const prefix = "Aİ" + "a".repeat(65_533) + "😀İ";
+    const html = prefix + "<ImG src=x>" + "A".repeat(65_524) + "<IMG src=y>";
+    expect(findStartTags(html, "iMg")).toEqual([65_538, 131_073]);
     expect(
       stripEmbeddedRuntimeScripts(prefix + '<SCRIPT src="HYPERFRAME.RUNTIME.IIFE.JS"></SCRIPT>'),
     ).toBe(prefix);
