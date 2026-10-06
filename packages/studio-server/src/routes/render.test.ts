@@ -517,6 +517,42 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
     expect(await res.text()).not.toContain("secret");
   });
 
+  it("never lists, views or downloads a render that links to the app's records", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-renders-project-"));
+    tmpDirs.push(project);
+    mkdirSync(join(project, ".hyperframes"));
+    mkdirSync(join(project, "renders"));
+    writeFileSync(join(project, ".hyperframes", "app-history.jsonl"), '{"asked":"secret"}');
+    writeFileSync(join(project, "renders", "real.mp4"), "render-bytes");
+    const leak = join(project, "renders", "leak.mp4");
+    if (!tryCreateSymlink(join(project, ".hyperframes", "app-history.jsonl"), leak, "file")) return;
+    const app = new Hono();
+    registerRenderRoutes(app, {
+      listProjects: () => [],
+      resolveProject: async (id: string) => ({ id, dir: project }),
+      bundle: async () => null,
+      lint: async () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => join(project, "renders"),
+      startRender: (opts) => ({
+        id: opts.jobId,
+        status: "rendering",
+        progress: 0,
+        outputPath: opts.outputPath,
+      }),
+    });
+    const list = (await (await app.request("http://localhost/projects/demo/renders")).json()) as {
+      renders: { id: string }[];
+    };
+    expect(list.renders.map((r) => r.id)).toEqual(["real"]);
+    for (const kind of ["view", "download"]) {
+      const res = await app.request(`http://localhost/render/leak/${kind}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("secret");
+      expect((await app.request(`http://localhost/render/real/${kind}`)).status).toBe(200);
+    }
+  });
+
   it("serves a render file that lives inside rendersDir", async () => {
     const { app, rendersDir } = buildApp();
     writeFileSync(join(rendersDir, "demo.mp4"), "render-bytes");
