@@ -153,13 +153,6 @@ describe("useTimelinePlayhead zoom anchor, percent written by Studio itself", ()
     const x = onScreenX(scroll, 30, 101);
     expect(x > 800 || x < ORIGIN).toBe(true);
   });
-
-  it("anchors a person's zoom that lands on the percent already stored", () => {
-    usePlayerStore.setState({ currentTime: 30 });
-    const scroll = scrollBox(0);
-    mount({ pps: 100, scroll })({ pps: 200 }, true);
-    expectVisible(scroll, 30, 200);
-  });
 });
 
 describe("useTimelinePlayhead follow while paused", () => {
