@@ -208,6 +208,28 @@ describe("frame pattern follows the capture format, not the output's alpha need"
   });
 });
 
+describe("runEncodeStage progress", () => {
+  it("reports the frames ffmpeg has encoded, for the bar and for machines", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    encodeFramesFromDirMock.mockImplementationOnce(async (...args: unknown[]) => {
+      (args[6] as (frames: number) => void)(2);
+      return { success: true, outputPath: "", durationMs: 1, framesEncoded: 4, fileSize: 1 };
+    });
+    const input = makeInput();
+    input.job.totalFrames = 4;
+    const seen: unknown[] = [];
+    await runEncodeStage({
+      ...input,
+      onProgress: (job, stage) =>
+        void seen.push({ stage, progress: job.progress, ...job.stageProgress }),
+    });
+    expect(seen).toEqual([
+      { stage: "Encoding video", progress: 75, code: "encode", done: 0, total: 4 },
+      { stage: "Encoding frame 2/4", progress: 83, code: "encode", done: 2, total: 4 },
+    ]);
+  });
+});
+
 describe("runEncodeStage config plumbing", () => {
   it("throws a typed retryable error when the GIF encoder is externally interrupted", async () => {
     const { EncoderInterruptedError } = await import("../encoderInterruption.js");

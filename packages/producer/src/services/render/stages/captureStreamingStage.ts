@@ -75,7 +75,7 @@ import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
 import { pushWorkerDedupPerfs } from "../perfSummary.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
-import { reportFrameProgress, reportWorkerStartup } from "../shared.js";
+import { reportEncodeProgress, reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrStreamingCapturePlan } from "../capturePlan.js";
 
@@ -494,7 +494,8 @@ async function runWorkerEncodePipelineLoop(
       `Streaming frame ${prev.idx + 1}/${totalFrames}`,
       Math.round(25 + ((prev.idx + 1) / totalFrames) * 55),
       onProgress,
-      prev.idx + 1 === totalFrames,
+      prev.idx + 1,
+      totalFrames,
     );
   };
 
@@ -521,7 +522,8 @@ async function runWorkerEncodePipelineLoop(
         `Streaming frame ${item.idx + 1}/${totalFrames}`,
         Math.round(25 + ((item.idx + 1) / totalFrames) * 55),
         onProgress,
-        item.idx + 1 === totalFrames,
+        item.idx + 1,
+        totalFrames,
       );
     }
   };
@@ -827,7 +829,8 @@ export async function runCaptureStreamingStage(
               `Streaming frame ${progress.capturedFrames}/${progress.totalFrames} (${workerCount} workers)`,
               Math.round(25 + frameProgress * 55),
               onProgress,
-              progress.capturedFrames === progress.totalFrames,
+              progress.capturedFrames,
+              progress.totalFrames,
             );
           },
           onFrameBuffer,
@@ -971,7 +974,8 @@ export async function runCaptureStreamingStage(
               `Streaming frame ${i + 1}/${totalFrames}`,
               Math.round(progress),
               onProgress,
-              i + 1 === totalFrames,
+              i + 1,
+              totalFrames,
             );
           }
         }
@@ -992,7 +996,10 @@ export async function runCaptureStreamingStage(
     }
 
     // Close encoder and get result
-    const encodeResult = await currentEncoder.close();
+    const encodeFrom = job.progress;
+    const encodeResult = await currentEncoder.close((frames) =>
+      reportEncodeProgress(job, frames, totalFrames, onProgress, encodeFrom),
+    );
     streamingEncoderClosed = true;
     assertNotAborted();
 

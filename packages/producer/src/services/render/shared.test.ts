@@ -1,7 +1,13 @@
 import { describe, expect, it, setSystemTime } from "bun:test";
 import type { ParallelProgress } from "@hyperframes/engine";
 import type { RenderJob } from "../renderOrchestrator.js";
-import { reportWorkerStartup, resolveBrowserMediaEnd } from "./shared.js";
+import {
+  reportAssembleProgress,
+  reportEncodeProgress,
+  reportFrameProgress,
+  reportWorkerStartup,
+  resolveBrowserMediaEnd,
+} from "./shared.js";
 
 describe("resolveBrowserMediaEnd", () => {
   it("prefers a runtime duration over a stale compiler-clamped end", () => {
@@ -50,6 +56,49 @@ describe("reportWorkerStartup", () => {
       "Starting browsers (2/3 ready)",
       "Starting browsers (0/2 ready)",
       "Starting browsers (1/2 ready)",
+    ]);
+  });
+});
+
+describe("stage progress for machines", () => {
+  const job = () => ({ progress: 0, status: "rendering" }) as unknown as RenderJob;
+  const heard = (j: RenderJob) => {
+    const seen: unknown[] = [];
+    return {
+      seen,
+      onProgress: (_job: RenderJob, stage: string) =>
+        void seen.push({ stage, progress: j.progress, ...j.stageProgress }),
+    };
+  };
+
+  it("names capture frames done out of total", () => {
+    const j = job();
+    const { seen, onProgress } = heard(j);
+    reportFrameProgress(j, "Capturing frame 3/3", 70, onProgress, 3, 3);
+    expect(seen).toEqual([
+      { stage: "Capturing frame 3/3", progress: 70, code: "capture", done: 3, total: 3 },
+    ]);
+  });
+
+  it("moves encode from where capture left the bar to 90, never back", () => {
+    const j = job();
+    j.progress = 80;
+    const { seen, onProgress } = heard(j);
+    reportEncodeProgress(j, 0, 600, onProgress, 80);
+    reportEncodeProgress(j, 600, 600, onProgress, 80);
+    expect(seen).toEqual([
+      { stage: "Encoding frame 0/600", progress: 80, code: "encode", done: 0, total: 600 },
+      { stage: "Encoding frame 600/600", progress: 90, code: "encode", done: 600, total: 600 },
+    ]);
+  });
+
+  it("keeps assemble under 100 until the render completes, even past the end", () => {
+    const j = job();
+    j.progress = 90;
+    const { seen, onProgress } = heard(j);
+    reportAssembleProgress(j, 25, 20, onProgress);
+    expect(seen).toEqual([
+      { stage: "Assembling final video", progress: 99, code: "assemble", done: 20, total: 20 },
     ]);
   });
 });

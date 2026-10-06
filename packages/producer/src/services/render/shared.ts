@@ -35,7 +35,12 @@ import type {
 import type { CompiledComposition } from "../htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { isPathInside } from "../../utils/paths.js";
-import type { ProgressCallback, RenderJob, RenderStatus } from "../renderOrchestrator.js";
+import type {
+  ProgressCallback,
+  RenderJob,
+  RenderStageProgress,
+  RenderStatus,
+} from "../renderOrchestrator.js";
 
 export interface CompositionMetadata {
   duration: number;
@@ -246,10 +251,12 @@ export function updateJobStatus(
   stage: string,
   progress: number,
   onProgress?: ProgressCallback,
+  stageProgress?: RenderStageProgress,
 ): void {
   job.warnings ??= [];
   job.status = status;
   job.currentStage = stage;
+  job.stageProgress = stageProgress;
   const boundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
   job.progress = Math.max(job.progress, boundedProgress);
   if (status === "failed" || status === "complete" || status === "cancelled") {
@@ -279,12 +286,14 @@ function reportThrottled(
   progress: number,
   onProgress: ProgressCallback | undefined,
   force: boolean,
+  stageProgress: RenderStageProgress,
+  status: RenderStatus = "rendering",
 ): void {
   const now = Date.now();
   const last = lastReportAt.get(job);
   const due = force || last === undefined || now - last >= PROGRESS_REPORT_INTERVAL_MS;
   if (due) lastReportAt.set(job, now);
-  updateJobStatus(job, "rendering", stage, progress, due ? onProgress : undefined);
+  updateJobStatus(job, status, stage, progress, due ? onProgress : undefined, stageProgress);
 }
 
 /** Capture-loop progress: the first frame, the last frame, and at most four reports a second between. */
@@ -293,9 +302,59 @@ export function reportFrameProgress(
   stage: string,
   progress: number,
   onProgress: ProgressCallback | undefined,
-  isLastFrame: boolean,
+  done: number,
+  total: number,
 ): void {
-  reportThrottled(lastFrameReportAt, job, stage, progress, onProgress, isLastFrame);
+  reportThrottled(lastFrameReportAt, job, stage, progress, onProgress, done === total, {
+    code: "capture",
+    done,
+    total,
+  });
+}
+
+const lastEncodeReportAt = new WeakMap<RenderJob, number>();
+
+/** Frames ffmpeg has encoded, from where capture left the bar up to 90%; same cadence as capture. */
+export function reportEncodeProgress(
+  job: RenderJob,
+  done: number,
+  total: number,
+  onProgress: ProgressCallback | undefined,
+  from: number,
+): void {
+  const progress = from + ((90 - from) * Math.min(done, total)) / total;
+  reportThrottled(
+    lastEncodeReportAt,
+    job,
+    `Encoding frame ${done}/${total}`,
+    progress,
+    onProgress,
+    done >= total,
+    { code: "encode", done, total },
+    "encoding",
+  );
+}
+
+const lastAssembleReportAt = new WeakMap<RenderJob, number>();
+
+/** Seconds of the final file written, 90% to 99%: only a complete file reaches 100. */
+export function reportAssembleProgress(
+  job: RenderJob,
+  done: number,
+  total: number,
+  onProgress: ProgressCallback | undefined,
+): void {
+  const seconds = Math.min(done, total);
+  reportThrottled(
+    lastAssembleReportAt,
+    job,
+    "Assembling final video",
+    90 + (9 * seconds) / total,
+    onProgress,
+    seconds >= total,
+    { code: "assemble", done: seconds, total },
+    "assembling",
+  );
 }
 
 const workerPhasesByJob = new WeakMap<RenderJob, Map<number, string>>();
@@ -322,6 +381,7 @@ export function reportWorkerStartup(
     job.progress,
     onProgress,
     false,
+    { code: "start_browsers", done: ready, total: progress.activeWorkers },
   );
 }
 

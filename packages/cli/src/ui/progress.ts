@@ -18,3 +18,14 @@ export function renderProgress(percent: number, stage: string, row?: number): vo
     stdout.write(`\r\x1b[2K${line}`);
   }
 }
+
+export interface MachineProgress {
+  code: string;
+  done?: number;
+  total?: number;
+}
+
+export function renderMachineProgress(percent: number, stage: MachineProgress | undefined): void {
+  if (stdout.isTTY || !stage) return;
+  stdout.write(`@hf-progress ${JSON.stringify({ ...stage, pct: Math.round(percent) })}\n`);
+}

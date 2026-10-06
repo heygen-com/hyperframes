@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatFfmpegError, isExternalFfmpegInterruption, runFfmpegPipeline } from "./runFfmpeg.js";
+import {
+  formatFfmpegError,
+  isExternalFfmpegInterruption,
+  runFfmpegPipeline,
+  ffmpegStatsReader,
+} from "./runFfmpeg.js";
 
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 
@@ -286,5 +291,26 @@ describe("runFfmpegPipeline start failure", () => {
     expect(result.success).toBe(false);
     expect(result.terminationReason).toBe("spawn_error");
     expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+});
+
+describe("ffmpegStatsReader", () => {
+  it("reads frames and output seconds from stats lines split anywhere across chunks", () => {
+    const stats: unknown[] = [];
+    const read = ffmpegStatsReader((s) => stats.push(s));
+    read("Input #0, image2pipe\nframe=   12 fps=24 q=2");
+    read("8.0 size=  512kB time=00:00:00.40 bitrate=N/A speed=0.8x\rframe=  ");
+    read("30 fps=25 q=28.0 size=1024kB time=00:01:01.50 bitrate=1Mbits/s\r");
+    read("[out#0/mp4] video:1024kB\n");
+    expect(stats).toEqual([
+      { frames: 12, seconds: 0.4 },
+      { frames: 30, seconds: 61.5 },
+    ]);
+  });
+
+  it("reports a copy pass's seconds when it prints no frame count", () => {
+    const stats: unknown[] = [];
+    ffmpegStatsReader((s) => stats.push(s))("size=  9000kB time=00:00:12.00 bitrate=6000kbits/s\r");
+    expect(stats).toEqual([{ frames: undefined, seconds: 12 }]);
   });
 });

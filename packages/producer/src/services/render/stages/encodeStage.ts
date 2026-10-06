@@ -63,7 +63,7 @@ import {
   buildGifPaletteuseArgs,
   type GifEncodeArgsInput,
 } from "./gifEncodeArgs.js";
-import { updateJobStatus } from "../shared.js";
+import { reportEncodeProgress, updateJobStatus } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { frameFileExtension } from "@hyperframes/engine";
 
@@ -273,7 +273,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     // alpha and are the deliverable. We rename to `frame_NNNNNN.png`
     // (zero-padded) so consumers (After Effects, Nuke, Fusion, ffmpeg
     // image2 demuxer) can globbed-import without surprises.
-    updateJobStatus(job, "encoding", "Writing PNG sequence", 75, onProgress);
+    updateJobStatus(job, "encoding", "Writing PNG sequence", 75, onProgress, { code: "encode" });
     if (!existsSync(outputPath)) mkdirSync(outputPath, { recursive: true });
     const captured = readdirSync(framesDir)
       .filter((name) => name.endsWith(".png"))
@@ -303,7 +303,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
 
   if (isGif) {
     // ── Stage 5 (gif): two-pass palette encode ───────────────────────
-    updateJobStatus(job, "encoding", "Encoding GIF", 75, onProgress);
+    updateJobStatus(job, "encoding", "Encoding GIF", 75, onProgress, { code: "encode" });
     if (hasAudio) {
       log.warn("[Render] GIF output does not support audio; audio tracks will be ignored.");
     }
@@ -326,7 +326,16 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
   }
 
   // ── Stage 5: Encode ───────────────────────────────────────────────
-  updateJobStatus(job, "encoding", "Encoding video", 75, onProgress);
+  const totalFrames = job.totalFrames ?? 0;
+  updateJobStatus(job, "encoding", "Encoding video", 75, onProgress, {
+    code: "encode",
+    done: 0,
+    total: totalFrames,
+  });
+  const onFramesEncoded =
+    totalFrames > 0
+      ? (frames: number) => reportEncodeProgress(job, frames, totalFrames, onProgress, 75)
+      : undefined;
 
   // ffmpegEncodeTimeout is a total wall-clock cap, not an inactivity timeout.
   // A fixed ten-minute cap reliably kills long high-quality disk-frame encodes
@@ -369,6 +378,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         chunkedEncodeSize,
         abortSignal,
         videoEngineCfg,
+        onFramesEncoded,
       )
     : await encodeFramesFromDir(
         framesDir,
@@ -377,6 +387,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         encoderOpts,
         abortSignal,
         videoEngineCfg,
+        onFramesEncoded,
       );
   assertNotAborted();
 

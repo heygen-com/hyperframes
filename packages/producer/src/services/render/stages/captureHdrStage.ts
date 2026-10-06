@@ -64,7 +64,7 @@ import {
 } from "../../hdrCompositor.js";
 import { type HdrPerfCollector, createHdrPerfCollector } from "../hdrPerf.js";
 import type { HdrDiagnostics, ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
-import type { CompositionMetadata } from "../shared.js";
+import { reportEncodeProgress, type CompositionMetadata } from "../shared.js";
 import {
   decodeHdrImageBuffers,
   cleanupHdrVideoFrameSource,
@@ -428,7 +428,10 @@ export async function runCaptureHdrStage(
       domSessionClosed = true;
     }
 
-    const hdrEncodeResult = await hdrEncoder.close();
+    const encodeFrom = job.progress;
+    const hdrEncodeResult = await hdrEncoder.close((frames) =>
+      reportEncodeProgress(job, frames, totalFrames, onProgress, encodeFrom),
+    );
     hdrEncoderClosed = true;
     assertNotAborted();
     if (!hdrEncodeResult.success) {
