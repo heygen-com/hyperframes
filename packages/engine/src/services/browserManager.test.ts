@@ -210,7 +210,6 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(buildChromeArgs({ ...base, requiresWebGpu: false })).toEqual(buildChromeArgs(base));
   });
 
-  // SwiftShader draws canvas WebGPU only through its Vulkan backend with GPU compositing on (measured on Linux).
   it("runs an opted-in WebGPU composition on SwiftShader's Vulkan with GPU compositing on", () => {
     const args = buildChromeArgs(
       { ...base, platform: "linux", requiresWebGpu: true },
@@ -233,10 +232,12 @@ describe("buildChromeArgs browser GPU mode", () => {
     ["on a GPU", true, { browserGpuMode: "hardware", allowSoftwareWebGpu: true }],
     ["under --disable-gpu", true, { disableGpu: true, allowSoftwareWebGpu: true }],
   ] as const)("leaves the launch as it was %s", (_, requiresWebGpu, config) => {
-    const { allowSoftwareWebGpu: _optIn, ...withoutOptIn } = config as Record<string, unknown>;
     expect(usesSoftwareWebGpu(requiresWebGpu, config)).toBe(false);
     expect(buildChromeArgs({ ...base, platform: "linux", requiresWebGpu }, config)).toEqual(
-      buildChromeArgs({ ...base, platform: "linux", requiresWebGpu }, withoutOptIn),
+      buildChromeArgs(
+        { ...base, platform: "linux", requiresWebGpu },
+        { ...config, allowSoftwareWebGpu: false },
+      ),
     );
   });
 });
