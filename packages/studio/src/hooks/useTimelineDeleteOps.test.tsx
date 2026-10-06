@@ -275,6 +275,14 @@ describe("useTimelineDeleteOps: undo race", () => {
       await flushStudioPendingEdits();
     });
   });
+
+  it("shows the shortened length as soon as the last clip is deleted", async () => {
+    const { gate, deleteSelection } = mountRaceHarness();
+    usePlayerStore.getState().setDuration(6);
+    gate.resolve();
+    await deleteSelection();
+    expect(usePlayerStore.getState().duration).toBe(4);
+  });
 });
 
 // Regression: the live preview kept a deleted clip until its reload landed, and composition

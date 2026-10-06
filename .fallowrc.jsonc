@@ -140,7 +140,7 @@
     },
     {
       "file": "packages/studio/src/player/lib/timelineElementHelpers.ts",
-      "exports": ["furthestClipEndFromDocument", "furthestClipEndFromSource"],
+      "exports": ["furthestClipEndFromDocument"],
     },
     {
       "file": "packages/studio/src/components/sidebar/AssetContextMenu.tsx",
