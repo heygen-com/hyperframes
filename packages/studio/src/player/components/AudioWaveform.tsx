@@ -1,11 +1,12 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import { fadeGain } from "@hyperframes/core/audio-fade";
-import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 import { ClipFadesContext, type ClipFadeShape } from "./TimelineClipFades";
 import { studioApiFetch } from "../../utils/studioApiFetch";
+import type { WaveformViewport } from "./audioWaveformViewport";
+import { useWaveformViewport } from "./useWaveformViewport";
 
 export interface AudioWaveformProps {
   audioUrl: string;
@@ -61,28 +62,40 @@ export function drawWaveformCanvas(
   trimStartFraction: number,
   trimEndFraction: number,
   fades: ClipFadeShape | null = null,
+  viewport?: WaveformViewport,
 ) {
-  const width = Math.max(1, canvas.clientWidth);
+  const { fullWidth, left, width } = viewport ?? {
+    fullWidth: Math.max(1, canvas.clientWidth),
+    left: 0,
+    width: Math.max(1, canvas.clientWidth),
+  };
   const height = Math.max(1, canvas.clientHeight);
   const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.ceil(width * scale);
+  canvas.width = viewport?.bitmapWidth ?? Math.ceil(width * scale);
   canvas.height = Math.ceil(height * scale);
+  if (!(width > 0)) return;
   const context = canvas.getContext("2d");
   if (!context) return;
   context.scale(scale, scale);
   context.clearRect(0, 0, width, height);
+  context.translate(-left, 0);
+  const barCount = Math.max(1, Math.ceil(fullWidth / BAR_STEP));
+  const firstBar = Math.floor((left * barCount) / fullWidth);
+  const endBar = Math.ceil(((left + width) * barCount) / fullWidth);
   const amplitudes = decimatePeaks(
     peaks,
     trimStartFraction,
     trimEndFraction,
-    Math.max(1, Math.ceil(width / BAR_STEP)),
+    barCount,
+    firstBar,
+    endBar,
   );
   const bars = amplitudes.map((amplitude, index) => ({
-    x: (index * width) / amplitudes.length,
-    width: Math.max(1, width / amplitudes.length),
+    x: ((index + firstBar) * fullWidth) / barCount,
+    width: Math.max(1, fullWidth / barCount),
     height: Math.max(3, amplitude * height),
     gain: fades
-      ? fadeGain(((index + 0.5) / amplitudes.length) * fades.duration, fades.duration, fades)
+      ? fadeGain(((index + firstBar + 0.5) / barCount) * fades.duration, fades.duration, fades)
       : 1,
   }));
   const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
@@ -171,8 +184,6 @@ export const AudioWaveform = memo(function AudioWaveform({
   labelInset = 16,
 }: AudioWaveformProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const observerRef = useRef<ResizeObserver | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
   const request = useMemo(
     () => ({
@@ -197,35 +208,24 @@ export const AudioWaveform = memo(function AudioWaveform({
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
 
   const fades = useContext(ClipFadesContext);
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !peaks) return;
-    drawWaveformCanvas(canvas, peaks, muted, trimStartFraction ?? 0, trimEndFraction ?? 1, fades);
-  }, [fades, muted, peaks, trimEndFraction, trimStartFraction]);
-
-  const setCanvasRef = useCallback(
-    (canvas: HTMLCanvasElement | null) => {
-      observerRef.current?.disconnect();
-      canvasRef.current = canvas;
-      if (!canvas) return;
-      draw();
-      observerRef.current = new ResizeObserver(draw);
-      observerRef.current.observe(canvas);
+  const draw = useCallback(
+    (canvas: HTMLCanvasElement, viewport: WaveformViewport) => {
+      if (!peaks) return;
+      canvas.style.left = `${viewport.displayLeft ?? viewport.left}px`;
+      canvas.style.width = `${viewport.displayWidth ?? viewport.width}px`;
+      drawWaveformCanvas(
+        canvas,
+        peaks,
+        muted,
+        trimStartFraction ?? 0,
+        trimEndFraction ?? 1,
+        fades,
+        viewport,
+      );
     },
-    [draw],
+    [fades, muted, peaks, trimEndFraction, trimStartFraction],
   );
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const observer = new MutationObserver(draw);
-    observer.observe(root, {
-      attributes: true,
-      attributeFilter: ["class", "data-chrome", "data-theme", "style"],
-    });
-    return () => observer.disconnect();
-  }, [draw]);
-
-  useMountEffect(() => () => observerRef.current?.disconnect());
+  const setCanvasRef = useWaveformViewport(draw);
 
   useEffect(() => {
     const clip = rootRef.current?.closest(".timeline-clip");

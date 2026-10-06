@@ -19,6 +19,8 @@ export function decimatePeaks(
   startFraction: number,
   endFraction: number,
   barCount: number,
+  firstBar = 0,
+  endBar = barCount,
 ): number[] {
   if (barCount <= 0 || peaks.length === 0) return [];
   const startFractionClamped = Math.min(1, Math.max(0, startFraction));
@@ -28,7 +30,7 @@ export function decimatePeaks(
   const end = Math.max(start + 1, Math.min(peaks.length, endIndex));
   const span = end - start;
   const bars: number[] = [];
-  for (let index = 0; index < barCount; index++) {
+  for (let index = Math.max(0, firstBar); index < Math.min(barCount, endBar); index++) {
     let from = start + Math.floor((index * span) / barCount);
     let to = start + Math.floor(((index + 1) * span) / barCount);
     if (to <= from) {

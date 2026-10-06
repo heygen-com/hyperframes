@@ -29,4 +29,11 @@ describe("decimatePeaks", () => {
     expect(decimatePeaks([], 0, 1, 4)).toEqual([]);
     expect(decimatePeaks([0.5], 0, 1, 0)).toEqual([]);
   });
+
+  it("selects original bins rather than resampling a smaller trimmed range", () => {
+    const peaks = [0.1, 1, 0.3, 0.4, 0.8, 0.2, 0.7, 0.5];
+    expect(decimatePeaks(peaks, 0.1, 0.9, 13, 3, 8)).toEqual(
+      decimatePeaks(peaks, 0.1, 0.9, 13).slice(3, 8),
+    );
+  });
 });
