@@ -9,6 +9,7 @@ import {
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
 import { ThumbnailTiles } from "./ThumbnailTiles";
 import { computeThumbnailStrip, quantizeThumbnailFrameCount } from "./thumbnailUtils";
+import { useValueAtRest } from "./timelineMotion";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -87,8 +88,11 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   priority = "visible",
 }: VideoThumbnailProps) {
   const [container, setContainerRef, watchGap] = useThumbnailStripSize();
-  const requestFrameCount = quantizeThumbnailFrameCount(
-    computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
+  // A zoom changes the width every step; decode the strip it settles on, not each step's.
+  const requestFrameCount = useValueAtRest(
+    quantizeThumbnailFrameCount(
+      computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
+    ),
   );
   const requestProps = useMemo(
     () => ({
@@ -110,7 +114,8 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     () => createVideoThumbnailRequest(requestProps, requestFrameCount, true),
     [requestFrameCount, requestProps],
   );
-  const measured = container.width > 0;
+  // A clip that scrolls in mid-zoom starts decoding once the timeline rests.
+  const measured = useValueAtRest(container.width > 0);
   const posterSnapshot = useThumbnailLease(measured ? posterRequest : null);
   const richSnapshot = useThumbnailLease(measured && requestFrameCount > 1 ? richRequest : null);
   const snapshot = selectThumbnailSnapshot(posterSnapshot, richSnapshot);

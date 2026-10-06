@@ -1,4 +1,5 @@
 import { usePlayerStore } from "../store/playerStore";
+import { markTimelineMotion } from "./timelineMotion";
 import {
   clampTimelineZoomPercent,
   getNextTimelineZoomPercent,
@@ -61,6 +62,7 @@ function flush() {
 
 function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: boolean) {
   pending = { percent, anchor, byPerson: byPerson || pending?.byPerson === true };
+  markTimelineMotion();
   if (!frame) frame = requestAnimationFrame(flush);
 }
 
