@@ -45,9 +45,13 @@ const SMOOTH_ZOOM_MS = 220;
 const REST_MS = 150;
 /** Past this the scaled-up preview turns soft. */
 const MAX_PREVIEW_SCALE = 4;
+/** Rounding at a drawn edge (whole-pixel content width, the fit track's 2px) is not a gap. */
+const EDGE_SLACK_PX = 2;
 const SCALED = "[data-timeline-zoom-scale]";
 
 let viewport: TimelineZoomViewport | null = null;
+/** While a preview shows, scales rows and strips React mounts into the timeline before they paint. */
+let mounts: MutationObserver | null = null;
 let preview: ZoomPreview | null = null;
 let frame = 0;
 let restTimer: ReturnType<typeof setTimeout> | null = null;
@@ -120,8 +124,10 @@ function writeZoom(percent: number, anchor: TimelineZoomAnchor | null, byPerson:
 
 const emitPreview = () => previewListeners.forEach((listener) => listener());
 
-/** Stops the pending preview frame and rest timer. */
+/** Stops the pending preview frame, rest timer and mount watch. */
 function cancelPending() {
+  mounts?.disconnect();
+  mounts = null;
   if (restTimer) clearTimeout(restTimer);
   restTimer = null;
   cancelAnimationFrame(frame);
@@ -142,17 +148,37 @@ function previewNeedsLayout(p: ZoomPreview, scroll: HTMLDivElement, contentOrigi
   const left = scroll.scrollLeft - p.shift;
   const start = left / p.pps;
   const end = (left + scroll.clientWidth - contentOrigin) / p.pps;
-  return start < p.drawn.start || end > p.drawn.end;
+  const slack = EDGE_SLACK_PX / p.pps;
+  return start < p.drawn.start - slack || end > p.drawn.end + slack;
 }
 
-/** The times laid out now: the clips mounted, and the ruler and beat lines to the content's end. */
+/** The times laid out now: the render window clips, ruler ticks and beat lines are drawn in. */
 function drawnRange(scroll: HTMLDivElement, pps: number, contentOrigin: number): TimelineTimeRange {
-  const duration = usePlayerStore.getState().duration || Number.POSITIVE_INFINITY;
-  const mounted = getTimelineRenderTimeRange(scroll, pps, contentOrigin, duration);
+  // The timeline clamps that window to its content's end, as wide as the scroll content.
   const contentEnd = (scroll.scrollWidth - contentOrigin) / pps;
-  // Past the last clip only the ruler matters, and it is drawn to the content's end.
-  const end = mounted.end < duration ? Math.min(mounted.end, contentEnd) : contentEnd;
-  return { start: mounted.start, end };
+  return getTimelineRenderTimeRange(scroll, pps, contentOrigin, contentEnd);
+}
+
+function scalePreview(scroll: HTMLElement) {
+  if (!preview) return;
+  const transform = `translateX(${preview.shift}px) scaleX(${preview.pps / preview.basePps})`;
+  scroll.querySelectorAll<HTMLElement>(SCALED).forEach((el) => {
+    // The attribute's value is where time zero sits in the element, when not at its left edge.
+    el.style.transformOrigin = `${el.dataset.timelineZoomScale || 0}px 0`;
+    el.style.willChange = "transform";
+    el.style.transform = transform;
+  });
+}
+
+const holdsScaled = (node: Node) =>
+  node instanceof Element && (node.matches(SCALED) || node.querySelector(SCALED) !== null);
+
+function watchMounts(scroll: HTMLElement): MutationObserver {
+  const observer = new MutationObserver((records) => {
+    if (records.some((record) => [...record.addedNodes].some(holdsScaled))) scalePreview(scroll);
+  });
+  observer.observe(scroll, { childList: true, subtree: true });
+  return observer;
 }
 
 function drawPreview() {
@@ -164,14 +190,8 @@ function drawPreview() {
     commitPreview();
     return;
   }
-  const scale = preview.pps / preview.basePps;
-  const transform = `translateX(${preview.shift}px) scaleX(${scale})`;
-  view.scroll.querySelectorAll<HTMLElement>(SCALED).forEach((el) => {
-    // The attribute's value is where time zero sits in the element, when not at its left edge.
-    el.style.transformOrigin = `${el.dataset.timelineZoomScale || 0}px 0`;
-    el.style.willChange = "transform";
-    el.style.transform = transform;
-  });
+  scalePreview(view.scroll);
+  mounts ??= watchMounts(view.scroll);
   emitPreview();
 }
 

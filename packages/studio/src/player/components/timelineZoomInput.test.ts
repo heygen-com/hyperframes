@@ -146,14 +146,27 @@ describe("requestTimelineZoom", () => {
     expect(usePlayerStore.getState().timelinePps).toBe(5);
   });
 
-  it("keeps previewing through a scroll, and scales the rows the scroll mounted", () => {
+  it("previews a zoom-out at the content's end without laying out each frame", () => {
+    // At 330% the content is 32 + 1046 * 3.3 = 3483.8px, reported whole as 3483; the view is
+    // scrolled to its end, and a zoom-out lands that end a fraction of a pixel past it.
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 330, timelinePps: 33 });
+    viewport(2403, 3483);
+    requestTimelineZoom(300, { time: 100, x: 800 });
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(33);
+  });
+
+  it("keeps previewing through a scroll, and scales the rows the scroll mounted", async () => {
     const { scroll } = viewport();
     requestTimelineZoom(150);
     vi.advanceTimersToNextFrame();
-    const mountedRow = scroll.appendChild(document.createElement("div"));
-    mountedRow.setAttribute("data-timeline-zoom-scale", "");
+    // React mounts the row after the scroll's redraw frame; it is scaled before it paints.
     redrawTimelineZoomPreview();
     vi.advanceTimersToNextFrame();
+    const mountedRow = document.createElement("div");
+    mountedRow.setAttribute("data-timeline-zoom-scale", "");
+    scroll.appendChild(document.createElement("div")).appendChild(mountedRow);
+    await Promise.resolve();
     expect(usePlayerStore.getState().timelinePps).toBe(10);
     expect(mountedRow.style.transform).toContain("scaleX(1.5)");
   });
