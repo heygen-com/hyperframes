@@ -6,6 +6,7 @@ import {
   currentTimelineZoomPercent,
   requestTimelineZoom,
   registerTimelineZoomViewport,
+  redrawTimelineZoomPreview,
   settleTimelineZoom,
   subscribeTimelineZoomPreview,
   takeTimelineZoomAnchor,
@@ -77,8 +78,8 @@ export function useTimelinePlayhead({
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
-  // A zoom that names an anchor (pinch, zoom-to-range) keeps that time where it was; a toolbar zoom
-  // keeps the playhead in place; a resize keeps the centre, or 00:00 at the start.
+  // A zoom keeps its anchor's time where it was (pinch: the pointer; buttons and slider: the
+  // playhead); a resize keeps the centre, or 00:00 at the start.
   const previousAnchorPpsRef = useRef(pps);
   const userZoomCount = usePlayerStore((s) => s.userZoomCount);
   const previousZoomCountRef = useRef(userZoomCount);
@@ -278,14 +279,14 @@ export function useTimelinePlayhead({
     const scroll = scrollRef.current;
     if (!scroll) return;
     scroll.addEventListener("wheel", handlePinchWheel, { passive: false, capture: true });
-    // A press or scroll meets the zoom it sees, not the one still waiting to be laid out.
+    // A press meets the zoom it sees, not the one still waiting to be laid out.
     scroll.addEventListener("pointerdown", settleTimelineZoom, { capture: true });
-    scroll.addEventListener("scroll", settleTimelineZoom, { passive: true });
+    scroll.addEventListener("scroll", redrawTimelineZoomPreview, { passive: true });
     const unregisterZoomViewport = registerTimelineZoomViewport({ scroll, contentOrigin });
     return () => {
       scroll.removeEventListener("wheel", handlePinchWheel, { capture: true });
       scroll.removeEventListener("pointerdown", settleTimelineZoom, { capture: true });
-      scroll.removeEventListener("scroll", settleTimelineZoom);
+      scroll.removeEventListener("scroll", redrawTimelineZoomPreview);
       unregisterZoomViewport();
     };
   }, [handlePinchWheel, scrollRef, timelineReady, elementsLength, contentOrigin]);

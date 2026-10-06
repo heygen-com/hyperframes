@@ -11,6 +11,7 @@ import { TimelineGroupRow } from "./TimelineGroupRow";
 import { useTimelineLaneRowIndexes, useTimelineGroupDisclosure } from "./useTimelineLaneRowIndexes";
 import { useTimelineClipDisclosure } from "./useTimelineClipDisclosure";
 import { TimelineTimeLayer } from "./TimelineTimeLayer";
+import { clipWidthPx } from "./TimelineClip";
 import {
   isTrackRowExpanded,
   resolveTrackKeyframeClip,
@@ -489,7 +490,7 @@ export function TimelineLanes({
                           clipStart={clipTimingStart(previewElement)}
                           clipDuration={previewElement.duration}
                           clipLeftPx={previewElement.start * pps}
-                          clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                          clipWidthPx={clipWidthPx(previewElement, pps)}
                           passengerStyle={passengerStyle}
                           accentColor={clipStyle.accent}
                           isSelected={isSelected}

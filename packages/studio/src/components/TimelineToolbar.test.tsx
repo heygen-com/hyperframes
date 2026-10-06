@@ -261,6 +261,8 @@ describe("TimelineToolbar Fit", () => {
     const scroll = document.createElement("div");
     Object.defineProperties(scroll, {
       clientWidth: { value: 1080 },
+      // At Fit the content is as wide as the view.
+      scrollWidth: { value: 1080 },
       scrollLeft: { value: 0, writable: true },
     });
     usePlayerStore.setState({

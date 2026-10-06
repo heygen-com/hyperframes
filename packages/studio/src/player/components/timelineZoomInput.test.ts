@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../store/playerStore";
 import {
   cancelTimelineZoom,
+  redrawTimelineZoomPreview,
   currentTimelineRange,
   currentTimelineZoomPercent,
   settleTimelineZoom,
@@ -48,10 +49,11 @@ afterEach(() => {
 let unregisterViewport = () => {};
 
 /** A 1080px timeline viewport with 32px of track headers, holding one scaled row. */
-function viewport(scrollLeft = 0) {
+function viewport(scrollLeft = 0, scrollWidth = 20_000) {
   const scroll = document.createElement("div");
   Object.defineProperties(scroll, {
     clientWidth: { value: 1080 },
+    scrollWidth: { value: scrollWidth },
     scrollLeft: { value: scrollLeft, writable: true },
   });
   const row = scroll.appendChild(document.createElement("div"));
@@ -134,6 +136,27 @@ describe("requestTimelineZoom", () => {
     requestTimelineZoom(600, { time: 55.24, x: 556 });
     vi.advanceTimersToNextFrame();
     expect(usePlayerStore.getState().timelinePps).toBe(100);
+  });
+
+  it("lays a zoom-out out at once before it shows past where the ruler is drawn", () => {
+    // 50 s of clips at Fit: the ruler and lanes are drawn to the viewport's edge, 104.8 s.
+    usePlayerStore.setState({ duration: 50 });
+    viewport(0, 1080);
+    requestTimelineZoom(50, { time: 0, x: 32 });
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(5);
+  });
+
+  it("keeps previewing through a scroll, and scales the rows the scroll mounted", () => {
+    const { scroll } = viewport();
+    requestTimelineZoom(150);
+    vi.advanceTimersToNextFrame();
+    const mountedRow = scroll.appendChild(document.createElement("div"));
+    mountedRow.setAttribute("data-timeline-zoom-scale", "");
+    redrawTimelineZoomPreview();
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(10);
+    expect(mountedRow.style.transform).toContain("scaleX(1.5)");
   });
 
   it("lays a pending zoom out at once when settled, as a press does", () => {
