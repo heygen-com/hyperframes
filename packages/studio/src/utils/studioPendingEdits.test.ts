@@ -5,6 +5,7 @@ import {
   adoptingStudioPendingEdit,
   beginStudioPendingEdit,
   flushStudioPendingEdits,
+  afterStudioPendingEdits,
   hasStudioPendingEdits,
   isStudioEditSaving,
   paintBackNewestStudioPendingEdit,
@@ -22,6 +23,18 @@ describe("a canvas press still waiting to run", () => {
     try {
       expect(hostRevert()).toBeNull();
       expect(cancel).not.toHaveBeenCalled();
+    } finally {
+      setStudioWaitingPressCancel(null);
+    }
+  });
+
+  it("is never a pending edit, since a reload waits for those and the press waits for the reload", () => {
+    setStudioWaitingPressCancel(() => true);
+    const reload = vi.fn();
+    try {
+      afterStudioPendingEdits(reload);
+      expect(reload).toHaveBeenCalledOnce();
+      expect(hasStudioPendingEdits()).toBe(false);
     } finally {
       setStudioWaitingPressCancel(null);
     }

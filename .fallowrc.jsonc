@@ -522,6 +522,8 @@
       "packages/studio/src/components/editor/domEditOverlayStartGesture.test.ts",
       "packages/studio/src/components/editor/anchoredResizeCommitFeedsOffset.test.ts",
       "packages/studio/src/components/editor/rotateInlineSave.test.ts",
+      // Waiting-press and drag tests: each case spells out its own press, reload and release; a shared
+      // helper would hide the sequence each one asserts.
       "packages/studio/src/components/editor/domEditOverlayStartGesture.blocked.test.ts",
       "packages/studio/src/components/editor/dragUndoPaint.test.ts",
       "packages/studio/src/components/editor/manualOffsetDrag.test.ts",
