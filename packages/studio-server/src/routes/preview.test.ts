@@ -1898,6 +1898,86 @@ describe("what the preview loaded", () => {
     expect(affectsPreview(projectDir, "im")).toBe(false);
   });
 
+  it("does not walk entity-quoted inline image data as a filesystem path", () => {
+    const projectDir = createProjectDir();
+    const data = `data:image/png;base64,${"A/".repeat(128)}`;
+    for (const quote of ["&quot;", "&apos;", "&#34;", "&#x22;", "&#39;", "&#x27;"]) {
+      recordPreviewReferences(
+        projectDir,
+        `<i style="background-image:url(${quote}${data}${quote})"></i>`,
+      );
+      recordPreviewBuilt(projectDir);
+      expect(affectsPreview(projectDir, `${quote}${data}${quote}`)).toBe(false);
+    }
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, `&quot;${data}&quot;`)).toBe(false);
+  });
+
+  it("tracks entity-quoted local image paths after decoding their HTML entities", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      '<i style="background-image:url(&quot;assets/a&amp;b.png&quot;)"></i>',
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/a&b.png")).toBe(true);
+  });
+
+  it("keeps entities literal in stylesheet URLs, as CSS raw text does", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      "<style>i { background:url('assets/a&amp;b.png') }</style>",
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/a&amp;b.png")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/a&b.png")).toBe(false);
+  });
+
+  it("does not mistake style-looking text for an HTML style attribute", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      `<i title='style="'></i><style>/* style=" */ i { background:url('assets/a&amp;b.png') } /* " */</style><i title='"'></i>`,
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/a&amp;b.png")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/a&b.png")).toBe(false);
+  });
+
+  it("tracks references in nested templates and script-created CSS", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      '<template><template><img src="assets/nested.png"></template></template><script>el.style.background="url(assets/script.png)"</script>',
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/nested.png")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/script.png")).toBe(true);
+  });
+
+  it("bounds filesystem paths after stripping long queries and decoding escapes", () => {
+    const projectDir = createProjectDir();
+    const path = `assets/${"x/".repeat(1200)}image.png`;
+    const encoded = path.replace(/x/g, "%78");
+    recordPreviewReferences(
+      projectDir,
+      `<img src="assets/image.png?${"x".repeat(5000)}"><img src="${encoded}">`,
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/image.png")).toBe(true);
+    expect(affectsPreview(projectDir, path)).toBe(true);
+  });
+
+  it("does not walk oversized preview references or direct read paths", () => {
+    const projectDir = createProjectDir();
+    const path = `assets/${"long/".repeat(850)}image.png`;
+    recordPreviewReferences(projectDir, `<img src="${path}">`);
+    recordPreviewRead(projectDir, path);
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, path)).toBe(false);
+  });
+
   it.skipIf(process.platform === "win32")(
     "counts an edit to the file a symlinked asset points at",
     async () => {
