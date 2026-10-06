@@ -1,5 +1,9 @@
 import { useCallback, useState } from "react";
 import { flushSync } from "react-dom";
+import {
+  isTimelineZoomPreviewing,
+  subscribeTimelineZoomPreview,
+} from "../player/components/timelineZoomInput";
 
 export interface StripSize {
   width: number;
@@ -62,6 +66,7 @@ let shared: {
   resize: ResizeObserver;
   presence: IntersectionObserver | null;
   gaps: IntersectionObserver | null;
+  stopZoomWatch: () => void;
 } | null = null;
 
 const offsetOf = (scroller: Element | null) =>
@@ -97,8 +102,31 @@ const read = (target: Element, strip: Strip) => {
 const commit = (updates: (readonly [Apply, Partial<StripSize>])[]) =>
   flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
 
+// A zoom preview scales the strips, so a box read then is wrong; reads wait for it to end.
+let staleSincePreview = false;
+const previewing = () => {
+  if (!isTimelineZoomPreviewing()) return false;
+  staleSincePreview = true;
+  return true;
+};
+
+const remeasureAfterPreview = () => {
+  if (!staleSincePreview || isTimelineZoomPreviewing()) return;
+  staleSincePreview = false;
+  commit(
+    [...strips].map(
+      ([target, strip]) =>
+        [
+          strip.apply,
+          { width: target.clientWidth, height: target.clientHeight, ...read(target, strip) },
+        ] as const,
+    ),
+  );
+};
+
 const refresh = () => {
   frame = 0;
+  if (previewing()) return;
   const offsetsNow = new Map<Element | null, { x: number; y: number }>();
   const updates: (readonly [Apply, Partial<StripSize>])[] = [];
   for (const [target, strip] of strips) {
@@ -122,6 +150,7 @@ const scheduleRefresh = () => {
 };
 
 const measure = (entries: { target: Element; size?: { width: number; height: number } }[]) =>
+  previewing() ||
   commit(
     entries.flatMap(({ target, size }) => {
       const strip = strips.get(target);
@@ -153,6 +182,7 @@ function acquire() {
       gaps: observeIntersections(
         (entries) => entries.some((entry) => entry.isIntersecting) && scheduleRefresh(),
       ),
+      stopZoomWatch: subscribeTimelineZoomPreview(remeasureAfterPreview),
     };
     window.addEventListener("scroll", scheduleRefresh, { capture: true, passive: true });
   }
@@ -164,6 +194,7 @@ function release() {
   shared?.resize.disconnect();
   shared?.presence?.disconnect();
   shared?.gaps?.disconnect();
+  shared?.stopZoomWatch();
   shared = null;
   window.removeEventListener("scroll", scheduleRefresh, { capture: true });
   cancelAnimationFrame(frame);

@@ -138,6 +138,15 @@ describe("requestTimelineZoom", () => {
     expect(usePlayerStore.getState().timelinePps).toBe(100);
   });
 
+  it("lays out a zoom-out before it shows past the window ruler ticks are drawn in", () => {
+    // 50 s of clips in content 1996 s wide: ticks are drawn to 157 s, a view and a half in.
+    usePlayerStore.setState({ duration: 50 });
+    viewport();
+    requestTimelineZoom(60, { time: 0, x: 32 });
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(6);
+  });
+
   it("lays a zoom-out out at once before it shows past where the ruler is drawn", () => {
     // 50 s of clips at Fit: the ruler and lanes are drawn to the viewport's edge, 104.8 s.
     usePlayerStore.setState({ duration: 50 });
@@ -364,8 +373,10 @@ describe("zoomTimelineStep", () => {
       if (s.timelinePps !== prev.timelinePps) laidOut.push(s.timelinePps);
     });
     zoomTimelineStep("out");
-    expect(laidOut).toEqual([20]);
+    // Laid out in the first frame, never inside the caller (a host's effect, a click).
+    expect(laidOut).toEqual([]);
     vi.advanceTimersToNextFrame();
+    expect(laidOut).toEqual([20]);
     // Near the old view, drawn in the first frame by scaling the new layout up.
     expect(Number(/scaleX\(([\d.]+)\)/.exec(row.style.transform)?.[1])).toBeGreaterThan(1.5);
     run();

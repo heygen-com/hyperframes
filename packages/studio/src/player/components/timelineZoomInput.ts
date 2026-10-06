@@ -87,7 +87,10 @@ export function timelineZoomMapping(pps: number, contentOrigin: number) {
     : { pps, contentOrigin };
 }
 
-/** Called each frame a zoom preview moves, and once when it is laid out. */
+/** Whether a zoom is drawn scaled right now, so boxes read off the page are scaled too. */
+export const isTimelineZoomPreviewing = (): boolean => preview !== null;
+
+/** Called each frame a zoom preview moves, and once when it is laid out or dropped. */
 export function subscribeTimelineZoomPreview(listener: () => void): () => void {
   previewListeners.add(listener);
   return () => previewListeners.delete(listener);
@@ -284,8 +287,10 @@ export function cancelTimelineZoom(): void {
 
 function dropPreview() {
   cancelPending();
-  if (viewport && preview) clearScaled(viewport.scroll);
+  if (!preview) return;
+  if (viewport) clearScaled(viewport.scroll);
   preview = null;
+  emitPreview();
 }
 
 function stopEase(result: TimelineZoomResult = "cancelled") {
@@ -396,6 +401,7 @@ function easeZoom(
   const from = shown(view.scroll);
   const toPps = getTimelinePixelsPerSecond(fitPps, "manual", toPercent);
   const fromStart = timelineTimeAtX(x)!;
+  const old = currentTimelineRange()!;
   // The one point both views put at the same place on screen; zooming about it, in log space,
   // moves every frame straight from the old view to the new. Equal scales are a plain scroll.
   const shift = from.pps === toPps ? null : (start - fromStart) / (1 / from.pps - 1 / toPps);
@@ -403,15 +409,19 @@ function easeZoom(
     shift === null
       ? { time: fromStart + (start - fromStart) * k, x }
       : { time: fromStart + shift / from.pps, x: x + shift };
-  // Zooming out shows time the current layout never mounted, so lay the target out once now and
-  // ease by scaling it down from the old view, instead of laying out again partway.
-  if (toPps < from.pps && from.pps / toPps <= MAX_PREVIEW_SCALE) {
-    request(toPercent, { time: start, x }, byPerson);
-    commitPreview();
-  }
+  // Zooming out to a view that holds the old one: lay the target out once, in the first frame,
+  // and ease by scaling it down from the old view, instead of laying out again partway.
+  const holdsOld =
+    old.start >= start && old.end <= start + (old.end - old.start) * (from.pps / toPps);
+  let layoutFirst = toPps < from.pps && from.pps / toPps <= MAX_PREVIEW_SCALE && holdsOld;
   const began = performance.now();
   easingTo = toPercent;
   const step = (now: number) => {
+    if (layoutFirst) {
+      layoutFirst = false;
+      request(toPercent, to, byPerson);
+      commitPreview();
+    }
     const t = Math.min(1, Math.max(0, (now - began) / SMOOTH_ZOOM_MS));
     const k = 1 - (1 - t) ** 3;
     request(fromPercent * (toPercent / fromPercent) ** k, anchorAt(k), byPerson);
