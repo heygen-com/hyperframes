@@ -1,11 +1,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { syncSkills } from "./clawhub-sync.mjs";
 
 const TAKEN = (version) =>
   `Version ${version} already exists. Increment the version number and try again. (reset in 24s)`;
 
 function fakeClawhub({
+  syncOk = false,
   syncFailed,
   syncOutput,
   takenVersions = [],
@@ -22,8 +27,8 @@ function fakeClawhub({
     return { ok: true, output: "{}", message: "" };
   };
   const syncResult = () => {
-    const output = syncOutput ?? JSON.stringify({ ok: false, published: [], failed: syncFailed });
-    return { ok: false, output, message: output };
+    const output = syncOutput ?? JSON.stringify({ ok: syncOk, published: [], failed: syncFailed });
+    return { ok: syncOk, output, message: output };
   };
   const inspect = () => ({
     ok: true,
@@ -104,6 +109,37 @@ describe("ClawHub skill sync", () => {
     assert.deepEqual(sync(fakeClawhub({ syncOutput: "Error: not logged in" })), [
       "Error: not logged in",
     ]);
+  });
+
+  it("stops after a sync that succeeds", () => {
+    const clawhub = fakeClawhub({ syncOk: true, syncFailed: [] });
+
+    assert.deepEqual(sync(clawhub), []);
+    assert.deepEqual(clawhub.calls, [[...SYNC_ARGS, ...provenance]]);
+  });
+
+  it("exits non-zero when the sync fails, so the workflow goes red", () => {
+    const bin = mkdtempSync(join(tmpdir(), "clawhub-fake-"));
+    try {
+      writeFileSync(join(bin, "clawhub"), "#!/bin/sh\necho 'Error: not logged in' >&2\nexit 1\n");
+      chmodSync(join(bin, "clawhub"), 0o755);
+      const script = new URL("./clawhub-sync.mjs", import.meta.url).pathname;
+      const result = spawnSync(process.execPath, [script], {
+        encoding: "utf8",
+        env: {
+          PATH: `${bin}:${process.env.PATH}`,
+          GITHUB_SHA: "6c353d8aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          GITHUB_REF_NAME: "main",
+          GITHUB_REF: "refs/heads/main",
+          GITHUB_REPOSITORY: "heygen-com/hyperframes",
+        },
+      });
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /::error::Error: not logged in/);
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 
   it("only previews in a dry run, even when a version is taken", () => {
