@@ -17,6 +17,7 @@ import { linkLabelColor } from "./linkLabelColor";
 import { OutOfSyncBadge } from "./OutOfSyncBadge";
 import { clipSpeedSuffix } from "./clipToolAttrs";
 import { ClipPeakTooltip } from "./ClipPeakTooltip";
+import { timeLayerPercent } from "./TimelineTimeLayer";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -70,7 +71,6 @@ export const TimelineClip = memo(function TimelineClip({
   onContextMenu,
   children,
 }: TimelineClipProps) {
-  const leftPx = el.start * pps;
   const widthPx = Math.max(el.duration * pps, 4);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = `${el.label || el.id || el.tag}${clipSpeedSuffix(el.playbackRate, el.automation)}`;
@@ -110,9 +110,11 @@ export const TimelineClip = memo(function TimelineClip({
   ]
     .filter((className) => className.length > 0)
     .join(" ");
+  // In percent of the row's TimelineTimeLayer: a zoom step leaves this style as it is.
   const style: CSSProperties = {
-    left: leftPx,
-    width: widthPx,
+    left: timeLayerPercent(el.start),
+    width: timeLayerPercent(el.duration),
+    minWidth: 4,
     top: clipY,
     ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
     borderRadius: isAudioClip ? theme.audioClipRadius : theme.clipRadius,

@@ -114,7 +114,8 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     () => createVideoThumbnailRequest(requestProps, requestFrameCount, true),
     [requestFrameCount, requestProps],
   );
-  const measured = container.width > 0;
+  // A clip that scrolls in mid-zoom starts decoding once the timeline rests.
+  const measured = useValueAtRest(container.width > 0);
   const posterSnapshot = useThumbnailLease(measured ? posterRequest : null);
   const richSnapshot = useThumbnailLease(measured && requestFrameCount > 1 ? richRequest : null);
   const snapshot = selectThumbnailSnapshot(posterSnapshot, richSnapshot);

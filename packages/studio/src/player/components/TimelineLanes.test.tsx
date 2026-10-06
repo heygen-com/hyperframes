@@ -586,12 +586,18 @@ describe("TimelineLanes clip joins", () => {
 
     const joins = view.host.querySelectorAll<HTMLElement>("[data-timeline-clip-join]");
     expect(joins).toHaveLength(1);
-    expect(joins[0]?.style.left).toBe("200px");
+    // Both sit in one-second layers 100px wide: 200% is 200px, at the 2 s join.
+    const layerWidth = (el: Element | null | undefined) =>
+      (el?.closest("[data-timeline-time-layer]") as HTMLElement | null)?.style.width;
+    expect(joins[0]?.style.left).toBe("200%");
+    expect(layerWidth(joins[0])).toBe("100px");
     expect(joins[0]?.style.width).toBe("1px");
     expect(joins[0]?.style.background).toBe(defaultTimelineTheme.rowBackground);
     const clipB = view.host.querySelector<HTMLElement>('[data-el-id="clip-b"]');
-    expect(clipB?.style.left).toBe("200px");
-    expect(clipB?.style.width).toBe("150px");
+    expect(clipB?.style.left).toBe("200%");
+    expect(clipB?.style.width).toBe("150%");
+    expect(clipB?.style.minWidth).toBe("4px");
+    expect(layerWidth(clipB)).toBe("100px");
     act(() => view.root.unmount());
   });
 
