@@ -176,11 +176,17 @@ function hasCmake(): boolean {
 }
 
 export async function ensureWhisper(options?: {
+  installRuntime?: boolean;
   onProgress?: (msg: string) => void;
 }): Promise<WhisperResult> {
   // 1. Already installed?
   const existing = findWhisper();
   if (existing) return existing;
+  if (options?.installRuntime === false) {
+    throw new WhisperUnavailableError(
+      "whisper-cpp not found; runtime installation is disabled by --no-runtime-install.",
+    );
+  }
 
   // 2. Try brew (macOS, fastest — pre-built bottle)
   if (platform() === "darwin" && hasBrew()) {
@@ -212,7 +218,10 @@ export async function ensureWhisper(options?: {
 
 export async function ensureModel(
   model: string = DEFAULT_MODEL,
-  options?: { onProgress?: (message: string) => void },
+  options?: {
+    onProgress?: (message: string) => void;
+    onDownloadProgress?: (receivedBytes: number, totalBytes: number | null) => void;
+  },
 ): Promise<string> {
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
   if (existsSync(modelPath)) return modelPath;
@@ -220,7 +229,7 @@ export async function ensureModel(
   mkdirSync(MODELS_DIR, { recursive: true });
 
   options?.onProgress?.(`Downloading model ${model}...`);
-  await downloadFile(getModelUrl(model), modelPath);
+  await downloadFile(getModelUrl(model), modelPath, { onProgress: options?.onDownloadProgress });
 
   if (!existsSync(modelPath)) {
     throw new Error(`Model download failed: ${model}`);

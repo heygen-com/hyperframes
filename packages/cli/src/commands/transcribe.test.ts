@@ -1,3 +1,4 @@
+import { runCommand } from "citty";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { chmodSync, existsSync, writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -44,7 +45,14 @@ import transcribeCmd from "./transcribe.js";
 function fakeTranscript(dir: string, text: string) {
   const transcriptPath = join(dir, "transcript.json");
   writeFileSync(transcriptPath, JSON.stringify([{ text, start: 0, end: 1 }]));
-  return { transcriptPath, wordCount: 1, durationSeconds: 1, speechOnsetSeconds: null };
+  return {
+    model: text === "whisper" ? "small.en" : "parakeet-tdt-0.6b-v3",
+    detectedLanguage: null,
+    transcriptPath,
+    wordCount: 1,
+    durationSeconds: 1,
+    speechOnsetSeconds: null,
+  };
 }
 
 function lastJson(): Record<string, unknown> {
@@ -79,6 +87,47 @@ describe("transcribe command", () => {
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+  });
+
+  it("keeps typed progress on stderr and reports resolved metadata in one stdout result", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    transcribeMock.mockImplementation(async (_input, outputDir, options) => {
+      options.onEvent?.({
+        type: "progress",
+        phase: "download",
+        model: "small",
+        receivedBytes: 5,
+        totalBytes: null,
+      });
+      options.onEvent?.({
+        type: "progress",
+        phase: "transcription",
+        model: "small",
+        status: "started",
+      });
+      options.onEvent?.({
+        type: "progress",
+        phase: "transcription",
+        model: "small",
+        status: "completed",
+      });
+      return { ...fakeTranscript(outputDir, "hola"), model: "small", detectedLanguage: "es" };
+    });
+    await transcribeCmd.run!({
+      args: { input, dir, json: true, engine: "whisper", model: "small.en" },
+    } as never);
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(lastJson()).toMatchObject({ ok: true, model: "small", detectedLanguage: "es" });
+    expect(stderr.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual([
+      { type: "progress", phase: "download", model: "small", receivedBytes: 5, totalBytes: null },
+      { type: "progress", phase: "transcription", model: "small", status: "started" },
+      { type: "progress", phase: "transcription", model: "small", status: "completed" },
+    ]);
+    expect(JSON.parse(readFileSync(join(dir, "transcript.json"), "utf8"))).toEqual([
+      { id: "w0", text: "hola", start: 0, end: 1 },
+    ]);
   });
 
   it("explicit run exits non-zero and is NOT reported as a command failure", async () => {
@@ -251,6 +300,20 @@ describe("transcribe command", () => {
       }
       return { exitCode: exitCode || consumeCommandResult().exitCode, out: lastJson() };
     }
+
+    it.each(["whisper", "auto"])(
+      "--no-runtime-install reaches %s including the fallback",
+      async (engine) => {
+        crashChild("SIGABRT");
+        Object.assign(runners, { sherpa: true, mlx: false });
+        const { dir, input } = dummyAudio();
+        dirs.push(dir);
+        await runCommand(transcribeCmd, {
+          rawArgs: [input, "--engine", engine, "--json", "--no-runtime-install"],
+        });
+        expect(transcribeMock.mock.calls.at(-1)?.[2]).toMatchObject({ installRuntime: false });
+      },
+    );
 
     it("auto falls back to whisper with one line naming the Parakeet error and the repair", async () => {
       crashChild("SIGABRT", "terminate called after throwing an instance of 'Ort::Exception'\n");

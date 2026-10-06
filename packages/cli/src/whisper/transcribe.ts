@@ -8,24 +8,6 @@ import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
 
-/**
- * Detect the language of a WAV file using whisper's built-in language detection.
- * Returns an ISO 639-1 code (e.g. "en", "es", "hi") or null if detection fails.
- */
-function detectLanguage(whisperPath: string, modelPath: string, wavPath: string): string | null {
-  try {
-    const output = execFileSync(whisperPath, ["--model", modelPath, "--detect-language", wavPath], {
-      encoding: "utf-8",
-      timeout: 30_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const match = output.match(/auto-detected language:\s*(\w+)/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null {
   if (buf.length < 12) return null;
   let pos = 12; // skip RIFF header
@@ -258,10 +240,22 @@ export function detectSpeechOnset(wavPath: string): number | null {
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi"]);
 
+export type TranscribeProgress =
+  | {
+      type: "progress";
+      phase: "download";
+      model: string;
+      receivedBytes: number;
+      totalBytes: number | null;
+    }
+  | { type: "progress"; phase: "transcription"; model: string; status: "started" | "completed" };
+
 export interface TranscribeOptions {
+  installRuntime?: boolean;
   model?: string;
   language?: string;
   onProgress?: (message: string) => void;
+  onEvent?: (event: TranscribeProgress) => void;
   /**
    * Explicit whisper spawn timeout in ms. Overrides the duration+model auto-
    * scaled default. Callers that leave this undefined get the auto-scaled
@@ -271,6 +265,8 @@ export interface TranscribeOptions {
 }
 
 export interface TranscribeResult {
+  model: string;
+  detectedLanguage: string | null;
   transcriptPath: string;
   wordCount: number;
   durationSeconds: number;
@@ -449,63 +445,52 @@ export async function transcribe(
 
   // 1. Ensure whisper binary
   options?.onProgress?.("Checking whisper...");
-  const whisper = await ensureWhisper({ onProgress: options?.onProgress });
+  const whisper = await ensureWhisper({
+    onProgress: options?.onProgress,
+    installRuntime: options?.installRuntime,
+  });
 
   // 2. Ensure model
   options?.onProgress?.("Checking model...");
   const modelPath = await ensureModel(model, {
     onProgress: options?.onProgress,
+    onDownloadProgress: options?.onEvent
+      ? (receivedBytes, totalBytes) =>
+          options.onEvent?.({
+            type: "progress",
+            phase: "download",
+            model,
+            receivedBytes,
+            totalBytes,
+          })
+      : undefined,
   });
 
   // 3. Prepare audio
   const wavPath = prepareWav(inputPath, options?.onProgress);
 
-  // 4. Detect language and ensure correct model
-  let effectiveModel = model;
-  let effectiveModelPath = modelPath;
-  let detectedLanguage = options?.language ?? null;
-
-  // Only auto-detect language when using a multilingual model.
-  // .en models always report "en" regardless of actual language, so detection
-  // would be a no-op. If the user chose .en, they want English.
-  if (!detectedLanguage && !effectiveModel.endsWith(".en")) {
-    options?.onProgress?.("Detecting language...");
-    detectedLanguage = detectLanguage(whisper.executablePath, effectiveModelPath, wavPath);
-  }
-
-  if (detectedLanguage && detectedLanguage !== "en" && effectiveModel.endsWith(".en")) {
-    const multilingualModel = effectiveModel.replace(/\.en$/, "");
-    options?.onProgress?.(
-      `Detected ${detectedLanguage} — switching to ${multilingualModel} model...`,
-    );
-    effectiveModelPath = await ensureModel(multilingualModel, {
-      onProgress: options?.onProgress,
-    });
-    effectiveModel = multilingualModel;
-  }
-
-  // 5. Run whisper
+  const automaticLanguage = options?.language === undefined && !model.endsWith(".en");
+  const language = options?.language ?? (automaticLanguage ? "auto" : "en");
   options?.onProgress?.("Transcribing...");
+  options?.onEvent?.({ type: "progress", phase: "transcription", model, status: "started" });
   const outputBase = join(outputDir, "transcript");
   mkdirSync(outputDir, { recursive: true });
 
   const whisperArgs = [
     "--model",
-    effectiveModelPath,
+    modelPath,
     "--output-json-full",
     "--output-file",
     outputBase,
     "--dtw",
-    dtwPresetForModel(effectiveModel),
+    dtwPresetForModel(model),
     "--suppress-nst",
   ];
-  if (detectedLanguage) {
-    whisperArgs.push("--language", detectedLanguage);
-  }
+  whisperArgs.push("--language", language);
   whisperArgs.push(wavPath);
 
   const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath), {
-    model: effectiveModel,
+    model,
     overrideMs: options?.timeoutMs,
   });
   try {
@@ -520,7 +505,7 @@ export async function transcribe(
     // existing stderr-tail handling in `transcribeAudio` still applies.
     throw wrapWhisperTimeoutError(err, {
       effectiveTimeoutMs: whisperTimeoutMs,
-      model: effectiveModel,
+      model,
       wasOverride: options?.timeoutMs != null,
     });
   }
@@ -532,6 +517,11 @@ export async function transcribe(
   }
 
   const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
+  const reportedLanguage: unknown = transcript.result?.language;
+  const detectedLanguage =
+    automaticLanguage && typeof reportedLanguage === "string" && reportedLanguage.length > 0
+      ? reportedLanguage
+      : null;
   const segments = transcript.transcription ?? [];
 
   let wordCount = 0;
@@ -557,7 +547,10 @@ export async function transcribe(
     }
   }
 
+  options?.onEvent?.({ type: "progress", phase: "transcription", model, status: "completed" });
   return {
+    model,
+    detectedLanguage,
     transcriptPath,
     wordCount,
     durationSeconds: maxEnd / 1000,
