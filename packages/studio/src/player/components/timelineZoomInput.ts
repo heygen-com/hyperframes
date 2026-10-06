@@ -34,8 +34,8 @@ interface ZoomPreview {
   pps: number;
   shift: number;
   basePps: number;
-  /** The times with clips mounted when the preview began; past them it would show gaps. */
-  mounted: TimelineTimeRange;
+  /** The times laid out (clips mounted, ruler drawn) when it began; past them it shows gaps. */
+  drawn: TimelineTimeRange;
   byPerson: boolean;
 }
 
@@ -142,11 +142,17 @@ function previewNeedsLayout(p: ZoomPreview, scroll: HTMLDivElement, contentOrigi
   const left = scroll.scrollLeft - p.shift;
   const start = left / p.pps;
   const end = (left + scroll.clientWidth - contentOrigin) / p.pps;
+  return start < p.drawn.start || end > p.drawn.end;
+}
+
+/** The times laid out now: the clips mounted, and the ruler and beat lines to the content's end. */
+function drawnRange(scroll: HTMLDivElement, pps: number, contentOrigin: number): TimelineTimeRange {
   const duration = usePlayerStore.getState().duration || Number.POSITIVE_INFINITY;
-  return (
-    (p.mounted.start > 0 && start < p.mounted.start) ||
-    (p.mounted.end < duration && end > p.mounted.end)
-  );
+  const mounted = getTimelineRenderTimeRange(scroll, pps, contentOrigin, duration);
+  const contentEnd = (scroll.scrollWidth - contentOrigin) / pps;
+  // Past the last clip only the ruler matters, and it is drawn to the content's end.
+  const end = mounted.end < duration ? Math.min(mounted.end, contentEnd) : contentEnd;
+  return { start: mounted.start, end };
 }
 
 function drawPreview() {
@@ -207,13 +213,12 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
   const { scroll, contentOrigin } = view;
   const now = shown(scroll);
   const at = anchor ?? defaultAnchor(view, now.pps, now.left);
-  const duration = usePlayerStore.getState().duration || Number.POSITIVE_INFINITY;
   preview ??= {
     percent: clamped,
     pps,
     shift: 0,
     basePps: now.pps,
-    mounted: getTimelineRenderTimeRange(scroll, now.pps, contentOrigin, duration),
+    drawn: drawnRange(scroll, now.pps, contentOrigin),
     byPerson,
   };
   // The content's width at this scale: the fit track (getTimelineFitPps), never narrower.
@@ -236,9 +241,14 @@ export function requestTimelineZoom(percent: number, anchor: TimelineZoomAnchor 
   request(percent, anchor, true);
 }
 
-/** Lays out a pending zoom now, so what comes next (a press, a scroll) meets the real layout. */
+/** Lays out a pending zoom now, so a press meets the real layout. */
 export function settleTimelineZoom(): void {
   if (preview) commitPreview();
+}
+
+/** After a scroll: scales what it mounted, or lays the zoom out if it shows past what is drawn. */
+export function redrawTimelineZoomPreview(): void {
+  if (preview && !frame) frame = requestAnimationFrame(drawPreview);
 }
 
 /** Drops any pending or easing zoom without laying it out, as Fit does. */

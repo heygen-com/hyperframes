@@ -283,6 +283,19 @@ describe("useTimelinePlayhead wheel zoom", () => {
     expect(usePlayerStore.getState().manualZoomPercent).toBeGreaterThan(100);
   });
 
+  it("keeps previewing a pinch through a scroll, laying it out only at rest", () => {
+    const scroll = scrollBox(0);
+    mount({ scroll });
+    previewWheel(scroll, { ctrlKey: true });
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll"));
+      vi.advanceTimersToNextFrame();
+    });
+    expect(usePlayerStore.getState().timelinePps).toBe(100);
+    act(() => vi.advanceTimersByTime(200));
+    expect(usePlayerStore.getState().timelinePps).toBeGreaterThan(100);
+  });
+
   it("lays a pending pinch out at once when the timeline is pressed", () => {
     const scroll = scrollBox(0);
     mount({ scroll });
