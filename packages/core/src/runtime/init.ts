@@ -1802,6 +1802,7 @@ export function initSandboxRuntimeModular(): void {
       const held = missingRootComposite;
       const reused =
         held?.size === rootChildCandidates.length &&
+        isUsableTimelineDuration(getTimelineDurationSeconds(held.timeline)) &&
         rootChildCandidates.every((candidate) => {
           const placed = placedIn(held.timeline, candidate);
           return placed !== null && atHostStart(placed, candidate);

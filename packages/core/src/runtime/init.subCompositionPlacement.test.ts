@@ -182,6 +182,25 @@ describe("runtime sub-composition placement", () => {
     expect(shownX()).toBe(75);
   });
 
+  it("reports a scene's new length after a script extends it, when the root declares none", async () => {
+    const runFrames = stubFrames();
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="1" data-duration="4">` +
+      `<div id="s"></div></div></div>`;
+    const scene = gsap
+      .timeline({ paused: true })
+      .to("#s", { x: 100, duration: 4, ease: "none" }, 0);
+    window.__timelines = { scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    await runFrames(3);
+    window.__player?.seek(2);
+    scene.to({}, { duration: 8 }, 0);
+    await runFrames(5);
+
+    expect(window.__player?.getDuration()).toBe(9);
+  });
+
   it("binds a root timeline that registers after the runtime started on its children", async () => {
     const runFrames = stubFrames();
     loadWithoutRootTimeline(`<div id="r"></div>`);
