@@ -30,9 +30,8 @@ export function parseHTMLContent(html: string): Document {
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
 }
 
-/** Lowercases A-Z only, so indexes found in the result are valid in the input ("İ" lowercases to two chars). */
+/** ASCII-only folding preserves UTF-16 offsets; chunks bound V8 callback match arrays. */
 function lowerAscii(text: string): string {
-  // V8 collects every regex match before invoking callbacks; bound that temporary array.
   const chunkSize = 64 * 1024;
   let lowered = "";
   for (let offset = 0; offset < text.length; offset += chunkSize) {
