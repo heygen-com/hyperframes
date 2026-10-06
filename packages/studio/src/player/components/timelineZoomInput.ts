@@ -156,6 +156,7 @@ function drawnRange(scroll: HTMLDivElement, pps: number, contentOrigin: number):
 }
 
 function drawPreview() {
+  cancelAnimationFrame(frame);
   frame = 0;
   const view = viewport;
   if (!preview || !view) return;
@@ -353,6 +354,20 @@ function easeToRange(
     animation = requestAnimationFrame(finish);
     return result;
   }
+  easeZoom(view, fitPps, toPercent, { time: start, x }, byPerson, finish);
+  return result;
+}
+
+/** Eases from the zoom shown now to `toPercent`, landing `to.time` at `to.x`, then `finish`es. */
+function easeZoom(
+  view: TimelineZoomViewport,
+  fitPps: number,
+  toPercent: number,
+  to: TimelineZoomAnchor,
+  byPerson: boolean,
+  finish: () => void,
+) {
+  const { time: start, x } = to;
   const fromPercent = currentTimelineZoomPercent();
   const from = shown(view.scroll);
   const toPps = getTimelinePixelsPerSecond(fitPps, "manual", toPercent);
@@ -364,17 +379,24 @@ function easeToRange(
     shift === null
       ? { time: fromStart + (start - fromStart) * k, x }
       : { time: fromStart + shift / from.pps, x: x + shift };
+  // Zooming out shows time the current layout never mounted, so lay the target out once now and
+  // ease by scaling it down from the old view, instead of laying out again partway.
+  if (toPps < from.pps && from.pps / toPps <= MAX_PREVIEW_SCALE) {
+    request(toPercent, { time: start, x }, byPerson);
+    commitPreview();
+  }
   const began = performance.now();
   easingTo = toPercent;
   const step = (now: number) => {
     const t = Math.min(1, Math.max(0, (now - began) / SMOOTH_ZOOM_MS));
     const k = 1 - (1 - t) ** 3;
     request(fromPercent * (toPercent / fromPercent) ** k, anchorAt(k), byPerson);
+    // Drawn in this frame, not the next: the first one would otherwise paint a laid-out zoom-out bare.
+    drawPreview();
     if (t < 1) animation = requestAnimationFrame(step);
     else finish();
   };
   animation = requestAnimationFrame(step);
-  return result;
 }
 
 /**

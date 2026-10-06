@@ -322,6 +322,30 @@ describe("zoomTimelineStep", () => {
     expect(laidOutX(40)).toBeCloseTo(432);
   });
 
+  it("lays a zoom-out step out once, at its start, then eases by scaling", () => {
+    usePlayerStore.setState({
+      currentTime: 110,
+      duration: 1000,
+      zoomMode: "manual",
+      manualZoomPercent: 400,
+      timelinePps: 40,
+    });
+    // 100..126 s on screen at 40 px/s, the playhead at 110 s among it.
+    const { row } = viewport(4000);
+    const laidOut: number[] = [];
+    const unsubscribe = usePlayerStore.subscribe((s, prev) => {
+      if (s.timelinePps !== prev.timelinePps) laidOut.push(s.timelinePps);
+    });
+    zoomTimelineStep("out");
+    expect(laidOut).toEqual([20]);
+    vi.advanceTimersToNextFrame();
+    // Near the old view, drawn in the first frame by scaling the new layout up.
+    expect(Number(/scaleX\(([\d.]+)\)/.exec(row.style.transform)?.[1])).toBeGreaterThan(1.5);
+    run();
+    unsubscribe();
+    expect(laidOut).toEqual([20]);
+  });
+
   it("centres an off-screen playhead", () => {
     usePlayerStore.setState({
       currentTime: 60,
