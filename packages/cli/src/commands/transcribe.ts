@@ -281,6 +281,8 @@ async function exportTranscript(
 
 type Runner = "sherpa" | "parakeet-mlx" | "whisper";
 
+const PARAKEET_INSTALL_COMMAND = "hyperframes models install parakeet";
+
 /** auto and parakeet prefer sherpa-onnx, then parakeet-mlx, then whisper, in Parakeet's languages. */
 function pickRunner(engine: string, sherpaUsable: () => boolean, language?: string): Runner {
   if (engine === "whisper" || !parakeetSpeaks(language)) return "whisper";
@@ -331,7 +333,7 @@ async function transcribeAudio(
       !parakeetSpeaks(opts.language)
         ? `Parakeet does not transcribe --language ${opts.language}; it covers ${PARAKEET_LANGUAGES.split(" ").join(", ")}. Use --engine whisper.`
         : (unsupported ??
-            "Parakeet is not installed. Install it with: hyperframes models install parakeet (or use --engine whisper)"),
+            `Parakeet is not installed. Install it with: ${PARAKEET_INSTALL_COMMAND} (or use --engine whisper)`),
       !!opts.json,
     );
   }
@@ -361,7 +363,6 @@ async function transcribeAudio(
         });
       case "parakeet-mlx":
         return transcribeWithParakeet(wavPath, dir, {
-          language: opts.language,
           onProgress,
           onEvent,
         });
@@ -390,7 +391,7 @@ async function transcribeAudio(
     } catch (err) {
       if (runner !== "sherpa" || err instanceof DecodeCancelled) throw err;
       const reason = normalizeErrorMessage(err).replace(/\.+$/, "");
-      const parakeetError = `Parakeet failed: ${reason}. To repair it, run: hyperframes models install parakeet`;
+      const parakeetError = `Parakeet failed: ${reason}. To repair it, run: ${PARAKEET_INSTALL_COMMAND}`;
       if (!parakeetFallsBack(engine)) throw new Error(parakeetError);
       runner = pickRunner(engine, () => false, opts.language);
       spin?.clear();
@@ -477,10 +478,18 @@ async function transcribeAudio(
     // not inflate the cli_error budget, and let `--optional` callers continue.
     if (isWhisperUnavailable(err)) {
       trackTranscribeUnavailable({ optional: opts.optional === true });
+      // Auto fell to whisper only because Parakeet is not installed; installing it is the other way through.
+      const install =
+        engine === "auto" && runner === "whisper" && parakeetSpeaks(opts.language) && !unsupported
+          ? PARAKEET_INSTALL_COMMAND
+          : undefined;
       if (opts.json) {
-        console.log(JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable" }));
+        console.log(
+          JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable", install }),
+        );
       } else {
-        spin?.stop(c.warn(`Captions skipped — ${message}`));
+        const orParakeet = install ? `\nOr transcribe with Parakeet after: ${install}` : "";
+        spin?.stop(c.warn(`Captions skipped — ${message}${orParakeet}`));
       }
       // Optional callers (pipelines) treat a missing prerequisite as a clean
       // skip; explicit runs still surface non-zero. Set the status and return

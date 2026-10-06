@@ -270,7 +270,6 @@ export function silenceCuts(
 }
 
 interface ParakeetOptions {
-  language?: string;
   model?: string;
   onProgress?: (message: string) => void;
   onEvent?: (event: TranscribeProgress) => void;
@@ -301,7 +300,6 @@ export function transcribeWithParakeet(
   const workDir = mkdtempSync(join(tmpdir(), "hyperframes-parakeet-"));
   try {
     const argv = [inputPath, "--model", model, "--output-format", "json", "--output-dir", workDir];
-    if (options?.language) argv.push("--language", options.language);
     options?.onEvent?.({
       type: "progress",
       phase: "transcription",
