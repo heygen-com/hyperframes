@@ -107,7 +107,7 @@ try {
   cdp.on("Network.loadingFailed", finish);
   // A socket is held by a response whose body is still being read.
   // Chrome gives a host six sockets. Under the CLI the /api/events stream holds one, so five videos fill the rest;
-  // Vite's dev server sends live updates over its HMR WebSocket instead of SSE, so there all six must be videos.
+  // Vite's dev server sends live updates over its HMR WebSocket instead of SSE, so there all six must be media.
   const pinnedNeeded = () =>
     [...requests.values()].some((r) => r.type === "EventSource" && !r.done) ? 5 : 6;
   const pinUrls = new Set();
@@ -124,15 +124,20 @@ try {
   if (!target)
     throw new Error(`studio_look found no #target: ${JSON.stringify(look).slice(0, 400)}`);
   // Chrome cancels a paused video's request about 15 s after its last use, so on a slow runner the videos stopped
-  // pinning between rounds. An unread fetch per video waits in their socket pool and takes each socket they let go.
-  for (const frame of page.frames()) {
-    const srcs = await frame
-      .$$eval("video", (videos) => videos.map((v) => v.currentSrc))
-      .catch(() => []);
-    // The marker keeps Studio's own fetches of the same file out of the count.
-    srcs.filter(Boolean).forEach((src) => pinUrls.add(`${src}${src.includes("?") ? "&" : "?"}pin`));
-  }
-  if (pinUrls.size < VIDEOS)
+  // pinning between rounds. An unread fetch per video, sent with cookies as the videos are, never idles out.
+  const findVideos = async () => {
+    for (const frame of page.frames()) {
+      const srcs = await frame
+        .$$eval("video", (videos) => videos.map((v) => v.currentSrc))
+        .catch(() => []);
+      // The marker keeps Studio's own fetches of the same file out of the count.
+      srcs
+        .filter(Boolean)
+        .forEach((src) => pinUrls.add(`${src}${src.includes("?") ? "&" : "?"}pin`));
+    }
+    return pinUrls.size >= VIDEOS;
+  };
+  if (!(await until(findVideos, 10_000)))
     throw new Error(`found ${pinUrls.size} of the fixture's ${VIDEOS} videos`);
   await page.evaluate(
     (urls) => {
