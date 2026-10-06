@@ -116,15 +116,22 @@ const playsForward = (value: unknown): value is GsapAnimation => {
   );
 };
 
+function primedAtItsStart(tween: GsapAnimation): boolean {
+  if (tween.vars?.keyframes) {
+    tween.render(BELOW_GSAP_TIME_RESOLUTION, true);
+    tween.render(-BELOW_GSAP_TIME_RESOLUTION, true);
+    return true;
+  }
+  if (!tween._startAt) return false;
+  tween._startAt.render(BELOW_GSAP_TIME_RESOLUTION, true, true);
+  return true;
+}
+
 function primeTweensStartingAt(children: unknown[], time: number): void {
   for (const child of children.filter(playsForward)) {
     const local = (time - child.startTime()) * child.timeScale();
-    if (Math.abs(local) < 1e-9 && child.vars?.keyframes) {
-      child.render(BELOW_GSAP_TIME_RESOLUTION, true);
-      child.render(-BELOW_GSAP_TIME_RESOLUTION, true);
-    } else if (Math.abs(local) < 1e-9 && child._startAt) {
-      child._startAt.render(BELOW_GSAP_TIME_RESOLUTION, true, true);
-    } else if (child.getChildren && local > 0 && local <= child.totalDuration()) {
+    if (Math.abs(local) < 1e-9 && primedAtItsStart(child)) continue;
+    if (child.getChildren && local > 0 && local <= child.totalDuration()) {
       primeTweensStartingAt(child.getChildren(false, true, true), local);
     }
   }
