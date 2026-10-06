@@ -75,6 +75,9 @@
       .gs-blade svg {
         display: block;
         fill: #1c180f;
+        stroke: #1c180f;
+        stroke-width: 20px;
+        stroke-linejoin: round;
       }
       .gs-centre {
         position: absolute;
@@ -727,7 +730,8 @@
         var R_OUT = 298;
         var R_IN = 118;
         var GAP = 44;
-        var TWIST = -36; // degrees the blade gaps curl from the inner to the outer edge
+        var ROUND = 10; // blade corner radius: the path is inset by it and stroked back out
+        var TWIST = -18; // degrees the blade gaps curl from the inner to the outer edge
         var SHUTTER = 360; // degrees, centred on the frame
 
         // Top, middle and bottom dot. Each spins clockwise from `from`, `spinIn` degrees
@@ -748,10 +752,17 @@
         ];
         var SPIN_IN = [1.03, 1.6];
         var SPIN_OUT = [2.075, 2.67];
-        var BLADE_GROW = [1.04, 1.53];
-        var BLADE_SHRINK = [2.08, 2.62];
+        var BLADE_GROW = [1.24, 1.52];
+        var BLADE_SHRINK = [2.1, 2.4];
         var CENTRE_GROW = [1.3, 1.5];
         var CENTRE_SHRINK = [2.115, 2.28];
+        // Each dot swells along its path while its blade grows out of it, and on the way back.
+        var SWELLS = [
+          [1.12, 1.29, 1.47],
+          [2.1, 2.24, 2.45],
+        ];
+        var SWELL_ALONG = 0.7;
+        var SWELL_ACROSS = 0.15;
 
         var swift = CustomEase.create("gs-swift", "M0,0 C0.25,0 0.2,1 1,1");
         var settle = CustomEase.create("gs-settle", "M0,0 C0.43,0 0.39,1 1,1");
@@ -759,6 +770,8 @@
         var inOut = gsap.parseEase("power2.inOut");
         var easeOut = gsap.parseEase("power1.out");
         var circOut = gsap.parseEase("circ.out");
+        var bladeOut = gsap.parseEase("power3.out");
+        var linear = gsap.parseEase("none");
 
         function span(t, w, ease) {
           return ease(gsap.utils.clamp(0, 1, (t - w[0]) / (w[1] - w[0])));
@@ -769,6 +782,14 @@
           if (t < SPLITS[1][0]) return 1 - span(t, MERGES[0], settle);
           if (t < MERGES[1][0]) return span(t, SPLITS[1], split);
           return 1 - span(t, MERGES[1], settle);
+        }
+
+        function swell(t) {
+          var s = 0;
+          SWELLS.forEach(function (w) {
+            s += span(t, [w[0], w[1]], inOut) - span(t, [w[1], w[2]], inOut);
+          });
+          return s;
         }
 
         function rad(deg) {
@@ -784,6 +805,9 @@
             x: radius * Math.cos(rad(angle)),
             y: radius * Math.sin(rad(angle)),
             turn: angle - (p.from + p.spinIn),
+            rotation: angle,
+            scaleX: 1 + SWELL_ACROSS * swell(t),
+            scaleY: 1 + SWELL_ALONG * swell(t),
           };
         }
 
@@ -791,7 +815,7 @@
         // it, and carried to wherever the dot is. Scale 0 hides it inside the dot.
         function blade(p, rest, t) {
           var at = piece(p, t);
-          var grown = span(t, BLADE_GROW, inOut) - span(t, BLADE_SHRINK, easeOut);
+          var grown = span(t, BLADE_GROW, bladeOut) - span(t, BLADE_SHRINK, linear);
           return {
             x: at.x - rest.x,
             y: at.y - rest.y,
@@ -803,7 +827,7 @@
 
         function edge(mid, side, r) {
           var swirl = (TWIST * (r - ORBIT)) / (R_OUT - R_IN);
-          var theta = rad(mid + side * 60 + swirl) - (side * GAP) / 2 / r;
+          var theta = rad(mid + side * 60 + swirl) - (side * (GAP / 2 + ROUND)) / r;
           return (r * Math.cos(theta)).toFixed(2) + "," + (r * Math.sin(theta)).toFixed(2);
         }
 
@@ -811,15 +835,15 @@
           var lo = [];
           var hi = [];
           for (var k = 0; k <= 16; k++) {
-            var r = R_IN + ((R_OUT - R_IN) * k) / 16;
+            var r = R_IN + ROUND + ((R_OUT - R_IN - 2 * ROUND) * k) / 16;
             lo.push(edge(mid, -1, r));
             hi.unshift(edge(mid, 1, r));
           }
           return [
             "M" + lo.join(" L"),
-            "A" + R_OUT + "," + R_OUT + " 0 0 1 " + hi[0],
+            "A" + (R_OUT - ROUND) + "," + (R_OUT - ROUND) + " 0 0 1 " + hi[0],
             "L" + hi.join(" L"),
-            "A" + R_IN + "," + R_IN + " 0 0 0 " + lo[0],
+            "A" + (R_IN + ROUND) + "," + (R_IN + ROUND) + " 0 0 0 " + lo[0],
             "Z",
           ].join(" ");
         }
@@ -841,9 +865,13 @@
         }
 
         PIECES.forEach(function (p, i) {
-          drive(document.getElementById("gs-dot-" + i), ["x", "y"], function (t) {
-            return piece(p, t);
-          });
+          drive(
+            document.getElementById("gs-dot-" + i),
+            ["x", "y", "rotation", "scaleX", "scaleY"],
+            function (t) {
+              return piece(p, t);
+            },
+          );
           var el = document.getElementById("gs-blade-" + i);
           var restAngle = p.from + p.spinIn;
           var rest = { x: ORBIT * Math.cos(rad(restAngle)), y: ORBIT * Math.sin(rad(restAngle)) };
