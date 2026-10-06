@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
-import { findSystemChrome } from "../../vite.browser";
+import { findSystemChrome } from "../vite.browser";
 
 const require = createRequire(import.meta.url);
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Browser } from "puppeteer-core";
 import { build, type Plugin } from "esbuild";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { launchTestChrome, showWithRuntime } from "./chromeTestUtils";
+import { launchTestChrome, showWithRuntime } from "../../tests/chromeTestUtils";
 import { writeFixture } from "../../tests/e2e/edit-accuracy/grid.mjs";
 
 const CROP = "inset(0px 40px 0px 0px)";

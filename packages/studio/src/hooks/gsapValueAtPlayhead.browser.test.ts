@@ -4,7 +4,7 @@ import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { replaceTweenWithKeyframesInScript } from "@hyperframes/parsers/gsap-writer-acorn";
 import { expect, it, vi } from "vitest";
-import { launchTestChrome, showWithRuntime } from "../utils/chromeTestUtils";
+import { launchTestChrome, showWithRuntime } from "../../tests/chromeTestUtils";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { planValueEdit } from "./gsapValueAtPlayhead";
