@@ -1374,6 +1374,8 @@ export function initSandboxRuntimeModular(): void {
 
   // Sub-composition timelines the runtime nested into the root: the host composition id, and where.
   const autoNested = new WeakMap<object, { hostId: string; parent: unknown; at: number }>();
+  // The composite that holds the children of a root with no timeline, and how many it holds.
+  let missingRootComposite: { timeline: RuntimeTimelineLike; size: number } | null = null;
 
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
     const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
@@ -1429,16 +1431,25 @@ export function initSandboxRuntimeModular(): void {
       parent.add(candidate.timeline, at);
       autoNested.set(candidate.timeline, { hostId: candidate.compositionId, parent, at });
     };
+    /** Placed by the runtime in `root` and still there; under another root a re-run script owns its place. */
+    const placedIn = (
+      root: RuntimeTimelineLike,
+      candidate: { compositionId: string; timeline: RuntimeTimelineLike },
+    ) => {
+      const nested = candidate.timeline as RuntimeTimelineLike & RuntimeTimelineChildLike;
+      const placed = autoNested.get(nested);
+      return placed && placed.parent === root && nested.parent === (root as unknown)
+        ? placed
+        : null;
+    };
+    const atHostStart = (placed: { at: number }, candidate: { compositionId: string }) =>
+      Math.abs(placed.at - resolveCompositionStartSeconds(candidate.compositionId)) < 1e-6;
     const followHostStart = (
       root: RuntimeTimelineLike,
       candidate: { compositionId: string; timeline: RuntimeTimelineLike },
     ): void => {
-      const nested = candidate.timeline as RuntimeTimelineLike & RuntimeTimelineChildLike;
-      const placed = autoNested.get(nested);
-      // Under another root, a re-run script placed it, and owns that place as on a fresh load.
-      if (!placed || placed.parent !== root || nested.parent !== (root as unknown)) return;
-      if (Math.abs(placed.at - resolveCompositionStartSeconds(candidate.compositionId)) < 1e-6)
-        return;
+      const placed = placedIn(root, candidate);
+      if (!placed || atHostStart(placed, candidate)) return;
       // GSAP takes a child out of its parent before adding it; the rebind's unpause aligns it to the root.
       nestAtHostStart(root, candidate);
     };
@@ -1785,13 +1796,25 @@ export function initSandboxRuntimeModular(): void {
     }
     if (rootChildCandidates.length > 0) {
       const selectedTimelineIds = rootChildCandidates.map((candidate) => candidate.compositionId);
-      const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
+      // A rebuild re-parents every child at time 0 and paints it there, under a paused drag too,
+      // so the same children, each still at its host's start, keep the composite they sit in.
+      const held = missingRootComposite;
+      const reused =
+        held?.size === rootChildCandidates.length &&
+        rootChildCandidates.every((candidate) => {
+          const placed = placedIn(held.timeline, candidate);
+          return placed !== null && atHostStart(placed, candidate);
+        })
+          ? held.timeline
+          : null;
+      const compositeTimeline =
+        reused ?? createCompositeTimelineFromCandidates(rootChildCandidates);
       const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
       if (compositeTimeline) {
-        ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
-        // As with a root timeline: once bound, the polling loop must not rebuild the composite,
-        // whose unpause rewinds every child to 0 under a paused drag.
-        childrenBound = true;
+        if (!reused) {
+          ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
+          missingRootComposite = { timeline: compositeTimeline, size: rootChildCandidates.length };
+        }
         return {
           timeline: compositeTimeline,
           selectedTimelineIds,
