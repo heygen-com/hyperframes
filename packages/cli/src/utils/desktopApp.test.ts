@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, win32 } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readSeen } from "./appHistory.js";
 import {
   AGENT_HANDOFF_FILE,
@@ -145,6 +145,13 @@ describe("openInDesktop on Linux", () => {
 });
 
 describe("agent hand-off", () => {
+  // The seen record lives in the person's home: these tests get their own.
+  beforeEach(() => {
+    const home = mkdtempSync(join(tmpdir(), "hf-home-"));
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+  });
+
   let dir: string | undefined;
   afterEach(() => {
     if (dir) chmodSync(dir, 0o755);
@@ -177,7 +184,11 @@ describe("agent hand-off", () => {
       sessionId: session,
     });
     // `catch-up` shows only what the app does from here on.
-    expect(readSeen(dir).at).toBeGreaterThan(Date.now() - 60_000);
+    const first = readSeen(dir).at;
+    expect(first).toBeGreaterThan(Date.now() - 60_000);
+    // Handing it over again keeps the turns recorded since the first hand-off for catch-up.
+    openInDesktop(dir, { ...LIVE, open: () => true, env: { CLAUDE_CODE_SESSION_ID: session } });
+    expect(readSeen(dir).at).toBe(first);
     expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toContain("npx hyperframes catch-up");
   });
 

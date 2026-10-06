@@ -16,7 +16,6 @@ export const examples: Example[] = [
   ["For agents", "hyperframes catch-up --json"],
 ];
 
-const MAX_FILES_SHOWN = 20;
 const AGENTS: Record<string, string> = { claude: "Claude Code", codex: "Codex", grok: "Grok" };
 
 const oneLine = (text: string): string => text.replace(/\s*\n+\s*/g, " ");
@@ -48,12 +47,7 @@ function printNews(name: string, turns: AppTurn[], files: string[]): void {
   }
   console.log(`${c.success("◇")}  In the desktop app since you last looked (${c.accent(name)}):\n`);
   turns.forEach(printTurn);
-  const shown = files.slice(0, MAX_FILES_SHOWN);
-  const more = files.length - shown.length;
-  if (files.length)
-    console.log(
-      `   Files changed since then: ${shown.join(", ")}${more ? ` and ${more} more` : ""}`,
-    );
+  if (files.length) console.log(`   Files changed since then: ${files.join(", ")}`);
   console.log(
     `   ${c.dim("A record of what happened, not a new request. Read changed files again before editing them.")}`,
   );
@@ -82,7 +76,7 @@ export default defineCommand({
     if (args.json) console.log(JSON.stringify({ project: project.dir, turns, files }, null, 2));
     else printNews(project.name, turns, files);
     // Marked only once shown, and only up to the newest turn shown: one written after this read shows next time.
-    const newest = turns.at(-1);
-    markSeen(project.dir, { at: newest ? Date.parse(newest.at) : seen.at, checked: checking });
+    const newest = Math.max(seen.at, ...turns.map((turn) => Date.parse(turn.at)));
+    markSeen(project.dir, { at: newest, checked: checking });
   },
 });

@@ -1,17 +1,6 @@
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { randomBytes } from "node:crypto";
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 // The records the CLI and the desktop app keep in a project's .hyperframes/. A project can be a clone of someone
 // else's repo, so a link in place of the folder or of a record is never followed, on reading or on writing.
@@ -34,19 +23,21 @@ function recordsDir(projectDir: string, create = false): string | null {
   }
 }
 
-/** The last `maxBytes` of a record; "" when it is missing, a link, or not a plain file. */
-export function readRecord(projectDir: string, name: string, maxBytes: number): string {
-  const dir = recordsDir(projectDir);
-  if (!dir) return "";
+/** The last `maxBytes` of a plain file; "" for a link, a device, or a missing file. The file is opened once and
+ * must be the one `lstat` saw, so this holds where O_NOFOLLOW doesn't exist (Windows). */
+export function readPlainFile(path: string, maxBytes: number): string {
+  let seen;
   let fd: number;
   try {
-    fd = openSync(join(dir, name), constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
+    seen = lstatSync(path);
+    if (!seen.isFile()) return "";
+    fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
   } catch {
     return "";
   }
   try {
     const stats = fstatSync(fd);
-    if (!stats.isFile()) return "";
+    if (!stats.isFile() || stats.ino !== seen.ino || stats.dev !== seen.dev) return "";
     const length = Math.min(stats.size, maxBytes);
     const buffer = Buffer.alloc(length);
     readSync(fd, buffer, 0, length, stats.size - length);
@@ -54,6 +45,11 @@ export function readRecord(projectDir: string, name: string, maxBytes: number): 
   } finally {
     closeSync(fd);
   }
+}
+
+export function readRecord(projectDir: string, name: string, maxBytes: number): string {
+  const dir = recordsDir(projectDir);
+  return dir ? readPlainFile(join(dir, name), maxBytes) : "";
 }
 
 /** When a record last changed; 0 when it is missing or not a plain file. */
@@ -67,31 +63,19 @@ export function recordChangedAt(projectDir: string, name: string): number {
   }
 }
 
-/** A record written whole, owner-only: a temp file renamed over it, so a link in its place is replaced, never
- * written through, and a crash mid-write leaves the old record. False when it could not be written. */
-export function writeRecord(projectDir: string, name: string, data: string): boolean {
-  const dir = recordsDir(projectDir, true);
-  if (!dir) return false;
-  const temp = join(dir, `.${name}.${process.pid}.${randomBytes(4).toString("hex")}`);
+/** A file written whole through a temp file renamed over it, so a link in its place is replaced, never written
+ * through, and a crash mid-write leaves the old file. False when it could not be written. */
+export function replaceFile(path: string, data: string, mode: number): boolean {
   try {
-    writeFileSync(temp, data, { mode: 0o600, flag: "wx" });
-    renameSync(temp, join(dir, name));
+    replaceFileAtomically(path, data, mode);
     return true;
   } catch {
-    rmSync(temp, { force: true });
     return false;
   }
 }
 
-/** A project file rewritten whole with its mode kept: a temp file renamed over it, never written through a link. */
-export function replaceProjectFile(path: string, data: string, mode: number): boolean {
-  const temp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  try {
-    writeFileSync(temp, data, { mode, flag: "wx" });
-    renameSync(temp, path);
-    return true;
-  } catch {
-    rmSync(temp, { force: true });
-    return false;
-  }
+/** A record written whole and owner-only, in a real .hyperframes folder. */
+export function writeRecord(projectDir: string, name: string, data: string): boolean {
+  const dir = recordsDir(projectDir, true);
+  return dir !== null && replaceFile(join(dir, name), data, 0o600);
 }

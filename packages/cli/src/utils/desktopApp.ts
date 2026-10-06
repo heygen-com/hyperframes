@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
-import { addCatchUpNote, markSeen } from "./appHistory.js";
+import { addCatchUpNote, markSeen, readSeen } from "./appHistory.js";
 import { writeRecord } from "./projectRecords.js";
 
 // The HyperFrames desktop app (not "Studio"): `open -b` on macOS, its executable elsewhere; released, then Canary.
@@ -125,7 +125,7 @@ function desktopApps({
 function leaveHandoff(dir: string, session: AgentSession | null): AgentSession | null {
   if (!session || !writeRecord(dir, "agent-handoff.json", JSON.stringify(session))) return null;
   const now = Date.now();
-  markSeen(dir, { at: now, checked: now });
+  if (!readSeen(dir).at) markSeen(dir, { at: now, checked: now });
   addCatchUpNote(dir);
   return session;
 }

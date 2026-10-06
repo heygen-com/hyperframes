@@ -1,11 +1,17 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import catchUp from "./catch-up.js";
 import { APP_HISTORY, markSeen, readSeen } from "../utils/appHistory.js";
 
 describe("catch-up", () => {
+  beforeEach(() => {
+    const home = mkdtempSync(join(tmpdir(), "hf-home-"));
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+  });
+
   it("marks seen only up to the newest turn it showed, so a turn written after the read shows next time", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-catch-up-"));
     writeFileSync(join(dir, "index.html"), "<html></html>");

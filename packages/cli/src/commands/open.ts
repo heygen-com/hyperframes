@@ -65,7 +65,10 @@ export default defineCommand({
     if (!project) return;
     const result = openInDesktop(project.dir);
     if (!result.opened) setCommandExitCode(1);
-    if (args.json) console.log(JSON.stringify({ project: project.dir, ...result }, null, 2));
+    const catchUp =
+      result.opened && result.handedOver ? { catchUp: "npx hyperframes catch-up" } : {};
+    if (args.json)
+      console.log(JSON.stringify({ project: project.dir, ...result, ...catchUp }, null, 2));
     else printResult(project, result);
   },
 });

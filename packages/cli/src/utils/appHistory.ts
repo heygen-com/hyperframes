@@ -1,12 +1,14 @@
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { readRecord, recordChangedAt, replaceProjectFile, writeRecord } from "./projectRecords.js";
+import { readPlainFile, readRecord, recordChangedAt, replaceFile } from "./projectRecords.js";
 
 // The desktop app records each chat turn in .hyperframes/ (hyperframes-internal appHistory.mjs), one JSON object
-// a line. The seen record holds the newest turn shown here and when files were last checked; both start at the
-// hand-off, so a project never handed over from this machine shows nothing.
+// a line. The seen record holds the newest turn shown here and when files were last checked. It starts at a
+// hand-off and lives in this person's ~/.hyperframes, keyed by the project's real path, so a file a cloned repo
+// ships can never claim one.
 export const APP_HISTORY = "app-history.jsonl";
-const SEEN = "app-history-seen.json";
 const MAX_READ_BYTES = 1024 * 1024;
 const MAX_FIELD_CHARS = 2000;
 const MAX_WALKED_FILES = 5000;
@@ -51,9 +53,20 @@ export interface Seen {
 
 const stamp = (value: unknown): number => (typeof value === "string" ? Date.parse(value) || 0 : 0);
 
+function seenPath(dir: string): string {
+  let real: string;
+  try {
+    real = realpathSync(dir);
+  } catch {
+    real = resolve(dir);
+  }
+  const key = createHash("sha256").update(real).digest("hex").slice(0, 32);
+  return join(homedir(), ".hyperframes", "catch-up", `${key}.json`);
+}
+
 export function readSeen(dir: string): Seen {
   try {
-    const seen: Record<string, unknown> = Object(JSON.parse(readRecord(dir, SEEN, 4096)));
+    const seen: Record<string, unknown> = Object(JSON.parse(readPlainFile(seenPath(dir), 4096)));
     const at = stamp(seen.at);
     return { at, checked: stamp(seen.checked) || at };
   } catch {
@@ -62,15 +75,16 @@ export function readSeen(dir: string): Seen {
 }
 
 /** False when it could not be written; the same turns then show again, never fewer. */
-export const markSeen = (dir: string, seen: Seen): boolean =>
-  writeRecord(
-    dir,
-    SEEN,
-    JSON.stringify({
-      at: new Date(seen.at).toISOString(),
-      checked: new Date(seen.checked).toISOString(),
-    }),
-  );
+export function markSeen(dir: string, seen: Seen): boolean {
+  const path = seenPath(dir);
+  const at = (time: number) => new Date(time).toISOString();
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+  } catch {
+    return false;
+  }
+  return replaceFile(path, JSON.stringify({ at: at(seen.at), checked: at(seen.checked) }), 0o600);
+}
 
 export const unseenTurns = (dir: string, since: number): AppTurn[] =>
   since ? readAppTurns(dir).filter((turn) => Date.parse(turn.at) > since) : [];
@@ -139,13 +153,12 @@ export function addCatchUpNote(dir: string): void {
   for (const name of ["CLAUDE.md", "AGENTS.md"]) {
     const path = join(dir, name);
     try {
-      const stats = lstatSync(path);
-      const text = stats.isFile() ? readFileSync(path, "utf8") : "";
+      const text = readPlainFile(path, MAX_READ_BYTES);
       if (!text.startsWith(SCAFFOLD_TITLE) || text.includes("hyperframes catch-up")) continue;
       const next = text.includes(AFTER)
         ? text.replace(AFTER, `${AFTER}\n${CATCH_UP_NOTE}\n`)
         : `${text.trimEnd()}\n\n${CATCH_UP_NOTE}\n`;
-      replaceProjectFile(path, next, stats.mode & 0o777);
+      replaceFile(path, next, lstatSync(path).mode & 0o777);
     } catch {
       // No such file: nothing to add to.
     }
