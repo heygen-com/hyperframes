@@ -10,7 +10,6 @@ import {
 } from "./timelineProviderStateBuilders";
 import { TimelineRazorGuideOverlay } from "./TimelineRazorInteraction";
 import { LABEL_COL_W } from "./timelineLayout";
-import { markTimelineMotion } from "./timelineMotion";
 import type { TimelineTheme } from "./timelineTheme";
 
 type ViewportHandlers = Pick<
@@ -74,7 +73,6 @@ export function buildTimelineShellMeta(input: TimelineShellMetaInputs): Timeline
       contentOrigin: input.contentOrigin,
       zoomMode: input.zoomMode,
       onScroll: (e) => {
-        markTimelineMotion();
         input.lastScrollLeftRef.current = e.currentTarget.scrollLeft;
         input.recordTimelineScroll(e.currentTarget);
         input.syncScrollViewport(e.currentTarget, true);

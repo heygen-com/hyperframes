@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 
-/** How long the timeline must hold still, after its last zoom or scroll, to count as at rest. */
+/** How long the timeline must go without a zoom step to count as at rest. */
 const TIMELINE_REST_MS = 150;
 
 let moving = false;
@@ -9,7 +9,7 @@ const listeners = new Set<() => void>();
 
 const emit = () => listeners.forEach((listener) => listener());
 
-/** A zoom or scroll step: work that only matters at rest (redraws, decodes) waits for it to end. */
+/** A zoom step: work that only matters at rest (redraws, decodes) waits for the zoom to end. */
 export function markTimelineMotion(): void {
   if (!moving) {
     moving = true;
@@ -32,7 +32,7 @@ export function subscribeTimelineMotion(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** True while the timeline zooms or scrolls; re-renders only when that starts and when it rests. */
+/** True while the timeline zooms; re-renders only when that starts and when it rests. */
 function useTimelineMoving(): boolean {
   return useSyncExternalStore(subscribeTimelineMotion, isTimelineMoving, () => false);
 }

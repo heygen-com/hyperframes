@@ -1,6 +1,6 @@
 // fallow-ignore-file dead-code
 import { usePlayerStore, type ZoomMode } from "../store/playerStore";
-import { requestTimelineZoom } from "./timelineZoomInput";
+import { cancelTimelineZoom, requestTimelineZoom } from "./timelineZoomInput";
 
 export interface TimelineZoomState {
   zoomMode: ZoomMode;
@@ -13,6 +13,11 @@ export interface TimelineZoomState {
 export function useTimelineZoom(): TimelineZoomState {
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
-  const setZoomMode = usePlayerStore((s) => s.setZoomMode);
+  const setStoreZoomMode = usePlayerStore((s) => s.setZoomMode);
+  // A mode picked now (Fit) wins over a zoom still easing or waiting to be laid out.
+  const setZoomMode = (mode: ZoomMode) => {
+    cancelTimelineZoom();
+    setStoreZoomMode(mode);
+  };
   return { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent: requestTimelineZoom };
 }

@@ -16,10 +16,39 @@ import { markTimelineMotion } from "./timelineMotion";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const mounted: Array<ReturnType<typeof createRoot>> = [];
+
 afterEach(() => {
-  leaseSpy.mockClear();
+  act(() => mounted.splice(0).forEach((root) => root.unmount()));
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  leaseSpy.mockReset();
+  leaseSpy.mockImplementation(() => ({ status: "loading" as const }));
   document.body.innerHTML = "";
 });
+
+/** Renders a ready waveform for a two-peak sound into `parent`. */
+function renderReadyWaveform(parent: HTMLElement = document.body) {
+  leaseSpy.mockImplementation(
+    () => ({ status: "ready", value: { kind: "waveform", peaks: [0.5, 1] } }) as never,
+  );
+  const host = document.createElement("div");
+  parent.append(host);
+  const root = createRoot(host);
+  mounted.push(root);
+  act(() => {
+    root.render(
+      <AudioWaveform
+        audioUrl="/media/voice.wav"
+        label=""
+        labelColor="#fff"
+        projectId="project-a"
+        sessionEpoch={1}
+        priority="visible"
+      />,
+    );
+  });
+}
 
 /** A 6 x 20 canvas whose 2D context records every fill as [style, x, y, width, height]. */
 function recordingCanvas() {
@@ -65,36 +94,43 @@ describe("AudioWaveform", () => {
 
   it("redraws when the timeline comes to rest, not at each zoom step", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    leaseSpy.mockImplementation(
-      () => ({ status: "ready", value: { kind: "waveform", peaks: [0.5, 1] } }) as never,
-    );
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() => {
-      root.render(
-        <AudioWaveform
-          audioUrl="/media/voice.wav"
-          label=""
-          labelColor="#fff"
-          projectId="project-a"
-          sessionEpoch={1}
-          priority="visible"
-        />,
-      );
-    });
+    renderReadyWaveform();
     const drawn = getContext.mock.calls.length;
     expect(drawn).toBeGreaterThan(0);
     act(() => markTimelineMotion());
     expect(getContext.mock.calls.length).toBe(drawn);
     act(() => vi.runOnlyPendingTimers());
     expect(getContext.mock.calls.length).toBe(drawn + 1);
-    act(() => root.unmount());
-    getContext.mockRestore();
-    leaseSpy.mockReset();
-    leaseSpy.mockImplementation(() => ({ status: "loading" as const }));
-    vi.useRealTimers();
+  });
+
+  it("redraws on scroll only once the view leaves the drawn stretch, as playback follows", () => {
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const scroller = document.createElement("div");
+    scroller.setAttribute("data-timeline-scroll-viewport", "");
+    document.body.append(scroller);
+    // A 10000px clip in a 1000px view; the clip's left edge moves as the view scrolls.
+    let clipLeft = 0;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        return (
+          this === scroller
+            ? { left: 0, right: 1000, width: 1000 }
+            : { left: clipLeft, right: clipLeft + 10_000, width: 10_000 }
+        ) as DOMRect;
+      },
+    );
+    renderReadyWaveform(scroller);
+    const drawn = getContext.mock.calls.length;
+    const scrollTo = (left: number) => {
+      clipLeft = -left;
+      act(() => scroller.dispatchEvent(new Event("scroll")));
+    };
+    // Drawn to 2000px, one view past the screen: 500..1500 is still drawn.
+    scrollTo(500);
+    expect(getContext.mock.calls.length).toBe(drawn);
+    scrollTo(1500);
+    expect(getContext.mock.calls.length).toBe(drawn + 1);
   });
 
   it("shrinks each bar to the fade's gain and keeps the cut-away part as a ghost", () => {

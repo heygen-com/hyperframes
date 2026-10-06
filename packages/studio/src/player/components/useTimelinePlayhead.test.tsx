@@ -278,13 +278,35 @@ describe("useTimelinePlayhead wheel zoom", () => {
     expect(usePlayerStore.getState().manualZoomPercent).toBeGreaterThan(100);
   });
 
-  it("keeps the time under the pointer in place as a pinch lays out", () => {
-    const scroll = scrollBox(400);
+  it("lays a pending pinch out at once when the timeline is pressed", () => {
+    const scroll = scrollBox(0);
     mount({ scroll });
-    // Pointer 432px in: (400 + 432 - 32) / 100 = 8s sits there before and after.
+    act(() => {
+      const event = new WheelEvent("wheel", { deltaY: -50, cancelable: true });
+      Object.defineProperties(event, {
+        clientX: { value: 432 },
+        ctrlKey: { value: true },
+        metaKey: { value: false },
+      });
+      scroll.dispatchEvent(event);
+      vi.advanceTimersToNextFrame();
+    });
+    expect(usePlayerStore.getState().timelinePps).toBe(100);
+    act(() => {
+      scroll.dispatchEvent(new Event("pointerdown"));
+    });
+    expect(usePlayerStore.getState().timelinePps).toBeGreaterThan(100);
+  });
+
+  it("keeps the time under the pointer in place as a pinch lays out", () => {
+    // Zoomed to 150%, so a 300px scroll is one the content allows.
+    usePlayerStore.setState({ manualZoomPercent: 150, timelinePps: 150 });
+    const scroll = scrollBox(300);
+    mount({ scroll });
+    // Pointer 432px in: (300 + 432 - 32) / 150 s sits there before and after.
     wheel(scroll, { ctrlKey: true });
     const pps = usePlayerStore.getState().timelinePps;
-    expect(pps).toBeGreaterThan(100);
-    expect(ORIGIN + 8 * pps - scroll.scrollLeft).toBeCloseTo(432);
+    expect(pps).toBeGreaterThan(150);
+    expect(ORIGIN + (700 / 150) * pps - scroll.scrollLeft).toBeCloseTo(432);
   });
 });

@@ -19,7 +19,10 @@ import {
   timelineSliderToZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
-import { zoomTimelineStep } from "../player/components/timelineZoomInput";
+import {
+  useShownTimelineZoomPercent,
+  zoomTimelineStep,
+} from "../player/components/timelineZoomInput";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
 import { AudioMetersIcon } from "./icons/AudioMetersIcon";
@@ -176,11 +179,12 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   const elements = usePlayerStore((s) => s.elements);
   const timelineFitPps = usePlayerStore((s) => s.timelineFitPps);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
-  const displayedTimelineZoomPercent = getTimelineZoomPercent(
-    zoomMode,
-    manualZoomPercent,
-    timelineFitPps,
-  );
+  // Follows a zoom while it is previewed, before it is laid out and stored.
+  const displayedTimelineZoomPercent = useShownTimelineZoomPercent();
+  const showsFit =
+    zoomMode === "fit" &&
+    displayedTimelineZoomPercent ===
+      getTimelineZoomPercent("fit", manualZoomPercent, timelineFitPps);
   const {
     state: keyframeState,
     isMotionPath: keyframeIsMotionPath,
@@ -547,7 +551,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
             className="ml-1 w-[38px] text-right font-mono text-[11px] tabular-nums text-neutral-500 select-none"
             aria-label="Timeline zoom level"
           >
-            {zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
+            {showsFit ? "Fit" : `${displayedTimelineZoomPercent}%`}
           </span>
         </div>
       </div>

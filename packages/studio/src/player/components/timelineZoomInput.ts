@@ -1,7 +1,9 @@
+import { useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
-import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
+import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 import { usePlayerStore } from "../store/playerStore";
 import { markTimelineMotion } from "./timelineMotion";
+import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 import {
   clampTimelineZoomPercent,
   getNextTimelineZoomPercent,
@@ -32,7 +34,8 @@ interface ZoomPreview {
   pps: number;
   shift: number;
   basePps: number;
-  baseWidth: number;
+  /** The times with clips mounted when the preview began; past them it would show gaps. */
+  mounted: TimelineTimeRange;
   byPerson: boolean;
 }
 
@@ -40,8 +43,7 @@ const RANGE_MARGIN_PX = 24;
 const SMOOTH_ZOOM_MS = 220;
 /** How long a gesture holds still before its zoom is laid out for real. */
 const REST_MS = 150;
-// Below this a preview would show past the clips mounted around the view; above, soft raster.
-const MIN_PREVIEW_SCALE = 1 / (1 + 2 * TIMELINE_VIEWPORT_BUDGETS.timeOverscanViewportRatio);
+/** Past this the scaled-up preview turns soft. */
 const MAX_PREVIEW_SCALE = 4;
 const SCALED = "[data-timeline-zoom-scale]";
 
@@ -88,6 +90,20 @@ export function subscribeTimelineZoomPreview(listener: () => void): () => void {
   return () => previewListeners.delete(listener);
 }
 
+const subscribeShownZoom = (listener: () => void) => {
+  const unsubscribePreview = subscribeTimelineZoomPreview(listener);
+  const unsubscribeStore = usePlayerStore.subscribe(listener);
+  return () => {
+    unsubscribePreview();
+    unsubscribeStore();
+  };
+};
+
+/** The zoom percent the timeline shows, kept current through a preview. */
+export function useShownTimelineZoomPercent(): number {
+  return useSyncExternalStore(subscribeShownZoom, currentTimelineZoomPercent);
+}
+
 function writeZoom(percent: number, anchor: TimelineZoomAnchor | null, byPerson: boolean) {
   anchorForCommit = anchor;
   usePlayerStore.setState((s) => {
@@ -110,18 +126,32 @@ function clearScaled(scroll: HTMLElement) {
   });
 }
 
+/** Whether the preview shows time outside what was mounted, or is scaled up too far. */
+function previewNeedsLayout(p: ZoomPreview, scroll: HTMLDivElement, contentOrigin: number) {
+  if (p.pps / p.basePps > MAX_PREVIEW_SCALE) return true;
+  const left = scroll.scrollLeft - p.shift;
+  const start = left / p.pps;
+  const end = (left + scroll.clientWidth - contentOrigin) / p.pps;
+  const duration = usePlayerStore.getState().duration || Number.POSITIVE_INFINITY;
+  return (
+    (p.mounted.start > 0 && start < p.mounted.start) ||
+    (p.mounted.end < duration && end > p.mounted.end)
+  );
+}
+
 function drawPreview() {
   frame = 0;
   const view = viewport;
   if (!preview || !view) return;
-  const scale = preview.pps / preview.basePps;
-  if (scale < MIN_PREVIEW_SCALE || scale > MAX_PREVIEW_SCALE) {
+  if (previewNeedsLayout(preview, view.scroll, view.contentOrigin)) {
     commitPreview();
     return;
   }
+  const scale = preview.pps / preview.basePps;
   const transform = `translateX(${preview.shift}px) scaleX(${scale})`;
   view.scroll.querySelectorAll<HTMLElement>(SCALED).forEach((el) => {
-    el.style.transformOrigin = "0 0";
+    // The attribute's value is where time zero sits in the element, when not at its left edge.
+    el.style.transformOrigin = `${el.dataset.timelineZoomScale || 0}px 0`;
     el.style.willChange = "transform";
     el.style.transform = transform;
   });
@@ -165,22 +195,23 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
     writeZoom(percent, anchor, byPerson);
     return;
   }
-  markTimelineMotion();
   const clamped = clampTimelineZoomPercent(percent, fitPps);
   const pps = (fitPps * clamped) / 100;
   const { scroll, contentOrigin } = view;
   const now = shown(scroll);
   const at = anchor ?? defaultAnchor(view, now.pps, now.left);
+  const duration = usePlayerStore.getState().duration || Number.POSITIVE_INFINITY;
   preview ??= {
     percent: clamped,
     pps,
     shift: 0,
     basePps: now.pps,
-    baseWidth: scroll.scrollWidth,
+    mounted: getTimelineRenderTimeRange(scroll, now.pps, contentOrigin, duration),
     byPerson,
   };
-  // The content's width at this scale, from its width when the preview began.
-  const width = contentOrigin + ((preview.baseWidth - contentOrigin) * pps) / preview.basePps;
+  // The content's width at this scale: the fit track (getTimelineFitPps), never narrower.
+  const fitTrack = scroll.clientWidth - contentOrigin - 2;
+  const width = contentOrigin + fitTrack * Math.max(1, pps / fitPps);
   const maxLeft = Math.max(0, width - scroll.clientWidth);
   const left = Math.max(0, Math.min(maxLeft, at.time * pps + contentOrigin - at.x));
   preview.percent = clamped;
@@ -190,12 +221,34 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
   if (!frame) frame = requestAnimationFrame(drawPreview);
   if (restTimer) clearTimeout(restTimer);
   restTimer = setTimeout(commitPreview, REST_MS);
+  // After the commit timer, so the zoom is laid out before the timeline counts as at rest.
+  markTimelineMotion();
 }
 
 /** A person's zoom input: previewed each frame, laid out once it rests. */
 export function requestTimelineZoom(percent: number, anchor: TimelineZoomAnchor | null = null) {
   stopEase();
   request(percent, anchor, true);
+}
+
+/** Lays out a pending zoom now, so what comes next (a press, a scroll) meets the real layout. */
+export function settleTimelineZoom(): void {
+  if (preview) commitPreview();
+}
+
+/** Drops any pending or easing zoom without laying it out, as Fit does. */
+export function cancelTimelineZoom(): void {
+  stopEase();
+  dropPreview();
+}
+
+function dropPreview() {
+  if (restTimer) clearTimeout(restTimer);
+  restTimer = null;
+  cancelAnimationFrame(frame);
+  frame = 0;
+  if (viewport && preview) clearScaled(viewport.scroll);
+  preview = null;
 }
 
 function stopEase(result: TimelineZoomResult = "cancelled") {
@@ -215,14 +268,7 @@ export function takeTimelineZoomAnchor(): TimelineZoomAnchor | null {
 }
 
 export function setTimelineZoomViewport(next: TimelineZoomViewport | null): void {
-  if (!next && viewport && preview) {
-    if (restTimer) clearTimeout(restTimer);
-    restTimer = null;
-    cancelAnimationFrame(frame);
-    frame = 0;
-    clearScaled(viewport.scroll);
-    preview = null;
-  }
+  if (!next) cancelTimelineZoom();
   viewport = next;
 }
 
@@ -265,8 +311,10 @@ function easeToRange(
   stopEase();
   if (!view || !(end > start) || !(fitPps > 0) || signal?.aborted)
     return Promise.resolve("cancelled");
-  const result = new Promise<TimelineZoomResult>((resolve) => (settle = resolve));
-  signal?.addEventListener("abort", () => settle && stopEase(), { once: true });
+  let resolveThis: (result: TimelineZoomResult) => void = () => {};
+  const result = new Promise<TimelineZoomResult>((resolve) => (resolveThis = resolve));
+  settle = resolveThis;
+  signal?.addEventListener("abort", () => settle === resolveThis && stopEase(), { once: true });
   const x = view.contentOrigin + RANGE_MARGIN_PX;
   const width = Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX);
   const toPercent = clampTimelineZoomPercent((width / (end - start) / fitPps) * 100, fitPps);
@@ -276,7 +324,8 @@ function easeToRange(
   };
   if (!smooth || reducedMotion()) {
     request(toPercent, { time: start, x }, byPerson);
-    finish();
+    // Laid out next frame, never inside a caller's render or effect.
+    animation = requestAnimationFrame(finish);
     return result;
   }
   const fromPercent = currentTimelineZoomPercent();

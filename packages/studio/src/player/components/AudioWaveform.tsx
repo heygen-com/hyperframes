@@ -38,12 +38,12 @@ const WHOLE_CLIP: ClipSpan = { from: 0, to: 1 };
 const OVERSCAN_VIEWPORTS = 1;
 
 /** The part of the clip on screen, with overscan; a long clip never draws past it. */
-function visibleClipSpan(root: HTMLElement): ClipSpan {
+function visibleClipSpan(root: HTMLElement, overscan = OVERSCAN_VIEWPORTS): ClipSpan {
   const box = root.getBoundingClientRect();
   if (box.width <= 0) return WHOLE_CLIP;
   const scroller = root.closest("[data-timeline-scroll-viewport]");
   const view = scroller?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth };
-  const margin = (view.right - view.left) * OVERSCAN_VIEWPORTS;
+  const margin = (view.right - view.left) * overscan;
   const clamp = (x: number) => Math.max(0, Math.min(1, x));
   const from = clamp((view.left - margin - box.left) / box.width);
   const to = clamp((view.right + margin - box.left) / box.width);
@@ -218,11 +218,13 @@ export const AudioWaveform = memo(function AudioWaveform({
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
 
   const fades = useContext(ClipFadesContext);
+  const drawnSpan = useRef<ClipSpan | null>(null);
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     const root = rootRef.current;
     if (!canvas || !root || !peaks) return;
     const span = visibleClipSpan(root);
+    drawnSpan.current = span;
     // Placed in fractions of the clip, so a zoom stretches the drawn bars with time until the redraw.
     canvas.style.left = `${span.from * 100}%`;
     canvas.style.width = `${(span.to - span.from) * 100}%`;
@@ -241,18 +243,27 @@ export const AudioWaveform = memo(function AudioWaveform({
   drawRef.current = draw;
   useEffect(draw, [draw]);
 
-  // Redrawn when the clip resizes or the timeline comes to rest after a zoom or scroll, never
-  // per step: a step only stretches what is drawn.
+  // Redrawn when the clip resizes or a zoom comes to rest, never per zoom step: a step only
+  // stretches what is drawn. A scroll redraws only once the view leaves the drawn stretch.
   useMountEffect(() => {
     const root = rootRef.current;
     const redrawAtRest = () => {
       if (!isTimelineMoving()) drawRef.current();
     };
+    const redrawIfUncovered = () => {
+      const drawn = drawnSpan.current;
+      if (!root || !drawn || isTimelineMoving()) return;
+      const seen = visibleClipSpan(root, 0);
+      if (seen.from < drawn.from || seen.to > drawn.to) drawRef.current();
+    };
     const observer = root ? new ResizeObserver(redrawAtRest) : null;
     if (root) observer?.observe(root);
+    const scroller = root?.closest("[data-timeline-scroll-viewport]");
+    scroller?.addEventListener("scroll", redrawIfUncovered, { passive: true });
     const unsubscribe = subscribeTimelineMotion(redrawAtRest);
     return () => {
       observer?.disconnect();
+      scroller?.removeEventListener("scroll", redrawIfUncovered);
       unsubscribe();
     };
   });
