@@ -284,17 +284,23 @@
           // drops every `#id` rule that gave it size, colour and font. So each copy carries
           // its own resolved style inline. Chrome returns "" for a computed style's cssText,
           // so the declarations are enumerated rather than taken wholesale.
-          function resolvedStyles(source, out) {
+          // Visibility is not frozen into a copy: its root takes the element's current one from
+          // the group each frame, and a descendant keeps its own only where it differs from its
+          // parent's. A target hidden at attach (autoAlpha) would otherwise never smear.
+          function resolvedStyles(source, out, parentVisibility) {
             var cs = getComputedStyle(source);
             var text = "";
             for (var i = 0; i < cs.length; i++) {
-              text += cs[i] + ":" + cs.getPropertyValue(cs[i]) + ";";
+              var value = cs.getPropertyValue(cs[i]);
+              var inherited = parentVisibility === undefined || value === parentVisibility;
+              if (cs[i] === "visibility" && inherited) continue;
+              text += cs[i] + ":" + value + ";";
             }
             // A copy is a still of one instant. Left live, an inherited transition or
             // keyframe animation would carry it somewhere the timeline never sampled.
             out.push(text + "transition:none;animation:none;");
             for (var c = 0; c < source.children.length; c++) {
-              resolvedStyles(source.children[c], out);
+              resolvedStyles(source.children[c], out, cs.getPropertyValue("visibility"));
             }
             return out;
           }
@@ -343,11 +349,7 @@
             // that would walk the whole subtree once per copy; on resize it costs nothing
             // on a fixed-size render and keeps a live preview honest.
             function snapshot() {
-              // A copy styled while sharp 0 hides the element would inherit the hiding.
-              var hiding = el.hasAttribute(HIDE_ATTR);
-              if (hiding) el.removeAttribute(HIDE_ATTR);
               var styles = resolvedStyles(el, []);
-              if (hiding) el.setAttribute(HIDE_ATTR, "");
               s.perspective = parentPerspective(el);
               for (var c = 0; c < clones.length; c++) {
                 paintResolvedStyles(clones[c], styles, { i: 0 });
@@ -411,6 +413,7 @@
               css: cs.transform,
               origin: cs.transformOrigin,
               opacity: cs.opacity,
+              visibility: cs.visibility,
               parsed: parseTransform(cs.transform),
             };
           }
@@ -446,6 +449,8 @@
             }
 
             state.forEach(function (s) {
+              // Read the element as the timeline left it: the marker is this snippet's own.
+              if (!sharp) s.el.removeAttribute(HIDE_ATTR);
               var current = readTransform(s.el);
               var moved = false;
               for (var i = 0; i < copies; i++) {
@@ -456,7 +461,6 @@
               }
               if (!moved) {
                 s.group.style.display = "none";
-                if (!sharp) s.el.removeAttribute(HIDE_ATTR);
                 return;
               }
 
@@ -477,11 +481,12 @@
                 clone.style.transform =
                   s.perspective + (s.samples[j].css === "none" ? "" : s.samples[j].css);
               }
-              // The copies are the element's own ink, so they have to carry its opacity too:
+              // The copies are the element's own ink, so they carry its opacity and visibility:
               // a beat that moves and fades at once would otherwise leave a full-strength
               // smear behind a vanishing element. It rides the group, not the copies, whose
               // own opacity is the 1/N shutter weight.
               s.group.style.opacity = current.opacity;
+              s.group.style.visibility = current.visibility;
               s.group.style.display = "";
               if (!sharp) s.el.setAttribute(HIDE_ATTR, "");
             });

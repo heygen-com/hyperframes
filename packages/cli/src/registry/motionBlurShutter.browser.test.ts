@@ -120,6 +120,12 @@ function makeTimeline(onTo?: () => void): Fake {
  * happy-dom resolves no transforms of its own, so the element's computed style is the trajectory.
  * The stub also answers the declaration enumeration the style replay uses, and the perspective.
  */
+/** What the browser resolves for the target: the marker's !important rule wins, else the inline value. */
+function wordVisibility(word: Element): string {
+  if (word.hasAttribute(HIDING)) return "hidden";
+  return (word as HTMLElement).style.visibility || "visible";
+}
+
 function installComputedStyle(
   word: Element,
   currentTime: () => number,
@@ -135,6 +141,7 @@ function installComputedStyle(
       transformOrigin: "50% 50%",
       opacity: element === word ? opacity() : "1",
       perspective: element === word ? "none" : perspective(),
+      visibility: element === word ? wordVisibility(word) : "visible",
     }) as unknown as CSSStyleDeclaration) as typeof globalThis.getComputedStyle;
 }
 
@@ -350,20 +357,45 @@ describe("motion-blur shutter matches the After Effects reference", () => {
     expect(word.style.visibility).toBe("inherit");
   });
 
-  it("styles the copies from the shown element when a resize lands while sharp 0 hides it", async () => {
+  it("smears in the element's current visibility, read without its own marker", async () => {
+    // A second frame starts with the marker set, so a read that did not lift it would hide
+    // the smear along with the element.
+    const { group, word, fire } = await attach({ sharp: 0 });
+    fire();
+    await Promise.resolve();
+
+    expect(word.hasAttribute(HIDING)).toBe(true);
+    expect(group.style.visibility).toBe("visible");
+  });
+
+  it("hides the smear with an element the timeline hides", async () => {
+    const { group, word, fire } = await attach();
+    word.style.visibility = "hidden";
+    fire();
+    await Promise.resolve();
+
+    expect(group.style.visibility).toBe("hidden");
+  });
+
+  it("does not freeze the element's visibility into the copies", async () => {
+    // An element attached while an autoAlpha entrance still hides it would otherwise smear
+    // as nothing for the rest of the timeline.
     const observer = installResizeObserver();
-    const { word } = await attach({ sharp: 0 });
-    const seen: boolean[] = [];
+    const { word, copies } = await attach();
     const mocked = globalThis.getComputedStyle;
     globalThis.getComputedStyle = ((element: Element) => {
-      if (element === word) seen.push(word.hasAttribute(HIDING));
-      return mocked(element);
+      if (element !== word) return mocked(element);
+      const values: Record<string, string> = { visibility: "hidden", color: "red" };
+      return Object.assign(Object.create(mocked(element)), Object.keys(values), {
+        length: 2,
+        getPropertyValue: (name: string) => values[name] ?? "",
+      });
     }) as typeof globalThis.getComputedStyle;
 
     observer.resize();
 
-    expect(seen[0]).toBe(false);
-    expect(word.hasAttribute(HIDING)).toBe(true);
+    expect(copies[0]?.style.color).toBe("red");
+    expect(copies[0]?.style.visibility).toBe("");
   });
 
   it("carries the element's own opacity on the smear", async () => {
