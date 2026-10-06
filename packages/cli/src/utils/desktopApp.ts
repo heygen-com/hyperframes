@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
+import { markSeen } from "./appHistory.js";
 
 // The HyperFrames desktop app (not "Studio"): `open -b` on macOS, its executable elsewhere; released, then Canary.
 const DESKTOP_BUNDLE_IDS = ["dev.hyperframes.desktop", "dev.hyperframes.desktop.canary"] as const;
@@ -124,6 +125,7 @@ function leaveHandoff(dir: string, session: AgentSession | null): AgentSession |
   try {
     mkdirSync(join(dir, ".hyperframes"), { recursive: true });
     writeFileSync(join(dir, AGENT_HANDOFF_FILE), JSON.stringify(session));
+    markSeen(dir);
     return session;
   } catch {
     return null;

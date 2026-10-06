@@ -130,6 +130,7 @@ const commandLoaders = {
     assertStudioWorkspaceBuilt().then(() => import("./commands/preview.js").then((m) => m.default)),
   publish: () => import("./commands/publish.js").then((m) => m.default),
   open: () => import("./commands/open.js").then((m) => m.default),
+  "catch-up": () => import("./commands/catch-up.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
   check: () => import("./commands/check.js").then((m) => m.default),
@@ -289,6 +290,16 @@ if (
   import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});
 }
 
+// A command run on a project the desktop app chatted about since it was last caught up on ends by saying so.
+let _appHistoryNotice: string | null = null;
+if (!isHelp && !["unknown", "catch-up", "events", "telemetry"].includes(command)) {
+  import("./utils/appHistory.js")
+    .then((mod) => {
+      _appHistoryNotice = mod.appHistoryNotice(process.cwd(), process.argv.slice(3));
+    })
+    .catch(() => {});
+}
+
 const commandStart = Date.now();
 const runId = getRunId();
 let finalized = false;
@@ -322,6 +333,7 @@ async function finalizeCli(result: CommandResult): Promise<void> {
     _printStalePinNotice?.();
     _printSkillsUpdateNotice?.();
   }
+  if (_appHistoryNotice) process.stderr.write(`◇  ${_appHistoryNotice}\n`);
   process.exitCode = exitCode;
 }
 

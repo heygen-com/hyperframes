@@ -24,6 +24,9 @@ function printResult(project: ProjectDir, result: DesktopOpenResult): void {
     if (result.handedOver) {
       const agent = result.handedOver.engine === "claude" ? "Claude Code" : "Codex";
       console.log(`   ${c.dim(`Its chat picks up this ${agent} conversation.`)}`);
+      console.log(
+        `   ${c.dim(`When the person is back here, run ${c.accent("npx hyperframes catch-up")} to see what they did in the app.`)}`,
+      );
     }
     return;
   }
