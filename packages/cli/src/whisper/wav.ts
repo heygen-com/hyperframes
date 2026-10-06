@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 export function findWavChunk(buf: Buffer, want: string): { offset: number; size: number } | null {
   if (buf.length < 12) return null;
   let pos = 12; // skip RIFF header
-  while (pos + 8 < buf.length) {
+  while (pos + 8 <= buf.length) {
     const id = buf.toString("ascii", pos, pos + 4);
     const size = buf.readUInt32LE(pos + 4);
     if (id === want) return { offset: pos + 8, size: Math.min(size, buf.length - pos - 8) };

@@ -21,6 +21,10 @@ it("reads a 16-bit mono WAV's samples and rate in JS", () => {
   expect([...wav.samples]).toEqual([0, 0.5, -0.5, -1]);
 });
 
+it("reads a WAV with no samples as silence, as ffmpeg writes for empty audio", () => {
+  expect(readWav(file("empty.wav", encodeWav([], 16_000))).samples).toHaveLength(0);
+});
+
 it("names a file that is not a 16-bit mono WAV", () => {
   const stereo = encodeWav([0, 0], 16_000);
   stereo.writeUInt16LE(2, 22);
