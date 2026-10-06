@@ -1,6 +1,6 @@
-import { Fragment, useId, useMemo, type CSSProperties } from "react";
+import { Fragment, useId, useMemo, useRef, type CSSProperties } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
-import { TimelineClip } from "./TimelineClip";
+import { TimelineLaneClip, type TimelineLaneClipActions } from "./TimelineLaneClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
@@ -25,8 +25,7 @@ import { isMultiDragPassenger, multiDragPassengerOffsetPx } from "./timelineMult
 import { useTimelineMultiDragActorWindows } from "./useTimelineMultiDragActorWindows";
 import type { TimelineLanesProps } from "./timelineLaneProps";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
-import { createClipGestureHandlers } from "./timelineClipGestureHandlers";
-import { renderClipChildren, resolveClipRenderContext } from "./timelineClipChildren";
+import { resolveClipRenderContext } from "./timelineClipChildren";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
@@ -144,6 +143,28 @@ export function TimelineLanes({
     onToggleRow: (row) => row.elementId && toggleClipExpandedTracked(row.elementId),
     onDrillDown,
   });
+  const clipActions = useRef<TimelineLaneClipActions>(null!);
+  clipActions.current = {
+    gestures: {
+      pps,
+      onResizeElement,
+      onMoveElement,
+      onRazorSplit,
+      onRazorSplitAll,
+      blockedClipRef,
+      suppressClickRef,
+      scrollRef,
+      setShowPopover,
+      setRangeSelection,
+      setResizingClip,
+      setDraggedClip,
+      setSelectedElementId,
+      onSelectElement,
+    },
+    setHoveredClip,
+    onContextMenuClip,
+    onDrillDown,
+  };
   return (
     <div
       role="treegrid"
@@ -383,7 +404,6 @@ export function TimelineLanes({
                       const capabilities = getClipCapabilities(el);
                       const isSelected =
                         selectedElementId === elementKey || selectedElementIds.has(elementKey);
-                      const isComposition = !!el.compositionSrc;
                       // Element identity stays stable across clip splices and reorders.
                       const clipKey = elementKey;
                       const isDraggingClip =
@@ -406,70 +426,30 @@ export function TimelineLanes({
                             multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview),
                           )
                         : undefined;
-                      const clipGestures = createClipGestureHandlers(
-                        el,
-                        elementKey,
-                        previewElement,
-                        capabilities,
-                        {
-                          pps,
-                          onResizeElement,
-                          onMoveElement,
-                          onRazorSplit,
-                          onRazorSplitAll,
-                          blockedClipRef,
-                          suppressClickRef,
-                          scrollRef,
-                          setShowPopover,
-                          setRangeSelection,
-                          setResizingClip,
-                          setDraggedClip,
-                          setSelectedElementId,
-                          onSelectElement,
-                        },
-                      );
                       const clip = (
-                        <TimelineClip
+                        <TimelineLaneClip
                           key={clipKey}
-                          onContextMenu={(e: React.MouseEvent) => {
-                            e.preventDefault();
-                            onContextMenuClip?.(e, el);
-                          }}
-                          el={previewElement}
+                          el={el}
+                          previewElement={previewElement}
+                          elementKey={elementKey}
+                          capabilities={capabilities}
                           pps={pps}
                           passengerStyle={passengerStyle}
-                          clipY={CLIP_Y}
-                          clipHeight={clipBarHeight}
+                          clipBarHeight={clipBarHeight}
                           isSelected={isSelected}
                           isHovered={hoveredClip === clipKey}
-                          isDragging={false}
                           isActive={isTimelineClipActive(previewElement, currentTime)}
-                          hasCustomContent={!!renderClipContent}
-                          capabilities={capabilities}
-                          theme={theme}
-                          isComposition={isComposition}
                           tabIndex={
                             keyboard.rovingTargetId === timelineClipFocusId(elementKey) ? 0 : -1
                           }
-                          onHoverStart={() => setHoveredClip(clipKey)}
-                          onHoverEnd={() => setHoveredClip(null)}
-                          onResizeStart={clipGestures.onResizeStart}
-                          onPointerDown={clipGestures.onPointerDown}
-                          onClick={clipGestures.onClick}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            if (suppressClickRef.current) return;
-                            if (isComposition && onDrillDown) onDrillDown(el);
-                          }}
-                        >
-                          {renderClipChildren(
-                            previewElement,
-                            clipStyle,
-                            renderClipContent,
-                            renderClipOverlay,
-                            renderContext,
-                          )}
-                        </TimelineClip>
+                          priority={renderContext.priority}
+                          rich={renderContext.rich}
+                          theme={theme}
+                          clipStyle={clipStyle}
+                          renderClipContent={renderClipContent}
+                          renderClipOverlay={renderClipOverlay}
+                          actions={clipActions}
+                        />
                       );
                       const compactKeyframes = keyframeCache?.get(elementKey);
                       const compactDiamonds = !showsLanes && compactKeyframes && (

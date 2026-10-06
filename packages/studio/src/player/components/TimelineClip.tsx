@@ -45,6 +45,22 @@ interface TimelineClipProps {
   children?: ReactNode;
 }
 
+/** Narrower clips show trim handles only while selected. */
+const HANDLES_MIN_PX = 32;
+
+const clipWidthPx = (el: TimelineElement, pps: number) => Math.max(el.duration * pps, 4);
+
+/**
+ * What a clip draws that depends on the zoom, as one value: its width tier and whether its trim
+ * handles fit, or the scale itself while its fade handles are live (hovered, selected or set).
+ */
+export function clipZoomKey(el: TimelineElement, pps: number, interacting: boolean) {
+  const fadesLive = interacting || (el.fadeIn ?? 0) > 0 || (el.fadeOut ?? 0) > 0;
+  if (fadesLive) return pps;
+  const widthPx = clipWidthPx(el, pps);
+  return `${clipWidthLadder(widthPx)}${widthPx >= HANDLES_MIN_PX ? "+handles" : ""}`;
+}
+
 // fallow-ignore-next-line complexity
 export const TimelineClip = memo(function TimelineClip({
   el,
@@ -71,12 +87,12 @@ export const TimelineClip = memo(function TimelineClip({
   onContextMenu,
   children,
 }: TimelineClipProps) {
-  const widthPx = Math.max(el.duration * pps, 4);
+  const widthPx = clipWidthPx(el, pps);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = `${el.label || el.id || el.tag}${clipSpeedSuffix(el.playbackRate, el.automation)}`;
   const isAudioClip = isAudioTimelineElement(el);
   const ladder = clipWidthLadder(widthPx);
-  const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
+  const showHandles = handleOpacity > 0.01 && (widthPx >= HANDLES_MIN_PX || isSelected);
   const showLabel = !isAudioClip || ladder === "labeled";
   const showDefaultText = !hasCustomContent && ladder === "labeled";
   const startLabel = el.start.toFixed(1);
