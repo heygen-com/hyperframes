@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // `clawhub sync` bumps from the registry's `latest` tag, so a version the registry has hidden
-// blocks the skill for good; such a skill is published one patch past it, then checked live.
+// blocks the skill for good; an acknowledged one is published one patch past, then checked live.
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const TAKEN_VERSION = /Version (\d+)\.(\d+)\.(\d+) already exists/;
+// The registry hid this one version; any other taken version still fails the sync.
+const SKIPPABLE_TAKEN = new Map([["hyperframes-creative", "1.0.13"]]);
 const OWNER_HANDLE = "heygen-com";
 const OWNER = ["--owner", OWNER_HANDLE];
 
@@ -36,7 +38,7 @@ const syncArgs = (provenance, dryRun) =>
 
 function republishTaken(run, provenance, { slug, message }) {
   const taken = takenVersion(message);
-  if (!taken) return `${slug}: ${message}`;
+  if (!taken || SKIPPABLE_TAKEN.get(slug) !== taken.join(".")) return `${slug}: ${message}`;
   const [major, minor, patch] = taken;
   const version = `${major}.${minor}.${patch + 1}`;
   const folder = `skills/${slug}`;

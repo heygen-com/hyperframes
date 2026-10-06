@@ -94,12 +94,23 @@ describe("ClawHub skill sync", () => {
   });
 
   it("reports a republish the registry refuses for another reason", () => {
-    const clawhub = fakeClawhub({
-      syncFailed: [{ slug: "figma", message: TAKEN("1.0.17") }],
-      refuse: "Rate limited",
-    });
+    const clawhub = fakeClawhub({ syncFailed: [creativeTaken], refuse: "Rate limited" });
 
-    assert.deepEqual(sync(clawhub), ["figma: Rate limited"]);
+    assert.deepEqual(sync(clawhub), ["hyperframes-creative: Rate limited"]);
+  });
+
+  it("fails on any taken version other than the one acknowledged, without publishing", () => {
+    const others = [
+      { slug: "figma", message: TAKEN("1.0.17") },
+      { slug: "hyperframes-creative", message: TAKEN("1.0.15") },
+    ];
+    const clawhub = fakeClawhub({ syncFailed: others });
+
+    assert.deepEqual(
+      sync(clawhub),
+      others.map(({ slug, message }) => `${slug}: ${message}`),
+    );
+    assert.equal(clawhub.calls.filter((args) => args[0] === "publish").length, 0);
   });
 
   it("fails a sync that reports no failed skill or no readable result", () => {
