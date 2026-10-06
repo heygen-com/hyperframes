@@ -872,15 +872,34 @@ export interface BuildChromeArgsOptions {
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
 const WEBGPU_FLAG = "--enable-unsafe-webgpu";
 
-export function buildChromeArgs(
-  options: BuildChromeArgsOptions,
-  config?: Partial<Pick<EngineConfig, "browserGpuMode" | "disableGpu" | "chromePath">>,
-): string[] {
+type GpuConfig = Partial<
+  Pick<EngineConfig, "browserGpuMode" | "disableGpu" | "chromePath" | "allowSoftwareWebGpu">
+>;
+
+/**
+ * Whether this launch renders WebGPU on SwiftShader: the composition needs WebGPU, the render opted in, and no GPU is
+ * in use. SwiftShader can draw canvas WebGPU only through its Vulkan backend with GPU compositing on, and not at all
+ * under --disable-gpu.
+ */
+export function usesSoftwareWebGpu(
+  requiresWebGpu: boolean | undefined,
+  config?: GpuConfig,
+): boolean {
+  return (
+    !!requiresWebGpu &&
+    !!config?.allowSoftwareWebGpu &&
+    !(config.disableGpu ?? DEFAULT_CONFIG.disableGpu) &&
+    (config.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode) === "software"
+  );
+}
+
+export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuConfig): string[] {
   const platform = options.platform ?? process.platform;
   const gpuDisabled = config?.disableGpu ?? DEFAULT_CONFIG.disableGpu;
   const browserGpuMode = gpuDisabled
     ? "software"
     : (config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode);
+  const softwareWebGpu = usesSoftwareWebGpu(options.requiresWebGpu, config);
   // Chrome flags tuned for headless rendering performance. The set below is a
   // fairly standard "headless-for-capture" configuration — similar profiles
   // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
@@ -889,7 +908,9 @@ export function buildChromeArgs(
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
-    CANVAS_DRAW_ELEMENT_FEATURE_FLAG,
+    softwareWebGpu
+      ? `${CANVAS_DRAW_ELEMENT_FEATURE_FLAG},Vulkan`
+      : CANVAS_DRAW_ELEMENT_FEATURE_FLAG,
     "--enable-webgl",
     "--ignore-gpu-blocklist",
     ...getBrowserGpuArgs(browserGpuMode, platform),
@@ -934,6 +955,7 @@ export function buildChromeArgs(
   if (browserGpuMode !== "software" || options.requiresWebGpu) {
     chromeArgs.push(WEBGPU_FLAG);
   }
+  if (softwareWebGpu) chromeArgs.push("--use-vulkan=swiftshader");
 
   // SwiftShader's GPU compositor can retain a transformed layer for several
   // sequential frames after a GSAP yoyo/reversal, and it re-presents stale
@@ -956,7 +978,7 @@ export function buildChromeArgs(
   //
   // Remove this workaround once the pinned chrome-headless-shell includes
   // https://issues.chromium.org/issues/535256667.
-  if (browserGpuMode === "software") {
+  if (browserGpuMode === "software" && !softwareWebGpu) {
     chromeArgs.push("--disable-gpu-compositing");
   }
 
@@ -995,8 +1017,9 @@ export class WebGpuUnavailableError extends Error {
   constructor() {
     super(
       "This composition declares data-requires-webgpu, but no hardware WebGPU adapter could be " +
-        "obtained on this browser launch (a software fallback adapter such as swiftshader reports " +
-        "one but cannot render it). Run on a host with a GPU, or remove data-requires-webgpu.",
+        "obtained on this browser launch. Run on a host with a GPU, set " +
+        "PRODUCER_ALLOW_SOFTWARE_WEBGPU=true to render it on SwiftShader (slow), or remove " +
+        "data-requires-webgpu.",
     );
     this.name = "WebGpuUnavailableError";
   }
@@ -1005,29 +1028,35 @@ export class WebGpuUnavailableError extends Error {
 const WEBGPU_ADAPTER_PROBE_TIMEOUT_MS = 10_000;
 
 /**
- * Confirms the already-navigated page can obtain a hardware WebGPU adapter; no-op otherwise.
+ * Confirms the already-navigated page can obtain a hardware WebGPU adapter, or any adapter when the launch runs
+ * software WebGPU ({@link usesSoftwareWebGpu}); no-op otherwise.
  * `page` must be on a secure-context origin, or navigator.gpu always reads absent.
  */
 export async function assertWebGpuAdapterAvailable(
   page: Page,
   requiresWebGpu: boolean,
+  softwareWebGpu = false,
 ): Promise<void> {
   if (!requiresWebGpu) return;
   // requestAdapter() has no native timeout; a broken driver can hang it
   // indefinitely. Race it in-page so a stuck adapter reads as "unavailable"
   // instead of hanging the caller.
-  const hasUsableAdapter = await page.evaluate(async (timeoutMs) => {
-    if (typeof navigator === "undefined" || !navigator.gpu) return false;
-    try {
-      const adapter = await Promise.race([
-        navigator.gpu.requestAdapter(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-      ]);
-      return !!adapter && !adapter.info.isFallbackAdapter;
-    } catch {
-      return false;
-    }
-  }, WEBGPU_ADAPTER_PROBE_TIMEOUT_MS);
+  const hasUsableAdapter = await page.evaluate(
+    async (timeoutMs, acceptFallback) => {
+      if (typeof navigator === "undefined" || !navigator.gpu) return false;
+      try {
+        const adapter = await Promise.race([
+          navigator.gpu.requestAdapter(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+        ]);
+        return !!adapter && (acceptFallback || !adapter.info.isFallbackAdapter);
+      } catch {
+        return false;
+      }
+    },
+    WEBGPU_ADAPTER_PROBE_TIMEOUT_MS,
+    softwareWebGpu,
+  );
   if (!hasUsableAdapter) throw new WebGpuUnavailableError();
 }
 
