@@ -73,7 +73,7 @@ export default defineCommand({
     language: {
       type: "string",
       description:
-        "Language code (e.g. en, es, ja). Whisper keeps only this language; Parakeet, used when it covers it, detects the language itself.",
+        "Language code (e.g. en, es, ja). Whisper transcribes as this language; Parakeet, used when it covers it, detects the language itself.",
       alias: "l",
     },
     json: {
