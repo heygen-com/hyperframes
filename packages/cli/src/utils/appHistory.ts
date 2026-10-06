@@ -1,6 +1,6 @@
-import { lstatSync, readdirSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { readRecord, recordChangedAt, writeRecord } from "./projectRecords.js";
+import { readRecord, recordChangedAt, replaceProjectFile, writeRecord } from "./projectRecords.js";
 
 // The desktop app records each chat turn in .hyperframes/ (hyperframes-internal appHistory.mjs), one JSON object
 // a line. The seen record holds the newest turn shown here and when files were last checked; both start at the
@@ -123,4 +123,31 @@ export function appHistoryNotice(cwd: string, args: string[]): string | null {
     );
   }
   return null;
+}
+
+// The line scaffolded CLAUDE.md and AGENTS.md carry (templates/_shared); a test keeps the two the same.
+export const CATCH_UP_NOTE =
+  "> **Back from the desktop app.** Once this project was opened in the HyperFrames desktop app, run " +
+  "`npx hyperframes catch-up` before your next change here: it lists what the person asked Framey in the app " +
+  "and which files changed since.";
+const SCAFFOLD_TITLE = "# HyperFrames Composition Project";
+const AFTER = "> alive through review, and stop it explicitly with `preview --stop` afterward.\n";
+
+/** On a hand-off, a project scaffolded before catch-up existed gains its line, so an agent that reads the
+ * project's instructions catches up. Any other file, a link, or one that has the line stays as it is. */
+export function addCatchUpNote(dir: string): void {
+  for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+    const path = join(dir, name);
+    try {
+      const stats = lstatSync(path);
+      const text = stats.isFile() ? readFileSync(path, "utf8") : "";
+      if (!text.startsWith(SCAFFOLD_TITLE) || text.includes("hyperframes catch-up")) continue;
+      const next = text.includes(AFTER)
+        ? text.replace(AFTER, `${AFTER}\n${CATCH_UP_NOTE}\n`)
+        : `${text.trimEnd()}\n\n${CATCH_UP_NOTE}\n`;
+      replaceProjectFile(path, next, stats.mode & 0o777);
+    } catch {
+      // No such file: nothing to add to.
+    }
+  }
 }

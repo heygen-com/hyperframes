@@ -82,3 +82,16 @@ export function writeRecord(projectDir: string, name: string, data: string): boo
     return false;
   }
 }
+
+/** A project file rewritten whole with its mode kept: a temp file renamed over it, never written through a link. */
+export function replaceProjectFile(path: string, data: string, mode: number): boolean {
+  const temp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    writeFileSync(temp, data, { mode, flag: "wx" });
+    renameSync(temp, path);
+    return true;
+  } catch {
+    rmSync(temp, { force: true });
+    return false;
+  }
+}

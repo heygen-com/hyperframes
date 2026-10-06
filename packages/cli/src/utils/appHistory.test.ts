@@ -10,8 +10,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  addCatchUpNote,
   APP_HISTORY,
   appHistoryNotice,
+  CATCH_UP_NOTE,
   filesChangedSince,
   markSeen,
   readAppTurns,
@@ -107,5 +109,42 @@ describe("app history", () => {
     expect(appHistoryNotice(join(dir, ".."), [dir])).toContain(`catch-up ${basename(dir)}`);
     handedOverAt(dir, "2026-01-01T11:00:00Z");
     expect(appHistoryNotice(dir, [])).toBeNull();
+  });
+});
+
+describe("addCatchUpNote", () => {
+  const TEMPLATE = readFileSync(join(__dirname, "..", "templates", "_shared", "CLAUDE.md"), "utf8");
+  const older = TEMPLATE.replace(`\n${CATCH_UP_NOTE}\n`, "");
+
+  it("is the line the scaffolded instructions carry", () => {
+    expect(TEMPLATE).toContain(`\n${CATCH_UP_NOTE}\n`);
+    expect(older).not.toContain("catch-up");
+  });
+
+  it("adds the line to an older scaffolded CLAUDE.md and AGENTS.md, in the template's place", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-note-"));
+    writeFileSync(join(dir, "CLAUDE.md"), older);
+    writeFileSync(join(dir, "AGENTS.md"), older);
+    addCatchUpNote(dir);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe(TEMPLATE);
+    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(TEMPLATE);
+    addCatchUpNote(dir);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe(TEMPLATE);
+  });
+
+  it("leaves the person's own instructions, a link, and a missing file alone", (context) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-note-"));
+    writeFileSync(join(dir, "CLAUDE.md"), "# My notes\n");
+    const outside = join(mkdtempSync(join(tmpdir(), "hf-outside-")), "AGENTS.md");
+    writeFileSync(outside, older);
+    try {
+      symlinkSync(outside, join(dir, "AGENTS.md"));
+    } catch {
+      return context.skip();
+    }
+    addCatchUpNote(dir);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("# My notes\n");
+    expect(readFileSync(outside, "utf8")).toBe(older);
+    addCatchUpNote(mkdtempSync(join(tmpdir(), "hf-note-")));
   });
 });

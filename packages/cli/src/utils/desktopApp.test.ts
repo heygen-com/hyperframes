@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -164,6 +164,7 @@ describe("agent hand-off", () => {
 
   it("leaves the app the conversation once it has the folder", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-handoff-"));
+    writeFileSync(join(dir, "CLAUDE.md"), "# HyperFrames Composition Project\n");
     const session = "0a8eed95-0869-45bf-83ec-5d71fcc5236c";
     const result = openInDesktop(dir, {
       ...LIVE,
@@ -177,6 +178,7 @@ describe("agent hand-off", () => {
     });
     // `catch-up` shows only what the app does from here on.
     expect(readSeen(dir).at).toBeGreaterThan(Date.now() - 60_000);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toContain("npx hyperframes catch-up");
   });
 
   it("writes nothing when gated, when no app took the folder, or when no agent runs the command", () => {
