@@ -1,5 +1,5 @@
 import { lstatSync, readdirSync, watch, type FSWatcher } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import { affectsProjectSignature } from "@hyperframes/studio-server";
 
@@ -71,7 +71,7 @@ function watchProjectTree(
     }
   };
   const watchDirectory = (dir: string) => {
-    if (directories.has(dir)) return;
+    unwatch(dir);
     let watcher: FSWatcher;
     try {
       watcher = watch(dir, { persistent: true }, (event, name) => {
@@ -82,9 +82,8 @@ function watchProjectTree(
         if (isDirectory(path)) descend(path);
         else unwatch(path);
       });
-    } catch (error) {
-      // One unwatchable subdirectory (EACCES, inotify limit) must not cost the rest of the tree.
-      if (dir === projectDir) throw error;
+    } catch {
+      // A directory can vanish during replacement; its parent reports its return.
       return;
     }
     watcher.on("error", () => unwatch(dir));
@@ -105,8 +104,20 @@ function watchProjectTree(
     if (shouldWatchProjectFile(rel) || rel === ".hyperframes") watchDirectory(dir);
   };
 
+  let parent: FSWatcher | null = null;
+  try {
+    parent = watch(dirname(projectDir), { persistent: true }, (event, name) => {
+      if (event !== "rename" || name?.toString() !== basename(projectDir)) return;
+      watchDirectory(projectDir);
+      onChange(".");
+    });
+    parent.on("error", () => parent?.close());
+  } catch {
+    // The project can remain watchable even when its parent is not.
+  }
   watchDirectory(projectDir);
   return () => {
+    parent?.close();
     for (const watcher of directories.values()) watcher.close();
     directories.clear();
   };
@@ -121,11 +132,8 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
 
   try {
     closeTree = watchProjectTree(projectDir, (relativePath) => {
-      // The reload filter excludes all of `.hyperframes/`, but two files in
-      // there feed the preview signature and Studio writes one of them at
-      // runtime — dropping those at ingest left the CLI server's ETag stale
-      // until restart. Admit them here and let the reload listener re-apply
-      // its own filter, so what triggers a browser reload is unchanged.
+      // Studio's two manifests affect the signature despite the .hyperframes exclusion.
+      // Admit them here; the reload listener still applies its own filter.
       if (
         !shouldWatchProjectFile(relativePath) &&
         !affectsProjectSignature(projectDir, join(projectDir, relativePath))

@@ -41,7 +41,11 @@ async function mountCoordinator(overrides: Partial<CoordinatorOptions> = {}) {
     return null;
   }
   await act(async () => root.render(<Probe />));
-  return { captured, options };
+  const rerender = async (next: Partial<CoordinatorOptions>) => {
+    Object.assign(options, next);
+    await act(async () => root.render(<Probe />));
+  };
+  return { captured, options, rerender };
 }
 
 describe("external file change coordinator", () => {
@@ -62,6 +66,154 @@ describe("external file change coordinator", () => {
   afterEach(async () => {
     while (roots.length > 0) await act(async () => roots.pop()?.unmount());
     vi.unstubAllGlobals();
+  });
+
+  describe("SSE reconnect recovery", () => {
+    let source: EventTarget;
+    let close: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      vi.stubGlobal("__HF_STUDIO_HOT_TEST_ADAPTER__", undefined);
+      source = new EventTarget();
+      close = vi.fn();
+      vi.stubGlobal(
+        "EventSource",
+        class {
+          addEventListener = source.addEventListener.bind(source);
+          close = close;
+        },
+      );
+    });
+
+    const open = () =>
+      act(async () => {
+        source.dispatchEvent(new Event("open"));
+      });
+
+    it("waits for pending edits before refreshing Preview, SDK, thumbnails and tree on each reconnect", async () => {
+      let finishDrain = () => {};
+      const pendingEdit = new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+      const { options } = await mountCoordinator({
+        drainPendingChanges: vi.fn(async () => {
+          await pendingEdit;
+          return { status: "clean" as const };
+        }),
+        refreshFileTree: vi.fn(),
+      });
+      await open();
+      expect(options.drainPendingChanges).not.toHaveBeenCalled();
+      await open();
+      expect(options.drainPendingChanges).toHaveBeenCalledOnce();
+      expect(options.reloadPreview).not.toHaveBeenCalled();
+      expect(options.reloadSdkSession).not.toHaveBeenCalled();
+      await act(async () => finishDrain());
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      expect(options.reloadSdkSession).toHaveBeenCalledWith("index.html");
+      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
+      expect(options.refreshFileTree).toHaveBeenCalledOnce();
+      await open();
+      expect(options.reloadPreview).toHaveBeenCalledTimes(2);
+      expect(options.reloadSdkSession).toHaveBeenCalledTimes(2);
+      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledTimes(2);
+      expect(options.refreshFileTree).toHaveBeenCalledTimes(2);
+    });
+
+    it("drains a project-directory change against the current nested composition", async () => {
+      let finishDrain = () => {};
+      const pendingEdit = new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+      const { options } = await mountCoordinator({
+        activeCompPath: "scenes/intro.html",
+        drainPendingChanges: vi.fn(async () => {
+          await pendingEdit;
+          return { status: "clean" as const };
+        }),
+      });
+      await act(async () => {
+        source.dispatchEvent(
+          new MessageEvent("file-change", {
+            data: JSON.stringify({
+              path: ".",
+              projectId: "project-a",
+              affectsPreview: true,
+              affectedCompositions: null,
+            }),
+          }),
+        );
+      });
+      expect(options.drainPendingChanges).toHaveBeenCalledOnce();
+      expect(options.reloadPreview).not.toHaveBeenCalled();
+      expect(options.reloadSdkSession).not.toHaveBeenCalled();
+      await act(async () => finishDrain());
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith("scenes/intro.html");
+      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(
+        "scenes/intro.html",
+        null,
+      );
+    });
+
+    it("holds a reconnect behind a persisted conflict until the user accepts the external file", async () => {
+      const conflict = new StudioFileConflictError({
+        filePath: "index.html",
+        currentVersion: "v2",
+        currentContent: "external",
+        attemptedContent: "studio",
+      });
+      const { captured, options } = await mountCoordinator({
+        drainPendingChanges: vi.fn(async () => ({ status: "conflict" as const, error: conflict })),
+      });
+      await open();
+      await open();
+      expect(options.persistConflictSnapshot).toHaveBeenCalledWith("project-a", conflict);
+      expect(captured.handle?.blocked).toMatchObject({ status: "conflict", error: conflict });
+      expect(options.reloadPreview).not.toHaveBeenCalled();
+      expect(options.reloadSdkSession).not.toHaveBeenCalled();
+      expect(options.onAcceptedPersistedFileChange).not.toHaveBeenCalled();
+      await act(async () => captured.handle?.useExternalFile());
+      expect(options.discardPendingChanges).toHaveBeenCalledOnce();
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      expect(options.reloadSdkSession).toHaveBeenCalledWith("index.html");
+    });
+
+    it("uses the current composition after navigation and the root when none is selected", async () => {
+      const { options, rerender } = await mountCoordinator();
+      await open();
+      await rerender({ activeCompPath: "scenes/next.html" });
+      await open();
+      expect(options.reloadSdkSession).toHaveBeenLastCalledWith("scenes/next.html");
+      await rerender({ activeCompPath: null });
+      await open();
+      expect(options.reloadSdkSession).toHaveBeenLastCalledWith("index.html");
+      expect(close).not.toHaveBeenCalled();
+    });
+
+    it("keeps foreign project changes out of recovery", async () => {
+      const { options } = await mountCoordinator();
+      await open();
+      await act(async () => {
+        source.dispatchEvent(
+          new MessageEvent("file-change", {
+            data: JSON.stringify({ path: "index.html", projectId: "project-b", version: "v2" }),
+          }),
+        );
+      });
+      expect(options.drainPendingChanges).not.toHaveBeenCalled();
+      await open();
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("ignores reconnects after leaving the active project", async () => {
+      const { options, rerender } = await mountCoordinator();
+      await open();
+      await rerender({ projectId: null });
+      await open();
+      expect(options.drainPendingChanges).not.toHaveBeenCalled();
+      expect(options.reloadPreview).not.toHaveBeenCalled();
+    });
   });
 
   it("drains before reloading Preview and SDK exactly once", async () => {
@@ -529,10 +681,6 @@ describe("external file change coordinator", () => {
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledTimes(2);
   });
 
-  // `hyperframes preview` serves file-change over SSE, where the delivery is a
-  // MessageEvent whose `data` is a JSON STRING. Driven through the test adapter
-  // because vitest defines `import.meta.hot`, so the EventSource rung is
-  // unreachable here, which is exactly why decoding is shared by all rungs.
   describe("SSE-shaped deliveries", () => {
     const sseDelivery = (payload: unknown) =>
       new MessageEvent("file-change", { data: JSON.stringify(payload) });

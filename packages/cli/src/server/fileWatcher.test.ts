@@ -97,6 +97,21 @@ describe("createProjectWatcher", () => {
     },
   );
 
+  it.runIf(process.platform === "linux")(
+    "keeps reporting project files when its parent cannot be watched",
+    () => {
+      vi.useFakeTimers();
+      fakeDirs.unwatchable = "/fake/project";
+      const projectWatcher = createProjectWatcher("/fake/project/dir");
+      const listener = vi.fn();
+      projectWatcher.addListener(listener);
+      mockWatcher.emit("change", "change", "index.html");
+      vi.advanceTimersByTime(30);
+      expect(listener).toHaveBeenCalledExactlyOnceWith("index.html");
+      projectWatcher.close();
+    },
+  );
+
   it("degrades to no live reload when the project root cannot be watched", () => {
     fakeDirs.unwatchable = "/fake/project/dir";
     let projectWatcher: ReturnType<typeof createProjectWatcher> | null = null;

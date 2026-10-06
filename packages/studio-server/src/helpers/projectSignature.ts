@@ -60,12 +60,7 @@ export const STUDIO_SIGNATURE_MANIFEST_PATHS = [
  */
 export function affectsProjectSignature(projectDir: string, changedPath: string): boolean {
   const relativePath = relative(resolve(projectDir), resolve(changedPath));
-  if (
-    relativePath === "" ||
-    relativePath.startsWith("..") ||
-    isAbsolute(relativePath) ||
-    isAtomicTempPath(relativePath)
-  ) {
+  if (relativePath.startsWith("..") || isAbsolute(relativePath) || isAtomicTempPath(relativePath)) {
     return false;
   }
   const segments = relativePath.split(sep);

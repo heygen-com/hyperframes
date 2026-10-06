@@ -125,14 +125,18 @@ function decodeFileChange(delivery: unknown): unknown {
   }
 }
 
-/**
- * The production transport. vitest defines `import.meta.hot`, so the selection
- * below never reaches this rung under test; the rung itself is exported so a test
- * can drive a real `MessageEvent` through the listener it registers.
- */
-export function sseFileChangeChannel(onDelivery: (delivery: unknown) => void): () => void {
+export function sseFileChangeChannel(
+  onDelivery: (delivery: unknown) => void,
+  onReconnect: () => void,
+): () => void {
   const eventSource = new EventSource("/api/events");
   eventSource.addEventListener("file-change", onDelivery);
+  // Reopening the stream does not replay changes missed during a disconnect.
+  let opened = false;
+  eventSource.addEventListener("open", () => {
+    if (opened) onReconnect();
+    opened = true;
+  });
   return () => eventSource.close();
 }
 
@@ -391,6 +395,9 @@ export function useExternalFileChangeCoordinator({
   const processChange = useCallback(
     // fallow-ignore-next-line complexity
     (payload: unknown) => {
+      if (payload && typeof payload === "object" && readStudioFileChangePath(payload) === ".") {
+        payload = { ...payload, path: activeCompPath ?? "index.html" };
+      }
       const path = readStudioFileChangePath(payload);
       if (!path || !projectId) {
         logReload("file-change", { path: null, why: path ? "no project" : "no path in payload" });
@@ -445,7 +452,13 @@ export function useExternalFileChangeCoordinator({
       }
       void startDrainLoop();
     },
-    [projectId, pendingTimelineEditPathRef, startDrainLoop, onAcceptedPersistedFileChange],
+    [
+      projectId,
+      activeCompPath,
+      pendingTimelineEditPathRef,
+      startDrainLoop,
+      onAcceptedPersistedFileChange,
+    ],
   );
 
   const processChangeRef = useRef(processChange);
@@ -462,7 +475,8 @@ export function useExternalFileChangeCoordinator({
       import.meta.hot.on("hf:file-change", handler);
       return () => import.meta.hot?.off?.("hf:file-change", handler);
     }
-    return sseFileChangeChannel(handler);
+    const catchUp = () => processChangeRef.current({ path: "." });
+    return sseFileChangeChannel(handler, catchUp);
   }, []);
 
   const retry = useCallback(async () => {
