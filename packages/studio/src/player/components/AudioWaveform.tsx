@@ -1,4 +1,4 @@
-import { memo, useCallback, useContext, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { fadeGain } from "@hyperframes/core/audio-fade";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
@@ -158,6 +158,35 @@ async function decodeWaveformPeaks(url: string, signal: AbortSignal): Promise<nu
 }
 
 /** Bounded waveform subscriber; cache, cancellation and dedupe live in one scheduler. */
+// One screen each side and half a screen above and below; scrollMargin applies it inside the
+// timeline's own scroller too (TypeScript's DOM types lack it).
+const NEAR_SCREEN: IntersectionObserverInit & { scrollMargin: string } = {
+  rootMargin: "50% 100%",
+  scrollMargin: "50% 100%",
+};
+const nearScreenListeners = new Map<Element, (near: boolean) => void>();
+let nearScreen: IntersectionObserver | null = null;
+
+/** Whether `element` is on or near the screen, kept current by one observer for all waveforms. */
+function useNearScreen(element: Element | null): boolean {
+  const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined");
+  useEffect(() => {
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    nearScreen ??= new IntersectionObserver(
+      (entries) =>
+        entries.forEach((entry) => nearScreenListeners.get(entry.target)?.(entry.isIntersecting)),
+      NEAR_SCREEN,
+    );
+    nearScreenListeners.set(element, setNear);
+    nearScreen.observe(element);
+    return () => {
+      nearScreenListeners.delete(element);
+      nearScreen?.unobserve(element);
+    };
+  }, [element]);
+  return near;
+}
+
 export const AudioWaveform = memo(function AudioWaveform({
   audioUrl,
   waveformUrl,
@@ -171,7 +200,7 @@ export const AudioWaveform = memo(function AudioWaveform({
   muted = false,
   labelInset = 16,
 }: AudioWaveformProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
   const request = useMemo(
@@ -218,7 +247,11 @@ export const AudioWaveform = memo(function AudioWaveform({
       span,
     );
   }, [fades, from, muted, peaks, to, trimEndFraction, trimStartFraction]);
-  useEffect(draw, [draw, strip.width, strip.height]);
+  // A waveform off screen draws when it comes near, not at every zoom that resizes it.
+  const near = useNearScreen(root);
+  useEffect(() => {
+    if (near) draw();
+  }, [draw, near, strip.width, strip.height]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -231,15 +264,15 @@ export const AudioWaveform = memo(function AudioWaveform({
   }, [draw]);
 
   useEffect(() => {
-    const clip = rootRef.current?.closest(".timeline-clip");
+    const clip = root?.closest(".timeline-clip");
     if (!(clip instanceof HTMLElement)) return;
     if (muted) clip.setAttribute("data-audio-muted", "true");
     else clip.removeAttribute("data-audio-muted");
     return () => clip.removeAttribute("data-audio-muted");
-  }, [muted]);
+  }, [muted, root]);
 
   return (
-    <div ref={rootRef} className="absolute inset-0">
+    <div ref={setRoot} className="absolute inset-0">
       <div
         ref={setStripRef}
         className="absolute inset-0 overflow-hidden"
