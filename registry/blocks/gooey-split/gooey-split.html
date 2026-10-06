@@ -801,13 +801,14 @@
           var spinOut = span(t, SPIN_OUT, swift);
           var angle = p.from + p.spinIn * spinIn + p.spinOut * spinOut;
           var radius = p.menuR * spread(t) + (ORBIT - p.menuR) * (spinIn - spinOut);
+          var swollen = swell(t);
           return {
             x: radius * Math.cos(rad(angle)),
             y: radius * Math.sin(rad(angle)),
             turn: angle - (p.from + p.spinIn),
             rotation: angle,
-            scaleX: 1 + SWELL_ACROSS * swell(t),
-            scaleY: 1 + SWELL_ALONG * swell(t),
+            scaleX: 1 + SWELL_ACROSS * swollen,
+            scaleY: 1 + SWELL_ALONG * swollen,
           };
         }
 
@@ -864,20 +865,17 @@
           tl.fromTo(el, from, to, 0);
         }
 
+        var MOVES = ["x", "y", "rotation", "scaleX", "scaleY"];
         PIECES.forEach(function (p, i) {
-          drive(
-            document.getElementById("gs-dot-" + i),
-            ["x", "y", "rotation", "scaleX", "scaleY"],
-            function (t) {
-              return piece(p, t);
-            },
-          );
+          drive(document.getElementById("gs-dot-" + i), MOVES, function (t) {
+            return piece(p, t);
+          });
           var el = document.getElementById("gs-blade-" + i);
           var restAngle = p.from + p.spinIn;
           var rest = { x: ORBIT * Math.cos(rad(restAngle)), y: ORBIT * Math.sin(rad(restAngle)) };
           el.querySelector("path").setAttribute("d", bladePath(restAngle));
           el.style.transformOrigin = R_OUT + rest.x + "px " + (R_OUT + rest.y) + "px";
-          drive(el, ["x", "y", "rotation", "scaleX", "scaleY"], function (t) {
+          drive(el, MOVES, function (t) {
             return blade(p, rest, t);
           });
         });
