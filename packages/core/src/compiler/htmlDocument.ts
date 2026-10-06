@@ -32,7 +32,15 @@ export function parseHTMLContent(html: string): Document {
 
 /** Lowercases A-Z only, so indexes found in the result are valid in the input ("İ" lowercases to two chars). */
 function lowerAscii(text: string): string {
-  return text.replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
+  // V8 collects every regex match before invoking callbacks; bound that temporary array.
+  const chunkSize = 64 * 1024;
+  let lowered = "";
+  for (let offset = 0; offset < text.length; offset += chunkSize) {
+    lowered += text
+      .slice(offset, offset + chunkSize)
+      .replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
+  }
+  return lowered;
 }
 
 export function stripEmbeddedRuntimeScripts(html: string): string {

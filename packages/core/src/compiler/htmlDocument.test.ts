@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   findStartTags,
@@ -60,6 +63,31 @@ const workGrowth = (scan: (n: number) => void) =>
   scannedChars(() => scan(20_000)) / scannedChars(() => scan(10_000));
 
 describe("htmlDocument helpers", () => {
+  it("strips runtimes from large mixed-case base64 HTML within a bounded heap", () => {
+    const moduleUrl = pathToFileURL(resolve(__dirname, "htmlDocument.ts")).href;
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--max-old-space-size=256",
+        "--import=tsx",
+        "--input-type=module",
+        "--eval",
+        `
+          import { strict as assert } from "node:assert";
+          import { stripEmbeddedRuntimeScripts } from ${JSON.stringify(moduleUrl)};
+          const media = '<img src="data:image/png;base64,' + 'Aa0/'.repeat(8 * 1024 * 1024) + '">';
+          const runtime = '<SCRIPT src="HYPERFRAME.RUNTIME.IIFE.JS"></SCRIPT>';
+          assert.equal(stripEmbeddedRuntimeScripts(media + runtime), media);
+          console.log("large HTML preserved; runtime removed");
+        `,
+      ],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("large HTML preserved; runtime removed");
+  }, 65_000);
+
   it("keeps a document's <html> attributes when a comment comes before the doctype", () => {
     const doc = parseHTMLContent(
       '<!-- hyperframes-registry-item: blk -->\n<!doctype html>\n<html lang="en" data-composition-variables="[]"><body></body></html>',
@@ -301,6 +329,15 @@ describe("htmlDocument helpers", () => {
 });
 
 describe("findStartTags", () => {
+  it("preserves Unicode offsets and mixed-case tags across chunk boundaries", () => {
+    const prefix = "a".repeat(65_535) + "😀İ";
+    const html = prefix + "<ImG src=x>" + "A".repeat(65_521) + "<IMG src=y>";
+    expect(findStartTags(html, "iMg")).toEqual([65_538, 131_070]);
+    expect(
+      stripEmbeddedRuntimeScripts(prefix + '<SCRIPT src="HYPERFRAME.RUNTIME.IIFE.JS"></SCRIPT>'),
+    ).toBe(prefix);
+  });
+
   const at = (html: string, name: string) =>
     findStartTags(html, name).map((i) => html.slice(i, html.indexOf(">", i) + 1));
 
