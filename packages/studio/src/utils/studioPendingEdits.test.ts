@@ -8,11 +8,25 @@ import {
   hasStudioPendingEdits,
   isStudioEditSaving,
   paintBackNewestStudioPendingEdit,
+  setStudioWaitingPressCancel,
   trackStudioPendingEdit,
   trackedStudioEdit,
 } from "./studioPendingEdits";
 import { StudioFileConflictError } from "./studioSaveDiagnostics";
 import { revertNewestStudioPendingEdit as hostRevert } from "../index";
+
+describe("a canvas press still waiting to run", () => {
+  it("is not what a host's revert takes back, since the host steps history after it", () => {
+    const cancel = vi.fn();
+    setStudioWaitingPressCancel(cancel);
+    try {
+      expect(hostRevert()).toBeNull();
+      expect(cancel).not.toHaveBeenCalled();
+    } finally {
+      setStudioWaitingPressCancel(null);
+    }
+  });
+});
 
 describe("studio pending edit flush", () => {
   it("waits for mounted panels to persist pending local edits", async () => {

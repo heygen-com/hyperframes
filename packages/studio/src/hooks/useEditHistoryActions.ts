@@ -5,6 +5,7 @@ import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordin
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import {
   beginStudioShownRestore,
+  cancelNewestStudioWaitingPress,
   hasStudioPendingEdits,
   paintBackNewestStudioPendingEdit,
 } from "../utils/studioPendingEdits";
@@ -79,6 +80,7 @@ export function useEditHistoryActions({
   const apply = useCallback(
     async (direction: "undo" | "redo") => {
       const noun = direction === "undo" ? "Undo" : "Redo";
+      if (direction === "undo" && cancelNewestStudioWaitingPress()) return;
       // An edit still saving is newer than any step this tab predicts, so it paints back first.
       const pendingEditShown = direction === "undo" ? paintBackNewestStudioPendingEdit() : null;
       const predicted = pendingEditShown ? null : (editHistory.predict?.(direction) ?? null);

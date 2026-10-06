@@ -22,7 +22,7 @@ import { PRESS_WAIT_MAX_MS } from "./previewGestureStarts";
 import { readDragStamp } from "../../hooks/draggedGsapPosition";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { whileScriptWrites } from "../../player/previewReloading";
-import { paintBackNewestStudioPendingEdit } from "../../utils/studioPendingEdits";
+import { cancelNewestStudioWaitingPress } from "../../utils/studioPendingEdits";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -519,10 +519,9 @@ describe("a press while a script write is out", () => {
     pointer(editor.overlay, "pointermove", 190, 170);
     pointer(editor.overlay, "pointerup", 190, 170);
 
-    let undone: ReturnType<typeof paintBackNewestStudioPendingEdit> = null;
-    act(() => void (undone = paintBackNewestStudioPendingEdit()));
-    expect(undone, "the waiting press is the newest edit").not.toBeNull();
-    expect(await undone!.landed()).toBe(false);
+    let cancelled = false;
+    act(() => void (cancelled = cancelNewestStudioWaitingPress()));
+    expect(cancelled, "the waiting press is the newest edit").toBe(true);
     expect((editor.box as HTMLElement).style.left, "the outline goes back").toBe("100px");
     expect(editor.box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false);
 
@@ -533,6 +532,63 @@ describe("a press while a script write is out", () => {
     await settle();
     expect(editor.onPathOffsetCommit).not.toHaveBeenCalled();
     expect(file.title).toBe("");
+  });
+
+  /** Two presses wait on a write; the first runs and starts its own write, so the second still waits. */
+  function queuedBehindOneThatRan() {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    let landFirst: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    const firstSaved = new Promise<void>((resolve) => (landFirst = resolve));
+    const commit = editor.onPathOffsetCommit.getMockImplementation()!;
+    editor.onPathOffsetCommit.mockImplementationOnce((...args) =>
+      whileScriptWrites(async () => {
+        await firstSaved;
+        return commit(...args);
+      }),
+    );
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    pointer(editor.box, "pointerdown", 190, 170);
+    pointer(editor.overlay, "pointermove", 210, 180);
+    const ran = async () => {
+      await act(async () => {
+        land();
+        await write;
+      });
+      await waitFor(() => expect(editor.onPathOffsetCommit).toHaveBeenCalledTimes(1));
+    };
+    const landFirstSave = () =>
+      act(async () => {
+        landFirst();
+        await firstSaved;
+      });
+    return { editor, ran, landFirstSave };
+  }
+
+  it("takes back a press queued behind one that ran, and leaves nothing waiting", async () => {
+    const { editor, ran, landFirstSave } = queuedBehindOneThatRan();
+    pointer(editor.overlay, "pointerup", 210, 180);
+    await ran();
+    expect(editor.box.hasAttribute(PRESS_WAITING_ATTR), "the second press waits").toBe(true);
+
+    act(() => void cancelNewestStudioWaitingPress());
+    expect(editor.box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false);
+    expect(cancelNewestStudioWaitingPress(), "the following Cmd+Z steps history").toBe(false);
+    await landFirstSave();
+    await settle();
+    expect(editor.onPathOffsetCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a held press queued behind one that ran on blur, and leaves nothing waiting", async () => {
+    const { editor, ran, landFirstSave } = queuedBehindOneThatRan();
+    await ran();
+    act(() => void window.dispatchEvent(new Event("blur")));
+    expect(editor.box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false);
+    expect(cancelNewestStudioWaitingPress()).toBe(false);
+    await landFirstSave();
   });
 
   it("lands a released drag when the window loses focus before the write does", async () => {

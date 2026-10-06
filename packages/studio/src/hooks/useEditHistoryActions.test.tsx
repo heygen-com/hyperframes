@@ -9,6 +9,7 @@ import {
   beginStudioPendingEdit,
   isStudioEditSaving,
   setStudioPendingEditClaimClock,
+  setStudioWaitingPressCancel,
   trackStudioPendingEdit,
 } from "../utils/studioPendingEdits";
 
@@ -18,6 +19,7 @@ let root: Root | null = null;
 afterEach(() => {
   act(() => root?.unmount());
   setStudioPendingEditClaimClock(null);
+  setStudioWaitingPressCancel(null);
 });
 
 type RestoreFiles = Record<string, { previous: string; restored: string }>;
@@ -71,6 +73,18 @@ const PREDICTED = { id: "e1", files: { "index.html": { previous: "B", restored: 
 const SERVER_FILES = { "index.html": { previous: "B", restored: "A2" } };
 
 describe("useEditHistoryActions", () => {
+  it("takes back a canvas press still waiting to run, with no history step", async () => {
+    const { deps, actions } = mount({ ok: true, label: "Undid: Move" });
+    const cancel = vi.fn(() => setStudioWaitingPressCancel(null));
+    setStudioWaitingPressCancel(cancel);
+    await act(() => actions.undo());
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(deps.editHistory.undo).not.toHaveBeenCalled();
+
+    await act(() => actions.undo());
+    expect(deps.editHistory.undo, "the following Cmd+Z steps history").toHaveBeenCalledTimes(1);
+  });
+
   it("asks for the edit claimed after the key's claim count only when an edit was saving at the key", async () => {
     const { deps, actions } = mount({ ok: false, reason: "empty" });
     await act(() => actions.undo());

@@ -43,12 +43,14 @@ export function createPreviewGestureStarts(
       p.ended = true;
       cancelAnimationFrame(p.frame);
     }
-    // A press queued behind this one keeps waiting.
-    if (press === opts.waitingPressRef.current) {
+    const newest = opts.waitingPressRef.current;
+    if (press === newest) {
       opts.waitingPressRef.current = null;
       opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
       opts.rafPausedRef.current = false;
     }
+    // A press queued behind this one keeps waiting, on nothing that has ended.
+    else for (let p = newest; p; p = p.after) if (p.after === press) p.after = null;
     offerUndo();
   };
 

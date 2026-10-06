@@ -41,6 +41,13 @@ let cancelWaitingPress: (() => void) | null = null;
 export function setStudioWaitingPressCancel(cancel: (() => void) | null): void {
   cancelWaitingPress = cancel;
 }
+
+/** Studio's Cmd+Z: true when it took back a waiting press, which never reached history. */
+export function cancelNewestStudioWaitingPress(): boolean {
+  if (!cancelWaitingPress) return false;
+  cancelWaitingPress();
+  return true;
+}
 let adopting: StudioEditInFlight | null = null;
 
 export function adoptingStudioPendingEdit(): StudioEditInFlight | null {
@@ -219,10 +226,6 @@ export function paintBackNewestStudioPendingEdit(): {
   landed: () => Promise<boolean>;
   claimsAtBegin: number;
 } | null {
-  if (cancelWaitingPress) {
-    cancelWaitingPress();
-    return { showAgain: () => {}, landed: NOT_SAVED, claimsAtBegin: historyClaims() };
-  }
   const newest = [...pendingEdits.values()].at(-1);
   const revert = newest?.revert;
   if (!newest || !revert) return null;
