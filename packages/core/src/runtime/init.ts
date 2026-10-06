@@ -384,6 +384,14 @@ const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
 
+/** Studio's lazy images in `root` load now: a hidden clip has no layout box, so lazy ones would never fetch. */
+function loadPreviewImagesIn(root: Element): void {
+  const images = root.matches(`[${STUDIO_PREVIEW_LAZY_ATTR}]`)
+    ? [root]
+    : root.querySelectorAll(`img[${STUDIO_PREVIEW_LAZY_ATTR}]`);
+  for (const img of images) img.setAttribute("loading", "eager");
+}
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   authoredMediaObserver?.disconnect();
@@ -2771,6 +2779,8 @@ export function initSandboxRuntimeModular(): void {
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
       const upcoming =
         hiddenImagesSkipped && !isVisibleNow && dueSoon(rawNode, visibleAt, currentTime);
+      if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
+        loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
       if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
         preloadNearPlayhead(
@@ -3861,7 +3871,7 @@ export function initSandboxRuntimeModular(): void {
       const held = { time: quantized, apply: () => applySeek(quantized, options) };
       heldSeek = held;
       for (const img of undecoded) {
-        if (img.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) img.setAttribute("loading", "eager");
+        loadPreviewImagesIn(img);
         for (let clip = img.closest(SKIPPED_CLIP); clip; clip = img.closest(SKIPPED_CLIP))
           clip.setAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, "");
       }
