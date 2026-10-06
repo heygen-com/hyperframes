@@ -316,6 +316,7 @@
 
 .audible-video-wave [data-peak-badge] {
   top: 50%;
+  bottom: auto;
   right: var(--timeline-clip-radius);
   translate: 0 -50%;
   padding: 1px 3px;

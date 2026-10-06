@@ -26,11 +26,15 @@ async function render(url: string, bins: number[], gain: number) {
 }
 
 describe("ClipPeakMarks", () => {
-  it("paints red marks and the peak on a clip that redlines", async () => {
+  it("uses a plain warning and keeps the numeric peak in the hover detail", async () => {
     const host = await render("/api/projects/p/peaks/loud.mp4", [0.2, 0.98], 1);
     expect(host.textContent).toContain("wave");
     expect(host.querySelector("[data-testid=clip-peak-marks]")?.textContent).toContain(
-      "▲ peaks −0.2 dBFS",
+      "▲ Too loud",
+    );
+    expect(host.querySelector("[data-peak-text]")?.textContent).not.toContain("dBFS");
+    expect(host.querySelector("[data-peak-badge]")?.getAttribute("title")).toBe(
+      "Peaks −0.2 dBFS at this volume; export lowers the whole mix",
     );
   });
 
