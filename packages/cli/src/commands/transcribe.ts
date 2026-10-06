@@ -479,7 +479,6 @@ async function transcribeAudio(
     // not inflate the cli_error budget, and let `--optional` callers continue.
     if (isWhisperUnavailable(err)) {
       trackTranscribeUnavailable({ optional: opts.optional === true });
-      // Auto fell to whisper only because Parakeet is not installed; installing it is the other way through.
       const install =
         engine === "auto" && parakeetSpeaks(opts.language) && !unsupported
           ? PARAKEET_INSTALL_COMMAND
