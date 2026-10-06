@@ -41,13 +41,15 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
 
     const attachErrorCapture = () => {
       detachErrorCapture();
+      consoleErrorsRef.current = [];
+      setConsoleErrors(null);
       try {
         const win = previewIframe.contentWindow as (Window & typeof globalThis) | null;
         if (!win) return;
         if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
         (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
         patchedWin = win;
-        const record = (texts: string[]) => {
+        const record = (...texts: string[]) => {
           if (texts.length === 0) return;
           consoleErrorsRef.current = [
             ...consoleErrorsRef.current,
@@ -59,11 +61,11 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
         win.console.error = function (...args: unknown[]) {
           origConsoleError!(...args);
           const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
-          if (!text.includes("favicon")) record([text]);
+          if (!text.includes("favicon")) record(text);
         };
-        errorHandler = (e: ErrorEvent) => record([e.message || String(e)]);
-        const raised: unknown = (win as unknown as Record<string, unknown>)[STUDIO_PREVIEW_ERRORS];
-        if (Array.isArray(raised)) record(raised.map(String));
+        errorHandler = (e: ErrorEvent) => record(e.message || String(e));
+        const raised: unknown = Reflect.get(win, STUDIO_PREVIEW_ERRORS);
+        if (Array.isArray(raised)) record(...raised.map(String));
         win.addEventListener("error", errorHandler);
       } catch {
         /* same-origin only */
@@ -71,14 +73,9 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
     };
 
     attachErrorCapture();
-    const handleLoad = () => {
-      consoleErrorsRef.current = [];
-      setConsoleErrors(null);
-      attachErrorCapture();
-    };
-    previewIframe.addEventListener("load", handleLoad);
+    previewIframe.addEventListener("load", attachErrorCapture);
     return () => {
-      previewIframe.removeEventListener("load", handleLoad);
+      previewIframe.removeEventListener("load", attachErrorCapture);
       detachErrorCapture();
     };
   }, [previewIframe]);

@@ -320,7 +320,7 @@ export const PREVIEW_CAPTURE_PARAM = "hf-capture";
 
 // Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
 const EARLY_ERRORS_SCRIPT = `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[];
-addEventListener("error",function(e){seen.push(e.message)});})();</script>`;
+addEventListener("error",function(e){seen.push(e.message||String(e))});})();</script>`;
 
 function injectStudioPreviewAugmentations(
   html: string,
