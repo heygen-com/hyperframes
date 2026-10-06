@@ -165,7 +165,6 @@ export async function runBrowserCheck(
     options.autoProxy,
   );
   const drafts: RuntimeDraft[] = [];
-  const loadedImages = new Set<string>();
   let currentTime = 0;
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
 
@@ -176,7 +175,7 @@ export async function runBrowserCheck(
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
       browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
-      beforeNavigate: (page) => wireRuntimeListeners(page, drafts, loadedImages, () => currentTime),
+      beforeNavigate: (page) => wireRuntimeListeners(page, drafts, () => currentTime),
     });
     chromeBrowser = session.browser;
     const page = session.page;
@@ -197,11 +196,11 @@ export async function runBrowserCheck(
       currentTime = time;
     });
     const result = await runGrid(driver, options, motion);
-    const shown = await imagesStillShown(page, drafts);
+    const broken = await abortedImagesStillBroken(page, drafts);
     return {
       ...result,
       timings: { ...result.timings, launchSettleMs },
-      runtimeFindings: keepUnreplacedImageAborts(drafts, shown, loadedImages).map((draft) =>
+      runtimeFindings: keepBrokenImageAborts(drafts, broken).map((draft) =>
         runtimeFinding(draft, rootAnchor),
       ),
     };
@@ -318,12 +317,7 @@ function runtimeInfoFindingCode(text: string): string | null {
     : "media_proxy_fallback";
 }
 
-function wireRuntimeListeners(
-  page: Page,
-  drafts: RuntimeDraft[],
-  loadedImages: Set<string>,
-  currentTime: () => number,
-): void {
+function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("console", (message) => {
     const type = message.type();
     const text = message.text();
@@ -374,39 +368,46 @@ function wireRuntimeListeners(
       time: currentTime(),
     });
   });
-  wireNetworkListeners(page, drafts, loadedImages, currentTime);
+  wireNetworkListeners(page, drafts, currentTime);
 }
 
-/** A scrub that swaps an image's source cancels its load: only an image still shown and never loaded failed. */
-export function keepUnreplacedImageAborts(
-  drafts: RuntimeDraft[],
-  shown: Set<string>,
-  loaded: Set<string>,
-): RuntimeDraft[] {
-  return drafts.filter(
-    (draft) => !draft.abortedImage || (shown.has(draft.url ?? "") && !loaded.has(draft.url ?? "")),
-  );
+/** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` still shows it and it won't decode. */
+export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string>): RuntimeDraft[] {
+  return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
 }
 
-async function imagesStillShown(page: Page, drafts: RuntimeDraft[]): Promise<Set<string>> {
+const IMAGE_DECODE_CAP_MS = 5000;
+
+async function abortedImagesStillBroken(page: Page, drafts: RuntimeDraft[]): Promise<Set<string>> {
   const urls = drafts.filter((draft) => draft.abortedImage).map((draft) => draft.url ?? "");
   if (urls.length === 0) return new Set();
-  const shown = await page.evaluate(
-    (candidates: string[]) =>
-      candidates.filter((url) =>
-        Array.from(document.images).some((img) => img.currentSrc === url || img.src === url),
-      ),
+  const broken = await page.evaluate(
+    async (candidates: string[], capMs: number) => {
+      const decodes = (img: HTMLImageElement) =>
+        Promise.race([
+          img.decode().then(
+            () => img.naturalWidth > 0,
+            () => false,
+          ),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), capMs)),
+        ]);
+      const stillBroken = await Promise.all(
+        candidates.map(async (url) => {
+          const shown = Array.from(document.querySelectorAll("img")).filter(
+            (img) => img.currentSrc === url || img.src === url,
+          );
+          return shown.length > 0 && !(await Promise.all(shown.map(decodes))).every(Boolean);
+        }),
+      );
+      return candidates.filter((_, i) => stillBroken[i]);
+    },
     urls,
+    IMAGE_DECODE_CAP_MS,
   );
-  return new Set(shown);
+  return new Set(broken);
 }
 
-function wireNetworkListeners(
-  page: Page,
-  drafts: RuntimeDraft[],
-  loadedImages: Set<string>,
-  currentTime: () => number,
-): void {
+function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("requestfailed", (request) => {
     const url = request.url();
     if (url.includes("favicon") || url.startsWith("data:")) return;
@@ -420,10 +421,6 @@ function wireNetworkListeners(
       url,
       abortedImage: failure === "net::ERR_ABORTED" && request.resourceType() === "image",
     });
-  });
-  page.on("requestfinished", (request) => {
-    if (request.resourceType() === "image" && request.response()?.ok())
-      loadedImages.add(request.url());
   });
   page.on("response", (response) => {
     if (response.status() < 400) return;

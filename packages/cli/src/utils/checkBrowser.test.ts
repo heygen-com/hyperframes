@@ -11,7 +11,7 @@ import {
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
 import {
   captureOverviewShot,
-  keepUnreplacedImageAborts,
+  keepBrokenImageAborts,
   preResolveHostileMediaProxies,
   runBrowserCheck,
 } from "./checkBrowser.js";
@@ -527,7 +527,7 @@ it("elevates and deduplicates WebGPU validation warnings while preserving ordina
   );
 });
 
-describe("keepUnreplacedImageAborts", () => {
+describe("keepBrokenImageAborts", () => {
   const draft = (url: string, abortedImage: boolean) => ({
     code: "request_failed",
     severity: "error" as const,
@@ -537,17 +537,51 @@ describe("keepUnreplacedImageAborts", () => {
     abortedImage,
   });
 
-  it("drops an image load a later swap cancelled, and keeps one still shown that never loaded", () => {
+  it("keeps an aborted image only when it is still broken, and every other failure", () => {
     const swappedPast = draft("http://h/seq/0004.png", true);
-    const reloaded = draft("http://h/seq/0012.png", true);
     const stuck = draft("http://h/plate.png", true);
     const missing = draft("http://h/gone.png", false);
-    const kept = keepUnreplacedImageAborts(
-      [swappedPast, reloaded, stuck, missing],
-      new Set(["http://h/seq/0012.png", "http://h/plate.png"]),
-      new Set(["http://h/seq/0012.png"]),
+    const kept = keepBrokenImageAborts(
+      [swappedPast, stuck, missing],
+      new Set(["http://h/plate.png"]),
     );
     expect(kept).toEqual([stuck, missing]);
+  });
+
+  it("reports an aborted image a page still shows broken, not one swapped away or one that decodes", async () => {
+    const base = "http://127.0.0.1:3000/assets";
+    mountCanvasFixture(
+      `<img id="stuck" src="${base}/plate.png"><img id="fine" src="${base}/seq/0012.png">`,
+    );
+    const stuck = document.getElementById("stuck") as HTMLImageElement;
+    const fine = document.getElementById("fine") as HTMLImageElement;
+    stuck.decode = () => Promise.reject(new Error("broken"));
+    fine.decode = () => Promise.resolve();
+    Object.defineProperty(fine, "naturalWidth", { value: 320 });
+    const aborted = (url: string) => ({
+      url: () => url,
+      failure: () => ({ errorText: "net::ERR_ABORTED" }),
+      resourceType: () => "image",
+    });
+    const page = fakePage();
+    page.on = vi.fn((event: string, handler: (request: ReturnType<typeof aborted>) => void) => {
+      if (event !== "requestfailed") return;
+      for (const url of ["seq/0004.png", "seq/0012.png", "plate.png"])
+        handler(aborted(`${base}/${url}`));
+    });
+    installSessionMock(page);
+
+    const result = await runBrowserCheck(
+      PROJECT,
+      { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+      { kind: "none" },
+      runAuditGrid,
+    );
+
+    const failed = result.runtimeFindings.filter((finding) => finding.code === "request_failed");
+    expect(failed.map((finding) => finding.message)).toEqual([
+      "Failed to load assets/plate.png: net::ERR_ABORTED",
+    ]);
   });
 });
 

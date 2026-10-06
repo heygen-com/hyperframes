@@ -211,16 +211,16 @@ describe("runtime entry", () => {
     };
     const plate = lazyPlate(soon);
     const farPlate = lazyPlate(later);
+    // A clip nested in the coming one waits for its own look-ahead.
+    const nestedPlate = lazyPlate(timed(soon, "div", "8"));
     const authored = soon.appendChild(document.createElement("img"));
     authored.setAttribute("loading", "lazy");
 
     await evaluateRuntime();
     expect(visibility(soon)).toEqual(["hidden"]);
-    expect([plate, farPlate, authored].map((img) => img.getAttribute("loading"))).toEqual([
-      "eager",
-      "lazy",
-      "lazy",
-    ]);
+    expect(
+      [plate, farPlate, nestedPlate, authored].map((img) => img.getAttribute("loading")),
+    ).toEqual(["eager", "lazy", "lazy", "lazy"]);
     window.__player?.seek(3.5);
     expect(farPlate.getAttribute("loading")).toBe("eager");
   });

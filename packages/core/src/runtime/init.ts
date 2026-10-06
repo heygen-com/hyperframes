@@ -388,7 +388,9 @@ const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
 function loadPreviewImagesIn(root: Element): void {
   const images = root.matches(`[${STUDIO_PREVIEW_LAZY_ATTR}]`)
     ? [root]
-    : root.querySelectorAll(`img[${STUDIO_PREVIEW_LAZY_ATTR}]`);
+    : Array.from(root.querySelectorAll(`img[${STUDIO_PREVIEW_LAZY_ATTR}]`)).filter(
+        (img) => img.closest("[data-start]") === root,
+      );
   for (const img of images) img.setAttribute("loading", "eager");
 }
 
