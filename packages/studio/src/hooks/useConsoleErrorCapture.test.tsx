@@ -52,3 +52,17 @@ it("shows a loaded preview's errors once when the capture attaches to it twice",
 
   expect(shown()).toEqual([raised]);
 });
+
+it("keeps listening after reading a preview's very long error list", async () => {
+  const { iframe, previewWindow } = previewFrame();
+  const raised = Array.from({ length: 200_000 }, (_, i) => `Uncaught Error: ${i}`);
+  Object.assign(previewWindow, { [STUDIO_PREVIEW_ERRORS]: raised });
+
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(React.createElement(Harness, { iframe })));
+  const live = new ErrorEvent("error", { message: "Uncaught Error: raised after attach" });
+  await act(async () => previewWindow.dispatchEvent(live));
+
+  expect(shown()?.length).toBe(raised.length + 1);
+  expect(shown()?.at(-1)).toBe("Uncaught Error: raised after attach");
+});
