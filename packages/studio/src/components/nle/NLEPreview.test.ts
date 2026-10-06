@@ -81,7 +81,12 @@ function renderPreview(
   {
     box = { width: 800, height: 600 },
     fillBox,
-  }: { box?: { width: number; height: number }; fillBox?: boolean } = {},
+    compositionSizeHint,
+  }: {
+    box?: { width: number; height: number };
+    fillBox?: boolean;
+    compositionSizeHint?: { width: number; height: number };
+  } = {},
 ) {
   resizeCallbacks = [];
   const host = document.createElement("div");
@@ -103,6 +108,7 @@ function renderPreview(
           setShadowIframeNode: () => {},
           resetPreviewSlots: () => {},
           fillBox,
+          compositionSizeHint,
         }),
       );
     });
@@ -376,6 +382,19 @@ describe("NLEPreview", () => {
     expect([filled.stage.style.width, filled.stage.style.height]).toEqual(["640px", "360px"]);
     expect(parseFloat(filled.stage.parentElement!.style.inset)).toBe(0);
     filled.cleanup();
+  });
+
+  it("takes the host's composition size as the stage's shape until the preview measures its own", () => {
+    const box = { width: 800, height: 600 };
+    const plain = renderPreview(undefined, { box });
+    expect([plain.stage.style.width, plain.stage.style.height]).toEqual(["784px", "441px"]);
+    plain.cleanup();
+
+    const hinted = renderPreview(undefined, { box, compositionSizeHint: { width: 1276, height: 1078 } });
+    const shape = parseFloat(hinted.stage.style.width) / parseFloat(hinted.stage.style.height);
+    expect(shape).toBeCloseTo(1276 / 1078, 3);
+    expect(hinted.stage.style.height).toBe("584px");
+    hinted.cleanup();
   });
 
   it("clips a shadow reload so its own loading overlay cannot paint over the live frame", () => {
