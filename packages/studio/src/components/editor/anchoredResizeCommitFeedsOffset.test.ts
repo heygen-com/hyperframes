@@ -142,6 +142,7 @@ function buildHarness(
   const iframe = document.createElement("iframe");
 
   const opts: UseDomEditOverlayGesturesOptions = {
+    activeCompositionPathRef: { current: null },
     overlayRef: ref<HTMLDivElement | null>(overlayEl),
     iframeRef: ref<HTMLIFrameElement | null>(iframe),
     boxRef: ref<HTMLDivElement | null>(document.createElement("div")),

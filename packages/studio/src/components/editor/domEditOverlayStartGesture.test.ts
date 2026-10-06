@@ -224,6 +224,7 @@ describe("a rotate press on an element a GSAP tween turns", () => {
       iframeRef: ref(null),
       gestureRef: ref<GestureState | null>(null),
       rafPausedRef: ref(false),
+      waitingPressRef: ref(null),
     };
     const press = {
       clientX: 25,

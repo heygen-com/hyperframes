@@ -275,6 +275,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   });
 
   const gestures = createDomEditOverlayGestureHandlers({
+    activeCompositionPathRef,
     overlayRef,
     iframeRef,
     boxRef,
@@ -496,7 +497,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={marquee.onPointerUp}
       onPointerCancel={marquee.onPointerCancel}
-      onLostPointerCapture={() => cancelGestureRef.current()}
+      onLostPointerCapture={gestures.onLostPointerCapture}
       onContextMenu={hostInput ? undefined : handleContextMenu}
     >
       {!hostInput && hoverSelection && hoverRect && compRect.width > 0 && (

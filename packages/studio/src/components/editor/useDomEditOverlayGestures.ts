@@ -1,3 +1,5 @@
+import { shiftedOverlayRect } from "./domEditOverlayGeometry";
+import { createPreviewGestureStarts } from "./previewGestureStarts";
 import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
 /**
@@ -31,12 +33,8 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
-  PRESS_WAITING_ATTR,
-  type WaitingPressState,
-  type GestureKind,
   type GestureState,
   type GroupGestureState,
-  type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
   ROTATED_SNAP_BYPASS_DEGREES,
   hasDomEditRotationChanged,
@@ -46,11 +44,7 @@ import {
 } from "./domEditOverlayGestures";
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
 import { resolveResizeDraftRect } from "./resizeDraft";
-import {
-  notifyBlockedPress,
-  startGesture as _startGesture,
-  startGroupDrag as _startGroupDrag,
-} from "./domEditOverlayStartGesture";
+import { notifyBlockedPress } from "./domEditOverlayStartGesture";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import {
   resolveSnapAdjustment,
@@ -63,9 +57,6 @@ import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug
 import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
-import { isPreviewChanging } from "../../player/previewReloading";
-import { playheadMoment } from "../../hooks/editMoment";
-import type { EditMoment } from "./manualEditsTypes";
 
 function isTap(g: { startX: number; startY: number; travelled?: boolean }, e: React.PointerEvent) {
   return (
@@ -74,15 +65,6 @@ function isTap(g: { startX: number; startY: number; travelled?: boolean }, e: Re
   );
 }
 
-// The reloaded preview no longer has the pressed element: the press is dropped, never left waiting.
-const MAX_SETTLED_WAIT_FRAMES = 60;
-
-const shifted = (rect: OverlayRect, dx: number, dy: number): OverlayRect => ({
-  ...rect,
-  left: rect.left + dx,
-  top: rect.top + dy,
-});
-
 function logGestureCommitFailure(message: string, error: unknown): void {
   if (error instanceof DomEditSaveQueueOpenError) return;
   console.error(message, error);
@@ -90,7 +72,7 @@ function logGestureCommitFailure(message: string, error: unknown): void {
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
-    opts.setOverlayRect(next);
+    if (!opts.waitingPressRef.current) opts.setOverlayRect(next);
   };
   const restoreGestureOverlayRect = (g: GestureState) => {
     setDraftOverlayRect({
@@ -100,14 +82,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       height: g.originHeight,
       editScaleX: g.editScaleX,
       editScaleY: g.editScaleY,
-      // Every draft rect must carry the element's rotation: the rotation wrapper
-      // renders rotate(overlayRect.angle), so an omitted angle straightens the
-      // chrome for the duration of the draft (the "straightens while moving" bug).
+      // Rotation keeps the chrome aligned with the element during its draft.
       angle: g.actualRotation,
     });
   };
   const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
-    opts.setGroupOverlayItems(next);
+    if (!opts.waitingPressRef.current) opts.setGroupOverlayItems(next);
   };
 
   const restoreGroupPathOffsets = (g: GroupGestureState) => {
@@ -115,106 +95,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     setDraftGroupOverlayItems(g.originItems);
   };
 
-  const endWaitingPress = () => {
-    cancelAnimationFrame(opts.waitingPressRef.current?.frame ?? 0);
-    opts.waitingPressRef.current = null;
-    opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    opts.rafPausedRef.current = false;
-  };
-
-  const drawPressedBox = (origin: OverlayRect | null): WaitingPressState["draw"] =>
-    origin && ((dx, dy) => setDraftOverlayRect(shifted(origin, dx, dy)));
-
-  // A press on the page a reload is replacing would edit it by its old rules: it starts on the new page instead.
-  const startOnShownPreview = (
-    e: React.PointerEvent<HTMLElement>,
-    pressed: () => HTMLElement[],
-    start: (e: React.PointerEvent<HTMLElement>, at: EditMoment, waited: boolean) => boolean,
-    draw: WaitingPressState["draw"] = null,
-  ): boolean => {
-    const at = playheadMoment();
-    if (!isPreviewChanging()) return start(e, at, false);
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    // The press already holds the pointer, which may be up by the time the gesture starts.
-    const held = { setPointerCapture() {} };
-    const down = { ...e, currentTarget: held, preventDefault() {}, stopPropagation() {} };
-    const press: WaitingPressState = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      draw,
-      frame: 0,
-      moved: null,
-      released: null,
-    };
-    opts.waitingPressRef.current = press;
-    opts.boxRef.current?.setAttribute(PRESS_WAITING_ATTR, "true");
-    opts.rafPausedRef.current = true;
-    let shownFrames = 0;
-    let settledFrames = 0;
-    const poll = () => {
-      if (opts.waitingPressRef.current !== press) return;
-      const elements = pressed();
-      const live = opts.iframeRef.current?.contentDocument;
-      const settled = !isPreviewChanging();
-      const shown = settled && elements.every((el) => el.ownerDocument === live);
-      shownFrames = shown ? shownFrames + 1 : 0;
-      settledFrames = settled ? settledFrames + 1 : 0;
-      // Shown: the overlay measures the element on the new page for a frame, then the drag starts there.
-      opts.rafPausedRef.current = !shown;
-      const lost = elements.length === 0 || settledFrames > MAX_SETTLED_WAIT_FRAMES;
-      if (!lost && shownFrames < 2) {
-        press.frame = requestAnimationFrame(poll);
-        return;
-      }
-      endWaitingPress();
-      if (lost || !start(down as unknown as React.PointerEvent<HTMLElement>, at, true)) return;
-      if (press.moved) onPointerMove(press.moved);
-      if (press.released) onPointerUp(press.released);
-    };
-    press.frame = requestAnimationFrame(poll);
-    return true;
-  };
-
-  const startGroupDrag = (e: React.PointerEvent<HTMLElement>) => {
-    const items = opts.groupOverlayItemsRef.current;
-    return startOnShownPreview(
-      e,
-      () => opts.groupOverlayItemsRef.current.map((item) => item.element),
-      (pressed, at) => _startGroupDrag(pressed, opts, at),
-      (dx, dy) =>
-        setDraftGroupOverlayItems(
-          items.map((item) => ({ ...item, rect: shifted(item.rect, dx, dy) })),
-        ),
-    );
-  };
-  const startGesture = (
-    kind: GestureKind,
-    e: React.PointerEvent<HTMLElement>,
-    options?: {
-      selection?: DomEditSelection;
-      rect?: OverlayRect | null;
-      resizeHandle?: ResizeHandle;
-    },
-  ) =>
-    startOnShownPreview(
-      e,
-      () => {
-        const element = opts.selectionRef.current?.element;
-        return element ? [element] : [];
-      },
-      (pressed, at, waited) =>
-        _startGesture(
-          kind,
-          pressed,
-          opts,
-          // A waited start measures the element on the new page, not the rect from the old one.
-          waited ? { resizeHandle: options?.resizeHandle, at } : { ...options, at },
-        ),
-      kind === "drag" ? drawPressedBox(opts.overlayRectRef.current) : null,
-    );
+  const { startGesture, startGroupDrag, endWaitingPress } = createPreviewGestureStarts(
+    opts,
+    (event) => moveActiveGesture(event),
+    (event) => releaseActiveGesture(event),
+  );
 
   // A press on a box that cannot move says why at once.
   const startBlockedMove = (e: React.PointerEvent<HTMLElement>, selection: DomEditSelection) => {
@@ -227,18 +112,23 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
   const moveGroupDrag = createGroupDragMover(opts, setDraftGroupOverlayItems);
 
-  // fallow-ignore-next-line complexity
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const waiting = opts.waitingPressRef.current;
     if (waiting && waiting.pointerId === e.pointerId) {
+      if (waiting.released || !movesGesture(waiting, e)) return;
       waiting.moved = e;
       waiting.draw?.(e.clientX - waiting.startX, e.clientY - waiting.startY);
       return;
     }
+    moveActiveGesture(e);
+  };
+
+  // fallow-ignore-next-line complexity
+  const moveActiveGesture = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const box = opts.boxRef.current;
+    const box = opts.waitingPressRef.current ? null : opts.boxRef.current;
     const blockedMove = opts.blockedMoveRef.current;
     if (!blockedMove && !g && !groupG) {
       opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
@@ -358,18 +248,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       }
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     } else {
-      if (!box) return;
-
-      // CENTER-ANCHORED size (CapCut model): the element scales proportionally
-      // about its CENTER — the scale is the pointer's RADIAL distance from the
-      // element center now over its distance at gesture start. Rotation-invariant
-      // (a distance ignores the angle) and continuous, so all four corners behave
-      // identically and there is no per-axis projection or edge-snapping. Base size
-      // is the element-local px size at gesture start (actualWidth/Height,
-      // GSAP-scale-aware). Corner drag is ALWAYS proportional; there is no
-      // free-form stretch gesture. Edge-snapping is intentionally NOT applied:
-      // with center anchoring both edges move symmetrically, so the corner-anchored
-      // snap math no longer holds — CapCut does not edge-snap during scale either.
+      // Corner resize scales proportionally about the center, without edge snapping.
       const nextSize = resolveCenterResizeSize({
         baseWidth: g.actualWidth,
         baseHeight: g.actualHeight,
@@ -398,38 +277,41 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         draftRect,
         liveInlineStyle: sel.element.getAttribute("style"),
       });
-      box.style.left = `${draftRect.left}px`;
-      box.style.top = `${draftRect.top}px`;
-      box.style.width = `${draftRect.width}px`;
-      box.style.height = `${draftRect.height}px`;
+      if (box) {
+        box.style.left = `${draftRect.left}px`;
+        box.style.top = `${draftRect.top}px`;
+        box.style.width = `${draftRect.width}px`;
+        box.style.height = `${draftRect.height}px`;
+      }
       setDraftOverlayRect(draftRect);
     }
   };
 
-  // fallow-ignore-next-line complexity
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const waiting = opts.waitingPressRef.current;
     if (waiting && waiting.pointerId === e.pointerId) {
       waiting.released = e;
+      opts.suppressNextBoxClickRef.current = true;
       return;
     }
+    releaseActiveGesture(e);
+  };
+
+  // fallow-ignore-next-line complexity
+  const releaseActiveGesture = (e: React.PointerEvent<HTMLDivElement>) => {
     opts.snapGuidesRef.current = null;
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const box = opts.boxRef.current;
+    const box = opts.waitingPressRef.current ? null : opts.boxRef.current;
     opts.blockedMoveRef.current = null;
 
     if (groupG) {
       opts.groupGestureRef.current = null;
-      opts.rafPausedRef.current = false;
+      opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
       const rawDx = e.clientX - groupG.startX;
       const rawDy = e.clientY - groupG.startY;
-      // The click that trails every pointerup has to be eaten either way. The
-      // gesture ref is already cleared above, so by the time it arrives the box
-      // no longer looks busy, and handleBoxClick hands it to the canvas as an
-      // ordinary click — which lands between the members, resolves to nothing,
-      // and deselects the group the drag just moved.
+      // Consume the release click so it cannot deselect the moved group.
       opts.suppressNextBoxClickRef.current = true;
       if (isTap(groupG, e)) {
         restoreGroupPathOffsets(groupG);
@@ -446,7 +328,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       setDraftGroupOverlayItems(
         groupG.originItems.map((item) => ({
           ...item,
-          rect: shifted(item.rect, dx, dy),
+          rect: shiftedOverlayRect(item.rect, dx, dy),
         })),
       );
       const updates = groupG.members.map((member) => ({
@@ -482,10 +364,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         .finally(() => {
           logDrag("committed", { at: readDragPositions(groupG.members) });
           endManualOffsetDragMembers(groupG.members);
-          // The gesture teardown resumes the paused timelines and re-seeks the
-          // player, which re-renders from whatever the preview currently holds.
-          // If the reloaded source has not landed yet that is the OLD position,
-          // so this is where a snap-back would show.
+          // Teardown re-seeks the player, exposing any stale preview position.
           logDragSettle("settle", groupG.members);
         });
       groupEdit.settle(groupSaved);
@@ -494,11 +373,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (!g || !sel) {
       opts.gestureRef.current = null;
-      opts.rafPausedRef.current = false;
+      opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
       return;
     }
     opts.gestureRef.current = null;
-    opts.rafPausedRef.current = false;
+    opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
     if (g.kind === "drag" && isTap(g, e)) {
@@ -572,10 +451,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
       edit.settle(saved);
     } else if (g.kind === "drag") {
-      // A moved drag (taps returned earlier) must not let the release click
-      // re-select whatever now sits under the pointer — dropping over a
-      // higher-z element should keep the dragged element selected, not select
-      // the drop target. Mirrors the resize branch below.
+      // A release over another layer must keep this dragged layer selected.
       opts.suppressNextBoxClickRef.current = true;
       const dx = g.lastSnappedDx ?? e.clientX - g.startX;
       const dy = g.lastSnappedDy ?? e.clientY - g.startY;
@@ -624,12 +500,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.suppressNextBoxClickRef.current = true;
       const finalSize = readStudioBoxSize(sel.element);
       applyStudioBoxSize(sel.element, finalSize);
-      // Anchored corner resize (NW/NE/SW) also moved the element to keep the
-      // center planted. Land the size AND the anchor offset in a SINGLE
-      // box-size commit (one persist, one undo entry). The prior two-commit
-      // sequence re-stamped the element from source after the size-only persist
-      // but before the offset persist landed — that one frame (new size, old
-      // offset) was the release "jump". SE has no anchor member → size only.
+      // Save size and center-preserving offset together under one undo entry.
       const member = g.pathOffsetMember;
       const anchor = g.lastResizeAnchor;
       const finalOffset =
@@ -702,7 +573,14 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.blockedMoveRef.current = null;
     opts.groupGestureRef.current = null;
     opts.gestureRef.current = null;
-    opts.rafPausedRef.current = false;
+    opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
+  };
+
+  const onLostPointerCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    const waiting = opts.waitingPressRef.current;
+    // Pointerup releases capture normally; the queued edit still has to land.
+    if (waiting?.pointerId === e.pointerId && waiting.released) return;
+    clearPointerState(opts.selectionRef);
   };
 
   return {
@@ -711,6 +589,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     startBlockedMove,
     onPointerMove,
     onPointerUp,
+    onLostPointerCapture,
     clearPointerState,
   };
 }

@@ -42,6 +42,7 @@ vi.mock("./useSafeGsapCommitMutation", () => ({
 }));
 
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
+import { isPreviewChanging } from "../player/previewReloading";
 import { tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 
 afterEach(() => {
@@ -231,6 +232,43 @@ describe("useGsapAwareEditing keeps the route a gesture chose at press", () => {
     await act(() => groupCommit([{ selection: box, next: { x: 40, y: 20 }, plainTranslate }]));
     expect(stageElementPositionOffset.mock.calls.length).toBe(plainTranslate ? 2 : 0);
     expect(mocks.drag.mock.calls.some((call) => call[0] === box)).toBe(!plainTranslate);
+    act(() => root.unmount());
+  });
+});
+
+describe("useGsapAwareEditing holds a canvas press while a drop saves", () => {
+  it.each([
+    ["a move through the script", false, "move"],
+    ["a group move through the script", false, "group"],
+    ["a move saved as CSS", true, "move"],
+  ])("%s", async (_, plainTranslate, kind) => {
+    let land: () => void = () => {};
+    const landed = new Promise<void>((resolve) => (land = resolve));
+    mocks.drag.mockImplementation(async () => {
+      await landed;
+      return { status: "persisted" };
+    });
+    const save = vi.fn().mockReturnValue(landed);
+    const stageElementPositionOffset = vi.fn(() => ({ save, rollback: vi.fn() }));
+    const { pathOffsetCommit, groupCommit, root } = mountGroupHandler({
+      stageElementPositionOffset,
+    });
+    const box = { element: document.createElement("div"), id: "box", selector: "#box" };
+    const selection = box as unknown as DomEditSelection;
+    const to = { x: 40, y: 20 };
+    let saved!: Promise<unknown>;
+    act(() => {
+      saved =
+        kind === "group"
+          ? groupCommit([{ selection, next: to, plainTranslate }])
+          : pathOffsetCommit(selection, to, { plainTranslate });
+    });
+    expect(isPreviewChanging(), "from the drop").toBe(!plainTranslate);
+    await act(async () => {
+      land();
+      await saved;
+    });
+    expect(isPreviewChanging()).toBe(false);
     act(() => root.unmount());
   });
 });

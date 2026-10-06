@@ -31,17 +31,34 @@ const layout = vi.hoisted(() => ({
 vi.mock("./useDomEditOverlayRects", () => ({
   useDomEditOverlayRects: () => {
     const { rect, group } = layout;
+    const [overlayRect, setOverlayRect] = React.useState(rect);
+    const overlayRectRef = React.useRef(overlayRect);
+    overlayRectRef.current = overlayRect;
     const groupOverlayItemsRef = { current: group };
     const noop = () => undefined;
     return {
-      overlayRect: rect,
-      overlayRectRef: { current: rect },
+      overlayRect,
+      overlayRectRef,
       groupOverlayItems: group,
       groupOverlayItemsRef,
       hoverRect: null,
       childRects: [],
-      setOverlayRect: noop,
+      setOverlayRect,
       setGroupOverlayItems: noop,
+    };
+  },
+}));
+vi.mock("./domEditOverlayGeometry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./domEditOverlayGeometry")>()),
+  orientedGroupAwareOverlayRect: (_overlay: unknown, _iframe: unknown, element: HTMLElement) => {
+    const [x = 0, y = 0] = element.style
+      .getPropertyValue("translate")
+      .split(" ")
+      .map(Number.parseFloat);
+    return {
+      ...layout.rect,
+      left: 100 + (Number.isFinite(x) ? x : 0),
+      top: 100 + (Number.isFinite(y) ? y : 0),
     };
   },
 }));
@@ -109,6 +126,7 @@ function mountEditor(
   const write = (sel: DomEditSelection, next: { x: number; y: number }) =>
     saveStyle(sel, `translate: ${next.x}px ${next.y}px`);
   const onPathOffsetCommit = vi.fn(write);
+  const onCanvasMouseDown = vi.fn();
   const onGroupPathOffsetCommit = vi.fn(
     async (updates: { selection: DomEditSelection; next: { x: number; y: number } }[]) => {
       for (const { selection, next } of updates) await write(selection, next);
@@ -126,7 +144,7 @@ function mountEditor(
             selection={group ? null : selection}
             groupSelections={group ? selections : []}
             hoverSelection={null}
-            onCanvasMouseDown={() => undefined}
+            onCanvasMouseDown={onCanvasMouseDown}
             onCanvasPointerMove={() => Promise.resolve(null)}
             onCanvasPointerLeave={() => undefined}
             onSelectionChange={() => undefined}
@@ -142,7 +160,14 @@ function mountEditor(
     );
   render(false);
   const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLElement;
-  return { live, overlay, box: overlay.querySelector(BOX)!, onPathOffsetCommit, render };
+  return {
+    live,
+    overlay,
+    box: overlay.querySelector(BOX)!,
+    onPathOffsetCommit,
+    onCanvasMouseDown,
+    render,
+  };
 }
 
 /** A reload whose shadow paints while the gesture is still live. */
@@ -152,6 +177,9 @@ async function reloadMidGesture() {
   const gen = await paintShadow(api, shadow);
   return { shadow, gen };
 }
+
+/** Polls inside act, as testing-library's waitFor does, so a replayed press's renders are flushed. */
+const waitFor = (check: () => void) => act(() => vi.waitFor(check));
 
 async function settle() {
   await act(async () => {
@@ -293,7 +321,7 @@ describe("a press while the preview reloads", () => {
     const shown = served("?_t=1");
     await paintShadow(api, shown);
     editor.render(false, makeSelection("title", byId(shown, "title")));
-    await vi.waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
     expect(byId(shown, "title").style.getPropertyValue("translate")).toBe("40px 20px");
     expect(pressedAt).toBe(2);
   });
@@ -314,7 +342,102 @@ describe("a press while a script write is out", () => {
       land();
       await write;
     });
-    await vi.waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+  });
+
+  it("keeps a released press when the browser releases pointer capture", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    pointer(editor.box, "lostpointercapture", 190, 170);
+    act(() => void editor.box.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(editor.onCanvasMouseDown).not.toHaveBeenCalled();
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    expect(editor.onPathOffsetCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the released waiting box still while the pointer moves to the next handle", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    expect((editor.box as HTMLElement).style.left).toBe("140px");
+    expect((editor.box as HTMLElement).style.top).toBe("120px");
+    pointer(editor.overlay, "pointermove", 340, 220, { buttons: 0 });
+    expect((editor.box as HTMLElement).style.left).toBe("140px");
+    expect((editor.box as HTMLElement).style.top).toBe("120px");
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+  });
+
+  it("keeps the newest waiting box in place when an earlier press replays", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    let landFirst: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    const firstSaved = new Promise<void>((resolve) => (landFirst = resolve));
+    const commit = editor.onPathOffsetCommit.getMockImplementation()!;
+    editor.onPathOffsetCommit.mockImplementationOnce((...args) =>
+      whileScriptWrites(async () => {
+        await firstSaved;
+        return commit(...args);
+      }),
+    );
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    pointer(editor.box, "pointerdown", 190, 170);
+    pointer(editor.overlay, "pointermove", 210, 180);
+    pointer(editor.overlay, "pointerup", 210, 180);
+    expect((editor.box as HTMLElement).style.left).toBe("160px");
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(editor.onPathOffsetCommit).toHaveBeenCalledTimes(1));
+    expect((editor.box as HTMLElement).style.left).toBe("160px");
+    expect((editor.box as HTMLElement).style.top).toBe("130px");
+    await act(async () => {
+      landFirst();
+      await firstSaved;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 60px 30px"));
+  });
+
+  it("runs a second press after the first one, never instead of it", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 160, 150);
+    pointer(editor.overlay, "pointerup", 160, 150);
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(editor.onPathOffsetCommit).toHaveBeenCalledTimes(2));
+    expect(editor.onPathOffsetCommit.mock.calls.map((call) => call[1])).toEqual([
+      { x: 40, y: 20 },
+      { x: 50, y: 20 },
+    ]);
   });
 });
 

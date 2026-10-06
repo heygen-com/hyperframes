@@ -133,6 +133,8 @@ export interface WaitingPressState {
   frame: number;
   moved: React.PointerEvent<HTMLDivElement> | null;
   released: React.PointerEvent<HTMLDivElement> | null;
+  after: WaitingPressState | null;
+  ended: boolean;
 }
 
 export type FocusableDomEditOverlay = {
@@ -259,6 +261,7 @@ export interface DomEditGroupPathOffsetCommit {
 
 // Refs are stable across renders; values are read via .current.
 export type UseDomEditOverlayGesturesOptions = {
+  activeCompositionPathRef: RefObject<string | null>;
   overlayRef: RefObject<HTMLDivElement | null>;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   boxRef: RefObject<HTMLDivElement | null>;
