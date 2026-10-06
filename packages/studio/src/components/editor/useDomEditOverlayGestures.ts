@@ -1,4 +1,3 @@
-import { shiftedOverlayRect } from "./domEditOverlayGeometry";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
 import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
@@ -30,6 +29,7 @@ import {
   type GroupOverlayItem,
   type OverlayRect,
   orientedOverlayRect,
+  shiftedOverlayRect,
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
@@ -305,10 +305,10 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const sel = g?.selection ?? opts.selectionRef.current;
     const box = opts.waitingPressRef.current ? null : opts.boxRef.current;
     opts.blockedMoveRef.current = null;
+    opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
 
     if (groupG) {
       opts.groupGestureRef.current = null;
-      opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
       const rawDx = e.clientX - groupG.startX;
       const rawDy = e.clientY - groupG.startY;
       // Consume the release click so it cannot deselect the moved group.
@@ -371,13 +371,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       return;
     }
 
-    if (!g || !sel) {
-      opts.gestureRef.current = null;
-      opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
-      return;
-    }
     opts.gestureRef.current = null;
-    opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
+    if (!g || !sel) return;
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
     if (g.kind === "drag" && isTap(g, e)) {
@@ -573,7 +568,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.blockedMoveRef.current = null;
     opts.groupGestureRef.current = null;
     opts.gestureRef.current = null;
-    opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
+    opts.rafPausedRef.current = false;
   };
 
   const onLostPointerCapture = (e: React.PointerEvent<HTMLDivElement>) => {

@@ -1,7 +1,6 @@
 import { useOwnPreviewIframe, usePreviewIframeStore } from "./player/store/previewIframeStore";
 import { buildProjectApiPath } from "./utils/projectRouting";
-import { useState, useCallback, useRef, useMemo } from "react";
-import type { SetStateAction } from "react";
+import { useState, useCallback, useRef, useMemo, type SetStateAction } from "react";
 import { useStableHandlers } from "./hooks/useStableHandlers";
 import { useHistoryFlags, useToolbarSession } from "./hooks/useShellSlices";
 import { useDismissingTabSetter, useRightPanelIntent } from "./hooks/useRightPanelIntents";

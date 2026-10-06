@@ -1,7 +1,10 @@
-import { orientedGroupAwareOverlayRect, shiftedOverlayRect } from "./domEditOverlayGeometry";
+import {
+  orientedGroupAwareOverlayRect,
+  shiftedOverlayRect,
+  type OverlayRect,
+} from "./domEditOverlayGeometry";
 import { findElementForSelection, type DomEditSelection } from "./domEditing";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
-import type { OverlayRect } from "./domEditOverlayGeometry";
 import {
   PRESS_WAITING_ATTR,
   type WaitingPressState,
@@ -24,8 +27,6 @@ export function createPreviewGestureStarts(
   moveActiveGesture: (e: React.PointerEvent<HTMLDivElement>) => void,
   releaseActiveGesture: (e: React.PointerEvent<HTMLDivElement>) => void,
 ) {
-  const setDraftOverlayRect = opts.setOverlayRect;
-  const setDraftGroupOverlayItems = opts.setGroupOverlayItems;
   const endWaitingPress = (press: WaitingPressState | null = opts.waitingPressRef.current) => {
     for (let p = press; p && !p.ended; p = p.after) {
       p.ended = true;
@@ -39,7 +40,7 @@ export function createPreviewGestureStarts(
   };
 
   const drawPressedBox = (origin: OverlayRect | null): WaitingPressState["draw"] =>
-    origin && ((dx, dy) => setDraftOverlayRect(shiftedOverlayRect(origin, dx, dy)));
+    origin && ((dx, dy) => opts.setOverlayRect(shiftedOverlayRect(origin, dx, dy)));
 
   // A corner resize grows about the element's centre.
   const drawResizedBox = (
@@ -51,7 +52,7 @@ export function createPreviewGestureStarts(
     return (
       origin &&
       ((dx, dy) =>
-        setDraftOverlayRect({
+        opts.setOverlayRect({
           ...origin,
           left: origin.left - sx * dx,
           top: origin.top - sy * dy,
@@ -162,7 +163,7 @@ export function createPreviewGestureStarts(
         );
       },
       (dx, dy) =>
-        setDraftGroupOverlayItems(
+        opts.setGroupOverlayItems(
           items.map((item) => ({ ...item, rect: shiftedOverlayRect(item.rect, dx, dy) })),
         ),
     );

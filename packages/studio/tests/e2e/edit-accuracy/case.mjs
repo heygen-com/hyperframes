@@ -576,14 +576,19 @@ function plan(gesture, pre, pressComp) {
   };
 }
 
+// A press made while the preview reloads waits for it: Studio draws its box at the pointer meanwhile.
+async function waitingQuad(page, map) {
+  const waiting = await page.$("[data-dom-edit-press-waiting]");
+  const quad = waiting && (await contentQuad(waiting)).map(map.toComp);
+  await waiting?.dispose();
+  return quad;
+}
+
 async function sample(ctx, gesture, point, pointerScreen) {
   const m = await measure(ctx);
   if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
-  // A press made while the preview reloads waits for it: Studio draws its box at the pointer meanwhile.
-  const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
-  const waitingQuad = waiting && (await contentQuad(waiting)).map(m.map.toComp);
-  await waiting?.dispose();
-  const shown = waitingQuad ? { ...m, quad: waitingQuad, visible: waitingQuad } : m;
+  const waiting = await waitingQuad(ctx.page, m.map);
+  const shown = waiting ? { ...m, quad: waiting, visible: waiting } : m;
   return { m: shown, actual: m.visible, p: point(shown), c: m.map.toComp(pointerScreen) };
 }
 
@@ -739,12 +744,8 @@ async function strayMove(page, [x, y]) {
  * `{ pause }` holds still; `{ stray }`: see strayMove. */
 // fallow-ignore-next-line complexity
 export async function pointerGesture(ctx, gesture, pre, route) {
-  const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
-  if (waiting) {
-    const quad = (await contentQuad(waiting)).map(pre.map.toComp);
-    pre = { ...pre, quad, visible: quad };
-    await waiting.dispose();
-  }
+  const quad = await waitingQuad(ctx.page, pre.map);
+  if (quad) pre = { ...pre, quad, visible: quad };
   const press = await handlePoint(ctx, pre, gesture);
   const pressComp = pre.map.toComp(press);
   const g = { ...plan(gesture, pre, pressComp), ...(route && { path: route(press) }) };
