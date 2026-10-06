@@ -206,6 +206,134 @@ describe("external file change coordinator", () => {
       expect(options.reloadPreview).toHaveBeenCalledOnce();
     });
 
+    it("uses the new project's owner when a reconnect arrives during the previous drain", async () => {
+      let finishDrain = () => {};
+      const pendingEdit = new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+      const first = {
+        drainPendingChanges: vi.fn(async () => {
+          await pendingEdit;
+          return { status: "clean" as const };
+        }),
+        reloadPreview: vi.fn(),
+        reloadSdkSession: vi.fn(),
+        onAcceptedPersistedFileChange: vi.fn(),
+      };
+      const { rerender } = await mountCoordinator(first);
+      await open();
+      await open();
+      const next = {
+        projectId: "project-b",
+        activeCompPath: "scenes/next.html",
+        drainPendingChanges: vi.fn(async () => ({ status: "clean" as const })),
+        reloadPreview: vi.fn(),
+        reloadSdkSession: vi.fn(),
+        onAcceptedPersistedFileChange: vi.fn(),
+      };
+      await rerender(next);
+      await open();
+      expect(next.drainPendingChanges).not.toHaveBeenCalled();
+      await act(async () => finishDrain());
+      expect(first.drainPendingChanges).toHaveBeenCalledOnce();
+      expect(first.reloadPreview).not.toHaveBeenCalled();
+      expect(first.reloadSdkSession).not.toHaveBeenCalled();
+      expect(first.onAcceptedPersistedFileChange).not.toHaveBeenCalled();
+      expect(next.drainPendingChanges).toHaveBeenCalledOnce();
+      expect(next.reloadPreview).toHaveBeenCalledOnce();
+      expect(next.reloadSdkSession).toHaveBeenCalledExactlyOnceWith("scenes/next.html");
+      expect(next.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(
+        "scenes/next.html",
+        null,
+      );
+    });
+
+    it("persists a queued reconnect conflict with the new project's owner", async () => {
+      let finishDrain = () => {};
+      const pendingEdit = new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+      const first = {
+        drainPendingChanges: vi.fn(async () => {
+          await pendingEdit;
+          return { status: "clean" as const };
+        }),
+        persistConflictSnapshot: vi.fn(async () => undefined),
+        reloadPreview: vi.fn(),
+        reloadSdkSession: vi.fn(),
+      };
+      const { captured, rerender } = await mountCoordinator(first);
+      await open();
+      await open();
+      const conflict = new StudioFileConflictError({
+        filePath: "scenes/next.html",
+        currentVersion: "v2",
+        currentContent: "external",
+        attemptedContent: "studio",
+      });
+      const next = {
+        projectId: "project-b",
+        activeCompPath: "scenes/next.html",
+        drainPendingChanges: vi.fn(async () => ({ status: "conflict" as const, error: conflict })),
+        persistConflictSnapshot: vi.fn(async () => undefined),
+        reloadPreview: vi.fn(),
+        reloadSdkSession: vi.fn(),
+      };
+      await rerender(next);
+      await open();
+      await act(async () => finishDrain());
+      expect(next.drainPendingChanges).toHaveBeenCalledOnce();
+      expect(next.persistConflictSnapshot).toHaveBeenCalledExactlyOnceWith("project-b", conflict);
+      expect(first.persistConflictSnapshot).not.toHaveBeenCalled();
+      expect(first.reloadPreview).not.toHaveBeenCalled();
+      expect(first.reloadSdkSession).not.toHaveBeenCalled();
+      expect(next.reloadPreview).not.toHaveBeenCalled();
+      expect(next.reloadSdkSession).not.toHaveBeenCalled();
+      expect(captured.handle?.blocked).toMatchObject({ status: "conflict", error: conflict });
+    });
+
+    it.each([
+      { label: "the project changes", projectId: "project-b", activeCompPath: "index.html" },
+      {
+        label: "the composition changes",
+        projectId: "project-a",
+        activeCompPath: "scenes/next.html",
+      },
+      { label: "the project is left", projectId: null, activeCompPath: null },
+    ])("drops queued old-scope changes when $label", async ({ projectId, activeCompPath }) => {
+      let finishDrain = () => {};
+      const pendingEdit = new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+      const first = {
+        drainPendingChanges: vi.fn(async () => {
+          await pendingEdit;
+          return { status: "clean" as const };
+        }),
+        reloadPreview: vi.fn(),
+        reloadSdkSession: vi.fn(),
+      };
+      const { rerender } = await mountCoordinator(first);
+      await open();
+      await open();
+      await open();
+      const next = {
+        projectId,
+        activeCompPath,
+        drainPendingChanges: vi.fn(async () => ({ status: "clean" as const })),
+        reloadPreview: vi.fn(),
+        reloadSdkSession: vi.fn(),
+      };
+      await rerender(next);
+      await act(async () => finishDrain());
+      expect(first.drainPendingChanges).toHaveBeenCalledOnce();
+      expect(next.drainPendingChanges).not.toHaveBeenCalled();
+      expect(first.reloadPreview).not.toHaveBeenCalled();
+      expect(first.reloadSdkSession).not.toHaveBeenCalled();
+      expect(next.reloadPreview).not.toHaveBeenCalled();
+      expect(next.reloadSdkSession).not.toHaveBeenCalled();
+    });
+
     it("ignores reconnects after leaving the active project", async () => {
       const { options, rerender } = await mountCoordinator();
       await open();

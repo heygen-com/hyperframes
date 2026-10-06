@@ -196,6 +196,7 @@ export function useExternalFileChangeCoordinator({
 
   useEffect(() => {
     generationRef.current += 1;
+    pendingPayloadRef.current = null;
     setBlocked(null);
     lastEventIdentityRef.current = null;
   }, [projectId, activeCompPath, setBlocked]);
@@ -377,6 +378,9 @@ export function useExternalFileChangeCoordinator({
     ],
   );
 
+  const drainOnePendingRef = useRef(drainOnePending);
+  drainOnePendingRef.current = drainOnePending;
+
   const startDrainLoop = useCallback(async () => {
     if (drainingRef.current) return;
     drainingRef.current = true;
@@ -385,12 +389,12 @@ export function useExternalFileChangeCoordinator({
         const pending = pendingPayloadRef.current;
         if (!pending) break;
         pendingPayloadRef.current = null;
-        await drainOnePending(pending.payload);
+        await drainOnePendingRef.current(pending.payload);
       }
     } finally {
       drainingRef.current = false;
     }
-  }, [drainOnePending]);
+  }, []);
 
   const processChange = useCallback(
     // fallow-ignore-next-line complexity

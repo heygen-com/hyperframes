@@ -71,7 +71,7 @@ function watchProjectTree(
     }
   };
   const watchDirectory = (dir: string) => {
-    unwatch(dir);
+    if (directories.has(dir)) unwatch(dir);
     let watcher: FSWatcher;
     try {
       watcher = watch(dir, { persistent: true }, (event, name) => {
