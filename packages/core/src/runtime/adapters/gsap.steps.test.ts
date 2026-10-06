@@ -84,6 +84,30 @@ describe("gsap adapter at a tween's start", () => {
     expect(gsap.getProperty(box, "scaleX")).toBeCloseTo(1.4259, 3);
   });
 
+  it("keeps a keyframed fromTo's from-only values over an earlier tween's on the same element", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    const fromTo = (origin: string, to: gsap.TweenVars, at: number) =>
+      timeline.fromTo(
+        box,
+        { scale: 1.5, transformOrigin: origin },
+        { scale: 1, immediateRender: false, ...to },
+        at,
+      );
+    fromTo("0% 0%", { duration: 0.1 }, 0);
+    fromTo("100% 100%", { duration: 0.1 }, 0.1);
+    fromTo("0% 0%", { keyframes: { y: [0, 40] }, duration: 0.5 }, 0.2);
+    timeline.set({}, {}, 1);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    const origins = [0, 2 / 30, 0.1, 4 / 30, 0.2, 7 / 30].map((time) => {
+      adapter.seek({ time });
+      return box.style.transformOrigin;
+    });
+    expect(origins.slice(1)).toEqual(["0% 0%", "100% 100%", "100% 100%", "0% 0%", "0% 0%"]);
+  });
+
   it("still lets a set authored later on the tween's start win over its from-values", () => {
     const box = document.body.appendChild(document.createElement("div"));
     const timeline = gsap.timeline({ paused: true });

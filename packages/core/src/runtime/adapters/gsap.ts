@@ -120,11 +120,9 @@ function primedAtItsStart(tween: GsapAnimation): boolean {
   if (tween.vars?.keyframes) {
     tween.render(BELOW_GSAP_TIME_RESOLUTION, true);
     tween.render(-BELOW_GSAP_TIME_RESOLUTION, true);
-    return true;
   }
-  if (!tween._startAt) return false;
-  tween._startAt.render(BELOW_GSAP_TIME_RESOLUTION, true, true);
-  return true;
+  if (tween._startAt) tween._startAt.render(BELOW_GSAP_TIME_RESOLUTION, true, true);
+  return Boolean(tween.vars?.keyframes || tween._startAt);
 }
 
 function primeTweensStartingAt(children: unknown[], time: number): void {
