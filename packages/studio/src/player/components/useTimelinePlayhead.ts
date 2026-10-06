@@ -5,7 +5,7 @@ import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   currentTimelineZoomPercent,
   requestTimelineZoom,
-  setTimelineZoomViewport,
+  registerTimelineZoomViewport,
   settleTimelineZoom,
   subscribeTimelineZoomPreview,
   takeTimelineZoomAnchor,
@@ -281,12 +281,12 @@ export function useTimelinePlayhead({
     // A press or scroll meets the zoom it sees, not the one still waiting to be laid out.
     scroll.addEventListener("pointerdown", settleTimelineZoom, { capture: true });
     scroll.addEventListener("scroll", settleTimelineZoom, { passive: true });
-    setTimelineZoomViewport({ scroll, contentOrigin });
+    const unregisterZoomViewport = registerTimelineZoomViewport({ scroll, contentOrigin });
     return () => {
       scroll.removeEventListener("wheel", handlePinchWheel, { capture: true });
       scroll.removeEventListener("pointerdown", settleTimelineZoom, { capture: true });
       scroll.removeEventListener("scroll", settleTimelineZoom);
-      setTimelineZoomViewport(null);
+      unregisterZoomViewport();
     };
   }, [handlePinchWheel, scrollRef, timelineReady, elementsLength, contentOrigin]);
 

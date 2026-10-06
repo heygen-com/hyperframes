@@ -10,7 +10,7 @@ import {
   settleTimelineZoom,
   timelineTimeAtX,
   requestTimelineZoom,
-  setTimelineZoomViewport,
+  registerTimelineZoomViewport,
   takeTimelineZoomAnchor,
   timelineZoomMapping,
   zoomTimelineStep,
@@ -40,10 +40,12 @@ beforeEach(() => {
 afterEach(() => {
   // Run out any ease, preview and rest, so the next test starts with nothing scheduled.
   for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
-  setTimelineZoomViewport(null);
+  unregisterViewport();
   takeTimelineZoomAnchor();
   vi.useRealTimers();
 });
+
+let unregisterViewport = () => {};
 
 /** A 1080px timeline viewport with 32px of track headers, holding one scaled row. */
 function viewport(scrollLeft = 0) {
@@ -54,7 +56,7 @@ function viewport(scrollLeft = 0) {
   });
   const row = scroll.appendChild(document.createElement("div"));
   row.setAttribute("data-timeline-zoom-scale", "");
-  setTimelineZoomViewport({ scroll, contentOrigin: 32 });
+  unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
   return { scroll, row };
 }
 
@@ -162,6 +164,26 @@ describe("requestTimelineZoom", () => {
     vi.advanceTimersByTime(200);
     unsubscribe();
     expect(ppsAtRest).toBe(15);
+  });
+
+  it("keeps a pending zoom when the timeline registers again, as a re-render does", async () => {
+    const { scroll } = viewport();
+    requestTimelineZoom(150);
+    unregisterViewport();
+    unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
+    await Promise.resolve();
+    vi.advanceTimersByTime(200);
+    expect(usePlayerStore.getState().timelinePps).toBe(15);
+  });
+
+  it("keeps a newer timeline's registration when an older one unmounts", () => {
+    const unregisterOlder = registerTimelineZoomViewport({
+      scroll: document.createElement("div"),
+      contentOrigin: 32,
+    });
+    viewport();
+    unregisterOlder();
+    expect(currentTimelineRange()).not.toBeNull();
   });
 
   it("lays the zoom out mid-gesture once the preview has scaled too far", () => {

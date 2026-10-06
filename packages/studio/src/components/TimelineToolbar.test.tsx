@@ -11,7 +11,7 @@ import { readStudioUiPreferences } from "../utils/studioUiPreferences";
 import { dispatchPlainKey, type HotkeyCallbacks } from "../hooks/appHotkeysDispatch";
 import { AudioMeterStrip } from "./nle/AudioMeterStrip";
 import { TimelineToolbar } from "./TimelineToolbar";
-import { setTimelineZoomViewport } from "../player/components/timelineZoomInput";
+import { registerTimelineZoomViewport } from "../player/components/timelineZoomInput";
 
 vi.mock("../contexts/StudioContext", () => ({
   useStudioShellContextOptional: () => ({
@@ -263,17 +263,17 @@ describe("TimelineToolbar Fit", () => {
       clientWidth: { value: 1080 },
       scrollLeft: { value: 0, writable: true },
     });
-    setTimelineZoomViewport({ scroll, contentOrigin: 32 });
     usePlayerStore.setState({
       zoomMode: "fit",
       manualZoomPercent: 100,
       timelineFitPps: 10,
       timelinePps: 10,
     });
+    return registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
   }
 
   it("moves the slider and its readout with a zoom while it is previewed", () => {
-    mountTimelineViewport();
+    const unregister = mountTimelineViewport();
     const { host, root } = renderToolbar();
     const slider = host.querySelector<HTMLInputElement>('input[aria-label="Timeline zoom"]')!;
     const before = slider.value;
@@ -290,11 +290,11 @@ describe("TimelineToolbar Fit", () => {
     expect(slider.value).not.toBe(before);
     expect(host.querySelector('[aria-label="Timeline zoom level"]')?.textContent).not.toBe("Fit");
     act(() => root.unmount());
-    act(() => setTimelineZoomViewport(null));
+    act(() => unregister());
   });
 
   it("keeps Fit when it is picked while a zoom waits to be laid out", () => {
-    mountTimelineViewport();
+    const unregister = mountTimelineViewport();
     const { host, root } = renderToolbar();
     act(() =>
       host
@@ -310,7 +310,7 @@ describe("TimelineToolbar Fit", () => {
     act(() => vi.advanceTimersByTime(1000));
     expect(usePlayerStore.getState().zoomMode).toBe("fit");
     act(() => root.unmount());
-    act(() => setTimelineZoomViewport(null));
+    act(() => unregister());
   });
 
   it("shows Fit as a named icon and says whether fit is on", () => {
