@@ -202,7 +202,7 @@ export const AudioWaveform = memo(function AudioWaveform({
 
   const fades = useContext(ClipFadesContext);
   // The clip's size and the stretch of it near the screen, kept current through scrolls and moves.
-  const [strip, setStripRef] = useThumbnailStripSize();
+  const [strip, setStripRef, watchGap] = useThumbnailStripSize();
   const from = strip.width > 0 ? strip.inViewStart / strip.width : 0;
   const to = strip.width > 0 ? strip.inViewEnd / strip.width : 1;
   const draw = useCallback(() => {
@@ -223,8 +223,8 @@ export const AudioWaveform = memo(function AudioWaveform({
       span,
     );
   }, [fades, from, muted, peaks, to, trimEndFraction, trimStartFraction]);
-  // Also on a height change: the bars are drawn at the canvas size, which follows the clip.
-  useEffect(draw, [draw, strip.height]);
+  // Also on a resize: the bars are drawn at the canvas size, which follows the clip.
+  useEffect(draw, [draw, strip.width, strip.height]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -251,6 +251,17 @@ export const AudioWaveform = memo(function AudioWaveform({
         className="absolute inset-0 overflow-hidden"
         style={{ zIndex: WAVEFORM_LAYER_Z }}
       >
+        {/* The undrawn ends: one coming near the screen, as a move carries the clip, re-measures. */}
+        <div
+          ref={watchGap}
+          className="pointer-events-none absolute inset-y-0 left-0"
+          style={{ width: `${from * 100}%` }}
+        />
+        <div
+          ref={watchGap}
+          className="pointer-events-none absolute inset-y-0 right-0"
+          style={{ left: `${to * 100}%` }}
+        />
         <canvas
           ref={canvasRef}
           className="absolute bottom-0"

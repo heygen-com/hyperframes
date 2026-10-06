@@ -12,6 +12,7 @@ vi.mock("../../hooks/useThumbnailLease", () => ({
 }));
 
 const EMPTY_STRIP = { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 };
+const watchGap = vi.hoisted(() => vi.fn());
 const strip = vi.hoisted(() => ({
   size: { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 },
   listeners: new Set<() => void>(),
@@ -27,7 +28,7 @@ vi.mock("../../hooks/useThumbnailStripSize", async () => {
     useThumbnailStripSize: () => [
       useSyncExternalStore(subscribe, () => strip.size),
       () => {},
-      () => {},
+      watchGap,
     ],
   };
 });
@@ -51,14 +52,15 @@ afterEach(() => {
   leaseSpy.mockReset();
   leaseSpy.mockImplementation(() => ({ status: "loading" as const }));
   strip.size = EMPTY_STRIP;
+  watchGap.mockClear();
   document.body.innerHTML = "";
 });
 
 /** Renders a ready waveform for a two-peak sound into `parent`. */
 function renderReadyWaveform(parent: HTMLElement = document.body) {
-  leaseSpy.mockImplementation(
-    () => ({ status: "ready", value: { kind: "waveform", peaks: [0.5, 1] } }) as never,
-  );
+  // One snapshot, as the lease returns, so a re-render alone does not redraw.
+  const ready = { status: "ready", value: { kind: "waveform", peaks: [0.5, 1] } } as never;
+  leaseSpy.mockImplementation(() => ready);
   const host = document.createElement("div");
   parent.append(host);
   const root = createRoot(host);
@@ -131,6 +133,27 @@ describe("AudioWaveform", () => {
     setStrip({ width: 10_000, height: 40, inViewStart: 4096, inViewEnd: 6144 });
     expect(placed()[0]).toBeCloseTo(40.96);
     expect(placed()[1]).toBeCloseTo(20.48);
+  });
+
+  it("redraws a short clip, drawn whole, when a zoom changes its width", () => {
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    setStrip({ width: 1000, height: 40, inViewStart: 0, inViewEnd: 1000 });
+    renderReadyWaveform();
+    const drawn = getContext.mock.calls.length;
+    setStrip({ width: 2000, height: 40, inViewStart: 0, inViewEnd: 2000 });
+    expect(getContext.mock.calls.length).toBe(drawn + 1);
+  });
+
+  it("watches both undrawn ends of a long clip, so a move without a scroll re-measures it", () => {
+    setStrip({ width: 10_000, height: 40, inViewStart: 2048, inViewEnd: 4096 });
+    renderReadyWaveform();
+    const gaps = [
+      ...new Set(watchGap.mock.calls.map(([gap]) => gap).filter(Boolean)),
+    ] as HTMLElement[];
+    expect(gaps.map((gap) => [gap.style.width, gap.style.left])).toEqual([
+      ["20.48%", ""],
+      ["", "40.96%"],
+    ]);
   });
 
   it("shrinks each bar to the fade's gain and keeps the cut-away part as a ghost", () => {
