@@ -536,10 +536,10 @@ function plan(gesture, pre, pressComp) {
       dist([s.p[0] - s0.p[0], s.p[1] - s0.p[1]], [s.c[0] - s0.c[0], s.c[1] - s0.c[1]]),
   });
   if (gesture === "move") {
-    const local = quadToLocal(pre.quad, pre.size, pressComp);
+    const local = quadToLocal(pre.quad, { width: 1, height: 1 }, pressComp);
     return {
       path: steps.map((k) => at([pressComp[0] + MOVE_BY[0] * k, pressComp[1] + MOVE_BY[1] * k])),
-      ...follow((m) => localToQuad(m.quad, m.size, local)),
+      ...follow((m) => localToQuad(m.quad, { width: 1, height: 1 }, local)),
     };
   }
   if (gesture === "resize") {
@@ -581,9 +581,10 @@ async function sample(ctx, gesture, point, pointerScreen) {
   if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
   // A press made while the preview reloads waits for it: Studio draws its box at the pointer meanwhile.
   const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
-  const box = waiting && m.map.toComp((await contentQuad(waiting))[0]);
+  const waitingQuad = waiting && (await contentQuad(waiting)).map(m.map.toComp);
   await waiting?.dispose();
-  return { m, p: point(m), c: m.map.toComp(pointerScreen), box };
+  const shown = waitingQuad ? { ...m, quad: waitingQuad, visible: waitingQuad } : m;
+  return { m: shown, actual: m.visible, p: point(shown), c: m.map.toComp(pointerScreen) };
 }
 
 const TRACE_CATEGORIES = ["toplevel", "devtools.timeline", "blink.user_timing"];
@@ -738,6 +739,12 @@ async function strayMove(page, [x, y]) {
  * `{ pause }` holds still; `{ stray }`: see strayMove. */
 // fallow-ignore-next-line complexity
 export async function pointerGesture(ctx, gesture, pre, route) {
+  const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
+  if (waiting) {
+    const quad = (await contentQuad(waiting)).map(pre.map.toComp);
+    pre = { ...pre, quad, visible: quad };
+    await waiting.dispose();
+  }
   const press = await handlePoint(ctx, pre, gesture);
   const pressComp = pre.map.toComp(press);
   const g = { ...plan(gesture, pre, pressComp), ...(route && { path: route(press) }) };
@@ -768,14 +775,7 @@ export async function pointerGesture(ctx, gesture, pre, route) {
     await ctx.page.mouse.move(p[0], p[1]);
     await nextFrame(ctx.page);
     last = await sample(ctx, gesture, g.point, p);
-    errors.push(
-      last.box && s0.box
-        ? dist(
-            [last.box[0] - s0.box[0], last.box[1] - s0.box[1]],
-            [last.c[0] - s0.c[0], last.c[1] - s0.c[1]],
-          )
-        : g.error(last, s0),
-    );
+    errors.push(g.error(last, s0));
   }
   const rec = await recording(ctx.page, false);
   const smooth = smoothness(rec);
@@ -789,6 +789,8 @@ export async function pointerGesture(ctx, gesture, pre, route) {
     smooth,
     diag: {
       hit,
+      actualAtRelease: last.actual,
+      shownAtRelease: lastQuad,
       grabOffset: gesture === "rotate" ? 0 : dist(s0.p, s0.c),
       errors: errors.map((e) => Math.round(e * 1000) / 1000),
     },

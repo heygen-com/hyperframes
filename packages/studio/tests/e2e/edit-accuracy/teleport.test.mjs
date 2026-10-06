@@ -35,6 +35,20 @@ const drag = [
 ];
 
 describe("scoreTeleport", () => {
+  const waitingDrag = drag.map((f) => ({ ...f, quad: box(0), waitingQuad: f.quad }));
+  it("tracks the waiting outline until the element catches up after release", () => {
+    expect(scoreTeleport("move", [...waitingDrag, frame(50, false)])).toMatchObject({
+      max: 0,
+      pass: true,
+    });
+  });
+  it("rejects a jumping outline while the element waits", () => {
+    const jumped = waitingDrag.map((f, i) => (i === 4 ? { ...f, waitingQuad: box(f.t + 37) } : f));
+    expect(scoreTeleport("move", [...jumped, frame(50, false)]).pass).toBe(false);
+  });
+  it("rejects an element that lands away from the outline after waiting", () => {
+    expect(scoreTeleport("move", [...waitingDrag, frame(50, false, 55)]).pass).toBe(false);
+  });
   it("passes a box that follows the pointer every frame", () => {
     expect(scoreTeleport("move", drag)).toMatchObject({ max: 0, pass: true });
   });
