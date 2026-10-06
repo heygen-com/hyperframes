@@ -111,8 +111,11 @@
                        target's own composition root, else 30). Pass it
                        explicitly when rendering with an fps override
                        (`hyperframes render --fps`).
+    sharp            — 1 (default) paints the element itself, crisp, over its
+                       smear; 0 hides it while it moves, leaving only the
+                       shutter average: a soft blur with no frame-time edge
 
-  A key that is none of the four, or a value that is not a finite number, is
+  A key that is none of the five, or a value that is not a finite number, is
   refused by name rather than read as defaults. Both halves matter: a
   non-numeric angle hides the smear, and a non-numeric phase seeks every copy
   to NaN, which parks them at the timeline's start.
@@ -136,7 +139,7 @@
     var POLL_MS = 32;
     var POLL_TICKS = 250;
     var SWEEP_SELECTOR = "[" + SWEEP_ATTR + "]";
-    var OPTION_KEYS = ["shutterAngle", "shutterPhase", "samplesPerFrame", "fps"];
+    var OPTION_KEYS = ["shutterAngle", "shutterPhase", "samplesPerFrame", "fps", "sharp"];
 
     // A copy is a deep clone, so the attribute rides along on the root AND on every marked
     // descendant. Any one left behind is swept as a target of its own, which clones again.
@@ -228,6 +231,7 @@
       var shutterAngle = numOption(opts.shutterAngle, 720);
       var shutterPhase = numOption(opts.shutterPhase, -360);
       var requestedSamples = numOption(opts.samplesPerFrame, 16);
+      var sharp = numOption(opts.sharp, 1) !== 0;
       var samples = Number.isFinite(requestedSamples)
         ? Math.max(2, Math.min(64, Math.round(requestedSamples)))
         : 16;
@@ -306,6 +310,7 @@
           samples: [],
           perspective: "",
           watch: null,
+          shown: el.style.visibility,
         };
 
         // Resolved styles and the parent's perspective are px once read, so a
@@ -313,7 +318,11 @@
         // that would walk the whole subtree once per copy; on resize it costs nothing
         // on a fixed-size render and keeps a live preview honest.
         function snapshot() {
+          // A copy styled while sharp 0 hides the element would inherit the hiding.
+          var hiding = el.style.visibility;
+          if (!sharp) el.style.visibility = s.shown;
           var styles = resolvedStyles(el, []);
+          el.style.visibility = hiding;
           s.perspective = parentPerspective(el);
           for (var c = 0; c < clones.length; c++) {
             paintResolvedStyles(clones[c], styles, { i: 0 });
@@ -422,6 +431,7 @@
           }
           if (!moved) {
             s.group.style.display = "none";
+            if (!sharp) s.el.style.visibility = s.shown;
             return;
           }
 
@@ -448,6 +458,7 @@
           // own opacity is the 1/N shutter weight.
           s.group.style.opacity = current.opacity;
           s.group.style.display = "";
+          if (!sharp) s.el.style.visibility = "hidden";
         });
       }
 

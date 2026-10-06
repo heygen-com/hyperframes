@@ -255,12 +255,13 @@ afterEach(async () => {
 
 describe("motion-blur snippet copies", () => {
   // The demos and the example composition have to inline the snippet — a catalog plate is a single
-  // self-contained file and cannot import one. That makes four copies of the same shutter model, so
+  // self-contained file and cannot import one. That makes five copies of the same shutter model, so
   // the copies are asserted equal here rather than left to drift silently.
   it.each([
     "registry/components/motion-blur/demo.html",
     "registry/components/shutter-slam/shutter-slam.html",
     "registry/components/shutter-slam/demo.html",
+    "registry/blocks/gooey-split/gooey-split.html",
   ])("%s inlines the installable snippet verbatim", (relativePath) => {
     expect(snippetBody(readRepoFile(relativePath))).toBe(snippetBody(snippetHtml));
   });
@@ -314,6 +315,37 @@ describe("motion-blur shutter matches the After Effects reference", () => {
     // group has to precede the element rather than follow it.
     expect(group.nextElementSibling).toBe(word);
     expect(word.style.opacity).toBe("");
+  });
+
+  it("leaves only the shutter average while moving at sharp 0, and the element at rest", async () => {
+    let speed = 1;
+    const { group, word, fire } = await attach({ sharp: 0 }, (df) => translating(df * speed));
+
+    expect(group.style.display).toBe("");
+    expect(word.style.visibility).toBe("hidden");
+
+    speed = 0;
+    fire();
+    await Promise.resolve();
+
+    expect(group.style.display).toBe("none");
+    expect(word.style.visibility).toBe("");
+  });
+
+  it("styles the copies from the shown element when a resize lands while sharp 0 hides it", async () => {
+    const observer = installResizeObserver();
+    const { word } = await attach({ sharp: 0 });
+    const seen: string[] = [];
+    const mocked = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((element: Element) => {
+      if (element === word) seen.push(word.style.visibility);
+      return mocked(element);
+    }) as typeof globalThis.getComputedStyle;
+
+    observer.resize();
+
+    expect(seen[0]).toBe("");
+    expect(word.style.visibility).toBe("hidden");
   });
 
   it("carries the element's own opacity on the smear", async () => {
