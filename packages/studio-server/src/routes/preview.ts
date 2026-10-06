@@ -13,7 +13,10 @@ import {
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
 } from "@hyperframes/core/compiler";
-import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import {
+  STUDIO_PREVIEW_MARK_META,
+  STUDIO_PREVIEW_ERRORS,
+} from "@hyperframes/core/studio-preview-mark";
 import { gsapCdnDist, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -247,15 +250,17 @@ const GSAP_CDN_FALLBACK_SCRIPT = `<script ${GSAP_FALLBACK_ATTR}>
     if(loaded[file])return loaded[file];
     return loaded[file]=new Promise(function(ok,fail){
       var s=document.createElement("script");
-      s.src=cdnBase+file;s.onload=ok;s.onerror=fail;
+      s.src=cdnBase+file;s.hfGsapFallback=true;s.onload=ok;s.onerror=fail;
       document.head.appendChild(s);
     });
   }
   document.addEventListener("error",function(e){
     var t=e.target;
-    if(!t||t.tagName!=="SCRIPT"||!t.src)return;
+    if(!t||t.tagName!=="SCRIPT"||!t.src||t.hfGsapFallback)return;
     var m=t.src.match(/gsap[^/]*\\/dist\\/(.+\\.js)/);
-    if(m)loadFallback(m[1]);
+    if(m)loadFallback(m[1]).catch(function(){
+      reportError(new Error("GSAP could not load from "+t.src+" or "+cdnBase+m[1]+", so this preview's animations will not play."));
+    });
   },true);
 })();
 </script>`;
@@ -313,6 +318,10 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 /** Captures screenshot right after a seek, so they get every image eager and no preview mark. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
 
+// Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
+const EARLY_ERRORS_SCRIPT = `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[];
+addEventListener("error",function(e){seen.push(e.message)});})();</script>`;
+
 function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
@@ -322,7 +331,10 @@ function injectStudioPreviewAugmentations(
 ): string {
   const marked = capture
     ? html
-    : injectTagsAtHeadStart(lazyPreviewImages(html), `<meta name="${STUDIO_PREVIEW_MARK_META}">`);
+    : injectTagsAtHeadStart(
+        lazyPreviewImages(html),
+        `<meta name="${STUDIO_PREVIEW_MARK_META}">${EARLY_ERRORS_SCRIPT}`,
+      );
   return injectStudioMotionScript(
     injectMotionPathPluginIfNeeded(
       injectGsapCdnFallback(

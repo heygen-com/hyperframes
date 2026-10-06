@@ -21,7 +21,10 @@ import {
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import {
+  STUDIO_PREVIEW_ERRORS,
+  STUDIO_PREVIEW_MARK_META,
+} from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
@@ -218,6 +221,64 @@ describe("registerPreviewRoutes", () => {
     expect(mark).toBeGreaterThan(-1);
     expect(mark).toBeLessThan(html.indexOf("/api/runtime.js"));
     expect(html).toContain("<script data-hf-gsap-fallback>");
+  });
+
+  it("reports a GSAP script that fails from the CDN and from the fallback, never rejecting unhandled", async () => {
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(createProjectDir()));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const fallback = /<script data-hf-gsap-fallback>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+    let onDocumentError: (event: { target: unknown }) => void = () => undefined;
+    const appended: { tagName: string; src: string; onerror?: (event: Event) => void }[] = [];
+    const doc = {
+      addEventListener: (_type: string, listener: typeof onDocumentError) => {
+        onDocumentError = listener;
+      },
+      createElement: () => ({ tagName: "SCRIPT", src: "" }),
+      head: { appendChild: (script: (typeof appended)[number]) => appended.push(script) },
+    };
+    const reported: unknown[] = [];
+    new Function("document", "reportError", fallback)(doc, (error: unknown) =>
+      reported.push(error),
+    );
+
+    const authored = "https://cdn.example/npm/gsap@3.14.2/dist/gsap.min.js";
+    onDocumentError({ target: { tagName: "SCRIPT", src: authored } });
+    expect(appended).toHaveLength(1);
+    // The fallback's own failure reaches the document's capture listener first; it must not load or report again.
+    onDocumentError({ target: appended[0] });
+    appended[0]?.onerror?.(new Event("error"));
+
+    await vi.waitFor(() => expect(reported).toHaveLength(1));
+    const message = reported[0] instanceof Error ? reported[0].message : "";
+    expect(message).toContain(authored);
+    expect(message).toContain(appended[0]?.src);
+  });
+
+  it("keeps every error a Studio preview raises from its first script, and leaves captures without it", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!DOCTYPE html><html><head><script src="app.js"></script></head><body></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const url = "http://localhost/projects/demo/preview";
+    const html = await (await app.request(url)).text();
+    const capture = await (await app.request(`${url}?${PREVIEW_CAPTURE_PARAM}=1`)).text();
+    const keeper = new RegExp(`<script>([^<]*${STUDIO_PREVIEW_ERRORS}[^<]*)</script>`);
+    expect(capture).not.toMatch(keeper);
+    const body = keeper.exec(html)?.[1] ?? "";
+    expect(html.indexOf(body)).toBeLessThan(html.indexOf('<script src="app.js">'));
+
+    const previewWindow: Record<string, unknown> = {};
+    let raise: (event: { message: string }) => void = () => undefined;
+    new Function("window", "addEventListener", body)(
+      previewWindow,
+      (_type: string, listener: typeof raise) => (raise = listener),
+    );
+    raise({ message: "Uncaught Error: GSAP could not load" });
+    expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["Uncaught Error: GSAP could not load"]);
   });
 
   it("serves a later scene's image lazy, and captures every image eager with no mark", async () => {

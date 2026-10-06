@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import type { LintFinding } from "../components/LintModal";
 
 /**
@@ -46,25 +47,23 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
         if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
         (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
         patchedWin = win;
+        const record = (texts: string[]) => {
+          if (texts.length === 0) return;
+          consoleErrorsRef.current = [
+            ...consoleErrorsRef.current,
+            ...texts.map((message) => ({ severity: "error" as const, message })),
+          ];
+          setConsoleErrors([...consoleErrorsRef.current]);
+        };
         origConsoleError = win.console.error.bind(win.console);
         win.console.error = function (...args: unknown[]) {
           origConsoleError!(...args);
           const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
-          if (text.includes("favicon")) return;
-          consoleErrorsRef.current = [
-            ...consoleErrorsRef.current,
-            { severity: "error", message: text },
-          ];
-          setConsoleErrors([...consoleErrorsRef.current]);
+          if (!text.includes("favicon")) record([text]);
         };
-        errorHandler = (e: ErrorEvent) => {
-          const text = e.message || String(e);
-          consoleErrorsRef.current = [
-            ...consoleErrorsRef.current,
-            { severity: "error", message: text },
-          ];
-          setConsoleErrors([...consoleErrorsRef.current]);
-        };
+        errorHandler = (e: ErrorEvent) => record([e.message || String(e)]);
+        const raised: unknown = (win as unknown as Record<string, unknown>)[STUDIO_PREVIEW_ERRORS];
+        if (Array.isArray(raised)) record(raised.map(String));
         win.addEventListener("error", errorHandler);
       } catch {
         /* same-origin only */
