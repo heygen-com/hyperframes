@@ -84,6 +84,7 @@ const PROJECT: ProjectDir = {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -605,7 +606,7 @@ describe("keepBrokenImageAborts", () => {
         { kind: "none" },
         runAuditGrid,
       );
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.runAllTimersAsync();
       const result = await checked;
       expect(result.runtimeFindings.filter((finding) => finding.code === "request_failed")).toEqual(
         [],
