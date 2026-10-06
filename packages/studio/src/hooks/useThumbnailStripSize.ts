@@ -102,17 +102,10 @@ const read = (target: Element, strip: Strip) => {
 const commit = (updates: (readonly [Apply, Partial<StripSize>])[]) =>
   flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
 
-// A zoom preview scales the strips, so a box read then is wrong; reads wait for it to end.
-let staleSincePreview = false;
-const previewing = () => {
-  if (!isTimelineZoomPreviewing()) return false;
-  staleSincePreview = true;
-  return true;
-};
-
+// A zoom preview scales the strips, so a box read then is wrong: reads wait, and every strip is
+// measured again each time a preview is laid out (also mid-ease, as a zoom-out lays out first).
 const remeasureAfterPreview = () => {
-  if (!staleSincePreview || isTimelineZoomPreviewing()) return;
-  staleSincePreview = false;
+  if (isTimelineZoomPreviewing()) return;
   commit(
     [...strips].map(
       ([target, strip]) =>
@@ -126,7 +119,7 @@ const remeasureAfterPreview = () => {
 
 const refresh = () => {
   frame = 0;
-  if (previewing()) return;
+  if (isTimelineZoomPreviewing()) return;
   const offsetsNow = new Map<Element | null, { x: number; y: number }>();
   const updates: (readonly [Apply, Partial<StripSize>])[] = [];
   for (const [target, strip] of strips) {
@@ -150,7 +143,7 @@ const scheduleRefresh = () => {
 };
 
 const measure = (entries: { target: Element; size?: { width: number; height: number } }[]) =>
-  previewing() ||
+  isTimelineZoomPreviewing() ||
   commit(
     entries.flatMap(({ target, size }) => {
       const strip = strips.get(target);

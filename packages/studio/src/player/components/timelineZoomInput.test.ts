@@ -5,6 +5,8 @@ import { usePlayerStore } from "../store/playerStore";
 import { isTimelineMoving, subscribeTimelineMotion } from "./timelineMotion";
 import {
   cancelTimelineZoom,
+  isTimelineZoomPreviewing,
+  subscribeTimelineZoomPreview,
   redrawTimelineZoomPreview,
   currentTimelineRange,
   currentTimelineZoomPercent,
@@ -186,6 +188,19 @@ describe("requestTimelineZoom", () => {
     requestTimelineZoom(150);
     settleTimelineZoom();
     expect(usePlayerStore.getState().timelinePps).toBe(15);
+  });
+
+  it("tells listeners when a pending zoom is dropped", () => {
+    viewport();
+    requestTimelineZoom(150);
+    vi.advanceTimersToNextFrame();
+    let shownAfterDrop: boolean | null = null;
+    const unsubscribe = subscribeTimelineZoomPreview(() => {
+      shownAfterDrop = isTimelineZoomPreviewing();
+    });
+    cancelTimelineZoom();
+    unsubscribe();
+    expect(shownAfterDrop).toBe(false);
   });
 
   it("drops a pending zoom when cancelled, as Fit does", () => {
@@ -384,6 +399,26 @@ describe("zoomTimelineStep", () => {
     expect(laidOut).toEqual([20]);
     // Counted once as the person's zoom: the end of the ease writes nothing more.
     expect(usePlayerStore.getState().userZoomCount).toBe(1);
+  });
+
+  it("eases a zoom-out that pans away without laying its target out first", () => {
+    // 100..126 s on screen at 40 px/s; the playhead at 0 s is off screen, so the new view
+    // (centred on it) does not hold the old one.
+    usePlayerStore.setState({
+      duration: 1000,
+      zoomMode: "manual",
+      manualZoomPercent: 400,
+      timelinePps: 40,
+    });
+    viewport(4000);
+    const laidOut: number[] = [];
+    const unsubscribe = usePlayerStore.subscribe((s, prev) => {
+      if (s.timelinePps !== prev.timelinePps) laidOut.push(s.timelinePps);
+    });
+    zoomTimelineStep("out");
+    vi.advanceTimersToNextFrame();
+    unsubscribe();
+    expect(laidOut[0]).not.toBe(20);
   });
 
   it("centres an off-screen playhead", () => {
