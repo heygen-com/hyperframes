@@ -5,6 +5,7 @@ import {
 } from "./domEditOverlayGeometry";
 import { findElementForSelection, type DomEditSelection } from "./domEditing";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
+import { resolveCenterResizeScale } from "./domEditResizeLocal";
 import {
   PRESS_WAITING_ATTR,
   type WaitingPressState,
@@ -39,27 +40,47 @@ export function createPreviewGestureStarts(
     opts.rafPausedRef.current = false;
   };
 
+  /** Ends the press still held, if any; presses already released are finished edits and still land. */
+  const endHeldPress = () => {
+    const held = opts.waitingPressRef.current;
+    if (!held || held.released) return;
+    held.ended = true;
+    cancelAnimationFrame(held.frame);
+    const before = held.after;
+    opts.waitingPressRef.current = before;
+    if (!before) {
+      opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
+      opts.rafPausedRef.current = false;
+    } else if (before.moved)
+      before.draw?.(before.moved.clientX - before.startX, before.moved.clientY - before.startY);
+  };
+
   const drawPressedBox = (origin: OverlayRect | null): WaitingPressState["draw"] =>
     origin && ((dx, dy) => opts.setOverlayRect(shiftedOverlayRect(origin, dx, dy)));
 
-  // A corner resize grows about the element's centre.
+  // A corner resize scales about the element's centre by the pointer's distance from it, as the resize does.
   const drawResizedBox = (
     origin: OverlayRect | null,
-    handle: ResizeHandle = "se",
+    press: { x: number; y: number },
   ): WaitingPressState["draw"] => {
-    const sx = handle.includes("e") ? 1 : -1;
-    const sy = handle.includes("s") ? 1 : -1;
-    return (
-      origin &&
-      ((dx, dy) =>
-        opts.setOverlayRect({
-          ...origin,
-          left: origin.left - sx * dx,
-          top: origin.top - sy * dy,
-          width: Math.max(1, origin.width + 2 * sx * dx),
-          height: Math.max(1, origin.height + 2 * sy * dy),
-        }))
-    );
+    if (!origin) return null;
+    const bounds = opts.overlayRef.current?.getBoundingClientRect();
+    const centre = {
+      x: (bounds?.left ?? 0) + origin.left + origin.width / 2,
+      y: (bounds?.top ?? 0) + origin.top + origin.height / 2,
+    };
+    return (dx, dy) => {
+      const pointer = { x: press.x + dx, y: press.y + dy };
+      const scale = resolveCenterResizeScale({ pointer, pointerStart: press, centerStart: centre });
+      const [width, height] = [origin.width * scale, origin.height * scale];
+      opts.setOverlayRect({
+        ...origin,
+        left: origin.left + (origin.width - width) / 2,
+        top: origin.top + (origin.height - height) / 2,
+        width,
+        height,
+      });
+    };
   };
 
   // A press on the page a reload is replacing would edit it by its old rules: it starts on the new page instead.
@@ -177,19 +198,21 @@ export function createPreviewGestureStarts(
       resizeHandle?: ResizeHandle;
     },
   ) => {
+    // A replay edits what was pressed, though another element may be selected by then.
+    const target = options?.selection ?? opts.selectionRef.current;
     let draw: WaitingPressState["draw"] = null;
     if (kind === "drag") draw = drawPressedBox(opts.overlayRectRef.current);
     if (kind === "resize")
-      draw = drawResizedBox(opts.overlayRectRef.current, options?.resizeHandle);
+      draw = drawResizedBox(opts.overlayRectRef.current, { x: e.clientX, y: e.clientY });
     return startOnShownPreview(
       e,
       () => {
-        const element = opts.selectionRef.current?.element;
-        return element ? [element] : [];
+        const shown = target && shownSelection(target);
+        return shown ? [shown.element] : [];
       },
       (pressed, at, waited) => {
         if (!waited) return _startGesture(kind, pressed, opts, { ...options, at });
-        const selection = opts.selectionRef.current;
+        const selection = target && shownSelection(target);
         const rect = selection && shownRect(selection.element);
         return (
           !!(selection && rect) &&
@@ -205,5 +228,5 @@ export function createPreviewGestureStarts(
     );
   };
 
-  return { startGesture, startGroupDrag, endWaitingPress };
+  return { startGesture, startGroupDrag, endWaitingPress, endHeldPress };
 }

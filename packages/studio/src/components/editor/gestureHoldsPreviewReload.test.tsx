@@ -86,6 +86,14 @@ const marked = (doc: Document) => doc.querySelectorAll(`[${STUDIO_MANUAL_EDIT_GE
 const byId = (iframe: HTMLIFrameElement | null, id: string) =>
   iframe!.contentDocument!.getElementById(id) as HTMLElement;
 const api = (): TimelinePlayerApi => player.getApi();
+/** The south-east resize handle. */
+const corner = (overlay: HTMLElement) =>
+  [...overlay.querySelectorAll<HTMLElement>("div.h-4.w-4")].reduce((a, b) =>
+    parseFloat(b.style.left) + parseFloat(b.style.top) >
+    parseFloat(a.style.left) + parseFloat(a.style.top)
+      ? b
+      : a,
+  );
 
 function pointer(
   target: Element,
@@ -231,13 +239,6 @@ describe("a reload during a drag", () => {
   );
 
   const handle = (overlay: HTMLElement, selector: string) => overlay.querySelector(selector)!;
-  const corner = (overlay: HTMLElement) =>
-    [...overlay.querySelectorAll<HTMLElement>("div.h-4.w-4")].reduce((a, b) =>
-      parseFloat(b.style.left) + parseFloat(b.style.top) >
-      parseFloat(a.style.left) + parseFloat(a.style.top)
-        ? b
-        : a,
-    );
   // Each edit presses at `from`, drags to `to`, and releases on `on`.
   const edits = {
     move: (o: HTMLElement) => ({ press: handle(o, BOX), on: o, from: [150, 150], to: [190, 170] }),
@@ -438,6 +439,80 @@ describe("a press while a script write is out", () => {
       { x: 40, y: 20 },
       { x: 50, y: 20 },
     ]);
+  });
+
+  it("moves the element it pressed, even when another is selected before the write lands", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    editor.render(false, makeSelection("sub", byId(editor.live, "sub")));
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    expect(file.sub).toBe("");
+  });
+
+  it("draws a waiting resize at the size it saves", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(corner(editor.overlay), "pointerdown", 300, 200);
+    pointer(editor.overlay, "pointermove", 340, 200);
+    pointer(editor.overlay, "pointerup", 340, 200);
+    const box = editor.box as HTMLElement;
+    const drawn = [box.style.width, box.style.height].map(Number.parseFloat);
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toMatch(/^width: /));
+    const saved = Number.parseFloat(file.title.slice("width: ".length));
+    // The save rounds to whole px.
+    expect(drawn[0]).toBeCloseTo(saved, 0);
+    expect(drawn[1]).toBeCloseTo((saved * RECT.height) / RECT.width, 0);
+  });
+
+  it("lands a released drag when the window loses focus before the write does", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    act(() => void window.dispatchEvent(new Event("blur")));
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+  });
+
+  it("drops only the press still held when the window loses focus", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    pointer(editor.box, "pointerdown", 190, 170);
+    pointer(editor.overlay, "pointermove", 220, 170);
+    act(() => void window.dispatchEvent(new Event("blur")));
+    expect((editor.box as HTMLElement).style.left, "back to the released drop").toBe("140px");
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    expect(editor.onPathOffsetCommit).toHaveBeenCalledTimes(1);
   });
 });
 

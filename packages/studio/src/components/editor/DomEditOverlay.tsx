@@ -303,17 +303,17 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   });
 
   useEffect(() => {
-    if (readOnly) gestures.clearPointerState(selectionRef);
+    if (readOnly) gestures.clearPointerState(selectionRef, true);
   }, [gestures, readOnly, selectionRef]);
   // A gesture that loses its pointer, the window or the overlay is cancelled, so its mark goes too.
-  const cancelGestureRef = useRef(() => {});
-  cancelGestureRef.current = () => gestures.clearPointerState(selectionRef);
+  const cancelGestureRef = useRef((_dropQueued?: boolean) => {});
+  cancelGestureRef.current = (dropQueued) => gestures.clearPointerState(selectionRef, dropQueued);
   useMountEffect(() => {
     const cancel = () => cancelGestureRef.current();
     window.addEventListener("blur", cancel);
     return () => {
       window.removeEventListener("blur", cancel);
-      cancel();
+      cancelGestureRef.current(true);
     };
   });
 

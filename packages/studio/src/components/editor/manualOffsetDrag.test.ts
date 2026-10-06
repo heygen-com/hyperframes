@@ -456,7 +456,10 @@ describe("a drag that starts while an earlier gesture is still saving", () => {
   it("keeps the timelines paused until the later drag ends", () => {
     const { element, member } = makeGsapDot();
     let paused = false;
-    const timeline = { pause: () => (paused = true), paused: (v?: boolean) => (paused = v ?? paused) };
+    const timeline = {
+      pause: () => (paused = true),
+      paused: (v?: boolean) => (paused = v ?? paused),
+    };
     (element.ownerDocument.defaultView as unknown as { __timelines: unknown }).__timelines = {
       main: timeline,
     };

@@ -95,11 +95,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     setDraftGroupOverlayItems(g.originItems);
   };
 
-  const { startGesture, startGroupDrag, endWaitingPress } = createPreviewGestureStarts(
-    opts,
-    (event) => moveActiveGesture(event),
-    (event) => releaseActiveGesture(event),
-  );
+  const { startGesture, startGroupDrag, endWaitingPress, endHeldPress } =
+    createPreviewGestureStarts(
+      opts,
+      (event) => moveActiveGesture(event),
+      (event) => releaseActiveGesture(event),
+    );
 
   // A press on a box that cannot move says why at once.
   const startBlockedMove = (e: React.PointerEvent<HTMLElement>, selection: DomEditSelection) => {
@@ -536,8 +537,13 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
   };
 
   // fallow-ignore-next-line complexity
-  const clearPointerState = (selectionRef: RefObject<DomEditSelection | null>) => {
-    if (opts.waitingPressRef.current) endWaitingPress();
+  /** `dropQueued`: released presses still waiting go too, as when the overlay leaves or turns read-only. */
+  const clearPointerState = (
+    selectionRef: RefObject<DomEditSelection | null>,
+    dropQueued = false,
+  ) => {
+    if (dropQueued) endWaitingPress();
+    else endHeldPress();
     opts.snapGuidesRef.current = null;
     const groupG = opts.groupGestureRef.current;
     if (groupG) restoreGroupPathOffsets(groupG);
