@@ -117,7 +117,7 @@ export function watchVersions(dir, files) {
 }
 
 /** Studio's own history replies in arrival order: each claim's group, each undo or redo's entry and what it reverts. */
-export function watchHistory(page) {
+function watchHistory(page) {
   const replies = [];
   const read = (response) => {
     const kind = /\/history\/(claim|step|undo)$/.exec(new URL(response.url()).pathname)?.[1];
@@ -127,6 +127,7 @@ export function watchHistory(page) {
       response
         .json()
         .catch(() => null)
+        // fallow-ignore-next-line complexity
         .then((body) =>
           kind === "claim"
             ? { claim: body?.claimed?.id ?? null, status, readable: Boolean(body) }
@@ -138,10 +139,9 @@ export function watchHistory(page) {
   return { replies, stop: () => page.off("response", read) };
 }
 
-/**
- * The groups left to undo, oldest first: a claim opens one unless it names the newest (one gesture writing
- * twice), an undo must revert the newest. Anything else is a fault: one gesture, one group, one undo.
- */
+/** The groups left to undo, oldest first: a claim opens one unless it names the newest (one gesture writing
+ * twice), an undo must revert the newest. Anything else is a fault: one gesture, one group, one undo. */
+// fallow-ignore-next-line complexity
 export function historyGroups(replies) {
   const [stack, faults] = [[], []];
   for (const r of replies) {

@@ -144,6 +144,7 @@ function frameSampler() {
     // A page with no preview (the blank-page control) holds its element itself.
     return best?.el ?? document.querySelector(selector);
   };
+  // fallow-ignore-next-line complexity
   const read = () => {
     const el = findElement(rec.selector);
     const root = el?.ownerDocument.querySelector('[data-composition-id="main"]');

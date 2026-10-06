@@ -34,15 +34,12 @@ export function setStudioPendingEditClaimClock(read: (() => number) | null): voi
   historyClaims = read ?? (() => 0);
 }
 const NOT_SAVED = () => Promise.resolve(false);
-// Not a pending edit: a reload waits for those, and a waiting press waits for the reload.
 let cancelWaitingPress: (() => boolean) | null = null;
 
-/** The newest released canvas press still waiting to run; Cmd+Z takes it back before it ever runs. */
 export function setStudioWaitingPressCancel(cancel: (() => boolean) | null): void {
   cancelWaitingPress = cancel;
 }
 
-/** Studio's Cmd+Z: true when it took back a waiting press, which never reached history. */
 export function cancelNewestStudioWaitingPress(): boolean {
   return cancelWaitingPress?.() ?? false;
 }
