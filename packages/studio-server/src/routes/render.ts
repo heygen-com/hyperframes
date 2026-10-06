@@ -5,7 +5,12 @@ import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
-import { folderGone, mkdirWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import {
+  folderGone,
+  isPrivateProjectFile,
+  mkdirWithinProject,
+  resolveWithinProject,
+} from "../helpers/safePath.js";
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
@@ -274,7 +279,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     // readFileSync still followed an in-rendersDir symlink pointing outside the
     // dir; resolveWithinProject canonicalizes with realpath before serving.
     const fp = resolveWithinProject(rendersDir, filename);
-    if (!fp) return c.json({ error: "forbidden" }, 403);
+    // The check above sees a path inside renders/; a renders/ linked into .hyperframes/ is caught against the project.
+    if (!fp || isPrivateProjectFile(project.dir, fp)) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
     const content = readFileSync(fp);

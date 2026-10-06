@@ -2300,4 +2300,15 @@ describe("the desktop app's private folder", () => {
       expect(await res.text()).not.toContain("secret");
     }
   });
+  it("still serves the app's request pictures", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, ".hyperframes", "requests", "1"), { recursive: true });
+    writeFileSync(join(projectDir, ".hyperframes", "requests", "1", "before.png"), "png");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request(
+      "http://localhost/projects/demo/preview/.hyperframes/requests/1/before.png",
+    );
+    expect(res.status).toBe(200);
+  });
 });

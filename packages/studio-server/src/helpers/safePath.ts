@@ -1,6 +1,8 @@
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { readdirSync, type Dirent } from "node:fs";
 import { realpath, resolveWithinProject as resolveInProject } from "@hyperframes/core/safe-path";
+import { STUDIO_MANUAL_EDITS_PATH } from "./manualEditsRenderScript.js";
+import { STUDIO_MOTION_PATH } from "./studioMotionRenderScript.js";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
@@ -31,12 +33,9 @@ export function realFilePath(filePath: string): string {
 }
 
 // `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no route
-// reaches any of it, the folder itself included, but these files of Studio's own.
-const STUDIO_FILES = new Set([
-  ".hyperframes/studio-motion.json",
-  ".hyperframes/studio-manual-edits.json",
-]);
-const STUDIO_FOLDERS = [".hyperframes/prepared-assets/"];
+// reaches any of it, the folder itself included, but Studio's own files and the app's request pictures.
+const STUDIO_FILES = new Set([STUDIO_MOTION_PATH, STUDIO_MANUAL_EDITS_PATH]);
+const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
 
 /** For a project-relative path with `/` separators. */
 export function isPrivateProjectPath(relPath: string): boolean {
@@ -44,7 +43,7 @@ export function isPrivateProjectPath(relPath: string): boolean {
   return (
     (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
     !STUDIO_FILES.has(path) &&
-    !STUDIO_FOLDERS.some((folder) => path.startsWith(folder))
+    !STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
   );
 }
 

@@ -803,7 +803,7 @@ function updateReferences(
   const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
   for (const file of textFiles) {
-    if (!isSafePath(projectDir, file)) continue;
+    if (!isSafePath(projectDir, file) || isPrivateProjectFile(projectDir, file)) continue;
     const content = readableText(file);
     if (content === null) continue;
 

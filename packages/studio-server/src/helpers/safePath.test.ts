@@ -84,7 +84,7 @@ describe("walkDir", () => {
 });
 
 describe("isPrivateProjectFile", () => {
-  it("names everything under .hyperframes/ but Studio's own files, in any case", () => {
+  it("names everything under .hyperframes/ but Studio's own files and request pictures, in any case", () => {
     for (const name of [
       "agent-handoff.json",
       "agent-handoff-read.json",
@@ -97,6 +97,9 @@ describe("isPrivateProjectFile", () => {
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/studio-motion.json")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/studio-manual-edits.json")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/gif/a.mp4")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests/1/before.png")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests-old/x")).toBe(true);
     expect(isPrivateProjectFile("/p", "/p/agent-handoff.json")).toBe(false);
   });
 });

@@ -751,6 +751,21 @@ describe("the desktop app's private files", () => {
     expect(existsSync(join(project, "x"))).toBe(false);
   });
 
+  it("are neither read nor rewritten when a rename updates references", async () => {
+    const { app, project } = fixture();
+    mkdirSync(join(project, ".hyperframes"));
+    const share = join(project, ".hyperframes", "share.json");
+    writeFileSync(share, '{"ref":"inside.txt"}');
+    const response = await app.request("/projects/p/files/inside.txt", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "moved.txt" }),
+    });
+    expect(response.status).toBe(200);
+    expect(readFileSync(share, "utf8")).toBe('{"ref":"inside.txt"}');
+    expect((await response.json()).updatedReferences).toBe(0);
+  });
+
   it("leave Studio's own files under .hyperframes/ reachable", async () => {
     const { app, project } = fixture();
     mkdirSync(join(project, ".hyperframes", "prepared-assets", "gif"), { recursive: true });
