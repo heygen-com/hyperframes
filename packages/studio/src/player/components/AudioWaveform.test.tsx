@@ -12,6 +12,7 @@ vi.mock("../../hooks/useThumbnailLease", () => ({
 }));
 
 import { AudioWaveform, drawWaveformCanvas } from "./AudioWaveform";
+import { markTimelineMotion } from "./timelineMotion";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,6 +50,51 @@ describe("AudioWaveform", () => {
       [3, 18, 3, 2],
       [3, 0, 3, 20],
     ]);
+  });
+
+  it("draws only the span of the clip it is given", () => {
+    const { canvas, fills } = recordingCanvas();
+    // The clip's second half holds the loud peak only.
+    drawWaveformCanvas(canvas, [0.25, 1], false, 0, 1, null, { from: 0.5, to: 1 });
+    const bars = fills.filter(([, , y, , height]) => !(y === 18 && height === 2));
+    expect(bars.map(([, , y, , height]) => [y, height])).toEqual([
+      [0, 20],
+      [0, 20],
+    ]);
+  });
+
+  it("redraws when the timeline comes to rest, not at each zoom step", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    leaseSpy.mockImplementation(
+      () => ({ status: "ready", value: { kind: "waveform", peaks: [0.5, 1] } }) as never,
+    );
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <AudioWaveform
+          audioUrl="/media/voice.wav"
+          label=""
+          labelColor="#fff"
+          projectId="project-a"
+          sessionEpoch={1}
+          priority="visible"
+        />,
+      );
+    });
+    const drawn = getContext.mock.calls.length;
+    expect(drawn).toBeGreaterThan(0);
+    act(() => markTimelineMotion());
+    expect(getContext.mock.calls.length).toBe(drawn);
+    act(() => vi.runOnlyPendingTimers());
+    expect(getContext.mock.calls.length).toBe(drawn + 1);
+    act(() => root.unmount());
+    getContext.mockRestore();
+    leaseSpy.mockReset();
+    leaseSpy.mockImplementation(() => ({ status: "loading" as const }));
+    vi.useRealTimers();
   });
 
   it("shrinks each bar to the fade's gain and keeps the cut-away part as a ghost", () => {
