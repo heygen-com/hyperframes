@@ -63,6 +63,7 @@ interface RuntimeDraft {
   url?: string;
   line?: number;
   count?: number;
+  abortedImage?: boolean;
 }
 
 interface AnchorRequest {
@@ -164,6 +165,7 @@ export async function runBrowserCheck(
     options.autoProxy,
   );
   const drafts: RuntimeDraft[] = [];
+  const loadedImages = new Set<string>();
   let currentTime = 0;
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
 
@@ -174,7 +176,7 @@ export async function runBrowserCheck(
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
       browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
-      beforeNavigate: (page) => wireRuntimeListeners(page, drafts, () => currentTime),
+      beforeNavigate: (page) => wireRuntimeListeners(page, drafts, loadedImages, () => currentTime),
     });
     chromeBrowser = session.browser;
     const page = session.page;
@@ -195,10 +197,13 @@ export async function runBrowserCheck(
       currentTime = time;
     });
     const result = await runGrid(driver, options, motion);
+    const shown = await imagesStillShown(page, drafts);
     return {
       ...result,
       timings: { ...result.timings, launchSettleMs },
-      runtimeFindings: drafts.map((draft) => runtimeFinding(draft, rootAnchor)),
+      runtimeFindings: keepUnreplacedImageAborts(drafts, shown, loadedImages).map((draft) =>
+        runtimeFinding(draft, rootAnchor),
+      ),
     };
   } finally {
     await chromeBrowser?.close().catch(() => undefined);
@@ -313,7 +318,12 @@ function runtimeInfoFindingCode(text: string): string | null {
     : "media_proxy_fallback";
 }
 
-function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
+function wireRuntimeListeners(
+  page: Page,
+  drafts: RuntimeDraft[],
+  loadedImages: Set<string>,
+  currentTime: () => number,
+): void {
   page.on("console", (message) => {
     const type = message.type();
     const text = message.text();
@@ -364,10 +374,39 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       time: currentTime(),
     });
   });
-  wireNetworkListeners(page, drafts, currentTime);
+  wireNetworkListeners(page, drafts, loadedImages, currentTime);
 }
 
-function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
+/** A scrub that swaps an image's source cancels its load: only an image still shown and never loaded failed. */
+export function keepUnreplacedImageAborts(
+  drafts: RuntimeDraft[],
+  shown: Set<string>,
+  loaded: Set<string>,
+): RuntimeDraft[] {
+  return drafts.filter(
+    (draft) => !draft.abortedImage || (shown.has(draft.url ?? "") && !loaded.has(draft.url ?? "")),
+  );
+}
+
+async function imagesStillShown(page: Page, drafts: RuntimeDraft[]): Promise<Set<string>> {
+  const urls = drafts.filter((draft) => draft.abortedImage).map((draft) => draft.url ?? "");
+  if (urls.length === 0) return new Set();
+  const shown = await page.evaluate(
+    (candidates: string[]) =>
+      candidates.filter((url) =>
+        Array.from(document.images).some((img) => img.currentSrc === url || img.src === url),
+      ),
+    urls,
+  );
+  return new Set(shown);
+}
+
+function wireNetworkListeners(
+  page: Page,
+  drafts: RuntimeDraft[],
+  loadedImages: Set<string>,
+  currentTime: () => number,
+): void {
   page.on("requestfailed", (request) => {
     const url = request.url();
     if (url.includes("favicon") || url.startsWith("data:")) return;
@@ -379,7 +418,12 @@ function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       message: `Failed to load ${urlPath(url)}: ${failure ?? "net::ERR_FAILED"}`,
       time: currentTime(),
       url,
+      abortedImage: failure === "net::ERR_ABORTED" && request.resourceType() === "image",
     });
+  });
+  page.on("requestfinished", (request) => {
+    if (request.resourceType() === "image" && request.response()?.ok())
+      loadedImages.add(request.url());
   });
   page.on("response", (response) => {
     if (response.status() < 400) return;

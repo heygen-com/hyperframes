@@ -11,6 +11,7 @@ import {
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
 import {
   captureOverviewShot,
+  keepUnreplacedImageAborts,
   preResolveHostileMediaProxies,
   runBrowserCheck,
 } from "./checkBrowser.js";
@@ -524,6 +525,30 @@ it("elevates and deduplicates WebGPU validation warnings while preserving ordina
       message: ordinaryWarning.text(),
     }),
   );
+});
+
+describe("keepUnreplacedImageAborts", () => {
+  const draft = (url: string, abortedImage: boolean) => ({
+    code: "request_failed",
+    severity: "error" as const,
+    message: `Failed to load ${url}`,
+    time: 0,
+    url,
+    abortedImage,
+  });
+
+  it("drops an image load a later swap cancelled, and keeps one still shown that never loaded", () => {
+    const swappedPast = draft("http://h/seq/0004.png", true);
+    const reloaded = draft("http://h/seq/0012.png", true);
+    const stuck = draft("http://h/plate.png", true);
+    const missing = draft("http://h/gone.png", false);
+    const kept = keepUnreplacedImageAborts(
+      [swappedPast, reloaded, stuck, missing],
+      new Set(["http://h/seq/0012.png", "http://h/plate.png"]),
+      new Set(["http://h/seq/0012.png"]),
+    );
+    expect(kept).toEqual([stuck, missing]);
+  });
 });
 
 describe("preResolveHostileMediaProxies", () => {
