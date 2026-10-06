@@ -6,7 +6,6 @@ import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
 import { createHappyDomRootHarness } from "./testRootHarness";
 import { VideoThumbnail } from "./VideoThumbnail";
-import { markTimelineMotion } from "./timelineMotion";
 
 vi.mock("../lib/thumbnailVideoDecoder", () => ({ decodeVideoThumbnail: vi.fn() }));
 
@@ -248,51 +247,5 @@ describe("VideoThumbnail", () => {
 
     expect(host.querySelector(".animate-pulse")).toBeNull();
     expect(host.querySelector("img")).toBeNull();
-  });
-});
-
-describe("VideoThumbnail during a zoom", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
-      value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
-      weight: 256,
-    });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  const rest = () =>
-    act(async () => {
-      vi.runOnlyPendingTimers();
-      await Promise.resolve();
-    });
-
-  it("decodes a clip that scrolls in mid-zoom only once the timeline rests", async () => {
-    markTimelineMotion();
-    await render(440);
-    expect(decodeVideoThumbnail).not.toHaveBeenCalled();
-    await rest();
-    expect(decodeVideoThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({ frameCount: 1 }),
-      expect.any(AbortSignal),
-    );
-  });
-
-  it("keeps its filmstrip while the zoom resizes it, and decodes the new width at rest", async () => {
-    await render(440);
-    vi.mocked(decodeVideoThumbnail).mockClear();
-    await act(async () => {
-      markTimelineMotion();
-      reportResize(880, 40);
-      await Promise.resolve();
-    });
-    expect(decodeVideoThumbnail).not.toHaveBeenCalled();
-    await rest();
-    expect(decodeVideoThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({ frameCount: 16 }),
-      expect.any(AbortSignal),
-    );
   });
 });

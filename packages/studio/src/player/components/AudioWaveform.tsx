@@ -5,7 +5,6 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 import { ClipFadesContext, type ClipFadeShape } from "./TimelineClipFades";
-import { isTimelineMoving, subscribeTimelineMotion } from "./timelineMotion";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export interface AudioWaveformProps {
@@ -30,25 +29,6 @@ const FADE_GHOST_OPACITY = 0.27;
 export const WAVEFORM_LAYER_Z = 10;
 
 type BarGeometry = { x: number; width: number; height: number; gain: number };
-
-/** A stretch of the clip as fractions of its width. */
-export type ClipSpan = { from: number; to: number };
-const WHOLE_CLIP: ClipSpan = { from: 0, to: 1 };
-// Drawn past the viewport by this many widths each side, so a short scroll shows bars already drawn.
-const OVERSCAN_VIEWPORTS = 1;
-
-/** The part of the clip on screen, with overscan; a long clip never draws past it. */
-function visibleClipSpan(root: HTMLElement): ClipSpan {
-  const box = root.getBoundingClientRect();
-  if (box.width <= 0) return WHOLE_CLIP;
-  const scroller = root.closest("[data-timeline-scroll-viewport]");
-  const view = scroller?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth };
-  const margin = (view.right - view.left) * OVERSCAN_VIEWPORTS;
-  const clamp = (x: number) => Math.max(0, Math.min(1, x));
-  const from = clamp((view.left - margin - box.left) / box.width);
-  const to = clamp((view.right + margin - box.left) / box.width);
-  return { from, to: Math.max(from, to) };
-}
 
 function paintWaveformBars(
   context: CanvasRenderingContext2D,
@@ -81,7 +61,6 @@ export function drawWaveformCanvas(
   trimStartFraction: number,
   trimEndFraction: number,
   fades: ClipFadeShape | null = null,
-  span: ClipSpan = WHOLE_CLIP,
 ) {
   const width = Math.max(1, canvas.clientWidth);
   const height = Math.max(1, canvas.clientHeight);
@@ -92,20 +71,19 @@ export function drawWaveformCanvas(
   if (!context) return;
   context.scale(scale, scale);
   context.clearRect(0, 0, width, height);
-  const trim = trimEndFraction - trimStartFraction;
   const amplitudes = decimatePeaks(
     peaks,
-    trimStartFraction + trim * span.from,
-    trimStartFraction + trim * span.to,
+    trimStartFraction,
+    trimEndFraction,
     Math.max(1, Math.ceil(width / BAR_STEP)),
   );
-  const clipFraction = (index: number) =>
-    span.from + ((index + 0.5) / amplitudes.length) * (span.to - span.from);
   const bars = amplitudes.map((amplitude, index) => ({
     x: (index * width) / amplitudes.length,
     width: Math.max(1, width / amplitudes.length),
     height: Math.max(3, amplitude * height),
-    gain: fades ? fadeGain(clipFraction(index) * fades.duration, fades.duration, fades) : 1,
+    gain: fades
+      ? fadeGain(((index + 0.5) / amplitudes.length) * fades.duration, fades.duration, fades)
+      : 1,
   }));
   const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
   const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
@@ -194,6 +172,7 @@ export const AudioWaveform = memo(function AudioWaveform({
 }: AudioWaveformProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
   const request = useMemo(
     () => ({
@@ -220,42 +199,21 @@ export const AudioWaveform = memo(function AudioWaveform({
   const fades = useContext(ClipFadesContext);
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    const root = rootRef.current;
-    if (!canvas || !root || !peaks) return;
-    const span = visibleClipSpan(root);
-    // Placed in fractions of the clip, so a zoom stretches the drawn bars with time until the redraw.
-    canvas.style.left = `${span.from * 100}%`;
-    canvas.style.width = `${(span.to - span.from) * 100}%`;
-    if (span.to <= span.from) return;
-    drawWaveformCanvas(
-      canvas,
-      peaks,
-      muted,
-      trimStartFraction ?? 0,
-      trimEndFraction ?? 1,
-      fades,
-      span,
-    );
+    if (!canvas || !peaks) return;
+    drawWaveformCanvas(canvas, peaks, muted, trimStartFraction ?? 0, trimEndFraction ?? 1, fades);
   }, [fades, muted, peaks, trimEndFraction, trimStartFraction]);
-  const drawRef = useRef(draw);
-  drawRef.current = draw;
-  useEffect(draw, [draw]);
 
-  // Redrawn when the clip resizes or the timeline comes to rest after a zoom or scroll, never
-  // per step: a step only stretches what is drawn.
-  useMountEffect(() => {
-    const root = rootRef.current;
-    const redrawAtRest = () => {
-      if (!isTimelineMoving()) drawRef.current();
-    };
-    const observer = root ? new ResizeObserver(redrawAtRest) : null;
-    if (root) observer?.observe(root);
-    const unsubscribe = subscribeTimelineMotion(redrawAtRest);
-    return () => {
-      observer?.disconnect();
-      unsubscribe();
-    };
-  });
+  const setCanvasRef = useCallback(
+    (canvas: HTMLCanvasElement | null) => {
+      observerRef.current?.disconnect();
+      canvasRef.current = canvas;
+      if (!canvas) return;
+      draw();
+      observerRef.current = new ResizeObserver(draw);
+      observerRef.current.observe(canvas);
+    },
+    [draw],
+  );
 
   useEffect(() => {
     const root = document.documentElement;
@@ -266,6 +224,8 @@ export const AudioWaveform = memo(function AudioWaveform({
     });
     return () => observer.disconnect();
   }, [draw]);
+
+  useMountEffect(() => () => observerRef.current?.disconnect());
 
   useEffect(() => {
     const clip = rootRef.current?.closest(".timeline-clip");
@@ -279,14 +239,9 @@ export const AudioWaveform = memo(function AudioWaveform({
     <div ref={rootRef} className="absolute inset-0">
       <div className="absolute inset-0 overflow-hidden" style={{ zIndex: WAVEFORM_LAYER_Z }}>
         <canvas
-          ref={canvasRef}
-          className="absolute bottom-0"
-          style={{
-            left: 0,
-            width: "100%",
-            top: labelInset,
-            height: `calc(100% - ${labelInset}px)`,
-          }}
+          ref={setCanvasRef}
+          className="absolute inset-x-0 bottom-0 w-full"
+          style={{ top: labelInset, height: `calc(100% - ${labelInset}px)` }}
         />
         {snapshot.status === "loading" && (
           <div
