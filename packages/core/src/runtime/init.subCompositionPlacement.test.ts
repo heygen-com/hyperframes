@@ -123,9 +123,9 @@ describe("runtime sub-composition placement", () => {
   }
 
   /** A root with no timeline of its own around one scene clip, whose timeline slides `#s` from 0 to 100 over 4 s. */
-  function loadWithoutRootTimeline(rootMarkup = "") {
+  function loadWithoutRootTimeline(rootMarkup = "", rootLength = ` data-duration="10"`) {
     document.body.innerHTML =
-      `<div data-composition-id="main" data-root="true" data-duration="10">${rootMarkup}` +
+      `<div data-composition-id="main" data-root="true"${rootLength}>${rootMarkup}` +
       `<div id="host" class="clip" data-composition-id="scene" data-start="1" data-duration="4">` +
       `<div id="s"></div></div></div>`;
     const scene = gsap
@@ -184,15 +184,7 @@ describe("runtime sub-composition placement", () => {
 
   it("reports a scene's new length after a script extends it, when the root declares none", async () => {
     const runFrames = stubFrames();
-    document.body.innerHTML =
-      `<div data-composition-id="main" data-root="true">` +
-      `<div id="host" class="clip" data-composition-id="scene" data-start="1" data-duration="4">` +
-      `<div id="s"></div></div></div>`;
-    const scene = gsap
-      .timeline({ paused: true })
-      .to("#s", { x: 100, duration: 4, ease: "none" }, 0);
-    window.__timelines = { scene } as unknown as Record<string, RuntimeTimelineLike>;
-    initSandboxRuntimeModular();
+    const scene = loadWithoutRootTimeline("", "");
     await runFrames(3);
     window.__player?.seek(2);
     scene.to({}, { duration: 8 }, 0);
