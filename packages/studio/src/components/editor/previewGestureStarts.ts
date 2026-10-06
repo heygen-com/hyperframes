@@ -160,7 +160,7 @@ export function createPreviewGestureStarts(
       settledFrames = settled ? settledFrames + 1 : 0;
       // The waiting outline stays drawn while replay measures the live element separately.
       const lost = elements.length === 0 || settledFrames > MAX_SETTLED_WAIT_FRAMES;
-      // A change that never ends (a save with no reply) would hold every press: run on the page shown, as before waiting.
+      // A change that never ends (a save with no reply) would hold every press: run on the page shown.
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
       if (overdue) giveUpOnPreviewChange();
       if (!lost && shownFrames < 2 && !overdue) {

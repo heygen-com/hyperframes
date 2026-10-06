@@ -524,14 +524,8 @@ describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan cohe
 
   it("Layout's X-row keyframe gutter seeks to the SAME absolute time Motion's Timing row shows as the midpoint (50% of an inferred 2s-5s range = 3.5s)", async () => {
     const onSeekToTime = vi.fn();
-    // Seed the playhead at the clip's real start (t=2, the 0% keyframe's
-    // absolute time) — now that the follow-up fix also recomputes
-    // `currentPct` from the corrected elStart/elDuration basis, "current
-    // position is at the 0% keyframe" must be expressed as an actual t=2
-    // seek rather than relying on the store's untouched t=0 default (which,
-    // post-fix, resolves to a currentPct of -66.7% — well outside the 0%
-    // keyframe's tolerance window, and no longer "the case the coherence
-    // bug affected" that this test documents).
+    // The playhead sits at the clip's start (t=2, the 0% keyframe): the store's t=0 default
+    // resolves to -66.7%, outside that keyframe's window.
     const { host, root } = await renderPanel(
       true,
       inferredMotionElement(),
@@ -593,13 +587,8 @@ describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up f
     // the prev/next arrows carry titles too, so `button[title]` is ambiguous.
     const diamond = gutter.querySelector<HTMLButtonElement>("button[aria-pressed]");
     if (!diamond) throw new Error("expected a keyframe diamond button");
-    // KeyframeDiamond's title mapping: active -> "Remove ... keyframe",
-    // inactive -> "Add ... keyframe", ghost -> "Convert ... to keyframes".
-    // Before this fix, currentPct was computed against the naive
-    // elStart=0/elDuration=1 basis, so t=3.5 produced currentPct=350% —
-    // nowhere near the 50% keyframe within KeyframeNavigation's tolerance —
-    // and the diamond stayed "inactive" even though the playhead was
-    // exactly on that keyframe's real time.
+    // "Remove" means active: on the naive 0..1 basis t=3.5 read as 350% and the diamond stayed
+    // "Add" although the playhead sat on that keyframe.
     expect(diamond.title).toBe("Remove x keyframe");
     act(() => root.unmount());
   });
@@ -708,11 +697,8 @@ describe("PropertyPanel — Grade group (flag on)", () => {
   });
 
   it("does not render the legacy Style/Grade Section duplicates for a style-and-grade-editable element", async () => {
-    // A <video> with no text fields is both style-editable (inherited
-    // capabilities.canEditStyles: true) and grade-editable (tag === "video"),
-    // so both the flat Style and Grade groups render — the exact shape that
-    // used to also mount the legacy ColorGradingSection + StyleSections below
-    // them (the hybrid-duplication bug this task retires).
+    // A <video> with no text fields is both style- and grade-editable: the shape that also
+    // mounted the legacy ColorGradingSection and StyleSections below the flat groups.
     const { host, root } = await renderPanel(true, {
       ...baseElement(),
       tagName: "video",
@@ -720,14 +706,8 @@ describe("PropertyPanel — Grade group (flag on)", () => {
     });
     expect(host.textContent).toContain("Style");
     expect(host.textContent).toContain("Grade");
-    // The legacy `Section` primitive (propertyPanelStyleSections.tsx /
-    // propertyPanelColorGradingSection.tsx) renders a `<section
-    // data-panel-section="<slugified-title>">` for each of its sections. A
-    // bare textContent check can't tell a legacy Section title apart from a
-    // flat row label with the same word — "Fill" is both the legacy Fill
-    // `Section` title AND a row label inside FlatStyleSection, which is
-    // supposed to still be there — so assert on the legacy Section's actual
-    // DOM shape instead of a substring match.
+    // Each legacy Section renders `<section data-panel-section="<slug>">`; text alone cannot tell
+    // it from a flat row of the same name ("Fill" is both), so match that shape.
     for (const slug of [
       "radius",
       "stroke",
@@ -883,13 +863,8 @@ describe("PropertyPanel — fixed headers + scrollable open section (Plan 11)", 
 describe("PropertyPanel — flat group entrance animation scoping (fix round)", () => {
   it("animates only the opening group and the implicitly-closed group on a non-adjacent toggle, never untouched siblings", async () => {
     const { host, root } = await renderPanel(true, sixGroupElement());
-    // sixGroupElement() opens Text by default; jump straight to Motion
-    // (skipping over Style/Layout) first, matching the Plan 11 worked
-    // example, then jump back to Text — non-adjacent from Motion, again
-    // skipping over Style/Layout. This is the exact array-slice-position-
-    // shift scenario the justToggledIds mechanism exists to guard: Style
-    // and Layout shift position in the before/after-open slices on both
-    // toggles even though neither of them is the group being toggled.
+    // Text opens by default; jumping to Motion and back skips Style and Layout both ways, so they
+    // shift position in the open slices without being toggled: what justToggledIds guards.
     openFlatGroup(host, "Motion");
     expect(openGroupText(host)).toContain("Motion");
     openFlatGroup(host, "Text");
