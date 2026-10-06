@@ -29,6 +29,8 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  // Run out any ease and pending write, so the next test starts with nothing scheduled.
+  for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
   setTimelineZoomViewport(null);
   takeTimelineZoomAnchor();
   vi.useRealTimers();
@@ -90,14 +92,37 @@ describe("zoomTimelineToRange", () => {
     expect(anchor && anchor.x + (10 - anchor.time) * 100).toBeCloseTo(56);
   });
 
-  it("stops easing when a person zooms during it", () => {
+  it("stops easing when a person zooms during it, and says it was cancelled", async () => {
     viewport(1080);
-    zoomTimelineToRange(10, 20);
+    const result = zoomTimelineToRange(10, 20);
     vi.advanceTimersToNextFrame();
     vi.advanceTimersToNextFrame();
     requestTimelineZoom(150);
     for (let i = 0; i < 30; i++) vi.advanceTimersToNextFrame();
     expect(usePlayerStore.getState().manualZoomPercent).toBe(150);
+    await expect(result).resolves.toBe("cancelled");
+  });
+
+  it("resolves done once the range is laid out, without counting as a person's zoom", async () => {
+    viewport(1080);
+    let settled: string | null = null;
+    void zoomTimelineToRange(10, 20).then((r) => (settled = r));
+    for (let i = 0; i < 30 && settled === null; i++) {
+      vi.advanceTimersToNextFrame();
+      await Promise.resolve();
+    }
+    expect(settled).toBe("done");
+    expect(usePlayerStore.getState().timelinePps).toBeCloseTo(100);
+    expect(usePlayerStore.getState().userZoomCount).toBe(0);
+  });
+
+  it("cancels when the caller aborts", async () => {
+    viewport(1080);
+    const abort = new AbortController();
+    const result = zoomTimelineToRange(10, 20, { signal: abort.signal });
+    vi.advanceTimersToNextFrame();
+    abort.abort();
+    await expect(result).resolves.toBe("cancelled");
   });
 });
 
@@ -117,6 +142,13 @@ describe("zoomTimelineStep", () => {
     const anchor = takeTimelineZoomAnchor();
     return anchor && anchor.x + (time - anchor.time) * usePlayerStore.getState().timelinePps;
   };
+
+  it("counts as a person's zoom", () => {
+    viewport(0);
+    zoomTimelineStep("in");
+    run();
+    expect(usePlayerStore.getState().userZoomCount).toBeGreaterThan(0);
+  });
 
   it("doubles the scale and keeps an on-screen playhead where it is", () => {
     usePlayerStore.setState({ currentTime: 40 });

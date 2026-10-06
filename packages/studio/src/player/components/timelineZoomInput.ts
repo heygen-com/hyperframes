@@ -21,12 +21,17 @@ export interface TimelineZoomViewport {
 const RANGE_MARGIN_PX = 24;
 const SMOOTH_ZOOM_MS = 220;
 
-let pending: { percent: number; anchor: TimelineZoomAnchor | null } | null = null;
+/** How an eased zoom ended: it reached its range, or a person's zoom or the caller stopped it. */
+export type TimelineZoomResult = "done" | "cancelled";
+
+let pending: { percent: number; anchor: TimelineZoomAnchor | null; byPerson: boolean } | null =
+  null;
 let frame = 0;
 let anchorForCommit: TimelineZoomAnchor | null = null;
 let viewport: TimelineZoomViewport | null = null;
 let animation = 0;
 let easingTo: number | null = null;
+let settle: ((result: TimelineZoomResult) => void) | null = null;
 
 /** The percent the timeline is showing, or will show next frame. */
 export function currentTimelineZoomPercent(): number {
@@ -48,28 +53,32 @@ function flush() {
     return {
       zoomMode: "manual",
       manualZoomPercent: percent,
-      userZoomCount: s.userZoomCount + 1,
+      // Only a person's zoom counts: the timeline and its host read it as the person taking over.
+      userZoomCount: s.userZoomCount + (next.byPerson ? 1 : 0),
       timelinePps: (s.timelineFitPps * percent) / 100,
     };
   });
 }
 
-function request(percent: number, anchor: TimelineZoomAnchor | null) {
-  pending = { percent, anchor };
+function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: boolean) {
+  pending = { percent, anchor, byPerson: byPerson || pending?.byPerson === true };
   markTimelineMotion();
   if (!frame) frame = requestAnimationFrame(flush);
 }
 
-/** Every zoom input's one door: requests in the same frame collapse to the last, drawn once. */
+/** A person's zoom input; requests in the same frame collapse to the last, drawn once. */
 export function requestTimelineZoom(percent: number, anchor: TimelineZoomAnchor | null = null) {
   stopEase();
-  request(percent, anchor);
+  request(percent, anchor, true);
 }
 
-function stopEase() {
+function stopEase(result: TimelineZoomResult = "cancelled") {
   cancelAnimationFrame(animation);
   animation = 0;
   easingTo = null;
+  const done = settle;
+  settle = null;
+  done?.(result);
 }
 
 /** The anchor of the zoom being committed; read once by the timeline as it lays the zoom out. */
@@ -87,24 +96,42 @@ const reducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * Zooms and scrolls so `start`..`end` fills the timeline's width, easing there unless
- * `smooth` is false or the person prefers reduced motion.
+ * Zooms and scrolls so `start`..`end` (seconds) fills the timeline's width, easing there unless
+ * `smooth` is false or the person prefers reduced motion. Resolves once the last step is laid
+ * out, or as "cancelled" when a person zooms, `signal` aborts, or another range zoom starts.
  */
 export function zoomTimelineToRange(
   start: number,
   end: number,
-  options: { smooth?: boolean } = {},
-): void {
+  options: { smooth?: boolean; signal?: AbortSignal } = {},
+): Promise<TimelineZoomResult> {
+  return easeToRange(start, end, options, false);
+}
+
+function easeToRange(
+  start: number,
+  end: number,
+  { smooth = true, signal }: { smooth?: boolean; signal?: AbortSignal },
+  byPerson: boolean,
+): Promise<TimelineZoomResult> {
   const view = viewport;
   const fitPps = usePlayerStore.getState().timelineFitPps;
-  if (!view || !(end > start) || !(fitPps > 0)) return;
+  stopEase();
+  if (!view || !(end > start) || !(fitPps > 0) || signal?.aborted)
+    return Promise.resolve("cancelled");
+  const result = new Promise<TimelineZoomResult>((resolve) => (settle = resolve));
+  signal?.addEventListener("abort", () => settle && stopEase(), { once: true });
   const x = view.contentOrigin + RANGE_MARGIN_PX;
   const width = Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX);
   const toPercent = clampTimelineZoomPercent((width / (end - start) / fitPps) * 100, fitPps);
-  stopEase();
-  if (options.smooth === false || reducedMotion()) {
-    request(toPercent, { time: start, x });
-    return;
+  // Resolved a frame after the last request: its write and layout have run by then.
+  const finish = () => {
+    animation = requestAnimationFrame(() => stopEase("done"));
+  };
+  if (!smooth || reducedMotion()) {
+    request(toPercent, { time: start, x }, byPerson);
+    finish();
+    return result;
   }
   const fromPercent = currentTimelineZoomPercent();
   const fromPps = (fitPps * fromPercent) / 100;
@@ -122,11 +149,12 @@ export function zoomTimelineToRange(
   const step = (now: number) => {
     const t = Math.min(1, Math.max(0, (now - began) / SMOOTH_ZOOM_MS));
     const k = 1 - (1 - t) ** 3;
-    request(fromPercent * (toPercent / fromPercent) ** k, anchorAt(k));
+    request(fromPercent * (toPercent / fromPercent) ** k, anchorAt(k), byPerson);
     if (t < 1) animation = requestAnimationFrame(step);
-    else stopEase();
+    else finish();
   };
   animation = requestAnimationFrame(step);
+  return result;
 }
 
 /**
@@ -156,5 +184,5 @@ export function zoomTimelineStep(direction: "in" | "out"): void {
     view.scroll.scrollLeft;
   const onScreen = playheadX >= view.contentOrigin && playheadX <= view.scroll.clientWidth;
   const start = onScreen ? currentTime - (playheadX - x) / nextPps : currentTime - span / 2;
-  zoomTimelineToRange(start, start + span);
+  void easeToRange(start, start + span, {}, true);
 }
