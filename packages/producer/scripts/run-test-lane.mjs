@@ -15,7 +15,7 @@ const tests = discoverProducerTests().filter(
   (test) => test.lane === lane && (!requestedRunner || test.runner === requestedRunner),
 );
 
-const noNetwork = fileURLToPath(new URL("./no-network.mjs", import.meta.url));
+const noNetwork = new URL("./no-network.mjs", import.meta.url);
 const unit = lane === "unit";
 
 function run(args, env = {}) {
@@ -30,12 +30,12 @@ function run(args, env = {}) {
 
 const vitestFiles = tests.filter((test) => test.runner === "vitest").map((test) => test.file);
 const vitestEnv = unit
-  ? { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${noNetwork}`.trim() }
+  ? { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${noNetwork.href}`.trim() }
   : {};
 if (vitestFiles.length > 0) run(["x", "vitest", "run", ...vitestFiles], vitestEnv);
 
 // Bun's mock.module registry is process-global. Run each file in a fresh
 // process so mocks from one source test cannot mutate another test's imports.
 for (const test of tests.filter((entry) => entry.runner === "bun")) {
-  run(["test", ...(unit ? ["--preload", noNetwork] : []), test.file]);
+  run(["test", ...(unit ? ["--preload", fileURLToPath(noNetwork)] : []), test.file]);
 }
