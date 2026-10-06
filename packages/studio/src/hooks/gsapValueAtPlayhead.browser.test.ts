@@ -1,17 +1,14 @@
 // @vitest-environment happy-dom
 // Real Chrome with the built runtime: its seek, not a plain GSAP seek, decides what a saved edit shows.
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { replaceTweenWithKeyframesInScript } from "@hyperframes/parsers/gsap-writer-acorn";
 import { expect, it, vi } from "vitest";
-import { launchTestChrome } from "../utils/chromeTestUtils";
+import { launchTestChrome, showWithRuntime } from "../utils/chromeTestUtils";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { planValueEdit } from "./gsapValueAtPlayhead";
 
-const require = createRequire(import.meta.url);
 vi.setConfig({ testTimeout: 60_000 });
 
 const SRC = `var tl = gsap.timeline({ paused: true });
@@ -51,16 +48,7 @@ it("a drag on a fromTo's start shows the dropped x there once the runtime seeks"
   const browser = await launchTestChrome();
   try {
     const tab = await browser.newPage();
-    await tab.setRequestInterception(true);
-    // Only the GSAP script is served; anything else is refused, never fetched.
-    tab.on("request", (request) =>
-      request.url().endsWith("/gsap.min.js")
-        ? request.respond({ body: readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8") })
-        : request.abort("blockedbyclient"),
-    );
-    await tab.setContent(page(written), { waitUntil: "load" });
-    await tab.evaluate(readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8"));
-    await tab.waitForFunction(() => "__player" in window);
+    await showWithRuntime(tab, page(written));
     const shown = await tab.evaluate(() => {
       const w = window as unknown as {
         __player: { seek(t: number): void };

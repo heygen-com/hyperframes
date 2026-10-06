@@ -1,16 +1,14 @@
 // Real Chrome: the box GSAP and a stylesheet translate produce together is what no DOM emulation computes.
 import { mkdtempSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser } from "puppeteer-core";
 import { build, type Plugin } from "esbuild";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { launchTestChrome } from "./chromeTestUtils";
+import { launchTestChrome, showWithRuntime } from "./chromeTestUtils";
 import { writeFixture } from "../../tests/e2e/edit-accuracy/grid.mjs";
 
-const require = createRequire(import.meta.url);
 const CROP = "inset(0px 40px 0px 0px)";
 // Real Chrome on a loaded Windows runner exceeds Vitest's 5s test and 10s hook defaults.
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
@@ -60,16 +58,7 @@ async function openCase(spec: Spec, moduleBundle: string) {
   const restored = readFileSync(join(dir, "index.html"), "utf8");
   const page = await browser.newPage();
   await page.setViewport({ width: 1920, height: 1080 });
-  await page.setRequestInterception(true);
-  // Only the fixture's GSAP CDN script is served; anything else is refused, never fetched.
-  page.on("request", (request) =>
-    request.url().endsWith("/gsap.min.js")
-      ? request.respond({ body: readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8") })
-      : request.abort("blockedbyclient"),
-  );
-  await page.setContent(restored, { waitUntil: "load" });
-  await page.evaluate(readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8"));
-  await page.waitForFunction(() => "__player" in window);
+  await showWithRuntime(page, restored);
   await page.evaluate(moduleBundle);
   await page.evaluate(
     (time) => (window as unknown as { __player: { seek(t: number): void } }).__player.seek(time),
