@@ -135,6 +135,12 @@ describe("AudioWaveform", () => {
     expect(placed()[1]).toBeCloseTo(20.48);
   });
 
+  it("watches no ends of a clip drawn whole", () => {
+    setStrip({ width: 1000, height: 40, inViewStart: 0, inViewEnd: 1000 });
+    renderReadyWaveform();
+    expect(watchGap.mock.calls.filter(([gap]) => gap)).toEqual([]);
+  });
+
   it("redraws a short clip, drawn whole, when a zoom changes its width", () => {
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     setStrip({ width: 1000, height: 40, inViewStart: 0, inViewEnd: 1000 });

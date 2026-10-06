@@ -252,16 +252,20 @@ export const AudioWaveform = memo(function AudioWaveform({
         style={{ zIndex: WAVEFORM_LAYER_Z }}
       >
         {/* The undrawn ends: one coming near the screen, as a move carries the clip, re-measures. */}
-        <div
-          ref={watchGap}
-          className="pointer-events-none absolute inset-y-0 left-0"
-          style={{ width: `${from * 100}%` }}
-        />
-        <div
-          ref={watchGap}
-          className="pointer-events-none absolute inset-y-0 right-0"
-          style={{ left: `${to * 100}%` }}
-        />
+        {from > 0 && (
+          <div
+            ref={watchGap}
+            className="pointer-events-none absolute inset-y-0 left-0"
+            style={{ width: `${from * 100}%` }}
+          />
+        )}
+        {to < 1 && (
+          <div
+            ref={watchGap}
+            className="pointer-events-none absolute inset-y-0 right-0"
+            style={{ left: `${to * 100}%` }}
+          />
+        )}
         <canvas
           ref={canvasRef}
           className="absolute bottom-0"
