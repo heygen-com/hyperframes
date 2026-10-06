@@ -77,8 +77,6 @@ export function useTimelineGeometry({
   const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
   const zoomModeRef = useRef(zoomMode);
   zoomModeRef.current = zoomMode;
-  const manualZoomPercentRef = useRef(manualZoomPercent);
-  manualZoomPercentRef.current = manualZoomPercent;
   fitPpsRef.current = fitPps;
 
   // Restore the horizontal scroll offset after an edit re-derives the elements
@@ -133,6 +131,5 @@ export function useTimelineGeometry({
     displayDuration,
     clipStateVersion: expandedElements,
     zoomModeRef,
-    manualZoomPercentRef,
   };
 }

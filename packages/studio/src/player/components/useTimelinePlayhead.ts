@@ -3,6 +3,12 @@ import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
+  currentTimelineZoomPercent,
+  requestTimelineZoom,
+  setTimelineZoomViewport,
+  takeTimelineZoomAnchor,
+} from "./timelineZoomInput";
+import {
   getTimelinePlaybackFollowScrollLeft,
   getTimelineScrubTime,
   getTimelineScrollLeftForZoomTransition,
@@ -36,17 +42,13 @@ interface UseTimelinePlayheadInput {
   isDragging: React.RefObject<boolean>;
   currentTime: number;
   zoomMode: ZoomMode;
-  manualZoomPercent: number;
   zoomModeRef: React.RefObject<ZoomMode>;
-  manualZoomPercentRef: React.RefObject<number>;
   fitPps: number;
   fitPpsRef: React.RefObject<number>;
   effectiveDuration: number;
   pps: number;
   timelineReady: boolean;
   elementsLength: number;
-  setZoomMode: (mode: ZoomMode) => void;
-  setManualZoomPercent: (percent: number) => void;
   onSeek?: (time: number) => void;
   contentOrigin: number;
 }
@@ -60,28 +62,24 @@ export function useTimelinePlayhead({
   currentTime,
   zoomMode,
   zoomModeRef,
-  manualZoomPercentRef,
   fitPps: _fitPps,
   fitPpsRef,
   effectiveDuration,
   pps,
   timelineReady,
   elementsLength,
-  setZoomMode,
-  setManualZoomPercent,
   onSeek,
   contentOrigin,
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
-  // A toolbar zoom keeps the playhead in place; a resize keeps the centre, or 00:00 at the start.
-  // The pinch handler anchors at the cursor instead, so it opts out via `skipCenterAnchorRef`.
+  // A zoom that names an anchor (pinch, zoom-to-range) keeps that time where it was; a toolbar zoom
+  // keeps the playhead in place; a resize keeps the centre, or 00:00 at the start.
   const previousAnchorPpsRef = useRef(pps);
   const userZoomCount = usePlayerStore((s) => s.userZoomCount);
   const previousZoomCountRef = useRef(userZoomCount);
   const lastLiveTimeRef = useRef(usePlayerStore.getState().currentTime);
   const lastSeekCountRef = useRef(liveTime.seekCount());
-  const skipCenterAnchorRef = useRef(false);
   const contentOriginRef = useRef(contentOrigin);
   contentOriginRef.current = contentOrigin;
 
@@ -91,12 +89,16 @@ export function useTimelinePlayhead({
     previousAnchorPpsRef.current = pps;
     const prevZoomCount = previousZoomCountRef.current;
     previousZoomCountRef.current = userZoomCount;
-    // Always consume the skip flag, even when pps didn't change — otherwise a
-    // pinch that produced no pps change (already at the zoom clamp) would strand
-    // it true and the next toolbar zoom would wrongly skip center-anchoring.
-    const skip = skipCenterAnchorRef.current;
-    skipCenterAnchorRef.current = false;
-    if (!scroll || pps === prevPps || skip) return;
+    // Always consume the anchor, even when pps didn't change (a zoom at its clamp), so it never
+    // lingers for a later zoom that named none.
+    const anchor = takeTimelineZoomAnchor();
+    if (!scroll || pps === prevPps) return;
+    if (anchor) {
+      const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      const left = anchor.time * pps + contentOrigin - anchor.x;
+      scroll.scrollLeft = Math.max(0, Math.min(maxScrollLeft, left));
+      return;
+    }
     const zoomed = userZoomCount !== prevZoomCount;
     if (!zoomed && scroll.scrollLeft < 1) return;
     const time = Math.max(0, lastLiveTimeRef.current);
@@ -237,62 +239,39 @@ export function useTimelinePlayhead({
     [scrollRef, isDragging, zoomModeRef, seekFromX],
   );
 
+  // Trackpad pinch arrives as ctrl+wheel; Cmd+wheel zooms too, as Mac editors do.
   const handlePinchWheel = useCallback(
     (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
+      if (!e.ctrlKey && !e.metaKey) return;
       const scroll = scrollRef.current;
       if (!scroll || durationRef.current <= 0 || fitPpsRef.current <= 0 || ppsRef.current <= 0)
         return;
       e.preventDefault();
       e.stopPropagation();
-      const rect = scroll.getBoundingClientRect();
-      const nextZoomPercent = getPinchTimelineZoomPercent(
-        e.deltaY,
-        zoomModeRef.current,
-        manualZoomPercentRef.current,
-        fitPpsRef.current,
+      const x = e.clientX - scroll.getBoundingClientRect().left;
+      requestTimelineZoom(
+        getPinchTimelineZoomPercent(
+          e.deltaY,
+          "manual",
+          currentTimelineZoomPercent(),
+          fitPpsRef.current,
+        ),
+        { time: Math.max(0, (scroll.scrollLeft + x - contentOrigin) / ppsRef.current), x },
       );
-      if (nextZoomPercent === manualZoomPercentRef.current && zoomModeRef.current === "manual")
-        return;
-      const nextPps = fitPpsRef.current * (nextZoomPercent / 100);
-      const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
-        pointerX: e.clientX - rect.left,
-        currentScrollLeft: scroll.scrollLeft,
-        contentOrigin,
-        currentPixelsPerSecond: ppsRef.current,
-        nextPixelsPerSecond: nextPps,
-        duration: durationRef.current,
-      });
-      // Pinch anchors at the cursor (below), so skip the center-anchor effect.
-      skipCenterAnchorRef.current = true;
-      setZoomMode("manual");
-      setManualZoomPercent(nextZoomPercent);
-      requestAnimationFrame(() => {
-        const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-        scroll.scrollLeft = Math.min(maxScrollLeft, nextScrollLeft);
-      });
     },
-    [
-      scrollRef,
-      durationRef,
-      fitPpsRef,
-      ppsRef,
-      zoomModeRef,
-      manualZoomPercentRef,
-      setManualZoomPercent,
-      setZoomMode,
-      contentOrigin,
-    ],
+    [scrollRef, durationRef, fitPpsRef, ppsRef, contentOrigin],
   );
 
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
     scroll.addEventListener("wheel", handlePinchWheel, { passive: false, capture: true });
+    setTimelineZoomViewport({ scroll, contentOrigin });
     return () => {
       scroll.removeEventListener("wheel", handlePinchWheel, { capture: true });
+      setTimelineZoomViewport(null);
     };
-  }, [handlePinchWheel, scrollRef, timelineReady, elementsLength]);
+  }, [handlePinchWheel, scrollRef, timelineReady, elementsLength, contentOrigin]);
 
   return { seekFromX, autoScrollDuringDrag, dragScrollRaf };
 }

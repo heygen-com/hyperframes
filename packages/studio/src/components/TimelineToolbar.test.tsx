@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { makeSelection } from "../hooks/domSelectionTestHarness";
@@ -239,6 +239,16 @@ describe("TimelineToolbar snap key", () => {
 });
 
 describe("TimelineToolbar Fit", () => {
+  // A zoom lands on the next frame; these tests step frames instead of waiting for them.
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout"],
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("shows Fit as a named icon and says whether fit is on", () => {
     const { host, root } = renderToolbar();
     const fit = () => host.querySelector('button[aria-label="Fit timeline to width"]');
@@ -251,6 +261,7 @@ describe("TimelineToolbar Fit", () => {
         .querySelector('button[aria-label="Zoom in"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
+    act(() => vi.advanceTimersToNextFrame());
     expect(fit()?.getAttribute("aria-pressed")).toBe("false");
     act(() => root.unmount());
   });
@@ -263,6 +274,7 @@ describe("TimelineToolbar Fit", () => {
         .querySelector('button[aria-label="Zoom in"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
+    act(() => vi.advanceTimersToNextFrame());
     expect(usePlayerStore.getState().userZoomCount).toBe(before + 1);
     act(() => root.unmount());
   });

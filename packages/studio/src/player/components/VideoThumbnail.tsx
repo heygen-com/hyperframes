@@ -9,6 +9,7 @@ import {
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
 import { ThumbnailTiles } from "./ThumbnailTiles";
 import { computeThumbnailStrip, quantizeThumbnailFrameCount } from "./thumbnailUtils";
+import { useValueAtRest } from "./timelineMotion";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -87,8 +88,11 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   priority = "visible",
 }: VideoThumbnailProps) {
   const [container, setContainerRef, watchGap] = useThumbnailStripSize();
-  const requestFrameCount = quantizeThumbnailFrameCount(
-    computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
+  // A zoom changes the width every step; decode the strip it settles on, not each step's.
+  const requestFrameCount = useValueAtRest(
+    quantizeThumbnailFrameCount(
+      computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
+    ),
   );
   const requestProps = useMemo(
     () => ({
