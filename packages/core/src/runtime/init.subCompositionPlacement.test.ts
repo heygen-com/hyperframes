@@ -167,6 +167,21 @@ describe("runtime sub-composition placement", () => {
     expect(new Set(xs)).toEqual(new Set(["75"]));
   });
 
+  it("keeps a dragged scene where the playhead left it when another scene registers mid-drag", async () => {
+    const runFrames = stubFrames();
+    loadWithoutRootTimeline(
+      `<div id="later" class="clip" data-composition-id="later" data-start="0" data-duration="2"><div id="l"></div></div>`,
+    );
+    window.__player?.seek(4);
+    document.getElementById("s")!.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, "gesture-1:move");
+    (window.__timelines as Record<string, unknown>).later = gsap
+      .timeline({ paused: true })
+      .to("#l", { x: 100, duration: 2, ease: "none" }, 0);
+    await runFrames(30);
+
+    expect(shownX()).toBe(75);
+  });
+
   it("binds a root timeline that registers after the runtime started on its children", async () => {
     const runFrames = stubFrames();
     loadWithoutRootTimeline(`<div id="r"></div>`);

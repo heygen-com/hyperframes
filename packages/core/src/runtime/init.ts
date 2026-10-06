@@ -1464,6 +1464,8 @@ export function initSandboxRuntimeModular(): void {
       if (!gsapApi || typeof gsapApi.timeline !== "function") return null;
       const compositeTimeline = gsapApi.timeline({ paused: true }) as RuntimeTimelineLike;
       for (const candidate of candidates) nestAtHostStart(compositeTimeline, candidate);
+      // Before any duration read: GSAP leaves paused children out of the duration it caches.
+      ensureChildCandidatesActive(nestedCandidates(compositeTimeline, candidates));
       return compositeTimeline;
     };
     const createDurationFloorTimeline = (
@@ -1642,7 +1644,6 @@ export function initSandboxRuntimeModular(): void {
         const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
         const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
         if (compositeTimeline && isUsableTimelineDuration(compositeDurationSeconds)) {
-          ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
           return {
             timeline: compositeTimeline,
             selectedTimelineIds,
@@ -1812,7 +1813,6 @@ export function initSandboxRuntimeModular(): void {
       const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
       if (compositeTimeline) {
         if (!reused) {
-          ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
           missingRootComposite = { timeline: compositeTimeline, size: rootChildCandidates.length };
         }
         return {
