@@ -1,0 +1,70 @@
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbp2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-LfjGbsVNLG7DGdF6OZ1Pcwgknk-6tesCuTUT9YD4b2KmIZSE1FNq_PdUTe-vhgNSBv5wANctW9XhQvuMvrqbZ4ujEG3DkCVl51v9aNp3Rr_aV3gtb0mHrFFQra5onpxICOnxkknmsw6RLuooi33FCy6LBrS7g4a_qRL8O8GTwUkRLlR8&skey=74ed26de24979d51&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbp2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-LfjGbsVNLG7DGdF6OZ1Pcwgknk-6tesCuTUT9YD4b2KmIZSE1FNq_PdUTe-vhgNSBv5wANctW9XhQvuMvrqbZ4ujEG3DkCVl51v9aNp3Rr_aV3gtb0mHrFFQra5onpxICOnxkknmsw6RLuooi33FCy6LBrS7g4a_qRL8O8GTwUkRLlR8&skey=74ed26de24979d51&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 200;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 300;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 800;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC57RrcIc1gGVa2no-yrCDtTHChHybO9BcQrdmnLvOfUVjhfFp_vM3kCU1ZcL7bWalvB5eF5LDl0_BsWa8ykRxMov8zioL9xsToN1zALX1d6sNmCrn1i9K58id39kXPMEg3dxvDVpbl6PeCffdWKg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014, U+203a, U+2304, U+25c7;
+}
