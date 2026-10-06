@@ -97,6 +97,14 @@ describe("createProjectWatcher", () => {
     },
   );
 
+  it.runIf(process.platform === "linux")("closes every watch it opened, its parent's too", () => {
+    const projectWatcher = createProjectWatcher("/fake/project/dir");
+    const opened = vi.mocked(watch).mock.calls.map(([path]) => path);
+    expect(opened).toContain("/fake/project");
+    projectWatcher.close();
+    expect(mockWatcher.close).toHaveBeenCalledTimes(opened.length);
+  });
+
   it.runIf(process.platform === "linux")(
     "keeps reporting project files when its parent cannot be watched",
     () => {
