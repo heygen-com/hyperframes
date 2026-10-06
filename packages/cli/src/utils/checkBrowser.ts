@@ -371,7 +371,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
   wireNetworkListeners(page, drafts, currentTime);
 }
 
-/** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` still shows it and its decode fails. */
+/** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` shows it and its decode fails. */
 export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string>): RuntimeDraft[] {
   return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
 }
