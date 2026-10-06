@@ -6,7 +6,10 @@ import {
   currentTimelineZoomPercent,
   requestTimelineZoom,
   setTimelineZoomViewport,
+  subscribeTimelineZoomPreview,
   takeTimelineZoomAnchor,
+  timelineTimeAtX,
+  timelineZoomMapping,
 } from "./timelineZoomInput";
 import {
   getTimelinePlaybackFollowScrollLeft,
@@ -123,10 +126,11 @@ export function useTimelinePlayhead({
   const syncPlayheadPosition = useCallback(
     (time: number) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
+      const at = timelineZoomMapping(ppsRef.current, contentOrigin);
       playheadRef.current.style.transform = getTimelinePlayheadTransform(
         time,
-        ppsRef.current,
-        contentOrigin,
+        at.pps,
+        at.contentOrigin,
         !usePlayerStore.getState().isPlaying,
       );
     },
@@ -160,14 +164,19 @@ export function useTimelinePlayhead({
   useMountEffect(() => {
     const place = (t: number, atRest: boolean) => {
       if (!playheadRef.current || durationRef.current <= 0) return false;
+      const at = timelineZoomMapping(ppsRef.current, contentOriginRef.current);
       playheadRef.current.style.transform = getTimelinePlayheadTransform(
         t,
-        ppsRef.current,
-        contentOriginRef.current,
+        at.pps,
+        at.contentOrigin,
         atRest,
       );
       return true;
     };
+    // A zoom preview moves the playhead with the scaled clips.
+    const unsubPreview = subscribeTimelineZoomPreview(() =>
+      place(lastLiveTimeRef.current, !usePlayerStore.getState().isPlaying),
+    );
     const dragging = () => isDragging.current || usePlayerStore.getState().beatDragging;
     const unsubPlaying = usePlayerStore.subscribe((state, prev) => {
       if (prev.isPlaying && !state.isPlaying) place(lastLiveTimeRef.current, true);
@@ -179,7 +188,8 @@ export function useTimelinePlayhead({
       lastLiveTimeRef.current = t;
       const playing = usePlayerStore.getState().isPlaying;
       if (!place(t, !playing)) return;
-      const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
+      const at = timelineZoomMapping(ppsRef.current, contentOriginRef.current);
+      const playheadX = at.contentOrigin + Math.max(0, t) * at.pps;
       const scroll = scrollRef.current;
       // Paused, only a seek scrolls: a reload's republish, frame-rounded, must not undo a person's scroll.
       if (!scroll || dragging() || zoomModeRef.current === "fit" || (!playing && !sought)) return;
@@ -199,6 +209,7 @@ export function useTimelinePlayhead({
     return () => {
       unsub();
       unsubPlaying();
+      unsubPreview();
     };
   });
 
@@ -256,10 +267,10 @@ export function useTimelinePlayhead({
           currentTimelineZoomPercent(),
           fitPpsRef.current,
         ),
-        { time: Math.max(0, (scroll.scrollLeft + x - contentOrigin) / ppsRef.current), x },
+        { time: Math.max(0, timelineTimeAtX(x) ?? 0), x },
       );
     },
-    [scrollRef, durationRef, fitPpsRef, ppsRef, contentOrigin],
+    [scrollRef, durationRef, fitPpsRef, ppsRef],
   );
 
   useEffect(() => {

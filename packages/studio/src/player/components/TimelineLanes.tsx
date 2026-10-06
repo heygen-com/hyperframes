@@ -352,6 +352,7 @@ export function TimelineLanes({
               <div
                 role="gridcell"
                 aria-colindex={2}
+                data-timeline-zoom-scale=""
                 style={{
                   width: trackContentWidth,
                   marginLeft: contentGutter, // room for a 0% diamond left of t=0

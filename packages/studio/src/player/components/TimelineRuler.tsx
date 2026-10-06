@@ -107,6 +107,7 @@ export const TimelineRuler = memo(function TimelineRuler({
       {/* Background SVG — beat lines only; major-tick gridlines removed so only
           the ruler's own small ticks mark intervals (no full-height lines). */}
       <svg
+        data-timeline-zoom-scale=""
         className="absolute pointer-events-none"
         style={{ left: contentOrigin, width: trackContentWidth, zIndex: 0 }}
         height={totalH}
@@ -152,6 +153,7 @@ export const TimelineRuler = memo(function TimelineRuler({
         {/* Breathing pad before 00:00 is folded into contentOrigin (see
             Timeline.tsx: GUTTER + TRACKS_LEFT_PAD), so no separate pad div. */}
         <div
+          data-timeline-zoom-scale=""
           className="relative overflow-hidden"
           style={{
             height: RULER_H,

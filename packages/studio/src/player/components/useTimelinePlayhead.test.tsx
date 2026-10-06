@@ -264,7 +264,9 @@ describe("useTimelinePlayhead wheel zoom", () => {
         metaKey: { value: Boolean(init.metaKey) },
       });
       scroll.dispatchEvent(event);
+      // The preview's frame, then its rest, when the zoom is laid out.
       vi.advanceTimersToNextFrame();
+      vi.advanceTimersByTime(200);
     });
 
   it("zooms on Cmd+wheel as on a pinch, and leaves a plain wheel to scroll", () => {
