@@ -1,4 +1,5 @@
 import { flushSync } from "react-dom";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { usePlayerStore } from "../store/playerStore";
 import { markTimelineMotion } from "./timelineMotion";
 import {
@@ -39,9 +40,9 @@ const RANGE_MARGIN_PX = 24;
 const SMOOTH_ZOOM_MS = 220;
 /** How long a gesture holds still before its zoom is laid out for real. */
 const REST_MS = 150;
-// Past these a preview would show clips that are not mounted, or soft scaled-up raster.
-const MIN_PREVIEW_SCALE = 0.67;
-const MAX_PREVIEW_SCALE = 2;
+// Below this a preview would show past the clips mounted around the view; above, soft raster.
+const MIN_PREVIEW_SCALE = 1 / (1 + 2 * TIMELINE_VIEWPORT_BUDGETS.timeOverscanViewportRatio);
+const MAX_PREVIEW_SCALE = 4;
 const SCALED = "[data-timeline-zoom-scale]";
 
 let viewport: TimelineZoomViewport | null = null;

@@ -101,7 +101,10 @@ describe("requestTimelineZoom", () => {
     viewport();
     requestTimelineZoom(300);
     vi.advanceTimersToNextFrame();
-    expect(usePlayerStore.getState().timelinePps).toBe(30);
+    expect(usePlayerStore.getState().timelinePps).toBe(10);
+    requestTimelineZoom(500);
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(50);
   });
 });
 
