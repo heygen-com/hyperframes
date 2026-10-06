@@ -367,7 +367,16 @@ describe("motion-blur shutter matches the After Effects reference", () => {
     await Promise.resolve();
 
     expect(word.hasAttribute(HIDING)).toBe(true);
-    expect(group.style.visibility).toBe("visible");
+    expect(group.style.visibility).toBe("");
+  });
+
+  it("leaves the smear's visibility to an ancestor while the element shares it", async () => {
+    // A clip that ends hides its subtree after the last moving frame; an explicit visible on
+    // the group would keep the copies on screen past it.
+    const { group } = await attach();
+
+    expect(group.style.display).toBe("");
+    expect(group.style.visibility).toBe("");
   });
 
   it("hides the smear with an element the timeline hides", async () => {

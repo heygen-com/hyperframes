@@ -483,7 +483,11 @@
                   // smear behind a vanishing element. It rides the group, not the copies, whose
                   // own opacity is the 1/N shutter weight.
                   s.group.style.opacity = current.opacity;
-                  s.group.style.visibility = current.visibility;
+                  // Set only where the element differs from its parent: an explicit value would
+                  // outlive an ancestor that hides later, like a clip that has ended.
+                  var shared = getComputedStyle(s.el.parentNode).visibility;
+                  s.group.style.visibility =
+                    current.visibility === shared ? "" : current.visibility;
                   s.group.style.display = "";
                   if (!sharp) s.el.setAttribute(HIDE_ATTR, "");
                 });
