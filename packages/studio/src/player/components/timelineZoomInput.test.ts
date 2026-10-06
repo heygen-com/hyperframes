@@ -3,8 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../store/playerStore";
 import {
+  cancelTimelineZoom,
   currentTimelineRange,
   currentTimelineZoomPercent,
+  settleTimelineZoom,
+  timelineTimeAtX,
   requestTimelineZoom,
   setTimelineZoomViewport,
   takeTimelineZoomAnchor,
@@ -30,6 +33,7 @@ beforeEach(() => {
     timelinePps: 10,
     userZoomCount: 0,
     currentTime: 0,
+    duration: 0,
   });
 });
 afterEach(() => {
@@ -45,7 +49,6 @@ function viewport(scrollLeft = 0) {
   const scroll = document.createElement("div");
   Object.defineProperties(scroll, {
     clientWidth: { value: 1080 },
-    scrollWidth: { value: 20_000 },
     scrollLeft: { value: scrollLeft, writable: true },
   });
   const row = scroll.appendChild(document.createElement("div"));
@@ -85,16 +88,66 @@ describe("requestTimelineZoom", () => {
   });
 
   it("keeps the time under the pointer while previewing, then lays it out there", () => {
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 400, timelinePps: 40 });
     const { scroll, row } = viewport(400);
-    // 432px in: (400 + 432 - 32) / 10 = 80 s.
-    requestTimelineZoom(150, { time: 80, x: 432 });
+    // 432px in: (400 + 432 - 32) / 40 = 20 s.
+    requestTimelineZoom(600, { time: 20, x: 432 });
     vi.advanceTimersToNextFrame();
-    const mapping = timelineZoomMapping(10, 32);
-    expect(mapping.pps).toBe(15);
-    expect(mapping.contentOrigin + 80 * mapping.pps - scroll.scrollLeft).toBeCloseTo(432);
+    const mapping = timelineZoomMapping(40, 32);
+    expect(mapping.pps).toBe(60);
+    expect(mapping.contentOrigin + 20 * mapping.pps - scroll.scrollLeft).toBeCloseTo(432);
     expect(row.style.transform).toContain("scaleX(1.5)");
     vi.advanceTimersByTime(150);
-    expect(laidOutX(80)).toBeCloseTo(432);
+    expect(laidOutX(20)).toBeCloseTo(432);
+  });
+
+  it("never previews a scroll the laid-out zoom cannot reach, zooming in from below Fit", () => {
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 50, timelinePps: 5 });
+    viewport();
+    // 90 s sits 482px in at 5 px/s. At 110% the content is 32 + 1046 * 1.1 wide,
+    // so the view can scroll at most 102.6px.
+    requestTimelineZoom(110, { time: 90, x: 482 });
+    expect(timelineTimeAtX(32)! * 11).toBeLessThanOrEqual(102.6 + 1e-6);
+  });
+
+  it("lays a zoom-out about the left edge out at once, before it shows unmounted time", () => {
+    usePlayerStore.setState({ duration: 1000 });
+    viewport();
+    // Mounted to (1080 - 32 + 540) / 10 = 158.8 s; at 5 px/s the view reaches 209.6 s.
+    requestTimelineZoom(50, { time: 0, x: 32 });
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(5);
+  });
+
+  it("previews a zoom-out about the middle that stays within what is mounted", () => {
+    usePlayerStore.setState({
+      duration: 100,
+      zoomMode: "manual",
+      manualZoomPercent: 1000,
+      timelinePps: 100,
+    });
+    viewport(5000);
+    // Mounted 44.28..65.88 s; at 60 px/s about 55.24 s the view shows 46.5..63.97 s.
+    requestTimelineZoom(600, { time: 55.24, x: 556 });
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(100);
+  });
+
+  it("lays a pending zoom out at once when settled, as a press does", () => {
+    viewport();
+    requestTimelineZoom(150);
+    settleTimelineZoom();
+    expect(usePlayerStore.getState().timelinePps).toBe(15);
+  });
+
+  it("drops a pending zoom when cancelled, as Fit does", () => {
+    const { row } = viewport();
+    requestTimelineZoom(150);
+    vi.advanceTimersToNextFrame();
+    cancelTimelineZoom();
+    vi.advanceTimersByTime(300);
+    expect(usePlayerStore.getState().timelinePps).toBe(10);
+    expect(row.style.transform).toBe("");
   });
 
   it("lays the zoom out mid-gesture once the preview has scaled too far", () => {
@@ -111,10 +164,13 @@ describe("requestTimelineZoom", () => {
 describe("zoomTimelineToRange", () => {
   it("fills the width with the range and puts its start at the left margin", () => {
     viewport();
-    void zoomTimelineToRange(100, 150, { smooth: false });
+    void zoomTimelineToRange(40, 90, { smooth: false });
+    // Laid out on the next frame, never inside the caller's own render or effect.
+    expect(usePlayerStore.getState().timelinePps).toBe(10);
+    vi.advanceTimersToNextFrame();
     // 1080 - (32 + 24) - 24 = 1000px for 50s is 20 pps.
     expect(usePlayerStore.getState().timelinePps).toBeCloseTo(20);
-    expect(laidOutX(100)).toBeCloseTo(56);
+    expect(laidOutX(40)).toBeCloseTo(56);
   });
 
   it("eases there over several frames and ends exactly on the range", () => {
@@ -154,6 +210,17 @@ describe("zoomTimelineToRange", () => {
     expect(row.style.transform).toBe("");
   });
 
+  it("leaves a newer zoom alone when an older one's signal aborts", async () => {
+    viewport();
+    const abort = new AbortController();
+    const older = zoomTimelineToRange(10, 20, { signal: abort.signal });
+    const newer = zoomTimelineToRange(30, 40);
+    abort.abort();
+    for (let i = 0; i < 30; i++) vi.advanceTimersToNextFrame();
+    await expect(older).resolves.toBe("cancelled");
+    await expect(newer).resolves.toBe("done");
+  });
+
   it("cancels when the caller aborts", async () => {
     viewport();
     const abort = new AbortController();
@@ -167,10 +234,11 @@ describe("zoomTimelineToRange", () => {
 describe("currentTimelineRange", () => {
   it("reads back the range zoomTimelineToRange filled", () => {
     viewport();
-    void zoomTimelineToRange(100, 150, { smooth: false });
+    void zoomTimelineToRange(40, 90, { smooth: false });
+    vi.advanceTimersToNextFrame();
     const range = currentTimelineRange()!;
-    expect(range.start).toBeCloseTo(100);
-    expect(range.end).toBeCloseTo(150);
+    expect(range.start).toBeCloseTo(40);
+    expect(range.end).toBeCloseTo(90);
   });
 
   it("reads the range a gesture shows before it is laid out", () => {
@@ -210,11 +278,17 @@ describe("zoomTimelineStep", () => {
   });
 
   it("centres an off-screen playhead", () => {
-    usePlayerStore.setState({ currentTime: 300 });
+    usePlayerStore.setState({
+      currentTime: 60,
+      zoomMode: "manual",
+      manualZoomPercent: 400,
+      timelinePps: 40,
+    });
+    // 0..26.2 s on screen at 40 px/s.
     viewport();
     zoomTimelineStep("in");
     run();
     // The range's middle, 56 + 1000 / 2, is the playhead.
-    expect(laidOutX(300)).toBeCloseTo(556);
+    expect(laidOutX(60)).toBeCloseTo(556);
   });
 });
