@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveBeatSourceTrack } from "../utils/timelineInspector";
 import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
+import { whenTimelineIdle } from "../player/components/timelineMotion";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
 import { getTimelineElementIndexes } from "../player/lib/timelineElementIndexes";
@@ -79,7 +80,8 @@ async function loadBeatAnalysis(
 ): Promise<{ analysis: MusicAnalysis; times: number[]; strengths: number[] } | null> {
   let promise = analysisCache.get(musicSrc);
   if (!promise) {
-    promise = analyzeMusicFromUrl(musicSrc);
+    // Each long stage of the analysis waits for the timeline to rest, so it never lands mid-zoom.
+    promise = analyzeMusicFromUrl(musicSrc, { pause: whenTimelineIdle });
     cacheAnalysis(musicSrc, promise);
   }
   try {

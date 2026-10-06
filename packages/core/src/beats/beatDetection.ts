@@ -213,15 +213,25 @@ function gateBeatsBySilence(
 }
 
 // fallow-ignore-next-line complexity
-export async function analyzeMusicFromBuffer(audioBuffer: AudioBuffer): Promise<MusicBeatAnalysis> {
+export interface MusicAnalysisOptions {
+  /** Awaited before each long stage, so a caller can hold the analysis while its page is busy. */
+  pause?: () => Promise<void>;
+}
+
+export async function analyzeMusicFromBuffer(
+  audioBuffer: AudioBuffer,
+  { pause }: MusicAnalysisOptions = {},
+): Promise<MusicBeatAnalysis> {
   const channelData = audioBuffer.getChannelData(0);
   const sampleRate = audioBuffer.sampleRate;
   const duration = audioBuffer.duration;
 
+  await pause?.();
   const rawBeats = await detectBeats(audioBuffer);
   const onsetBpm = computeBpmFromBeats(rawBeats);
 
   let detectiveBpm: number | null = null;
+  await pause?.();
   try {
     const detect = await loadBpmDetective();
     if (detect) detectiveBpm = detect(audioBuffer);
@@ -261,6 +271,7 @@ export async function analyzeMusicFromBuffer(audioBuffer: AudioBuffer): Promise<
     regularizeBpm = detectiveBpm;
   }
 
+  await pause?.();
   const gridBeats =
     regularizeBpm !== null ? regularizeBeats(rawBeats, regularizeBpm, duration) : rawBeats;
   const gated = gateBeatsBySilence(gridBeats, channelData, sampleRate);
@@ -288,13 +299,16 @@ export async function detectBeatsFromUrl(url: string): Promise<number[]> {
   }
 }
 
-export async function analyzeMusicFromUrl(url: string): Promise<MusicBeatAnalysis> {
+export async function analyzeMusicFromUrl(
+  url: string,
+  options: MusicAnalysisOptions = {},
+): Promise<MusicBeatAnalysis> {
   const audioContext = new AudioContext();
   try {
     const response = await fetch(url);
     const arrayBuffer = await response.arrayBuffer();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    return analyzeMusicFromBuffer(audioBuffer);
+    return analyzeMusicFromBuffer(audioBuffer, options);
   } finally {
     await audioContext.close();
   }
