@@ -127,7 +127,7 @@ describe("ClawHub skill sync", () => {
       const result = spawnSync(process.execPath, [script], {
         encoding: "utf8",
         env: {
-          PATH: `${bin}:${process.env.PATH}`,
+          PATH: bin,
           GITHUB_SHA: "6c353d8aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           GITHUB_REF_NAME: "main",
           GITHUB_REF: "refs/heads/main",
