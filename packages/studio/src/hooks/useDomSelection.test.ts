@@ -280,6 +280,33 @@ describe("useDomSelection", () => {
     harness.cleanup();
   });
 
+  it("keeps the shown selection when a group-preserving refresh reads nothing new", () => {
+    const element = document.createElement("div");
+    element.id = "headline";
+    const first = { ...makeSelection("Headline", element), dataAttributes: { start: "1" } };
+    const harness = renderHarness({
+      activeCompPath: "intro.html",
+      projectId: "project-1",
+      refreshKey: 0,
+    });
+    const refresh = (selection: typeof first) =>
+      act(() =>
+        harness.current().applyDomSelection(selection, { preserveGroup: true, revealPanel: false }),
+      );
+
+    act(() => harness.current().applyDomSelection(first));
+    harness.timeline.setTimelineSelectionSet.mockClear();
+    refresh({ ...first, dataAttributes: { start: "1" } });
+    expect(harness.current().domEditSelection).toBe(first);
+    expect(harness.timeline.setTimelineSelectionSet).not.toHaveBeenCalled();
+
+    const moved = { ...first, dataAttributes: { start: "2" } };
+    refresh(moved);
+    expect(harness.current().domEditSelection).toBe(moved);
+    expect(harness.current().domEditGroupSelections).toEqual([moved]);
+    harness.cleanup();
+  });
+
   it("clears a committed selection when the active composition path changes", () => {
     const { selection, harness } = setupSelectedHarness();
     expect(harness.current().domEditSelection).toBe(selection);
@@ -333,4 +360,30 @@ describe("useDomSelection", () => {
     expect(harness.current().domEditSelection).toBe(selection);
     harness.cleanup();
   });
+});
+
+it("reports unchanged marquee membership and one new additive member", () => {
+  const { harness, card, chip } = renderCardAndChip();
+  try {
+    act(() => harness.current().applyDomSelection(card));
+    let receipt!: ReturnType<ReturnType<typeof useDomSelection>["applyMarqueeSelection"]>;
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([chip], true);
+    });
+    expect(receipt).toEqual({ changed: true, count: 2 });
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([card, chip], true);
+    });
+    expect(receipt).toEqual({ changed: false, count: 2 });
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([], true);
+    });
+    expect(receipt).toEqual({ changed: false, count: 2 });
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([], false);
+    });
+    expect(receipt).toEqual({ changed: true, count: 0 });
+  } finally {
+    harness.cleanup();
+  }
 });

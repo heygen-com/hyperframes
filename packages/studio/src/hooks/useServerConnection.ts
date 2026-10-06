@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { buildProjectHash, parseProjectIdFromHash } from "../utils/projectRouting";
 import { useMountEffect } from "./useMountEffect";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface ServerConnectionState {
   projectId: string | null;
@@ -37,7 +38,7 @@ type ProjectHashVerdict = {
 
 async function resolveHashProject(id: string): Promise<ProjectHashVerdict> {
   try {
-    const res = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+    const res = await studioApiFetch(`/api/projects/${encodeURIComponent(id)}`);
     if (res.ok) return { outcome: "ok", status: res.status };
     return { outcome: res.status === 404 ? "missing" : "unknown", status: res.status };
   } catch {
@@ -72,7 +73,7 @@ function replaceProjectHash(projectId: string): void {
  */
 async function firstProjectId(): Promise<string | null> {
   try {
-    const res = await fetch("/api/projects");
+    const res = await studioApiFetch("/api/projects");
     const data = (await res.json()) as { projects?: Array<{ id?: string }> };
     return data.projects?.[0]?.id ?? null;
   } catch {
@@ -107,7 +108,7 @@ export function useServerConnection(): ServerConnectionState {
     }
 
     function tryConnect() {
-      fetch("/api/projects")
+      studioApiFetch("/api/projects")
         .then((r) => r.json())
         .then(async (data) => {
           if (cancelled) return;

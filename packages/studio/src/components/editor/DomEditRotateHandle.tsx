@@ -38,7 +38,7 @@ export function DomEditRotateHandle({
       aria-label="Rotate selection"
       onPointerDown={onStartRotate}
     >
-      <span className="pointer-events-none flex h-[18px] w-[18px] items-center justify-center rounded-full border border-studio-accent/70 bg-studio-surface text-studio-accent shadow-[0_0_3px_rgba(0,0,0,0.45)]">
+      <span className="pointer-events-none flex h-[18px] w-[18px] items-center justify-center rounded-full border border-studio-accent/70 bg-studio-surface text-accent-ink shadow-[0_0_3px_rgba(0,0,0,0.45)]">
         <svg
           width="11"
           height="11"

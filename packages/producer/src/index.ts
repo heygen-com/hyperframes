@@ -129,7 +129,7 @@ export {
   type FontFetchErrorCode,
   type FontFetchRetryPolicy,
   type InjectDeterministicFontFacesOptions,
-} from "./services/deterministicFonts.js";
+} from "@hyperframes/core/fonts/embed";
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
 export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 

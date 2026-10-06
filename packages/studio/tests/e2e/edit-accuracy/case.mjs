@@ -1,8 +1,10 @@
 /** Drives one edit accuracy case in the built Studio and measures it. All distances are composition px. */
 import { spawn } from "node:child_process";
+import { classifyTweenPropertyGroup } from "../../../../parsers/src/gsapConstants.ts";
+import { parseGsapScript } from "../../../../parsers/src/gsapParser.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { COMPOSITION, PLAYHEAD } from "./grid.mjs";
+import { COMPOSITION, FIXTURE_CDN, PLAYHEAD, localAsset } from "./grid.mjs";
 import {
   angleOf,
   centre,
@@ -18,8 +20,11 @@ import {
   toPoints,
   visibleQuad,
 } from "./geometry.mjs";
+import { frameSamplerScript, scoreTeleport, startFrames, stopFrames } from "./teleport.mjs";
+import { terminateWindowsProcessTree } from "../../../../cli/src/utils/processTree.ts";
+import { installWebMcpHost } from "../webmcp-host.mjs";
 
-const VIEWPORT = { width: 1600, height: 900 };
+export const VIEWPORT = { width: 1600, height: 900 };
 const STEPS = 20;
 const MOVE_BY = [90, 60];
 const RESIZE_BY = 60;
@@ -28,7 +33,7 @@ const CROP_BY = 40;
 const NUDGES = 5;
 const ZOOM_SENSITIVITY = 0.007; // previewZoom.ts: one wheel unit scales zoom by exp(0.007)
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const up = (port) =>
   fetch(`http://127.0.0.1:${port}/api/projects`).then(
@@ -38,6 +43,12 @@ const up = (port) =>
 const liveServers = new Set();
 /** Signals the server's process group; a group that already exited is not an error. */
 function signalGroup(child, signal) {
+  // Windows has no process groups, so taskkill /T ends the server and its children.
+  if (process.platform === "win32")
+    return void terminateWindowsProcessTree(child.pid).catch((error) => {
+      // taskkill exits 128 when the process is already gone.
+      if (!/status 128$/.test(error.message)) throw error;
+    });
   try {
     process.kill(-child.pid, signal);
   } catch (error) {
@@ -51,16 +62,16 @@ export function killServers() {
 
 const announcedPort = (log) => /http:\/\/localhost:(\d+)/.exec(log.join(""))?.[1];
 
+/** Starts Studio at `port` or, when that is busy, the next free one the CLI binds; returns the port it serves. */
 // fallow-ignore-next-line complexity
 export async function startServer(cli, dir, port, log, home) {
-  // The CLI quietly takes the next free port when asked for a busy one, so only the port it announces counts.
-  if (await up(port)) throw new Error(`port ${port} is already serving`);
   const child = spawn(
     "node",
     [cli, "preview", dir, "--port", String(port), "--no-open", "--foreground", "--force-new"],
     {
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
+      windowsHide: true,
       // A per-case HOME keeps Studio's undo history inside the case's tmp dir.
       env: {
         ...process.env,
@@ -77,12 +88,8 @@ export async function startServer(cli, dir, port, log, home) {
   for (const deadline = Date.now() + 60_000; Date.now() < deadline; await sleep(200)) {
     if (child.exitCode !== null)
       throw new Error(`studio exited ${child.exitCode}: ${log.join("").slice(-500)}`);
-    const announced = announcedPort(log);
-    if (announced && announced !== String(port)) {
-      await stopServer(child);
-      throw new Error(`studio moved from port ${port} to ${announced}`);
-    }
-    if (announced && (await up(port))) return child;
+    const announced = Number(announcedPort(log));
+    if (announced && (await up(announced))) return { child, port: announced };
   }
   await stopServer(child);
   throw new Error("studio did not start in 60s");
@@ -97,18 +104,11 @@ export async function stopServer(child) {
   await exited;
 }
 
-/** Runs in the top frame before Studio: the WebMCP host plus a frame-interval and long-task recorder. */
+/** Runs in the top frame after installWebMcpHost("__editBench"): a frame-interval and long-task recorder. */
 function instrumentPage() {
   if (window.top !== window) return;
-  const tools = new Map();
-  Object.defineProperty(document, "modelContext", {
-    configurable: true,
-    value: { registerTool: async (tool) => void tools.set(tool.name, tool) },
-  });
   const rec = { on: false, frames: [], long: [] };
-  const call = (name, input) =>
-    tools.get(name).execute(input, { signal: new AbortController().signal });
-  window.__editBench = { has: (name) => tools.has(name), call, rec };
+  window.__editBench.rec = rec;
   // The callback's own clock: Chrome stamps a late frame with the vsync it missed, which hides a stall.
   const loop = () => {
     if (rec.on) rec.frames.push(performance.now());
@@ -120,7 +120,7 @@ function instrumentPage() {
   }).observe({ type: "longtask" });
 }
 
-const nextFrame = (page, n = 1) =>
+export const nextFrame = (page, n = 1) =>
   page.evaluate(
     (count) =>
       new Promise((r) => {
@@ -130,14 +130,14 @@ const nextFrame = (page, n = 1) =>
     n,
   );
 
-function readFiles(dir, files) {
+export function readFiles(dir, files) {
   return Object.fromEntries(files.map((f) => [f, readFileSync(join(dir, f), "utf8")]));
 }
-const sameFiles = (a, b) => Object.keys(a).every((f) => a[f] === b[f]);
+export const sameFiles = (a, b) => Object.keys(a).every((f) => a[f] === b[f]);
 
 /** Waits until the files differ from `from` (or equal `want`, or just exist) and then hold still for 300 ms. */
 // fallow-ignore-next-line complexity
-async function waitForFiles(ctx, { from, want, timeout = 5000 }) {
+export async function waitForFiles(ctx, { from, want, timeout = 5000 }) {
   const deadline = Date.now() + timeout;
   let last = readFiles(ctx.dir, ctx.files);
   let stableSince = Date.now();
@@ -151,17 +151,35 @@ async function waitForFiles(ctx, { from, want, timeout = 5000 }) {
   return { reached: false, files: last };
 }
 
+const LOST_MS = 60_000;
+
+/** The write an undo or redo key pressed at `since` causes, with its ms from the key; none after LOST_MS is lost. */
+export async function timedWrite(ctx, from, since) {
+  const w = await waitForFiles(ctx, { from, timeout: LOST_MS });
+  return { ...w, ms: w.reached ? w.at - since : null };
+}
+
+/** "undo lost", "redo lost", or null when every write landed; a late one fails undo through its ms. */
+export const saveFault = (writes) =>
+  writes.map(([name, w]) => (w.reached ? null : `${name} lost`)).find(Boolean) ?? null;
+
 // fallow-ignore-next-line complexity
-async function previewCandidate(frame) {
-  const target = await frame.$("#target");
-  const box = target && (await (await frame.frameElement())?.boundingBox());
+async function previewCandidate(frame, selector) {
+  const target = await frame.$(selector);
+  const host = target && (await frame.frameElement());
+  // Studio loads an edit in a same-size shadow iframe hidden with visibility; it is not what is on screen.
+  const shown =
+    host && (await host.evaluate((e) => e.checkVisibility({ visibilityProperty: true })));
+  const box = shown && (await host.boundingBox());
   return box && { area: box.width * box.height, frame, target };
 }
 
 /** The largest visible preview iframe holding the target; a frame Studio detaches mid-scan is skipped. */
-async function findTarget(page) {
+async function findTarget(page, selector = "#target") {
   const previews = page.frames().filter((f) => f.url().includes("/preview"));
-  const found = await Promise.all(previews.map((f) => previewCandidate(f).catch(() => null)));
+  const found = await Promise.all(
+    previews.map((f) => previewCandidate(f, selector).catch(() => null)),
+  );
   return found.filter(Boolean).reduce((a, b) => (!a || b.area > a.area ? b : a), null);
 }
 
@@ -175,8 +193,8 @@ async function contentQuad(handle) {
 }
 
 async function findHandles(ctx) {
-  const found = await findTarget(ctx.page);
-  if (!found) throw new Error("target not found in preview");
+  const found = await findTarget(ctx.page, ctx.selector);
+  if (!found) throw new Error(`${ctx.selector ?? "#target"} not found in preview`);
   ctx.handles = { target: found.target, root: await found.frame.$('[data-composition-id="main"]') };
 }
 
@@ -193,7 +211,7 @@ async function readQuads({ handles }) {
 }
 
 /** The target's rendered quad, visible (cropped) quad and the screen/composition mapping, from CDP quads. */
-async function measure(ctx) {
+export async function measure(ctx) {
   // Studio can swap the preview into a fresh iframe; a cached handle then reads a hidden copy, so find it again.
   let read = null;
   for (let attempt = 0; !read; attempt++) {
@@ -223,35 +241,64 @@ const previewFrames = (page) =>
     .filter((u) => u.includes("/preview"))
     .join(" ");
 
-/** Measures once the preview frames and the box have held still for STILL_MS; Studio updates both after a save. */
+/** A hidden preview holding the target is a shadow reload not yet promoted: the visible frame is about to go stale. */
+async function hiddenTarget(page, selector = "#target") {
+  for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
+    const host = await f.frameElement().catch(() => null);
+    const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
+    if (shown === false && (await f.$(selector).catch(() => null))) return true;
+  }
+  return false;
+}
+
+// Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
+export const swapPending = (ctx) => Boolean(ctx.keys) && hiddenTarget(ctx.page, ctx.selector);
+
+/** Restart the stillness window: a pending swap, a changed set of preview frames, or the box moved. */
+export const unsettledBy = (start, now) =>
+  start.pending ||
+  now.pending ||
+  now.frames !== start.frames ||
+  quadDistance(now.m.visible, start.m.visible) >= 0.01;
+
+/** Measures once the shown preview and the box have held still for STILL_MS; Studio updates both after a save. */
 // fallow-ignore-next-line complexity
-async function settled(ctx, timeout = 15_000) {
+export async function settled(ctx, timeout = 15_000) {
   const deadline = Date.now() + timeout;
-  let start = { m: await measure(ctx), frames: previewFrames(ctx.page) };
+  const read = async () => ({
+    m: await measure(ctx),
+    frames: previewFrames(ctx.page),
+    pending: await swapPending(ctx),
+  });
+  let start = await read();
   let now = start;
   // Compared with the window's first read, so a drift too slow to show read to read still restarts it.
-  for (let since = Date.now(); Date.now() - since < STILL_MS; ) {
+  for (let since = Date.now(); start.pending || Date.now() - since < STILL_MS; ) {
     // A preview that never holds still is a Studio defect: the metrics it feeds fail, the rest still count.
     if (Date.now() > deadline) return { ...now.m, unsettled: true };
     await nextFrame(ctx.page);
-    now = { m: await measure(ctx), frames: previewFrames(ctx.page) };
-    if (now.frames !== start.frames || quadDistance(now.m.visible, start.m.visible) >= 0.01)
-      [start, since] = [now, Date.now()];
+    now = await read();
+    if (unsettledBy(start, now)) [start, since] = [now, Date.now()];
   }
   return now.m;
 }
 
 /** Ready once Studio's own seek tool reports the composition and the playhead landed. */
 // fallow-ignore-next-line complexity
-async function openStudio(ctx) {
+export async function openStudio(ctx) {
   ctx.handles = null;
   await ctx.page.waitForFunction(() => window.__editBench?.has("studio_seek"), { timeout: 90_000 });
   let seek = null;
   for (const deadline = Date.now() + 30_000; Date.now() < deadline; await sleep(250)) {
     seek = await ctx.page
-      .evaluate((time) => window.__editBench.call("studio_seek", { time }), PLAYHEAD)
+      .evaluate((time) => window.__editBench.call("studio_seek", { time }), ctx.playhead)
       .catch(String);
-    if (seek?.ok && seek.duration > 0 && seek.playhead === PLAYHEAD && (await findTarget(ctx.page)))
+    if (
+      seek?.ok &&
+      seek.duration > 0 &&
+      seek.playhead === ctx.playhead &&
+      (await findTarget(ctx.page))
+    )
       break;
     seek = null;
   }
@@ -260,15 +307,109 @@ async function openStudio(ctx) {
   return settled(ctx);
 }
 
+async function seekTo(ctx, time) {
+  const seek = await ctx.page.evaluate(
+    (t) => window.__editBench.call("studio_seek", { time: t }),
+    time,
+  );
+  if (!seek?.ok || seek.playhead !== time)
+    throw new Error(`studio_seek ${time}: ${JSON.stringify(seek)}`);
+  return settled(ctx);
+}
+
+/** Each GSAP-animated property's value at every other keyframe time (and the box there), then back to the playhead. */
+async function readKeyframes(ctx, keys, withBox = false) {
+  const at = {};
+  for (const time of keys.times) {
+    const m = await seekTo(ctx, time);
+    const values = await ctx.handles.target.evaluate((el, props) => {
+      const gsap = el.ownerDocument.defaultView.gsap;
+      return Object.fromEntries(props.map((p) => [p, Number.parseFloat(gsap.getProperty(el, p))]));
+    }, keys.props);
+    at[time] = { values, ...(withBox && { visible: m.visible }) };
+  }
+  await seekTo(ctx, ctx.playhead);
+  return at;
+}
+
+// GSAP's own numbers (px, deg, scale): an untouched keyframe reads back exactly.
+const KEY_TOLERANCE = 0.01;
+
+/** The largest change of an animated value at a keyframe the edit was not on; NaN (unreadable) fails. */
+export function keyframeDrift(before, after) {
+  let worst = { diff: 0, time: null, prop: null };
+  for (const [time, b] of Object.entries(before))
+    for (const [prop, v] of Object.entries(b.values)) {
+      const diff = Math.abs(after[time].values[prop] - v);
+      if (!(diff <= worst.diff)) worst = { diff, time: Number(time), prop };
+    }
+  return { ...worst, pass: worst.diff <= KEY_TOLERANCE };
+}
+
+const scriptsIn = (html) =>
+  [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi)].map((m) => m[1]);
+const animatesTarget = (anim) => anim.targetSelector === "#target" && !anim.global;
+const keyframeProps = (anim) => (anim.keyframes?.keyframes ?? []).map((k) => k.properties);
+const animatedProps = (anim) =>
+  [anim.properties, anim.fromProperties, ...keyframeProps(anim)].flatMap((props) =>
+    Object.keys(props ?? {}),
+  );
+
+function targetGroups(files) {
+  const props = Object.values(files)
+    .flatMap(scriptsIn)
+    .flatMap((script) => parseGsapScript(script).animations.filter(animatesTarget))
+    .flatMap(animatedProps);
+  return new Set(props.map((prop) => classifyTweenPropertyGroup({ [prop]: 0 })).filter(Boolean));
+}
+
+/** Property groups the edit made the timeline animate on #target that it did not animate before. */
+export function openedGroups(original, saved) {
+  const before = targetGroups(original);
+  return [...targetGroups(saved)].filter((group) => !before.has(group));
+}
+
+const declarations = (text = "") =>
+  Object.fromEntries(
+    text
+      .split(";")
+      .map((d) => d.split(":"))
+      .filter((d) => d.length > 1)
+      .map(([k, ...v]) => [k.trim(), v.join(":").trim()]),
+  );
+const capture = (re, text = "") => re.exec(text)?.[1];
+const targetCss = (html) => ({
+  rule: declarations(capture(/#target\s*\{([^}]*)\}/, html)),
+  inline: declarations(capture(/\bstyle="([^"]*)"/, capture(/(<[^>]*\bid="target"[^>]*>)/, html))),
+});
+
+const keyRule = (drift, opened) => ({ ...drift, opened, pass: drift.pass && opened.length === 0 });
+
+/** Plain CSS the edit wrote for a property GSAP animates: it would override or fight the timeline. */
+export function strayCss(original, saved, props) {
+  const changed = (a, b, file, where) =>
+    props
+      .filter((p) => a[p] !== b[p])
+      .map((p) => `${file} ${where} ${p}: ${a[p] ?? "-"} -> ${b[p] ?? "-"}`);
+  const stray = Object.keys(original).flatMap((file) => {
+    const [a, b] = [targetCss(original[file]), targetCss(saved[file])];
+    return [
+      ...changed(a.rule, b.rule, file, "rule"),
+      ...changed(a.inline, b.inline, file, "inline"),
+    ];
+  });
+  return { pass: stray.length === 0, stray };
+}
+
 /** Puppeteer presses one key at a time: hold the modifiers around the last key. */
-async function chord(page, keys) {
+export async function chord(page, keys) {
   const [key, ...mods] = keys.split("+").reverse();
   for (const m of mods) await page.keyboard.down(m);
   await page.keyboard.press(key);
   for (const m of mods) await page.keyboard.up(m);
 }
 
-async function blurPreview(page) {
+export async function blurPreview(page) {
   await page.evaluate(() => {
     if (document.activeElement?.tagName === "IFRAME") document.activeElement.blur();
   });
@@ -321,7 +462,7 @@ const overlayRect = (page, selector) =>
     }),
   );
 
-async function selectTarget(ctx, m) {
+export async function selectTarget(ctx, m) {
   const c = m.map.toScreen(centre(m.visible));
   const want = m.visible.map(m.map.toScreen);
   const isSelected = async () => {
@@ -436,7 +577,7 @@ const TRACE_CATEGORIES = ["toplevel", "devtools.timeline", "blink.user_timing"];
 const TRACE_MARK = "edit-bench-end";
 
 /** Frame stamps plus a main-thread trace of the drag; the end mark ties performance.now() to trace time. */
-async function recording(page, on) {
+export async function recording(page, on) {
   if (on) await page.tracing.start({ categories: TRACE_CATEGORIES });
   const rec = await page.evaluate(
     (flag, mark) => {
@@ -475,34 +616,40 @@ function topLevelTasks(trace, { pid, tid }) {
   return tops;
 }
 
-// Thread CPU time, spread evenly over the task, so a loaded machine descheduling the thread does not count as work.
+// Thread CPU time, spread evenly over the task, so a descheduled thread does not count; untimed tasks count wall time.
 const cpuUs = (e, a, b) =>
-  (Math.max(0, Math.min(b, e.ts + e.dur) - Math.max(a, e.ts)) * e.tdur) / (e.dur || 1);
+  (Math.max(0, Math.min(b, e.ts + e.dur) - Math.max(a, e.ts)) * (e.tdur ?? e.dur)) / (e.dur || 1);
 
 /** Main-thread CPU ms inside each frame interval, on the thread that ran the end mark; null when unknown. */
 function mainThreadPerFrame({ frames, mark, trace }) {
   const anchor = trace.find((e) => e.name === TRACE_MARK && e.cat.includes("user_timing"));
-  const tasks = anchor ? topLevelTasks(trace, anchor) : [];
-  // Without the mark or thread CPU time the work is unknown, which fails smoothness alone.
-  if (!anchor || tasks.some((e) => e.tdur === undefined)) return null;
+  // Without the mark the work is unknown, which fails smoothness alone.
+  if (!anchor) return { work: null, wallTimed: 0, unknown: "no end mark in the trace" };
   const toTrace = (ms) => anchor.ts + (ms - mark) * 1000;
-  return frames.slice(1).map((t, i) => {
+  const [from, to] = [toTrace(frames[0]), toTrace(frames.at(-1))];
+  const tasks = topLevelTasks(trace, anchor);
+  const inFrames = (e) => e.ts < to && e.ts + e.dur > from;
+  const wallTimed = tasks.filter((e) => e.tdur === undefined && inFrames(e)).length;
+  const work = frames.slice(1).map((t, i) => {
     const [a, b] = [toTrace(frames[i]), toTrace(t)];
     return tasks.reduce((sum, e) => sum + cpuUs(e, a, b), 0) / 1000;
   });
+  return { work, wallTimed };
 }
 
 const hundredth = (v) => Math.round(v * 100) / 100;
 
-function smoothness(rec) {
+export function smoothness(rec) {
   const intervals = rec.frames.slice(1).map((t, i) => t - rec.frames[i]);
-  const work = mainThreadPerFrame(rec);
+  const { work, wallTimed, unknown } = mainThreadPerFrame(rec);
   return {
     p95: percentile(intervals, 95),
     frames: intervals.length,
     longTasks: rec.long.length,
     intervals: intervals.map(hundredth),
     work: work && work.map(hundredth),
+    wallTimed,
+    ...(unknown && { unknown }),
   };
 }
 
@@ -510,12 +657,15 @@ const CONTROL_PAGE = `data:text/html,<body style="margin:0;background:%23202020"
   style="position:absolute;left:600px;top:300px;width:240px;height:160px;background:%23f0c020"></div>`;
 
 /** The case's drag schedule and per-frame reads on a blank page in the same Chrome: the machine's own frame drops. */
-async function controlDrag(browser, gesture) {
+export async function controlDrag(browser, gesture) {
   const context = await browser.createBrowserContext();
   try {
     const page = await context.newPage();
     await page.setViewport(VIEWPORT);
+    await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
+    // The real drags run the frame sampler, so the control pays its cost too.
+    await page.evaluateOnNewDocument(frameSamplerScript);
     await page.goto(CONTROL_PAGE);
     const box = await page.$("#box");
     const ctx = { page, handles: { target: box, root: box } };
@@ -530,6 +680,7 @@ async function controlDrag(browser, gesture) {
       return smoothness(await recording(page, false));
     }
     await page.mouse.move(700, 380);
+    await startFrames(page, "#box");
     await page.mouse.down();
     await nextFrame(page);
     await read();
@@ -541,16 +692,42 @@ async function controlDrag(browser, gesture) {
     }
     const smooth = smoothness(await recording(page, false));
     await page.mouse.up();
+    await stopFrames(page);
     return smooth;
   } finally {
     await context.close().catch(() => undefined);
   }
 }
 
-async function pointerGesture(ctx, gesture, pre) {
+/** The move Chromium resends at the last known point after a layout change: no button, capture kept. A CDP move
+ * with no button ends the capture instead, so it goes to the captured box (the mouse is pointer 1). */
+async function strayMove(page, [x, y]) {
+  const sent = await page.evaluate(
+    ([clientX, clientY]) =>
+      document.querySelector("[data-dom-edit-selection-box]")?.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true,
+          buttons: 0,
+          clientX,
+          clientY,
+        }),
+      ),
+    [x, y],
+  );
+  if (sent === undefined) throw new Error("no selection box to send the stray move to");
+  await nextFrame(page);
+}
+
+/** `route`, given the press point, replaces the gesture's straight path.
+ * `{ pause }` holds still; `{ stray }`: see strayMove. */
+// fallow-ignore-next-line complexity
+export async function pointerGesture(ctx, gesture, pre, route) {
   const press = await handlePoint(ctx, pre, gesture);
   const pressComp = pre.map.toComp(press);
-  const g = plan(gesture, pre, pressComp);
+  const g = { ...plan(gesture, pre, pressComp), ...(route && { path: route(press) }) };
   const hit = await ctx.page.evaluate(([x, y]) => {
     const e = document.elementFromPoint(x, y);
     return e
@@ -558,6 +735,8 @@ async function pointerGesture(ctx, gesture, pre) {
       : null;
   }, press);
   await ctx.page.mouse.move(press[0], press[1]);
+  await startFrames(ctx.page, ctx.selector ?? "#target");
+  await nextFrame(ctx.page, 2);
   await ctx.page.mouse.down();
   await nextFrame(ctx.page);
   const s0 = await sample(ctx, gesture, g.point, press);
@@ -565,6 +744,14 @@ async function pointerGesture(ctx, gesture, pre) {
   const errors = [];
   let last = s0;
   for (const p of g.path) {
+    if (p.pause) {
+      await sleep(p.pause);
+      continue;
+    }
+    if (p.stray) {
+      await strayMove(ctx.page, p.stray);
+      continue;
+    }
     await ctx.page.mouse.move(p[0], p[1]);
     await nextFrame(ctx.page);
     last = await sample(ctx, gesture, g.point, p);
@@ -577,6 +764,7 @@ async function pointerGesture(ctx, gesture, pre) {
   return {
     errors,
     lastQuad,
+    lastMeasure: last.m,
     pressJump: quadDistance(s0.m.visible, pre.visible),
     smooth,
     diag: {
@@ -606,111 +794,187 @@ async function nudgeGesture(ctx, pre) {
   };
 }
 
-/** One case, end to end, in a fresh browser context against a Studio already serving `dir`. */
-// fallow-ignore-next-line complexity
-export async function runCase({ browser, spec, dir, files, url, evidence }) {
-  const control = await controlDrag(browser, spec.gesture);
+const blockedCdnUrls = new Set();
+
+/** Serves the fixtures' CDN requests from the repo; any other CDN URL is blocked and named once. */
+export async function serveFixtureAssetsLocally(page) {
+  const cdp = await page.createCDPSession();
+  cdp.on("Fetch.requestPaused", ({ requestId, request }) => {
+    const file = localAsset(request.url);
+    if (!file) {
+      if (!blockedCdnUrls.has(request.url)) console.warn(`edit bench: blocked ${request.url}`);
+      blockedCdnUrls.add(request.url);
+      cdp
+        .send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" })
+        .catch(() => undefined);
+      return;
+    }
+    // A request whose frame went away rejects; that must not end the run.
+    cdp
+      .send("Fetch.fulfillRequest", {
+        requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "text/javascript" }],
+        body: readFileSync(file).toString("base64"),
+      })
+      .catch(() => undefined);
+  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `${FIXTURE_CDN}*` }] });
+}
+
+/**
+ * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
+ * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
+ */
+export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
-  const ctx = { page, dir, files, handles: null };
+  await serveFixtureAssetsLocally(page);
+  const ctx = {
+    page,
+    dir,
+    files,
+    handles: null,
+    playhead: spec.playhead ?? PLAYHEAD,
+    keys: spec.keys,
+  };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
   evidence.shots = {};
   const shoot = async (name) =>
     (evidence.shots[name] = await page.screenshot({ type: "jpeg", quality: 70 }));
-  let committedFiles = null;
   try {
     await page.setViewport(VIEWPORT);
+    await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
+    await page.evaluateOnNewDocument(frameSamplerScript);
     await page.goto(url);
     let pre = await openStudio(ctx);
     await disableSnap(page);
     const zoom = await setZoom(ctx, spec.zoom, pre.map.toScreen(centre(pre.visible)));
+    // The animated values at the other keyframes, read before anything is selected or edited.
+    const keysBefore = spec.keys && (await readKeyframes(ctx, spec.keys));
     pre = await settled(ctx);
     await selectTarget(ctx, pre);
     pre = await settled(ctx);
-    const original = readFiles(dir, files);
-
-    const drive =
-      spec.gesture === "nudge"
-        ? await nudgeGesture(ctx, pre)
-        : await pointerGesture(ctx, spec.gesture, pre);
-    const releasedAt = Date.now();
-    const save = await waitForFiles(ctx, {
-      from: original,
-      timeout: spec.gesture === "nudge" ? 6000 : 5000,
-    });
-    await nextFrame(page, 2);
-    await blurPreview(page);
-    await page.keyboard.press("Escape");
-    const committed = await settled(ctx);
-    await shoot("committed");
-    committedFiles = readFiles(dir, files);
-    const saved = !sameFiles(committedFiles, original);
-
-    // Undo and redo run before any reload. Each waits up to 15 s for its own write; redo waits for undo.
-    const landed = (from) =>
-      saved ? waitForFiles(ctx, { from, timeout: 15_000 }) : { reached: true, files: from };
-    const undoKeyAt = Date.now();
-    await chord(page, "Control+z");
-    const undo = await landed(committedFiles);
-    const undone = await settled(ctx);
-    await shoot("undone");
-    let [redo, redone, redoKeyAt] = [{ reached: false }, null, 0];
-    if (undo.reached) {
-      await blurPreview(page);
-      redoKeyAt = Date.now();
-      await chord(page, "Control+Shift+z");
-      redo = await landed(undo.files);
-      redone = await settled(ctx);
-    }
-    // A late write must not land under the reload.
-    await waitForFiles(ctx, { timeout: 15_000 });
-
-    await page.reload();
-    const reloaded = await openStudio(ctx);
-    await shoot("reloaded");
-    const quads = Object.fromEntries(
-      Object.entries({ pre, committed, undone, redone, reloaded }).filter(([, m]) => m),
-    );
-    const round = (m) => m.visible.map((p) => p.map((v) => Math.round(v * 100) / 100));
-    return {
-      zoom,
-      saved,
-      tracking: {
-        max: Math.max(...drive.errors),
-        p95: percentile(drive.errors, 95),
-        frames: drive.errors.length,
-      },
-      pressJump: drive.pressJump,
-      drop: quadDistance(drive.lastQuad, committed.visible),
-      reload: quadDistance(committed.visible, reloaded.visible),
-      undo: {
-        bytes: saved && undo.reached && sameFiles(undo.files, original),
-        box: quadDistance(undone.visible, pre.visible),
-        redoBytes: saved && redo.reached && sameFiles(redo.files, committedFiles),
-        redoBox: redone && quadDistance(redone.visible, committed.visible),
-        ms: undo.at ? undo.at - undoKeyAt : null,
-        redoMs: redo.at ? redo.at - redoKeyAt : null,
-      },
-      // From release (or the last nudge key) to the edit's file write.
-      saveMs: save.at ? save.at - releasedAt : null,
-      // Which write never landed within 15 s; a redo that was never sent is untested, so undo fails.
-      undoTimeout: saved && !undo.reached ? "undo" : saved && !redo.reached ? "redo" : null,
-      smooth: { ...drive.smooth, control },
-      unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
-      reloaded,
-      diag: {
-        ...drive.diag,
-        consoleErrors: consoleErrors.slice(0, 5),
-        quads: Object.fromEntries(Object.entries(quads).map(([k, m]) => [k, round(m)])),
-      },
-    };
+    return await drive({ ctx, page, pre, zoom, shoot, consoleErrors, keysBefore });
   } catch (error) {
     await shoot("error").catch(() => undefined);
     throw error;
   } finally {
-    evidence.files = committedFiles;
     await context.close().catch(() => undefined);
   }
+}
+
+/** One case, end to end, against a Studio already serving `dir`. */
+export async function runCase(args) {
+  const control = await controlDrag(args.browser, args.spec.gesture);
+  return inStudio(args, (session) => measureCase(args, session, control));
+}
+
+// fallow-ignore-next-line complexity
+async function measureCase(
+  { spec, dir, files, evidence },
+  { ctx, page, pre, zoom, shoot, consoleErrors, keysBefore },
+  control,
+) {
+  const original = readFiles(dir, files);
+
+  const drive =
+    spec.gesture === "nudge"
+      ? await nudgeGesture(ctx, pre)
+      : await pointerGesture(ctx, spec.gesture, pre);
+  const releasedAt = Date.now();
+  const save = await waitForFiles(ctx, {
+    from: original,
+    timeout: spec.gesture === "nudge" ? 6000 : 5000,
+  });
+  await nextFrame(page, 2);
+  await blurPreview(page);
+  await page.keyboard.press("Escape");
+  const committed = await settled(ctx);
+  const frames = await stopFrames(page);
+  await shoot("committed");
+  const committedFiles = readFiles(dir, files);
+  evidence.files = committedFiles;
+  const saved = !sameFiles(committedFiles, original);
+
+  // Undo and redo run before any reload, each timed from its key to its own write; redo waits for undo.
+  const landed = (from, since) =>
+    saved ? timedWrite(ctx, from, since) : { reached: true, files: from, ms: null };
+  let since = Date.now();
+  await chord(page, "Control+z");
+  const undo = await landed(committedFiles, since);
+  const undone = await settled(ctx);
+  await shoot("undone");
+  let [redo, redone] = [{ reached: false }, null];
+  if (undo.reached) {
+    await blurPreview(page);
+    since = Date.now();
+    await chord(page, "Control+Shift+z");
+    redo = await landed(undo.files, since);
+    redone = await settled(ctx);
+  }
+  // A late write must not land under the reload.
+  await waitForFiles(ctx, { timeout: 15_000 });
+
+  await page.reload();
+  const reloaded = await openStudio(ctx);
+  await shoot("reloaded");
+  // From the saved file: the other keyframes keep their values, and no animated property gets plain CSS.
+  const keysAfter = spec.keys && (await readKeyframes(ctx, spec.keys, true));
+  const quads = Object.fromEntries(
+    Object.entries({ pre, committed, undone, redone, reloaded }).filter(([, m]) => m),
+  );
+  const round = (m) => m.visible.map((p) => p.map((v) => Math.round(v * 100) / 100));
+  return {
+    zoom,
+    saved,
+    tracking: {
+      max: Math.max(...drive.errors),
+      p95: percentile(drive.errors, 95),
+      frames: drive.errors.length,
+    },
+    pressJump: drive.pressJump,
+    teleport: spec.gesture === "nudge" ? null : scoreTeleport(spec.gesture, frames[0] ?? []),
+    drop: quadDistance(drive.lastQuad, committed.visible),
+    // Also against the box the gesture left, so a write the file drops shows here and not only as drop.
+    reload: Math.max(
+      quadDistance(committed.visible, reloaded.visible),
+      quadDistance(drive.lastQuad, reloaded.visible),
+    ),
+    undo: {
+      bytes: saved && undo.reached && sameFiles(undo.files, original),
+      box: quadDistance(undone.visible, pre.visible),
+      redoBytes: saved && redo.reached && sameFiles(redo.files, committedFiles),
+      redoBox: redone && quadDistance(redone.visible, committed.visible),
+      ms: undo.ms ?? null,
+      redoMs: redo.ms ?? null,
+    },
+    // From release (or the last nudge key) to the edit's file write.
+    saveMs: save.at ? save.at - releasedAt : null,
+    // A lost undo or redo write fails undo; a redo that was never sent is untested.
+    undoTimeout: saved
+      ? saveFault([
+          ["undo", undo],
+          ["redo", redo],
+        ])
+      : null,
+    smooth: { ...drive.smooth, control },
+    unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
+    reloaded,
+    ...(spec.keys && {
+      keys: keyRule(
+        keyframeDrift(keysBefore, keysAfter),
+        openedGroups(original, readFiles(dir, files)),
+      ),
+      css: strayCss(original, readFiles(dir, files), spec.keys.css),
+      keyRender: { time: spec.keys.render, visible: keysAfter[spec.keys.render].visible },
+    }),
+    diag: {
+      ...drive.diag,
+      consoleErrors: consoleErrors.slice(0, 5),
+      quads: Object.fromEntries(Object.entries(quads).map(([k, m]) => [k, round(m)])),
+    },
+  };
 }

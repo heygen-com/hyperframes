@@ -228,6 +228,13 @@ fade("#a", 1);`;
     expect(unrollComputedTimeline(script)).toBe(script);
   });
 
+  it("leaves a loop as authored when a tween's keyframes cannot be read", () => {
+    const script = `const tl = gsap.timeline();
+for (let i = 0; i < 2; i++) { tl.to("#x", { duration: 1, keyframes: [{ x: 0 }, { x: 100, runBackwards: true }] }, i); }`;
+    expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+    expect(unrollComputedTimeline(script)).toBe(script);
+  });
+
   it("leaves a loop as authored when its body sets state outside the timeline", () => {
     const script = `const tl = gsap.timeline();
 for (let i = 0; i < 2; i++) { gsap.set("#x", { opacity: 0 }); tl.to("#x", { opacity: 1, duration: 1 }, i); }`;

@@ -7,6 +7,8 @@ export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
 export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
+export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
+export type { LinkShortcutCallbacks } from "./hooks/linkShortcuts";
 export type { ShortcutsButtonProps } from "./player/components/ShortcutsPanel";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
@@ -31,6 +33,11 @@ export {
   liveTime,
   formatTime,
 } from "./player";
+export { usePreviewIframeStore } from "./player/store/previewIframeStore";
+export {
+  openAudioGainDialog,
+  useAudioGainDialogStore,
+} from "./player/components/audioGainDialogStore";
 export type {
   PlayerHandle,
   PlayerHandleElement,
@@ -57,6 +64,13 @@ export { TimelineProvider, useTimelineContext } from "./player/components/Timeli
 export type { TimelineTheme } from "./player/components/timelineTheme";
 export { TRACK_H } from "./player/components/timelineLayout";
 export type { TimelineTrackPadding } from "./player/components/timelineLayout";
+export { displayTrackOrder } from "./player/components/useTimelineTrackDerivations";
+export { fadeHandleBoxes } from "./player/components/timelineClipFadeGeometry";
+export type {
+  FadeEdge,
+  FadeHandleBox,
+  FadeHandleClipBox,
+} from "./player/components/timelineClipFadeGeometry";
 
 // Clip content thumbnails: used by a host rendering its own timeline lane.
 export { AudioWaveform } from "./player/components/AudioWaveform";
@@ -64,6 +78,8 @@ export type { AudioWaveformProps } from "./player/components/AudioWaveform";
 export { ImageThumbnail } from "./player/components/ImageThumbnail";
 export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
 export { useRenderClipContent } from "./hooks/useRenderClipContent";
+export { useThumbnailStill } from "./hooks/useThumbnailStill";
+export type { ThumbnailStill, UseThumbnailStillOptions } from "./hooks/useThumbnailStill";
 export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
 export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";
 export type {
@@ -143,6 +159,7 @@ export type {
 // A host's own waitForPendingDomEditSaves must also call this, or undo/redo
 // can race a write still in flight (see useTrackPendingTimelineEdit.ts).
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
+export { revertNewestStudioPendingEdit } from "./utils/studioPendingEdits";
 export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,
@@ -175,23 +192,30 @@ export { TimelineHistoryButtons } from "./components/TimelineHistoryButtons";
 export type { TimelineHistoryButtonsProps } from "./components/TimelineHistoryButtons";
 export { AudioMeterStrip } from "./components/nle/AudioMeterStrip";
 export type { AudioMeterStripProps } from "./components/nle/AudioMeterStrip";
+export { useAudioMetersVisible } from "./utils/audioMeterVisibility";
 export { useClipboard } from "./hooks/useClipboard";
 export type { UseClipboardOptions } from "./hooks/useClipboard";
 
 // DOM editing for a host outside EditorShell; the Commit hooks save without useDomEditSession.
 export { useDomEditSession } from "./hooks/useDomEditSession";
 export type { UseDomEditSessionParams } from "./hooks/useDomEditSession";
+export { useLivePreviewIframe } from "./hooks/useLivePreviewIframe";
+export type { PreviewPromotion } from "./player/sceneSwap";
 export { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 export type { UsePreviewPersistenceParams } from "./hooks/usePreviewPersistence";
 export { DomEditProvider, useDomEditSelectionContext } from "./contexts/DomEditContext";
 export { PreviewReadOnlyProvider } from "./components/editor/previewReadOnlyContext";
 export { ConnectedDomEditOverlay } from "./components/editor/ConnectedDomEditOverlay";
+export { LayersPanel } from "./components/editor/LayersPanel";
+export type { LayersPanelHost } from "./components/editor/LayersPanel";
 export type { ConnectedDomEditOverlayProps } from "./components/editor/ConnectedDomEditOverlay";
 export { useDomEditZOrder } from "./components/editor/useDomEditZOrder";
 export type { DomEditZOrder } from "./components/editor/useDomEditZOrder";
 export type { ZOrderAction } from "./components/editor/canvasContextMenuZOrder";
 export type { DomEditCapabilities, DomEditSelection } from "./components/editor/domEditingTypes";
 export { useDomStyleCommit } from "./hooks/useDomStyleCommit";
+export { ColorField } from "./components/editor/propertyPanelColor";
+export { GradientField } from "./components/editor/propertyPanelFill";
 export type { UseDomStyleCommitOptions } from "./hooks/useDomStyleCommit";
 export type { DomEditCommitDeclineReason, DomEditCommitOutcome } from "./hooks/domEditCommitRunner";
 export { resolveDomEditSelection } from "./components/editor/domEditingLayers";
@@ -238,3 +262,10 @@ export type { MarqueeGestures, MarqueeGesturesDeps } from "./components/editor/m
 export { MarqueeOverlay } from "./components/editor/MarqueeOverlay";
 export type { MarqueeOverlayProps } from "./components/editor/MarqueeOverlay";
 export type { Rect as MarqueeRect } from "./utils/marqueeGeometry";
+
+export { buildStudioTools } from "./webmcp/useStudioAgentTools";
+export type { StudioAgentToolsDeps } from "./webmcp/useStudioAgentTools";
+export { collectStudioLookScene } from "./webmcp/tools/lookTools";
+export type { StudioLookSnapshot } from "./webmcp/tools/lookTools";
+export type { ModelContextTool } from "./webmcp/types";
+export type { ToolResult } from "./webmcp/toolResult";

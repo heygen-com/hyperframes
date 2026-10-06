@@ -40,10 +40,11 @@ export interface HistoryLog {
   baseline: Manifest;
   entries: HistoryEntry[];
   pins: Set<string>;
+  keepsLedger?: boolean;
 }
 
 export type LogRecord =
-  | { type: "baseline"; files: Record<string, string> }
+  | { type: "baseline"; files: Record<string, string>; keepsLedger?: boolean }
   | { type: "entry"; entry: HistoryEntry }
   | { type: "pin"; id: string; pinned: boolean };
 
@@ -74,8 +75,10 @@ export function readLog(file: string, onUnreadable: (line: number) => void): His
 }
 
 function applyRecord(log: HistoryLog, record: LogRecord): void {
-  if (record.type === "baseline") log.baseline = new Map(Object.entries(record.files));
-  else if (record.type === "entry") log.entries.push(record.entry);
+  if (record.type === "baseline") {
+    log.baseline = new Map(Object.entries(record.files));
+    log.keepsLedger = record.keepsLedger === true;
+  } else if (record.type === "entry") log.entries.push(record.entry);
   else if (record.pinned) log.pins.add(record.id);
   else log.pins.delete(record.id);
 }
@@ -97,9 +100,17 @@ export function saveRecord(file: string, log: HistoryLog, record: LogRecord): vo
   }
 }
 
+export function baselineRecord(log: HistoryLog): LogRecord {
+  return {
+    type: "baseline",
+    files: Object.fromEntries(log.baseline),
+    ...(log.keepsLedger && { keepsLedger: true }),
+  };
+}
+
 export function writeLog(file: string, log: HistoryLog): void {
   const records: LogRecord[] = [
-    { type: "baseline", files: Object.fromEntries(log.baseline) },
+    baselineRecord(log),
     ...log.entries.map((entry) => ({ type: "entry" as const, entry })),
     ...[...log.pins].map((id) => ({ type: "pin" as const, id, pinned: true })),
   ];

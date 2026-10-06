@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { walkDir } from "./safePath";
+import { isPrivateProjectFile, walkDir } from "./safePath";
 
 const hooks = vi.hoisted(() => ({ unreadable: new Map<string, string>() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -80,5 +80,26 @@ describe("walkDir", () => {
     hooks.unreadable.set(projectDir, "EACCES");
 
     expect(() => walkDir(projectDir)).toThrow("EACCES");
+  });
+});
+
+describe("isPrivateProjectFile", () => {
+  it("names everything under .hyperframes/ but Studio's own files and request pictures, in any case", () => {
+    for (const name of [
+      "agent-handoff.json",
+      "agent-handoff-read.json",
+      "app-history-seen.json",
+      "share.json",
+    ])
+      expect(isPrivateProjectFile("/p", `/p/.hyperframes/${name}`)).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.HyperFrames/App-History.JSONL")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/studio-motion.json")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/studio-manual-edits.json")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/gif/a.mp4")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests/1/before.png")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests-old/x")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/agent-handoff.json")).toBe(false);
   });
 });

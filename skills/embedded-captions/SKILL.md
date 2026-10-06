@@ -48,7 +48,7 @@ The craft prose below is long; the **pipeline itself is short** — and everythi
 
 1. **Decision gate** (refuse bad clips) → **pick ONE identity from [CATALOG.md](CATALOG.md)** (35 identities; engine/compiler derived by lookup — never surface a mode/category question)
 2. `hyperframes init` (skip it if the project dir already exists with the video inside — `matte.cjs`/`transcribe.cjs` adopt any video in the dir as source.mp4) → **`bash scripts/prepare.sh <project>`** (matte ∥ transcribe ∥ audio-envelope in parallel, then safe-zones v2 with scene palette/optics/lighting — one command, nothing forgotten)
-3. **author a small JSON of creative choices** (read `safe-zones.json` first): Cinematic → `plan.json` → `fill-timings.cjs` → `fit-fonts.cjs` → `make-composition.cjs`; Theme → `theme.json` → `make-theme.cjs` (rail/panel/poem/takeover paradigms; `anchor` is the quiet rail default)
+3. **author a small JSON of creative choices** (read `safe-zones.json` first): Cinematic → `cinematic.json` → `make-cinematic.cjs` (derives `plan.json` and compiles it); Theme → `theme.json` → `make-theme.cjs` (rail/panel/poem/takeover paradigms; `anchor` is the quiet rail default)
 4. **Visual QA**: `node scripts/preview-frames.cjs <project>` → faithful composite previews in ~2s/frame (no render). Check § Visual QA before paying for a render.
 5. `render-and-composite.sh` → gates (timing / occlusion+hero / overflow / hand-off) → `final.mp4`
 
@@ -92,7 +92,7 @@ Procedure: probe the clip → shortlist 2–3 identities from the catalog → re
 
 **Recommendation heuristic**: use the "Shortlisting heuristics" in [CATALOG.md](CATALOG.md) — they are identity-level (e.g. "炸" shortlists ordnance/stomp/terminal/loud and picks by WHAT should explode), never category-level. Unsure → `anchor`.
 
-- **Cinematic** → write `plan.json` for a locked template, compiled by `make-composition.cjs`.
+- **Cinematic** → write `cinematic.json` for a locked template, compiled by `make-cinematic.cjs`.
 - **Theme** → read [themes/README.md](themes/README.md), author `theme.json`, run `scripts/render-theme.sh` (compiles + renders + plate reaction → **final_fx.mp4**).
 
 ---
@@ -131,7 +131,7 @@ Read the samples. Refuse if:
 2. bash scripts/prepare.sh <project>       # matte ∥ transcribe (parallel) → safe-zones. One command.
                                            #   → frames_fg/ transcript.json safe-zones.json
 3. [AGENT STEP — the only creative step] author a small JSON; see below by mode
-   Cinematic: author plan.json → node scripts/fill-timings.cjs → fit-fonts.cjs → make-composition.cjs
+   Cinematic: author cinematic.json → node scripts/make-cinematic.cjs <project>
    Theme:     author theme.json → bash scripts/render-theme.sh <project>   (compiles + renders + plate fx)
 4. node scripts/preview-frames.cjs <project>   # ~2s/frame composite previews → § Visual QA (BEFORE the render)
 5. bash scripts/render-and-composite.sh <project>  # gates → final.mp4 + history/ snapshot
@@ -174,7 +174,7 @@ Check the previews (`<project>/preview/sheet.png`) against this list — these a
 
 Then the **5 positive checks** in [references/reference-bar.md](references/reference-bar.md) (poster test · timid test · one-glance hierarchy · scene handshake · dead-air audit) — the failure list keeps a render from being broken; the positive list is what makes it _designed_. Ship when both pass.
 
-**Fresh-eyes review (recommended for anything user-facing):** you have confirmation bias about your own layout. If you can spawn a subagent, give it ONLY the preview sheet + this checklist and ask for PASS/FIX verdicts per frame ("review these caption previews against the 5-point checklist; answer PASS or the specific fix per frame"). Apply fixes in plan.json / theme.json, recompile, re-preview — each loop costs seconds. Render once, when the previews pass.
+**Fresh-eyes review (recommended for anything user-facing):** you have confirmation bias about your own layout. If you can spawn a subagent, give it ONLY the preview sheet + this checklist and ask for PASS/FIX verdicts per frame ("review these caption previews against the 5-point checklist; answer PASS or the specific fix per frame"). Apply fixes in cinematic.json / theme.json, recompile, re-preview — each loop costs seconds. Render once, when the previews pass.
 
 ---
 
@@ -223,7 +223,7 @@ Cross-reference in [references/direction-catalog.md § Classification matrix](re
 
 ## Composition craft (embed track) — read before embedding
 
-The full **embed-track** playbook lives in **[references/composition-craft.md](references/composition-craft.md)**: transcript role-annotation, phrase grouping, planes & clean-zone anchoring, zone coherence, climax pop & readability, edge-breathing, the occlusion 3-step judgement, and accumulation/persistence. It governs how a _promoted_ phrase sits INTO the scene — read it before authoring any embed (Cinematic `plan.json` or Standard `index.html`). The default **rail** track has its own, much simpler spec → **[references/rail.md](references/rail.md)**.
+The full **embed-track** playbook lives in **[references/composition-craft.md](references/composition-craft.md)**: transcript role-annotation, phrase grouping, planes & clean-zone anchoring, zone coherence, climax pop & readability, edge-breathing, the occlusion 3-step judgement, and accumulation/persistence. It governs how a _promoted_ phrase sits INTO the scene — read it before authoring any embed (Cinematic `cinematic.json` or Standard `index.html`). The default **rail** track has its own, much simpler spec → **[references/rail.md](references/rail.md)**.
 
 ---
 
@@ -274,7 +274,7 @@ The full **embed-track** playbook lives in **[references/composition-craft.md](r
 ## Dependencies
 
 - **HyperFrames CLI:** plugin installs use the bundled manifest-pinned launcher. Source contributors can use a built checkout (`packages/cli/dist/cli.js`) via `HYPERFRAMES_ROOT`, the skill’s source tree, or `~/Downloads/hyperframes`.
-- **Node-first; two Python touchpoints via `uvx` (no manual installs):** transcription runs WhisperX through `uvx` (word-level timings; falls back per SKILL §transcription), and Theme's `drawon` setpiece shells `python3 scripts/gen-stroke-path.py` at compile time. Everything else runs on the toolchain hyperframes already ships: matting via the hyperframes CLI's **`remove-background`** (u2net_human_seg; weights auto-download once, ~168 MB, to `~/.cache/hyperframes/`), image/alpha math via **`sharp`**, layout/occlusion/overflow via **`puppeteer`**, plus **`ffmpeg`**. Install Sharp, Puppeteer, and GSAP in the caption project as described in **Runtime prerequisites** above. The helpers check that project first and retain checkout dependency lookup for source contributors.
+- **Node-first; two Python touchpoints via `uvx` (no manual installs):** transcription runs WhisperX through `uvx` (word-level timings; falls back to an existing word-level `transcript.json`), and Theme's `drawon` setpiece shells `python3 scripts/gen-stroke-path.py` at compile time. Everything else runs on the toolchain hyperframes already ships: matting via the hyperframes CLI's **`remove-background`** (u2net_human_seg; weights auto-download once, ~168 MB, to `~/.cache/hyperframes/`), image/alpha math via **`sharp`**, layout/occlusion/overflow via **`puppeteer`**, plus **`ffmpeg`**. Install Sharp, Puppeteer, and GSAP in the caption project as described in **Runtime prerequisites** above. The helpers check that project first and retain checkout dependency lookup for source contributors.
 - **Transcription = WhisperX via `uvx`** (word-level timings + alignment; no manual install — `transcribe.cjs` drives `uvx whisperx`). Falls back to an existing word-level `transcript.json` if present.
 - **Source video** — `matte.cjs` / `transcribe.cjs` auto-resolve `source.mp4` (or glob the clip / read `hyperframes.json`), so `hyperframes init --video X.mp4` needs no manual rename.
 - **fps** — `matte.cjs` extracts at the source's native rate and records `matte.fps`; `render-and-composite.sh` uses that so the matte stays frame-aligned.

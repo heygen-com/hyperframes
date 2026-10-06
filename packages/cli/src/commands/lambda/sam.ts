@@ -60,17 +60,16 @@ export interface DeployOptions {
 }
 
 /**
- * Resolve the SAM template path relative to `repoRoot`. We look for the
- * `examples/aws-lambda/template.yaml` first (development checkout) and
- * fall back to the installed-package layout when running from a globally
- * installed `hyperframes` CLI.
+ * Resolve the SAM template path relative to `repoRoot`. No installed-package fallback: the
+ * template's `CodeUri` is relative to the monorepo, so it only works inside a checkout.
  */
 export function locateSamTemplate(repoRoot: string): string {
   const candidate = join(repoRoot, "examples", "aws-lambda", "template.yaml");
   if (!existsSync(candidate)) {
     throw new Error(
       `[lambda] SAM template not found at ${candidate}. ` +
-        `If you're running from an installed package, point --sam-template at your local copy of examples/aws-lambda/template.yaml.`,
+        "`hyperframes lambda deploy` needs a HyperFrames repo checkout: run it from one, " +
+        "or set HYPERFRAMES_REPO_ROOT to point at one.",
     );
   }
   return candidate;

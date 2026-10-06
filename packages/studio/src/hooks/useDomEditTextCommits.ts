@@ -1,10 +1,8 @@
+import { trackPreviewFeatureUsed } from "../utils/previewFeatureUsage";
 import { useCallback, useRef } from "react";
+import { refreshTimelineRowText } from "./refreshTimelineRowText";
 import { normalizeDomEditStyleValue } from "../utils/studioHelpers";
-import {
-  injectPreviewGoogleFont,
-  injectPreviewImportedFont,
-  ensureImportedFontFace,
-} from "../utils/studioFontHelpers";
+import { injectPreviewGoogleFont, injectPreviewImportedFont } from "../utils/studioFontHelpers";
 import {
   buildDomEditRichTextPatchOperation,
   findElementForSelection,
@@ -67,6 +65,7 @@ async function resyncDomTextSelectionFromPreview(
   if (!doc) return;
   const refreshed = findElementForSelection(doc, selection, activeCompPath);
   if (!refreshed) return;
+  refreshTimelineRowText(refreshed);
   const nextSelection = await buildDomSelectionFromTarget(refreshed);
   if (!nextSelection) return;
   applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
@@ -99,6 +98,7 @@ export function useDomEditTextCommits({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
   } = useDomEditAttributeCommits({
     activeCompPath,
     previewIframeRef,
@@ -109,7 +109,11 @@ export function useDomEditTextCommits({
   });
 
   const handleDomStyleCommitForSelection = useCallback(
-    (selection: DomEditSelection, property: string, value: string): Promise<DomEditCommitOutcome> =>
+    (
+      selection: DomEditSelection,
+      propertyOrStylesAsOnePatch: string | Record<string, string>,
+      value = "",
+    ): Promise<DomEditCommitOutcome> =>
       commitDomStyles(
         {
           activeCompPath,
@@ -121,7 +125,9 @@ export function useDomEditTextCommits({
           resync: refreshDomEditSelectionFromPreview,
         },
         selection,
-        { [property]: value },
+        typeof propertyOrStylesAsOnePatch === "string"
+          ? { [propertyOrStylesAsOnePatch]: value }
+          : propertyOrStylesAsOnePatch,
       ),
     [
       activeCompPath,
@@ -275,11 +281,12 @@ export function useDomEditTextCommits({
           appliedHtml = element.innerHTML;
         },
         persist: async () => {
-          await persistDomEditOperations(selection, operations, {
+          const result = await persistDomEditOperations(selection, operations, {
             label: "Edit text",
             skipRefresh: true,
             shouldSave: isLatestTextCommit,
           });
+          if (result?.changed) trackPreviewFeatureUsed("text_edit", "field");
         },
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
@@ -354,9 +361,7 @@ export function useDomEditTextCommits({
           await persistDomEditOperations(selection, textCommit.operations, {
             label: "Edit text",
             skipRefresh: true,
-            prepareContent: importedFont
-              ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-              : undefined,
+            importedFont: importedFont ?? undefined,
           });
         },
         shouldRevert: () => isLatestTextCommit(),
@@ -485,6 +490,7 @@ export function useDomEditTextCommits({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
     handleDomTextCommit,
     handleDomTextCommitForSelection,
     handleDomRichTextCommit,

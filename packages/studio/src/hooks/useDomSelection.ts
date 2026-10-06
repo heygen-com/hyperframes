@@ -5,6 +5,7 @@ import {
   getPreviewTargetFromPointer,
 } from "../utils/studioPreviewHelpers";
 import {
+  domEditSelectionsEqual,
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
   toggleDomEditGroupSelection,
@@ -23,6 +24,7 @@ import { logSelect } from "../utils/selectDebug";
 import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
 import type {
   ApplyDomSelectionOptions,
+  ResolveDomSelectionOptions,
   UseDomSelectionParams,
   UseDomSelectionReturn,
 } from "./useDomSelectionTypes";
@@ -125,6 +127,12 @@ export function useDomSelection({
         previousGroup.length === 1 &&
         domEditSelectionsTargetSame(currentSelection, selection) &&
         domEditSelectionsTargetSame(previousGroup[0], selection);
+      const isUnchangedRefresh =
+        options?.preserveGroup &&
+        currentSelection !== null &&
+        (previousGroup.length === 0 || previousGroup.includes(currentSelection)) &&
+        domEditSelectionsEqual(currentSelection, selection);
+      if (isUnchangedRefresh) return;
       if (isRepeatedSingleSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
@@ -206,23 +214,14 @@ export function useDomSelection({
   );
 
   const buildDomSelectionFromTarget = useCallback(
-    (
-      target: HTMLElement,
-      options?: {
-        preferClipAncestor?: boolean;
-        skipSourceProbe?: boolean;
-        exactTarget?: boolean;
-        // Override the drill-in scope (used by canvas double-click to resolve the
-        // child inside a group before the activeGroupElement state has re-rendered).
-        activeGroupElement?: HTMLElement | null;
-      },
-    ) => {
+    (target: HTMLElement, options?: ResolveDomSelectionOptions) => {
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
         skipSourceProbe: options?.skipSourceProbe,
         exactTarget: options?.exactTarget,
+        previous: options?.previous,
         activeGroupElement:
           options && "activeGroupElement" in options
             ? options.activeGroupElement
@@ -384,7 +383,7 @@ export function useDomSelection({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(element);
+      const nextSelection = await buildDomSelectionFromTarget(element, { previous: selection });
       if (nextSelection) {
         applyDomSelection(nextSelection, {
           revealPanel: false,
@@ -411,7 +410,7 @@ export function useDomSelection({
       for (const selection of selections) {
         const element = findElementForSelection(doc, selection, activeCompPath);
         if (!element) continue;
-        const nextSelection = await buildDomSelectionFromTarget(element);
+        const nextSelection = await buildDomSelectionFromTarget(element, { previous: selection });
         if (nextSelection) nextGroup.push(nextSelection);
       }
       if (nextGroup.length === 0) return;
@@ -487,12 +486,13 @@ export function useDomSelection({
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
       logSelect("marquee", { hits: selections.length, additive });
-      if (selections.length === 0) {
-        if (!additive) applyDomSelection(null, { revealPanel: false });
-        return;
-      }
       const current = domEditSelectionRef.current;
       const currentGroup = domEditGroupSelectionsRef.current;
+      if (selections.length === 0) {
+        const count = seedDomEditGroupWithSelection(currentGroup, current).length;
+        if (!additive) applyDomSelection(null, { revealPanel: false });
+        return { changed: !additive && count > 0, count: additive ? count : 0 };
+      }
       let nextGroup: DomEditSelection[];
       if (additive) {
         nextGroup = seedDomEditGroupWithSelection(currentGroup, current);
@@ -507,11 +507,17 @@ export function useDomSelection({
         }
       }
       const nextSelection = additive && current ? current : selections[0];
+      const previous = seedDomEditGroupWithSelection(currentGroup, current);
+      const changed =
+        previous.length !== nextGroup.length ||
+        nextGroup.some((selection) => !domEditSelectionInGroup(previous, selection)) ||
+        !domEditSelectionsTargetSame(current, nextSelection);
       domEditSelectionRef.current = nextSelection;
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
       announceTimelineSelection(nextGroup, nextSelection, true);
+      return { changed, count: nextGroup.length };
     },
     [applyDomSelection, announceTimelineSelection],
   );

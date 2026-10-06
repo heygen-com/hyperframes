@@ -18,7 +18,11 @@ import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
 import MagicString from "magic-string";
 import type { GsapAnimation } from "./gsapSerialize.js";
-import { serializeValue as valueToCode, safeJsKey as safeKey } from "./gsapSerialize.js";
+import {
+  serializeValue as valueToCode,
+  safeJsKey as safeKey,
+  plainPercentKey,
+} from "./gsapSerialize.js";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import { isFunctionNode, isTimelineRooted } from "./gsapInline.js";
 
@@ -43,7 +47,7 @@ function keyframesEntry(anim: GsapAnimation): string {
   const kfs = (anim.keyframes?.keyframes ?? []).map((k) => {
     const body = propEntries(k.properties);
     if (k.ease) body.push(`ease: ${valueToCode(k.ease)}`);
-    return `"${k.percentage}%": { ${body.join(", ")} }`;
+    return `${JSON.stringify(plainPercentKey(k.percentage))}: { ${body.join(", ")} }`;
   });
   if (anim.keyframes?.easeEach) kfs.push(`easeEach: ${valueToCode(anim.keyframes.easeEach)}`);
   return `keyframes: { ${kfs.join(", ")} }`;
@@ -227,14 +231,18 @@ function declaredFunctions(stmt: Node): Array<[string, Node[]]> {
 const collectHelperBodies = (statements: Node[]): Map<string, Node[]> =>
   new Map(statements.flatMap(declaredFunctions));
 
-/** Statements stay as authored when literal tweens cannot encode their timing, or they do more than add tweens. */
+/** Left as authored when literal tweens can't encode the timing or keyframes, or it does more than add tweens. */
 function dropStatementsUnsafeToUnroll(
   byStatement: Map<Node, GsapAnimation[]>,
   ctx: UnrollScope,
 ): void {
   for (const [stmt, anims] of byStatement) {
     const unknownTiming = anims.some(
-      (a) => a.durationUnresolved || a.resolvedStart === undefined || a.hasUnresolvedSelector,
+      (a) =>
+        a.durationUnresolved ||
+        a.resolvedStart === undefined ||
+        a.hasUnresolvedSelector ||
+        a.hasUnresolvedKeyframes,
     );
     const bodyStmts = unknownTiming ? null : bodyOf(stmt, ctx.helpers);
     if (bodyStmts === null || !onlyAddsTweens(bodyStmts, ctx)) byStatement.delete(stmt);

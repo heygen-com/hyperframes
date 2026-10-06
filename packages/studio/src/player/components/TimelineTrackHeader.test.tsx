@@ -256,43 +256,35 @@ describe("TimelineTrackHeader", () => {
     act(() => view.root.unmount());
   });
 
-  // The visibility control is the old hide eye. On an audio track it silences
-  // rather than hides, and the row already says so with a speaker elsewhere —
-  // so the eye's slot stays empty there. A non-audio track is untouched.
-  it("keeps the visibility control off audio track headers", () => {
+  // `data-hidden` silences an audio track, so its toggle is a mute, offered in
+  // both states: an agent writes alternatives muted and the author flips them.
+  it.each([
+    [false, "Mute track 1"],
+    [true, "Unmute track 1"],
+  ])("offers the audio track toggle when hidden=%s", (isTrackHidden, label) => {
     const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
     const view = renderHeader({
       keyframeClip: audio,
       trackElements: [audio],
       isAudioTrack: true,
+      isTrackHidden,
       animations: [],
     });
-    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
-      b.getAttribute("aria-label"),
-    );
-    expect(labels.some((l) => l && /^(Hide|Show) track/.test(l))).toBe(false);
-    expect(labels).not.toContain("Mute");
+    expect(view.host.querySelector(`button[aria-label="${label}"]`)).not.toBeNull();
     act(() => view.root.unmount());
   });
 
-  // The escape hatch. `data-hidden` on audio silences it in preview and drops it
-  // from the render; the panel's "Muted" is the unrelated HTML `muted`
-  // attribute, and nothing else writes it. Withholding the eye unconditionally
-  // meant a track hidden by "Hide all" (or by hand, or before that rule existed)
-  // was silent with no control anywhere to bring it back.
-  it("offers the eye on an audio track that is already hidden, so it can be restored", () => {
-    const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
+  // Same rule as the undo entry: a track with any visual clip hides, it does not mute.
+  it("offers the eye on a track mixing audio and a visual clip", () => {
+    const audio: TimelineElement = { ...ELEMENT, id: "vo", tag: "audio" };
     const view = renderHeader({
       keyframeClip: audio,
-      trackElements: [audio],
+      trackElements: [audio, ELEMENT],
+      clipCount: 2,
       isAudioTrack: true,
-      isTrackHidden: true,
       animations: [],
     });
-    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
-      b.getAttribute("aria-label"),
-    );
-    expect(labels.some((l) => l && /^Show track/.test(l))).toBe(true);
+    expect(view.host.querySelector('button[aria-label="Hide track 1"]')).not.toBeNull();
     act(() => view.root.unmount());
   });
 
@@ -866,6 +858,43 @@ describe("TimelineTrackHeader", () => {
       view.rerender({ ...opts, trackElements: [VOICE], clipCount: 1 });
       expect(pointer(view.host)).toBeNull();
       expect(view.host.querySelector('button[aria-label="Effects"]')).not.toBeNull();
+      act(() => view.root.unmount());
+    });
+
+    it("offers grouping on a track of audible videos, not on muted b-roll", () => {
+      const aRoll: TimelineElement = {
+        ...VOICE,
+        id: "a-roll",
+        domId: "a-roll",
+        tag: "video",
+        hasAudio: true,
+      };
+      const aRoll2: TimelineElement = { ...aRoll, id: "a-roll-2", domId: "a-roll-2" };
+      const bRoll: TimelineElement = {
+        ...aRoll,
+        id: "b-roll",
+        domId: "b-roll",
+        hasAudio: undefined,
+      };
+      const bRoll2: TimelineElement = { ...bRoll, id: "b-roll-2", domId: "b-roll-2" };
+      const opts = {
+        keyframeClip: aRoll,
+        trackElements: [aRoll, aRoll2],
+        clipCount: 2,
+        animations: [],
+        expanded: false,
+      };
+      const pointer = (host: HTMLElement) =>
+        host.querySelector<HTMLButtonElement>(
+          'button[aria-label="Effects — group these clips first"]',
+        );
+      const view = renderHeader(opts);
+      const button = pointer(view.host);
+      expect(button).not.toBeNull();
+      act(() => button?.click());
+      expect(document.body.textContent).not.toContain("can't be grouped");
+      view.rerender({ ...opts, keyframeClip: bRoll, trackElements: [bRoll, bRoll2] });
+      expect(pointer(view.host)).toBeNull();
       act(() => view.root.unmount());
     });
 

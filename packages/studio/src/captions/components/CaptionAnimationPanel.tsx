@@ -250,7 +250,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
     <div className="flex flex-col h-full min-h-0">
       {gated && (
         <div className="shrink-0 mx-3 mt-2 px-2 py-1.5 rounded-sm border border-amber-500/30 bg-amber-500/10">
-          <p className="text-2xs text-amber-300/90 leading-snug">
+          <p className="text-2xs text-warning-ink leading-snug">
             Animation editing isn&apos;t applied to playback or saved yet, so these controls are
             disabled.
           </p>
@@ -292,7 +292,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
           onClick={handleApplyToAll}
           disabled={gated}
           title={gated ? "Disabled until animation editing is applied to playback" : undefined}
-          className="w-full py-1.5 rounded-sm border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-studio-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-neutral-700 disabled:hover:text-neutral-300"
+          className="w-full py-1.5 rounded-sm border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-accent-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-neutral-700 disabled:hover:text-neutral-300"
         >
           Apply to all groups
         </button>

@@ -1,3 +1,4 @@
+import type { DomEditPersistOutcome } from "./domEditCommitTypes";
 import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback } from "react";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
@@ -25,6 +26,8 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 
+let boxSizeCommitCounter = 0;
+
 // ── Hook ──
 
 export interface UseDomGeometryCommitsParams {
@@ -32,8 +35,14 @@ export interface UseDomGeometryCommitsParams {
   commitPositionPatchToHtml: (
     selection: DomEditSelection,
     patches: PatchOperation[],
-    options: { label: string; coalesceKey: string; coalesceMs?: number; skipRefresh?: boolean },
-  ) => Promise<void>;
+    options: {
+      label: string;
+      coalesceKey: string;
+      coalesceMs?: number;
+      skipRefresh?: boolean;
+      deferRender?: boolean;
+    },
+  ) => Promise<DomEditPersistOutcome | undefined>;
   readOnlyPreview: boolean;
 }
 
@@ -65,8 +74,9 @@ export function useDomGeometryCommits({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore?: () => void,
+      undoKey?: string,
     ) => {
-      if (readOnlyPreview) return Promise.resolve();
+      if (readOnlyPreview) return Promise.resolve(undefined);
       const element = selection.element;
       const beforeSize = captureStudioBoxSize(element);
       const beforeOffset = captureStudioPathOffset(element);
@@ -80,7 +90,12 @@ export function useDomGeometryCommits({
       if (offset) patches.push(...writePlainMove(element, offset));
       return commitPositionPatchToHtml(selection, patches, {
         label: "Resize layer box",
-        coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
+        ...(undoKey
+          ? { coalesceKey: undoKey, coalesceMs: Number.POSITIVE_INFINITY, deferRender: true }
+          : {
+              coalesceKey: `box-size:${++boxSizeCommitCounter}`,
+              coalesceMs: Number.POSITIVE_INFINITY,
+            }),
       }).catch((error) => {
         restoreStudioBoxSize(element, beforeSize);
         if (offset) restoreStudioPathOffset(element, beforeOffset);

@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import type { Word } from "./normalize.js";
-import type { TranscribeResult } from "./transcribe.js";
+import type { TranscribeProgress, TranscribeResult } from "./transcribe.js";
 
 /** The model name `transcribe --json` reports for every Parakeet runner. */
 export const PARAKEET_MODEL_LABEL = "parakeet-tdt-0.6b-v3";
@@ -270,9 +270,9 @@ export function silenceCuts(
 }
 
 interface ParakeetOptions {
-  language?: string;
   model?: string;
   onProgress?: (message: string) => void;
+  onEvent?: (event: TranscribeProgress) => void;
 }
 
 /** Transcribe with Parakeet and write `transcript.json` (Word[]) into `dir`. */
@@ -300,15 +300,27 @@ export function transcribeWithParakeet(
   const workDir = mkdtempSync(join(tmpdir(), "hyperframes-parakeet-"));
   try {
     const argv = [inputPath, "--model", model, "--output-format", "json", "--output-dir", workDir];
-    if (options?.language) argv.push("--language", options.language);
+    options?.onEvent?.({
+      type: "progress",
+      phase: "transcription",
+      model: PARAKEET_MODEL_LABEL,
+      status: "started",
+    });
     execFileSync(runner, argv, { stdio: ["ignore", "pipe", "pipe"], timeout: 1_800_000 });
 
     const produced = join(workDir, `${basename(inputPath, extname(inputPath))}.json`);
     if (!existsSync(produced)) throw new Error("Parakeet did not produce output.");
-    return writeParakeetTranscript(
+    const result = writeParakeetTranscript(
       dir,
       mergeTokensToWords(JSON.parse(readFileSync(produced, "utf-8")) as ParakeetJson),
     );
+    options?.onEvent?.({
+      type: "progress",
+      phase: "transcription",
+      model: result.model,
+      status: "completed",
+    });
+    return result;
   } finally {
     rmSync(workDir, { recursive: true, force: true });
   }
@@ -319,5 +331,12 @@ export function writeParakeetTranscript(dir: string, words: Word[]): TranscribeR
   const transcriptPath = join(dir, "transcript.json");
   writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
   const durationSeconds = words.length > 0 ? words[words.length - 1]!.end : 0;
-  return { transcriptPath, wordCount: words.length, durationSeconds, speechOnsetSeconds: null };
+  return {
+    model: PARAKEET_MODEL_LABEL,
+    detectedLanguage: null,
+    transcriptPath,
+    wordCount: words.length,
+    durationSeconds,
+    speechOnsetSeconds: null,
+  };
 }

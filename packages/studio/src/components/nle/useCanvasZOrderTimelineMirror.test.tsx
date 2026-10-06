@@ -79,24 +79,14 @@ function mountMirrorHarness(history: {
   moveCoalesceKeys: string[];
   records: RecordedWrite[];
 }) {
-  const record = (
-    label: string,
-    coalesceKey: string,
-    _coalesceMs: number | undefined,
-    after: string,
-  ) => {
+  const record = (label: string, coalesceKey: string, after: string) => {
     history.records.push({ label, coalesceKey, after });
     history.fileContent.current = after;
   };
 
-  const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (
-    _edits,
-    coalesceKey,
-    _operation,
-    coalesceMs,
-  ) => {
+  const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (_edits, coalesceKey) => {
     history.moveCoalesceKeys.push(coalesceKey ?? "<none>");
-    record("Move timeline clips", coalesceKey ?? "<none>", coalesceMs, "C-move");
+    record("Move timeline clips", coalesceKey ?? "<none>", "C-move");
   };
 
   const api: Partial<HarnessApi> = {};
@@ -104,7 +94,7 @@ function mountMirrorHarness(history: {
     const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
       makeLifecycleOpsParams({
         commitDomEditPatchBatches: async (_batches, options) => {
-          record(options.label, options.coalesceKey, options.coalesceMs, "B-z");
+          record(options.label, options.coalesceKey, "B-z");
           return { durable: true, allMatched: true, changed: true };
         },
       }),

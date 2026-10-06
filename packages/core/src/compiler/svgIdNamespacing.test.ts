@@ -317,10 +317,10 @@ describe("rewriteSvgIdReferencesInCss", () => {
     expect(rewriteSvgIdReferencesInCss(css, new Map())).toBe(css);
   });
 
-  it("rewrites a bare id selector to the namespaced id", () => {
+  it("keeps authored and namespaced targets in a bare id selector", () => {
     const idMap = new Map([["clip", "scene-a--clip"]]);
     const css = "#clip rect { fill: red; }";
-    expect(rewriteSvgIdReferencesInCss(css, idMap)).toContain("#scene-a--clip rect");
+    expect(rewriteSvgIdReferencesInCss(css, idMap)).toContain(":is(#clip, #scene-a--clip) rect");
   });
 
   it("rewrites a url(#id) declaration value", () => {
@@ -353,7 +353,7 @@ describe("rewriteSvgIdReferencesInCss", () => {
     const idMap = new Map([["fx.1", "scene-b--fx.1"]]);
     const css = String.raw`#fx\.1 { opacity: .5; } .x { filter: url(#fx.1); }`;
     const result = rewriteSvgIdReferencesInCss(css, idMap);
-    expect(result).toContain(String.raw`#scene-b--fx\.1 { opacity: .5; }`);
+    expect(result).toContain(String.raw`:is(#fx\.1, #scene-b--fx\.1) { opacity: .5; }`);
     expect(result).toContain("filter: url(#scene-b--fx.1)");
   });
 
@@ -363,14 +363,16 @@ describe("rewriteSvgIdReferencesInCss", () => {
     const css = String.raw`#fx\2e\31 { opacity: .5; } #fx\2e 1 { color: red }`;
     const result = rewriteSvgIdReferencesInCss(css, idMap);
     // The whitespace after `\31 ` belongs to the escape, so it is consumed.
-    expect(result).toMatch(/#scene-b--fx\\\.1\s*\{ opacity: \.5; \}/);
-    expect(result).toMatch(/#scene-b--fx\\\.1\s*\{ color: red \}/);
+    expect(result).toMatch(/#scene-b--fx\\\.1\)\s*\{ opacity: \.5; \}/);
+    expect(result).toMatch(/#scene-b--fx\\\.1\)\s*\{ color: red \}/);
   });
 
   it("re-escapes characters the renamed id still carries", () => {
     const idMap = new Map([["a b", "scene-b--a b"]]);
     const css = String.raw`#a\ b { opacity: .5; }`;
-    expect(rewriteSvgIdReferencesInCss(css, idMap)).toContain(String.raw`#scene-b--a\ b {`);
+    expect(rewriteSvgIdReferencesInCss(css, idMap)).toContain(
+      String.raw`:is(#a\ b, #scene-b--a\ b) {`,
+    );
   });
 
   it("leaves a #id inside an attribute selector or string untouched", () => {
@@ -393,4 +395,37 @@ it("rewrites case-insensitive CSS URL functions in attributes and styles", () =>
   expect(rewriteSvgIdReferencesInCss("rect { clip-path: Url(#clip) }", idMaps[1]!)).toContain(
     "Url(#b--clip)",
   );
+});
+
+it("finalizes initially referenced keepers while allowing first-use references after scripts", () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div class="a"><svg><clipPath id="clip"/><g clip-path="url(#clip)"/><path id="late"/><path id="script-only"/></svg></div>
+    <div class="b"><svg><clipPath id="clip"/><g clip-path="url(#clip)"/><path id="late"/><path id="script-only"/></svg></div>
+  </body></html>`);
+  const roots = [document.querySelector(".a")!, document.querySelector(".b")!];
+  const scopes = roots.map((root, index) => ({ root, namespace: index === 0 ? "a" : "b" }));
+  const finalized = new Set<Element>();
+  namespaceCollidingSvgIds(document, scopes, finalized);
+  const definitions = roots.map((root) => root.querySelector("clipPath")!);
+  const captured = definitions.map((target) => target.id);
+  const html = document.createElement("div");
+  html.id = "clip";
+  document.body.appendChild(html);
+  for (const root of roots) {
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#late");
+    root.querySelector("svg")!.appendChild(use);
+  }
+  namespaceCollidingSvgIds(document, scopes, finalized);
+  expect(definitions.map((target) => target.id)).toEqual(captured);
+  expect(captured).toEqual(["clip", "b--clip"]);
+  expect(roots.map((root) => root.querySelector("use")!.getAttribute("href"))).toEqual([
+    "#late",
+    "#b--late",
+  ]);
+  expect(roots.map((root) => root.querySelector('path[id="script-only"]')?.id)).toEqual([
+    "script-only",
+    "script-only",
+  ]);
+  expect(roots[1]!.querySelector("g")!.getAttribute("clip-path")).toBe("url(#b--clip)");
 });

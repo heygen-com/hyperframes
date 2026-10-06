@@ -1,4 +1,4 @@
-import { execFile, spawnSync, type ExecFileException } from "node:child_process";
+import { execFile, spawn, type ExecFileException } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -8,6 +8,9 @@ import { downloadToFile } from "../cloud/download.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import {
   CACHE_DIR,
+  PINNED_PACKAGES,
+  pinnedPackageBesideCli,
+  installedPackagePath,
   install,
   isInstalled,
   runNpm,
@@ -17,13 +20,19 @@ import {
   mergeWindowsToWords,
   SHERPA_ERROR_PREFIX,
   SHERPA_RESULT_PREFIX,
+  PARAKEET_MODEL_LABEL,
   writeParakeetTranscript,
   type SherpaWindow,
 } from "./parakeet.js";
-import { getPreparedWavDurationSeconds, prepareWav, type TranscribeResult } from "./transcribe.js";
+import {
+  getPreparedWavDurationSeconds,
+  prepareWav,
+  type TranscribeProgress,
+  type TranscribeResult,
+} from "./transcribe.js";
 
 const RUNTIME = "sherpa-onnx-node";
-const RUNTIME_VERSION = "1.13.8";
+const RUNTIME_VERSION = PINNED_PACKAGES[RUNTIME];
 /** Per platform and arch, like the native package inside, so Rosetta never shadows arm64. */
 export const SHERPA_RUNTIME_DIR = join(
   CACHE_DIR,
@@ -115,36 +124,109 @@ const nativePackageName = (platform: string, arch: string) =>
   `sherpa-onnx-${platform === "win32" ? "win" : platform}-${arch}`;
 
 const LOAD_RUNTIME = `try {
-  require("node:module").createRequire(process.env.HF_SHERPA_MANIFEST)("${RUNTIME}");
+  require(process.env.HF_SHERPA_RUNTIME_PATH);
 } catch (e) {
   process.stderr.write(String(e && e.message).replace(/\\s+/g, " "));
   process.exitCode = 1;
 }`;
 
-/** Loads it in a child as the decode worker does: null when it loads, else the loader's error. */
-export function sherpaRuntimeLoadError(
+/** Native bindings are probed only in a child, as they are loaded in the decode worker. */
+function runtimeLoadError(
+  runtimePath: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  if (signal?.aborted)
+    return Promise.reject(new DecodeCancelled("Parakeet runtime check cancelled"));
+  return new Promise((resolve, reject) => {
+    const probe = spawn(process.execPath, ["-e", LOAD_RUNTIME], {
+      env: { ...process.env, HF_SHERPA_RUNTIME_PATH: runtimePath },
+      stdio: ["ignore", "ignore", "pipe"],
+      timeout: timeoutMs,
+      signal,
+    });
+    let stderr = "";
+    probe.stderr.setEncoding("utf8");
+    probe.stderr.on("data", (chunk: string) => {
+      stderr = bounded(stderr + chunk);
+    });
+    probe.on("error", (error) => {
+      if (signal?.aborted) reject(new DecodeCancelled("Parakeet runtime check cancelled"));
+      else resolve(bounded(error.message));
+    });
+    probe.on("close", (code, childSignal) => {
+      if (
+        signal?.aborted ||
+        stoppedByCancelSignal({ code, signal: childSignal, killed: probe.killed })
+      ) {
+        reject(new DecodeCancelled("Parakeet runtime check cancelled"));
+        return;
+      }
+      if (code === 0 && !probe.killed) {
+        resolve(null);
+        return;
+      }
+      let reason: string;
+      if (probe.killed) reason = `loading it timed out after ${timeoutMs / 1000} s`;
+      else if (childSignal) reason = `loading it crashed (${childSignal})`;
+      else reason = `it exited ${code} with no output`;
+      resolve(bounded(stderr.trim() || reason));
+    });
+  });
+}
+
+type RuntimeSelection =
+  | { status: "ready"; path: string }
+  | { status: "unavailable"; error: string };
+
+async function cachedRuntime(
+  dir: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<RuntimeSelection> {
+  let path: string | null;
+  try {
+    path = installedPackagePath(dir, RUNTIME);
+  } catch (err) {
+    return {
+      status: "unavailable",
+      error: bounded(err instanceof Error ? err.message : String(err)),
+    };
+  }
+  if (path === null)
+    return { status: "unavailable", error: `${RUNTIME} is not installed in ${dir}` };
+  const error = await runtimeLoadError(path, timeoutMs, signal);
+  return error === null ? { status: "ready", path } : { status: "unavailable", error };
+}
+
+async function selectRuntime(
+  dir: string,
+  cliUrl: string,
+  timeoutMs = 60_000,
+  signal?: AbortSignal,
+): Promise<RuntimeSelection> {
+  if (signal?.aborted) throw new DecodeCancelled("Parakeet runtime check cancelled");
+  const copy = pinnedPackageBesideCli(RUNTIME, cliUrl);
+  if (copy !== null) {
+    const path = copy.path;
+    const error = await runtimeLoadError(path, timeoutMs, signal);
+    if (error === null) return { status: "ready", path };
+    console.error(
+      `Parakeet runtime at ${path.replace(/\s+/g, " ")} did not load: ${error.replace(/\s+/g, " ")}`,
+    );
+  }
+  return cachedRuntime(dir, timeoutMs, signal);
+}
+
+/** Returns the load failure after checking the pinned copy beside the CLI, then its cache. */
+export async function sherpaRuntimeLoadError(
   dir = SHERPA_RUNTIME_DIR,
   timeoutMs = 60_000,
-): string | null {
-  if (!isInstalled(dir, RUNTIME)) return `${RUNTIME} is not installed in ${dir}`;
-  const env = { ...process.env, HF_SHERPA_MANIFEST: join(dir, "package.json") };
-  const probe = spawnSync(process.execPath, ["-e", LOAD_RUNTIME], {
-    env,
-    encoding: "utf8",
-    stdio: ["ignore", "ignore", "pipe"],
-    timeout: timeoutMs,
-  });
-  if (probe.status === 0) return null;
-  // Ctrl-C reaches the probe too: a cancel, never proof that a working runtime is broken.
-  if (stoppedByCancelSignal(probe)) throw new DecodeCancelled("Parakeet install cancelled");
-  const timedOut = (probe.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
-  return bounded(
-    probe.stderr?.trim() ||
-      (timedOut ? `loading it timed out after ${timeoutMs / 1000} s` : probe.error?.message) ||
-      (probe.signal
-        ? `loading it crashed (${probe.signal})`
-        : `it exited ${probe.status} with no output`),
-  );
+  cliUrl = import.meta.url,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const selected = await selectRuntime(dir, cliUrl, timeoutMs, signal);
+  return selected.status === "ready" ? null : selected.error;
 }
 
 /** The native package, pinned too: the runtime's own optionalDependencies accept any 1.13.x. */
@@ -152,33 +234,41 @@ export function sherpaPlatformPackage(platform = process.platform, arch = proces
   return `${nativePackageName(platform, arch)}@${RUNTIME_VERSION}`;
 }
 
-/** Installs the runtime unless it already loads; true when it installed. */
+/** Installs if needed and returns the healthy entry selected for native child loading. */
 export async function installSherpaRuntime({
   run = runNpm,
   signal,
   dir = SHERPA_RUNTIME_DIR,
-}: { run?: typeof runNpm; signal?: AbortSignal; dir?: string } = {}): Promise<boolean> {
-  if (sherpaRuntimeLoadError(dir) === null) return false;
+  cliUrl = import.meta.url,
+}: {
+  run?: typeof runNpm;
+  signal?: AbortSignal;
+  dir?: string;
+  cliUrl?: string;
+} = {}): Promise<{ installed: boolean; runtimePath: string }> {
+  const present = await selectRuntime(dir, cliUrl, 60_000, signal);
+  if (present.status === "ready") return { installed: false, runtimePath: present.path };
   // install() keeps any dir holding the runtime manifest, so a broken one goes first.
   rmSync(dir, { recursive: true, force: true });
   const native = sherpaPlatformPackage();
   await install(dir, RUNTIME, RUNTIME_VERSION, (args) => run([...args, native], signal));
-  const stillBroken = sherpaRuntimeLoadError(dir);
-  if (stillBroken) {
+  const selected = await cachedRuntime(dir, 60_000, signal);
+  if (selected.status === "unavailable") {
     throw new Error(
-      `The sherpa-onnx runtime was reinstalled but still does not load (${stillBroken}). Use --engine whisper for now.`,
+      `The sherpa-onnx runtime was reinstalled but still does not load (${selected.error}). Use --engine whisper for now.`,
     );
   }
-  return true;
+  return { installed: true, runtimePath: selected.path };
 }
 
 /**
  * Model sizes only (install verified the hashes). The runtime counts once its manifest is there, even
  * if broken: transcribe must then fail with the repair, not quietly pick whisper.
  */
-export function sherpaParakeetInstalled(): boolean {
+export function sherpaParakeetInstalled(cliUrl = import.meta.url): boolean {
   return (
-    isInstalled(SHERPA_RUNTIME_DIR, RUNTIME) &&
+    (pinnedPackageBesideCli(RUNTIME, cliUrl) !== null ||
+      isInstalled(SHERPA_RUNTIME_DIR, RUNTIME)) &&
     PARAKEET_MODEL_FILES.every(
       (f) =>
         statSync(join(PARAKEET_MODEL_DIR, f.name), { throwIfNoEntry: false })?.size === f.bytes,
@@ -300,11 +390,15 @@ function failureReason(err: ExecFileException | null, stderr: string): string {
 }
 
 /** Decodes in a child process: onnxruntime aborts the whole process on some inputs, uncatchably. */
-function decode(wavPath: string, signal: AbortSignal): Promise<SherpaWindow[]> {
+function decode(
+  wavPath: string,
+  runtimePath: string,
+  signal: AbortSignal,
+): Promise<SherpaWindow[]> {
   const sourceMode = import.meta.url.endsWith(".ts");
   const worker = new URL(sourceMode ? "./sherpaWorker.ts" : "./sherpaWorker.js", import.meta.url);
   const args = [...(sourceMode ? ["--import", "tsx"] : []), fileURLToPath(worker)];
-  const input = { wavPath, runtimeDir: SHERPA_RUNTIME_DIR, config: recognizerConfig() };
+  const input = { wavPath, runtimePath, config: recognizerConfig() };
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
@@ -347,9 +441,40 @@ export function prepareSherpaWav(
 export async function transcribeWithSherpa(
   wavPath: string,
   dir: string,
-  options: { signal: AbortSignal; onProgress?: (message: string) => void },
+  options: {
+    signal: AbortSignal;
+    onProgress?: (message: string) => void;
+    runtimeDir?: string;
+    cliUrl?: string;
+    onEvent?: (event: TranscribeProgress) => void;
+  },
 ): Promise<TranscribeResult> {
   options.onProgress?.("Transcribing with Parakeet...");
-  const windows = await decode(wavPath, options.signal);
-  return writeParakeetTranscript(dir, mergeWindowsToWords(windows));
+  options.onEvent?.({
+    type: "progress",
+    phase: "transcription",
+    model: PARAKEET_MODEL_LABEL,
+    status: "started",
+  });
+  if (options.signal.aborted) throw new DecodeCancelled("Transcription cancelled");
+  const selected = await selectRuntime(
+    options.runtimeDir ?? SHERPA_RUNTIME_DIR,
+    options.cliUrl ?? import.meta.url,
+    60_000,
+    options.signal,
+  );
+  if (selected.status === "unavailable") {
+    throw new Error(
+      `Parakeet runtime does not load (${selected.error}). Run hyperframes models install parakeet to repair it, or use --engine whisper.`,
+    );
+  }
+  const windows = await decode(wavPath, selected.path, options.signal);
+  const result = writeParakeetTranscript(dir, mergeWindowsToWords(windows));
+  options.onEvent?.({
+    type: "progress",
+    phase: "transcription",
+    model: result.model,
+    status: "completed",
+  });
+  return result;
 }

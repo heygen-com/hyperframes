@@ -6,7 +6,7 @@
  * routes through here; the raw key stays in callbacks and lookups only.
  */
 
-/** Ascending distinct track keys, the row order the timeline renders in. */
+/** Ascending distinct track keys; the drawn rows also group audio (`displayTrackOrder`). */
 export function timelineTrackOrder(elements: readonly { track: number }[]): number[] {
   return [...new Set(elements.map((element) => element.track))].sort((a, b) => a - b);
 }

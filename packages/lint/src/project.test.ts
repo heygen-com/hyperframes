@@ -47,6 +47,26 @@ afterEach(() => {
   dirs = [];
 });
 
+describe("missing_data_no_timeline", () => {
+  it("surfaces bare nested composition hosts through project lint", async () => {
+    const project = makeProject(`<!doctype html><html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <section id="alpha" data-composition-id="alpha"></section>
+    <section id="beta" data-composition-id="beta"></section>
+  </div>
+  <script>window.__timelines["root"] = gsap.timeline({ paused: true });</script>
+</body></html>`);
+
+    const { results, totalWarnings } = await lintProject(project);
+    const findings = results[0]?.result.findings.filter(
+      (finding) => finding.code === "missing_data_no_timeline",
+    );
+
+    expect(totalWarnings).toBe(2);
+    expect(findings?.map((finding) => finding.elementId)).toEqual(["alpha", "beta"]);
+  });
+});
+
 describe("external symlink assets", () => {
   it("does not report a shared asset addressed through an in-project symlink", async () => {
     const project = makeProject(
@@ -832,5 +852,53 @@ describe("templating tokens are checked on the raw src, before cleanAssetUrl", (
       ),
     );
     expect(c.has("missing_local_asset")).toBe(true);
+  });
+});
+
+describe("audio-aware project rules", () => {
+  const composition = (body: string) => validHtml().replace("></div>", `>${body}</div>`);
+  const codesFor = async (html: string, files: string[] = []) => {
+    const project = makeProject(html);
+    for (const file of files) writeFileSync(join(project, file), "x");
+    const { results } = await lintProject(project);
+    return results.flatMap((result) => result.result.findings.map((f) => f.code));
+  };
+  const video = (attrs: string, start = 0) =>
+    `<video id="v${start}${attrs.length}" src="a.mp4" data-start="${start}" data-duration="5" data-track-index="0" ${attrs}></video>`;
+
+  describe("duplicate_audio_track", () => {
+    it("warns when audible videos overlap on one track", async () => {
+      const codes = await codesFor(
+        composition(video('data-has-audio="true"', 0) + video('data-has-audio="true"', 2)),
+      );
+      expect(codes).toContain("duplicate_audio_track");
+    });
+
+    it("stays quiet when one of the overlapping videos is muted", async () => {
+      const codes = await codesFor(
+        composition(video('data-has-audio="true"', 0) + video("muted", 2)),
+      );
+      expect(codes).not.toContain("duplicate_audio_track");
+    });
+
+    it("stays quiet when an overlapping video is explicitly non-audible", async () => {
+      const codes = await codesFor(
+        composition(video('data-has-audio="true"', 0) + video('data-has-audio="false"', 2)),
+      );
+      expect(codes).not.toContain("duplicate_audio_track");
+    });
+  });
+
+  describe("audio_file_without_element", () => {
+    const audibleRoll = video('data-has-audio="true"');
+    it("does not claim silence when an audible video carries the sound", async () => {
+      const codes = await codesFor(composition(audibleRoll), ["audio.mp3"]);
+      expect(codes).not.toContain("audio_file_without_element");
+    });
+
+    it("still warns when the only video is muted", async () => {
+      const codes = await codesFor(composition(video("muted")), ["audio.mp3"]);
+      expect(codes).toContain("audio_file_without_element");
+    });
   });
 });

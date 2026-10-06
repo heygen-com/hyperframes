@@ -32,23 +32,83 @@ import {
   STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
   STUDIO_ROTATION_TRANSFORM_ORIGIN,
 } from "./manualEditsTypes";
-import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
+import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 import { roundTo3, roundToLayoutPx } from "../../utils/rounding";
+import { BOX_SIZE_STYLE_PROPS } from "./manualEditsDomPatches";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
 let studioManualEditGestureId = 0;
 
-export function beginStudioManualEditGesture(element: HTMLElement): string {
+export type StudioGestureDraws = "move" | "resize" | "rotate" | "edit";
+const MOVE_DRAWS = ["translate", STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP];
+const GESTURE_DRAWS: Record<StudioGestureDraws, readonly string[]> = {
+  move: MOVE_DRAWS,
+  resize: [...MOVE_DRAWS, STUDIO_WIDTH_PROP, STUDIO_HEIGHT_PROP, ...BOX_SIZE_STYLE_PROPS],
+  rotate: ["rotate", "transform", "transform-origin", "display", STUDIO_ROTATION_PROP],
+  edit: [],
+};
+
+export function beginStudioManualEditGesture(
+  element: HTMLElement,
+  draws: StudioGestureDraws,
+): string {
   studioManualEditGestureId += 1;
-  const token = `gesture-${studioManualEditGestureId}`;
+  const token = `gesture-${studioManualEditGestureId}:${draws}`;
   element.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, token);
   return token;
 }
 
+const GESTURE_ENDED = "hf-manual-edit-gesture-ended";
+
 export function endStudioManualEditGesture(element: HTMLElement, token?: string): void {
   if (token && element.getAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) !== token) return;
+  if (!element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   element.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
+  const doc = element.ownerDocument;
+  doc.dispatchEvent(new (doc.defaultView?.Event ?? Event)(GESTURE_ENDED));
+}
+
+export function isStudioManualEditGestureLiveIn(doc: Document): boolean {
+  return doc.querySelector(`[${STUDIO_MANUAL_EDIT_GESTURE_ATTR}]`) !== null;
+}
+
+/** Runs `run` once the last gesture in `doc` ends; the returned function stops waiting. */
+export function afterStudioManualEditGestures(doc: Document, run: () => void): () => void {
+  const onEnded = () => {
+    if (isStudioManualEditGestureLiveIn(doc)) return;
+    stop();
+    run();
+  };
+  const stop = () => doc.removeEventListener(GESTURE_ENDED, onEnded);
+  doc.addEventListener(GESTURE_ENDED, onEnded);
+  return stop;
+}
+
+const gestureSaves = new WeakMap<Document, number>();
+
+export function studioManualEditSavesIn(doc: Document): number {
+  return gestureSaves.get(doc) ?? 0;
+}
+
+export function countStudioPreviewChange(doc: Document): void {
+  gestureSaves.set(doc, studioManualEditSavesIn(doc) + 1);
+}
+
+/** Runs a gesture's save, counted as it starts and as it settles: a reload requested before shows the old file. */
+export function countStudioManualEditSave<R>(element: HTMLElement, save: () => R): R {
+  const doc = element.ownerDocument;
+  const count = () => countStudioPreviewChange(doc);
+  count();
+  const result = save();
+  void Promise.resolve(result).then(count, count);
+  return result;
+}
+
+export function studioGestureDraws(element: Element): readonly string[] | null {
+  const token = element.getAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
+  if (token === null) return null;
+  return GESTURE_DRAWS[token.split(":")[1] as StudioGestureDraws] ?? [];
 }
 
 function isStudioManualEditGestureActive(element: HTMLElement): boolean {
@@ -261,7 +321,7 @@ function applyStudioPathOffsetViaGsap(
   element: HTMLElement,
   offset: { x: number; y: number },
 ): boolean {
-  if (!gsapAnimatesProperty(element, "x", "y")) return false;
+  if (!gsapWritesChannels(element, ["x", "y"])) return false;
   element.style.setProperty("translate", "none");
   const win = element.ownerDocument.defaultView as
     | (Window & {

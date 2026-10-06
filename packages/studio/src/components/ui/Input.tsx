@@ -23,7 +23,7 @@ export const fieldBase = cn(
   // `aria-invalid` is not one of Tailwind's built-in aria variants, so the
   // arbitrary form is the one that compiles. The token gate would have caught
   // the bare `aria-invalid:` spelling as a class that resolves to nothing.
-  "aria-[invalid]:border-danger",
+  "aria-[invalid]:border-danger-ink",
   "has-[:disabled]:opacity-40 has-[:disabled]:cursor-not-allowed",
 );
 

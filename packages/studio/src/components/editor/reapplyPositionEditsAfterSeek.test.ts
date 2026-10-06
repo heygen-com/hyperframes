@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reapplyPositionEditsAfterSeek } from "./manualEditsSeekReapply";
 import {
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
   STUDIO_PATH_OFFSET_ATTR,
   STUDIO_ROTATION_ATTR,
   STUDIO_ROTATION_PROP,
@@ -12,6 +14,29 @@ describe("reapplyPositionEditsAfterSeek", () => {
   afterEach(() => {
     document.body.innerHTML = "";
     vi.restoreAllMocks();
+  });
+
+  it("keeps an old offset off an element GSAP moves by object-of-arrays keyframes, not off its neighbour", () => {
+    const offset = `${STUDIO_OFFSET_X_PROP}: 300px; ${STUDIO_OFFSET_Y_PROP}: 100px; translate: none`;
+    document.body.innerHTML = ["moved", "still"]
+      .map((id) => `<div id="${id}" ${STUDIO_PATH_OFFSET_ATTR}="true" style="${offset}"></div>`)
+      .join("");
+    const moved = document.getElementById("moved") as HTMLElement;
+    const tween = { targets: () => [moved], vars: { keyframes: { x: [0, 200] } } };
+    const win = window as unknown as { __timelines?: unknown; gsap?: unknown };
+    const gsap = { set: vi.fn(), getProperty: () => 0 };
+    Object.assign(win, { __timelines: { main: { getChildren: () => [tween] } }, gsap });
+    try {
+      reapplyPositionEditsAfterSeek(document);
+    } finally {
+      delete win.__timelines;
+      delete win.gsap;
+    }
+
+    expect(moved.style.getPropertyValue("translate")).toBe("none");
+    expect(gsap.set).not.toHaveBeenCalled();
+    const still = document.getElementById("still") as HTMLElement;
+    expect(still.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
   });
 
   it("does no per-edit work on a film Studio never edited", () => {
@@ -103,6 +128,26 @@ describe("reapplyPositionEditsAfterSeek", () => {
 
     expect(kill).toHaveBeenCalledTimes(1);
     delete win.__timelines;
+  });
+
+  it("reapplies and migrates marks in the preview, whichever window built its node", () => {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    const doc = frame.contentDocument!;
+    // The frame builds one node; the editor builds the other, as on loads where they differ.
+    const nodes = [doc.createElement("div"), document.createElement("div")];
+    for (const el of nodes) {
+      el.setAttribute(`data-${STUDIO_PATH_OFFSET_ATTR}`, "true");
+      el.setAttribute(STUDIO_ROTATION_ATTR, "true");
+      el.style.setProperty(STUDIO_ROTATION_PROP, "8deg");
+      doc.body.append(el);
+    }
+
+    reapplyPositionEditsAfterSeek(doc);
+
+    for (const el of nodes) {
+      expect(el.getAttribute(STUDIO_PATH_OFFSET_ATTR)).toBe("true");
+      expect(el.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
+    }
   });
 
   it("still migrates a legacy double-prefixed edit mark", () => {

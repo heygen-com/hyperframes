@@ -14,38 +14,56 @@ const SOURCE =
   '<!doctype html><html><head></head><body><div data-hf-id="hf-card" style="color: red">Card</div>' +
   '<div id="clip" class="clip" data-start="1" data-duration="5" data-track-index="0"></div></body></html>';
 
-// The server patches whatever is on disk; the writer refuses a stale base like If-Match does.
-// The first write can be held mid-flight.
+// The server patches whatever is on disk, a font rule included; the writer refuses a stale base
+// like If-Match does. The first write, a patch or a whole file, can be held mid-flight.
 function fakeProject() {
   let disk = SOURCE;
   const refused: string[] = [];
   let writes = 0;
+  let wholeFileWrites = 0;
   let release = () => {};
   const firstWrite = new Promise<void>((resolve) => (release = resolve));
+  const holdFirst = async () => {
+    if (++writes === 1) await firstWrite;
+  };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init?: RequestInit) => {
       if (input.includes("/file-mutations/patch-element/")) {
-        const { operations } = JSON.parse(String(init?.body)) as {
+        await holdFirst();
+        const { operations, fontFaceCss } = JSON.parse(String(init?.body)) as {
           operations: Array<{ property?: string; value?: string }>;
+          fontFaceCss?: string;
         };
         for (const op of operations) {
           if (op.property === "color") disk = disk.replace(/color: \w+/, `color: ${op.value}`);
         }
+        if (fontFaceCss && !disk.includes(fontFaceCss))
+          disk = disk.replace(
+            "</head>",
+            `<style data-hf-studio-fonts="true">${fontFaceCss}</style></head>`,
+          );
         return Response.json({ ok: true, changed: true, matched: true, content: disk });
       }
       return Response.json({ content: disk });
     }),
   );
   const writeProjectFile = async (path: string, content: string, expected?: string) => {
-    if (++writes === 1) await firstWrite;
+    wholeFileWrites += 1;
+    await holdFirst();
     if (expected !== undefined && expected !== disk && content !== disk) {
       refused.push(path);
       throw new Error(`409 conflict on ${path}`);
     }
     disk = content;
   };
-  return { writeProjectFile, refused, release: () => release(), read: () => disk };
+  return {
+    writeProjectFile,
+    refused,
+    release: () => release(),
+    read: () => disk,
+    wholeFileWrites: () => wholeFileWrites,
+  };
 }
 
 type Project = ReturnType<typeof fakeProject>;
@@ -158,7 +176,7 @@ afterEach(() => {
 });
 
 describe("canvas edit commits share the file queue", () => {
-  it("lands a second canvas commit started while the first one's font write is held", async () => {
+  it("lands a second canvas commit started while the first one's font save is held", async () => {
     const project = fakeProject();
     const { hook, selection, toasts } = mountCanvasCommits(project);
     const font = {
@@ -174,8 +192,55 @@ describe("canvas edit commits share the file queue", () => {
     );
 
     expect(toasts).toEqual([]);
-    expect(project.read()).toContain("@font-face");
+    expect(project.read().match(/@font-face/g)).toHaveLength(1);
     expect(project.read()).toContain("color: green");
+    expect(project.wholeFileWrites(), "the font rides the edit's own patch").toBe(0);
+  });
+
+  it("writes a batch's prepared content over the patch and saves it once", async () => {
+    const project = fakeProject();
+    const { hook, selection, toasts } = mountCanvasCommits(project);
+    project.release();
+
+    const saved = await hook.handleDomAttributeBatchCommit(
+      selection,
+      [{ type: "attribute", property: "data-note", value: "1" }],
+      {
+        label: "Edit with prepared content",
+        prepareContent: (html) => html.replace("</head>", '<meta data-prepared="1"></head>'),
+      },
+    );
+
+    expect(saved).toBe(true);
+    expect(toasts).toEqual([]);
+    expect(project.read().match(/data-prepared="1"/g)).toHaveLength(1);
+    expect(project.wholeFileWrites()).toBe(1);
+  });
+
+  it("reports a failed follow-up write as a failed commit, not as saved", async () => {
+    const project = fakeProject();
+    project.release();
+    const failing = {
+      ...project,
+      writeProjectFile: async () => {
+        throw new Error("409 conflict");
+      },
+    };
+    const { hook, selection, toasts } = mountCanvasCommits(failing);
+
+    const saved = await hook.handleDomAttributeBatchCommit(
+      selection,
+      [{ type: "attribute", property: "data-note", value: "1" }],
+      {
+        label: "Edit with prepared content",
+        prepareContent: (html) => html.replace("</head>", '<meta data-prepared="1"></head>'),
+      },
+    );
+
+    expect(saved).toBe(false);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]).toContain("couldn't finish updating");
+    expect(project.read()).not.toContain("data-prepared");
   });
 
   it("lands a canvas commit started while a timeline save is writing", async () => {

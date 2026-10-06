@@ -52,6 +52,7 @@ async function listFilters(): Promise<string | null> {
     const { stdout } = await execFileP(getFfmpegBinary(), ["-hide_banner", "-filters"], {
       maxBuffer: 4 * 1024 * 1024,
       timeout: 5_000,
+      windowsHide: true,
     });
     return stdout;
   } catch {

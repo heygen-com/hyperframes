@@ -5,18 +5,33 @@ import * as fs from "node:fs";
 import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFileAtomically, replaceFileAtomically, resolveWritePath } from "./atomicFile.js";
+import {
+  atomicTempPath,
+  createFileAtomically,
+  isAtomicTempPath,
+  replaceFileAtomically,
+  resolveWritePath,
+} from "./atomicFile.js";
 
 vi.mock("node:crypto", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:crypto")>();
   return { ...actual, randomBytes: vi.fn(actual.randomBytes) };
 });
 
-/** `<file>.<8 hex>.tmp`, checked without building a regex from a path (Windows paths hold backslashes). */
+/** `<file>.hf<6 hex>.tmp`, checked without building a regex from a path (Windows paths hold backslashes). */
 function expectTempSiblingOf(tempPath: string, file: string): void {
   expect(tempPath.startsWith(`${file}.`)).toBe(true);
-  expect(tempPath.slice(file.length)).toMatch(/^\.[0-9a-f]{8}\.tmp$/);
+  expect(tempPath.slice(file.length)).toMatch(/^\.hf[0-9a-f]{6}\.tmp$/);
 }
+
+describe("isAtomicTempPath", () => {
+  it("knows the temp files it names, and no one else's", () => {
+    expect(isAtomicTempPath(atomicTempPath("/p/index.html"))).toBe(true);
+    expect(isAtomicTempPath("compositions/intro.html.hf0a1b2c.tmp")).toBe(true);
+    expect(isAtomicTempPath("foo.12345678.tmp")).toBe(false);
+    expect(isAtomicTempPath("index.html.hf0a1b2c.tmp.bak")).toBe(false);
+  });
+});
 
 describe("replaceFileAtomically", () => {
   const dirs: string[] = [];
@@ -172,6 +187,8 @@ describe("createFileAtomically", () => {
         return fs.writeFileSync(path, ...args);
       },
       chmodSync: fs.chmodSync,
+      openSync: fs.openSync,
+      closeSync: fs.closeSync,
       linkSync: (from: fs.PathLike, to: fs.PathLike) => {
         expect(readFileSync(from, "utf-8")).toBe("complete html");
         return fs.linkSync(from, to);
@@ -215,6 +232,8 @@ describe("createFileAtomically", () => {
     return {
       writeFileSync: fs.writeFileSync,
       chmodSync: fs.chmodSync,
+      openSync: fs.openSync,
+      closeSync: fs.closeSync,
       linkSync: () => {
         throw Object.assign(new Error(code), { code });
       },
@@ -235,6 +254,61 @@ describe("createFileAtomically", () => {
     },
   );
 
+  it("removes the partial file a direct write leaves on a full disk, keeping the error", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    const closed: number[] = [];
+    const operations = {
+      ...failingLink("EXDEV"),
+      writeFileSync: (target: fs.PathOrFileDescriptor, ...args: any[]) => {
+        if (typeof target !== "number") return fs.writeFileSync(target, ...args);
+        fs.writeFileSync(target, "ht");
+        throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
+      },
+      closeSync: (fd: number) => {
+        closed.push(fd);
+        fs.closeSync(fd);
+        throw Object.assign(new Error("EIO"), { code: "EIO" });
+      },
+    };
+
+    expect(() => createFileAtomically(file, "html", operations)).toThrow("ENOSPC");
+    expect(fs.readdirSync(dir)).toEqual([]);
+    // Unlinking an open file succeeds, so only the count shows the descriptor was not leaked.
+    expect(closed).toHaveLength(1);
+  });
+
+  it("removes the file when a network share reports its quota only at close", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    const closed: number[] = [];
+    const operations = {
+      ...failingLink("EXDEV"),
+      closeSync: (fd: number) => {
+        closed.push(fd);
+        fs.closeSync(fd);
+        throw Object.assign(new Error("EDQUOT"), { code: "EDQUOT" });
+      },
+    };
+
+    expect(() => createFileAtomically(file, "html", operations)).toThrow("EDQUOT");
+    expect(fs.readdirSync(dir)).toEqual([]);
+    // A second close could hit a descriptor another request has reused since.
+    expect(closed).toHaveLength(1);
+  });
+
+  it("keeps another writer's file when the direct write finds the name taken", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    writeFileSync(file, "theirs");
+
+    expect(() => createFileAtomically(file, "html", failingLink("EXDEV"))).toThrow(
+      expect.objectContaining({ code: "EEXIST" }),
+    );
+    expect(readFileSync(file, "utf-8")).toBe("theirs");
+    expect(fs.readdirSync(dir)).toEqual(["index.html"]);
+  });
+
   it("propagates any other link failure without writing the destination", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
@@ -250,6 +324,8 @@ describe("createFileAtomically", () => {
     const operations = {
       writeFileSync: fs.writeFileSync,
       chmodSync: fs.chmodSync,
+      openSync: fs.openSync,
+      closeSync: fs.closeSync,
       linkSync: fs.linkSync,
       unlinkSync: () => {
         throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
@@ -271,21 +347,21 @@ describe("createFileAtomically", () => {
   it("takes a fresh temporary name when another writer holds one, leaving theirs alone", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
-    writeFileSync(`${file}.deadbeef.tmp`, "theirs");
-    nextTempNames("deadbeef");
+    writeFileSync(`${file}.hfdeadbe.tmp`, "theirs");
+    nextTempNames("deadbe");
 
     createFileAtomically(file, "html");
 
     expect(readFileSync(file, "utf-8")).toBe("html");
-    expect(readFileSync(`${file}.deadbeef.tmp`, "utf-8")).toBe("theirs");
+    expect(readFileSync(`${file}.hfdeadbe.tmp`, "utf-8")).toBe("theirs");
   });
 
   it("gives up after three taken temporary names without touching them", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
-    for (const name of ["00000001", "00000002", "00000003"])
-      writeFileSync(`${file}.${name}.tmp`, "theirs");
-    nextTempNames("00000001", "00000002", "00000003");
+    for (const name of ["000001", "000002", "000003"])
+      writeFileSync(`${file}.hf${name}.tmp`, "theirs");
+    nextTempNames("000001", "000002", "000003");
 
     expect(() => createFileAtomically(file, "html")).toThrow(
       expect.objectContaining({ code: "EEXIST" }),
@@ -403,21 +479,23 @@ describe.skipIf(process.platform === "win32")("resolveWritePath", () => {
     );
   });
 
-  it("reads a link through a linked folder and .. the way the system does", () => {
-    const base = linkedFolder();
+  function linkCompThroughDotDot(base: string) {
     fs.mkdirSync(join(base, "real/a/b"), { recursive: true });
     symlinkSync(join(base, "real/a/b"), join(base, "root/x"));
-    writeFileSync(join(base, "real/a/t.html"), "old");
     symlinkSync("x/../t.html", join(base, "root/comp.html"));
+  }
+
+  it("reads a link through a linked folder and .. the way the system does", () => {
+    const base = linkedFolder();
+    linkCompThroughDotDot(base);
+    writeFileSync(join(base, "real/a/t.html"), "old");
 
     expect(resolveWritePath(join(base, "root/comp.html"))).toBe(join(base, "real/a/t.html"));
   });
 
   it("follows a dangling link through a linked folder and .. the way the system does", () => {
     const base = linkedFolder();
-    fs.mkdirSync(join(base, "real/a/b"), { recursive: true });
-    symlinkSync(join(base, "real/a/b"), join(base, "root/x"));
-    symlinkSync("x/../t.html", join(base, "root/comp.html"));
+    linkCompThroughDotDot(base);
 
     expect(resolveWritePath(join(base, "root/comp.html"))).toBe(join(base, "real/a/t.html"));
   });

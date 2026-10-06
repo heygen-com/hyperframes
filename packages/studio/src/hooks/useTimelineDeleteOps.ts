@@ -9,7 +9,8 @@ import { saveServerRewriteWithHistory, type RecordEditInput } from "../utils/stu
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 import { buildPatchTarget, removeIframeTimelineElements } from "./timelineEditingHelpers";
-import { captureDurationRollback } from "./timelineTimingSync";
+import { captureDurationRollback, timingGestureStep } from "./timelineTimingSync";
+import { setLinkInSource } from "../components/editor/mediaLinkEdits";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import {
@@ -20,6 +21,7 @@ import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
 } from "./useTimelineGroupEditing";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 /** Apply already-resolved ripple changes to the surviving elements for the
  *  optimistic store update after a delete. Pure — no IO. */
@@ -55,10 +57,10 @@ interface UseTimelineDeleteOpsOptions {
   ) => Promise<void>;
 }
 
-// Per-gesture-unique coalesce key — a monotonic counter, not Date.now() /
-// Math.random() (determinism rules), mirroring gapCloseGestureSeq in
-// timelineGapCommit.ts.
-let deleteGestureSeq = 0;
+function unlinkInSource(source: string, survivors: readonly TimelineElement[]): string {
+  const targets = survivors.map(buildPatchTarget).filter((target) => target !== null);
+  return targets.length > 0 ? setLinkInSource(source, targets, null) : source;
+}
 
 export function useTimelineDeleteOps({
   projectIdRef,
@@ -80,7 +82,7 @@ export function useTimelineDeleteOps({
   // fallow-ignore-next-line complexity
   const handleTimelineElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection: TimelineElement[]) => {
+    async (selection: TimelineElement[], alsoUnlink: readonly TimelineElement[] = []) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
@@ -100,10 +102,8 @@ export function useTimelineDeleteOps({
         (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
       );
       try {
-        // Shared with the ripple move below so a folded ripple is one undo
-        // step with the delete, not two (editHistory.ts coalesces by key +
-        // window across separate recordEdit calls, not by label).
-        const coalesceKey = `main-track-ripple-delete:${deleteGestureSeq++}`;
+        // Shared with the ripple move below so a folded ripple is one undo step with the delete.
+        const step = timingGestureStep("main-track-ripple-delete");
         const deleteHistoryLabel = "Delete timeline clip";
         let rollbackDuration = () => {};
         try {
@@ -111,48 +111,42 @@ export function useTimelineDeleteOps({
             projectId: pid,
             path: targetPath,
             label: deleteHistoryLabel,
-            coalesceKey,
+            ...step,
             writeFile: writeProjectFile,
             recordEdit,
             rewrite: async (originalContent) => {
-              // Remove every selected element before saving once. The server rewrites
-              // the file per call, so `removedContent` after the last one holds them
-              // all — which is what makes this a single history entry, and a single
-              // undo, rather than one per clip.
-              let removedContent = originalContent;
-              for (const target of sameFile) {
+              // One request removes every selected element and rewrites the file once, so a
+              // large selection is a single round trip and a single history entry.
+              const patchTargets = sameFile.map((target) => {
                 const patchTarget = buildPatchTarget(target);
                 if (!patchTarget) {
                   throw new Error(`Timeline element ${target.id} is missing a patchable target`);
                 }
-
-                const removeResponse = await fetch(
-                  buildProjectApiPath(
-                    pid,
-                    `/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
-                  ),
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-                    body: JSON.stringify({ target: patchTarget }),
-                  },
-                );
-                if (!removeResponse.ok) {
-                  throw new Error(`Failed to delete ${target.id} from ${targetPath}`);
-                }
-
-                const removeData = (await removeResponse.json()) as {
-                  changed?: boolean;
-                  content?: string;
-                };
-                if (typeof removeData.content === "string") removedContent = removeData.content;
+                return patchTarget;
+              });
+              const removeResponse = await studioApiFetch(
+                buildProjectApiPath(
+                  pid,
+                  `/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
+                ),
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+                  body: JSON.stringify({ targets: patchTargets }),
+                },
+              );
+              if (!removeResponse.ok) {
+                throw new Error(`Failed to delete ${sameFile.length} clips from ${targetPath}`);
               }
+              const removeData = (await removeResponse.json()) as { content?: string };
+              const removedContent =
+                typeof removeData.content === "string" ? removeData.content : originalContent;
               // Shrink to the furthest remaining clip end, read from the post-removal source:
               // store durations are runtime-truncated.
               const deleteContentEnd = furthestClipEndFromSource(removedContent);
-              const patchedContent = setCompositionDurationToContent(
-                removedContent,
-                deleteContentEnd,
+              const patchedContent = unlinkInSource(
+                setCompositionDurationToContent(removedContent, deleteContentEnd),
+                alsoUnlink,
               );
               // Optimistically reflect the shrunk length in the readout/seek bar,
               // rolling it back if the persist below fails (see captureDurationRollback).
@@ -188,8 +182,7 @@ export function useTimelineDeleteOps({
         if (rippleChanges) {
           try {
             await handleTimelineGroupMove(rippleChanges, {
-              coalesceKey,
-              coalesceMs: Number.POSITIVE_INFINITY,
+              coalesceKey: step.coalesceKey,
               // Coalescing keeps the LAST entry's label; without this the undo
               // toast reads "Undid Move timeline clips" after a delete, naming
               // the ripple's mechanics instead of what the user actually did.

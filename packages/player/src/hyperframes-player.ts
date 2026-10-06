@@ -1552,7 +1552,7 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     // In video mode the iframe only ever loads about:blank; its load must not reset the video.
     if (!this._connected || this._videoSource) return;
-    // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
+    // The runtime posts its timeline once its scripts ran, before or after `load`, and every
     // host-initiated navigation clears `_ready` first. So a ready player already holds this
     // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
     const doc = this._getSameOriginIframeDocument();
@@ -1563,8 +1563,8 @@ class HyperframesPlayer extends HTMLElement {
     }
 
     this._ready = false;
-    // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
-    // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
+    // The runtime installs its bridge once its scripts ran and posts `ready`, which can come before
+    // the iframe's load event. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
     // sandbox-policy reloads already clear bridge readiness before starting a navigation.
     this._invalidateAssetsWait();

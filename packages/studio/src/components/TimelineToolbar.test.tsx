@@ -211,6 +211,33 @@ describe("TimelineToolbar — keyframes on audio tracks", () => {
   });
 });
 
+describe("TimelineToolbar snap key", () => {
+  let root: ReturnType<typeof createRoot> | null = null;
+  const snapBefore = usePlayerStore.getState().timelineSnapEnabled;
+  afterEach(() => {
+    act(() => root?.unmount());
+    root = null;
+    usePlayerStore.getState().setTimelineSnapEnabled(snapBefore);
+  });
+
+  it("N toggles snapping, but not while a picker that owns typing has focus", () => {
+    root = renderToolbar().root;
+    const pressN = (target: EventTarget) =>
+      act(() => {
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true }));
+      });
+    const before = usePlayerStore.getState().timelineSnapEnabled;
+    const picker = document.createElement("button");
+    picker.setAttribute("role", "combobox");
+    document.body.append(picker);
+
+    pressN(picker);
+    expect(usePlayerStore.getState().timelineSnapEnabled).toBe(before);
+    pressN(document.body);
+    expect(usePlayerStore.getState().timelineSnapEnabled).toBe(!before);
+  });
+});
+
 describe("TimelineToolbar Fit", () => {
   it("shows Fit as a named icon and says whether fit is on", () => {
     const { host, root } = renderToolbar();
@@ -362,5 +389,75 @@ describe("TimelineToolbar add beat", () => {
     const { host, root } = renderToolbar();
     expect(host.querySelector('button[aria-label="Add beat at playhead"]')).not.toBeNull();
     act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar Linked Selection", () => {
+  it("is on by default, first among the editing toggles, and persists a click", async () => {
+    const { useLinkedClipPreferences } = await import("../utils/linkedClipPreferences");
+    const { host } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Linked Selection"]');
+    expect(button?.getAttribute("aria-pressed")).toBe("true");
+    const snapping = host.querySelector('button[aria-label="Toggle timeline snapping"]');
+    expect(snapping && button?.compareDocumentPosition(snapping)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    act(() => button?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(button?.getAttribute("aria-pressed")).toBe("false");
+    expect(readStudioUiPreferences().linkedSelectionEnabled).toBe(false);
+    act(() => useLinkedClipPreferences.getState().setLinkedSelection(true));
+  });
+
+  it("right-click toggles the out-of-sync indicator preference", async () => {
+    const { useLinkedClipPreferences } = await import("../utils/linkedClipPreferences");
+    const { host } = renderToolbar();
+    const button = host.querySelector('button[aria-label="Linked Selection"]');
+    act(() => button?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })));
+    const item = document.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]');
+    expect(item?.textContent).toContain("Show out-of-sync indicators");
+    expect(item?.getAttribute("aria-checked")).toBe("true");
+    act(() => item?.click());
+    expect(useLinkedClipPreferences.getState().syncIndicatorsVisible).toBe(false);
+    expect(readStudioUiPreferences().syncIndicatorsVisible).toBe(false);
+    act(() => useLinkedClipPreferences.getState().setSyncIndicatorsVisible(true));
+  });
+});
+
+describe("TimelineToolbar — host right actions", () => {
+  it("draws the host's controls immediately before the thumbnails toggle", () => {
+    const { host, root } = renderToolbar(undefined, {
+      rightActions: <button type="button">Script</button>,
+    });
+    const buttons = [...host.querySelectorAll("button")];
+    const script = buttons.findIndex((b) => b.textContent === "Script");
+    const thumbs = buttons.findIndex((b) => b.getAttribute("aria-label")?.includes("thumbnails"));
+    expect(script).toBeGreaterThan(-1);
+    expect(thumbs).toBe(script + 1);
+    act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar split hint", () => {
+  async function splitTooltip(props: Partial<React.ComponentProps<typeof TimelineToolbar>>) {
+    usePlayerStore.setState({
+      elements: [{ id: "a", domId: "a", tag: "div", start: 0, duration: 4, track: 0 }],
+      selectedElementId: "a",
+      currentTime: 2,
+    });
+    const { host, root } = renderToolbar(undefined, { onSplitElement: vi.fn(), ...props });
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Split at playhead"]');
+    act(() => button?.focus());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const label = document.querySelector('[role="tooltip"]')?.textContent;
+    act(() => root.unmount());
+    usePlayerStore.setState({ elements: [], selectedElementId: null, currentTime: 0 });
+    return label;
+  }
+
+  it("names S unless the host binds Split to another key", async () => {
+    expect(await splitTooltip({})).toBe("Split at playhead (S)");
+    expect(await splitTooltip({ splitShortcut: "⌘B" })).toBe("Split at playhead (⌘B)");
   });
 });

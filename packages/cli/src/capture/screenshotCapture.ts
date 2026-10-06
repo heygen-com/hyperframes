@@ -7,9 +7,8 @@
 
 import type { Page } from "puppeteer-core";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { writeCaptureFileSync } from "./captureFile.js";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 
 /**
  * Capture viewport screenshots covering the entire page height.
@@ -118,7 +117,7 @@ export async function captureScrollScreenshots(
   budget: { remainingMs?: () => number } = {},
 ): Promise<string[]> {
   const screenshotsDir = join(outputDir, "screenshots");
-  mkdirSync(screenshotsDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, screenshotsDir);
 
   const MAX_SCREENSHOTS = 20;
   const filePaths: string[] = [];

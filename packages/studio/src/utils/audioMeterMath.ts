@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { audioDbToGain, audioGainToDb } from "@hyperframes/core/audio-gain";
+import { audibleVideoNeedsWebAudio } from "@hyperframes/core/audible-video";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { isAudioTimelineElement } from "./timelineInspector";
 
@@ -67,9 +68,14 @@ export function stepPair(
   return [stepChannel(l, raw?.l ?? 0, now, dtMs), stepChannel(r, raw?.r ?? 0, now, dtMs)];
 }
 
-/** The meters appear only for a project with at least one audio clip or group. */
-function hasProjectAudio(elements: readonly TimelineElement[]): boolean {
-  return elements.some((el) => isAudioTimelineElement(el) || el.audioGroup !== undefined);
+/** The meters appear only for a project with an audio clip, a group, or a video Web Audio carries. */
+export function hasProjectAudio(elements: readonly TimelineElement[]): boolean {
+  return elements.some(
+    (el) =>
+      isAudioTimelineElement(el) ||
+      el.audioGroup !== undefined ||
+      (el.hasAudio === true && !el.muted && audibleVideoNeedsWebAudio(el)),
+  );
 }
 
 /** Scans once per `elements` change, not on every store update (the playhead ticks each frame). */

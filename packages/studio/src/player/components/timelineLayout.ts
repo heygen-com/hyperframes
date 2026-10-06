@@ -506,34 +506,6 @@ export function shouldShowTimelineShortcutHint(
   return scrollHeight - clientHeight <= 1;
 }
 
-export function shouldHandleTimelineDeleteKey(input: {
-  key: string;
-  metaKey?: boolean;
-  ctrlKey?: boolean;
-  altKey?: boolean;
-  target?: EventTarget | null;
-}): boolean {
-  if (input.key !== "Delete" && input.key !== "Backspace") return false;
-  if (input.metaKey || input.ctrlKey || input.altKey) return false;
-  const target =
-    input.target && typeof input.target === "object"
-      ? (input.target as {
-          tagName?: string;
-          isContentEditable?: boolean;
-          closest?: (selector: string) => Element | null;
-        })
-      : null;
-  if (target) {
-    const tag = target.tagName?.toLowerCase() ?? "";
-    if (target.isContentEditable) return false;
-    if (["input", "textarea", "select"].includes(tag)) return false;
-    if (typeof target.closest === "function" && target.closest("[contenteditable='true']")) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /* ── Asset drop ───────────────────────────────────────────────────── */
 export function getDefaultDroppedTrack(trackOrder: number[], rowIndex?: number): number {
   if (trackOrder.length === 0) return 0;

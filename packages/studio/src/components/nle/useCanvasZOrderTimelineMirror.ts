@@ -2,13 +2,13 @@ import { useCallback, useRef } from "react";
 import { usePlayerStore } from "../../player";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
-  displayTrackOrder,
   resolveRepositionLaneMove,
   resolveZMirrorLaneMove,
   type ZMirrorAction,
   type ZMirrorLaneMove,
 } from "../../player/components/timelineZMirror";
 import type { TimelineElement } from "../../player/store/playerStore";
+import { timelineTrackOrder } from "../../player/components/timelineTrackDisplay";
 import { commitZMirrorLaneMove } from "../../player/components/timelineClipDragCommit";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 import { buildStableSelector, getSelectorIndex } from "../editor/domEditingDom";
@@ -145,8 +145,8 @@ function useMirrorLaneMoveCommit(): (
     (selectionKey, coalesceKey, resolveMove) => {
       const els = elementsRef.current;
       const element = selectionKey ? els.find((e) => (e.key ?? e.id) === selectionKey) : undefined;
-      // Not a timeline clip (canvas-only decoration) → z-only action, unchanged.
-      if (!element) return Promise.resolve(false);
+      // Canvas-only decoration, or no handler to save a lane move (no TimelineEditProvider): z-only.
+      if (!element || !onMoveElements) return Promise.resolve(false);
 
       const move = resolveMove(element, els);
       if (!move) return Promise.resolve(false);
@@ -156,20 +156,13 @@ function useMirrorLaneMoveCommit(): (
         move,
         {
           elements: els,
-          trackOrder: displayTrackOrder(els),
+          trackOrder: timelineTrackOrder(els),
           updateElement: (key, updates) => usePlayerStore.getState().updateElement(key, updates),
           onMoveElements,
           // NO readZIndex / onStackingPatches: see the hook doc — the lane→z
           // stacking sync must not re-trigger and fight the just-set z values.
         },
         coalesceKey,
-        // Unbounded fold window: this record lands only AFTER the z persist's
-        // server round-trip resolved, so the gap between the gesture's two
-        // records exceeds editHistory's 300ms default under real latency and
-        // the fold would silently split into two undo entries. The shared key
-        // is unique per gesture (zReorderCoalesceKey's gesture seq), so the
-        // unbounded window can never merge two distinct user actions.
-        Number.POSITIVE_INFINITY,
       );
     },
     [onMoveElements],

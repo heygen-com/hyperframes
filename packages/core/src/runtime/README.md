@@ -47,6 +47,20 @@ Determinism baseline:
 
 - `renderSeek` is the producer-canonical seek path.
 - 30fps quantization and readiness gates are correctness requirements.
+- Preview automation uses `?hf-capture=1`, `hyperframes snapshot`, or runtime readiness
+  (`window.__renderReady` and the seek contract), never a wait on all of `document.images`.
+  Interactive preview leaves images in hidden future clips unloaded until they are needed.
+
+Runtime-loaded compositions finalize IDs already used by native SVG references before scene
+scripts run. IDs used only by JavaScript keep their authored values. If an initial script
+introduces an ID's first native `url()` or `href` reference, that ID can be renamed after
+initial scripts finish. A string captured before that first native use is not guaranteed
+stable; read the target element's current `id` after runtime readiness for deferred writes.
+
+Attribute selectors with a declared namespace prefix (`@namespace xl url(...)` plus
+`[xl|href="#id"]`) follow renamed references through the live CSSOM before scene scripts run,
+in runtime and compiled output alike. Compiled CSS text leaves them as authored, so these
+selectors need JavaScript; with scripts disabled they match only unrenamed values.
 
 ## Build
 

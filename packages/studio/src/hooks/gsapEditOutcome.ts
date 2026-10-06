@@ -1,6 +1,11 @@
 import { editabilityForProvenance, type GsapAnimation } from "@hyperframes/core/gsap-parser";
 
-export type GsapEditBlockReason = "no-selector" | "unroll-required" | "source-uneditable";
+export type GsapEditBlockReason =
+  | "no-selector"
+  | "unroll-required"
+  | "source-uneditable"
+  | "keyframes-uneditable"
+  | "mixed-files";
 
 /**
  * Which of the nine situations produced a block. The user-facing `reason` stays
@@ -10,7 +15,7 @@ export type GsapEditBlockReason = "no-selector" | "unroll-required" | "source-un
  * true for `provenance-runtime-dynamic`; the others are parser or source-match
  * limits, where the animation may well be plain authored source.
  *
- * Telemetry only. Nothing branches on it.
+ * Telemetry, plus the sharper message a few details get (GSAP_EDIT_DETAIL_COPY).
  */
 export type GsapEditBlockDetail =
   | "provenance-runtime-dynamic"
@@ -21,7 +26,24 @@ export type GsapEditBlockDetail =
   | "no-position-tween"
   | "live-rotation-no-source-tween"
   | "live-resize-no-source-tween"
-  | "zero-duration-tween";
+  | "zero-duration-tween"
+  | PlayheadEditRefusal;
+
+/** Why an edit at the playhead could not be written as keyframes of the file's tween. */
+export type PlayheadEditRefusal =
+  | "eased-keyframes"
+  | "simple-array-keyframes"
+  | "array-step-delay"
+  | "array-step-callback"
+  | "array-step-config"
+  | "array-step-computed"
+  | "array-step-relative"
+  | "array-step-random"
+  | "unknown-ease"
+  | "implicit-end-unknown"
+  | "not-a-tween"
+  | "no-timing"
+  | "shared-tween";
 
 export type GsapEditOutcome =
   | {
@@ -44,21 +66,45 @@ export type GsapEditOutcome =
       ownsDragOffset?: boolean;
     }
   | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail }
-  | { status: "element-offset" };
+  | { status: "element-offset" }
+  | { status: "element-size" };
 
 export const GSAP_EDIT_BLOCK_COPY: Record<GsapEditBlockReason, string> = {
   "no-selector": "This layer needs a stable selector before Studio can save the edit.",
   "unroll-required":
     "This motion comes from a helper or loop. Choose Unroll to edit it explicitly.",
   "source-uneditable": "This animation is computed at runtime. Edit the animation in the Code tab.",
+  "keyframes-uneditable":
+    "Studio can't add this edit to the animation's keyframes. Edit this animation in the Code tab.",
+  "mixed-files":
+    "These layers are animated in different files. Move each file's layers separately.",
 };
+
+const STEP_LIST = "This animation's keyframes have a step";
+const IN_CODE = "Edit them in the Code tab.";
+/** A refusal a person can act on more precisely than its reason's message: what blocks it, then what to do. */
+const GSAP_EDIT_DETAIL_COPY: Partial<Record<GsapEditBlockDetail, string>> = {
+  "array-step-delay": `${STEP_LIST} with its own delay, which Studio can't keep while it edits them. ${IN_CODE}`,
+  "array-step-callback": `${STEP_LIST} that runs code as it plays (like onComplete), which an edit would run again. ${IN_CODE}`,
+  "array-step-config": `${STEP_LIST} with its own tween setting (like repeat or stagger), which Studio can't keep while it edits them. ${IN_CODE}`,
+  "array-step-computed": `${STEP_LIST} whose value comes from code, which Studio can't keep while it edits them. ${IN_CODE}`,
+  "array-step-relative": `${STEP_LIST} with a relative value (like "+=40"), which an edit would apply again. ${IN_CODE}`,
+  "array-step-random": `${STEP_LIST} with a random() value, which an edit would roll again. ${IN_CODE}`,
+};
+
+export function gsapEditBlockMessage(
+  reason: GsapEditBlockReason,
+  detail?: GsapEditBlockDetail,
+): string {
+  return (detail && GSAP_EDIT_DETAIL_COPY[detail]) ?? GSAP_EDIT_BLOCK_COPY[reason];
+}
 
 export class GsapEditBlockedError extends Error {
   constructor(
     readonly reason: GsapEditBlockReason,
     readonly detail?: GsapEditBlockDetail,
   ) {
-    super(GSAP_EDIT_BLOCK_COPY[reason]);
+    super(gsapEditBlockMessage(reason, detail));
     this.name = "GsapEditBlockedError";
   }
 }

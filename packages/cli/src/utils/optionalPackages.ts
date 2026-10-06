@@ -30,6 +30,13 @@ export const OPTIONAL_PACKAGES = {
   "@google/genai": "1.52.0",
 } as const satisfies Record<OptionalPackage, string>;
 
+export const PINNED_PACKAGES = {
+  ...OPTIONAL_PACKAGES,
+  "sherpa-onnx-node": "1.13.8",
+} as const;
+
+type PinnedPackage = keyof typeof PINNED_PACKAGES;
+
 export const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
 
 export interface OptionalPackageDeps {
@@ -53,7 +60,7 @@ export function installedOptionalPackageVersion(
   cacheDir = CACHE_DIR,
   cliUrl = import.meta.url,
 ): string | null {
-  if (pinnedCopyBesideCli(name, cliUrl)) return OPTIONAL_PACKAGES[name];
+  if (pinnedPackageBesideCli(name, cliUrl)?.resolution === "entry") return OPTIONAL_PACKAGES[name];
   const dir = optionalPackageDir(name, cacheDir);
   if (!isInstalled(dir, name)) return null;
   return (JSON.parse(readFileSync(manifestPath(dir, name), "utf-8")) as { version: string })
@@ -113,28 +120,51 @@ export function isInstalled(dir: string, name: string): boolean {
   return existsSync(manifestPath(dir, name));
 }
 
-export function loadInstalled(dir: string, name: string): unknown | null {
+export function installedPackagePath(dir: string, name: string): string | null {
   if (!isInstalled(dir, name)) return null;
-  return createRequire(join(dir, "package.json"))(name);
+  return createRequire(join(dir, "package.json")).resolve(name);
 }
 
-function pinnedCopyBesideCli(name: OptionalPackage, cliUrl: string): boolean {
+function loadInstalled(dir: string, name: string): unknown | null {
+  const entry = installedPackagePath(dir, name);
+  return entry === null ? null : createRequire(join(dir, "package.json"))(entry);
+}
+
+export function pinnedPackageBesideCli(
+  name: PinnedPackage,
+  cliUrl = import.meta.url,
+): { resolution: "entry" | "package"; path: string } | null {
   const req = createRequire(cliUrl);
   try {
-    const entry = realpathSync(req.resolve(name));
+    let entry: string;
+    try {
+      entry = realpathSync(req.resolve(name));
+    } catch {
+      const copy = (req.resolve.paths(name) ?? [])
+        .map((dir) => join(dir, name))
+        .find((dir) => existsSync(join(dir, "package.json")));
+      return copy && hasPinnedVersion(copy, name)
+        ? { resolution: "package", path: realpathSync(copy) }
+        : null;
+    }
     const copy = (req.resolve.paths(name) ?? [])
       .map((dir) => join(dir, name))
       .find((dir) => existsSync(dir) && entry.startsWith(realpathSync(dir) + sep));
-    if (!copy) return false;
-    const manifest = readFileSync(join(copy, "package.json"), "utf-8");
-    return (JSON.parse(manifest) as { version?: string }).version === OPTIONAL_PACKAGES[name];
+    if (!copy) return null;
+    return hasPinnedVersion(copy, name) ? { resolution: "entry", path: entry } : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function loadBesideCli(name: OptionalPackage, cliUrl = import.meta.url): unknown | null {
-  return pinnedCopyBesideCli(name, cliUrl) ? createRequire(cliUrl)(name) : null;
+function hasPinnedVersion(copy: string, name: PinnedPackage): boolean {
+  const manifest = readFileSync(join(copy, "package.json"), "utf-8");
+  return (JSON.parse(manifest) as { version?: string }).version === PINNED_PACKAGES[name];
+}
+
+export function loadBesideCli(name: PinnedPackage, cliUrl = import.meta.url): unknown | null {
+  const copy = pinnedPackageBesideCli(name, cliUrl);
+  return copy?.resolution === "entry" ? createRequire(cliUrl)(copy.path) : null;
 }
 
 export function runNpm(args: string[], signal?: AbortSignal): Promise<void> {

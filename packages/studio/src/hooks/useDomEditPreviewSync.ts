@@ -10,6 +10,7 @@ import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import { logSelect } from "../utils/selectDebug";
 import { onPreviewContentReplaced } from "../player/sceneSwap";
+import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
 
 interface UseDomEditPreviewSyncParams {
   previewIframe: HTMLIFrameElement | null;
@@ -24,7 +25,10 @@ interface UseDomEditPreviewSyncParams {
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; preserveGroup?: boolean },
   ) => void;
-  buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
+  buildDomSelectionFromTarget: (
+    element: HTMLElement,
+    options?: Pick<ResolveDomSelectionOptions, "previous">,
+  ) => Promise<DomEditSelection | null>;
   refreshPreviewDocumentVersion: () => void;
   syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
@@ -96,7 +100,9 @@ export function useDomEditPreviewSync({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(nextElement);
+      const nextSelection = await buildDomSelectionFromTarget(nextElement, {
+        previous: currentSelection,
+      });
       if (nextSelection) {
         applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }

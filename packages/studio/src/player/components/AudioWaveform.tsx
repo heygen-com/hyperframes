@@ -1,8 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useContext, useEffect, useMemo, useRef } from "react";
+import { fadeGain } from "@hyperframes/core/audio-fade";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
+import { ClipFadesContext, type ClipFadeShape } from "./TimelineClipFades";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export interface AudioWaveformProps {
   audioUrl: string;
@@ -16,13 +19,16 @@ export interface AudioWaveformProps {
   priority: ThumbnailPriority;
   /** `data-hidden` or a muted audio group. Greys the pill; the clip stays. */
   muted?: boolean;
-  /** Same media file as a video clip. Draws the 1px parent tick. */
-  linked?: boolean;
+  labelInset?: number;
 }
 
 const BAR_STEP = 3;
 
-type BarGeometry = { x: number; width: number; height: number };
+export const rendersWaveform = (el: { tag: string }) => el.tag === "audio";
+const FADE_GHOST_OPACITY = 0.27;
+export const WAVEFORM_LAYER_Z = 10;
+
+type BarGeometry = { x: number; width: number; height: number; gain: number };
 
 function paintWaveformBars(
   context: CanvasRenderingContext2D,
@@ -33,11 +39,18 @@ function paintWaveformBars(
   amplitudes: readonly number[],
 ) {
   bars.forEach((bar, index) => {
-    const amplitude = amplitudes[index] ?? 0;
+    const opacity = loudnessToOpacity(amplitudes[index] ?? 0);
     context.fillStyle = `rgb(${waveformBaselineRgb})`;
     context.fillRect(bar.x, height - 2, bar.width, 2);
-    context.fillStyle = `rgba(${waveformBarRgb},${loudnessToOpacity(amplitude).toFixed(2)})`;
-    context.fillRect(bar.x, height - bar.height, bar.width, bar.height);
+    const paint = (alpha: number, top: number, barHeight: number) => {
+      context.fillStyle = `rgba(${waveformBarRgb},${alpha.toFixed(2)})`;
+      context.fillRect(bar.x, top, bar.width, barHeight);
+    };
+    const faded = bar.height * bar.gain;
+    if (faded > 0) paint(opacity, height - faded, faded);
+    if (faded < bar.height) {
+      paint(opacity * FADE_GHOST_OPACITY, height - bar.height, bar.height - faded);
+    }
   });
 }
 
@@ -47,6 +60,7 @@ export function drawWaveformCanvas(
   muted: boolean,
   trimStartFraction: number,
   trimEndFraction: number,
+  fades: ClipFadeShape | null = null,
 ) {
   const width = Math.max(1, canvas.clientWidth);
   const height = Math.max(1, canvas.clientHeight);
@@ -67,6 +81,9 @@ export function drawWaveformCanvas(
     x: (index * width) / amplitudes.length,
     width: Math.max(1, width / amplitudes.length),
     height: Math.max(3, amplitude * height),
+    gain: fades
+      ? fadeGain(((index + 0.5) / amplitudes.length) * fades.duration, fades.duration, fades)
+      : 1,
   }));
   const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
   const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
@@ -109,7 +126,7 @@ async function loadWaveform(
 }
 
 async function fetchWaveformPeaks(url: string, signal: AbortSignal): Promise<number[]> {
-  const response = await fetch(url, { signal });
+  const response = await studioApiFetch(url, { signal });
   if (!response.ok) throw new Error(`Waveform request failed (${response.status})`);
   const data: unknown = await response.json();
   if (
@@ -125,7 +142,7 @@ async function fetchWaveformPeaks(url: string, signal: AbortSignal): Promise<num
 }
 
 async function decodeWaveformPeaks(url: string, signal: AbortSignal): Promise<number[]> {
-  const response = await fetch(url, { signal });
+  const response = await studioApiFetch(url, { signal });
   if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
   const buffer = await response.arrayBuffer();
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
@@ -151,7 +168,7 @@ export const AudioWaveform = memo(function AudioWaveform({
   sessionEpoch,
   priority,
   muted = false,
-  linked = false,
+  labelInset = 16,
 }: AudioWaveformProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -179,11 +196,12 @@ export const AudioWaveform = memo(function AudioWaveform({
   const peaks =
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
 
+  const fades = useContext(ClipFadesContext);
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !peaks) return;
-    drawWaveformCanvas(canvas, peaks, muted, trimStartFraction ?? 0, trimEndFraction ?? 1);
-  }, [muted, peaks, trimEndFraction, trimStartFraction]);
+    drawWaveformCanvas(canvas, peaks, muted, trimStartFraction ?? 0, trimEndFraction ?? 1, fades);
+  }, [fades, muted, peaks, trimEndFraction, trimStartFraction]);
 
   const setCanvasRef = useCallback(
     (canvas: HTMLCanvasElement | null) => {
@@ -219,17 +237,17 @@ export const AudioWaveform = memo(function AudioWaveform({
 
   return (
     <div ref={rootRef} className="absolute inset-0">
-      {linked ? <span className="timeline-audio-link" aria-hidden="true" /> : null}
-      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 10 }}>
+      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: WAVEFORM_LAYER_Z }}>
         <canvas
           ref={setCanvasRef}
           className="absolute inset-x-0 bottom-0 w-full"
-          style={{ top: 16, height: "calc(100% - 16px)" }}
+          style={{ top: labelInset, height: `calc(100% - ${labelInset}px)` }}
         />
         {snapshot.status === "loading" && (
           <div
-            className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
+            className="absolute inset-x-0 bottom-0 animate-pulse"
             style={{
+              top: labelInset,
               background: "var(--timeline-thumbnail-shimmer)",
             }}
           />
@@ -239,7 +257,7 @@ export const AudioWaveform = memo(function AudioWaveform({
         {snapshot.status === "error" && (
           <div
             className="absolute inset-x-0 flex items-center justify-center gap-1.5"
-            style={{ top: 16, bottom: 0 }}
+            style={{ top: labelInset, bottom: 0 }}
           >
             <div
               className="absolute inset-x-0"

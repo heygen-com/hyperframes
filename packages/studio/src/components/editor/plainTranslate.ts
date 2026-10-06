@@ -1,5 +1,5 @@
 import { roundTo3 } from "../../utils/rounding";
-import { gsapWritesPosition, gsapWritesRotation } from "../../hooks/gsapRuntimeKeyframes";
+import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readCssRotation } from "../../hooks/draggedGsapPosition";
 import { readStudioPathOffset, readStudioRotation, styleUsesStudioOffset } from "./manualEditsDom";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
@@ -100,6 +100,13 @@ export function readTranslatePx(el: HTMLElement): Point {
   };
 }
 
+export function readTranslatePxLeavingPercent(el: HTMLElement): Point {
+  const value = el.ownerDocument.defaultView?.getComputedStyle(el).translate || "none";
+  const [x = "0px", y = "0px"] = value === "none" ? [] : splitTopLevelWhitespace(value);
+  const px = (part: string) => roundTo3(evaluateLength(part, 0)) || 0;
+  return { x: px(x), y: px(y) };
+}
+
 export const UNREADABLE_TRANSLATE =
   "Studio can't read this layer's translate. Move it in the Code tab.";
 
@@ -142,10 +149,12 @@ export function writeTranslatePx(el: HTMLElement, p: Point): void {
 }
 
 /** The position the panel shows and edits: the translate a move writes, unless GSAP positions it. */
-export function readMoveOffset(el: HTMLElement, plainTranslate = !gsapWritesPosition(el)): Point {
+export function readMoveOffset(el: HTMLElement, plainTranslate = editsPlainCss(el, "move")): Point {
   return plainTranslate ? readTranslatePx(el) : readStudioPathOffset(el);
 }
 
 export function readShownRotation(el: HTMLElement): { angle: number } {
-  return gsapWritesRotation(el) ? readStudioRotation(el) : { angle: roundTo3(readCssRotation(el)) };
+  return editsPlainCss(el, "rotate")
+    ? { angle: roundTo3(readCssRotation(el)) }
+    : readStudioRotation(el);
 }

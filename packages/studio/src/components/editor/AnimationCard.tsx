@@ -6,7 +6,8 @@ import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, SelectField } from "./propertyPanelPrimitives";
 import { controlPointsForGsapEase } from "./studioMotion";
 import { EASE_LABELS, METHOD_LABELS, METHOD_TOOLTIPS, PROP_LABELS } from "./gsapAnimationConstants";
-import { buildTweenSummary } from "./gsapAnimationHelpers";
+import { buildTweenSummary, uniformSegmentEase } from "./gsapAnimationHelpers";
+import { keyframedTweenEases } from "../../utils/gsapKeyframeEases";
 import { EaseCurveSection } from "./EaseCurveSection";
 import { ArcPathControls } from "./ArcPathControls";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
@@ -30,6 +31,9 @@ interface AnimationCardProps extends GsapAnimationEditCallbacks {
   } | null;
   onFocusSegmentConsumed?: () => void;
 }
+
+const easeDisplayName = (ease: string) =>
+  ease.startsWith("custom(") ? "Custom curve" : (EASE_LABELS[ease] ?? ease);
 
 // fallow-ignore-next-line complexity
 export const AnimationCard = memo(function AnimationCard({
@@ -152,9 +156,9 @@ export const AnimationCard = memo(function AnimationCard({
   const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
   const easeName =
     (animation.keyframes ? animation.keyframes.easeEach : undefined) ?? animation.ease ?? "none";
-  const easeLabel = easeName.startsWith("custom(")
-    ? "Custom curve"
-    : (EASE_LABELS[easeName] ?? easeName);
+  const headerEase = animation.keyframes ? uniformSegmentEase(animation) : easeName;
+  const easeLabel = headerEase === null ? "Mixed" : easeDisplayName(headerEase);
+  const runEase = animation.keyframes ? keyframedTweenEases(animation).run : undefined;
   const endTime =
     typeof animation.position === "number"
       ? animation.position + (animation.duration ?? 0)
@@ -201,7 +205,7 @@ export const AnimationCard = memo(function AnimationCard({
         className="flex w-full items-center gap-2 py-1.5 active:scale-[0.99]"
       >
         <span
-          className="rounded-sm bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
+          className="rounded-sm bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent-ink"
           title={METHOD_TOOLTIPS[animation.method]}
         >
           {methodLabel}
@@ -217,7 +221,8 @@ export const AnimationCard = memo(function AnimationCard({
         </span>
         <span
           className={`ml-auto text-[10px] ${flat ? "text-panel-text-3" : "text-neutral-500"}`}
-          title={easeName}
+          title={headerEase ?? "Mixed"}
+          data-card-ease
         >
           {easeLabel}
         </span>
@@ -252,6 +257,11 @@ export const AnimationCard = memo(function AnimationCard({
                       }}
                     />
                     Keyframed — click a segment below to edit its curve
+                  </p>
+                )}
+                {runEase && runEase !== "none" && (
+                  <p className="mt-1 text-[9px] text-neutral-500" data-card-run-ease>
+                    Run ease: {easeDisplayName(runEase)}
                   </p>
                 )}
               </div>
@@ -296,7 +306,7 @@ export const AnimationCard = memo(function AnimationCard({
                 {animation.keyframes && onUpdateKeyframeEase ? (
                   <KeyframeEaseList
                     keyframes={animation.keyframes.keyframes}
-                    globalEase={animation.keyframes.easeEach ?? animation.ease ?? "none"}
+                    globalEase={keyframedTweenEases(animation).segment({})}
                     expandedPct={expandedKfPct}
                     collidingAnimationTargets={focusedCollidingAnimationTargets}
                     onToggle={(pct) => {
@@ -354,7 +364,7 @@ export const AnimationCard = memo(function AnimationCard({
 
             {animation.method === "fromTo" && (
               <div className="space-y-1">
-                <p className="text-[9px] font-semibold uppercase tracking-wider text-orange-400/70">
+                <p className="text-[9px] font-semibold uppercase tracking-wider text-warning-ink">
                   From
                 </p>
                 <div className="space-y-1.5">
@@ -378,14 +388,14 @@ export const AnimationCard = memo(function AnimationCard({
                     onAdd={(prop) => onAddFromProperty?.(animation.id, prop)}
                     onOpen={() => setAddingFromProp(true)}
                     onClose={() => setAddingFromProp(false)}
-                    buttonClassName="text-[11px] font-medium text-orange-400/70 transition-colors hover:text-orange-300"
+                    buttonClassName="text-[11px] font-medium text-warning-ink transition-colors hover:text-text-0"
                   />
                 </div>
               </div>
             )}
 
             {animation.method === "fromTo" && Object.keys(animation.properties).length > 0 && (
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-panel-accent/70">
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-accent-ink">
                 To
               </p>
             )}
@@ -455,7 +465,7 @@ export const AnimationCard = memo(function AnimationCard({
               <button
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}
-                className="ml-auto text-[11px] font-medium text-red-400 transition-colors hover:text-red-300"
+                className="ml-auto text-[11px] font-medium rounded-sm text-danger-ink transition-colors hover:bg-danger/15"
                 title="Remove this animation"
               >
                 Remove

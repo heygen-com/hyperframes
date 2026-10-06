@@ -3,7 +3,7 @@ import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimation
 const STYLES = {
   classic: {
     method:
-      "rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white",
+      "rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-text-0",
     cancel: "px-1.5 text-[11px] text-neutral-500 hover:text-neutral-300",
     trigger: "text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200",
   },

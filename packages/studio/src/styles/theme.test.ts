@@ -2,7 +2,7 @@
 
 /** Guards the ways `theme.css` can silently break: a dropped CSS custom
  * property, a utility that stops compiling, the stock Tailwind palette
- * leaking back in, or the JS preset / legacy colours drifting from it. */
+ * leaking back in, or the legacy colours drifting from it. */
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -11,7 +11,6 @@ import { createRoot } from "react-dom/client";
 import { Gear, IconContext } from "@phosphor-icons/react";
 import { compile } from "tailwindcss";
 import { afterEach, describe, expect, it } from "vitest";
-import studioPreset from "./tailwind-preset.shared.js";
 import { readIconTokens } from "./iconTokens";
 import { loadStylesheet, STYLES_DIR, TAILWIND_DIR } from "./styleSources";
 
@@ -52,7 +51,9 @@ describe("studio theme", () => {
   it("emits the semantic palette as custom properties and as utilities", async () => {
     const css = await build("studio.css", ["bg-accent", "text-text-2", "border-border"]);
 
-    expect(rootVariables(css).get("--color-accent")).toBe("#3ce6ac");
+    expect(rootVariables(css).get("--color-accent")).toBe(
+      "light-dark(oklch(0.536 0.114 164), oklch(0.82 0.159 164))",
+    );
     expect(css).toContain(".bg-accent {");
     expect(css).toContain("background-color: var(--color-accent)");
   });
@@ -127,7 +128,7 @@ describe("studio theme", () => {
     expect(css).toContain(".duration-open {");
   });
 
-  it("keeps every legacy Tailwind palette entry at its upstream default value", async () => {
+  it("keeps every legacy Tailwind palette entry that is not a role at its upstream value", async () => {
     // These are copies of Tailwind's own values, kept only so existing markup
     // renders unchanged. A Tailwind upgrade that moves one of them would
     // otherwise silently change Studio's colors.
@@ -138,7 +139,9 @@ describe("studio theme", () => {
         ),
       ].map(([, name, value]) => [name, value.trim()]),
     );
-    const legacy = [...themeSource.matchAll(/\n\s*(--color-[a-z]+-(?:50|\d00|950)):\s*([^;]+);/g)];
+    const legacy = [
+      ...themeSource.matchAll(/\n\s*(--color-[a-z]+-(?:50|\d00|950)):\s*([^;]+);/g),
+    ].filter(([, , value]) => !value.trim().startsWith("var("));
 
     expect(legacy.length).toBeGreaterThan(0);
     for (const [, name, value] of legacy) {
@@ -147,11 +150,12 @@ describe("studio theme", () => {
     }
   });
 
-  it("keeps the deprecated JS preset in step with the CSS it shadows", () => {
-    const colors = studioPreset.theme.extend.colors;
+  it("maps every neutral step onto a Graphite role, so the stock scale follows the theme", () => {
+    const steps = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
-    expect(colors.studio.accent.toLowerCase()).toBe(declaredValue("--color-accent"));
-    expect(colors.panel.surface.toLowerCase()).toBe(declaredValue("--color-surface"));
+    for (const step of steps) {
+      expect(declaredValue(`--color-neutral-${step}`)).toMatch(/^var\(--color-[a-z0-9-]+\)$/);
+    }
   });
 
   it("reads the icon defaults off the theme rather than hard-coding them", () => {

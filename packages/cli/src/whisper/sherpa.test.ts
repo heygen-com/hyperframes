@@ -4,13 +4,15 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { pathToFileURL } from "node:url";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadOptions } from "../cloud/download.js";
 import {
   ensureParakeetModel,
@@ -20,6 +22,7 @@ import {
   DecodeCancelled,
   sherpaRuntimeLoadError,
   sherpaUnsupportedReason,
+  transcribeWithSherpa,
   type ModelFile,
 } from "./sherpa.js";
 
@@ -39,6 +42,19 @@ function fakeDownload(served: Record<string, string>) {
     opts?.onProgress?.(Buffer.byteLength(content), undefined);
     return { path: dest, bytes: Buffer.byteLength(content) };
   });
+}
+
+/** A stand-in runtime in `root` whose entry point loads, or throws as a missing library does. */
+const LOADS = "module.exports = {};";
+const BROKEN = 'throw new Error("libonnxruntime.so: cannot open\\n  shared object");';
+function fakeRuntime(root: string, body: string, version = "1.13.8") {
+  const pkg = join(root, "node_modules", "sherpa-onnx-node");
+  mkdirSync(pkg, { recursive: true });
+  writeFileSync(
+    join(pkg, "package.json"),
+    JSON.stringify({ name: "sherpa-onnx-node", main: "index.js", version }),
+  );
+  writeFileSync(join(pkg, "index.js"), body);
 }
 
 describe("installSherpaRuntime", () => {
@@ -66,28 +82,23 @@ describe("installSherpaRuntime", () => {
     expect(args).toContain(sherpaPlatformPackage());
   });
 
-  /** A stand-in runtime in `root` whose entry point loads, or throws as a missing library does. */
-  const LOADS = "module.exports = {};";
-  const BROKEN = 'throw new Error("libonnxruntime.so: cannot open\\n  shared object");';
-  function fakeRuntime(root: string, body: string) {
-    const pkg = join(root, "node_modules", "sherpa-onnx-node");
-    mkdirSync(pkg, { recursive: true });
-    writeFileSync(join(pkg, "package.json"), '{"name":"sherpa-onnx-node","main":"index.js"}');
-    writeFileSync(join(pkg, "index.js"), body);
-  }
-
   it("reinstalls a runtime that is present but does not load", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
     try {
       fakeRuntime(dir, BROKEN);
-      expect(sherpaRuntimeLoadError(dir)).toBe("libonnxruntime.so: cannot open shared object");
+      expect(await sherpaRuntimeLoadError(dir)).toBe(
+        "libonnxruntime.so: cannot open shared object",
+      );
       const run = vi.fn(async (args: string[]) =>
         fakeRuntime(args[args.indexOf("--prefix") + 1]!, LOADS),
       );
 
-      expect(await installSherpaRuntime({ run, dir })).toBe(true);
+      expect(await installSherpaRuntime({ run, dir })).toEqual({
+        installed: true,
+        runtimePath: join(dir, "node_modules", "sherpa-onnx-node", "index.js"),
+      });
       expect(run).toHaveBeenCalledTimes(1);
-      expect(sherpaRuntimeLoadError(dir)).toBeNull();
+      expect(await sherpaRuntimeLoadError(dir)).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -98,7 +109,10 @@ describe("installSherpaRuntime", () => {
     try {
       fakeRuntime(dir, LOADS);
       const run = vi.fn();
-      expect(await installSherpaRuntime({ run, dir })).toBe(false);
+      expect(await installSherpaRuntime({ run, dir })).toEqual({
+        installed: false,
+        runtimePath: join(dir, "node_modules", "sherpa-onnx-node", "index.js"),
+      });
       expect(run).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -135,11 +149,24 @@ describe("installSherpaRuntime", () => {
     },
   );
 
-  it("reads its own probe timeout as a broken runtime, not a cancel, and says so", () => {
+  it("reads its own probe timeout as a broken runtime, not a cancel, and says so", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
     try {
       fakeRuntime(dir, "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);");
-      expect(sherpaRuntimeLoadError(dir, 300)).toBe("loading it timed out after 0.3 s");
+      expect(await sherpaRuntimeLoadError(dir, 300)).toBe("loading it timed out after 0.3 s");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports timeout even when the runtime handles SIGTERM and exits zero", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+    try {
+      fakeRuntime(
+        dir,
+        'process.on("SIGTERM", () => process.exit(0)); require("node:net").createServer().listen(0, "127.0.0.1");',
+      );
+      expect(await sherpaRuntimeLoadError(dir, 300)).toBe("loading it timed out after 0.3 s");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -152,33 +179,179 @@ describe("installSherpaRuntime", () => {
   });
 });
 
-describe("sherpaParakeetInstalled", () => {
-  it("counts a runtime that does not load, so transcribe reports it instead of skipping it", async () => {
-    const home = mkdtempSync(join(tmpdir(), "hf-sherpa-home-"));
-    vi.stubEnv("HOME", home);
-    vi.resetModules();
-    try {
-      const sherpa = await import("./sherpa.js");
-      const manifest = join(sherpa.SHERPA_RUNTIME_DIR, "node_modules", "sherpa-onnx-node");
-      mkdirSync(manifest, { recursive: true });
-      writeFileSync(join(manifest, "package.json"), "{}");
-      mkdirSync(sherpa.PARAKEET_MODEL_DIR, { recursive: true });
-      for (const [name, bytes] of [
-        ["encoder.int8.onnx", 652_184_281],
-        ["decoder.int8.onnx", 11_845_275],
-        ["joiner.int8.onnx", 6_355_277],
-        ["tokens.txt", 93_939],
-      ] as const) {
-        writeFileSync(join(sherpa.PARAKEET_MODEL_DIR, name), "");
-        truncateSync(join(sherpa.PARAKEET_MODEL_DIR, name), bytes);
-      }
-      expect(sherpa.sherpaRuntimeLoadError()).not.toBeNull();
-      expect(sherpa.sherpaParakeetInstalled()).toBe(true);
-    } finally {
-      vi.unstubAllEnvs();
-      rmSync(home, { recursive: true, force: true });
-    }
+describe("a pinned Sherpa copy beside the CLI", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-sherpa-beside-"));
   });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  function layout(besideBody: string, cachedBody?: string) {
+    const bundle = join(root, "bundle");
+    const cache = join(root, "cache");
+    fakeRuntime(bundle, besideBody);
+    if (cachedBody !== undefined) fakeRuntime(cache, cachedBody);
+    const cliUrl = pathToFileURL(join(bundle, "dist", "cli.js")).href;
+    const pinnedPath = join(bundle, "node_modules", "sherpa-onnx-node", "index.js");
+    return { cache, cliUrl, pinnedPath };
+  }
+
+  function decoder() {
+    const parentMarker = join(root, "loaded-in-parent");
+    return `
+if (process.pid === ${process.pid}) require("node:fs").writeFileSync(${JSON.stringify(parentMarker)}, "");
+module.exports = {
+  readWave() { return { sampleRate: 100, samples: new Float32Array(100).fill(0.5) }; },
+  OfflineRecognizer: class {
+    createStream() { return { acceptWaveform() {} }; }
+    decode() {}
+    getResult() { return { tokens: [" hello"], timestamps: [0], durations: [1] }; }
+  }
+};`;
+  }
+
+  async function transcript(cache: string, cliUrl: string) {
+    const out = join(root, "out");
+    mkdirSync(out, { recursive: true });
+    const onEvent = vi.fn();
+    await transcribeWithSherpa(join(root, "speech.wav"), out, {
+      signal: new AbortController().signal,
+      runtimeDir: cache,
+      cliUrl,
+      onEvent,
+    });
+    const result = JSON.parse(readFileSync(join(out, "transcript.json"), "utf-8"));
+    expect(result).toEqual([{ text: "hello", start: 0, end: 1 }]);
+    const event = { type: "progress", phase: "transcription", model: "parakeet-tdt-0.6b-v3" };
+    expect(onEvent.mock.calls).toEqual([
+      [{ ...event, status: "started" }],
+      [{ ...event, status: "completed" }],
+    ]);
+    expect(existsSync(join(root, "loaded-in-parent"))).toBe(false);
+  }
+
+  it("loads a pinned adjacent copy without a cache or npm install", async () => {
+    const { cache, cliUrl, pinnedPath } = layout(LOADS);
+    const run = vi.fn();
+    expect(await sherpaRuntimeLoadError(cache, 60_000, cliUrl)).toBeNull();
+    expect(await installSherpaRuntime({ dir: cache, cliUrl, run })).toEqual({
+      installed: false,
+      runtimePath: pinnedPath,
+    });
+    expect(run).not.toHaveBeenCalled();
+    expect(existsSync(cache)).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "cancels an in-flight probe without inspecting the cache",
+    async () => {
+      const cacheMarker = join(root, "cache-loaded");
+      const { cache, cliUrl } = layout(
+        'require("node:net").createServer().listen(0, "127.0.0.1", () => process.kill(process.ppid, "SIGUSR2"));',
+        `require("node:fs").writeFileSync(${JSON.stringify(cacheMarker)}, ""); module.exports = {};`,
+      );
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      process.once("SIGUSR2", abort);
+      try {
+        await expect(
+          sherpaRuntimeLoadError(cache, 300, cliUrl, controller.signal),
+        ).rejects.toBeInstanceOf(DecodeCancelled);
+        expect(existsSync(cacheMarker)).toBe(false);
+        expect(log).not.toHaveBeenCalled();
+      } finally {
+        process.removeListener("SIGUSR2", abort);
+      }
+    },
+  );
+
+  it("passes the pinned adjacent copy to the real decode worker", async () => {
+    const { cache, cliUrl } = layout(decoder());
+    await transcript(cache, cliUrl);
+  });
+
+  it("logs the broken pinned path once and decodes with the healthy cache", async () => {
+    const { cache, cliUrl, pinnedPath } = layout(BROKEN, decoder());
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await transcript(cache, cliUrl);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0]?.[0]).toContain(pinnedPath);
+    expect(log.mock.calls[0]?.[0]).toContain("libonnxruntime.so: cannot open shared object");
+    expect(String(log.mock.calls[0]?.[0])).not.toContain("\n");
+  });
+
+  it("reports an accepted package with a missing entry and uses the healthy cache", async () => {
+    const { cache, cliUrl, pinnedPath } = layout(LOADS, decoder());
+    rmSync(pinnedPath);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await transcript(cache, cliUrl);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0]?.[0]).toContain(dirname(pinnedPath));
+    expect(log.mock.calls[0]?.[0]).toContain("Cannot find module");
+  });
+
+  it.each([undefined, BROKEN])(
+    "logs the broken pinned path once and reports repair when no cache loads (%s)",
+    async (cachedBody) => {
+      const { cache, cliUrl, pinnedPath } = layout(BROKEN, cachedBody);
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const out = join(root, "out");
+      mkdirSync(out);
+      await expect(
+        transcribeWithSherpa(join(root, "speech.wav"), out, {
+          signal: new AbortController().signal,
+          runtimeDir: cache,
+          cliUrl,
+        }),
+      ).rejects.toThrow(/hyperframes models install parakeet/);
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log.mock.calls[0]?.[0]).toContain(pinnedPath);
+      expect(log.mock.calls[0]?.[0]).toContain("libonnxruntime.so: cannot open shared object");
+      expect(readdirSync(out)).toEqual([]);
+    },
+  );
+});
+
+describe("sherpaParakeetInstalled", () => {
+  it.each(["cache", "beside CLI"])(
+    "counts a broken runtime in %s, so transcribe reports it instead of skipping it",
+    async (location) => {
+      const home = mkdtempSync(join(tmpdir(), "hf-sherpa-home-"));
+      vi.stubEnv("HOME", home);
+      vi.resetModules();
+      try {
+        const sherpa = await import("./sherpa.js");
+        const bundle = join(home, "bundle");
+        const cliUrl = pathToFileURL(join(bundle, "dist", "cli.js")).href;
+        const manifest = join(
+          location === "cache" ? sherpa.SHERPA_RUNTIME_DIR : bundle,
+          "node_modules",
+          "sherpa-onnx-node",
+        );
+        mkdirSync(manifest, { recursive: true });
+        if (location === "cache") writeFileSync(join(manifest, "package.json"), "{}");
+        else fakeRuntime(bundle, BROKEN);
+        mkdirSync(sherpa.PARAKEET_MODEL_DIR, { recursive: true });
+        for (const [name, bytes] of [
+          ["encoder.int8.onnx", 652_184_281],
+          ["decoder.int8.onnx", 11_845_275],
+          ["joiner.int8.onnx", 6_355_277],
+          ["tokens.txt", 93_939],
+        ] as const) {
+          writeFileSync(join(sherpa.PARAKEET_MODEL_DIR, name), "");
+          truncateSync(join(sherpa.PARAKEET_MODEL_DIR, name), bytes);
+        }
+        expect(sherpa.sherpaParakeetInstalled(cliUrl)).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("ensureParakeetModel", () => {

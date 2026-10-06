@@ -128,6 +128,6 @@ SVG-filter stage could not do.
 
 ## See also
 
-`../../registry/components/motion-blur/motion-blur.html` is the snippet and its
+`../../../registry/components/motion-blur/motion-blur.html` is the snippet and its
 full header. `shutter-slam` is the same model as an installable component: the
 After Effects reference case, six beats, elastic to the container.

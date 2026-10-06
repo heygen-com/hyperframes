@@ -38,7 +38,7 @@ describe("PropertyPanelFlatHeader", () => {
     expect(host.textContent).toContain("Mono Label");
     expect(host.textContent).toContain(".mono-label · div");
     const icon = host.querySelector('[data-flat-header-icon="true"]');
-    expect(icon?.className).toContain("text-panel-accent");
+    expect(icon?.className).toContain("text-accent-ink");
     act(() => root.unmount());
   });
 
@@ -77,10 +77,6 @@ describe("PropertyPanelFlatHeader", () => {
     expect(withUngroup.querySelector('[aria-label="Ungroup"]')).not.toBeNull();
   });
 
-  // The panel's hide control is withheld for audio by its caller — on an audio
-  // track "hidden" and "muted" are the same operation with two names (groups
-  // doc §2.1), and the timeline already carries it, correctly labelled. This
-  // pins the header's half of that contract: no handler, no button.
   it("renders no visibility control when its caller withholds the handler", () => {
     const { host } = renderHeader({ onToggleHidden: undefined });
     const labels = Array.from(host.querySelectorAll("button")).map((b) =>
@@ -88,6 +84,13 @@ describe("PropertyPanelFlatHeader", () => {
     );
     expect(labels).not.toContain("Hide element");
     expect(labels).not.toContain("Show element");
+  });
+
+  it("names a mute on an audio selection", () => {
+    const { host } = renderHeader({ onToggleHidden: vi.fn(), asMute: true });
+    expect(host.querySelector('button[aria-label="Mute element"]')).not.toBeNull();
+    const { host: muted } = renderHeader({ onToggleHidden: vi.fn(), asMute: true, hidden: true });
+    expect(muted.querySelector('button[aria-label="Unmute element"]')).not.toBeNull();
   });
 
   it("renders it when the handler is supplied", () => {

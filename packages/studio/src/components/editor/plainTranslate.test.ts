@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
-import { readTranslatePx } from "./plainTranslate";
+import { describe, expect, it, vi } from "vitest";
+import { readTranslatePx, readTranslatePxLeavingPercent } from "./plainTranslate";
 
 function box(style: string): HTMLElement {
   const element = document.createElement("div");
@@ -75,4 +75,23 @@ describe("readTranslatePx", () => {
       expect(element.getAttribute("style")).toBe(before);
     },
   );
+});
+
+describe("readTranslatePxLeavingPercent", () => {
+  it("seeds a first tween from the px a plain move left in CSS translate, leaving % to xPercent", () => {
+    const el = document.body.appendChild(document.createElement("div"));
+    // happy-dom computes no `translate`; Chromium resolves it to these strings.
+    const computed = (translate: string) =>
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({ translate } as CSSStyleDeclaration);
+    computed("299.893px 203.262px");
+    expect(readTranslatePxLeavingPercent(el)).toEqual({ x: 299.893, y: 203.262 });
+    computed("calc(-50% + 120px) -50%");
+    expect(readTranslatePxLeavingPercent(el)).toEqual({ x: 120, y: 0 });
+    computed("calc(-50% - 120px) calc(min(10px, 20px) + 5px)");
+    expect(readTranslatePxLeavingPercent(el)).toEqual({ x: -120, y: 15 });
+    computed("none");
+    expect(readTranslatePxLeavingPercent(el)).toEqual({ x: 0, y: 0 });
+    vi.restoreAllMocks();
+    el.remove();
+  });
 });

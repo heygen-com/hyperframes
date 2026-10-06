@@ -16,6 +16,7 @@ import {
   type ElementMatchSelection,
 } from "../utils/studioHelpers";
 import type { TimelineElement } from "../player";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 interface UseGroupCommitsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-side write (the wrapper/unwrap changes
@@ -132,7 +133,7 @@ async function commitStructuralMutation(
     writeFile: deps.writeProjectFile,
     recordEdit: deps.editHistory.recordEdit,
     rewrite: async (originalContent) => {
-      const mutateResponse = await fetch(
+      const mutateResponse = await studioApiFetch(
         buildProjectApiPath(pid, `/file-mutations/${route}/${encodeURIComponent(targetPath)}`),
         {
           method: "POST",

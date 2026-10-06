@@ -1,10 +1,32 @@
-import { memo } from "react";
+import { memo, useLayoutEffect, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineClipMenuItem } from "./TimelineTypes";
+import { ClipMenuToolItems } from "./clipMenuToolItems";
+import { ClipMenuAudioItems } from "./clipMenuAudioItems";
+import { ClipMenuLinkItems } from "./clipMenuLinkItems";
+import { menuClasses } from "../../components/ui/menuStyle";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { SPLIT_SHORTCUT_HINT } from "./studioShortcuts";
+
+const MENU_MARGIN = 8;
+
+function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: string): number {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    setHeight(node.offsetHeight);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setHeight(node.offsetHeight));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref, anchorKey]);
+  return height;
+}
 
 interface ClipContextMenuProps {
   x: number;
@@ -19,15 +41,11 @@ interface ClipContextMenuProps {
   onDuplicate?: () => Promise<boolean>;
   canPaste?: boolean;
   hostItems?: readonly TimelineClipMenuItem[] | undefined;
+  splitShortcut?: string | undefined;
 }
 
-// Same enabled/disabled menu-item pattern as the sibling TrackGapContextMenu.
 const itemClass = (enabled: boolean) =>
-  `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none${
-    enabled
-      ? " focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-      : " text-neutral-600 cursor-not-allowed"
-  }`;
+  `${menuClasses.row} flex items-center justify-between ${enabled ? menuClasses.rowEnabled : menuClasses.rowDisabled}`;
 
 /** The host's items, above Studio's. A pick closes the menu; focus the item moves stays where it went. */
 function HostItems({
@@ -60,7 +78,6 @@ function HostItems({
           )}
         </button>
       ))}
-      <div className="my-1 border-t border-neutral-700/60" />
     </>
   );
 }
@@ -80,9 +97,11 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onDuplicate,
   canPaste,
   hostItems = [],
+  splitShortcut = SPLIT_SHORTCUT_HINT,
 }: ClipContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
   useMenuKeyboardNav(menuRef);
+  const tools = useTimelineEditContextOptional().clipMenuTools !== false;
   // The right-clicked clip's own id: a member of the live multi-selection
   // means Copy/Duplicate act on the whole group, matching onContextMenuClip's
   // selection-preserving behaviour for a right-click inside it.
@@ -103,28 +122,27 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ? `Split at ${currentTime.toFixed(2)}s`
       : "Split (move playhead inside clip)";
 
-  const clipboardItemCount = [onCopy, onPaste, onDuplicate].filter(Boolean).length;
-  const hostRows = hostItems.length;
-  const rowCount = hostRows + (splitLabel ? 1 : 0) + clipboardItemCount + 1; // + Delete, always present
-  const dividerCount =
-    (hostRows > 0 ? 1 : 0) + (splitLabel ? 1 : 0) + (clipboardItemCount > 0 ? 1 : 0);
   const menuWidth = 200;
-  const menuHeight = rowCount * 30 + dividerCount * 9 + 8;
-  const overflowY = y + menuHeight - window.innerHeight;
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
+  const menuHeight = useMeasuredHeight(menuRef, `${x},${y},${element.key ?? element.id}`);
+  const overflowY = y + menuHeight - window.innerHeight;
+  const adjustedY = overflowY > 0 ? Math.max(MENU_MARGIN, y - overflowY - MENU_MARGIN) : y;
 
   return createPortal(
     <div
       ref={menuRef}
       role="menu"
       aria-label="Clip actions"
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
       style={{ left: adjustedX, top: adjustedY }}
     >
-      {hostRows > 0 && <HostItems items={hostItems} onClose={onClose} />}
-      {splitLabel && (
-        <>
+      {hostItems.length > 0 && (
+        <div role="group" aria-label="Host" className={menuClasses.group}>
+          <HostItems items={hostItems} onClose={onClose} />
+        </div>
+      )}
+      <div role="group" aria-label="Time" className={menuClasses.group}>
+        {splitLabel && (
           <button
             type="button"
             role="menuitem"
@@ -142,74 +160,108 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{splitLabel}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">S</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{splitShortcut}</span>
           </button>
-          <div className="my-1 border-t border-neutral-700/60" />
-        </>
-      )}
+        )}
+        {tools && splitLabel && (
+          <ClipMenuToolItems
+            group="time"
+            element={element}
+            currentTime={currentTime}
+            onClose={onClose}
+          />
+        )}
+      </div>
 
-      {(onCopy || onPaste || onDuplicate) && (
-        <>
-          {onCopy && (
-            <button
-              type="button"
-              role="menuitem"
-              className={itemClass(true)}
-              onClick={() => {
-                onCopy();
-                onClose();
-              }}
-            >
-              <span>{selectionSize > 1 ? `Copy ${selectionSize} clips` : "Copy"}</span>
-              <span className="text-neutral-500 text-[10px] ml-3">⌘C</span>
-            </button>
-          )}
-          {onPaste && (
-            <button
-              type="button"
-              role="menuitem"
-              className={itemClass(!!canPaste)}
-              disabled={!canPaste}
-              onClick={() => {
-                if (!canPaste) return;
-                void onPaste();
-                onClose();
-              }}
-            >
-              <span>Paste</span>
-              <span className="text-neutral-500 text-[10px] ml-3">⌘V</span>
-            </button>
-          )}
-          {onDuplicate && (
-            <button
-              type="button"
-              role="menuitem"
-              className={itemClass(true)}
-              onClick={() => {
-                void onDuplicate();
-                onClose();
-              }}
-            >
-              <span>{selectionSize > 1 ? `Duplicate ${selectionSize} clips` : "Duplicate"}</span>
-              <span className="text-neutral-500 text-[10px] ml-3">⌘D</span>
-            </button>
-          )}
-          <div className="my-1 border-t border-neutral-700/60" />
-        </>
-      )}
+      <div role="group" aria-label="Sound" className={menuClasses.group}>
+        {tools && (
+          <>
+            <ClipMenuAudioItems part="gain" element={element} onClose={onClose} />
+            <ClipMenuToolItems
+              group="sound"
+              element={element}
+              currentTime={currentTime}
+              onClose={onClose}
+            />
+            <ClipMenuLinkItems part="link" element={element} onClose={onClose} />
+            <ClipMenuAudioItems part="duck" element={element} onClose={onClose} />
+          </>
+        )}
+      </div>
 
-      <button
-        type="button"
-        role="menuitem"
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left"
-        onClick={() => {
-          onDelete(element);
-          onClose();
-        }}
-      >
-        <span>Delete</span>
-        <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
-      </button>
+      <div role="group" aria-label="Picture" className={menuClasses.group}>
+        {tools && (
+          <ClipMenuToolItems
+            group="picture"
+            element={element}
+            currentTime={currentTime}
+            onClose={onClose}
+          />
+        )}
+      </div>
+
+      <div role="group" aria-label="Clipboard" className={menuClasses.group}>
+        {onCopy && (
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass(true)}
+            onClick={() => {
+              onCopy();
+              onClose();
+            }}
+          >
+            <span>{selectionSize > 1 ? `Copy ${selectionSize} clips` : "Copy"}</span>
+            <span className="text-neutral-500 text-[10px] ml-3">⌘C</span>
+          </button>
+        )}
+        {onPaste && (
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass(!!canPaste)}
+            disabled={!canPaste}
+            onClick={() => {
+              if (!canPaste) return;
+              void onPaste();
+              onClose();
+            }}
+          >
+            <span>Paste</span>
+            <span className="text-neutral-500 text-[10px] ml-3">⌘V</span>
+          </button>
+        )}
+        {onDuplicate && (
+          <button
+            type="button"
+            role="menuitem"
+            className={itemClass(true)}
+            onClick={() => {
+              void onDuplicate();
+              onClose();
+            }}
+          >
+            <span>{selectionSize > 1 ? `Duplicate ${selectionSize} clips` : "Duplicate"}</span>
+            <span className="text-neutral-500 text-[10px] ml-3">⌘D</span>
+          </button>
+        )}
+      </div>
+
+      <div role="group" aria-label="Delete">
+        <button
+          type="button"
+          role="menuitem"
+          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-danger-ink hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left"
+          onClick={() => {
+            onDelete(element);
+            onClose();
+          }}
+        >
+          <span>Delete</span>
+          <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
+        </button>
+        {tools && <ClipMenuLinkItems part="delete" element={element} onClose={onClose} />}
+      </div>
     </div>,
     document.body,
   );

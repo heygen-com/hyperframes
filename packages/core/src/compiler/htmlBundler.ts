@@ -1,9 +1,12 @@
 import {
   compositionStyle,
   cssStyleMergeKey,
+  deferScriptsUntilFonts,
   UNCONDITIONAL_CSS_KEY,
   headStyleRuns,
+  INLINED_FILE_ATTR,
   inlineScriptRuns,
+  isJavaScriptType,
   styleElementsFor,
   type CompositionStyle,
 } from "./scriptRuns";
@@ -27,7 +30,8 @@ import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
   RUNTIME_BOOTSTRAP_ATTR,
-  insertBeforeCloseTag,
+  escapeInlineScriptSource,
+  insertRuntimeTag,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
@@ -61,7 +65,6 @@ function getRuntimeScriptUrl(): string {
 
 function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" = "inline"): string {
   const sanitized = stripEmbeddedRuntimeScripts(html);
-  if (sanitized.includes(RUNTIME_BOOTSTRAP_ATTR)) return sanitized;
 
   // Three modes for the runtime <script>:
   //   1. HYPERFRAME_RUNTIME_URL env var set → emit src="<url>" (production CDN deploy).
@@ -81,19 +84,7 @@ function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" =
     const inlinedRuntime = getHyperframeRuntimeScript();
     tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1">${inlinedRuntime}</script>`;
   }
-  const withHead = insertBeforeCloseTag(sanitized, "head", `${tag}\n`);
-  if (withHead !== null) return withHead;
-  const htmlOpenMatch = sanitized.match(/<html\b[^>]*>/i);
-  if (htmlOpenMatch?.index != null) {
-    const insertPos = htmlOpenMatch.index + htmlOpenMatch[0].length;
-    return `${sanitized.slice(0, insertPos)}<head>${tag}</head>${sanitized.slice(insertPos)}`;
-  }
-  const doctypeIdx = sanitized.toLowerCase().indexOf("<!doctype");
-  if (doctypeIdx >= 0) {
-    const insertPos = sanitized.indexOf(">", doctypeIdx) + 1;
-    return sanitized.slice(0, insertPos) + tag + sanitized.slice(insertPos);
-  }
-  return tag + sanitized;
+  return insertRuntimeTag(sanitized, tag);
 }
 
 function isRelativeUrl(url: string): boolean {
@@ -748,7 +739,7 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     for (const el of members) el.remove();
     if (!mergedJs) continue;
     const inlineScript = document.createElement("script");
-    inlineScript.textContent = stripJsCommentsParserSafe(mergedJs);
+    inlineScript.textContent = escapeInlineScriptSource(stripJsCommentsParserSafe(mergedJs));
     if (anchor) anchor.before(inlineScript);
     else document.body.appendChild(inlineScript);
   }
@@ -1225,9 +1216,6 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     templateEl.remove();
   }
 
-  // Inline local JS
-  const localJsChunks: string[] = [];
-  let jsAnchorPlaced = false;
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
@@ -1239,27 +1227,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
-    localJsChunks.push(js);
-    if (!jsAnchorPlaced) {
-      const anchor = document.createElement("script");
-      anchor.setAttribute("data-hf-bundled-local-js", "1");
-      el.replaceWith(anchor);
-      jsAnchorPlaced = true;
-    } else {
-      el.remove();
-    }
-  }
-  if (localJsChunks.length > 0) {
-    const anchor = document.querySelector('script[data-hf-bundled-local-js="1"]');
-    const joinedJs = joinJsChunks(localJsChunks);
-    if (anchor) {
-      anchor.removeAttribute("data-hf-bundled-local-js");
-      anchor.textContent = joinedJs;
-    } else {
-      const script = document.createElement("script");
-      script.textContent = joinedJs;
-      document.body.appendChild(script);
-    }
+    el.setAttribute(INLINED_FILE_ATTR, src);
+    el.removeAttribute("src");
+    el.textContent = js;
   }
 
   for (const link of compExternalLinks) ensureExternalLinkTag(document, link);
@@ -1293,6 +1263,13 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   enforceCompositionPixelSizing(document);
   autoHealMissingCompositionIds(document);
   coalesceHeadStylesAndBodyScripts(document);
+  for (const el of document.querySelectorAll(`script[${INLINED_FILE_ATTR}]`)) {
+    const js = el.textContent ?? "";
+    el.textContent = escapeInlineScriptSource(
+      isJavaScriptType(el) ? stripJsCommentsParserSafe(js) : js,
+    );
+  }
+  deferScriptsUntilFonts(document, (el) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR));
   injectTextRenderingRule(document);
 
   // Inline textual assets

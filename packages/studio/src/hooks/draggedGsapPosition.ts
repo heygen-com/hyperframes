@@ -36,10 +36,35 @@ export function readCssRotation(element: HTMLElement, withRotate = true): number
   }
 }
 
+export interface DragStamp {
+  origX: number;
+  origY: number;
+  baseX: number;
+  baseY: number;
+  frozen?: boolean;
+}
+
+/** The drag-start attributes as they are now; NaN for an absent base. */
+export function readDragStamp(element: HTMLElement): DragStamp {
+  const read = (name: string) => Number.parseFloat(element.getAttribute(name) ?? "");
+  return {
+    origX: read("data-hf-drag-initial-offset-x") || 0,
+    origY: read("data-hf-drag-initial-offset-y") || 0,
+    baseX: read("data-hf-drag-gsap-base-x"),
+    baseY: read("data-hf-drag-gsap-base-y"),
+  };
+}
+
+/** A gesture's stamp read at its release, for commits that finish after the next gesture re-stamps the element. */
+export const freezeDragStamp = (element: HTMLElement): DragStamp => ({
+  ...readDragStamp(element),
+  frozen: true,
+});
+
 /**
  * Translate a studio drag offset into absolute GSAP x/y, accounting for the
  * element's rotation and its drag-start base pose. Reads the drag-start
- * attributes stamped by `createManualOffsetDragMember`
+ * stamp (`readDragStamp` by default) set by `createManualOffsetDragMember`
  * (`data-hf-drag-initial-offset-*`, `data-hf-drag-gsap-base-*`); `fallbackBase`
  * is used when the base attributes are absent (e.g. a static element that GSAP
  * hasn't given an x/y yet).
@@ -52,26 +77,36 @@ export function computeDraggedGsapPosition(
   element: HTMLElement,
   studioOffset: { x: number; y: number },
   fallbackBase: { x: number; y: number },
+  stamp: DragStamp = readDragStamp(element),
 ): { newX: number; newY: number; baseGsapX: number; baseGsapY: number } {
   const rotStyle = element.style.getPropertyValue("--hf-studio-rotation");
   const rotDeg = Number.parseFloat(rotStyle) || 0;
   const rad = (-rotDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const origX = Number.parseFloat(element.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
-  const origY = Number.parseFloat(element.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
-  const deltaX = studioOffset.x - origX;
-  const deltaY = studioOffset.y - origY;
+  const deltaX = studioOffset.x - stamp.origX;
+  const deltaY = studioOffset.y - stamp.origY;
   const adjX = deltaX * cos - deltaY * sin;
   const adjY = deltaX * sin + deltaY * cos;
-  const parsedBaseX = Number.parseFloat(element.getAttribute("data-hf-drag-gsap-base-x") ?? "");
-  const parsedBaseY = Number.parseFloat(element.getAttribute("data-hf-drag-gsap-base-y") ?? "");
-  const baseGsapX = Number.isFinite(parsedBaseX) ? parsedBaseX : fallbackBase.x;
-  const baseGsapY = Number.isFinite(parsedBaseY) ? parsedBaseY : fallbackBase.y;
+  const baseGsapX = Number.isFinite(stamp.baseX) ? stamp.baseX : fallbackBase.x;
+  const baseGsapY = Number.isFinite(stamp.baseY) ? stamp.baseY : fallbackBase.y;
   return {
     newX: roundTo3(baseGsapX + adjX),
     newY: roundTo3(baseGsapY + adjY),
     baseGsapX,
     baseGsapY,
   };
+}
+
+/** Puts the drag's preview offset back once the written position renders instead. A frozen stamp's
+ *  gesture is over: the attributes belong to the one after it. */
+export function restoreDragOffset(
+  element: HTMLElement,
+  stamp: DragStamp = readDragStamp(element),
+): void {
+  if (stamp.frozen) return;
+  element.style.setProperty("--hf-studio-offset-x", `${stamp.origX}px`);
+  element.style.setProperty("--hf-studio-offset-y", `${stamp.origY}px`);
+  element.removeAttribute("data-hf-drag-initial-offset-x");
+  element.removeAttribute("data-hf-drag-initial-offset-y");
 }

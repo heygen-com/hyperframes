@@ -85,7 +85,7 @@ export function PreviewZoomOverlay({
         </span>
         <button
           type="button"
-          className="rounded px-1.5 py-0.5 font-medium text-studio-accent hover:bg-white/10 transition-colors"
+          className="rounded px-1.5 py-0.5 font-medium text-accent-ink hover:bg-white/10 transition-colors"
           onClick={onFit}
           aria-label="Fit the whole frame in view"
           data-testid="preview-zoom-fit"

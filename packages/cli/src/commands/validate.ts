@@ -1,3 +1,4 @@
+import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 // The media-metadata wait exists twice on purpose: once Node-side and once
 // inside a page.evaluate() body, which is serialized into the browser and
 // cannot import the Node helper. Line-level markers don't survive the clone
@@ -19,6 +20,7 @@ import {
   installPageFunctionGuard,
   resolveCliChromeGpuMode,
   seekCompositionTimeline,
+  waitForRuntimeReady,
 } from "../capture/captureCompositionFrame.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -432,17 +434,11 @@ async function validateInBrowser(
     const puppeteer = await import("puppeteer-core");
     const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
     const requestedGpuMode = resolveCliChromeGpuMode();
-    const {
-      assertWebGpuAdapterAvailable,
-      compositionRequiresWebGpu,
-      resolveCaptureBrowserGpuMode,
-    } = await import("../browser/gpuPolicy.js");
-    const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
-      requestedGpuMode,
-      browser.executablePath,
-    );
+    const { assertWebGpuAdapterAvailable, compositionRequiresWebGpu } =
+      await import("../browser/gpuPolicy.js");
+    const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
-    const chromeBrowser = await puppeteer.default.launch({
+    const chromeBrowser = await launchManagedBrowser(puppeteer.default, {
       headless: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(
@@ -508,6 +504,7 @@ async function validateInBrowser(
       throw err;
     }
     await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+    await waitForRuntimeReady(page, opts.timeout ?? 3000);
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
 
     for (const w of await auditClipDurations(page, analyzeClipMediaFit, opts.timeout ?? 3000)) {

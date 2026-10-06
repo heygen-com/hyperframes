@@ -6,12 +6,14 @@
  * Videos are replaced with <img> elements during capture.
  */
 
+import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { parseHTML } from "linkedom";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import {
   MEDIA_RENDER_ID_ATTR,
+  isAudibleVideoElement,
   fpsToFfmpegArg,
   fpsToNumber,
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
@@ -39,6 +41,7 @@ import {
   extractMediaMetadata,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
+import { inputAlphaOpaqueWarning, probeInputAlphaPlane } from "../utils/alphaPlaneProbe.js";
 import {
   analyzeCompositionHdr,
   isHdrColorSpace as isHdrColorSpaceUtil,
@@ -81,6 +84,7 @@ export interface VideoElement {
   playbackRate?: RateSpec;
   loop: boolean;
   hasAudio: boolean;
+  hidden?: boolean;
 }
 
 export interface ExtractedFrames {
@@ -665,6 +669,7 @@ export function parseVideoElements(html: string): VideoElement[] {
   const startCache = new Map<RefResolverEl, number>();
   const visiting = new Set<RefResolverEl>();
 
+  const groupsById = audioGroupsById(document);
   const videoEls = document.querySelectorAll("video");
   let autoIdCounter = 0;
   for (const el of videoEls) {
@@ -720,6 +725,10 @@ export function parseVideoElements(html: string): VideoElement[] {
       playbackRate: readElementRateSpec(el),
       loop: el.hasAttribute("loop"),
       hasAudio: hasAudioAttr === "true",
+      ...(isSelfOrAncestorHidden(el) ||
+      (isAudibleVideoElement(el) && isMemberGroupHidden(groupsById, el))
+        ? { hidden: true }
+        : {}),
     });
   }
 
@@ -1835,6 +1844,23 @@ export async function extractAllVideoFrames(
   // field exists to fix).
   const sdrToHdrTransfers: Array<HdrTransfer | undefined> = resolvedVideos.map(() => undefined);
   breakdown.hdrProbeMs = Date.now() - phase2ProbeStart;
+
+  // Warning only: an opaque video used as a full-frame background is legitimate.
+  const alphaWarnedSrcs = new Set<string>();
+  if (resolvedVideos.length > 0) {
+    await Promise.all(
+      resolvedVideos.map(async ({ video, videoPath }, index) => {
+        if (signal?.aborted) return;
+        const metadata = videoMetadata[index];
+        if (!metadata?.hasAlpha || !codecMayHaveAlpha(metadata.videoCodec)) return;
+        if (alphaWarnedSrcs.has(video.src)) return;
+        alphaWarnedSrcs.add(video.src);
+        const decoder = decoderForCodec(metadata.videoCodec);
+        if ((await probeInputAlphaPlane(videoPath, decoder, signal)) !== true) return;
+        process.stderr.write(inputAlphaOpaqueWarning(video.src));
+      }),
+    );
+  }
 
   const hdrPreflightStart = Date.now();
   const hdrInfo = analyzeCompositionHdr(videoColorSpaces);

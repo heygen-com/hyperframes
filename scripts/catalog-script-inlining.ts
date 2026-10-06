@@ -1,19 +1,23 @@
 /** Inlines 3D-motion items' local scripts into their docs payload: the docs host's allowlist
- * (fonts/png/svg/json, hive/hfoss.md) 404s .js/.mjs/.hdr as hosted files. */
+ * (fonts/png/svg/json) 404s .js/.mjs/.hdr as hosted files, and its CSP runs
+ * inline scripts but no blob: script, so every library runs as an inline <script>. */
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { buildSync } from "esbuild";
 import type { RegistryItem } from "../packages/core/src/index.js";
 import { hostedUrlByReference } from "./registry-hosted-assets.ts";
 
 interface VendorFile {
-  /** Stable key used both as the JSON filename and the import-map value lookup. */
+  /** Stable key used as the vendor JSON filename and bootstrap lookup. */
   key: string;
   /** repoRoot-relative path to read the canonical bytes from. */
   canonicalPath: string;
   /** Other repoRoot-relative copies expected byte-identical to the canonical one. */
   otherCopies: string[];
+  /** An ES module, bundled into SHARED_MODULES_KEY under `specifier` (or only reached through another). */
+  module?: { specifier?: string };
 }
 
 const VENDOR_FILES: VendorFile[] = [
@@ -30,29 +34,40 @@ const VENDOR_FILES: VendorFile[] = [
     key: "three.module.min",
     canonicalPath: "registry/blocks/cuboid-carousel/assets/three.module.min.js",
     otherCopies: ["registry/blocks/orbit-card/assets/three.module.min.js"],
+    module: { specifier: "three" },
   },
   {
     key: "three.core.min",
     canonicalPath: "registry/blocks/cuboid-carousel/assets/three.core.min.js",
     otherCopies: ["registry/blocks/orbit-card/assets/three.core.min.js"],
+    module: {},
   },
   {
     key: "RoomEnvironment",
     canonicalPath: "registry/blocks/cuboid-carousel/assets/addons/environments/RoomEnvironment.js",
     otherCopies: [],
+    module: { specifier: "three/addons/environments/RoomEnvironment.js" },
   },
   {
     key: "BufferGeometryUtils",
     canonicalPath: "registry/blocks/cuboid-carousel/assets/addons/utils/BufferGeometryUtils.js",
     otherCopies: [],
+    module: { specifier: "three/addons/utils/BufferGeometryUtils.js" },
   },
 ];
+
+const GSAP_KEY = "gsap-3.14.2.min";
+const SHARED_MODULES_KEY = "three-modules";
+const SHARED_MODULES_GLOBAL = "__hfCatalogModules";
+/** Import specifiers an item's own modules take from the shared bundle, and the names they use for them. */
+const SHARED_SPECIFIERS = ["three", "three/addons/*", "./three.module.min.js"];
+const SHARED_ALIASES: Record<string, string> = { "./three.module.min.js": "three" };
 
 function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** Writes each shared vendor library once as a `.json` file, returning key -> URL.
+/** Writes gsap and the shared ES-module bundle once each as a `.json` file, returning key -> URL.
  * Hashes each consumer's copy against the canonical one first to catch a divergent library. */
 export function writeSharedVendorScripts(
   repoRoot: string,
@@ -61,30 +76,75 @@ export function writeSharedVendorScripts(
   const vendorDir = join(payloadRoot, "vendor");
   mkdirSync(vendorDir, { recursive: true });
   const urls: Record<string, string> = {};
+  const write = (key: string, text: string) => {
+    writeFileSync(join(vendorDir, `${key}.json`), JSON.stringify({ text }));
+    urls[key] = `/public/catalog/vendor/${key}.json`;
+  };
   for (const file of VENDOR_FILES) {
-    const bytes = readFileSync(join(repoRoot, file.canonicalPath));
-    const hash = sha256(bytes);
-    for (const other of file.otherCopies) {
-      const otherHash = sha256(readFileSync(join(repoRoot, other)));
-      if (otherHash !== hash) {
-        throw new Error(
-          `catalog-script-inlining: ${file.canonicalPath} and ${other} are both named as the ` +
-            `same shared vendor library "${file.key}" but are not byte-identical.`,
-        );
-      }
-    }
-    writeFileSync(
-      join(vendorDir, `${file.key}.json`),
-      JSON.stringify({ text: bytes.toString("utf-8") }),
-    );
-    urls[file.key] = `/public/catalog/vendor/${file.key}.json`;
+    const bytes = canonicalBytes(repoRoot, file);
+    if (!file.module) write(file.key, bytes.toString("utf-8"));
   }
+  write(SHARED_MODULES_KEY, sharedModulesBundle(repoRoot));
   return urls;
 }
 
-/** A JS string literal safe to embed inside a `<script>` body. */
-function jsStringLiteral(text: string): string {
-  return JSON.stringify(text).replace(/<\/script/gi, "<\\/script");
+function canonicalBytes(repoRoot: string, file: VendorFile): Buffer {
+  const bytes = readFileSync(join(repoRoot, file.canonicalPath));
+  const divergent = file.otherCopies.find(
+    (other) => sha256(readFileSync(join(repoRoot, other))) !== sha256(bytes),
+  );
+  if (divergent) {
+    throw new Error(
+      `catalog-script-inlining: ${file.canonicalPath} and ${divergent} are both named as the ` +
+        `same shared vendor library "${file.key}" but are not byte-identical.`,
+    );
+  }
+  return bytes;
+}
+
+/** One classic script defining SHARED_MODULES_GLOBAL: every shared ES module by its import specifier. */
+export function sharedModulesBundle(repoRoot: string): string {
+  const named = VENDOR_FILES.filter((file) => file.module?.specifier);
+  const entry = [
+    ...named.map((file, i) => `import * as m${i} from "./${file.canonicalPath}";`),
+    `globalThis.${SHARED_MODULES_GLOBAL}={${named.map((file, i) => `${JSON.stringify(file.module?.specifier)}:m${i}`).join(",")}};`,
+  ].join("\n");
+  const three = named.find((file) => file.module?.specifier === "three");
+  return classicBundle(entry, repoRoot, { three: `./${three?.canonicalPath}` }, []);
+}
+
+/** `entry` and the modules it imports as one classic script. SHARED_SPECIFIERS stay out of it and are
+ * read from the shared bundle, through the `require` esbuild emits for an external import. */
+function classicBundle(
+  entry: string,
+  workingDir: string,
+  alias: Record<string, string>,
+  external = SHARED_SPECIFIERS,
+): string {
+  const { outputFiles } = buildSync({
+    stdin: { contents: entry, resolveDir: resolve(workingDir), loader: "js" },
+    absWorkingDir: resolve(workingDir),
+    bundle: true,
+    format: "iife",
+    write: false,
+    alias,
+    external,
+    legalComments: "none",
+    logLevel: "silent",
+  });
+  const code = outputFiles[0]?.text;
+  if (!code) throw new Error("catalog-script-inlining: esbuild produced no output.");
+  if (external.length === 0) return `"use strict";${code}`;
+  const shared = `(s)=>globalThis.${SHARED_MODULES_GLOBAL}[${jsLiteral(SHARED_ALIASES)}[s]??s]`;
+  return `(function(require){"use strict";${code}})(${shared});`;
+}
+
+/** A JSON literal safe to embed inside a `<script>` body. */
+function jsLiteral(value: string | Readonly<Record<string, string>>): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }
 
 /** Looks up a vendor URL by key, throwing rather than silently generating a broken fetch. */
@@ -94,32 +154,26 @@ function vendorUrl(vendorUrls: Record<string, string>, key: string): string {
   return url;
 }
 
-/** Expression that fetches a vendor JSON and resolves to a blob URL for it. */
-function vendorFetchExpr(url: string): string {
-  return `${vendorTextExpr(url)}.then(text=>${blobUrlExpr("text")})`;
+/** A step running a vendor library: `vendor(url)` fetches its text and `run` executes it inline. */
+function vendorStep(vendorUrls: Record<string, string>, key: string): string {
+  return `run(await vendor(${JSON.stringify(vendorUrl(vendorUrls, key))}),${JSON.stringify(`${key}.js`)});`;
 }
 
-/** Expression that fetches a vendor JSON and resolves to its raw text. */
-function vendorTextExpr(url: string): string {
-  return `fetch(${JSON.stringify(url)}).then(r=>r.json()).then(j=>j.text)`;
+/** A step running `code`, inlined into the payload, under `name` in stack traces. */
+function codeStep(code: string, name: string): string {
+  return `run(${jsLiteral(code)},${JSON.stringify(name)});`;
 }
 
-/** Expression wrapping a text-valued expression into a `text/javascript` blob URL. */
-function blobUrlExpr(textExpr: string): string {
-  return `URL.createObjectURL(new Blob([${textExpr}],{type:"text/javascript"}))`;
-}
-
-/** JS statements (inside an async bootstrap) that load gsap as a classic script after `selfScript`. */
-function gsapLoaderJs(vendorUrls: Record<string, string>): string {
-  return `const gsapUrl=await ${vendorFetchExpr(vendorUrl(vendorUrls, "gsap-3.14.2.min"))};
-await new Promise((res,rej)=>{const s=document.createElement("script");s.src=gsapUrl;s.onload=res;s.onerror=rej;selfScript.after(s);});`;
-}
-
-/** JS statements defining `threeModuleUrl`, with three.module's relative three.core import patched. */
-function threeModuleUrlJs(vendorUrls: Record<string, string>): string {
-  return `const threeCoreUrl=await ${vendorFetchExpr(vendorUrl(vendorUrls, "three.core.min"))};
-const threeModuleText=(await ${vendorTextExpr(vendorUrl(vendorUrls, "three.module.min"))}).split('"./three.core.min.js"').join(JSON.stringify(threeCoreUrl));
-const threeModuleUrl=${blobUrlExpr("threeModuleText")};`;
+/** One bootstrap `<script>` running `steps` in order, each piece as its own inline <script> so an error
+ * keeps a real source; a failed fetch is logged against the item instead of rejecting silently. */
+function bootstrapScript(item: string, steps: string[]): string {
+  return `<script>(function(){
+const vendor=(url)=>fetch(url).then((r)=>r.json()).then((j)=>j.text);
+const run=(code,name)=>{const s=document.createElement("script");s.text=code+"\\n//# sourceURL=hyperframes-catalog://${item}/"+name;document.head.append(s);};
+(async()=>{
+${steps.join("\n")}
+})().catch((error)=>console.error("[HyperFrames catalog] ${item} could not load its scripts",error));
+})();</script>`;
 }
 
 function replaceOnce(html: string, needle: string, replacement: string, label: string): string {
@@ -210,14 +264,11 @@ function inlineFrostScripts(
     "frost's composition script",
   );
 
-  const bootstrap = `<script>(function(){
-const selfScript=document.currentScript;
-(async()=>{
-${gsapLoaderJs(vendorUrls)}
-(0,eval)(${jsStringLiteral(frostText)});
-(0,eval)(${jsStringLiteral(compositionScriptText)});
-})();
-})();</script>`;
+  const bootstrap = bootstrapScript("frost-sequence-camera-orbit", [
+    vendorStep(vendorUrls, GSAP_KEY),
+    codeStep(frostText, "frost.js"),
+    codeStep(compositionScriptText, "composition.js"),
+  ]);
   return replaceOnce(
     withoutComposition.replace("__CATALOG_BOOTSTRAP__", () => bootstrap),
     `<script src="assets/frost.js"></script>`,
@@ -231,7 +282,7 @@ function inlineGlassScripts(html: string, projectDir: string): string {
     throw new Error("catalog-script-inlining: glass-shard-title's hdr <link> was not inlined.");
   }
   const glassText = readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8");
-  const bootstrap = `<script>(0,eval)(${jsStringLiteral(glassText)});</script>`;
+  const bootstrap = `<script>(0,eval)(${jsLiteral(glassText)});</script>`;
   return replaceOnce(
     html,
     `<script src="assets/glass-main.js"></script>`,
@@ -245,7 +296,6 @@ function inlineCuboidScripts(
   projectDir: string,
   vendorUrls: Record<string, string>,
 ): string {
-  const cuboidMotionText = readFileSync(join(projectDir, "assets/cuboid-motion.js"), "utf-8");
   const gsapImportmapRe =
     /<script src="assets\/gsap-3\.14\.2\.min\.js"><\/script>\s*<script type="importmap">[\s\S]*?<\/script>/;
   if (!gsapImportmapRe.test(html)) {
@@ -260,31 +310,17 @@ function inlineCuboidScripts(
     /<script type="module">/,
     "cuboid-carousel's entry module script",
   );
-  const precedingScriptEvals = precedingScripts
-    .map((text) => `(0,eval)(${jsStringLiteral(text)});`)
-    .join("\n");
-
-  const bootstrap = `<script>(function(){
-const selfScript=document.currentScript;
-(async()=>{
-${gsapLoaderJs(vendorUrls)}
-// Blob URLs aren't hierarchical, so three.module's relative import of three.core can't
-// resolve via import-map "scopes" (unreliable for blob-URL keys here); patch it directly.
-${threeModuleUrlJs(vendorUrls)}
-const roomEnvUrl=await ${vendorFetchExpr(vendorUrl(vendorUrls, "RoomEnvironment"))};
-const bufferGeoUrl=await ${vendorFetchExpr(vendorUrl(vendorUrls, "BufferGeometryUtils"))};
-const cuboidMotionUrl=${blobUrlExpr(jsStringLiteral(cuboidMotionText))};
-const im=document.createElement("script");
-im.type="importmap";
-im.textContent=JSON.stringify({imports:{three:threeModuleUrl,"three/addons/environments/RoomEnvironment.js":roomEnvUrl,"three/addons/utils/BufferGeometryUtils.js":bufferGeoUrl,"cuboid-carousel/motion":cuboidMotionUrl}});
-selfScript.after(im);
-${precedingScriptEvals}
-const entry=document.createElement("script");
-entry.type="module";
-entry.textContent=${jsStringLiteral(entryModuleText)};
-im.after(entry);
-})();
-})();</script>`;
+  const bootstrap = bootstrapScript("cuboid-carousel", [
+    vendorStep(vendorUrls, GSAP_KEY),
+    vendorStep(vendorUrls, SHARED_MODULES_KEY),
+    ...precedingScripts.map((text, i) => codeStep(text, `script-${i + 1}.js`)),
+    codeStep(
+      classicBundle(entryModuleText, projectDir, {
+        "cuboid-carousel/motion": "./assets/cuboid-motion.js",
+      }),
+      "entry.js",
+    ),
+  ]);
   return withoutEntry.replace("__CATALOG_BOOTSTRAP__", () => bootstrap);
 }
 
@@ -293,13 +329,11 @@ function inlineOrbitScripts(
   projectDir: string,
   vendorUrls: Record<string, string>,
 ): string {
-  const orbitSceneText = readFileSync(join(projectDir, "assets/orbit-scene.js"), "utf-8");
-  const orbitMotionText = readFileSync(join(projectDir, "assets/orbit-motion.js"), "utf-8");
   const gsapRe = /<script src="assets\/gsap-3\.14\.2\.min\.js"><\/script>/;
   if (!gsapRe.test(html)) {
     throw new Error("catalog-script-inlining: orbit-card's gsap script tag not found.");
   }
-  // The bootstrap's import map replaces the block's own, which points at unhosted files.
+  // The classic bundle replaces the import map, whose targets are unhosted files.
   const { html: withoutImportmap } = extractAndRemoveScript(
     html,
     /<script type="importmap">/,
@@ -311,25 +345,14 @@ function inlineOrbitScripts(
     "orbit-card's entry module script",
   );
 
-  const bootstrap = `<script>(function(){
-const selfScript=document.currentScript;
-(async()=>{
-${gsapLoaderJs(vendorUrls)}
-// Same blob-URL specifier patch as inlineCuboidScripts (blob URLs aren't hierarchical).
-${threeModuleUrlJs(vendorUrls)}
-const orbitMotionUrl=${blobUrlExpr(jsStringLiteral(orbitMotionText))};
-const orbitSceneText=${jsStringLiteral(orbitSceneText)}.split('"./three.module.min.js"').join(JSON.stringify(threeModuleUrl)).split('"./orbit-motion.js"').join(JSON.stringify(orbitMotionUrl));
-const orbitSceneUrl=${blobUrlExpr("orbitSceneText")};
-const im=document.createElement("script");
-im.type="importmap";
-im.textContent=JSON.stringify({imports:{"orbit-card/scene":orbitSceneUrl}});
-selfScript.after(im);
-const entry=document.createElement("script");
-entry.type="module";
-entry.textContent=${jsStringLiteral(entryModuleText)};
-im.after(entry);
-})();
-})();</script>`;
+  const bootstrap = bootstrapScript("orbit-card", [
+    vendorStep(vendorUrls, GSAP_KEY),
+    vendorStep(vendorUrls, SHARED_MODULES_KEY),
+    codeStep(
+      classicBundle(entryModuleText, projectDir, { "orbit-card/scene": "./assets/orbit-scene.js" }),
+      "entry.js",
+    ),
+  ]);
   return withoutEntry.replace("__CATALOG_BOOTSTRAP__", () => bootstrap);
 }
 
@@ -354,16 +377,11 @@ function inlineCodeSliceScripts(
     /<script>/,
     "code-slice-hero's composition script",
   );
-  const evals = [...localScripts, compositionText]
-    .map((text) => `(0,eval)(${jsStringLiteral(text)});`)
-    .join("\n");
-  const bootstrap = `<script>(function(){
-const selfScript=document.currentScript;
-(async()=>{
-${gsapLoaderJs(vendorUrls)}
-${evals}
-})();
-})();</script>`;
+  const bootstrap = bootstrapScript("code-slice-hero", [
+    vendorStep(vendorUrls, GSAP_KEY),
+    ...localScripts.map((text, i) => codeStep(text, localNames[i] ?? "script.js")),
+    codeStep(compositionText, "composition.js"),
+  ]);
   return withoutComposition.replace("__CATALOG_BOOTSTRAP__", () => bootstrap);
 }
 
@@ -385,7 +403,7 @@ export function needsScriptInlining(itemName: string): boolean {
   return itemName in SCRIPT_INLINERS;
 }
 
-/** Replaces an item's unreachable script tags with inline/vendor-blob equivalents; a no-op
+/** Replaces an item's unreachable script tags with inline equivalents; a no-op
  * for items outside SCRIPT_INLINERS. */
 export function inlineCatalogScripts(
   itemName: string,

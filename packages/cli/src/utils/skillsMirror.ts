@@ -3,14 +3,14 @@
 // `skills add --global --agent claude-code universal --copy` writes REAL files
 // to two global stores: the Claude store (~/.claude/skills — what Claude Code
 // reads, at global priority) and the shared universal store (~/.agents/skills,
-// which Cursor/Codex/… read in PROJECT scope and the .agents-family agents read
-// globally). But every other agent reads its OWN global dir (~/.cursor/skills,
+// which Cursor/… read in PROJECT scope and Codex, Pi and the .agents-family
+// agents read globally). But every other agent reads its OWN global dir (~/.cursor/skills,
 // goose → ~/.config/goose/skills, …), which upstream's --global does NOT
 // populate.
 //
 // So we mirror the canonical Claude store into each of those per-agent dirs, but
 // only for agents the machine actually has (their marker dir exists). Agents
-// that already consume the universal ~/.agents/skills store globally (Pi) are
+// that already consume the universal ~/.agents/skills store globally (Pi, Codex) are
 // skipped: their universal copy is authoritative and a per-agent copy would
 // collide with it (#3294). On Unix
 // each skill is a relative symlink back into the store (one source of truth,
@@ -32,6 +32,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  unlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -42,16 +43,17 @@ import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
  * in ADDITION to their own agent-specific directory. Mirroring into their own
  * dir makes every skill discoverable twice.
  *
- * Pi is the known case (earendil-works/pi): it reads both `~/.pi/agent/skills/`
+ * Pi and Codex are known cases. Pi (earendil-works/pi) reads both `~/.pi/agent/skills/`
  * and `~/.agents/skills/` as global locations (pi's packages/coding-agent/docs/
  * skills.md#locations), so a mirrored entry collides with the universal copy
- * and Pi skips the universal one on name conflict (#3294).
+ * and Pi skips the universal one on name conflict (#3294). Codex likewise
+ * discovers the user-level `~/.agents/skills/` store.
  *
  * The generated table cannot carry this capability — it is a plain
  * (agent, base, sub) list synced from vercel-labs/skills — so the set lives
  * here next to the mirror logic that needs it.
  */
-const UNIVERSAL_STORE_READERS = new Set(["pi"]);
+const UNIVERSAL_STORE_READERS = new Set(["pi", "codex"]);
 
 export interface MirrorResult {
   /** The store mirrored from, or null when no global Claude store was found. */
@@ -237,6 +239,33 @@ function mirrorInto(
 }
 
 /**
+ * Unlink symlinks an earlier mirror left in `targetDir` (they resolve to the same source skill),
+ * only where the universal store holds that skill. Real dirs and Windows copies stay.
+ */
+function removeMirrorLinks(
+  targetDir: string,
+  source: string,
+  universalStore: string,
+  skills: string[],
+  safety: () => MirrorSkipReason | null,
+): MirrorSkipReason | null {
+  const unsafe = safety();
+  if (unsafe) return unsafe;
+  for (const skill of skills) {
+    const targetSkill = join(targetDir, skill);
+    try {
+      if (!existsSync(join(universalStore, skill, "SKILL.md"))) continue;
+      if (!lstatSync(targetSkill).isSymbolicLink()) continue;
+      if (realpathSync(targetSkill) !== realpathSync(join(source, skill))) continue;
+      unlinkSync(targetSkill);
+    } catch {
+      // absent or dangling: nothing of ours to remove
+    }
+  }
+  return null;
+}
+
+/**
  * Mirror the global Claude store into every installed agent's global skills
  * dir. Best-effort and idempotent: a no-op when the store is absent, and per
  * skill failures (permissions, races) don't abort the rest.
@@ -282,7 +311,14 @@ export function mirrorGlobalSkills(opts: {
   for (const { agent, base, sub } of AGENT_GLOBAL_DIRS) {
     const targetDir = join(bases[base], ...sub.split("/").filter(Boolean));
     if (targetDir === source || targetDir === universalStore) continue; // install-owned
-    if (UNIVERSAL_STORE_READERS.has(agent)) continue; // already reads the universal store (#3294)
+    if (UNIVERSAL_STORE_READERS.has(agent)) {
+      // Already reads the universal store (#3294); drop links an older version mirrored here.
+      const skipReason = removeMirrorLinks(targetDir, source, universalStore, skills, () =>
+        targetSafety(targetDir, resolvedProtectedPaths),
+      );
+      if (skipReason) skipped.push({ agent, dir: targetDir, reason: skipReason });
+      continue;
+    }
     if (!existsSync(dirname(targetDir))) continue; // agent not installed (no marker)
     const attempt = mirrorInto(targetDir, source, skills, platform, () =>
       targetSafety(targetDir, resolvedProtectedPaths),

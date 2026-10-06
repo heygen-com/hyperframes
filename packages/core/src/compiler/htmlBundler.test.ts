@@ -10,6 +10,7 @@ import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { ensureHfIds } from "../parsers/hfIds";
+import { AFTER_FONTS_SCRIPT_TYPE, AFTER_FONTS_SCRIPTS } from "./scriptRuns";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-bundler-test-"));
@@ -215,6 +216,33 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('document.getElementById("scene")');
   });
 
+  it("defers the root's and every mounted composition's scripts until fonts, but not the runtime", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="main" data-width="320" data-height="180">
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html"></div>
+  </div>
+  <script>window.ROOT_SCRIPT = 1;</script>
+  <script type="module">window.ROOT_MODULE = 1;</script>
+</body></html>`,
+      "compositions/scene.html": `<template><div data-composition-id="scene" data-width="320" data-height="180">
+  <script>window.SCENE_SCRIPT = 1;</script>
+</div></template>`,
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const deferred = [...document.querySelectorAll(AFTER_FONTS_SCRIPTS)].map(
+      (el) => el.textContent,
+    );
+    for (const mark of ["SCENE_SCRIPT", "ROOT_SCRIPT", "ROOT_MODULE"]) {
+      expect(deferred.some((text) => text?.includes(mark))).toBe(true);
+    }
+    expect([...document.querySelectorAll("body script")].length).toBe(deferred.length);
+    const runtime = document.querySelector("script[data-hyperframes-preview-runtime]");
+    expect(runtime?.getAttribute("type")).toBeNull();
+  });
+
   it("binds a mounted composition's scripts to its own file for __hyperframes.assetUrl", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -257,8 +285,13 @@ describe("bundleToSingleHtml", () => {
 
     const { document } = parseHTML(await bundleToSingleHtml(dir));
     const importMaps = [...document.querySelectorAll('script[type="importmap"]')];
-    const modules = [...document.querySelectorAll('script[type="module"]')];
-    const classic = [...document.querySelectorAll("script:not([type])")].map((s) => s.textContent);
+    // Deferred until fonts: the runtime runs each as the type its marker names.
+    const modules = [
+      ...document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}+module"]`),
+    ];
+    const classic = [...document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}"]`)].map(
+      (s) => s.textContent,
+    );
 
     expect(importMaps).toHaveLength(1);
     expect(JSON.parse(importMaps[0]!.textContent || "")).toEqual({
@@ -599,7 +632,9 @@ describe("bundleToSingleHtml", () => {
 
     const bundled = await bundleToSingleHtml(dir);
 
-    expect(bundled).toMatch(/<script\b[^>]*\btype="module"[^>]*\bsrc="\.\/module\.js"/);
+    expect(bundled).toMatch(
+      /<script\b[^>]*\btype="text\/hf-after-fonts\+module"[^>]*\bsrc="\.\/module\.js"/,
+    );
     expect(bundled).not.toContain('import { value } from "./value.js"');
   });
 
@@ -2474,6 +2509,190 @@ describe("bundleToSingleHtml script order", () => {
       expect(before).toBeGreaterThan(-1);
       expect(before).toBeLessThan(lib);
       expect(lib).toBeLessThan(after);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  const LOCAL_ORDER_GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js";
+  async function bundledBody(scripts: string, files: Record<string, string>) {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  ${scripts}
+</body></html>`,
+      ...files,
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      return [...document.querySelectorAll("body script")];
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("keeps each local script in its own place around a CDN script", async () => {
+    const scripts = await bundledBody(
+      `<script src="setup.js"></script>
+  <script src="${LOCAL_ORDER_GSAP}"></script>
+  <script src="main.js"></script>`,
+      { "setup.js": "window.SETUP_RAN = 1;", "main.js": "window.MAIN_RAN = gsap.version;" },
+    );
+    const setupAt = scripts.findIndex((el) => el.textContent?.includes("SETUP_RAN"));
+    const gsapAt = scripts.findIndex((el) => el.getAttribute("src") === LOCAL_ORDER_GSAP);
+    const mainAt = scripts.findIndex((el) => el.textContent?.includes("MAIN_RAN"));
+    expect(setupAt).toBeGreaterThan(-1);
+    expect(setupAt).toBeLessThan(gsapAt);
+    expect(gsapAt).toBeLessThan(mainAt);
+  });
+
+  it.each(["defer", "async"])(
+    "inlines a local %s script in its own tag, keeping the attribute so the runtime times it",
+    async (when) => {
+      const scripts = await bundledBody(
+        `<script>window.FIRST = 1;</script>
+  <script ${when} src="main.js"></script>
+  <script>window.LAST = 1;</script>`,
+        { "main.js": "window.MAIN_RAN = 1;" },
+      );
+      const main = scripts.find((el) => el.textContent?.includes("MAIN_RAN"));
+      expect(main?.hasAttribute(when)).toBe(true);
+      expect(main?.hasAttribute("src")).toBe(false);
+      expect(main?.getAttribute("data-hf-inlined-src")).toBe("main.js");
+      expect(main?.textContent).not.toMatch(/FIRST|LAST/);
+    },
+  );
+
+  it.each(["", ' type="text/babel"'])(
+    "escapes a local file's script-closing text, so the page keeps its structure (%s)",
+    async (type) => {
+      const scripts = await bundledBody(
+        `<script${type} src="main.js"></script><p id="after">ok</p>`,
+        {
+          "main.js": `window.CLOSE = "</script><p id='leak'>x</p>"; window.OPEN = "<!-- <script>";`,
+        },
+      );
+      const holder = scripts.find((el) => el.textContent?.includes("window.CLOSE"));
+      expect(holder?.textContent).toContain("window.OPEN");
+      expect(holder?.textContent).not.toMatch(/<\/script|<!--/i);
+      expect(holder?.ownerDocument.getElementById("leak")).toBeNull();
+    },
+  );
+
+  it.each([
+    ["a local file", `<script nomodule src="legacy.js"></script>`],
+    ["an inline script", `<script nomodule>window.LEGACY_RAN = 1;</script>`],
+  ])("keeps nomodule on %s, so modern browsers still skip it", async (_, legacy) => {
+    const scripts = await bundledBody(
+      `<script>window.FIRST = 1;</script>\n  ${legacy}\n  <script>window.LAST = 1;</script>`,
+      {
+        "legacy.js": "window.LEGACY_RAN = 1;",
+      },
+    );
+    const holder = scripts.find((el) => el.textContent?.includes("LEGACY_RAN"));
+    expect(holder?.hasAttribute("nomodule")).toBe(true);
+    expect(holder?.textContent).not.toMatch(/FIRST|LAST/);
+  });
+
+  it("keeps a local script's non-JavaScript type, so it is not run as JavaScript", async () => {
+    const scripts = await bundledBody(`<script type="text/babel" src="app.jsx"></script>`, {
+      "app.jsx": "const App = () => <div />;",
+    });
+    const holder = scripts.find((el) => el.textContent?.includes("const App"));
+    expect(holder?.getAttribute("type")).toBe("text/babel");
+  });
+
+  it.each(["", ' type="text/babel"'])(
+    "keeps a local file's unicode regex for <!-- valid JavaScript (%s)",
+    async (type) => {
+      const scripts = await bundledBody(`<script${type} src="main.js"></script>`, {
+        "main.js": "window.HAS_COMMENT = /<!--/u.test(document.body.innerHTML);",
+      });
+      const holder = scripts.find((el) => el.textContent?.includes("HAS_COMMENT"));
+      expect(() => new Function(holder?.textContent ?? "")).not.toThrow();
+    },
+  );
+
+  it("keeps an authored script that reads the runtime global", async () => {
+    const scripts = await bundledBody(
+      `<script>if (window.__hyperframeRuntime) window.AUTHOR_SEEN = 1;</script>`,
+      {},
+    );
+    expect(scripts.some((el) => el.textContent?.includes("AUTHOR_SEEN"))).toBe(true);
+  });
+
+  it("keeps a run that merges a local file with a legacy <!-- comment valid, every script in order", async () => {
+    const scripts = await bundledBody(
+      `<script src="esc.js"></script>
+  <script src="legacy.js"></script>
+  <script>window.RAN.push("a");</script>
+  <script>window.RAN.push("b");</script>
+  <script src="plain.js"></script>`,
+      {
+        "esc.js": 'window.RAN = ["esc"]; window.CLOSE = "</script>";',
+        "legacy.js": '<!-- a legacy comment\nwindow.RAN.push("legacy");',
+        "plain.js": 'window.RAN.push("plain");',
+      },
+    );
+    const merged = scripts.find((el) => el.textContent?.includes('"plain"'));
+    expect(merged?.textContent).not.toMatch(/<\/script|<!--/i);
+    const page = { RAN: [] as string[] };
+    new Function("window", merged?.textContent ?? "")(page);
+    expect(page.RAN).toEqual(["esc", "legacy", "a", "b", "plain"]);
+  });
+
+  it.each([
+    ["in <head>", `<script src="legacy.js"></script>`, ""],
+    ["deferred in <body>", "", `<script defer src="legacy.js"></script>`],
+  ])(
+    "keeps a local file with a legacy <!-- comment valid when it is inlined on its own (%s)",
+    async (_, head, body) => {
+      const dir = makeTempProject({
+        "index.html": `<!doctype html>
+<html><head>${head}</head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  ${body}
+</body></html>`,
+        "legacy.js": '<!-- a legacy comment\nwindow.RAN = ["legacy"];',
+      });
+      try {
+        const { document } = parseHTML(await bundleToSingleHtml(dir));
+        const file = document.querySelector("script[data-hf-inlined-src]");
+        expect(file?.textContent).not.toContain("<!--");
+        const page = { RAN: [] as string[] };
+        new Function("window", file?.textContent ?? "")(page);
+        expect(page.RAN).toEqual(["legacy"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("leaves a local non-JavaScript file's text as written", async () => {
+    const scripts = await bundledBody(`<script type="application/json" src="data.json"></script>`, {
+      "data.json": "[1,2]",
+    });
+    expect(scripts.find((el) => el.getAttribute("type") === "application/json")?.textContent).toBe(
+      "[1,2]",
+    );
+  });
+
+  it("still adds the runtime when an authored script mentions its marker attribute", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.MARKER = document.querySelector("[data-hyperframes-preview-runtime]");</script>
+</body></html>`,
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const scripts = [...document.querySelectorAll("script")];
+      expect(
+        scripts.filter((el) => el.hasAttribute("data-hyperframes-preview-runtime")),
+      ).toHaveLength(1);
+      expect(scripts.some((el) => el.textContent?.includes("window.MARKER"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

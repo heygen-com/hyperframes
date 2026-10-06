@@ -67,7 +67,7 @@ export function InspectorHeaderActions({
         }}
         className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
           copied
-            ? "text-studio-accent"
+            ? "text-accent-ink"
             : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
         }`}
         title={copied ? "Copied!" : "Copy element info to clipboard"}

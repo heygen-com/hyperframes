@@ -23,7 +23,7 @@
  */
 
 /** Unescaped name code points: `[A-Za-z0-9_-]` plus any non-ASCII. */
-function isNameChar(char: string | undefined): boolean {
+function isNameChar(char: string | undefined): char is string {
   if (!char) return false;
   return /[\w-]/.test(char) || char.charCodeAt(0) >= 0x80;
 }
@@ -56,7 +56,7 @@ function skipEscapeWhitespace(text: string, index: number): number {
  */
 function consumeCssEscape(text: string, index: number): { value: string; end: number } | null {
   const next = text[index + 1];
-  if (next === undefined || next === "\n") return null;
+  if (next === undefined || /[\n\r\f]/.test(next)) return null;
   const hex = HEX_ESCAPE_RE.exec(text.slice(index + 1, index + 7));
   if (!hex) return { value: next, end: index + 2 };
   const codePoint = sanitizeCodePoint(Number.parseInt(hex[0], 16));
@@ -64,6 +64,29 @@ function consumeCssEscape(text: string, index: number): { value: string; end: nu
     value: String.fromCodePoint(codePoint),
     end: skipEscapeWhitespace(text, index + 1 + hex[0].length),
   };
+}
+
+function startsCssIdentifier(text: string, start: number): boolean {
+  const isStart = (char: string | undefined) => isNameChar(char) && !/[0-9-]/.test(char);
+  const escape = (index: number) => text[index] === "\\" && consumeCssEscape(text, index) !== null;
+  if (text[start] === "-")
+    return text[start + 1] === "-" || isStart(text[start + 1]) || escape(start + 1);
+  return isStart(text[start]) || escape(start);
+}
+
+function skipCssComments(text: string, start: number): number {
+  let index = start;
+  while (text.startsWith("/*", index)) {
+    const end = text.indexOf("*/", index + 2);
+    index = end < 0 ? text.length : end + 2;
+  }
+  return index;
+}
+
+function skipCssTrivia(text: string, start: number): number {
+  let index = skipCssComments(text, start);
+  while (isCssWhitespace(text[index])) index = skipCssComments(text, index + 1);
+  return index;
 }
 
 /**
@@ -75,6 +98,7 @@ export function decodeCssIdentifierAt(
   text: string,
   start: number,
 ): { value: string; end: number } | null {
+  if (!startsCssIdentifier(text, start)) return null;
   let index = start;
   let value = "";
   while (index < text.length) {
@@ -152,7 +176,7 @@ export function escapeCssIdentifier(value: string): string {
  * branch (no ambiguous backtracking).
  */
 const GUARDED_SELECTOR_SEGMENT_RE =
-  /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\]"'])*\]/g;
+  /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
 
 /**
  * `mask[i]` is `true` when `selector[i]` sits outside both a quoted string
@@ -205,4 +229,122 @@ export function replaceSelectorIdTokens(
   }
 
   return result;
+}
+
+function decodeCssString(value: string): string {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === "\\") {
+      const next = value[index + 1];
+      if (next !== undefined && /[\n\r\f]/.test(next)) {
+        index = skipEscapeWhitespace(value, index + 1) - 1;
+        continue;
+      }
+      const escaped = consumeCssEscape(value, index);
+      if (escaped) {
+        result += escaped.value;
+        index = escaped.end - 1;
+        continue;
+      }
+    }
+    result += value[index];
+  }
+  return result;
+}
+
+export function escapeCssAttributeValue(value: string): string {
+  return Array.from(value, (char) => {
+    const code = char.charCodeAt(0);
+    if (code === 0) return "\uFFFD";
+    if (code < 0x20 || code === 0x7f) return `\\${code.toString(16)} `;
+    return char === '"' || char === "\\" ? `\\${char}` : char;
+  }).join("");
+}
+
+type AttributeNamespace = { kind: "any" } | { kind: "none" } | { kind: "named"; prefix: string };
+
+function attributeNamespace(wildcard: boolean, prefix: string | undefined): AttributeNamespace {
+  if (wildcard) return { kind: "any" };
+  return prefix === undefined ? { kind: "none" } : { kind: "named", prefix };
+}
+
+function isNamespaceSeparator(text: string, offset: number): boolean {
+  return text[offset] === "|" && text[offset + 1] !== "=";
+}
+
+function readQualifiedAttributeName(text: string, start: number) {
+  const wildcard = text[start] === "*";
+  const first = wildcard ? { value: "*", end: start + 1 } : decodeCssIdentifierAt(text, start);
+  const separator = skipCssComments(text, first?.end ?? start);
+  if (!isNamespaceSeparator(text, separator)) {
+    if (wildcard) return null;
+    return first ? { token: first, namespace: { kind: "none" } as AttributeNamespace } : null;
+  }
+  const token = decodeCssIdentifierAt(text, skipCssComments(text, separator + 1));
+  if (!token) return null;
+  return { token, namespace: attributeNamespace(wildcard, first?.value) };
+}
+
+function readAttributeName(predicate: string) {
+  if (predicate[0] !== "[") return null;
+  const start = skipCssTrivia(predicate, 1);
+  const qualified = readQualifiedAttributeName(predicate, start);
+  if (!qualified) return null;
+  const { token, namespace } = qualified;
+  return {
+    name: token.value,
+    rawName: predicate.slice(start, token.end),
+    namespace,
+    end: token.end,
+  };
+}
+
+function readAttributeValue(predicate: string, start: number) {
+  const quoted = /^(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)')/.exec(
+    predicate.slice(start),
+  );
+  if (quoted)
+    return { value: decodeCssString(quoted[1] ?? quoted[2]!), end: start + quoted[0].length };
+  return decodeCssIdentifierAt(predicate, start);
+}
+
+function readAttributeEnding(predicate: string, start: number) {
+  let offset = skipCssTrivia(predicate, start);
+  const token = decodeCssIdentifierAt(predicate, offset);
+  if (token) {
+    if (!/^[is]$/i.test(token.value)) return null;
+    offset = skipCssTrivia(predicate, token.end);
+  }
+  if (predicate[offset] !== "]" || offset !== predicate.length - 1) return null;
+  return { flag: token?.value };
+}
+
+export function parseAttributeSelector(predicate: string) {
+  const name = readAttributeName(predicate);
+  if (!name) return null;
+  const offset = skipCssTrivia(predicate, name.end);
+  const operators = ["=", "~=", "|=", "^=", "$=", "*="] as const;
+  const operator = operators.find((candidate) => predicate.startsWith(candidate, offset));
+  if (!operator) return null;
+  const value = readAttributeValue(predicate, skipCssTrivia(predicate, offset + operator.length));
+  if (!value) return null;
+  const ending = readAttributeEnding(predicate, value.end);
+  if (!ending) return null;
+  return {
+    name: name.name,
+    rawName: name.rawName,
+    namespace: name.namespace,
+    operator,
+    value: value.value,
+    flag: ending.flag,
+  };
+}
+
+export function replaceSelectorAttributeTokens(
+  selector: string,
+  rewrite: (predicate: string) => string,
+): string {
+  return selector.replace(GUARDED_SELECTOR_SEGMENT_RE, (segment) =>
+    segment.startsWith("[") ? rewrite(segment) : segment,
+  );
 }

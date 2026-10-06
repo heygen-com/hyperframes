@@ -11,6 +11,7 @@ import {
 import { normalizeToZones } from "./timelineZones";
 import { resolveZMirrorLaneMove } from "./timelineZMirror";
 import type { StackingPatch } from "./timelineStackingSync";
+import { isStudioEditSaving, revertNewestStudioPendingEdit } from "../../utils/studioPendingEdits";
 
 function el(
   id: string,
@@ -585,6 +586,28 @@ describe("commitDraggedClipMove", () => {
       await flushMicrotasks();
       // Only `a` (the edited clip) is patched, lifted above b(5) → 6.
       expectZLiftedToSix(onStackingPatches);
+    });
+
+    it("a multi-selection lane move restacks only the dragged clip", async () => {
+      // a moves up from row 2 to row 1 over c; the selected scene keeps its row, so it keeps its z.
+      const elements = [
+        el("scene", 0, 0, 10),
+        el("b", 1, 5, 5),
+        el("a", 2, 0, 4),
+        el("c", 3, 0, 4),
+      ];
+      const z: Record<string, number> = { scene: 0, b: 2, a: 1, c: 3 };
+      const onStackingPatches = vi.fn();
+      runClipMove(drag(elements[2], { previewStart: 0, previewTrack: 1 }), {
+        elements,
+        trackOrder: [0, 1, 2, 3],
+        selectedKeys: new Set(["a", "scene"]),
+        readZIndex: (e) => z[e.key ?? e.id] ?? 0,
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+      expect(onStackingPatches.mock.calls[0][0]).toEqual([{ key: "a", zIndex: 4 }]);
     });
 
     it("partial z-sync deps (no readZIndex) → move persists but no stacking call", async () => {
@@ -1483,6 +1506,87 @@ describe("persistMoveEdits: a nested row dropped before its host", () => {
 });
 
 describe("persistMoveEdits convergence", () => {
+  it.each([
+    { successor: "timing", detach: false, expectedGroup: "G" },
+    { successor: "detach", detach: true, expectedGroup: undefined },
+  ])(
+    "preserves newer $successor while rolling back a refused detach",
+    async ({ detach, expectedGroup }) => {
+      let current: TimelineElement = { ...el("grouped", 0, 0, 4), audioGroup: "G" };
+      let rejectDetach!: (error: Error) => void;
+      let resolveSuccessor!: () => void;
+      const refused = new Promise<void>((_resolve, reject) => {
+        rejectDetach = reject;
+      });
+      const successor = new Promise<void>((resolve) => {
+        resolveSuccessor = resolve;
+      });
+      const updateElement = (_key: string, updates: Partial<TimelineElement>) => {
+        current = { ...current, ...updates };
+      };
+      const deps = { elements: [current], trackOrder: [0, 1], updateElement };
+      const first = persistMoveEdits(
+        [{ element: current, updates: { start: 0, track: 1, audioGroup: null } }],
+        { ...deps, onMoveElements: () => refused },
+        undefined,
+        "track-insert",
+      );
+      expect(current.audioGroup).toBeUndefined();
+      const second = persistMoveEdits(
+        [
+          {
+            element: current,
+            updates: { start: 5, track: 1, ...(detach ? { audioGroup: null } : {}) },
+          },
+        ],
+        { ...deps, onMoveElements: () => successor },
+      );
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        rejectDetach(new Error("save refused"));
+        await expect(first).resolves.toBe(false);
+        expect(current).toMatchObject({ start: 5, track: 1 });
+        expect(current.audioGroup).toBe(expectedGroup);
+        resolveSuccessor();
+        await expect(second).resolves.toBe(true);
+        expect(current).toMatchObject({ start: 5, track: 1 });
+        expect(current.audioGroup).toBe(expectedGroup);
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
+
+  it("registers a revert for the save in flight, and a reverted move is not reasserted", async () => {
+    let current = el("clip", 0, 1, 2);
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const updateElement = (_key: string, updates: Partial<TimelineElement>) => {
+      current = { ...current, ...updates };
+    };
+    const persisted = persistMoveEdits([{ element: current, updates: { start: 4, track: 0 } }], {
+      elements: [current],
+      trackOrder: [0],
+      updateElement,
+      onMoveElements: () => pendingSave,
+    });
+    expect(current.start).toBe(4);
+    expect(isStudioEditSaving()).toBe(true);
+
+    const reapply = revertNewestStudioPendingEdit();
+    expect(reapply).not.toBeNull();
+    expect(current.start).toBe(1);
+
+    releaseSave();
+    await expect(persisted).resolves.toBe(true);
+    expect(current.start).toBe(1);
+    expect(isStudioEditSaving()).toBe(false);
+    reapply?.();
+    expect(current.start).toBe(4);
+  });
+
   it("reasserts a saved lane after a stale runtime sync", async () => {
     const clip = { ...el("headline", 2, 0.5, 4.9), authoredTrack: 2 };
     let releaseSave: (() => void) | undefined;

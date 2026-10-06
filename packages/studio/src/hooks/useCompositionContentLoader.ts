@@ -1,5 +1,6 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 /**
  * Loads a composition file's content for the source editor when a composition
@@ -24,7 +25,7 @@ export function useCompositionContentLoader({
       if (!projectId) return;
       setActiveCompPath(comp.endsWith(".html") ? comp : null);
       setEditingFile({ path: comp, content: null });
-      fetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(comp)}`))
+      studioApiFetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(comp)}`))
         .then(async (r) => {
           if (!r.ok) throw new Error(`Failed to load ${comp} (${r.status})`);
           return r.json();

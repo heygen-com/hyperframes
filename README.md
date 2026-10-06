@@ -17,6 +17,7 @@
 <p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
 
 <p align="center">
+  <a href="https://www.hyperframes.dev/studio">Studio</a> |
   <a href="https://hyperframes.heygen.com/quickstart">Quickstart</a> |
   <a href="https://hyperframes.heygen.com/showcase">Showcase</a> |
   <a href="https://www.hyperframes.dev/">Playground</a> |
@@ -26,7 +27,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/public/images/hyperframes-logo-motion-1280-trimmed.webp" alt="HyperFrames demo: HTML code on the left transforms into a rendered video on the right" width="800">
+  <img src="https://github.com/user-attachments/assets/f6ff9fae-f33d-4f68-bd54-f3ed4ba6473b" alt="HyperFrames app opening from the Dock: native Mac and Linux app now available" width="800">
 </p>
 
 HyperFrames is an open-source framework for turning HTML, CSS, media, and seekable animations into deterministic MP4 videos. Use it locally with the CLI, from AI coding agents with skills, or as the rendering core behind hosted authoring workflows.

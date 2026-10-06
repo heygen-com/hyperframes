@@ -305,6 +305,7 @@ describe("Reset after a plain move puts the author's translate back", () => {
       async (_selection, patches) => {
         project.history.push(project.file);
         project.file = patches.reduce((html, op) => applyPatch(html, "layer", op), project.file);
+        return undefined;
       },
     );
     const selection = { id: "layer", selector: "#layer", element } as unknown as DomEditSelection;
@@ -372,6 +373,27 @@ describe("Reset after a plain move puts the author's translate back", () => {
     expect(saved(project.file).style.getPropertyValue("translate")).toBe("12px 4px");
     expect(reloaded.style.getPropertyValue("translate")).toBe("12px 4px");
     unmount();
+  });
+});
+
+describe("useDomGeometryCommits undo steps", () => {
+  it("never merges a resize with the next size edit of the same element", async () => {
+    const element = document.createElement("div");
+    element.id = "box";
+    document.body.append(element);
+    const selection = { id: "box", selector: "#box", element } as unknown as DomEditSelection;
+    const commitPositionPatchToHtml = vi
+      .fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>()
+      .mockResolvedValue(undefined);
+    const { commits, unmount } = mountCommits(commitPositionPatchToHtml);
+
+    await commits().handleDomBoxSizeCommit(selection, { width: 418, height: 200 });
+    await commits().handleDomBoxSizeCommit(selection, { width: 280, height: 200 });
+
+    const [resize, field] = commitPositionPatchToHtml.mock.calls.map(([, , options]) => options);
+    expect(resize!.coalesceKey).not.toBe(field!.coalesceKey);
+    unmount();
+    element.remove();
   });
 });
 
@@ -443,7 +465,14 @@ describe("useDomGeometryCommits resize of a cropped element", () => {
       const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
       const press = (type: string, clientX: number) =>
         act(() =>
-          handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, clientX })),
+          handle.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              pointerId: 3,
+              buttons: type === "pointerup" ? 0 : 1,
+              clientX,
+            }),
+          ),
         );
       press("pointerdown", 100);
       press("pointermove", 100 - by);

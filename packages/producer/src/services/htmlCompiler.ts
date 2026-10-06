@@ -15,6 +15,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename, relative } from "path";
 import { parseHTML } from "linkedom";
 import {
+  COMPOSITION_SOURCE_URL,
   compileTimingAttrs,
   injectDurations,
   extractResolvedMedia,
@@ -34,6 +35,7 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import {
   assignBundledRuntimeCompositionIds,
   assignMediaRenderIds,
@@ -42,7 +44,9 @@ import {
   inlineSubCompositions as inlineSubCompositionsShared,
   ensureExternalLinkTag,
   ensureExternalScriptTag,
+  deferScriptsUntilFonts,
   emitMountedModuleScripts,
+  isJavaScriptType,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
@@ -51,6 +55,7 @@ import {
   inlineScriptRuns,
   styleElementsFor,
   insertBeforeCloseTag,
+  isRuntimeFileUrl,
 } from "@hyperframes/core/compiler";
 import {
   checkSubCompositionUsability,
@@ -85,7 +90,7 @@ import type { Page } from "puppeteer-core";
 import {
   injectDeterministicFontFaces,
   normalizeSystemFontPrimaryFamilies,
-} from "./deterministicFonts.js";
+} from "@hyperframes/core/fonts/embed";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
@@ -126,12 +131,32 @@ function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
   return parseHTML(html).document as unknown as ParsableDocumentLike;
 }
 
+function endsWithSourceUrl(code: string): boolean {
+  const trimmed = code.trimEnd();
+  const lastLine = trimmed.slice(trimmed.lastIndexOf("\n") + 1).trimStart();
+  return lastLine.startsWith("//# sourceURL=") || lastLine.startsWith("//@ sourceURL=");
+}
+
+// One name for the composition's inline code lets a render keep its errors and not a widget's.
+function prepareCompositionScripts(html: string): string {
+  const { document } = parseHTML(html);
+  for (const el of document.querySelectorAll("script:not([src])")) {
+    const isModule = (el.getAttribute("type") || "").trim().toLowerCase() === "module";
+    const runsAsScript = isModule || isJavaScriptType(el as unknown as Element);
+    const code = el.textContent ?? "";
+    if (!runsAsScript || endsWithSourceUrl(code)) continue;
+    el.textContent = `${code}\n//# sourceURL=${COMPOSITION_SOURCE_URL}`;
+  }
+  deferScriptsUntilFonts(document as unknown as Document);
+  return document.toString();
+}
+
 export function injectSdkPositionEditsRenderScript(html: string): string {
   if (!html.includes("data-hf-edit-base-x") && !html.includes("data-hf-edit-base-y")) {
     return html;
   }
   const scriptBody = getPositionEditsRenderScript().replace(/<\/script/gi, "<\\/script");
-  const script = `<script>${scriptBody}</script>`;
+  const script = `<script>${scriptBody}\n//# sourceURL=hyperframes://position-edits</script>`;
   return insertBeforeCloseTag(html, "body", script) ?? `${html}${script}`;
 }
 
@@ -999,7 +1024,6 @@ function inlineSubCompositions(
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.
       assetExists: (path: string) => existsSync(resolve(projectDir, path)),
-      scriptErrorLabel: "[Compiler] Composition script failed",
       // Preserve the authored root wrapper as a child of the host, matching
       // the preview bundler's shape (htmlBundler.ts's prepareFlattenedInnerRoot,
       // which the runtime compositionLoader mirrors with its own copy for the
@@ -1200,7 +1224,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 
   for (const el of scripts) {
     const src = (el.getAttribute("src") || "").trim();
-    if (src && isHttpUrl(src)) {
+    if (src && isHttpUrl(src) && !isRuntimeFileUrl(src)) {
       externalScripts.push({ el: el as unknown as Element, src });
     }
   }
@@ -1234,7 +1258,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
         if (attr.name.toLowerCase() === "src") continue;
         inlineScript.setAttribute(attr.name, attr.value);
       }
-      inlineScript.textContent = `/* inlined: ${src} */\n${safeText}\n`;
+      inlineScript.textContent = `/* inlined: ${src} */\n${safeText}\n//# sourceURL=${new URL(src).href}\n`;
       el.replaceWith(inlineScript);
       defaultLogger.info(`[Compiler] Inlined CDN script: ${src}`);
     } else {
@@ -1768,7 +1792,7 @@ async function readLocalFont(absPath: string): Promise<LocalFontRead> {
 
 // fallow-ignore-next-line complexity
 async function embedLocalFontFaces(html: string, projectDir: string): Promise<string> {
-  const { fontToDataUri: toDataUri } = await import("./fontCompression.js");
+  const { fontToDataUri: toDataUri } = await import("@hyperframes/core/fonts/embed");
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
   const fontFaceRe = /@font-face\s*\{([^}]*)\}/gi;
   let result = html;
@@ -1884,7 +1908,7 @@ export interface CompileForRenderOptions {
   variables?: Record<string, unknown>;
 }
 
-const GSAP_CDN_BASE = "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/";
+const GSAP_CDN_BASE = gsapCdnDist();
 
 function rewriteUnresolvableGsapToCdn(html: string, projectDir: string): string {
   return html.replace(
@@ -2009,6 +2033,7 @@ export async function compileForRender(
   );
 
   const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
+    logger: defaultLogger,
     failClosedFontFetch: options.failClosedFontFetch === true,
     allowSystemFontCapture: options.allowSystemFontCapture,
     abortSignal: options.abortSignal,
@@ -2032,10 +2057,12 @@ export async function compileForRender(
     ? (insertBeforeCloseTag(
         assembledHtml,
         "body",
-        `<script>${createStudioPositionSeekReapplyScript()}</script>`,
+        `<script>${createStudioPositionSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply</script>`,
       ) ?? assembledHtml)
     : assembledHtml;
-  const htmlWithSdkPositionScript = injectSdkPositionEditsRenderScript(htmlWithPositionScript);
+  const htmlWithDeferredScripts = prepareCompositionScripts(
+    injectSdkPositionEditsRenderScript(htmlWithPositionScript),
+  );
 
   // Download remote <video> and <audio> sources to compiledDir and rewrite the
   // src attributes so the renderer reads from localhost. Remote S3 URLs cause
@@ -2043,7 +2070,7 @@ export async function compileForRender(
   // over the network; any that don't reach readyState >= 2 in time render as
   // blank black frames. Localising them eliminates the race.
   const { html: htmlWithLocalMedia, remoteMediaAssets } = await localizeRemoteMediaSources(
-    htmlWithSdkPositionScript,
+    htmlWithDeferredScripts,
     downloadDir,
   );
 

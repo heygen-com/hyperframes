@@ -1,4 +1,3 @@
-import { type ReactNode } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { TimelineElement, KeyframeCacheEntry } from "../store/playerStore";
@@ -13,7 +12,7 @@ import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
-import type { TimelineClipRenderContext } from "./TimelineTypes";
+import type { TimelineProps } from "./TimelineTypes";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 
 /**
@@ -52,12 +51,8 @@ export interface TimelineLaneBaseProps {
   blockedClipRef: React.RefObject<BlockedClipState | null>;
   suppressClickRef: React.RefObject<boolean>;
   scrollRef: React.RefObject<HTMLDivElement | null>;
-  renderClipContent?: (
-    element: TimelineElement,
-    style: { clip: string; label: string },
-    context: TimelineClipRenderContext,
-  ) => ReactNode;
-  renderClipOverlay?: (element: TimelineElement) => ReactNode;
+  renderClipContent?: TimelineProps["renderClipContent"];
+  renderClipOverlay?: TimelineProps["renderClipOverlay"];
   onDrillDown?: (element: TimelineElement) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
   setHoveredClip: (key: string | null) => void;
@@ -66,11 +61,6 @@ export interface TimelineLaneBaseProps {
   setResizingClip: (v: ResizingClipState | null) => void;
   setDraggedClip: (v: DraggedClipState | null) => void;
   setSelectedElementId: (id: string | null) => void;
-  shiftClickClipRef: React.RefObject<{
-    element: TimelineElement;
-    anchorX: number;
-    anchorY: number;
-  } | null>;
   getPreviewElement: (element: TimelineElement) => TimelineElement;
   getTrackStyle: (tag: string) => TrackVisualStyle;
   keyframeCache?: Map<string, KeyframeCacheEntry>;

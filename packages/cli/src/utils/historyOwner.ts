@@ -49,6 +49,7 @@ export const historyDeps = {
   findServer: (projectDir: string) => findPreviewServerForProject(projectDir),
   /** A turn with no write for this long has ended, through a preview or not. */
   turnIdleMs: MAX_WINDOW_IDLE_MS,
+  now: () => Date.now(),
 };
 
 /** A refusal is the caller's to fix: commands print its message, never a stack. */
@@ -140,7 +141,7 @@ function previewOwner(route: (path: string) => string): Owner {
     pin: async (id, pinned) => void (await json("/pin", { entryId: id, pinned })),
     begin: async (who, label) => {
       const opened = await json("/window", { who, label, idleMs: historyDeps.turnIdleMs });
-      return { id: opened.windowId, startedAt: opened.startedAt ?? Date.now() };
+      return { id: opened.windowId, startedAt: opened.startedAt ?? historyDeps.now() };
     },
     // A preview restarted since begin committed the window on its way down.
     end: (id) =>
@@ -155,6 +156,7 @@ async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner
   const history = await openProjectHistory({
     projectDir,
     historyRoot: historyDeps.historyRoot,
+    now: () => historyDeps.now(),
     pruneGoneProjectsBudgetMs: 1000,
     // A turn begun through a preview that has since stopped is still the agent's, until its idle limit.
     ...(turn && {
@@ -177,7 +179,7 @@ async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner
     restore: (point, who) => history.restore(point, who),
     pin: async (id, pinned) => history.pin(id, pinned),
     // Opening filed every earlier write; the turn's own writes are filed to it when the next open passes it.
-    begin: async () => ({ id: randomUUID(), startedAt: Date.now() }),
+    begin: async () => ({ id: randomUUID(), startedAt: historyDeps.now() }),
     end: async (id) => history.list().find((entry) => entry.id === id) ?? null,
     close: () => history.close(),
   };

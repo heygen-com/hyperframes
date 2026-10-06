@@ -29,7 +29,7 @@ import {
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
 import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
 
-const THUMBNAIL_CACHE_VERSION = "v4";
+const THUMBNAIL_CACHE_VERSION = "v5";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
 const THUMBNAIL_MAX_OUTPUT_HEIGHT = 135;
 const THUMBNAIL_CACHE_MAX_BYTES = 512 * 1024 * 1024;
@@ -193,7 +193,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");
     const selectorKey = selector
-      ? `_${selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}_${selectorIndex ?? 0}`
+      ? `_${createHash("sha1").update(selector).digest("hex").slice(0, 16)}_${selectorIndex ?? 0}`
       : "";
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`

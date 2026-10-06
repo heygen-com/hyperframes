@@ -725,6 +725,7 @@ export interface RenderJob {
   totalFrames?: number;
   framesRendered?: number;
   perfSummary?: RenderPerfSummary;
+  audioLoweredDb?: number;
   failedStage?: string;
   errorDetails?: {
     message: string;
@@ -796,11 +797,11 @@ export function applyRenderWarningPolicy(
   );
   // A script failure means the composition's GSAP timelines can never
   // register — the render produces a degenerate 2-frame output that looks
-  // like a still image. Fail loudly rather than shipping garbage (#3352).
-  const hasSubTimelineScriptFailure = job.warnings.some(
-    (warning) => warning.code === "sub_timeline_script_failure",
+  // like a still image. Fail loudly rather than shipping garbage (#3352). A failed VFX chain drops its layer.
+  const hasScriptOrVfxFailure = job.warnings.some(
+    (warning) => warning.code === "sub_timeline_script_failure" || warning.code === "vfx_failure",
   );
-  if (strictness === "strict" || hasAudioProcessingFailure || hasSubTimelineScriptFailure) {
+  if (strictness === "strict" || hasAudioProcessingFailure || hasScriptOrVfxFailure) {
     throw new RenderQualityError(job.warnings);
   }
 }

@@ -11,12 +11,12 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { oneDark } from "@codemirror/theme-one-dark";
 import type { Extension } from "@codemirror/state";
 import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
 import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
+import { studioCodeTheme } from "./studioCodeTheme";
 
 // Marks a programmatic doc sync (external content push — e.g. a manual-edit
 // commit writing the source) so the update listener doesn't mistake it for a
@@ -114,13 +114,9 @@ export const SourceEditor = memo(function SourceEditor({
           highlightSelectionMatches(),
           keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap]),
           getLanguageExtension(lang),
-          oneDark,
+          studioCodeTheme,
           updateListener,
           EditorState.readOnly.of(readOnly),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
         ],
       });
 

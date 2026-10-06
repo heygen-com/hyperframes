@@ -24,7 +24,11 @@ import {
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
 import { realFilePath } from "../helpers/safePath.js";
-import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
+import {
+  STUDIO_SIGNATURE_MANIFEST_PATHS,
+  affectsProjectSignature,
+  listProjectFiles,
+} from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
@@ -39,6 +43,7 @@ import {
 import { takeHistoryOwnership } from "./ownerLock.js";
 import {
   START,
+  baselineRecord,
   foldOldest,
   manifestAround,
   manifestAt,
@@ -199,6 +204,27 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
+const MEDIA_LEDGER = ".media/manifest.jsonl";
+const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
+
+/** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except the kept ones above. */
+function isHistoryPath(path: string): boolean {
+  if (KEPT_HIDDEN_PATHS.has(path)) return true;
+  return !path.split("/").some((segment) => segment.startsWith("."));
+}
+
+function withoutHiddenPaths(log: HistoryLog): HistoryLog {
+  for (const path of log.baseline.keys()) if (!isHistoryPath(path)) log.baseline.delete(path);
+  for (const entry of log.entries)
+    entry.files = entry.files.filter((file) => isHistoryPath(file.path));
+  return log;
+}
+
+const historyFiles = (dir: string) =>
+  listProjectFiles(dir).filter((file) => isHistoryPath(file.path));
+type ListedFile = ReturnType<typeof listProjectFiles>[number];
+const COPY_LATER_ABOVE_BYTES = 1024 ** 2;
+
 const sameWho = (a: HistoryWho, b: HistoryWho) => a.kind === b.kind && a.name === b.name;
 
 /** Cuts a change at the overwritten `at`: [kept before it, claimed after]; `at` unknown or not kept claims all. */
@@ -257,6 +283,8 @@ const blocks = (removed: string, added: string) =>
   added.startsWith(`${removed}/`) || removed.startsWith(`${added}/`);
 
 /** A window takes a write within idleMs of its last one; past that it has ended, even before its timer commits it. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
 const takesWrite = (window: Group, at: number) =>
   window.idleMs === undefined || at - (window.lastWriteAt ?? at) <= window.idleMs;
 
@@ -294,6 +322,7 @@ class Engine {
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
+  adopting = new Map<string, Promise<void>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
   stopHearing: (() => void) | undefined;
@@ -380,13 +409,18 @@ class Engine {
       ),
     );
     if (!log) return this.firstOpen();
-    this.log = log;
+    this.log = withoutHiddenPaths(log);
+    if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
     const last = this.log.entries.at(-1)?.id ?? START;
     for (const [path, hash] of manifestAt(this.log, last) ?? []) {
       const cached = cache.get(path);
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
+    const left = this.readAdopting();
+    const unadopted = (file: { path: string }) =>
+      left.has(file.path) && !this.tracked.has(file.path);
+    this.adoptMediaInBackground(historyFiles(this.dir).filter(unadopted), this.now());
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
@@ -400,6 +434,7 @@ class Engine {
       const replaced = hashOfVersion(fileContentVersion(bytes));
       if (!replaced || replaced === after) return;
       const path = relative(realDir, absPath).split(sep).join("/");
+      if (!isHistoryPath(path)) return;
       // One chain per file, a new Map per write (forgetWritesBefore checks identity); off-chain notes were overwritten.
       this.overwritten.set(
         path,
@@ -439,15 +474,80 @@ class Engine {
     this.windows.push({ id, who, label, startedAt, lastWriteAt, idleMs, changes: new Map() });
   }
 
+  async takeInUnnamedLedger(): Promise<void> {
+    const named = (path: string) =>
+      this.log.entries.some((entry) => entry.files.some((file) => file.path === path));
+    const listed = () => historyFiles(this.dir).some((file) => file.path === MEDIA_LEDGER);
+    const hash =
+      this.log.baseline.has(MEDIA_LEDGER) || named(MEDIA_LEDGER) || !listed()
+        ? null
+        : await this.storeIfPresent(MEDIA_LEDGER);
+    if (hash !== null) this.log.baseline.set(MEDIA_LEDGER, hash);
+    this.log.keepsLedger = true;
+    this.persistLog();
+  }
+
   async firstOpen(): Promise<void> {
-    const sweptAt = Date.now();
-    for (const file of listProjectFiles(this.dir)) {
+    const sweptAt = this.now();
+    const files = historyFiles(this.dir);
+    for (const file of files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES)) {
       const hash = await this.storeIfPresent(file.path);
       if (this.whereFolder() !== "here") throw this.replaced();
       if (hash !== null) this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
     }
     this.log.baseline = this.manifest();
+    this.log.keepsLedger = true;
     this.persistLog();
+    this.saveStatCache();
+    this.adoptMediaInBackground(
+      files.filter((file) => file.size > COPY_LATER_ABOVE_BYTES),
+      sweptAt,
+    );
+  }
+
+  adoptMediaInBackground(files: ListedFile[], sweptAt: number): void {
+    let copied = Promise.resolve();
+    for (const file of files) {
+      copied = copied.then(() => this.adopt(file, sweptAt));
+      this.adopting.set(file.path, copied);
+    }
+    this.saveAdopting();
+  }
+
+  saveAdopting(): void {
+    const file = join(this.home, "adopting.json");
+    if (!this.adopting.size) return rmSync(file, { force: true });
+    mkdirSync(this.home, { recursive: true });
+    replaceFileAtomically(file, JSON.stringify([...this.adopting.keys()]), 0o644);
+  }
+
+  async adopt(file: ListedFile, sweptAt: number) {
+    try {
+      if (this.whereFolder() !== "here") return;
+      const stored = await this.storeIfPresent(file.path);
+      await this.queue(async () => {
+        // Still named for the next open until recorded, so a failed record is never logged as added.
+        await this.recordAdopted(file, sweptAt, stored);
+        this.adopting.delete(file.path);
+        this.saveAdopting();
+      });
+    } catch (error) {
+      if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
+    }
+  }
+
+  async recordAdopted(file: ListedFile, sweptAt: number, stored: string | null) {
+    if (stored === null || this.whereFolder() !== "here") return;
+    // A prune that ran while this copy waited for the queue may have taken its bytes.
+    const hash = this.blobs.has(stored) ? stored : await this.storeIfPresent(file.path);
+    if (hash === null) return;
+    const change = { path: file.path, before: null, after: hash };
+    const found = this.overwrittenBy(change, undefined, new Set());
+    const start = found && this.blobs.has(found) ? found : hash;
+    this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
+    this.log.baseline.set(file.path, start);
+    if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
+    this.persistLog(baselineRecord(this.log));
     this.saveStatCache();
   }
 
@@ -464,6 +564,16 @@ class Engine {
     }
   }
 
+  readAdopting(): Set<string> {
+    try {
+      return new Set(
+        JSON.parse(readFileSync(join(this.home, "adopting.json"), "utf-8")) as string[],
+      );
+    } catch {
+      return new Set();
+    }
+  }
+
   saveStatCache(): void {
     const files = JSON.stringify(Object.fromEntries(this.tracked));
     mkdirSync(this.home, { recursive: true });
@@ -477,10 +587,10 @@ class Engine {
   async sweep(): Promise<void> {
     // A folder moved or removed was not emptied, and another project at its path is none of this history's.
     if (this.whereFolder() !== "here") return;
-    const sweptAt = Date.now();
+    const sweptAt = this.now();
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
-    const seen = listProjectFiles(this.dir);
+    const seen = historyFiles(this.dir).filter((file) => !this.adopting.has(file.path));
     const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
@@ -693,6 +803,7 @@ class Engine {
       ? setTimeout(() => this.background(() => this.commitClaim()), idleMs)
       : undefined;
     timer?.unref?.();
+    group.lastWriteAt = this.now();
     this.claimed = { group, key, timer };
     return group.changes.size ? { id: group.id } : null;
   }
@@ -735,7 +846,9 @@ class Engine {
   }
 
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
-    if (!group.changes.size) return null;
+    const undoesEmptied =
+      this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0;
+    if (!group.changes.size && !undoesEmptied) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry: HistoryEntry = { ...pending, endedAt, ...extra };
@@ -800,7 +913,9 @@ class Engine {
 
   /** A watcher saw a write: one sweep per burst takes it in (a deleted folder is reported by its name alone). */
   noteChange(path: string): void {
-    if (this.notedTimer || !affectsProjectSignature(this.dir, resolve(this.dir, path))) return;
+    const absolute = resolve(this.dir, path);
+    if (this.notedTimer || !affectsProjectSignature(this.dir, absolute)) return;
+    if (!isHistoryPath(relative(this.dir, absolute).split(sep).join("/"))) return;
     this.notedTimer = setTimeout(() => {
       this.notedTimer = null;
       this.background(() => this.sweep());
@@ -820,7 +935,7 @@ class Engine {
       await this.settle();
       const window = { ...this.newGroup(who, label), idleMs };
       this.windows.push(window);
-      this.touch(window, Date.now());
+      this.touch(window, this.now());
       const close = () => this.queue(() => this.sweepAndEnd(window));
       return { id: window.id, startedAt: window.startedAt, close };
     });
@@ -829,11 +944,20 @@ class Engine {
   /** A window with no write for its idleMs ends, so a close that never comes cannot hold every later write. */
   touch(window: Group, at: number): void {
     window.lastWriteAt = Math.max(window.lastWriteAt ?? at, at);
+    this.endWhenIdle(window, window.idleMs);
+  }
+
+  endWhenIdle(window: Group, delay: number | undefined): void {
     clearTimeout(window.idleTimer);
-    if (window.idleMs === undefined || !Number.isFinite(window.idleMs)) return;
+    if (window.idleMs === undefined || !Number.isFinite(window.idleMs) || delay === undefined)
+      return;
     window.idleTimer = setTimeout(
-      () => this.background(() => this.sweepAndEnd(window)),
-      window.idleMs,
+      () => {
+        const left = window.idleMs! - (this.now() - (window.lastWriteAt ?? this.now()));
+        if (left > 0) this.endWhenIdle(window, left);
+        else this.background(() => this.sweepAndEnd(window));
+      },
+      Math.min(delay, MAX_TIMER_MS),
     );
     window.idleTimer.unref?.();
   }
@@ -984,7 +1108,7 @@ class Engine {
     return stepTarget(
       this.log.entries,
       direction,
-      (entry) => mine(entry.who) || (everyone && !ofOpenTurn(entry)),
+      (entry) => entry.files.length > 0 && (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
     );
   }
 
@@ -1037,8 +1161,10 @@ class Engine {
       projectId: this.projectId,
       beginWindow: (who, label, options = {}) =>
         this.beginWindow(who, label, options.idleMs ?? this.options.maxGroupMs ?? 30_000),
-      claim: (who, label, paths, options = {}) =>
-        this.queue(() => this.claimNow(who, label, paths, options)),
+      claim: async (who, label, paths, options = {}) => {
+        await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))));
+        return this.queue(() => this.claimNow(who, label, paths, options));
+      },
       noteChange: (path) => {
         if (!this.closed) this.noteChange(path);
       },
@@ -1108,6 +1234,8 @@ class Engine {
       replacedAtPath: () => this.whereFolder() === "replaced",
       close: () =>
         (this.closing ??= (async () => {
+          // A copy cut short would leave its media out of the baseline, so a change made while closed is lost.
+          await Promise.all(this.adopting.values());
           if (this.notedTimer) clearTimeout(this.notedTimer);
           this.stopHearing?.();
           const settled = this.queue(() => this.settleAll());

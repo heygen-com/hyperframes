@@ -128,7 +128,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
         cfg,
       );
       await initializeSession(s);
-      await initTransparentBackground(s.page);
+      await initTransparentBackground(s.page, { clearCompositionRoot: true });
       workerSessions.push(s);
     }
     const sessions: CaptureSession[] = [domSession, ...workerSessions];

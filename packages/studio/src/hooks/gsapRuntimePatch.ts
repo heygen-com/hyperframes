@@ -19,6 +19,7 @@ import {
   type RuntimeTween,
   type RuntimeTimeline,
 } from "./gsapRuntimeKeyframes";
+import { recordLiveSet } from "../utils/softReloadTargets";
 
 /** Value-only channels a `tl.set(...)` patch may touch. */
 export interface SetPatchProps {
@@ -34,6 +35,8 @@ export interface SetPatchProps {
   scaleY?: number;
   scale?: number;
   opacity?: number;
+  width?: number;
+  height?: number;
 }
 
 /** A single keyframe step's numeric channels (the GSAP array-keyframe form). */
@@ -101,6 +104,7 @@ function applyGlobalSet(
     const numeric = finiteNumericProps(props);
     if (!gsapLib?.set || !el || !numeric) return false;
     gsapLib.set(el, numeric);
+    recordLiveSet(el, numeric);
     return true;
   } catch {
     return false;

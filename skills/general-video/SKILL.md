@@ -12,6 +12,8 @@ description: >
 
 # General video
 
+Run `npx hyperframes usage --json` at the start unless the workflow just read it, then check again at milestones such as after drafting and before rendering. Read the available windows and reset times. If usage is unknown, say so without guessing allowance; keep scope and workflow choices with the user.
+
 Before relying on this workflow, run:
 
 ```bash
@@ -64,8 +66,7 @@ Do not invent synonyms for these states. An ongoing “just build it” signal i
 For a hard cut, trim, splice, or reorder of existing footage, duplicate the same
 video source into multiple clip elements. On each copy, set the source range
 with `data-media-start` plus `data-duration`, then set authored placement/order
-with `data-start`. Separately authored audio follows the identical clip ranges
-and timing on matching `<audio>` elements. `/hyperframes-core` owns this temporal
+with `data-start`. Each video segment keeps its sound: the sound stays on the clip (`data-has-audio="true"`), so cutting the video cuts its sound. `/hyperframes-core` owns this temporal
 edit; use `/hyperframes-keyframes` only for visual-property animation such as
 zoom, punch, pan, crop, mask, or `clip-path` on an inner wrapper.
 Copy the full contracts from `../hyperframes-core/references/creator-editing-recipes.md`.
@@ -117,7 +118,7 @@ Use this dependency order. Skip a stage only when its input is absent.
 5. **Merge motion sidecars.** Collect the workers' `compositions/<frame_id>.motion.json` files and carry their durations and exit/entry vectors into assembly; where the doctrine chain (`/motion-doctrine`) is installed, translate them into the project ledger before stamping seams.
 6. **Assemble.** Mount scenes, media, transitions, captions, and audio using the production loop. Real voice duration overrides estimates. When a music bed plays under any voice track, carve the bed before verifying: `/hyperframes-audio` → `scripts/carve.mjs --comp index.html`. A volume duck alone does not finish the mix.
 7. **Verify.** Use `npx hyperframes lint` for fast feedback after the first HTML pass and structural changes. For the final gate, run `npx hyperframes check`; it reruns lint internally, so do not run a redundant standalone lint immediately before it. For sub-compositions, inspect midpoint snapshots. For multi-scene work, review the animation map.
-8. **Final approval.** Open the final Studio preview only after checks pass. Ask whether to render or revise. Render only after approval.
+8. **Final approval.** Once checks pass, open the final Studio preview — in autonomous mode too, before any render: opening it asks nothing. Ask whether to render or revise (autonomous: the one kept question). Render only after approval.
 
 ## 6. Gates that always apply
 

@@ -6,6 +6,7 @@ import { pollSubCompositionTimelines, recordSubTimelineWarning } from "./frameCa
 function makeSession(overrides: Partial<CaptureSession> = {}): CaptureSession {
   return {
     scriptLoadFailures: [],
+    pageErrors: [],
     warnings: [],
     ...overrides,
   } as unknown as CaptureSession;
@@ -80,6 +81,56 @@ describe("recordSubTimelineWarning", () => {
     expect(warning.code).toBe("sub_timeline_script_failure");
     expect(warning.message).toContain("https://example.test/scene.js");
     expect(warning.message).not.toContain("data-no-timeline");
+  });
+
+  it("turns a timeout with an uncaught page error into a script failure naming data-no-timeline", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "timeout",
+      pageErrors: ["runtime-error:ReferenceError: gsap is not defined"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(session.subTimelineWaitOutcome).toBe("timeout");
+    const [warning] = session.warnings;
+    expect(warning.code).toBe("sub_timeline_script_failure");
+    expect(warning.message).toContain("ReferenceError: gsap is not defined");
+    expect(warning.message).toContain("data-no-timeline");
+    expect(warning.details).toMatchObject({
+      sources: ["runtime-error:ReferenceError: gsap is not defined"],
+    });
+  });
+
+  it("names the missing script, not the error it caused, when both are present", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "script_failure",
+      scriptLoadFailures: ["https://example.test/gsap.js"],
+      pageErrors: ["runtime-error:ReferenceError: gsap is not defined"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(session.warnings[0].message).toContain("failed to load");
+  });
+
+  it("names an integrity-blocked script as one that failed to load", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "script_failure",
+      scriptLoadFailures: ["runtime-error:subresource-integrity"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(session.warnings[0].message).toContain("failed to load");
+  });
+
+  // An unrelated error on a page whose timelines did register must not fail the render.
+  it("ignores an uncaught page error when the timelines registered", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "ready",
+      pageErrors: ["runtime-error:Error: third-party widget failed"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(session.subTimelineWaitOutcome).toBe("ready");
+    expect(session.warnings).toEqual([]);
   });
 });
 

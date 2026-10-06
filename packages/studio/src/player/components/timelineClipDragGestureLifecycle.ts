@@ -1,3 +1,4 @@
+import type { TimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { resolveTimelineDragEscape } from "./timelineEditing";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
@@ -37,6 +38,8 @@ interface TimelineGestureCommit {
 type UpdateElement = ReturnType<typeof usePlayerStore.getState>["updateElement"];
 
 interface TimelineClipDragGestureLifecycleInput {
+  commitGestureRef?: RefObject<() => void>;
+  trackInsertLayoutRef?: RefObject<TimelineTrackInsertLayout | undefined>;
   lifecycleRef: RefObject<TimelineGestureLifecycle>;
   sessionEpochRef: RefObject<number>;
   cancelGestureRef: RefObject<
@@ -70,6 +73,7 @@ interface TimelineClipDragGestureLifecycleInput {
   onBlockedEditAttemptRef: RefObject<
     ((element: TimelineElement, intent: BlockedClipState["intent"]) => void) | undefined
   >;
+  onLinkEditRef: RefObject<TimelineEditCallbacks["onLinkEdit"]>;
   readZIndexRef: RefObject<((element: TimelineElement) => number) | undefined>;
   onStackingPatchesRef: RefObject<
     ((patches: StackingPatch[]) => Promise<unknown> | void) | undefined
@@ -80,6 +84,8 @@ interface TimelineClipDragGestureLifecycleInput {
 export function mountTimelineClipDragGestureLifecycle({
   // The explicit destructuring mirrors the single call site's dependency object by design.
   // fallow-ignore-next-line code-duplication
+  commitGestureRef,
+  trackInsertLayoutRef,
   lifecycleRef,
   sessionEpochRef,
   cancelGestureRef,
@@ -107,6 +113,7 @@ export function mountTimelineClipDragGestureLifecycle({
   onResizeElementRef,
   onResizeElementsRef,
   onBlockedEditAttemptRef,
+  onLinkEditRef,
   readZIndexRef,
   onStackingPatchesRef,
   refreshAfterLaneMoveRef,
@@ -118,6 +125,7 @@ export function mountTimelineClipDragGestureLifecycle({
   };
 
   const pointerMatchesGesture = (event: PointerEvent): boolean => {
+    if (draggedClipRef.current?.pointerId === null) return false;
     const pointerId = lifecycleRef.current.pointerId;
     return pointerId === null || event.pointerId === pointerId;
   };
@@ -228,6 +236,11 @@ export function mountTimelineClipDragGestureLifecycle({
     if (drag && pointerMatchesGesture(event)) handleDragPointerMove(event, drag);
   };
 
+  const unlinkAltEdited = (gesture: { element: TimelineElement; altKey?: boolean }) => {
+    if (!gesture.altKey || !gesture.element.link) return;
+    void onLinkEditRef.current?.({ kind: "unlink", elements: [gesture.element] });
+  };
+
   const commitResizePointerUp = (
     resize: ResizingClipState,
     groupSession: TimelineGroupResizeSession | null,
@@ -271,6 +284,7 @@ export function mountTimelineClipDragGestureLifecycle({
       ]);
       console.error("[Timeline] Failed to persist clip resize", error);
     });
+    unlinkAltEdited(resize);
   };
 
   const finishBlockedPointerUp = (blocked: BlockedClipState) => {
@@ -285,6 +299,7 @@ export function mountTimelineClipDragGestureLifecycle({
     commitDraggedClipMove(drag, {
       elements: elementsRef.current,
       trackOrder: trackOrderRef.current,
+      trackInsertLayout: trackInsertLayoutRef?.current,
       updateElement,
       onMoveElement: onMoveElementRef.current,
       onMoveElements: onMoveElementsRef.current,
@@ -293,6 +308,7 @@ export function mountTimelineClipDragGestureLifecycle({
       onStackingPatches: onStackingPatchesRef.current,
       refreshAfterLaneMove: refreshAfterLaneMoveRef.current,
     });
+    unlinkAltEdited(drag);
   };
 
   /** Group gestures commit atomically: one missing member cancels the whole resize. */
@@ -306,10 +322,12 @@ export function mountTimelineClipDragGestureLifecycle({
     );
   };
 
-  const claimActiveGesture = (event: PointerEvent): TimelineGestureCommit | "ignored" | null => {
+  const claimActiveGesture = (
+    event: PointerEvent | null,
+  ): TimelineGestureCommit | "ignored" | null => {
     const lifecycle = lifecycleRef.current;
     if (lifecycle.phase !== "active") return null;
-    if (!pointerMatchesGesture(event)) return "ignored";
+    if (event && !pointerMatchesGesture(event)) return "ignored";
     if (lifecycle.sessionEpoch !== sessionEpochRef.current) {
       cancelGesture();
       return "ignored";
@@ -348,6 +366,12 @@ export function mountTimelineClipDragGestureLifecycle({
       lifecycle.phase = "complete";
     }
   };
+
+  if (commitGestureRef)
+    commitGestureRef.current = () => {
+      const claimed = claimActiveGesture(null);
+      if (claimed && claimed !== "ignored") commitClaimedGesture(claimed);
+    };
 
   const handleWindowPointerUp = (event: PointerEvent) => {
     if (releasedOutsideWindow(event)) return handleWindowPointerCancel(event);
@@ -402,6 +426,7 @@ export function mountTimelineClipDragGestureLifecycle({
   return () => {
     cancelGesture({ updateReact: false });
     cancelGestureRef.current = () => false;
+    if (commitGestureRef) commitGestureRef.current = () => {};
     window.removeEventListener("pointermove", handleWindowPointerMove);
     window.removeEventListener("pointerup", handleWindowPointerUp);
     window.removeEventListener("pointercancel", handleWindowPointerCancel);

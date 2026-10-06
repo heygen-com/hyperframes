@@ -240,7 +240,7 @@ export function AudioRow({
           aria-pressed={playing}
           className={`w-7 h-7 rounded-md shrink-0 flex items-center justify-center transition-colors active:scale-[0.95] ${
             playing
-              ? "bg-panel-accent/15 text-panel-accent"
+              ? "bg-panel-accent/15 text-accent-ink"
               : "text-panel-text-5 group-hover:text-panel-text-3"
           }`}
           onClick={(e) => {
@@ -273,7 +273,7 @@ export function AudioRow({
               </span>
             )}
             {used && (
-              <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded-sm shrink-0">
+              <span className="text-[9px] font-medium text-accent-ink bg-panel-accent/10 px-1.5 py-px rounded-sm shrink-0">
                 in use
               </span>
             )}
@@ -281,7 +281,9 @@ export function AudioRow({
               <span
                 role="status"
                 className={`shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
-                  copyFailed ? "text-red-400 bg-red-500/10" : "text-panel-accent bg-panel-accent/10"
+                  copyFailed
+                    ? "text-danger-ink bg-red-500/10"
+                    : "text-accent-ink bg-panel-accent/10"
                 }`}
               >
                 {copyFailed ? "Copy failed" : "Copied"}

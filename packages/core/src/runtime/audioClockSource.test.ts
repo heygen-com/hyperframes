@@ -167,6 +167,100 @@ describe("the audio the playhead follows", () => {
     expect(lastTime).toBeGreaterThan(1.4);
   });
 
+  it("follows the music across cuts between short clips earlier in the page", async () => {
+    mount(
+      `<audio id="shot1" data-start="0" data-duration="1" src="/assets/a.mp4"></audio>` +
+        `<audio id="shot2" data-start="1" data-duration="1" src="/assets/b.mp4"></audio>` +
+        `<audio id="shot3" data-start="2" data-duration="1" src="/assets/c.mp4"></audio>` +
+        `<audio id="music" data-start="0" data-duration="10" src="/assets/music.wav"></audio>`,
+    );
+    const shots = ["shot1", "shot2", "shot3"].map(
+      (id) => document.getElementById(id) as HTMLAudioElement,
+    );
+    const music = document.getElementById("music") as HTMLAudioElement;
+    let musicTime = 0;
+    const musicSeeks: number[] = [];
+    Object.defineProperty(music, "currentTime", {
+      configurable: true,
+      get: () => musicTime,
+      set: (value: number) => {
+        musicSeeks.push(value);
+        musicTime = value;
+      },
+    });
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const coldStartLagSeconds = 0.25; // how late each shot's sound starts, as a cold clip does at a cut
+    const playedAt = nowMs;
+    musicSeeks.length = 0; // Play itself lands every clip on the playhead
+    Object.assign(music, { paused: false });
+    for (let frame = 1; frame <= 170; frame++) {
+      const t = (nowMs + 1000 / 60 - playedAt) / 1000;
+      musicTime = t;
+      shots.forEach((shot, i) => {
+        if (t < i) return;
+        Object.assign(shot, {
+          paused: t >= i + 1,
+          currentTime: Math.max(0, t - i - coldStartLagSeconds),
+        });
+      });
+      stepFrames(1);
+      expect(window.__player!.getTime()).toBeCloseTo(t, 3);
+    }
+    expect(musicSeeks).toEqual([]);
+  });
+
+  it("keeps following a playing voice when a longer bed starts late", async () => {
+    mount(
+      `<audio id="vo" data-start="0" data-duration="5" src="/assets/vo.mp3"></audio>` +
+        `<audio id="bed" data-start="1" data-duration="60" src="/assets/bed.wav"></audio>`,
+    );
+    const vo = document.getElementById("vo") as HTMLAudioElement;
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    Object.assign(vo, { paused: false });
+    for (let frame = 0; frame < 90; frame++) {
+      stepFrames(1);
+      const t = (nowMs - playedAt) / 1000;
+      vo.currentTime = t;
+      if (t >= 1) Object.assign(bed, { paused: false, currentTime: 0 }); // started, not moving yet
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan(1.4);
+  });
+
+  it("follows a playing clip when the longest one ran out of source early", async () => {
+    mount(
+      `<audio id="shot" data-start="0" data-duration="3" src="/assets/shot.mp4"></audio>` +
+        `<audio id="bed" data-start="0" data-duration="10" src="/assets/bed.wav"></audio>`,
+    );
+    const shot = document.getElementById("shot") as HTMLAudioElement;
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    Object.assign(shot, { paused: false });
+    Object.assign(bed, { paused: false });
+    for (let frame = 0; frame < 150; frame++) {
+      stepFrames(1);
+      const t = (nowMs - playedAt) / 1000;
+      shot.currentTime = t + 0.2; // ahead of the wall clock, so only the shot explains it
+      bed.currentTime = Math.min(t, 1);
+      if (t >= 1) {
+        Object.assign(bed, { paused: true });
+        Object.defineProperty(bed, "ended", { value: true, configurable: true });
+      }
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan((nowMs - playedAt) / 1000 + 0.1);
+  });
+
   it("follows the next clip when one earlier in the page failed to load", async () => {
     mount(
       `<audio id="broken" data-start="0" data-duration="10" src="/assets/missing.mp3"></audio>` +

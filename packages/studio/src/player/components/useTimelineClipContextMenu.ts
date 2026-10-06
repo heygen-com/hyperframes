@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { ClipContextMenuState } from "./TimelineProvider";
+import { selectClipWithLinks } from "./timelineLinkSelection";
 
 /** A clicked member of an active multi-selection keeps the whole group
  *  selected, so the context menu it opens acts on all of it. */
@@ -16,7 +17,7 @@ export function useClipContextMenu(
       e.preventDefault();
       const id = el.key ?? el.id;
       if (!(selectedElementIds.size > 1 && selectedElementIds.has(id))) {
-        setSelectedElementId(id);
+        selectClipWithLinks(id, e.altKey, setSelectedElementId);
         onSelectElement?.(el);
       }
       dismissGapMenu();

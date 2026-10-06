@@ -830,6 +830,7 @@ function probeNvidiaVramMb(): number | null {
       timeout: 3000,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     }).trim();
     const mb = parseInt(out.split("\n")[0] ?? "", 10);
     if (Number.isFinite(mb) && mb > 0) {
@@ -894,6 +895,7 @@ export function buildChromeArgs(
     ...getBrowserGpuArgs(browserGpuMode, platform),
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
+    "--force-device-scale-factor=1",
     `--window-size=${options.width},${options.height}`,
     // Prevent Chrome from throttling background tabs/timers — critical when the
     // page is offscreen during headless capture

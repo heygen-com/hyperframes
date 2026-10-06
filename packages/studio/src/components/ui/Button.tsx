@@ -50,8 +50,8 @@ export const buttonBase = cn(
  */
 export const buttonVariants: Record<ButtonVariant, string> = {
   primary: cn(
-    "bg-accent text-bg-0 font-semibold",
-    "enabled:hover:brightness-110 data-[preview-state=hover]:brightness-110",
+    "bg-accent text-on-accent font-semibold",
+    "enabled:hover:bg-accent-hover data-[preview-state=hover]:bg-accent-hover",
     "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
   ),
   secondary: cn(
@@ -60,8 +60,8 @@ export const buttonVariants: Record<ButtonVariant, string> = {
     "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
   ),
   danger: cn(
-    "bg-danger text-text-0 font-medium",
-    "enabled:hover:brightness-110 data-[preview-state=hover]:brightness-110",
+    "bg-danger text-on-danger font-medium",
+    "enabled:hover:brightness-95 data-[preview-state=hover]:brightness-95",
     "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
   ),
   ghost: cn(

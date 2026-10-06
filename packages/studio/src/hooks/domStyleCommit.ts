@@ -1,14 +1,11 @@
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
+  cssPropertyName,
   isImageBackgroundValue,
   isManualGeometryStyleProperty,
   normalizeDomEditStyleValue,
 } from "../utils/studioHelpers";
-import {
-  injectPreviewGoogleFont,
-  injectPreviewImportedFont,
-  ensureImportedFontFace,
-} from "../utils/studioFontHelpers";
+import { injectPreviewGoogleFont, injectPreviewImportedFont } from "../utils/studioFontHelpers";
 import {
   buildDomEditStylePatchOperation,
   findElementForSelection,
@@ -47,8 +44,14 @@ export interface DomStyleCommitContext {
 export async function commitDomStyles(
   context: DomStyleCommitContext,
   selection: DomEditSelection,
-  styles: Record<string, string>,
+  stylesInEitherCase: Record<string, string>,
 ): Promise<DomEditCommitOutcome> {
+  const styles = Object.fromEntries(
+    Object.entries(stylesInEitherCase).map(([property, value]) => [
+      cssPropertyName(property),
+      value,
+    ]),
+  );
   const entries = Object.entries(styles);
   if (entries.length === 0) return domEditCommitDeclined("no-selection");
   if (entries.some(([property]) => isManualGeometryStyleProperty(property)))
@@ -105,9 +108,7 @@ export async function commitDomStyles(
         label: "Edit layer style",
         // Inline styles are already live, so a reload would only blank the preview.
         skipRefresh: true,
-        prepareContent: importedFont
-          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-          : undefined,
+        importedFont: importedFont ?? undefined,
       }),
     shouldRevert: ownsAny,
     revert: () => {

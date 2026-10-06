@@ -1,3 +1,5 @@
+import type { DomSelectionResult } from "../../hooks/useDomSelectionTypes";
+import { trackPreviewFeatureUsed } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DomEditSelection } from "./domEditing";
@@ -6,6 +8,7 @@ import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
+import { movesGesture } from "./domEditOverlayGestures";
 
 interface MarqueeState {
   startX: number;
@@ -15,6 +18,16 @@ interface MarqueeState {
   pointerId: number;
   pastThreshold: boolean;
   target: Element;
+}
+
+function currentMarqueeCandidates(
+  cached: MarqueeHit[] | null,
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement,
+  path: string,
+): MarqueeHit[] {
+  if (cached?.every((hit) => hit.element.ownerDocument === iframe.contentDocument)) return cached;
+  return collectMarqueeCandidates(iframe, overlay, path);
 }
 
 const MARQUEE_THRESHOLD_PX = 4;
@@ -102,7 +115,9 @@ export interface MarqueeGesturesDeps<T = DomEditSelection> {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   overlayRef: React.RefObject<HTMLDivElement | null>;
   activeCompositionPathRef: React.RefObject<string | null>;
-  onMarqueeSelectRef: React.RefObject<((selections: T[], additive: boolean) => void) | undefined>;
+  onMarqueeSelectRef: React.RefObject<
+    ((selections: T[], additive: boolean) => DomSelectionResult | void) | undefined
+  >;
   /** Turns the elements a drag touched into picks; without it, Studio's edit selections. */
   resolveHits?: (elements: HTMLElement[]) => T[] | Promise<T[]>;
   selectionRef?: React.RefObject<DomEditSelection | null>;
@@ -124,6 +139,10 @@ export interface MarqueeGestures {
   onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerCancel: () => void;
+}
+
+function trackMarqueeSelection(result: DomSelectionResult | void): void {
+  if (result?.changed && result.count > 1) trackPreviewFeatureUsed("multi_select", "drag");
 }
 
 function releaseCapture(m: MarqueeState): void {
@@ -159,13 +178,16 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay || !deps.onMarqueeSelectRef.current) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
-      const candidates = candidatesRef.current ?? collectMarqueeCandidates(iframe, overlay, acp);
+      const candidates = currentMarqueeCandidates(candidatesRef.current, iframe, overlay, acp);
       const elements = hitsWithin(rect, candidates).map((hit) => hit.element);
       const resolveHits = deps.resolveHits;
       const picks = resolveHits
         ? await resolveHits(elements)
         : ((await resolveDomEditSelections(elements, acp)) as T[]);
-      deps.onMarqueeSelectRef.current?.(picks, additive);
+      const applySelection = deps.onMarqueeSelectRef.current;
+      if (!applySelection) return;
+      const result = applySelection(picks, additive);
+      trackMarqueeSelection(result);
     },
     [
       deps.iframeRef,
@@ -221,10 +243,23 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       window.removeEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
   }, [cancel]);
 
+  const showCandidates = useCallback(
+    (rect: Rect) => {
+      const iframe = deps.iframeRef.current;
+      const overlay = deps.overlayRef.current;
+      if (!iframe || !overlay) return;
+      const acp = deps.activeCompositionPathRef.current ?? "index.html";
+      candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
+      setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
+    },
+    [deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
+  );
+
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const m = marqueeRef.current;
       if (m) {
+        if (!movesGesture(m, event)) return;
         const oRect = deps.overlayRef.current?.getBoundingClientRect();
         if (!oRect) return;
         m.currentX = event.clientX - oRect.left;
@@ -243,18 +278,12 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
           height: Math.abs(m.currentY - m.startY),
         };
         setMarqueeRect(rect);
-        const iframe = deps.iframeRef.current;
-        const overlay = deps.overlayRef.current;
-        if (iframe && overlay) {
-          const acp = deps.activeCompositionPathRef.current ?? "index.html";
-          candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
-          setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
-        }
+        showCandidates(rect);
         return;
       }
       deps.gestures?.onPointerMove(event);
     },
-    [deps.gestures, deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
+    [deps.gestures, deps.overlayRef, showCandidates],
   );
 
   const onPointerUp = useCallback(

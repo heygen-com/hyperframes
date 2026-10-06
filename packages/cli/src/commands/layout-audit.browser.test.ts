@@ -31,192 +31,6 @@ describe("layout-audit.browser", () => {
     clearGeometryCollector();
   });
 
-  it("changes the sweep fingerprint when visible video pixels advance", () => {
-    document.body.innerHTML = `
-      <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <video id="footage"></video>
-      </div>
-    `;
-    installGeometry({
-      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
-      footage: rect({ left: 0, top: 0, width: 640, height: 360 }),
-    });
-
-    let pixelValue = 20;
-    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
-      mockReturnValue(value: CanvasRenderingContext2D): void;
-    };
-    getContextSpy.mockReturnValue({
-      drawImage() {},
-      getImageData() {
-        return { data: new Uint8ClampedArray(8 * 8 * 4).fill(pixelValue) };
-      },
-    } as unknown as CanvasRenderingContext2D);
-
-    installAuditScript();
-    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
-      .__hyperframesLayoutGeometry;
-    const before = collect();
-    pixelValue = 220;
-    const after = collect();
-
-    expect(after).not.toBe(before);
-  });
-
-  // PRINFRA-666: an equal-size, equal-position opaque <img> src/visibility
-  // swap (the authoring pattern for a paused-GSAP-cursor-driven "reveal
-  // frame N of a still sequence" composition) moves no geometry and no
-  // opacity, so it was invisible to the fingerprint and false-positived
-  // sweep_static — mediaPixelHash already existed for exactly this pixel-only
-  // motion class, it just wasn't applied to img.
-  it("changes the sweep fingerprint when a same-size opaque img is swapped", () => {
-    document.body.innerHTML = `
-      <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <img id="frame" />
-      </div>
-    `;
-    installGeometry({
-      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
-      frame: rect({ left: 0, top: 0, width: 640, height: 360 }),
-    });
-
-    let pixelValue = 20;
-    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
-      mockReturnValue(value: CanvasRenderingContext2D): void;
-    };
-    getContextSpy.mockReturnValue({
-      drawImage() {},
-      getImageData() {
-        return { data: new Uint8ClampedArray(8 * 8 * 4).fill(pixelValue) };
-      },
-    } as unknown as CanvasRenderingContext2D);
-
-    installAuditScript();
-    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
-      .__hyperframesLayoutGeometry;
-    const before = collect();
-    pixelValue = 220;
-    const after = collect();
-
-    expect(after).not.toBe(before);
-  });
-
-  // Opacity-reveal fixture (CLI feedback digest 2026-07-14): code-typing style
-  // scenes reveal pre-laid-out characters via opacity only — no geometry ever
-  // moves. The sweep fingerprint must treat that as motion, both while a glyph
-  // fades (opacity value changes) and when it crosses the 0.2 visibility floor
-  // (element enters the signature); otherwise `check` misfires `sweep_static`
-  // and authors reach for geometry hacks (a slow host y-drift) to pass.
-  it("changes the sweep fingerprint when text reveals via opacity alone", () => {
-    document.body.innerHTML = `
-      <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <div id="code"><span id="char">c</span></div>
-      </div>
-    `;
-
-    let charOpacity = "0";
-    installGeometry(
-      {
-        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
-        code: rect({ left: 40, top: 40, width: 560, height: 48 }),
-        char: rect({ left: 40, top: 40, width: 18, height: 48 }),
-      },
-      {
-        char: {
-          get opacity() {
-            return charOpacity;
-          },
-        } as Partial<CSSStyleDeclaration>,
-      },
-    );
-
-    installAuditScript();
-    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
-      .__hyperframesLayoutGeometry;
-
-    const hidden = collect(); // below the 0.2 visibility floor — not in the signature
-    charOpacity = "0.5";
-    const fading = collect(); // mid-fade — present, opacity part of the signature
-    charOpacity = "1";
-    const revealed = collect(); // settled
-
-    expect(fading).not.toBe(hidden);
-    expect(revealed).not.toBe(fading);
-  });
-
-  // Variable-font axis animation (registry block `weight-wave`): a crest of
-  // weight travels along a headline by rewriting each character's
-  // font-variation-settings, and NOTHING else changes — no geometry, no
-  // opacity, no canvas. A duplexed face makes it total: Recursive holds one
-  // advance width at every weight by design, so not even the line width
-  // shifts and all six sweep samples hashed identically until the axis string
-  // joined the fingerprint. `check` then failed a working composition with
-  // sweep_static, and the documented remedies (spread the reveal, keep an
-  // element animating) cannot help — the motion is real, the fingerprint was
-  // just blind to it.
-  it("changes the sweep fingerprint when only font-variation-settings moves", () => {
-    document.body.innerHTML = `
-      <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <div id="line"><span id="char">P</span></div>
-      </div>
-    `;
-
-    let axes = '"wght" 400, "slnt" 0';
-    installGeometry(
-      {
-        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
-        line: rect({ left: 40, top: 40, width: 560, height: 48 }),
-        char: rect({ left: 40, top: 40, width: 18, height: 48 }),
-      },
-      {
-        char: {
-          get fontVariationSettings() {
-            return axes;
-          },
-        } as Partial<CSSStyleDeclaration>,
-      },
-    );
-
-    installAuditScript();
-    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
-      .__hyperframesLayoutGeometry;
-
-    const rest = collect();
-    axes = '"wght" 1000, "slnt" -12'; // the crest arrives over this character
-    const crest = collect();
-
-    expect(crest).not.toBe(rest);
-  });
-
-  // The other direction, and it guards the more dangerous failure: a
-  // fingerprint that varies on its own would make sweep_static unfireable and
-  // every green layout verdict meaningless. Identical scene, axes included,
-  // must hash identically.
-  it("keeps the sweep fingerprint identical when nothing moves, font axes included", () => {
-    document.body.innerHTML = `
-      <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <div id="line"><span id="char">P</span></div>
-      </div>
-    `;
-
-    installGeometry(
-      {
-        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
-        line: rect({ left: 40, top: 40, width: 560, height: 48 }),
-        char: rect({ left: 40, top: 40, width: 18, height: 48 }),
-      },
-      {
-        char: { fontVariationSettings: '"wght" 400, "slnt" 0' } as Partial<CSSStyleDeclaration>,
-      },
-    );
-
-    installAuditScript();
-    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
-      .__hyperframesLayoutGeometry;
-
-    expect(collect()).toBe(collect());
-  });
-
   it("uses authored canvas dimensions when the root bounding rect is degenerate", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
@@ -1462,8 +1276,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues.some((issue) => issue.code === "canvas_overflow")).toBe(true);
   });
 
-  it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
-    document.body.innerHTML = `
+  const foreignFrameDom = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
         <div id="n1"></div>
         <div id="n2"></div>
@@ -1474,18 +1287,20 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         </svg>
       </div>
     `;
-    installGeometry(
-      {
-        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
-        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
-        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
-        "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
-      },
-      {
-        n1: { backgroundColor: "rgb(30, 40, 50)" },
-        n2: { backgroundColor: "rgb(30, 40, 50)" },
-      },
-    );
+  const foreignFrameRects = {
+    root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+    n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+    n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+    "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+  };
+  const foreignFrameStyles = {
+    n1: { backgroundColor: "rgb(30, 40, 50)" },
+    n2: { backgroundColor: "rgb(30, 40, 50)" },
+  };
+
+  it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
+    document.body.innerHTML = foreignFrameDom;
+    installGeometry(foreignFrameRects, foreignFrameStyles);
     // Screen CTM translates svg user space by the svg's offset (80, 227): the detached path's
     // start (980, 580) renders at (1060, 807) — 147px below #n1's box — while the anchored
     // path's start (900, 353) renders at (980, 580), inside #n1.
@@ -1499,6 +1314,67 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues[0]?.message).toContain("user-space coordinates would attach");
     expect(issues[0]?.fixHint).toContain("invert getScreenCTM");
   });
+
+  it("does not flag a paste-bug connector still hidden behind its dash offset", () => {
+    document.body.innerHTML = foreignFrameDom;
+    // The fixture above, with #detached fully dash-hidden — draw-on entrance not yet advanced.
+    installGeometry(foreignFrameRects, {
+      ...foreignFrameStyles,
+      detached: { strokeDasharray: "100", strokeDashoffset: "100" },
+    });
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // Hidden only when the visible window sits in one gap; a zero-length dash paints only with a
+  // round/square cap. Path length is 100, so `50 100` at offset 40 is the 10% boundary.
+  it.each([
+    { dasharray: "0 4", offset: "0", count: 0 },
+    { dasharray: "0 4", offset: "0", linecap: "round", count: 1 },
+    { dasharray: "0, 4", offset: "0", linecap: "square", count: 1 },
+    { dasharray: "0px, 999999px", offset: "-99.999px", count: 0 },
+    { dasharray: "0 400", offset: "0", linecap: "round", count: 1 },
+    { dasharray: "0 400", offset: "1", linecap: "round", count: 0 },
+    { dasharray: "4 0", offset: "0", count: 1 },
+    { dasharray: "0", offset: "0", count: 1 },
+    { dasharray: "none", offset: "0", count: 1 },
+    { dasharray: "100px", offset: "100px", count: 0 },
+    { dasharray: "100", offset: "-100", count: 0 },
+    { dasharray: "100", offset: "-150", count: 1 },
+    { dasharray: "10%", offset: "10%", count: 0 },
+    { dasharray: "50 100", offset: "50", count: 0 },
+    { dasharray: "50 100", offset: "40", count: 0 },
+    { dasharray: "50 100", offset: "30", count: 1 },
+    { dasharray: "2 97", offset: "0.5", count: 0 },
+    { dasharray: "1", offset: "1", pathLength: 1, count: 0 },
+    { dasharray: "1", offset: "0.9", pathLength: 1, count: 0 },
+    { dasharray: "1", offset: "0.5", pathLength: 1, count: 1 },
+    { dasharray: "0.1 0.9", offset: "0", pathLength: 1, linecap: "round", count: 1 },
+    { dasharray: "100", offset: "100", pathLength: 0, count: 1 },
+    { dasharray: "0 4", offset: "0", pathLength: 0, count: 1 },
+  ])(
+    "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap, pathLength $pathLength → $count connector_detached",
+    ({ dasharray, offset, linecap, pathLength, count }) => {
+      document.body.innerHTML = foreignFrameDom;
+      if (pathLength !== undefined) {
+        document.getElementById("detached")?.setAttribute("pathLength", String(pathLength));
+      }
+      installGeometry(foreignFrameRects, {
+        ...foreignFrameStyles,
+        detached: {
+          strokeDasharray: dasharray,
+          strokeDashoffset: offset,
+          ...(linecap ? { strokeLinecap: linecap } : {}),
+        },
+      });
+      installConnectorGeometry({ e: 80, f: 227 });
+      installAuditScript();
+
+      expect(runAudit().filter((issue) => issue.code === "connector_detached")).toHaveLength(count);
+    },
+  );
 
   it("skips svgs and paths without connector intent", () => {
     document.body.innerHTML = `
@@ -3423,6 +3299,14 @@ interface CtmTranslate {
   f: number;
 }
 
+// `pathLength.baseVal` as the DOM computes it: a finite SVG number, else 0 (unset, `1.`, `Infinity`, hex).
+function domPathLength(attr: string | null): number {
+  if (attr === null) return 0;
+  const svgNumber = /^\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,)?\s*$/.test(attr);
+  const parsed = svgNumber ? Number(attr.replace(",", "")) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 // happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
 function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = document): void {
   const matrix = { a: 1, b: 0, c: 0, d: 1, e: translate.e, f: translate.f };
@@ -3443,6 +3327,11 @@ function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = do
       const start = { x: numbers[0] ?? 0, y: numbers[1] ?? 0 };
       const end = { x: numbers[numbers.length - 2] ?? 0, y: numbers[numbers.length - 1] ?? 0 };
       Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 100 });
+      // happy-dom has no SVGGeometryElement; mirror the DOM's `pathLength`.
+      Object.defineProperty(path, "pathLength", {
+        ...prop,
+        value: { baseVal: domPathLength(path.getAttribute("pathLength")) },
+      });
       Object.defineProperty(path, "getPointAtLength", {
         ...prop,
         value: (length: number) => (length === 0 ? start : end),

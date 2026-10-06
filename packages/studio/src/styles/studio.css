@@ -16,13 +16,10 @@
   }
 }
 
-/*
- * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
- * browser-native chrome (scrollbars, form controls, focus rings) picks the
- * matching palette instead of defaulting to light against our #0a0a0a body.
- */
-:root {
-  color-scheme: dark;
+[data-theme-reveal]::view-transition-old(root),
+[data-theme-reveal]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
 body {
@@ -48,4 +45,13 @@ body {
    */
   height: 100vh;
   height: 100dvh;
+  /*
+   * Nothing may overflow #root. Dockview parks hidden panel overlays below
+   * the dock, which made the document ~2x the viewport tall; body's
+   * overflow:hidden only blocks user scrolling, so scrollIntoView, focus()
+   * and find-in-page still scrolled the viewport and cut off the header
+   * (repro: select a clip, open the Grade group). `clip`, not `hidden`,
+   * which is itself programmatically scrollable.
+   */
+  overflow: clip;
 }

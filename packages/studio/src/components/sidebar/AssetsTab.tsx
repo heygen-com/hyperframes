@@ -16,6 +16,7 @@ import {
 import { AudioRow } from "./AudioRow";
 import { GlobalAssetsView } from "./GlobalAssetsView";
 import { AssetCard, FontRow } from "./AssetCard";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 interface AssetsTabProps {
   projectId: string;
@@ -177,7 +178,7 @@ function EmptyState({
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
-        className="text-neutral-700"
+        className="text-text-off"
       >
         <path
           d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
@@ -217,7 +218,7 @@ export const AssetsTab = memo(function AssetsTab({
   useEffect(() => {
     if (manifest404Ref.current.has(projectId)) return;
     let cancelled = false;
-    fetch(buildProjectApiPath(projectId, `/preview/.media/manifest.jsonl`))
+    studioApiFetch(buildProjectApiPath(projectId, `/preview/.media/manifest.jsonl`))
       .then((r) => {
         if (!r.ok) {
           manifest404Ref.current.add(projectId);
@@ -349,7 +350,7 @@ export const AssetsTab = memo(function AssetsTab({
               onClick={() => setViewMode(m)}
               className={`flex-1 px-2 py-1 text-[11px] font-medium rounded transition-colors ${
                 viewMode === m
-                  ? "bg-panel-accent/15 text-panel-accent"
+                  ? "bg-panel-accent/15 text-accent-ink"
                   : "text-panel-text-3 hover:text-panel-text-1"
               }`}
             >
@@ -396,7 +397,7 @@ export const AssetsTab = memo(function AssetsTab({
               aria-pressed={activeFilter === "all"}
               className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
                 activeFilter === "all"
-                  ? "bg-panel-accent/15 text-panel-accent"
+                  ? "bg-panel-accent/15 text-accent-ink"
                   : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
               }`}
             >
@@ -410,7 +411,7 @@ export const AssetsTab = memo(function AssetsTab({
                   aria-pressed={activeFilter === cat}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
                     activeFilter === cat
-                      ? "bg-panel-accent/15 text-panel-accent"
+                      ? "bg-panel-accent/15 text-accent-ink"
                       : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
                   }`}
                 >
@@ -425,7 +426,7 @@ export const AssetsTab = memo(function AssetsTab({
                   onClick={() => setUsageFilter(usageFilter === "used" ? "all" : "used")}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
                     usageFilter === "used"
-                      ? "bg-panel-accent/15 text-panel-accent"
+                      ? "bg-panel-accent/15 text-accent-ink"
                       : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
                   }`}
                 >
@@ -435,7 +436,7 @@ export const AssetsTab = memo(function AssetsTab({
                   onClick={() => setUsageFilter(usageFilter === "unused" ? "all" : "unused")}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
                     usageFilter === "unused"
-                      ? "bg-panel-accent/15 text-panel-accent"
+                      ? "bg-panel-accent/15 text-accent-ink"
                       : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
                   }`}
                 >

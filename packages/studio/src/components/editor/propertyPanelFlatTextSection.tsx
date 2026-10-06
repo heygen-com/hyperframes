@@ -1,3 +1,4 @@
+import type { PropertyPanelProps } from "./propertyPanelTypes";
 import { useEffect, useState } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { Plus, X } from "../../icons/SystemIcons";
@@ -246,13 +247,15 @@ export function FlatTextSection({
   element: DomEditSelection;
   styles: Record<string, string>;
   fontAssets: ImportedFontAsset[];
-  onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
-  onSetText: (value: string, fieldKey?: string) => void;
-  onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
-  onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;
-  onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
-  onRemoveTextField: (fieldKey: string) => void;
-}) {
+} & Pick<
+  PropertyPanelProps,
+  | "onImportFonts"
+  | "onSetText"
+  | "onSetTextFieldStyle"
+  | "onPreviewTextFieldStyle"
+  | "onAddTextField"
+  | "onRemoveTextField"
+>) {
   const track = useTrackDesignInput();
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,

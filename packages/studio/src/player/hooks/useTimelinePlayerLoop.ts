@@ -60,7 +60,7 @@ export function useTimelinePlayerLoop({
         const looping = usePlayerStore.getState().loopEnabled && dur > 0;
         setLoopStart(looping ? loopStart : null);
         if (time >= loopEnd) {
-          if (looping) {
+          if (looping && !usePlayerStore.getState().playLocked) {
             // keepPlaying skips the adapter's implicit pause; play() below is then a no-op.
             adapter.seek(loopStart, { keepPlaying: true });
             liveTime.notify(loopStart);

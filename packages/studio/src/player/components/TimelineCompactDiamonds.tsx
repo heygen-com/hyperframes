@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { KeyframeCacheEntry, TimelineElement } from "../store/playerStore";
 import { CLIP_Y } from "./timelineLayout";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
@@ -22,6 +23,7 @@ interface TimelineCompactDiamondsProps extends Pick<
   beatsActive: boolean;
   accentColor: string;
   isSelected: boolean;
+  passengerStyle?: CSSProperties;
   rovingTargetId: string | null;
 }
 
@@ -35,6 +37,7 @@ export function TimelineCompactDiamonds({
   beatsActive,
   accentColor,
   isSelected,
+  passengerStyle,
   currentTime,
   selectedKeyframes,
   rovingTargetId,
@@ -55,6 +58,7 @@ export function TimelineCompactDiamonds({
         width,
         height: rowHeight - 2 * CLIP_Y,
         zIndex: isSelected ? 11 : 6,
+        ...passengerStyle,
       }}
     >
       <TimelineClipDiamonds

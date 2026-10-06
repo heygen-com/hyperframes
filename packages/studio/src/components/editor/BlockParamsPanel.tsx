@@ -170,7 +170,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
           <div className="text-[10px] text-neutral-500">This block has no editable parameters.</div>
         )}
         {!fileManager && params.length > 0 && (
-          <div className="text-[10px] text-amber-400/90">
+          <div className="text-[10px] text-warning-ink">
             Block params can't be edited here — no project file access.
           </div>
         )}
@@ -189,12 +189,12 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
           </div>
         )}
         {commitState.tone === "saved" && (
-          <div className="text-[10px] text-emerald-500/90" role="status">
+          <div className="text-[10px] text-accent-ink" role="status">
             Saved to {compositionPath}
           </div>
         )}
         {commitState.tone === "error" && (
-          <div className="text-[10px] text-red-400" role="alert">
+          <div className="text-[10px] text-danger-ink" role="alert">
             {commitState.message}
           </div>
         )}

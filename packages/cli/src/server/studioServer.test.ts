@@ -55,6 +55,7 @@ vi.mock("@hyperframes/engine", () => ({
   buildChromeArgs: () => [],
   killTrackedProcesses: () => {},
   closeBrowserPool: () => engineState.closeBrowserPool(),
+  getSystemTotalMb: () => 0,
 }));
 vi.mock("../browser/gpuPolicy.js", () => ({
   resolveCaptureBrowserGpuMode: async () => "software",
@@ -184,6 +185,44 @@ describe("createStudioServer project history (D-491)", () => {
     },
   );
 
+  it("never makes a request wait on another process's history lock again once it was busy", async () => {
+    const waits: unknown[] = [];
+    historyState.open = async (options) => {
+      waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);
+      throw new HistoryBusyError(1);
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    await server.app.request(historyUrl);
+    await server.app.request(historyUrl);
+    historyState.open = null;
+    expect(waits).toEqual([undefined, 0]);
+    await server.shutdown();
+  });
+
+  it("waits for the history lock again once a history opened after a busy one", async () => {
+    const waits: unknown[] = [];
+    const reopenable = { replacedAtPath: () => true, close: async () => {} };
+    let opens = 0;
+    historyState.open = async (options) => {
+      waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);
+      opens += 1;
+      if (opens === 1) throw new HistoryBusyError(1);
+      if (opens === 2) return reopenable;
+      historyState.open = null;
+      throw new HistoryBusyError(1);
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    await server.app.request(historyUrl);
+    await server.app.request(historyUrl);
+    historyState.open = null;
+    expect(waits).toEqual([undefined, 0, undefined]);
+    await server.shutdown();
+  });
+
   it("opens a new project's own history once it takes the folder's path", async () => {
     const projectDir = tmpProject();
     writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
@@ -290,6 +329,19 @@ describe("createStudioServer shutdown", () => {
       jobId,
     };
   }
+
+  it("hands the limiter's audioLoweredDb to the job state and the render sidecar", async () => {
+    producerState.executeRenderJob = async (job) => {
+      if (typeof job === "object" && job !== null) Reflect.set(job, "audioLoweredDb", 1.44);
+    };
+    const outputPath = join(mkdtempSync(join(tmpdir(), "hf-lowered-")), "out.mp4");
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender(startRenderOpts("job-lowered", outputPath));
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), { timeout: 5_000 });
+    expect(state.audioLoweredDb).toBe(1.44);
+    const meta = JSON.parse(readFileSync(outputPath.replace(/\.mp4$/, ".meta.json"), "utf8"));
+    expect(meta.audioLoweredDb).toBe(1.44);
+  });
 
   it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {
     const events: string[] = [];
@@ -490,6 +542,10 @@ describe("createStudioServer shutdown", () => {
 });
 
 describe("Studio thumbnail capture", () => {
+  // The thumbnail browser lease is module-wide; without a shutdown the next test inherits this one's fake.
+  afterEach(async () => {
+    await server?.shutdown();
+  });
   function fakePageBrowser(onEvaluate = () => {}) {
     const screenshot = vi.fn(async () => Buffer.from("jpeg"));
     const evaluate = vi.fn(async () => onEvaluate());
@@ -508,7 +564,7 @@ describe("Studio thumbnail capture", () => {
       browser: { connected: true, newPage: async () => page, on: () => {} },
       release: async () => {},
     });
-    return { screenshot };
+    return { screenshot, evaluate };
   }
   const opts = (dir: string, signal = new AbortController().signal) => ({
     project: { id: "demo", dir, title: "demo" },
@@ -536,6 +592,20 @@ describe("Studio thumbnail capture", () => {
       server.adapter.generateThumbnail?.(opts(dir, aborting.signal)),
     ).resolves.toBeNull();
     expect(screenshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("undoes a row's isolation after its screenshot, since the page is reused", async () => {
+    const { screenshot, evaluate } = fakePageBrowser();
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await server.adapter.generateThumbnail?.({ ...opts(dir), selector: "#title" });
+    const clears = evaluate.mock.calls.flatMap((call, i) =>
+      ((call as unknown[])[0] as { name?: string }).name === "clearElementScreenshotIsolation"
+        ? [evaluate.mock.invocationCallOrder[i]!]
+        : [],
+    );
+    expect(clears).toHaveLength(1);
+    expect(clears[0]).toBeGreaterThan(screenshot.mock.invocationCallOrder[0]!);
   });
 
   it("reuses the cached project signature instead of walking the project per thumbnail", async () => {

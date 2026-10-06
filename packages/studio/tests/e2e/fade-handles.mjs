@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// On a clip narrower than two fade hit boxes, each dot must still lay out at 10 x 10.
+// On a clip narrower than two fade hit boxes, each tab must still lay out at 4 x 15.
 // Flex shrinking only happens in real layout, so this measures it in Chrome.
 import { launchStudioChrome } from "./chrome-executable.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
-const DOT_PX = 10;
+const TAB_PX = { width: 4, height: 15 };
 const NARROW_CLIP_MAX_PX = 20;
 
 if (!STUDIO_URL) {
@@ -33,7 +33,7 @@ try {
       clip: rect(el),
       handles: ["in", "out"].map((edge) => {
         const handle = el.querySelector(`[data-testid="clip-fade-handle-${edge}"]`);
-        return { edge, hit: rect(handle), dot: rect(handle.firstElementChild) };
+        return { edge, hit: rect(handle), tab: rect(handle.firstElementChild) };
       }),
     };
   });
@@ -42,9 +42,11 @@ try {
       `fixture clip is ${evidence.clip.width}px wide, not under ${NARROW_CLIP_MAX_PX}px`,
     );
   }
-  for (const { edge, dot } of evidence.handles) {
-    if (dot.width !== DOT_PX || dot.height !== DOT_PX) {
-      failures.push(`fade-${edge} dot is ${dot.width}x${dot.height}, expected ${DOT_PX}x${DOT_PX}`);
+  for (const { edge, tab } of evidence.handles) {
+    if (tab.width !== TAB_PX.width || tab.height !== TAB_PX.height) {
+      failures.push(
+        `fade-${edge} tab is ${tab.width}x${tab.height}, expected ${TAB_PX.width}x${TAB_PX.height}`,
+      );
     }
   }
 } finally {

@@ -371,11 +371,13 @@ The cloud renderer seeks the timeline frame-by-frame. Non-deterministic or self-
 | `Date.now()`, `performance.now()` | hard-coded timing or `tl.time()` in `onUpdate` |
 | `setInterval`, `setTimeout` | timeline tweens + `onUpdate` |
 | `requestAnimationFrame` | GSAP tweens |
-| `repeat: -1` | `repeat: Math.max(0, Math.floor(duration / cycle) - 1)` |
+| `repeat: -1` without root `data-duration` | a finite root `data-duration` (export clips to it), or `repeat: Math.max(0, Math.floor(duration / cycle) - 1)` |
 | `stagger: { from: "random" }` | `from: "start"`, `"center"`, or `"end"` |
 | async timeline construction | build synchronously at page load |
 | `video.play()` / `audio.play()` | the framework owns playback |
-| `<video>` without `muted playsinline` | always `muted playsinline`; audio on a separate `<audio>` |
+| `<video>` with sound            | `data-has-audio="true"`, no `muted` |
+| Music, voiceover, or replacement audio | separate `<audio>` |
+| Silent footage and b-roll       | `muted` |
 | exit tweens before a shader | the shader IS the exit — content stays visible |
 | `tl.set`/`tl.to` on an anchor container (beyond the required first-anchor `opacity:1` set) | HyperShader owns anchor opacity; only `tl.set(firstAnchor, { opacity: 1 }, start)` is allowed |
 | `autoAlpha` on an anchor scene | anchors use `opacity` (HyperShader-managed); `autoAlpha` is for non-anchor scenes |
@@ -427,6 +429,6 @@ You don't author any of this. Produce a clean, on-brand, correctly-timed silent 
 - [ ] No exit tweens except on the final scene
 
 **Renders correctly:**
-- [ ] No `Date.now()`, unseeded `Math.random()`, `setInterval/Timeout`, `requestAnimationFrame`, `repeat: -1`
+- [ ] No `Date.now()`, unseeded `Math.random()`, `setInterval/Timeout`, `requestAnimationFrame`, or `repeat: -1` without a finite root `data-duration`
 - [ ] Timeline built synchronously; paused; framework owns playback
 - [ ] Colors and fonts exact; brand substance preserved: real headline/copy, distinctive figures/stats/data points, product names, and signature visuals carried over verbatim (form adapted, never genericized or invented); no placeholders; ≥2 animation patterns + mid-scene activity per scene

@@ -33,7 +33,7 @@ jobs:
       (github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'release/v'))
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           # Pin every release to an immutable ref. In particular, a merged

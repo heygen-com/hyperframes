@@ -90,7 +90,7 @@ export function AutomationToggle({
         type="button"
         className={`hf-fx-automate w-[16px] shrink-0 rounded-[3px] border font-mono text-[9px] leading-none ${
           automated
-            ? "border-panel-accent text-panel-accent"
+            ? "border-panel-accent text-accent-ink"
             : "border-panel-border-input text-panel-text-2 hover:text-panel-text-0"
         }`}
         aria-pressed={automated}
@@ -237,7 +237,7 @@ export function FxParamRow({
       {/* See the enum row above for why the name wraps instead of truncating. */}
       <span
         className={`hf-fx-label w-[86px] shrink-0 wrap-break-word text-[10px] leading-tight ${
-          automated ? "text-panel-accent" : "text-panel-text-2"
+          automated ? "text-accent-ink" : "text-panel-text-2"
         }`}
       >
         {param.label}

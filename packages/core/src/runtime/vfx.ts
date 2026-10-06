@@ -11,9 +11,8 @@
  * randomness, no state carried between paints. That is the determinism
  * contract the exporter's gate depends on.
  *
- * Every failure is loud: the `[HyperFrames] composition script error:` prefix
- * is what the engine turns into `runtime-error:<compId>` and fails fast on, so
- * a broken chain stops a render instead of silently rendering the wrong frame.
+ * Every failure is loud: the engine records the `[HyperFrames] composition script error:`
+ * prefix as a composition script error, which fails a render whose timeline wait times out.
  */
 
 import {
@@ -44,7 +43,7 @@ import { isCanvasElement, isHtmlElement } from "./domRealm";
  */
 const VFX_REF_VISIBLE_ATTR = "data-vfx-ref-visible";
 
-/** The prefix `frameCapture.ts` matches to fail a render fast. */
+/** The prefix `frameCapture.ts` records as a composition script error. */
 const VFX_ERROR_LABEL = "[HyperFrames] composition script error:";
 
 /**
@@ -118,6 +117,8 @@ interface VfxCaptureSource {
   visible: boolean;
   /** `.hf-vfx-in` measured 0×0 and that has already been reported once. */
   emptyBoxReported: boolean;
+  /** `.hf-vfx-in` measured 0×0 at registration or the last seek, captured or not. */
+  laidOutEmpty: boolean;
 }
 
 /**
@@ -211,6 +212,12 @@ let priorResolver: (() => boolean) | null = null;
 function reportVfxError(message: string): void {
   // eslint-disable-next-line no-console
   console.error(VFX_ERROR_LABEL, `vfx: ${message}`);
+}
+
+/** One frame's capture failed; later frames may still paint, so the engine does not stop the render on it. */
+function reportVfxFrameError(message: string): void {
+  // eslint-disable-next-line no-console
+  console.error(VFX_ERROR_LABEL, `vfx-frame: ${message}`);
 }
 
 function compileShader(
@@ -511,6 +518,7 @@ function resolveCaptureSource(
     // Only a `ref` source may be visible; `resolveRefSource` sets it.
     visible: false,
     emptyBoxReported: false,
+    laidOutEmpty: deviceSize(inner) === null,
   };
 }
 
@@ -907,6 +915,18 @@ function resizeCaptureCanvas(src: VfxCaptureSource, size: { width: number; heigh
   if (src.canvas.height !== size.height) src.canvas.height = size.height;
 }
 
+function captureEmpty(
+  entry: VfxEntry,
+  src: VfxCaptureSource,
+  size: { width: number; height: number },
+  mode: CaptureMode,
+): true {
+  resizeCaptureCanvas(src, size);
+  src.ctx.clearRect(0, 0, size.width, size.height);
+  if (mode.upload) uploadCaptureTexture(entry.gl, src);
+  return true;
+}
+
 /**
  * Read one source's pixels into its texture. Both `clearRect`s matter: the
  * first because `drawElementImage` composites onto whatever is there, the
@@ -945,28 +965,23 @@ function captureSource(
   // first. An empty `u_src2` is also the right answer — under Alpha the layer
   // it mattes disappears, under Alpha Inverted it passes, which is what After
   // Effects does with a matte that is not there yet.
-  if (!isPaintableSource(src)) {
-    resizeCaptureCanvas(src, size);
-    src.ctx.clearRect(0, 0, size.width, size.height);
-    if (mode.upload) uploadCaptureTexture(entry.gl, src);
-    return true;
-  }
+  if (!isPaintableSource(src)) return captureEmpty(entry, src, size, mode);
   // The one capture failure Chrome does NOT report: inside a `layoutsubtree`
   // canvas a child sized by `inset`/percentages measures 0×0, and
   // `drawElementImage` then succeeds and draws nothing at all — no throw, no
   // warning, a blank layer. Measured (vault `layoutsubtree-capture-rules`),
-  // so it is checked here and said out loud, once per source rather than once
-  // per frame.
+  // so it is said out loud once per source, and the frame paints from an empty
+  // capture rather than repeating the last one.
   if (deviceSize(src.inner) === null) {
     if (!src.emptyBoxReported) {
       src.emptyBoxReported = true;
-      reportVfxError(
+      reportVfxFrameError(
         `${describeHost(entry.host)}: the .hf-vfx-in wrapper measures 0×0, so its capture ` +
           `would be empty. Inside a layoutsubtree canvas an inset or percentage box has no ` +
           `size — the wrapper must state an explicit width and height in px.`,
       );
     }
-    return false;
+    return captureEmpty(entry, src, size, mode);
   }
   resizeCaptureCanvas(src, size);
   src.ctx.clearRect(0, 0, size.width, size.height);
@@ -1201,7 +1216,7 @@ function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<"painted" | "timeo
 async function awaitSourcePaints(entry: VfxEntry, sources: VfxCaptureSource[]): Promise<boolean> {
   const outcomes = await Promise.all(sources.map((source) => awaitCanvasPaint(source.canvas)));
   if (!outcomes.includes("timeout")) return true;
-  reportVfxError(
+  reportVfxFrameError(
     `${describeHost(entry.host)}: no paint arrived within ${CAPTURE_PAINT_TIMEOUT_MS}ms, so ` +
       `this frame's capture was skipped (a BeginFrame-controlled compositor without a tick ` +
       `for this frame is a known cause).`,
@@ -1304,6 +1319,15 @@ async function capturePreviewThenPaint(
   await Promise.all(entries.map((entry) => capturePaintedHost(entry, t, seq, speculative)));
 }
 
+/** A `.hf-vfx-in` first painted at 0×0 and then sized can stay blank in its capture until re-inserted (measured). */
+function reinsertRegrownSources(): void {
+  for (const src of registry.flatMap(entrySources)) {
+    const empty = deviceSize(src.inner) === null;
+    if (src.laidOutEmpty && !empty) src.canvas.insertBefore(src.inner, src.inner.nextSibling);
+    src.laidOutEmpty = empty;
+  }
+}
+
 /**
  * Repaint every registered chain for composition-local time `t`. Called from
  * the runtime transport's `seek` (preview) and `renderSeek` (engine) — the two
@@ -1337,6 +1361,7 @@ async function capturePreviewThenPaint(
 export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   lastPaintTime = t;
   const seq = ++paintSeq;
+  reinsertRegrownSources();
   const capturing: VfxEntry[] = [];
   for (const entry of registry) {
     // Reported once, at the moment of loss; repeating it per frame is spam.

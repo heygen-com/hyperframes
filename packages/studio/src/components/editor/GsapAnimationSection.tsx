@@ -24,13 +24,13 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   return (
     <Section title="Animation" icon={<Film size={15} />}>
       {multipleTimelines && (
-        <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+        <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-warning-ink">
           This file has multiple GSAP timelines. Animation editing is disabled to prevent data loss
           — consolidate into a single timeline to enable editing.
         </p>
       )}
       {unsupportedTimelinePattern && (
-        <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+        <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-warning-ink">
           This timeline uses a computed key (window.__timelines[variable]) the editor can&apos;t
           resolve statically. Use a string-literal key (window.__timelines[&quot;id&quot;]) or a
           variable declaration (const tl = gsap.timeline()) to enable editing.

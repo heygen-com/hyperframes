@@ -16,12 +16,23 @@
 
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import {
+  HF_AUDIO_FADE_IN_ATTR,
+  HF_AUDIO_FADE_OUT_ATTR,
+  readElementFades,
+  readFadeSeconds,
+} from "@hyperframes/core/audio-fade";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
-import { getTimelineElementIdentity, previewElementFinder } from "./timelineElementHelpers";
+import {
+  getTimelineElementIdentity,
+  previewElementFinder,
+  resolveMediaElement,
+} from "./timelineElementHelpers";
+import { elementVolume, parseStoredVolume } from "./storedVolume";
 
 /**
- * Re-read every element's automation and FX-chain attributes from the preview
+ * Re-read every element's automation, FX-chain, fade and volume attributes from the preview
  * document, for a change that reached the DOM without going through this store.
  *
  * That is undo and redo. A soft restore patches the reverted attributes onto the
@@ -34,21 +45,22 @@ import { getTimelineElementIdentity, previewElementFinder } from "./timelineElem
  * reverted is only known by looking.
  */
 /**
- * What an element's four synced fields SHOULD read, given the preview.
+ * What an element's seven synced fields SHOULD read, given the preview.
  *
- * Its own two come off its node; the other two are its copy of what its group
+ * Its own five come off its node; the other two are its copy of what its group
  * carries. The timeline derives a group's lanes and chain from these mirrors,
- * never from the group element — and the FX rack is not group-aware: selecting
- * a group and automating one of its parameters writes `data-automation` on the
- * group node through the ordinary element path, which used to refresh an
- * element's own two fields and nothing else. So the group's row went on reading
- * the value it was born with, and its `∿` never appeared.
+ * never from the group element, and automating a group writes `data-automation`
+ * on the group node through the ordinary element path, so both halves are re-read.
  */
 function syncedFields(doc: Document, element: TimelineElement, node: Element) {
   const group = element.audioGroup ? groupInfoFor(doc, element.audioGroup) : null;
+  const fades = readElementFades(node);
   return {
     automation: node.getAttribute(HF_AUDIO_AUTOMATION_ATTR) ?? undefined,
     fxChain: node.getAttribute(HF_AUDIO_FX_ATTR) ?? undefined,
+    fadeIn: storedFade(fades.fadeIn),
+    fadeOut: storedFade(fades.fadeOut),
+    volume: elementVolume(node, resolveMediaElement(node) ?? node),
     audioGroupAutomation: group?.automation,
     audioGroupFxChain: group?.fxChain,
   };
@@ -74,27 +86,35 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
   });
 }
 
-const STORED_FIELD: Record<string, "automation" | "fxChain"> = {
-  [HF_AUDIO_AUTOMATION_ATTR]: "automation",
-  [HF_AUDIO_FX_ATTR]: "fxChain",
+/** Discovery's rule (applyFadeMetadataFromElement): a fade of 0 is no fade. */
+const storedFade = (seconds: number) => (seconds > 0 ? seconds : undefined);
+
+const STORED_FIELD: Record<string, (value: string | null) => Partial<TimelineElement>> = {
+  [HF_AUDIO_AUTOMATION_ATTR]: (value) => ({ automation: value ?? undefined }),
+  [HF_AUDIO_FX_ATTR]: (value) => ({ fxChain: value ?? undefined }),
+  [HF_AUDIO_FADE_IN_ATTR]: (value) => ({ fadeIn: storedFade(readFadeSeconds(value)) }),
+  [HF_AUDIO_FADE_OUT_ATTR]: (value) => ({ fadeOut: storedFade(readFadeSeconds(value)) }),
+  // A quick volume save writes no other field the store keeps: without this, a clip read its last load's volume.
+  "data-volume": (value) => ({ volume: parseStoredVolume(value) }),
 };
 
-/** Record a saved automation or FX-chain value on one element's stored copy. */
+/** Record a saved automation, FX-chain, fade or volume value on one element's stored copy. */
 export function syncStoredElementAttribute(
   target: TimelineElement,
   attr: string,
   value: string | null,
 ): void {
-  const field = STORED_FIELD[attr];
-  if (!field) return;
+  const fields = STORED_FIELD[attr]?.(value);
+  if (!fields) return;
   const key = getTimelineElementIdentity(target);
-  const next = value ?? undefined;
+  const same = (element: TimelineElement) =>
+    (Object.keys(fields) as (keyof TimelineElement)[]).every((k) => element[k] === fields[k]);
   usePlayerStore.setState((state) => {
     let changed = false;
     const elements = state.elements.map((element) => {
-      if (getTimelineElementIdentity(element) !== key || element[field] === next) return element;
+      if (getTimelineElementIdentity(element) !== key || same(element)) return element;
       changed = true;
-      return { ...element, [field]: next };
+      return { ...element, ...fields };
     });
     return changed ? { elements } : {};
   });

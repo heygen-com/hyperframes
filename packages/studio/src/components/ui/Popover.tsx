@@ -6,7 +6,7 @@
 import { Popover as BasePopover } from "@base-ui/react/popover";
 import type { ComponentPropsWithoutRef, ReactElement, ReactNode } from "react";
 import { cn } from "./cn";
-import { popupSurface, type PopupPreviewState } from "./Menu";
+import { POPUP_LAYER, popupSurface, type PopupPreviewState } from "./Menu";
 
 type PortalContainer = ComponentPropsWithoutRef<typeof BasePopover.Portal>["container"];
 
@@ -70,7 +70,7 @@ export function Popover({
           sideOffset={sideOffset}
           collisionPadding={VIEWPORT_MARGIN}
           arrowPadding={ARROW_CORNER_CLEARANCE}
-          className="z-200"
+          className={POPUP_LAYER}
         >
           <BasePopover.Popup
             aria-label={ariaLabel}

@@ -61,8 +61,8 @@
       ],
       "sources": {
         "packages/producer/scripts/run-test-lane.mjs": "bff02680f19eebcce0df72cdeedbbc05edfdcede3f3f60658fc0cb18ed8c59f6",
-        "packages/producer/scripts/test-classification.mjs": "fa9452d63a9f3b76ab6be7ff001acddfbf3eb117159d932dcd1510eb88b4b5c6",
-        ".github/workflows/ci.yml#job#producer-source-tests": "3709c6ac6c9f5c7c66f57fc6c1c106aec4ffe906f919eb7cdf2a6ce1d4e0974c",
+        "packages/producer/scripts/test-classification.mjs": "ae0cd9e09bf93df932d41649855f86ebb2230b25aabf3e56355fed8f101a0322",
+        ".github/workflows/ci.yml#job#producer-source-tests": "45da72aa6cf08cdfd5bcf5311e89f12af4842f9eebc6735df19da8c02f4d4864",
         "packages/producer/package.json#script#test:unit": "ae6beda8319d166774be958ea5593cd27dbf7f6c9bce1d787a3fe28dfc3477b1",
         "packages/producer/package.json#script#test:integration": "008589f37d026877595a13501cbb66abd5cbe50e21fdcac6904f45466c3f475d",
         "packages/producer/package.json#script#test:classification": "4ad50d88c81de374dd6ef8a53d702a4b1901483837ecd3d833b1cb0c9a29a058",

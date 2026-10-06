@@ -160,6 +160,35 @@
     var(--timeline-clip-shadow);
 }
 
+.timeline-clip:not(.is-audio) {
+  border-width: 0;
+}
+
+.timeline-clip__content {
+  border-radius: inherit;
+}
+
+.timeline-clip:not(.is-audio) .timeline-clip__content {
+  top: var(--timeline-clip-band-height);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.timeline-clip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  border-radius: inherit;
+  background: var(--timeline-clip-chip-text);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.timeline-clip.is-hovered::after {
+  opacity: 0.1;
+}
+
 .timeline-transition {
   position: absolute;
   width: 0;
@@ -253,6 +282,52 @@
   border-radius: var(--timeline-clip-audio-radius);
 }
 
+.timeline-fade-tab {
+  position: absolute;
+  border-radius: 2px;
+  background: var(--timeline-fade-dot);
+  box-shadow:
+    0 0 0 1px var(--timeline-fade-dot-ring),
+    0 1px 3px var(--timeline-fade-dot-ring);
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.timeline-fade-handle:hover .timeline-fade-tab,
+.timeline-fade-handle[data-dragging] .timeline-fade-tab {
+  transform: scaleY(1.2);
+}
+
+.timeline-fade-handle:focus-visible .timeline-fade-tab {
+  outline: 2px solid var(--timeline-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-fade-tab {
+    transition: none;
+  }
+}
+
+/* A video's sound strip is too short for the peak readout: only the mark stays, on a chip clear of the clip's
+   rounded corner and above the waveform canvas layer (z 10), below the fade handles (z 30). */
+.audible-video-wave [data-peak-text] {
+  display: none;
+}
+
+[data-peak-badge] {
+  z-index: 20;
+}
+
+.audible-video-wave [data-peak-badge] {
+  top: 50%;
+  bottom: auto;
+  right: var(--timeline-clip-radius);
+  translate: 0 -50%;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: var(--timeline-clip-chip-audio-bg);
+}
+
 .timeline-clip.is-audio.is-hovered {
   background-color: var(--timeline-clip-audio-bg-hover);
 }
@@ -270,17 +345,6 @@
   transition: none;
 }
 
-.timeline-audio-link {
-  position: absolute;
-  z-index: 4;
-  top: -9px;
-  left: 50%;
-  width: 1px;
-  height: 10px;
-  background: var(--timeline-audio-link);
-  pointer-events: none;
-}
-
 .timeline-clip.is-hovered {
   background-color: var(--clip-bg-hover);
 }
@@ -289,24 +353,10 @@
   border-color: var(--clip-border-hover);
 }
 
-.timeline-clip.is-selected {
-  outline: 1.5px solid var(--timeline-clip-selection);
-  outline-offset: -1.5px;
-}
-
-.timeline-clip.is-selected::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px var(--timeline-clip-selection-highlight);
-  pointer-events: none;
-}
-
+.timeline-clip.is-selected,
 .timeline-clip[data-active].is-selected {
-  outline: 1.5px solid var(--timeline-clip-selection);
-  outline-offset: -1.5px;
+  outline: 1px solid var(--timeline-clip-selection);
+  outline-offset: 0;
 }
 
 .timeline-clip.is-dragging {
@@ -320,7 +370,6 @@
   position: absolute;
   top: 5px;
   left: 6px;
-  z-index: 6;
   width: fit-content;
   max-width: calc(100% - 22px);
   overflow: hidden;
@@ -336,9 +385,52 @@
   white-space: nowrap;
 }
 
+.timeline-clip:not(.is-audio) .timeline-clip__label {
+  display: flex;
+  z-index: auto;
+  top: 0;
+  left: 0;
+  width: 100%;
+  max-width: 100%;
+  height: var(--timeline-clip-band-height);
+  overflow: visible;
+  padding: 0 min(6px, 25%);
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: var(--timeline-clip-band-bg);
+  font-weight: 600;
+  line-height: var(--timeline-clip-band-height);
+}
+
+.timeline-clip:not(.is-audio) .timeline-clip__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-clip:not(.is-audio) .timeline-clip__label [data-testid="clip-badges"] {
+  position: static;
+  flex-shrink: 0;
+  max-width: 100%;
+  margin-top: 2px;
+}
+
+/* Link groups share a label colour on the border and the name chip. */
+.timeline-clip[data-link-color] {
+  border-color: var(--clip-link-color);
+}
+
+.timeline-clip[data-link-color] .timeline-clip__label {
+  box-shadow: inset 3px 0 0 var(--clip-link-color);
+  padding-left: min(8px, 25%);
+}
+
 .timeline-clip.is-audio .timeline-clip__label {
   top: 11px;
   left: 9px;
+  z-index: 11;
   background: var(--timeline-clip-chip-audio-bg);
 }
 
@@ -346,6 +438,7 @@
   position: absolute;
   bottom: 6px;
   left: 12px;
+  right: 16px;
   overflow: hidden;
   color: var(--timeline-tick-text);
   font-family: var(--font-mono);
@@ -358,7 +451,11 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .timeline-clip {
-    transition: background-color 120ms ease-out;
+    transition: background-color var(--timeline-clip-hover-duration) ease-out;
+  }
+
+  .timeline-clip::after {
+    transition: opacity var(--timeline-clip-hover-duration) ease-out;
   }
 
   .timeline-clip__handle-bar {
@@ -489,6 +586,23 @@
   border-radius: inherit;
   background: linear-gradient(90deg, #06e3fa, #4fdb5e);
   transition: transform 160ms ease;
+}
+
+/* The caret of a text edited in place (InlineTextCaret): lit half the time, like the system caret */
+.hf-inline-text-caret {
+  animation: hf-inline-text-caret-blink 1.06s step-end infinite;
+}
+
+@keyframes hf-inline-text-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-inline-text-caret {
+    animation: none;
+  }
 }
 
 /* Toast enter/exit (StudioToast) */
@@ -839,5 +953,70 @@
   }
   50% {
     transform: scaleY(1);
+  }
+}
+
+/* Framey on the header's "Edit with Framey" (OpenInDesktopButton.tsx): a pulse as the page opens, a wiggle
+ * on hover, a flight towards the app while it opens. The eye follows the pointer from script. */
+@keyframes hf-framey-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-14deg);
+  }
+  60% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes hf-framey-fly {
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(48px, -28px) rotate(25deg) scale(0.6);
+    opacity: 0;
+  }
+}
+
+@keyframes hf-framey-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+.hf-framey-trigger {
+  animation: hf-framey-pulse 1.6s ease-out 3;
+}
+
+.hf-framey {
+  transform-origin: 30% 30%;
+}
+
+.hf-framey-eye {
+  transition: transform 80ms linear;
+}
+
+.hf-framey-trigger:hover .hf-framey {
+  animation: hf-framey-wiggle 0.5s ease-in-out;
+}
+
+.hf-framey-trigger[data-opening] .hf-framey {
+  animation: hf-framey-fly 0.9s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-framey-trigger,
+  .hf-framey-trigger:hover .hf-framey,
+  .hf-framey-trigger[data-opening] .hf-framey {
+    animation: none;
+  }
+  .hf-framey-eye {
+    transition: none;
   }
 }

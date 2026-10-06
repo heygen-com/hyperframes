@@ -277,7 +277,7 @@ npx hyperframes transcribe transcript.json --to srt
 | `--dir, -d`       | Project directory (default: current directory)                                                                                                                                                     |
 | `--engine, -e`    | ASR engine: `auto` (default — Parakeet if installed and the language is one of its 25, else whisper), `parakeet` (fails if Parakeet is missing, broken, or lacks the `--language`), or `whisper` |
 | `--model, -m`     | Whisper model (default `small.en`): `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3`                                                                                                       |
-| `--language, -l`  | Language code (`en`, `es`, `ja`, …). Filters out speech in other languages.                                                                                                                        |
+| `--language, -l`  | Language code (`en`, `es`, `ja`, …). Whisper transcribes as this language; Parakeet, used when it covers it, detects the language itself.                                                          |
 | `--to`            | Export a sidecar instead: `srt` or `vtt`                                                                                                                                                           |
 | `--output, -o`    | Where the exported SRT/VTT goes                                                                                                                                                                    |
 | `--preserve-cues` | Keep each transcript entry as its own caption cue, skipping word-level grouping                                                                                                                    |
@@ -641,7 +641,7 @@ npx hyperframes lint [dir] --json
 ◆  Linting my-project/index.html
 
   ✗ missing_gsap_script: Composition uses GSAP but no GSAP script is loaded.
-  ⚠ unmuted-video [clip-1]: Video should have the 'muted' attribute for reliable autoplay.
+  ⚠ video_missing_muted [clip-1]: <video id="clip-1"> has data-start but declares neither muted nor data-has-audio. If the file has sound, add data-has-audio="true" (the sound stays on this clip). If it is silent, add muted.
 
 ◇  1 error(s), 1 warning(s)
 ```
@@ -662,7 +662,7 @@ did, in one command and one browser session.
 
 ```bash
 npx hyperframes check [dir]
-npx hyperframes check [dir] --json         # {ok, lint, runtime, layout, motion, contrast, snapshots}
+npx hyperframes check [dir] --json         # {ok, browserSkipped, lint, runtime, layout, motion, contrast, hdr, snapshots}
 npx hyperframes check [dir] --snapshots
 npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
@@ -673,6 +673,10 @@ Then it loads the bundled composition once and sweeps a single seek grid,
 running every audit at every sample: runtime console errors and failed requests,
 layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame
 drift), `*.motion.json` assertions, and WCAG AA contrast.
+
+When the browser never ran (lint errors, a linter crash, or a browser launch
+failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
+sections are empty, not clean.
 
 | Flag                                         | Description                                                                                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -746,6 +750,16 @@ HTML. Without a sidecar, nothing changes.
 | `before(a, b)`                 | Broken stagger order — `a` must first appear strictly before `b` (`motion_out_of_order`)                        |
 | `staysInFrame(selector)`       | Off-frame drift — once visible, the box never leaves the canvas (`motion_off_frame`)                            |
 | `keepsMoving(withinSelector?)` | A frozen shot — no fully static window longer than `maxStaticSec`, default 2s (`motion_frozen`)                 |
+
+`keepsMoving` uses the same motion classifier as the frozen-sweep guard: box
+geometry, opacity, text and generated content, form-control state, painted CSS
+counters, clip-path, variable-font axes, and the pixels of visible
+canvas/video/img elements all count as motion — so a playing same-origin (or
+CORS-readable) background video keeps a scope live on its own. Elements under
+`data-layout-ignore` inside the scope never count; the opt-out does not apply to
+the scope element itself, since naming it in an assertion outranks it. Content
+the browser does not paint (`display: none` subtrees, `visibility: hidden`
+boxes, skipped `content-visibility` contents) never counts as motion either.
 
 `duration`, `keepsMoving.withinSelector`, and `keepsMoving.maxStaticSec` are
 optional. Findings use the same shape and envelope as layout findings and are
@@ -1218,7 +1232,8 @@ Topics: `data-attributes`, `examples`, `rendering`, `gsap`, `troubleshooting`,
 
 ### `feedback`
 
-Send anonymous feedback about how it went.
+Send feedback about how it went. It is anonymous unless the app that launched
+the CLI attaches your email (below).
 
 ```bash
 npx hyperframes feedback --rating 10
@@ -1226,7 +1241,9 @@ npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timelin
 npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
 ```
 
-`--rating` is required, 0–10. `--comment` adds free text. `--file-issue`
+`--rating` is required, 0–10. `--comment` adds free text. `--source person`
+or `--source agent` says who wrote a rating report (a `--search-miss` report
+carries neither), so the team can tell a person's feedback from an agent's. `--file-issue`
 also opens a GitHub issue, `--dir` picks the project published as its repro
 (default: current directory), and `--yes, -y` skips the consent prompt for
 scripts.
@@ -1238,7 +1255,12 @@ submit yourself. No token, no backend. See
 
 Agents can call this after a render;
 [About feedback data](/guides/feedback#about-feedback-data) covers what the
-surface includes. With telemetry disabled it prints
+surface includes. An app that launches the CLI can attach its signed-in
+person's email with the `HYPERFRAMES_FEEDBACK_EMAIL` environment variable. It
+is never a flag and never read from a project `.env`, and it goes only into
+the feedback report, not telemetry. It is not verified: treat it as a way to
+reply, not as proof of who sent the report. With
+telemetry disabled it prints
 `Telemetry is disabled. Feedback not sent.` and exits cleanly.
 
 ### `telemetry`

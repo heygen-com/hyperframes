@@ -1,5 +1,7 @@
 export const RUNTIME_PROTOCOL_VERSION = 1 as const;
 
+export const RUNTIME_FILLER = "hf-runtime-filler";
+
 export const RUNTIME_PROTOCOL_CAPABILITIES = [
   "seconds-time",
   "rational-fps",

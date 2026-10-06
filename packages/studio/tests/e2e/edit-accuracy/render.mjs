@@ -9,6 +9,7 @@ import {
   createFileServer,
   initializeSession,
 } from "../../../../producer/src/index.js";
+import { serveFixtureAssetsLocally } from "./case.mjs";
 import { BACKGROUND, COMPOSITION, PLAYHEAD, TARGET } from "./grid.mjs";
 
 const FPS = { num: 30, den: 1 };
@@ -62,8 +63,8 @@ const luminance = (hex) => {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 };
 
-/** Renders `dir` at the playhead and measures the target's box in the frame. */
-export async function renderBox(dir, decoder) {
+/** Renders `dir` at `time` and measures the target's box in the frame. */
+export async function renderBox(dir, decoder, time = PLAYHEAD) {
   const framesDir = join(dir, ".bench-frames");
   mkdirSync(framesDir, { recursive: true });
   const server = await createFileServer({ projectDir: dir, port: 0, fps: FPS });
@@ -81,10 +82,13 @@ export async function renderBox(dir, decoder) {
       },
       null,
       // A composition with no GSAP never registers a timeline; the default 45 s wait for one changes no pixel.
-      { playerReadyTimeout: 10_000 },
+      // Static-frame dedup opens a second page that would fetch GSAP from the CDN; one frame needs none.
+      { playerReadyTimeout: 10_000, staticFrameDedup: false },
     );
+    // The producer's own browser would fetch GSAP from the CDN; a stalled fetch renders the 0 s frame.
+    await serveFixtureAssetsLocally(session.page);
     await initializeSession(session);
-    const { buffer } = await captureFrameToBuffer(session, 0, PLAYHEAD);
+    const { buffer } = await captureFrameToBuffer(session, 0, time);
     // Diagnostic only: a DOM rect ignores clip-path, so it cannot score a crop.
     const domRect = await session.page.evaluate(() => {
       const r = document.querySelector("#target")?.getBoundingClientRect();

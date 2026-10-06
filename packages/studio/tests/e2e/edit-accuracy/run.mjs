@@ -13,6 +13,7 @@ import puppeteer from "puppeteer-core";
 import { resolveHeadlessShellPath } from "../../../../engine/src/index.ts";
 import { buildGrid, writeFixture } from "./grid.mjs";
 import { killServers, runCase, startServer, stopServer } from "./case.mjs";
+import { runSequence } from "./sequences.mjs";
 import { METRICS, score, writeReport } from "./report.mjs";
 import { renderBox } from "./render.mjs";
 import { aabb, boxDistance } from "./geometry.mjs";
@@ -70,9 +71,9 @@ const errorResult = (error, log) => ({
 const liveRoots = new Set();
 
 /** Render drift: the reloaded preview's visible box against the target's pixel box in a producer frame. */
-async function withRender(dir, decoder, { reloaded, ...measured }, evidence) {
+async function withRender(dir, decoder, { reloaded, ...measured }, evidence, time) {
   const expected = aabb(reloaded.visible);
-  const render = await renderBox(dir, decoder).catch((error) => ({ error }));
+  const render = await renderBox(dir, decoder, time).catch((error) => ({ error }));
   // A producer failure fails render alone; the case's other metrics still count.
   if (render.error)
     return {
@@ -93,6 +94,13 @@ async function withRender(dir, decoder, { reloaded, ...measured }, evidence) {
   };
 }
 
+/** A keyframed case also matches the producer at another keyframe; one it could not render stays null and fails. */
+async function renderKeyframe(dir, decoder, { time, visible }) {
+  const other = await renderBox(dir, decoder, time).catch(() => null);
+  return other && boxDistance(other.box, aabb(visible));
+}
+
+// fallow-ignore-next-line complexity
 async function runOne(spec, browser, decoder, port) {
   const started = Date.now();
   const root = mkdtempSync(join(tmpdir(), "hf-edit-accuracy-"));
@@ -104,18 +112,20 @@ async function runOne(spec, browser, decoder, port) {
   let result;
   let server;
   try {
-    server = await startServer(opt.cli, dir, port, log, join(root, "home"));
-    const measured = await runCase({
+    const served = await startServer(opt.cli, dir, port, log, join(root, "home"));
+    server = served.child;
+    const { keyRender, ...measured } = await (spec.steps ? runSequence : runCase)({
       browser,
       spec,
       dir,
       files,
-      url: `http://127.0.0.1:${port}/#project/case`,
+      url: `http://127.0.0.1:${served.port}/#project/case`,
       evidence,
     });
     await stopServer(server);
     server = null;
-    result = await withRender(dir, decoder, measured, evidence);
+    result = await withRender(dir, decoder, measured, evidence, spec.playhead);
+    if (keyRender) result.renderKey = await renderKeyframe(dir, decoder, keyRender);
   } catch (error) {
     result = errorResult(error, log);
   } finally {

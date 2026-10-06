@@ -37,8 +37,7 @@
             "packages/studio/src/player/components/TimelineLanes.tsx:270",
             "packages/studio/src/player/components/TimelineLanes.tsx:353",
             "packages/studio/src/player/components/TimelineLanes.tsx:357"
-          ],
-          "opacity": 0.5
+          ]
         },
         {
           "id": "clip-label",
@@ -138,7 +137,7 @@
             "packages/studio/src/player/components/timelineTheme.ts:86",
             "packages/studio/src/styles/components.css:155"
           ],
-          "opacity": 0.492
+          "opacity": 0.82
         },
         {
           "id": "active-selected-handle",
@@ -154,7 +153,7 @@
             "packages/studio/src/styles/components.css:165",
             "packages/studio/src/styles/components.css:175"
           ],
-          "opacity": 0.492
+          "opacity": 0.82
         },
         {
           "id": "hovered-handle",
@@ -168,7 +167,7 @@
             "packages/studio/src/player/components/timelineTheme.ts:87",
             "packages/studio/src/styles/components.css:195"
           ],
-          "opacity": 0.456
+          "opacity": 0.76
         },
         {
           "id": "active-hovered-handle",
@@ -188,7 +187,7 @@
             "packages/studio/src/styles/components.css:165",
             "packages/studio/src/styles/components.css:175"
           ],
-          "opacity": 0.456
+          "opacity": 0.76
         },
         {
           "id": "dragging-handle",
@@ -202,7 +201,7 @@
             "packages/studio/src/player/components/timelineTheme.ts:85",
             "packages/studio/src/styles/components.css:213"
           ],
-          "opacity": 0.57
+          "opacity": 0.95
         },
         {
           "id": "active-dragging-handle",
@@ -222,7 +221,7 @@
             "packages/studio/src/styles/components.css:165",
             "packages/studio/src/styles/components.css:175"
           ],
-          "opacity": 0.57
+          "opacity": 0.95
         },
         {
           "id": "quiet-waveform",
@@ -307,66 +306,228 @@
       ]
     },
     {
-      "id": "paper",
-      "selector": ":root[data-theme=\"paper\"]",
-      "canvas": "--timeline-shell-bg",
+      "id": "chrome-dark",
+      "selector": "@theme static",
+      "canvas": "--color-bg-0",
       "pairs": [
         {
-          "id": "quiet-waveform",
-          "foreground": "--timeline-waveform-bar-rgb",
-          "background": ["--timeline-row-bg", "--timeline-clip-audio-bg"],
-          "role": "graphic",
-          "minimum": 3,
-          "sources": [
-            "packages/studio/src/styles/theme.css:336",
-            "packages/studio/src/player/components/AudioWaveform.tsx:144"
-          ],
-          "opacity": 0.64,
-          "format": "rgb-channels"
-        },
-        {
-          "id": "quiet-muted-waveform",
-          "foreground": "--timeline-waveform-muted-rgb",
-          "background": ["--timeline-row-bg", "--timeline-clip-audio-muted-bg"],
-          "role": "graphic",
-          "minimum": 3,
-          "sources": [
-            "packages/studio/src/styles/theme.css:340",
-            "packages/studio/src/player/components/AudioWaveform.tsx:144"
-          ],
-          "opacity": 0.64,
-          "format": "rgb-channels"
-        }
-      ]
-    },
-    {
-      "id": "paper",
-      "selector": ":root[data-theme=\"paper\"]",
-      "canvas": "--timeline-row-bg",
-      "pairs": [
-        {
-          "id": "clip-label",
-          "foreground": "--timeline-clip-chip-text",
-          "background": ["--timeline-clip-bg", "--timeline-clip-chip-bg"],
+          "id": "secondary-text",
+          "foreground": "--color-text-2",
           "role": "text",
           "minimum": 4.5,
-          "sources": [
-            "packages/studio/src/styles/theme.css",
-            "packages/studio/src/styles/components.css"
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed",
+            "panel-on",
+            "panel-on-hover"
           ]
         },
         {
-          "id": "selected-outline",
-          "foreground": "--timeline-clip-selection",
-          "background": ["--timeline-row-bg"],
+          "id": "muted-text",
+          "foreground": "--color-text-muted",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed",
+            "panel-on"
+          ]
+        },
+        {
+          "id": "accent-text",
+          "foreground": "--color-accent-ink",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed",
+            "panel-on",
+            "panel-on-hover",
+            "raised-on-hover"
+          ]
+        },
+        {
+          "id": "danger-text",
+          "foreground": "--color-danger-ink",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed"
+          ]
+        },
+        {
+          "id": "disabled-text",
+          "foreground": "--color-text-off",
           "role": "graphic",
           "minimum": 3,
-          "sources": [
-            "packages/studio/src/styles/theme.css",
-            "packages/studio/src/styles/components.css"
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": ["shell", "panel", "raised", "field"]
+        },
+        {
+          "id": "warning-text",
+          "foreground": "--color-warning-ink",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed"
           ]
+        },
+        {
+          "id": "focus-ring",
+          "foreground": "--color-ring",
+          "role": "graphic",
+          "minimum": 3,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": ["shell", "panel", "raised"]
+        },
+        {
+          "id": "on-accent",
+          "foreground": "--color-on-accent",
+          "background": ["--color-accent"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"]
+        },
+        {
+          "id": "on-accent-hover",
+          "foreground": "--color-on-accent",
+          "background": ["--color-accent-hover"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"]
+        },
+        {
+          "id": "on-danger",
+          "foreground": "--color-on-danger",
+          "background": ["--color-danger"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"]
+        },
+        {
+          "id": "code-keyword",
+          "foreground": "--color-code-keyword",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-name",
+          "foreground": "--color-code-name",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-function",
+          "foreground": "--color-code-function",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-constant",
+          "foreground": "--color-code-constant",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-type",
+          "foreground": "--color-code-type",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-operator",
+          "foreground": "--color-code-operator",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-comment",
+          "foreground": "--color-code-comment",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-string",
+          "foreground": "--color-code-string",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         }
-      ]
+      ],
+      "surfaces": {
+        "shell": ["--color-bg-0"],
+        "panel": ["--color-surface"],
+        "raised": ["--color-raised"],
+        "field": ["--color-input"],
+        "panel-hover": ["--color-surface", "--color-hover"],
+        "raised-hover": ["--color-raised", "--color-hover"],
+        "panel-pressed": ["--color-surface", "--color-press"],
+        "panel-on": ["--color-surface", "--color-on"],
+        "panel-on-hover": ["--color-surface", "--color-on-hover"],
+        "raised-on-hover": ["--color-raised", "--color-on-hover"],
+        "panel-hover-on": ["--color-surface", "--color-hover", "--color-on"]
+      }
+    },
+    {
+      "id": "chrome-light",
+      "selector": ["@theme static", ":root[data-theme=\"paper\"]"],
+      "scheme": "light",
+      "canvas": "--color-bg-0",
+      "pairsFrom": "chrome-dark"
+    },
+    {
+      "id": "timeline-light",
+      "selector": ["@theme static", ":root[data-theme=\"paper\"]"],
+      "scheme": "light",
+      "canvas": "--timeline-shell-bg",
+      "pairsFrom": "dark"
     }
   ]
 }

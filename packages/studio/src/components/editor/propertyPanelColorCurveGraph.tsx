@@ -477,7 +477,7 @@ export function CurveGraph({
           onSettle();
         }
       }}
-      className="mx-auto aspect-square w-full max-w-[200px] touch-none rounded-sm border border-panel-border-input bg-black/20 outline-hidden focus:ring-1 focus:ring-panel-accent"
+      className="mx-auto aspect-square w-full max-w-[200px] touch-none rounded-sm scheme-dark border border-panel-border-input bg-bg-0 outline-hidden focus:ring-1 focus:ring-inset focus:ring-panel-accent"
     >
       <defs>
         <linearGradient id={`hf-hue-axis-${tab.key}`}>
@@ -491,7 +491,7 @@ export function CurveGraph({
         </linearGradient>
       </defs>
       {[0.25, 0.5, 0.75].map((ratio) => (
-        <g key={ratio} stroke="rgba(255,255,255,0.08)" strokeWidth="0.5">
+        <g key={ratio} className="stroke-text-0/10" strokeWidth="0.5">
           <line
             x1={GRAPH_PADDING}
             y1={GRAPH_PADDING + ratio * (GRAPH_SIZE - GRAPH_PADDING * 2)}

@@ -1,4 +1,5 @@
 export { createStudioApi } from "./createStudioApi.js";
+export { MAX_UPLOAD_BYTES } from "./routes/files.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export { affectsPreview } from "./helpers/previewReads.js";
@@ -47,7 +48,11 @@ export {
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";
-export { getElementScreenshotClip, type ScreenshotClip } from "./helpers/screenshotClip.js";
+export {
+  clearElementScreenshotIsolation,
+  getElementScreenshotClip,
+  type ScreenshotClip,
+} from "./helpers/screenshotClip.js";
 export {
   thumbnailDeviceScaleFactor,
   type ThumbnailOutputDimensions,

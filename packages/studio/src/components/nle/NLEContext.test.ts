@@ -126,6 +126,7 @@ describe("NLEProvider — composition source-map scoping", () => {
     expect(observed.filter((map) => map.size === 0)).toHaveLength(2);
     expect(fetchMock).toHaveBeenCalledWith("/api/projects/project-b/files/index.html", {
       signal: expect.any(AbortSignal),
+      credentials: "omit",
     });
     expect(observed.at(-1)).toEqual(new Map([["b-comp", "compositions/b.html"]]));
 

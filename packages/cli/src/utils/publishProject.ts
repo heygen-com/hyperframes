@@ -6,6 +6,9 @@ import ignore, { type Ignore } from "ignore";
 import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 import { buildAuthHeaders } from "../auth/client.js";
 import { tryResolveCredential } from "../auth/index.js";
+import { isAuthError } from "../auth/errors.js";
+import { isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
+import { refreshIfNeeded } from "../cloud/auth.js";
 import { writeProjectLink } from "./projectLink.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
@@ -153,6 +156,48 @@ async function readJson(response: Response): Promise<unknown> {
     .clone()
     .json()
     .catch(() => null);
+}
+
+class CredentialRejectedError extends Error {}
+
+async function metadataRequestError(response: Response, fallback: string): Promise<Error> {
+  const message = await readErrorMessage(response, fallback);
+  return response.status === 401 ? new CredentialRejectedError(message) : new Error(message);
+}
+
+const LOGIN_EXPIRED = "Your login expired. Run hyperframes auth login, then publish again.";
+const LOGIN_CHANGED = "Your login changed during publish. Run publish again.";
+export const API_KEY_ENV_VAR = { env: "HEYGEN_API_KEY", env_alias: "HYPERFRAMES_API_KEY" } as const;
+
+function rejectedCredentialMessage(credential: ResolvedCredential): string {
+  if (
+    credential.type === "api_key" &&
+    (credential.source === "env" || credential.source === "env_alias")
+  ) {
+    return `${API_KEY_ENV_VAR[credential.source]} was rejected. Fix or unset it, then publish again.`;
+  }
+  return LOGIN_EXPIRED;
+}
+
+/** Resolves the credential, or refreshes `checked` (a credential already resolved) without re-resolving. */
+export async function resolvePublishCredential(
+  checked?: ResolvedCredential | null,
+): Promise<ResolvedCredential | null> {
+  try {
+    const credential = checked === undefined ? await tryResolveCredential() : checked;
+    if (!credential) return null;
+    // A checked login can expire during a long proxy bake; refresh it rather than fall back to an API key.
+    const expired =
+      credential.type === "oauth" && isTokenExpired(credential.expires_at, new Date());
+    if (expired && !credential.refresh_token) throw new Error(LOGIN_EXPIRED);
+    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential);
+  } catch (error) {
+    if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {
+      throw new Error(LOGIN_EXPIRED);
+    }
+    if (isAuthError(error) && error.code === "LOGIN_CHANGED") throw new Error(LOGIN_CHANGED);
+    throw error;
+  }
 }
 
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
@@ -602,7 +647,7 @@ async function publishProjectArchiveDirect(
   const payload = await readJson(response);
   const publishedProject = parsePublishedProjectResponse(payload);
   if (!response.ok || !publishedProject) {
-    throw new Error(await readErrorMessage(response, "Failed to publish project"));
+    throw await metadataRequestError(response, "Failed to publish project");
   }
 
   return publishedProject;
@@ -666,7 +711,7 @@ async function publishProjectArchiveStaged(
   const uploadPayload = await readJson(uploadResponse);
   const stagedUpload = parseStagedUploadResponse(uploadPayload, archive.buffer.byteLength);
   if (!uploadResponse.ok || !stagedUpload) {
-    throw new Error(await readErrorMessage(uploadResponse, "Failed to prepare project upload"));
+    throw await metadataRequestError(uploadResponse, "Failed to prepare project upload");
   }
 
   await uploadArchiveToPresignedUrl(stagedUpload, archive);
@@ -694,7 +739,7 @@ async function publishProjectArchiveStaged(
   const completePayload = await readJson(completeResponse);
   const publishedProject = parsePublishedProjectResponse(completePayload);
   if (!completeResponse.ok || !publishedProject) {
-    throw new Error(await readErrorMessage(completeResponse, "Failed to publish project"));
+    throw await metadataRequestError(completeResponse, "Failed to publish project");
   }
 
   return publishedProject;
@@ -714,6 +759,8 @@ export interface PublishOptions {
    * minimal-repro publish) keep today's behavior unchanged.
    */
   archive?: PublishArchiveResult;
+  /** The credential the caller already checked; `null` publishes anonymously. Resolved here when omitted. */
+  credential?: ResolvedCredential | null;
 }
 
 export async function publishProjectArchive(
@@ -724,7 +771,7 @@ export async function publishProjectArchive(
   const title = basename(projectDir);
   const archive = opts.archive ?? createPublishArchive(projectDir);
   const apiBaseUrl = getPublishApiBaseUrl();
-  const credential = await tryResolveCredential();
+  const credential = await resolvePublishCredential(opts.credential);
   const authHeaders = credential ? buildAuthHeaders(credential) : {};
   // A stable id / team space only mean something to an authenticated owner — the server
   // ignores them otherwise, and anonymous publishes always mint a fresh project.
@@ -733,25 +780,37 @@ export async function publishProjectArchive(
   // X-Space-Id rides with the auth headers on the metadata requests only (never the
   // presigned S3 PUT), so the server resolves the shared team space instead of the personal one.
   const metadataHeaders = spaceId ? { ...authHeaders, "x-space-id": spaceId } : authHeaders;
-  const result =
-    (await publishProjectArchiveStaged(
-      apiBaseUrl,
-      title,
-      archive,
-      isPublic,
-      metadataHeaders,
-      projectId,
-    )) ??
-    (await publishProjectArchiveDirect(
-      apiBaseUrl,
-      title,
-      archive,
-      isPublic,
-      metadataHeaders,
-      projectId,
-    ));
+  let result: PublishedProjectResponse;
+  try {
+    result =
+      (await publishProjectArchiveStaged(
+        apiBaseUrl,
+        title,
+        archive,
+        isPublic,
+        metadataHeaders,
+        projectId,
+      )) ??
+      (await publishProjectArchiveDirect(
+        apiBaseUrl,
+        title,
+        archive,
+        isPublic,
+        metadataHeaders,
+        projectId,
+      ));
+    // Only a bearer login owns a publish; the server drops one it cannot verify.
+    if (credential?.type === "oauth" && !result.claimed) {
+      throw new CredentialRejectedError("unclaimed publish");
+    }
+  } catch (error) {
+    if (error instanceof CredentialRejectedError && credential) {
+      throw new Error(rejectedCredentialMessage(credential));
+    }
+    throw error;
+  }
   // Remember the server's id + url so the next publish of this directory updates in place.
-  if (credential) {
+  if (result.claimed) {
     writeProjectLink(projectDir, { projectId: result.projectId, url: result.url });
   }
   return result;

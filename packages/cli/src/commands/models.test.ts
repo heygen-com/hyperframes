@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliRuntimeError, consumeCommandResult } from "../utils/commandResult.js";
 
+const cachedRuntimePath =
+  "/cache/optional/sherpa-onnx-node@1.13.8/node_modules/sherpa-onnx-node/index.js";
 const sherpa = {
   SHERPA_RUNTIME_DIR: "/cache/optional/sherpa-onnx-node@1.13.8",
   PARAKEET_MODEL_DIR: "/cache/parakeet/parakeet-tdt-0.6b-v3-int8",
@@ -44,7 +46,10 @@ describe("models install parakeet --json", () => {
     consumeCommandResult();
     vi.spyOn(console, "log").mockImplementation(() => {});
     sherpa.sherpaUnsupportedReason.mockReturnValue(null);
-    sherpa.installSherpaRuntime.mockResolvedValue(true);
+    sherpa.installSherpaRuntime.mockResolvedValue({
+      installed: true,
+      runtimePath: cachedRuntimePath,
+    });
     sherpa.ensureParakeetModel.mockResolvedValue(false);
   });
   afterEach(() => vi.restoreAllMocks());
@@ -58,6 +63,7 @@ describe("models install parakeet --json", () => {
         model: "parakeet-tdt-0.6b-v3",
         changed: true,
         runtimeDir: sherpa.SHERPA_RUNTIME_DIR,
+        runtimePath: cachedRuntimePath,
         modelDir: sherpa.PARAKEET_MODEL_DIR,
       },
     });
@@ -65,8 +71,22 @@ describe("models install parakeet --json", () => {
   });
 
   it("reports changed: false when the runtime loads and the model verifies", async () => {
-    sherpa.installSherpaRuntime.mockResolvedValue(false);
+    sherpa.installSherpaRuntime.mockResolvedValue({
+      installed: false,
+      runtimePath: cachedRuntimePath,
+    });
     expect((await install()).out).toMatchObject({ ok: true, changed: false });
+  });
+
+  it("reports a selected beside copy while retaining the cache destination", async () => {
+    const runtimePath = "/bundle/node_modules/sherpa-onnx-node/index.js";
+    sherpa.installSherpaRuntime.mockResolvedValue({ installed: false, runtimePath });
+    expect((await install()).out).toMatchObject({
+      ok: true,
+      changed: false,
+      runtimeDir: sherpa.SHERPA_RUNTIME_DIR,
+      runtimePath,
+    });
   });
 
   it("reports a failed install as ok:false with exit 1", async () => {

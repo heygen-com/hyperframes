@@ -9,7 +9,7 @@ import {
   playbackStartAttributeForElement,
   readPlaybackStartAttributes,
 } from "../../player/lib/timelineElementHelpers";
-import { GSAP_TRANSFORM_KEYS, gsapWritesPosition } from "../../hooks/gsapRuntimeKeyframes";
+import { editsPlainCss, GSAP_TRANSFORM_KEYS } from "../../hooks/gsapRuntimeKeyframes";
 
 export type {
   BackgroundRemovalProgress,
@@ -125,8 +125,7 @@ export function localFontSortScore(font: LocalFontData): number {
   return 3;
 }
 
-export function uniqueFontFamilies(values: string[]): string[] {
-  const seen = new Set<string>();
+export function uniqueFontFamilies(values: string[], seen = new Set<string>()): string[] {
   return values.reduce<string[]>((result, value) => {
     const family = value.trim();
     if (!family) return result;
@@ -497,7 +496,7 @@ export function readGsapRuntimeValuesForPanel(
     const el = findPreviewNode(iframe.contentDocument, element);
     if (!el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
-    const readsTransform = gsapWritesPosition(el);
+    const readsTransform = !editsPlainCss(el, "move");
     const result: Record<string, number> = {};
     for (const prop of propKeys) {
       if (!readsTransform && GSAP_TRANSFORM_KEYS.has(prop)) continue;

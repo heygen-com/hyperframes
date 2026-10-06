@@ -249,6 +249,33 @@
         ]
       },
       {
+        "tab": "Studio app",
+        "icon": "laptop",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "studio-app/index",
+              "studio-app/connect-your-agent"
+            ]
+          },
+          {
+            "group": "Make videos",
+            "pages": [
+              "studio-app/first-video",
+              "studio-app/edit-with-the-agent",
+              "studio-app/export"
+            ]
+          },
+          {
+            "group": "Help",
+            "pages": [
+              "studio-app/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Catalog",
         "icon": "grid-2",
         "groups": [

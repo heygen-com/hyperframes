@@ -18,7 +18,11 @@ import {
   resolveTimelineAssetDrop,
   getTimelineBeatEntries,
 } from "./timelineLayout";
-import { generateTicks, getTimelineMajorTickInterval } from "./timelineRulerGeometry";
+import {
+  generateTicks,
+  getTimelineGridStep,
+  getTimelineMajorTickInterval,
+} from "./timelineRulerGeometry";
 import { resolveInsertRow } from "./timelineCollision";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 
@@ -40,6 +44,25 @@ describe("horizontal timeline window", () => {
       ticks.major.every((time) => Math.abs(time / interval - Math.round(time / interval)) < 1e-6),
     ).toBe(true);
     expect(ticks.major.length + ticks.minor.length).toBeLessThan(100);
+  });
+
+  it("spaces the snap grid exactly like the ruler's drawn lines at each zoom", () => {
+    for (const [pps, fps] of [
+      [100, undefined],
+      [12, undefined],
+      [900, undefined],
+      [100, 30],
+      [3, 30],
+    ] as const) {
+      const { major, minor } = generateTicks(60, pps, fps);
+      const lines = [...major, ...minor].sort((a, b) => a - b);
+      expect(getTimelineGridStep(60, pps, fps)).toBeCloseTo(lines[1]! - lines[0]!, 6);
+    }
+  });
+
+  it("has no snap grid where the ruler draws no lines", () => {
+    expect(generateTicks(20_000, 100)).toEqual({ major: [], minor: [] });
+    expect(getTimelineGridStep(20_000, 100)).toBe(0);
   });
 
   it("slices beat records with original strength indexes and unions a pinned beat", () => {

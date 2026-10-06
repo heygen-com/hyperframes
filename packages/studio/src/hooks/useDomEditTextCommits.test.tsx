@@ -160,6 +160,21 @@ describe("useDomEditTextCommits", () => {
     };
   }
 
+  it.each([true, false])(
+    "counts in-place text only after a changed write (%s)",
+    async (changed) => {
+      vi.mocked(trackStudioEvent).mockClear();
+      const { persist, save } = richTextProbe();
+      persist.mockResolvedValue({ changed, sourceFile: "private.html", version: "v2" });
+      await save();
+      expect(vi.mocked(trackStudioEvent).mock.calls).toEqual(
+        changed
+          ? [["feature_used", { feature: "text_edit", surface: "preview", method: "field" }]]
+          : [],
+      );
+    },
+  );
+
   it("saves in-place text while the preview is editable, and refreshes the selection it edited", async () => {
     const applyDomSelection = vi.fn();
     const { persist, element, save } = richTextProbe(undefined, () => ({ applyDomSelection }));
@@ -335,6 +350,29 @@ describe("useDomEditTextCommits", () => {
     expect(outcome).toEqual({ ok: true, persistence });
   });
 
+  it("saves a style map on a selection as one patch, so it is one undo step", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
+    const persist = vi.fn().mockResolvedValue({ sourceFile: "index.html", changed: true });
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: null,
+        persistDomEditOperations: persist,
+      }),
+    );
+
+    await act(async () => {
+      await hook.handleDomStyleCommitForSelection(selectionFor(element), {
+        "border-width": "4px",
+        "border-style": "solid",
+      });
+    });
+
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(element.style.borderWidth).toBe("4px");
+    expect(element.style.borderStyle).toBe("solid");
+  });
+
   it("declines a style commit with no selection, without reaching the writer", async () => {
     const persistDomEditOperations = vi.fn().mockResolvedValue(undefined);
     const hook = renderTextCommitHook(
@@ -464,3 +502,6 @@ describe("useDomEditTextCommits", () => {
     expect(agentElement.textContent).toBe("Edited");
   });
 });
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../utils/studioTelemetry";

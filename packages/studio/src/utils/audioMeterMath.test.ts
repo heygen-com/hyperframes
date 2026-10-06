@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { TimelineElement } from "../player";
 import {
+  hasProjectAudio,
   levelToFraction,
   markFraction,
   SILENT_CHANNEL,
@@ -40,5 +42,40 @@ describe("stepPair", () => {
     const rest = stepPair(undefined, undefined, 0, 16);
     expect(stepPair(rest, { l: 0, r: 0 }, 16, 16)).toBe(rest);
     expect(stepPair(rest, { l: 1, r: 0 }, 32, 16)).not.toBe(rest);
+  });
+});
+
+describe("hasProjectAudio", () => {
+  const clip = (overrides: Partial<TimelineElement>): TimelineElement => ({
+    id: "c",
+    tag: "div",
+    start: 0,
+    duration: 1,
+    track: 0,
+    ...overrides,
+  });
+
+  it("ignores an audible video left on native output at unity gain", () => {
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true })])).toBe(false);
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, volume: 1 })])).toBe(false);
+  });
+
+  it.each<[string, Partial<TimelineElement>]>([
+    ["an above-unity gain", { volume: 2 }],
+    ["an fx chain", { fxChain: "[]" }],
+    ["automation", { automation: "{}" }],
+    ["a group", { audioGroup: "music" }],
+  ])("counts an audible video routed through Web Audio by %s", (_, fields) => {
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, ...fields })])).toBe(true);
+  });
+
+  it("ignores a muted video even when it carries processing", () => {
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, muted: true, volume: 2 })])).toBe(
+      false,
+    );
+  });
+
+  it("ignores a silent video", () => {
+    expect(hasProjectAudio([clip({ tag: "video" })])).toBe(false);
   });
 });

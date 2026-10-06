@@ -4,14 +4,40 @@ export interface InlineScriptRun {
   anchor: Element | null;
 }
 
+// The HTML spec's JavaScript MIME type essence matches: a script with any of these types runs as classic.
+const JAVASCRIPT_TYPES = new Set([
+  "",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
+
+export function isJavaScriptType(el: Element): boolean {
+  return JAVASCRIPT_TYPES.has((el.getAttribute("type") || "").trim().toLowerCase());
+}
+
 function isClassicInline(el: Element): boolean {
-  const type = (el.getAttribute("type") || "").trim().toLowerCase();
-  return !type || type === "text/javascript" || type === "application/javascript";
+  return !el.hasAttribute("nomodule") && isJavaScriptType(el);
 }
 
 function isSeparateExecution(el: Element, isPinned: (el: Element) => boolean): boolean {
   return (
     el.hasAttribute("src") ||
+    el.hasAttribute("defer") ||
+    el.hasAttribute("async") ||
     isPinned(el) ||
     (el.getAttribute("type") || "").trim().toLowerCase() === "module"
   );
@@ -36,6 +62,75 @@ export function inlineScriptRuns(
   }
   if (members.length > 0) runs.push({ members, anchor: null });
   return runs;
+}
+
+export const AFTER_FONTS_SCRIPT_TYPE = "text/hf-after-fonts";
+const AFTER_FONTS_MODULE_TYPE = `${AFTER_FONTS_SCRIPT_TYPE}+module`;
+export const AFTER_FONTS_SCRIPTS = `script[type="${AFTER_FONTS_SCRIPT_TYPE}"], script[type="${AFTER_FONTS_MODULE_TYPE}"]`;
+
+export const AFTER_FONTS_CLAIM = "__hfAfterFontsClaimed";
+export const INLINED_FILE_ATTR = "data-hf-inlined-src";
+export const COMPOSITION_SOURCE_URL = "hyperframes-composition://body";
+
+export const DEFERRED_FILE = `[defer][src], [defer][${INLINED_FILE_ATTR}]`;
+const AFTER_FONTS_FALLBACK_ATTR = "data-hf-after-fonts-fallback";
+
+// For a runtime older than the gate: at DOMContentLoaded, before that runtime boots, run them in parser order.
+const afterFontsFallback = () => `document.addEventListener("DOMContentLoaded", function () {
+  if (window.${AFTER_FONTS_CLAIM}) return;
+  var T = "${AFTER_FONTS_SCRIPT_TYPE}";
+  var all = [].slice.call(document.querySelectorAll('${AFTER_FONTS_SCRIPTS}'));
+  if (!all.length) return;
+  console.warn("[hyperframes] the runtime has no web-font gate; composition scripts run without waiting for fonts");
+  var late = function (el) { return el.type !== T || el.matches('${DEFERRED_FILE}'); };
+  var queue = all.filter(function (el) { return !late(el); }).concat(all.filter(late));
+  (function next() {
+    var el = queue.shift();
+    if (!el) return;
+    var s = document.createElement("script");
+    for (var i = 0; i < el.attributes.length; i++) s.setAttribute(el.attributes[i].name, el.attributes[i].value);
+    if (el.type === T) s.removeAttribute("type"); else s.type = "module";
+    s.async = el.hasAttribute("async");
+    s.text = el.text;
+    var waits = s.type !== "module" && s.hasAttribute("src") && !s.async && !s.noModule;
+    if (waits) { s.addEventListener("load", next); s.addEventListener("error", next); }
+    el.replaceWith(s);
+    if (!waits) next();
+  })();
+});
+//# sourceURL=hyperframes://after-fonts-fallback`;
+
+/** Gives each body script a type the browser does not run, so the runtime can run it once web fonts are ready. */
+export function deferScriptsUntilFonts(
+  document: Document,
+  isFramework: (el: Element) => boolean = () => false,
+): void {
+  let deferred = false;
+  for (const el of document.querySelectorAll("body script")) {
+    if (isFramework(el) || el.closest("noscript, svg")) continue;
+    if (isClassicInline(el)) el.setAttribute("type", AFTER_FONTS_SCRIPT_TYPE);
+    else if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") {
+      el.setAttribute("type", AFTER_FONTS_MODULE_TYPE);
+    } else continue;
+    deferred = true;
+  }
+  if (
+    !deferred ||
+    !document.head ||
+    document.querySelector(`script[${AFTER_FONTS_FALLBACK_ATTR}]`)
+  ) {
+    return;
+  }
+  const fallback = document.createElement("script");
+  fallback.setAttribute(AFTER_FONTS_FALLBACK_ATTR, "");
+  fallback.textContent = afterFontsFallback();
+  document.head.insertBefore(fallback, document.head.firstChild);
+}
+
+export function typeAfterFonts(el: Element): string | null {
+  const type = el.getAttribute("type");
+  if (type === AFTER_FONTS_SCRIPT_TYPE) return null;
+  return type === AFTER_FONTS_MODULE_TYPE ? "module" : type;
 }
 
 /** Undefined for a type the browser never applies as CSS; `media="all"` and an empty title count as none. */

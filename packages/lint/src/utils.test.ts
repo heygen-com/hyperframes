@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  isAudibleVideoTag,
   parseHtmlStructure,
   stripCssComments,
   stripJsComments,
@@ -230,5 +231,18 @@ describe("stripCssComments", () => {
       expect(out).not.toContain("/*");
       expect(out).toContain("#a{color:red}");
     }
+  });
+});
+
+describe("isAudibleVideoTag", () => {
+  it("treats an absent marker and the exact value true as audible", () => {
+    expect(isAudibleVideoTag('<video src="a.mp4">')).toBe(true);
+    expect(isAudibleVideoTag('<video data-has-audio="true">')).toBe(true);
+  });
+  it("treats muted, false, empty and non-exact values as silent", () => {
+    expect(isAudibleVideoTag('<video muted data-has-audio="true">')).toBe(false);
+    expect(isAudibleVideoTag('<video data-has-audio="false">')).toBe(false);
+    expect(isAudibleVideoTag('<video data-has-audio="">')).toBe(false);
+    expect(isAudibleVideoTag('<video data-has-audio="TRUE">')).toBe(false);
   });
 });

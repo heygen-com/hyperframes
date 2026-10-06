@@ -431,7 +431,7 @@ export function ColorGradingControls({
               />
             </div>
             {lutImportError && (
-              <div className="text-[10px] text-red-400" role="alert">
+              <div className="text-[10px] text-danger-ink" role="alert">
                 {lutImportError}
               </div>
             )}

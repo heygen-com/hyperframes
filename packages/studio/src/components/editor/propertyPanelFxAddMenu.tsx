@@ -1,3 +1,4 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /**
  * The add-effect shelf: Tone, the composite jobs, and the raw registry.
  *
@@ -81,6 +82,7 @@ export function FxAddMenu({
   withJob,
   withEffect,
 }: FxAddMenuProps) {
+  const trackInput = useTrackDesignInput();
   return (
     <div
       className="hf-fx-add-menu space-y-1.5 rounded-[4px] border border-panel-border-input p-1.5"
@@ -108,8 +110,15 @@ export function FxAddMenu({
             title="Listen to this track and even out its loud and quiet parts."
             disabled={disabled || analysing}
             onClick={() => {
-              if (levelled) onRemoveLevel?.();
-              else onLevel();
+              if (levelled) {
+                if (onRemoveLevel) {
+                  onRemoveLevel();
+                  trackInput("button", "remove-levelling");
+                }
+              } else {
+                onLevel();
+                trackInput("button", "add-levelling");
+              }
               onClose();
             }}
             // The one module here that cannot answer instantly: it has to

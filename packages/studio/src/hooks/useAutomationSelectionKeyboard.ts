@@ -31,6 +31,7 @@ import {
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
 import { clampNumber } from "../utils/studioHelpers";
+import { isTypingTarget } from "../utils/typingTarget";
 import type { AutomationSelection } from "../player/store/automationSelectionSlice";
 import type {
   AutomationLaneBinding,
@@ -38,13 +39,6 @@ import type {
 } from "../player/components/useAutomationLanes";
 
 type PlayerState = ReturnType<typeof usePlayerStore.getState>;
-
-function isTextInput(el: Element | null): boolean {
-  if (!el) return false;
-  const tag = el.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  return el instanceof HTMLElement && el.isContentEditable;
-}
 
 /**
  * A Cmd/Ctrl+<letter> chord. `e.key` is normalised because CapsLock makes it
@@ -302,7 +296,7 @@ function handleCopy(
  * dead key beats today's double write.
  */
 export function automationOwnsKey(e: KeyboardEvent): boolean {
-  if (isTextInput(document.activeElement)) return false;
+  if (isTypingTarget(document.activeElement)) return false;
   const state = usePlayerStore.getState();
   if (isChord(e, "c")) return state.automationSelection !== null;
   if (!isChord(e, "v")) return false;
@@ -340,7 +334,7 @@ export function useAutomationSelectionKeyboard({
 }): void {
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      if (isTextInput(document.activeElement)) return;
+      if (isTypingTarget(document.activeElement)) return;
       // Somebody upstream already claimed this key. useAppHotkeys is on
       // window/capture so it always runs first, and it deliberately lets a
       // keyframe selection outrank an automation range on Delete — without

@@ -11,7 +11,7 @@ import {
   publishKeyframeCache,
   writeGsapAnimationsForElement,
 } from "./gsapKeyframeCacheHelpers";
-import { resolveClipTimingBasis, toAbsoluteTime, toClipPercentage } from "./gsapShared";
+import { resolveClipTimingBasis, toClipKeyframes } from "./gsapShared";
 import {
   deduplicateKeyframes,
   isStaticPositionHold,
@@ -199,22 +199,7 @@ export function useGsapAnimationsForElement(
       if (isStaticPositionHold(anim)) continue;
       const kf = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
       if (!kf) continue;
-      // Convert tween-relative percentages to clip-relative so diamonds
-      // render at the correct position within the timeline clip.
-      const tweenPos =
-        anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
-      const tweenDur = anim.duration ?? elDuration;
-      for (const k of kf.keyframes) {
-        const absTime = toAbsoluteTime(tweenPos, tweenDur, k.percentage);
-        const clipPct = toClipPercentage(absTime, elStart, elDuration, k.percentage);
-        allKeyframes.push({
-          ...k,
-          percentage: clipPct,
-          tweenPercentage: k.percentage,
-          propertyGroup: anim.propertyGroup,
-          animationId: anim.id,
-        });
-      }
+      allKeyframes.push(...toClipKeyframes(kf.keyframes, anim, elStart, elDuration));
       format = kf.format;
       if (kf.ease) ease = kf.ease;
       if (kf.easeEach) easeEach = kf.easeEach;
@@ -290,17 +275,15 @@ export function usePopulateKeyframeCacheForFile(
   const domClipChildrenKey = usePlayerStore((s) =>
     s.domClipChildren.map((c) => `${c.id}<${c.hostId}`).join("|"),
   );
-  const lastFetchKeyRef = useRef("");
+  const loadedRef = useRef<{ dataKey: string; files: Set<string> }>({
+    dataKey: "",
+    files: new Set(),
+  });
 
   const runtimeScanDoneRef = useRef("");
-  const astFetchDoneRef = useRef("");
 
   useEffect(() => {
-    const fetchKey = `kf-cache:${projectId}:${sourceFile}:${version}:${elementCount}:${domClipChildrenKey}:${compositionSrcKey}`;
-    if (fetchKey === lastFetchKeyRef.current) return;
-    lastFetchKeyRef.current = fetchKey;
-    runtimeScanDoneRef.current = "";
-    astFetchDoneRef.current = "";
+    const dataKey = `kf-cache:${projectId}:${version}:${elementCount}:${domClipChildrenKey}:${compositionSrcKey}`;
     if (!projectId) return;
 
     // The active file first: it owns the selection, and each file clears only
@@ -309,13 +292,21 @@ export function usePopulateKeyframeCacheForFile(
     const files = Array.from(
       new Set([sourceFile, ...(compositionSrcKey ? compositionSrcKey.split("|") : [])]),
     );
-    const doc = iframeRef?.current?.contentDocument;
+    const sameData = loadedRef.current.dataKey === dataKey;
+    const stale = sameData ? files.filter((sf) => !loadedRef.current.files.has(sf)) : files;
+    const covered = sameData ? new Set([...loadedRef.current.files, ...files]) : new Set(files);
+    loadedRef.current = { dataKey, files: covered };
     // Everything the previous scan cached for a file this one no longer covers
     // (the composition just switched away from) has no owner left to clear it.
-    pruneKeyframeCacheToFiles(files);
-    Promise.all(files.map((sf) => populateKeyframeCacheFromAst(projectId, sf, doc))).then(() => {
-      astFetchDoneRef.current = fetchKey;
-    });
+    if (!sameData) pruneKeyframeCacheToFiles(files);
+    if (stale.length === 0) return;
+    runtimeScanDoneRef.current = "";
+    const doc = iframeRef?.current?.contentDocument;
+    for (const sf of stale) {
+      void populateKeyframeCacheFromAst(projectId, sf, doc).then((loaded) => {
+        if (!loaded && loadedRef.current.dataKey === dataKey) loadedRef.current.files.delete(sf);
+      });
+    }
     // elementCount is in the deps because new timeline elements (e.g. after a
     // sub-composition expand) need their keyframe cache populated immediately;
     // without it the effect won't re-run when elements appear/disappear.
@@ -336,8 +327,7 @@ export function usePopulateKeyframeCacheForFile(
     // fallow-ignore-next-line complexity
     const tryRuntimeScan = () => {
       if (runtimeScanDoneRef.current === `kf-cache:${projectId}:${sf}:${version}`) return true;
-      const iframe =
-        iframeRef?.current ?? document.querySelector<HTMLIFrameElement>("iframe[src*='/preview/']");
+      const iframe = iframeRef?.current;
       if (!iframe) return false;
       // Clip dims per element so the scan converts tween-relative keyframes to
       // clip-relative (matching the static path) instead of timeline-relative.

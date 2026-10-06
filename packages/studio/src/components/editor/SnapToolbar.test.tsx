@@ -1,8 +1,9 @@
+import { trackStudioEvent } from "../../utils/studioTelemetry";
 // @vitest-environment happy-dom
 
 import React, { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppHotkeys } from "../../hooks/useAppHotkeys";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { DomEditSelection } from "./domEditing";
@@ -52,7 +53,7 @@ function AppHotkeyHarness() {
     writeProjectFile: vi.fn(async () => undefined),
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
-    waitForPendingDomEditSaves: vi.fn(async () => undefined),
+    settlePendingEdits: vi.fn(async () => undefined),
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(async () => undefined),
     handleCut: vi.fn(async () => false),
@@ -133,6 +134,37 @@ describe("SnapToolbar keyboard shortcuts", () => {
   });
 });
 
+describe("SnapToolbar keys and a focused control", () => {
+  let root: ReturnType<typeof createRoot> | null = null;
+  afterEach(() => {
+    act(() => root?.unmount());
+    root = null;
+  });
+
+  const controls: Array<[string, string, string, string]> = [
+    ["a combobox", "button", "role", "combobox"],
+    ["a select", "select", "name", "font"],
+    ["a switch", "button", "role", "switch"],
+    ["a video player", "video", "controls", ""],
+  ];
+
+  it.each(controls)("leaves S and G alone while %s has focus", (_name, tag, attr, value) => {
+    root = renderToolbar().root;
+    const control = document.body.appendChild(document.createElement(tag));
+    control.setAttribute(attr, value);
+    act(() => {
+      for (const key of ["s", "g"])
+        control.dispatchEvent(
+          new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+        );
+    });
+
+    const prefs = JSON.parse(window.localStorage.getItem("hf-studio-ui-preferences") ?? "{}");
+    expect(prefs.snapEnabled).not.toBe(false);
+    expect(prefs.gridVisible).not.toBe(true);
+  });
+});
+
 describe("SnapToolbar ruler and safe-margin toggles", () => {
   it.each([
     ["Toggle ruler", "rulerVisible"],
@@ -150,4 +182,102 @@ describe("SnapToolbar ruler and safe-margin toggles", () => {
     expect(JSON.parse(stored)[key]).toBe(true);
     act(() => root.unmount());
   });
+});
+
+vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+beforeEach(() => vi.clearAllMocks());
+describe("preview setting usage", () => {
+  it.each([
+    ["Toggle snap", "snapping"],
+    ["Toggle grid", "grid"],
+    ["Toggle ruler", "ruler"],
+    ["Toggle safe margins", "safe_margins"],
+  ])("counts the %s button without setting values", (label, feature) => {
+    const { root } = renderToolbar();
+    const button = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!;
+    act(() => button.click());
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature,
+      surface: "preview",
+      method: "button",
+    });
+    act(() => root.unmount());
+  });
+  it("counts keyboard grid toggling once", () => {
+    const { root } = renderToolbar();
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "g", bubbles: true })));
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "grid",
+      surface: "preview",
+      method: "keyboard",
+    });
+    act(() => root.unmount());
+  });
+});
+
+describe("preview field and key gesture counting", () => {
+  it("counts a grid spacing edit once when the field settles", () => {
+    const { root } = renderToolbar();
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Grid options"]')!.click());
+    const input = document.querySelector<HTMLInputElement>('input[type="number"]')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => input.focus());
+    for (const value of ["20", "200"]) {
+      act(() => {
+        setter.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+    act(() => input.blur());
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "grid_spacing",
+      surface: "preview",
+      method: "field",
+    });
+    act(() => root.unmount());
+  });
+  it("counts snap-to-grid through its committed checkbox", () => {
+    const { root } = renderToolbar();
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Grid options"]')!.click());
+    act(() => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "snap_to_grid",
+      surface: "preview",
+      method: "button",
+    });
+    act(() => root.unmount());
+  });
+  it.each(["s", "g"])("does not count auto-repeat as another %s key gesture", (key) => {
+    const { root } = renderToolbar();
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+    act(() =>
+      document.dispatchEvent(new KeyboardEvent("keydown", { key, repeat: true, bubbles: true })),
+    );
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: key === "s" ? "snapping" : "grid",
+      surface: "preview",
+      method: "keyboard",
+    });
+    act(() => root.unmount());
+  });
+});
+
+it("counts a changed field when click-away dismisses it before blur", () => {
+  const { root } = renderToolbar();
+  act(() => document.querySelector<HTMLButtonElement>('[aria-label="Grid options"]')!.click());
+  const input = document.querySelector<HTMLInputElement>('input[type="number"]')!;
+  act(() => input.focus());
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "230");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  act(() => document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+  expect(document.querySelector('input[type="number"]')).toBeNull();
+  expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+    feature: "grid_spacing",
+    surface: "preview",
+    method: "field",
+  });
+  act(() => root.unmount());
 });

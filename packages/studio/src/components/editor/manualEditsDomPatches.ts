@@ -1,4 +1,5 @@
 import type { PatchOperation } from "../../utils/sourcePatcher";
+import { gsapRendersTransform } from "./gsapAnimatesProperty";
 import {
   STUDIO_OFFSET_X_PROP,
   STUDIO_OFFSET_Y_PROP,
@@ -127,7 +128,10 @@ const BOX_SIZE_ORIG_ATTRS: ReadonlyArray<[string, string]> = [
 export function buildBoxSizePatches(element: HTMLElement): PatchOperation[] {
   const ops: PatchOperation[] = [];
   collectInlineStyleOps(element, [STUDIO_WIDTH_PROP, STUDIO_HEIGHT_PROP], ops);
-  collectInlineStyleOps(element, BOX_SIZE_STYLE_PROPS, ops);
+  const withoutGsapScaleMask = gsapRendersTransform(element)
+    ? BOX_SIZE_STYLE_PROPS.filter((prop) => prop !== "scale")
+    : BOX_SIZE_STYLE_PROPS;
+  collectInlineStyleOps(element, withoutGsapScaleMask, ops);
   ops.push({ type: "attribute", property: STUDIO_BOX_SIZE_ATTR, value: "true" });
   collectAttributeOps(
     element,

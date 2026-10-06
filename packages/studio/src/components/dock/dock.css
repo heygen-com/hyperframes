@@ -1,9 +1,17 @@
 @import "dockview-react/dist/styles/dockview.css";
 
+.dv-shell:has(.hf-dock) {
+  /* dockview's runtime stylesheet pins `color-scheme: dark` on its theme class, which sits on
+   * the shell around the dock. */
+  color-scheme: inherit;
+}
+
 .hf-dock {
   --dv-group-view-background-color: var(--panel-card-bg);
   --dv-tabs-and-actions-container-background-color: var(--panel-strip-bg);
   --dv-tabs-and-actions-container-height: 36px;
+  --dv-icon-hover-background-color: var(--color-hover);
+  --dv-tabs-container-scrollbar-color: var(--color-text-muted);
   /* The fill paints the shown tab, so every tab state is transparent. */
   --dv-activegroup-visiblepanel-tab-background-color: transparent;
   --dv-activegroup-hiddenpanel-tab-background-color: transparent;
@@ -178,7 +186,7 @@
 }
 
 .dv-groupview:hover .hf-dock-strip-actions {
-  opacity: 0.5;
+  opacity: 0.8;
 }
 
 .hf-dock-strip-actions:hover,

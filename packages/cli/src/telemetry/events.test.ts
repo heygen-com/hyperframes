@@ -1130,6 +1130,25 @@ describe("trackCliError", () => {
 });
 
 describe("trackCommandFailure", () => {
+  it("reports an extra-positional usage error by count, never the arguments", async () => {
+    const { resolveExtraPositionals } = await import("../utils/reject-extra-positionals.js");
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cmd = { args: { dir: { type: "positional" } } } as Parameters<
+      typeof resolveExtraPositionals
+    >[0];
+    let thrown: unknown;
+    try {
+      resolveExtraPositionals(cmd, "render", { _: ["./p", "Jane", "555-0100"] });
+    } catch (error) {
+      thrown = error;
+    }
+    quiet.mockRestore();
+    trackCommandFailure("render", thrown);
+    const payload = JSON.stringify(trackEvent.mock.calls.at(-1));
+    expect(payload).toContain("2 unexpected extra arguments for hyperframes render");
+    expect(payload).not.toMatch(/Jane|555-0100/);
+  });
+
   beforeEach(() => {
     trackEvent.mockClear();
   });

@@ -7,7 +7,13 @@
  */
 
 import postcss from "postcss";
-import { escapeCssIdentifier, replaceSelectorIdTokens } from "./selectorIdTokens";
+import { escapeCssIdentifier } from "./selectorIdTokens";
+import {
+  SVG_REFERENCE_ALIASES_ATTR,
+  readSvgReferenceAliases,
+  rewriteSvgSelectors,
+  type SvgReferenceAlias,
+} from "./svgSelectorAliases";
 
 const ID_ATTR = "id";
 
@@ -53,33 +59,79 @@ function rewriteUrlHashRefs(value: string, idMap: ReadonlyMap<string, string>): 
   });
 }
 
-function rewriteHrefValue(value: string, idMap: ReadonlyMap<string, string>): string | null {
-  if (!value.startsWith("#")) return null;
-  const mapped = idMap.get(value.slice(1));
-  return mapped ? `#${mapped}` : null;
+type ReferenceDecision =
+  | { kind: "skip" }
+  | { kind: "retain"; alias: SvgReferenceAlias }
+  | { kind: "managed"; before: string; after: string };
+
+function nativeReferenceValue(
+  name: string,
+  value: string,
+  idMap: ReadonlyMap<string, string>,
+): string | null {
+  if (isHrefAttrName(name) && value.startsWith("#")) {
+    const mapped = idMap.get(value.slice(1));
+    return mapped ? `#${mapped}` : value;
+  }
+  URL_HASH_REF_RE.lastIndex = 0;
+  const hasUrl = URL_HASH_REF_RE.test(value);
+  URL_HASH_REF_RE.lastIndex = 0;
+  return hasUrl ? rewriteUrlHashRefs(value, idMap) : null;
 }
 
-/** Rewrite every id reference carried on one element's attributes. CSS text
- *  inside a `<style>` element is handled separately by
- *  `rewriteSvgIdReferencesInCss` — it is extracted and scoped as a raw
- *  string elsewhere in the inline pipeline, never visited by this walk. */
+function decideReferenceWrite(
+  attr: Attr,
+  previous: SvgReferenceAlias | undefined,
+  idMap: ReadonlyMap<string, string>,
+): ReferenceDecision {
+  if (attr.name === SVG_REFERENCE_ALIASES_ATTR || attr.name === ID_ATTR) return { kind: "skip" };
+  const before = previous && attr.value === previous.after ? previous.before : attr.value;
+  const after = nativeReferenceValue(attr.name, before, idMap);
+  if (after !== null) return { kind: "managed", before, after };
+  return previous ? { kind: "retain", alias: previous } : { kind: "skip" };
+}
+
+function referenceAlias(
+  attr: Attr,
+  before: string,
+  after: string,
+  inSvg: boolean,
+): SvgReferenceAlias {
+  // The compiler DOM omits Attr namespace APIs; serialized SVG restores XLink.
+  const serializedXlink = attr.namespaceURI === undefined && attr.name === "xlink:href" && inSvg;
+  return {
+    name: attr.name,
+    localName: serializedXlink ? "href" : attr.localName,
+    namespaceURI: serializedXlink ? "http://www.w3.org/1999/xlink" : (attr.namespaceURI ?? null),
+    before,
+    after,
+  };
+}
+
+/** Apply managed reference writes while retaining provenance for later assembly phases. */
 function rewriteElementIdReferences(el: Element, idMap: ReadonlyMap<string, string>): void {
-  const attrs = el.attributes ? Array.from(el.attributes) : [];
-  for (const attr of attrs) {
-    const { name, value } = attr;
-    if (!value) continue;
-    if (isHrefAttrName(name)) {
-      const rewritten = rewriteHrefValue(value, idMap);
-      if (rewritten) {
-        el.setAttribute(name, rewritten);
-        continue;
-      }
+  const prior = new Map(
+    readSvgReferenceAliases(el, SVG_REFERENCE_ALIASES_ATTR, false).map((alias) => [
+      alias.name,
+      alias,
+    ]),
+  );
+  const aliases = [...prior.values()].filter((alias) => alias.name === ID_ATTR);
+  const inSvg = !!el.closest("svg");
+  for (const attr of el.attributes ? Array.from(el.attributes) : []) {
+    const decision = decideReferenceWrite(attr, prior.get(attr.name), idMap);
+    if (decision.kind === "skip") continue;
+    if (decision.kind === "retain") {
+      aliases.push(decision.alias);
+      continue;
     }
-    if (value.toLowerCase().includes("url(")) {
-      const rewritten = rewriteUrlHashRefs(value, idMap);
-      if (rewritten !== value) el.setAttribute(name, rewritten);
+    if (decision.after !== attr.value) {
+      if (attr.namespaceURI) el.setAttributeNS(attr.namespaceURI, attr.name, decision.after);
+      else el.setAttribute(attr.name, decision.after);
     }
+    aliases.push(referenceAlias(attr, decision.before, decision.after, inSvg));
   }
+  if (aliases.length) el.setAttribute(SVG_REFERENCE_ALIASES_ATTR, JSON.stringify(aliases));
 }
 
 /** Structural shape both a linkedom/live-DOM `Element` and `Document`
@@ -96,11 +148,13 @@ export interface SvgIdScope {
   root: Element;
   /**
    * Document-unique prefix for ids renamed in this scope — the instance's
-   * runtime composition id. An empty namespace makes the scope read-only:
+   * runtime composition id. An empty namespace freezes IDs while still repairing references:
    * an anonymous host has no identity to prefix with, the same guard
    * `scopeCssToComposition` and `wrapScopedCompositionScript` apply.
    */
   namespace: string;
+  /** Root document references follow document order; instances prefer local definitions. */
+  referenceTarget?: "document";
   /**
    * Nested composition hosts inside `root` whose content belongs to their
    * OWN scope. Their subtrees are skipped both when collecting this scope's
@@ -166,7 +220,7 @@ function collectNativelyReferencedIds(
   const referenced = new Set<string>();
   for (const el of elements) {
     for (const attr of el.attributes ? Array.from(el.attributes) : []) {
-      if (!attr.value) continue;
+      if (!attr.value || attr.name === SVG_REFERENCE_ALIASES_ATTR) continue;
       collectHrefFragmentRef(attr, svgIds, referenced);
       if (attr.value.toLowerCase().includes("url("))
         collectUrlHashRefsFromText(attr.value, svgIds, referenced);
@@ -234,6 +288,15 @@ interface IdCensus {
   usedIds: Set<string>;
 }
 
+function currentAuthoredSvgId(el: Element): string | null {
+  if (!el.closest("svg")) return null;
+  const idWrite = readSvgReferenceAliases(el, SVG_REFERENCE_ALIASES_ATTR, false).find(
+    (alias) => alias.name === ID_ATTR,
+  );
+  if (idWrite) return el.getAttribute(ID_ATTR) === idWrite.after ? idWrite.before : null;
+  return el.getAttribute(SVG_AUTHORED_ID_ATTR);
+}
+
 function buildIdCensus(document: SvgIdQueryable): IdCensus {
   const elementsById = new Map<string, Element[]>();
   const usedIds = new Set<string>();
@@ -244,15 +307,14 @@ function buildIdCensus(document: SvgIdQueryable): IdCensus {
     const list = elementsById.get(id);
     if (list) list.push(el);
     else elementsById.set(id, [el]);
+    const authored = currentAuthoredSvgId(el);
+    if (authored && authored !== id) {
+      const aliases = elementsById.get(authored);
+      if (aliases) aliases.push(el);
+      else elementsById.set(authored, [el]);
+    }
   }
   return { elementsById, usedIds };
-}
-
-function hasAnyCollision(census: IdCensus): boolean {
-  for (const elements of census.elementsById.values()) {
-    if (elements.length > 1) return true;
-  }
-  return false;
 }
 
 /** A namespaced id that is not already taken anywhere in the document. */
@@ -262,6 +324,17 @@ function mintNamespacedId(namespace: string, originalId: string, usedIds: Set<st
   for (let n = 2; usedIds.has(candidate); n += 1) candidate = `${base}-${n}`;
   usedIds.add(candidate);
   return candidate;
+}
+
+function collisionScopes(
+  id: string,
+  elements: readonly Element[],
+  scopeIndexByRenamable: ReadonlyMap<Element, number>,
+): Set<number> {
+  const keeper = elements.find((el) => !scopeIndexByRenamable.has(el)) ?? elements[0];
+  const candidates = elements.filter((el) => el !== keeper && el.getAttribute(ID_ATTR) === id);
+  const indices = candidates.map((el) => scopeIndexByRenamable.get(el));
+  return new Set(indices.filter((index): index is number => index !== undefined));
 }
 
 /**
@@ -278,18 +351,44 @@ function planRenames(
   const idMaps = scopes.map(() => new Map<string, string>());
   for (const [id, elements] of census.elementsById) {
     if (elements.length < 2) continue;
-    const keeper = elements.find((el) => !scopeIndexByRenamable.has(el)) ?? elements[0]!;
-    for (const el of elements) {
-      if (el === keeper) continue;
-      const scopeIndex = scopeIndexByRenamable.get(el);
-      if (scopeIndex === undefined) continue;
-      const idMap = idMaps[scopeIndex]!;
-      if (!idMap.has(id)) {
-        idMap.set(id, mintNamespacedId(scopes[scopeIndex]!.namespace, id, census.usedIds));
-      }
+    for (const index of collisionScopes(id, elements, scopeIndexByRenamable)) {
+      idMaps[index]!.set(id, mintNamespacedId(scopes[index]!.namespace, id, census.usedIds));
     }
   }
   return idMaps;
+}
+
+function documentReferenceTargets(
+  census: IdCensus,
+  idMaps: readonly ReadonlyMap<string, string>[],
+  scopeIndexByRenamable: ReadonlyMap<Element, number>,
+): Map<string, string> {
+  const targets = new Map<string, string>();
+  for (const [id, elements] of census.elementsById) {
+    const target = elements[0]!;
+    const actual = target.getAttribute(ID_ATTR)!;
+    if (actual !== id) {
+      targets.set(id, actual);
+      continue;
+    }
+    const index = scopeIndexByRenamable.get(target);
+    const renamed = index === undefined ? undefined : idMaps[index]!.get(id);
+    if (renamed) targets.set(id, renamed);
+  }
+  return targets;
+}
+
+function localReferenceBindings(elements: readonly Element[]) {
+  const ids = new Set(elements.map((el) => el.getAttribute(ID_ATTR)));
+  const renamed = new Map<string, string>();
+  for (const el of elements) {
+    const authored = currentAuthoredSvgId(el);
+    const current = el.getAttribute(ID_ATTR);
+    if (!authored || !current) continue;
+    ids.add(authored);
+    renamed.set(authored, current);
+  }
+  return { ids, renamed };
 }
 
 /** Rename the planned elements in one scope and rewrite every reference in
@@ -299,7 +398,17 @@ function applyRenames(resolved: ResolvedScope, idMap: ReadonlyMap<string, string
     const currentId = el.getAttribute(ID_ATTR);
     if (currentId && resolved.renamable.has(el) && idMap.has(currentId)) {
       if (!el.hasAttribute(SVG_AUTHORED_ID_ATTR)) el.setAttribute(SVG_AUTHORED_ID_ATTR, currentId);
-      el.setAttribute(ID_ATTR, idMap.get(currentId)!);
+      const after = idMap.get(currentId)!;
+      const aliases = readSvgReferenceAliases(el, SVG_REFERENCE_ALIASES_ATTR, false);
+      aliases.push({
+        name: ID_ATTR,
+        localName: ID_ATTR,
+        namespaceURI: null,
+        before: currentId,
+        after,
+      });
+      el.setAttribute(SVG_REFERENCE_ALIASES_ATTR, JSON.stringify(aliases));
+      el.setAttribute(ID_ATTR, after);
     }
     rewriteElementIdReferences(el, idMap);
   }
@@ -325,58 +434,38 @@ function applyRenames(resolved: ResolvedScope, idMap: ReadonlyMap<string, string
 export function namespaceCollidingSvgIds(
   document: SvgIdQueryable,
   scopes: readonly SvgIdScope[],
+  finalizedIds?: Set<Element>,
 ): Map<string, string>[] {
-  const untouched = scopes.map(() => new Map<string, string>());
-  if (scopes.length === 0) return untouched;
+  if (scopes.length === 0) return [];
 
   const census = buildIdCensus(document);
-  if (!hasAnyCollision(census)) return untouched;
 
   const resolved = scopes.map(resolveScope);
+  const newlyEligible = resolved.flatMap(({ renamable }) => [...renamable]);
+  if (finalizedIds) {
+    for (const scope of resolved) {
+      for (const el of scope.renamable) if (finalizedIds.has(el)) scope.renamable.delete(el);
+    }
+  }
   const scopeIndexByRenamable = new Map<Element, number>();
   resolved.forEach(({ renamable }, index) => {
     for (const el of renamable) scopeIndexByRenamable.set(el, index);
   });
-  if (scopeIndexByRenamable.size === 0) return untouched;
 
   const idMaps = planRenames(census, scopes, scopeIndexByRenamable);
-  // A reference without a local definition keeps its original document-order target,
-  // even if that target was renamed in an ancestor or another composition.
+  const documentTargets = documentReferenceTargets(census, idMaps, scopeIndexByRenamable);
   const referenceMaps = resolved.map((scope, index) => {
-    const references = new Map(idMaps[index]);
-    const localIds = new Set(scope.elements.map((el) => el.getAttribute(ID_ATTR)));
-    for (const [id, elements] of census.elementsById) {
-      if (localIds.has(id)) continue;
-      const targetScope = scopeIndexByRenamable.get(elements[0]!);
-      if (targetScope === undefined) continue;
-      const mapped = idMaps[targetScope]!.get(id);
-      if (mapped) references.set(id, mapped);
-    }
-    return references;
+    const local = localReferenceBindings(
+      scopes[index]!.referenceTarget === "document" ? [] : scope.elements,
+    );
+    const inherited = [...documentTargets].filter(([id]) => !local.ids.has(id));
+    return new Map([...inherited, ...local.renamed, ...idMaps[index]!]);
   });
   referenceMaps.forEach((idMap, index) => {
-    if (idMap.size > 0) applyRenames(resolved[index]!, idMap);
+    applyRenames(resolved[index]!, idMap);
   });
+  for (const el of newlyEligible) finalizedIds?.add(el);
   return referenceMaps;
-}
-
-/**
- * Whole-token `#id` replacement inside a CSS selector, generalized to many
- * ids at once and to a literal `#newId` swap instead of an attribute-selector
- * expansion (a plain descendant/id selector already resolves correctly once
- * the id itself is unique — no extra scoping needed). Shares its quote- and
- * bracket-aware scan with `compositionScoping.ts`'s
- * `replaceAuthoredRootIdSelectors` via `selectorIdTokens.ts`, rather than a
- * second copy of the same state machine. The scanner decodes CSS identifier
- * escapes before matching, so `#fx\.1` matches the raw id `fx.1`, and the
- * replacement is re-escaped so the emitted selector stays valid.
- */
-function renameIdTokensInSelector(selector: string, idMap: ReadonlyMap<string, string>): string {
-  return replaceSelectorIdTokens(
-    selector,
-    [...idMap.keys()],
-    (matchedId) => `#${escapeCssIdentifier(idMap.get(matchedId)!)}`,
-  );
 }
 
 /**
@@ -395,9 +484,10 @@ function renameIdTokensInSelector(selector: string, idMap: ReadonlyMap<string, s
 export function rewriteSvgIdReferencesInCss(
   css: string,
   idMap: ReadonlyMap<string, string>,
+  references: readonly SvgReferenceAlias[] = [],
 ): string {
-  if (!css || idMap.size === 0) return css;
-  if (!css.includes("#") && !css.toLowerCase().includes("url(")) return css;
+  if (!css || (idMap.size === 0 && references.length === 0)) return css;
+  if (!css.includes("#") && !css.includes("[") && !css.toLowerCase().includes("url(")) return css;
 
   let root: postcss.Root;
   try {
@@ -408,9 +498,19 @@ export function rewriteSvgIdReferencesInCss(
     return css;
   }
   let mutated = false;
-
+  const recordedIds = new Set(
+    references.filter((alias) => alias.name === ID_ATTR).map((alias) => alias.before),
+  );
+  const ids = [...idMap]
+    .filter(([id]) => !recordedIds.has(id))
+    .map(([id, renamed]) => ({
+      id,
+      replacement: `:is(#${escapeCssIdentifier(id)}, #${escapeCssIdentifier(renamed)})`,
+    }));
   root.walkRules((rule) => {
-    const rewritten = rule.selectors.map((selector) => renameIdTokensInSelector(selector, idMap));
+    const rewritten = rule.selectors.map((selector) =>
+      rewriteSvgSelectors(selector, ids, references),
+    );
     if (rewritten.some((selector, index) => selector !== rule.selectors[index])) {
       rule.selectors = rewritten;
       mutated = true;

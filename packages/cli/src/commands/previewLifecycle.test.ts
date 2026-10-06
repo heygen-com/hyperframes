@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
+import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
+  PreviewPortUnavailableError,
   buildBackgroundPreviewArgs,
   listBackgroundPreviewStatuses,
   previewSessionPath,
@@ -33,6 +35,26 @@ function savePreviewSession(stateHome: string): void {
     { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
     stateHome,
   );
+}
+
+/** Launch deps whose wrapper (PID 4321) brings up `server` (PID 9876) on spawn and takes it down on kill. */
+function reachableChildDependencies(stateHome: string, { immortal = false } = {}) {
+  let spawned = false;
+  let killed = false;
+  const liveServer = { ...server, pid: "9876" };
+  return {
+    scan: async () => (spawned && (immortal || !killed) ? [liveServer] : []),
+    spawn: () => {
+      spawned = true;
+      return { pid: 4321, unref: vi.fn() };
+    },
+    sleep: async () => {},
+    kill: vi.fn(() => {
+      killed = true;
+    }),
+    isDescendant: (child: number, ancestor: number) => child === 9876 && ancestor === 4321,
+    stateHome,
+  };
 }
 
 async function expectStaleSessionRemoved(stateHome: string): Promise<void> {
@@ -65,7 +87,21 @@ describe("background preview lifecycle", () => {
         "--open",
         "--json",
       ]),
-    ).toEqual(["/opt/hyperframes/cli.js", "preview", projectDir, "--foreground", "--no-open"]);
+    ).toEqual([
+      "/opt/hyperframes/cli.js",
+      "preview",
+      projectDir,
+      "--foreground",
+      "--no-open",
+      "--force-new",
+    ]);
+  });
+
+  it("makes the detached child start its own server, never reuse a sibling launch's", () => {
+    const args = buildBackgroundPreviewArgs(["cli.js", "preview", projectDir, "--force-new"]);
+
+    expect(args.filter((arg) => arg === "--force-new")).toHaveLength(1);
+    expect(args.at(-1)).toBe("--force-new");
   });
 
   it("reuses an already-running server for the same project", async () => {
@@ -102,6 +138,36 @@ describe("background preview lifecycle", () => {
 
     expect(result).toMatchObject({ type: "reused", port: 41402, pid: 4321 });
     expect(scan).toHaveBeenCalledWith(41402);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("throws a port-mismatch error when the caller explicitly requests a port the reused server isn't on", async () => {
+    const spawn = vi.fn();
+    const scan = vi.fn(async () => [server]);
+
+    await expect(
+      startBackgroundPreview(projectDir, 3002, {
+        scan,
+        spawn,
+        stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+        preferredPort: server.port + 1,
+      }),
+    ).rejects.toThrow(PreviewServerPortMismatchError);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("reuses normally when the caller's explicit port matches the reused server", async () => {
+    const spawn = vi.fn();
+    const scan = vi.fn(async () => [server]);
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      scan,
+      spawn,
+      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      preferredPort: server.port,
+    });
+
+    expect(result).toMatchObject({ type: "reused", port: server.port });
     expect(spawn).not.toHaveBeenCalled();
   });
 
@@ -376,6 +442,7 @@ describe("background preview lifecycle", () => {
         spawned = true;
         return { pid: 4321, unref: vi.fn() };
       },
+      isDescendant: (child, ancestor) => child === 9876 && ancestor === 4321,
       stateHome,
     });
 
@@ -383,6 +450,236 @@ describe("background preview lifecycle", () => {
     expect(
       JSON.parse(readFileSync(previewSessionPath(projectDir, stateHome), "utf8")),
     ).toMatchObject({ pid: 4321 });
+  });
+
+  it("reports the explicitly requested port when the detached child binds it", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome);
+
+    const result = await startBackgroundPreview(projectDir, server.port, {
+      ...dependencies,
+      preferredPort: server.port,
+    });
+
+    expect(result).toMatchObject({ type: "started", port: server.port, pid: 9876 });
+    expect(dependencies.kill).not.toHaveBeenCalled();
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
+  });
+
+  it("reaps a detached child that could not bind the explicitly requested port", async () => {
+    // The child scans upward from --port and lands on the next free port.
+    const requestedPort = server.port - 1;
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome);
+
+    const launch = startBackgroundPreview(projectDir, requestedPort, {
+      ...dependencies,
+      preferredPort: requestedPort,
+    });
+
+    await expect(launch).rejects.toThrow(PreviewPortUnavailableError);
+    await expect(launch).rejects.toMatchObject({ requestedPort, boundPort: server.port });
+    // The wrapper PID is reaped, not the server's self-reported PID.
+    expect(dependencies.kill).toHaveBeenCalledExactlyOnceWith(4321);
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+
+  it("fails loudly when the reaped child keeps serving the substitute port", async () => {
+    const requestedPort = server.port - 1;
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome, { immortal: true });
+
+    await expect(
+      startBackgroundPreview(projectDir, requestedPort, {
+        ...dependencies,
+        preferredPort: requestedPort,
+      }),
+    ).rejects.toThrow(/did not stop after failing to bind port/);
+    expect(dependencies.kill).toHaveBeenCalledExactlyOnceWith(4321);
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+
+  it("two launches at once each keep the server their own child started", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    // A's server (3002) answers only after B's (3003) has appeared, and after A's pre-launch snapshot.
+    const children: Record<number, ActiveServer & { after: number }> = {
+      4321: { ...server, port: 3002, pid: "9876", after: 3 },
+      5555: { ...server, port: 3003, pid: "7777", after: 0 },
+    };
+    const parent: Record<number, number> = { 9876: 4321, 7777: 5555 };
+    const spawnedAt = new Map<number, number>();
+    let scans = 0;
+    let secondSpawned!: () => void;
+    const secondUp = new Promise<void>((done) => (secondSpawned = done));
+    const scan = async () => {
+      scans++;
+      return [...spawnedAt]
+        .filter(([wrapper, at]) => scans - at > children[wrapper]!.after)
+        .map(([wrapper]) => children[wrapper]!);
+    };
+    const launch = (wrapper: number, sleep: () => Promise<void>, preferredPort?: number) =>
+      startBackgroundPreview(projectDir, 3002, {
+        scan,
+        spawn: () => {
+          spawnedAt.set(wrapper, scans);
+          if (wrapper === 5555) secondSpawned();
+          return { pid: wrapper, unref: vi.fn() };
+        },
+        sleep,
+        kill: vi.fn(),
+        isDescendant: (child: number, ancestor: number) => parent[child] === ancestor,
+        stateHome,
+        preferredPort,
+      });
+
+    const first = launch(4321, () => secondUp, 3002);
+    await vi.waitFor(() => expect(spawnedAt.has(4321)).toBe(true));
+    const second = launch(5555, async () => {});
+
+    await expect(first).resolves.toMatchObject({ type: "started", port: 3002, pid: 9876 });
+    await expect(second).resolves.toMatchObject({ type: "started", port: 3003, pid: 7777 });
+  });
+
+  it("keeps the next free port when no explicit port was requested", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome);
+
+    const result = await startBackgroundPreview(projectDir, server.port - 1, dependencies);
+
+    expect(result).toMatchObject({ type: "started", port: server.port });
+    expect(dependencies.kill).not.toHaveBeenCalled();
+  });
+
+  it("reuses the same-project server on the explicit port when several are running", async () => {
+    const sibling = { ...server, port: server.port + 1, pid: "5555" };
+    const spawn = vi.fn();
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      scan: async () => [server, sibling],
+      spawn,
+      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      preferredPort: sibling.port,
+    });
+
+    expect(result).toMatchObject({ type: "reused", port: sibling.port, pid: 5555 });
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("reuses the unmanaged sibling on the explicit port instead of rejecting against the owned server", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const owned = { ...server, port: 3002 };
+    const sibling = { ...server, port: 3003, pid: "5555" };
+    writePreviewSession(
+      { pid: 4321, port: owned.port, projectDir, logPath: "/tmp/preview.log" },
+      stateHome,
+    );
+    const spawn = vi.fn();
+    const kill = vi.fn();
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      kill,
+      scan: async () => [owned, sibling],
+      spawn,
+      stateHome,
+      preferredPort: sibling.port,
+    });
+
+    expect(result).toMatchObject({ type: "reused", port: sibling.port, pid: 5555 });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("lists every same-project server in the port-mismatch error, not just the reuse candidate", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const owned = { ...server, port: 3002 };
+    const sibling = { ...server, port: 3003, pid: "5555" };
+    const foreign = {
+      ...server,
+      port: 3004,
+      projectDir: resolve("/tmp/hyperframes-preview-lifecycle-other"),
+      pid: "7777",
+    };
+    writePreviewSession(
+      { pid: 4321, port: owned.port, projectDir, logPath: "/tmp/preview.log" },
+      stateHome,
+    );
+    const spawn = vi.fn();
+
+    const failure = await startBackgroundPreview(projectDir, 3002, {
+      scan: async () => [owned, sibling, foreign],
+      spawn,
+      stateHome,
+      preferredPort: 3004,
+    }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(PreviewServerPortMismatchError);
+    expect(failure).toMatchObject({ requestedPort: 3004, ports: [3002, 3003] });
+    expect((failure as Error).message).toContain("add --force-new or run --stop first");
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("reuses a same-project server on an explicit port outside the saved port's scan window", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const owned = { ...server, port: 3002 };
+    const farSibling = { ...server, port: 3500, pid: "5555" };
+    writePreviewSession(
+      { pid: 4321, port: owned.port, projectDir, logPath: "/tmp/preview.log" },
+      stateHome,
+    );
+    const spawn = vi.fn();
+    const probe = vi.fn(async (port: number) => (port === farSibling.port ? farSibling : null));
+
+    const result = await startBackgroundPreview(projectDir, farSibling.port, {
+      scan: async () => [owned],
+      probe,
+      spawn,
+      stateHome,
+      preferredPort: farSibling.port,
+    });
+
+    expect(result).toMatchObject({ type: "reused", port: farSibling.port, pid: 5555 });
+    expect(probe).toHaveBeenCalledExactlyOnceWith(farSibling.port);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("replaces the owned server on the explicit port when the GPU policy changes", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const owned = { ...server, port: 3002, browserGpuMode: "hardware" as const };
+    const replacement = { ...server, port: 3002, pid: "5432", browserGpuMode: "software" as const };
+    writePreviewSession(
+      { pid: 4321, port: owned.port, projectDir, logPath: "/tmp/preview.log" },
+      stateHome,
+    );
+    let ownedRunning = true;
+    let replacementRunning = false;
+    const scan = vi.fn(async () => [
+      ...(ownedRunning ? [owned] : []),
+      ...(replacementRunning ? [replacement] : []),
+    ]);
+    const kill = vi.fn((pid: number) => {
+      if (pid === 4321) ownedRunning = false;
+    });
+    const spawn = vi.fn(() => {
+      replacementRunning = true;
+      return { pid: 5432, unref: vi.fn() };
+    });
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      browserGpuMode: "software",
+      kill,
+      scan,
+      sleep: async () => {},
+      spawn,
+      stateHome,
+      preferredPort: 3002,
+    });
+
+    expect(kill).toHaveBeenCalledWith(4321);
+    expect(spawn).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ type: "started", port: 3002, pid: 5432 });
   });
 
   it("reaps a detached child that never becomes reachable without recording ownership", async () => {

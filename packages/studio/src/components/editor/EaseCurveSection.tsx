@@ -42,7 +42,6 @@ const VMIN = -HR / S; // bottom of visible view (undershoot headroom)
 // of snapping to the view edge; the handle DOT is still clampView'd into view.
 const DRAG_VMAX = 2;
 const DRAG_VMIN = -1;
-const ACCENT = "#3CE6AC";
 
 // Figma-style ease-type dropdown: the current ease (glyph + name) as a button
 // that opens the preset grid in a popover. This is where a preset is selected —
@@ -130,7 +129,7 @@ function EaseTypeDropdown({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-left transition-colors hover:border-white/20"
+        className="flex w-full items-center gap-2 rounded-md border border-border bg-input px-2 py-1.5 text-left transition-colors hover:border-border-strong"
       >
         <MiniCurveSvg ease={ease} active size={16} />
         <span className="text-[11px] text-neutral-200">{label}</span>
@@ -151,7 +150,7 @@ function EaseTypeDropdown({
           role="menu"
           aria-label={`${MODE_LABELS[kind]} ease presets`}
           onKeyDown={handleMenuKeyDown}
-          className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border border-white/10 bg-neutral-900 p-2 shadow-xl"
+          className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border border-border bg-raised p-2 shadow-xl"
         >
           <EasePresetGrid
             kind={kind}
@@ -407,7 +406,7 @@ export function EaseCurveSection({
       {showGraph ? (
         <>
           <div
-            className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
+            className="mx-auto overflow-hidden rounded-md border border-border bg-input"
             style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
           >
             <svg
@@ -429,7 +428,7 @@ export function EaseCurveSection({
                   y1={top}
                   x2={xToSvg(q)}
                   y2={bottom}
-                  stroke="white"
+                  className="stroke-text-0"
                   strokeOpacity="0.05"
                   strokeWidth="1"
                 />
@@ -441,7 +440,7 @@ export function EaseCurveSection({
                   y1={yToSvg(q)}
                   x2={right}
                   y2={yToSvg(q)}
-                  stroke="white"
+                  className="stroke-text-0"
                   strokeOpacity="0.05"
                   strokeWidth="1"
                 />
@@ -453,7 +452,7 @@ export function EaseCurveSection({
                 width={S}
                 height={bottom - top}
                 fill="none"
-                stroke="white"
+                className="stroke-text-0"
                 strokeOpacity="0.1"
                 strokeWidth="1"
               />
@@ -463,7 +462,7 @@ export function EaseCurveSection({
                 y1={a0.y}
                 x2={a1.x}
                 y2={a1.y}
-                stroke="white"
+                className="stroke-text-0"
                 strokeOpacity="0.08"
                 strokeWidth="1"
                 strokeDasharray="3 4"
@@ -476,8 +475,7 @@ export function EaseCurveSection({
                     y1={a0.y}
                     x2={p1.x}
                     y2={p1.y}
-                    stroke={ACCENT}
-                    strokeOpacity="0.5"
+                    className="stroke-accent-ink"
                     strokeWidth="1.5"
                   />
                   <line
@@ -485,8 +483,7 @@ export function EaseCurveSection({
                     y1={a1.y}
                     x2={p2.x}
                     y2={p2.y}
-                    stroke={ACCENT}
-                    strokeOpacity="0.5"
+                    className="stroke-accent-ink"
                     strokeWidth="1.5"
                   />
                 </>
@@ -495,13 +492,13 @@ export function EaseCurveSection({
               <path
                 d={curvePath}
                 fill="none"
-                stroke={ACCENT}
+                className="stroke-accent-ink"
                 strokeWidth="2.5"
                 strokeLinecap="round"
               />
               {/* Anchors at (0,0) and (1,1) */}
-              <circle cx={a0.x} cy={a0.y} r="3" fill={ACCENT} />
-              <circle cx={a1.x} cy={a1.y} r="3" fill={ACCENT} />
+              <circle cx={a0.x} cy={a0.y} r="3" className="fill-accent-ink" />
+              <circle cx={a1.x} cy={a1.y} r="3" className="fill-accent-ink" />
               {/* Draggable control handles (large transparent hit area + visible dot) */}
               {showHandles &&
                 [["p1", p1] as const, ["p2", p2] as const].map(([key, pt]) => (
@@ -518,7 +515,7 @@ export function EaseCurveSection({
                       aria-valuemax={1}
                       aria-valuenow={key === "p1" ? x1 : x2}
                       aria-valuetext={`x ${key === "p1" ? x1 : x2}, y ${key === "p1" ? y1 : y2}`}
-                      className="cursor-grab stroke-transparent outline-hidden active:cursor-grabbing focus-visible:stroke-white focus-visible:stroke-[2px]"
+                      className="cursor-grab stroke-transparent outline-hidden active:cursor-grabbing focus-visible:stroke-text-0 focus-visible:stroke-[2px]"
                       onPointerDown={(e) => handlePointerDown(key, e)}
                       onKeyDown={(event) => handleKeyDown(key, event)}
                       onPointerEnter={() => setHover(key)}
@@ -528,10 +525,8 @@ export function EaseCurveSection({
                       cx={pt.x}
                       cy={pt.y}
                       r={hover === key || draggingRef.current === key ? 7 : 5.5}
-                      fill="#0a0a1a"
-                      stroke={ACCENT}
                       strokeWidth="2.5"
-                      className="pointer-events-none transition-[r]"
+                      className="pointer-events-none fill-input stroke-accent-ink transition-[r]"
                     />
                   </g>
                 ))}

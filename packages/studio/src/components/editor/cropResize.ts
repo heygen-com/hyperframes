@@ -1,8 +1,8 @@
+import type { DomEditPersistOutcome } from "../../hooks/domEditCommitTypes";
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import type { CommitMutation } from "../../hooks/gsapScriptCommitTypes";
 import type { DomEditSelection } from "./domEditingTypes";
-import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
-import { elementHasNonHoldTween } from "../../hooks/gsapRuntimeKeyframes";
+import { elementHasNonHoldTween, gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { buildInsetClipPathSides, type ParsedInsetClipPathSides } from "./clipPathHelpers";
 import { hasCropInsets, readElementCropInsets } from "./domEditOverlayCrop";
 import { forgetStudioBoxSizeDraftBase, readStudioBoxSizeDraftBase } from "./manualEditsDom";
@@ -21,7 +21,7 @@ type Follows = Record<keyof Box, boolean>;
 
 /** Per axis, whether a crop follows a resize: not when GSAP drives the clip or tweens that axis's size. */
 function cropFollows(element: HTMLElement): Follows {
-  const clip = gsapAnimatesProperty(element, "clipPath");
+  const clip = gsapWritesChannels(element, ["clipPath"]);
   return {
     width: !clip && !elementHasNonHoldTween(element, ["width"]),
     height: !clip && !elementHasNonHoldTween(element, ["height"]),
@@ -95,7 +95,7 @@ type PatchCommit = (
   selection: DomEditSelection,
   patches: PatchOperation[],
   options: { label: string; coalesceKey: string; coalesceMs?: number },
-) => Promise<void>;
+) => Promise<DomEditPersistOutcome | undefined>;
 
 /** Stage the crop and save it under the resize's undo key, taking it back off the element if that fails. */
 export async function saveCropResize(
@@ -103,11 +103,11 @@ export async function saveCropResize(
   selection: DomEditSelection,
   commit: PatchCommit,
   coalesceKey: string,
-): Promise<void> {
+): Promise<DomEditPersistOutcome | undefined> {
   const crop = stage();
   if (!crop) return;
   try {
-    await commit(selection, [crop.patch], {
+    return await commit(selection, [crop.patch], {
       label: "Resize layer",
       coalesceKey,
       coalesceMs: Number.POSITIVE_INFINITY,

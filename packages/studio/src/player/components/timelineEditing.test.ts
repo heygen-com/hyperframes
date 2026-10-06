@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildClipRangeSelection,
   buildPromptCopyText,
   buildTimelineElementAgentPrompt,
   buildTimelineAgentPrompt,
@@ -607,18 +606,6 @@ describe("resolveBlockedTimelineEditIntent", () => {
   });
 });
 
-describe("buildClipRangeSelection", () => {
-  it("anchors the full clip range at the click position", () => {
-    expect(
-      buildClipRangeSelection({ start: 1.25, duration: 3.5 }, { anchorX: 320, anchorY: 180 }),
-    ).toEqual({
-      start: 1.25,
-      end: 4.75,
-      anchorX: 320,
-      anchorY: 180,
-    });
-  });
-});
 describe("resolveTimelineAutoScroll", () => {
   it("does not scroll when the pointer stays away from the edges", () => {
     expect(

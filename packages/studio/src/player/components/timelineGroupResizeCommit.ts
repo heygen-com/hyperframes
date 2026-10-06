@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { TimelineGroupResizeSession } from "./timelineGroupEditing";
+import { batchElementUpdates } from "../store/batchElementUpdates";
 import {
   beginTimelineOptimisticGesture,
   rollbackLatestTimelineOptimisticGesture,
@@ -17,13 +18,15 @@ export function commitTimelineGroupResize(
     updateElement,
     changes.map((change) => change.key),
   );
-  for (const change of changes) {
-    updateElement(change.key, {
-      start: change.start,
-      duration: change.duration,
-      playbackStart: change.playbackStart,
-    });
-  }
+  batchElementUpdates(() => {
+    for (const change of changes) {
+      updateElement(change.key, {
+        start: change.start,
+        duration: change.duration,
+        playbackStart: change.playbackStart,
+      });
+    }
+  });
   if (!persist) {
     rollbackLatestTimelineOptimisticGesture(
       updateElement,
@@ -32,7 +35,6 @@ export function commitTimelineGroupResize(
     );
     return;
   }
-  const coalesceKey = `clip-group-resize:${changes.map((change) => change.key).join(":")}`;
   Promise.resolve(
     persist(
       changes.map((change) => ({
@@ -41,7 +43,6 @@ export function commitTimelineGroupResize(
         duration: change.duration,
         playbackStart: change.playbackStart,
       })),
-      { coalesceKey },
     ),
   ).catch((error) => {
     rollbackLatestTimelineOptimisticGesture(

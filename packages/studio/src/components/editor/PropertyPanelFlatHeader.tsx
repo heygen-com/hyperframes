@@ -1,10 +1,10 @@
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { HiddenToggleIcon, hiddenToggleVerb } from "../../player/components/hiddenToggle";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { ClipboardList, Film, Square, Type, X } from "../../icons/SystemIcons";
 
 const ICON_BY_KIND = { text: Type, media: Film, other: Square } as const;
 const ICON_COLOR_BY_KIND = {
-  text: "text-panel-accent",
+  text: "text-accent-ink",
   media: "text-panel-media",
   other: "text-panel-container",
 } as const;
@@ -14,6 +14,7 @@ export function PropertyPanelFlatHeader({
   meta,
   elementKind,
   hidden,
+  asMute = false,
   onToggleHidden,
   copied,
   onCopy,
@@ -25,6 +26,7 @@ export function PropertyPanelFlatHeader({
   meta: string;
   elementKind: "text" | "media" | "other";
   hidden: boolean;
+  asMute?: boolean;
   onToggleHidden?: () => void;
   copied: boolean;
   onCopy: () => void;
@@ -34,7 +36,7 @@ export function PropertyPanelFlatHeader({
 }) {
   const track = useTrackDesignInput();
   const Icon = ICON_BY_KIND[elementKind];
-  const visibilityLabel = hidden ? "Show element" : "Hide element";
+  const visibilityLabel = `${hiddenToggleVerb(asMute, hidden)} element`;
 
   return (
     <div className="flex items-center gap-2.5 border-b border-panel-hairline px-4 py-3">
@@ -81,7 +83,7 @@ export function PropertyPanelFlatHeader({
               onToggleHidden();
             }}
           >
-            {hidden ? <EyeSlash size={13} weight="bold" /> : <Eye size={13} weight="bold" />}
+            <HiddenToggleIcon asMute={asMute} hidden={hidden} size={13} />
           </button>
         )}
         <button
@@ -92,7 +94,7 @@ export function PropertyPanelFlatHeader({
             track("button", "Copy element info");
             onCopy();
           }}
-          className={copied ? "text-panel-accent" : undefined}
+          className={copied ? "text-accent-ink" : undefined}
         >
           <ClipboardList size={13} />
         </button>

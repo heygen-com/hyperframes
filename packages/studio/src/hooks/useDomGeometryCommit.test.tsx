@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   useDomGeometryCommit,
   usePlayerStore,
@@ -108,6 +108,10 @@ afterEach(() => {
 });
 
 describe("useDomGeometryCommit, from the package entry", () => {
+  it("takes the host's own preview reload, with no fallback", () => {
+    expectTypeOf<UseDomGeometryCommitOptions["reloadPreview"]>().toEqualTypeOf<() => void>();
+  });
+
   it("plugs into DomEditOverlay and saves a move as one GSAP write and one undo step", async () => {
     const mutations = stubServer();
     const { element, recordEdit, hook, unmount } = renderHost();
@@ -127,7 +131,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
       y: 20,
     });
 
-    expect(outcome).toEqual({ ok: true });
+    expect(outcome).toEqual({ ok: true, changed: true });
     expect(mutations).toEqual([
       expect.objectContaining({ type: "add", targetSelector: "#card", method: "set" }),
     ]);
@@ -146,7 +150,14 @@ describe("useDomGeometryCommit, from the package entry", () => {
         const url = String(input instanceof Request ? input.url : input);
         calls.urls.push(url);
         if (url.includes("/patch-element/")) calls.patches.push(JSON.parse(String(init?.body)));
-        const saved = { ok: true, changed: true, matched: true, content: "AFTER", version: "v2" };
+        const saved = {
+          ok: true,
+          changed: true,
+          matched: true,
+          path: "index.html",
+          content: "AFTER",
+          version: "v2",
+        };
         const body = url.includes("/files/") ? { content: SOURCE } : saved;
         const status = url.includes("/patch-element/") ? patchStatus : 200;
         return new Response(JSON.stringify(body), {
@@ -163,7 +174,10 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const { element, recordEdit, hook, unmount } = renderHost();
 
     const card = makeSelection("card", element);
-    await expect(hook().commitPathOffset(card, { x: 130.5, y: 90 })).resolves.toEqual({ ok: true });
+    await expect(hook().commitPathOffset(card, { x: 130.5, y: 90 })).resolves.toEqual({
+      ok: true,
+      changed: true,
+    });
 
     expect(element.style.getPropertyValue("translate")).toBe("130.5px 90px");
     expect(calls.patches).toEqual([
@@ -185,7 +199,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
 
     await expect(
       hook().commitBoxSize(makeSelection("card", element), { width: 300, height: 90 }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ ok: true, changed: true });
 
     expect(element.style.getPropertyValue("width")).toBe("300px");
     expect(calls.patches).toEqual([
@@ -247,7 +261,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
         { x: 1, y: 2 },
         { plainTranslate: true },
       ),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ ok: true, changed: true });
     expect(calls.patches).toHaveLength(1);
     unmount();
   });
@@ -396,7 +410,14 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
               headers: { "content-type": "application/json" },
             });
           }
-          return json({ ok: true, changed: true, matched: true, content: "AFTER", version: "v2" });
+          return json({
+            ok: true,
+            changed: true,
+            matched: true,
+            path: "index.html",
+            content: "AFTER",
+            version: "v2",
+          });
         }
         if (url.includes("/api/projects/p1/gsap-mutations/")) {
           calls.gsapMutations.push(JSON.parse(String(init?.body)));
@@ -426,6 +447,7 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
 
     await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).resolves.toEqual({
       ok: true,
+      changed: true,
     });
 
     expect(calls.gsapMutations).toHaveLength(0);
@@ -455,6 +477,7 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
     ]);
     await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).resolves.toEqual({
       ok: true,
+      changed: true,
     });
 
     expect(calls.patches).toHaveLength(2);

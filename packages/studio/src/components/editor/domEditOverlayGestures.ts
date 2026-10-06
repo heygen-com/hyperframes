@@ -6,6 +6,7 @@ import type {
   StudioRotationSnapshot,
 } from "./manualEdits";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
+import type { StudioElementLook } from "./gestureUndoRevert";
 import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
@@ -49,6 +50,7 @@ export interface GestureState {
   kind: GestureKind;
   mode: "path-offset" | "box-size" | "rotation";
   selection: DomEditSelection;
+  pointerId: number;
   startX: number;
   startY: number;
   centerX: number;
@@ -56,6 +58,7 @@ export interface GestureState {
   initialPathOffset: StudioPathOffsetSnapshot;
   initialRotation: StudioRotationSnapshot;
   initialBoxSize: StudioBoxSizeSnapshot;
+  initialLook: StudioElementLook;
   pathOffsetMember?: ManualOffsetDragMember;
   originLeft: number;
   originTop: number;
@@ -93,6 +96,7 @@ export interface GestureState {
 }
 
 export interface GroupGestureState {
+  pointerId: number;
   startX: number;
   startY: number;
   originItems: GroupOverlayItem[];
@@ -101,6 +105,14 @@ export interface GroupGestureState {
   lastSnappedDx?: number;
   lastSnappedDy?: number;
   travelled?: boolean;
+}
+
+/** Only the pressing pointer's moves with its button held drive a gesture, not Chromium's buttonless resends. */
+export function movesGesture(
+  gesture: { pointerId: number },
+  e: { pointerId: number; buttons: number },
+): boolean {
+  return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
 export interface BlockedMoveState {
@@ -265,6 +277,7 @@ export type UseDomEditOverlayGesturesOptions = {
       n: { width: number; height: number },
       offset?: { x: number; y: number },
       restore?: () => void,
+      route?: { plainTranslate: boolean },
     ) => Promise<unknown> | void
   >;
   onRotationCommitRef: RefObject<

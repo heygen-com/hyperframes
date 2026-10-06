@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TrackVisualStyle } from "./timelineIcons";
-import type { TimelineClipRenderContext } from "./TimelineTypes";
+import type { TimelineProps, TimelineClipRenderContext } from "./TimelineTypes";
 
 export function resolveClipRenderContext(
   element: TimelineElement,
@@ -22,8 +22,8 @@ function ClipLintDot({ element }: { element: TimelineElement }) {
   if (!lint || lint.count === 0) return null;
   return (
     <span
-      className="absolute w-1.5 h-1.5 rounded-full bg-amber-400"
-      style={{ top: 7, right: 7 }}
+      className="absolute w-1.5 h-1.5 rounded-full bg-warning-ink"
+      style={{ bottom: 7, right: 7 }}
       title={lint.messages.join("\n")}
     />
   );
@@ -42,14 +42,8 @@ export function ClipContentOnceShown({ hold, children }: { hold: boolean; childr
 export function renderClipChildren(
   element: TimelineElement,
   clipStyle: TrackVisualStyle,
-  renderClipContent:
-    | ((
-        element: TimelineElement,
-        style: { clip: string; label: string },
-        context: TimelineClipRenderContext,
-      ) => ReactNode)
-    | undefined,
-  renderClipOverlay: ((element: TimelineElement) => ReactNode) | undefined,
+  renderClipContent: TimelineProps["renderClipContent"],
+  renderClipOverlay: TimelineProps["renderClipOverlay"],
   context: TimelineClipRenderContext = { priority: "visible", rich: false },
 ): ReactNode {
   return (
@@ -58,11 +52,11 @@ export function renderClipChildren(
       {!renderClipContent && <ClipLintDot element={element} />}
       {renderClipContent && (
         // The picture can paint above the trim handles, so it takes no input and presses reach them.
-        // borderRadius: inherit clips it to the clip's rounded corners; the clip itself is
+        // The content inherits the clip's rounded corners; the clip itself is
         // overflow-visible because keyframe diamonds hang outside its bounds.
         <div
-          className="absolute inset-0 overflow-hidden"
-          style={{ borderRadius: "inherit", pointerEvents: "none" }}
+          className="timeline-clip__content absolute inset-0 overflow-hidden"
+          style={{ pointerEvents: "none" }}
         >
           {renderClipContent(element, clipStyle, context)}
         </div>

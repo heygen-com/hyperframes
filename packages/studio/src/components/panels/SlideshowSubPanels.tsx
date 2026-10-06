@@ -72,9 +72,7 @@ export function SlideList({
             tabIndex={0}
             aria-pressed={isSelected}
             className={`flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer text-[11px] transition-colors ${
-              isSelected
-                ? "bg-studio-accent/20 text-white"
-                : "hover:bg-neutral-800/60 text-neutral-300"
+              isSelected ? "bg-on text-text-0" : "hover:bg-neutral-800/60 text-neutral-300"
             }`}
             onClick={() => onSelect(scene.id)}
             onKeyDown={(e) => {
@@ -100,7 +98,7 @@ export function SlideList({
                   aria-label="Move slide up"
                   title="Move up"
                   disabled={slideIndex <= 0}
-                  className="px-1 py-0.5 text-[10px] text-neutral-400 enabled:hover:text-white enabled:active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="px-1 py-0.5 text-[10px] text-neutral-400 enabled:hover:text-text-0 enabled:active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
                   onClick={(e) => {
                     e.stopPropagation();
                     onReorder(scene.id, "up");
@@ -113,7 +111,7 @@ export function SlideList({
                   aria-label="Move slide down"
                   title="Move down"
                   disabled={slideIndex === slides.length - 1}
-                  className="px-1 py-0.5 text-[10px] text-neutral-400 enabled:hover:text-white enabled:active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="px-1 py-0.5 text-[10px] text-neutral-400 enabled:hover:text-text-0 enabled:active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
                   onClick={(e) => {
                     e.stopPropagation();
                     onReorder(scene.id, "down");
@@ -162,7 +160,7 @@ export function SlideInspector({
       <div className="flex flex-col gap-1">
         <label className="text-[11px] text-neutral-400">Notes</label>
         <textarea
-          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1.5 text-[11px] text-white resize-none placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
+          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1.5 text-[11px] text-text-0 resize-none placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
           rows={3}
           placeholder="Speaker notes or script..."
           value={slide?.notes ?? ""}
@@ -174,7 +172,7 @@ export function SlideInspector({
           <span className="text-[11px] text-neutral-400">Fragment hold-points</span>
           <button
             type="button"
-            className="text-[10px] px-2 py-0.5 rounded-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 transition-colors"
+            className="text-[10px] px-2 py-0.5 rounded-sm bg-hover hover:bg-press text-neutral-200 transition-colors"
             onClick={onMarkFragment}
             title={`Mark ${currentTime.toFixed(2)}s as hold-point`}
           >
@@ -192,7 +190,7 @@ export function SlideInspector({
                 <button
                   type="button"
                   aria-label={`Remove fragment at ${t.toFixed(2)}s`}
-                  className="text-neutral-400 hover:text-red-400 transition-colors"
+                  className="text-neutral-400 hover:text-danger-ink transition-colors"
                   onClick={() => onRemoveFragment(t)}
                 >
                   ×
@@ -249,7 +247,7 @@ export function BranchTree({
         <input
           id={inputId}
           type="text"
-          className="flex-1 bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-white placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
+          className="flex-1 bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-text-0 placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
           placeholder="New branch name..."
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
@@ -260,7 +258,7 @@ export function BranchTree({
         />
         <button
           type="button"
-          className="px-2 py-1 rounded-sm bg-neutral-700 hover:bg-neutral-600 text-[11px] text-neutral-200 transition-colors shrink-0"
+          className="px-2 py-1 rounded-sm bg-hover hover:bg-press text-[11px] text-neutral-200 transition-colors shrink-0"
           onClick={handleCreate}
         >
           Add
@@ -326,7 +324,7 @@ function BranchItem({
       <div className="flex items-center gap-1">
         {editing ? (
           <input
-            className="flex-1 bg-neutral-800 border border-neutral-600 rounded-sm px-1.5 py-0.5 text-[11px] text-white focus:border-studio-accent/60 focus:outline-hidden"
+            className="flex-1 bg-neutral-800 border border-neutral-600 rounded-sm px-1.5 py-0.5 text-[11px] text-text-0 focus:border-studio-accent/60 focus:outline-hidden"
             value={draft}
             autoFocus
             onChange={(e) => setDraft(e.target.value)}
@@ -341,7 +339,7 @@ function BranchItem({
           <span
             role="button"
             tabIndex={0}
-            className="flex-1 text-[11px] text-white font-medium truncate cursor-pointer hover:text-neutral-300"
+            className="flex-1 text-[11px] text-text-0 font-medium truncate cursor-pointer hover:text-neutral-300"
             title="Click to rename"
             onClick={() => setEditing(true)}
             onKeyDown={(e) => {
@@ -357,15 +355,15 @@ function BranchItem({
         <button
           type="button"
           aria-label={`Delete branch ${seq.label}`}
-          className="text-[10px] text-neutral-500 hover:text-red-400 active:scale-[0.95] transition-colors px-1"
+          className="text-[10px] text-neutral-500 hover:text-danger-ink active:scale-[0.95] transition-colors px-1"
           onClick={() => setConfirmingDelete(true)}
         >
           ✕
         </button>
       </div>
       {confirmingDelete && (
-        <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex flex-col gap-1 rounded-xs">
-          <span className="text-[10px] text-red-400">
+        <div className="px-2 py-1.5 bg-danger/15 border-l-2 border-red-500 flex flex-col gap-1 rounded-xs">
+          <span className="text-[10px] text-danger-ink">
             Delete branch &ldquo;{seq.label}&rdquo;
             {seq.slides.length > 0
               ? ` and its ${seq.slides.length} slide${seq.slides.length === 1 ? "" : "s"}`
@@ -379,7 +377,7 @@ function BranchItem({
                 setConfirmingDelete(false);
                 onDelete(seq.id);
               }}
-              className="px-2 py-0.5 text-[10px] rounded-sm bg-red-600 text-white hover:bg-red-500 active:bg-red-700 transition-colors"
+              className="px-2 py-0.5 text-[10px] rounded-sm bg-danger text-on-danger hover:brightness-95 active:brightness-90 transition-colors"
             >
               Delete
             </button>
@@ -414,7 +412,7 @@ function BranchItem({
                   type="button"
                   aria-pressed={isSelected}
                   className={`flex-1 text-left truncate transition-colors hover:text-neutral-200 ${
-                    isSelected ? "text-white" : "text-neutral-400"
+                    isSelected ? "text-text-0" : "text-neutral-400"
                   }`}
                   onClick={() => onSelectBranchSlide(seq.id, scene.id)}
                 >
@@ -497,7 +495,7 @@ export function HotspotTool({
         <label className="text-[11px] text-neutral-400">Hotspot label</label>
         <input
           type="text"
-          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-white placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
+          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-text-0 placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
           placeholder="Button label..."
           value={hotspotLabel}
           onChange={(e) => setHotspotLabel(e.target.value)}
@@ -505,7 +503,7 @@ export function HotspotTool({
         />
         <label className="text-[11px] text-neutral-400">Target branch</label>
         <select
-          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-white focus:border-studio-accent/60 focus:outline-hidden"
+          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-text-0 focus:border-studio-accent/60 focus:outline-hidden"
           value={targetSequenceId}
           onChange={(e) => setTargetSequenceId(e.target.value)}
           aria-label="Target branch sequence"
@@ -527,7 +525,7 @@ export function HotspotTool({
                 ? "Choose a target branch first"
                 : undefined
           }
-          className="px-3 py-1.5 rounded-sm bg-studio-accent/80 enabled:hover:bg-studio-accent enabled:active:scale-[0.98] text-white text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded-sm bg-accent enabled:hover:bg-accent-hover enabled:active:scale-[0.98] text-on-accent text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={handleMakeHotspot}
         >
           Make hotspot
@@ -550,7 +548,7 @@ export function HotspotTool({
                 <button
                   type="button"
                   aria-label={`Remove hotspot ${h.label}`}
-                  className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors"
+                  className="text-[10px] text-neutral-500 hover:text-danger-ink transition-colors"
                   onClick={() => onRemoveHotspot(selectedSceneId, h.id)}
                 >
                   ✕

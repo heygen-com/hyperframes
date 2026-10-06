@@ -138,7 +138,7 @@ export function AskAgentModal({
             {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
           </span>
           <button
-            className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 rounded-lg bg-accent text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={!value.trim()}
             onClick={handleSubmit}
           >

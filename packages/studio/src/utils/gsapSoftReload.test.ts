@@ -1,7 +1,10 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 
-import { describe, it, expect, vi } from "vitest";
+import { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
+  readNestedFiles,
   applySoftReload,
   applySoftReloadFinalization,
   ensureMotionPathPluginLoaded,
@@ -69,6 +72,29 @@ function buildMockIframe(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** A mock iframe whose document holds one GSAP script and one composition root; `byId` answers id selectors. */
+function iframeWithComposition(script: string, root: Element, byId: Record<string, Element> = {}) {
+  const scriptEl = document.createElement("script");
+  scriptEl.textContent = script;
+  const container = document.createElement("div");
+  container.appendChild(scriptEl);
+  const { iframe } = buildMockIframe({ gsap: { timeline: vi.fn(), set: vi.fn() } });
+  (iframe as unknown as { contentDocument: unknown }).contentDocument = {
+    querySelectorAll: (sel: string) =>
+      sel === "script:not([src])"
+        ? [scriptEl]
+        : sel.includes("composition-id")
+          ? [root]
+          : byId[sel]
+            ? [byId[sel]]
+            : [],
+    createElement: (tag: string) => document.createElement(tag),
+    body: container,
+    head: document.createElement("div"),
+  };
+  return iframe;
+}
+
 describe("applySoftReload", () => {
   it('returns "cannot-soft-reload" when iframe is null', () => {
     expect(applySoftReload(null, SCRIPT_TEXT)).toBe("cannot-soft-reload");
@@ -126,24 +152,49 @@ describe("applySoftReload", () => {
     orphan.style.cssText = "left: 1240px; top: 200px; transform: translate(449px, 0px)";
     Object.assign(orphan, { _gsap: {} }); // GSAP cache marker (set by gsap.set)
 
-    const scriptEl = document.createElement("script");
-    scriptEl.textContent = 'const tl = gsap.timeline({ paused: true }); tl.to("#x", { x: 1 });';
-    const container = document.createElement("div");
-    container.appendChild(scriptEl);
-
-    const { iframe } = buildMockIframe({ gsap: { timeline: vi.fn(), set: vi.fn() } });
-    (iframe as unknown as { contentDocument: unknown }).contentDocument = {
-      querySelectorAll: (sel: string) =>
-        sel === "script:not([src])" ? [scriptEl] : sel === "[style*='transform']" ? [orphan] : [],
-      createElement: (tag: string) => document.createElement(tag),
-      body: container,
-      head: document.createElement("div"),
-    };
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.appendChild(orphan);
+    const iframe = iframeWithComposition(
+      'const tl = gsap.timeline({ paused: true }); tl.to("#x", { x: 1 });',
+      root,
+    );
 
     applySoftReload(iframe, SCRIPT_TEXT);
 
     expect(orphan.style.transform).toBe(""); // stale GSAP transform stripped
     expect(orphan.style.left).toBe("1240px"); // authored CSS base preserved
+  });
+
+  it("clears what a standalone gsap.set wrote once the new script no longer sets it", () => {
+    // An undo of a Design-panel W edit on an animated box removes its gsap.set width.
+    const target = document.createElement("div");
+    target.id = "target";
+    target.style.cssText = "left: 10px; width: 300px";
+    Object.assign(target, { _gsap: {} });
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.appendChild(target);
+    const iframe = iframeWithComposition(
+      `window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#target", { x: 100 });
+gsap.set("#target", { width: 300 });
+window.__timelines["root"] = tl;`,
+      root,
+      { "#target": target },
+    );
+    const restored = `window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#target", { x: 100 });
+window.__timelines["root"] = tl;`;
+
+    applySoftReload(iframe, restored, {
+      authoredHtml: `<html><body><div data-composition-id="root"><div id="target" style="left: 10px"></div></div><script>${restored}</script></body></html>`,
+    });
+
+    expect(target.style.width).toBe("");
+    expect(target.style.left).toBe("10px");
   });
 
   it("wraps execution in __hfSuppressSceneMutations when available", () => {
@@ -244,7 +295,7 @@ describe("applySoftReload", () => {
     // gsap present but MotionPathPlugin unset → async load path.
     const { iframe, contentWindow } = buildMockIframe({
       MotionPathPlugin: undefined,
-      gsap: { timeline: vi.fn(), registerPlugin: vi.fn() },
+      gsap: { timeline: vi.fn(), registerPlugin: vi.fn(), version: "3.14.2" },
     });
     (iframe.contentDocument as unknown as { head: unknown }).head = head;
 
@@ -255,7 +306,7 @@ describe("applySoftReload", () => {
     // script has NOT executed yet, so the timeline isn't rebound synchronously.
     expect(result).toBe("applied");
     expect(appendedScripts).toHaveLength(1);
-    expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    expect(appendedScripts[0]!.src).toContain("gsap@3.14.2/dist/MotionPathPlugin");
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
 
     // onerror must NOT run the script (that would reference a missing plugin) —
@@ -379,6 +430,66 @@ describe("ensureMotionPathPluginLoaded", () => {
     expect(appendedScripts).toHaveLength(0);
   });
 
+  describe("when gsap is not there yet at load", () => {
+    const post = (source: unknown, type = "ready") => {
+      const event = new MessageEvent("message", { data: { source: "hf-preview", type } });
+      Object.defineProperty(event, "source", { value: source });
+      window.dispatchEvent(event);
+    };
+
+    it("loads the plugin once that iframe's runtime is ready", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(iframe);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post({});
+      post(contentWindow, "timeline");
+      expect(appendedScripts).toHaveLength(0);
+      post(contentWindow);
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(1);
+      expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    });
+
+    it("stops listening at the first ready, even when it brought no gsap", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(iframe);
+      post(contentWindow);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(0);
+    });
+
+    it("drops a preview that never became ready once a newer one loads", () => {
+      const stale = buildBootstrapIframe({ gsap: undefined });
+      ensureMotionPathPluginLoaded(stale.iframe);
+      ensureMotionPathPluginLoaded(buildBootstrapIframe({ gsap: undefined }).iframe);
+      stale.contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(stale.contentWindow);
+      expect(stale.appendedScripts).toHaveLength(0);
+    });
+
+    it("does not wait when the runtime already booted, since its ready has gone out", () => {
+      const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe({
+        gsap: undefined,
+        __playerReady: true,
+      });
+      ensureMotionPathPluginLoaded(iframe);
+      contentWindow.gsap = { registerPlugin: vi.fn() };
+      post(contentWindow);
+      expect(appendedScripts).toHaveLength(0);
+    });
+  });
+
+  it("loads the plugin at the composition's own gsap version", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({
+      gsap: { version: "3.14.2", registerPlugin: vi.fn() },
+    });
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts[0]!.src).toBe(
+      "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js",
+    );
+  });
+
   it("appends the plugin script once and registers it on load", () => {
     const { iframe, contentWindow, appendedScripts, registerPlugin } = buildBootstrapIframe();
     ensureMotionPathPluginLoaded(iframe);
@@ -427,6 +538,8 @@ describe("ensureMotionPathPluginLoaded", () => {
 // from the parse-time stamp. Otherwise a runtime transient (the color-grading
 // hide's 0, a mid-flight tween value) becomes a permanent tween bound.
 describe("applySoftReload authored-style restore", () => {
+  afterEach(() => document.body.replaceChildren());
+
   function buildIframeWithTarget(el: Element, overrides: Record<string, unknown> = {}) {
     const scriptEl = document.createElement("script");
     scriptEl.textContent =
@@ -473,6 +586,45 @@ describe("applySoftReload authored-style restore", () => {
     );
     return el.style.getPropertyValue("opacity");
   }
+
+  it("flushes only elements when a tween targets a plain object (the runtime's duration filler)", () => {
+    const el = document.createElement("div");
+    // GSAP's clearProps writes target.style.cssText, which throws on a plain object.
+    const set = vi.fn((targets: Array<{ style: CSSStyleDeclaration }>) => {
+      for (const t of targets) t.style.cssText = "";
+    });
+    const { iframe } = buildIframeWithTarget(el, {
+      gsap: { timeline: vi.fn(), set },
+      __timelines: {
+        root: {
+          kill: vi.fn(),
+          getChildren: () => [{ targets: () => [el] }, { targets: () => [{}] }],
+        },
+      },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("applied");
+    expect(set).toHaveBeenCalledWith([el], { clearProps: "all" });
+  });
+
+  it("falls back to a full reload, and says why, when the flush throws", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { iframe } = buildIframeWithTarget(document.createElement("div"), {
+      gsap: {
+        timeline: vi.fn(),
+        set: vi.fn(() => {
+          throw new Error("flush failed");
+        }),
+      },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("soft reload threw"),
+      expect.any(Error),
+    );
+    error.mockRestore();
+  });
 
   it("restores opacity from the after-write HTML (matched by data-hf-id)", () => {
     const el = document.createElement("img");
@@ -580,5 +732,272 @@ describe("applySoftReload authored-style restore", () => {
     });
     applySoftReload(iframe, SCRIPT_TEXT);
     expect(transformAtRebind).toBe("");
+  });
+
+  // The preview inlines a sub-composition into a host that names its file.
+  function inlinedIn(file: string, el: HTMLElement): HTMLElement {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-file", file);
+    host.appendChild(el);
+    document.body.appendChild(host);
+    return el;
+  }
+
+  function answerQueries(iframe: HTMLIFrameElement, styled: Element, root: Element): void {
+    const doc = iframe.contentDocument as unknown as { querySelectorAll: (s: string) => unknown };
+    const query = doc.querySelectorAll;
+    doc.querySelectorAll = (sel: string) =>
+      sel.includes("transform") ? [styled] : sel.includes("composition-id") ? [root] : query(sel);
+  }
+  const SUB_FILE = `<template id="sub-template"><div id="sub" data-composition-id="sub">
+    <div id="nroot" data-hf-id="hf-n" style="left: 560px; top: 300px"></div></div></template>`;
+
+  it("gives a root tween's nested target what its own file authors for what GSAP wrote", () => {
+    const el = document.createElement("div");
+    el.id = "nroot";
+    el.setAttribute("data-hf-id", "hf-n");
+    // GSAP folded the stylesheet translate into its transform, masked it, and wrote the tweened width.
+    el.style.cssText =
+      "left: 560px; top: 300px; width: 337px; translate: none; transform: translate(12.5px, 0px)";
+    inlinedIn("compositions/sub.html", el);
+    const tween = { targets: () => [el], vars: { x: 50, width: 400, duration: 4 } };
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+    const authoredHtml = `<html><body><div id="root"></div></body></html>`;
+    const nestedFiles = new Map([["compositions/sub.html", SUB_FILE]]);
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml, nestedFiles })).toBe("applied");
+    expect(el.getAttribute("style")).toBe("left: 560px; top: 300px;");
+  });
+
+  it("puts back a root element's tweened width from the file instead of the live value", () => {
+    const el = document.createElement("div");
+    el.setAttribute("data-hf-id", "hf-1");
+    el.style.cssText = "left: 700px; width: 366px";
+    const tween = { targets: () => [el], vars: { width: 450, duration: 4 } };
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+    const authoredHtml = `<html><body><div data-hf-id="hf-1" style="left: 700px"></div></body></html>`;
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml })).toBe("applied");
+    expect(el.getAttribute("style")).toBe("left: 700px;");
+  });
+
+  it("leaves what a nested composition's own timeline animates to that timeline", () => {
+    const el = inlinedIn("compositions/sub.html", document.createElement("div"));
+    el.id = "nroot";
+    el.style.cssText = "translate: none; transform: translate(40px, 10px)";
+    const sub = { getChildren: () => [{ targets: () => [el], vars: { x: 100 } }] };
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [sub] }, sub },
+    });
+    const readFile = vi.fn(async () => SUB_FILE);
+
+    expect(readNestedFiles(iframe, SCRIPT_TEXT, readFile)).toBeNull();
+    applySoftReload(iframe, SCRIPT_TEXT);
+
+    expect(readFile).not.toHaveBeenCalled();
+    expect(el.style.cssText).toBe("translate: none; transform: translate(40px, 10px);");
+  });
+
+  it("a nested composition's reload leaves a GSAP transform in the top-level file alone", () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "root");
+    host.setAttribute("data-composition-file", "compositions/sub.html");
+    const outside = Object.assign(document.createElement("div"), { _gsap: {} });
+    outside.style.cssText = "rotate: none; transform: rotate(30deg)";
+    const { iframe } = buildIframeWithTarget(host, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [] } },
+    });
+    answerQueries(iframe, outside, host);
+
+    applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml: SUB_FILE });
+
+    expect(outside.style.cssText).toBe("rotate: none; transform: rotate(30deg);");
+  });
+
+  it("a nested composition's reload leaves its element that the top-level timeline animates alone", () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "root");
+    host.setAttribute("data-composition-file", "compositions/sub.html");
+    const el = Object.assign(document.createElement("div"), { _gsap: {} });
+    // The top-level tween folded the stylesheet translate into its transform.
+    el.style.cssText = "translate: none; transform: translate(23.75px, 5px)";
+    host.appendChild(el);
+    const main = { getChildren: () => [{ targets: () => [el], vars: { x: 50 } }] };
+    const { iframe } = buildIframeWithTarget(host, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [] }, main },
+    });
+    answerQueries(iframe, el, host);
+
+    applySoftReload(iframe, SCRIPT_TEXT, {
+      authoredHtml: SUB_FILE,
+    });
+
+    expect(el.style.cssText).toBe("translate: none; transform: translate(23.75px, 5px);");
+  });
+
+  it("a nested composition's own reload restores its element from the file just written", () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "root");
+    host.setAttribute("data-composition-file", "compositions/sub.html");
+    const el = document.createElement("div");
+    el.id = "nroot";
+    el.setAttribute("data-hf-id", "hf-n");
+    el.style.cssText = "left: 560px; top: 300px; width: 337px";
+    host.appendChild(el);
+    const tween = { targets: () => [el], vars: { width: 400 } };
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+    answerQueries(iframe, el, host);
+    const readFile = vi.fn(async () => SUB_FILE);
+
+    expect(readNestedFiles(iframe, SCRIPT_TEXT, readFile)).toBeNull();
+    applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml: SUB_FILE });
+
+    expect(readFile).not.toHaveBeenCalled();
+    expect(el.getAttribute("style")).toBe("left: 560px; top: 300px;");
+  });
+
+  it("reads only the other composition files a top-level re-run resets elements of", async () => {
+    const el = inlinedIn("compositions/sub.html", document.createElement("div"));
+    const tween = { targets: () => [el], vars: { width: 400 } };
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+    const readFile = vi.fn(async () => SUB_FILE);
+
+    const files = await readNestedFiles(iframe, SCRIPT_TEXT, readFile);
+
+    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(files).toEqual(new Map([["compositions/sub.html", SUB_FILE]]));
+  });
+
+  it("escalates, touching nothing, when a nested file the reset needs could not be read", () => {
+    const el = inlinedIn("compositions/sub.html", document.createElement("div"));
+    el.style.cssText = "width: 337px; translate: none";
+    const tween = { targets: () => [el], vars: { width: 400 } };
+    const set = vi.fn();
+    const { iframe } = buildIframeWithTarget(el, {
+      gsap: { timeline: vi.fn(), set },
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT, { nestedFiles: null })).toBe("cannot-soft-reload");
+    expect(set).not.toHaveBeenCalled();
+    expect(el.style.cssText).toBe("width: 337px; translate: none;");
+  });
+
+  it("keeps the runtime's own inline writes: only what GSAP wrote comes back from the file", () => {
+    const el = document.createElement("div");
+    el.setAttribute("data-hf-id", "hf-1");
+    // The runtime's layout pass wrote position and a data-width size; GSAP wrote the mask and transform.
+    el.style.cssText =
+      "left: 10px; position: absolute; width: 300px; translate: none; transform: translate(50px, 0px)";
+    const tween = { targets: () => [el], vars: { x: 50 } };
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+    const authoredHtml = `<html><body><div data-hf-id="hf-1" style="left: 10px"></div></body></html>`;
+
+    applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml });
+
+    expect(el.getAttribute("style")).toBe("left: 10px; position: absolute; width: 300px;");
+  });
+});
+
+describe("applySoftReload over a composition's own markup", () => {
+  // A live preview whose top-level timeline has no children; `_gsap` marks what a script set.
+  function reloadRoot(markup: string, held: string[]) {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = `${markup}<script>${SCRIPT_TEXT}</script>`;
+    for (const id of held) Object.assign(doc.getElementById(id)!, { _gsap: {} });
+    const set = vi.fn();
+    const contentWindow = {
+      gsap: { timeline: vi.fn(), set },
+      __hfForceTimelineRebind: vi.fn(),
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [] } } as Record<string, unknown>,
+      __player: { getTime: () => 0, seek: vi.fn() },
+    };
+    const iframe = { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement;
+    const cleared = () => (set.mock.calls[0]?.[0] as Element[] | undefined)?.map((el) => el.id);
+    return { doc, iframe, cleared };
+  }
+
+  it("resets an element a standalone gsap.set holds even when no inline transform is left", () => {
+    const { iframe, cleared } = reloadRoot(
+      `<div data-composition-id="root"><div id="held" style="left: 5px"></div><div id="plain"></div></div>`,
+      ["held"],
+    );
+
+    applySoftReload(iframe, SCRIPT_TEXT);
+
+    expect(cleared()).toEqual(["held"]);
+  });
+
+  it("leaves what a nested composition's script holds alone, but resets that composition's host", () => {
+    const { doc, iframe, cleared } = reloadRoot(
+      `<div data-composition-id="root"><div id="host" data-composition-id="sub">` +
+        `<div id="nested" style="transform: translate(90px, 60px)"></div></div></div>`,
+      ["host", "nested"],
+    );
+
+    applySoftReload(iframe, SCRIPT_TEXT);
+
+    expect(cleared()).toEqual(["host"]);
+    expect(doc.getElementById("nested")!.style.transform).toBe("translate(90px, 60px)");
+  });
+
+  it("reloads in full when the re-run builds its DOM a second time", () => {
+    const { doc, iframe } = reloadRoot(`<div id="root" data-composition-id="root"></div>`, []);
+    const append = doc.body.appendChild.bind(doc.body);
+    // What a script's createElement or template clone does each time it runs.
+    doc.body.appendChild = <T extends Node>(node: T): T => {
+      doc.getElementById("root")!.appendChild(doc.createElement("div"));
+      return append(node);
+    };
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
+  });
+});
+
+describe("a gsap.set a live patch applied", () => {
+  it("is cleared by the next soft reload once the new script no longer sets it, and only once", () => {
+    const markup = `<div data-composition-id="root"><div id="a" style="left: 10px"></div></div>`;
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = `${markup}<script>window.__timelines["root"]=gsap.timeline();</script>`;
+    const set = (target: HTMLElement | HTMLElement[], vars: Record<string, unknown>) => {
+      for (const el of [target].flat()) {
+        if (vars.clearProps) el.removeAttribute("style");
+        else for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, `${v}px`);
+      }
+    };
+    const iframe = {
+      contentDocument: doc,
+      contentWindow: {
+        gsap: { timeline: () => {}, set },
+        __hfForceTimelineRebind: () => {},
+        __timelines: {},
+        __player: { getTime: () => 0, seek: () => {} },
+      },
+    } as unknown as HTMLIFrameElement;
+    const el = doc.getElementById("a")!;
+    const reload = () => {
+      const script = `window.__timelines["root"]=gsap.timeline();gsap.set("#a",{width:300});`;
+      applySoftReload(iframe, script, { authoredHtml: `${markup}<script>${script}</script>` });
+    };
+
+    // W 300, then H 200, then a commit that removes height from the set.
+    patchRuntimeTweenInPlace(iframe, "#a", { kind: "global-set", props: { width: 300 } });
+    patchRuntimeTweenInPlace(iframe, "#a", { kind: "global-set", props: { height: 200 } });
+    reload();
+    expect([el.style.height, el.style.left]).toEqual(["", "10px"]);
+
+    el.style.height = "50px";
+    reload();
+    expect(el.style.height).toBe("50px");
   });
 });

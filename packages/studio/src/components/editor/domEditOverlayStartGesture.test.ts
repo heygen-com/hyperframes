@@ -177,6 +177,7 @@ describe("a rotate on a page that loads GSAP", () => {
       clientY,
       pointerId: 1,
       button: 0,
+      buttons: 1,
       shiftKey: false,
       preventDefault() {},
       stopPropagation() {},

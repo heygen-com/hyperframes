@@ -8,8 +8,8 @@
  */
 
 import type { Browser, Page } from "puppeteer-core";
-import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { writeCaptureFileSync } from "./captureFile.js";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { isPrivateUrl, safeFetch } from "./assetDownloader.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
@@ -50,8 +50,10 @@ function liveRemainingMs(budget: RemainingBudget, fallbackMs: number): number {
 export async function saveLottieAnimations(
   discoveredLotties: DiscoveredLottie[],
   lottieDir: string,
+  outputDir: string,
   budget: RemainingBudget = {},
 ): Promise<number> {
+  ensureCaptureDirSync(outputDir, lottieDir);
   const byteBudget = budget.byteBudget ?? createCaptureDownloadBudget();
   let savedCount = 0;
   const savedHashes = new Set<string>(); // Deduplicate by content
@@ -130,7 +132,7 @@ export async function renderLottiePreviews(
     layers: number;
   }> = [];
   const previewDir = join(lottieDir, "previews");
-  mkdirSync(previewDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, previewDir);
 
   for (const file of readdirSync(lottieDir)) {
     if (!file.endsWith(".json")) continue;
@@ -470,9 +472,9 @@ export async function captureVideoManifest(
   if (merged.length === 0) return;
 
   const videoManifestDir = join(outputDir, "assets", "videos");
-  mkdirSync(videoManifestDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, videoManifestDir);
   const previewDir = join(videoManifestDir, "previews");
-  mkdirSync(previewDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, previewDir);
 
   const videoManifest: Array<{
     index: number;

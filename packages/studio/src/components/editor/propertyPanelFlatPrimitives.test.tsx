@@ -60,7 +60,7 @@ describe("FlatRow", () => {
       />,
     );
     const value = host.querySelector('[data-flat-row-value="true"]');
-    expect(value?.className).toContain("text-panel-accent");
+    expect(value?.className).toContain("text-accent-ink");
     const reset = host.querySelector<HTMLButtonElement>('[data-flat-row-reset="true"]');
     expect(reset).not.toBeNull();
     act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -356,7 +356,7 @@ describe("FlatSlider", () => {
     const fill = host.querySelector<HTMLElement>('[data-flat-slider-fill="true"]');
     expect(fill?.style.width).toBe("100%");
     const knob = host.querySelector<HTMLElement>('[data-flat-slider-knob="true"]');
-    expect(knob?.className).toContain("bg-white");
+    expect(knob?.className).toContain("bg-text-0");
     act(() => root.unmount());
   });
 
@@ -1172,7 +1172,7 @@ describe("FlatSelectRow", () => {
       />,
     );
     const select = host.querySelector<HTMLSelectElement>("select");
-    expect(select?.className).toContain("text-panel-accent");
+    expect(select?.className).toContain("text-accent-ink");
     const reset = host.querySelector<HTMLButtonElement>('[data-flat-select-reset="true"]');
     act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onReset).toHaveBeenCalledTimes(1);
@@ -1364,6 +1364,7 @@ describe("FlatSlider — typed value", () => {
     const still = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
     expect(still).not.toBeNull();
     expect(still?.getAttribute("aria-invalid")).toBe("true");
+    expect(still?.className).toContain("border-dashed");
     act(() => still?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(host.querySelector('[data-flat-slider-input="true"]')).toBeNull();
     expect(host.querySelector('[data-flat-slider-value="true"]')?.textContent).toBe("1x");

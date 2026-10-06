@@ -323,7 +323,7 @@ function TextFieldEditor({
               track("button", "Remove text field");
               onRemoveTextField(field.key);
             }}
-            className="inline-flex h-7 shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+            className="inline-flex h-7 shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-text-0"
           >
             Remove
           </button>
@@ -474,7 +474,7 @@ export function TextSection({
                 if (nextKey) setActiveTextFieldKey(nextKey);
               });
             }}
-            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-text-0"
           >
             <Plus size={12} className="shrink-0" />
             <span className="truncate">Add text</span>

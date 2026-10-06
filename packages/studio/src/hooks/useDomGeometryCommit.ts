@@ -1,3 +1,4 @@
+import type { GeometryCommitResult } from "../utils/previewFeatureUsage";
 import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
@@ -25,8 +26,8 @@ import { useMountEffect } from "./useMountEffect";
  * mounts; drain `waitForPendingSaves` before switching projects.
  */
 export interface UseDomGeometryCommitOptions extends UseDomStyleCommitOptions {
-  /** Called when a save cannot patch the preview in place; defaults to reloading the iframe. */
-  reloadPreview?: () => void;
+  /** Reloads the host's preview when a save cannot patch it in place. */
+  reloadPreview: () => void;
 }
 
 export interface DomGeometryCommits {
@@ -41,6 +42,7 @@ export interface DomGeometryCommits {
     next: { width: number; height: number },
     offset?: { x: number; y: number },
     restore?: () => void,
+    route?: { plainTranslate: boolean },
   ) => Promise<DomEditCommitOutcome>;
   commitRotation: (
     selection: DomEditSelection,
@@ -67,19 +69,15 @@ export function useDomGeometryCommit({
 }: UseDomGeometryCommitOptions): DomGeometryCommits {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
-  const pending = useRef(new Set<Promise<void>>()).current;
+  const pending = useRef(new Set<Promise<GeometryCommitResult | undefined>>()).current;
   const editHistory = useMemo(() => ({ recordEdit }), [recordEdit]);
-  const reload = useCallback(
-    () => (reloadPreview ? reloadPreview() : iframeRef.current?.contentWindow?.location.reload()),
-    [reloadPreview, iframeRef],
-  );
   const { bump: bumpGsapCache } = useGsapCacheVersion();
   const gsap = useGsapScriptCommits({
     projectIdRef,
     activeCompPath,
     previewIframeRef: iframeRef,
     editHistory,
-    reloadPreview: reload,
+    reloadPreview,
     onCacheInvalidate: bumpGsapCache,
     showToast,
     writeProjectFile,
@@ -127,6 +125,7 @@ export function useDomGeometryCommit({
     domEditSelection: null,
     selectedGsapAnimations: NO_SELECTED_ANIMATIONS,
     gsapCommitMutation: gsap.commitMutation,
+    activeCompPath,
     previewIframeRef: iframeRef,
     showToast,
     bumpGsapCache,
@@ -142,7 +141,10 @@ export function useDomGeometryCommit({
     updateArcSegment: gsap.updateArcSegment,
   });
   const saved = useCallback(
-    async (commit: () => Promise<void>, restore = noop): Promise<DomEditCommitOutcome> => {
+    async (
+      commit: () => Promise<GeometryCommitResult | undefined>,
+      restore = noop,
+    ): Promise<DomEditCommitOutcome> => {
       const refusal = !projectIdRef.current
         ? "No project is open"
         : !isPreviewBooted(projectIdRef.current)
@@ -156,11 +158,10 @@ export function useDomGeometryCommit({
       const run = commit();
       pending.add(run);
       try {
-        await run;
+        return { ok: true, changed: (await run)?.changed === true };
       } finally {
         pending.delete(run);
       }
-      return { ok: true };
     },
     [pending, showToast],
   );
@@ -170,8 +171,8 @@ export function useDomGeometryCommit({
         saved(() => handleGsapAwarePathOffsetCommit(selection, next, modifiers)),
       commitGroupPathOffset: (updates) =>
         saved(() => handleGsapAwareGroupPathOffsetCommit(updates)),
-      commitBoxSize: (selection, next, offset, restore) =>
-        saved(() => handleGsapAwareBoxSizeCommit(selection, next, offset, restore), restore),
+      commitBoxSize: (selection, next, offset, restore, route) =>
+        saved(() => handleGsapAwareBoxSizeCommit(selection, next, offset, restore, route), restore),
       commitRotation: (selection, next) =>
         saved(() => handleGsapAwareRotationCommit(selection, next)),
       waitForPendingSaves: () => Promise.allSettled([...pending]).then(noop),

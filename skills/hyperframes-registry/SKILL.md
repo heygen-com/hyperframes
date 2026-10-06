@@ -69,7 +69,7 @@ Key attributes:
 - `data-start` — when the block appears in the host timeline (seconds)
 - `data-duration` — how long the block plays
 - `data-width` / `data-height` — block canvas dimensions
-- `data-track-index` — layer ordering (higher = in front)
+- `data-track-index` — Studio timeline row; display only. Use CSS `z-index` for layering
 
 See [wiring-blocks.md](./references/wiring-blocks.md) for full details.
 
@@ -119,7 +119,7 @@ The normal table and `--json` modes only list matches; install a selected name w
 When the search comes back and nothing in it does the job, say so before you hand-author the move:
 
 ```bash
-npx hyperframes feedback --search-miss "<the query you ran>" --wanted "<the move you needed>" --tier on-device
+npx hyperframes feedback --search-miss "<the query you ran>" --wanted "<the move you needed>" --tier <the tier that answered>
 ```
 
 `catalog --query` prints this line for you, pre-filled, and `--json` carries it as `report_gap` — so it is already in hand at the moment you decide nothing fits.

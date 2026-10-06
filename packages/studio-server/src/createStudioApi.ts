@@ -8,6 +8,9 @@ import { registerRenderRoutes } from "./routes/render.js";
 import { registerImageThumbnailRoutes } from "./routes/imageThumbnail.js";
 import { registerThumbnailRoutes } from "./routes/thumbnail.js";
 import { registerWaveformRoutes } from "./routes/waveform.js";
+import { registerFreezeFrameRoutes } from "./routes/freezeFrame.js";
+import { registerLoudnessRoutes } from "./routes/loudness.js";
+import { registerPeakRoutes } from "./routes/peaks.js";
 import { registerFontRoutes } from "./routes/fonts.js";
 import { registerRegistryRoutes } from "./routes/registry.js";
 import { registerSelectionRoutes } from "./routes/selection.js";
@@ -50,6 +53,15 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
       .catch(() => null);
     if (project) adapter.invalidateProjectSignature?.(project.dir);
   });
+  api.use("/projects/:id/*", async function openHistorySoNoWriteBecomesItsBaseline(c, next) {
+    if (c.req.method !== "GET" && c.req.method !== "HEAD" && adapter.history) {
+      await Promise.resolve()
+        .then(() => adapter.resolveProject(c.req.param("id")))
+        .then((project) => project && adapter.history?.(project))
+        .catch(() => null);
+    }
+    await next();
+  });
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);
@@ -61,6 +73,9 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   registerSelectionRoutes(api, adapter);
   registerMediaRoutes(api, adapter);
   registerWaveformRoutes(api, adapter);
+  registerFreezeFrameRoutes(api, adapter);
+  registerLoudnessRoutes(api, adapter);
+  registerPeakRoutes(api, adapter);
   registerFontRoutes(api);
   registerRegistryRoutes(api, adapter);
   registerGlobalAssetRoutes(api);

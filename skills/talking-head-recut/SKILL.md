@@ -248,8 +248,8 @@ sub-compositions** (one .html per chapter, mounted with
 `data-composition-src`) so the GSAP timeline per file stays manageable
 — see the `timeline_track_too_dense` HyperFrames lint warning.
 
-`content` can be a plain string ("Title: annualized 5.69%\nNotes: ...") or any JSON
-shape that captures the data. The agent decides the shape per card.
+`contentHints` is a free-form object; its keys and nesting can take whatever
+shape captures the data. The agent decides the shape per card.
 
 **Optional outro.** This skill ships **no fixed brand outro**. If the user wants a closing card, design a neutral one yourself (wordmark + one-line tagline, ~1.5-2s, fade in -> short hold -> fade out), append it to `cards[]`, and extend `composition.durationSeconds` to its `endSec`. Otherwise end on the last content card.
 
@@ -539,15 +539,12 @@ style / layout / frame, Read the corresponding file:
   the data-card-id to your card's id, swap the placeholder content for the
   real takeaway, and you're done.
 - `references/layouts/<key>.html` — exact `videoBounds` + `cardBounds` for
-  both landscape and portrait, with a copy-paste JSON snippet for
-  `storyboard.json`'s per-card `layout` field.
+  both landscape and portrait. The storyboard records only `card.zone`.
 - `references/frames/<key>.html` — decorative HTML to add as a sibling of
   `#video-wrap`, plus placement instructions for the composition CSS.
 
-Pick `style × layout × frame` **per card** — you can change all three
-between cards as long as the transitions read smoothly. A common rhythm:
-open `editorial × overlay × clean`, switch to `audit × split × hairline`
-for the data card, close on `whiteboard × pip × polaroid`.
+Within the user's chosen style group you may vary the style per card, and
+pick `layout × frame` per card, as long as the transitions read smoothly.
 
 The 10 styles are skill-side design tokens, **not composition-level themes** —
 they don't need to be declared in `storyboard.composition`; they live
@@ -570,8 +567,7 @@ the source video:
 Schema does NOT store per-card video bounds. `videoTrack.bounds` is
 **one-time** at composition level (defaults to full canvas). Video
 "moving" between cards is purely a GSAP animation authored in
-`index.html`. There is no `card.layout` field — earlier versions of this
-doc invented one; the real schema only has `card.zone`.
+`index.html`. There is no `card.layout` field; the schema only has `card.zone`.
 
 **4 composition layouts** (from `references/layouts/`) — each is a
 recipe pairing a `zone` with a `#video-wrap` tween target:
@@ -939,22 +935,13 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
         <video
           id="bg-video"
           src="input-video.mp4"
-          muted
           playsinline
+          data-has-audio="true"
           data-start="0"
           data-duration="121.2"
           data-track-index="1"
         ></video>
       </div>
-      <!-- Preserve the source program audio while the visual video stays muted. -->
-      <audio
-        id="source-audio"
-        src="input-video.mp4"
-        data-start="0"
-        data-duration="121.2"
-        data-track-index="10"
-        data-volume="1"
-      ></audio>
 
       <!-- Layer 2: each card-host sits at the bounds dictated by its layout. -->
       <!-- IMPORTANT: every card-host MUST carry BOTH "card-host" and "clip" classes. -->
@@ -1115,8 +1102,8 @@ clashes with chrome); PiP layouts already have their own pill treatment
 top of `split` / `stack`.
 
 **GSAP target lookup table** for `#video-wrap` per composition layout
-(landscape 1920×1080 — for portrait & 4:5 see `references/layouts/*.html`
-which list all three ratios):
+(landscape 1920×1080; portrait is in `references/layouts/*.html`, and 4:5 is
+derived from portrait by the proportional scaling described above):
 
 | composition layout                   | typical card.zone | `#video-wrap` GSAP target                                                 | extra css class                            |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------- | ------------------------------------------ |
@@ -1163,7 +1150,7 @@ decides where the actual visible card sits.
 - Register one paused master timeline as `window.__timelines["talking-head-recut"]`.
 - Build timelines synchronously at page load; no `async`, `setTimeout`, Promises, or media `play()` calls.
 - Do not use `Math.random()` or `Date.now()` in render paths.
-- Do not use `repeat: -1`; calculate finite repeats from the video duration.
+- `repeat: -1` is allowed only under the finite root `data-duration`; for loops that must end earlier, calculate finite repeats from the video duration.
 - Prefer GSAP transforms and opacity (`x`, `y`, `scale`, `rotation`, `opacity`) over layout properties (`top`, `left`, `width`, `height`) for motion.
 - Animate wrappers such as `#video-wrap`, not the video element dimensions directly.
 - Avoid animating the same property on the same element from multiple timelines at the same time.
@@ -1182,11 +1169,8 @@ PRODUCER_BROWSER_GPU_MODE=hardware npx hyperframes render public \
 ```
 
 `hyperframes render <dir>` reads `<dir>/index.html` and produces the MP4.
-The canonical composition keeps the visual `<video>` muted and mounts the same
-source as the root `#source-audio` track, so the rendered MP4 preserves the
-talking-head audio without a manual remux. This uses a separate audio track
-rather than `data-has-audio="true"` so its volume and ducking remain independently
-controllable on the timeline.
+The source program audio stays on `#bg-video`, so the rendered MP4 preserves the
+talking-head audio without a manual remux.
 The flag `PRODUCER_BROWSER_GPU_MODE=hardware` (or `--browser-gpu`) is
 strongly recommended on macOS — software-only Chrome rendering times out
 on most laptops.

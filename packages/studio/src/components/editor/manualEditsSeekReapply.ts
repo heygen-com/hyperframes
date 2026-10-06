@@ -1,4 +1,5 @@
 // Puts Studio's committed edits back after a timeline seek has rendered over them.
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import {
   STUDIO_BOX_SIZE_ATTR,
   STUDIO_HEIGHT_PROP,
@@ -12,18 +13,14 @@ import {
 import { applyStudioBoxSize, applyStudioPathOffset, applyStudioRotation } from "./manualEditsDom";
 import { applyStudioMotionFromDom } from "./studioMotion";
 import { STUDIO_MOTION_ATTR, STUDIO_MOTION_TIMELINE_ID } from "./studioMotionTypes";
-import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
+import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 
 function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
-  const ctor = doc.defaultView?.HTMLElement;
-  if (!ctor) return [];
-  const elements = Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(
-    (el): el is HTMLElement => el instanceof ctor,
-  );
+  const elements = Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(isHtmlElement);
   // Handle legacy HTML files where attributes were persisted with a double data- prefix
   const legacyAttr = `data-${attr}`;
   for (const el of doc.querySelectorAll(`[${legacyAttr}="true"]`)) {
-    if (el instanceof ctor && !el.hasAttribute(attr)) {
+    if (isHtmlElement(el) && !el.hasAttribute(attr)) {
       el.setAttribute(attr, "true");
       el.removeAttribute(legacyAttr);
       elements.push(el);
@@ -35,7 +32,7 @@ function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
 function reapplyPathOffsets(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
     // Unlike size below, the offset channels add up: applying both doubles the move.
-    if (gsapAnimatesProperty(el, "x", "y")) continue;
+    if (gsapWritesChannels(el, ["x", "y"])) continue;
     const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
     const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
     if (!x && !y) continue;

@@ -6,9 +6,20 @@ import {
   StudioSaveNetworkError,
 } from "../utils/studioSaveDiagnostics";
 import { studioExpectedFileVersion, studioWriteHeaders } from "../utils/studioFileVersion";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 export interface UseProjectFileWriterOptions {
   projectId: string | null;
+}
+
+async function fetchProjectFile(projectId: string | null, path: string, query: string) {
+  if (!projectId) throw new Error("No active project");
+  const response = await studioApiFetch(
+    `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}${query}`,
+  );
+  if (!response.ok) throw new Error(`Failed to read ${path}`);
+  const data = (await response.json()) as { content?: string; version?: string };
+  return { content: data.content, version: data.version ?? response.headers.get("etag") };
 }
 
 // The etag-guarded project-file read/write pair every Studio save path
@@ -30,29 +41,19 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
 
   const readProjectFile = useCallback(
     async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}`,
-      );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await response.json()) as { content?: string; version?: string };
-      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
-      fileVersions.set(path, data.version ?? response.headers.get("etag"));
-      return data.content;
+      const { content, version } = await fetchProjectFile(projectId, path, "");
+      if (typeof content !== "string") throw new Error(`Missing file contents for ${path}`);
+      fileVersions.set(path, version);
+      return content;
     },
     [fileVersions, projectId],
   );
 
   const readOptionalProjectFile = useCallback(
     async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
-      );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await response.json()) as { content?: string; version?: string };
-      fileVersions.set(path, data.version ?? response.headers.get("etag"));
-      return typeof data.content === "string" ? data.content : "";
+      const { content, version } = await fetchProjectFile(projectId, path, "?optional=1");
+      fileVersions.set(path, version);
+      return typeof content === "string" ? content : "";
     },
     [fileVersions, projectId],
   );
@@ -63,7 +64,7 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
       const writeProjectId = projectId;
       let expectedVersion = await studioExpectedFileVersion(fileVersions, path, expectedContent);
       if (expectedVersion === undefined) {
-        const preflight = await fetch(
+        const preflight = await studioApiFetch(
           `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
         );
         if (preflight.ok) {
@@ -86,7 +87,7 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
         // the retry can produce a second filesystem receipt that must be suppressed independently.
         let response: Response;
         try {
-          response = await fetch(
+          response = await studioApiFetch(
             `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
             {
               method: "PUT",

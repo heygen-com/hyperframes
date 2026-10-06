@@ -131,7 +131,6 @@ function runGenerate(argv) {
   const scriptPath = resolve(flag(argv, "script", join(hyperframesDir, "SCRIPT.md")));
   const outPath = resolve(flag(argv, "out", join(hyperframesDir, "audio_meta.json")));
   const userVoice = flag(argv, "voice", null);
-  const speed = Number(flag(argv, "speed", "1.0")) || 1.0;
 
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
@@ -166,7 +165,7 @@ function runGenerate(argv) {
   const query = (g.extra && g.extra.music) || g.message || g.arc || "calm cinematic underscore";
   const request = {
     provider: "auto",
-    speed,
+    speed: flag(argv, "speed", "1.0"),
     lines,
     bgm: bgmOff
       ? { mode: "none" }

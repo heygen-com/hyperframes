@@ -39,7 +39,7 @@ The skill ships with a **tiered test corpus** (T1–T4, 4 fixtures total) that g
 - **The reverse direction.** Exporting a HyperFrames composition back out _to_ Remotion (or to any other framework) is not a workflow — the translation is Remotion → HyperFrames only. Say so plainly.
 - **Non-Remotion sources.** An After Effects project (`.aep`), a Framer Motion / plain-React / CSS animation, or any other tool's source is not a Remotion composition — there is no Remotion source to translate. Re-create it natively via `/general-video`, or decline if HyperFrames can't represent it.
 
-When in doubt, default to authoring a native HyperFrames composition with `/general-video` (the general HyperFrames authoring flow) instead.
+When in doubt, return to `/hyperframes`; its intent layer picks the route.
 
 ## Workflow
 

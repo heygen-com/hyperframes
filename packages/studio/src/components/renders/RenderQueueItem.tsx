@@ -115,7 +115,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           )}
           {job.status === "failed" && (
             <div className="w-full h-full flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-danger" />
+              <div className="w-2 h-2 rounded-full bg-danger-ink" />
             </div>
           )}
           {job.status === "cancelled" && (
@@ -140,7 +140,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             <div className="mt-1">
               <div className="flex items-center justify-between mb-0.5">
                 <span className="text-step-9 text-text-4">{job.stage || "Rendering"}</span>
-                <span className="text-step-9 font-mono text-accent">{job.progress}%</span>
+                <span className="text-step-9 font-mono text-accent-ink">{job.progress}%</span>
               </div>
               <div
                 className="w-full h-1 bg-border rounded-full overflow-hidden"
@@ -159,7 +159,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           )}
 
           {job.status === "failed" && job.error && (
-            <span className="text-step-9 text-danger mt-0.5 block">{job.error}</span>
+            <span className="text-step-9 text-danger-ink mt-0.5 block">{job.error}</span>
           )}
           {job.status === "cancelled" && (
             <span className="text-step-9 text-text-4 mt-0.5 block">Cancelled</span>

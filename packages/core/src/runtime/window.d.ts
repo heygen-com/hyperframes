@@ -9,6 +9,7 @@ import type { RuntimeColorGradingApi } from "./colorGrading";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
 import type { ClipTree } from "./clipTree";
+import type { SvgSelectorAliases } from "../compiler/svgSelectorAliases";
 
 type ThreeClockLike = {
   elapsedTime: number;
@@ -49,6 +50,7 @@ declare global {
     };
     __clipManifest?: RuntimeTimelineMessage;
     __clipTree?: ClipTree;
+    __hfSvgSelectorAliases?: SvgSelectorAliases;
     __hf?: {
       colorGrading?: RuntimeColorGradingApi;
       onSwallowed?: (label: string, err: unknown) => void;
@@ -138,6 +140,7 @@ declare global {
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
       set?: (target: Element, vars: Record<string, unknown>) => unknown;
+      config?: (vars: Record<string, unknown>) => unknown;
       parseEase?: (
         ease: string | ((progress: number) => number),
         ...args: unknown[]

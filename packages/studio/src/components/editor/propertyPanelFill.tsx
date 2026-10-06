@@ -131,7 +131,7 @@ export function ImageFillField({
             className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors ${
               disabled || uploading
                 ? "cursor-not-allowed text-neutral-600"
-                : "cursor-pointer hover:border-neutral-600 hover:text-white"
+                : "cursor-pointer hover:border-neutral-600 hover:text-text-0"
             }`}
           >
             <Plus size={12} className="shrink-0" />
@@ -151,7 +151,7 @@ export function ImageFillField({
           />
         </div>
         {uploadError && (
-          <div className="text-[10px] text-red-400" role="alert">
+          <div className="text-[10px] text-danger-ink" role="alert">
             {uploadError}
           </div>
         )}
@@ -340,7 +340,7 @@ export function GradientField({
                 track("toggle", "Repeat gradient");
                 patch({ repeating: e.target.checked });
               }}
-              className="h-4 w-4 rounded-sm border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
+              className="h-4 w-4 rounded-sm border-neutral-700 bg-neutral-950 text-accent-ink focus:ring-panel-accent"
             />
             Repeat
           </label>
@@ -357,7 +357,7 @@ export function GradientField({
                 })),
               });
             }}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-text-0 disabled:cursor-not-allowed disabled:text-neutral-600"
           >
             <ReverseGradientIcon size={16} />
             Reverse
@@ -442,7 +442,7 @@ export function GradientField({
             disabled={disabled || parsed.stops.length >= 6}
             onClick={() => addStop()}
             title={parsed.stops.length >= 6 ? "Maximum 6 stops" : "Add a gradient stop"}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:text-neutral-600"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-text-0 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-neutral-600"
           >
             <Plus size={12} />
             Add stop
@@ -474,7 +474,7 @@ export function GradientField({
                 type="button"
                 disabled={disabled || parsed.stops.length <= 2}
                 onClick={() => removeStop(index)}
-                className="mt-[22px] flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-neutral-400 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-700"
+                className="mt-[22px] flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-neutral-400 transition-colors hover:border-neutral-600 hover:text-text-0 disabled:cursor-not-allowed disabled:text-text-off"
                 aria-label={`Remove stop ${index + 1}`}
               >
                 <X size={12} />

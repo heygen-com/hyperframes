@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Fail a PR touching packages/studio or packages/player unless its body has Before and After sections with media.
+// Markdown and tests under them are not behaviour a user sees, so they are not watched.
 // usage: node scripts/check-pr-captures.mjs --base origin/main --head <sha>; the body arrives in the env (see main).
 
 import { execFileSync } from "node:child_process";
@@ -33,8 +34,6 @@ function isMediaUrl(raw) {
   const url = parseUrl(raw);
   return url !== null && (isAttachmentUrl(url) || MEDIA_PATH.test(url.pathname));
 }
-
-const TEST_FILE = /\.(?:test|spec)\.[jt]sx?$/;
 
 const CAPTURE_TITLES = {
   before: /^before(?:\s*[:(].*|\s+[-–—]\s.*)?$/i,
@@ -131,8 +130,13 @@ function parseRecord(record) {
   return { path: rest.join("\t"), lines };
 }
 
+const DOC_FILE = /\.mdx?$/i;
+const TEST_PATH = /\/(?:tests|__tests__)\/|\.(?:test|spec)\./;
 const isWatched = (path) =>
-  path !== "" && WATCHED_PREFIXES.some((prefix) => path.startsWith(prefix));
+  path !== "" &&
+  WATCHED_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
+  !DOC_FILE.test(path) &&
+  !TEST_PATH.test(path);
 
 /** Parse `git diff --numstat -z --no-renames`, keeping watched paths. A binary file counts as a full budget. */
 export const parseNumstat = (numstat) =>
@@ -141,8 +145,7 @@ export const parseNumstat = (numstat) =>
     .map(parseRecord)
     .filter((file) => isWatched(file.path));
 
-const isVisualFile = (path) =>
-  VISUAL_EXTENSIONS.some((ext) => path.endsWith(ext)) && !TEST_FILE.test(path);
+const isVisualFile = (path) => VISUAL_EXTENSIONS.some((ext) => path.endsWith(ext));
 
 /** Why a "No visible change" declaration does not hold for this diff; empty means it holds. */
 export function noVisibleChangeFailures(files) {
@@ -466,7 +469,7 @@ function printFailure(problems, prNumber) {
     "Edit the body text first: gh pr edit --body-file replaces the body and drops attachments.",
   );
   console.error(
-    `A change with no visible effect (under ${NO_VISIBLE_CHANGE_MAX_LINES} lines, no .tsx/.css/.html) may instead add a '## No visible change' section.`,
+    `A change with no visible effect (under ${NO_VISIBLE_CHANGE_MAX_LINES} lines, no .tsx/.css/.html; tests and Markdown are not counted) may instead add a '## No visible change' section.`,
   );
 }
 

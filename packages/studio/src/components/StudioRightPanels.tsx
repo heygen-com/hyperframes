@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { memo, useCallback } from "react";
 import type { StudioRightPanelsProps } from "./StudioRightPanels.types";
 
 import { PropertyPanel } from "./editor/PropertyPanel";
@@ -29,7 +29,9 @@ import { useRemoveBackground } from "../hooks/useRemoveBackground";
 import { useApplyColorGradingScope } from "../hooks/useApplyColorGradingScope";
 
 // fallow-ignore-next-line complexity
-export function StudioRightPanels({
+const seekToTime = (t: number) => usePlayerStore.getState().requestSeek(t);
+
+export const StudioRightPanels = memo(function StudioRightPanels({
   activeBlockParams,
   onCloseBlockParams,
   onDismissBlockParams,
@@ -62,6 +64,7 @@ export function StudioRightPanels({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
@@ -165,14 +168,11 @@ export function StudioRightPanels({
       handleDomAttributeLiveCommit(attr, value, undefined, { previewOnly: true }),
     [handleDomAttributeLiveCommit],
   );
-  const handleHideAllSelected = () => {
+  const handleHideAllSelected = useCallback(() => {
     // Audio has no visual to hide, and `data-hidden` on an audio element is what
-    // MUTES it — preview silences it and the render drops it from the mix. The
-    // timeline withholds the eye on an audio track for that reason
-    // (`visible={!isAudioTrack}`), and the single-selection panel gates the same
-    // write on `audioSelection`; this multi-selection path was the way back to
-    // it. Checked here as well as in the panel because the button is not the
-    // only caller.
+    // mutes it — preview silences it and the render drops it from the mix; the
+    // timeline offers that write as a mute. Checked here as well as in the panel
+    // because the button is not the only caller.
     if (!canHideSelections(domEditGroupSelections)) {
       showToast("Audio can't be hidden — use the group's own controls", "info");
       return;
@@ -180,7 +180,12 @@ export function StudioRightPanels({
     const { elements } = usePlayerStore.getState();
     const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
     if (keys.length > 0) void onToggleElementHidden?.(keys, true);
-  };
+  }, [domEditGroupSelections, showToast, activeCompPath, onToggleElementHidden]);
+  const convertToKeyframes = useCallback(
+    (animId: string, duration?: number) =>
+      handleGsapConvertToKeyframes(animId, undefined, duration),
+    [handleGsapConvertToKeyframes],
+  );
   const propertyPanel = (
     <DesignPanelPromoteProvider
       selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
@@ -210,6 +215,7 @@ export function StudioRightPanels({
         onSetStyle={handleDomStyleCommit}
         onSetAttribute={handleDomAttributeCommit}
         onSetAttributes={handleDomAttributesCommit}
+        onSetAttributeBatch={handleDomAttributeBatchCommit}
         onSetAttributeLive={setAttributeWhileDragging}
         onSetAttributeQuiet={handleDomAttributeQuietCommit}
         onApplyColorGradingScope={handleApplyColorGradingScope}
@@ -244,10 +250,8 @@ export function StudioRightPanels({
         onCommitAnimatedProperties={commitAnimatedProperties}
         onAddKeyframe={handleGsapAddKeyframe}
         onRemoveKeyframe={handleGsapRemoveKeyframe}
-        onConvertToKeyframes={(animId, duration) =>
-          handleGsapConvertToKeyframes(animId, undefined, duration)
-        }
-        onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
+        onConvertToKeyframes={convertToKeyframes}
+        onSeekToTime={seekToTime}
         onSetArcPath={handleSetArcPath}
         onUpdateArcSegment={handleUpdateArcSegment}
         onUnroll={handleUnroll}
@@ -305,4 +309,4 @@ export function StudioRightPanels({
       </Dock.Panel>
     </>
   );
-}
+});

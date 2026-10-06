@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo } from "react";
+import { Fragment, useId, useMemo, type CSSProperties } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
@@ -35,6 +35,15 @@ import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
 import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
 
+function passengerStyleAt(offsetPx: number): CSSProperties {
+  return {
+    transform: `translateX(${offsetPx}px)`,
+    opacity: 0.85,
+    zIndex: 20,
+    pointerEvents: "none",
+  };
+}
+
 export function TimelineLanes({
   pps,
   contentOrigin,
@@ -54,7 +63,6 @@ export function TimelineLanes({
   pinnedClipIdentities,
   trackOrder,
   tracks,
-  trackStyles,
   groups,
   laneCounts,
   selectedElementId,
@@ -77,7 +85,6 @@ export function TimelineLanes({
   setResizingClip,
   setDraggedClip,
   setSelectedElementId,
-  shiftClickClipRef,
   getPreviewElement,
   getTrackStyle,
   keyframeCache,
@@ -198,9 +205,26 @@ export function TimelineLanes({
                 actorWindows,
               )
             : els;
-          const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
+          if (isPendingTrack)
+            return (
+              <div
+                key={rowKey}
+                data-timeline-new-track-lane={row}
+                aria-hidden="true"
+                className={rowsVirtualized ? "absolute" : "relative"}
+                style={{
+                  top: rowsVirtualized ? rowGeometry.getRowTop(row) : undefined,
+                  marginLeft: contentOrigin,
+                  width: trackContentWidth,
+                  height: TRACK_H,
+                  border: "1px dashed var(--timeline-accent)",
+                  background: "color-mix(in srgb, var(--timeline-accent) 5%, transparent)",
+                  pointerEvents: "none",
+                }}
+              />
+            );
           const rowBackground = theme.rowBackground;
           const beatStripOnTrack = trackShowsBeatStrip(els, beatAnalysis?.beatTimes, {
             selectedElementId,
@@ -344,21 +368,6 @@ export function TimelineLanes({
                     renderTimeRange={rowsVirtualized ? renderTimeRange : undefined}
                   />
                 )}
-                {isPendingTrack && (
-                  <div
-                    className="absolute inset-0 flex items-center"
-                    style={{
-                      paddingLeft: 16,
-                      color: ts.label,
-                      fontSize: 11,
-                      letterSpacing: "0.06em",
-                      textTransform: "uppercase",
-                      opacity: 0.5,
-                    }}
-                  >
-                    New track
-                  </div>
-                )}
                 {
                   // fallow-ignore-next-line complexity
                   renderElements.map((el) => {
@@ -390,9 +399,9 @@ export function TimelineLanes({
                     // the passenger's timeline data until the owning drag commits.
                     const isPassenger =
                       multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
-                    const passengerOffsetPx = isPassenger
-                      ? multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview)
-                      : 0;
+                    const passengerStyle = isPassenger
+                      ? passengerStyleAt(multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview))
+                      : undefined;
                     const clipGestures = createClipGestureHandlers(
                       el,
                       elementKey,
@@ -405,7 +414,6 @@ export function TimelineLanes({
                         onRazorSplit,
                         onRazorSplitAll,
                         blockedClipRef,
-                        shiftClickClipRef,
                         suppressClickRef,
                         scrollRef,
                         setShowPopover,
@@ -425,6 +433,7 @@ export function TimelineLanes({
                         }}
                         el={previewElement}
                         pps={pps}
+                        passengerStyle={passengerStyle}
                         clipY={CLIP_Y}
                         clipHeight={clipBarHeight}
                         isSelected={isSelected}
@@ -470,6 +479,7 @@ export function TimelineLanes({
                         beatsActive={beatStripOnTrack}
                         accentColor={clipStyle.accent}
                         isSelected={isSelected}
+                        passengerStyle={passengerStyle}
                         currentTime={currentTime}
                         selectedKeyframes={selectedKeyframes}
                         rovingTargetId={keyboard.rovingTargetId}
@@ -495,6 +505,7 @@ export function TimelineLanes({
                         clipDuration={previewElement.duration}
                         clipLeftPx={previewElement.start * pps}
                         clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                        passengerStyle={passengerStyle}
                         accentColor={clipStyle.accent}
                         isSelected={isSelected}
                         currentPercentage={
@@ -521,34 +532,14 @@ export function TimelineLanes({
                       />
                     );
 
-                    // Keep one keyed top-level child per element. Returning an
-                    // array here makes React reconcile the outer array by
-                    // position, so a window shift remounts otherwise stable
-                    // clip keys and can tear down focus mid-reveal.
-                    if (!isPassenger) {
-                      return (
-                        <Fragment key={clipKey}>
-                          {clip}
-                          {compactDiamonds}
-                          {propertyLanes}
-                        </Fragment>
-                      );
-                    }
+                    // No wrapper node per clip, and the same Fragment whether or not it rides a
+                    // drag, so joining or leaving one restyles it, never remounts it.
                     return (
-                      <div
-                        key={clipKey}
-                        className="absolute inset-0"
-                        style={{
-                          transform: `translateX(${passengerOffsetPx}px)`,
-                          opacity: 0.85,
-                          zIndex: 20,
-                          pointerEvents: "none",
-                        }}
-                      >
+                      <Fragment key={clipKey}>
                         {clip}
                         {compactDiamonds}
                         {propertyLanes}
-                      </div>
+                      </Fragment>
                     );
                   })
                 }

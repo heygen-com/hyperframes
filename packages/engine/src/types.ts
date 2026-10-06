@@ -21,6 +21,7 @@ export type CaptureWarningCode =
   | "audio_processing_failed"
   | "sub_timeline_readiness_timeout"
   | "sub_timeline_script_failure"
+  | "vfx_failure"
   | "live_map_detected";
 
 /** Structured correctness warning produced while preparing a capture session. */

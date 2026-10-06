@@ -1,4 +1,9 @@
-import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
+import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
+import {
+  initSandboxRuntimeModular,
+  installAuthoredMediaCapture,
+  installFlatGsapTransforms,
+} from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { deferMediaUntilDue } from "./preloadMedia";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
@@ -7,6 +12,8 @@ import { pretext } from "../text/pretext";
 import { assetUrl } from "./assetUrl";
 import { getVariables } from "./getVariables";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
+import { runScriptsAfterFonts } from "./afterFonts";
+import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -30,6 +37,7 @@ type HyperframeWindow = Window & {
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
+installFlatGsapTransforms();
 
 hideTimedClipsUntilFirstPass();
 deferMediaUntilDue();
@@ -56,8 +64,16 @@ function bootstrapHyperframeRuntime(): void {
   initSandboxRuntimeModular();
 }
 
+// Compiled composition scripts wait for web fonts, so what they measure matches every run.
+function startAfterCompositionScripts(): void {
+  refreshSvgSelectorAliases();
+  const deferred = Array.from(document.querySelectorAll(AFTER_FONTS_SCRIPTS));
+  if (deferred.length === 0) bootstrapHyperframeRuntime();
+  else void runScriptsAfterFonts(deferred, bootstrapHyperframeRuntime);
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootstrapHyperframeRuntime, { once: true });
+  document.addEventListener("DOMContentLoaded", startAfterCompositionScripts, { once: true });
 } else {
-  bootstrapHyperframeRuntime();
+  startAfterCompositionScripts();
 }

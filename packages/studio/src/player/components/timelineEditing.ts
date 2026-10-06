@@ -382,17 +382,6 @@ export function resolveBlockedTimelineEditIntent(input: {
   return "move";
 }
 
-export function buildClipRangeSelection(
-  clip: { start: number; duration: number },
-  anchor: { anchorX: number; anchorY: number },
-): TimelineRangeSelection {
-  return {
-    start: clip.start,
-    end: clip.start + clip.duration,
-    anchorX: anchor.anchorX,
-    anchorY: anchor.anchorY,
-  };
-}
 export function buildTimelineAgentPrompt({
   rangeStart,
   rangeEnd,

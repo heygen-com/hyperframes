@@ -3,12 +3,23 @@ import type { TimelineElement } from "../store/playerStore";
 import {
   computeDragPreview,
   computeResizePreview,
+  guideIfSaved,
   getTimelineDragOverlayPosition,
   type DragPreviewContext,
 } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
-import { commitDraggedClipMove, persistMoveEdits } from "./timelineClipDragCommit";
-import { LANE_H, RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
+import {
+  commitDraggedClipMove,
+  persistMoveEdits,
+  type TimelineMoveEdit,
+} from "./timelineClipDragCommit";
+import {
+  LANE_H,
+  RULER_H,
+  TRACKS_TOP_PAD,
+  TRACK_H,
+  createTimelineRowGeometry,
+} from "./timelineLayout";
 import { isMultiDragPassenger } from "./timelineMultiDragPreview";
 import { resolveMultiDragPreview } from "./timelineProviderStateBuilders";
 
@@ -110,6 +121,20 @@ function horizontalDrag(
 }
 
 describe("computeDragPreview — plain horizontal drag never arms a phantom insert (BUG 1)", () => {
+  it("opens the physical seam below a zero-padding ruler and keeps it armed inside the new lane", () => {
+    const geometry = createTimelineRowGeometry([0, 1, 2], [104, 48, 48], { top: 0 });
+    const context = { ...ctx(geometry.rowHeights), rowGeometry: geometry };
+    const { drag, clientX } = horizontalDrag(moodboard, 0.5, 2);
+    const top = computeDragPreview(drag, clientX, 24, context);
+    expect(top.insertRow).toBe(0);
+    const between = computeDragPreview(drag, clientX, 128, context);
+    expect(between.insertRow).toBe(1);
+    const inside = computeDragPreview(between, clientX, 150, context);
+    expect(inside.insertRow).toBe(1);
+    const below = computeDragPreview(inside, clientX, 202, context);
+    expect(below.insertRow).toBeNull();
+  });
+
   it("dragging v-moodboard +2s while grabbing its clip body keeps it a pure time move", () => {
     const { drag, clientX, clientY } = horizontalDrag(moodboard, 0.5, 2);
     const next = computeDragPreview(drag, clientX, clientY, ctx());
@@ -269,6 +294,66 @@ describe("computeDragPreview — a clip landing on an empty main track keeps its
   });
 });
 
+describe("guideIfSaved — a guide only where the clip saves", () => {
+  const grid = { time: 3.25, type: "grid" as const };
+
+  it("drops the guide when start and duration round apart from the target", () => {
+    // 1440 px/s: 1.125s + 2.125s saves as 1.13s + 2.13s, 14px past the 3.25s guide.
+    const el = clip("a", 0, 1.125, 2, 0, "div");
+    expect(guideIfSaved(el, { start: 1.125, duration: 2.125 }, grid, 1440)).toBeNull();
+  });
+
+  it("drops the guide when a nested clip's local start rounds off it", () => {
+    const el = { ...clip("a", 0, 2, 1, 0, "div"), parentCompositionStart: 1 / 30 };
+    const target = { time: 2.1, type: "playhead" as const };
+    expect(guideIfSaved(el, { start: 2.1, duration: 1 }, target, 1440)).toBeNull();
+  });
+
+  it("keeps the guide when the saved edge is on it", () => {
+    const el = clip("a", 0, 1, 2, 0, "div");
+    expect(guideIfSaved(el, { start: 1, duration: 2.25 }, grid, 1440)).toBe(grid);
+  });
+
+  it("judges a move by the duration it keeps, not a rounded one", () => {
+    // A 31/30 s clip moved so its end meets 3.25s saves its start at 2.22s and ends 4.8px past.
+    const el = clip("a", 0, 1, 31 / 30, 0, "div");
+    const edge = { time: 3.25, type: "clip-edge" as const };
+    expect(guideIfSaved(el, { start: 2.217 }, edge, 1440)).toBeNull();
+  });
+
+  it("keeps the pointer's start when a move's snap would save off the target", () => {
+    // 1440 px/s: a 31/30 s clip whose end snaps to 3.25s would save at 2.22s and jump 4px on release.
+    const el = clip("a", 0, 1, 31 / 30, 0, "div");
+    const { drag } = horizontalDrag(el, 0.5, 0);
+    const context = {
+      ...ctx(undefined, [el]),
+      pps: 1440,
+      buildSnapTargets: () => [{ time: 3.25, type: "clip-edge" as const }],
+    };
+    const x = drag.originClientX + 1.22 * 1440;
+    const next = computeDragPreview(drag, x, drag.originClientY, context);
+    expect(next).toMatchObject({ previewStart: 2.22, snapTime: null, snapType: null });
+  });
+
+  it("draws no guide for a move whose saved start misses the target", () => {
+    const nested = { ...moodboard, parentCompositionStart: 1 / 30 };
+    const { drag } = horizontalDrag(nested, 0.5, 0);
+    const context = {
+      ...ctx(),
+      pps: 1440,
+      buildSnapTargets: () => [{ time: 21, type: "playhead" as const }],
+    };
+    const next = computeDragPreview(
+      drag,
+      drag.originClientX + 2 * 1440,
+      drag.originClientY,
+      context,
+    );
+    expect(next.previewStart).toBe(21);
+    expect(next.snapTime).toBeNull();
+  });
+});
+
 describe("computeResizePreview — composition source continuity", () => {
   it("seeds a legacy composition offset and advances it at playback rate", () => {
     const element = {
@@ -294,6 +379,44 @@ describe("computeResizePreview — composition source continuity", () => {
       previewDuration: 3,
       previewPlaybackStart: 2,
     });
+  });
+
+  it("draws no guide when the trimmed start cannot save onto the target", () => {
+    // 1440 px/s: a playhead on frame 31 (1.033s) saves a start of 1.03s, 4px off the guide.
+    const result = computeResizePreview(
+      {
+        element: clip("a", 0, 1, 2, 0, "div"),
+        edge: "start",
+        originClientX: 0,
+        previewStart: 1,
+        previewDuration: 2,
+        started: true,
+      },
+      48,
+      {
+        scroll: fakeScroll(),
+        pps: 1440,
+        buildSnapTargets: () => [{ time: 1.033, type: "playhead" }],
+      },
+    );
+    expect(result).toMatchObject({ previewStart: 1.03, snapTime: null, snapType: null });
+  });
+
+  it("keeps the pointer's end when a tail snap would save off the target", () => {
+    // 1440 px/s: snapping 1.125s + 2.12s to 3.25s needs a 2.125s duration, which saves 7px off.
+    const result = computeResizePreview(
+      {
+        element: clip("a", 0, 1.125, 2, 0, "div"),
+        edge: "end",
+        originClientX: 0,
+        previewStart: 1.125,
+        previewDuration: 2,
+        started: true,
+      },
+      173,
+      { scroll: fakeScroll(), pps: 1440, buildSnapTargets: () => [{ time: 3.25, type: "grid" }] },
+    );
+    expect(result).toMatchObject({ previewDuration: 2.12, snapTime: null, snapType: null });
   });
 
   it("does not let a tail snap shrink a clip below the drag's minimum duration", () => {
@@ -470,11 +593,10 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
       expect(committedStart(ghost, tag, rows)).toBe(10);
     });
 
-    it("the edge of a row is still that row, not a new track", () => {
+    it("a clip aimed at a seam opens a new track at that boundary", () => {
       for (const edge of [0.02, 0.98, 1.02]) {
         const ghost = preview(tag, rows, 2, edge);
-        expect(ghost.insertRow).toBeNull();
-        expect(ghost.previewTrack).toBe(Math.floor(edge));
+        expect(ghost.insertRow).toBe(Math.round(edge));
       }
     });
   });
@@ -550,6 +672,23 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
 });
 
 describe("computeDragPreview — a group move keeps its shape", () => {
+  function commitPreview(
+    ghost: DraggedClipState,
+    elements: TimelineElement[],
+    selectedKeys: ReadonlySet<string>,
+  ) {
+    const onMoveElements = vi.fn<(edits: TimelineMoveEdit[]) => void>();
+    commitDraggedClipMove(ghost, {
+      elements,
+      trackOrder: [0, 1, 2],
+      updateElement: vi.fn(),
+      onMoveElement: vi.fn(),
+      onMoveElements,
+      selectedKeys,
+    });
+    return onMoveElements.mock.calls[0][0];
+  }
+
   it("never bumps the grabbed clip further left than the group's 0 limit", () => {
     const a = clip("a", 1, 0.5, 1, 1);
     const b = clip("b", 2, 7, 2, 1);
@@ -563,19 +702,7 @@ describe("computeDragPreview — a group move keeps its shape", () => {
       selectedKeys,
     });
     expect(ghost).toMatchObject({ previewTrack: 0, insertRow: null, previewStart: 10 });
-    const onMoveElements = vi.fn();
-    commitDraggedClipMove(ghost, {
-      elements,
-      trackOrder: [0, 1, 2],
-      updateElement: vi.fn(),
-      onMoveElement: vi.fn(),
-      onMoveElements,
-      selectedKeys,
-    });
-    const edits = onMoveElements.mock.calls[0][0] as Array<{
-      element: TimelineElement;
-      updates: { start: number };
-    }>;
+    const edits = commitPreview(ghost, elements, selectedKeys);
     const moved = Object.fromEntries(
       edits.map((e) => [e.element.id, e.updates.start - e.element.start]),
     );
@@ -595,19 +722,7 @@ describe("computeDragPreview — a group move keeps its shape", () => {
       ...ctx(undefined, elements),
       selectedKeys,
     });
-    const onMoveElements = vi.fn();
-    commitDraggedClipMove(ghost, {
-      elements,
-      trackOrder: [0, 1, 2],
-      updateElement: vi.fn(),
-      onMoveElement: vi.fn(),
-      onMoveElements,
-      selectedKeys,
-    });
-    const edits = onMoveElements.mock.calls[0][0] as Array<{
-      element: TimelineElement;
-      updates: { start: number; track: number };
-    }>;
+    const edits = commitPreview(ghost, elements, selectedKeys);
     return Object.fromEntries(edits.map((e) => [e.element.id, e.updates]));
   }
 
@@ -724,5 +839,101 @@ describe("a nested clip's drop stops at its host's start in the preview", () => 
     );
     expect(trim).toMatchObject({ previewStart: 1, previewDuration: 5 });
     expect(await saved(early, 1)).toBe(1);
+  });
+});
+
+describe("an audio clip stays inside its partner video", () => {
+  const video = (extra: Partial<TimelineElement> = {}) => ({
+    ...clip("v", 0, 10, 20, 1),
+    syncOrigin: "lk-1",
+    ...extra,
+  });
+  const audio = (extra: Partial<TimelineElement> = {}) => ({
+    ...clip("a", 1, 12, 8, 0, "audio"),
+    syncOrigin: "lk-1",
+    ...extra,
+  });
+  const audioCtx = (elements: TimelineElement[], selected: string[] = []) => ({
+    ...ctx(undefined, elements),
+    trackOrder: [0, 1],
+    audioTracks: new Set([1]),
+    selectedKeys: new Set(selected),
+  });
+
+  it("a drag past the video's end stops with the audio's end on it", () => {
+    const a = audio();
+    const { drag, clientX, clientY } = horizontalDrag(a, 1.5, 30);
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx([video(), a]));
+    expect(next.previewStart).toBe(22);
+    expect(next.pointerClientX).toBe(drag.originClientX + 10 * PPS);
+  });
+
+  it("a drag before the video's start stops at it, linked or same-source", () => {
+    const linked = audio({ syncOrigin: undefined, link: "lk-9" });
+    const { drag, clientX, clientY } = horizontalDrag(linked, 1.5, -10);
+    const elements = [video({ syncOrigin: undefined, link: "lk-9" }), linked];
+    expect(computeDragPreview(drag, clientX, clientY, audioCtx(elements)).previewStart).toBe(10);
+  });
+
+  it("moves freely with no partner video, or when the video moves with it", () => {
+    const loose = audio({ syncOrigin: undefined });
+    const free = horizontalDrag(loose, 1.5, 30);
+    expect(
+      computeDragPreview(free.drag, free.clientX, free.clientY, audioCtx([video(), loose]))
+        .previewStart,
+    ).toBe(42);
+    const a = audio();
+    const both = horizontalDrag(a, 1.5, 30);
+    expect(
+      computeDragPreview(both.drag, both.clientX, both.clientY, audioCtx([video(), a], ["v", "a"]))
+        .previewStart,
+    ).toBe(42);
+  });
+
+  it("rejects a drop that collision placement would push outside the video", () => {
+    const a = audio();
+    const obstacle = clip("o", 1, 20, 10, 0, "audio");
+    const { drag, clientX, clientY } = horizontalDrag(a, 1.5, 10);
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx([video(), a, obstacle]));
+    expect(next.previewStart).toBeGreaterThanOrEqual(10);
+    expect(next.previewStart + a.duration).toBeLessThanOrEqual(30);
+  });
+
+  it("keeps an audio carried in a multi-selection inside its video", () => {
+    const a = audio();
+    const title = clip("t", 0, 40, 4, 0, "text");
+    const { drag, clientX, clientY } = horizontalDrag(title, 0.5, 30);
+    const elements = [video(), a, title];
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx(elements, ["t", "a"]));
+    expect(next.previewStart).toBe(50);
+  });
+
+  const trim = (edge: "start" | "end", deltaSeconds: number, gestureKeys: string[] = []) =>
+    computeResizePreview(
+      {
+        element: audio({ sourceDuration: 100, playbackStart: 20 }),
+        edge,
+        originClientX: 0,
+        previewStart: 12,
+        previewDuration: 8,
+        started: true,
+      },
+      deltaSeconds * 100,
+      {
+        scroll: fakeScroll(),
+        pps: 100,
+        buildSnapTargets: () => [],
+        elements: [video(), audio()],
+        gestureKeys: new Set(["a", ...gestureKeys]),
+      },
+    );
+
+  it("a trim cannot extend past the video's start or end", () => {
+    expect(trim("end", 50)).toMatchObject({ previewStart: 12, previewDuration: 18 });
+    expect(trim("start", -10)).toMatchObject({ previewStart: 10, previewDuration: 10 });
+  });
+
+  it("a trim carried by the video too is not held to the video's old span", () => {
+    expect(trim("end", 50, ["v"]).previewDuration).toBe(58);
   });
 });

@@ -107,6 +107,22 @@ describe("registerThumbnailRoutes", () => {
     );
   });
 
+  it("keeps selectors that differ only in punctuation apart in the cache", async () => {
+    const adapter = createAdapter();
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    for (const selector of ["%23a%5C.b", "%23a_b", "%23a%5C.b"]) {
+      await app.request(
+        `http://localhost/projects/demo/thumbnail/index.html?t=1.2&selector=${selector}`,
+      );
+    }
+
+    expect(vi.mocked(adapter.generateThumbnail!).mock.calls.map(([opts]) => opts.selector)).toEqual(
+      ["#a\\.b", "#a_b"],
+    );
+  });
+
   it("maps square authored dimensions across jpeg output modes", async () => {
     const adapter = createAdapter();
     const app = new Hono();

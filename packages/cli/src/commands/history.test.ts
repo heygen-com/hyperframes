@@ -7,6 +7,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import type { AddressInfo } from "node:net";
@@ -27,7 +28,9 @@ import { consumeCommandResult } from "../utils/commandResult.js";
 import { historyDeps, withOwner } from "../utils/historyOwner.js";
 import historyCommand from "./history.js";
 
-const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
+/** History's clock, a day ahead of the file system's, so each write is dated by the mtime it is stamped with. */
+const clock = { at: 0 };
+const advance = (ms: number) => void (clock.at += ms);
 
 const tracked = vi.hoisted(() => [] as Array<{ action: string; via: string }>);
 vi.mock("../telemetry/events.js", () => ({
@@ -52,7 +55,12 @@ function project() {
   historyDeps.historyRoot = tempDir("hf-history-cli-root-");
   historyDeps.findServer = async () => null;
   historyDeps.turnIdleMs = 60_000;
-  const write = (path: string, text: string) => writeFileSync(join(dir, path), text);
+  clock.at = Date.now() + 86_400_000;
+  historyDeps.now = () => clock.at;
+  const write = (path: string, text: string) => {
+    writeFileSync(join(dir, path), text);
+    utimesSync(join(dir, path), clock.at / 1000, clock.at / 1000);
+  };
   const read = (path: string) => readFileSync(join(dir, path), "utf-8");
   const files = () => [read("index.html"), read("notes.html")];
   async function hf(...args: string[]) {
@@ -83,6 +91,7 @@ async function preview(dir: string) {
   const history = await openProjectHistory({
     projectDir: dir,
     historyRoot: historyDeps.historyRoot,
+    now: () => historyDeps.now(),
     quietMs: 20,
   });
   const adapter = {
@@ -145,7 +154,7 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
 
   it("an agent's labelled turn, a person's edit after it: --since shows both, undo of the turn keeps the edit", async () => {
     const { json, hf, turn, personWrites, files } = await setup();
-    const startedAt = new Date(Date.now() - 1).toISOString();
+    const startedAt = new Date(clock.at - 1).toISOString();
     await turn("claude", "Bigger title", "index.html", "A2");
     await personWrites("notes.html", "N2");
 
@@ -173,7 +182,7 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     historyDeps.turnIdleMs = 300;
     await hf("begin", "--who", "claude", "--label", "Retitle");
     write("index.html", "A2");
-    await pause(600);
+    advance(600);
     await personWrites("notes.html", "N2");
 
     const undo = await hf("undo", "--who", "claude");
@@ -295,7 +304,7 @@ describe("hyperframes history, one owner", () => {
       who: { kind: "agent", name: "claude" },
       label: "Retitle",
       startedAt: 1,
-      lastWriteAt: Date.now(),
+      lastWriteAt: clock.at,
     };
     writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(turn));
     write("index.html", "A2");
@@ -336,12 +345,12 @@ describe("hyperframes history, one owner", () => {
     historyDeps.turnIdleMs = 1000;
     // Each write 600 ms after the one before, past 1000 ms in all.
     await hf("begin", "--who", "claude", "--label", "Retitle");
-    await pause(600);
+    advance(600);
     write("index.html", "2");
     await hf(); // a command mid-turn files the turn so far; the rest counts from index.html
-    await pause(600);
+    advance(600);
     write("notes.html", "2");
-    await pause(600);
+    advance(600);
     write("extra.html", "2");
     await hf("end");
     const entries = (await json()).entries.reverse();
@@ -360,7 +369,7 @@ describe("hyperframes history, one owner", () => {
     await turn("claude", "Earlier", "notes.html", "N2");
     await hf("begin", "--who", "claude", "--label", "Retitle");
     // The only change lands past the idle limit (the person's edit over the agent's), so it is Outside.
-    await pause(700);
+    advance(700);
     write("index.html", "A2");
 
     const refused = await hf("undo", "--who", "claude");

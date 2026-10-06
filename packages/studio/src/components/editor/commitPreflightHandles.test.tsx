@@ -182,7 +182,10 @@ async function settle() {
 
 const fire = (target: Element, type: string, init: MouseEventInit = {}) => {
   act(() => {
-    target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+    const buttons = type === "pointerdown" || type === "pointermove" ? 1 : 0;
+    target.dispatchEvent(
+      new MouseEvent(type, { bubbles: true, cancelable: true, buttons, ...init }),
+    );
   });
 };
 
@@ -202,6 +205,13 @@ async function select(animations: GsapAnimation[] | null, props: Partial<EditorP
   const view = mount({ selection: resolved(element("title")), ...props });
   await settle();
   return view;
+}
+
+async function selectLoopedPair() {
+  const a = resolved(element("a"));
+  const b = resolved(element("b"));
+  const view = await select([loop({ x: 120 }, "#a")], { selection: a, groups: [a, b] });
+  return { a, b, ...view };
 }
 
 describe("handles follow what Studio would commit", () => {
@@ -284,7 +294,7 @@ describe("handles follow what Studio would commit", () => {
       { x: 0, y: 0 },
       commitList,
       preview,
-      vi.fn(),
+      vi.fn(async () => undefined),
       undefined,
       preflightOnly,
     );
@@ -398,7 +408,7 @@ describe("handles follow what Studio would commit", () => {
       { x: 0, y: 0 },
       [stagger],
       preview,
-      vi.fn(),
+      vi.fn(async () => undefined),
       undefined,
       groupPreflight,
     );
@@ -437,6 +447,31 @@ describe("handles follow what Studio would commit", () => {
     expect(spies.onBlockedMove).toHaveBeenCalledTimes(1);
     expect(spies.onBlockedMove.mock.calls[0]![0].element).toBe(a.element);
     expect(spies.onManualDragStart).not.toHaveBeenCalled();
+  });
+
+  it("re-checks only the members that changed when the group is handed back anew", async () => {
+    const { a, b, seen, render } = await selectLoopedPair();
+    const [narrowedA, narrowedB] = seen.groups;
+
+    render({ selection: a, groups: [a, b] });
+    expect(seen.groups[0]).toBe(narrowedA);
+    expect(seen.groups[1]).toBe(narrowedB);
+    const movedA = resolved(a.element);
+    render({ selection: movedA, groups: [movedA, b] });
+    expect(seen.groups[0]).not.toBe(narrowedA);
+    expect(flags(seen.groups[0]!)[0]).toBe(false);
+    expect(seen.groups[1]).toBe(narrowedB);
+  });
+
+  it("checks again on a new cache version even when that re-read fails", async () => {
+    const { a, b, seen, render } = await selectLoopedPair();
+    const [narrowedA] = seen.groups;
+
+    parses.fetch.mockResolvedValueOnce(null);
+    render({ selection: a, groups: [a, b], version: 1 });
+    await settle();
+    expect(seen.groups[0]).not.toBe(narrowedA);
+    expect(flags(seen.groups[0]!)[0]).toBe(false);
   });
 
   it.each([

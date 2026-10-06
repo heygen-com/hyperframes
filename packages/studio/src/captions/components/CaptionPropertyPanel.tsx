@@ -227,7 +227,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
             className={[
               "flex-1 py-0.5 rounded-sm text-2xs font-medium transition-colors",
               activeTab === "style"
-                ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
+                ? "bg-studio-accent/20 text-accent-ink border border-studio-accent/50"
                 : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
             ].join(" ")}
           >
@@ -241,7 +241,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
             className={[
               "flex-1 py-0.5 rounded-sm text-2xs font-medium transition-colors",
               activeTab === "animation"
-                ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
+                ? "bg-studio-accent/20 text-accent-ink border border-studio-accent/50"
                 : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
             ].join(" ")}
           >

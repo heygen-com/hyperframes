@@ -3700,3 +3700,30 @@ describe("getFrameAtTime — IEEE 754 boundary precision", () => {
     expect(getFrameAtTime(extracted, 3, 0)).toBeNull();
   });
 });
+
+describe("parseVideoElements hidden flag", () => {
+  it("marks a video hidden on itself or through a hidden ancestor", () => {
+    const videos = parseVideoElements(
+      `<div data-hidden><video id="a" src="a.mp4" data-has-audio="true"></video></div>` +
+        `<video id="b" src="b.mp4" data-has-audio="true" data-hidden></video>` +
+        `<video id="c" src="c.mp4" data-has-audio="true"></video>`,
+    );
+    expect(videos.map((v) => [v.id, v.hidden])).toEqual([
+      ["a", true],
+      ["b", true],
+      ["c", undefined],
+    ]);
+  });
+
+  it("marks only an audible video hidden when its audio group is hidden", () => {
+    const videos = parseVideoElements(
+      `<hf-audio-group id="g" data-hidden></hf-audio-group>` +
+        `<video id="a" src="a.mp4" data-has-audio="true" data-audio-group="g"></video>` +
+        `<video id="b" src="b.mp4" muted data-audio-group="g"></video>`,
+    );
+    expect(videos.map((v) => [v.id, v.hidden])).toEqual([
+      ["a", true],
+      ["b", undefined],
+    ]);
+  });
+});

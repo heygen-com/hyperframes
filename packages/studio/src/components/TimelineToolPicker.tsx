@@ -81,7 +81,7 @@ export function TimelineToolPicker({ showSelectAroundPlayhead = true }) {
           shortcut={row.shortcut}
           onClick={row.run}
           data-active={row.active || undefined}
-          className={row.active ? "bg-neutral-800 text-white" : undefined}
+          className={row.active ? "bg-press text-text-0" : undefined}
         >
           <span className="flex items-center gap-2">
             {row.icon}

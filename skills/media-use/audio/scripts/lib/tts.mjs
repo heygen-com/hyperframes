@@ -18,7 +18,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { heygenAuthHeaders, heygenCredential, heygenJSON } from "./heygen.mjs";
+import { heygenAuthHeaders, heygenCredential, heygenJSON, heygenMessage } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 import { synthesizeGemini } from "./gemini-tts.mjs";
 import { geminiConfigured } from "./gemini-auth.mjs";
@@ -45,10 +45,8 @@ export function pickProvider(userProvider) {
       throw new Error(
         "provider=gemini needs GEMINI_API_KEY or GOOGLE_API_KEY, or service-account credentials (GOOGLE_APPLICATION_CREDENTIALS or GCS_CREDS)",
       );
-    if (userProvider === "heygen" && !heygenAvailable())
-      throw new Error(
-        "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `npx hyperframes auth login`)",
-      );
+    // heygenAuthHeaders owns the reason and its fix: no credential, or a credentials path that cannot be read.
+    if (userProvider === "heygen" && !heygenAvailable()) heygenAuthHeaders();
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
     return userProvider;
@@ -290,6 +288,7 @@ export async function synthesizeOne({
   const wavRel = relTo(hyperframesDir, wavAbs);
   const args = ["hyperframes", "tts", writeTmpText(text), "--voice", voiceId, "--output", wavRel];
   if (lang !== "en") args.push("--lang", lang);
+  if (speed !== 1) args.push("--speed", String(speed));
   const r = await spawnP("npx", args, { cwd: hyperframesDir });
   return synthResult(r, wavAbs, "kokoro (npx hyperframes tts)");
 }
@@ -351,7 +350,7 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
       : [];
     return { ok: true, words };
   } catch (e) {
-    return { ok: false, words: null, error: e?.message ? String(e.message) : String(e) };
+    return { ok: false, words: null, error: heygenMessage(e) };
   }
 }
 

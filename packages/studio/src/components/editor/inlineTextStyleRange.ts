@@ -49,6 +49,7 @@ interface StyledRun {
    * identity to lose, and merges with its neighbour exactly as before.
    */
   identity: string;
+  painter?: Element | null;
 }
 
 export type InlineStyleDelta = Record<string, string | null>;
@@ -185,6 +186,7 @@ function holdsBothEnds(host: Element, range: Range): boolean {
 export interface InlineStyleChar {
   char: string;
   style: Readonly<Record<string, string>>;
+  painter: Element | null;
 }
 
 /** Every character the range covers with its style, or null when it covers none. */
@@ -197,7 +199,7 @@ export function readCoveredInlineStyleChars(range: Range): readonly InlineStyleC
   const collapsed = start === end;
   const covered = charRuns(readRuns(host))
     .slice(collapsed ? Math.max(0, start - 1) : start, collapsed ? Math.max(1, start) : end)
-    .map((entry) => ({ char: entry.char, style: entry.style }));
+    .map((entry) => ({ char: entry.char, style: entry.style, painter: entry.painter ?? null }));
   return covered.length > 0 ? covered : null;
 }
 
@@ -244,7 +246,7 @@ function visitRunFrame(frame: RunWalkFrame, runs: StyledRun[]): RunWalkFrame[] {
   const { node, inherited, origin } = frame;
   if (node.nodeType === 3) {
     const text = node.textContent ?? "";
-    if (text) runs.push(styledRun(text, inherited, origin));
+    if (text) runs.push({ ...styledRun(text, inherited, origin), painter: node.parentElement });
     return [];
   }
   if (!isStyleElement(node)) return [];
@@ -312,6 +314,7 @@ function charRuns(runs: StyledRun[]): Array<Omit<StyledRun, "text"> & { char: st
         style: run.style,
         origin: run.origin,
         identity: run.identity,
+        painter: run.painter,
       });
     }
   }

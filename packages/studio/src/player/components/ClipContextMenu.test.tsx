@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { ClipContextMenu } from "./ClipContextMenu";
 import type { TimelineClipMenuItem } from "./TimelineTypes";
+import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,9 +61,14 @@ describe("ClipContextMenu host items", () => {
     unmount();
   });
 
-  it("counts host rows and their divider when keeping the menu inside the window", () => {
+  it("keeps the menu, host rows included, inside the window by its measured height", () => {
     const innerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    const offsetHeight = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("role") === "menu" ? 150 : 0;
+      });
     try {
       const host = document.createElement("div");
       document.body.appendChild(host);
@@ -86,10 +92,11 @@ describe("ClipContextMenu host items", () => {
           />,
         ),
       );
-      // Four 30 px rows, two 9 px dividers and 8 px of padding end 96 px below the window.
-      expect(document.body.querySelector<HTMLElement>("[role=menu]")!.style.top).toBe("446px");
+      // 150 px measured from y 550 ends 100 px below the window, kept 8 px off its edge.
+      expect(document.body.querySelector<HTMLElement>("[role=menu]")!.style.top).toBe("442px");
       act(() => root.unmount());
     } finally {
+      offsetHeight.mockRestore();
       if (innerHeight) Object.defineProperty(window, "innerHeight", innerHeight);
     }
   });
@@ -106,7 +113,99 @@ describe("ClipContextMenu host items", () => {
   it("shows only Studio's items when the host adds none", () => {
     const { items, unmount } = renderMenu([]);
     expect(items().map((item) => item.textContent)).toEqual(["Copy⌘C", "Delete⌫"]);
-    expect(document.body.querySelectorAll(".border-t")).toHaveLength(1);
+    expect(document.body.querySelector("[role=group][aria-label=Host]")).toBeNull();
+    unmount();
+  });
+});
+
+describe("ClipContextMenu tools", () => {
+  const video = {
+    id: "talk",
+    domId: "talk",
+    tag: "video",
+    start: 0,
+    duration: 4,
+    track: 0,
+    hasAudio: true,
+  } as unknown as TimelineElement;
+
+  function menuWith(clipMenuTools: boolean | undefined) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <TimelineEditProvider
+          value={{
+            onFreezeFrame: vi.fn(),
+            onSetElementAttributeQuiet: vi.fn(),
+            onLinkEdit: vi.fn(),
+            ...(clipMenuTools === undefined ? {} : { clipMenuTools }),
+          }}
+        >
+          <ClipContextMenu
+            x={10}
+            y={10}
+            element={video}
+            currentTime={1}
+            onClose={vi.fn()}
+            onSplit={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </TimelineEditProvider>,
+      ),
+    );
+    const labels = () =>
+      Array.from(document.body.querySelectorAll("[role=menuitem]")).map((item) => item.textContent);
+    return { labels, unmount: () => act(() => root.unmount()) };
+  }
+
+  function splitRow(splitShortcut?: string) {
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <ClipContextMenu
+          x={10}
+          y={10}
+          element={video}
+          currentTime={1}
+          onClose={vi.fn()}
+          onSplit={vi.fn()}
+          onDelete={vi.fn()}
+          splitShortcut={splitShortcut}
+        />,
+      ),
+    );
+    const row = Array.from(document.body.querySelectorAll("[role=menuitem]")).find((item) =>
+      item.textContent?.startsWith("Split"),
+    );
+    const text = row?.textContent;
+    act(() => root.unmount());
+    host.remove();
+    return text;
+  }
+
+  it("hints Split with Studio's own S, or with the key the host binds Split to", () => {
+    expect(splitRow()).toBe("Split at 1.00sS");
+    expect(splitRow("⌥S")).toBe("Split at 1.00s⌥S");
+  });
+
+  it("offers Freeze frame and the attribute tools by default", () => {
+    const { labels, unmount } = menuWith(undefined);
+    expect(labels().some((label) => label?.startsWith("Freeze frame"))).toBe(true);
+    expect(labels().some((label) => label?.startsWith("Look"))).toBe(true);
+    expect(labels().some((label) => label?.startsWith("Voice"))).toBe(true);
+    unmount();
+  });
+
+  it("hides every tool when the host turns them off, keeping Split and Delete", () => {
+    const { labels, unmount } = menuWith(false);
+    expect(labels().some((label) => label?.startsWith("Freeze frame"))).toBe(false);
+    expect(labels().some((label) => label?.startsWith("Look"))).toBe(false);
+    expect(labels().some((label) => label?.startsWith("Voice"))).toBe(false);
+    expect(labels().some((label) => label?.startsWith("Split"))).toBe(true);
+    expect(labels().some((label) => label?.startsWith("Delete"))).toBe(true);
     unmount();
   });
 });
@@ -178,5 +277,16 @@ describe("ClipContextMenu focus on close", () => {
     expect(menuItem()).toBeNull();
     expect(focusedId()).toBe("clip");
     unmount();
+  });
+});
+
+describe("ClipContextMenu row fill", () => {
+  it("leaves no padding or margin between its rows and the panel edge or a divider", () => {
+    renderMenu([{ id: "ask", label: "Ask", onSelect: vi.fn() }]);
+    const menu = document.body.querySelector<HTMLElement>("[role=menu]")!;
+    const spacing = /(^| )(p|py|pt|pb|m|my|mt|mb)-\d/;
+    expect(menu.className).not.toMatch(spacing);
+    for (const group of menu.querySelectorAll<HTMLElement>("[role=group]"))
+      expect(group.className).not.toMatch(spacing);
   });
 });

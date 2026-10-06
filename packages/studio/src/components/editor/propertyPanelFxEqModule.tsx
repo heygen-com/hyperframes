@@ -115,7 +115,7 @@ function Fader({
       </span>
       <span
         className={`hf-fx-eq-value font-mono text-[9px] tabular-nums ${
-          moved ? "text-panel-accent" : "text-panel-text-2"
+          moved ? "text-accent-ink" : "text-panel-text-2"
         }`}
       >
         {moved ? shown(value) : "0"}
@@ -160,7 +160,7 @@ export function FxEqModule({
         <span className="font-mono text-[9px] text-panel-text-2">{bands.length}-band</span>
         <button
           type="button"
-          className="hf-fx-remove px-1 text-[11px] text-panel-text-2 hover:text-panel-danger"
+          className="hf-fx-remove px-1 text-[11px] text-panel-text-2 hover:text-danger-ink"
           aria-label="Remove Tone"
           disabled={disabled}
           onClick={onRemove}

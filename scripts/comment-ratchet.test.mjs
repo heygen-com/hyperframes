@@ -32,6 +32,38 @@ test("a JSX comment counts as comment, and code does not", () => {
   assert.equal(measure("const a = 1;\n", ".ts").comment, 0);
 });
 
+test("quotes inside a regex literal open no string, so later comments still count", () => {
+  const source = [
+    "const keys = text.match(/[\"'`]([^\"'`]+)[\"'`]/g);",
+    "// one",
+    "const half = (a + b) / 2; // two",
+    "/* three */",
+    "const n = total / count / 2;",
+    "// four",
+  ].join("\n");
+  assert.equal(measure(source, ".ts").comment, 4);
+});
+
+test("a JSX closing tag's slash opens no regex", () => {
+  assert.equal(measure("const a = <p>x</p>; // c\n", ".tsx").comment, 1);
+  assert.equal(measure("const a = <a>x</a>{/* note */};\n", ".tsx").comment, 1);
+  assert.equal(measure("const a = <div></div> {/* note */};\n", ".tsx").comment, 1);
+  assert.equal(measure("const a = <p>x</p>, b = 'a/b'; // it's\n", ".tsx").comment, 1);
+});
+
+test("a slash after ++ or -- is division", () => {
+  assert.equal(measure("const a = i++ / 2; // c\n", ".ts").comment, 1);
+  assert.equal(measure("const a = i-- / 2; // c\n", ".ts").comment, 1);
+  assert.equal(measure("const a = i++ / 2 + 'a/b'; // it's\n", ".ts").comment, 1);
+  assert.equal(measure("const a = i-- / 2 + 'a/b'; // it's\n", ".ts").comment, 1);
+});
+
+test("a line opening with division continued from the line above keeps its comment", () => {
+  assert.equal(measure("const a = total\n  / 2; // c\n", ".ts").comment, 1);
+  assert.equal(measure("const a = total\n  / 2; /* c */\n", ".ts").comment, 1);
+  assert.equal(measure("const a = ok &&\n  /[\"'`]/.test(s); // c\n", ".ts").comment, 1);
+});
+
 // 14 physical lines: a bare opener, 12 of prose, a bare closer.
 test("a docblock is measured from its opener to its closer", () => {
   const body = Array.from({ length: 12 }, (_, i) => ` * line ${i + 1}`).join("\n");
@@ -144,6 +176,8 @@ test("only package source is graded, never tests or declarations", () => {
   assert.equal(isSource("packages/core/src/runtime/init.test.ts"), false);
   assert.equal(isSource("packages/core/src/types.d.ts"), false);
   assert.equal(isSource("packages/core/scripts/build.ts"), false);
+  assert.equal(isSource("packages/core/src/generated/svg-selector-aliases-inline.ts"), false);
+  assert.equal(isSource("packages/studio/src/editor/generated/labels.ts"), true);
   assert.equal(isSource("scripts/contrast.ts"), false);
 });
 

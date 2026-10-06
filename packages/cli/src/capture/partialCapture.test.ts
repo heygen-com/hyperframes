@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -45,4 +53,30 @@ describe("writePartialCaptureBundle", () => {
       partial: true,
     });
   });
+
+  // Creating symlinks needs elevated rights on Windows.
+  it.skipIf(process.platform === "win32")(
+    "refuses to write through a planted extracted/ symlink (#4304)",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "hyperframes-partial-capture-"));
+      temporaryDirectories.push(root);
+      const outputDir = join(root, "capture");
+      const outside = join(root, "outside");
+      mkdirSync(outputDir);
+      mkdirSync(outside);
+      symlinkSync(outside, join(outputDir, "extracted"));
+      const opts = { url: "https://example.com", outputDir };
+
+      expect(() =>
+        writePartialCaptureBundle(opts, createPartialCaptureState(opts), {
+          schema: CAPTURE_PHASE_SCHEMA,
+          phase: "complete",
+          status: "degraded",
+          remainingMs: null,
+          reason: "deadline",
+        }),
+      ).toThrow(/outside the capture directory/);
+      expect(readdirSync(outside)).toEqual([]);
+    },
+  );
 });

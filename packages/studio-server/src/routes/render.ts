@@ -1,11 +1,16 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
-import { folderGone, mkdirWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import {
+  folderGone,
+  isPrivateProjectFile,
+  mkdirWithinProject,
+  resolveWithinProject,
+} from "../helpers/safePath.js";
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
@@ -186,6 +191,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
             status: current.status,
             stage: current.stage,
             error: current.error,
+            ...(current.status === "complete" && current.audioLoweredDb !== undefined
+              ? { audioLoweredDb: current.audioLoweredDb }
+              : {}),
           }),
         });
         if (current.status !== "rendering") break;
@@ -207,6 +215,14 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return c.json({ status: job.status });
   });
 
+  const isPlainFile = (path: string): boolean => {
+    try {
+      return lstatSync(path).isFile();
+    } catch {
+      return false;
+    }
+  };
+
   function renderContentType(filePath: string): string {
     const ext = RENDER_EXTENSIONS.find((e) => filePath.endsWith(e));
     return (ext && RENDER_MIME[ext]) ?? "video/mp4";
@@ -217,7 +233,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   api.get("/render/:jobId/view", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
-    if (!job?.outputPath || !existsSync(job.outputPath)) {
+    if (!job?.outputPath || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
     const contentType = renderContentType(job.outputPath);
@@ -238,7 +254,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
-    if (!job?.outputPath || !existsSync(job.outputPath)) {
+    if (!job?.outputPath || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
     const contentType = renderContentType(job.outputPath);
@@ -290,7 +306,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     // readFileSync still followed an in-rendersDir symlink pointing outside the
     // dir; resolveWithinProject canonicalizes with realpath before serving.
     const fp = resolveWithinProject(rendersDir, filename);
-    if (!fp) return c.json({ error: "forbidden" }, 403);
+    if (!fp || isPrivateProjectFile(project.dir, fp)) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
     const content = readFileSync(fp);
@@ -312,13 +328,17 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!existsSync(rendersDir)) return c.json({ renders: [] });
     const files = readdirSync(rendersDir)
       .filter((f) => f.endsWith(".mp4") || f.endsWith(".webm") || f.endsWith(".mov"))
-      .map((f) => {
-        const fp = join(rendersDir, f);
+      .flatMap((f) => {
+        const fp = resolveWithinProject(rendersDir, f);
+        return fp && !isPrivateProjectFile(project.dir, fp) ? [{ f, fp }] : [];
+      })
+      .map(({ f, fp }) => {
         const stat = statSync(fp);
         const rid = f.replace(/\.(mp4|webm|mov)$/, "");
         const metaPath = join(rendersDir, `${rid}.meta.json`);
         let status: "complete" | "failed" = "complete";
         let durationMs: number | undefined;
+        let audioLoweredDb: number | undefined;
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
@@ -328,6 +348,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
             // an earlier attempt left behind failed metadata.
             if (meta.status === "failed" && !existsSync(fp)) status = "failed";
             if (meta.durationMs) durationMs = meta.durationMs;
+            if (typeof meta.audioLoweredDb === "number") audioLoweredDb = meta.audioLoweredDb;
           } catch {
             /* ignore */
           }
@@ -335,10 +356,12 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         return {
           id: rid,
           filename: f,
+          path: fp,
           size: stat.size,
           createdAt: stat.mtimeMs,
           status,
           durationMs,
+          ...(audioLoweredDb !== undefined ? { audioLoweredDb } : {}),
         };
       })
       .sort((a, b) => b.createdAt - a.createdAt);
@@ -350,11 +373,11 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
           id: file.id,
           status: file.status,
           progress: 100,
-          outputPath: join(rendersDir, file.filename),
+          outputPath: file.path,
           createdAt: file.createdAt,
         } as RenderJobState & { createdAt: number });
       }
     }
-    return c.json({ renders: files });
+    return c.json({ renders: files.map(({ path: _path, ...render }) => render) });
   });
 }

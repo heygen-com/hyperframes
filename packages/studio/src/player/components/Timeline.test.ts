@@ -16,7 +16,6 @@ import {
   getTimelineScrollLeftForZoomAnchor,
   getTimelineScrollLeftForZoomTransition,
   shouldShowTimelineShortcutHint,
-  shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
   getTimelineVisibleTimeRange,
   getTimelineScrollTopForGeometryChange,
@@ -71,12 +70,31 @@ describe("timeline viewport geometry", () => {
     const scrollTop = previous.getRowTop(2) - RULER_H + 6;
     expect(getTimelineScrollTopForGeometryChange(previous, next, scrollTop)).toBe(scrollTop + 56);
   });
+
+  it("keeps a row added above the top row in view while the list sits at the top", () => {
+    // No top padding (trackPadding { top: 0 }), so the first row sits right under the ruler.
+    const previous = createTimelineRowGeometry([1, 2, 3], [48, 48, 48], { top: 0 });
+    const next = createTimelineRowGeometry([9, 1, 2, 3], [48, 48, 48, 48], { top: 0 });
+    expect(getTimelineScrollTopForGeometryChange(previous, next, 0)).toBe(0);
+  });
+
+  it("leaves scrollTop to edge auto-scroll while a clip drag adds a row above", () => {
+    const previous = createTimelineRowGeometry([1, 2, 3], [48, 48, 48]);
+    const next = createTimelineRowGeometry([9, 1, 2, 3], [48, 48, 48, 48]);
+    const scrollTop = previous.getRowTop(1) - RULER_H + 6;
+    expect(getTimelineScrollTopForGeometryChange(previous, next, scrollTop, true)).toBe(scrollTop);
+    expect(getTimelineScrollTopForGeometryChange(previous, next, scrollTop)).toBe(scrollTop + 48);
+  });
 });
+
+function trackContentOf(clip: HTMLElement | null | undefined): HTMLElement | null {
+  return clip?.closest<HTMLElement>('[role="gridcell"]') ?? null;
+}
 
 function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: string) {
   const clip = host.querySelector<HTMLElement>(`[data-el-id="${clipId}"]`);
   if (!clip) throw new Error(`Missing timeline clip ${clipId}`);
-  const trackContent = clip.parentElement;
+  const trackContent = trackContentOf(clip);
   if (!trackContent) throw new Error(`Missing content row for ${clipId}`);
   const trackHeader = trackContent.previousElementSibling;
   if (!(trackHeader instanceof HTMLElement)) throw new Error(`Missing track header for ${clipId}`);
@@ -485,6 +503,54 @@ describe("Timeline provider boundary", () => {
     act(() => root.unmount());
   });
 
+  // An agent writes music alternatives muted; the author unmutes one and must be
+  // able to mute it again from the same row.
+  it("mutes, unmutes and mutes an audio track again from its header", () => {
+    const host = createSizedTimelineHost(640);
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [{ id: "music-b", tag: "audio", start: 0, duration: 4, track: 0, hidden: true }],
+    });
+    const onToggleTrackHidden = vi.fn((track: number, hidden: boolean) => {
+      usePlayerStore.setState({
+        elements: usePlayerStore
+          .getState()
+          .elements.map((el) => (el.track === track ? { ...el, hidden } : el)),
+      });
+    });
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        React.createElement(
+          TimelineEditProvider,
+          { value: { onToggleTrackHidden } },
+          React.createElement(Timeline),
+        ),
+      );
+    });
+    act(() => {});
+
+    const press = (label: string) => {
+      const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+      if (!button) throw new Error(`Expected a "${label}" button`);
+      act(() => button.click());
+    };
+    press("Unmute track 1");
+    press("Mute track 1");
+    press("Unmute track 1");
+    press("Mute track 1");
+
+    expect(onToggleTrackHidden.mock.calls.map((call) => call[1])).toEqual([
+      false,
+      true,
+      false,
+      true,
+    ]);
+    expect(usePlayerStore.getState().elements[0]?.hidden).toBe(true);
+    act(() => root.unmount());
+  });
+
   it("splits all tracks once when shift-clicking the timeline with the razor", () => {
     const host = createSizedTimelineHost(640);
     usePlayerStore.setState({
@@ -646,7 +712,7 @@ describe("Timeline provider boundary", () => {
     expect(host.querySelector('button[aria-label="Hide clip-2 lanes"]')).toBeNull();
 
     const clip = host.querySelector<HTMLElement>('[data-el-id="clip-1"]');
-    const row = clip?.parentElement?.parentElement;
+    const row = trackContentOf(clip)?.parentElement;
     expectTrackExpansion(row, ["clip-1"], TRACK_H + 2 * LANE_H);
 
     // Collapsing sticks (does not bounce back open via auto-expand).
@@ -669,8 +735,9 @@ describe("Timeline provider boundary", () => {
   it("expands and collapses every clip on a shared track together", () => {
     const { host, root } = renderSharedAutomationTimeline();
 
-    const row = host.querySelector<HTMLElement>('[data-el-id="narration-1"]')?.parentElement
-      ?.parentElement;
+    const row = trackContentOf(
+      host.querySelector<HTMLElement>('[data-el-id="narration-1"]'),
+    )?.parentElement;
     // A row of several clips is named for the track, so the caret is too.
     const caret = () => host.querySelector<HTMLButtonElement>('button[aria-label$=" lanes"]');
     expect(caret()?.getAttribute("aria-label")).toBe("Show Track 1 lanes");
@@ -1245,26 +1312,6 @@ describe("shouldShowTimelineShortcutHint", () => {
 
   it("hides the hint when timeline tracks need vertical scrolling", () => {
     expect(shouldShowTimelineShortcutHint(221.5, 220)).toBe(false);
-  });
-});
-
-describe("shouldHandleTimelineDeleteKey", () => {
-  it("handles Delete and Backspace when focus is not in an editor", () => {
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete" })).toBe(true);
-    expect(shouldHandleTimelineDeleteKey({ key: "Backspace" })).toBe(true);
-  });
-
-  it("ignores modifier shortcuts", () => {
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete", metaKey: true })).toBe(false);
-    expect(shouldHandleTimelineDeleteKey({ key: "Backspace", ctrlKey: true })).toBe(false);
-  });
-
-  it("ignores input and editable targets", () => {
-    const input = { tagName: "INPUT", isContentEditable: false };
-    const editable = { tagName: "DIV", isContentEditable: true };
-
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete", target: input })).toBe(false);
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete", target: editable })).toBe(false);
   });
 });
 

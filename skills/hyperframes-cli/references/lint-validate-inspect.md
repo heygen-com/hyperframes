@@ -30,7 +30,7 @@ Lints `index.html` and all files in `compositions/`. Reports errors (must fix), 
 ```bash
 npx hyperframes check                    # current directory: the full browser gate
 npx hyperframes check ./my-project       # specific project
-npx hyperframes check --json             # agent-readable envelope {ok, lint, runtime, layout, motion, contrast, hdr, snapshots}
+npx hyperframes check --json             # agent-readable envelope {ok, browserSkipped, lint, runtime, layout, motion, contrast, hdr, snapshots}
 npx hyperframes check --snapshots        # also write overview frames (annotated) + per-finding crops
 npx hyperframes check --samples 15       # denser timeline sweep (default 9)
 npx hyperframes check --at 1.5,4,7.25    # explicit hero-frame timestamps
@@ -41,7 +41,7 @@ npx hyperframes check --no-contrast      # skip the WCAG audit while iterating
 npx hyperframes check --strict           # exit non-zero on warnings too (default: only errors)
 ```
 
-One command, one Chrome boot. `check` runs the linter first and skips the browser entirely when lint reports errors. Then it loads the bundled composition once, wires runtime listeners before navigation, and sweeps one seek grid running every audit per sample:
+One command, one Chrome boot. `check` runs the linter first and skips the browser entirely when lint reports errors. When the browser never ran (lint errors, a linter crash, or a browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast` sections are empty, not clean. Otherwise it loads the bundled composition once, wires runtime listeners before navigation, and sweeps one seek grid running every audit per sample:
 
 - **Runtime**: JavaScript console errors, unhandled exceptions, failed network requests (media-file `ERR_ABORTED` filtered out), HTTP 4xx/5xx.
 - **Layout**: text extending outside its container or the canvas, text clipped by its own box, held text overlaps and occlusion (with an approximate covered fraction), children escaping clipping containers.

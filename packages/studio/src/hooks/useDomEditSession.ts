@@ -24,6 +24,8 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
 import type { DomEditTimelineParams } from "./useDomSelectionTypes";
+import { useLivePreviewIframe } from "./useLivePreviewIframe";
+import { moveDomGroupBy, type DomGroupMove } from "../components/editor/domGroupMoveBy";
 // Re-exported: the delete rule lives in its own module; callers and its test import it from here.
 export { membersForDelete };
 
@@ -86,14 +88,13 @@ export function useDomEditSession({
   importedFontAssetsRef,
   projectDir,
   projectIdRef,
-  previewIframe,
+  previewIframe: hostPreviewIframe,
   refreshKey,
   previewDocumentVersion,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
   syncPreviewHotkeys,
   reloadPreview,
-  setRefreshKey: _setRefreshKey,
   openSourceForSelection,
   sdkSession,
   publishSdkSession,
@@ -103,7 +104,7 @@ export function useDomEditSession({
 }: UseDomEditSessionParams) {
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
   const previewCaptionEditMode = captionEditMode && !readOnlyPreview;
-  void _setRefreshKey;
+  const previewIframe = useLivePreviewIframe(hostPreviewIframe);
   const {
     domEditSelection,
     domEditGroupSelections,
@@ -170,32 +171,13 @@ export function useDomEditSession({
     refreshDomEditSelectionFromPreview,
   });
   // ── GSAP cache (hoisted so both useGsapScriptCommits and useDomEditWiring share the same instance) ──
-
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
-
-  // ── GSAP script commits ──
 
   const {
     commitMutation: gsapCommitMutation,
-    updateGsapProperty,
-    updateGsapMeta,
-    deleteGsapAnimation,
-    deleteAllForSelector,
-    addGsapAnimation,
-    addGsapProperty,
-    removeGsapProperty,
-    updateGsapFromProperty,
-    addGsapFromProperty,
-    removeGsapFromProperty,
-    addKeyframe,
-    addKeyframeBatch,
-    removeKeyframe,
-    moveKeyframe,
-    resizeKeyframedTween,
-    convertToKeyframes,
-    removeAllKeyframes,
     setArcPath,
     updateArcSegment,
+    ...gsapScriptEdits
   } = useGsapScriptCommits({
     projectIdRef,
     activeCompPath,
@@ -211,8 +193,6 @@ export function useDomEditSession({
     forceReloadSdkSession,
   });
 
-  // ── DOM commit handlers ──
-
   const {
     resolveImportedFontAsset,
     handleDomStyleCommit,
@@ -222,6 +202,7 @@ export function useDomEditSession({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
     handleDomTextCommit,
     handleDomTextCommitForSelection,
     handleDomRichTextCommit,
@@ -308,7 +289,6 @@ export function useDomEditSession({
   });
 
   // ── Element groups (wrap selected elements in a data-hf-group div) ──
-
   const { groupSelection, ungroupSelection } = useGroupCommits({
     activeCompPath,
     showToast,
@@ -383,7 +363,6 @@ export function useDomEditSession({
   }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);
 
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
-
   const {
     onClickToSource,
     selectedGsapAnimations,
@@ -430,23 +409,7 @@ export function useDomEditSession({
     applyDomSelection,
     buildDomSelectionFromTarget,
     openSourceForSelection,
-    updateGsapProperty,
-    updateGsapMeta,
-    deleteGsapAnimation,
-    deleteAllForSelector,
-    addGsapAnimation,
-    addGsapProperty,
-    removeGsapProperty,
-    updateGsapFromProperty,
-    addGsapFromProperty,
-    removeGsapFromProperty,
-    addKeyframe,
-    addKeyframeBatch,
-    removeKeyframe,
-    moveKeyframe,
-    resizeKeyframedTween,
-    convertToKeyframes,
-    removeAllKeyframes,
+    ...gsapScriptEdits,
     handleDomManualEditsReset,
   });
   const {
@@ -483,6 +446,7 @@ export function useDomEditSession({
     domEditSelection,
     selectedGsapAnimations,
     gsapCommitMutation,
+    activeCompPath,
     previewIframeRef,
     showToast,
     bumpGsapCache,
@@ -492,11 +456,18 @@ export function useDomEditSession({
     handleDomBoxSizeCommit,
     handleDomRotationCommit: handleDomCssRotationCommit,
     commitPositionPatchToHtml,
-    addGsapAnimation,
-    convertToKeyframes,
+    addGsapAnimation: gsapScriptEdits.addGsapAnimation,
+    convertToKeyframes: gsapScriptEdits.convertToKeyframes,
     setArcPath,
     updateArcSegment,
   });
+  const handleDomGroupMoveBy = useCallback(
+    (moves: DomGroupMove[]) =>
+      moveDomGroupBy(moves, (updates) =>
+        handleGsapAwareGroupPathOffsetCommit(updates, { refusalToast: false }),
+      ),
+    [handleGsapAwareGroupPathOffsetCommit],
+  );
   const { handleUpdateSegmentEase, handleUpdateKeyframeEase, handleSetAllKeyframeEases } =
     useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
   const committable = useCommitPreflightCapabilities({
@@ -532,8 +503,10 @@ export function useDomEditSession({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
     handleDomGroupPathOffsetCommit: handleGsapAwareGroupPathOffsetCommit,
+    handleDomGroupMoveBy,
     handleDomZIndexReorderCommit,
     handleDomBoxSizeCommit: handleGsapAwareBoxSizeCommit,
     handleDomRotationCommit: handleGsapAwareRotationCommit,

@@ -116,6 +116,20 @@ describe("describeProject", () => {
     ]);
   });
 
+  it("reports each half's out-of-sync offset from its source pair, at the project fps", async () => {
+    const { rows, text } = await rowsOf(`<html><body>
+<div data-composition-id="main" data-duration="10" data-fps="24">
+  <video id="v" src="t.mp4" muted data-sync-origin="lk-1" data-start="1" data-duration="4" data-track-index="0"></video>
+  <audio id="a" src="t.mp4" data-sync-origin="lk-1" data-start="1.5" data-duration="4" data-track-index="1"></audio>
+  <audio id="m" src="m.mp3" data-start="0" data-duration="4" data-track-index="2"></audio>
+</div></body></html>`);
+    const offset = (id: string) => rows.find((r) => r.id === id)?.syncOffsetFrames;
+    expect(offset("a")).toBe(12);
+    expect(offset("v")).toBe(-12);
+    expect(offset("m")).toBeNull();
+    expect(text).toContain("out-of-sync=+12f");
+  });
+
   it("reports unreadable automation instead of showing no lanes", async () => {
     const bad = (await describeProject(project())).tracks
       .flatMap((t) => t.rows)

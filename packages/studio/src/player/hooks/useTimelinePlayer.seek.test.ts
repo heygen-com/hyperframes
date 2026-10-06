@@ -12,6 +12,7 @@ import {
   resetPlayerStore,
 } from "./timelinePlayerTestHarness";
 import { liveTime, usePlayerStore } from "../store/playerStore";
+import { setPreviewFrame } from "../store/previewFrameStore";
 import { setTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -347,6 +348,82 @@ describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
     expect(adapter.play).toHaveBeenCalledTimes(1);
     expect(adapter.isPlaying()).toBe(true);
     expectStorePlaybackState(root, { isPlaying: true, currentTime: 0 });
+  });
+});
+
+describe("useTimelinePlayer preview frame (a trim's dragged edge)", () => {
+  function previewFrame(time: number | null) {
+    act(() => setPreviewFrame(time));
+  }
+
+  it("shows the frame without moving the playhead, then puts the playhead's frame back", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 1.25);
+    const seeks = liveTime.seekCount();
+    previewFrame(3.4);
+    expect(adapter.getTime()).toBe(3.4);
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
+    expect(liveTime.latest()).toBe(1.25);
+    previewFrame(null);
+    expect(adapter.getTime()).toBe(1.25);
+    expect(liveTime.seekCount()).toBe(seeks);
+    unmountWithAct(root);
+  });
+
+  it("keeps the playhead's time when paused, played or reloaded over the frame", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    attachIframeWindow(getApi(), makeAdapterWindow().win);
+    seekWithAct(getApi(), 1.25);
+    previewFrame(3.4);
+    act(() => getApi().pause());
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
+    act(() => getApi().refreshPlayer());
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeFakeIframe(makeAdapterWindow().win);
+    shadow.src = "http://localhost/api/projects/demo/preview?_t=1";
+    act(() => {
+      getApi().setShadowIframeNode(shadow);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow);
+    expect(usePlayerStore.getState().currentTime).toBe(1.25);
+    previewFrame(3.5);
+    const live = (shadow.contentWindow as unknown as { __player: { getTime(): number } }).__player;
+    expect(live.getTime()).toBe(3.5);
+    act(() => getApi().play());
+    expect(live.getTime()).toBe(1.25);
+    unmountWithAct(root);
+  });
+
+  it("plays from the in-point when play rewinds from the end over the frame", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 30);
+    act(() => usePlayerStore.setState({ inPoint: 3 }));
+    previewFrame(12);
+    act(() => api.play());
+    expect(adapter.getTime()).toBe(3);
+    unmountWithAct(root);
+  });
+
+  it("reads the playing transport's own time, not the playhead's, under a preview frame", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 2);
+    setStorePlaying();
+    previewFrame(5);
+    adapter.seek(7);
+    act(() => api.pause());
+    expect(usePlayerStore.getState().currentTime).toBe(7);
+    unmountWithAct(root);
+  });
+
+  it("leaves live playback alone", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 2);
+    setStorePlaying();
+    previewFrame(5);
+    expect(adapter.getTime()).toBe(2);
+    unmountWithAct(root);
   });
 });
 

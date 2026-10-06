@@ -409,6 +409,7 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
     expect(mocks.actions.handleGsapRemoveAllKeyframes).toHaveBeenCalledWith(
       scaleAnimation.id,
       circleSelection,
+      false,
     );
     view.unmount();
   });
@@ -678,6 +679,33 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
     view.unmount();
   });
 
+  it("retimes a duration-less tween's keyframe in the window GSAP plays it, not the clip", async () => {
+    const durationless = { ...authoredInteriorAnimation(), duration: undefined };
+    mocks.animations = [durationless];
+    usePlayerStore.setState({ gsapAnimations: new Map([["box", [durationless]]]) });
+    const view = renderCallbacks();
+
+    // GSAP plays it 0-0.5 s of the 1 s clip, so a drop at 0.4 s is 80% of the tween.
+    await view.callbacks.onMoveKeyframe?.(
+      "box",
+      {
+        percentage: 25,
+        propertyGroup: "position",
+        tweenPercentage: 50,
+        animationId: durationless.id,
+      },
+      40,
+    );
+
+    expect(mocks.actions.handleGsapMoveKeyframe).toHaveBeenCalledWith(
+      durationless.id,
+      50,
+      80,
+      mocks.selection,
+    );
+    view.unmount();
+  });
+
   // A drag starts on whatever diamond the pointer is over, which need not be the
   // selected element. Resolving against the selection would retime the selected
   // element's tween and commit it through the selected element's file.
@@ -774,48 +802,6 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
       view.callbacks.onMoveKeyframe?.("index.html#box", { percentage: 75 }, 85),
     ).resolves.toBe(false);
     expect(mocks.actions.handleGsapMoveKeyframe).not.toHaveBeenCalled();
-    view.unmount();
-  });
-
-  it("uses the clip timing basis when retiming a duration-less tween", async () => {
-    const durationless = {
-      ...authoredInteriorAnimation(),
-      position: 3.2,
-      resolvedStart: 3.2,
-      duration: undefined,
-    };
-    const wideElement = { ...element, start: 10.94, duration: 16.26 };
-    mocks.animations = [durationless];
-    usePlayerStore.setState({
-      elements: [wideElement],
-      gsapAnimations: new Map([["box", [durationless]]]),
-    });
-    const view = renderCallbacks();
-
-    await expect(
-      view.callbacks.onMoveKeyframe?.(
-        "box",
-        {
-          percentage: 19.1,
-          propertyGroup: "position",
-          tweenPercentage: 50,
-          animationId: durationless.id,
-        },
-        40,
-      ),
-    ).resolves.toBe(true);
-
-    // The whole point of the clip basis: the drop lands at 10.94 + 0.40 * 16.26 =
-    // 17.444s, and the duration-less tween borrows the clip's 16.26s window from
-    // its 3.2s start, so 17.444 - 3.2 over 16.26 is 87.601%. Any other basis (a
-    // zero-length tween, or the clip's own 0-100 %) produces a different number.
-    expect(mocks.actions.handleGsapMoveKeyframe).toHaveBeenCalledWith(
-      durationless.id,
-      50,
-      expect.closeTo(87.601, 3),
-      mocks.selection,
-    );
-    expect(mocks.actions.handleGsapResizeKeyframedTween).not.toHaveBeenCalled();
     view.unmount();
   });
 });

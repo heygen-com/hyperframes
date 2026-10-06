@@ -14,6 +14,7 @@ import {
   synthesizeFlatTweenKeyframes,
   type MergeableKeyframe,
 } from "./gsapTweenSynth";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 export { resolveSelectorElementIds };
 
@@ -79,11 +80,11 @@ async function requestParsedAnimations(
 ): Promise<ParsedGsapAnimations | null> {
   if (!isPreviewBooted(projectId) && !(await whenPreviewBooted(projectId))) return null;
   try {
-    const res = await fetch(
+    const res = await studioApiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
-      // Always re-read the freshly-parsed source; no per-call timestamp (which
-      // would defeat caching forever and is a deterministic-render no-no).
-      { cache: "no-store" },
+      // Always revalidate; an unchanged file answers 304. No per-call timestamp
+      // (a deterministic-render no-no).
+      { cache: "no-cache" },
     );
     if (!res.ok) return null;
     const parsed: unknown = await res.json();
@@ -106,9 +107,9 @@ export async function populateKeyframeCacheFromAst(
   projectId: string,
   sf: string,
   doc: Document | null | undefined,
-): Promise<void> {
+): Promise<boolean> {
   const parsed = await fetchParsedAnimations(projectId, sf);
-  if (!parsed) return;
+  if (!parsed) return false;
   const { elements, domClipChildren } = usePlayerStore.getState();
   const mergedByElement = new Map<string, GsapKeyframesData<MergeableKeyframe>>();
   const sourceByElement = new Map<string, GsapAnimation[]>();
@@ -136,4 +137,5 @@ export async function populateKeyframeCacheFromAst(
     }
   }
   replaceKeyframeCacheForFile(sf, mergedByElement, sourceByElement);
+  return true;
 }

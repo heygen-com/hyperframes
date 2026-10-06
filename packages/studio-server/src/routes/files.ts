@@ -17,19 +17,25 @@ import {
   fstatSync,
   renameSync,
   readdirSync,
+  realpathSync,
+  type Dirent,
 } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
+import { lengthIsTimeline } from "../helpers/compositionInputs.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
   folderGone,
+  isInHiddenOrVendorDir,
+  isPrivateProjectFile,
   isSafePath,
   mkdirWithinProject,
   pinWithinProject,
   resolveWithinProject,
+  walkDir,
 } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
@@ -69,25 +75,31 @@ import {
   addMotionPathToScript,
   removeArcPathFromScript,
   addAnimationWithKeyframesToScript,
+  replaceTweenWithKeyframesInScript,
   splitAnimationsInScript,
   splitIntoPropertyGroupsFromScript,
-  shiftPositionsInScript,
-  scalePositionsInScript,
+  retimeClipTweensInScript,
+  type ClipTweenRetime,
   dedupePositionWritesInScript,
   syncPositionHoldsBeforeKeyframes,
+  trimTrailingKeyframeSpans,
   clipQueryRoot,
 } from "@hyperframes/parsers/gsap-writer-acorn";
 import {
   removeElementFromHtml,
+  removeElementsFromHtml,
   patchElementInHtml,
   probeElementInSource,
+  probeElementsInSource,
   splitElementInHtml,
+  relinkSplitHalvesInHtml,
   wrapElementsInHtml,
   unwrapElementsFromHtml,
   isHTMLElement,
   type PatchOperation,
   type ElementRebase,
 } from "../helpers/sourceMutation.js";
+import { ensureStudioFontFaceCss, isStudioFontFaceCss } from "../helpers/studioFontFace.js";
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
@@ -96,7 +108,10 @@ import {
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
+import {
+  hasCompositionOutsideTemplates,
+  insertBeforeCloseTag,
+} from "@hyperframes/core/compiler/html-document";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -367,6 +382,24 @@ function foldElementPatches(
 
 const PATCH_CONFLICT_ATTEMPTS = 3;
 
+const ID_ATTRIBUTE = /[\s"'/]id\s*=\s*(?=(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))/gi;
+
+/** Every id in the project's HTML files: sub-compositions share one preview document. */
+function projectHtmlIds(projectDir: string): Set<string> {
+  const ids = new Set<string>();
+  for (const rel of walkDir(projectDir)) {
+    if (!rel.endsWith(".html") || isInHiddenOrVendorDir(rel)) continue;
+    let html: string;
+    try {
+      html = readFileSync(join(projectDir, rel), "utf-8");
+    } catch {
+      continue;
+    }
+    for (const m of html.matchAll(ID_ATTRIBUTE)) ids.add(m[1] ?? m[2] ?? m[3] ?? "");
+  }
+  return ids;
+}
+
 type ElementPatchCommitResult =
   | { error: "duplicate" | "forbidden" | "not-found" | "conflict"; sourceFile: string }
   | { durable: boolean; files: ElementPatchBatchFileResult[] };
@@ -620,7 +653,7 @@ function generateCopyPath(projectDir: string, originalPath: string): string {
  */
 function walkFiles(dir: string, filter: (name: string) => boolean): string[] {
   const results: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of readableEntries(dir)) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       if (
@@ -638,25 +671,143 @@ function walkFiles(dir: string, filter: (name: string) => boolean): string[] {
   return results;
 }
 
+const SKIPPED_ENTRY = new Set(["EACCES", "EPERM", "ENOENT"]);
+
+function skippable(error: unknown): boolean {
+  return error instanceof Error && SKIPPED_ENTRY.has((error as NodeJS.ErrnoException).code ?? "");
+}
+
+function readableEntries(dir: string): Dirent[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true });
+  } catch (error) {
+    if (skippable(error)) return [];
+    throw error;
+  }
+}
+
+function readableText(file: string): string | null {
+  try {
+    return readFileSync(file, "utf-8");
+  } catch (error) {
+    if (skippable(error)) return null;
+    throw error;
+  }
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const SEPARATOR = String.raw`\\{0,2}[\\/]`;
+const REFERENCE_START = String.raw`(?<![\w./\\+-])`;
+const FILE_END = String.raw`(?![\w-]|\.\w)`;
+
+function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
+  const name = oldPath.split("/").map(escapeRegExp).join(SEPARATOR);
+  const end = isDirectory ? `(?=${SEPARATOR})` : FILE_END;
+  return new RegExp(
+    String.raw`${REFERENCE_START}(?<lead>(?:\.{1,2}${SEPARATOR}|${SEPARATOR}){0,4})${name}${end}`,
+    "g",
+  );
+}
+
+// A match inside the longer path of a file or folder that exists (`a.png&b.png`, `other assets/`) is that path's.
+// Existing paths are indexed by the text after the old path, then the text before it, so a match costs a few lookups.
+export function referenceRewriter(
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+  existing: readonly string[] = [],
+): (text: string) => string {
+  const pattern = referencePattern(oldPath, isDirectory);
+  const around = new Map<string, Map<number, Set<string>>>();
+  const afterLengths = new Set<number>();
+  let window = 0;
+  for (const path of existing) {
+    if (path.length <= oldPath.length) continue;
+    for (const start of occurrences(path, oldPath)) {
+      const [before, after] = [path.slice(0, start), path.slice(start + oldPath.length)];
+      const befores = around.get(after) ?? around.set(after, new Map()).get(after)!;
+      (befores.get(before.length) ?? befores.set(before.length, new Set()).get(before.length)!).add(
+        before,
+      );
+      afterLengths.add(after.length);
+      window = Math.max(window, path.length * 3);
+    }
+  }
+  const normalized = (text: string) => text.replace(/\\{0,2}[\\/]/g, "/");
+  return (text) =>
+    text.replace(pattern, (...args) => {
+      const [match, offset] = [args[0] as string, args.at(-3) as number];
+      const { lead } = args.at(-1) as { lead: string };
+      const at = offset + lead.length;
+      const head = normalized(text.slice(Math.max(0, at - window), at));
+      const tail = normalized(text.slice(offset + match.length, offset + match.length + window));
+      const inLonger = [...afterLengths].some((after) => {
+        const befores = tail.length >= after && around.get(tail.slice(0, after));
+        return (
+          befores &&
+          [...befores].some(
+            ([length, set]) => head.length >= length && set.has(head.slice(head.length - length)),
+          )
+        );
+      });
+      return inLonger ? match : `${lead}${newPath}`;
+    });
+}
+
+function occurrences(text: string, part: string): number[] {
+  const at: number[] = [];
+  for (let i = text.indexOf(part); i >= 0; i = text.indexOf(part, i + 1)) at.push(i);
+  return at;
+}
+
+function projectPaths(
+  root: string,
+  dir = root,
+  prefix = "",
+  ancestors: ReadonlySet<string> = new Set(),
+): string[] {
+  return readableEntries(dir).flatMap((entry) => {
+    const [path, full] = [`${prefix}${entry.name}`, join(dir, entry.name)];
+    const real = entry.name === "node_modules" ? null : directoryReal(entry, full);
+    if (real === null || ancestors.has(real) || !isSafePath(root, full)) return [path];
+    return [path, ...projectPaths(root, full, `${path}/`, new Set([...ancestors, real]))];
+  });
+}
+
+// A directory's real path, through a link, or null for anything else: aliases are paths too.
+function directoryReal(entry: Dirent, full: string): string | null {
+  try {
+    return entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())
+      ? realpathSync(full)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * After a rename, update all references to the old path in project files.
- * Scans HTML, CSS, JS, and JSON files for the old filename/path and replaces.
+ * Scans HTML, CSS, JS, and JSON files for the old path and replaces it where it names that path.
  */
-function updateReferences(projectDir: string, oldPath: string, newPath: string): number {
+function updateReferences(
+  projectDir: string,
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+): number {
   const textFiles = walkFiles(projectDir, (name) =>
     /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
   );
 
+  const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
   for (const file of textFiles) {
-    if (!isSafePath(projectDir, file)) continue;
-    const content = readFileSync(file, "utf-8");
+    if (!isSafePath(projectDir, file) || isPrivateProjectFile(projectDir, file)) continue;
+    const content = readableText(file);
+    if (content === null) continue;
 
-    // Only replace full relative paths — never bare filenames, which can
-    // corrupt unrelated content (e.g. "logo.png" inside "my-logo.png").
-    if (!content.includes(oldPath)) continue;
-
-    const updated = content.split(oldPath).join(newPath);
+    const updated = rewrite(content);
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;
@@ -1175,6 +1326,25 @@ export type GsapMutationRequest =
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
 
+function replaceInPlaceUnlessSetOrUnknown(
+  scriptText: string,
+  body: Extract<GsapMutationRequest, { type: "replace-with-keyframes" }>,
+): string {
+  const edit = { ...body, easeEach: resolveReplacementEaseEach(scriptText, body) };
+  const inPlace = replaceTweenWithKeyframesInScript(scriptText, body.animationId, edit);
+  if (inPlace !== null) return inPlace;
+  const script = removeAnimationFromScript(scriptText, body.animationId);
+  return addAnimationWithKeyframesToScript(
+    script,
+    body.targetSelector,
+    body.position,
+    body.duration,
+    body.keyframes,
+    body.ease,
+    edit.easeEach,
+  ).script;
+}
+
 function resolveReplacementEaseEach(
   scriptText: string,
   request: { animationId: string; easeEach?: string },
@@ -1190,7 +1360,7 @@ function resolveReplacementEaseEach(
 // Mutations that can change a position tween's first keyframe (value/existence/timing)
 // and therefore require the pre-keyframe hold-`set`s to be re-synced afterwards.
 // `syncPositionHoldsBeforeKeyframes` rebuilds all `hf-hold` sets from scratch: it acts
-// on every tween that has keyframes whose first percentage carries a position prop and
+// on every tween whose 0% keyframe carries a position prop and
 // whose start is > 0. So any mutation that creates such a tween, retargets it, or moves
 // its start across the t=0 boundary must trigger a re-sync.
 const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
@@ -1293,7 +1463,13 @@ async function prepareGsapMutationScript(
       `window.__timelines["${compId}"] = tl;`,
       "</script>",
     ].join("\n");
-    html = insertBeforeCloseTag(html, "body", `${bootstrap}\n`) ?? `${html}\n${bootstrap}`;
+    const [first, second] = hasCompositionOutsideTemplates(html)
+      ? (["body", "template"] as const)
+      : (["template", "body"] as const);
+    html =
+      insertBeforeCloseTag(html, first, `${bootstrap}\n`) ??
+      insertBeforeCloseTag(html, second, `${bootstrap}\n`) ??
+      `${html}\n${bootstrap}`;
     block = extractGsapScriptBlock(html);
   }
   if (
@@ -1318,6 +1494,46 @@ async function prepareGsapMutationScript(
   return { html, beforeHtml, block };
 }
 
+type RetimeSlot = ClipTweenRetime | "no-op";
+
+function retimeRuns(mutations: readonly GsapMutationRequest[]): Map<number, RetimeSlot[]> {
+  const runs = new Map<number, RetimeSlot[]>();
+  let start = -1;
+  mutations.forEach((mutation, index) => {
+    const retime = clipRetimeOf(mutation);
+    if (!retime) return void (start = -1);
+    if (start < 0) runs.set((start = index), []);
+    runs.get(start)!.push(retime);
+  });
+  return runs;
+}
+
+// The one owner of the clip-retime no-op rules; a no-op keeps its slot so flags line up.
+function clipRetimeOf(mutation: GsapMutationRequest): RetimeSlot | null {
+  if (mutation.type === "shift-positions") {
+    const { targetSelector, delta } = mutation;
+    return targetSelector && Number.isFinite(delta) && delta !== 0
+      ? { kind: "shift", targetSelector, delta }
+      : "no-op";
+  }
+  if (mutation.type !== "scale-positions") return null;
+  const { targetSelector, oldStart, oldDuration, newStart, newDuration } = mutation;
+  const finite = [oldStart, oldDuration, newStart, newDuration].every(Number.isFinite);
+  if (!targetSelector || !finite || oldDuration <= 0 || newDuration <= 0) return "no-op";
+  if (oldStart === newStart && oldDuration === newDuration) return "no-op";
+  return { kind: "scale", targetSelector, oldStart, oldDuration, newStart, newDuration };
+}
+
+function retimeRun(script: string, run: readonly RetimeSlot[], root: ParentNode | undefined) {
+  const live = run.filter((slot): slot is ClipTweenRetime => slot !== "no-op");
+  const retimed = retimeClipTweensInScript(script, live, root);
+  const synced = syncPositionHoldsBeforeKeyframes(retimed.script);
+  let next = 0;
+  const changed = run.map((slot) => slot !== "no-op" && retimed.changed[next++]!);
+  if (synced !== retimed.script) changed[changed.length - 1] = true;
+  return { script: synced, changed: synced === script ? changed.map(() => false) : changed };
+}
+
 async function applyGsapMutations(
   c: RouteContext,
   res: ResolvedGsapFile,
@@ -1328,6 +1544,7 @@ async function applyGsapMutations(
   const prepared = await prepareGsapMutationScript(c, res, firstMutation);
   if (prepared instanceof Response) return prepared;
   const { html, beforeHtml, block } = prepared;
+  let lengthIsAuthored: boolean | undefined;
 
   const initialScript = block.scriptText;
   const skippedSelectors = new Set<string>();
@@ -1342,7 +1559,19 @@ async function applyGsapMutations(
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 
-  for (const mutation of mutations) {
+  const mutationChanges: boolean[] = [];
+  const retimes = writer === "acorn" ? retimeRuns(mutations) : new Map<number, RetimeSlot[]>();
+  for (let index = 0; index < mutations.length; index++) {
+    const run = retimes.get(index);
+    if (run) {
+      const retimed = retimeRun(block.scriptText, run, block.root);
+      mutationChanges.push(...retimed.changed);
+      block.scriptText = retimed.script;
+      index += run.length - 1;
+      continue;
+    }
+    const mutation = mutations[index]!;
+    const previousScript = block.scriptText;
     const result = await executeGsapMutation(mutation, block, respond, writer);
     if (result instanceof Response) return result;
     let newScript = typeof result === "string" ? result : result.script;
@@ -1350,11 +1579,14 @@ async function applyGsapMutations(
       for (const selector of result.skippedSelectors) skippedSelectors.add(selector);
     }
     if (HOLD_SYNC_MUTATION_TYPES.has(mutation.type)) {
+      lengthIsAuthored ??= !lengthIsTimeline(res.project.dir, res.filePath);
+      if (lengthIsAuthored) newScript = trimTrailingKeyframeSpans(previousScript, newScript);
       newScript =
         writer === "acorn"
-          ? syncPositionHoldsBeforeKeyframes(newScript)
-          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(newScript);
+          ? syncPositionHoldsBeforeKeyframes(newScript, previousScript)
+          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(newScript, previousScript);
     }
+    mutationChanges.push(newScript !== previousScript);
     block.scriptText = newScript;
   }
 
@@ -1384,6 +1616,7 @@ async function applyGsapMutations(
     ok: true,
     changed,
     mutated: changed,
+    mutationChanges,
     parsed: parseGsapScriptAcorn(block.scriptText),
     before: beforeHtml,
     after: newHtml,
@@ -1648,17 +1881,7 @@ function executeGsapMutationAcorn(
       if (keyframesWritePosition(body.keyframes) || keyframesWriteRotation(body.keyframes)) {
         stripStudioEditsFromTarget(block.document, body.targetSelector);
       }
-      const script = removeAnimationFromScript(block.scriptText, body.animationId);
-      const added = addAnimationWithKeyframesToScript(
-        script,
-        body.targetSelector,
-        body.position,
-        body.duration,
-        body.keyframes,
-        body.ease,
-        resolveReplacementEaseEach(block.scriptText, body),
-      );
-      return added.script;
+      return replaceInPlaceUnlessSetOrUnknown(block.scriptText, body);
     }
     case "split-animations": {
       if (
@@ -1697,41 +1920,18 @@ function executeGsapMutationAcorn(
     case "unroll-timeline": {
       return unrollComputedTimeline(block.scriptText);
     }
-    case "shift-positions": {
-      const { targetSelector, delta } = body;
-      if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
-      return shiftPositionsInScript(block.scriptText, targetSelector, delta, block.root);
-    }
     case "shift-positions-batch": {
-      let script = block.scriptText;
-      for (const s of body.shifts) {
-        if (!s.targetSelector || !Number.isFinite(s.delta) || s.delta === 0) continue;
-        script = shiftPositionsInScript(script, s.targetSelector, s.delta, block.root);
-      }
-      return script;
+      const shifts = body.shifts
+        .filter((s) => s.targetSelector && Number.isFinite(s.delta) && s.delta !== 0)
+        .map((s) => ({ kind: "shift" as const, targetSelector: s.targetSelector, delta: s.delta }));
+      return retimeClipTweensInScript(block.scriptText, shifts, block.root).script;
     }
+    case "shift-positions":
     case "scale-positions": {
-      const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
-      if (
-        !targetSelector ||
-        !Number.isFinite(oldStart) ||
-        !Number.isFinite(oldDuration) ||
-        !Number.isFinite(newStart) ||
-        !Number.isFinite(newDuration) ||
-        oldDuration <= 0 ||
-        newDuration <= 0
-      )
-        return block.scriptText;
-      if (oldStart === newStart && oldDuration === newDuration) return block.scriptText;
-      return scalePositionsInScript(
-        block.scriptText,
-        targetSelector,
-        oldStart,
-        oldDuration,
-        newStart,
-        newDuration,
-        block.root,
-      );
+      const retime = clipRetimeOf(body);
+      return retime && retime !== "no-op"
+        ? retimeClipTweensInScript(block.scriptText, [retime], block.root).script
+        : block.scriptText;
     }
     default:
       return respond({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);
@@ -2020,17 +2220,7 @@ async function executeGsapMutationRecast(
       if (keyframesWritePosition(body.keyframes) || keyframesWriteRotation(body.keyframes)) {
         stripStudioEditsFromTarget(block.document, body.targetSelector);
       }
-      const script = removeAnimationFromScript(block.scriptText, body.animationId);
-      const added = addAnimationWithKeyframesToScript(
-        script,
-        body.targetSelector,
-        body.position,
-        body.duration,
-        body.keyframes,
-        body.ease,
-        resolveReplacementEaseEach(block.scriptText, body),
-      );
-      return added.script;
+      return replaceInPlaceUnlessSetOrUnknown(block.scriptText, body);
     }
     case "split-animations": {
       if (
@@ -2133,6 +2323,7 @@ async function foldAtomicCutFile(
   let after = before;
   let splitCount = 0;
   const skippedSelectors = new Set<string>();
+  const rightHalfIds: string[] = [];
   const respond = (data: unknown, status?: number) =>
     status ? c.json(data, status) : c.json(data);
 
@@ -2174,6 +2365,7 @@ async function foldAtomicCutFile(
     }
     after = split.html;
     splitCount++;
+    rightHalfIds.push(split.newId);
 
     if (!cut.originalId) continue;
     const block = extractGsapScriptBlock(after);
@@ -2199,12 +2391,13 @@ async function foldAtomicCutFile(
     if (script !== block.scriptText) {
       script =
         writer === "acorn"
-          ? syncPositionHoldsBeforeKeyframes(script)
-          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(script);
+          ? syncPositionHoldsBeforeKeyframes(script, block.scriptText)
+          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(script, block.scriptText);
       after = block.replaceScript(script);
     }
   }
 
+  after = relinkSplitHalvesInHtml(after, rightHalfIds);
   return {
     path: file.path,
     absPath,
@@ -2217,6 +2410,8 @@ async function foldAtomicCutFile(
 
 // ── Upload file processing ──────────────────────────────────────────────────
 
+export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+
 async function processUploadedFiles(
   formData: FormData,
   targetDir: string,
@@ -2227,7 +2422,6 @@ async function processUploadedFiles(
   invalid: Array<{ name: string; reason: string }>;
   unchecked: Array<{ name: string; reason: string }>;
 }> {
-  const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
   const uploaded: string[] = [];
   const skipped: string[] = [];
   const invalid: Array<{ name: string; reason: string }> = [];
@@ -2288,7 +2482,7 @@ async function processUploadedFiles(
 
     // The collision suffix chooses a different path; validate that destination
     // too, including dangling symlinks that existsSync treats as absent.
-    if (!isSafePath(projectDir, finalPath)) continue;
+    if (!isSafePath(projectDir, finalPath) || isPrivateProjectFile(projectDir, finalPath)) continue;
 
     const buffer = Buffer.from(await value.arrayBuffer());
     const validation = validateUploadedMediaBuffer(finalName, buffer);
@@ -2670,15 +2864,16 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const originalContent = readFileSync(ctx.absPath, "utf-8");
-    // A member nested inside one already removed simply no longer matches, which
-    // is a normal outcome here rather than a failure. The response says whether
-    // the file changed, not how many of the targets landed — so a caller can
-    // tell a no-op from a write, but not a partial pass from a complete one.
-    let next = originalContent;
-    for (const target of targets) {
-      next = removeElementFromHtml(next, target);
-    }
-    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, next);
+    // The response says whether the file changed, not how many of the targets landed, so a
+    // caller can tell a no-op from a write, but not a partial pass from a complete one.
+    return writeIfChanged(
+      c,
+      ctx.project.dir,
+      ctx.filePath,
+      ctx.absPath,
+      originalContent,
+      removeElementsFromHtml(originalContent, targets),
+    );
   });
 
   api.post("/projects/:id/file-mutations/split-batch", async (c) => {
@@ -2905,10 +3100,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const parsed = await parseMutationBody<{
       target?: MutationTarget;
       operations?: PatchOperation[];
+      fontFaceCss?: unknown;
     }>(c);
     if ("error" in parsed) return parsed.error;
     if (!Array.isArray(parsed.body.operations) || parsed.body.operations.length === 0) {
       return c.json({ error: "target and operations required" }, 400);
+    }
+    const { fontFaceCss } = parsed.body;
+    if (fontFaceCss !== undefined && !isStudioFontFaceCss(fontFaceCss)) {
+      return c.json({ error: "fontFaceCss must be one @font-face rule" }, 400);
     }
     const unsafeFields = findUnsafeDomPatchValues(parsed.body);
     if (unsafeFields.length > 0) {
@@ -2922,11 +3122,20 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       } catch {
         return c.json({ error: "not found" }, 404);
       }
-      const { html: patched, matched } = patchElementInHtml(
+      const takenIds = parsed.body.operations.some((op) => op.type === "ensure-id")
+        ? projectHtmlIds(ctx.project.dir)
+        : undefined;
+      const element = patchElementInHtml(
         originalContent,
         parsed.target,
         parsed.body.operations,
+        takenIds,
       );
+      const { matched } = element;
+      const patched =
+        matched && isStudioFontFaceCss(fontFaceCss)
+          ? ensureStudioFontFaceCss(element.html, fontFaceCss)
+          : element.html;
       if (patched === originalContent) {
         const version = fileContentVersion(originalContent);
         c.header("ETag", version);
@@ -2934,6 +3143,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           ok: true,
           changed: false,
           matched,
+          elementId: element.elementId,
           content: originalContent,
           path: ctx.filePath,
           version,
@@ -2957,6 +3167,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         ok: true,
         changed: true,
         matched,
+        elementId: element.elementId,
         content: patched,
         path: ctx.filePath,
         version,
@@ -3171,6 +3382,22 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     return c.json({ exists });
   });
 
+  api.post("/projects/:id/file-mutations/probe-elements/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "probe-elements");
+    if ("error" in ctx) return ctx.error;
+
+    const body = (await c.req.json().catch(() => null)) as { targets?: MutationTarget[] } | null;
+    if (!Array.isArray(body?.targets)) return c.json({ error: "targets required" }, 400);
+
+    let content: string;
+    try {
+      content = readFileSync(ctx.absPath, "utf-8");
+    } catch {
+      return c.json({ exists: body.targets.map(() => false) });
+    }
+    return c.json({ exists: probeElementsInSource(content, body.targets) });
+  });
+
   // ── Rename / Move ──
 
   api.patch("/projects/:id/files/*", async (c) => {
@@ -3190,11 +3417,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "already exists" }, 409);
     }
 
+    const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
     ensureDir(res.project.dir, newAbs);
     renameSync(res.absPath, newAbs);
 
     // Update references to the old path across all project files
-    const updatedFiles = updateReferences(res.project.dir, res.filePath, body.newPath);
+    const updatedFiles = updateReferences(res.project.dir, res.filePath, body.newPath, isDirectory);
 
     return c.json({ ok: true, path: body.newPath, updatedReferences: updatedFiles });
   });
@@ -3235,8 +3463,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   });
 
   // ── Upload (binary assets via multipart form) ──
-
-  const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
 
   api.post(
     "/projects/:id/upload",
@@ -3280,19 +3506,23 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     });
     if ("error" in res) return res.error;
 
+    // The parse is a pure function of the file and the parser, so a client that revalidates on
+    // every read gets a 304 for every unchanged file; bump the `v1` salt when the parser changes.
     const html = readFileSync(res.absPath, "utf-8");
+    const etag = `${fileContentVersion(html).slice(0, -1)}:gsap-animations:v1"`;
+    const headers = { ETag: etag, "Cache-Control": "no-cache" };
+    if (c.req.header("If-None-Match") === etag) return new Response(null, { status: 304, headers });
+
     const block = extractGsapScriptBlock(html);
     if (!block) {
-      return c.json({
-        animations: [],
-        timelineVar: "tl",
-        preamble: "",
-        postamble: "",
-      });
+      return c.json(
+        { animations: [], timelineVar: "tl", preamble: "", postamble: "" },
+        200,
+        headers,
+      );
     }
 
-    const parsed = parseGsapScriptAcorn(block.scriptText);
-    return c.json(parsed);
+    return c.json(parseGsapScriptAcorn(block.scriptText), 200, headers);
   });
 
   // ── GSAP Mutations ──

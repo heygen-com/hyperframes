@@ -467,7 +467,7 @@ export const RenderQueue = memo(function RenderQueue({
           role="alert"
           className="flex items-start justify-between gap-2 px-3 py-2 border-b border-border bg-danger/10"
         >
-          <span className="text-step-10 text-danger">{actionError}</span>
+          <span className="text-step-10 text-danger-ink">{actionError}</span>
           {onDismissActionError && (
             <IconButton
               size="sm"
@@ -497,7 +497,7 @@ export const RenderQueue = memo(function RenderQueue({
       <div ref={listRef} className="flex-1 overflow-y-auto">
         {loadError && jobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2" role="alert">
-            <p className="text-step-10 text-danger text-center">{loadError}</p>
+            <p className="text-step-10 text-danger-ink text-center">{loadError}</p>
             {onRetryLoad && (
               <Button size="sm" variant="secondary" onClick={onRetryLoad}>
                 Retry

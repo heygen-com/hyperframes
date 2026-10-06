@@ -4,7 +4,11 @@ import { existsSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, win32 as pathWin32 } from "node:path";
-import { thumbnailDeviceScaleFactor } from "@hyperframes/studio-server";
+import {
+  getElementScreenshotClip,
+  thumbnailDeviceScaleFactor,
+  type ScreenshotClip,
+} from "@hyperframes/studio-server";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { seekThumbnailPreview } from "./vite.thumbnail";
 
@@ -162,13 +166,6 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
   }
 }
 
-interface ScreenshotClip {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 async function applyStudioRenderBodyScriptsToThumbnailPage(
   page: import("puppeteer-core").Page,
   projectDir: string,
@@ -235,37 +232,6 @@ async function prepareThumbnailPage(
   await reapplyStudioRenderBodyScriptsToThumbnailPage(page);
 }
 
-async function resolveScreenshotClip(
-  page: import("puppeteer-core").Page,
-  selector: string | undefined,
-  selectorIndex: number | undefined,
-): Promise<ScreenshotClip | undefined> {
-  if (!selector) return undefined;
-  return page.evaluate(
-    (targetSelector: string, targetIndex: number | undefined) => {
-      const matches = Array.from(document.querySelectorAll(targetSelector)).filter(
-        (element): element is HTMLElement => element instanceof HTMLElement,
-      );
-      const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(targetIndex ?? 0)));
-      const element = matches[safeIndex] ?? null;
-      if (!(element instanceof HTMLElement)) return undefined;
-      const rect = element.getBoundingClientRect();
-      if (rect.width < 4 || rect.height < 4) return undefined;
-      const padding = 8;
-      const x = Math.max(0, rect.left - padding);
-      const y = Math.max(0, rect.top - padding);
-      return {
-        x,
-        y,
-        width: Math.max(1, Math.min(rect.width + padding * 2, window.innerWidth - x)),
-        height: Math.max(1, Math.min(rect.height + padding * 2, window.innerHeight - y)),
-      };
-    },
-    selector,
-    selectorIndex,
-  );
-}
-
 async function captureThumbnail(
   page: import("puppeteer-core").Page,
   format: GenerateThumbnailOptions["format"],
@@ -291,7 +257,9 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
     page = await sharedBrowser.newPage();
     if (opts.signal.aborted) return null;
     await prepareThumbnailPage(page, opts);
-    const clip = await resolveScreenshotClip(page, opts.selector, opts.selectorIndex);
+    const clip = opts.selector
+      ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex)
+      : undefined;
     if (opts.signal.aborted) return null;
     return await captureThumbnail(page, opts.format, clip);
   } catch (error) {

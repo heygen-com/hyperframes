@@ -44,7 +44,7 @@ export const WINDOW_TIMELINE_ASSIGN_PATTERN =
 export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
 
 const TIMELINE_REGISTRY_KEY_PATTERN =
-  /window\.__timelines(?:\[\s*["']([^"']+)["']\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=/g;
+  /window\.__timelines(?:\[\s*["']([^"']+)["']\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*(?:\?\?|\|\||&&)?=/g;
 
 // The `window.__timelines = { ... }` object-literal body (group 1), captured so its
 // `key: value` entries can be scanned for registered keys.
@@ -231,6 +231,34 @@ export function readAttr(tagSource: string, attr: string): string | null {
   // The lookbehind requires the match to start a fresh attribute name.
   const match = tagSource.match(new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*["']([^"']+)["']`, "i"));
   return match?.[1] || null;
+}
+
+export function hasAttrName(tagSource: string, attr: string): boolean {
+  return readDecodedAttr(tagSource, attr) !== null;
+}
+
+// An explicit data-has-audio is authoritative for the compiler; only the exact value "true" means audible.
+export function isAudibleVideoTag(tagSource: string): boolean {
+  if (hasAttrName(tagSource, "muted")) return false;
+  if (!hasAttrName(tagSource, "data-has-audio")) return true;
+  const declared = readAttr(tagSource, "data-has-audio");
+  return declared === "true";
+}
+
+export function mediaTimeWindow(tagSource: string): { start: number; end: number } | null {
+  const start = Number(readAttr(tagSource, "data-start"));
+  const duration = Number(readAttr(tagSource, "data-duration"));
+  if (!readAttr(tagSource, "data-start") || !readAttr(tagSource, "data-duration")) return null;
+  if (!Number.isFinite(start) || !Number.isFinite(duration)) return null;
+  return { start, end: start + duration };
+}
+
+export function mediaWindowsOverlap(
+  a: { start: number; end: number } | null,
+  b: { start: number; end: number } | null,
+): boolean {
+  if (!a || !b) return true;
+  return a.start < b.end && b.start < a.end;
 }
 
 /** Read an HTML attribute using browser-equivalent character-reference decoding. */

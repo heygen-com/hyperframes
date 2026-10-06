@@ -4,12 +4,14 @@
  * reads to a human. Kept apart from the header's JSX so a formatting change and
  * a layout change never touch the same file.
  */
-import gsap from "gsap";
 import {
   classifyPropertyGroup,
   type GsapAnimation,
   type PropertyGroupName,
 } from "@hyperframes/core/gsap-parser";
+import { PROPERTY_DEFAULTS } from "../../hooks/gsapShared";
+import { resolveTweenDuration, resolveTweenStart } from "../../utils/globalTimeCompiler";
+import { easeFunction, keyframedTweenEases } from "../../utils/gsapKeyframeEases";
 
 export type LaneValues = Record<string, number | string>;
 
@@ -17,15 +19,8 @@ function roundValue(value: number): string {
   return String(Math.round(value * 100) / 100);
 }
 
-/** GSAP applies a keyframe's `ease` to the segment ARRIVING at it, so the curve
- *  between two keyframes is named by the later one (with the tween-level
- *  `easeEach`/`ease` as the fallback). Sampling linearly would report a value the
- *  element never has at that time, and stamp that wrong value onto a keyframe
- *  added from the track header. Unknown ease names parse to undefined -> linear. */
 function easedProgress(progress: number, animation: GsapAnimation, ease?: string): number {
-  const resolved = ease ?? animation.keyframes?.easeEach ?? animation.ease;
-  if (!resolved || resolved === "none") return progress;
-  return gsap.parseEase(resolved)?.(progress) ?? progress;
+  return easeFunction(keyframedTweenEases(animation).segment({ ease }))?.(progress) ?? progress;
 }
 
 interface PropertyStop {
@@ -34,14 +29,23 @@ interface PropertyStop {
   ease?: string;
 }
 
-function propertyStops(animation: GsapAnimation, property: string): PropertyStop[] {
-  return (animation.keyframes?.keyframes ?? [])
+/** Before its first keyframe a tween animates from the value it starts at (`start`), or the
+ *  property's base value as for a flat tween (synthesizeFlatTweenKeyframes). */
+function propertyStops(
+  animation: GsapAnimation,
+  property: string,
+  start?: number | string,
+): PropertyStop[] {
+  const stops = (animation.keyframes?.keyframes ?? [])
     .filter((keyframe) => property in keyframe.properties)
     .map((keyframe) => ({
       percentage: keyframe.percentage,
       value: keyframe.properties[property],
       ease: keyframe.ease,
     }));
+  const first = stops[0];
+  if (!first || first.percentage <= 0 || typeof first.value !== "number") return stops;
+  return [{ percentage: 0, value: start ?? PROPERTY_DEFAULTS[property] ?? 0 }, ...stops];
 }
 
 /** A pair only interpolates when both ends are numeric and actually span time;
@@ -60,8 +64,9 @@ function propertyValueAt(
   animation: GsapAnimation,
   property: string,
   tweenPercentage: number,
+  start?: number | string,
 ): number | string | undefined {
-  const stops = propertyStops(animation, property);
+  const stops = propertyStops(animation, property, start);
   const before = stops.filter((stop) => stop.percentage <= tweenPercentage).at(-1);
   const after = stops.find((stop) => stop.percentage >= tweenPercentage);
   if (!before) return after?.value;
@@ -77,6 +82,7 @@ export function valuesAt(
   animation: GsapAnimation,
   group: PropertyGroupName,
   tweenPercentage: number,
+  startValues: LaneValues = {},
 ): LaneValues {
   const propertyNames = new Set<string>();
   for (const keyframe of animation.keyframes?.keyframes ?? []) {
@@ -86,8 +92,43 @@ export function valuesAt(
   }
   const values: LaneValues = {};
   for (const property of propertyNames) {
-    const value = propertyValueAt(animation, property, tweenPercentage);
+    const value = propertyValueAt(animation, property, tweenPercentage, startValues[property]);
     if (value !== undefined) values[property] = value;
+  }
+  return values;
+}
+
+const endValue = (animation: GsapAnimation, property: string) =>
+  animation.keyframes?.keyframes.findLast((keyframe) => property in keyframe.properties)
+    ?.properties[property] ?? animation.properties[property];
+
+/** Each property's value as `animation` starts: the end of the last tween done writing it by then. */
+export function valuesBefore(
+  animation: GsapAnimation,
+  animations: readonly GsapAnimation[],
+): LaneValues {
+  const start = resolveTweenStart(animation);
+  if (start == null) return {};
+  const endOf = (other: GsapAnimation) =>
+    (resolveTweenStart(other) ?? Infinity) +
+    (other.method === "set" ? 0 : resolveTweenDuration(other));
+  const index = animations.indexOf(animation);
+  const finished = animations
+    .filter((other, i) => {
+      if (other.method === "from" || i === index) return false;
+      return endOf(other) < start || (endOf(other) === start && i < index);
+    })
+    .sort((a, b) => endOf(a) - endOf(b));
+  const values: LaneValues = {};
+  for (const other of finished) {
+    const keyframes = other.keyframes?.keyframes ?? [{ properties: other.properties }];
+    for (const property of new Set(
+      keyframes.flatMap((keyframe) => Object.keys(keyframe.properties)),
+    )) {
+      const value = endValue(other, property);
+      if (typeof value === "number") values[property] = value;
+      else delete values[property];
+    }
   }
   return values;
 }

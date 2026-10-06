@@ -6,6 +6,7 @@ export default defineConfig({
     "helpers/screenshotClip": "src/helpers/screenshotClip.ts",
     "helpers/mediaCodecMap": "src/helpers/mediaCodecMap.ts",
     "helpers/proxyTranscoder": "src/helpers/proxyTranscoder.ts",
+    "helpers/loudness": "src/helpers/loudness.ts",
     "helpers/mediaProxyPreview": "src/helpers/mediaProxyPreview.ts",
     "helpers/manualEditsRenderScript": "src/helpers/manualEditsRenderScript.ts",
     "helpers/studioMotionRenderScript": "src/helpers/studioMotionRenderScript.ts",

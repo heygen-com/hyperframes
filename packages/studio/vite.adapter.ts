@@ -282,8 +282,8 @@ export function createViteAdapter(
     },
 
     async transformPreviewHtml({ html }) {
-      const producer = await import("../producer/src/services/deterministicFonts.js");
-      return producer.injectDeterministicFontFaces(html);
+      const fonts = await import("../core/src/fonts/deterministicFonts.js");
+      return fonts.injectDeterministicFontFaces(html);
     },
 
     getProjectSignature(projectDir: string): string {
@@ -369,12 +369,17 @@ export function createViteAdapter(
             removeCancelledOutput();
             return;
           }
+          if (job.audioLoweredDb !== undefined) state.audioLoweredDb = job.audioLoweredDb;
           state.status = "complete";
           state.progress = 100;
           const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
           writeFileSync(
             metaPath,
-            JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+            JSON.stringify({
+              status: "complete",
+              durationMs: Date.now() - startTime,
+              ...(job.audioLoweredDb !== undefined ? { audioLoweredDb: job.audioLoweredDb } : {}),
+            }),
           );
         } catch (err) {
           if (abortController.signal.aborted) {

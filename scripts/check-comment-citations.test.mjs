@@ -67,6 +67,23 @@ test("a cited file that does not exist fails", (t) => {
   assert.equal(failures[0].where, "src/subject.ts:1");
 });
 
+test("a bare project file a skill workflow writes is not this repo's to resolve", (t) => {
+  const { failures } = checkSubject(t, {
+    "skills/demo/references/visual-design.md": ["Read `BRIEF.md` and `storyboard.html`.", ""].join(
+      "\n",
+    ),
+  });
+  assert.deepEqual(failures, []);
+});
+
+test("a repo path ending in a project file name is still resolved", (t) => {
+  const { failures } = checkSubject(t, {
+    "skills/demo/references/visual-design.md": ["See `skills/demo/frame.md`.", ""].join("\n"),
+  });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0].why, /no such file/);
+});
+
 test("a line number past the end of a real file fails", (t) => {
   const { failures } = checkSubject(t, {
     "src/subject.ts": oneLiner("// Defined at `src/brand.ts:99`."),

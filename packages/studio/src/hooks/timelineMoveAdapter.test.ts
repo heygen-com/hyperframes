@@ -68,6 +68,18 @@ describe("persistTimelineMoveEditsAtomically", () => {
     });
   });
 
+  it("carries explicit detachment through the atomic move", async () => {
+    const edit = {
+      element: { ...element("voice", 1), audioGroup: "group" },
+      updates: { start: 1, track: 0, audioGroup: null },
+    };
+    const handle = await runMove([edit], "move", "track-insert");
+    expect(handle).toHaveBeenCalledWith(
+      [{ element: edit.element, start: 1, track: 0, audioGroup: null }],
+      { coalesceKey: "move" },
+    );
+  });
+
   it("rejects without retrying individual members when the atomic batch fails", async () => {
     const failure = new Error("batch failed");
     const handleTimelineGroupMove = vi.fn().mockRejectedValue(failure);

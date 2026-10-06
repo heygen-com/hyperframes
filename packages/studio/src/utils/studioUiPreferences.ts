@@ -2,6 +2,7 @@ import type { SerializedDockview } from "dockview-react";
 import { parseDockLayout } from "../components/dock/dockLayoutSchema";
 
 export type TimelineTimeDisplayMode = "time" | "frame";
+export type StudioTheme = "light" | "dark";
 
 export interface StudioUiPreferences {
   timelineVisible?: boolean;
@@ -41,8 +42,11 @@ export interface StudioUiPreferences {
    * intentionally scoped to one mount.
    */
   agentToolsEnabled?: boolean;
+  theme?: StudioTheme;
   /** The dock's serialized panel tree; parsed by `parseDockLayout` on read. */
   dockLayout?: SerializedDockview;
+  linkedSelectionEnabled?: boolean;
+  syncIndicatorsVisible?: boolean;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -128,6 +132,7 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     if (typeof parsed.rippleEditEnabled === "boolean") {
       preferences.rippleEditEnabled = parsed.rippleEditEnabled;
     }
+    if (parsed.theme === "light" || parsed.theme === "dark") preferences.theme = parsed.theme;
     if (parsed.timeDisplayMode === "time" || parsed.timeDisplayMode === "frame") {
       preferences.timeDisplayMode = parsed.timeDisplayMode;
     }
@@ -142,6 +147,12 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     }
     if (typeof parsed.agentToolsEnabled === "boolean") {
       preferences.agentToolsEnabled = parsed.agentToolsEnabled;
+    }
+    if (typeof parsed.linkedSelectionEnabled === "boolean") {
+      preferences.linkedSelectionEnabled = parsed.linkedSelectionEnabled;
+    }
+    if (typeof parsed.syncIndicatorsVisible === "boolean") {
+      preferences.syncIndicatorsVisible = parsed.syncIndicatorsVisible;
     }
     const dockLayout = parseDockLayout(parsed.dockLayout);
     if (dockLayout) preferences.dockLayout = dockLayout;

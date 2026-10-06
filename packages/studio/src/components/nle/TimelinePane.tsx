@@ -47,6 +47,7 @@ export interface TimelinePaneProps {
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
   clipMenuItems?: TimelineProps["clipMenuItems"];
+  splitShortcut?: TimelineProps["splitShortcut"];
 }
 
 export function TimelinePane({
@@ -67,6 +68,7 @@ export function TimelinePane({
   onDuplicateClip,
   canPasteClip,
   clipMenuItems,
+  splitShortcut,
 }: TimelinePaneProps) {
   const {
     seek,
@@ -123,6 +125,7 @@ export function TimelinePane({
               onDuplicateClip={onDuplicateClip}
               canPasteClip={canPasteClip}
               clipMenuItems={clipMenuItems}
+              splitShortcut={splitShortcut}
             />
           </div>
           <AudioMeterStrip />

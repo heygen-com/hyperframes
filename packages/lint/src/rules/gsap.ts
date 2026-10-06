@@ -1148,9 +1148,10 @@ export const gsapRules: LintRule<LintContext>[] = [
             `(immediateRender), not at tween position.`,
           selector,
           fixHint:
-            `Add \`immediateRender: false\` to the destination vars of each future fromTo, or set a safe ` +
-            `resting state with an earlier \`tl.set("${selector}", { ... }, 0)\`. Pre-first-tween seeks must not ` +
-            `inherit whichever fromTo call happened to author last.`,
+            `Add \`immediateRender: false\` to every fromTo except the earliest-positioned one ` +
+            `(at ${firstFromToPosition}s), so pre-first-tween seeks keep its "from" values. ` +
+            `A hiding \`tl.set(..., 0)\` baseline trips gsap_timeline_set_initial_hide, and a \`gsap.set\` ` +
+            `authored before the fromTo calls is overwritten by them.`,
           snippet: truncateSnippet(fromToWindows.map((win) => win.raw).join("\n")),
         });
       }
@@ -1342,7 +1343,7 @@ export const gsapRules: LintRule<LintContext>[] = [
           scaleProps.length > 0 ? matchCssTransform(sel, cssScaleSelectors) : undefined;
         if (!cssFromTranslate && !cssFromScale) continue;
         const existing = conflicts.get(sel) ?? {
-          cssTransform: [cssFromTranslate, cssFromScale].filter(Boolean).join(" "),
+          cssTransform: [...new Set([cssFromTranslate, cssFromScale].filter(Boolean))].join(" "),
           props: new Set<string>(),
           raw: call.raw,
         };

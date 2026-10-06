@@ -93,6 +93,17 @@ describe("crop during a resize", () => {
     Object.assign(window, { __timelines: undefined });
   });
 
+  it("leaves a crop alone when GSAP tweens it by object-of-arrays keyframes", () => {
+    const tweened = sizedElement(300, 200, "inset(0px 60px 0px 0px)");
+    const kf = { clipPath: ["inset(0px 60px 0px 0px)", "inset(0px 120px 0px 0px)"] };
+    const child = { targets: () => [tweened], vars: { keyframes: kf } };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [child] } } });
+    const stage = prepareCropResize(tweened);
+    tweened.style.width = "450px";
+    expect(stage()).toBeNull();
+    Object.assign(window, { __timelines: undefined });
+  });
+
   it("decides before the write, which may add a width tween of its own", () => {
     const el = sizedElement(300, 200, "inset(0px 60px 0px 0px)");
     const stage = prepareCropResize(el);

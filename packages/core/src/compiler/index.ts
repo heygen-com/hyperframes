@@ -53,6 +53,8 @@ export {
   injectTagsAtHeadStart,
   injectScriptsIntoHtml,
   insertBeforeCloseTag,
+  insertRuntimeTag,
+  isRuntimeFileUrl,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
@@ -61,10 +63,13 @@ export { addScenePartsManifest } from "./scenePartsManifest";
 
 // Script ordering shared by the bundler and the producer coalescers
 export {
+  AFTER_FONTS_SCRIPT_TYPE,
   compositionStyle,
   cssStyleMergeKey,
+  deferScriptsUntilFonts,
   headStyleRuns,
   inlineScriptRuns,
+  isJavaScriptType,
   styleElementsFor,
   type CompositionStyle,
   type InlineScriptRun,

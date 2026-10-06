@@ -1,4 +1,4 @@
-import { loadInstalled } from "../utils/optionalPackages.js";
+import { createRequire } from "node:module";
 import {
   droppedSpeechGaps,
   silenceCuts,
@@ -22,7 +22,7 @@ interface SherpaOnnx {
   };
 }
 
-const { wavPath, runtimeDir, config } = JSON.parse(process.env.HYPERFRAMES_PARAKEET_INPUT ?? "{}");
+const { wavPath, runtimePath, config } = JSON.parse(process.env.HYPERFRAMES_PARAKEET_INPUT ?? "{}");
 const parentPid = process.ppid;
 
 /** Leading silence moves the frame grid; 0.5 s recovered the dropped clause at every length tried. */
@@ -46,8 +46,7 @@ function decodeWindow(
 }
 
 try {
-  const sherpa = loadInstalled(runtimeDir, "sherpa-onnx-node") as SherpaOnnx | null;
-  if (!sherpa) throw new Error(`sherpa-onnx-node is not installed in ${runtimeDir}`);
+  const sherpa = createRequire(import.meta.url)(runtimePath) as SherpaOnnx;
   const recognizer = new sherpa.OfflineRecognizer(config);
   const wave = sherpa.readWave(wavPath);
   const cuts = silenceCuts(wave.samples, wave.sampleRate);

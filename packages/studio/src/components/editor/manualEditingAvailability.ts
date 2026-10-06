@@ -78,4 +78,12 @@ export const STUDIO_FLAT_INSPECTOR_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
+// A host whose mounted API authenticates with same-origin cookies sets this; studioApiFetch then sends them, and its
+// requests share the preview media's sockets again.
+export const STUDIO_API_SAME_ORIGIN_CREDENTIALS = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_API_SAME_ORIGIN_CREDENTIALS"],
+  false,
+);
+
 import { resolveEnabledSdkFamilies } from "../../utils/sdkCutoverPolicy";

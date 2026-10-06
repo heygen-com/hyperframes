@@ -152,7 +152,7 @@ export function PreviewOverlays({
         <button
           type="button"
           onClick={enterCaptionMode}
-          className="pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 z-60 rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-2xs text-neutral-300 transition-colors hover:border-studio-accent/50 hover:text-studio-accent focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-studio-accent"
+          className="pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 z-60 rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-2xs text-neutral-300 transition-colors hover:border-studio-accent/50 hover:text-accent-ink focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-studio-accent"
         >
           Edit captions
         </button>

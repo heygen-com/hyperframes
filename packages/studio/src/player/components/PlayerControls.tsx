@@ -76,7 +76,7 @@ const LoopButton = memo(function LoopButton({
         }}
         disabled={disabled}
         className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-30 ${
-          loopEnabled ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
+          loopEnabled ? "text-accent-ink" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={loopEnabled ? "Disable loop playback" : "Enable loop playback"}
         aria-pressed={loopEnabled}
@@ -118,7 +118,7 @@ const FullscreenButton = memo(function FullscreenButton({
           onToggleFullscreen();
         }}
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
-          isFullscreen ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
+          isFullscreen ? "text-accent-ink" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
       >
@@ -241,7 +241,7 @@ export const PlayerControls = memo(function PlayerControls({
             <span ref={timeDisplayRef}>{formatTime(0)}</span>
             {timeDisplayMode === "time" ? (
               <>
-                <span className="mx-0.5 text-neutral-700">/</span>
+                <span className="mx-0.5 text-text-off">/</span>
                 <span className="text-neutral-600">{formatTime(duration)}</span>
               </>
             ) : null}

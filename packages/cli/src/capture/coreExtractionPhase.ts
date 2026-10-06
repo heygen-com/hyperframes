@@ -9,8 +9,8 @@ import type { IconCandidate } from "./faviconRanker.js";
 import { startCdpAnimationCapture } from "./animationCataloger.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import { detectLibraries } from "./contentExtractor.js";
-import { mkdirSync } from "node:fs";
 import { writeCaptureFileSync } from "./captureFile.js";
+import { CaptureDirRefusedError } from "./captureErrors.js";
 import { join } from "node:path";
 import { extractHtml } from "./htmlExtractor.js";
 import { extractTokens } from "./tokenExtractor.js";
@@ -176,9 +176,13 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       if (discoveredLotties.length > 0 && remainingMs() > 0) {
         const lottieDir = join(outputDir, "assets", "lottie");
         if (!canWrite()) return;
-        mkdirSync(lottieDir, { recursive: true });
         const lottieBudget = { remainingMs, byteBudget: downloadByteBudget };
-        const savedCount = await saveLottieAnimations(discoveredLotties, lottieDir, lottieBudget);
+        const savedCount = await saveLottieAnimations(
+          discoveredLotties,
+          lottieDir,
+          outputDir,
+          lottieBudget,
+        );
         // Generate manifest + preview thumbnails so the agent can SEE what each animation is
         if (savedCount > 0 && remainingMs() > 0 && canWrite()) {
           await renderLottiePreviews(chromeBrowser, lottieDir, outputDir, lottieBudget);
@@ -348,8 +352,10 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
           remainingMs,
         });
       }
-    } catch {
-      /* non-blocking — video manifest is best-effort */
+    } catch (err) {
+      if (err instanceof CaptureDirRefusedError)
+        warnings.push(`Video manifest skipped: ${err.message}`);
+      /* otherwise non-blocking — video manifest is best-effort */
     }
 
     // Detect JS libraries via globals, DOM fingerprints, script URLs, and shaders

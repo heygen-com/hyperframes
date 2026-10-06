@@ -6,6 +6,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
+import { useAudioGainDialogStore } from "../player/components/audioGainDialogStore";
 
 /** Minimal valid fixture — TimelineElement only requires these five fields. */
 const bgmElement: TimelineElement = {
@@ -57,6 +58,55 @@ afterEach(() => {
     selectedElementId: null,
     selectedElementIds: new Set<string>(),
     selectedKeyframes: new Set<string>(),
+  });
+});
+
+describe("keys on a focused slider", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+  const slider = () => {
+    const el = document.createElement("div");
+    el.setAttribute("role", "slider");
+    document.body.append(el);
+    return el;
+  };
+  const from = (target: HTMLElement, init: KeyboardEventInit) => {
+    const event = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
+    Object.defineProperty(event, "target", { value: target });
+    return event;
+  };
+
+  it("leaves Delete to the slider instead of deleting the selected clip", () => {
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const cb = callbacks();
+    dispatchPlainKey(from(slider(), { key: "Delete" }), "delete", cb);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+  });
+
+  it.each(["video", "audio"])("leaves Delete to a focused <%s controls>", (tag) => {
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const player = document.body.appendChild(document.createElement(tag));
+    player.setAttribute("controls", "");
+    const cb = callbacks();
+    dispatchPlainKey(from(player, { key: "Delete" }), "delete", cb);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+  });
+
+  it("still undoes with Cmd+Z while a slider has focus", () => {
+    const cb = callbacks();
+    dispatchModifierKey(from(slider(), { key: "z", metaKey: true }), "z", cb);
+    expect(cb.handleUndo).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -423,5 +473,38 @@ describe("hotkeys with the preview read-only", () => {
     cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
     dispatchPlainKey(press("Delete"), "delete", cb);
     expect(cb.handleDomEditElementDelete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dispatchPlainKey — G opens Audio Gain", () => {
+  const video: TimelineElement = {
+    id: "b-roll",
+    key: "b-roll",
+    tag: "video",
+    start: 0,
+    duration: 4,
+    track: 1,
+  };
+
+  afterEach(() => useAudioGainDialogStore.getState().close());
+
+  it("opens the dialog for the selected clips with sound and owns the key", () => {
+    usePlayerStore.setState({
+      elements: [bgmElement, video],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm", "b-roll"]),
+    });
+    const event = press("g");
+    dispatchPlainKey(event, "g", callbacks());
+    expect(useAudioGainDialogStore.getState().targetKeys).toEqual(["bgm"]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("leaves G to the grid toggle when nothing selected has sound", () => {
+    usePlayerStore.setState({ elements: [video], selectedElementId: "b-roll" });
+    const event = press("g");
+    dispatchPlainKey(event, "g", callbacks());
+    expect(useAudioGainDialogStore.getState().targetKeys).toBeNull();
+    expect(event.defaultPrevented).toBe(false);
   });
 });

@@ -24,8 +24,8 @@ realization, intra-frame cuts. **Never write millisecond tweens into the storybo
 ## Step A — pick the brand spine (one preset, unmodified)
 
 The whole video shares one type family + palette. Pick **one ready-made preset** from
-`../hyperframes-creative/frame-presets/` using the preset table in
-`../hyperframes-creative/references/design-spec.md` — choose by the track's mood + the brief,
+`../../hyperframes-creative/frame-presets/` using the preset table in
+`../../hyperframes-creative/references/design-spec.md` — choose by the track's mood + the brief,
 and **only its fonts + colors matter** (templates own composition + motion; the preset only
 sets the look). Copy it in **unmodified**:
 

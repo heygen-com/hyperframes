@@ -21,7 +21,7 @@
 # Unlike the AWS Lambda adapter there is no ZIP-size ceiling and no runtime
 # Chrome decompression step — the binary lives in the image at a fixed path.
 
-FROM node:22-bookworm-slim AS beginframe-contract
+FROM node:22.23.3-bookworm-slim AS beginframe-contract
 
 # ── System dependencies (identical set to the producer's render image) ───────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -142,8 +142,8 @@ COPY packages/studio-server/ packages/studio-server/
 
 # Build workspace dependencies before the producer bundle. The published
 # workspace packages are not prebuilt in a fresh clone, so producer's esbuild
-# resolution otherwise fails on parsers/core compiler entrypoints. Generate
-# embedded font data so glyph layout matches production.
+# resolution otherwise fails on parsers/core compiler entrypoints. Core's build
+# also generates the embedded font data, so glyph layout matches production.
 RUN bun run --cwd packages/parsers build \
     && bun run --cwd packages/lint build \
     && bun run --cwd packages/studio-server build \
@@ -152,7 +152,6 @@ RUN bun run --cwd packages/parsers build \
     && bun run --cwd packages/sdk build \
     && bun run --cwd packages/sdk-playground build \
     && bun run --cwd packages/engine build \
-    && (cd packages/producer && bunx tsx scripts/generate-font-data.ts) \
     && bun run --cwd packages/producer build \
     && bun run --cwd packages/gcp-cloud-run build
 

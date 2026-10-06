@@ -11,9 +11,13 @@ export interface ContrastPair {
   minimum: number;
   sources: string[];
 }
+type Scheme = "light" | "dark";
 export interface ContrastTheme {
   id: string;
-  selector: string;
+  /** Blocks read in order, a later one overriding an earlier one. */
+  selectors: string[];
+  /** Picks each `light-dark()` half, as the page's colour-scheme does. */
+  scheme: Scheme;
   canvas: string;
   pairs: ContrastPair[];
 }
@@ -57,6 +61,11 @@ function roleMinimum(row: Record<string, unknown>) {
   if (minimum !== (kind === "text" ? 4.5 : 3)) throw new Error("Minimum must match WCAG AA role");
   return { role: kind, minimum };
 }
+function scheme(value: unknown): Scheme {
+  if (value === undefined || value === "dark") return "dark";
+  if (value === "light") return value;
+  throw new Error("Unknown colour scheme");
+}
 function format(value: unknown): ContrastPair["format"] {
   if (value === undefined) return "color";
   if (value === "color" || value === "rgb-channels") return value;
@@ -80,20 +89,45 @@ function parsePair(input: unknown): ContrastPair {
     sources: strings(row.sources),
   };
 }
-export function parseManifest(text: string): ContrastTheme[] {
-  const themes = array(record(JSON.parse(text)).themes).map((input) => {
-    const theme = record(input);
-    return {
-      id: string(theme.id),
-      selector: string(theme.selector),
-      canvas: string(theme.canvas),
-      pairs: array(theme.pairs).map(parsePair),
-    };
-  });
+/** A row with `on` stands for one pair per named surface of its theme: `<id>-on-<surface>`. */
+function expandRow(row: Record<string, unknown>, surfaces: Record<string, unknown>): unknown[] {
+  if (row.on === undefined) return [row];
+  return strings(row.on).map((name) => ({
+    ...row,
+    id: `${string(row.id)}-on-${name}`,
+    background: surfaces[name],
+  }));
+}
+/** A theme's own pairs, or with `pairsFrom` the pairs of an earlier theme, measured in this one. */
+function themePairs(theme: Record<string, unknown>, earlier: ContrastTheme[]): ContrastPair[] {
+  const surfaces = theme.surfaces === undefined ? {} : record(theme.surfaces);
+  if (theme.pairsFrom === undefined)
+    return array(theme.pairs)
+      .flatMap((row) => expandRow(record(row), surfaces))
+      .map(parsePair);
+  const source = earlier.find((other) => other.id === theme.pairsFrom);
+  if (!source) throw new Error(`pairsFrom names no earlier theme: ${String(theme.pairsFrom)}`);
+  return source.pairs;
+}
+function uniquePairs(themes: ContrastTheme[]): ContrastTheme[] {
   const ids = themes.flatMap((theme) => theme.pairs.map((pair) => `${theme.id}/${pair.id}`));
   if (!ids.length || new Set(ids).size !== ids.length)
     throw new Error("Empty or duplicate contrast pairs");
   return themes;
+}
+export function parseManifest(text: string): ContrastTheme[] {
+  const themes: ContrastTheme[] = [];
+  for (const input of array(record(JSON.parse(text)).themes)) {
+    const theme = record(input);
+    themes.push({
+      id: string(theme.id),
+      selectors: strings([theme.selector].flat()),
+      scheme: scheme(theme.scheme),
+      canvas: string(theme.canvas),
+      pairs: themePairs(theme, themes),
+    });
+  }
+  return uniquePairs(themes);
 }
 export function parseBaseline(text: string): ContrastBaseline {
   return Object.fromEntries(
@@ -123,12 +157,88 @@ function rgbColor(value: string): Color {
     channel(parts[3] ?? "1", 1),
   ];
 }
-export function parseColor(value: string): Color {
-  const hex = value.match(/^#([\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i);
-  if (hex) return hexColor(hex[1]!);
-  const rgb = value.match(/^rgba?\(([^)]+)\)$/);
-  if (!rgb) throw new Error(`Unsupported sRGB color: ${value}`);
-  return rgbColor(rgb[1]!);
+/** Indexes of the commas in `inner` that sit outside any parentheses. */
+function topLevelCommas(inner: string): number[] {
+  let depth = 0;
+  const commas: number[] = [];
+  [...inner].forEach((char, at) => {
+    depth += Number(char === "(") - Number(char === ")");
+    if (char === "," && depth === 0) commas.push(at);
+  });
+  if (depth !== 0) throw new Error(`Unbalanced color: ${inner}`);
+  return commas;
+}
+function callArgs(value: string, name: string): string[] | null {
+  const call = value.match(new RegExp(`^${name}\\(([\\s\\S]*)\\)$`));
+  if (!call) return null;
+  const bounds = [-1, ...topLevelCommas(call[1]!), call[1]!.length];
+  return bounds.slice(1).map((end, at) => call[1]!.slice(bounds[at]! + 1, end).trim());
+}
+function encode(linearValue: number): number {
+  const c = Math.min(1, Math.max(0, linearValue));
+  return c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+}
+const NUM = String.raw`\d*\.?\d+`;
+const OKLCH = new RegExp(`^(${NUM}%?)\\s+(${NUM})\\s+(${NUM}|none)(?:\\s*/\\s*(${NUM}%?))?$`);
+function oklchParts(value: string): [number, number, number, number] {
+  const parts = value.trim().match(OKLCH);
+  if (!parts) throw new Error(`Invalid oklch color: ${value}`);
+  return [
+    channel(parts[1]!, 1),
+    Number(parts[2]),
+    Number(parts[3]) || 0,
+    channel(parts[4] ?? "1", 1),
+  ];
+}
+function oklchColor(value: string): Color {
+  const [l0, chroma, hue, alpha] = oklchParts(value);
+  const a = chroma * Math.cos((hue * Math.PI) / 180);
+  const b = chroma * Math.sin((hue * Math.PI) / 180);
+  const l = (l0 + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (l0 - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (l0 - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    encode(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    encode(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    encode(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+    alpha,
+  ];
+}
+function lightDarkColor(value: string, scheme: Scheme): Color | null {
+  const pair = callArgs(value, "light-dark");
+  if (!pair) return null;
+  if (pair.length !== 2) throw new Error(`Invalid light-dark: ${value}`);
+  return parseColor(pair[scheme === "light" ? 0 : 1]!, scheme);
+}
+/** The colour and percentage of `color-mix(in oklab, <color> N%, transparent)`, the one mix Studio uses. */
+function mixShare(args: string[], value: string): RegExpMatchArray {
+  const share = args.length === 3 ? args[1]!.match(/^(.+)\s+([\d.]+)%$/) : null;
+  if (!share || `${args[0]}|${args[2]}` !== "in oklab|transparent")
+    throw new Error(`Only a mix with transparent is supported: ${value}`);
+  return share;
+}
+function mixColor(value: string, scheme: Scheme): Color | null {
+  const args = callArgs(value, "color-mix");
+  if (!args) return null;
+  const share = mixShare(args, value);
+  const color = parseColor(share[1]!, scheme);
+  return [color[0], color[1], color[2], (color[3] * Number(share[2])) / 100];
+}
+const SIMPLE: [RegExp, (body: string) => Color][] = [
+  [/^oklch\(([^()]+)\)$/, oklchColor],
+  [/^#([\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i, hexColor],
+  [/^rgba?\(([^)]+)\)$/, rgbColor],
+];
+function simpleColor(value: string): Color {
+  for (const [pattern, parse] of SIMPLE) {
+    const match = value.match(pattern);
+    if (match) return parse(match[1]!);
+  }
+  throw new Error(`Unsupported sRGB color: ${value}`);
+}
+/** `light-dark()`, `color-mix(in oklab, <color> N%, transparent)`, `oklch()`, hex and rgb. */
+export function parseColor(value: string, scheme: Scheme = "dark"): Color {
+  return lightDarkColor(value, scheme) ?? mixColor(value, scheme) ?? simpleColor(value);
 }
 export function composite(foreground: Color, background: Color): Color {
   if (background[3] !== 1) throw new Error("Compositing requires an opaque backing");
@@ -147,7 +257,10 @@ export function contrast(a: Color, b: Color): number {
   const y = luminance(b);
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
-function tokensFor(css: string, selector: string): Map<string, string> {
+function tokensFor(css: string, selectors: string[]): Map<string, string> {
+  return new Map(selectors.flatMap((selector) => [...tokensIn(css, selector)]));
+}
+function tokensIn(css: string, selector: string): Map<string, string> {
   const clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const blocks = [...clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(
     (match) => match[1]!.trim() === selector,
@@ -164,12 +277,18 @@ function tokenValue(name: string, tokens: Map<string, string>, seen: string[] = 
   if (seen.includes(name)) throw new Error(`Token cycle: ${name}`);
   const value = tokens.get(name);
   if (value === undefined) throw new Error(`Missing token: ${name}`);
-  const alias = value.match(/^var\((--[\w-]+)\)$/);
-  return alias ? tokenValue(alias[1]!, tokens, [...seen, name]) : value;
+  return value.replace(/var\((--[\w-]+)\)/g, (_, alias: string) =>
+    tokenValue(alias, tokens, [...seen, name]),
+  );
 }
-function surface(layers: string[], canvas: Color, tokens: Map<string, string>): Color {
+function surface(
+  layers: string[],
+  canvas: Color,
+  tokens: Map<string, string>,
+  theme: ContrastTheme,
+): Color {
   return layers.reduce(
-    (backing, name) => composite(parseColor(tokenValue(name, tokens)), backing),
+    (backing, name) => composite(parseColor(tokenValue(name, tokens), theme.scheme), backing),
     canvas,
   );
 }
@@ -178,13 +297,13 @@ function measurePair(
   theme: ContrastTheme,
   tokens: Map<string, string>,
 ): Measurement {
-  const canvas = parseColor(tokenValue(theme.canvas, tokens));
+  const canvas = parseColor(tokenValue(theme.canvas, tokens), theme.scheme);
   if (canvas[3] !== 1) throw new Error("Theme canvas must be opaque");
   const value = tokenValue(pair.foreground, tokens);
-  const fg = pair.format === "rgb-channels" ? rgbColor(value) : parseColor(value);
+  const fg = pair.format === "rgb-channels" ? rgbColor(value) : parseColor(value, theme.scheme);
   const paint: Color = [fg[0], fg[1], fg[2], fg[3] * pair.opacity];
-  const backing = surface(pair.paintBacking, canvas, tokens);
-  const background = surface(pair.background, canvas, tokens);
+  const backing = surface(pair.paintBacking, canvas, tokens, theme);
+  const background = surface(pair.background, canvas, tokens, theme);
   return {
     id: `${theme.id}/${pair.id}`,
     minimum: pair.minimum,
@@ -193,12 +312,12 @@ function measurePair(
 }
 export function measure(css: string, themes: ContrastTheme[]): Measurement[] {
   return themes.flatMap((theme) => {
-    const tokens = tokensFor(css, theme.selector);
+    const tokens = tokensFor(css, theme.selectors);
     return theme.pairs.map((pair) => measurePair(pair, theme, tokens));
   });
 }
 function newDebt(row: Measurement): string[] {
-  return row.ratio < row.minimum ? [`${row.id}: new contrast debt ${row.ratio}`] : [];
+  return row.ratio >= row.minimum ? [] : [`${row.id}: new contrast debt ${row.ratio}`];
 }
 function debtIssue(row: Measurement, baseline: ContrastBaseline): string[] {
   const previous = baseline[row.id];
@@ -208,11 +327,11 @@ function debtIssue(row: Measurement, baseline: ContrastBaseline): string[] {
   return changedRatioIssue(row, previous);
 }
 function changedRatioIssue(row: Measurement, previous: number): string[] {
-  if (Math.abs(row.ratio - previous) > 1e-10)
-    return [
-      `${row.id}: ratio ${row.ratio}, baseline ${previous}; bank improvements, reject regressions`,
-    ];
-  return [];
+  return Math.abs(row.ratio - previous) <= 1e-10
+    ? []
+    : [
+        `${row.id}: ratio ${row.ratio}, baseline ${previous}; bank improvements, reject regressions`,
+      ];
 }
 function baselineDirection(id: string, ratio: number, previous: ContrastBaseline): string[] {
   return ratio < (previous[id] ?? Infinity) ? [`${id}: baseline may only improve`] : [];

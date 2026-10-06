@@ -132,9 +132,9 @@ describe("loadOptionalPackage", () => {
 
 describe("a copy installed beside the CLI", () => {
   // node_modules/hyperframes/dist/cli.js with onnxruntime-node installed next to hyperframes.
-  function layout(version: string) {
+  function layout(version: string, name = "onnxruntime-node") {
     const root = mkdtempSync(join(tmpdir(), "hf-beside-"));
-    const pkg = join(root, "node_modules", "onnxruntime-node");
+    const pkg = join(root, "node_modules", name);
     mkdirSync(pkg, { recursive: true });
     writeFileSync(join(pkg, "package.json"), JSON.stringify({ version, main: "index.js" }));
     writeFileSync(join(pkg, "index.js"), `module.exports = { copy: "beside ${version}" };`);
@@ -148,6 +148,27 @@ describe("a copy installed beside the CLI", () => {
     try {
       expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
       expect(installedOptionalPackageVersion("onnxruntime-node", "/no-cache", cliUrl)).toBe(pin);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["1.13.8", "1.13.7"])("accepts only the Sherpa 1.13.8 pin, received %s", (version) => {
+    const { root, cliUrl } = layout(version, "sherpa-onnx-node");
+    try {
+      const result = loadBesideCli("sherpa-onnx-node", cliUrl);
+      if (version === "1.13.8") expect(result).toEqual({ copy: "beside 1.13.8" });
+      else expect(result).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a missing optional-package entry eligible for cache fallback", () => {
+    const { root, cliUrl } = layout("1.21.1");
+    try {
+      rmSync(join(root, "node_modules", "onnxruntime-node", "index.js"));
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

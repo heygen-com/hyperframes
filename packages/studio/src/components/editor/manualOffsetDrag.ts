@@ -1,3 +1,4 @@
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import type { DomEditSelection } from "./domEditing";
 import {
   applyStudioPathOffset,
@@ -11,7 +12,7 @@ import {
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
-import { gsapWritesBox, gsapWritesPosition } from "../../hooks/gsapRuntimeKeyframes";
+import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
 
 interface OffsetDragGsap {
@@ -131,9 +132,7 @@ function getFrameElement(win: Window): HTMLElement | null {
   try {
     const frameElement = win.frameElement;
     if (!frameElement) return null;
-    const ownerWin = frameElement.ownerDocument.defaultView;
-    const htmlElement = ownerWin?.HTMLElement;
-    return htmlElement && frameElement instanceof htmlElement ? frameElement : null;
+    return isHtmlElement(frameElement) ? frameElement : null;
   } catch {
     return null;
   }
@@ -145,12 +144,12 @@ function getRectCenter(element: HTMLElement): Point | null {
     return null;
   }
 
-  let point = {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
+  const point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  return toTopScreenPoint(element.ownerDocument, point);
+}
 
-  let win: Window | null = element.ownerDocument.defaultView;
+export function toTopScreenPoint(doc: Document, point: Point): Point | null {
+  let win: Window | null = doc.defaultView;
   while (win) {
     const frameElement = getFrameElement(win);
     if (!frameElement) break;
@@ -165,7 +164,6 @@ function getRectCenter(element: HTMLElement): Point | null {
     };
     win = frameElement.ownerDocument.defaultView;
   }
-
   return point;
 }
 
@@ -318,8 +316,8 @@ export function createManualOffsetDragMember(input: {
   rect: ManualOffsetDragRect;
   gesture?: "drag" | "nudge" | "resize"; // resize: the anchor that keeps its centre planted
 }): ManualOffsetDragMemberResult {
-  const gsapOwns = input.gesture === "resize" ? gsapWritesBox : gsapWritesPosition;
-  const plainTranslate = !!input.gesture && !gsapOwns(input.element);
+  const plainTranslate =
+    !!input.gesture && editsPlainCss(input.element, input.gesture === "resize" ? "resize" : "move");
   // The APPLIED offset, never a dormant var, so a stale one can't fling the element off-screen.
   const initialOffset = plainTranslate
     ? readTranslatePx(input.element)
@@ -356,7 +354,10 @@ export function createManualOffsetDragMember(input: {
   }
 
   const initialPathOffset = captureStudioPathOffset(input.element);
-  const gestureToken = beginStudioManualEditGesture(input.element);
+  const gestureToken = beginStudioManualEditGesture(
+    input.element,
+    input.gesture === "resize" ? "resize" : "move",
+  );
   const measured = measureManualOffsetDragScreenToOffsetMatrix(input.element, initialOffset, {
     scaleX: input.rect.editScaleX,
     scaleY: input.rect.editScaleY,
@@ -445,7 +446,7 @@ export function applyManualOffsetDragDraft(
  * the element flies off-screen the instant you drop it. The member holds the
  * true gesture-start values in JS, immune to the re-render.
  */
-function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
+export function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
   el.setAttribute("data-hf-drag-gsap-base-x", String(baseGsap.x));
   el.setAttribute("data-hf-drag-gsap-base-y", String(baseGsap.y));
   el.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));

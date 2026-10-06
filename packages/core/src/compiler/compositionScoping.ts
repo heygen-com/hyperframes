@@ -1,3 +1,4 @@
+import { getSvgSelectorAliasesScript } from "../generated/svg-selector-aliases-inline";
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
 import { escapeCssIdentifier, replaceSelectorIdTokens } from "./selectorIdTokens";
 import { SCENE_PARTS_META } from "../sceneParts";
@@ -312,7 +313,9 @@ export function wrapScopedCompositionScript(
   const timingSelectorPatternLiteral = jsonScriptLiteral(
     String.raw`\s*\[\s*data-(?:start|duration)\s*=\s*(?:"[^"]*"|'[^']*')\s*\]`,
   );
+  const aliasInstallerOutsideAuthoredStrictness = `(function(){ ${getSvgSelectorAliasesScript()} })();`;
   return `(function(){
+  ${aliasInstallerOutsideAuthoredStrictness}
   var __hfCompId = ${compositionIdLiteral};
   var __hfTimelineCompId = ${timelineCompositionIdLiteral};
   var __hfErrorLabel = ${errorLabelLiteral};
@@ -331,131 +334,15 @@ export function wrapScopedCompositionScript(
   var __hfAuthoredRootSelector = __hfAuthoredRootId
     ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]'
     : "";
-  var __hfCssEscape = function(value) {
-    var text = value + "";
-    if (typeof CSS !== "undefined" && CSS && typeof CSS.escape === "function") {
-      try { return CSS.escape(text); } catch {}
-    }
-    return text.replace(/[^a-zA-Z0-9_-]/g, function(char) { return "\\\\" + char; });
-  };
-  // Decode complete CSS identifiers before comparing authored ids.
-  var __hfRewriteIdSelectors = function(selector, entries) {
-    if (!entries || !entries.length || typeof selector !== "string" || selector.indexOf("#") === -1) {
-      return selector;
-    }
-    var result = "";
-    var bracketDepth = 0;
-    var quote = null;
-    for (var index = 0; index < selector.length; index += 1) {
-      var char = selector[index];
-      if (char === "\\\\") {
-        var escape = selector.slice(index).match(/^\\\\(?:[0-9a-fA-F]{1,6}(?:\\r\\n|[ \\t\\r\\n\\f])?|[\\s\\S])/);
-        if (escape) {
-          result += escape[0];
-          index += escape[0].length - 1;
-          continue;
-        }
-      }
-      if (quote) {
-        result += char;
-        if (char === quote) {
-          quote = null;
-        }
-        continue;
-      }
-      if (char === '"' || char === "'") {
-        quote = char;
-        result += char;
-        continue;
-      }
-      if (char === "[") {
-        bracketDepth += 1;
-        result += char;
-        continue;
-      }
-      if (char === "]") {
-        bracketDepth = Math.max(0, bracketDepth - 1);
-        result += char;
-        continue;
-      }
-      if (char === "#" && bracketDepth === 0) {
-        var token = selector.slice(index + 1).match(/^(?:[\\w\\u0080-\\uffff-]|\\\\(?:[0-9a-fA-F]{1,6}(?:\\r\\n|[ \\t\\r\\n\\f])?|[^\\r\\n\\f]))+/);
-        if (token) {
-          var decoded = token[0].replace(/\\\\([0-9a-fA-F]{1,6})(?:\\r\\n|[ \\t\\r\\n\\f])?|\\\\([^\\r\\n\\f])/g, function(_, hex, escaped) {
-            if (!hex) return escaped;
-            var code = parseInt(hex, 16);
-            return String.fromCodePoint(!code || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff) ? 0xfffd : code);
-          });
-          var matched = entries.find(function(entry) { return entry.id === decoded; });
-          result += matched ? matched.replacement : "#" + token[0];
-          index += token[0].length;
-          continue;
-        }
-      }
-      result += char;
-    }
-    return result;
-  };
   var __hfAuthoredRootEntries = __hfAuthoredRootSelector
     ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }]
     : [];
-  // Include both renamed and untouched instances. Each wrapper refreshes this
-  // document-wide cache because preview scene swaps can introduce new ids.
-  var __hfRenamedIdEntries = function() {
-    if (window.__hfRenamedIdSelectorEntries) return window.__hfRenamedIdSelectorEntries;
-    var entries = [];
-    var seen = Object.create(null);
-    var nodes;
-    try {
-      nodes = window.document.querySelectorAll("[" + __hfAuthoredRootAttr + "][id]");
-    } catch {
-      nodes = [];
-    }
-    for (var i = 0; i < nodes.length; i += 1) {
-      var authored = nodes[i].getAttribute(__hfAuthoredRootAttr);
-      if (!authored || seen[authored] || authored === nodes[i].id) continue;
-      seen[authored] = true;
-      var escaped = __hfCssEscape(authored);
-      entries.push({
-        id: authored,
-        replacement: ":is(#" + escaped + ", [" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(authored) + '"])',
-      });
-    }
-    window.__hfRenamedIdSelectorEntries = entries;
-    return window.__hfRenamedIdSelectorEntries;
-  };
-  // element.querySelector("#authored") on an arbitrary Element never passes
-  // through the scoped document proxy, so the same rewrite is installed once
-  // per document on Element.prototype — only when at least one id was
-  // actually renamed, so a document without collisions runs untouched
-  // natives. Document.prototype is deliberately NOT patched: an unscoped
-  // document-wide lookup cannot know which instance it means, and rewriting
-  // it would only widen the ambiguity.
-  var __hfInstallRenamedIdSelectorShim = function() {
-    if (window.__hfRenamedIdSelectorShim) return;
-    var entries = __hfRenamedIdEntries();
-    if (!entries.length) return;
-    var proto = window.Element && window.Element.prototype;
-    if (!proto || typeof proto.querySelector !== "function" || typeof proto.querySelectorAll !== "function") {
-      return;
-    }
-    var nativeQuerySelector = proto.querySelector;
-    var nativeQuerySelectorAll = proto.querySelectorAll;
-    proto.querySelector = function(selector) {
-      return nativeQuerySelector.call(this, __hfRewriteIdSelectors(selector, __hfRenamedIdEntries()));
-    };
-    proto.querySelectorAll = function(selector) {
-      return nativeQuerySelectorAll.call(this, __hfRewriteIdSelectors(selector, __hfRenamedIdEntries()));
-    };
-    window.__hfRenamedIdSelectorShim = true;
-  };
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
     var normalized = selector
       .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
       .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector);
-    normalized = __hfRewriteIdSelectors(normalized, __hfAuthoredRootEntries);
-    return __hfRewriteIdSelectors(normalized, __hfRenamedIdEntries());
+    return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
   var __hfFindRoot = function() {
     if (!__hfRoot && __hfRootSelector) {
@@ -718,8 +605,6 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
     });
   };
   __hfFindRoot();
-  window.__hfRenamedIdSelectorEntries = null;
-  __hfInstallRenamedIdSelectorShim();
   __hfRecordAnimations(__hfRun);
 })();`;
 }

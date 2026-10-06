@@ -4,9 +4,32 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { describe, expect, it } from "vitest";
 import {
   removeElementFromHtml,
+  removeElementsFromHtml,
   patchElementInHtml,
   probeElementInSource,
+  probeElementsInSource,
 } from "./sourceMutation.js";
+
+describe("removeElementsFromHtml", () => {
+  const html = `<!doctype html><html><body><div data-composition-id="main"><div id="parent"><span id="child"></span></div><div id="a"></div><div id="b"></div><div id="keep"></div></div></body></html>`;
+
+  it("matches removing the targets one at a time", () => {
+    const targets = [{ id: "a" }, { id: "b" }];
+    const oneByOne = targets.reduce(
+      (source, target) => removeElementFromHtml(source, target),
+      html,
+    );
+    expect(removeElementsFromHtml(html, targets)).toBe(oneByOne);
+    expect(oneByOne).toContain(`id="keep"`);
+  });
+
+  it("treats a target nested in an already removed one as done, and an unknown id as a no-op", () => {
+    const updated = removeElementsFromHtml(html, [{ id: "parent" }, { id: "child" }, { id: "x" }]);
+    expect(updated).not.toContain(`id="child"`);
+    expect(updated).toContain(`id="keep"`);
+    expect(removeElementsFromHtml(html, [{ id: "x" }])).toBe(html);
+  });
+});
 
 describe("removeElementFromHtml", () => {
   it("removes a self-closing element by id", () => {
@@ -460,6 +483,12 @@ describe("probeElementInSource", () => {
     expect(probeElementInSource(FIXTURE, { id: "hero" })).toBe(true);
   });
 
+  it("answers every target of a batch in order from one parse", () => {
+    expect(
+      probeElementsInSource(FIXTURE, [{ id: "hero" }, { id: "gone" }, { selector: ".brand" }, {}]),
+    ).toEqual([true, false, true, false]);
+  });
+
   it("returns true for an element found by class selector", () => {
     expect(probeElementInSource(FIXTURE, { selector: ".hero-heading" })).toBe(true);
   });
@@ -655,5 +684,40 @@ describe("patchElementInHtml stamps the ids a rich-text patch introduces", () =>
     const introducedId = /<span[^>]*data-hf-id="([^"]+)"/.exec(html)?.[1];
     expect(introducedId).toBeDefined();
     expect(introducedId).not.toBe("hf-3x72");
+  });
+});
+
+describe("patchElementInHtml ensure-id", () => {
+  const cards = (a = "", b = "") =>
+    `<div data-composition-id="main"><div data-hf-id="hf-a" class="card"${a}></div><div data-hf-id="hf-b" class="card"${b}></div></div>`;
+  const ensureId = (source: string, hfId: string, value = "div") =>
+    patchElementInHtml(source, { hfId }, [{ type: "ensure-id", property: "id", value }]);
+
+  it("writes the proposed id and reports it", () => {
+    const result = ensureId(cards(), "hf-a");
+
+    expect(result.elementId).toBe("div");
+    expect(parseHTML(result.html).document.getElementById("div")?.getAttribute("data-hf-id")).toBe(
+      "hf-a",
+    );
+  });
+
+  it("makes the proposed id unique against the file, not the caller's view", () => {
+    const result = ensureId(cards(' id="div"'), "hf-b");
+
+    expect(result.elementId).toBe("div-2");
+    expect(result.html).toContain('id="div"');
+    expect(result.html).toContain('id="div-2"');
+  });
+
+  it("keeps an id the element already holds and changes nothing", () => {
+    const source = cards(' id="div-7"');
+    const result = ensureId(source, "hf-a");
+
+    expect(result).toEqual({ html: source, matched: true, elementId: "div-7" });
+  });
+
+  it("reports no id when the target is not in the file", () => {
+    expect(ensureId(cards(), "hf-missing").elementId).toBeUndefined();
   });
 });

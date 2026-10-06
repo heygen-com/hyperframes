@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { trackStudioEvent } from "../../utils/studioTelemetry";
+vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState, UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
@@ -178,7 +180,7 @@ function buildHarness(
   };
 
   const handlers = createDomEditOverlayGestureHandlers(opts);
-  return { handlers, commits, selection };
+  return { handlers, commits, selection, opts };
 }
 
 type OverlayRectLike = {
@@ -196,6 +198,7 @@ function evt(clientX: number, clientY: number) {
     clientY,
     pointerId: 1,
     button: 0,
+    buttons: 1,
     altKey: false,
     shiftKey: false,
     preventDefault() {},
@@ -284,5 +287,50 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     await finishResize(handlers);
 
     expect(consoleError).toHaveBeenCalledWith("resize commit failed", failure);
+  });
+});
+
+describe("resize usage at pointer release", () => {
+  it("counts one completed resize despite multiple pointer moves", async () => {
+    vi.mocked(trackStudioEvent).mockClear();
+    const h = buildHarness(async () => ({ ok: true, changed: true }));
+    await finishResize(h.handlers);
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "resize",
+      surface: "preview",
+      method: "drag",
+    });
+  });
+  it.each([undefined, { ok: true as const, changed: false }])(
+    "does not count an unchanged or unconfirmed resize",
+    async (result) => {
+      vi.mocked(trackStudioEvent).mockClear();
+      const h = buildHarness(async () => result);
+      await finishResize(h.handlers);
+      expect(trackStudioEvent).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("move and rotation usage", () => {
+  it.each(["drag", "rotate"] as const)("counts %s once after pointer release", async (kind) => {
+    vi.mocked(trackStudioEvent).mockClear();
+    const h = buildHarness();
+    h.selection.capabilities.canApplyManualRotation = true;
+    const saved = vi.fn(async () => ({ ok: true as const, changed: true }));
+    h.opts.onPathOffsetCommitRef.current = saved;
+    h.opts.onRotationCommitRef.current = saved;
+    h.handlers.startGesture(kind, evt(200, 50));
+    h.handlers.onPointerMove(evt(150, 120));
+    h.handlers.onPointerMove(evt(100, 150));
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+    h.handlers.onPointerUp(evt(100, 150));
+    await Promise.resolve();
+    expect(saved).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: kind === "drag" ? "move" : "rotate",
+      surface: "preview",
+      method: "drag",
+    });
   });
 });

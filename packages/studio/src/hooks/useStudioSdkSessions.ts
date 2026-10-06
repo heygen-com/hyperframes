@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSdkSession } from "./useSdkSession";
 import { usePreviewVariablesStore } from "./previewVariablesStore";
+import { useStableHandlers } from "./useStableHandlers";
 
 /**
  * Open the studio's SDK session with master-view semantics.
@@ -37,5 +38,5 @@ export function useStudioSdkSessions(
   useEffect(() => {
     usePreviewVariablesStore.getState().setValues(null);
   }, [projectId, activeCompPath]);
-  return { sdkHandle, editFlowSdkSession };
+  return { sdkHandle: useStableHandlers(sdkHandle, projectId), editFlowSdkSession };
 }

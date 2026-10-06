@@ -83,6 +83,44 @@ function repeatedDescendantId(selector: string): string | null {
   return repeated;
 }
 
+// Unescaped `#<digit...>` id selectors: what querySelector and GSAP reject. `#\31 -x` is valid and skipped.
+function addUnescapedDigitIds(selector: string, ids: Set<string>): void {
+  try {
+    selectorParser((root) => {
+      root.walkIds((node) => {
+        if (/^#\d/.test(node.toString().trim())) ids.add(node.value);
+      });
+    }).processSync(selector);
+  } catch {
+    // An unparseable selector targets nothing we can name.
+  }
+}
+
+const SELECTOR_CALL_PATTERN =
+  /(?:\.(?:querySelector(?:All)?|closest|matches|to|from|fromTo|set|toArray)\s*\(|(?<![\w$-])(?:trigger|endTrigger|pin|scrollTrigger|scroller|pinnedContainer|pinSpacer)["']?\s*:)\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
+
+function digitIdsTargetedBySelectors(
+  styles: LintContext["styles"],
+  scripts: LintContext["scripts"],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const style of styles) {
+    try {
+      postcss.parse(style.content).walkRules((rule) => {
+        for (const selector of rule.selectors) addUnescapedDigitIds(selector, ids);
+      });
+    } catch {
+      // css_parse_error reports this block.
+    }
+  }
+  for (const script of scripts) {
+    for (const match of stripJsComments(script.content).matchAll(SELECTOR_CALL_PATTERN)) {
+      addUnescapedDigitIds(match[2] ?? "", ids);
+    }
+  }
+  return ids;
+}
+
 function resolvedRuleSelectors(rule: postcss.Rule): string[] {
   let ancestor: postcss.AnyNode | undefined = rule.parent;
   while (ancestor && ancestor.type !== "rule") ancestor = ancestor.parent;
@@ -103,16 +141,22 @@ function resolvedRuleSelectors(rule: postcss.Rule): string[] {
   );
 }
 
+// The rightmost compound: the nodes that match the styled element itself.
+function rightmostCompoundNodes(selectorNode: selectorParser.Selector): selectorParser.Node[] {
+  const subject: selectorParser.Node[] = [];
+  selectorNode.each((node) => {
+    if (node.type === "combinator") subject.length = 0;
+    else subject.push(node);
+  });
+  return subject;
+}
+
 function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
   let unsafe = false;
   try {
     selectorParser((root) => {
       root.each((selectorNode) => {
-        const subject: selectorParser.Node[] = [];
-        selectorNode.each((node) => {
-          if (node.type === "combinator") subject.length = 0;
-          else subject.push(node);
-        });
+        const subject = rightmostCompoundNodes(selectorNode);
 
         const hostScoped = subject.some(
           (node) =>
@@ -142,12 +186,113 @@ function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
   return unsafe;
 }
 
+const POSITION_PROPERTIES = new Set(["left", "top", "right", "bottom", "inset"]);
+
+function weakIdOf(node: selectorParser.Node): string | null {
+  if (node.type === "attribute" && node.attribute.toLowerCase() === "id") {
+    return node.operator === "=" && node.value ? node.value : null;
+  }
+  if (node.type !== "pseudo" || node.value.toLowerCase() !== ":where") return null;
+  const inner = node.nodes.flatMap((option) => option.nodes).find((n) => n.type === "id");
+  return inner ? inner.value : null;
+}
+
+// The id a subject targets only via `[id="x"]` or `:where(#x)`, which carry class-level or zero specificity
+// and so lose to a compound class rule like `.parent .row`. A bare `#id` never does.
+function reducedSpecificityId(selector: string): string | null {
+  let matched: string | null = null;
+  try {
+    selectorParser((root) => {
+      root.each((selectorNode) => {
+        const subject = rightmostCompoundNodes(selectorNode);
+        if (subject.some((node) => node.type === "id")) return;
+        for (const node of subject) matched = weakIdOf(node) ?? matched;
+      });
+    }).processSync(selector);
+  } catch {
+    return null;
+  }
+  return matched;
+}
+
+// `#id` with the characters a bare id selector cannot hold (a leading digit, punctuation) hex-escaped.
+function cssIdSelector(id: string): string {
+  return `#${id.replace(/[^a-zA-Z0-9_-]|^-?\d/g, (match) =>
+    Array.from(match, (char) => `\\${char.codePointAt(0)?.toString(16)} `).join(""),
+  )}`;
+}
+
+function reducedSpecificityIdFindings(
+  rule: postcss.Rule,
+  reported: Set<string>,
+): HyperframeLintFinding[] {
+  const positionProps = rule.nodes.flatMap((node) =>
+    node.type === "decl" && !node.important && POSITION_PROPERTIES.has(node.prop.toLowerCase())
+      ? [node.prop]
+      : [],
+  );
+  if (positionProps.length === 0) return [];
+  const findings: HyperframeLintFinding[] = [];
+  for (const selector of resolvedRuleSelectors(rule)) {
+    const id = reported.has(selector) ? null : reducedSpecificityId(selector);
+    if (id === null) continue;
+    reported.add(selector);
+    findings.push({
+      code: "id_override_reduced_specificity",
+      severity: "warning",
+      message: `Selector "${selector}" sets ${positionProps.join("/")} through [id=...] or :where(#id), which has class-level or zero specificity, so a compound class rule (e.g. ".parent .row") on the same element can silently win over this override.`,
+      selector,
+      fixHint: `Use \`${cssIdSelector(id)}\` instead; id specificity beats any selector built only from classes.`,
+      snippet: truncateSnippet(rule.toString()),
+    });
+  }
+  return findings;
+}
+
 function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
   let forcesOpacityZero = false;
   rule.walkDecls(/^opacity$/i, (declaration) => {
     if (Number(declaration.value.trim()) === 0) forcesOpacityZero = true;
   });
   return forcesOpacityZero;
+}
+
+const CSS_TRANSITION_PROPERTY_PATTERN = /^(?:-webkit-)?transition(?:-[a-z][a-z-]*)?$/i;
+const TRANSITION_NONE_PROPERTIES = new Set(["transition", "transition-property"]);
+const TRANSITION_TIME_PROPERTIES = new Set([
+  "transition",
+  "transition-duration",
+  "transition-delay",
+]);
+
+// All-zero times (the reduced-motion / render-lock reset) never run on the browser clock.
+function hasNonZeroTime(value: string): boolean {
+  const times = value.match(/[+-]?(?:\d*\.)?\d+m?s\b/g) ?? [];
+  return value.includes("var(") || times.some((time) => Number.parseFloat(time) !== 0);
+}
+
+function isSeekUnsafeTransition(declaration: postcss.Declaration): boolean {
+  const property = declaration.prop.trim().toLowerCase();
+  if (!CSS_TRANSITION_PROPERTY_PATTERN.test(property)) return false;
+
+  const name = property.replace(/^-webkit-/, "");
+  const value = declaration.value.trim().toLowerCase();
+  if (value === "none" && TRANSITION_NONE_PROPERTIES.has(name)) return false;
+  return !TRANSITION_TIME_PROPERTIES.has(name) || hasNonZeroTime(value);
+}
+
+function cssTransitionFinding(
+  declaration: postcss.Declaration,
+  details: Pick<HyperframeLintFinding, "selector" | "elementId" | "snippet">,
+): HyperframeLintFinding {
+  return {
+    code: "css_transition_used",
+    severity: "warning",
+    message: `CSS declaration \`${declaration.prop}: ${declaration.value}\` runs on the browser clock and cannot be seeked deterministically across render workers.`,
+    fixHint:
+      "Keep the class or attribute swap for state; put the visual change on the paused GSAP timeline.",
+    ...details,
+  };
 }
 
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
@@ -313,15 +458,20 @@ function describeRootDimensionsDrift(
 
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // id_requires_css_escape
-  ({ tags }) => {
+  ({ tags, styles, scripts }) => {
     const findings: HyperframeLintFinding[] = [];
+    let targeted: Set<string> | undefined;
     for (const tag of tags) {
       const id = readAttr(tag.raw, "id");
       if (!id || !/^\d/.test(id)) continue;
+      targeted ??= digitIdsTargetedBySelectors(styles, scripts);
+      const used = targeted.has(id);
       findings.push({
         code: "id_requires_css_escape",
-        severity: "warning",
-        message: `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector().`,
+        severity: used ? "error" : "warning",
+        message: used
+          ? `id="${id}" starts with a digit, and the selector \`#${id}\` used in this composition is invalid: querySelector and GSAP throw a SyntaxError, and CSS drops the rule.`
+          : `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector().`,
         elementId: id,
         fixHint:
           "Rename the id to start with a letter (recommended), or build selectors with `#${CSS.escape(id)}` at runtime.",
@@ -369,7 +519,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root. `hyperframes check`'s layout audits can't see it: they measure
   // against the root's own (already-correct) rect, not the body's.
   //
-  // Sub-compositions are exempt: loadExternalCompositions (packages/core/src/
+  // Sub-compositions are exempt: loadCompositions (packages/core/src/
   // runtime/compositionLoader.ts) mounts only the matched <template>/<body>
   // subtree, so a sub-comp's own <html>/<head>/<meta viewport> never reach
   // the rendering document, even when it's a full standalone document.
@@ -496,11 +646,61 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
+  // css_transition_used
+  ({ styles, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+
+    for (const style of styles) {
+      if (!/transition/i.test(style.content)) continue;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        // The CSS syntax rule reports malformed style blocks separately.
+        continue;
+      }
+      root.walkDecls((declaration) => {
+        if (!isSeekUnsafeTransition(declaration)) return;
+        const selector =
+          declaration.parent?.type === "rule" ? declaration.parent.selector : undefined;
+        findings.push(
+          cssTransitionFinding(declaration, {
+            selector,
+            snippet: truncateSnippet(declaration.toString()),
+          }),
+        );
+      });
+    }
+
+    for (const tag of tags) {
+      const inlineStyle = readDecodedAttr(tag.raw, "style");
+      if (!inlineStyle || !/transition/i.test(inlineStyle)) continue;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(inlineStyle);
+      } catch {
+        continue;
+      }
+      root.walkDecls((declaration) => {
+        if (!isSeekUnsafeTransition(declaration)) return;
+        findings.push(
+          cssTransitionFinding(declaration, {
+            elementId: readDecodedAttr(tag.raw, "id") || undefined,
+            snippet: truncateSnippet(tag.raw),
+          }),
+        );
+      });
+    }
+
+    return findings;
+  },
+
   // CSS selector safety
   ({ styles, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     const reportedRepeatedIds = new Set<string>();
     const reportedHiddenStyleSelectors = new Set<string>();
+    const reportedReducedIdSelectors = new Set<string>();
     for (const style of styles) {
       let root: postcss.Root;
       try {
@@ -521,6 +721,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       }
       root.walkRules((rule) => {
         const forcesOpacityZero = ruleForcesOpacityZero(rule);
+        findings.push(...reducedSpecificityIdFindings(rule, reportedReducedIdSelectors));
         for (const selector of resolvedRuleSelectors(rule)) {
           const repeatedId = repeatedDescendantId(selector);
           if (repeatedId && !reportedRepeatedIds.has(repeatedId)) {

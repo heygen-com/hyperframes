@@ -42,7 +42,26 @@ const STORYBOARD_VIEW_REASON =
 const SIMULATED_CURSOR_REASON =
   "owner-directed removal of simulated-cursor; the Cursors section's new pointer animations replace it";
 
+const DESIGN_NOTES_REASON =
+  "plan and contract notes are working notes kept out of the repo; docs/contracts/ and docs/plans/ are gitignored";
+
 export const ALLOWED_DELETIONS = new Map([
+  [
+    "docs/public/catalog/vendor/BufferGeometryUtils.json",
+    "bundled into three-modules.json so catalog scripts run under the docs host policy",
+  ],
+  [
+    "docs/public/catalog/vendor/RoomEnvironment.json",
+    "bundled into three-modules.json so catalog scripts run under the docs host policy",
+  ],
+  [
+    "docs/public/catalog/vendor/three.core.min.json",
+    "bundled into three-modules.json so catalog scripts run under the docs host policy",
+  ],
+  [
+    "docs/public/catalog/vendor/three.module.min.json",
+    "bundled into three-modules.json so catalog scripts run under the docs host policy",
+  ],
   [
     "packages/studio/src/hooks/gsapTargetCache.ts",
     "its only caller was the deleted var-offset move writer; nothing imports isElementGsapTargeted",
@@ -1111,6 +1130,11 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio-server/src/helpers/atomicFile.test.ts",
     "its tests moved with it to packages/core/src/atomicFile.test.ts",
   ],
+  ["docs/contracts/2026-10-01-timeline-filmstrip.html", DESIGN_NOTES_REASON],
+  ["docs/contracts/2026-10-02-ghost-lane-membership.html", DESIGN_NOTES_REASON],
+  ["docs/contracts/2026-10-02-thumbnail-document-lifetime.html", DESIGN_NOTES_REASON],
+  ["docs/contracts/2026-10-05-transcribe-language-progress.html", DESIGN_NOTES_REASON],
+  ["docs/plans/2026-09-26-image-thumbnails.md", DESIGN_NOTES_REASON],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

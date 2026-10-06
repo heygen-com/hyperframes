@@ -158,7 +158,7 @@ export function ColorGradingSliderControl({
               settings.onClick();
             }}
             className={`relative flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40 ${
-              settings.active ? "text-studio-accent" : "text-panel-text-5"
+              settings.active ? "text-accent-ink" : "text-panel-text-5"
             }`}
             title={settings.label}
           >

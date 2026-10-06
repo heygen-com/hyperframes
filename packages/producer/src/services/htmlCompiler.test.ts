@@ -315,6 +315,19 @@ describe("inlineExternalScripts", () => {
     expect(result).toBe(html);
   });
 
+  it("leaves a CDN runtime link for the file server to strip", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => new Response("window.__hyperframeRuntime = {};"));
+    globalThis.fetch = fetchMock as any;
+    try {
+      const html = `<html><head><script src="https://cdn.example.com/hyperframe.runtime.iife.js"></script></head><body></body></html>`;
+      expect(await inlineExternalScripts(html)).toBe(html);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("inlines a CDN script on successful fetch", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async () => new Response("var gsap = {};", { status: 200 })) as any;

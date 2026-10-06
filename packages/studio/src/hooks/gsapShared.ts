@@ -3,7 +3,10 @@
  * Centralises duplicated interfaces, constants, and small utilities
  * to reduce drift risk.
  */
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { getObjectArrayKeyframeTiming } from "@hyperframes/parsers/gsap-parser";
+import { progressAtTime, runEaseOf, timeAtProgress } from "../utils/gsapKeyframeEases";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
   absoluteToPercentage,
@@ -33,6 +36,13 @@ export const PROPERTY_DEFAULTS: Record<string, number> = {
   width: 100,
   height: 100,
 };
+
+/** A tween's eases for re-writing it as keyframes: a flat tween's ease must become easeEach,
+ *  since GSAP eases each percentage segment power1.inOut whatever the tween-level ease says. */
+export function keyframeEases(anim: GsapAnimation): { ease?: string; easeEach?: string } {
+  if (!anim.keyframes) return { easeEach: anim.ease };
+  return { ease: runEaseOf(anim), easeEach: anim.keyframes.easeEach };
+}
 
 /**
  * A timeline write that applies an instantaneous value and then holds it.
@@ -79,6 +89,13 @@ const SAFE_HASH_ID = /^-?[A-Za-z_][\w-]*$/;
  * keyframes a fraction of a percent apart.
  */
 export const KEYFRAME_PCT_MATCH = 1;
+
+/** Whether the keyframe at `percentage` plays within KEYFRAME_PCT_MATCH of the time where GSAP shows `progress`. */
+export function playsNear(anim: GsapAnimation, percentage: number, progress: number): boolean {
+  const runEase = runEaseOf(anim);
+  const gap = timeAtProgress(runEase, percentage) - timeAtProgress(runEase, progress);
+  return Math.abs(gap) <= KEYFRAME_PCT_MATCH;
+}
 
 export function idSelector(id: string): string {
   // A `#id` selector is only valid for a CSS identifier. IDs that start with a
@@ -216,7 +233,7 @@ function structuralSelector(element: Element): string | null {
   const parts: string[] = [];
   for (let node: Element | null = element; node; node = node.parentElement) {
     if (node !== element) {
-      const id = node instanceof HTMLElement ? node.id : "";
+      const id = isHtmlElement(node) ? node.id : "";
       const hfId = node.getAttribute("data-hf-id");
       if (id) {
         parts.unshift(idSelector(id));
@@ -325,22 +342,6 @@ export function tweenTargetsElement(
 // ── Percentage computation ────────────────────────────────────────────────────
 
 /**
- * Resolve the timing basis used by editor keyframes. The timeline renders a
- * duration-less tween across its owning clip, so mutations must use that same
- * duration instead of silently falling back to GSAP's 0.5s default.
- */
-export function resolveEditableTweenDuration(
-  animation: GsapAnimation,
-  selection: DomEditSelection,
-): number {
-  const clipDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "");
-  return resolveTweenDuration(
-    animation,
-    Number.isFinite(clipDuration) && clipDuration > 0 ? clipDuration : 0.5,
-  );
-}
-
-/**
  * Compute the current playback percentage within an element's animation range.
  * Uses the animation's resolved timing if available, otherwise falls back to
  * the element's data-start / data-duration attributes.
@@ -352,10 +353,13 @@ export function computeElementPercentage(
 ): number {
   if (animation) {
     const start = resolveTweenStart(animation);
-    const duration = resolveEditableTweenDuration(animation, selection);
+    const duration = resolveTweenDuration(animation);
     if (duration <= 0) return 0;
     if (start !== null) {
-      return absoluteToPercentage(currentTime, start, duration);
+      return progressAtTime(
+        runEaseOf(animation),
+        absoluteToPercentage(currentTime, start, duration),
+      );
     }
   }
   const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
@@ -391,7 +395,11 @@ export function queryIframeElement(
 // ── Keyframe parsing ──────────────────────────────────────────────────────────
 
 export interface ParsedPercentageKeyframes {
-  keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    step?: number;
+  }>;
   easeEach?: string;
 }
 
@@ -416,13 +424,9 @@ export function parsePercentageKeyframes(
   const keyframes: ParsedPercentageKeyframes["keyframes"] = [];
   let easeEach: string | undefined;
 
-  // GSAP array-form keyframes — `keyframes: [{x,y}, {x,y}, ...]` — are spread
-  // evenly across the tween by default: GSAP gives each entry an equal share of
-  // the duration unless an entry carries its own `duration`/`delay`, which the
-  // studio never emits. So entry i of n maps to i/(n-1)*100% (n=4 → 0/33.3/66.7/100).
-  // Index spacing counts EVERY array slot, including a degenerate entry that
-  // contributes no animatable prop (it's still a slot GSAP allocates a position
-  // to), so dropping such an entry from the output below must NOT shift the others.
+  // GSAP array-form keyframes — `keyframes: [{x,y}, {x,y}, ...]` — place each step at
+  // its cumulative end, the parser's rule (getObjectArrayKeyframeTiming). Spacing counts
+  // EVERY array slot, so dropping an entry with no animatable prop must NOT shift the others.
   // A per-entry `ease` is a segment ease, not a keyframe value, so it's skipped as
   // a property; there is no array-form `easeEach` (that's an object-form sibling key).
   // (The object form further down uses explicit "0%" keys instead.) Without this
@@ -430,11 +434,16 @@ export function parsePercentageKeyframes(
   // motion path.
   if (Array.isArray(kfObj)) {
     const steps = kfObj as unknown[];
+    const timing = getObjectArrayKeyframeTiming(
+      steps.map((entry) => (entry as { duration?: unknown } | null)?.duration),
+    );
+    if (!timing) return null;
     steps.forEach((entry, i) => {
       if (!entry || typeof entry !== "object") return;
-      const percentage = steps.length > 1 ? Math.round((i / (steps.length - 1)) * 1000) / 10 : 0;
       const properties = collectAnimatableKeyframeProperties(entry);
-      if (Object.keys(properties).length > 0) keyframes.push({ percentage, properties });
+      if (Object.keys(properties).length > 0) {
+        keyframes.push({ percentage: timing.percentages[i]!, properties, step: i });
+      }
     });
     return keyframes.length > 0 ? { keyframes } : null;
   }
@@ -563,14 +572,15 @@ export function toClipKeyframes<T extends { percentage: number }>(
   }
 > {
   const tweenStart = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
-  // A duration-less tween spans the clip, the same rule the edit paths use
-  // (resolveEditableTweenDuration). A fixed 1s here put its keyframes at a
-  // percentage no editor agreed with.
-  const tweenDuration = anim.duration ?? clipDuration;
+  const tweenDuration = resolveTweenDuration(anim);
   return source.map((keyframe) => ({
     ...keyframe,
     percentage: toClipPercentage(
-      toAbsoluteTime(tweenStart, tweenDuration, keyframe.percentage),
+      toAbsoluteTime(
+        tweenStart,
+        tweenDuration,
+        timeAtProgress(runEaseOf(anim), keyframe.percentage),
+      ),
       clipStart,
       clipDuration,
       keyframe.percentage,

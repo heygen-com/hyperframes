@@ -24,7 +24,7 @@ export function layoutAfterTrackInsert(
     keys: ReadonlySet<string>;
     movedStart: (e: TimelineElement) => number;
   } | null,
-  deps: Pick<DragCommitDeps, "elements" | "trackOrder">,
+  deps: Pick<DragCommitDeps, "elements" | "trackOrder" | "trackInsertLayout">,
 ): {
   normalized: TimelineElement[];
   targetTrack: number;
@@ -37,18 +37,32 @@ export function layoutAfterTrackInsert(
   const writableZone = classifyZone(element);
   const writable = (src: TimelineElement): boolean =>
     sameSourceFile(src, element) && classifyZone(src) === writableZone;
-  const topologyOrder = [...new Set(elements.filter(writable).map((e) => e.track))].sort(
+  let topologyOrder = [...new Set(elements.filter(writable).map((e) => e.track))].sort(
     (a, b) => a - b,
   );
-  const topologyInsertRow = topologyOrder.filter((track) => track < targetTrack).length;
-  const topologyTargetTrack = insertTrackValue(topologyOrder, topologyInsertRow);
+  let topologyInsertRow = topologyOrder.filter((track) => track < targetTrack).length;
+  const grouped = deps.trackInsertLayout;
+  let ranks: Map<number, number> | undefined;
+  if (grouped) {
+    const writableTracks = new Set(topologyOrder);
+    topologyOrder = grouped.trackOrder.filter((track) => writableTracks.has(track));
+    topologyInsertRow = grouped.trackOrder
+      .slice(0, grouped.topologyRows[insertRow])
+      .filter((track) => writableTracks.has(track)).length;
+    ranks = new Map(topologyOrder.map((track, index) => [track, index]));
+  }
+  const topologyTargetTrack = ranks
+    ? topologyInsertRow - 0.5
+    : insertTrackValue(topologyOrder, topologyInsertRow);
   const normalized = normalizeToZones(
     elements.filter(writable).map((e) => {
       if (keyOf(e) === editKey) {
         return { ...e, start: previewStart, track: topologyTargetTrack };
       }
-      if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
-      return e;
+      const track = ranks ? ranks.get(e.track) : e.track;
+      if (track === undefined) throw new Error("Writable track missing from insertion topology");
+      const start = multi?.keys.has(keyOf(e)) ? multi.movedStart(e) : e.start;
+      return track === e.track && start === e.start ? e : { ...e, start, track };
     }),
   );
   return { normalized, targetTrack, writable };

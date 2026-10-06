@@ -63,7 +63,7 @@ Multiple runtimes can coexist in one composition. Each registers its instances o
 
 ## Critical Constraints
 
-**Prerequisite: `hyperframes-core` → Non-Negotiable Rules** (single paused timeline, `data-duration` governs length, no `Math.random` / `Date.now` / `performance.now`, no `repeat: -1`, no page-load `gsap.set` on later-scene clips, no `display` or raw `visibility` tweens, and no timeline construction inside `async` / `setTimeout` / `Promise`). GSAP `autoAlpha` and zero-duration visibility sets at explicit timeline boundaries remain allowed by core. Use those exceptions only on non-clip elements or wrappers inside a clip; the framework owns `.clip` lifecycle. Don't restate the full contract here.
+**Prerequisite: `hyperframes-core` → One paused timeline + Non-negotiable rules** (single paused timeline, `data-duration` governs length, no `Math.random` / `Date.now` / `performance.now`, no `repeat: -1` without a finite root `data-duration`, no page-load `gsap.set` on later-scene clips, no `display` or raw `visibility` tweens, and register the timeline only after it is fully built, including when the build runs inside an async callback such as `document.fonts.ready`). GSAP `autoAlpha` and zero-duration visibility sets at explicit timeline boundaries remain allowed by core. Use those exceptions only on non-clip elements or wrappers inside a clip; the framework owns `.clip` lifecycle. Don't restate the full contract here.
 
 Animation-craft additions on top of core's contract:
 
@@ -73,7 +73,7 @@ Animation-craft additions on top of core's contract:
 ## Scripts
 
 ```bash
-node skills/hyperframes-animation/scripts/animation-map.mjs <composition-dir> \
+node <SKILL_DIR>/scripts/animation-map.mjs <composition-dir> \
   --out <composition-dir>/.hyperframes/anim-map
 ```
 

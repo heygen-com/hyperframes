@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
@@ -59,7 +60,12 @@ export const STUDIO_SIGNATURE_MANIFEST_PATHS = [
  */
 export function affectsProjectSignature(projectDir: string, changedPath: string): boolean {
   const relativePath = relative(resolve(projectDir), resolve(changedPath));
-  if (relativePath === "" || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+  if (
+    relativePath === "" ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath) ||
+    isAtomicTempPath(relativePath)
+  ) {
     return false;
   }
   const segments = relativePath.split(sep);
@@ -81,6 +87,7 @@ interface ProjectSignatureCacheEntry {
 }
 
 const projectSignatureCache = new Map<string, ProjectSignatureCacheEntry>();
+const COARSEST_FILE_TIME_TICK_MS = 2000;
 
 function isPathWithin(parentDir: string, childPath: string): boolean {
   const childRelativePath = relative(parentDir, childPath);
@@ -96,6 +103,9 @@ function isTextContentEligible(file: string, size: number): boolean {
   );
 }
 
+const isSkippedEntry = (entry: string) =>
+  SIGNATURE_EXCLUDED_DIRS.has(entry) || isAtomicTempPath(entry);
+
 function collectProjectSignatureFiles(
   projectDir: string,
   dir: string,
@@ -109,7 +119,7 @@ function collectProjectSignatureFiles(
   }
 
   for (const entry of entries) {
-    if (SIGNATURE_EXCLUDED_DIRS.has(entry)) continue;
+    if (isSkippedEntry(entry)) continue;
     const file = resolve(dir, entry);
     if (!isPathWithin(projectDir, file)) continue;
     let stat: ReturnType<typeof lstatSync>;
@@ -224,6 +234,7 @@ export function createProjectSignature(
   excluding: ReadonlySet<string> = new Set(),
 ): string {
   const normalizedProjectDir = resolve(projectDir);
+  const signedAt = Date.now();
   const collected = collectProjectFiles(normalizedProjectDir);
   const files = collected.filter(
     (entry) => !excluding.has(relative(normalizedProjectDir, entry.file).split(sep).join("/")),
@@ -258,6 +269,9 @@ export function createProjectSignature(
     hash.update("\0");
   }
   const signature = hash.digest("hex").slice(0, 24);
-  projectSignatureCache.set(cacheKey, { fingerprint, signature });
+  const settledATickBeforeSigning = files.every(
+    (entry) => Math.max(entry.mtimeMs, entry.ctimeMs) < signedAt - COARSEST_FILE_TIME_TICK_MS,
+  );
+  if (settledATickBeforeSigning) projectSignatureCache.set(cacheKey, { fingerprint, signature });
   return signature;
 }

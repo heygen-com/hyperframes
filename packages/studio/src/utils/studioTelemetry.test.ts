@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildProjectHash } from "./projectRouting";
 
 // The `studio:*` path predates telemetry/config.ts and shipped its own
 // opt-out key and its own send loop, so it sat outside both contracts the
@@ -25,6 +26,8 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
   beforeEach(async () => {
     policyState.allowed = true;
     localStorage.clear();
+    sessionStorage.clear();
+    window.location.hash = "";
     vi.resetModules();
     vi.useFakeTimers();
     fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response));
@@ -33,8 +36,10 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
   });
 
   afterEach(() => {
+    window.location.hash = "";
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   /** Drain the queue and return the events the batch would have sent. */
@@ -86,5 +91,107 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
     expect(events[0]?.["properties"]).toMatchObject({
       "$feature/canary-test-one": "false",
     });
+  });
+
+  it.each(["fetch", "beacon"] as const)(
+    "excludes project names from the complete serialized %s batch",
+    async (transport) => {
+      const projectName = "Launch #1? v2";
+      window.location.hash = buildProjectHash(projectName, { selSelector: "#private-element" });
+      const beacon = vi.fn((_url: string, _body: string) => true);
+      vi.stubGlobal("navigator", { userAgent: "test", sendBeacon: beacon });
+      for (const event of ["feature_used", "keyframe", "design_input", "toolbar_action"]) {
+        trackStudioEvent(event);
+      }
+      if (transport === "beacon") {
+        const { flushViaBeacon } = await import("./studioTelemetry");
+        flushViaBeacon();
+      } else {
+        await vi.runOnlyPendingTimersAsync();
+      }
+      const serialized =
+        transport === "beacon"
+          ? beacon.mock.calls[0]?.[1]
+          : (fetchMock.mock.calls[0]?.[1] as RequestInit)?.body;
+      expect(typeof serialized).toBe("string");
+      const body = serialized as string;
+      expect(body).not.toContain(projectName);
+      expect(body).not.toContain(encodeURIComponent(projectName));
+      expect(body).not.toContain("private-element");
+      expect(body).not.toContain("7aef12cc");
+      const payload = JSON.parse(body);
+      expect(payload.batch).toHaveLength(4);
+      for (const event of payload.batch) {
+        expect(event.properties.url_hash).toBe("project");
+        expect(event.properties.url_route_id).toMatch(/^[0-9a-f]{8}$/);
+      }
+    },
+  );
+
+  it.each([
+    ["", "home"],
+    ["#", "home"],
+    ["#unknown/Launch%20%231%3F%20v2?selection=secret", "other"],
+  ])("sends a finite route kind for %s", async (hash, routeKind) => {
+    window.location.hash = hash;
+    trackStudioEvent("thing_happened");
+    const events = await sentEvents();
+    expect(events[0]?.["properties"]).toMatchObject({ url_hash: routeKind });
+  });
+
+  it("keeps route identity stable across query changes and distinct across projects", async () => {
+    window.location.hash = buildProjectHash("Launch #1? v2");
+    trackStudioEvent("session_start");
+    window.location.hash = buildProjectHash("Launch #1? v2", { selSelector: "#another-element" });
+    trackStudioEvent("feature_used");
+    window.location.hash = buildProjectHash("Another launch");
+    trackStudioEvent("feature_used");
+    const events = await sentEvents();
+    const ids = events.map(
+      (event) => (event["properties"] as Record<string, unknown>)["url_route_id"],
+    );
+    expect(ids[0]).toMatch(/^[0-9a-f]{8}$/);
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[2]).not.toBe(ids[0]);
+    expect(ids[2]).toMatch(/^[0-9a-f]{8}$/);
+  });
+  it("reuses a route ID after reloading the same tab", async () => {
+    window.location.hash = buildProjectHash("Launch #1? v2");
+    trackStudioEvent("session_start");
+    const first = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    vi.clearAllTimers();
+    vi.resetModules();
+    fetchMock.mockClear();
+    ({ trackStudioEvent } = await import("./studioTelemetry"));
+    trackStudioEvent("session_start");
+    const second = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    expect(second.url_route_id).toBe(first.url_route_id);
+  });
+
+  it("assigns different random IDs to the same route in two tabs", async () => {
+    const random = vi.spyOn(crypto, "getRandomValues");
+    random.mockImplementationOnce((bytes) => {
+      (bytes as Uint8Array).set([1, 2, 3, 4]);
+      return bytes;
+    });
+    window.location.hash = buildProjectHash("Launch #1? v2");
+    trackStudioEvent("session_start");
+    const first = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    // A second independent tab has its own sessionStorage and module instance.
+    sessionStorage.clear();
+    vi.clearAllTimers();
+    vi.resetModules();
+    fetchMock.mockClear();
+    random.mockImplementationOnce((bytes) => {
+      (bytes as Uint8Array).set([5, 6, 7, 8]);
+      return bytes;
+    });
+    ({ trackStudioEvent } = await import("./studioTelemetry"));
+    trackStudioEvent("session_start");
+    const second = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    expect(first.url_route_id).toBe("01020304");
+    expect(second.url_route_id).toBe("05060708");
+    expect(second.url_route_id).not.toBe(first.url_route_id);
+    expect(random).toHaveBeenCalledTimes(2);
   });
 });

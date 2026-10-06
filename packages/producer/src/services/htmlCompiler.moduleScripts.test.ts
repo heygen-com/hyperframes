@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseHTML } from "linkedom";
 import { afterEach, describe, expect, it } from "vitest";
+import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { compileForRender } from "./htmlCompiler.js";
 
 const tempDirs: string[] = [];
@@ -46,8 +47,13 @@ describe("compileForRender mounted module scripts", () => {
     });
     const { document } = parseHTML(html);
     const importMap = document.querySelector('script[type="importmap"]');
-    const modules = [...document.querySelectorAll('script[type="module"]')];
-    const classic = [...document.querySelectorAll("script:not([type])")].map((s) => s.textContent);
+    // Deferred until fonts: the runtime runs each as the type its marker names.
+    const modules = [
+      ...document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}+module"]`),
+    ];
+    const classic = [...document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}"]`)].map(
+      (s) => s.textContent,
+    );
 
     expect(JSON.parse(importMap?.textContent || "null")).toEqual({
       imports: { three: "./compositions/blk/assets/three.js" },

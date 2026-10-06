@@ -55,6 +55,8 @@ npx hyperframes docs <topic> # reference docs in terminal
 > leaving refreshes at `ERR_CONNECTION_TIMED_OUT`. Verify with `preview --status`, keep it
 > alive through review, and stop it explicitly with `preview --stop` afterward.
 
+> **Back from the desktop app.** Once this project was opened in the HyperFrames desktop app, run `npx hyperframes catch-up` before your next change here: it lists what the person asked Framey in the app and which files changed since.
+
 > **Pinned CLI version.** These scripts pin an exact `hyperframes@X.Y.Z` so this project re-renders identically over time. Weeks later that pin lags fixes shipped since. To move up: `npx hyperframes@latest upgrade --project . --check` (shows the delta), then `npx hyperframes@latest upgrade --project .` to rewrite the pins. Always unpinned — the pinned script re-runs the old version against itself.
 
 ## Documentation
@@ -102,6 +104,6 @@ Fix all errors before presenting the result. Warnings should be reviewed before 
    Scene timelines manually added to this root must not be paused. A paused
    child does not advance when the root is seeked. The runtime activates
    registered composition siblings, not arbitrary nested scene timelines.
-4. Videos use `muted` with a separate `<audio>` element for the audio track
+4. A video with sound keeps it on the `<video>` (`data-has-audio="true"`, no `muted`). Use a separate `<audio>` for music, voiceover, replacement audio, J/L cuts, or audio detached in Studio. Silent footage and b-roll: `muted`.
 5. Sub-compositions use `data-composition-src="compositions/file.html"` to reference other HTML files
 6. Only deterministic logic — no `Date.now()`, no `Math.random()`, no network fetches

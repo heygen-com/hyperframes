@@ -2,17 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server";
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
-
-interface RecordEditInput {
-  label: string;
-  coalesceKey?: string;
-  coalesceMs?: number;
-  files: Record<string, { before: string; after: string }>;
-}
+import { studioApiFetch } from "../utils/studioApiFetch";
+import { setStudioPendingEditClaimClock } from "../utils/studioPendingEdits";
+import type { RecordEditInput } from "../utils/studioFileHistory";
+import { generateId } from "../utils/generateId";
 
 interface ApplyCallbacks {
   readFile: (path: string) => Promise<string>;
   serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
+  claimedAfter?: number;
 }
 
 export interface UsePersistentEditHistoryOptions {
@@ -53,6 +51,8 @@ function createOwnHistory() {
   const own = new Map<string, OwnFiles>();
   let next: Record<"undo" | "redo", NextStep | null> | null = null;
   let changes = 0;
+  let claimed = { count: 0, id: "" };
+  const undoneIds = new Set<string>();
   const remember = (id: string, files: OwnFiles) => {
     const known = own.get(id) ?? {};
     for (const [path, { before, after }] of Object.entries(files)) {
@@ -73,7 +73,16 @@ function createOwnHistory() {
       if (seen === changes) next = { undo: view.back, redo: view.forward };
     },
     changes: () => changes,
+    claimCount: () => claimed.count,
+    claimedAfter: (count: number) => (claimed.count > count && claimed.id ? claimed.id : null),
+    targetFor: (id: string | null, pressedAt: number) =>
+      !id || !undoneIds.has(id) ? id : claimed.count > pressedAt ? false : null,
+    noteClaim: (id: string) => {
+      claimed = { count: claimed.count + 1, id };
+    },
     stepped: (entry: { id: string; undoes?: string }) => {
+      if (entry.undoes) undoneIds.add(entry.undoes);
+      if (undoneIds.size > OWN_ENTRIES_KEPT) undoneIds.delete(undoneIds.values().next().value!);
       const undone = entry.undoes ? own.get(entry.undoes) : undefined;
       if (!undone) return;
       const swapped = Object.entries(undone).map(([path, f]) => [
@@ -102,6 +111,7 @@ function createOwnHistory() {
     },
     clear: () => {
       own.clear();
+      undoneIds.clear();
       next = null;
       changes += 1;
     },
@@ -113,12 +123,20 @@ function historyUrl(projectId: string, path = ""): string {
   return `/api/projects/${encodeURIComponent(projectId)}/history${path}`;
 }
 
+async function cantUndo(paths: string[] | undefined): Promise<ApplyResult> {
+  return { ok: false, reason: "content-mismatch", paths: paths ?? [] };
+}
+
+function unionPaths(...lists: Array<readonly string[] | undefined>): string[] {
+  return [...new Set(lists.flatMap((list) => list ?? []))];
+}
+
 async function post(
   url: string,
   body: object,
   headers: Record<string, string> = {},
 ): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }> {
-  const response = await fetch(url, {
+  const response = await studioApiFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
@@ -190,13 +208,18 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const [own] = useState(createOwnHistory);
+  const [pageKeyScope] = useState(generateId);
+  const claimKey = useCallback((key: string) => `${pageKeyScope}:${key}`, [pageKeyScope]);
 
   const refresh = useCallback(async () => {
     if (!projectId) return;
     const seen = own.changes();
-    const response = await fetch(historyUrl(projectId)).catch(() => null);
-    const next = response?.ok ? ((await response.json()) as HistoryView) : EMPTY;
+    const response = await studioApiFetch(historyUrl(projectId)).catch(() => null);
+    const next = response?.ok
+      ? ((await response.json().catch(() => null)) as HistoryView | null)
+      : EMPTY;
     if (projectIdRef.current !== projectId) return;
+    if (!next) return console.error("The history's reply was unreadable.");
     setView(next);
     own.offered(seen, next);
   }, [projectId, own]);
@@ -209,36 +232,53 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     void refresh().finally(() => setLoaded(true));
   }, [refresh, own]);
 
+  useEffect(() => {
+    setStudioPendingEditClaimClock(own.claimCount);
+    return () => setStudioPendingEditClaimClock(null);
+  }, [own]);
+
   const recordEdit = useCallback(
-    async ({ label, coalesceKey, coalesceMs, files }: RecordEditInput) => {
+    async ({ label, coalesceKey, coalesceMs, files, created = [] }: RecordEditInput) => {
       if (!projectId) return;
-      const paths = Object.keys(files);
+      const paths = [...Object.keys(files), ...created];
       own.overtake();
       const reply = await post(historyUrl(projectId, "/claim"), {
         label,
         paths,
         overwrote: await overwroteVersions(files),
-        ...(coalesceKey && { coalesceKey, idleMs: coalesceMs ?? DEFAULT_COALESCE_MS }),
+        ...(coalesceKey && {
+          coalesceKey: claimKey(coalesceKey),
+          idleMs: coalesceMs ?? DEFAULT_COALESCE_MS,
+        }),
       });
       const claimed = claimHeld(reply, label);
-      if (claimed) own.remember(claimed, files);
+      if (claimed) {
+        own.remember(claimed, files);
+        own.noteClaim(claimed);
+      }
       heldClaimRef.current = claimed && coalesceKey ? { paths, at: Date.now() } : null;
-      void refresh();
+      await refresh();
     },
-    [projectId, refresh, own],
+    [projectId, refresh, own, claimKey],
   );
 
   const step = useCallback(
     async (direction: "undo" | "redo", callbacks: ApplyCallbacks): Promise<ApplyResult> => {
       if (!projectId) return { ok: false, reason: "empty" };
+      const candidate =
+        direction === "undo" && callbacks.claimedAfter !== undefined
+          ? own.claimedAfter(callbacks.claimedAfter)
+          : null;
       const next = direction === "undo" ? view.back : view.forward;
-      const paths = [...new Set([...(next?.paths ?? []), ...(heldClaimRef.current?.paths ?? [])])];
+      const stepPaths = candidate ? Object.keys(own.afterOf(candidate)) : next?.paths;
+      const paths = unionPaths(stepPaths, heldClaimRef.current?.paths);
+      const pressedAt = own.claimCount();
       own.overtake();
-      const run = async (): Promise<ApplyResult> => {
+      const attempt = async (target: string | null): Promise<ApplyResult> => {
         const previous = await readAll(paths, callbacks.readFile);
         const posted = await post(
-          historyUrl(projectId, "/step"),
-          { direction: direction === "undo" ? "back" : "forward" },
+          historyUrl(projectId, target ? "/undo" : "/step"),
+          target ? { entryId: target } : { direction: direction === "undo" ? "back" : "forward" },
           studioWriteHeaders(),
         );
         heldClaimRef.current = null;
@@ -265,6 +305,10 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
             callbacks.readFile,
           ),
         };
+      };
+      const run = () => {
+        const target = own.targetFor(candidate, pressedAt);
+        return target === false ? cantUndo(stepPaths) : attempt(target);
       };
       return callbacks.serialize ? callbacks.serialize(paths, run) : run();
     },
@@ -298,9 +342,11 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     redoPaths: view.forward?.paths ?? [],
     state,
     recordEdit,
+    claimKey,
     undo,
     redo,
     predict: own.predict,
+    claims: own.claimCount,
     noteOutsideChange,
   };
 }

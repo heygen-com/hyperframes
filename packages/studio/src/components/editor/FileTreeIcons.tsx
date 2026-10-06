@@ -21,34 +21,55 @@ import {
 const SZ = 14;
 const W = "duotone" as const;
 
+type Icon = typeof File;
+// Brand hues; each light half is darkened to hold 3:1 on a hovered or selected row.
+const RED = "text-[light-dark(oklch(0.59_0.194_35),oklch(0.71_0.194_35))]";
+const BLUE = "text-[light-dark(oklch(0.56_0.14_253),oklch(0.69_0.14_253))]";
+const GREEN = "text-[light-dark(oklch(0.53_0.192_150),#22C55E)]";
+const GRAY = "text-[light-dark(oklch(0.56_0.019_261),#9CA3AF)]";
+export const DIM = "text-[light-dark(oklch(0.55_0.023_264),oklch(0.69_0.023_264))]";
+const ICONS = new Map<string, [Icon, string]>([
+  ["html", [FileHtml, RED]],
+  ["css", [FileCss, "text-[light-dark(oklch(0.5_0.2_266),oklch(0.71_0.2_266))]"]],
+  ["js", [FileJs, "text-[light-dark(oklch(0.56_0.156_101),#F0DB4F)]"]],
+  ["jsx", [FileJsx, "text-[light-dark(oklch(0.55_0.117_219),#61DAFB)]"]],
+  ["ts", [FileTs, BLUE]],
+  ["tsx", [FileTsx, BLUE]],
+  ["json", [FileCode, "text-[light-dark(oklch(0.54_0.182_152),#4ADE80)]"]],
+  ["svg", [FileSvg, "text-[light-dark(oklch(0.58_0.187_48),#F97316)]"]],
+  ["md", [FileMd, GRAY]],
+  ["txt", [FileTxt, GRAY]],
+  ["png", [FilePng, GREEN]],
+  ["jpg", [FileJpg, GREEN]],
+  ["webp", [PhImage, GREEN]],
+  ["mp4", [FileVideo, "text-[light-dark(oklch(0.59_0.2_304),oklch(0.71_0.2_304))]"]],
+  ["mp3", [Waveform, "text-[light-dark(oklch(0.53_0.159_165),#3CE6AC)]"]],
+  ["woff", [TextAa, DIM]],
+]);
+const ALIAS = new Map(
+  Object.entries({
+    mjs: "js",
+    cjs: "js",
+    mts: "ts",
+    mdx: "md",
+    jpeg: "jpg",
+    gif: "webp",
+    ico: "webp",
+    webm: "mp4",
+    mov: "mp4",
+    wav: "mp3",
+    ogg: "mp3",
+    m4a: "mp3",
+    woff2: "woff",
+    ttf: "woff",
+    otf: "woff",
+  }),
+);
+
 export function FileIcon({ path }: { path: string }) {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  const c = "shrink-0";
-  if (ext === "html") return <FileHtml size={SZ} weight={W} color="#E44D26" className={c} />;
-  if (ext === "css") return <FileCss size={SZ} weight={W} color="#264DE4" className={c} />;
-  if (ext === "js" || ext === "mjs" || ext === "cjs")
-    return <FileJs size={SZ} weight={W} color="#F0DB4F" className={c} />;
-  if (ext === "jsx") return <FileJsx size={SZ} weight={W} color="#61DAFB" className={c} />;
-  if (ext === "ts" || ext === "mts")
-    return <FileTs size={SZ} weight={W} color="#3178C6" className={c} />;
-  if (ext === "tsx") return <FileTsx size={SZ} weight={W} color="#3178C6" className={c} />;
-  if (ext === "json") return <FileCode size={SZ} weight={W} color="#4ADE80" className={c} />;
-  if (ext === "svg") return <FileSvg size={SZ} weight={W} color="#F97316" className={c} />;
-  if (ext === "md" || ext === "mdx")
-    return <FileMd size={SZ} weight={W} color="#9CA3AF" className={c} />;
-  if (ext === "txt") return <FileTxt size={SZ} weight={W} color="#9CA3AF" className={c} />;
-  if (ext === "png") return <FilePng size={SZ} weight={W} color="#22C55E" className={c} />;
-  if (ext === "jpg" || ext === "jpeg")
-    return <FileJpg size={SZ} weight={W} color="#22C55E" className={c} />;
-  if (ext === "webp" || ext === "gif" || ext === "ico")
-    return <PhImage size={SZ} weight={W} color="#22C55E" className={c} />;
-  if (ext === "mp4" || ext === "webm" || ext === "mov")
-    return <FileVideo size={SZ} weight={W} color="#A855F7" className={c} />;
-  if (ext === "mp3" || ext === "wav" || ext === "ogg" || ext === "m4a")
-    return <Waveform size={SZ} weight={W} color="#3CE6AC" className={c} />;
-  if (ext === "woff" || ext === "woff2" || ext === "ttf" || ext === "otf")
-    return <TextAa size={SZ} weight={W} color="#6B7280" className={c} />;
-  return <File size={SZ} weight={W} color="#6B7280" className={c} />;
+  const [Glyph, color] = ICONS.get(ALIAS.get(ext) ?? ext) ?? [File, DIM];
+  return <Glyph size={SZ} weight={W} className={`shrink-0 ${color}`} />;
 }
 
 // ── Tree Types ──

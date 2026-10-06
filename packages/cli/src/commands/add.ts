@@ -490,6 +490,7 @@ export default defineCommand({
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;
     const skipClipboard = args.clipboard === false;
+
     const hasConfigBefore = existsSync(projectConfigPath(projectDir));
 
     // Try single item first. If it fails, check if the name matches a tag.

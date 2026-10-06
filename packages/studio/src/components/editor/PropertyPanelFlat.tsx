@@ -5,9 +5,11 @@ import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext
 import { slugifyDesignInput } from "../../utils/designInputTracking";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
+import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { usePanelHiddenToggle } from "./usePanelHiddenToggle";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { closedGroupHeader, isSelectionHidden } from "./propertyPanelFlatClosedGroup";
@@ -61,7 +63,6 @@ export function PropertyPanelFlat({
   clipboardCopied,
   onCopyElementInfo,
   projectId,
-  projectDir,
   assets,
   previewIframeRef,
   onClearSelection,
@@ -73,8 +74,6 @@ export function PropertyPanelFlat({
   onSetAttributeLive,
   onSetAttributeQuiet,
   onApplyColorGradingScope,
-  onSetHtmlAttribute,
-  onRemoveBackground,
   onSetText,
   onSetTextFieldStyle,
   onPreviewTextFieldStyle,
@@ -130,6 +129,7 @@ export function PropertyPanelFlat({
   onUpdateKeyframeEase,
   onUpdateSegmentEase,
   onSetAllKeyframeEases,
+  ...forwardedProps
 }: PropertyPanelFlatProps) {
   // PropertyPanel keys this component by selection, so the default is per element.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
@@ -207,6 +207,12 @@ export function PropertyPanelFlat({
    * selected the clip and then appeared to do nothing.
    */
   const hiddenNow = isSelectionHidden(selectedElementHidden, element);
+  const toggleHidden = usePanelHiddenToggle({
+    element,
+    hidden: hiddenNow,
+    selectedElementId,
+    onToggleElementHidden,
+  });
 
   const reveal = useAudioFxRevealSection({
     elementId: element?.id,
@@ -291,10 +297,12 @@ export function PropertyPanelFlat({
   const showMotionEffects = gsapEffectHandlers !== null && !audioSelection;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
+  const linkedSpeed = useLinkedSpeedCommit(element, forwardedProps.onSetAttributeBatch);
   const volumeAutomation = useVolumeAutomation(
     element,
     currentTime,
     onSetAttributeQuiet ?? onSetAttributeLive,
+    linkedSpeed,
   );
 
   // The group this clip belongs to, if any — the Audio FX summary reads
@@ -502,13 +510,12 @@ export function PropertyPanelFlat({
       summary: element.tagName,
       content: (
         <FlatMediaSection
-          projectDir={projectDir}
+          {...forwardedProps}
+          projectId={projectId}
           element={element}
           styles={styles}
           onSetStyle={onSetStyle}
-          onSetAttribute={onSetAttribute}
-          onSetHtmlAttribute={onSetHtmlAttribute}
-          onRemoveBackground={onRemoveBackground}
+          onSetAttribute={withLinkedPlaybackRate(onSetAttribute, linkedSpeed)}
           {...volumeAutomation}
         />
       ),
@@ -531,28 +538,8 @@ export function PropertyPanelFlat({
             meta={`${sourceLabel} · ${element.tagName}`}
             elementKind={elementKind}
             hidden={hiddenNow}
-            // Audio gets no hide control here. On an audio track "hidden" and
-            // "muted" are not similar operations, they are the SAME operation
-            // with two names (groups doc §2.1) — which is why the timeline's eye
-            // BECAME the mute rather than growing a sibling. A second copy in
-            // the panel, still called "Hide element", is exactly what that step
-            // set out to remove: "Two controls that silence a track, sitting
-            // next to each other, differing only in a distinction the author
-            // cannot see." An `<hf-audio-group>` has no visual to hide at all.
-            //
-            // EXCEPT while it is already hidden — the same door-from-the-inside
-            // the timeline's eye keeps for an audio track
-            // (`TimelineTrackPlainHeader`). Withholding it unconditionally
-            // withheld the only way back: a `data-hidden` group is silent in
-            // preview (the bus's mute gain) and absent from the render (every
-            // member dropped), and the group header carries no visibility
-            // control of its own now that mute and solo are gone. Only
-            // hand-editing the HTML brought the audio back.
-            onToggleHidden={
-              selectedElementId && onToggleElementHidden && (!audioSelection || hiddenNow)
-                ? () => void onToggleElementHidden(selectedElementId, !hiddenNow)
-                : undefined
-            }
+            asMute={audioSelection}
+            onToggleHidden={toggleHidden}
             copied={clipboardCopied}
             onCopy={onCopyElementInfo}
             onClear={onClearSelection}

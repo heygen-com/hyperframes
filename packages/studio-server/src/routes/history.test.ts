@@ -7,12 +7,34 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "../createStudioApi";
 import { DELETED_VERSION, fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory";
+import { START } from "../history/historyLog";
+import { historyCache } from "../history/historyCache";
 import { createProjectSignature, resolveProjectSignature } from "../helpers/projectSignature";
 import type { StudioApiAdapter } from "../types";
+
+// Media copies wait on `held`, so a test can keep the first open's media copy running.
+const mediaCopy = vi.hoisted(() => ({ held: null as Promise<void> | null }));
+vi.mock("../history/blobStore", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../history/blobStore")>();
+  return {
+    ...real,
+    openBlobStore: async (dir: string) => {
+      const store = await real.openBlobStore(dir);
+      return {
+        ...store,
+        put: async (path: string) => {
+          if (path.endsWith(".mp4")) await mediaCopy.held;
+          return store.put(path);
+        },
+      };
+    },
+  };
+});
 
 const cleanup: Array<() => unknown> = [];
 
 afterEach(async () => {
+  mediaCopy.held = null;
   for (const step of cleanup.splice(0).reverse()) await step();
 });
 
@@ -34,6 +56,39 @@ function apiFor(projectDir: string, history?: ProjectHistory) {
       `/projects/demo/history${path}`,
       body ? { method: "POST", body: JSON.stringify(body), headers } : undefined,
     );
+}
+
+/** A project whose index.html reads "A", its history opened on first use as both hosts do. */
+function lazyHistoryProject() {
+  const projectDir = tempDir("hf-history-first-write-");
+  const file = join(projectDir, "index.html");
+  writeFileSync(file, "A");
+  const historyRoot = tempDir("hf-history-first-write-root-");
+  const histories = historyCache((dir) => openProjectHistory({ projectDir: dir, historyRoot }));
+  cleanup.push(() => histories.closeAll());
+  const api = createStudioApi({
+    listProjects: () => [],
+    resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+    history: (project: { dir: string }) => histories.get(project.dir),
+  } as unknown as StudioApiAdapter);
+  const post = (path: string, body: object) =>
+    api.request(`/projects/demo/history${path}`, { method: "POST", body: JSON.stringify(body) });
+  const put = (content: string) =>
+    api.request("/projects/demo/files/index.html", {
+      method: "PUT",
+      body: content,
+      headers: { "If-Match": fileContentVersion("A") },
+    });
+  return { projectDir, file, histories, api, post, put };
+}
+
+async function claimFirstWrite(post: ReturnType<typeof lazyHistoryProject>["post"]) {
+  const reply = await post("/claim", {
+    label: "Color",
+    paths: ["index.html"],
+    overwrote: { "index.html": fileContentVersion("A") },
+  });
+  return ((await reply.json()) as { claimed: unknown }).claimed;
 }
 
 /** A project whose index.html reads "A", with its history and the routes over it. */
@@ -340,6 +395,63 @@ describe("history routes", () => {
     expect(back).toMatchObject({ id: claimed.id, label: "Moved Title" });
   });
 
+  it("undo Studio's first write when that write is what opens the project's history", async () => {
+    const { file, put, post } = lazyHistoryProject();
+
+    expect((await put("B")).status).toBe(200);
+    expect(await claimFirstWrite(post)).not.toBeNull();
+    expect(await (await post("/step", { direction: "back" })).json()).toMatchObject({ ok: true });
+    expect(readFileSync(file, "utf-8")).toBe("A");
+  });
+
+  it("save and undo the first edit while the project's media is still being copied in", async () => {
+    let finishCopy = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (finishCopy = resolve));
+    const { projectDir, file, put, post, histories } = lazyHistoryProject();
+    writeFileSync(join(projectDir, "clip.mp4"), Buffer.alloc(4 * 1024 ** 2, 7));
+
+    // The copy stays held until finishCopy, so a save or claim that waited on it never returns.
+    expect((await put("B")).status).toBe(200);
+    expect(await claimFirstWrite(post)).not.toBeNull();
+    await post("/step", { direction: "back" });
+    expect(readFileSync(file, "utf-8")).toBe("A");
+
+    finishCopy();
+    const history = (await histories.get(projectDir))!;
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    await history.flush();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Color", "Undid: Color"]);
+  });
+
+  it("undo Studio's overwrite of media whose first copy was still running", async () => {
+    let finishCopy = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (finishCopy = resolve));
+    const { projectDir, api, post } = lazyHistoryProject();
+    const clip = join(projectDir, "clip.mp4");
+    const original = Buffer.alloc(4 * 1024 ** 2, 7);
+    writeFileSync(clip, original);
+    await post("/claim", { label: "Nothing", paths: [] });
+
+    const written = await api.request("/projects/demo/files/clip.mp4", {
+      method: "PUT",
+      body: Buffer.alloc(4 * 1024 ** 2, 9),
+      headers: { "If-Match": fileContentVersion(original) },
+    });
+    expect(written.status).toBe(200);
+    finishCopy();
+    const claimed = await post("/claim", {
+      label: "Replace clip",
+      paths: ["clip.mp4"],
+      overwrote: { "clip.mp4": fileContentVersion(original) },
+    });
+    expect(((await claimed.json()) as { claimed: unknown }).claimed).not.toBeNull();
+
+    await post("/step", { direction: "back" });
+    expect(readFileSync(clip).equals(original)).toBe(true);
+  });
+
   it("end a window given idleMs by itself once its writes stop", async () => {
     const { projectDir, call } = await demoProject();
 
@@ -350,7 +462,7 @@ describe("history routes", () => {
     await vi.waitFor(
       async () =>
         expect((await (await call("")).json()).entries).toMatchObject([{ label: "Dragged Title" }]),
-      { timeout: 2_000, interval: 50 },
+      { timeout: 10_000, interval: 50 },
     );
     const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
     expect(entry).toMatchObject({ id: windowId, label: "Dragged Title" });

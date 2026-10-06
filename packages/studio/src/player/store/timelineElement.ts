@@ -8,6 +8,7 @@
  */
 
 import type { ClipManifestClip } from "../lib/playbackTypes";
+import { roundToCenti } from "../../utils/rounding";
 
 export interface TimelineElement {
   id: string;
@@ -83,6 +84,9 @@ export interface TimelineElement {
   /** The owning group's serialized `data-fx-chain`, when set — resolved once per parse. */
   audioGroupFxChain?: string;
   audioGroupAutomation?: string;
+  link?: string;
+  compositionScope?: string;
+  syncOrigin?: string;
   /**
    * Master start of the composition this row runs in, which its tweens and its
    * `data-start` are local to; 0 at the root. Writes go through toAuthoredStart.
@@ -92,14 +96,36 @@ export interface TimelineElement {
   authoredStartIsMasterTime?: boolean;
   /** Legacy marker for an inline sub-composition child; current rows never set it. */
   expandedHostKey?: string;
+  /** A text layer's words and look, which its row draws live instead of a captured picture. */
+  text?: TimelineText;
+}
+
+export interface TimelineText {
+  value: string;
+  fontFamily?: string;
+  fontWeight?: string;
+  color?: string;
+  /** The layer's own opaque background colour, when it paints one. */
+  background?: string;
 }
 
 type RowClock = Pick<
   TimelineElement,
   "start" | "parentCompositionStart" | "authoredStartIsMasterTime"
 >;
+type SavedClip = RowClock & Pick<TimelineElement, "duration">;
 const authoredOffset = (element: RowClock) =>
   element.authoredStartIsMasterTime ? 0 : (element.parentCompositionStart ?? 0);
+
+/**
+ * Where a clip's edges sit once saved: its file stores the local start to the centisecond, and the
+ * duration too when a resize writes it; a move keeps the authored duration.
+ */
+export function savedClipEdges(element: SavedClip, start: number, resizedDuration?: number) {
+  const savedStart = authoredOffset(element) + roundToCenti(toAuthoredStart(element, start));
+  const duration = resizedDuration === undefined ? element.duration : roundToCenti(resizedDuration);
+  return { start: savedStart, end: savedStart + duration };
+}
 
 /** The earliest master start this row can take: its host's start, or its own if already earlier. */
 export function clampToHostStart(element: RowClock, masterTime: number): number {
@@ -114,6 +140,15 @@ export function toAuthoredStart(element: RowClock, masterTime: number): number {
 /** A master-time position on the clock this row's tweens run on. */
 export function toCompositionTime(element: RowClock, masterTime: number): number {
   return masterTime - (element.parentCompositionStart ?? 0);
+}
+
+type CompositionScoped = Pick<TimelineElement, "sourceFile" | "compositionScope">;
+
+export function sameCompositionScope(a: CompositionScoped, b: CompositionScoped): boolean {
+  return (
+    (a.sourceFile ?? "") === (b.sourceFile ?? "") &&
+    (a.compositionScope ?? "") === (b.compositionScope ?? "")
+  );
 }
 
 /**
@@ -144,6 +179,7 @@ export type TimelineElementPatch = Partial<
     | "audioGroupHidden"
     | "audioGroupFxChain"
     | "audioGroupAutomation"
+    | "text"
   >
 >;
 

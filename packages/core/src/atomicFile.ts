@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
 
 type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
+type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeSync">;
 
 // Codes a volume without hard links (FAT, exFAT, some network shares) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
@@ -13,6 +14,16 @@ const BUSY_RENAME = new Set(["EPERM", "EBUSY", "EACCES"]);
 const RENAME_RETRY_DELAYS_MS = [10, 20, 30, 40];
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
+const TEMP_SUFFIX = /\.hf[0-9a-f]{6}\.tmp$/;
+
+/** A fresh temp sibling for a write that publishes `filePath`. 13 bytes, so a 242-byte name still fits. */
+export function atomicTempPath(filePath: string): string {
+  return `${filePath}.hf${randomBytes(3).toString("hex")}.tmp`;
+}
+
+export function isAtomicTempPath(path: string): boolean {
+  return TEMP_SUFFIX.test(path);
+}
 
 /** Replace a file only after the complete sibling temp file is written. No mode: the default one. */
 export function replaceFileAtomically(
@@ -31,15 +42,14 @@ export function replaceFileAtomically(
 export function createFileAtomically(
   filePath: string,
   content: string | Uint8Array,
-  operations: SiblingFileSystem & Pick<typeof fs, "linkSync"> = fs,
+  operations: DirectFileSystem & Pick<typeof fs, "linkSync"> = fs,
 ): void {
   publishSibling(filePath, content, undefined, operations, (tempPath) => {
     try {
       operations.linkSync(tempPath, filePath);
     } catch (error) {
       if (!NO_HARD_LINKS.has(errorCode(error))) throw error;
-      // Without hard links, keep today's direct exclusive write.
-      operations.writeFileSync(filePath, content, { flag: "wx" });
+      createDirectly(filePath, content, operations);
     }
     try {
       operations.unlinkSync(tempPath);
@@ -47,6 +57,33 @@ export function createFileAtomically(
       console.warn(`[hyperframes] created ${filePath} but could not remove ${tempPath}: ${error}`);
     }
   });
+}
+
+/** Without hard links: an exclusive write; a partial file it made (a full disk) is removed, a taken name never. */
+function createDirectly(
+  filePath: string,
+  content: string | Uint8Array,
+  operations: DirectFileSystem,
+): void {
+  const fd = operations.openSync(filePath, "wx");
+  let open = true;
+  try {
+    operations.writeFileSync(fd, content);
+    open = false;
+    operations.closeSync(fd);
+  } catch (error) {
+    try {
+      if (open) operations.closeSync(fd);
+    } catch {
+      // Preserve the write error; cleanup is best effort.
+    }
+    try {
+      operations.unlinkSync(filePath);
+    } catch {
+      // Preserve the write error; cleanup is best effort.
+    }
+    throw error;
+  }
 }
 
 /** The file a write to `filePath` lands on: folder links and file links followed as the system does. */
@@ -100,8 +137,7 @@ function writeTempSibling(
   operations: SiblingFileSystem,
 ): string {
   for (let attempt = 1; ; attempt++) {
-    // Short, so a name near the filesystem's limit still fits.
-    const tempPath = `${filePath}.${randomBytes(4).toString("hex")}.tmp`;
+    const tempPath = atomicTempPath(filePath);
     try {
       operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode, flag: "wx" });
       return tempPath;

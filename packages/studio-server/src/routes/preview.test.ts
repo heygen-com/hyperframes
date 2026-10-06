@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
+import { parseHTML } from "linkedom";
 import {
   closeSync,
   ftruncateSync,
@@ -20,7 +21,11 @@ import {
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import {
+  STUDIO_PREVIEW_ERRORS,
+  STUDIO_PREVIEW_MARK_META,
+} from "@hyperframes/core/studio-preview-mark";
+import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
@@ -132,6 +137,69 @@ describe("registerPreviewRoutes", () => {
     expect(await baseOf("/projects/a%22b/preview")).toBe("/api/projects/a%22b/preview/");
   });
 
+  it.each([
+    ["returns nothing", async () => null],
+    [
+      "returns its own page without a runtime",
+      async () =>
+        `<!doctype html><html><head></head><body><script>gsap.set("#card", { opacity: 0.5 });</script></body></html>`,
+    ],
+    [
+      "throws",
+      async () => {
+        throw new Error("bundler unavailable");
+      },
+    ],
+  ])(
+    "loads the runtime before the composition's scripts when the bundler %s",
+    async (_, bundle) => {
+      const projectDir = createProjectDir();
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!doctype html><html><head></head><body><div id="card"></div>
+        <script>gsap.set("#card", { opacity: 0.5 }); window.__timelines = { index: gsap.timeline() };</script>
+      </body></html>`,
+      );
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+      const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+      const runtimeAt = html.indexOf('src="/api/runtime.js"');
+      expect(runtimeAt).toBeGreaterThan(-1);
+      expect(runtimeAt).toBeLessThan(html.indexOf("gsap.set("));
+    },
+  );
+
+  it("keeps an authored script that reads the runtime global when the page is read from disk", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body>
+        <script>if (window.__hyperframeRuntime) window.AUTHOR_SEEN = 1;</script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html).toContain("window.AUTHOR_SEEN = 1");
+  });
+
+  it("serves one preview runtime when the page on disk already links one", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head>
+        <script src="hyperframe.runtime.iife.js"></script>
+        <script data-hyperframes-preview-runtime="1" src="/old-runtime.js"></script>
+      </head><body><script>window.AUTHOR = 1;</script></body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html.split("data-hyperframes-preview-runtime")).toHaveLength(2);
+    expect(html).toContain('src="/api/runtime.js"');
+    expect(html).not.toMatch(/hyperframe\.runtime\.iife\.js|old-runtime/);
+  });
+
   it("keeps the encoded <base> when the bundler fails and the page is read from disk", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
@@ -153,6 +221,64 @@ describe("registerPreviewRoutes", () => {
     expect(mark).toBeGreaterThan(-1);
     expect(mark).toBeLessThan(html.indexOf("/api/runtime.js"));
     expect(html).toContain("<script data-hf-gsap-fallback>");
+  });
+
+  it("reports a GSAP script that fails from the CDN and from the fallback, never rejecting unhandled", async () => {
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(createProjectDir()));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const fallback = /<script data-hf-gsap-fallback>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+    let onDocumentError: (event: { target: unknown }) => void = () => undefined;
+    const appended: { tagName: string; src: string; onerror?: (event: Event) => void }[] = [];
+    const doc = {
+      addEventListener: (_type: string, listener: typeof onDocumentError) => {
+        onDocumentError = listener;
+      },
+      createElement: () => ({ tagName: "SCRIPT", src: "" }),
+      head: { appendChild: (script: (typeof appended)[number]) => appended.push(script) },
+    };
+    const reported: unknown[] = [];
+    new Function("document", "reportError", fallback)(doc, (error: unknown) =>
+      reported.push(error),
+    );
+
+    const authored = "https://cdn.example/npm/gsap@3.14.2/dist/gsap.min.js";
+    onDocumentError({ target: { tagName: "SCRIPT", src: authored } });
+    expect(appended).toHaveLength(1);
+    // The fallback's own failure reaches the document's capture listener first; it must not load or report again.
+    onDocumentError({ target: appended[0] });
+    appended[0]?.onerror?.(new Event("error"));
+
+    await vi.waitFor(() => expect(reported).toHaveLength(1));
+    const message = reported[0] instanceof Error ? reported[0].message : "";
+    expect(message).toContain(authored);
+    expect(message).toContain(appended[0]?.src);
+  });
+
+  it("keeps every error a Studio preview raises from its first script, and leaves captures without it", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!DOCTYPE html><html><head><script src="app.js"></script></head><body></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const url = "http://localhost/projects/demo/preview";
+    const html = await (await app.request(url)).text();
+    const capture = await (await app.request(`${url}?${PREVIEW_CAPTURE_PARAM}=1`)).text();
+    const keeper = new RegExp(`<script>([^<]*${STUDIO_PREVIEW_ERRORS}[^<]*)</script>`);
+    expect(capture).not.toMatch(keeper);
+    const body = keeper.exec(html)?.[1] ?? "";
+    expect(html.indexOf(body)).toBeLessThan(html.indexOf('<script src="app.js">'));
+
+    const previewWindow: Record<string, unknown> = {};
+    let raise: (event: { message: string }) => void = () => undefined;
+    new Function("window", "addEventListener", body)(
+      previewWindow,
+      (_type: string, listener: typeof raise) => (raise = listener),
+    );
+    raise({ message: "Uncaught Error: GSAP could not load" });
+    expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["Uncaught Error: GSAP could not load"]);
   });
 
   it("serves a later scene's image lazy, and captures every image eager with no mark", async () => {
@@ -194,7 +320,11 @@ describe("registerPreviewRoutes", () => {
     const html = await response.text();
 
     expect(response.status).toBe(200);
-    expect(html).toContain("__hfStudioMotionApply");
+    const motionScript = [...parseHTML(html).document.querySelectorAll("script")].find((el) =>
+      el.textContent?.includes("__hfStudioMotionApply"),
+    );
+    // Deferred with the composition scripts, so it still runs after them.
+    expect(motionScript?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
     expect(html).toContain("studio-motion");
     expect(html).toContain("gsap@3.15.0/dist/gsap.min.js");
   });
@@ -249,6 +379,138 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("gsap@3/dist/MotionPathPlugin.min.js");
     // Plugin must load AFTER the core gsap script so it can register onto it.
     expect(html.indexOf("gsap.min.js")).toBeLessThan(html.indexOf("MotionPathPlugin.min.js"));
+    const plugin = parseHTML(html).document.querySelector('script[src*="MotionPathPlugin"]');
+    expect(plugin?.hasAttribute("type")).toBe(false);
+  });
+
+  it("defers the MotionPathPlugin with a body gsap script, so it still runs right after gsap", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div id="card" class="clip"></div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.to("#card", { motionPath: { path: [{ x: 0, y: 0 }, { x: 100, y: 50 }] }, duration: 1 }, 0);
+          window.__timelines = { index: tl };
+        </script>
+      </body></html>`,
+    );
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: (dir, options) =>
+          bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options }),
+      }),
+    );
+
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+    const scripts = [...parseHTML(html).document.querySelectorAll("script[src]")];
+    const gsapAt = scripts.findIndex((el) => el.getAttribute("src")?.endsWith("/gsap.min.js"));
+    expect(scripts[gsapAt]?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
+    const plugin = scripts[gsapAt + 1];
+    expect(plugin?.getAttribute("src")).toContain("gsap@3/dist/MotionPathPlugin.min.js");
+    expect(plugin?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
+  });
+
+  async function previewScriptSrcs(bodyGsapTag: string) {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div id="card" class="clip"></div>
+        ${bodyGsapTag}
+        <script>
+          window.__timelines = { index: gsap.timeline({ paused: true }).to("#card", { motionPath: { path: [{ x: 100, y: 50 }] } }) };
+        </script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    return [...parseHTML(html).document.querySelectorAll("script[src]")];
+  }
+
+  it.each([
+    ["a query string", "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js?v=1"],
+    ["a hash", "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.js#core"],
+  ])("puts the MotionPathPlugin right after a body gsap whose URL has %s", async (_, src) => {
+    const scripts = await previewScriptSrcs(`<script src="${src}"></script>`);
+    const gsapAt = scripts.findIndex((el) => el.getAttribute("src") === src);
+    expect(gsapAt).toBeGreaterThan(-1);
+    expect(scripts[gsapAt + 1]?.getAttribute("src")).toContain(
+      "gsap@3/dist/MotionPathPlugin.min.js",
+    );
+  });
+
+  it("defers the MotionPathPlugin with a deferred body gsap, so it runs after gsap", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script defer src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`,
+    );
+    const gsapAt = scripts.findIndex((el) => el.getAttribute("src")?.endsWith("/gsap.min.js"));
+    const plugin = scripts[gsapAt + 1];
+    expect(plugin?.getAttribute("src")).toContain("MotionPathPlugin.min.js");
+    expect(plugin?.hasAttribute("defer")).toBe(true);
+  });
+
+  it("does not read defer out of another attribute value", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script data-note="do not defer this" src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`,
+    );
+    const plugin = scripts.find((el) => el.getAttribute("src")?.includes("MotionPathPlugin"));
+    expect(plugin?.hasAttribute("defer")).toBe(false);
+  });
+
+  it("finds no gsap tag in a long run of gsap-like src text without stalling", async () => {
+    const scripts = await previewScriptSrcs(`<script src="${"/gsap.js#".repeat(50_000)}`);
+    expect(scripts.some((el) => el.getAttribute("src")?.includes("MotionPathPlugin"))).toBe(true);
+  });
+
+  it.each([
+    ["a style block", `<style>/* <script src="x"></script> */ .a { color: red; }</style>`],
+    ["an empty comment", `<!--> <p>text</p>`],
+    ["a comment start inside an attribute", `<div title="<!--"></div>`],
+  ])("still finds the live gsap tag after %s", async (_, before) => {
+    const live = "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js";
+    const scripts = await previewScriptSrcs(`${before}\n  <script src="${live}"></script>`);
+    const liveAt = scripts.findIndex((el) => el.getAttribute("src") === live);
+    expect(scripts[liveAt + 1]?.getAttribute("src")).toContain("MotionPathPlugin");
+  });
+
+  it("ignores a gsap-named file that is not gsap core", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js.map"></script>`,
+    );
+    const plugin = scripts.findIndex((el) => el.getAttribute("src")?.includes("MotionPathPlugin"));
+    const map = scripts.findIndex((el) => el.getAttribute("src")?.endsWith(".map"));
+    expect(plugin).toBeLessThan(map);
+  });
+
+  it("reads DEFER and TYPE written in capitals", async () => {
+    const scripts = await previewScriptSrcs(
+      `<script TYPE="text/javascript" DEFER SRC="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`,
+    );
+    const plugin = scripts.find((el) => el.getAttribute("src")?.includes("MotionPathPlugin"));
+    expect(plugin?.hasAttribute("defer")).toBe(true);
+    expect(plugin?.getAttribute("type")).toBe("text/javascript");
+  });
+
+  it.each([
+    [
+      "a comment",
+      `<!-- a > b <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script> -->`,
+    ],
+    [
+      "a template",
+      `<template><template></template><script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script></template>`,
+    ],
+  ])("skips a gsap tag inside %s and follows the live one", async (_, inert) => {
+    const live = "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js?live";
+    const scripts = await previewScriptSrcs(`${inert}\n  <script src="${live}"></script>`);
+    const liveAt = scripts.findIndex((el) => el.getAttribute("src") === live);
+    expect(scripts[liveAt + 1]?.getAttribute("src")).toContain("MotionPathPlugin");
   });
 
   it("does NOT inject MotionPathPlugin when the composition has no motionPath", async () => {
@@ -1697,6 +1959,86 @@ describe("what the preview loaded", () => {
     expect(affectsPreview(projectDir, "im")).toBe(false);
   });
 
+  it("does not walk entity-quoted inline image data as a filesystem path", () => {
+    const projectDir = createProjectDir();
+    const data = `data:image/png;base64,${"A/".repeat(128)}`;
+    for (const quote of ["&quot;", "&apos;", "&#34;", "&#x22;", "&#39;", "&#x27;"]) {
+      recordPreviewReferences(
+        projectDir,
+        `<i style="background-image:url(${quote}${data}${quote})"></i>`,
+      );
+      recordPreviewBuilt(projectDir);
+      expect(affectsPreview(projectDir, `${quote}${data}${quote}`)).toBe(false);
+    }
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, `&quot;${data}&quot;`)).toBe(false);
+  });
+
+  it("tracks entity-quoted local image paths after decoding their HTML entities", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      '<i style="background-image:url(&quot;assets/a&amp;b.png&quot;)"></i>',
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/a&b.png")).toBe(true);
+  });
+
+  it("keeps entities literal in stylesheet URLs, as CSS raw text does", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      "<style>i { background:url('assets/a&amp;b.png') }</style>",
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/a&amp;b.png")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/a&b.png")).toBe(false);
+  });
+
+  it("does not mistake style-looking text for an HTML style attribute", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      `<i title='style="'></i><style>/* style=" */ i { background:url('assets/a&amp;b.png') } /* " */</style><i title='"'></i>`,
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/a&amp;b.png")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/a&b.png")).toBe(false);
+  });
+
+  it("tracks references in nested templates and script-created CSS", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      '<template><template><img src="assets/nested.png"></template></template><script>el.style.background="url(assets/script.png)"</script>',
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/nested.png")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/script.png")).toBe(true);
+  });
+
+  it("bounds filesystem paths after stripping long queries and decoding escapes", () => {
+    const projectDir = createProjectDir();
+    const path = `assets/${"x/".repeat(1200)}image.png`;
+    const encoded = path.replace(/x/g, "%78");
+    recordPreviewReferences(
+      projectDir,
+      `<img src="assets/image.png?${"x".repeat(5000)}"><img src="${encoded}">`,
+    );
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, "assets/image.png")).toBe(true);
+    expect(affectsPreview(projectDir, path)).toBe(true);
+  });
+
+  it("does not walk oversized preview references or direct read paths", () => {
+    const projectDir = createProjectDir();
+    const path = `assets/${"long/".repeat(850)}image.png`;
+    recordPreviewReferences(projectDir, `<img src="${path}">`);
+    recordPreviewRead(projectDir, path);
+    recordPreviewBuilt(projectDir);
+    expect(affectsPreview(projectDir, path)).toBe(false);
+  });
+
   it.skipIf(process.platform === "win32")(
     "counts an edit to the file a symlinked asset points at",
     async () => {
@@ -1998,5 +2340,36 @@ describe("preview asset byte ranges", () => {
     });
     expect(res.status).toBe(416);
     expect(res.headers.get("Content-Range")).toBe("bytes */3");
+  });
+});
+
+describe("the desktop app's private folder", () => {
+  it("is served by neither the asset route nor the sub-composition route", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(projectDir, ".hyperframes", "agent-handoff.json"),
+      '{"engine":"claude","sessionId":"secret"}',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const route of ["preview", "preview/comp"]) {
+      const res = await app.request(
+        `http://localhost/projects/demo/${route}/.hyperframes/agent-handoff.json`,
+      );
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("secret");
+    }
+  });
+  it("still serves the app's request pictures", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, ".hyperframes", "requests", "1"), { recursive: true });
+    writeFileSync(join(projectDir, ".hyperframes", "requests", "1", "before.png"), "png");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request(
+      "http://localhost/projects/demo/preview/.hyperframes/requests/1/before.png",
+    );
+    expect(res.status).toBe(200);
   });
 });

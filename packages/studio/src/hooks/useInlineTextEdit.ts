@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
+import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import {
+  beginStudioManualEditGesture,
+  endStudioManualEditGesture,
+  countStudioManualEditSave,
+} from "../components/editor/manualEditsDom";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -43,6 +49,8 @@ export interface InlineTextEditSession {
   outline: string;
   /** The element's own outline offset, restored with the outline. */
   outlineOffset: string;
+  /** Holds the preview on screen while the edit is open. */
+  gesture?: string;
 }
 
 /** The live markup to persist and the session snapshot to restore on failure. */
@@ -86,7 +94,7 @@ export function useInlineTextEdit({
   onPause,
 }: {
   /** Where the edited text goes. The caller owns persistence. */
-  onCommit: (commit: InlineTextEditCommit) => void;
+  onCommit: (commit: InlineTextEditCommit) => unknown;
   /** Stop playback, so the element is not animating under the caret. */
   onPause?: () => void;
 }): InlineTextEditControls {
@@ -106,6 +114,7 @@ export function useInlineTextEdit({
       framesRef.current = null;
     }
     openRef.current = null;
+    endStudioManualEditGesture(open.element, open.gesture);
     setSession(null);
     // An element removed from the document mid-session is not an error, it is
     // just nothing left to clean up.
@@ -132,6 +141,7 @@ export function useInlineTextEdit({
         original: element.innerHTML,
         outline: element.style.outline,
         outlineOffset: element.style.outlineOffset,
+        gesture: beginStudioManualEditGesture(element, "edit"),
       };
       // Drawn on the element itself, not in Studio's overlay above it. This is
       // the only mark that says the caret is in the TEXT rather than the
@@ -168,10 +178,16 @@ export function useInlineTextEdit({
     // saved rather than something the server will quietly cut down.
     sanitizeRichTextChildren(open.element);
     const html = open.element.innerHTML;
-    teardown();
-    // After teardown, so the commit path's own resync does not fight an
-    // element that is still editable.
-    onCommit({ element: open.element, html, previousHtml: open.original });
+    // Counted and pending before the edit closes, so a reload waits for the save, not the mark.
+    let save: (saving: unknown) => void = () => {};
+    trackStudioPendingEdit(new Promise((resolve) => (save = resolve)));
+    const commitText = () => {
+      teardown();
+      // After teardown, so the commit path's own resync does not fight an
+      // element that is still editable.
+      return onCommit({ element: open.element, html, previousHtml: open.original });
+    };
+    save(countStudioManualEditSave(open.element, commitText));
   }, [onCommit, teardown]);
 
   const cancel = useCallback(() => {

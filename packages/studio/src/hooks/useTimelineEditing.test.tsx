@@ -306,9 +306,10 @@ function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unk
       (url) => jsonResponse({ content: fileContent(pathAfter(url, "/files/")) }),
     ],
     [
-      "/api/projects/p1/gsap-mutations/",
+      "/api/projects/p1/gsap-mutations",
       (url) => {
-        const content = fileContent(pathAfter(url, "/gsap-mutations/")) ?? "";
+        const content =
+          fileContent(pathAfter(url, url.includes("-batch/") ? "-batch/" : "s/")) ?? "";
         return jsonResponse(
           gsapBody ?? { mutated: false, scriptText: null, before: content, after: content },
         );
@@ -1166,6 +1167,41 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     expect(groupWrite.mock.calls[0]![1]).toBe(singleWrite.mock.calls[0]![1]);
     group.unmount();
   });
+
+  it("gives each single-clip move and resize its own undo step, which its GSAP rewrite joins", async () => {
+    const source = '<div id="clip" data-start="0" data-duration="1"></div>';
+    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0, start: 0, duration: 1 });
+    stubProjectFetch(source, {
+      mutated: true,
+      scriptText: null,
+      before: "tweens at 0",
+      after: source,
+    });
+    const recordEdit = vi.fn(async (_edit: { coalesceKey?: string; coalesceMs?: number }) => {});
+    const h = renderTimelineEditingHook({
+      timelineElements: [clip],
+      iframe: createPreviewIframe([{ id: "clip", track: 0 }]),
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile: vi.fn(async () => {}),
+      recordEdit,
+    });
+
+    await act(async () => {
+      await h.move(clip, { start: 0.5, track: clip.track });
+      await h.move(clip, { start: 1, track: clip.track });
+      await h.resize(clip, { start: 0, duration: 2 });
+    });
+
+    const steps = recordEdit.mock.calls.map(([edit]) => edit);
+    expect(steps.map((edit) => edit.coalesceMs)).toEqual(Array(6).fill(Infinity));
+    const [move, fold, again, foldAgain, resize, resizeFold] = steps.map(
+      (edit) => edit.coalesceKey,
+    );
+    expect([fold, foldAgain, resizeFold]).toEqual([move, again, resize]);
+    expect(new Set([move, again, resize]).size).toBe(3);
+    h.unmount();
+  });
 });
 
 describe("useTimelineEditing duration rollback on failed persist", () => {
@@ -1296,7 +1332,7 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
       if (url.includes("/api/projects/p1/files/")) {
         return jsonResponse({ content: DELETE_SOURCE });
       }
-      if (url.includes("/api/projects/p1/file-mutations/remove-element/")) {
+      if (url.includes("/api/projects/p1/file-mutations/remove-elements/")) {
         return jsonResponse({ changed: true, content: DELETE_REMOVED_SOURCE });
       }
       throw new Error(`Unexpected fetch: ${url}`);
@@ -1936,8 +1972,11 @@ function setupNestedHarness() {
   const fetchMock = stubProjectFetch(NESTED_FILES);
   const scaleCalls = () =>
     fetchMock.mock.calls
-      .filter((call) => requestUrl(call[0]).includes("/gsap-mutations/"))
-      .map((call) => JSON.parse(String((call[1] as RequestInit).body)))
+      .filter((call) => requestUrl(call[0]).includes("/gsap-mutations"))
+      .flatMap((call) => {
+        const body = JSON.parse(String((call[1] as RequestInit).body));
+        return body.mutations ?? [body];
+      })
       .filter((body) => body.type === "scale-positions");
   usePlayerStore.getState().setDuration(20);
   const hook = renderTimelineEditingHook({
@@ -2285,6 +2324,19 @@ describe("clip timing edits sync GSAP exactly once", () => {
             applyServerMutation(pathAfter(url, "/gsap-mutations/"), JSON.parse(String(init?.body))),
           );
         }
+        if (url.includes("/gsap-mutations-batch/")) {
+          const path = pathAfter(url, "/gsap-mutations-batch/");
+          const steps = (
+            JSON.parse(String(init?.body)) as { mutations: Record<string, unknown>[] }
+          ).mutations.map((mutation) => applyServerMutation(path, mutation));
+          const last = steps[steps.length - 1]!;
+          return jsonResponse({
+            ...last,
+            before: steps[0]!.before,
+            mutated: steps[0]!.before !== last.after,
+            changed: steps[0]!.before !== last.after,
+          });
+        }
         if (url.includes("/files/"))
           return jsonResponse({ content: files[pathAfter(url, "/files/")] });
         throw new Error(`Unexpected fetch: ${url}`);
@@ -2404,6 +2456,13 @@ describe("clip timing edits sync GSAP exactly once", () => {
         `tl.from("#scene h1", { y: 20, duration: 1 }, 3.5);`,
         `tl.to("#side", { x: 5, duration: 1 }, 3);`,
       ]);
+      if (!withSdk) {
+        const gsapUrls = h.fetchMock.mock.calls
+          .map((call) => requestUrl(call[0]))
+          .filter((url) => url.includes("/gsap-mutations"));
+        // Both clips live in one file, so their rewrites travel as one request.
+        expect(gsapUrls).toEqual([expect.stringContaining("/gsap-mutations-batch/")]);
+      }
       h.hook.unmount();
     });
   }

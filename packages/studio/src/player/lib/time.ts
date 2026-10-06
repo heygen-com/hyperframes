@@ -1,5 +1,8 @@
 export const STUDIO_PREVIEW_FPS = 30;
 
+export const clampToDuration = (time: number, duration: number) =>
+  Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+
 export function formatTime(time: number): string {
   if (!Number.isFinite(time) || time < 0) return "00:00";
   const mins = Math.floor(time / 60);

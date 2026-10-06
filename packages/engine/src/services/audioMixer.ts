@@ -5,6 +5,7 @@
  * Processes and mixes audio tracks using FFmpeg.
  */
 
+import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
@@ -43,6 +44,7 @@ import {
 } from "@hyperframes/core/audio-automation";
 import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
 import {
+  isAudibleVideoElement,
   MEDIA_RENDER_ID_ATTR,
   normalizePlaybackRate,
   normalizeRateSpec,
@@ -53,8 +55,7 @@ import {
   timeAtSourceTime,
   type RateSpec,
 } from "@hyperframes/core";
-import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
-import { AUDIO_GROUP_RENDER_ID_ATTR } from "@hyperframes/core";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -74,21 +75,6 @@ export type { AudioElement, MixResult } from "./audioMixer.types.js";
  * the PNG-sequence sidecar, and all three have to agree.
  */
 export const MIXED_AUDIO_FILENAME = "audio.m4a";
-
-/**
- * The bus key a member belongs to, as `resolveAudioGroups` keys them.
- *
- * The compiler's `data-hf-group-render-id` names one INSTANCE of a bus; the
- * author's `data-audio-group` names it only within its own composition file. A
- * sub-composition declaring a bus and its members, used twice, therefore had
- * both instances' members under one key: one sub-mix for two independent buses,
- * one instance's fader and chain over the other's audio, and — with only the
- * second muted — BOTH instances dropped from the export. Uncompiled documents
- * (the live preview) carry no stamp and read exactly as before.
- */
-function memberGroupKey(el: RefResolverEl): string | null {
-  return el.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR) ?? el.getAttribute(HF_AUDIO_GROUP_ATTR);
-}
 
 function clampVolume(volume: number): number {
   return clampAudioGain(volume);
@@ -588,12 +574,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   const parseEnd = (raw: string | null): number => {
     return parseStrictFiniteTimingNumber(raw) ?? 0;
   };
-  const isHidden = (el: AudioMediaElement): boolean => {
-    for (let current: AudioMediaElement | null = el; current; current = current.parentElement) {
-      if (current.hasAttribute("data-hidden")) return true;
-    }
-    return false;
-  };
+  const isHidden = isSelfOrAncestorHidden;
 
   // Resolved once per parse. A group element carrying `data-hidden` drops
   // every member from the render (RULES: mute-by-drop, never
@@ -601,10 +582,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   const groupsById = new Map(
     resolveAudioGroups(document).map((group) => [group.id, group] as const),
   );
-  const memberGroupHidden = (el: AudioMediaElement): boolean => {
-    const groupId = memberGroupKey(el);
-    return groupId ? (groupsById.get(groupId)?.hidden ?? false) : false;
-  };
+  const memberGroupHidden = (el: AudioMediaElement): boolean => isMemberGroupHidden(groupsById, el);
 
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
 
@@ -614,15 +592,14 @@ export function parseAudioElements(html: string): AudioElement[] {
     id: string,
     src: string,
     type: AudioElement["type"],
+    joinsGroup: boolean,
   ): AudioElement => {
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
     const fades = readElementFades(el);
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
     const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
-    // Audio only in v1 (matches resolveAudioGroups, which only scans
-    // `audio[data-audio-group]`) — a stray attribute on a <video> is inert.
-    const groupId = type === "audio" ? memberGroupKey(el) : null;
+    const groupId = joinsGroup ? memberGroupKey(el) : null;
     const group = groupId ? groupsById.get(groupId) : undefined;
     return {
       id,
@@ -662,15 +639,16 @@ export function parseAudioElements(html: string): AudioElement[] {
     // member from the mix, the same way `isHidden` drops one track.
     if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, id, src, "audio"));
+    elements.push(build(el, id, src, "audio", true));
   }
 
   for (const el of document.querySelectorAll('video[id][data-has-audio="true"]')) {
+    if (!isAudibleVideoElement(el)) continue;
     const id = trackId(el);
     const src = resolveMediaElementSrc(el);
-    if (!id || !src || isHidden(el)) continue;
+    if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, `${id}-audio`, src, "video"));
+    elements.push(build(el, `${id}-audio`, src, "video", true));
   }
 
   return elements;

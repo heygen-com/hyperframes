@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      /* Only the composition root paints a background; body stays unpainted. */
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="transparency-regression-root-bg"
+      data-width="200"
+      data-height="200"
+      data-start="0"
+      data-duration="1"
+      data-no-timeline
+      style="position: absolute; inset: 0; background: rgb(0, 0, 255)"
+    >
+      <div
+        class="card"
+        style="position: absolute; left: 50px; top: 50px; width: 100px; height: 100px; background: rgb(255, 0, 0)"
+      ></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+    </script>
+  </body>
+</html>

@@ -16,6 +16,7 @@ vi.mock("@hyperframes/engine", () => ({
 }));
 
 vi.mock("../audioPadTrim.js", () => ({
+  AAC_DELIVERY_TRUE_PEAK_DBFS: -1,
   padOrTrimAudioToVideoFrameCount: padOrTrimAudioMock,
 }));
 
@@ -236,5 +237,36 @@ describe("runAssembleStage HLS packaging", () => {
       "Audio duration normalization failed: ffmpeg trim failed",
     );
     expect(packageHlsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("runAssembleStage limiter honesty", () => {
+  beforeEach(resetMocks);
+
+  it("records and logs how far the true-peak limiter lowered the mix", async () => {
+    padOrTrimAudioMock.mockResolvedValue({
+      success: true,
+      outputPath: "/tmp/audio.duration-normalized.m4a",
+      targetDurationSeconds: 1,
+      sourceDurationSeconds: 1,
+      operation: "copy",
+      audioLoweredDb: 1.44,
+    });
+    const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    const input = makeInput();
+    input.job.config.logger = logger;
+
+    await runAssembleStage(input);
+
+    expect(input.job.audioLoweredDb).toBe(1.44);
+    expect(logger.info).toHaveBeenCalledWith("Audio lowered by 1.4 dB to stay under −1 dBTP", {
+      audioLoweredDb: 1.44,
+    });
+  });
+
+  it("leaves the job untouched when the limiter did not engage", async () => {
+    const input = makeInput();
+    await runAssembleStage(input);
+    expect(input.job).not.toHaveProperty("audioLoweredDb");
   });
 });

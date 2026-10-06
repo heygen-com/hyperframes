@@ -3,8 +3,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IDLE_POLL_MS,
+  IDLE_SLICE_MS,
   requestOverlayFrames,
   resetOverlayFrameLoopForTests,
+  runWhenInputIdle,
   subscribeOverlayFrame,
 } from "./overlayFrameLoop";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -69,6 +71,31 @@ describe("overlay frame loop", () => {
     usePlayerStore.getState().markPreviewBooted();
     framesOver(32);
     expect(runs).toBeGreaterThan(0);
+  });
+
+  it("runs idle work in capped slices, only while no input arrives", () => {
+    const budgets: number[] = [];
+    requestOverlayFrames();
+    runWhenInputIdle((timeLeft) => {
+      budgets.push(timeLeft());
+      return budgets.length === 3;
+    });
+    vi.advanceTimersByTime(300);
+    expect(budgets).toEqual([]);
+    vi.advanceTimersByTime(200);
+    expect(budgets).toHaveLength(3);
+    expect(Math.max(...budgets)).toBeLessThanOrEqual(IDLE_SLICE_MS);
+
+    // Input during a slice holds the next one until the loop has been idle again.
+    const slices: number[] = [];
+    runWhenInputIdle(() => {
+      slices.push(performance.now());
+      if (slices.length === 1) requestOverlayFrames();
+      return slices.length === 2;
+    });
+    vi.advanceTimersByTime(1000);
+    expect(slices).toHaveLength(2);
+    expect(slices[1] - slices[0]).toBeGreaterThanOrEqual(400);
   });
 
   it("runs every subscriber on one frame, not one frame each", () => {

@@ -28,6 +28,17 @@ describe("applyRippleShifts", () => {
   });
 });
 
+function stubRemoveElementsFetch(current: string, afterRemoval: string) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const isRemoval = String(input).includes("/file-mutations/remove-elements/");
+      const content = isRemoval ? afterRemoval : current;
+      return new Response(JSON.stringify({ changed: isRemoval, content }), { status: 200 });
+    }),
+  );
+}
+
 describe("useTimelineDeleteOps: ripple undo label", () => {
   const html = `<!DOCTYPE html><html data-composition-variables='[]'><body>
 <div data-hf-id="hf-stage" data-hf-root data-duration="6">
@@ -38,16 +49,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
 </body></html>`;
 
   beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/file-mutations/remove-element/")) {
-          return new Response(JSON.stringify({ changed: true, content: html }), { status: 200 });
-        }
-        return new Response(JSON.stringify({ content: html }), { status: 200 });
-      }),
-    );
+    stubRemoveElementsFetch(html, html);
   });
 
   afterEach(() => {
@@ -60,6 +62,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
   function mountDeleteHarness(overrides: {
     handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"];
     showToast?: DeleteOpsOptions["showToast"];
+    recordEdit?: DeleteOpsOptions["recordEdit"];
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
@@ -70,7 +73,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
         timelineElements: elements,
         showToast: overrides.showToast ?? vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
-        recordEdit: vi.fn().mockResolvedValue(undefined),
+        recordEdit: overrides.recordEdit ?? vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
         handleTimelineGroupMove: overrides.handleTimelineGroupMove,
@@ -118,6 +121,41 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     );
   });
 
+  it("holds the delete's undo step open under the key its ripple joins, however late the ripple lands", async () => {
+    stubRemoveElementsFetch(html, html.replace(/<div data-hf-id="hf-b"[^\n]*\n/, ""));
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const recordEdit = vi.fn().mockResolvedValue(undefined);
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove, recordEdit });
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+
+    const [[deleted]] = recordEdit.mock.calls;
+    expect(deleted).toMatchObject({ coalesceMs: Infinity });
+    expect(handleTimelineGroupMove).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ coalesceKey: deleted.coalesceKey }),
+    );
+  });
+
+  it("removes a multi-clip selection with one request, however many clips it holds", async () => {
+    const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
+    const { elements, getHook } = mountDeleteHarness({ handleTimelineGroupMove });
+
+    await act(async () => {
+      await getHook().handleTimelineElementsDelete(elements);
+    });
+
+    const removals = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url).includes("/file-mutations/remove-element"));
+    expect(removals).toHaveLength(1);
+    const [, init] = removals[0] as [unknown, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.targets).toHaveLength(elements.length);
+  });
+
   it("shows exactly one toast when a ripple fails to persist after a committed delete", async () => {
     const handleTimelineGroupMove = vi.fn().mockRejectedValue(new Error("persist failed"));
     const showToast = vi.fn();
@@ -162,18 +200,7 @@ describe("useTimelineDeleteOps: undo race", () => {
 </body></html>`;
 
   beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/file-mutations/remove-element/")) {
-          return new Response(JSON.stringify({ changed: true, content: htmlAfterDeletingC }), {
-            status: 200,
-          });
-        }
-        return new Response(JSON.stringify({ content: html }), { status: 200 });
-      }),
-    );
+    stubRemoveElementsFetch(html, htmlAfterDeletingC);
   });
 
   afterEach(() => {

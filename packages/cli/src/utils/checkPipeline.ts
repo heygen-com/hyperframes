@@ -215,8 +215,8 @@ interface GridSamples {
   contrastEntries: ContrastAuditEntry[];
   screenshots: CheckScreenshot[];
   contrastMs: number;
-  /** One geometry+opacity fingerprint per layout sample (#U10 frozen-sweep guard). */
-  geometrySignatures: { time: number; signature: string }[];
+  /** One visible-state fingerprint per layout sample (#U10 frozen-sweep guard). */
+  layoutStateSignatures: { time: number; signature: string }[];
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
@@ -406,7 +406,7 @@ async function collectGridSamples(
     contrastEntries: [],
     screenshots: [],
     contrastMs: 0,
-    geometrySignatures: [],
+    layoutStateSignatures: [],
     rotationSamples: [],
     indicatorFrames: [],
   };
@@ -420,7 +420,10 @@ async function collectGridSamples(
       const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
       collected.layoutIssues.push(...layoutIssues);
       issuesAtTime.push(...layoutIssues);
-      collected.geometrySignatures.push({ time, signature: await driver.collectLayoutGeometry() });
+      collected.layoutStateSignatures.push({
+        time,
+        signature: await driver.collectLayoutGeometry(),
+      });
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
     }
@@ -504,7 +507,7 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
 
 /**
  * Frozen-sweep guard (#U10): if every layout-grid sample produced the exact
- * same geometry+opacity fingerprint (see layout-audit.browser.js), the seek
+ * same visible-state fingerprint (see motion-signature.browser.js), the seek
  * never actually advanced the composition's timeline — every other green
  * verdict from this run is meaningless, not just a missed defect. Skips
  * short (<3s) compositions, single-sample runs (nothing to compare), and
@@ -513,15 +516,15 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
  */
 function detectSweepStatic(
   duration: number,
-  geometrySignatures: string[],
+  layoutStateSignatures: string[],
   motionIssues: AnchoredLayoutIssue[],
   hasNoTimelineDeclaration: boolean,
 ): AnchoredLayoutIssue[] {
   if (hasNoTimelineDeclaration) return [];
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
-  if (geometrySignatures.length < 2) return [];
+  if (layoutStateSignatures.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
-  const [first, ...rest] = geometrySignatures;
+  const [first, ...rest] = layoutStateSignatures;
   if (!first || rest.some((signature) => signature !== first)) return [];
   return [
     {
@@ -1095,7 +1098,7 @@ export async function runAuditGrid(
   const userPicked = new Set(grid.userPickedSamples);
   const sweepFindings = detectSweepStatic(
     grid.duration,
-    collected.geometrySignatures
+    collected.layoutStateSignatures
       .filter((sample) => !userPicked.has(sample.time))
       .map((sample) => sample.signature),
     motionIssues,
@@ -1127,6 +1130,7 @@ export async function runAuditGrid(
     contrastPassed: contrast.passed,
     screenshots: collected.screenshots,
     timings: { launchSettleMs: 0, seekLoopMs, contrastMs: collected.contrastMs },
+    skipped: false,
   };
 }
 
@@ -1409,6 +1413,7 @@ function buildReport(
   const report: CheckReport = {
     ok: errorCount === 0 && (!options.strict || warningCount === 0),
     strict: options.strict,
+    browserSkipped: browser.skipped,
     lint,
     runtime,
     layout,
@@ -1534,6 +1539,7 @@ function emptyBrowserResult(): CheckBrowserResult {
     contrastPassed: 0,
     screenshots: [],
     timings: { launchSettleMs: 0, seekLoopMs: 0, contrastMs: 0 },
+    skipped: true,
   };
 }
 

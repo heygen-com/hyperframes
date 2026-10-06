@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
+import { toastSurface } from "../StudioToast";
 import {
   trackStudioFeedback,
   trackStudioFeedbackShown,
@@ -212,24 +213,11 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
       }}
     >
       <div
-        className="flex w-[min(340px,calc(100vw-48px))] flex-col gap-2.5 overflow-hidden rounded-2xl px-3.5 py-3"
-        style={{
-          background: failed
-            ? "linear-gradient(135deg, rgba(127,29,29,0.55), rgba(80,10,10,0.45))"
-            : "linear-gradient(135deg, rgba(38,38,38,0.55), rgba(23,23,23,0.45))",
-          backdropFilter: "blur(16px) saturate(1.6)",
-          WebkitBackdropFilter: "blur(16px) saturate(1.6)",
-          border: `1px solid ${failed ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.08)"}`,
-          boxShadow: [
-            "0 8px 32px rgba(0,0,0,0.35)",
-            `inset 0 1px 0 ${failed ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.06)"}`,
-            "inset 0 -1px 0 rgba(0,0,0,0.15)",
-          ].join(", "),
-        }}
+        className={`flex w-[min(340px,calc(100vw-48px))] flex-col gap-2.5 overflow-hidden rounded-2xl px-3.5 py-3 ${toastSurface(failed)}`}
       >
         <div className="flex items-start gap-3">
           <p
-            className={`min-w-0 flex-1 text-[12px] leading-5 ${failed ? "text-red-100" : "text-neutral-100"}`}
+            className={`min-w-0 flex-1 text-[12px] leading-5 ${failed ? "text-danger-ink" : "text-text-0"}`}
           >
             {step === "thanks" ? "Thanks, that helps." : title}
           </p>
@@ -243,7 +231,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                 if (req) trackStudioFeedbackInterviewClick({ reason: req.reason });
                 close("sent");
               }}
-              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-white/20 bg-white/8 px-2.5 text-[11px] leading-6 text-neutral-100 transition-[background-color,border-color,transform] duration-150 ease-out hover:border-white/35 hover:bg-white/16 active:scale-[0.97] motion-reduce:transition-none"
+              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-border-strong bg-hover px-2.5 text-[11px] leading-6 text-neutral-100 transition-[background-color,border-color,transform] duration-150 ease-out hover:border-text-muted hover:bg-press active:scale-[0.97] motion-reduce:transition-none"
             >
               Talk to us, 30 min
             </a>
@@ -251,7 +239,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
           <button
             type="button"
             onClick={() => close("close")}
-            className="-mr-1 -mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors duration-150 hover:bg-white/10 hover:text-neutral-200"
+            className="-mr-1 -mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors duration-150 hover:bg-press hover:text-neutral-200"
             aria-label="Dismiss"
           >
             <svg
@@ -270,7 +258,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
         {/* The failure text the user already saw, quoted back so the report
             carries it without asking them to retype the error. */}
         {failed && request.detail && step !== "thanks" && (
-          <p className="line-clamp-2 text-[11px] leading-4 text-red-200/70">{request.detail}</p>
+          <p className="line-clamp-2 text-[11px] leading-4 text-danger-ink">{request.detail}</p>
         )}
 
         {step === "rating" && (
@@ -283,7 +271,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                   key={n}
                   // A resting fill, so the row reads as eleven controls rather
                   // than as a line of text that happens to be clickable.
-                  className="flex h-7 cursor-pointer items-center justify-center rounded-md bg-white/4 text-[11px] tabular-nums text-neutral-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/[0.14] hover:text-neutral-100 active:scale-[0.97] has-checked:bg-white/90 has-checked:text-neutral-900 has-focus-visible:ring-1 has-focus-visible:ring-white/50 motion-reduce:transition-none"
+                  className="flex h-7 cursor-pointer items-center justify-center rounded-md bg-hover text-[11px] tabular-nums text-neutral-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-press hover:text-neutral-100 active:scale-[0.97] has-checked:bg-text-0 has-checked:text-bg-0 has-focus-visible:ring-1 has-focus-visible:ring-ring motion-reduce:transition-none"
                 >
                   <input
                     type="radio"
@@ -328,8 +316,8 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                   // attached to nothing.
                   className={`h-6 rounded-full border px-2.5 text-[11px] transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transition-none ${
                     failed
-                      ? "border-red-300/20 bg-red-100/6 text-red-100/80 hover:border-red-200/70 hover:bg-red-100/25 hover:text-white"
-                      : "border-white/10 bg-white/4 text-neutral-300 hover:border-white/60 hover:bg-white/25 hover:text-white"
+                      ? "border-danger/30 bg-danger/10 text-danger-ink hover:border-danger/60 hover:bg-danger/20"
+                      : "border-border bg-hover text-neutral-300 hover:border-text-muted hover:bg-press hover:text-text-0"
                   }`}
                 >
                   {preset.label}
@@ -355,12 +343,12 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                 placeholder={followUp.placeholder}
                 aria-label={followUp.prompt}
                 maxLength={500}
-                className="h-7 min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-2 text-[11px] text-neutral-100 outline-hidden transition-colors duration-150 placeholder:text-neutral-500 focus:border-white/25"
+                className="h-7 min-w-0 flex-1 rounded-md border border-border bg-input px-2 text-[11px] text-neutral-100 outline-hidden transition-colors duration-150 placeholder:text-neutral-500 focus:border-ring"
               />
               <button
                 type="button"
                 onClick={() => submit()}
-                className="h-7 shrink-0 rounded-md bg-white/10 px-2.5 text-[11px] text-neutral-100 transition-[background-color,transform] duration-150 ease-out hover:bg-white/16 active:scale-[0.97] motion-reduce:transition-none"
+                className="h-7 shrink-0 rounded-md bg-press px-2.5 text-[11px] text-neutral-100 transition-[background-color,transform] duration-150 ease-out hover:bg-on active:scale-[0.97] motion-reduce:transition-none"
               >
                 Send
               </button>

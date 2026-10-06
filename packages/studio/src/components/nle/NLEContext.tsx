@@ -9,6 +9,7 @@ import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { createStableContext } from "../../utils/hmrStableContext";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export function shouldDisableTimelineWhileCompositionLoading(compositionLoading: boolean): boolean {
   return compositionLoading;
@@ -209,7 +210,7 @@ export function NLEProvider({
     setCompositionSourceMap(emptyMap);
     onCompIdToSrcChangeRef.current?.(emptyMap);
 
-    fetch(buildProjectApiPath(projectId, `/files/index.html`), {
+    studioApiFetch(buildProjectApiPath(projectId, `/files/index.html`), {
       signal: controller.signal,
     })
       .then((r) => {

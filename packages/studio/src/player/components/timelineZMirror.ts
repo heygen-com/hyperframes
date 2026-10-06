@@ -3,6 +3,7 @@ import { classifyZone } from "./timelineZones";
 import { isLaneFree, timeRangesOverlap } from "./timelineCollision";
 import { authoredTrackForLane, sameSourceFile } from "./timelineAuthoredTrack";
 import { samePaintScope } from "./timelineStackingSync";
+import { timelineTrackOrder } from "./timelineTrackDisplay";
 
 /**
  * Mirror a canvas z-order action (Bring to Front / Bring Forward / Send Backward /
@@ -111,13 +112,6 @@ function expandedChildAllowedLanes(
   );
 }
 
-/** Ascending unique display lanes of `elements` — identical to how Timeline.tsx
- *  builds `trackOrder`, so `insertRow` indexes the same boundary space. Exported
- *  so the mirror wiring can hand commitZMirrorLaneMove the matching trackOrder. */
-export function displayTrackOrder(elements: TimelineElement[]): number[] {
-  return [...new Set(elements.map((el) => el.track))].sort((a, b) => a - b);
-}
-
 /**
  * Resolve the timeline lane move that mirrors a z-order action on `element`.
  * Returns null when no timeline mirror applies: audio / zero-length clips, no
@@ -146,8 +140,8 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
   const referenceLane = resolveReferenceLane(input, overlapSet, up);
   if (referenceLane == null) return null;
 
-  const order = displayTrackOrder(elements);
-  const visualLanes = displayTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
+  const order = timelineTrackOrder(elements);
+  const visualLanes = timelineTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
   const refIdx = visualLanes.indexOf(referenceLane);
   if (refIdx === -1) return null; // reference is not a visual lane — no mirror
 
@@ -251,8 +245,8 @@ export function resolveRepositionLaneMove(input: ZRepositionInput): ZMirrorLaneM
   }
   if (aboveLane == null && belowLane == null) return null;
 
-  const order = displayTrackOrder(elements);
-  const visualLanes = displayTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
+  const order = timelineTrackOrder(elements);
+  const visualLanes = timelineTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
   const allowedLanes = expandedChildAllowedLanes(element, elements);
   const args = {
     elements,

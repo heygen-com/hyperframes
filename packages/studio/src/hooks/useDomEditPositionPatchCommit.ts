@@ -17,6 +17,7 @@ type PositionPatchOptions = {
   coalesceKey: string;
   coalesceMs?: number;
   skipRefresh?: boolean;
+  deferRender?: boolean;
 };
 
 export function useDomEditPositionPatchCommit({
@@ -31,30 +32,26 @@ export function useDomEditPositionPatchCommit({
         coalesceKey: options.coalesceKey,
         coalesceMs: options.coalesceMs,
         skipRefresh: options.skipRefresh ?? true,
-      })
-        .then(() => undefined)
-        .catch((error) => {
-          // A paused save queue is not worth a toast: the paused-save banner is
-          // already on screen, and one toast per blocked edit is what this branch
-          // exists to prevent. It still has to REJECT, though. Swallowing it
-          // resolved the commit, which skipped the caller's revert, so the element
-          // stayed where the drag put it while nothing reached the file.
-          if (error instanceof DomEditSaveQueueOpenError) throw error;
-          if (!wasAlreadyToasted(error)) {
-            showToast(error instanceof Error ? error.message : "Failed to save position");
-          }
-          trackStudioSaveFailure({
-            source: "dom_edit",
-            error,
-            filePath: selection.sourceFile ?? activeCompPath ?? "index.html",
-            mutationType: "position",
-            label: options.label,
-            targetId: selection.id,
-            targetSelector: selection.selector,
-            targetSourceFile: selection.sourceFile,
-          });
-          throw error;
+        deferRender: options.deferRender,
+      }).catch((error) => {
+        // The paused-save banner already explains this refusal. Rethrow so the
+        // caller reverts the preview instead of treating an unsaved edit as committed.
+        if (error instanceof DomEditSaveQueueOpenError) throw error;
+        if (!wasAlreadyToasted(error)) {
+          showToast(error instanceof Error ? error.message : "Failed to save position");
+        }
+        trackStudioSaveFailure({
+          source: "dom_edit",
+          error,
+          filePath: selection.sourceFile ?? activeCompPath ?? "index.html",
+          mutationType: "position",
+          label: options.label,
+          targetId: selection.id,
+          targetSelector: selection.selector,
+          targetSourceFile: selection.sourceFile,
         });
+        throw error;
+      });
     },
     [activeCompPath, persistDomEditOperations, showToast],
   );

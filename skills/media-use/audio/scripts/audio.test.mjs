@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -123,4 +124,36 @@ test("two effects never share a file when one's name is taken by the person, run
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// The engine owns speed parsing; a fallback before the check would turn 0 or junk into 1.
+function runEngineWith(request, ...args) {
+  const dir = mkdtempSync(join(tmpdir(), "audio-speed-range-"));
+  try {
+    writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [], ...request }));
+    return spawnSync(process.execPath, [join(HERE, "audio.mjs"), "--hyperframes", dir, ...args], {
+      encoding: "utf8",
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+for (const [label, request, args, shown] of [
+  ["request speed 5", { speed: 5 }, [], "5"],
+  ["request speed 0", { speed: 0 }, [], "0"],
+  ["request speed -1", { speed: -1 }, [], "-1"],
+  ["request speed text", { speed: "fast" }, [], '"fast"'],
+  ["--speed 0", {}, ["--speed", "0"], '"0"'],
+  ["--speed text", { speed: 1 }, ["--speed", "abc"], '"abc"'],
+]) {
+  test(`${label} stops the engine before any TTS runs`, () => {
+    const r = runEngineWith(request, ...args);
+    assert.equal(r.status, 1);
+    assert.ok(r.stderr.includes(`speed must be above 0 and at most 3, got ${shown}`), r.stderr);
+  });
+}
+
+test("a numeric string speed, as the adapters forward it, passes the check", () => {
+  assert.doesNotMatch(runEngineWith({ speed: "0.8" }, "--only", "tts").stderr, /speed must/);
 });

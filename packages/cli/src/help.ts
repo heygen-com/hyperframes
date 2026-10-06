@@ -27,6 +27,8 @@ const GROUPS: Group[] = [
       ["present", "Open a slideshow deck in presenter mode (with audience sync)"],
       ["publish", "Upload a project to a stable URL (private by default)"],
       ["render", "Render a composition to MP4 or WebM"],
+      ["open", "Open a project in the HyperFrames desktop app"],
+      ["catch-up", "See what was done in the desktop app since you last looked"],
     ],
   },
   {

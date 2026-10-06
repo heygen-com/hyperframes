@@ -5,6 +5,8 @@ import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useShadowPreviewReload } from "./useShadowPreviewReload";
 import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
+import { subscribePreviewFrame, transportAdapter } from "../store/previewFrameStore";
+import { clampToDuration } from "../lib/time";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { logReload } from "../../utils/reloadDebug";
 
@@ -36,6 +38,7 @@ import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFi
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
+import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditsDom";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
@@ -147,10 +150,11 @@ export function useTimelinePlayer({
         const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
         const win = iframe?.contentWindow as IframeWindow | null;
         if (!iframe || !win) return null;
-        return resolvePlaybackAdapter(iframe, win, {
+        const adapter = resolvePlaybackAdapter(iframe, win, {
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
         });
+        return transportAdapter(adapter);
       } catch {
         return null;
       }
@@ -196,7 +200,8 @@ export function useTimelinePlayer({
     applyPreviewAudioFlags(iframeRef.current, audioMuted, audioVolume);
   }, []);
   const play = useCallback(() => {
-    if (!usePlayerStore.getState().timelineReady) return;
+    const { timelineReady, playLocked } = usePlayerStore.getState();
+    if (!timelineReady || playLocked) return;
     stopRAFLoop();
     stopReverseLoop();
     stopScrubPreviewAudio();
@@ -282,9 +287,8 @@ export function useTimelinePlayer({
   const pause = useCallback(() => {
     stopReverseLoop();
     const adapter = getAdapter();
-    if (!adapter) return;
-    adapter.pause();
-    setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
+    adapter?.pause();
+    if (adapter) setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
     setIsPlaying(false);
     shuttleDirectionRef.current = null;
     shuttleSpeedIndexRef.current = 0;
@@ -300,19 +304,21 @@ export function useTimelinePlayer({
         return false;
       }
       const duration = Math.max(0, adapter.getDuration());
-      const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+      const nextTime = clampToDuration(time, duration);
       const keepPlaying = options?.keepPlaying === true;
+      const { playLocked, isPlaying: storeWasPlaying } = usePlayerStore.getState();
       const shouldResumeAfterSeek = shouldResumeForwardPlaybackAfterSeek({
         keepPlaying,
         wasReverseShuttle,
-        storeWasPlaying: usePlayerStore.getState().isPlaying,
+        storeWasPlaying,
         duration,
         nextTime,
+        playLocked,
       });
       adapter.seek(nextTime, options);
       publishSeek(nextTime, options); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
-      if (!shouldResumeAfterSeek && !keepPlaying) scrubMusicAtSeek(iframeRef.current, nextTime);
+      if (!keepPlaying && !playLocked) scrubMusicAtSeek(iframeRef.current, nextTime);
       if (shouldResumeAfterSeek) {
         stopRAFLoop();
         applyPlaybackRate(usePlayerStore.getState().playbackRate);
@@ -345,6 +351,13 @@ export function useTimelinePlayer({
     ],
   );
 
+  useEffect(
+    () =>
+      usePlayerStore.subscribe((state, prev) => {
+        if (state.playLocked && !prev.playLocked && state.isPlaying) pause();
+      }),
+    [pause],
+  );
   useEffect(() => {
     return usePlayerStore.subscribe((state, prev) => {
       if (state.requestedSeekTime !== null && state.requestedSeekTime !== prev.requestedSeekTime) {
@@ -365,6 +378,7 @@ export function useTimelinePlayer({
       }
     });
   }, [seek, play, pause]);
+  useEffect(() => subscribePreviewFrame(getAdapter), [getAdapter]);
   const { playbackKeyDownRef, playbackKeyUpRef, attachIframeShortcutListeners, togglePlay } =
     usePlaybackKeyboard({
       iframeRef,
@@ -486,7 +500,10 @@ export function useTimelinePlayer({
     // A newer edit, or anything replacing the live preview (a reload, a composition switch), wins.
     const isCurrent = () => gen === refreshGenRef.current && slot === previewGeneration();
     const swap = sceneSwapFor(iframe);
-    if (!swap || isRefreshingRef.current) return reloadWholeFilm(url.toString());
+    const swapWouldReplaceGestureNode =
+      !!iframe.contentDocument && isStudioManualEditGestureLiveIn(iframe.contentDocument);
+    if (!swap || isRefreshingRef.current || swapWouldReplaceGestureNode)
+      return reloadWholeFilm(url.toString());
     swap(url.toString(), isCurrent, cancel.signal).catch((error: unknown) => {
       if (!isCurrent()) return;
       logReload("scene-swap-refused", { reason: String(error) });

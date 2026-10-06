@@ -6,7 +6,7 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
 import { cloneElement, useId, useRef, useState, type ReactElement } from "react";
 import { cn } from "./cn";
-import { floatingMotion } from "./Menu";
+import { floatingMotion, POPUP_LAYER } from "./Menu";
 
 interface TooltipProps {
   label: string;
@@ -14,6 +14,7 @@ interface TooltipProps {
   children: ReactElement<{ "aria-describedby"?: string }>;
   /** Hover delay in ms. */
   delay?: number;
+  disabled?: boolean;
   side?: "top" | "bottom" | "left" | "right";
 }
 
@@ -21,16 +22,22 @@ interface TooltipProps {
 const SIDE_OFFSET = 6;
 const VIEWPORT_MARGIN = 8;
 
-export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipProps) {
+export function Tooltip({
+  label,
+  children,
+  delay = 400,
+  side = "top",
+  disabled = false,
+}: TooltipProps) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLSpanElement>(null);
   const tooltipId = useId();
 
   return (
-    <BaseTooltip.Root open={open} onOpenChange={setOpen}>
+    <BaseTooltip.Root open={open} onOpenChange={setOpen} disabled={disabled}>
       <BaseTooltip.Trigger delay={delay} render={<span ref={boxRef} className="contents" />}>
         {cloneElement(children, {
-          "aria-describedby": open ? tooltipId : children.props["aria-describedby"],
+          "aria-describedby": open && !disabled ? tooltipId : children.props["aria-describedby"],
         })}
       </BaseTooltip.Trigger>
       <BaseTooltip.Portal>
@@ -39,7 +46,7 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
           side={side}
           sideOffset={SIDE_OFFSET}
           collisionPadding={VIEWPORT_MARGIN}
-          className="z-200"
+          className={POPUP_LAYER}
         >
           <BaseTooltip.Popup
             id={tooltipId}

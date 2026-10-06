@@ -29,7 +29,7 @@ import type {
   HyperframeLinterOptions,
 } from "./types.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
-import { mediaSrcTagRe } from "./utils";
+import { isAudibleVideoTag, mediaSrcTagRe } from "./utils";
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtml(html: string): ParsableDocumentLike {
@@ -339,8 +339,11 @@ function lintProjectAudioFiles(
   if (audioFiles.length === 0) return findings;
 
   const hasAudioElement = htmlSources.some(({ html }) => /<audio\b/i.test(html));
+  const hasAudibleVideo = htmlSources.some(({ html }) =>
+    (html.match(/<video\b[^>]*>/gi) ?? []).some(isAudibleVideoTag),
+  );
 
-  if (!hasAudioElement) {
+  if (!hasAudioElement && !hasAudibleVideo) {
     findings.push({
       code: "audio_file_without_element",
       severity: "warning",
@@ -549,10 +552,11 @@ function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFind
   const seen = new Set<string>();
 
   for (const { html } of htmlSources) {
-    const audioTagRe = /<audio\b[^>]*>/gi;
+    const soundTagRe = /<(?:audio|video)\b[^>]*>/gi;
     let match: RegExpExecArray | null;
-    while ((match = audioTagRe.exec(html)) !== null) {
+    while ((match = soundTagRe.exec(html)) !== null) {
       const tag = match[0];
+      if (/^<video/i.test(tag) && !isAudibleVideoTag(tag)) continue;
       const trackStr = extractAttr(tag, "data-track-index");
       const startStr = extractAttr(tag, "data-start");
       const durStr = extractAttr(tag, "data-duration");
@@ -579,7 +583,7 @@ function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFind
         findings.push({
           code: "duplicate_audio_track",
           severity: "warning",
-          message: `Multiple <audio> elements on track ${a.trackIndex} overlap (${a.src} at ${a.start}-${Number.isFinite(a.end) ? a.end.toFixed(1) : "end"}s, ${b.src} at ${b.start}-${Number.isFinite(b.end) ? b.end.toFixed(1) : "end"}s). This causes layered audio playback.`,
+          message: `Multiple audible <audio>/<video> elements on track ${a.trackIndex} overlap (${a.src} at ${a.start}-${Number.isFinite(a.end) ? a.end.toFixed(1) : "end"}s, ${b.src} at ${b.start}-${Number.isFinite(b.end) ? b.end.toFixed(1) : "end"}s). This causes layered audio playback.`,
           fixHint: "Use non-overlapping time windows or different track indices.",
         });
       }

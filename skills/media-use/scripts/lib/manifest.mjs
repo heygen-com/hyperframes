@@ -10,6 +10,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
 
 const MANIFEST_FILE = "manifest.jsonl";
@@ -202,12 +203,12 @@ function withLock(dir, fn) {
   }
 }
 
-// Atomically allocate the next free id for `type` AND reserve its file, so a
+// Atomically allocate the next free id for `type` AND reserve it on disk, so a
 // slow download/copy between allocation and appendRecord can't let a concurrent
 // caller grab the same id (the MU-23 clobber). Under the lock we take the max id
 // across BOTH the manifest and any already-reserved files in the type dir, then
-// O_EXCL-create an empty placeholder at the target path; freeze/copy overwrites
-// it. Returns { id, localPath }.
+// O_EXCL-create an empty marker under core's atomic temp name, which Studio's
+// project history skips. Returns { id, localPath, markerPath }.
 export function allocateId(projectDir, type, ext) {
   mkdirSync(mediaDir(projectDir), { recursive: true });
   const typeDir = typeDirPath(projectDir, type);
@@ -215,8 +216,10 @@ export function allocateId(projectDir, type, ext) {
   return withLock(mediaDir(projectDir), () => {
     const id = nextFreeId(projectDir, type);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
-    writeFileSync(join(projectDir, localPath), "", { flag: "wx" }); // durable reservation
-    return { id, localPath };
+    // Same shape as core atomicTempPath: an empty file at the final name would be committed.
+    const markerPath = `${join(projectDir, localPath)}.hf${randomBytes(3).toString("hex")}.tmp`;
+    writeFileSync(markerPath, "", { flag: "wx" }); // durable reservation
+    return { id, localPath, markerPath };
   });
 }
 
@@ -242,22 +245,23 @@ function reservedFile(projectDir, type, ext) {
   return { ...allocation, fullPath: join(projectDir, allocation.localPath) };
 }
 
-function rollbackReservation(reservation) {
-  rmSync(reservation.fullPath, { force: true });
+function releaseReservation(reservation, committed) {
+  if (!committed) rmSync(reservation.fullPath, { force: true });
+  rmSync(reservation.markerPath, { force: true });
 }
 
 // A reservation is committed only when populate returns a non-null value.
 // Throwing/rejecting or returning null means no usable asset was produced, so
-// the placeholder must be released. Keeping this transaction beside allocateId
-// prevents individual provider/cache/LUT paths from forgetting the rollback.
+// the reservation and any partial asset are released. Keeping this transaction
+// beside allocateId prevents provider/cache/LUT paths from forgetting the rollback.
 export function withReservedFileSync(projectDir, type, ext, populate) {
   const reservation = reservedFile(projectDir, type, ext);
   try {
     const result = populate(reservation);
-    if (result == null) rollbackReservation(reservation);
+    releaseReservation(reservation, result != null);
     return result;
   } catch (error) {
-    rollbackReservation(reservation);
+    releaseReservation(reservation, false);
     throw error;
   }
 }
@@ -266,10 +270,10 @@ export async function withReservedFile(projectDir, type, ext, populate) {
   const reservation = reservedFile(projectDir, type, ext);
   try {
     const result = await populate(reservation);
-    if (result == null) rollbackReservation(reservation);
+    releaseReservation(reservation, result != null);
     return result;
   } catch (error) {
-    rollbackReservation(reservation);
+    releaseReservation(reservation, false);
     throw error;
   }
 }

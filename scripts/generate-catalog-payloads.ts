@@ -37,10 +37,7 @@ import {
 import { isLocalAsset } from "./registry-hosted-assets.ts";
 import { componentFiles } from "./catalog/component-files.ts";
 import { runAsCommand } from "./entrypoint.ts";
-import {
-  snippetOwnsItsMotion,
-  SNIPPET_PREVIEW_RENDERS_STILL,
-} from "./catalog/component-variables.ts";
+import { snippetOwnsItsMotion, PREFER_AUTHORED_DEMO } from "./catalog/component-variables.ts";
 import {
   clearPinnedVariableValues,
   externalizeDataUris,
@@ -164,8 +161,7 @@ function snippetFileFor(item: CatalogItem): string | null {
 
 function buildsFromSnippet(item: CatalogItem, snippetFile: string): boolean {
   return (
-    snippetOwnsItsMotion(readFileSync(snippetFile, "utf-8")) &&
-    !SNIPPET_PREVIEW_RENDERS_STILL.has(item.name)
+    snippetOwnsItsMotion(readFileSync(snippetFile, "utf-8")) && !PREFER_AUTHORED_DEMO.has(item.name)
   );
 }
 

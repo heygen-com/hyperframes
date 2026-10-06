@@ -15,7 +15,7 @@ export class CompositionInsertionError extends Error {
   }
 }
 
-function descendants(root: Document | Element, selector: string): Element[] {
+export function descendants(root: Document | Element, selector: string): Element[] {
   const found = Array.from(root.querySelectorAll(selector));
   for (const template of root.querySelectorAll("template")) {
     found.push(...descendants(template, selector));

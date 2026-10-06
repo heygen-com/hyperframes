@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
-import { syncStoredAutomationFromPreview } from "./automationStoreSync";
+import { syncStoredAutomationFromPreview, syncStoredElementAttribute } from "./automationStoreSync";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
 const TWO_POINTS = '{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":1}]}]}';
@@ -32,7 +32,39 @@ beforeEach(() => {
   usePlayerStore.getState().reset();
 });
 
+describe("syncStoredElementAttribute", () => {
+  it("records a saved fade on the stored clip, so the timeline draws what the file holds", () => {
+    usePlayerStore.setState({ elements: [el({ fadeIn: 1 })] });
+    syncStoredElementAttribute(el(), "data-fade-in", "2.5");
+    expect(usePlayerStore.getState().elements[0]?.fadeIn).toBe(2.5);
+    syncStoredElementAttribute(el(), "data-fade-in", null);
+    expect(usePlayerStore.getState().elements[0]?.fadeIn).toBeUndefined();
+  });
+
+  // A quick volume save left the clip at its last load's volume, so a card reopened on it read the old level.
+  it("records a saved volume, and drops it when the attribute goes", () => {
+    usePlayerStore.setState({ elements: [el({ volume: 0.5 })] });
+    syncStoredElementAttribute(el(), "data-volume", "1.5");
+    expect(usePlayerStore.getState().elements[0]?.volume).toBe(1.5);
+    syncStoredElementAttribute(el(), "data-volume", null);
+    expect(usePlayerStore.getState().elements[0]?.volume).toBeUndefined();
+  });
+});
+
 describe("syncStoredAutomationFromPreview", () => {
+  it("reads back a volume an undo restored on the preview", () => {
+    usePlayerStore.setState({ elements: [el({ volume: 1.5 })] });
+    syncStoredAutomationFromPreview(previewWith({ "data-volume": "0.5" }));
+    expect(usePlayerStore.getState().elements[0]?.volume).toBe(0.5);
+  });
+
+  it("reads back a fade an undo restored on the preview", () => {
+    usePlayerStore.setState({ elements: [el({ fadeOut: 2 })] });
+    syncStoredAutomationFromPreview(previewWith({ "data-fade-in": "0.6" }));
+    const stored = usePlayerStore.getState().elements[0];
+    expect([stored?.fadeIn, stored?.fadeOut]).toEqual([0.6, undefined]);
+  });
+
   it("reads the element the timeline bound, not an earlier same-id copy in a sub-composition", () => {
     usePlayerStore.setState({ elements: [el({ hfId: "hf-root" })] });
     const doc = document.implementation.createHTMLDocument("preview");

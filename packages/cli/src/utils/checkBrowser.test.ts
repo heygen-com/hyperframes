@@ -605,14 +605,63 @@ describe("preResolveHostileMediaProxies", () => {
       },
     });
     mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await expect(
       preResolveHostileMediaProxies(projectDir, "<html></html>"),
     ).resolves.toBeUndefined();
-    expect(infoSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
     );
+  });
+
+  // `check --json` stdout must stay pure JSON, so these lines belong on stderr.
+  it("writes the pre-resolve summary to stderr and leaves stdout untouched", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+    });
+    mocks.resolveProxy.mockResolvedValue("/cache/clip.mp4");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[hyperframes\] media proxy pre-resolve: 1\/1 ready, 0 failed \(\d+ms\)$/,
+      ),
+    );
+    expect(infoSpy).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+
+  it("writes a scan failure to stderr and leaves stdout untouched", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockRejectedValue(new Error("ffprobe not found"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await expect(
+      preResolveHostileMediaProxies(projectDir, "<html></html>"),
+    ).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[hyperframes] media proxy pre-resolve: scan failed (ffprobe not found)",
+    );
+    expect(infoSpy).not.toHaveBeenCalled();
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {

@@ -143,6 +143,27 @@ function schedule(): void {
   }, IDLE_POLL_MS);
 }
 
+/** Longest idle slice, so input that arrives during one waits at most this long for its frame. */
+export const IDLE_SLICE_MS = 3;
+
+/**
+ * Runs `step` in idle slices once no input has woken the loop for AWAKE_MS, so it never shares a gesture's
+ * frames. `step` works while `timeLeft()` is positive and returns true when it has finished.
+ */
+export function runWhenInputIdle(step: (timeLeft: () => number) => boolean): void {
+  const wait = awakeUntil - performance.now();
+  if (wait > 0) {
+    setTimeout(() => runWhenInputIdle(step), wait);
+    return;
+  }
+  const idle = window.requestIdleCallback ?? ((callback: () => void) => setTimeout(callback, 0));
+  idle(() => {
+    const end = performance.now() + IDLE_SLICE_MS;
+    if (performance.now() < awakeUntil || !step(() => end - performance.now()))
+      runWhenInputIdle(step);
+  });
+}
+
 /** Something moved, or might have. Run frames at full rate for a moment. */
 export function requestOverlayFrames(): void {
   awakeUntil = performance.now() + AWAKE_MS;

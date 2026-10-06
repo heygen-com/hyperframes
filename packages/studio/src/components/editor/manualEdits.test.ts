@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
 import {
@@ -285,7 +286,7 @@ describe("studio manual edits", () => {
     expect(set).not.toHaveBeenCalled();
     expect(tickerTick).not.toHaveBeenCalled();
 
-    beginStudioManualEditGesture(card);
+    beginStudioManualEditGesture(card, "move");
     applyStudioPathOffsetDraft(card, { x: 35, y: -6 });
 
     expect(readStudioPathOffset(card)).toEqual({ x: 35, y: -6 });
@@ -395,8 +396,8 @@ describe("studio manual edits", () => {
     const card = document.getElementById("card") as HTMLElement;
 
     applyStudioPathOffset(card, { x: 40, y: 24 });
-    const firstToken = beginStudioManualEditGesture(card);
-    const secondToken = beginStudioManualEditGesture(card);
+    const firstToken = beginStudioManualEditGesture(card, "move");
+    const secondToken = beginStudioManualEditGesture(card, "move");
     endStudioManualEditGesture(card, firstToken);
 
     // Gesture still active — offset should remain

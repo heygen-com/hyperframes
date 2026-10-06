@@ -4,8 +4,8 @@ import type { BlockedTimelineEditIntent } from "./timelineEditing";
 
 /* ── Shared clip-drag state types ───────────────────────────────── */
 export interface DraggedClipState {
-  /** Pointer captured by the stable viewport coordinator for this gesture. */
-  pointerId: number;
+  /** Pointer captured by the viewport coordinator; null for a keyboard pickup. */
+  pointerId: number | null;
   element: TimelineElement;
   originClientX: number;
   originClientY: number;
@@ -26,13 +26,14 @@ export interface DraggedClipState {
   /**
    * When non-null, the drop inserts a NEW track at this visual row boundary
    * (0 = above the top lane, trackOrder.length = below the bottom) instead of
-   * landing on previewTrack. Drives the insertion-line indicator.
+   * landing on previewTrack. Drives the opened preview lane.
    */
   insertRow: number | null;
   /** Snap target the clip will land on, for the guide highlight. */
   snapTime: number | null;
   snapType: TimelineSnapType | null;
   started: boolean;
+  altKey?: boolean;
 }
 
 export interface ResizingClipState {
@@ -63,6 +64,7 @@ export interface ResizingClipState {
     playbackStart?: number;
   }[];
   started: boolean;
+  altKey?: boolean;
 }
 
 export interface BlockedClipState {

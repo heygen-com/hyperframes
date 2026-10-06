@@ -10,7 +10,11 @@ import { defaultTimelineTheme } from "./timelineTheme";
 import { TRACK_H, getTimelineRowGeometry } from "./timelineLayout";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 import { buildTimelineLogicalRows } from "./timelineKeyboardNavigation";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import {
+  usePlayerStore,
+  type KeyframeCacheEntry,
+  type TimelineElement,
+} from "../store/playerStore";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { DraggedClipState, BlockedClipState } from "./useTimelineClipDrag";
@@ -73,6 +77,7 @@ function positionTween(id: string): GsapAnimation {
 
 interface RenderLanesOptions {
   elements?: TimelineElement[];
+  keyframeCache?: Map<string, KeyframeCacheEntry>;
   animations?: Map<string, GsapAnimation[]>;
   expandedClipIds?: string[];
   selectedElementIds?: Set<string>;
@@ -83,7 +88,13 @@ interface RenderLanesOptions {
   hoveredClip?: string | null;
   renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
   snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
+  withoutSelectHandler?: boolean;
 }
+
+const selectHandlerFor = (
+  options: RenderLanesOptions,
+  handler: (element: TimelineElement | null) => void,
+) => (options.withoutSelectHandler ? undefined : handler);
 
 function renderLanes(options: RenderLanesOptions = {}): {
   host: HTMLDivElement;
@@ -163,10 +174,10 @@ function renderLanes(options: RenderLanesOptions = {}): {
           setResizingClip={vi.fn()}
           setDraggedClip={vi.fn()}
           setSelectedElementId={setSelectedElementId}
-          shiftClickClipRef={createRef()}
           getPreviewElement={(el) => el}
           getTrackStyle={getTrackStyle}
           gsapAnimations={gsapAnimations}
+          keyframeCache={next.keyframeCache}
           selectedKeyframes={new Set()}
           currentTime={0}
           onContextMenuLane={next.onContextMenuLane}
@@ -174,7 +185,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           onTogglePropertyGroupKeyframe={vi.fn()}
           onResizeElement={vi.fn()}
           onMoveElement={vi.fn()}
-          onSelectElement={onSelectElement}
+          onSelectElement={selectHandlerFor(next, onSelectElement)}
           onRazorSplit={vi.fn()}
           onRazorSplitAll={vi.fn()}
         />,
@@ -384,9 +395,54 @@ describe("TimelineLanes disclosure target", () => {
     act(() => second.root.unmount());
   });
 
-  // The passenger branch wraps [clip, lanes] in a transformed div that re-renders
-  // on every pointer move. An unstable key there remounts the lanes and drops the
-  // in-flight drag.
+  it("does not remount a clip when it becomes, then stops being, a drag passenger", () => {
+    const elements = [element("clip-a", TRACK_A), element("clip-b", TRACK_A)];
+    const selectedElementIds = new Set(["clip-a", "clip-b"]);
+    const dragging: MultiDragPreviewInput = {
+      dragStarted: true,
+      draggedKey: "clip-b",
+      draggedOriginStart: 0,
+      draggedPreviewStart: 0.5,
+      selectedKeys: selectedElementIds,
+    };
+    const keyframeCache = new Map<string, KeyframeCacheEntry>([
+      [
+        "clip-a",
+        {
+          format: "percentage",
+          keyframes: [
+            { percentage: 0, properties: { x: 0 } },
+            { percentage: 100, properties: { x: 50 } },
+          ],
+        },
+      ],
+    ]);
+    const view = renderLanes({ elements, selectedElementIds, keyframeCache });
+    const clipA = view.host.querySelector<HTMLElement>('[data-el-id="clip-a"]');
+    const diamonds = () =>
+      view.host
+        .querySelector('[data-el-id="clip-a"] ~ div button[aria-label*="keyframe at"]')
+        ?.closest<HTMLElement>("div.pointer-events-none");
+    expect(clipA).not.toBeNull();
+    expect(clipA?.parentElement).toBe(
+      view.host.querySelector('[data-el-id="clip-b"]')?.parentElement,
+    );
+
+    expect(diamonds()).not.toBeNull();
+    view.rerender({ elements, selectedElementIds, keyframeCache, multiDragPreview: dragging });
+    expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
+    expect(clipA?.style.transform).toMatch(/^translateX\([1-9]/);
+    // Its keyframe diamonds ride with it.
+    expect(diamonds()?.style.transform).toBe(clipA?.style.transform);
+
+    view.rerender({ elements, selectedElementIds, keyframeCache });
+    expect(view.host.querySelector('[data-el-id="clip-a"]')).toBe(clipA);
+    expect(clipA?.style.transform).toBe("");
+    act(() => view.root.unmount());
+  });
+
+  // A passenger re-renders on every pointer move. An unstable key there remounts
+  // the lanes and drops the in-flight drag.
   it("does not remount the lanes while a multi-clip drag slides the formation", () => {
     const elements = [element("clip-a", TRACK_A), element("clip-b", TRACK_A)];
     const selectedElementIds = new Set(["clip-a", "clip-b"]);
@@ -406,9 +462,11 @@ describe("TimelineLanes disclosure target", () => {
     });
 
     const before = ariaControlsTarget(view.host);
-    const beforeLane = before?.querySelector("[data-timeline-property-lane]");
+    const beforeLane = before?.querySelector<HTMLElement>("[data-timeline-property-lane]");
     expect(before).not.toBeNull();
     expect(beforeLane).not.toBeNull();
+    const startOffset = beforeLane?.style.transform;
+    expect(startOffset).toMatch(/^translateX\([1-9]/);
 
     view.rerender({
       elements,
@@ -421,6 +479,9 @@ describe("TimelineLanes disclosure target", () => {
     // Node identity, not just presence: a remount replaces these nodes.
     expect(ariaControlsTarget(view.host)).toBe(before);
     expect(before?.querySelector("[data-timeline-property-lane]")).toBe(beforeLane);
+    // The lanes ride with the formation, not just the clip.
+    expect(beforeLane?.style.transform).toMatch(/^translateX\([1-9]/);
+    expect(beforeLane?.style.transform).not.toBe(startOffset);
     act(() => view.root.unmount());
   });
 });
@@ -437,6 +498,44 @@ describe("TimelineLanes selection", () => {
 
     expect(view.setSelectedElementId).toHaveBeenCalledWith(selected.id);
     expect(view.onSelectElement).toHaveBeenCalledWith(selected);
+    act(() => view.root.unmount());
+  });
+
+  it.each([["shiftKey"], ["metaKey"], ["ctrlKey"]])(
+    "%s-click adds a clip to the selection instead of replacing it",
+    (modifier) => {
+      const first = element("clip-a", TRACK_A);
+      const second = element("clip-b", TRACK_B);
+      usePlayerStore.getState().setElements([first, second]);
+      usePlayerStore.getState().setSelection([first.id], first.id);
+      const view = renderLanes({ elements: [first, second] });
+      const clipB = view.host.querySelector('[data-el-id="clip-b"]');
+      const click = (init: MouseEventInit) =>
+        act(() => clipB?.dispatchEvent(new MouseEvent("click", { bubbles: true, ...init })));
+
+      click({ [modifier]: true });
+      expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
+      expect(view.setSelectedElementId).not.toHaveBeenCalled();
+      expect(view.onSelectElement).toHaveBeenLastCalledWith(second);
+
+      click({ [modifier]: true });
+      expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a"]));
+      expect(view.onSelectElement).toHaveBeenLastCalledWith(first);
+      act(() => view.root.unmount());
+    },
+  );
+  it("Cmd-click adds a clip in a host that passes no onSelectElement", () => {
+    const first = element("clip-a", TRACK_A);
+    const second = element("clip-b", TRACK_B);
+    usePlayerStore.getState().setElements([first, second]);
+    usePlayerStore.getState().setSelection([first.id], first.id);
+    const view = renderLanes({ elements: [first, second], withoutSelectHandler: true });
+    act(() =>
+      view.host
+        .querySelector('[data-el-id="clip-b"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })),
+    );
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
     act(() => view.root.unmount());
   });
 });

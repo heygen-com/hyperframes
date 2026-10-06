@@ -286,6 +286,7 @@ export type RuntimeSeekOptions = {
    * engine's sub-frame tick count so a fractional sample time survives quantization.
    */
   subFrameDivisions?: number;
+  exact?: boolean;
 };
 
 export type RuntimeTimelineChildLike = {
@@ -313,6 +314,7 @@ export type RuntimeTimelineLike = {
   pause: () => void;
   seek: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
   totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  totalDuration?: () => number;
   progress?: (value?: number, suppressEvents?: boolean) => unknown;
   time: () => number;
   duration: () => number;

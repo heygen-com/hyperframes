@@ -142,7 +142,7 @@ export function AssetPreviewOverlay() {
       >
         {/* Close button */}
         <button
-          className="absolute top-2 right-2 w-6 h-6 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white flex items-center justify-center transition-colors z-10"
+          className="absolute top-2 right-2 w-6 h-6 rounded-full bg-raised hover:bg-press text-text-2 hover:text-text-0 flex items-center justify-center transition-colors z-10"
           onClick={(e) => {
             e.stopPropagation();
             clearPreviewAsset();

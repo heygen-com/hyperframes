@@ -23,7 +23,7 @@ function fakeIframe(elId: string, children: unknown[]): HTMLIFrameElement {
   return {
     contentWindow: {
       __timelines: { "index.html": timeline },
-      gsap: { getProperty: () => 0 },
+      gsap: { getProperty: () => 0, defaults: () => ({ ease: "power1.out" }) },
     },
     contentDocument: { querySelector: (sel: string) => (sel === `#${elId}` ? el : null) },
   } as unknown as HTMLIFrameElement;
@@ -451,7 +451,8 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
       fakeIframe("puck-b", []),
       commitMutation,
     );
-    return { handled, types: commitMutation.mock.calls.map(([, mutation]) => mutation.type) };
+    const mutations = commitMutation.mock.calls.map(([, mutation]) => mutation);
+    return { handled, mutations, types: mutations.map((mutation) => mutation.type) };
   }
 
   it("shifts the whole tween instead of adding a keyframe when the toggle is off", async () => {
@@ -461,10 +462,40 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
     expect(types).not.toContain("add-keyframe");
   });
 
-  it("still adds/updates a keyframe at the playhead when the toggle is on (default)", async () => {
-    const { handled, types } = await runAutoKeyframeDrag(true);
+  it("shifts a linear flat tween as keyframes that stay linear", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 1 });
+    const commitMutation = vi.fn();
+    const linear = { ...stalePositionAnim, ease: "none" } as GsapAnimation;
+    const live = {
+      targets: () => [{ id: "puck-b" }],
+      vars: { x: -180, y: -60, ease: "none" },
+      duration: () => 2,
+      startTime: () => 1,
+    };
+    await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 0 },
+      [linear],
+      fakeIframe("puck-b", [live]),
+      commitMutation,
+    );
+    const [mutation] = commitMutation.mock.calls.map(([, m]) => m);
+    expect(mutation).toMatchObject({ type: "replace-with-keyframes", easeEach: "none" });
+    expect(mutation).not.toHaveProperty("ease", "none");
+  });
+
+  it("still changes only the keyframe at the playhead when the toggle is on (default)", async () => {
+    const { handled, mutations } = await runAutoKeyframeDrag(true);
     expect(handled).toEqual({ status: "persisted" });
-    expect(types).not.toContain("replace-with-keyframes");
+    expect(mutations).toEqual([
+      expect.objectContaining({
+        type: "replace-with-keyframes",
+        keyframes: [
+          { percentage: 0, properties: { x: 0, y: 0 } },
+          { percentage: 100, properties: { x: -50, y: 0 } },
+        ],
+      }),
+    ]);
   });
 });
 
@@ -540,10 +571,49 @@ describe("tryGsapDragIntercept — motion paths", () => {
         ],
         ease: "none",
       },
-      expect.objectContaining({ label: "Move layer (new keyframe)", softReload: true }),
+      expect.objectContaining({
+        label: "Move layer (new keyframe)",
+        keyframeAction: "add",
+        softReload: true,
+      }),
     );
     expect(commitMutation.mock.calls.map(([, mutation]) => mutation.type)).not.toContain(
       "add-motion-path-point",
+    );
+  });
+
+  it("adds a node at a playhead past a duration-less arc, keeping the other nodes' times", async () => {
+    usePlayerStore.setState({
+      autoKeyframeEnabled: true,
+      activeKeyframePct: null,
+      currentTime: 15.9,
+    });
+    const durationless = { ...motionPathAnim, duration: undefined } as GsapAnimation;
+    const commitMutation = vi.fn();
+    await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 30 },
+      [durationless],
+      fakeIframe("puck-b", [
+        { ...liveTween, vars: { motionPath: { path: [] } }, duration: () => 0.5 },
+      ]),
+      commitMutation,
+    );
+    // GSAP plays it 12.17-12.67 s; the nodes stay at 12.17, 12.42 and 12.67 s.
+    expect(commitMutation).toHaveBeenCalledWith(
+      selection,
+      expect.objectContaining({
+        type: "replace-with-keyframes",
+        position: 12.17,
+        duration: 3.73,
+        keyframes: [
+          { percentage: 0, properties: { x: -184, y: 326 } },
+          { percentage: 6.7, properties: { x: 416, y: 804 } },
+          { percentage: 13.4, properties: { x: 796, y: 237 } },
+          { percentage: 100, properties: { x: -50, y: 30 } },
+        ],
+      }),
+      expect.objectContaining({ label: "Move layer (new keyframe)", keyframeAction: "add" }),
     );
   });
 
@@ -565,5 +635,60 @@ describe("tryGsapDragIntercept — motion paths", () => {
     expect(commitMutation.mock.calls.map(([, mutation]) => mutation.type)).not.toContain(
       "replace-with-keyframes",
     );
+  });
+});
+
+describe("tryGsapDragIntercept — position self-heal", () => {
+  const xyTween = {
+    ...stalePositionAnim,
+    id: "#puck-b-to-0-position",
+    position: 0,
+    resolvedStart: 0,
+  };
+  const centringSet = {
+    id: "#puck-b-set-0-position",
+    targetSelector: "#puck-b",
+    propertyGroup: "position",
+    method: "set",
+    properties: { xPercent: -50, yPercent: -50 },
+    position: 0,
+    duration: 0,
+  } as unknown as GsapAnimation;
+  const xySet = { ...centringSet, properties: { x: 10, y: 20 } } as GsapAnimation;
+  const liveTween = {
+    targets: () => [{ id: "puck-b" }],
+    vars: { x: -180, y: -60, duration: 2 },
+    duration: () => 2,
+    startTime: () => 0,
+  };
+
+  async function drag(second: GsapAnimation) {
+    usePlayerStore.setState({ currentTime: 1 });
+    const animations = [second, xyTween];
+    const commitMutation = vi.fn();
+    await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 30 },
+      animations,
+      fakeIframe("puck-b", [liveTween]),
+      commitMutation,
+      async () => animations,
+    );
+    return commitMutation.mock.calls.map(([, mutation]) => mutation);
+  }
+
+  it("keeps an xPercent/yPercent centring set and moves the x/y tween", async () => {
+    const mutations = await drag(centringSet);
+    expect(mutations.map((m) => m.type)).not.toContain("consolidate-position-writes");
+    expect(mutations.length).toBeGreaterThan(0);
+    expect(mutations.every((m) => m.animationId === xyTween.id)).toBe(true);
+  });
+
+  it("consolidates a second x/y write", async () => {
+    const mutations = await drag(xySet);
+    expect(mutations[0]).toMatchObject({
+      type: "consolidate-position-writes",
+      keepAnimationId: xyTween.id,
+    });
   });
 });

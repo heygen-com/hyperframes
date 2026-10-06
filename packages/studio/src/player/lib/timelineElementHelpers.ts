@@ -8,11 +8,14 @@
  */
 
 import type { TimelineElement } from "../store/playerStore";
+import { readTimelineText } from "./timelineText";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
+import { isHtmlElement, isImageElement, isMediaElement } from "@hyperframes/core/runtime/dom-realm";
+import { elementVolume } from "./storedVolume";
 import {
   type AttrReader,
   clampPlaybackRate,
@@ -142,11 +145,6 @@ export function furthestClipEndFromSource(source: string): number {
 // DOM element type guards
 // ---------------------------------------------------------------------------
 
-function isHtmlElement(el: Element): el is HTMLElement {
-  const HtmlElementCtor = el.ownerDocument.defaultView?.HTMLElement ?? globalThis.HTMLElement;
-  return typeof HtmlElementCtor !== "undefined" && el instanceof HtmlElementCtor;
-}
-
 function isCompositionHost(el: Element): boolean {
   return (
     el.hasAttribute("data-composition-id") ||
@@ -156,16 +154,11 @@ function isCompositionHost(el: Element): boolean {
 }
 
 export function resolveMediaElement(el: Element): HTMLMediaElement | HTMLImageElement | null {
-  const win = el.ownerDocument.defaultView ?? window;
-  const MediaElementCtor = win.HTMLMediaElement ?? globalThis.HTMLMediaElement;
-  const ImageElementCtor = win.HTMLImageElement ?? globalThis.HTMLImageElement;
-  if (el instanceof MediaElementCtor || el instanceof ImageElementCtor) return el;
+  if (isMediaElement(el) || isImageElement(el)) return el;
   // A composition's media belongs to its own timeline, not the clip's: its length would cap a trim.
   if (isCompositionHost(el)) return null;
   const candidate = el.querySelector("video, audio, img");
-  return candidate instanceof MediaElementCtor || candidate instanceof ImageElementCtor
-    ? candidate
-    : null;
+  return isMediaElement(candidate) || isImageElement(candidate) ? candidate : null;
 }
 
 /** The in-point as playback reads it, and the attribute holding it; empty when neither is authored. */
@@ -213,22 +206,38 @@ function setOptional<K extends keyof TimelineElement>(
   else entry[key] = value;
 }
 
-function readVolume(el: Element, media: Element): number | undefined {
-  const volume = Number.parseFloat(
-    el.getAttribute("data-volume") ?? media.getAttribute("data-volume") ?? "",
-  );
-  return Number.isFinite(volume) ? volume : undefined;
+/** The compiler's rule (timingCompiler): explicit data-has-audio wins; otherwise an unmuted <video> is audible. */
+export function isVideoAudible(opts: {
+  tag: string;
+  hasAudioAttr: string | null | undefined;
+  muted: boolean;
+}): boolean {
+  if (opts.hasAudioAttr === "true") return true;
+  if (opts.hasAudioAttr === "false" || opts.hasAudioAttr === "") return false;
+  return opts.tag.toLowerCase() === "video" && !opts.muted;
+}
+
+export function isAudibleVideoNode(el: Element): boolean {
+  if (el.tagName.toLowerCase() !== "video" || el.hasAttribute("muted")) return false;
+  return isVideoAudible({
+    tag: "video",
+    hasAudioAttr: el.getAttribute("data-has-audio"),
+    muted: false,
+  });
 }
 
 /** What the mixer gets: the compiler's `data-has-audio` rule, muted and volume. */
 function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): void {
   const media = resolveMediaElement(el) ?? el;
   const muted = el.hasAttribute("muted") || media.hasAttribute("muted");
-  const hasAudio = el.getAttribute("data-has-audio");
-  const sound = hasAudio === null ? el.tagName === "VIDEO" && !muted : hasAudio === "true";
+  const sound = isVideoAudible({
+    tag: el.tagName,
+    hasAudioAttr: el.getAttribute("data-has-audio"),
+    muted,
+  });
   setOptional(entry, "hasAudio", sound ? true : undefined);
   setOptional(entry, "muted", muted ? true : undefined);
-  setOptional(entry, "volume", readVolume(el, media));
+  setOptional(entry, "volume", elementVolume(el, media));
 }
 
 function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void {
@@ -238,6 +247,7 @@ function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void
 }
 
 export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
+  setOptional(entry, "text", readTimelineText(el));
   applyPlaybackMetadataFromElement(entry, el);
   applyAudioMetadataFromElement(entry, el);
   applyFadeMetadataFromElement(entry, el);
@@ -249,9 +259,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   const src = mediaEl.getAttribute("src");
   if (src) entry.src = src;
 
-  const win = mediaEl.ownerDocument.defaultView ?? window;
-  const MediaElementCtor = win.HTMLMediaElement ?? globalThis.HTMLMediaElement;
-  if (typeof MediaElementCtor === "undefined" || !(mediaEl instanceof MediaElementCtor)) return;
+  if (!isMediaElement(mediaEl)) return;
 
   const sourceDurationAttr =
     el.getAttribute("data-source-duration") ?? mediaEl.getAttribute("data-source-duration");

@@ -11,11 +11,36 @@ import {
 // Deep import: the mount path is not part of core's published export map (it is
 // bundled into the runtime IIFE, not imported by consumers). Same shape as
 // engine/src/services/videoFrameExtractor.test.ts reaching into core's runtime.
-import { loadExternalCompositions } from "../../../core/src/runtime/compositionLoader.js";
+import { loadCompositions } from "../../../core/src/runtime/compositionLoader.js";
 import { compileForRender } from "./htmlCompiler.js";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 
+vi.mock("../utils/urlDownloader.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/urlDownloader.js")>()),
+  fetchPublicHttpsText: async () => {
+    throw new Error("offline test");
+  },
+}));
+Object.assign(
+  (
+    window as unknown as {
+      happyDOM: {
+        settings: { disableCSSFileLoading: boolean; handleDisabledFileLoadingAsSuccess: boolean };
+      };
+    }
+  ).happyDOM.settings,
+  { disableCSSFileLoading: true, handleDisabledFileLoadingAsSuccess: true },
+);
+
 const tempDirs: string[] = [];
+
+const nativeQuerySelector = Element.prototype.querySelector;
+const nativeQuerySelectorAll = Element.prototype.querySelectorAll;
+afterEach(() => {
+  Element.prototype.querySelector = nativeQuerySelector;
+  Element.prototype.querySelectorAll = nativeQuerySelectorAll;
+  delete window.__hfSvgSelectorAliases;
+});
 
 beforeAll(() => {
   // The mount path scopes CSS with CSS.escape, which the DOM stub omits.
@@ -66,7 +91,7 @@ async function mountContract(dir: string, indexHtml: string): Promise<ParityCont
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
     Promise.resolve(new Response(readFileSync(join(dir, String(input)), "utf8"), { status: 200 })),
   );
-  await loadExternalCompositions({
+  await loadCompositions({
     injectedStyles: [],
     injectedScripts: [],
     injectedLinks: [],
@@ -413,11 +438,10 @@ const subCompositions = (files: Record<string, string>) =>
  *
  * - `runtimeBootstrap` / `variableBootstrap` — the runtime IIFE and the variable
  *   bootstrap script are injected by the player and the producer AROUND a mount,
- *   never by `loadExternalCompositions`. Comparing them would compare harnesses.
+ *   never by `loadCompositions`. Comparing them would compare harnesses.
  *
- * Nothing else is excluded. The templated-head-`<link>` divergence this file
- * used to carve out is closed and gated by a fixture above; so is the
- * anonymous-host one. Two divergences remain ungated HERE rather than
+ * Nothing else is excluded. The templated-head-`<link>` and anonymous-host
+ * divergences are gated by fixtures above. Two divergences remain ungated HERE rather than
  * unfixed — an inline `<head>` script and the split between the CSS scope id
  * and the script scope id both live in script bodies, and this contract
  * carries no script-body field. Their gates are the unit suites in

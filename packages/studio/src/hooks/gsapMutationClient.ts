@@ -1,11 +1,12 @@
 import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 export class GsapPreviewConvergenceError extends Error {}
 export class GsapOwnershipProtocolError extends GsapPreviewConvergenceError {}
 
 /** Verify rollback ownership support before any GSAP mutation can land. */
 export async function requireGsapOwnershipProtocol(projectId: string): Promise<void> {
-  const response = await fetch(
+  const response = await studioApiFetch(
     `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-capabilities`,
   );
   if (!response.ok) {
@@ -29,7 +30,7 @@ export async function rollbackOwnedMutation(
   if (targetPath.includes("\0") || targetPath.includes("..")) {
     throw new Error(`Unsafe path: ${targetPath}`);
   }
-  const response = await fetch(
+  const response = await studioApiFetch(
     `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-rollback/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
@@ -87,30 +88,67 @@ function readMutationError(value: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function postGsapMutation(
+type GsapMutationRoute = "gsap-mutations" | "gsap-mutations-batch";
+
+export function requestGsapMutation(
+  projectId: string,
+  route: GsapMutationRoute,
+  filePath: string,
+  body: unknown,
+): Promise<Response> {
+  return studioApiFetch(
+    `/api/projects/${encodeURIComponent(projectId)}/${route}/${encodeURIComponent(filePath)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+async function postOwnedGsapMutation(
+  route: GsapMutationRoute,
   projectId: string,
   filePath: string,
-  mutation: Record<string, unknown>,
+  body: Record<string, unknown>,
   fallback: string,
 ): Promise<GsapMutationStatus> {
   let response: Response;
   try {
-    response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(filePath)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-        body: JSON.stringify(mutation),
-      },
-    );
+    response = await requestGsapMutation(projectId, route, filePath, body);
   } catch (error) {
     throw new GsapPreviewConvergenceError(`${fallback}: mutation outcome unknown`, {
       cause: error,
     });
   }
-  const body: unknown = await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new GsapPreviewConvergenceError(readMutationError(body, fallback));
+    throw new GsapPreviewConvergenceError(readMutationError(payload, fallback));
   }
-  return readMutationStatus(body);
+  return readMutationStatus(payload);
+}
+
+export function postGsapMutation(
+  projectId: string,
+  filePath: string,
+  mutation: Record<string, unknown>,
+  fallback: string,
+): Promise<GsapMutationStatus> {
+  return postOwnedGsapMutation("gsap-mutations", projectId, filePath, mutation, fallback);
+}
+
+/** Every mutation in one request: the file is parsed and written once, with one ownership pair. */
+export function postGsapMutations(
+  projectId: string,
+  filePath: string,
+  mutations: readonly Record<string, unknown>[],
+  fallback: string,
+): Promise<GsapMutationStatus> {
+  return postOwnedGsapMutation(
+    "gsap-mutations-batch",
+    projectId,
+    filePath,
+    { mutations },
+    fallback,
+  );
 }

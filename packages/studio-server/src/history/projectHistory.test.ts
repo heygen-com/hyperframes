@@ -24,6 +24,36 @@ import { HistoryIdError } from "./historyId";
 import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
+// A test can hold a media copy, and run work after its blob is stored but before history records it.
+const mediaCopy = vi.hoisted(() => ({
+  held: null as Promise<void> | null,
+  stored: null as (() => Promise<unknown>) | null,
+  copies: [] as string[],
+  fails: null as ((copy: number) => boolean) | null,
+}));
+vi.mock("./blobStore", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./blobStore")>();
+  return {
+    ...real,
+    openBlobStore: async (dir: string) => {
+      const store = await real.openBlobStore(dir);
+      return {
+        ...store,
+        put: async (path: string) => {
+          if (path.endsWith(".mp4")) {
+            await mediaCopy.held;
+            mediaCopy.copies.push(basename(path));
+            if (mediaCopy.fails?.(mediaCopy.copies.length)) throw new Error("The disk is full.");
+          }
+          const hash = await store.put(path);
+          if (path.endsWith(".mp4")) await mediaCopy.stored?.();
+          return hash;
+        },
+      };
+    },
+  };
+});
+
 const you: HistoryWho = { kind: "person", name: "You" };
 const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
 const agent: HistoryWho = { kind: "agent", name: "Agent" };
@@ -31,6 +61,7 @@ const cleanup: Array<() => unknown> = [];
 
 afterEach(async () => {
   for (const step of cleanup.splice(0).reverse()) await step();
+  Object.assign(mediaCopy, { held: null, stored: null, copies: [], fails: null });
 });
 
 const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
@@ -70,6 +101,19 @@ async function project(files: Record<string, string | Buffer>, options = {}) {
   return { projectDir, historyRoot, history, write, read, has };
 }
 
+/** A log as an older version leaves it: no marker; 0.8.123's baseline also never names the media ledger. */
+function asWrittenBy(version: "0.8.122" | "0.8.123", logFile: string) {
+  const lines = readFileSync(logFile, "utf-8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  for (const record of lines.filter((line) => line.type === "baseline")) {
+    if (version === "0.8.123") delete record.files[".media/manifest.jsonl"];
+    delete record.keepsLedger;
+  }
+  writeFileSync(logFile, lines.map((record) => JSON.stringify(record)).join("\n") + "\n");
+}
+
 /** Undoes the newest change still in effect, whoever made it; Cmd+Z steps only over the caller's own. */
 async function undoNewest(history: ProjectHistory) {
   const newest = [...history.list()].reverse().find((entry) => !entry.undoes && !entry.undone);
@@ -104,6 +148,366 @@ async function change(history: ProjectHistory, who: HistoryWho, label: string, w
 }
 
 describe("openProjectHistory", () => {
+  it("never writes a hidden file an older log still names, on undo or restore", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({
+      "index.html": "v1",
+      "turn-record": "A",
+    });
+    const turn = await change(history, agent, "Agent turn", () => {
+      write("index.html", "v2");
+      write("turn-record", "B");
+    });
+    await history.close();
+    // What an older log holds: the record under its hidden name, as history filed it before.
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    write(".turn-record", "C");
+    expect((await reopened.undo(turn.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("v1");
+    expect(read(".turn-record")).toBe("C");
+    await reopened.restore(START, you);
+    expect(read(".turn-record")).toBe("C");
+  });
+
+  it("steps Undo past an older log's entry that changed only a hidden file", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project(
+      { "index.html": "v1", "turn-record": "A" },
+      { quietMs: 30 },
+    );
+    await change(history, you, "Your edit", () => write("index.html", "v2"));
+    write("turn-record", "B");
+    history.noteChange("turn-record");
+    await history.flush();
+    expect(history.list().map((entry) => entry.who.kind)).toEqual(["person", "outside"]);
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.list().map((entry) => entry.files.length)).toEqual([1, 0]);
+    expect(await reopened.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("v1");
+  });
+
+  it("keeps every entry an older log names, emptied ones too, and undoing one still lands", async () => {
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "v1", "turn-record": "A" },
+      { quietMs: 30 },
+    );
+    write("turn-record", "B");
+    history.noteChange("turn-record");
+    await history.flush();
+    const [hidden] = history.list();
+    await history.pin(hidden!.id, true);
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.list()).toMatchObject([{ id: hidden!.id, files: [], pinned: true }]);
+    const undone = await reopened.undo(hidden!.id, { who: you });
+    expect(undone).toMatchObject({ ok: true, entry: { undoes: hidden!.id, files: [] } });
+  });
+
+  it("keeps an older log's Undo that only reverted a hidden file, so its target stays undone", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      "turn-record": "H0",
+    });
+    const yours = await change(history, you, "Your edit", () => {
+      write("index.html", "B");
+      write("turn-record", "H1");
+    });
+    await change(history, agent, "Agent turn", () => write("index.html", "C"));
+    const keep = { who: you, mode: "keep-later-edits" } as const;
+    expect(await history.undo(yours.id, keep)).toMatchObject({ ok: true });
+    expect(history.next("back", you)).toBeUndefined();
+    await history.close();
+    const logFile = join(historyRoot, history.projectId, "log.jsonl");
+    writeFileSync(
+      logFile,
+      readFileSync(logFile, "utf-8").replaceAll('"turn-record"', '".turn-record"'),
+    );
+    renameSync(join(projectDir, "turn-record"), join(projectDir, ".turn-record"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(reopened.next("back", you)).toBeUndefined();
+    expect(reopened.next("forward", you)).toBeUndefined();
+  });
+
+  it("a log 0.8.123 wrote without the media ledger takes it in, so the first Undo undoes the edit", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      ".media/manifest.jsonl": "{}\n",
+    });
+    await change(history, you, "Your edit", () => write("index.html", "B"));
+    await history.close();
+    asWrittenBy("0.8.123", join(historyRoot, history.projectId, "log.jsonl"));
+    const reopened = await open(projectDir, historyRoot);
+    expect(await reopened.step("back", you)).toMatchObject({ ok: true });
+    expect([read("index.html"), read(".media/manifest.jsonl")]).toEqual(["A", "{}\n"]);
+  });
+
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "a log 0.8.123 wrote never takes in a ledger behind a link",
+    async () => {
+      const { history, projectDir, historyRoot } = await project(
+        { "index.html": "A" },
+        { quietMs: 30 },
+      );
+      await history.close();
+      asWrittenBy("0.8.123", join(historyRoot, history.projectId, "log.jsonl"));
+      const outside = tempDir("hf-history-linked-");
+      writeFileSync(join(outside, "manifest.jsonl"), "{}\n");
+      symlinkSync(outside, join(projectDir, ".media"), "dir");
+      const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+      await reopened.flush();
+      expect(reopened.list()).toEqual([]);
+    },
+  );
+
+  it("a ledger made while the project was closed is a change like any file, once a log keeps the ledger", async () => {
+    const { history, write, read, has, projectDir, historyRoot } = await project(
+      { "index.html": "A" },
+      { quietMs: 30 },
+    );
+    await history.close();
+    write("index.html", "B");
+    write(".media/manifest.jsonl", "{}\n");
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    const [outside] = reopened.list();
+    expect(outside!.files.map((file) => file.path).sort()).toEqual([
+      ".media/manifest.jsonl",
+      "index.html",
+    ]);
+    expect((await reopened.undo(outside!.id, { who: you })).ok).toBe(true);
+    expect([read("index.html"), has(".media/manifest.jsonl")]).toEqual(["A", false]);
+  });
+
+  it("a ledger made while closed is still a change after the project's media was copied in the background", async () => {
+    const { history, write, has, projectDir, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": Buffer.alloc(2 * 1024 ** 2, 7) },
+      { quietMs: 30 },
+    );
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    await history.close();
+    write("b.png", "png");
+    write(".media/manifest.jsonl", '{"path":"b.png"}\n');
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    const [outside] = reopened.list();
+    expect(outside!.files.map((file) => file.path).sort()).toEqual([
+      ".media/manifest.jsonl",
+      "b.png",
+    ]);
+    expect((await reopened.undo(outside!.id, { who: you })).ok).toBe(true);
+    expect([has("b.png"), has(".media/manifest.jsonl")]).toEqual([false, false]);
+  });
+
+  it("names media in adopting.json until its copy is recorded, so an exit mid-copy resumes it", async () => {
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const { history, historyRoot } = await project({
+      "index.html": "A",
+      "clip.mp4": Buffer.alloc(2 * 1024 ** 2, 7),
+    });
+    const adopting = join(historyRoot, history.projectId, "adopting.json");
+    expect(JSON.parse(readFileSync(adopting, "utf-8"))).toEqual(["clip.mp4"]);
+    release();
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    expect(existsSync(adopting)).toBe(false);
+  });
+
+  it("keeps media whose recording failed for the next open, rather than log it as added", async () => {
+    const { history, write, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": Buffer.alloc(2 * 1024 ** 2, 7) },
+      { budgetBytes: 1, quietMs: 30 },
+    );
+    // The edit's prune takes the first copy; storing it again then fails.
+    mediaCopy.fails = (copy) => copy === 2;
+    mediaCopy.stored = () => {
+      mediaCopy.stored = null;
+      return change(history, you, "Color", () => write("index.html", "B"));
+    };
+    await vi.waitFor(() => expect(mediaCopy.copies).toHaveLength(2), { timeout: 10_000 });
+    await history.flush();
+    expect(history.list().flatMap((entry) => entry.files.map((file) => file.path))).not.toContain(
+      "clip.mp4",
+    );
+    const adopting = join(historyRoot, history.projectId, "adopting.json");
+    expect(JSON.parse(readFileSync(adopting, "utf-8"))).toEqual(["clip.mp4"]);
+  });
+
+  it("never copies the media of a folder that replaced the project", async () => {
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const media = {
+      "a.mp4": Buffer.alloc(2 * 1024 ** 2, 1),
+      "b.mp4": Buffer.alloc(2 * 1024 ** 2, 2),
+    };
+    const { history, write, projectDir } = await project({ "index.html": "A", ...media });
+    renameSync(projectDir, `${projectDir}-moved`);
+    cleanup.push(() => rmSync(`${projectDir}-moved`, { recursive: true, force: true }));
+    mkdirSync(projectDir);
+    for (const [path, bytes] of Object.entries(media)) write(path, bytes);
+    release();
+    await history.close();
+    // Only the copy already running when the folder changed may finish.
+    expect(mediaCopy.copies).toEqual(["a.mp4"]);
+  });
+
+  it("undoes a clip replaced while closed, though the history closed before its copy finished", async () => {
+    const clip = Buffer.alloc(2 * 1024 ** 2, 7);
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": clip },
+      { quietMs: 30 },
+    );
+    const closed = history.close();
+    release();
+    await closed;
+    write("clip.mp4", Buffer.alloc(2 * 1024 ** 2, 9));
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    expect(reopened.list().map((entry) => entry.files.map((file) => file.path))).toEqual([
+      ["clip.mp4"],
+    ]);
+    expect(await reopened.step("back", you)).toMatchObject({ ok: true });
+    expect(readFileSync(join(projectDir, "clip.mp4")).equals(clip)).toBe(true);
+  });
+
+  it("adopts media whose copy a process exit cut short, rather than log it as added", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "A" });
+    await history.close();
+    // What an exit mid-copy leaves: the clip on disk, named as still being copied, not in the baseline.
+    write("clip.mp4", Buffer.alloc(2 * 1024 ** 2, 7));
+    writeFileSync(join(historyRoot, history.projectId, "adopting.json"), '["clip.mp4"]');
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await vi.waitFor(() => expect(reopened.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    await reopened.flush();
+    expect(reopened.list()).toEqual([]);
+  });
+
+  it("keeps a media copy that a budget prune ran into before history recorded it", async () => {
+    const clip = Buffer.alloc(2 * 1024 ** 2, 7);
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    const { history, write } = await project(
+      { "index.html": "A", "clip.mp4": clip },
+      { budgetBytes: 1, quietMs: 30 },
+    );
+    // The copy is stored; an edit commits and prunes before history records the copy.
+    mediaCopy.stored = () => {
+      mediaCopy.stored = null;
+      return change(history, you, "Color", () => write("index.html", "B"));
+    };
+    release();
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]), {
+      timeout: 10_000,
+    });
+    const start = history.peek(START)["clip.mp4"]!;
+    expect((await history.readBlob(start)).equals(clip)).toBe(true);
+  });
+
+  it("a log 0.8.123 wrote without a ledger takes none in, and one made later while closed is a change", async () => {
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A" },
+      { quietMs: 30 },
+    );
+    await history.close();
+    asWrittenBy("0.8.123", join(historyRoot, history.projectId, "log.jsonl"));
+    await (await open(projectDir, historyRoot, { quietMs: 30 })).close();
+    write(".media/manifest.jsonl", "{}\n");
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    expect(reopened.list().map((entry) => entry.files.map((file) => file.path))).toEqual([
+      [".media/manifest.jsonl"],
+    ]);
+  });
+
+  it("an older log keeps a ledger one of its changes made out of the start", async () => {
+    const { history, write, has, projectDir, historyRoot } = await project({ "index.html": "A" });
+    await change(history, agent, "Cut out the logo", () => {
+      write("index.html", "B");
+      write(".media/manifest.jsonl", "{}\n");
+    });
+    await history.close();
+    asWrittenBy("0.8.122", join(historyRoot, history.projectId, "log.jsonl"));
+    const reopened = await open(projectDir, historyRoot);
+    await reopened.restore(START, you);
+    expect(has(".media/manifest.jsonl")).toBe(false);
+  });
+
+  it("an older log keeps the ledger its start names, so a change made while closed is filed", async () => {
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A", ".media/manifest.jsonl": "{}\n" },
+      { quietMs: 30 },
+    );
+    await history.close();
+    asWrittenBy("0.8.122", join(historyRoot, history.projectId, "log.jsonl"));
+    write(".media/manifest.jsonl", '{}\n{"id":"logo"}\n');
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await reopened.flush();
+    expect(reopened.list().map((entry) => entry.files.map((file) => file.path))).toEqual([
+      [".media/manifest.jsonl"],
+    ]);
+  });
+
+  it("takes the media ledger back with the film when a change is undone", async () => {
+    const { history, write, read } = await project({
+      "index.html": "<h1>Hello</h1>",
+      ".media/manifest.jsonl": "{}\n",
+    });
+    const cutout = await change(history, agent, "Cut out the logo", () => {
+      write("index.html", "<h1>Hello</h1><img src='logo.png'>");
+      write(".media/manifest.jsonl", '{}\n{"id":"logo"}\n');
+      write(".media/images/logo.png", "png");
+      write(".tools/manifest.jsonl", "{}\n");
+    });
+    expect(cutout.files.map((file) => file.path)).toEqual([".media/manifest.jsonl", "index.html"]);
+    expect((await history.undo(cutout.id, { who: you })).ok).toBe(true);
+    expect(read(".media/manifest.jsonl")).toBe("{}\n");
+  });
+
+  it("never files a hidden file name as a change, but keeps Studio's two manifests", async () => {
+    const { history, write } = await project({ "index.html": "<h1>Hello</h1>" }, { quietMs: 30 });
+    const turn = await history.beginWindow(agent, "Agent turn");
+    write("index.html", "<h1>Bye</h1>");
+    write(".turn-record", "a tool's own record");
+    write("sub/.DS_Store", "finder");
+    write(".hyperframes/studio-motion.json", "{}");
+    const entry = await turn.close();
+    expect(entry!.files.map((file) => file.path)).toEqual([
+      ".hyperframes/studio-motion.json",
+      "index.html",
+    ]);
+    const records = await history.beginWindow(agent, "Records only");
+    write(".spawn-record", "pid");
+    expect(await records.close()).toBeNull();
+    history.noteChange(".spawn-record");
+    await history.flush();
+    expect(history.list()).toHaveLength(1);
+  });
+
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
     const { history, write, read, projectDir } = await project(
       { "index.html": "<h1>Hello</h1>", "assets/logo.png": Buffer.from([1, 2, 3]) },
@@ -1384,6 +1788,19 @@ describe("claim: a writer that records after writing", () => {
     expect(history.list()[0]).toMatchObject({ id: first!.id, files: [{ path: "index.html" }] });
   });
 
+  it("dates a held claim by its last write, not by the later edit that commits it", async () => {
+    let clock = 1_000;
+    const { history, write } = await project({ "index.html": "A" }, { now: () => clock });
+    const held = { idleMs: Number.POSITIVE_INFINITY };
+    write("index.html", "B");
+    await history.claim(you, "Moved clip", ["index.html"], { ...held, coalesceKey: "move:1" });
+    clock = 600_000;
+    write("index.html", "C");
+    await history.claim(you, "Moved clip", ["index.html"], { ...held, coalesceKey: "move:2" });
+
+    expect(history.list().map((entry) => entry.endedAt)).toEqual([1_000]);
+  });
+
   it("a coalescing claim whose writes net to nothing returns null and records nothing", async () => {
     const { history, write } = await project({ "index.html": "A" });
     write("index.html", "B");
@@ -2111,5 +2528,18 @@ describe("claim: a writer that records after writing", () => {
       "A",
       "C",
     ]);
+  });
+});
+
+describe("idle windows", () => {
+  it("sleeps a window with an idle limit past Node's timer range instead of waking every millisecond", async () => {
+    const { history } = await project({ "index.html": "A" });
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    const window = await history.beginWindow(agent, "Long turn", { idleMs: 30 * 86_400_000 });
+    const delays = timer.mock.calls.map(([, delay]) => delay ?? 0);
+    timer.mockRestore();
+    expect(Math.max(...delays)).toBeLessThanOrEqual(2 ** 31 - 1);
+    expect(Math.max(...delays)).toBeGreaterThan(86_400_000);
+    await window.close();
   });
 });

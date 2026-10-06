@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeCssIdentifierAt,
+  escapeCssAttributeValue,
   escapeCssIdentifier,
+  replaceSelectorAttributeTokens,
   replaceSelectorIdTokens,
 } from "./selectorIdTokens";
 
@@ -18,6 +20,12 @@ describe("decodeCssIdentifierAt", () => {
     expect(decodeCssIdentifierAt(String.raw`fx\2e\31 {`, 0)).toEqual({ value: "fx.1", end: 9 });
     expect(decodeCssIdentifierAt("fx\\2e\\31\r\n{", 0)).toEqual({ value: "fx.1", end: 10 });
     expect(decodeCssIdentifierAt(String.raw`\31 st`, 0)).toEqual({ value: "1st", end: 6 });
+  });
+
+  it("rejects CSS newline escapes in identifiers", () => {
+    for (const newline of ["\n", "\r", "\f", "\r\n"]) {
+      expect(decodeCssIdentifierAt("\\" + newline, 0)).toBeNull();
+    }
   });
 
   it("maps out-of-range and surrogate code points to U+FFFD", () => {
@@ -86,4 +94,19 @@ it("does not rewrite escaped hashes inside class names", () => {
   expect(replaceSelectorIdTokens(String.raw`.foo\[bar #clip`, ["clip"], () => "#new")).toBe(
     String.raw`.foo\[bar #new`,
   );
+});
+
+it("serializes control characters inside CSS attribute string values", () => {
+  expect(escapeCssAttributeValue('a\nb\rc\fd"e\\f')).toBe('a\\a b\\d c\\c d\\"e\\\\f');
+});
+
+it("keeps escaped closing brackets inside unquoted attribute tokens", () => {
+  expect(
+    replaceSelectorAttributeTokens(String.raw`use[href=\#sym\]bol]`, () => '[href="#renamed"]'),
+  ).toBe('use[href="#renamed"]');
+});
+
+it("keeps commented brackets bounded when the closing bracket is missing", () => {
+  const selector = "[" + "/*x*/".repeat(2000);
+  expect(replaceSelectorAttributeTokens(selector, () => "changed")).toBe(selector);
 });

@@ -40,7 +40,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-red-400 text-xs px-4 text-center">
+      <div className="flex flex-1 items-center justify-center text-danger-ink text-xs px-4 text-center">
         {error}
       </div>
     );
@@ -77,9 +77,9 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
       {/* Block grid */}
       <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2">
         {category === "vfx" && (
-          <div className="mb-2 px-2 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[9px] text-purple-300 leading-relaxed">
+          <div className="mb-2 px-2 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[9px] text-text-2 leading-relaxed">
             VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
-            <span className="font-mono text-purple-200">chrome://flags/#html-in-canvas</span> for
+            <span className="font-mono text-text-0">chrome://flags/#html-in-canvas</span> for
             preview.
           </div>
         )}
@@ -423,8 +423,8 @@ function BlockCard({
               title="Add to composition at current time"
               className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-[10px] font-semibold transition-colors active:scale-[0.97] ${
                 addState === "failed"
-                  ? "bg-red-500 text-white"
-                  : "bg-white text-black hover:bg-neutral-200"
+                  ? "bg-danger text-on-danger"
+                  : "bg-white text-black hover:bg-white/85"
               }`}
             >
               <svg
@@ -453,7 +453,7 @@ function BlockCard({
             className={`flex items-center gap-1.5 px-3 ${onAdd ? "py-1" : "py-1.5"} rounded-md transition-colors active:scale-[0.97] ${
               onAdd
                 ? "bg-white/15 text-white/90 hover:bg-white/25 text-[9px]"
-                : "bg-white text-black hover:bg-neutral-200 text-[10px] font-semibold"
+                : "bg-text-0 text-bg-0 hover:bg-text-2 text-[10px] font-semibold"
             }`}
           >
             <svg

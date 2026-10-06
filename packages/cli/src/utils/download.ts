@@ -12,6 +12,7 @@ export interface DownloadOptions {
   timeoutMs?: number;
   /** Reject before writing more than this many response bytes. */
   maxBytes?: number;
+  onProgress?: (receivedBytes: number, totalBytes: number | null) => void;
 }
 
 /** Every redirect a host may reasonably answer with, not just the two we saw first. */
@@ -40,17 +41,28 @@ function removePartialFile(path: string): void {
   }
 }
 
-function enforceByteLimit(maxBytes: number): Transform {
-  let received = 0;
-  return new Transform({
+function measureDownload(options: DownloadOptions, contentLength: string | undefined) {
+  const length = Number(contentLength);
+  const totalBytes = Number.isSafeInteger(length) && length >= 0 ? length : null;
+  let receivedBytes = 0;
+  let reportedAt = Date.now();
+  options.onProgress?.(0, totalBytes);
+  const stream = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
-      received += chunk.byteLength;
-      callback(
-        received > maxBytes ? new Error(`Download exceeded ${maxBytes} bytes`) : null,
-        chunk,
-      );
+      receivedBytes += chunk.byteLength;
+      if (options.maxBytes !== undefined && receivedBytes > options.maxBytes) {
+        callback(new Error(`Download exceeded ${options.maxBytes} bytes`));
+        return;
+      }
+      const now = Date.now();
+      if (now - reportedAt >= 100) {
+        options.onProgress?.(receivedBytes, totalBytes);
+        reportedAt = now;
+      }
+      callback(null, chunk);
     },
   });
+  return { stream, complete: () => options.onProgress?.(receivedBytes, totalBytes) };
 }
 
 /**
@@ -73,7 +85,6 @@ export function downloadFile(
 ): Promise<void> {
   const tmp = `${dest}.${process.pid}.${randomUUID()}.tmp`;
   const timeoutMs = options.timeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
-  const maxBytes = options.maxBytes;
   return new Promise((resolve, reject) => {
     const follow = (u: string, hops = 0) => {
       let activeResponse: IncomingMessage | undefined;
@@ -110,15 +121,14 @@ export function downloadFile(
             reject(new Error(`Download failed: HTTP ${res.statusCode}`));
             return;
           }
+          const meter = measureDownload(options, res.headers["content-length"]);
           const file = createWriteStream(tmp);
           responsePipelineStarted = true;
-          const transfer =
-            maxBytes === undefined
-              ? pipeline(res, file)
-              : pipeline(res, enforceByteLimit(maxBytes), file);
+          const transfer = pipeline(res, meter.stream, file);
           transfer
             .then(() => {
               renameSync(tmp, dest);
+              meter.complete();
               resolve();
             })
             .catch((err) => {
