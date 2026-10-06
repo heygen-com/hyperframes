@@ -39,6 +39,7 @@ declare global {
     __player?: PlayerAPI;
     __hyperframes?: {
       registerFrameSource: typeof import("./frameSources").registerFrameSource;
+      createFilmBridge: typeof import("./filmBridge").createFilmBridge;
       /** A path the calling composition wrote relative to its own file, as a URL the page can load. */
       assetUrl?: (path: string) => string;
       registerRuntimeDataHandler?: (

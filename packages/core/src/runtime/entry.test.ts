@@ -103,6 +103,7 @@ describe("runtime entry", () => {
     window.__timelines = {};
     Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
     await evaluateRuntime();
+    expect(window.__hyperframes!.createFilmBridge).toEqual(expect.any(Function));
     let finish!: () => void;
     const first = new Promise<void>((resolve) => {
       finish = resolve;

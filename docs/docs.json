@@ -914,6 +914,7 @@
               "concepts/data-attributes",
               "guides/gsap-animation",
               "guides/frame-sources",
+              "guides/imported-film-html",
               "concepts/frame-adapters",
               "concepts/determinism",
               "guides/html-in-canvas",

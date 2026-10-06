@@ -15,6 +15,7 @@ import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./
 import { runScriptsAfterFonts } from "./afterFonts";
 import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
 import { registerFrameSource } from "./frameSources";
+import { createFilmBridge } from "./filmBridge";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -27,6 +28,7 @@ type HyperframeWindow = Window & {
     setRuntimeData: typeof setRuntimeData;
     clearRuntimeData: typeof clearRuntimeData;
     registerFrameSource: typeof registerFrameSource;
+    createFilmBridge: typeof createFilmBridge;
   };
 };
 
@@ -56,6 +58,7 @@ deferMediaUntilDue();
   setRuntimeData,
   clearRuntimeData,
   registerFrameSource,
+  createFilmBridge,
 };
 
 function bootstrapHyperframeRuntime(): void {
