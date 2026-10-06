@@ -18,9 +18,11 @@ import { DomEditOverlay } from "./DomEditOverlay";
 import { PreviewReadOnlyProvider } from "./previewReadOnlyContext";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "./manualEditsTypes";
 import { PRESS_WAITING_ATTR } from "./domEditOverlayGestures";
+import { PRESS_WAIT_MAX_MS } from "./previewGestureStarts";
 import { readDragStamp } from "../../hooks/draggedGsapPosition";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { whileScriptWrites } from "../../player/previewReloading";
+import { paintBackNewestStudioPendingEdit } from "../../utils/studioPendingEdits";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -479,6 +481,60 @@ describe("a press while a script write is out", () => {
     expect(drawn[1]).toBeCloseTo((saved * RECT.height) / RECT.width, 0);
   });
 
+  it("stops waiting on a write that never lands, and runs on the page shown", async () => {
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    try {
+      const editor = mountEditor(false);
+      pointer(editor.box, "pointerdown", 150, 150);
+      pointer(editor.overlay, "pointermove", 190, 170);
+      pointer(editor.overlay, "pointerup", 190, 170);
+      await act(async () => void vi.advanceTimersByTime(PRESS_WAIT_MAX_MS - 100));
+      expect(editor.onPathOffsetCommit, "still waiting").not.toHaveBeenCalled();
+      await act(async () => void vi.advanceTimersByTime(200));
+      expect(editor.onPathOffsetCommit.mock.calls.map((call) => call[1])).toEqual([
+        { x: 40, y: 20 },
+      ]);
+
+      pointer(editor.box, "pointerdown", 190, 170);
+      expect(editor.box.hasAttribute(PRESS_WAITING_ATTR), "no second wait on the same write").toBe(
+        false,
+      );
+      pointer(editor.overlay, "pointerup", 190, 170);
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {
+        land();
+        await write;
+      });
+    }
+  });
+
+  it("is what Cmd+Z undoes while it waits, so it never runs", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+
+    let undone: ReturnType<typeof paintBackNewestStudioPendingEdit> = null;
+    act(() => void (undone = paintBackNewestStudioPendingEdit()));
+    expect(undone, "the waiting press is the newest edit").not.toBeNull();
+    expect(await undone!.landed()).toBe(false);
+    expect((editor.box as HTMLElement).style.left, "the outline goes back").toBe("100px");
+    expect(editor.box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false);
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await settle();
+    expect(editor.onPathOffsetCommit).not.toHaveBeenCalled();
+    expect(file.title).toBe("");
+  });
+
   it("lands a released drag when the window loses focus before the write does", async () => {
     const editor = mountEditor(false);
     let land: () => void = () => {};
@@ -535,6 +591,34 @@ describe("a drag moves only with its own pointer pressed", () => {
       expect(file.title).toBe("translate: 40px 20px");
     },
   );
+});
+
+describe("a press while the preview swaps scenes in place", () => {
+  it("waits for the swap and moves the swapped-in node", async () => {
+    const { live, overlay, box } = mountEditor(false);
+    Object.assign(live.contentWindow!, {
+      __hfSwapScenes: (html: string) => {
+        live.contentDocument!.body.innerHTML = html.replace(/^[\s\S]*<body>|<\/body>[\s\S]*$/g, "");
+      },
+    });
+    let reply: (r: Response) => void = () => {};
+    vi.stubGlobal("fetch", () => new Promise<Response>((resolve) => (reply = resolve)));
+    try {
+      const replaced = byId(live, "title");
+      act(() => api().refreshPlayer());
+      pointer(box, "pointerdown", 150, 150);
+      pointer(overlay, "pointermove", 190, 170);
+      pointer(overlay, "pointerup", 190, 170);
+      expect(box.hasAttribute(PRESS_WAITING_ATTR), "held until the new scenes show").toBe(true);
+
+      reply(new Response(served("").contentDocument!.documentElement.outerHTML));
+      await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+      expect(byId(live, "title")).not.toBe(replaced);
+      expect(byId(live, "title").style.getPropertyValue("translate")).toBe("40px 20px");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("an outside change during a drag, on a preview that can swap scenes in place", () => {

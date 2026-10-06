@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
 import { usePlayerStore } from "../store/playerStore";
+import { isPreviewChanging } from "../previewReloading";
 import { NLEProvider, useNLEContext, type NLEContextValue } from "../../components/nle/NLEContext";
 import {
   makeAdapterWindow,
@@ -750,6 +751,19 @@ describe("useTimelinePlayer scene swap", () => {
     await settle();
     expect(swap).toHaveBeenCalledWith("<html>v2</html>", expect.anything());
     expect(roles(getApi())).toEqual(["live"]);
+  });
+
+  it("counts as a preview change until the swap lands, so a canvas press waits for the new scenes", async () => {
+    let reply: (r: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => (reply = resolve)),
+    );
+    const { getApi } = liveFilm(vi.fn(async () => {}));
+    act(() => getApi().refreshPlayer());
+    expect(isPreviewChanging()).toBe(true);
+    reply(new Response("<html>v2</html>"));
+    await settle();
+    expect(isPreviewChanging()).toBe(false);
   });
 
   it("falls back to the full reload when the preview refuses the swap", async () => {

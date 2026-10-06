@@ -17,42 +17,70 @@ import {
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
-import { isPreviewChanging } from "../../player/previewReloading";
+import { giveUpOnPreviewChange, isPreviewChanging } from "../../player/previewReloading";
+import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 
 const MAX_SETTLED_WAIT_FRAMES = 60;
+export const PRESS_WAIT_MAX_MS = 10_000;
 
 export function createPreviewGestureStarts(
   opts: UseDomEditOverlayGesturesOptions,
   moveActiveGesture: (e: React.PointerEvent<HTMLDivElement>) => void,
   releaseActiveGesture: (e: React.PointerEvent<HTMLDivElement>) => void,
 ) {
+  /** Points Cmd+Z at the newest released press still waiting, if any. */
+  const offerUndo = () => {
+    let p = opts.waitingPressRef.current;
+    while (p && !p.released) p = p.after;
+    const press = p;
+    setStudioWaitingPressCancel(press && (() => dropPress(press)));
+  };
+
   const endWaitingPress = (press: WaitingPressState | null = opts.waitingPressRef.current) => {
     for (let p = press; p && !p.ended; p = p.after) {
       p.ended = true;
       cancelAnimationFrame(p.frame);
     }
     // A press queued behind this one keeps waiting.
-    if (press !== opts.waitingPressRef.current) return;
-    opts.waitingPressRef.current = null;
-    opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    opts.rafPausedRef.current = false;
+    if (press === opts.waitingPressRef.current) {
+      opts.waitingPressRef.current = null;
+      opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
+      opts.rafPausedRef.current = false;
+    }
+    offerUndo();
+  };
+
+  /** Takes one press out of the queue; the outline shows the newest press left, or the box before this one. */
+  const dropPress = (press: WaitingPressState) => {
+    if (press.ended) return;
+    press.ended = true;
+    cancelAnimationFrame(press.frame);
+    const newest = opts.waitingPressRef.current;
+    if (press === newest) {
+      const before = press.after;
+      opts.waitingPressRef.current = before;
+      const shown = before ?? press;
+      const at = before?.moved;
+      shown.draw?.(at ? at.clientX - shown.startX : 0, at ? at.clientY - shown.startY : 0);
+      if (!before) {
+        opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
+        opts.rafPausedRef.current = false;
+      }
+    } else for (let p = newest; p; p = p.after) if (p.after === press) p.after = press.after;
+    offerUndo();
   };
 
   /** Ends the press still held, if any; presses already released are finished edits and still land. */
   const endHeldPress = () => {
     const held = opts.waitingPressRef.current;
-    if (!held || held.released) return;
-    held.ended = true;
-    cancelAnimationFrame(held.frame);
-    const before = held.after;
-    opts.waitingPressRef.current = before;
-    if (!before) {
-      opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-      opts.rafPausedRef.current = false;
-    } else if (before.moved)
-      before.draw?.(before.moved.clientX - before.startX, before.moved.clientY - before.startY);
+    if (held && !held.released) dropPress(held);
+  };
+
+  const releaseWaitingPress = (press: WaitingPressState, e: React.PointerEvent<HTMLDivElement>) => {
+    press.released = e;
+    offerUndo();
   };
 
   const drawPressedBox = (origin: OverlayRect | null): WaitingPressState["draw"] =>
@@ -114,6 +142,7 @@ export function createPreviewGestureStarts(
     opts.rafPausedRef.current = true;
     let shownFrames = 0;
     let settledFrames = 0;
+    const since = performance.now();
     const poll = () => {
       if (press.ended) return;
       if (press.after && !press.after.ended) {
@@ -128,7 +157,10 @@ export function createPreviewGestureStarts(
       settledFrames = settled ? settledFrames + 1 : 0;
       // The waiting outline stays drawn while replay measures the live element separately.
       const lost = elements.length === 0 || settledFrames > MAX_SETTLED_WAIT_FRAMES;
-      if (!lost && shownFrames < 2) {
+      // A change that never ends (a save with no reply) would hold every press: run on the page shown, as before waiting.
+      const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
+      if (overdue) giveUpOnPreviewChange();
+      if (!lost && shownFrames < 2 && !overdue) {
         press.frame = requestAnimationFrame(poll);
         return;
       }
@@ -228,5 +260,5 @@ export function createPreviewGestureStarts(
     );
   };
 
-  return { startGesture, startGroupDrag, endWaitingPress, endHeldPress };
+  return { startGesture, startGroupDrag, endWaitingPress, endHeldPress, releaseWaitingPress };
 }

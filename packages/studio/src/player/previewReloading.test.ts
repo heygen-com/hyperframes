@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  giveUpOnPreviewChange,
   isPreviewChanging,
   previewReloadBegun,
   requestPreviewReload,
@@ -32,5 +33,16 @@ describe("the preview is changing", () => {
     expect(isPreviewChanging()).toBe(true);
     previewReloadBegun();
     expect(isPreviewChanging()).toBe(false);
+  });
+
+  it("stops counting a change a press gave up on, until the preview goes idle", async () => {
+    let land: () => void = () => {};
+    const stuck = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    giveUpOnPreviewChange();
+    expect(isPreviewChanging()).toBe(false);
+    land();
+    await stuck;
+    requestPreviewReload();
+    expect(isPreviewChanging(), "the next change counts again").toBe(true);
   });
 });

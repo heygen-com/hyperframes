@@ -95,7 +95,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     setDraftGroupOverlayItems(g.originItems);
   };
 
-  const { startGesture, startGroupDrag, endWaitingPress, endHeldPress } =
+  const { startGesture, startGroupDrag, endWaitingPress, endHeldPress, releaseWaitingPress } =
     createPreviewGestureStarts(
       opts,
       (event) => moveActiveGesture(event),
@@ -291,7 +291,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const waiting = opts.waitingPressRef.current;
     if (waiting && waiting.pointerId === e.pointerId) {
-      waiting.released = e;
+      releaseWaitingPress(waiting, e);
       opts.suppressNextBoxClickRef.current = true;
       return;
     }

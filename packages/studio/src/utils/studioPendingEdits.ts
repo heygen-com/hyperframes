@@ -34,6 +34,13 @@ export function setStudioPendingEditClaimClock(read: (() => number) | null): voi
   historyClaims = read ?? (() => 0);
 }
 const NOT_SAVED = () => Promise.resolve(false);
+// Not a pending edit: a reload waits for those, and a waiting press waits for the reload.
+let cancelWaitingPress: (() => void) | null = null;
+
+/** The newest released canvas press still waiting to run; Cmd+Z takes it back before it ever runs. */
+export function setStudioWaitingPressCancel(cancel: (() => void) | null): void {
+  cancelWaitingPress = cancel;
+}
 let adopting: StudioEditInFlight | null = null;
 
 export function adoptingStudioPendingEdit(): StudioEditInFlight | null {
@@ -212,6 +219,10 @@ export function paintBackNewestStudioPendingEdit(): {
   landed: () => Promise<boolean>;
   claimsAtBegin: number;
 } | null {
+  if (cancelWaitingPress) {
+    cancelWaitingPress();
+    return { showAgain: () => {}, landed: NOT_SAVED, claimsAtBegin: historyClaims() };
+  }
   const newest = [...pendingEdits.values()].at(-1);
   const revert = newest?.revert;
   if (!newest || !revert) return null;
