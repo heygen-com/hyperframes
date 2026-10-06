@@ -2,10 +2,41 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { transcribe } from "./transcribe.js";
+import { transcribe, type TranscribeProgress } from "./transcribe.js";
 
-const native = vi.hoisted(() => ({ exec: vi.fn(), missingLanguage: false, runtime: vi.fn() }));
-vi.mock("node:child_process", () => ({ execFileSync: native.exec }));
+const native = vi.hoisted(() => ({
+  exec: vi.fn(),
+  missingLanguage: false,
+  runtime: vi.fn(),
+  printed: { stdout: "", stderr: "" },
+}));
+vi.mock("node:child_process", async () => {
+  const { PassThrough } = await import("node:stream");
+  return {
+    execFileSync: native.exec,
+    // whisper-cli: runs the same stand-in, then prints what the test set, as the real one does while it decodes.
+    execFile: (
+      command: string,
+      args: string[],
+      _options: unknown,
+      done: (err: unknown, stdout: string, stderr: string) => void,
+    ) => {
+      const child = { stdout: new PassThrough(), stderr: new PassThrough() };
+      setImmediate(() => {
+        let failure: unknown = null;
+        try {
+          native.exec(command, args);
+        } catch (err) {
+          failure = err;
+        }
+        child.stdout.end(native.printed.stdout);
+        child.stderr.end(native.printed.stderr);
+        done(failure, native.printed.stdout, native.printed.stderr);
+      });
+      return child;
+    },
+  };
+});
 vi.mock("./manager.js", () => ({
   DEFAULT_MODEL: "small.en",
   ensureWhisper: native.runtime,
@@ -28,6 +59,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "hf-language-"));
   writeFileSync(join(dir, "audio.wav"), Buffer.alloc(44));
   native.missingLanguage = false;
+  native.printed = { stdout: "", stderr: "" };
   native.runtime.mockReset().mockResolvedValue({ executablePath: "whisper-cli", source: "env" });
   native.exec.mockReset().mockImplementation((command: string, args: string[]) => {
     if (command === "ffprobe")
@@ -87,7 +119,13 @@ it("reports download bytes and truthful transcription boundaries", async () => {
   });
   expect(events).toEqual([
     { type: "progress", phase: "download", model: "small", receivedBytes: 5, totalBytes: null },
-    { type: "progress", phase: "transcription", model: "small", status: "started" },
+    {
+      type: "progress",
+      phase: "transcription",
+      model: "small",
+      status: "started",
+      durationSeconds: 44 / 32_000,
+    },
     { type: "progress", phase: "transcription", model: "small", status: "completed" },
   ]);
 });
@@ -122,6 +160,67 @@ it("does not claim transcription completed when decoding fails", async () => {
   ).rejects.toThrow("decoder failed");
   expect(events).toEqual([
     { type: "progress", phase: "download", model: "small", receivedBytes: 5, totalBytes: null },
-    { type: "progress", phase: "transcription", model: "small", status: "started" },
+    {
+      type: "progress",
+      phase: "transcription",
+      model: "small",
+      status: "started",
+      durationSeconds: 44 / 32_000,
+    },
   ]);
+});
+
+it("streams the words of each segment whisper prints, before the final transcript", async () => {
+  native.printed.stdout =
+    "\n[00:00:00.000 --> 00:00:02.000]   Hello big world\n" +
+    "[00:00:02.000 --> 00:00:04.000]   [BLANK_AUDIO]\n";
+  const events: TranscribeProgress[] = [];
+  const result = await transcribe(join(dir, "audio.wav"), dir, {
+    model: "small",
+    onEvent: (event) => events.push(event),
+  });
+  expect(events.filter((e) => e.type === "words")).toEqual([
+    {
+      type: "words",
+      model: "small",
+      words: [
+        { text: "Hello", start: 0, end: 0.769 },
+        { text: "big", start: 0.769, end: 1.231 },
+        { text: "world", start: 1.231, end: 2 },
+      ],
+      through: 2,
+    },
+    { type: "words", model: "small", words: [], through: 4 },
+  ]);
+  expect(events.at(-1)).toMatchObject({ status: "completed" });
+  expect(result).toMatchObject({ wordCount: 1, durationSeconds: 1 });
+});
+
+it("reports progress through audio where whisper prints no segment, once per step", async () => {
+  writeFileSync(join(dir, "audio.wav"), Buffer.alloc(4 * 32_000));
+  native.printed.stderr =
+    "whisper_print_progress_callback: progress =  25%\n" +
+    "whisper_print_progress_callback: progress =  25%\n" +
+    "whisper_print_progress_callback: progress = 100%\n";
+  const events: TranscribeProgress[] = [];
+  await transcribe(join(dir, "audio.wav"), dir, {
+    model: "small",
+    onEvent: (event) => events.push(event),
+  });
+  expect(events.filter((e) => e.type === "words")).toEqual([
+    { type: "words", model: "small", words: [], through: 1 },
+    { type: "words", model: "small", words: [], through: 4 },
+  ]);
+});
+
+it("names the timeout knob when whisper outlives its own timeout", async () => {
+  const previous = native.exec.getMockImplementation()!;
+  native.exec.mockImplementation((command: string, args: string[]) => {
+    if (command === "whisper-cli")
+      throw Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" });
+    return previous(command, args);
+  });
+  await expect(transcribe(join(dir, "audio.wav"), dir, { model: "small" })).rejects.toThrow(
+    "Whisper transcription exceeded",
+  );
 });

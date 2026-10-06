@@ -219,6 +219,11 @@ describe("transcribe command", () => {
       return { engine: out.engine, model: out.model, word: words[0]?.text, start: words[0]?.start };
     }
 
+    it("gives whisper a cancel signal, since it now runs while the CLI listens for Ctrl-C", async () => {
+      await transcribeWith("whisper", { sherpa: false, mlx: false });
+      expect(transcribeMock.mock.calls[0]?.[2]).toMatchObject({ signal: expect.any(AbortSignal) });
+    });
+
     it("auto and parakeet prefer sherpa-onnx, then parakeet-mlx, then whisper", async () => {
       const sherpa = {
         engine: "parakeet",

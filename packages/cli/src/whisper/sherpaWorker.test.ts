@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { SHERPA_ERROR_PREFIX, SHERPA_RESULT_PREFIX } from "./parakeet.js";
+import { SHERPA_ERROR_PREFIX, SHERPA_RESULT_PREFIX, SHERPA_WINDOW_PREFIX } from "./parakeet.js";
 
 const WORKER = fileURLToPath(new URL("./sherpaWorker.ts", import.meta.url));
 
@@ -80,6 +80,15 @@ describe("sherpaWorker", () => {
     expect(windowsOf(stdout)).toEqual([
       { offset: 0, tokens: [" ask", " not"], timestamps: [0.5, 2.08], durations: [0.4, 0.4] },
     ]);
+  });
+
+  it("prints each window as it is decoded, with the audio seconds done", async () => {
+    const { stdout } = await runWorker(fakeRuntime(), "speech.wav");
+    const streamed = stdout
+      .split("\n")
+      .filter((l) => l.startsWith(SHERPA_WINDOW_PREFIX))
+      .map((l) => JSON.parse(l.slice(SHERPA_WINDOW_PREFIX.length)));
+    expect(streamed).toEqual([{ window: windowsOf(stdout)[0], through: 3 }]);
   });
 
   it("re-decodes the window with leading silence when the gap alone gives nothing", async () => {

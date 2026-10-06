@@ -25,6 +25,7 @@ export const PARAKEET_MODEL_LABEL = "parakeet-tdt-0.6b-v3";
 /** Stdout/stderr line prefixes of the sherpa-onnx decode worker. */
 export const SHERPA_RESULT_PREFIX = "HYPERFRAMES_PARAKEET_RESULT:";
 export const SHERPA_ERROR_PREFIX = "HYPERFRAMES_PARAKEET_ERROR:";
+export const SHERPA_WINDOW_PREFIX = "HYPERFRAMES_PARAKEET_WINDOW:";
 
 /** Parakeet TDT 0.6B v3's languages, as listed on its model card. */
 export const PARAKEET_LANGUAGES =
