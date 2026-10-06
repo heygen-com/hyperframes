@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { bundleToSingleHtml } from "@hyperframes/core/compiler";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
+import type {} from "../../../core/src/runtime/window";
+import { waitForPendingSeekCompletion } from "../../../engine/src/services/frameCapture";
 
 const RUNTIME_PATH = resolve(import.meta.dirname, "../../../core/dist/hyperframe.runtime.iife.js");
 const PNG_1PX =
@@ -1007,4 +1009,106 @@ describe("core runtime browser contract", () => {
 
     expect(result).toEqual({ hadTeardown: true, teardownCleared: true, isPlaying: false });
   });
+});
+
+// This is a first-party protocol fixture, not the partner runner or its animation code.
+const FILM_RUNNER_FIXTURE = `<!doctype html><style>html,body{margin:0;width:100%;height:100%;background:black}</style>
+<script>
+addEventListener("message", async ({data}) => {
+  if (data.type === "appifact-film:load") {
+    parent.postMessage({type:"appifact-film:ready"}, "*");
+  } else if (data.type === "appifact-film:frame") {
+    await new Promise(resolve => setTimeout(resolve, 40));
+    document.body.style.background = "rgb(" + Math.round(data.t * 40) + ",20,80)";
+    parent.postMessage({type:"appifact-film:frame",seq:data.seq}, "*");
+  }
+});
+parent.postMessage({type:"appifact-film:hello"}, "*");
+</script>`;
+
+function filmRuntimeFixture(runtime: string): string {
+  const runnerLiteral = JSON.stringify(FILM_RUNNER_FIXTURE).replaceAll("<", "\\u003c");
+  return `<!doctype html><html><head>
+<style>html,body{margin:0} iframe{display:block;border:0;width:320px;height:180px}</style>
+<script>${runtime.replaceAll("</script", "<\\/script")}</script></head><body>
+<div data-composition-id="root" data-start="0" data-duration="1" data-width="320" data-height="180" data-fps="30">
+<div id="scene" class="clip" data-composition-id="scene" data-start="0" data-duration="1" data-track-index="0">
+<iframe id="stage" sandbox="allow-scripts" title="First-party protocol fixture"></iframe>
+</div></div>
+<script>
+const bridge = window.__hyperframes.createFilmBridge({iframe:document.getElementById("stage"),runnerHtml:${runnerLiteral},load:{}});
+window.__hyperframes.registerFrameSource({element:document.getElementById("scene"),ready:bridge.ready,render:bridge.render,dispose:bridge.dispose,sourceRange:{start:3,duration:1,fps:30}});
+</script></body></html>`;
+}
+
+describe("film bridge browser capture contract", () => {
+  let browser: Browser;
+  let html: string;
+  beforeAll(async () => {
+    html = filmRuntimeFixture(readFileSync(RUNTIME_PATH, "utf8"));
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+  }, 30_000);
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  async function openFilm(): Promise<Page> {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+    await page.setContent(html);
+    await page.waitForFunction(
+      () => window.__playerReady === true && window.__renderReady === true,
+    );
+    return page;
+  }
+
+  it("captures the acknowledged frame for reverse, repeated and fresh-page seeks", async () => {
+    const page = await openFilm();
+    const reference = await browser.newPage();
+    await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const captures = new Map<number, Uint8Array>();
+    try {
+      for (const time of [0, 0.5, 0.2, 0.5, 0.9, 1, 0]) {
+        await page.evaluate((t) => window.__player?.renderSeek?.(t), time);
+        await waitForPendingSeekCompletion(page);
+        const actual = await page.screenshot();
+        const sourceTime = 3 + Math.min(time, 1 - 1 / 30);
+        await reference.setContent(
+          `<style>html,body{margin:0;background:rgb(${Math.round(sourceTime * 40)},20,80)}</style>`,
+        );
+        expect(Buffer.from(actual)).toEqual(Buffer.from(await reference.screenshot()));
+        const previous = captures.get(time);
+        if (previous) expect(Buffer.from(actual)).toEqual(Buffer.from(previous));
+        captures.set(time, actual);
+      }
+      const fresh = await openFilm();
+      try {
+        await fresh.evaluate(() => window.__player?.renderSeek?.(0.5));
+        await waitForPendingSeekCompletion(fresh);
+        expect(Buffer.from(await fresh.screenshot())).toEqual(Buffer.from(captures.get(0.5)!));
+      } finally {
+        await fresh.close();
+      }
+      await page.evaluate(() => {
+        const scene = document.getElementById("scene")!;
+        scene.setAttribute("data-playback-start", "0.25");
+        scene.setAttribute("data-playback-rate", "2");
+        window.__player?.renderSeek?.(0.2);
+      });
+      await waitForPendingSeekCompletion(page);
+      await reference.setContent("<style>html,body{margin:0;background:rgb(146,20,80)}</style>");
+      expect(Buffer.from(await page.screenshot())).toEqual(
+        Buffer.from(await reference.screenshot()),
+      );
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+      await reference.close();
+    }
+  }, 30_000);
 });
