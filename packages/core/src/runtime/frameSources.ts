@@ -1,11 +1,13 @@
 import { sourceTimeAt } from "../speedRamp";
 import { readElementRateSpec, readMediaStart } from "./playbackRate";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
+import { isClipVisibleAt } from "./clipWindow";
 import type { RuntimeDeterministicAdapter } from "./types";
 
 export interface FrameSource {
   element: Element;
   ready?: PromiseLike<unknown>;
+  sourceRange?: { start: number; duration: number; fps: number };
   render: (sourceTime: number, signal: AbortSignal) => void | PromiseLike<unknown>;
   dispose?: () => void;
 }
@@ -22,6 +24,18 @@ const sources = new Map<Element, RegisteredSource>();
 /** Bind a frame source to a timed host. Unregister before replacing its source. */
 export function registerFrameSource(source: FrameSource): () => void {
   if (sources.has(source.element)) throw new Error("This element already has a frame source");
+  const range = source.sourceRange;
+  if (
+    range &&
+    (!Number.isFinite(range.start) ||
+      range.start < 0 ||
+      !Number.isFinite(range.duration) ||
+      range.duration <= 0 ||
+      !Number.isFinite(range.fps) ||
+      range.fps <= 0)
+  ) {
+    throw new Error("Frame source ranges require a nonnegative start, positive duration and FPS");
+  }
   const controller = new AbortController();
   const cancelled = new Promise<void>((resolve) => {
     controller.signal.addEventListener("abort", () => resolve(), { once: true });
@@ -47,7 +61,9 @@ export function registerFrameSource(source: FrameSource): () => void {
     element: source.element,
     ready,
     seek(time) {
-      pending = time;
+      pending = range
+        ? range.start + Math.min(Math.max(0, time), Math.max(0, range.duration - 1 / range.fps))
+        : time;
       work ??= drain();
       return work;
     },
@@ -66,6 +82,7 @@ export function registerFrameSource(source: FrameSource): () => void {
 export function createFrameSourceAdapter(timing: {
   start: (element: Element) => number;
   duration: (element: Element) => number | null;
+  compositionDuration: () => number;
 }): RuntimeDeterministicAdapter {
   const owned = new Set<RegisteredSource>();
   let readySources: RegisteredSource[] = [];
@@ -103,7 +120,15 @@ export function createFrameSourceAdapter(timing: {
       for (const [element, source] of current()) {
         const start = timing.start(element);
         const duration = timing.duration(element);
-        if (time < start || (duration !== null && time > start + duration)) continue;
+        if (
+          !isClipVisibleAt(
+            time,
+            start,
+            start + (duration ?? Infinity),
+            timing.compositionDuration(),
+          )
+        )
+          continue;
         const localTime = Math.max(0, time - start);
         const sourceTime =
           readMediaStart(element) + sourceTimeAt(readElementRateSpec(element), localTime);

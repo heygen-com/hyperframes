@@ -16,7 +16,7 @@ const unregister = window.__hyperframes.registerFrameSource({
 
 The host uses the usual composition attributes: `data-composition-id`, `data-start`, `data-duration`, and `data-track-index`. Declare the root's dimensions, FPS, and duration. A frame source does not need a dummy GSAP timeline.
 
-The callback receives seconds in source time: playback inpoint (`data-playback-start`) plus the rate-adjusted time since the host's resolved start. Existing playback rate and speed-ramp semantics apply. Timing is read again on every seek, so move, trim and rate edits do not require rewriting the animation code. Each overlapping scene needs its own source instance.
+The callback receives seconds in source time: playback inpoint (`data-playback-start`) plus the rate-adjusted time since the host's resolved start. Optional `sourceRange: { start, duration, fps }` adds an original source offset and clamps this time to the last source frame within that interval. Existing playback rate and speed-ramp semantics apply. Timing is read again on every seek, so move, trim and rate edits do not require rewriting the animation code. Each overlapping scene needs its own source instance.
 
 `ready` holds initialization and export capture. Return a promise from `render` when drawing is asynchronous: capture waits for it before taking pixels. Repeated and out-of-order times must produce the same frame. HyperFrames owns playback; do not start a second clock.
 

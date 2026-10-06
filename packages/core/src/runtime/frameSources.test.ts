@@ -14,10 +14,11 @@ function deferred() {
 }
 
 const adapters: ReturnType<typeof createFrameSourceAdapter>[] = [];
-const adapter = () => {
+const adapter = (compositionDuration = 20) => {
   const runtime = createFrameSourceAdapter({
     start: (element) => createRuntimeStartTimeResolver({}).resolveStartForElement(element, 0),
     duration: (element) => createRuntimeStartTimeResolver({}).resolveDurationForElement(element),
+    compositionDuration: () => compositionDuration,
   });
   adapters.push(runtime);
   return runtime;
@@ -214,5 +215,81 @@ describe("frame sources", () => {
     a.resolve();
     b.resolve();
     await waitForSeekCompletion();
+  });
+  it("keeps trimmed, sped-up and extended clips inside their original scene", async () => {
+    const host = mount("5", "8");
+    host.setAttribute("data-playback-start", "0.5");
+    host.setAttribute("data-playback-rate", "2");
+    const render = vi.fn();
+    disposers.push(
+      registerFrameSource({
+        element: host,
+        render,
+        sourceRange: { start: 3, duration: 4, fps: 60 },
+      }),
+    );
+    const runtime = adapter();
+    runtime.seek({ time: 5 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenLastCalledWith(3.5, expect.any(AbortSignal));
+    runtime.seek({ time: 6 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenLastCalledWith(5.5, expect.any(AbortSignal));
+    runtime.seek({ time: 12 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenLastCalledWith(7 - 1 / 60, expect.any(AbortSignal));
+    host.setAttribute("data-start", "0");
+    host.setAttribute("data-playback-start", "0");
+    runtime.seek({ time: 0 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenLastCalledWith(3, expect.any(AbortSignal));
+  });
+
+  it("uses half-open cut boundaries and holds the terminal scene's last source frame", async () => {
+    const first = vi.fn();
+    const last = vi.fn();
+    disposers.push(registerFrameSource({ element: mount("0", "3"), render: first }));
+    disposers.push(
+      registerFrameSource({
+        element: mount("3", "4"),
+        render: last,
+        sourceRange: { start: 10, duration: 4, fps: 60 },
+      }),
+    );
+    const runtime = adapter(7);
+    runtime.seek({ time: 3 });
+    await waitForSeekCompletion();
+    expect(first).not.toHaveBeenCalled();
+    expect(last).toHaveBeenLastCalledWith(10, expect.any(AbortSignal));
+    runtime.seek({ time: 7 });
+    await waitForSeekCompletion();
+    expect(last.mock.lastCall?.[0]).toBeCloseTo(14 - 1 / 60, 10);
+  });
+
+  it("does not redraw an ended scene across a gap or seek backward before its start", async () => {
+    const render = vi.fn();
+    disposers.push(registerFrameSource({ element: mount("2", "2"), render }));
+    const runtime = adapter(8);
+    for (const time of [0, 1, 4, 6, 8]) runtime.seek({ time });
+    await waitForSeekCompletion();
+    expect(render).not.toHaveBeenCalled();
+    runtime.seek({ time: 2 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects invalid original ranges before registering a source", () => {
+    const element = mount();
+    for (const sourceRange of [
+      { start: -1, duration: 4, fps: 60 },
+      { start: 0, duration: 0, fps: 60 },
+      { start: 0, duration: 4, fps: NaN },
+      { start: Infinity, duration: 4, fps: 60 },
+    ]) {
+      expect(() => registerFrameSource({ element, render: vi.fn(), sourceRange })).toThrow(
+        "ranges",
+      );
+    }
+    disposers.push(registerFrameSource({ element, render: vi.fn() }));
   });
 });

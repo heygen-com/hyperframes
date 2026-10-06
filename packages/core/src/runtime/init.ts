@@ -3983,6 +3983,7 @@ export function initSandboxRuntimeModular(): void {
     createFrameSourceAdapter({
       start: (element) => resolveStartForElement(element, 0),
       duration: (element) => resolveDurationForElement(element),
+      compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
     }),
     createWaapiAdapter(),
     createCssAdapter({
