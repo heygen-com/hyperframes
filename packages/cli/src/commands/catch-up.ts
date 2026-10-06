@@ -19,13 +19,16 @@ export const examples: Example[] = [
 const MAX_FILES_SHOWN = 20;
 const AGENTS: Record<string, string> = { claude: "Claude Code", codex: "Codex", grok: "Grok" };
 
+const oneLine = (text: string): string => text.replace(/\s*\n+\s*/g, " ");
+
 const when = (at: string): string =>
   new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function printTurn(turn: AppTurn): void {
   console.log(`   ${c.dim(when(turn.at))}`);
-  if (turn.asked) console.log(`   The person: ${turn.asked}`);
-  if (turn.did) console.log(`   Framey (${AGENTS[turn.engine] ?? "the app"}): ${turn.did}`);
+  if (turn.asked) console.log(`   The person: ${oneLine(turn.asked)}`);
+  if (turn.did)
+    console.log(`   Framey (${AGENTS[turn.engine] ?? "the app"}): ${oneLine(turn.did)}`);
   if (turn.files.length) console.log(`   ${c.dim(`Changed: ${turn.files.join(", ")}`)}`);
   console.log();
 }
