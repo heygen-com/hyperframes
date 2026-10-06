@@ -1789,6 +1789,9 @@ export function initSandboxRuntimeModular(): void {
       const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
       if (compositeTimeline) {
         ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
+        // As with a root timeline: once bound, the polling loop must not rebuild the composite,
+        // whose unpause rewinds every child to 0 under a paused drag.
+        childrenBound = true;
         return {
           timeline: compositeTimeline,
           selectedTimelineIds,

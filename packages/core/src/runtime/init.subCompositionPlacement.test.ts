@@ -2,6 +2,7 @@ import gsap from "gsap";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
+import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import { resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 
 // Pins where a running runtime places a sub-composition's timeline, against what a fresh load does.
@@ -14,6 +15,7 @@ describe("runtime sub-composition placement", () => {
   afterEach(() => {
     window.__hfRuntimeTeardown?.();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     delete window.__player;
     delete window.__playerReady;
     delete window.__hf;
@@ -96,6 +98,60 @@ describe("runtime sub-composition placement", () => {
 
     expect(scene.startTime()).toBe(4);
     expect(intro.startTime()).toBe(2);
+  });
+
+  it("keeps a nested scene where the playhead left it during a drag when the root has no timeline", async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      frames.set(++nextFrame, cb);
+      return nextFrame;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="10">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="0" data-duration="4">` +
+      `<div id="s"></div></div></div>`;
+    const scene = gsap
+      .timeline({ paused: true })
+      .to("#s", { x: 100, duration: 4, ease: "none" }, 0);
+    window.__timelines = { scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(3);
+    expect(shownX()).toBe(75);
+
+    // Every transform GSAP writes while the drag is held, including ones a later write in the same tick hides.
+    const shown: string[] = [];
+    const writes = new MutationObserver((records) =>
+      shown.push(...records.map((r) => r.oldValue ?? "")),
+    );
+    writes.observe(document.getElementById("s")!, {
+      attributes: true,
+      attributeFilter: ["style"],
+      attributeOldValue: true,
+    });
+
+    // A Studio press marks the element; a timing edit then wakes the transport's rebind mid-drag.
+    document.getElementById("s")!.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, "gesture-1:move");
+    document.getElementById("host")!.setAttribute("data-duration", "4");
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    for (let t = 16; t <= 16 * 30; t += 16) {
+      now += 1000;
+      await Promise.resolve();
+      const due = [...frames.values()];
+      frames.clear();
+      for (const run of due) run(t);
+    }
+
+    shown.push(
+      ...writes.takeRecords().map((r) => r.oldValue ?? ""),
+      document.getElementById("s")!.getAttribute("style") ?? "",
+    );
+    writes.disconnect();
+    const xs = shown.map((style) => /translate(?:3d)?\(([-\d.]+)/.exec(style)?.[1]).filter(Boolean);
+    expect(xs.length).toBeGreaterThan(0);
+    expect(new Set(xs)).toEqual(new Set(["75"]));
   });
 
   it("leaves an unmoved scene in place on a rebind, whatever its start rounds to", () => {
