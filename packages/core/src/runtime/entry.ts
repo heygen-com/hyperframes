@@ -1,3 +1,4 @@
+import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import {
   initSandboxRuntimeModular,
   installAuthoredMediaCapture,
@@ -65,6 +66,7 @@ function bootstrapHyperframeRuntime(): void {
 
 // Compiled composition scripts wait for web fonts, so what they measure matches every run.
 function startAfterCompositionScripts(): void {
+  refreshSvgSelectorAliases();
   const deferred = Array.from(document.querySelectorAll(AFTER_FONTS_SCRIPTS));
   if (deferred.length === 0) bootstrapHyperframeRuntime();
   else void runScriptsAfterFonts(deferred, bootstrapHyperframeRuntime);

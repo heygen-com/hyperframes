@@ -176,6 +176,8 @@ test("only package source is graded, never tests or declarations", () => {
   assert.equal(isSource("packages/core/src/runtime/init.test.ts"), false);
   assert.equal(isSource("packages/core/src/types.d.ts"), false);
   assert.equal(isSource("packages/core/scripts/build.ts"), false);
+  assert.equal(isSource("packages/core/src/generated/svg-selector-aliases-inline.ts"), false);
+  assert.equal(isSource("packages/studio/src/editor/generated/labels.ts"), true);
   assert.equal(isSource("scripts/contrast.ts"), false);
 });
 

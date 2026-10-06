@@ -75,6 +75,8 @@ tmp/
 packages/core/src/generated/*
 !packages/core/src/generated/position-edits-render-inline.ts
 !packages/core/src/generated/position-edits-render-inline.test.ts
+!packages/core/src/generated/svg-selector-aliases-inline.ts
+!packages/core/src/generated/svg-selector-aliases-inline.test.ts
 packages/core/src/fonts/fontData.generated.ts
 
 # Plan documents (working artifacts, not committed)

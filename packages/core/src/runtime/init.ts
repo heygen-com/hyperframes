@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import { preloadMedia, releaseMedia, lengthIsAuthored, stopMediaDownload } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
@@ -65,11 +66,7 @@ import {
 } from "./compositionLength";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
-import {
-  loadExternalCompositions,
-  loadInlineTemplateCompositions,
-  namespaceMountedSvgIds,
-} from "./compositionLoader";
+import { loadCompositions } from "./compositionLoader";
 import { runScriptsAfterFonts } from "./afterFonts";
 import {
   applyCaptionOverrides,
@@ -3389,16 +3386,11 @@ export function initSandboxRuntimeModular(): void {
         });
       },
     };
-    void loadExternalCompositions(compositionLoaderParams)
-      .then(async (external) => {
-        const inline = await loadInlineTemplateCompositions(compositionLoaderParams);
-        namespaceMountedSvgIds([...external, ...inline]);
-      })
-      .finally(() => {
-        externalCompositionsReady = true;
-        void settleSceneDom();
-        maybePublishRenderReady();
-      });
+    void loadCompositions(compositionLoaderParams).finally(() => {
+      externalCompositionsReady = true;
+      void settleSceneDom();
+      maybePublishRenderReady();
+    });
   } else {
     // No external/inline compositions to load — apply caption overrides immediately
     void applyCaptionOverrides();
@@ -3673,6 +3665,7 @@ export function initSandboxRuntimeModular(): void {
       if (host.querySelector(".caption-group")) captionHosts.push(host);
     }
     // Run once every host is replaced, so no new script binds to a scene still to be swapped.
+    refreshSvgSelectorAliases();
     const sceneScripts = swaps.flatMap(({ newParts }) =>
       newParts
         .filter((el) => el.tagName === "SCRIPT")
@@ -4136,7 +4129,7 @@ export function initSandboxRuntimeModular(): void {
   maybePublishRenderReady();
 
   // When the bundler inlines compositions, data-composition-src is removed so
-  // loadExternalCompositions() is skipped. But inline scripts registering child
+  // loadCompositions() is skipped. But inline scripts registering child
   // timelines in __timelines haven't executed yet (they run in the browser's next
   // microtask). Defer a rebinding attempt to catch them.
   if (externalCompositionsReady) {

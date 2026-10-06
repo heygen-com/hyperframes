@@ -1,11 +1,41 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import {
-  loadExternalCompositions,
-  loadInlineTemplateCompositions,
-  namespaceMountedSvgIds,
-} from "./compositionLoader";
+import { loadCompositions } from "./compositionLoader";
+
+type LoaderParams = Parameters<typeof loadCompositions>[0];
+
+function createLoaderParams(overrides: Partial<LoaderParams> = {}): LoaderParams {
+  return {
+    injectedStyles: [],
+    injectedScripts: [],
+    injectedLinks: [],
+    parseDimensionPx: (value) => (value ? `${value}px` : null),
+    ...overrides,
+  };
+}
+
+async function loadFixture(overrides: Partial<LoaderParams> = {}) {
+  const params = createLoaderParams(overrides);
+  await loadCompositions(params);
+  return params;
+}
+
+function appendExternalHost(source: string, compositionId: string): HTMLDivElement {
+  const host = document.createElement("div");
+  host.setAttribute("data-composition-src", source);
+  host.setAttribute("data-composition-id", compositionId);
+  document.body.appendChild(host);
+  return host;
+}
 
 // jsdom doesn't provide CSS.escape
+const nativeQuerySelector = Element.prototype.querySelector;
+const nativeQuerySelectorAll = Element.prototype.querySelectorAll;
+afterEach(() => {
+  Element.prototype.querySelector = nativeQuerySelector;
+  Element.prototype.querySelectorAll = nativeQuerySelectorAll;
+  delete window.__hfSvgSelectorAliases;
+});
+
 beforeAll(() => {
   if (typeof globalThis.CSS === "undefined") {
     (globalThis as any).CSS = {};
@@ -15,7 +45,7 @@ beforeAll(() => {
   }
 });
 
-describe("loadExternalCompositions", () => {
+describe("loadCompositions external hosts", () => {
   afterEach(() => {
     document.body.innerHTML = "";
     document.head.querySelectorAll("style, link").forEach((node) => node.remove());
@@ -28,31 +58,20 @@ describe("loadExternalCompositions", () => {
     vi.restoreAllMocks();
   });
 
-  const defaultParams = {
-    injectedStyles: [] as HTMLStyleElement[],
-    injectedScripts: [] as HTMLScriptElement[],
-    injectedLinks: [] as HTMLLinkElement[],
-    parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
-  };
-
   it("does nothing when no composition-src elements exist", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("binds a fetched composition's scripts to its own URL for __hyperframes.assetUrl", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/blocks/blk/blk.html");
-    host.setAttribute("data-composition-id", "blk");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/blocks/blk/blk.html", "blk");
     const compositionHtml =
       `<div data-composition-id="blk"><script>window.__url = __hyperframes.assetUrl("assets/env.hdr");</scr` +
       `ipt></div>`;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+    const { injectedScripts } = await loadFixture();
 
     expect(injectedScripts.map((script) => script.textContent).join("")).toContain(
       'var __hfCompositionSrc = "https://example.com/blocks/blk/blk.html";',
@@ -60,10 +79,7 @@ describe("loadExternalCompositions", () => {
   });
 
   it("injects a fetched composition's import map and module script bound to its own URL", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/blocks/blk/blk.html");
-    host.setAttribute("data-composition-id", "blk");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/blocks/blk/blk.html", "blk");
     const compositionHtml =
       `<div data-composition-id="blk">` +
       `<script type="importmap">{ "imports": { "three": "./lib/three.js" } }</scr` +
@@ -71,8 +87,7 @@ describe("loadExternalCompositions", () => {
       `ipt></div>`;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+    const { injectedScripts } = await loadFixture();
 
     const importMap = injectedScripts.find((script) => script.type === "importmap");
     const moduleScript = injectedScripts.find((script) => script.type === "module");
@@ -84,10 +99,7 @@ describe("loadExternalCompositions", () => {
   });
 
   it("fetches and mounts external composition HTML", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/comp.html");
-    host.setAttribute("data-composition-id", "scene-1");
-    document.body.appendChild(host);
+    const host = appendExternalHost("https://example.com/comp.html", "scene-1");
 
     const compositionHtml = `
       <html><body>
@@ -99,7 +111,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     const mountedParagraph = host.querySelector("p");
 
@@ -115,10 +127,7 @@ describe("loadExternalCompositions", () => {
   });
 
   it("sizes a flattened inner root from a px-suffixed or fractional size", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/comp.html");
-    host.setAttribute("data-composition-id", "scene-1");
-    document.body.appendChild(host);
+    const host = appendExternalHost("https://example.com/comp.html", "scene-1");
     const compositionHtml = `
       <html><body>
         <div data-composition-id="scene-1" data-width="1080px" data-height="540.5"><p>Hi</p></div>
@@ -126,7 +135,7 @@ describe("loadExternalCompositions", () => {
     `;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     const flattened = host.querySelector("p")?.parentElement;
     expect(flattened?.style.width).toBe("1080px");
@@ -147,11 +156,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedStyles: HTMLStyleElement[] = [];
-    await loadExternalCompositions({
-      ...defaultParams,
-      injectedStyles,
-    });
+    const { injectedStyles } = await loadFixture();
 
     expect(injectedStyles.length).toBeGreaterThan(0);
   });
@@ -162,10 +167,7 @@ describe("loadExternalCompositions", () => {
     // only from the root dropped the composition's whole stylesheet, so rules
     // keyed on the root (`#root { container-type: size }`) never landed and every
     // container-query unit in the composition resolved against the wrong basis.
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/scene.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    const host = appendExternalHost("https://example.com/scene.html", "scene");
 
     const compositionHtml =
       `
@@ -180,9 +182,7 @@ describe("loadExternalCompositions", () => {
     `;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedStyles: HTMLStyleElement[] = [];
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedStyles, injectedScripts });
+    const { injectedStyles, injectedScripts } = await loadFixture();
 
     expect(injectedStyles.map((style) => style.textContent).join("")).toContain(
       "container-type: size",
@@ -196,15 +196,12 @@ describe("loadExternalCompositions", () => {
   it.each(["scene", "different-host-id"])(
     "hoists fragment stylesheets once for %s",
     async (hostId) => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
-      host.setAttribute("data-composition-id", hostId);
-      document.body.appendChild(host);
+      const host = appendExternalHost("https://example.com/compositions/scene.html", hostId);
       const html = `<div data-composition-id="scene">
 <link rel="stylesheet" href="scene.css"><link rel="icon" href="icon.svg"><p>Styled scene</p></div>`;
       vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(html, { status: 200 }));
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       expect(
         document.head.querySelectorAll('link[href="https://example.com/compositions/scene.css"]'),
@@ -216,10 +213,7 @@ describe("loadExternalCompositions", () => {
   );
 
   it("preserves head stylesheets when an external composition uses a template", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
 
     const compositionHtml = `
       <html>
@@ -234,7 +228,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(
       document.head.querySelector(
@@ -244,10 +238,7 @@ describe("loadExternalCompositions", () => {
   });
 
   it("does not resolve an empty stylesheet href to the composition HTML", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
 
     const compositionHtml = `
       <html>
@@ -262,7 +253,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(
       document.head.querySelector(
@@ -272,10 +263,7 @@ describe("loadExternalCompositions", () => {
   });
 
   it("does not inject stylesheet href variants that resolve to the composition document", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
 
     const compositionHtml = `
       <html>
@@ -296,7 +284,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     const injectedHrefs = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map(
       (link) => (link as HTMLLinkElement).href,
@@ -305,10 +293,7 @@ describe("loadExternalCompositions", () => {
   });
 
   it("does not execute head script src variants that resolve to the composition document", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
 
     const compositionHtml = `
       <html>
@@ -331,17 +316,13 @@ describe("loadExternalCompositions", () => {
       return appended;
     });
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+    const { injectedScripts } = await loadFixture();
 
     expect(injectedScripts).toEqual([]);
   });
 
   it("does not execute content script src variants that resolve to the composition document", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
 
     const compositionHtml = `
       <html>
@@ -358,17 +339,13 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+    const { injectedScripts } = await loadFixture();
 
     expect(injectedScripts).toEqual([]);
   });
 
   it("does not fail composition mounting when a head script src is malformed", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
 
     const compositionHtml = `
       <html>
@@ -387,25 +364,21 @@ describe("loadExternalCompositions", () => {
       return appended;
     });
 
-    const injectedScripts: HTMLScriptElement[] = [];
     const onDiagnostic = vi.fn();
-    await loadExternalCompositions({ ...defaultParams, injectedScripts, onDiagnostic });
+    const { injectedScripts } = await loadFixture({ onDiagnostic });
 
     expect(injectedScripts).toHaveLength(1);
     expect(onDiagnostic).not.toHaveBeenCalled();
   });
 
   it("calls onDiagnostic when fetch fails", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/broken.html");
-    host.setAttribute("data-composition-id", "broken");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/broken.html", "broken");
 
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error"));
 
     const onDiagnostic = vi.fn();
-    await loadExternalCompositions({
-      ...defaultParams,
+    await loadCompositions({
+      ...createLoaderParams(),
       onDiagnostic,
     });
 
@@ -428,8 +401,8 @@ describe("loadExternalCompositions", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("Not Found", { status: 404 }));
 
     const onDiagnostic = vi.fn();
-    await loadExternalCompositions({
-      ...defaultParams,
+    await loadCompositions({
+      ...createLoaderParams(),
       onDiagnostic,
     });
 
@@ -446,14 +419,11 @@ describe("loadExternalCompositions", () => {
     template.innerHTML = "<p>From template</p>";
     document.body.appendChild(template);
 
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/comp.html");
-    host.setAttribute("data-composition-id", "local-comp");
-    document.body.appendChild(host);
+    const host = appendExternalHost("https://example.com/comp.html", "local-comp");
 
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     // Should use local template and not fetch
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -466,7 +436,7 @@ describe("loadExternalCompositions", () => {
     document.body.appendChild(host);
 
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -479,7 +449,7 @@ describe("loadExternalCompositions", () => {
     const compositionHtml = `<html><body><p>New</p></body></html>`;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
     expect(host.querySelector("span")).toBeNull();
   });
 
@@ -498,11 +468,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({
-      ...defaultParams,
-      injectedScripts,
-    });
+    const { injectedScripts } = await loadFixture();
 
     expect(injectedScripts.length).toBeGreaterThan(0);
     expect(injectedScripts[0].textContent).toContain("console.log");
@@ -522,7 +488,7 @@ describe("loadExternalCompositions", () => {
     Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
     const injectedScripts: HTMLScriptElement[] = [];
 
-    const loading = loadExternalCompositions({ ...defaultParams, injectedScripts });
+    const loading = loadCompositions({ ...createLoaderParams(), injectedScripts });
     await vi.waitFor(() => expect(host.textContent).toContain("Text"));
     expect(injectedScripts).toHaveLength(0);
     fontsLoaded();
@@ -536,10 +502,7 @@ describe("loadExternalCompositions", () => {
     otherRoot.innerHTML = '<h1 class="title">Other</h1>';
     document.body.appendChild(otherRoot);
 
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/comp.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    const host = appendExternalHost("https://example.com/comp.html", "scene");
 
     const compositionHtml = `
       <html><body>
@@ -555,13 +518,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedStyles: HTMLStyleElement[] = [];
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({
-      ...defaultParams,
-      injectedStyles,
-      injectedScripts,
-    });
+    const { injectedStyles, injectedScripts } = await loadFixture();
 
     expect(injectedStyles[0]?.textContent).toContain('[data-composition-id="scene"] .title');
     expect(injectedScripts[0]?.textContent).toContain('var __hfCompId = "scene";');
@@ -575,10 +532,7 @@ describe("loadExternalCompositions", () => {
   });
 
   it("preserves the authored inner root wrapper for class and id scoped styles", async () => {
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/comp.html");
-    host.setAttribute("data-composition-id", "scene");
-    document.body.appendChild(host);
+    const host = appendExternalHost("https://example.com/comp.html", "scene");
 
     const compositionHtml = `
       <html><body>
@@ -594,13 +548,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedStyles: HTMLStyleElement[] = [];
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({
-      ...defaultParams,
-      injectedStyles,
-      injectedScripts,
-    });
+    const { injectedStyles } = await loadFixture();
 
     const authoredRoot = host.querySelector('[data-hf-authored-id="scene-root"]');
     expect(authoredRoot).toBeTruthy();
@@ -639,7 +587,7 @@ describe("loadExternalCompositions", () => {
       async () => new Response(compositionHtml, { status: 200 }),
     );
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     const authoredRoots = document.querySelectorAll('[data-hf-authored-id="scene-root"]');
     expect(authoredRoots).toHaveLength(2);
@@ -680,11 +628,7 @@ describe("loadExternalCompositions", () => {
       async () => new Response(compositionHtml, { status: 200 }),
     );
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({
-      ...defaultParams,
-      injectedScripts,
-    });
+    const { injectedScripts } = await loadFixture();
 
     const runtimeIdA = hostA.getAttribute("data-composition-id") ?? "";
     const runtimeIdB = hostB.getAttribute("data-composition-id") ?? "";
@@ -713,7 +657,7 @@ describe("loadExternalCompositions", () => {
     ).toBe(true);
   });
 
-  it("keeps the authored composition id stable across repeat loadExternalCompositions runs", async () => {
+  it("keeps the authored composition id stable across repeat loadCompositions runs", async () => {
     const hostA = document.createElement("div");
     hostA.setAttribute("data-composition-src", "https://example.com/scene.html");
     hostA.setAttribute("data-composition-id", "scene");
@@ -736,14 +680,14 @@ describe("loadExternalCompositions", () => {
       async () => new Response(compositionHtml, { status: 200 }),
     );
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     const runtimeIdA1 = hostA.getAttribute("data-composition-id");
     const runtimeIdB1 = hostB.getAttribute("data-composition-id");
     expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
     expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
     expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
@@ -776,14 +720,14 @@ describe("loadExternalCompositions", () => {
       async () => new Response(compositionHtml, { status: 200 }),
     );
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(hostB.getAttribute("data-composition-id")).toBe("scene__hf2");
     expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
 
     hostA.remove();
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(hostB.getAttribute("data-composition-id")).toBe("scene");
     expect(hostB.hasAttribute("data-hf-original-composition-id")).toBe(false);
@@ -814,7 +758,7 @@ describe("loadExternalCompositions", () => {
       async () => new Response(compositionHtml, { status: 200 }),
     );
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
     expect(byCompAfterFirstMount["scene__hf2"]).toEqual({ title: "Scene B" });
@@ -822,7 +766,7 @@ describe("loadExternalCompositions", () => {
     hostA.remove();
     hostB.innerHTML = "";
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
 
     const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
     expect(byCompAfterSecondMount["scene"]).toEqual({ title: "Scene B" });
@@ -846,7 +790,7 @@ describe("loadExternalCompositions", () => {
       return new Response("<html><body><p>B</p></body></html>", { status: 200 });
     });
 
-    await loadExternalCompositions({ ...defaultParams });
+    await loadFixture();
     expect(host1.querySelector("p")?.textContent).toBe("A");
     expect(host2.querySelector("p")?.textContent).toBe("B");
   });
@@ -868,10 +812,7 @@ describe("loadExternalCompositions", () => {
       "http://localhost:5190/api/projects/demo/preview/compositions/frames/scene.html";
 
     it("rewrites `../`-traversing src on elements inside <template>", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", FRAME_URL);
-      host.setAttribute("data-composition-id", "scene");
-      document.body.appendChild(host);
+      const host = appendExternalHost(FRAME_URL, "scene");
 
       const compositionHtml = `
         <html><body>
@@ -888,7 +829,7 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const hero = host.querySelector("#hero");
       const badge = host.querySelector("#badge");
@@ -901,10 +842,7 @@ describe("loadExternalCompositions", () => {
     });
 
     it("leaves plain project-root-relative paths untouched (no double-prefix)", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", FRAME_URL);
-      host.setAttribute("data-composition-id", "scene");
-      document.body.appendChild(host);
+      const host = appendExternalHost(FRAME_URL, "scene");
 
       const compositionHtml = `
         <html><body>
@@ -921,7 +859,7 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       // Plain relative paths resolve against the main document's base, which
       // points at the project preview root — so the runtime must NOT rewrite
@@ -933,10 +871,7 @@ describe("loadExternalCompositions", () => {
     });
 
     it("leaves absolute URLs, data URIs, and hash refs untouched", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", FRAME_URL);
-      host.setAttribute("data-composition-id", "scene");
-      document.body.appendChild(host);
+      const host = appendExternalHost(FRAME_URL, "scene");
 
       const compositionHtml = `
         <html><body>
@@ -955,7 +890,7 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       expect(host.querySelector("#abs")?.getAttribute("src")).toBe(
         "https://cdn.example.com/clip.mp4",
@@ -966,10 +901,7 @@ describe("loadExternalCompositions", () => {
     });
 
     it("rewrites CSS url(...) `../` references inside <style> blocks", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", FRAME_URL);
-      host.setAttribute("data-composition-id", "scene");
-      document.body.appendChild(host);
+      appendExternalHost(FRAME_URL, "scene");
 
       const compositionHtml = `
         <html><body>
@@ -990,7 +922,7 @@ describe("loadExternalCompositions", () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         new Response(compositionHtml, { status: 200 }),
       );
-      await loadExternalCompositions({ ...defaultParams, injectedStyles });
+      await loadCompositions({ ...createLoaderParams(), injectedStyles });
 
       const cssText = injectedStyles.map((s) => s.textContent || "").join("\n");
       expect(cssText).toContain(
@@ -1005,10 +937,7 @@ describe("loadExternalCompositions", () => {
     });
 
     it("rewrites url(...) inside inline style attributes", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", FRAME_URL);
-      host.setAttribute("data-composition-id", "scene");
-      document.body.appendChild(host);
+      const host = appendExternalHost(FRAME_URL, "scene");
 
       const compositionHtml = `
         <html><body>
@@ -1023,7 +952,7 @@ describe("loadExternalCompositions", () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         new Response(compositionHtml, { status: 200 }),
       );
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const card = host.querySelector("#card");
       expect(card?.getAttribute("style")).toContain(
@@ -1032,10 +961,7 @@ describe("loadExternalCompositions", () => {
     });
 
     it("rewrites `../`-traversing src on non-template (full HTML doc) sub-comps", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", FRAME_URL);
-      host.setAttribute("data-composition-id", "scene");
-      document.body.appendChild(host);
+      const host = appendExternalHost(FRAME_URL, "scene");
 
       const compositionHtml = `
         <html><body>
@@ -1048,7 +974,7 @@ describe("loadExternalCompositions", () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         new Response(compositionHtml, { status: 200 }),
       );
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const hero = host.querySelector("#hero");
       expect(hero?.getAttribute("src")).toBe(
@@ -1088,7 +1014,7 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byComp["card-1"]).toEqual({
@@ -1120,17 +1046,14 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       expect(host.style.getPropertyValue("--accent")).toBe("");
       expect(window.getComputedStyle(host).getPropertyValue("--accent")).toBe("#4287f5");
     });
 
     it("uses declared defaults when host has no data-variable-values", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", "https://example.com/card.html");
-      host.setAttribute("data-composition-id", "card-2");
-      document.body.appendChild(host);
+      appendExternalHost("https://example.com/card.html", "card-2");
 
       const compositionHtml = `
         <html data-composition-variables='[
@@ -1143,17 +1066,14 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byComp["card-2"]).toEqual({ title: "Default Title" });
     });
 
     it("skips registration when neither declared defaults nor host overrides exist", async () => {
-      const host = document.createElement("div");
-      host.setAttribute("data-composition-src", "https://example.com/card.html");
-      host.setAttribute("data-composition-id", "card-empty");
-      document.body.appendChild(host);
+      appendExternalHost("https://example.com/card.html", "card-empty");
 
       const compositionHtml = `
         <html><body><div data-composition-id="card-empty"><p>x</p></div></body></html>
@@ -1162,7 +1082,7 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byComp = (window as WindowWithScopedVars).__hfVariablesByComp;
       expect(byComp?.["card-empty"]).toBeUndefined();
@@ -1190,7 +1110,7 @@ describe("loadExternalCompositions", () => {
         .mockResolvedValueOnce(new Response(firstCompositionHtml, { status: 200 }))
         .mockResolvedValueOnce(new Response(secondCompositionHtml, { status: 200 }));
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byCompAfterFirstMount["card-clear"]).toEqual({ title: "Pro" });
@@ -1198,7 +1118,7 @@ describe("loadExternalCompositions", () => {
       host.removeAttribute("data-variable-values");
       host.innerHTML = "";
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp;
       expect(byCompAfterSecondMount?.["card-clear"]).toBeUndefined();
@@ -1220,7 +1140,7 @@ describe("loadExternalCompositions", () => {
         new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byComp["card-bad"]).toEqual({ title: "OK" });
@@ -1251,7 +1171,7 @@ describe("loadExternalCompositions", () => {
         async () => new Response(compositionHtml, { status: 200 }),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byComp["card-A"]).toEqual({ title: "Pro", price: "$29" });
@@ -1285,7 +1205,7 @@ describe("loadExternalCompositions", () => {
         );
       });
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byCompAfterFirstMount["card-a"]).toEqual({ title: "A" });
@@ -1294,7 +1214,7 @@ describe("loadExternalCompositions", () => {
       hostB.remove();
       hostA.innerHTML = "";
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byCompAfterSecondMount["card-a"]).toEqual({ title: "A" });
@@ -1315,14 +1235,14 @@ describe("loadExternalCompositions", () => {
         ),
       );
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
       expect(byCompAfterFirstMount["card-last"]).toEqual({ title: "Last" });
 
       host.remove();
 
-      await loadExternalCompositions({ ...defaultParams });
+      await loadFixture();
 
       const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp;
       expect(byCompAfterSecondMount?.["card-last"]).toBeUndefined();
@@ -1350,8 +1270,7 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    const injectedStyles: HTMLStyleElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedStyles });
+    const { injectedStyles } = await loadFixture();
 
     // Flattened like every other mount, with the declared id restored so the
     // composition's scoped CSS and self-referencing queries still resolve.
@@ -1371,10 +1290,7 @@ describe("loadExternalCompositions", () => {
   it("executes an inline <head> script of a non-templated composition", async () => {
     // The compiler used to drop this one on the floor (its <head> loop had a
     // `src` branch and no else); the mount path always executed it.
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/head-script.html");
-    host.setAttribute("data-composition-id", "head-script");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/head-script.html", "head-script");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -1385,8 +1301,7 @@ describe("loadExternalCompositions", () => {
       ),
     );
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+    const { injectedScripts } = await loadFixture();
 
     expect(injectedScripts.map((script) => script.textContent).join("\n")).toContain(
       "window.__headScriptRan = true;",
@@ -1398,10 +1313,7 @@ describe("loadExternalCompositions", () => {
     // follow the id the content actually declares, so a script's own
     // querySelector('[data-composition-id="..."]') resolves. Collapsing them
     // pointed every self-query at an id that is nowhere in the content.
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-src", "https://example.com/captions.html");
-    host.setAttribute("data-composition-id", "captions-comp");
-    document.body.appendChild(host);
+    appendExternalHost("https://example.com/captions.html", "captions-comp");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -1413,9 +1325,7 @@ describe("loadExternalCompositions", () => {
       ),
     );
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    const injectedStyles: HTMLStyleElement[] = [];
-    await loadExternalCompositions({ ...defaultParams, injectedScripts, injectedStyles });
+    const { injectedScripts } = await loadFixture();
 
     const scriptSource = injectedScripts.map((script) => script.textContent).join("\n");
     expect(scriptSource).toContain('var __hfCompId = "captions";');
@@ -1423,19 +1333,12 @@ describe("loadExternalCompositions", () => {
   });
 });
 
-describe("loadInlineTemplateCompositions", () => {
+describe("loadCompositions inline templates", () => {
   afterEach(() => {
     document.body.innerHTML = "";
     document.head.querySelectorAll("style").forEach((s) => s.remove());
     vi.restoreAllMocks();
   });
-
-  const defaultParams = {
-    injectedStyles: [] as HTMLStyleElement[],
-    injectedScripts: [] as HTMLScriptElement[],
-    injectedLinks: [] as HTMLLinkElement[],
-    parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
-  };
 
   it("mounts template content into matching empty host", async () => {
     const template = document.createElement("template");
@@ -1453,7 +1356,7 @@ describe("loadInlineTemplateCompositions", () => {
     host.setAttribute("data-duration", "10");
     document.body.appendChild(host);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(host.querySelector("p")?.textContent).toBe("Logo content");
   });
@@ -1463,7 +1366,7 @@ describe("loadInlineTemplateCompositions", () => {
     host.setAttribute("data-composition-id", "no-template");
     document.body.appendChild(host);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     // Host should remain empty
     expect(host.children.length).toBe(0);
@@ -1476,7 +1379,7 @@ describe("loadInlineTemplateCompositions", () => {
     template.innerHTML = "<p>Orphan</p>";
     document.body.appendChild(template);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     // Nothing should change — no hosts match
     expect(document.querySelector("p")).toBeNull();
@@ -1497,19 +1400,19 @@ describe("loadInlineTemplateCompositions", () => {
     host.innerHTML = "<span>Existing content</span>";
     document.body.appendChild(host);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     // Original content should remain
     expect(host.querySelector("span")?.textContent).toBe("Existing content");
     expect(host.querySelector("p")).toBeNull();
   });
 
-  it("skips hosts that have data-composition-src", async () => {
+  it("uses the cached matching template for an external host", async () => {
     const template = document.createElement("template");
     template.id = "external-template";
     template.innerHTML = `
       <div data-composition-id="external" data-width="800" data-height="600">
-        <p>Should not mount</p>
+        <p>Cached content</p>
       </div>
     `;
     document.body.appendChild(template);
@@ -1519,10 +1422,11 @@ describe("loadInlineTemplateCompositions", () => {
     host.setAttribute("data-composition-src", "https://example.com/comp.html");
     document.body.appendChild(host);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    const fetch = vi.spyOn(globalThis, "fetch");
+    await loadFixture();
 
-    // Host should not have template content (it has data-composition-src)
-    expect(host.querySelector("p")).toBeNull();
+    expect(host.querySelector("p")?.textContent).toBe("Cached content");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("processes multiple inline templates", async () => {
@@ -1552,7 +1456,7 @@ describe("loadInlineTemplateCompositions", () => {
     host2.setAttribute("data-composition-id", "comp-b");
     document.body.appendChild(host2);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(host1.querySelector("p")?.textContent).toBe("Content A");
     expect(host2.querySelector("p")?.textContent).toBe("Content B");
@@ -1573,11 +1477,7 @@ describe("loadInlineTemplateCompositions", () => {
     host.setAttribute("data-composition-id", "styled-comp");
     document.body.appendChild(host);
 
-    const injectedStyles: HTMLStyleElement[] = [];
-    await loadInlineTemplateCompositions({
-      ...defaultParams,
-      injectedStyles,
-    });
+    const { injectedStyles } = await loadFixture();
 
     expect(injectedStyles.length).toBeGreaterThan(0);
   });
@@ -1597,11 +1497,7 @@ describe("loadInlineTemplateCompositions", () => {
     host.setAttribute("data-composition-id", "scripted-comp");
     document.body.appendChild(host);
 
-    const injectedScripts: HTMLScriptElement[] = [];
-    await loadInlineTemplateCompositions({
-      ...defaultParams,
-      injectedScripts,
-    });
+    const { injectedScripts } = await loadFixture();
 
     expect(injectedScripts.length).toBeGreaterThan(0);
     expect(injectedScripts[0].textContent).toContain("inline template script");
@@ -1621,7 +1517,7 @@ describe("loadInlineTemplateCompositions", () => {
     host.setAttribute("data-composition-id", "dim-comp");
     document.body.appendChild(host);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(host.getAttribute("data-width")).toBe("1920");
     expect(host.getAttribute("data-height")).toBe("1080");
@@ -1645,7 +1541,7 @@ describe("loadInlineTemplateCompositions", () => {
     hostB.setAttribute("data-composition-id", "scene");
     document.body.appendChild(hostB);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     const runtimeIdA = hostA.getAttribute("data-composition-id");
     const runtimeIdB = hostB.getAttribute("data-composition-id");
@@ -1658,7 +1554,7 @@ describe("loadInlineTemplateCompositions", () => {
     hostA.innerHTML = "";
     hostB.innerHTML = "";
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
     expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
@@ -1696,7 +1592,7 @@ describe("loadInlineTemplateCompositions", () => {
     orphanHostB.setAttribute("data-composition-id", "orphan-scene");
     document.body.appendChild(orphanHostB);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(filledHostA.getAttribute("data-composition-id")).toBe("filled-scene");
     expect(filledHostB.getAttribute("data-composition-id")).toBe("filled-scene");
@@ -1727,7 +1623,7 @@ describe("loadInlineTemplateCompositions", () => {
     mountedHost.setAttribute("data-composition-id", "scene");
     document.body.appendChild(mountedHost);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(skippedHost.getAttribute("data-composition-id")).toBe("scene");
     expect(skippedHost.hasAttribute("data-hf-original-composition-id")).toBe(false);
@@ -1755,7 +1651,7 @@ describe("loadInlineTemplateCompositions", () => {
     hostB.setAttribute("data-composition-id", "scene");
     document.body.appendChild(hostB);
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(hostA.getAttribute("data-composition-id")).toBe("scene");
     expect(hostB.getAttribute("data-composition-id")).toBe("scene__hf1");
@@ -1763,7 +1659,7 @@ describe("loadInlineTemplateCompositions", () => {
     hostA.innerHTML = "";
     hostB.innerHTML = "";
 
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(hostA.getAttribute("data-composition-id")).toBe("scene__hf1");
     expect(hostB.getAttribute("data-composition-id")).toBe("scene__hf2");
@@ -1799,8 +1695,7 @@ describe("loadInlineTemplateCompositions", () => {
     `;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
-    await loadInlineTemplateCompositions({ ...defaultParams });
+    await loadFixture();
 
     expect(inlineHost.getAttribute("data-composition-id")).toBe("scene__hf1");
     expect(externalHost.getAttribute("data-composition-id")).toBe("scene__hf2");
@@ -1833,8 +1728,7 @@ describe("namespaceMountedSvgIds", () => {
       injectedLinks: [] as HTMLLinkElement[],
       parseDimensionPx: () => null,
     };
-    const external = await loadExternalCompositions(params);
-    namespaceMountedSvgIds([...external, ...(await loadInlineTemplateCompositions(params))]);
+    await loadCompositions(params);
     return params.injectedStyles;
   }
 

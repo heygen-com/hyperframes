@@ -519,7 +519,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root. `hyperframes check`'s layout audits can't see it: they measure
   // against the root's own (already-correct) rect, not the body's.
   //
-  // Sub-compositions are exempt: loadExternalCompositions (packages/core/src/
+  // Sub-compositions are exempt: loadCompositions (packages/core/src/
   // runtime/compositionLoader.ts) mounts only the matched <template>/<body>
   // subtree, so a sub-comp's own <html>/<head>/<meta viewport> never reach
   // the rendering document, even when it's a full standalone document.

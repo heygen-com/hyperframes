@@ -33,6 +33,8 @@
     // Same arrangement for the audio FX graph builders, bundled by
     // build-audio-fx-runtime.ts for the offline render page.
     "packages/core/stubs/audio-fx-runtime-entry.ts",
+    // And for the SVG selector alias installer compiled scene scripts carry.
+    "packages/core/stubs/svg-selector-aliases-entry.ts",
     // In-page audit scripts read as raw strings and injected via
     // page.addScriptTag (see layout.ts / validate.ts) — referenced by file
     // path, never imported, so they have no import-graph referrer.
@@ -938,7 +940,7 @@
       "packages/studio/src/player/components/TimelineClipDiamonds.tsx",
       // Sub-composition html/body scoping fix: these files carry pre-existing
       // CRITICAL/HIGH functions (inlineSubCompositions, bundleToSingleHtml,
-      // mountCompositionContent/loadExternalCompositions, scopeSelector/
+      // mountCompositionContent/loadCompositions, scopeSelector/
       // replaceAuthoredRootIdSelectors) that pre-date this PR. The change only
       // threads a scopeRootSelectors option through the existing scoping calls;
       // the line-shift fingerprint re-flags the inherited complexity.

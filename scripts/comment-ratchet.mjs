@@ -10,9 +10,12 @@ import { commentBlocks } from "./check-comment-citations.mjs";
 
 const MAX_BLOCK_LINES = 12;
 
-// Product source only: a test's table of cases reads as comment and is the test's content.
+// Product source only: a test's table of cases reads as comment and is the test's content, and a
+// generated file's comments are its generator's.
 export const isSource = (path) =>
-  /^packages\/[^/]+\/src\/.+\.tsx?$/.test(path) && !/\.(d|test|spec)\.tsx?$/.test(path);
+  /^packages\/[^/]+\/src\/.+\.tsx?$/.test(path) &&
+  !/\.(d|test|spec)\.tsx?$/.test(path) &&
+  !/^packages\/[^/]+\/src\/generated\//.test(path);
 
 const packageOf = (path) => path.split("/").slice(0, 2).join("/");
 

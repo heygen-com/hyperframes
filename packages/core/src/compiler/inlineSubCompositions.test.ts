@@ -906,12 +906,13 @@ describe("inlineSubCompositions – renamed SVG ids stay reachable from author s
     const window = dom.window as unknown as Window & typeof globalThis & Record<string, unknown>;
     window.__captured = {};
     if (fakeGsap) (window as Record<string, unknown>).gsap = fakeGsap(window);
+    const nativeQuery = window.Element.prototype.querySelector;
     for (const script of result.scripts) window.eval(script);
-    return { window, result, captured: window.__captured as Record<string, unknown> };
+    return { window, result, nativeQuery, captured: window.__captured as Record<string, unknown> };
   }
 
   it("single composition: native and script references to the same element both keep resolving", () => {
-    const { window, captured } = inlineAndBoot(
+    const { window, captured, nativeQuery } = inlineAndBoot(
       {
         "scene.html": scriptedScene(
           "scene",
@@ -929,7 +930,7 @@ describe("inlineSubCompositions – renamed SVG ids stay reachable from author s
     expect(path.getAttribute("id")).toBe("shape");
     expect(path.hasAttribute("data-hf-authored-id")).toBe(false);
     expect(window.document.querySelector("use")!.getAttribute("href")).toBe("#shape");
-    expect((window as Record<string, unknown>).__hfRenamedIdSelectorShim).toBeUndefined();
+    expect(window.Element.prototype.querySelector).toBe(nativeQuery);
     expect(captured.viaDocument).toBe(path);
     expect(captured.viaElement).toBe(path);
     expect(captured.byId).toBe(path);
@@ -946,7 +947,7 @@ describe("inlineSubCompositions – renamed SVG ids stay reachable from author s
         gsapTargets: gsap.to(["#shape", ".ref"], {}),
         toArray: gsap.utils.toArray("#shape"),
       };`;
-    const { window, captured } = inlineAndBoot(
+    const { window, captured, nativeQuery } = inlineAndBoot(
       {
         "scene-a.html": scriptedScene("scene-a", `var __hfProbeName = "a"; ${probe}`),
         "scene-b.html": scriptedScene("scene-b", `var __hfProbeName = "b"; ${probe}`),
@@ -990,7 +991,7 @@ describe("inlineSubCompositions – renamed SVG ids stay reachable from author s
     expect(b.gsapTargets).toEqual([pathB, rootB!.querySelector("use.ref")]);
     expect(a.toArray).toEqual([pathA]);
     expect(b.toArray).toEqual([pathB]);
-    expect((window as Record<string, unknown>).__hfRenamedIdSelectorShim).toBe(true);
+    expect(window.Element.prototype.querySelector).not.toBe(nativeQuery);
   });
 
   it("escaped CSS id: a styled element that is also natively referenced keeps its rule after rename", () => {
@@ -1027,13 +1028,11 @@ describe("inlineSubCompositions – renamed SVG ids stay reachable from author s
     expect(cssA).toContain("url(#fx.1)");
     expect(cssB).toContain(String.raw`#scene-b--fx\.1`);
     expect(cssB).toContain("url(#scene-b--fx.1)");
-    expect(cssB).not.toContain(String.raw`#fx\.1`);
+    expect(cssB).toContain(String.raw`:is(#fx\.1, #scene-b--fx\.1)`);
 
     // The rewritten selector actually matches the renamed element in a real
     // selector engine.
-    const ruleSelector = /(\[data-composition-id="scene-b"\][^{]*#scene-b--fx\\\.1)\s*\{/.exec(
-      cssB!,
-    )?.[1];
+    const ruleSelector = cssB!.slice(0, cssB!.indexOf("{")).trim();
     expect(ruleSelector).toBeTruthy();
     expect(window.document.querySelector(ruleSelector!)).toBe(filterB);
 
