@@ -280,6 +280,18 @@
           // descendant. Any one left behind is swept as a target of its own, which clones again.
           var COPY_STRIP = [SWEEP_ATTR, "data-composition-id", "data-fps"];
 
+          // sharp 0 hides a moving target through this marker rather than its own visibility,
+          // which the author's timeline (autoAlpha) may be writing too.
+          var HIDE_ATTR = "data-hf-motion-blur-hiding";
+
+          function installHideRule() {
+            if (document.getElementById("hf-mb-hide")) return;
+            var rule = document.createElement("style");
+            rule.id = "hf-mb-hide";
+            rule.textContent = "[" + HIDE_ATTR + "]{visibility:hidden!important}";
+            (document.head || document.documentElement).appendChild(rule);
+          }
+
           function stripAttrs(el) {
             for (var a = 0; a < COPY_STRIP.length; a++) el.removeAttribute(COPY_STRIP[a]);
           }
@@ -366,7 +378,8 @@
             var shutterAngle = numOption(opts.shutterAngle, 720);
             var shutterPhase = numOption(opts.shutterPhase, -360);
             var requestedSamples = numOption(opts.samplesPerFrame, 16);
-            var sharp = numOption(opts.sharp, 1) !== 0;
+            var sharp = opts.sharp !== 0;
+            if (!sharp) installHideRule();
             var samples = Number.isFinite(requestedSamples)
               ? Math.max(2, Math.min(64, Math.round(requestedSamples)))
               : 16;
@@ -445,7 +458,6 @@
                 samples: [],
                 perspective: "",
                 watch: null,
-                shown: el.style.visibility,
               };
 
               // Resolved styles and the parent's perspective are px once read, so a
@@ -454,10 +466,10 @@
               // on a fixed-size render and keeps a live preview honest.
               function snapshot() {
                 // A copy styled while sharp 0 hides the element would inherit the hiding.
-                var hiding = el.style.visibility;
-                if (!sharp) el.style.visibility = s.shown;
+                var hiding = el.hasAttribute(HIDE_ATTR);
+                if (hiding) el.removeAttribute(HIDE_ATTR);
                 var styles = resolvedStyles(el, []);
-                el.style.visibility = hiding;
+                if (hiding) el.setAttribute(HIDE_ATTR, "");
                 s.perspective = parentPerspective(el);
                 for (var c = 0; c < clones.length; c++) {
                   paintResolvedStyles(clones[c], styles, { i: 0 });
@@ -566,7 +578,7 @@
                 }
                 if (!moved) {
                   s.group.style.display = "none";
-                  if (!sharp) s.el.style.visibility = s.shown;
+                  if (!sharp) s.el.removeAttribute(HIDE_ATTR);
                   return;
                 }
 
@@ -593,7 +605,7 @@
                 // own opacity is the 1/N shutter weight.
                 s.group.style.opacity = current.opacity;
                 s.group.style.display = "";
-                if (!sharp) s.el.style.visibility = "hidden";
+                if (!sharp) s.el.setAttribute(HIDE_ATTR, "");
               });
             }
 
@@ -647,6 +659,9 @@
             if (bad !== null) return refuse(el, "names no such option: " + bad);
             var wrong = nonNumber(parsed);
             if (wrong !== null) return refuse(el, "needs a number for " + wrong);
+            if (parsed.sharp !== undefined && parsed.sharp !== 0 && parsed.sharp !== 1) {
+              return refuse(el, "needs 0 or 1 for sharp");
+            }
             return parsed;
           }
 

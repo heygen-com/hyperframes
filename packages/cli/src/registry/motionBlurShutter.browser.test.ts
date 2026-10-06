@@ -232,6 +232,8 @@ function copyPitches(offsets: number[]): number[] {
 }
 
 const originalGetComputedStyle = globalThis.getComputedStyle;
+/** The marker sharp 0 sets on a moving target; a stylesheet rule does the hiding. */
+const HIDING = "data-hf-motion-blur-hiding";
 
 beforeEach(() => {
   // The snippet polls the registry on a timer for seconds. Fake timers let a test reach the
@@ -315,6 +317,8 @@ describe("motion-blur shutter matches the After Effects reference", () => {
     // group has to precede the element rather than follow it.
     expect(group.nextElementSibling).toBe(word);
     expect(word.style.opacity).toBe("");
+    expect(word.hasAttribute(HIDING)).toBe(false);
+    expect(word.style.visibility).toBe("");
   });
 
   it("leaves only the shutter average while moving at sharp 0, and the element at rest", async () => {
@@ -322,30 +326,44 @@ describe("motion-blur shutter matches the After Effects reference", () => {
     const { group, word, fire } = await attach({ sharp: 0 }, (df) => translating(df * speed));
 
     expect(group.style.display).toBe("");
-    expect(word.style.visibility).toBe("hidden");
+    expect(word.hasAttribute(HIDING)).toBe(true);
 
     speed = 0;
     fire();
     await Promise.resolve();
 
     expect(group.style.display).toBe("none");
-    expect(word.style.visibility).toBe("");
+    expect(word.hasAttribute(HIDING)).toBe(false);
+  });
+
+  it("leaves the element's own visibility to the timeline at sharp 0", async () => {
+    // An autoAlpha fade writes visibility itself; hiding through it would keep the element
+    // hidden after the fade brings it back.
+    let speed = 1;
+    const { word, fire } = await attach({ sharp: 0 }, (df) => translating(df * speed));
+    word.style.visibility = "inherit";
+
+    speed = 0;
+    fire();
+    await Promise.resolve();
+
+    expect(word.style.visibility).toBe("inherit");
   });
 
   it("styles the copies from the shown element when a resize lands while sharp 0 hides it", async () => {
     const observer = installResizeObserver();
     const { word } = await attach({ sharp: 0 });
-    const seen: string[] = [];
+    const seen: boolean[] = [];
     const mocked = globalThis.getComputedStyle;
     globalThis.getComputedStyle = ((element: Element) => {
-      if (element === word) seen.push(word.style.visibility);
+      if (element === word) seen.push(word.hasAttribute(HIDING));
       return mocked(element);
     }) as typeof globalThis.getComputedStyle;
 
     observer.resize();
 
-    expect(seen[0]).toBe("");
-    expect(word.style.visibility).toBe("hidden");
+    expect(seen[0]).toBe(false);
+    expect(word.hasAttribute(HIDING)).toBe(true);
   });
 
   it("carries the element's own opacity on the smear", async () => {
@@ -794,6 +812,18 @@ describe("motion-blur declarative attribute, the cases only executing found", ()
 
     expect(trailing).toBeCloseTo(-reference.trailingDisplacementPx, 1);
     expect(leading).toBeCloseTo(reference.leadingDisplacementPx, 1);
+  });
+
+  it("refuses a sharp other than 0 or 1 instead of reading it as crisp", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const target = declare('{"sharp": 0.5}');
+
+    target.register();
+    await target.settle();
+
+    expect(target.groups()).toHaveLength(0);
+    expect(String(warn.mock.calls[0]?.[0])).toContain("needs 0 or 1 for sharp");
+    warn.mockRestore();
   });
 
   it("refuses an option name it does not know instead of rendering with the defaults", async () => {
