@@ -41,7 +41,6 @@ describe("film runner bridge", () => {
     const { iframe, bridge, receive, send, load, initialize } = setup();
     expect(iframe.srcdoc).toContain("fixture runner");
     initialize();
-    receive("hello");
     await bridge.ready;
     const frame = bridge.render(3.25);
     await Promise.resolve();
@@ -57,6 +56,64 @@ describe("film runner bridge", () => {
     receive("frame", { seq: 1 });
     await frame;
     expect(complete).toBe(true);
+  });
+
+  it("rejects a runner reload during a frame and ignores old acknowledgements", async () => {
+    vi.useFakeTimers();
+    const { bridge, initialize, receive, send } = setup();
+    initialize();
+    const frame = bridge.render(1);
+    const rejected = expect(frame).rejects.toThrow("reloaded");
+    await Promise.resolve();
+    receive("hello");
+    receive("ready");
+    receive("frame", { seq: 1 });
+    await rejected;
+    await expect(bridge.render(2)).rejects.toThrow("reloaded");
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects a reload before readiness instead of leaving startup pending", async () => {
+    vi.useFakeTimers();
+    const { bridge, receive } = setup();
+    receive("hello");
+    receive("hello");
+    await expect(bridge.ready).rejects.toThrow("reloaded");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("settles startup immediately when the load payload cannot be cloned", async () => {
+    vi.useFakeTimers();
+    const { bridge, receive, send } = setup();
+    send.mockImplementation(() => {
+      throw new DOMException("uncloneable load", "DataCloneError");
+    });
+    receive("hello");
+    await expect(bridge.ready).rejects.toThrow("uncloneable load");
+    await expect(bridge.render(0)).rejects.toThrow("uncloneable load");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("settles frame sends immediately when postMessage throws", async () => {
+    vi.useFakeTimers();
+    const { bridge, initialize, send } = setup();
+    initialize();
+    send.mockImplementation(() => {
+      throw new Error("frame send failed");
+    });
+    await expect(bridge.render(0)).rejects.toThrow("frame send failed");
+    await expect(bridge.render(1)).rejects.toThrow("frame send failed");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects immediately when the runner has no content window", async () => {
+    vi.useFakeTimers();
+    const { iframe, bridge, initialize } = setup();
+    initialize();
+    Object.defineProperty(iframe, "contentWindow", { value: null });
+    await expect(bridge.render(0)).rejects.toThrow("window is unavailable");
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("rejects sandbox configurations that expose a same-origin document", () => {
