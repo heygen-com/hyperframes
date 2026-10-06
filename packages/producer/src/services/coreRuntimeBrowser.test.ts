@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import { bundleToSingleHtml } from "@hyperframes/core/compiler";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
+import type {} from "../../../core/src/runtime/window";
+import {
+  computeStaticFrameSet,
+  waitForPendingSeekCompletion,
+} from "../../../engine/src/services/frameCapture";
 
 const RUNTIME_PATH = resolve(import.meta.dirname, "../../../core/dist/hyperframe.runtime.iife.js");
 const PNG_1PX =
@@ -37,6 +42,54 @@ describe("core runtime browser contract", () => {
 
   afterAll(async () => {
     await browser?.close();
+  });
+
+  it("disables static dedup for an async frame source even alongside a GSAP tween", async () => {
+    const sourcePage = await browser.newPage();
+    try {
+      await sourcePage.setContent(
+        `<div id="source" data-composition-id="root" data-start="0" data-duration="2" data-width="320" data-height="180"><div id="probe"></div></div>`,
+      );
+      await sourcePage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await sourcePage.addScriptTag({
+        content:
+          'window.__timelines = {root:gsap.timeline({paused:true}).to("#probe",{opacity:0.5,duration:0.1})};',
+      });
+      await sourcePage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await sourcePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+      await sourcePage.evaluate(() => {
+        window.__hf = { duration: window.__player!.getDuration!() };
+      });
+      const baseline = await computeStaticFrameSet(sourcePage, 30);
+      expect(baseline.reason).toBe("eligible");
+      expect(baseline.eligible).toBe(true);
+      await sourcePage.evaluate(() => {
+        const element = document.getElementById("source")!;
+        window.__hyperframes!.registerFrameSource({
+          element,
+          render: async (time) => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            element.setAttribute("data-rendered-time", String(time));
+          },
+        });
+        window.__player!.renderSeek!(0.5);
+      });
+      await waitForPendingSeekCompletion(sourcePage);
+      expect(await sourcePage.$eval("#source", (el) => el.getAttribute("data-rendered-time"))).toBe(
+        "0.5",
+      );
+      const analysis = await computeStaticFrameSet(sourcePage, 30);
+      expect(analysis.tweenCount).toBeGreaterThan(0);
+      expect(analysis.eligible).toBe(false);
+      expect(analysis.staticFrameSet.size).toBe(0);
+      expect(analysis.reason).toContain("registered frame source");
+      await sourcePage.evaluate(() => document.body.appendChild(document.createElement("iframe")));
+      expect((await computeStaticFrameSet(sourcePage, 30)).reason).toContain("iframe");
+    } finally {
+      await sourcePage.close();
+    }
   });
 
   it("initializes the public player contract and seeks the CSS adapter", async () => {
