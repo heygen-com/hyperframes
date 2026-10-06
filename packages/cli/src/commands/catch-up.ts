@@ -71,7 +71,7 @@ export default defineCommand({
     const seen = readSeen(project.dir);
     if (!seen.at) return printNotHandedOver(project.name, project.dir, args.json);
     const checking = Date.now();
-    const turns = unseenTurns(project.dir, seen.at);
+    const turns = unseenTurns(project.dir, seen.at, checking);
     const files = filesChangedSince(project.dir, seen.checked);
     if (args.json) console.log(JSON.stringify({ project: project.dir, turns, files }, null, 2));
     else printNews(project.name, turns, files);

@@ -125,7 +125,8 @@ function desktopApps({
 function leaveHandoff(dir: string, session: AgentSession | null): AgentSession | null {
   if (!session || !writeRecord(dir, "agent-handoff.json", JSON.stringify(session))) return null;
   const now = Date.now();
-  if (!readSeen(dir).at) markSeen(dir, { at: now, checked: now });
+  if (!readSeen(dir).at && !markSeen(dir, { at: now, checked: now }))
+    console.warn("◇  Couldn't note the hand-off in ~/.hyperframes, so `catch-up` won't see it.");
   addCatchUpNote(dir);
   return session;
 }

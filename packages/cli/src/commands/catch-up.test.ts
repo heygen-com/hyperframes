@@ -8,8 +8,9 @@ import { APP_HISTORY, markSeen, readSeen } from "../utils/appHistory.js";
 describe("catch-up", () => {
   beforeEach(() => {
     const home = mkdtempSync(join(tmpdir(), "hf-home-"));
-    process.env.HOME = home;
-    process.env.USERPROFILE = home;
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    return () => vi.unstubAllEnvs();
   });
 
   it("marks seen only up to the newest turn it showed, so a turn written after the read shows next time", async () => {

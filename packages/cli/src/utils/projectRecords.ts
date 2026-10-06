@@ -23,25 +23,27 @@ function recordsDir(projectDir: string, create = false): string | null {
   }
 }
 
-/** The last `maxBytes` of a plain file; "" for a link, a device, or a missing file. The file is opened once and
- * must be the one `lstat` saw, so this holds where O_NOFOLLOW doesn't exist (Windows). */
+/** The last `maxBytes` of a plain file; "" for a link, a device, or a missing file. The file is opened first and
+ * read only when `lstat` then finds the same plain file at the path, so this holds where O_NOFOLLOW doesn't exist
+ * (Windows), and nothing path-based follows the check. */
 export function readPlainFile(path: string, maxBytes: number): string {
-  let seen;
   let fd: number;
   try {
-    seen = lstatSync(path);
-    if (!seen.isFile()) return "";
     fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
   } catch {
     return "";
   }
   try {
     const stats = fstatSync(fd);
-    if (!stats.isFile() || stats.ino !== seen.ino || stats.dev !== seen.dev) return "";
+    const named = lstatSync(path);
+    if (!stats.isFile() || !named.isFile() || named.ino !== stats.ino || named.dev !== stats.dev)
+      return "";
     const length = Math.min(stats.size, maxBytes);
     const buffer = Buffer.alloc(length);
     readSync(fd, buffer, 0, length, stats.size - length);
     return buffer.toString("utf8");
+  } catch {
+    return "";
   } finally {
     closeSync(fd);
   }

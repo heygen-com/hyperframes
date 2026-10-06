@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addCatchUpNote,
   APP_HISTORY,
@@ -41,8 +41,9 @@ const handedOverAt = (dir: string, at: string) =>
 // The seen record lives in the person's home: each test gets its own.
 beforeEach(() => {
   const home = mkdtempSync(join(tmpdir(), "hf-home-"));
-  process.env.HOME = home;
-  process.env.USERPROFILE = home;
+  vi.stubEnv("HOME", home);
+  vi.stubEnv("USERPROFILE", home);
+  return () => vi.unstubAllEnvs();
 });
 
 describe("app history", () => {
@@ -90,6 +91,16 @@ describe("app history", () => {
     symlinkSync(outside, join(linked, ".hyperframes"), "dir");
     expect(readRecord(linked, APP_HISTORY, 1024)).toBe("");
     expect(writeRecord(linked, "agent-handoff.json", "{}")).toBe(false);
+  });
+
+  it("never shows a turn dated ahead, nor lets it carry the cursor past real ones", () => {
+    const dir = project([
+      turn("2026-01-01T10:00:00Z", "real"),
+      turn("2099-01-01T00:00:00Z", "planted"),
+    ]);
+    handedOverAt(dir, "2026-01-01T09:00:00Z");
+    const now = Date.parse("2026-06-01T00:00:00Z");
+    expect(unseenTurns(dir, readSeen(dir).at, now).map((t) => t.asked)).toEqual(["real"]);
   });
 
   it("never takes a seen record a cloned project ships for a hand-off", () => {

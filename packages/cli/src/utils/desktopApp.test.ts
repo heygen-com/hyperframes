@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, win32 } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSeen } from "./appHistory.js";
 import {
   AGENT_HANDOFF_FILE,
@@ -148,8 +148,9 @@ describe("agent hand-off", () => {
   // The seen record lives in the person's home: these tests get their own.
   beforeEach(() => {
     const home = mkdtempSync(join(tmpdir(), "hf-home-"));
-    process.env.HOME = home;
-    process.env.USERPROFILE = home;
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    return () => vi.unstubAllEnvs();
   });
 
   let dir: string | undefined;

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync } from "node:fs";
+import { realpath } from "@hyperframes/core/safe-path";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { readPlainFile, readRecord, recordChangedAt, replaceFile } from "./projectRecords.js";
@@ -56,7 +57,7 @@ const stamp = (value: unknown): number => (typeof value === "string" ? Date.pars
 function seenPath(dir: string): string {
   let real: string;
   try {
-    real = realpathSync(dir);
+    real = realpath(dir);
   } catch {
     real = resolve(dir);
   }
@@ -79,15 +80,21 @@ export function markSeen(dir: string, seen: Seen): boolean {
   const path = seenPath(dir);
   const at = (time: number) => new Date(time).toISOString();
   try {
-    mkdirSync(dirname(path), { recursive: true });
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   } catch {
     return false;
   }
   return replaceFile(path, JSON.stringify({ at: at(seen.at), checked: at(seen.checked) }), 0o600);
 }
 
-export const unseenTurns = (dir: string, since: number): AppTurn[] =>
-  since ? readAppTurns(dir).filter((turn) => Date.parse(turn.at) > since) : [];
+/** Turns after `since` and not after `now`: a turn dated ahead, as a cloned history could carry, is never shown and
+ * never moves the cursor past real ones. */
+export function unseenTurns(dir: string, since: number, now = Date.now()): AppTurn[] {
+  if (!since) return [];
+  return readAppTurns(dir).filter(
+    (turn) => Date.parse(turn.at) > since && Date.parse(turn.at) <= now,
+  );
+}
 
 /** Project files changed after `since`, by the app or by hand; hidden folders and outputs are not the video. */
 export function filesChangedSince(dir: string, since: number): string[] {
