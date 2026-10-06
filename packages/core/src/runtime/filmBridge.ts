@@ -63,10 +63,23 @@ export function createFilmBridge(options: {
       request.reject(new Error("message" in data ? String(data.message) : "Film frame failed"));
     } else request.resolve();
   };
+  const send = (message: Record<string, unknown>) => {
+    try {
+      const target = iframe.contentWindow;
+      if (!target) throw new Error("Film runner window is unavailable");
+      target.postMessage(message, "*");
+    } catch (error) {
+      fail(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
   const receiveStartup = (data: { type: unknown }) => {
-    if (data.type === PREFIX + "hello" && !loaded) {
+    if (data.type === PREFIX + "hello") {
+      if (loaded) {
+        fail(new Error("Film runner reloaded; recreate the bridge before seeking"));
+        return;
+      }
       loaded = true;
-      iframe.contentWindow?.postMessage({ ...load, type: PREFIX + "load" }, "*");
+      send({ ...load, type: PREFIX + "load" });
     } else if (data.type === PREFIX + "ready" && loaded) {
       clearTimeout(startupTimer);
       resolveReady();
@@ -97,7 +110,7 @@ export function createFilmBridge(options: {
           fail(new Error("Film frame did not arrive within 15 s"));
         }, 15_000);
         pending = { sequence: seq, resolve, reject, timer };
-        iframe.contentWindow?.postMessage({ type: PREFIX + "frame", t: time, seq }, "*");
+        send({ type: PREFIX + "frame", t: time, seq });
       });
     },
     dispose() {

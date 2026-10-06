@@ -3032,12 +3032,15 @@ export async function computeStaticFrameSet(
     const w = window as unknown as {
       __timelines?: Record<string, AnyTween>;
       __hf?: { duration?: number };
+      __hfHasFrameSources?: () => boolean;
     };
     for (const tl of Object.values(w.__timelines || {})) {
       if (tl && typeof tl.getChildren === "function") walk(tl, 0);
     }
     const hasVideo = !!document.querySelector("video");
     const hasCanvas = !!document.querySelector("canvas");
+    const hasFrameSources = w.__hfHasFrameSources?.() ?? false;
+    const hasIframe = !!document.querySelector("iframe");
     // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
     // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
     // unprotected and could be deduped into the previous scene. Disqualify the comp.
@@ -3067,6 +3070,8 @@ export async function computeStaticFrameSet(
       duration: w.__hf?.duration ?? 0,
       hasVideo,
       hasCanvas,
+      hasFrameSources,
+      hasIframe,
       hasNonGsapAnim,
       hasUnresolvableClipStart,
       hasTimelineCall,
@@ -3079,6 +3084,8 @@ export async function computeStaticFrameSet(
     duration,
     hasVideo,
     hasCanvas,
+    hasFrameSources,
+    hasIframe,
     hasNonGsapAnim,
     hasUnresolvableClipStart,
     hasTimelineCall,
@@ -3088,6 +3095,8 @@ export async function computeStaticFrameSet(
     duration: number;
     hasVideo: boolean;
     hasCanvas: boolean;
+    hasFrameSources: boolean;
+    hasIframe: boolean;
     hasNonGsapAnim: boolean;
     hasUnresolvableClipStart: boolean;
     hasTimelineCall: boolean;
@@ -3121,6 +3130,9 @@ export async function computeStaticFrameSet(
   if (!(duration > 0)) reasons.push("unknown/zero duration");
   if (hasVideo) reasons.push("video");
   if (hasCanvas) reasons.push("canvas/webgl");
+  // GSAP intervals cannot predict frame-source or opaque iframe draws.
+  if (hasFrameSources) reasons.push("registered frame source");
+  if (hasIframe) reasons.push("iframe");
   if (tweenCount === 0) reasons.push("no GSAP tweens (non-GSAP animation)");
   if (hasNonGsapAnim) reasons.push("running CSS/WAAPI animation");
   // tl.call() side effects are not seek-idempotent (see hasTimelineCall detection

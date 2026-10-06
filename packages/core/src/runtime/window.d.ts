@@ -35,6 +35,7 @@ type ThreeLike = {
 
 declare global {
   interface Window {
+    __hfHasFrameSources?: () => boolean;
     __timelines: Record<string, RuntimeTimelineLike>;
     __player?: PlayerAPI;
     __hyperframes?: {

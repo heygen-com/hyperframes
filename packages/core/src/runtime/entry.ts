@@ -14,7 +14,7 @@ import { getVariables } from "./getVariables";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
 import { runScriptsAfterFonts } from "./afterFonts";
 import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
-import { registerFrameSource } from "./frameSources";
+import { hasFrameSources, registerFrameSource } from "./frameSources";
 import { createFilmBridge } from "./filmBridge";
 
 type HyperframeWindow = Window & {
@@ -42,6 +42,7 @@ type HyperframeWindow = Window & {
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
 installFlatGsapTransforms();
+window.__hfHasFrameSources = hasFrameSources;
 
 hideTimedClipsUntilFirstPass();
 deferMediaUntilDue();
