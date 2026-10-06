@@ -116,7 +116,7 @@ function makeTimeline(onTo?: () => void): Fake {
   return { tl, currentTime: () => now, fire: () => onUpdate?.(), trackers: () => trackers };
 }
 
-/** What the browser resolves for the target: the marker's !important rule wins, else the inline value. */
+/** What the browser resolves for the target: an inline !important, else the marker's rule, else the inline value. */
 function wordVisibility(word: Element): string {
   const style = (word as HTMLElement).style;
   if (style.getPropertyPriority("visibility") === "important") return style.visibility;
