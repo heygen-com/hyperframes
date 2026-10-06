@@ -170,16 +170,21 @@ it("does not claim transcription completed when decoding fails", async () => {
   ]);
 });
 
-it("streams the words of each segment whisper prints, before the final transcript", async () => {
-  native.printed.stdout =
-    "\n[00:00:00.000 --> 00:00:02.000]   Hello big world\n" +
-    "[00:00:02.000 --> 00:00:04.000]   [BLANK_AUDIO]\n";
+async function transcribeStreaming() {
   const events: TranscribeProgress[] = [];
   const result = await transcribe(join(dir, "audio.wav"), dir, {
     model: "small",
     onEvent: (event) => events.push(event),
   });
-  expect(events.filter((e) => e.type === "words")).toEqual([
+  return { events, words: events.filter((e) => e.type === "words"), result };
+}
+
+it("streams the words of each segment whisper prints, before the final transcript", async () => {
+  native.printed.stdout =
+    "\n[00:00:00.000 --> 00:00:02.000]   Hello big world\n" +
+    "[00:00:02.000 --> 00:00:04.000]   [BLANK_AUDIO]\n";
+  const { events, words, result } = await transcribeStreaming();
+  expect(words).toEqual([
     {
       type: "words",
       model: "small",
@@ -202,12 +207,7 @@ it("reports progress through audio where whisper prints no segment, once per ste
     "whisper_print_progress_callback: progress =  25%\n" +
     "whisper_print_progress_callback: progress =  25%\n" +
     "whisper_print_progress_callback: progress = 100%\n";
-  const events: TranscribeProgress[] = [];
-  await transcribe(join(dir, "audio.wav"), dir, {
-    model: "small",
-    onEvent: (event) => events.push(event),
-  });
-  expect(events.filter((e) => e.type === "words")).toEqual([
+  expect((await transcribeStreaming()).words).toEqual([
     { type: "words", model: "small", words: [], through: 1 },
     { type: "words", model: "small", words: [], through: 4 },
   ]);
