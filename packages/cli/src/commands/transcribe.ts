@@ -72,7 +72,8 @@ export default defineCommand({
     },
     language: {
       type: "string",
-      description: "Language code (e.g. en, es, ja). Filters out non-target language speech.",
+      description:
+        "Language code (e.g. en, es, ja). Whisper keeps only this language; Parakeet, used when it covers it, detects the language itself.",
       alias: "l",
     },
     json: {
@@ -480,7 +481,7 @@ async function transcribeAudio(
       trackTranscribeUnavailable({ optional: opts.optional === true });
       // Auto fell to whisper only because Parakeet is not installed; installing it is the other way through.
       const install =
-        engine === "auto" && runner === "whisper" && parakeetSpeaks(opts.language) && !unsupported
+        engine === "auto" && parakeetSpeaks(opts.language) && !unsupported
           ? PARAKEET_INSTALL_COMMAND
           : undefined;
       if (opts.json) {
