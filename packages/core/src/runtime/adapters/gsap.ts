@@ -100,6 +100,7 @@ type GsapAnimation = {
     | 0
     | { render: (totalTime: number, suppressEvents: boolean, force: boolean) => unknown };
   getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => unknown[];
+  timeline?: Pick<GsapAnimation, "getChildren">;
 };
 
 const BELOW_GSAP_TIME_RESOLUTION = 2e-8;
@@ -129,8 +130,9 @@ function primeTweensStartingAt(children: unknown[], time: number): void {
   for (const child of children.filter(playsForward)) {
     const local = (time - child.startTime()) * child.timeScale();
     if (Math.abs(local) < 1e-9 && primedAtItsStart(child)) continue;
-    if (child.getChildren && local > 0 && local <= child.totalDuration()) {
-      primeTweensStartingAt(child.getChildren(false, true, true), local);
+    const nested = child.getChildren ? child : child.timeline;
+    if (nested?.getChildren && local > 0 && local <= child.totalDuration()) {
+      primeTweensStartingAt(nested.getChildren(false, true, true), local);
     }
   }
 }

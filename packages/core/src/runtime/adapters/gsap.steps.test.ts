@@ -108,6 +108,33 @@ describe("gsap adapter at a tween's start", () => {
     expect(origins.slice(1)).toEqual(["0% 0%", "100% 100%", "100% 100%", "0% 0%", "0% 0%"]);
   });
 
+  it("keeps each staggered target's from-only values from the frame it starts on", () => {
+    const film = () => {
+      const boxes = [0, 1, 2].map(() => document.body.appendChild(document.createElement("div")));
+      const timeline = gsap.timeline({ paused: true });
+      timeline.fromTo(
+        boxes,
+        { scale: 1.5, transformOrigin: "0% 0%" },
+        { scale: 1, duration: 0.3, stagger: 0.1, ease: "none", immediateRender: false },
+        0.1,
+      );
+      timeline.set({}, {}, 1);
+      return { boxes, timeline };
+    };
+    const played = film();
+    const seeked = film();
+    const adapter = createGsapAdapter({
+      getTimeline: () => seeked.timeline as unknown as RuntimeTimelineLike,
+    });
+    for (let frame = 0; frame <= 12; frame++) {
+      played.timeline.totalTime(frame / 30, false);
+      adapter.seek({ time: frame / 30 });
+      const origins = (film: { boxes: HTMLElement[] }) =>
+        film.boxes.map((box) => box.style.transformOrigin);
+      expect(origins(seeked), `frame ${frame}`).toEqual(origins(played));
+    }
+  });
+
   it("still lets a set authored later on the tween's start win over its from-values", () => {
     const box = document.body.appendChild(document.createElement("div"));
     const timeline = gsap.timeline({ paused: true });
