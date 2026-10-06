@@ -201,9 +201,12 @@ function commitPreview() {
   const done = preview;
   if (!view || !done) return;
   const left = view.scroll.scrollLeft - done.shift;
-  flushSync(() =>
-    writeZoom(done.percent, { time: left / done.pps, x: view.contentOrigin }, done.byPerson),
-  );
+  // Ending at the scale already laid out (an eased zoom-out) needs a scroll, not a layout.
+  if (done.pps !== done.basePps) {
+    flushSync(() =>
+      writeZoom(done.percent, { time: left / done.pps, x: view.contentOrigin }, done.byPerson),
+    );
+  }
   preview = null;
   if (Math.abs(view.scroll.scrollLeft - left) >= 0.5) view.scroll.scrollLeft = left;
   clearScaled(view.scroll);

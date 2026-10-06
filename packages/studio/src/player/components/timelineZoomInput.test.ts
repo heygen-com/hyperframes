@@ -371,6 +371,8 @@ describe("zoomTimelineStep", () => {
     run();
     unsubscribe();
     expect(laidOut).toEqual([20]);
+    // Counted once as the person's zoom: the end of the ease writes nothing more.
+    expect(usePlayerStore.getState().userZoomCount).toBe(1);
   });
 
   it("centres an off-screen playhead", () => {
