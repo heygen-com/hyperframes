@@ -254,7 +254,8 @@ describe("useTimelinePlayhead wheel zoom", () => {
     vi.useRealTimers();
   });
 
-  const wheel = (scroll: HTMLDivElement, init: WheelEventInit) =>
+  /** A wheel step 432px in, previewed for one frame. */
+  const previewWheel = (scroll: HTMLDivElement, init: WheelEventInit) =>
     act(() => {
       const event = new WheelEvent("wheel", { deltaY: -50, cancelable: true, ...init });
       // happy-dom's WheelEvent drops the MouseEvent fields of its init.
@@ -264,10 +265,14 @@ describe("useTimelinePlayhead wheel zoom", () => {
         metaKey: { value: Boolean(init.metaKey) },
       });
       scroll.dispatchEvent(event);
-      // The preview's frame, then its rest, when the zoom is laid out.
       vi.advanceTimersToNextFrame();
-      vi.advanceTimersByTime(200);
     });
+
+  /** A wheel step, then the rest at which its zoom is laid out. */
+  const wheel = (scroll: HTMLDivElement, init: WheelEventInit) => {
+    previewWheel(scroll, init);
+    act(() => vi.advanceTimersByTime(200));
+  };
 
   it("zooms on Cmd+wheel as on a pinch, and leaves a plain wheel to scroll", () => {
     const scroll = scrollBox(0);
@@ -281,16 +286,7 @@ describe("useTimelinePlayhead wheel zoom", () => {
   it("lays a pending pinch out at once when the timeline is pressed", () => {
     const scroll = scrollBox(0);
     mount({ scroll });
-    act(() => {
-      const event = new WheelEvent("wheel", { deltaY: -50, cancelable: true });
-      Object.defineProperties(event, {
-        clientX: { value: 432 },
-        ctrlKey: { value: true },
-        metaKey: { value: false },
-      });
-      scroll.dispatchEvent(event);
-      vi.advanceTimersToNextFrame();
-    });
+    previewWheel(scroll, { ctrlKey: true });
     expect(usePlayerStore.getState().timelinePps).toBe(100);
     act(() => {
       scroll.dispatchEvent(new Event("pointerdown"));

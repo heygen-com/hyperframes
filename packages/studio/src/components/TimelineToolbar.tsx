@@ -14,7 +14,6 @@ import {
 import { computeElementPercentage, playsNear } from "../hooks/gsapShared";
 import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import {
-  getTimelineZoomPercent,
   timelineZoomPercentToSlider,
   timelineSliderToZoomPercent,
 } from "../player/components/timelineZoom";
@@ -178,13 +177,11 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const elements = usePlayerStore((s) => s.elements);
   const timelineFitPps = usePlayerStore((s) => s.timelineFitPps);
-  const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
+  const { zoomMode, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   // Follows a zoom while it is previewed, before it is laid out and stored.
   const displayedTimelineZoomPercent = useShownTimelineZoomPercent();
-  const showsFit =
-    zoomMode === "fit" &&
-    displayedTimelineZoomPercent ===
-      getTimelineZoomPercent("fit", manualZoomPercent, timelineFitPps);
+  // Fit is 100%; anything else on screen is a zoom still being previewed.
+  const showsFit = zoomMode === "fit" && displayedTimelineZoomPercent === 100;
   const {
     state: keyframeState,
     isMotionPath: keyframeIsMotionPath,

@@ -48,7 +48,10 @@ interface TimelineClipProps {
 /** Narrower clips show trim handles only while selected. */
 const HANDLES_MIN_PX = 32;
 
-const clipWidthPx = (el: TimelineElement, pps: number) => Math.max(el.duration * pps, 4);
+/** The narrowest a clip is drawn, so a very short one stays visible and grabbable. */
+const CLIP_MIN_WIDTH_PX = 4;
+export const clipWidthPx = (el: TimelineElement, pps: number) =>
+  Math.max(el.duration * pps, CLIP_MIN_WIDTH_PX);
 
 /**
  * What a clip draws that depends on the zoom, as one value: its width tier and whether its trim
@@ -130,7 +133,7 @@ export const TimelineClip = memo(function TimelineClip({
   const style: CSSProperties = {
     left: timeLayerPercent(el.start),
     width: timeLayerPercent(el.duration),
-    minWidth: 4,
+    minWidth: CLIP_MIN_WIDTH_PX,
     top: clipY,
     ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
     borderRadius: isAudioClip ? theme.audioClipRadius : theme.clipRadius,

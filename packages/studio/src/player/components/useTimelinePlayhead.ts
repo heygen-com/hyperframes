@@ -77,8 +77,8 @@ export function useTimelinePlayhead({
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
-  // A zoom that names an anchor (pinch, zoom-to-range) keeps that time where it was; a toolbar zoom
-  // keeps the playhead in place; a resize keeps the centre, or 00:00 at the start.
+  // A zoom keeps its anchor's time where it was (pinch: the pointer; buttons and slider: the
+  // playhead); a resize keeps the centre, or 00:00 at the start.
   const previousAnchorPpsRef = useRef(pps);
   const userZoomCount = usePlayerStore((s) => s.userZoomCount);
   const previousZoomCountRef = useRef(userZoomCount);

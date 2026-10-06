@@ -6,6 +6,7 @@ import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 import {
   clampTimelineZoomPercent,
   getNextTimelineZoomPercent,
+  getTimelinePixelsPerSecond,
   getTimelineZoomPercent,
 } from "./timelineZoom";
 
@@ -15,7 +16,7 @@ export interface TimelineZoomAnchor {
   x: number;
 }
 
-/** The mounted timeline's scroll viewport, which zoom-to-range measures against. */
+/** The mounted timeline's scroll viewport, which every zoom measures and previews against. */
 export interface TimelineZoomViewport {
   scroll: HTMLDivElement;
   contentOrigin: number;
@@ -53,7 +54,7 @@ let restTimer: ReturnType<typeof setTimeout> | null = null;
 let anchorForCommit: TimelineZoomAnchor | null = null;
 let animation = 0;
 let easingTo: number | null = null;
-let settle: ((result: TimelineZoomResult) => void) | null = null;
+let resolveEase: ((result: TimelineZoomResult) => void) | null = null;
 const previewListeners = new Set<() => void>();
 
 /** The percent the timeline is showing. */
@@ -112,9 +113,19 @@ function writeZoom(percent: number, anchor: TimelineZoomAnchor | null, byPerson:
       manualZoomPercent: clamped,
       // Only a person's zoom counts: the timeline and its host read it as the person taking over.
       userZoomCount: s.userZoomCount + (byPerson ? 1 : 0),
-      timelinePps: (s.timelineFitPps * clamped) / 100,
+      timelinePps: getTimelinePixelsPerSecond(s.timelineFitPps, "manual", clamped),
     };
   });
+}
+
+const emitPreview = () => previewListeners.forEach((listener) => listener());
+
+/** Stops the pending preview frame and rest timer. */
+function cancelPending() {
+  if (restTimer) clearTimeout(restTimer);
+  restTimer = null;
+  cancelAnimationFrame(frame);
+  frame = 0;
 }
 
 function clearScaled(scroll: HTMLElement) {
@@ -154,15 +165,12 @@ function drawPreview() {
     el.style.willChange = "transform";
     el.style.transform = transform;
   });
-  previewListeners.forEach((listener) => listener());
+  emitPreview();
 }
 
 /** Lays the previewed zoom out for real and drops the scaling in the same frame. */
 function commitPreview() {
-  if (restTimer) clearTimeout(restTimer);
-  restTimer = null;
-  cancelAnimationFrame(frame);
-  frame = 0;
+  cancelPending();
   const view = viewport;
   const done = preview;
   if (!view || !done) return;
@@ -173,7 +181,7 @@ function commitPreview() {
   preview = null;
   if (Math.abs(view.scroll.scrollLeft - left) >= 0.5) view.scroll.scrollLeft = left;
   clearScaled(view.scroll);
-  previewListeners.forEach((listener) => listener());
+  emitPreview();
 }
 
 /** The playhead's place if on screen, else the middle with the playhead brought to it. */
@@ -195,7 +203,7 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
     return;
   }
   const clamped = clampTimelineZoomPercent(percent, fitPps);
-  const pps = (fitPps * clamped) / 100;
+  const pps = getTimelinePixelsPerSecond(fitPps, "manual", clamped);
   const { scroll, contentOrigin } = view;
   const now = shown(scroll);
   const at = anchor ?? defaultAnchor(view, now.pps, now.left);
@@ -240,10 +248,7 @@ export function cancelTimelineZoom(): void {
 }
 
 function dropPreview() {
-  if (restTimer) clearTimeout(restTimer);
-  restTimer = null;
-  cancelAnimationFrame(frame);
-  frame = 0;
+  cancelPending();
   if (viewport && preview) clearScaled(viewport.scroll);
   preview = null;
 }
@@ -252,8 +257,8 @@ function stopEase(result: TimelineZoomResult = "cancelled") {
   cancelAnimationFrame(animation);
   animation = 0;
   easingTo = null;
-  const done = settle;
-  settle = null;
+  const done = resolveEase;
+  resolveEase = null;
   done?.(result);
 }
 
@@ -280,15 +285,19 @@ export function registerTimelineZoomViewport(next: TimelineZoomViewport): () => 
 const reducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** The stretch a range zoom fills: from `x` px in, `width` px wide, inside the margins. */
+function rangeBox(view: TimelineZoomViewport): { x: number; width: number } {
+  const x = view.contentOrigin + RANGE_MARGIN_PX;
+  return { x, width: Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX) };
+}
+
 /** The seconds the timeline shows between its margins: what zoomTimelineToRange would fill. */
 export function currentTimelineRange(): { start: number; end: number } | null {
   const view = viewport;
-  if (!view) return null;
-  const { pps, left } = shown(view.scroll);
-  if (!(pps > 0)) return null;
-  const x = view.contentOrigin + RANGE_MARGIN_PX;
-  const width = Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX);
-  const start = (left + x - view.contentOrigin) / pps;
+  const pps = view ? shown(view.scroll).pps : 0;
+  if (!view || !(pps > 0)) return null;
+  const { x, width } = rangeBox(view);
+  const start = timelineTimeAtX(x)!;
   return { start, end: start + width / pps };
 }
 
@@ -318,10 +327,11 @@ function easeToRange(
     return Promise.resolve("cancelled");
   let resolveThis: (result: TimelineZoomResult) => void = () => {};
   const result = new Promise<TimelineZoomResult>((resolve) => (resolveThis = resolve));
-  settle = resolveThis;
-  signal?.addEventListener("abort", () => settle === resolveThis && stopEase(), { once: true });
-  const x = view.contentOrigin + RANGE_MARGIN_PX;
-  const width = Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX);
+  resolveEase = resolveThis;
+  signal?.addEventListener("abort", () => resolveEase === resolveThis && stopEase(), {
+    once: true,
+  });
+  const { x, width } = rangeBox(view);
   const toPercent = clampTimelineZoomPercent((width / (end - start) / fitPps) * 100, fitPps);
   const finish = () => {
     commitPreview();
@@ -335,8 +345,8 @@ function easeToRange(
   }
   const fromPercent = currentTimelineZoomPercent();
   const from = shown(view.scroll);
-  const toPps = (fitPps * toPercent) / 100;
-  const fromStart = (from.left + x - view.contentOrigin) / from.pps;
+  const toPps = getTimelinePixelsPerSecond(fitPps, "manual", toPercent);
+  const fromStart = timelineTimeAtX(x)!;
   // The one point both views put at the same place on screen; zooming about it, in log space,
   // moves every frame straight from the old view to the new. Equal scales are a plain scroll.
   const shift = from.pps === toPps ? null : (start - fromStart) / (1 / from.pps - 1 / toPps);
@@ -362,7 +372,7 @@ function easeToRange(
  * or centring it when it is off screen.
  */
 export function zoomTimelineStep(direction: "in" | "out"): void {
-  const { timelineFitPps: fitPps, currentTime } = usePlayerStore.getState();
+  const fitPps = usePlayerStore.getState().timelineFitPps;
   const nextPercent = getNextTimelineZoomPercent(
     direction,
     "manual",
@@ -374,13 +384,10 @@ export function zoomTimelineStep(direction: "in" | "out"): void {
     requestTimelineZoom(nextPercent);
     return;
   }
-  const x = view.contentOrigin + RANGE_MARGIN_PX;
-  const width = Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX);
-  const nextPps = (fitPps * nextPercent) / 100;
-  const span = width / nextPps;
+  const { x, width } = rangeBox(view);
+  const nextPps = getTimelinePixelsPerSecond(fitPps, "manual", nextPercent);
   const now = shown(view.scroll);
-  const playheadX = view.contentOrigin + currentTime * now.pps - now.left;
-  const onScreen = playheadX >= view.contentOrigin && playheadX <= view.scroll.clientWidth;
-  const start = onScreen ? currentTime - (playheadX - x) / nextPps : currentTime - span / 2;
-  void easeToRange(start, start + span, {}, true);
+  const at = defaultAnchor(view, now.pps, now.left);
+  const start = at.time - (at.x - x) / nextPps;
+  void easeToRange(start, start + width / nextPps, {}, true);
 }
