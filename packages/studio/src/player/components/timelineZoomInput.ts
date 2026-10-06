@@ -342,9 +342,8 @@ export function currentTimelineRange(): { start: number; end: number } | null {
 }
 
 /**
- * Zooms and scrolls so `start`..`end` (seconds) fills the timeline's width, easing there unless
- * `smooth` is false or the person prefers reduced motion. Resolves once the range is laid out,
- * or as "cancelled" when a person zooms, `signal` aborts, or another range zoom starts.
+ * Zooms and scrolls so `start`..`end` (seconds) fills the timeline, eased unless `smooth` is false
+ * or motion is reduced. Resolves on landing; "cancelled" on a person's zoom, abort, or a newer one.
  */
 export function zoomTimelineToRange(
   start: number,
