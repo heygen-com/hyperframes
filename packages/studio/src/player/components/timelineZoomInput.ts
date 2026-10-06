@@ -264,9 +264,17 @@ export function takeTimelineZoomAnchor(): TimelineZoomAnchor | null {
   return anchor;
 }
 
-export function setTimelineZoomViewport(next: TimelineZoomViewport | null): void {
-  if (!next) cancelTimelineZoom();
+export function registerTimelineZoomViewport(next: TimelineZoomViewport): () => void {
   viewport = next;
+  return () => {
+    // Another timeline mounted since keeps its registration.
+    if (viewport !== next) return;
+    viewport = null;
+    // A re-render registers again in the same commit; only a real unmount drops the zoom.
+    queueMicrotask(() => {
+      if (!viewport) cancelTimelineZoom();
+    });
+  };
 }
 
 const reducedMotion = () =>
