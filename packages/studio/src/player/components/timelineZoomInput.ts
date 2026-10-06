@@ -60,7 +60,6 @@ let easingTo: number | null = null;
 let resolveEase: ((result: TimelineZoomResult) => void) | null = null;
 const previewListeners = new Set<() => void>();
 
-/** The percent the timeline is showing. */
 export function currentTimelineZoomPercent(): number {
   if (preview) return preview.percent;
   const s = usePlayerStore.getState();
@@ -156,7 +155,6 @@ function previewNeedsLayout(p: ZoomPreview, scroll: HTMLDivElement, contentOrigi
 
 /** The times laid out now: the render window clips, ruler ticks and beat lines are drawn in. */
 function drawnRange(scroll: HTMLDivElement, pps: number, contentOrigin: number): TimelineTimeRange {
-  // The timeline clamps that window to its content's end, as wide as the scroll content.
   const contentEnd = (scroll.scrollWidth - contentOrigin) / pps;
   return getTimelineRenderTimeRange(scroll, pps, contentOrigin, contentEnd);
 }

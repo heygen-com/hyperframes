@@ -30,7 +30,6 @@ export const WAVEFORM_LAYER_Z = 10;
 
 type BarGeometry = { x: number; width: number; height: number; gain: number };
 
-/** A stretch of the clip as fractions of its width. */
 type ClipSpan = { from: number; to: number };
 const WHOLE_CLIP: ClipSpan = { from: 0, to: 1 };
 function paintWaveformBars(
@@ -120,11 +119,8 @@ async function loadWaveform(
   waveformUrl: string | undefined,
   signal: AbortSignal,
 ): Promise<number[]> {
-  // Failures propagate. Synthesised peaks are worse than an honest gap: an
-  // author trims and beat-aligns against this waveform, and a plausible
-  // fabrication is indistinguishable from the real thing while being wrong.
-  // The scheduler caches the failure (metadataFailureTtlMs) so the degraded
-  // state neither refetch-loops nor pins itself past a transient error.
+  // Failures propagate: authors trim and beat-align against this, so made-up peaks beat no gap.
+  // The scheduler caches the failure (metadataFailureTtlMs): no refetch loop, no stuck state.
   return waveformUrl
     ? await fetchWaveformPeaks(waveformUrl, signal)
     : await decodeWaveformPeaks(audioUrl, signal);
@@ -201,7 +197,6 @@ export const AudioWaveform = memo(function AudioWaveform({
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
 
   const fades = useContext(ClipFadesContext);
-  // The clip's size and the stretch of it near the screen, kept current through scrolls and moves.
   const [strip, setStripRef, watchGap] = useThumbnailStripSize();
   const from = strip.width > 0 ? strip.inViewStart / strip.width : 0;
   const to = strip.width > 0 ? strip.inViewEnd / strip.width : 1;
@@ -223,7 +218,6 @@ export const AudioWaveform = memo(function AudioWaveform({
       span,
     );
   }, [fades, from, muted, peaks, to, trimEndFraction, trimStartFraction]);
-  // Also on a resize: the bars are drawn at the canvas size, which follows the clip.
   useEffect(draw, [draw, strip.width, strip.height]);
 
   useEffect(() => {

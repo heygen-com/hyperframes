@@ -172,15 +172,12 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
-  // Subscribe (not getState) so the split button enables/disables the moment
-  // the selection changes, not only on the next playhead tick.
+  // Subscribed, so the split button follows the selection, not only playhead ticks.
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const elements = usePlayerStore((s) => s.elements);
   const timelineFitPps = usePlayerStore((s) => s.timelineFitPps);
   const { zoomMode, setZoomMode, setManualZoomPercent } = useTimelineZoom();
-  // Follows a zoom while it is previewed, before it is laid out and stored.
   const displayedTimelineZoomPercent = useShownTimelineZoomPercent();
-  // Fit is 100%; anything else on screen is a zoom still being previewed.
   const showsFit = zoomMode === "fit" && displayedTimelineZoomPercent === 100;
   const {
     state: keyframeState,
@@ -216,8 +213,6 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   }, []);
 
   return (
-    // The "TIMELINE" label is dropped for CapCut-like density — the pane's
-    // position (tracks right below) makes it self-evident.
     <div className="border-b border-neutral-800/60">
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">

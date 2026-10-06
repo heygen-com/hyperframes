@@ -207,7 +207,6 @@ export function TimelineClipFades({
     const g = gesture.current;
     if (!g) return 0;
     const deltaSeconds = (clientX - g.originClientX) / Math.max(pps, 1e-6);
-    // Fade-in grows to the right, fade-out grows to the left.
     const raw = g.edge === "in" ? g.originSeconds + deltaSeconds : g.originSeconds - deltaSeconds;
     const limit = dragLimit(g);
     const clamped = Math.min(limit, Math.max(0, raw));

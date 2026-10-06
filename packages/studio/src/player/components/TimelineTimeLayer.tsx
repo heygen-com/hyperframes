@@ -22,5 +22,4 @@ export function TimelineTimeLayer({
   );
 }
 
-/** A time, in seconds, as a position inside a TimelineTimeLayer. */
 export const timeLayerPercent = (seconds: number) => `${seconds * 100}%`;

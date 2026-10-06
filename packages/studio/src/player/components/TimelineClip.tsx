@@ -45,18 +45,13 @@ interface TimelineClipProps {
   children?: ReactNode;
 }
 
-/** Narrower clips show trim handles only while selected. */
 const HANDLES_MIN_PX = 32;
 
-/** The narrowest a clip is drawn, so a very short one stays visible and grabbable. */
 const CLIP_MIN_WIDTH_PX = 4;
 export const clipWidthPx = (el: TimelineElement, pps: number) =>
   Math.max(el.duration * pps, CLIP_MIN_WIDTH_PX);
 
-/**
- * What a clip draws that depends on the zoom, as one value: its width tier and whether its trim
- * handles fit, or the scale itself while its fade handles are live (hovered, selected or set).
- */
+/** Zoom-dependent drawing as one value: width tier and trim fit, or the scale while fades show. */
 export function clipZoomKey(el: TimelineElement, pps: number, interacting: boolean) {
   const fadesLive = interacting || (el.fadeIn ?? 0) > 0 || (el.fadeOut ?? 0) > 0;
   if (fadesLive) return pps;
@@ -129,7 +124,6 @@ export const TimelineClip = memo(function TimelineClip({
   ]
     .filter((className) => className.length > 0)
     .join(" ");
-  // In percent of the row's TimelineTimeLayer: a zoom step leaves this style as it is.
   const style: CSSProperties = {
     left: timeLayerPercent(el.start),
     width: timeLayerPercent(el.duration),
@@ -139,7 +133,6 @@ export const TimelineClip = memo(function TimelineClip({
     borderRadius: isAudioClip ? theme.audioClipRadius : theme.clipRadius,
     ...themeVariables,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
-    // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
     cursor: "default",
     appearance: "none",
     color: "inherit",

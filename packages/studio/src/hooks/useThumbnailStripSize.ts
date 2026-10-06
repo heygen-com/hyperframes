@@ -28,7 +28,6 @@ const GAP_WARNING: IntersectionObserverInit & { scrollMargin: string } = {
   scrollMargin: `0px ${IN_VIEW_CHUNK_PX / 2}px`,
 };
 
-// A short strip keeps every tile, as before, so only long clips do work on a scroll.
 const SHORT_STRIP_MAX_PX = 8 * IN_VIEW_CHUNK_PX;
 const isShort = (width: number) => width <= SHORT_STRIP_MAX_PX;
 
@@ -102,8 +101,7 @@ const read = (target: Element, strip: Strip) => {
 const commit = (updates: (readonly [Apply, Partial<StripSize>])[]) =>
   flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
 
-// A zoom preview scales the strips, so a box read then is wrong: reads wait, and every strip is
-// measured again each time a preview is laid out (also mid-ease, as a zoom-out lays out first).
+// A zoom preview scales the strips: reads wait, and each preview's layout re-measures them all.
 const remeasureAfterPreview = () => {
   if (isTimelineZoomPreviewing()) return;
   commit(

@@ -78,8 +78,7 @@ export function useTimelinePlayhead({
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
-  // A zoom keeps its anchor's time where it was (pinch: the pointer; buttons and slider: the
-  // playhead); a resize keeps the centre, or 00:00 at the start.
+  // A zoom keeps its anchor (pinch: pointer, else playhead) in place; a resize keeps the centre.
   const previousAnchorPpsRef = useRef(pps);
   const userZoomCount = usePlayerStore((s) => s.userZoomCount);
   const previousZoomCountRef = useRef(userZoomCount);
@@ -94,8 +93,7 @@ export function useTimelinePlayhead({
     previousAnchorPpsRef.current = pps;
     const prevZoomCount = previousZoomCountRef.current;
     previousZoomCountRef.current = userZoomCount;
-    // Always consume the anchor, even when pps didn't change (a zoom at its clamp), so it never
-    // lingers for a later zoom that named none.
+    // Consumed even when pps didn't change (at the clamp), so it never lingers for a later zoom.
     const anchor = takeTimelineZoomAnchor();
     if (!scroll || pps === prevPps) return;
     if (anchor) {
@@ -175,7 +173,6 @@ export function useTimelinePlayhead({
       );
       return true;
     };
-    // A zoom preview moves the playhead with the scaled clips.
     const unsubPreview = subscribeTimelineZoomPreview(() =>
       place(lastLiveTimeRef.current, !usePlayerStore.getState().isPlaying),
     );
