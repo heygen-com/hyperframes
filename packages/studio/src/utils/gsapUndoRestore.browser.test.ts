@@ -4,10 +4,10 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import puppeteer, { type Browser } from "puppeteer-core";
+import type { Browser } from "puppeteer-core";
 import { build, type Plugin } from "esbuild";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { findSystemChrome } from "../../vite.browser";
+import { launchTestChrome } from "./chromeTestUtils";
 import { writeFixture } from "../../tests/e2e/edit-accuracy/grid.mjs";
 
 const require = createRequire(import.meta.url);
@@ -44,9 +44,7 @@ async function bundle(file: string, name: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  const executablePath = findSystemChrome();
-  if (!executablePath) throw new Error("no Chrome found: set HYPERFRAMES_BROWSER_PATH");
-  browser = await puppeteer.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
+  browser = await launchTestChrome();
   undoBundle = await bundle("./gsapUndoRestore.ts", "hfUndo");
   softReloadBundle = await bundle("./gsapSoftReload.ts", "hfSoftReload");
 });

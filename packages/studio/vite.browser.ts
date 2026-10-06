@@ -119,7 +119,7 @@ export function findSystemChrome(
     env["PUPPETEER_EXECUTABLE_PATH"],
     env["CHROME_PATH"],
     env["CHROME_BIN"],
-  ].find((candidate): candidate is string => Boolean(candidate) && pathExists(candidate));
+  ].find((candidate): candidate is string => !!candidate && pathExists(candidate));
   return (
     override ??
     findPuppeteerCacheChrome(env, pathExists, platform, readDirectories) ??

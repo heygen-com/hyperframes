@@ -5,9 +5,8 @@ import { createRequire } from "node:module";
 import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { replaceTweenWithKeyframesInScript } from "@hyperframes/parsers/gsap-writer-acorn";
-import puppeteer from "puppeteer-core";
 import { expect, it, vi } from "vitest";
-import { findSystemChrome } from "../../vite.browser";
+import { launchTestChrome } from "../utils/chromeTestUtils";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { planValueEdit } from "./gsapValueAtPlayhead";
@@ -49,13 +48,7 @@ const page = (script: string) => `<!doctype html><html><body>
 
 it("a drag on a fromTo's start shows the dropped x there once the runtime seeks", async () => {
   const written = writeDrag(90, 2);
-  const executablePath = findSystemChrome();
-  if (!executablePath) throw new Error("no Chrome found: set HYPERFRAMES_BROWSER_PATH");
-  const browser = await puppeteer.launch({
-    executablePath,
-    headless: true,
-    args: ["--no-sandbox"],
-  });
+  const browser = await launchTestChrome();
   try {
     const tab = await browser.newPage();
     await tab.setRequestInterception(true);
