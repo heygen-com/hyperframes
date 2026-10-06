@@ -43,18 +43,18 @@ function downloadProgress(spin: Spinner) {
 type Sherpa = typeof import("../whisper/sherpa.js");
 type Spinner = ReturnType<typeof clack.spinner> | null;
 
-/** Installs what is missing; true when anything changed. */
+/** Installs missing pieces and carries the selected runtime provenance into the result. */
 async function installMissing(sherpa: Sherpa, spin: Spinner, signal: AbortSignal) {
-  const runtimeInstalled = await sherpa.installSherpaRuntime({ signal });
+  const runtime = await sherpa.installSherpaRuntime({ signal });
   spin?.message("Verifying the Parakeet model...");
   const modelFetched = await sherpa.ensureParakeetModel({
     signal,
     onBytes: downloadProgress(spin),
   });
-  return runtimeInstalled || modelFetched;
+  return { changed: runtime.installed || modelFetched, runtimePath: runtime.runtimePath };
 }
 
-/** A synchronous child's Ctrl-C shows as its error before the scope's listener runs. */
+/** Cancellation can reach the child before the scope observes the signal. */
 const wasCancelled = (err: unknown, signal: AbortSignal, sherpa: Sherpa) =>
   signal.aborted || err instanceof sherpa.DecodeCancelled;
 
@@ -68,12 +68,19 @@ async function installParakeet(json: boolean): Promise<void> {
   const cancellation = createRenderCancellationScope();
   spin?.start("Checking the sherpa-onnx runtime (installing it from npm if it does not load)...");
   try {
-    const changed = await installMissing(sherpa, spin, cancellation.signal);
+    const { changed, runtimePath } = await installMissing(sherpa, spin, cancellation.signal);
     spin?.stop(c.success(changed ? "Parakeet installed" : "Parakeet is already installed"));
     if (json) {
       const { SHERPA_RUNTIME_DIR: runtimeDir, PARAKEET_MODEL_DIR: modelDir } = sherpa;
       console.log(
-        JSON.stringify({ ok: true, model: PARAKEET_MODEL_LABEL, changed, runtimeDir, modelDir }),
+        JSON.stringify({
+          ok: true,
+          model: PARAKEET_MODEL_LABEL,
+          changed,
+          runtimeDir,
+          runtimePath,
+          modelDir,
+        }),
       );
     }
   } catch (err) {

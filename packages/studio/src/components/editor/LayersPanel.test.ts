@@ -306,4 +306,29 @@ describe("LayersPanel preview promotion", () => {
     expect(collectedRootIds()).toEqual(["a"]);
     fetchSpy.mockRestore();
   });
+
+  it("a row press starts no text selection, so dragging a row leaves no letters highlighted", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = `<div data-composition-id="a"><div id="back"></div><div id="front"></div></div>`;
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentDocument", { value: doc });
+    const item = (id: string) =>
+      ({
+        key: id,
+        element: doc.getElementById(id),
+        label: id,
+        depth: 0,
+        childCount: 0,
+        id,
+      }) as unknown as DomEditLayerItem;
+    mocks.collect.mockReset().mockReturnValue([item("back"), item("front")]);
+    mocks.previewIframeRef.current = iframe;
+    usePreviewIframeStore.setState({ iframe });
+    act(() => root.render(createElement(LayersPanel)));
+    act(() => void iframe.dispatchEvent(new Event("load")));
+
+    const rows = [...host.querySelectorAll("[data-layer-index]")];
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.closest(".select-none"))).toBe(true);
+  });
 });

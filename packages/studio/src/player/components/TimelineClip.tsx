@@ -16,6 +16,7 @@ import { ClipBadges } from "./ClipBadges";
 import { linkLabelColor } from "./linkLabelColor";
 import { OutOfSyncBadge } from "./OutOfSyncBadge";
 import { clipSpeedSuffix } from "./clipToolAttrs";
+import { ClipPeakTooltip } from "./ClipPeakTooltip";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -128,7 +129,7 @@ export const TimelineClip = memo(function TimelineClip({
     ...passengerStyle,
   };
 
-  return (
+  const clip = (
     <button
       type="button"
       data-clip={isGestureActor ? undefined : "true"}
@@ -256,4 +257,5 @@ export const TimelineClip = memo(function TimelineClip({
       )}
     </button>
   );
+  return isAudioClip || el.hasAudio ? <ClipPeakTooltip>{clip}</ClipPeakTooltip> : clip;
 });

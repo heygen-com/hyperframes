@@ -70,7 +70,7 @@ try {
       page.evaluate((n, i) => window.__undoPool.call(n, i), name, input),
       sleep(20_000).then(() => {
         const waiting = [...requests.values()].filter(
-          (r) => !r.headers && !r.done && r.type !== "Media",
+          (r) => !r.headers && !r.done && r.type !== "Media" && !pinUrls.has(r.url),
         );
         throw new Error(
           `${name} did not answer in 20 s; ${pinnedMedia()} media responses open, Studio requests with no ` +
@@ -107,11 +107,14 @@ try {
   cdp.on("Network.loadingFailed", finish);
   // A socket is held by a response whose body is still being read.
   // Chrome gives a host six sockets. Under the CLI the /api/events stream holds one, so five videos fill the rest;
-  // Vite's dev server sends live updates over its HMR WebSocket instead of SSE, so there all six must be videos.
+  // Vite's dev server sends live updates over its HMR WebSocket instead of SSE, so there all six must be media.
   const pinnedNeeded = () =>
     [...requests.values()].some((r) => r.type === "EventSource" && !r.done) ? 5 : 6;
+  const pinUrls = new Set();
   const pinnedMedia = () =>
-    [...requests.values()].filter((r) => r.type === "Media" && r.headers && !r.done).length;
+    [...requests.values()].filter(
+      (r) => (r.type === "Media" || pinUrls.has(r.url)) && r.headers && !r.done,
+    ).length;
 
   await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__undoPool?.has("studio_seek"), { timeout: 90_000 });
@@ -120,6 +123,28 @@ try {
   const target = (look.elements ?? []).find((element) => element.label === "Target");
   if (!target)
     throw new Error(`studio_look found no #target: ${JSON.stringify(look).slice(0, 400)}`);
+  // Chrome cancels a paused video's request about 15 s after its last use, so on a slow runner the videos stopped
+  // pinning between rounds. An unread fetch per video, sent with cookies as the videos are, never idles out.
+  const findVideos = async () => {
+    for (const frame of page.frames()) {
+      const srcs = await frame
+        .$$eval("video", (videos) => videos.map((v) => v.currentSrc))
+        .catch(() => []);
+      // The marker keeps Studio's own fetches of the same file out of the count.
+      srcs
+        .filter(Boolean)
+        .forEach((src) => pinUrls.add(`${src}${src.includes("?") ? "&" : "?"}pin`));
+    }
+    return pinUrls.size >= VIDEOS;
+  };
+  if (!(await until(findVideos, 10_000)))
+    throw new Error(`found ${pinUrls.size} of the fixture's ${VIDEOS} videos`);
+  await page.evaluate(
+    (urls) => {
+      window.__pins = urls.map((url) => fetch(url, { cache: "no-store" }));
+    },
+    [...pinUrls],
+  );
 
   const colors = ["#ff0000", "#00ff00", "#0000ff", "#ff00ff", "#00ffff"];
   // What the preview paints for #target: an undo must show the edit taken back, not only write the file.

@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useState, type ReactNode } from "react";
 import { clipPeakRuns, type ClipSourceWindow, type PeakMap } from "./clipPeakRuns";
 import { loadPeakMap } from "./clipPeakMap";
+import { ClipPeakDescriptionContext } from "./ClipPeakTooltip";
 
 const dbText = (db: number) => `${db < 0 ? "−" : "+"}${Math.abs(db).toFixed(1)} dBFS`;
 
@@ -30,15 +31,20 @@ export function ClipPeakMarks({
   const { runs, peakDbfs } = map
     ? clipPeakRuns(map, sourceWindow, gain)
     : { runs: [], peakDbfs: null };
+  const detail =
+    runs.length > 0 && peakDbfs !== null
+      ? `Peaks ${dbText(peakDbfs)} at this volume; export lowers the whole mix`
+      : null;
+  const setDetail = useContext(ClipPeakDescriptionContext);
+  useEffect(() => {
+    setDetail?.(detail);
+    return () => setDetail?.(null);
+  }, [detail, setDetail]);
   return (
-    <div className="relative h-full w-full">
+    <div className="relative isolate h-full w-full">
       {children}
-      {runs.length > 0 && peakDbfs !== null && (
-        <div
-          className="pointer-events-none absolute inset-0"
-          data-testid="clip-peak-marks"
-          title={`Peaks ${dbText(peakDbfs)} at this volume; export lowers the whole mix`}
-        >
+      {detail !== null && (
+        <div className="pointer-events-none absolute inset-0" data-testid="clip-peak-marks">
           {runs.map((run) => (
             <div
               key={run.from}
@@ -50,10 +56,10 @@ export function ClipPeakMarks({
             />
           ))}
           <span
-            className="absolute top-0 right-1 font-mono text-[9px] leading-none text-red-400"
+            className="pointer-events-auto absolute right-4 bottom-1 font-mono text-[9px] leading-none text-red-400"
             data-peak-badge
           >
-            ▲<span data-peak-text> peaks {dbText(peakDbfs)}</span>
+            ▲<span data-peak-text> Too loud</span>
           </span>
         </div>
       )}

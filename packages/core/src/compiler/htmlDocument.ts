@@ -30,9 +30,11 @@ export function parseHTMLContent(html: string): Document {
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
 }
 
-/** Lowercases A-Z only, so indexes found in the result are valid in the input ("İ" lowercases to two chars). */
+/** ASCII-only chunks bound match arrays; starting at uppercase preserves unchanged spans. */
 function lowerAscii(text: string): string {
-  return text.replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
+  return text.replace(/[A-Z][\s\S]{0,65535}/g, (chunk) =>
+    chunk.replace(/[A-Z]+/g, (letters) => letters.toLowerCase()),
+  );
 }
 
 export function stripEmbeddedRuntimeScripts(html: string): string {

@@ -2409,6 +2409,8 @@ async function foldAtomicCutFile(
 
 // ── Upload file processing ──────────────────────────────────────────────────
 
+export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+
 async function processUploadedFiles(
   formData: FormData,
   targetDir: string,
@@ -2419,7 +2421,6 @@ async function processUploadedFiles(
   invalid: Array<{ name: string; reason: string }>;
   unchecked: Array<{ name: string; reason: string }>;
 }> {
-  const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
   const uploaded: string[] = [];
   const skipped: string[] = [];
   const invalid: Array<{ name: string; reason: string }> = [];
@@ -3461,8 +3462,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   });
 
   // ── Upload (binary assets via multipart form) ──
-
-  const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
 
   api.post(
     "/projects/:id/upload",

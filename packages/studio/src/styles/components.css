@@ -314,14 +314,18 @@
   display: none;
 }
 
+[data-peak-badge] {
+  z-index: 20;
+}
+
 .audible-video-wave [data-peak-badge] {
   top: 50%;
+  bottom: auto;
   right: var(--timeline-clip-radius);
   translate: 0 -50%;
   padding: 1px 3px;
   border-radius: 3px;
   background: var(--timeline-clip-chip-audio-bg);
-  z-index: 20;
 }
 
 .timeline-clip.is-audio.is-hovered {

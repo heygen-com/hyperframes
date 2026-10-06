@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { ensureModel } from "../whisper/manager.js";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,6 +52,46 @@ afterEach(() => {
 });
 
 describe("downloadFile", () => {
+  it("carries model download progress through the real pipeline and stays quiet on cache hits", async () => {
+    mockGet.mockImplementation(httpsResponse(200, { "content-length": "5" }, "hello"));
+    const events: unknown[] = [];
+    const model = `test-${randomUUID()}`;
+    const options = {
+      onDownloadProgress: (receivedBytes: number, totalBytes: number | null) =>
+        events.push({ receivedBytes, totalBytes }),
+    };
+    const modelPath = await ensureModel(model, options);
+    try {
+      expect(readFileSync(modelPath, "utf8")).toBe("hello");
+      expect(events).toEqual([
+        { receivedBytes: 0, totalBytes: 5 },
+        { receivedBytes: 5, totalBytes: 5 },
+      ]);
+      events.length = 0;
+      expect(await ensureModel(model, options)).toBe(modelPath);
+      expect(events).toEqual([]);
+      expect(mockGet).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(modelPath);
+    }
+  });
+
+  it.each([
+    [{ "content-length": "5" }, 5],
+    [{}, null],
+    [{ "content-length": "invalid" }, null],
+  ])("reports actual response bytes with total %j", async (headers, totalBytes) => {
+    mockGet.mockImplementation(httpsResponse(200, headers as Record<string, string>, "hello"));
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-"));
+    tempDirs.push(dir);
+    const events: unknown[] = [];
+    await downloadFile("https://example.test/model", join(dir, "model"), {
+      onProgress: (receivedBytes, total) => events.push({ receivedBytes, totalBytes: total }),
+    });
+    expect(events).toContainEqual({ receivedBytes: 5, totalBytes });
+    expect(readFileSync(join(dir, "model"), "utf8")).toBe("hello");
+  });
+
   it("keeps concurrent partial downloads separate", async () => {
     mockGet.mockImplementation(httpsResponse(200, {}, (url) => url));
 

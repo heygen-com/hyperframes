@@ -1,3 +1,4 @@
+import { createProgressWriter } from "../whisper/progress.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 // fallow-ignore-file code-duplication
@@ -7,7 +8,6 @@ import { existsSync, rmSync, writeFileSync } from "node:fs";
 import {
   findParakeet,
   PARAKEET_LANGUAGES,
-  PARAKEET_MODEL_LABEL,
   parakeetSpeaks,
   transcribeWithParakeet,
 } from "../whisper/parakeet.js";
@@ -77,7 +77,7 @@ export default defineCommand({
     },
     json: {
       type: "boolean",
-      description: "Output result as JSON",
+      description: "Output result as JSON; progress JSON lines go to stderr",
       default: false,
     },
     to: {
@@ -94,6 +94,12 @@ export default defineCommand({
       description:
         "Keep each transcript entry as its own caption cue (skip word-level grouping). Use when exporting an already-cued transcript whose entries have no internal spaces, e.g. single-word or CJK captions.",
       default: false,
+    },
+    "runtime-install": {
+      type: "boolean",
+      default: true,
+      description:
+        "Allow installing the Whisper runtime. Use --no-runtime-install to require an existing runtime; model downloads remain allowed.",
     },
     optional: {
       type: "boolean",
@@ -153,6 +159,7 @@ export default defineCommand({
       language: args.language,
       json: args.json,
       optional: args.optional,
+      installRuntime: args["runtime-install"],
       timeoutMs,
     });
   },
@@ -294,6 +301,7 @@ async function transcribeAudio(
     language?: string;
     json?: boolean;
     optional?: boolean;
+    installRuntime?: boolean;
     timeoutMs?: number;
   },
 ): Promise<void> {
@@ -339,20 +347,39 @@ async function transcribeAudio(
   const spin = opts.json ? null : clack.spinner();
   spin?.start(`Transcribing with ${label(runner)}...`);
   const onProgress = spin ? (msg: string) => spin.message(msg) : undefined;
+  const onEvent = opts.json ? createProgressWriter(process.stderr) : undefined;
   let wavPath = inputPath;
   // Before audio prep: under --json no spinner listens for SIGINT, so Ctrl-C would kill Node.
   const cancellation = runner === "sherpa" ? createRenderCancellationScope() : null;
-  const run = (r: Runner) =>
-    r === "sherpa"
-      ? transcribeWithSherpa(wavPath, dir, { onProgress, signal: cancellation!.signal })
-      : r === "parakeet-mlx"
-        ? transcribeWithParakeet(wavPath, dir, { language: opts.language, onProgress })
-        : transcribe(wavPath, dir, {
-            model,
-            language: opts.language,
-            onProgress,
-            timeoutMs: opts.timeoutMs,
-          });
+  const run = (r: Runner) => {
+    switch (r) {
+      case "sherpa":
+        return transcribeWithSherpa(wavPath, dir, {
+          onProgress,
+          onEvent,
+          signal: cancellation!.signal,
+        });
+      case "parakeet-mlx":
+        return transcribeWithParakeet(wavPath, dir, {
+          language: opts.language,
+          onProgress,
+          onEvent,
+        });
+      case "whisper":
+        return transcribe(wavPath, dir, {
+          model,
+          language: opts.language,
+          onProgress,
+          onEvent,
+          timeoutMs: opts.timeoutMs,
+          installRuntime: opts.installRuntime,
+        });
+      default: {
+        const unreachable: never = r;
+        throw new Error(`Unknown transcription runner: ${unreachable}`);
+      }
+    }
+  };
 
   try {
     // Outside the fallback: an unreadable input is not a Parakeet failure. The fallback reuses it.
@@ -402,7 +429,8 @@ async function transcribeAudio(
         JSON.stringify({
           ok: true,
           engine: runner === "whisper" ? "whisper" : "parakeet",
-          model: runner === "whisper" ? model : PARAKEET_MODEL_LABEL,
+          model: result.model,
+          detectedLanguage: result.detectedLanguage,
           wordCount: words.length,
           durationSeconds: result.durationSeconds,
           speechOnsetSeconds: result.speechOnsetSeconds,

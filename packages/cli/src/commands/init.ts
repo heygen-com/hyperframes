@@ -248,6 +248,25 @@ function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
 }
 
+/** The longest folder name the common disks hold: 255 UTF-8 bytes on Linux, 255 UTF-16 units on macOS and Windows. */
+const MAX_FOLDER_NAME = 255;
+
+/** One plain sentence when a folder in `name` is too long for the disk, null when all fit. Checked before mkdir,
+ * which otherwise throws Node's raw ENAMETOOLONG and the full path (repro: init a 256-character name). */
+export function nameTooLongMessage(
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const inBytes = platform === "linux";
+  const unit = inBytes ? "bytes" : "characters";
+  for (const folder of name.split(platform === "win32" ? /[\\/]/ : "/")) {
+    const length = inBytes ? Buffer.byteLength(folder) : folder.length;
+    if (length > MAX_FOLDER_NAME)
+      return `That name is ${length} ${unit} long; a folder name can be at most ${MAX_FOLDER_NAME} ${unit}.`;
+  }
+  return null;
+}
+
 function toPackageName(projectName: string): string {
   const normalized = basename(projectName)
     .trim()
@@ -818,6 +837,12 @@ export default defineCommand({
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
+      const tooLong = nameTooLongMessage(destDir);
+      if (tooLong) {
+        console.error(c.error(tooLong));
+        failCommand();
+      }
+
       if (existsSync(destDir) && readdirSync(destDir).length > 0) {
         console.error(c.error(`Directory already exists and is not empty: ${name}`));
         failCommand();
@@ -994,6 +1019,13 @@ export default defineCommand({
     }
 
     const destDir = resolve(name);
+
+    const tooLong = nameTooLongMessage(destDir);
+    if (tooLong) {
+      clack.log.error(tooLong);
+      clack.cancel("Setup cancelled.");
+      failCommand();
+    }
 
     if (existsSync(destDir) && readdirSync(destDir).length > 0) {
       const overwrite = await clack.confirm({

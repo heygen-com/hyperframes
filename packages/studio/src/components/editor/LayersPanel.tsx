@@ -433,7 +433,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       </div>
       <div
         ref={scrollContainerRef}
-        className="relative min-h-0 flex-1 overflow-y-auto py-1"
+        className="relative min-h-0 flex-1 select-none overflow-y-auto py-1"
         onPointerMove={handleContainerPointerMove}
         onPointerUp={handleContainerPointerUp}
         onPointerCancel={handleContainerPointerUp}

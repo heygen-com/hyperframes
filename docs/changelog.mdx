@@ -9,6 +9,68 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.137"
+  description="Released - 2026-10-06"
+  tags={["Release", "Studio", "Core", "CLI"]}
+>
+Compositions with large inline images or scripts use far less memory while they load for preview. Whisper transcription detects the spoken language and can report progress.
+
+## Fixes
+
+- **Studio:** Audio clips that reach the export ceiling now say “Too loud”, with the exact peak on hover or keyboard focus ([4905b4dbc](https://github.com/heygen-com/hyperframes/commit/4905b4dbca74ddff8e9302a0fe00fa74ddd7d056), [#5099](https://github.com/heygen-com/hyperframes/pull/5099)).
+- **Core:** Large inline images and scripts use far less memory while a composition loads ([00342fc2b](https://github.com/heygen-com/hyperframes/commit/00342fc2be0a9905dd67cc218d713aeca19b5e3f), [#5098](https://github.com/heygen-com/hyperframes/pull/5098)).
+- **CLI:** With Whisper, `transcribe` detects the spoken language instead of assuming English, and `--json` reports download and transcription progress. The new `--no-runtime-install` flag stops it installing the Whisper runtime ([1db44c659](https://github.com/heygen-com/hyperframes/commit/1db44c659565a5a70a39fbe836c497afe9a84d6d), [#5103](https://github.com/heygen-com/hyperframes/pull/5103)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.136...v0.8.137).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.136"
+  description="Released - 2026-10-06"
+  tags={["Release", "CLI", "Studio Server"]}
+>
+Previews now open without exhausting memory when a composition contains large inline background images. Project setup explains when a folder name is too long.
+
+## Fixes
+
+- **CLI:** Init refuses a name too long for a folder in one plain sentence ([d45cb34e2f](https://github.com/heygen-com/hyperframes/commit/d45cb34e2f8e01eb94ba475f6a39c1778903f07b), [#5071](https://github.com/heygen-com/hyperframes/pull/5071)).
+- Fixed app launch crashes and Studio preview stalls caused by entity-quoted image URLs ([#5100](https://github.com/heygen-com/hyperframes/pull/5100)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.135...v0.8.136).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.135"
+  description="Released - 2026-10-05"
+  tags={["Release", "Catalog", "Studio", "Skills"]}
+>
+Studio edits preserve animation easing and Undo restores the latest edit, while Layers icons and nested scenes behave more predictably. Catalog previews now load under the docs site's script policy, with safer script encoding.
+
+## Fixes
+
+- **Studio:** Keyframed animations keep their ease through every Studio edit ([0d5e395cd3](https://github.com/heygen-com/hyperframes/commit/0d5e395cd31d0f491e9b26d0da110da6e231c512), [#5051](https://github.com/heygen-com/hyperframes/pull/5051)).
+- **Studio:** Undo takes back the last edit, even right after a resize or a nudge ([98fe011699](https://github.com/heygen-com/hyperframes/commit/98fe011699999901affa2f6aa558568d17dc9e1a), [#5048](https://github.com/heygen-com/hyperframes/pull/5048)).
+- **Studio:** Layers rows show a kind icon, and only a group row has a caret ([f7d6734761](https://github.com/heygen-com/hyperframes/commit/f7d6734761967860eaecd7466ba610ef9bef349b), [#5067](https://github.com/heygen-com/hyperframes/pull/5067)).
+- **Engine:** A render fails when a composition's own script throws before its timeline binds ([39a693c0a4](https://github.com/heygen-com/hyperframes/commit/39a693c0a450467929ae850e750454b28b271297), [#5033](https://github.com/heygen-com/hyperframes/pull/5033)).
+- **Core:** A sub-composition follows its host clip when the host moves without a reload ([5d19e23cb4](https://github.com/heygen-com/hyperframes/commit/5d19e23cb4352cde0065d966e3ef3b5e2b955e4b), [#5058](https://github.com/heygen-com/hyperframes/pull/5058)).
+
+## Docs & Examples
+
+- **Skills:** Teach shared cut constants and fill lights for Three.js scenes ([6c353d89c8](https://github.com/heygen-com/hyperframes/commit/6c353d89c85c0f8a1a3548196e203ee1bd7eec10), [#5077](https://github.com/heygen-com/hyperframes/pull/5077)).
+
+## Catalog
+
+- **Catalog:** Encode module aliases before constructing script code ([1d9b3673fa](https://github.com/heygen-com/hyperframes/commit/1d9b3673fade7511dd13cde5c3776a0e45e47ca3), [#5093](https://github.com/heygen-com/hyperframes/pull/5093)).
+- **Catalog:** 3D previews load their scripts under the docs host's script policy ([f835f83164](https://github.com/heygen-com/hyperframes/commit/f835f8316402dc75c51d4d4c355047457ca930b1), [#5090](https://github.com/heygen-com/hyperframes/pull/5090)).
+
+## Internal
+
+- Pin the guards that keep script-placed scenes and unparseable scripts out of the in-place move ([3c40f37938](https://github.com/heygen-com/hyperframes/commit/3c40f37938f8038c630235e2c1fb4afbba047607), [#5079](https://github.com/heygen-com/hyperframes/pull/5079)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.134...v0.8.135).
+</Update>
+
+<Update
   label="HyperFrames v0.8.134"
   description="Released - 2026-10-05"
   tags={["Release", "Studio"]}

@@ -41,7 +41,11 @@ module.exports = {
 `;
 
 function runWorker(runtimeDir: string, wavPath: string) {
-  const input = JSON.stringify({ wavPath, runtimeDir, config: {} });
+  const input = JSON.stringify({
+    wavPath,
+    runtimePath: join(runtimeDir, "node_modules", "sherpa-onnx-node", "index.js"),
+    config: {},
+  });
   return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve) => {
     execFile(
       process.execPath,
@@ -102,7 +106,11 @@ describe("sherpaWorker", () => {
     "stops between windows once the CLI that spawned it is gone",
     async () => {
       const started = join(fakeRuntime(), "started");
-      const input = JSON.stringify({ wavPath: "long.wav", runtimeDir: root, config: {} });
+      const input = JSON.stringify({
+        wavPath: "long.wav",
+        runtimePath: join(root, "node_modules", "sherpa-onnx-node", "index.js"),
+        config: {},
+      });
       // The shell waits for the first window, then exits, orphaning a 10-window decode.
       const shell =
         `"${process.execPath}" --import tsx "${WORKER}" >/dev/null 2>&1 & echo $!; ` +
@@ -136,6 +144,8 @@ describe("sherpaWorker", () => {
     root = mkdtempSync(join(tmpdir(), "hf-sherpa-worker-"));
     const { code, stderr } = await runWorker(root, "speech.wav");
     expect(code).toBe(1);
-    expect(stderr).toContain(`${SHERPA_ERROR_PREFIX}sherpa-onnx-node is not installed in ${root}`);
+    expect(stderr).toContain(
+      `${SHERPA_ERROR_PREFIX}Cannot find module '${join(root, "node_modules", "sherpa-onnx-node", "index.js")}'`,
+    );
   });
 });

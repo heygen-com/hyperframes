@@ -77,8 +77,9 @@ packages/core/src/generated/*
 !packages/core/src/generated/position-edits-render-inline.test.ts
 packages/core/src/fonts/fontData.generated.ts
 
-# Plan documents (working artifacts, not committed)
+# Plan and contract documents (working artifacts, not committed)
 docs/plans/
+docs/contracts/
 
 # Local proof / test artifacts
 qa-artifacts/

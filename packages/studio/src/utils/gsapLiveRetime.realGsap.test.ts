@@ -436,6 +436,12 @@ it("reloads the preview, and says so, when moving the live tweens throws", async
   expect(error).toHaveBeenCalledTimes(1);
 });
 
+it("re-runs a script that does not parse as a classic script, such as one with an import", () => {
+  const before = script('import "./setup.js";', 'tl.to("#a", { x: 1, duration: 1 }, 0);');
+  const after = script('import "./setup.js";', 'tl.to("#a", { x: 1, duration: 1 }, 1);');
+  expect(planLiveRetime(before, after).kind).toBe("rerun");
+});
+
 it("re-runs the script when the edit also flips an operator in a tween's value", () => {
   const before = script('tl.to("#a", { x: window.innerWidth - 40, duration: 1 }, 0);');
   const after = script('tl.to("#a", { x: window.innerWidth + 40, duration: 1 }, 1);');
