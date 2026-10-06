@@ -322,7 +322,6 @@
   padding: 1px 3px;
   border-radius: 3px;
   background: var(--timeline-clip-chip-audio-bg);
-  z-index: 20;
 }
 
 .timeline-clip.is-audio.is-hovered {
