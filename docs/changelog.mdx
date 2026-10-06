@@ -9,6 +9,36 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.138"
+  description="Released - 2026-10-06"
+  tags={["Release", "Studio", "CLI", "Studio Server"]}
+>
+Parakeet transcription now loads the Sherpa copy that ships with the CLI when the cached one is broken. Loaded compositions keep their SVG icons, and Studio says so when GSAP cannot load offline.
+
+## Features
+
+- **CLI:** Catch up on what the desktop app did since a project was handed over ([6fe3c2ce9](https://github.com/heygen-com/hyperframes/commit/6fe3c2ce94f5d2e926cc7fcf79d3e62f4e68dac7), [#5114](https://github.com/heygen-com/hyperframes/pull/5114)).
+
+## Fixes
+
+- **Studio:** An offline preview says GSAP could not load instead of an unhandled Event ([5fad52f21](https://github.com/heygen-com/hyperframes/commit/5fad52f21d0cb4742245d0b13c012d53c952d7ef), [#5111](https://github.com/heygen-com/hyperframes/pull/5111)).
+- **Studio Server:** Keep the desktop app's hand-off and chat history out of the file routes ([32516b5a3](https://github.com/heygen-com/hyperframes/commit/32516b5a3d7ad1845feaedaaea94334ca38b8853), [#5113](https://github.com/heygen-com/hyperframes/pull/5113)).
+- **Studio:** Clip #root so programmatic scrolls cannot push the header off-screen ([518694ac6](https://github.com/heygen-com/hyperframes/commit/518694ac6689bf0e850e9647b1e426c89d43a051), [#5110](https://github.com/heygen-com/hyperframes/pull/5110)).
+- **Core:** Preserve SVG icons in loaded compositions ([eff786383](https://github.com/heygen-com/hyperframes/commit/eff786383d2383a85648779caa38521377647b1f), [#5096](https://github.com/heygen-com/hyperframes/pull/5096)).
+- **Studio:** Dragging a Layers row no longer highlights the row names ([8b5b012e5](https://github.com/heygen-com/hyperframes/commit/8b5b012e5c0bddbdf1e063f8b2198cc18d68575d), [#5104](https://github.com/heygen-com/hyperframes/pull/5104)).
+- **CLI:** Use a healthy pinned Sherpa copy beside the CLI ([f6e419eb2](https://github.com/heygen-com/hyperframes/commit/f6e419eb29565bbab7840a3c474214eebcbbea7a), [#5095](https://github.com/heygen-com/hyperframes/pull/5095)).
+
+## Internal
+
+- **Studio:** Bundle the real-Chrome undo test with esbuild so its setup fits on Windows ([b9998dd5a](https://github.com/heygen-com/hyperframes/commit/b9998dd5a823f70c40fc6978b18c0b63546d967d), [#5080](https://github.com/heygen-com/hyperframes/pull/5080)).
+- **Producer:** Compiler parity test runs without the network ([f80614cde](https://github.com/heygen-com/hyperframes/commit/f80614cde4f14654769753198647b32a98ed2a1e), [#5087](https://github.com/heygen-com/hyperframes/pull/5087)).
+- **Studio:** Keep the undo socket gate's sockets pinned past Chrome's idle media suspend ([43d07781d](https://github.com/heygen-com/hyperframes/commit/43d07781d8cb708a32e0a992200528f274778440), [#5108](https://github.com/heygen-com/hyperframes/pull/5108)).
+- Remove committed design notes and ignore docs/contracts ([6308727b8](https://github.com/heygen-com/hyperframes/commit/6308727b85726433e6a1e148b608d8cb11085114), [#5107](https://github.com/heygen-com/hyperframes/pull/5107)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.137...v0.8.138).
+</Update>
+
+<Update
   label="HyperFrames v0.8.137"
   description="Released - 2026-10-06"
   tags={["Release", "Studio", "Core", "CLI"]}
