@@ -30,9 +30,10 @@ export function realFilePath(filePath: string): string {
   }
 }
 
-// The desktop app's hand-off and chat history: no route reads or writes them, by any spelling or through a link.
+// The desktop app's hand-off and its records of the chat: no route reads or writes them, by any spelling or a link.
 const PRIVATE_FILES = new Set([
   ".hyperframes/agent-handoff.json",
+  ".hyperframes/agent-runs.jsonl",
   ".hyperframes/app-history.jsonl",
 ]);
 

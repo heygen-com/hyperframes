@@ -84,9 +84,10 @@ describe("walkDir", () => {
 });
 
 describe("isPrivateProjectFile", () => {
-  it("names the desktop app's hand-off and chat history, in any case, and nothing else", () => {
+  it("names the desktop app's hand-off and chat records, in any case, and nothing else", () => {
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/agent-handoff.json")).toBe(true);
     expect(isPrivateProjectFile("/p", "/p/.HyperFrames/App-History.JSONL")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/agent-runs.jsonl")).toBe(true);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/studio-motion.json")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/gif/a.mp4")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/agent-handoff.json")).toBe(false);
