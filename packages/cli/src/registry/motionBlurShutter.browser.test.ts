@@ -592,7 +592,7 @@ describe("motion-blur declarative attribute", () => {
     const own = document.createElement("span");
     const inheriting = document.createElement("span");
     target.word.append(own, inheriting);
-    target.word.style.visibility = "hidden";
+    target.word.style.setProperty("visibility", "hidden", "important");
     const mocked = globalThis.getComputedStyle;
     const resolved = (element: Element, value: string) =>
       Object.assign(Object.create(mocked(element)), ["visibility"], {
@@ -617,7 +617,27 @@ describe("motion-blur declarative attribute", () => {
     expect((copy.children[0] as HTMLElement).style.visibility).toBe("hidden");
     expect((copy.children[1] as HTMLElement).style.visibility).toBe("");
     expect(target.word.style.visibility).toBe("hidden");
+    expect(target.word.style.getPropertyPriority("visibility")).toBe("important");
+  });
+
+  it("puts a hidden target's visibility back when copying its styles throws", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const target = declare("");
+    const child = document.createElement("span");
+    target.word.append(child);
+    target.word.style.visibility = "hidden";
+    const mocked = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((element: Element) => {
+      if (element === child) throw new Error("no style");
+      return mocked(element);
+    }) as typeof globalThis.getComputedStyle;
+
+    target.register();
+
+    expect(target.groups()).toHaveLength(0);
+    expect(target.word.style.visibility).toBe("hidden");
     expect(target.word.style.getPropertyPriority("visibility")).toBe("");
+    warn.mockRestore();
   });
 
   it("leaves a target alone when another composition registers", async () => {

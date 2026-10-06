@@ -341,8 +341,12 @@
                   var inline = el.style.getPropertyValue("visibility");
                   var priority = el.style.getPropertyPriority("visibility");
                   if (hidden) el.style.setProperty("visibility", "visible", "important");
-                  var styles = resolvedStyles(el, []);
-                  if (hidden) el.style.setProperty("visibility", inline, priority);
+                  var styles;
+                  try {
+                    styles = resolvedStyles(el, []);
+                  } finally {
+                    if (hidden) el.style.setProperty("visibility", inline, priority);
+                  }
                   s.perspective = parentPerspective(el);
                   for (var c = 0; c < clones.length; c++) {
                     paintResolvedStyles(clones[c], styles, { i: 0 });
