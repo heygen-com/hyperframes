@@ -294,11 +294,6 @@ describe("external file change coordinator", () => {
 
     it.each([
       { label: "the project changes", projectId: "project-b", activeCompPath: "index.html" },
-      {
-        label: "the composition changes",
-        projectId: "project-a",
-        activeCompPath: "scenes/next.html",
-      },
       { label: "the project is left", projectId: null, activeCompPath: null },
     ])("drops queued old-scope changes when $label", async ({ projectId, activeCompPath }) => {
       let finishDrain = () => {};
@@ -332,6 +327,35 @@ describe("external file change coordinator", () => {
       expect(first.reloadSdkSession).not.toHaveBeenCalled();
       expect(next.reloadPreview).not.toHaveBeenCalled();
       expect(next.reloadSdkSession).not.toHaveBeenCalled();
+    });
+
+    it("still refreshes the tree for a queued outside change after switching compositions", async () => {
+      let finishDrain = () => {};
+      const pendingEdit = new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+      const refreshFileTree = vi.fn();
+      const onAcceptedPersistedFileChange = vi.fn();
+      const { rerender } = await mountCoordinator({
+        drainPendingChanges: vi.fn(async () => {
+          await pendingEdit;
+          return { status: "clean" as const };
+        }),
+        refreshFileTree,
+        onAcceptedPersistedFileChange,
+      });
+      const send = (payload: object) =>
+        act(async () => {
+          source.dispatchEvent(new MessageEvent("file-change", { data: JSON.stringify(payload) }));
+        });
+      await send({ path: "index.html", content: "external", version: "v2" });
+      await send({ path: "scenes/old.html", content: "agent", version: "v3" });
+      await rerender({ activeCompPath: "scenes/next.html" });
+      await act(async () => finishDrain());
+      expect(onAcceptedPersistedFileChange.mock.calls.map(([path]) => path)).toContain(
+        "scenes/old.html",
+      );
+      expect(refreshFileTree).toHaveBeenCalled();
     });
 
     it("ignores reconnects after leaving the active project", async () => {

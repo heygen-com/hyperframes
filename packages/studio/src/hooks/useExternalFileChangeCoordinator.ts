@@ -195,8 +195,11 @@ export function useExternalFileChangeCoordinator({
   }, []);
 
   useEffect(() => {
-    generationRef.current += 1;
     pendingPayloadRef.current = null;
+  }, [projectId]);
+
+  useEffect(() => {
+    generationRef.current += 1;
     setBlocked(null);
     lastEventIdentityRef.current = null;
   }, [projectId, activeCompPath, setBlocked]);
