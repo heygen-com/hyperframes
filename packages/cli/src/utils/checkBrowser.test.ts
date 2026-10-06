@@ -582,6 +582,38 @@ describe("keepBrokenImageAborts", () => {
       "Failed to load assets/plate.png: net::ERR_ABORTED",
     ]);
   });
+
+  it("does not report an aborted image whose reload is still pending at the cap", async () => {
+    const url = "http://127.0.0.1:3000/assets/slow.png";
+    mountCanvasFixture(`<img id="slow" src="${url}">`);
+    (document.getElementById("slow") as HTMLImageElement).decode = () => new Promise(() => {});
+    const page = fakePage();
+    page.on = vi.fn((event: string, handler: (request: unknown) => void) => {
+      if (event !== "requestfailed") return;
+      handler({
+        url: () => url,
+        failure: () => ({ errorText: "net::ERR_ABORTED" }),
+        resourceType: () => "image",
+      });
+    });
+    installSessionMock(page);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const checked = runBrowserCheck(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+        { kind: "none" },
+        runAuditGrid,
+      );
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await checked;
+      expect(result.runtimeFindings.filter((finding) => finding.code === "request_failed")).toEqual(
+        [],
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("preResolveHostileMediaProxies", () => {
