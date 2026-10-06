@@ -9,6 +9,37 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.139"
+  description="Released - 2026-10-06"
+  tags={["Release", "Studio", "CLI", "Core"]}
+>
+Built-in transcription works again inside the HyperFrames desktop app, and `transcribe --json` now streams words as they are heard. Studio drags land where they were pressed, and renders keep a fromTo's starting values from its first frame.
+
+## Features
+
+- **CLI:** Stream heard words on the transcribe --json progress stream ([156e87766](https://github.com/heygen-com/hyperframes/commit/156e87766c77c8b9c680b7dc107f94b4ee734f17), [#5127](https://github.com/heygen-com/hyperframes/pull/5127)).
+
+## Fixes
+
+- **CLI:** Read the WAV in JS so Built-in transcription runs inside Electron ([f7bba2288](https://github.com/heygen-com/hyperframes/commit/f7bba2288dfcbfbf0c93c8c63caee1893a442b9d), [#5129](https://github.com/heygen-com/hyperframes/pull/5129)).
+- **Core:** Keep nested scenes in place during a drag when the root has no timeline ([d94708e53](https://github.com/heygen-com/hyperframes/commit/d94708e5312df021e1fdcac421f00ed3015f11bd), [#5115](https://github.com/heygen-com/hyperframes/pull/5115)).
+- **Core:** Renders keep a fromTo's from-only values from the frame it starts on ([755ab7d16](https://github.com/heygen-com/hyperframes/commit/755ab7d1657ff2c2b6e2bd712ffbfcab97a617f5), [#5125](https://github.com/heygen-com/hyperframes/pull/5125)).
+- **Studio:** Drags after a resize, undo or reload land where they were pressed ([dc244d765](https://github.com/heygen-com/hyperframes/commit/dc244d765c3e825e12d06311ad6d4f09b77be3f3), [#5088](https://github.com/heygen-com/hyperframes/pull/5088)).
+- **CLI:** Let parakeet-mlx detect the language and name the Parakeet install under auto ([34552a21d](https://github.com/heygen-com/hyperframes/commit/34552a21d20e688cfa7a62925c53dee9a2634eff), [#5124](https://github.com/heygen-com/hyperframes/pull/5124)).
+- **Studio:** A timeline jump no longer starts thumbnail loads it is about to cancel ([b9e511a76](https://github.com/heygen-com/hyperframes/commit/b9e511a7687a5b035a140325f2db3ddcb455cb5f), [#5085](https://github.com/heygen-com/hyperframes/pull/5085)).
+
+## Performance
+
+- **Studio:** Parse saved HTML once when syncing timeline length ([e8cfd6b73](https://github.com/heygen-com/hyperframes/commit/e8cfd6b73eaa792d5ebe8e3f0a8ef4d99c348d7e), [#5092](https://github.com/heygen-com/hyperframes/pull/5092)).
+
+## Catalog
+
+- **Registry:** Gooey split block with metaball goo and directional motion blur ([b50dead1d](https://github.com/heygen-com/hyperframes/commit/b50dead1da595786c4de5772332885781b288791), [#5123](https://github.com/heygen-com/hyperframes/pull/5123)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.138...v0.8.139).
+</Update>
+
+<Update
   label="HyperFrames v0.8.138"
   description="Released - 2026-10-06"
   tags={["Release", "Studio", "CLI", "Studio Server"]}
