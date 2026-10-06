@@ -279,7 +279,6 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     // readFileSync still followed an in-rendersDir symlink pointing outside the
     // dir; resolveWithinProject canonicalizes with realpath before serving.
     const fp = resolveWithinProject(rendersDir, filename);
-    // The check above sees a path inside renders/; a renders/ linked into .hyperframes/ is caught against the project.
     if (!fp || isPrivateProjectFile(project.dir, fp)) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
