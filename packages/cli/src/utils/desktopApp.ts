@@ -26,17 +26,18 @@ export const downloadHint = (url: string): string =>
 export const HANDOFF_READY = process.platform === "darwin";
 
 export interface AgentSession {
-  engine: "claude" | "codex";
+  engine: "claude" | "codex" | "grok";
   sessionId: string;
 }
 
 export const AGENT_HANDOFF_FILE = join(".hyperframes", "agent-handoff.json");
 
-// ponytail: Claude Code first; a Codex started inside a Claude Code shell (or the reverse) carries both, unsorted.
+// ponytail: Claude Code, then Codex, then Grok; an agent started inside another's shell carries both, unsorted.
 export function agentSession(env: NodeJS.ProcessEnv = process.env): AgentSession | null {
   if (env.CLAUDE_CODE_SESSION_ID)
     return { engine: "claude", sessionId: env.CLAUDE_CODE_SESSION_ID };
   if (env.CODEX_THREAD_ID) return { engine: "codex", sessionId: env.CODEX_THREAD_ID };
+  if (env.GROK_SESSION_ID) return { engine: "grok", sessionId: env.GROK_SESSION_ID };
   return null;
 }
 

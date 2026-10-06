@@ -158,6 +158,7 @@ describe("agent hand-off", () => {
       sessionId: "c-1",
     });
     expect(agentSession({ CODEX_THREAD_ID: "x-1" })).toEqual({ engine: "codex", sessionId: "x-1" });
+    expect(agentSession({ GROK_SESSION_ID: "g-1" })).toEqual({ engine: "grok", sessionId: "g-1" });
     expect(agentSession({})).toBeNull();
   });
 

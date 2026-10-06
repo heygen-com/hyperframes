@@ -22,7 +22,9 @@ function printResult(project: ProjectDir, result: DesktopOpenResult): void {
   if (result.opened) {
     console.log(`${c.success("◇")}  Opening ${c.accent(project.name)} in ${result.app}`);
     if (result.handedOver) {
-      const agent = result.handedOver.engine === "claude" ? "Claude Code" : "Codex";
+      const agent = { claude: "Claude Code", codex: "Codex", grok: "Grok" }[
+        result.handedOver.engine
+      ];
       console.log(`   ${c.dim(`Its chat picks up this ${agent} conversation.`)}`);
       console.log(
         `   ${c.dim(`When the person is back here, run ${c.accent("npx hyperframes catch-up")} to see what they did in the app.`)}`,
