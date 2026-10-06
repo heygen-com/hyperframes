@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../store/playerStore";
 import {
+  currentTimelineRange,
   requestTimelineZoom,
   setTimelineZoomViewport,
   takeTimelineZoomAnchor,
@@ -123,6 +124,29 @@ describe("zoomTimelineToRange", () => {
     vi.advanceTimersToNextFrame();
     abort.abort();
     await expect(result).resolves.toBe("cancelled");
+  });
+});
+
+describe("currentTimelineRange", () => {
+  it("reads back the range zoomTimelineToRange filled", () => {
+    const scroll = document.createElement("div");
+    Object.defineProperties(scroll, {
+      clientWidth: { value: 1080 },
+      scrollLeft: { value: 0, writable: true },
+    });
+    setTimelineZoomViewport({ scroll, contentOrigin: 32 });
+    zoomTimelineToRange(100, 150, { smooth: false });
+    vi.advanceTimersToNextFrame();
+    // The timeline lays the anchor out: 100 s at 20 px/s lands at the left margin, 56px in.
+    const anchor = takeTimelineZoomAnchor()!;
+    scroll.scrollLeft = anchor.time * 20 + 32 - anchor.x;
+    const range = currentTimelineRange()!;
+    expect(range.start).toBeCloseTo(100);
+    expect(range.end).toBeCloseTo(150);
+  });
+
+  it("is null with no timeline mounted", () => {
+    expect(currentTimelineRange()).toBeNull();
   });
 });
 
