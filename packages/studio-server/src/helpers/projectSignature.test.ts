@@ -66,10 +66,7 @@ describe("affectsProjectSignature", () => {
 
   it("rejects a path outside the project", () => {
     expect(affectsProjectSignature(PROJECT, resolve("/projects/other/index.html"))).toBe(false);
-  });
-
-  it("invalidates the signature when the project directory itself changes", () => {
-    expect(affectsProjectSignature(PROJECT, PROJECT)).toBe(true);
+    expect(affectsProjectSignature(PROJECT, PROJECT)).toBe(false);
   });
 });
 

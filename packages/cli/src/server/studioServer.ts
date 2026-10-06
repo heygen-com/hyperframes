@@ -425,7 +425,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const project: ResolvedProject = { id: projectId, dir: projectDir, title: projectId };
   let cachedProjectSignature: string | null = null;
   watcher.addListener((changedPath) => {
-    if (affectsProjectSignature(projectDir, join(projectDir, changedPath))) {
+    if (changedPath === "." || affectsProjectSignature(projectDir, join(projectDir, changedPath))) {
       cachedProjectSignature = null;
     }
   });
