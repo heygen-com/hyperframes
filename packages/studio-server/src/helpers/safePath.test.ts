@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { walkDir } from "./safePath";
+import { isPrivateProjectFile, walkDir } from "./safePath";
 
 const hooks = vi.hoisted(() => ({ unreadable: new Map<string, string>() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -80,5 +80,15 @@ describe("walkDir", () => {
     hooks.unreadable.set(projectDir, "EACCES");
 
     expect(() => walkDir(projectDir)).toThrow("EACCES");
+  });
+});
+
+describe("isPrivateProjectFile", () => {
+  it("names the desktop app's hand-off and chat history, in any case, and nothing else", () => {
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/agent-handoff.json")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.HyperFrames/App-History.JSONL")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/studio-motion.json")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/gif/a.mp4")).toBe(false);
+    expect(isPrivateProjectFile("/p", "/p/agent-handoff.json")).toBe(false);
   });
 });

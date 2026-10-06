@@ -2281,3 +2281,23 @@ describe("preview asset byte ranges", () => {
     expect(res.headers.get("Content-Range")).toBe("bytes */3");
   });
 });
+
+describe("the desktop app's private folder", () => {
+  it("is served by neither the asset route nor the sub-composition route", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(projectDir, ".hyperframes", "agent-handoff.json"),
+      '{"engine":"claude","sessionId":"secret"}',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const route of ["preview", "preview/comp"]) {
+      const res = await app.request(
+        `http://localhost/projects/demo/${route}/.hyperframes/agent-handoff.json`,
+      );
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("secret");
+    }
+  });
+});

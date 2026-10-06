@@ -18,7 +18,11 @@ import { gsapCdnDist, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
-import { isProjectRootMissing, resolveWithinProject } from "../helpers/safePath.js";
+import {
+  isPrivateProjectFile,
+  isProjectRootMissing,
+  resolveWithinProject,
+} from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import {
@@ -615,7 +619,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // use resolveWithinProject because saves write their data-hf-id values.
     const candidate = resolve(project.dir, subPath);
     const file = isWithinProjectRoot(project.dir, candidate) ? candidate : null;
-    if (!file) {
+    if (!file || isPrivateProjectFile(project.dir, file)) {
       return c.text("not found", 404);
     }
     recordPreviewRead(project.dir, file);
