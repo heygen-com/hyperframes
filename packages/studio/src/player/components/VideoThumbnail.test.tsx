@@ -280,6 +280,31 @@ describe("VideoThumbnail during a zoom", () => {
     );
   });
 
+  it("shows the strip it has, not the poster, while a zoom's new width decodes", async () => {
+    vi.mocked(decodeVideoThumbnail).mockImplementation(async ({ frameCount }) =>
+      frameCount === 1
+        ? { value: { kind: "image", url: "blob:poster", aspect: 16 / 9 }, weight: 1 }
+        : {
+            value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
+            weight: 2,
+          },
+    );
+    await render(440);
+    expect(
+      new Set([...host.querySelectorAll("img")].map((img) => img.getAttribute("src"))),
+    ).toEqual(new Set(["blob:a", "blob:b"]));
+    // The new width's decode never lands during this test.
+    vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
+    await act(async () => {
+      reportResize(880, 40);
+      await Promise.resolve();
+    });
+    await rest();
+    const shown = [...host.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown).not.toContain("blob:poster");
+  });
+
   it("keeps its filmstrip while the zoom resizes it, and decodes the new width at rest", async () => {
     await render(440);
     vi.mocked(decodeVideoThumbnail).mockClear();

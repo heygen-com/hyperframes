@@ -39,7 +39,12 @@ function recordDecodes(decoded: number[][]): void {
   });
 }
 
+// Decoded frames are shared per source for the module's life, so each test decodes its own file.
+let sources = 0;
+let source = "";
+
 beforeEach(() => {
+  source = `/clip-${++sources}.mp4`;
   vi.clearAllMocks();
   getKeyPacket.mockImplementation(async () => null);
   vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:one").mockReturnValueOnce("blob:two");
@@ -55,9 +60,15 @@ beforeEach(() => {
 });
 
 describe("videoThumbnailTimestamps", () => {
-  it("uses the midpoint for a poster and sorted sparse points for a strip", () => {
+  it("uses the midpoint for a poster and each frame's left edge for a strip", () => {
     expect(videoThumbnailTimestamps(2, 6, 1)).toEqual([5]);
-    expect(videoThumbnailTimestamps(2, 6, 4)).toEqual([2, 4, 6, 8]);
+    expect(videoThumbnailTimestamps(2, 6, 4)).toEqual([2, 3.5, 5, 6.5]);
+  });
+
+  it("nests each strip in the strip twice as long, and the poster in every strip", () => {
+    const strip = videoThumbnailTimestamps(0, 8, 4);
+    expect(videoThumbnailTimestamps(0, 8, 8).filter((_, i) => i % 2 === 0)).toEqual(strip);
+    expect(strip).toContain(videoThumbnailTimestamps(0, 8, 1)[0]);
   });
 
   it("clamps invalid source ranges", () => {
@@ -71,11 +82,11 @@ describe("decodeVideoThumbnail", () => {
     const decoded: number[][] = [];
     recordDecodes(decoded);
     const result = await decodeVideoThumbnail(
-      { source: "/clip.mp4", sourceStart: 2, sourceRangeDuration: 6, frameCount: 2 },
+      { source, sourceStart: 2, sourceRangeDuration: 6, frameCount: 2 },
       new AbortController().signal,
     );
 
-    expect(decoded).toEqual([[2, 8]]);
+    expect(decoded).toEqual([[2, 5]]);
     expect(result.value).toEqual({
       kind: "filmstrip",
       urls: ["blob:one", "blob:two"],
@@ -88,14 +99,14 @@ describe("decodeVideoThumbnail", () => {
   });
 
   it("decodes each strip frame at its keyframe unless that keyframe is before the clip's range", async () => {
-    getKeyPacket.mockImplementation(async (time) => ({ timestamp: Math.floor(time / 4) * 4 }));
+    getKeyPacket.mockImplementation(async (time) => ({ timestamp: time - 0.5 }));
     const decoded: number[][] = [];
     recordDecodes(decoded);
     await decodeVideoThumbnail(
-      { source: "/clip.mp4", sourceStart: 2, sourceRangeDuration: 8, frameCount: 3 },
+      { source, sourceStart: 2, sourceRangeDuration: 8, frameCount: 4 },
       new AbortController().signal,
     );
-    expect(decoded).toEqual([[2, 4, 8]]);
+    expect(decoded).toEqual([[2, 3.5, 5.5, 7.5]]);
   });
 
   it("keeps a slot's own time when its keyframe is more than half a slot earlier", async () => {
@@ -103,14 +114,10 @@ describe("decodeVideoThumbnail", () => {
     const decoded: number[][] = [];
     recordDecodes(decoded);
     await decodeVideoThumbnail(
-      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+      { source, sourceStart: 0, sourceRangeDuration: 10, frameCount: 4 },
       new AbortController().signal,
     );
-    await decodeVideoThumbnail(
-      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 1 },
-      new AbortController().signal,
-    );
-    expect(decoded).toEqual([[0, 5, 10], [5]]);
+    expect(decoded).toEqual([[0, 2.5, 5, 7.5]]);
   });
 
   it("looks up each keyframe just before decoding it", async () => {
@@ -126,10 +133,10 @@ describe("decodeVideoThumbnail", () => {
       }
     });
     await decodeVideoThumbnail(
-      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+      { source, sourceStart: 0, sourceRangeDuration: 10, frameCount: 2 },
       new AbortController().signal,
     );
-    expect(events).toEqual(["key 0", "frame 0", "key 5", "frame 5", "key 10", "frame 10"]);
+    expect(events).toEqual(["key 0", "frame 0", "key 5", "frame 5"]);
   });
 
   it("ends the decode times without throwing when cancelled during a keyframe lookup", async () => {
@@ -146,7 +153,7 @@ describe("decodeVideoThumbnail", () => {
     });
     await expect(
       decodeVideoThumbnail(
-        { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+        { source, sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
         controller.signal,
       ),
     ).rejects.toThrow("Aborted");
@@ -164,10 +171,45 @@ describe("decodeVideoThumbnail", () => {
     const decoded: number[][] = [];
     recordDecodes(decoded);
     await decodeVideoThumbnail(
-      { source: "/clip.mp4", sourceStart: 5, sourceRangeDuration: 5, frameCount: 3 },
+      { source, sourceStart: 5, sourceRangeDuration: 5, frameCount: 2 },
       new AbortController().signal,
     );
-    expect(decoded).toEqual([[5, 7.5, 10]]);
+    expect(decoded).toEqual([[5, 7.5]]);
+  });
+
+  it("reuses the frames a strip of the same source shows, so a zoom decodes only new times", async () => {
+    vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:${Math.random()}`);
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    const range = { source, sourceStart: 0, sourceRangeDuration: 8 };
+    const signal = new AbortController().signal;
+    const four = await decodeVideoThumbnail({ ...range, frameCount: 4 }, signal);
+    // Twice the frames decodes only the new half; half the frames decodes nothing.
+    const eight = await decodeVideoThumbnail({ ...range, frameCount: 8 }, signal);
+    const two = await decodeVideoThumbnail({ ...range, frameCount: 2 }, signal);
+    expect(decoded).toEqual([
+      [0, 2, 4, 6],
+      [1, 3, 5, 7],
+    ]);
+    const urls = (result: typeof four) =>
+      result.value.kind === "filmstrip" ? result.value.urls : [];
+    expect(urls(eight).filter((_, i) => i % 2 === 0)).toEqual(urls(four));
+    expect(urls(two)).toEqual([urls(four)[0], urls(four)[2]]);
+    for (const result of [four, eight, two]) result.dispose?.();
+  });
+
+  it("revokes a shared frame only once no strip shows it", async () => {
+    vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:${Math.random()}`);
+    recordDecodes([]);
+    const range = { source, sourceStart: 0, sourceRangeDuration: 8 };
+    const signal = new AbortController().signal;
+    const four = await decodeVideoThumbnail({ ...range, frameCount: 4 }, signal);
+    const two = await decodeVideoThumbnail({ ...range, frameCount: 2 }, signal);
+    four.dispose?.();
+    // The two frames the 2-frame strip still shows stay; the other two go.
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+    two.dispose?.();
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(4);
   });
 
   it("releases input and degrades when the source has no video track", async () => {
@@ -187,7 +229,7 @@ describe("decodeVideoThumbnail", () => {
       yield { canvas, timestamp: 2, duration: 1 };
     });
     await expect(
-      decodeVideoThumbnail({ source: "/clip.mp4", frameCount: 2 }, controller.signal),
+      decodeVideoThumbnail({ source, frameCount: 2 }, controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
     expect(dispose).toHaveBeenCalledTimes(1);
@@ -207,10 +249,7 @@ describe("decodeVideoThumbnail", () => {
       getDurationFromMetadata,
     });
 
-    const decoding = decodeVideoThumbnail(
-      { source: "/clip.mp4", frameCount: 1 },
-      controller.signal,
-    );
+    const decoding = decodeVideoThumbnail({ source, frameCount: 1 }, controller.signal);
     await vi.waitFor(() => expect(getDisplayWidth).toHaveBeenCalledOnce());
     controller.abort();
     resolveWidth(1080);

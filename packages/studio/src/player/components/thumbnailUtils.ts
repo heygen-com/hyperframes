@@ -15,6 +15,22 @@ export function quantizeThumbnailFrameCount(frameCount: number): number {
 }
 
 /**
+ * The decoded frame tile `index` of `tileCount` shows. Frame `i` of `frameCount` stands for its
+ * slice of the clip from its left-edge time (videoThumbnailTimestamps); a tile shows the frame
+ * whose slice holds the tile's centre.
+ */
+export function thumbnailFrameForTile(
+  index: number,
+  tileCount: number,
+  frameCount: number,
+): number {
+  return Math.min(
+    frameCount - 1,
+    Math.floor(((index + 0.5) * frameCount) / Math.max(1, tileCount)),
+  );
+}
+
+/**
  * Measure an image without mounting it in React's DOM. The scheduler owns the
  * abort signal, so an unmounted clip cannot leave Blink retaining a pending
  * image request and its former React tree.
