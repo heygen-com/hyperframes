@@ -93,6 +93,18 @@ export function setTimelineZoomViewport(next: TimelineZoomViewport | null): void
 const reducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** The seconds the timeline shows between its margins: what zoomTimelineToRange would fill. */
+export function currentTimelineRange(): { start: number; end: number } | null {
+  const view = viewport;
+  const fitPps = usePlayerStore.getState().timelineFitPps;
+  if (!view || !(fitPps > 0)) return null;
+  const pps = (fitPps * currentTimelineZoomPercent()) / 100;
+  const x = view.contentOrigin + RANGE_MARGIN_PX;
+  const width = Math.max(1, view.scroll.clientWidth - x - RANGE_MARGIN_PX);
+  const start = (view.scroll.scrollLeft + x - view.contentOrigin) / pps;
+  return { start, end: start + width / pps };
+}
+
 /**
  * Zooms and scrolls so `start`..`end` (seconds) fills the timeline's width, easing there unless
  * `smooth` is false or the person prefers reduced motion. Resolves once the last step is laid
