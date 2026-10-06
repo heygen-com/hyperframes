@@ -5,6 +5,7 @@ import { bundleToSingleHtml } from "@hyperframes/core/compiler";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import type {} from "../../../core/src/runtime/window";
+import { openComposition } from "../../../sdk/src/session";
 import {
   computeStaticFrameSet,
   waitForPendingSeekCompletion,
@@ -1082,13 +1083,13 @@ function filmRuntimeFixture(runtime: string): string {
   return `<!doctype html><html><head>
 <style>html,body{margin:0} iframe{display:block;border:0;width:320px;height:180px}</style>
 <script>${runtime.replaceAll("</script", "<\\/script")}</script></head><body>
-<div data-composition-id="root" data-start="0" data-duration="1" data-width="320" data-height="180" data-fps="30">
-<div id="scene" class="clip" data-composition-id="scene" data-start="0" data-duration="1" data-track-index="0">
+<div data-hf-id="hf-root" data-hf-root data-composition-id="root" data-start="0" data-duration="1" data-width="320" data-height="180" data-fps="30">
+<div id="scene" data-hf-id="hf-scene" class="clip" data-composition-id="scene" data-start="0" data-duration="1" data-track-index="0">
 <iframe id="stage" sandbox="allow-scripts" title="First-party protocol fixture"></iframe>
 </div></div>
 <script>
 const bridge = window.__hyperframes.createFilmBridge({iframe:document.getElementById("stage"),runnerHtml:${runnerLiteral},load:{}});
-window.__hyperframes.registerFrameSource({element:document.getElementById("scene"),ready:bridge.ready,render:bridge.render,dispose:bridge.dispose,sourceRange:{start:3,duration:1,fps:30}});
+window.__hyperframes.registerFrameSource({element:document.getElementById("scene"),ready:bridge.ready,render:async (time) => { await bridge.render(time); document.getElementById("scene").setAttribute("data-rendered-source-time",String(time)); },dispose:bridge.dispose,sourceRange:{start:3,duration:1,fps:30}});
 </script></body></html>`;
 }
 
@@ -1106,15 +1107,93 @@ describe("film bridge browser capture contract", () => {
     await browser?.close();
   });
 
-  async function openFilm(): Promise<Page> {
+  async function openFilm(source = html): Promise<Page> {
     const page = await browser.newPage();
     await page.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
-    await page.setContent(html);
+    await page.setContent(source);
     await page.waitForFunction(
       () => window.__playerReady === true && window.__renderReady === true,
     );
     return page;
   }
+
+  it("renders the executable wrapper after SDK edits, save and reopen", async () => {
+    const composition = await openComposition(html);
+    composition.setTiming("hf-scene", { start: 0.2, duration: 0.6 });
+    composition.setAttribute("hf-scene", "data-playback-start", "0.1");
+    composition.setAttribute("hf-scene", "data-playback-rate", "2");
+    const reopened = await openComposition(composition.serialize());
+    const page = await openFilm(reopened.serialize());
+    const reference = await browser.newPage();
+    try {
+      await page.evaluate(() => window.__player?.renderSeek?.(0.4));
+      await waitForPendingSeekCompletion(page);
+      expect(
+        Number(await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"))),
+      ).toBeCloseTo(3.5, 10);
+      await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+      await reference.setContent("<style>html,body{margin:0;background:rgb(140,20,80)}</style>");
+      expect(Buffer.from(await page.screenshot())).toEqual(
+        Buffer.from(await reference.screenshot()),
+      );
+    } finally {
+      await page.close();
+      await reference.close();
+    }
+  });
+
+  it("draws the first visible export frame at a near-frame start and stops at its snapped end", async () => {
+    const composition = await openComposition(html);
+    composition.setTiming("hf-root", { duration: 3 });
+    composition.setTiming("hf-scene", { start: 1.00001, duration: 1 });
+    const source = composition
+      .serialize()
+      .replace(
+        "<head>",
+        '<head><script>window.__HF_EXPORT_RENDER_SEEK_CONFIG={fps:30,fpsSource:"render-options"};</script>',
+      );
+    const page = await openFilm(source);
+    const reference = await browser.newPage();
+    await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+    try {
+      for (const [time, sourceTime] of [
+        [1, 3],
+        [59 / 30, 3 + 59 / 30 - 1.00001],
+      ]) {
+        await page.evaluate((t) => window.__player?.renderSeek?.(t), time);
+        await waitForPendingSeekCompletion(page);
+        expect(
+          Number(await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"))),
+        ).toBeCloseTo(sourceTime!, 10);
+        await reference.setContent(
+          `<style>html,body{margin:0;background:rgb(${Math.round(sourceTime! * 40)},20,80)}</style>`,
+        );
+        expect(Buffer.from(await page.screenshot())).toEqual(
+          Buffer.from(await reference.screenshot()),
+        );
+      }
+      const last = await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"));
+      await page.evaluate(() => window.__player?.renderSeek?.(2));
+      await waitForPendingSeekCompletion(page);
+      expect(await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"))).toBe(
+        last,
+      );
+      expect(
+        await page.evaluate(() => ({
+          duration: window.__player?.getDuration?.(),
+          visibility: getComputedStyle(document.getElementById("scene")!).visibility,
+          background: getComputedStyle(document.body).backgroundColor,
+        })),
+      ).toEqual({ duration: 3, visibility: "hidden", background: "rgba(0, 0, 0, 0)" });
+      await reference.setContent("<style>html,body{margin:0;background:#121212}</style>");
+      expect(Buffer.from(await page.screenshot())).toEqual(
+        Buffer.from(await reference.screenshot()),
+      );
+    } finally {
+      await page.close();
+      await reference.close();
+    }
+  });
 
   it("captures the acknowledged frame for reverse, repeated and fresh-page seeks", async () => {
     const page = await openFilm();

@@ -14,11 +14,13 @@ function deferred() {
 }
 
 const adapters: ReturnType<typeof createFrameSourceAdapter>[] = [];
-const adapter = (compositionDuration = 20) => {
+const adapter = (compositionDuration = 20, exportRenderSeek = false) => {
   const runtime = createFrameSourceAdapter({
     start: (element) => createRuntimeStartTimeResolver({}).resolveStartForElement(element, 0),
     duration: (element) => createRuntimeStartTimeResolver({}).resolveDurationForElement(element),
     compositionDuration: () => compositionDuration,
+    canonicalFps: () => 30,
+    exportRenderSeek: () => exportRenderSeek,
   });
   adapters.push(runtime);
   return runtime;
@@ -271,6 +273,33 @@ describe("frame sources", () => {
     disposers.push(registerFrameSource({ element: mount("2", "2"), render }));
     const runtime = adapter(8);
     for (const time of [0, 1, 4, 6, 8]) runtime.seek({ time });
+    await waitForSeekCompletion();
+    expect(render).not.toHaveBeenCalled();
+    runtime.seek({ time: 2 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches snapped export visibility at near-frame starts and ends", async () => {
+    const render = vi.fn();
+    disposers.push(registerFrameSource({ element: mount("1.00001", "1"), render }));
+    const runtime = adapter(3, true);
+    runtime.seek({ time: 1 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenLastCalledWith(0, expect.any(AbortSignal));
+    runtime.seek({ time: 59 / 30 });
+    await waitForSeekCompletion();
+    expect(render.mock.lastCall?.[0]).toBeCloseTo(59 / 30 - 1.00001, 10);
+    runtime.seek({ time: 2 });
+    await waitForSeekCompletion();
+    expect(render).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains unsnapped authored timing during interactive preview", async () => {
+    const render = vi.fn();
+    disposers.push(registerFrameSource({ element: mount("1.00001", "1"), render }));
+    const runtime = adapter(3);
+    runtime.seek({ time: 1 });
     await waitForSeekCompletion();
     expect(render).not.toHaveBeenCalled();
     runtime.seek({ time: 2 });

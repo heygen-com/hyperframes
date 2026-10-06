@@ -1,3 +1,4 @@
+import { exportClipWindow } from "../inline-scripts/parityContract";
 import { sourceTimeAt } from "../speedRamp";
 import { readElementRateSpec, readMediaStart } from "./playbackRate";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
@@ -91,6 +92,8 @@ export function createFrameSourceAdapter(timing: {
   start: (element: Element) => number;
   duration: (element: Element) => number | null;
   compositionDuration: () => number;
+  canonicalFps: () => number;
+  exportRenderSeek: () => boolean;
 }): RuntimeDeterministicAdapter {
   const owned = new Set<RegisteredSource>();
   let readySources: RegisteredSource[] = [];
@@ -128,14 +131,11 @@ export function createFrameSourceAdapter(timing: {
       for (const [element, source] of current()) {
         const start = timing.start(element);
         const duration = timing.duration(element);
-        if (
-          !isClipVisibleAt(
-            time,
-            start,
-            start + (duration ?? Infinity),
-            timing.compositionDuration(),
-          )
-        )
+        const end = start + (duration ?? Infinity);
+        const clipWindow = timing.exportRenderSeek()
+          ? exportClipWindow(start, end, timing.canonicalFps())
+          : { start, end };
+        if (!isClipVisibleAt(time, clipWindow.start, clipWindow.end, timing.compositionDuration()))
           continue;
         const localTime = Math.max(0, time - start);
         const sourceTime =
