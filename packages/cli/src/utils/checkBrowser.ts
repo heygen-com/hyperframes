@@ -371,7 +371,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
   wireNetworkListeners(page, drafts, currentTime);
 }
 
-/** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` still shows it and it won't decode. */
+/** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` still shows it and its decode fails. */
 export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string>): RuntimeDraft[] {
   return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
 }
@@ -383,20 +383,24 @@ async function abortedImagesStillBroken(page: Page, drafts: RuntimeDraft[]): Pro
   if (urls.length === 0) return new Set();
   const broken = await page.evaluate(
     async (candidates: string[], capMs: number) => {
-      const decodes = (img: HTMLImageElement) =>
-        Promise.race([
-          img.decode().then(
-            () => img.naturalWidth > 0,
-            () => false,
-          ),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), capMs)),
-        ]);
+      // A load still pending at the cap (a deferred lazy image) is not a failure.
+      const fails = (img: HTMLImageElement) =>
+        new Promise<boolean>((resolve) => {
+          const cap = setTimeout(() => resolve(false), capMs);
+          img
+            .decode()
+            .then(
+              () => resolve(false),
+              () => resolve(true),
+            )
+            .finally(() => clearTimeout(cap));
+        });
       const stillBroken = await Promise.all(
         candidates.map(async (url) => {
           const shown = Array.from(document.querySelectorAll("img")).filter(
             (img) => img.currentSrc === url || img.src === url,
           );
-          return shown.length > 0 && !(await Promise.all(shown.map(decodes))).every(Boolean);
+          return (await Promise.all(shown.map(fails))).some(Boolean);
         }),
       );
       return candidates.filter((_, i) => stillBroken[i]);

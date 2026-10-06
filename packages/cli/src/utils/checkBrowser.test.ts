@@ -557,7 +557,6 @@ describe("keepBrokenImageAborts", () => {
     const fine = document.getElementById("fine") as HTMLImageElement;
     stuck.decode = () => Promise.reject(new Error("broken"));
     fine.decode = () => Promise.resolve();
-    Object.defineProperty(fine, "naturalWidth", { value: 320 });
     const aborted = (url: string) => ({
       url: () => url,
       failure: () => ({ errorText: "net::ERR_ABORTED" }),
