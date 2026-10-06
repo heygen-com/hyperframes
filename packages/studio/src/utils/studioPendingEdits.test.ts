@@ -17,7 +17,7 @@ import { revertNewestStudioPendingEdit as hostRevert } from "../index";
 
 describe("a canvas press still waiting to run", () => {
   it("is not what a host's revert takes back, since the host steps history after it", () => {
-    const cancel = vi.fn();
+    const cancel = vi.fn(() => true);
     setStudioWaitingPressCancel(cancel);
     try {
       expect(hostRevert()).toBeNull();

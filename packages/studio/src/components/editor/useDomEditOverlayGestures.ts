@@ -574,7 +574,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.blockedMoveRef.current = null;
     opts.groupGestureRef.current = null;
     opts.gestureRef.current = null;
-    opts.rafPausedRef.current = false;
+    opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
   };
 
   const onLostPointerCapture = (e: React.PointerEvent<HTMLDivElement>) => {

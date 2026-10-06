@@ -28,10 +28,12 @@ import { cancelNewestStudioWaitingPress } from "../../utils/studioPendingEdits";
 
 const layout = vi.hoisted(() => ({
   group: [] as unknown[],
+  rafPaused: { current: false } as { current: boolean },
   rect: { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 },
 }));
 vi.mock("./useDomEditOverlayRects", () => ({
-  useDomEditOverlayRects: () => {
+  useDomEditOverlayRects: (options: { rafPausedRef: { current: boolean } }) => {
+    layout.rafPaused = options.rafPausedRef;
     const { rect, group } = layout;
     const [overlayRect, setOverlayRect] = React.useState(rect);
     const overlayRectRef = React.useRef(overlayRect);
@@ -202,7 +204,11 @@ beforeEach(() => {
   HTMLElement.prototype.releasePointerCapture = () => undefined;
 });
 
+// Writes a test leaves out would hold every later press in the file.
+const stuckWrites: Array<() => void> = [];
+
 afterEach(() => {
+  for (const land of stuckWrites.splice(0)) land();
   act(() => overlayRoot?.unmount());
   act(() => player?.root.unmount());
   layout.group = [];
@@ -541,6 +547,10 @@ describe("a press while a script write is out", () => {
     let landFirst: () => void = () => {};
     const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
     const firstSaved = new Promise<void>((resolve) => (landFirst = resolve));
+    stuckWrites.push(
+      () => land(),
+      () => landFirst(),
+    );
     const commit = editor.onPathOffsetCommit.getMockImplementation()!;
     editor.onPathOffsetCommit.mockImplementationOnce((...args) =>
       whileScriptWrites(async () => {
@@ -567,6 +577,22 @@ describe("a press while a script write is out", () => {
       });
     return { editor, ran, landFirstSave };
   }
+
+  it("leaves Cmd+Z to history once the press it could take back has run", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    stuckWrites.push(() => land());
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    expect(cancelNewestStudioWaitingPress()).toBe(false);
+  });
 
   it("takes back a press queued behind one that ran, and leaves nothing waiting", async () => {
     const { editor, ran, landFirstSave } = queuedBehindOneThatRan();
@@ -599,6 +625,9 @@ describe("a press while a script write is out", () => {
     pointer(editor.overlay, "pointermove", 190, 170);
     pointer(editor.overlay, "pointerup", 190, 170);
     act(() => void window.dispatchEvent(new Event("blur")));
+    expect(layout.rafPaused.current, "the box does not re-measure under a waiting press").toBe(
+      true,
+    );
 
     await act(async () => {
       land();

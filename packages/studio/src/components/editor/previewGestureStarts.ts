@@ -55,8 +55,8 @@ export function createPreviewGestureStarts(
   };
 
   /** Takes one press out of the queue; the outline shows the newest press left, or the box before this one. */
-  const dropPress = (press: WaitingPressState) => {
-    if (press.ended) return;
+  const dropPress = (press: WaitingPressState): boolean => {
+    if (press.ended) return false;
     press.ended = true;
     cancelAnimationFrame(press.frame);
     const newest = opts.waitingPressRef.current;
@@ -72,6 +72,7 @@ export function createPreviewGestureStarts(
       }
     } else for (let p = newest; p; p = p.after) if (p.after === press) p.after = press.after;
     offerUndo();
+    return true;
   };
 
   /** Ends the press still held, if any; presses already released are finished edits and still land. */

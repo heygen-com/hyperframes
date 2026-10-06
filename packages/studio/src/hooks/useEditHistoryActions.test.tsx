@@ -75,14 +75,20 @@ const SERVER_FILES = { "index.html": { previous: "B", restored: "A2" } };
 describe("useEditHistoryActions", () => {
   it("takes back a canvas press still waiting to run, with no history step", async () => {
     const { deps, actions } = mount({ ok: true, label: "Undid: Move" });
-    const cancel = vi.fn(() => setStudioWaitingPressCancel(null));
+    const cancel = vi.fn(() => (setStudioWaitingPressCancel(null), true));
     setStudioWaitingPressCancel(cancel);
+    const revert = vi.fn(() => () => {});
+    const saving = beginStudioPendingEdit(revert);
+    await act(() => actions.redo());
+    expect(cancel, "redo leaves the press").not.toHaveBeenCalled();
     await act(() => actions.undo());
     expect(cancel).toHaveBeenCalledTimes(1);
+    expect(revert, "the press is newer than any edit still saving").not.toHaveBeenCalled();
     expect(deps.editHistory.undo).not.toHaveBeenCalled();
 
     await act(() => actions.undo());
-    expect(deps.editHistory.undo, "the following Cmd+Z steps history").toHaveBeenCalledTimes(1);
+    expect(revert, "the following Cmd+Z takes back the edit still saving").toHaveBeenCalledTimes(1);
+    saving.settle();
   });
 
   it("asks for the edit claimed after the key's claim count only when an edit was saving at the key", async () => {
