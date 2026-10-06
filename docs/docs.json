@@ -913,6 +913,7 @@
               "concepts/variables",
               "concepts/data-attributes",
               "guides/gsap-animation",
+              "guides/frame-sources",
               "concepts/frame-adapters",
               "concepts/determinism",
               "guides/html-in-canvas",
