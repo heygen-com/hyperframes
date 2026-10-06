@@ -353,7 +353,7 @@ async function transcribeAudio(
   const onEvent = opts.json ? createProgressWriter(process.stderr) : undefined;
   let wavPath = inputPath;
   // Before audio prep: under --json no spinner listens for SIGINT, so Ctrl-C would kill Node.
-  const cancellation = runner !== "parakeet-mlx" ? createRenderCancellationScope() : null;
+  let cancellation = runner === "sherpa" ? createRenderCancellationScope() : null;
   const run = (r: Runner) => {
     switch (r) {
       case "sherpa":
@@ -375,7 +375,7 @@ async function transcribeAudio(
           onEvent,
           timeoutMs: opts.timeoutMs,
           installRuntime: opts.installRuntime,
-          signal: cancellation?.signal,
+          startCancellation: () => (cancellation ??= createRenderCancellationScope()).signal,
         });
       default: {
         const unreachable: never = r;

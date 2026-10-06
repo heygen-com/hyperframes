@@ -269,7 +269,8 @@ export interface TranscribeOptions {
   language?: string;
   onProgress?: (message: string) => void;
   onEvent?: (event: TranscribeProgress) => void;
-  signal?: AbortSignal;
+  /** Called as whisper starts, so a stop during install or download still ends the CLI at once. */
+  startCancellation?: () => AbortSignal;
   /**
    * Explicit whisper spawn timeout in ms. Overrides the duration+model auto-
    * scaled default. Callers that leave this undefined get the auto-scaled
@@ -525,7 +526,7 @@ export async function transcribe(
   try {
     await runWhisper(whisper.executablePath, whisperArgs, {
       timeoutMs: whisperTimeoutMs,
-      signal: options?.signal,
+      signal: options?.startCancellation?.(),
       onStdout:
         onEvent &&
         ((line) => {
@@ -600,11 +601,6 @@ export async function transcribe(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Timeout error discoverability
-// ---------------------------------------------------------------------------
-
-// execFileSync's own timeout sets code ETIMEDOUT (and SIGTERM); a bare SIGTERM is someone stopping it.
 const SEGMENT_LINE = /^\[(\d+):(\d+):([\d.]+) --> (\d+):(\d+):([\d.]+)\]\s*(.*)$/;
 const toSeconds = (h: string, m: string, s: string) =>
   Number(h) * 3600 + Number(m) * 60 + Number(s);
@@ -651,6 +647,8 @@ async function runWhisper(
         if (!err) return resolve();
         // execFileSync named its own timeout ETIMEDOUT; execFile only marks the child killed.
         const timedOut = err.killed && err.signal === "SIGTERM" && !options.signal?.aborted;
+        // execFile appends all of stderr to the message; the command shows its last lines instead.
+        err.message = err.message.split("\n")[0]!;
         reject(Object.assign(err, { stderr: errText }, timedOut ? { code: "ETIMEDOUT" } : {}));
       },
     );
@@ -662,6 +660,11 @@ async function runWhisper(
   await Promise.all([exited, read(stdout, options.onStdout), read(stderr, options.onStderr)]);
 }
 
+// ---------------------------------------------------------------------------
+// Timeout error discoverability
+// ---------------------------------------------------------------------------
+
+// execFileSync's own timeout sets code ETIMEDOUT (and SIGTERM); a bare SIGTERM is someone stopping it.
 export function isWhisperTimeoutError(err: unknown): boolean {
   return err instanceof Error && (err as { code?: unknown }).code === "ETIMEDOUT";
 }

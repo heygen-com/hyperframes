@@ -213,6 +213,48 @@ it("reports progress through audio where whisper prints no segment, once per ste
   ]);
 });
 
+it("asks whisper for progress only when someone streams it", async () => {
+  const progressAsked = () =>
+    native.exec.mock.calls
+      .filter(([c]) => c === "whisper-cli")
+      .map(([, a]) => a.includes("--print-progress"));
+  await transcribe(join(dir, "audio.wav"), dir, { model: "small" });
+  await transcribeStreaming();
+  expect(progressAsked()).toEqual([false, true]);
+});
+
+it("installs the stop handling only once setup is done and whisper starts", async () => {
+  const order: string[] = [];
+  native.runtime.mockImplementation(async () => {
+    order.push("runtime");
+    return { executablePath: "whisper-cli", source: "env" };
+  });
+  await transcribe(join(dir, "audio.wav"), dir, {
+    model: "small",
+    onEvent: (e) => e.type === "progress" && e.phase === "download" && order.push("download"),
+    startCancellation: () => {
+      order.push("stop handling");
+      return new AbortController().signal;
+    },
+  });
+  expect(order).toEqual(["runtime", "download", "stop handling"]);
+});
+
+it("keeps whisper's log out of the error message, leaving its last lines to the command", async () => {
+  const previous = native.exec.getMockImplementation()!;
+  native.exec.mockImplementation((command: string, args: string[]) => {
+    if (command === "whisper-cli")
+      throw new Error("Command failed: whisper-cli\nload log\nbad model");
+    return previous(command, args);
+  });
+  native.printed.stderr = "load log\nbad model\n";
+  const failure = await transcribe(join(dir, "audio.wav"), dir, { model: "small" }).catch((e) => e);
+  expect(failure).toMatchObject({
+    message: "Command failed: whisper-cli",
+    stderr: "load log\nbad model\n",
+  });
+});
+
 it("names the timeout knob when whisper outlives its own timeout", async () => {
   const previous = native.exec.getMockImplementation()!;
   native.exec.mockImplementation((command: string, args: string[]) => {

@@ -426,8 +426,13 @@ function decode(
     if (onWindow && child.stdout) {
       createInterface({ input: child.stdout }).on("line", (l) => {
         if (!l.startsWith(SHERPA_WINDOW_PREFIX)) return;
-        const { window, through } = JSON.parse(l.slice(SHERPA_WINDOW_PREFIX.length));
-        onWindow(window, through);
+        let streamed: { window: SherpaWindow; through: number };
+        try {
+          streamed = JSON.parse(l.slice(SHERPA_WINDOW_PREFIX.length));
+        } catch {
+          return;
+        }
+        onWindow(streamed.window, streamed.through);
       });
     }
   });
