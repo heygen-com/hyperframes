@@ -87,11 +87,8 @@ describe("timeline viewport geometry", () => {
   });
 });
 
-/** The track's content row: a clip's parent, past its `display: contents` wrapper. */
 function trackContentOf(clip: HTMLElement | null | undefined): HTMLElement | null {
-  let row = clip?.parentElement ?? null;
-  while (row?.style.display === "contents") row = row.parentElement;
-  return row;
+  return clip?.closest<HTMLElement>('[role="gridcell"]') ?? null;
 }
 
 function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: string) {

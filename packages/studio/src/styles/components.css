@@ -314,6 +314,10 @@
   display: none;
 }
 
+[data-peak-badge] {
+  z-index: 20;
+}
+
 .audible-video-wave [data-peak-badge] {
   top: 50%;
   bottom: auto;
