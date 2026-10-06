@@ -349,7 +349,15 @@
             // that would walk the whole subtree once per copy; on resize it costs nothing
             // on a fixed-size render and keeps a live preview honest.
             function snapshot() {
+              // Read a target hidden right now (an autoAlpha entrance) as shown, so a descendant
+              // hidden by its own rule still differs from it; the inline value goes back exactly.
+              var hidden = getComputedStyle(el).visibility === "hidden";
+              var inline = el.style.getPropertyValue("visibility");
+              var priority = el.style.getPropertyPriority("visibility");
+              if (hidden) el.style.setProperty("visibility", "visible", "important");
               var styles = resolvedStyles(el, []);
+              if (hidden && inline) el.style.setProperty("visibility", inline, priority);
+              else if (hidden) el.style.removeProperty("visibility");
               s.perspective = parentPerspective(el);
               for (var c = 0; c < clones.length; c++) {
                 paintResolvedStyles(clones[c], styles, { i: 0 });

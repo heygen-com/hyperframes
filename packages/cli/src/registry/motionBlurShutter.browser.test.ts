@@ -118,8 +118,10 @@ function makeTimeline(onTo?: () => void): Fake {
 
 /** What the browser resolves for the target: the marker's !important rule wins, else the inline value. */
 function wordVisibility(word: Element): string {
+  const style = (word as HTMLElement).style;
+  if (style.getPropertyPriority("visibility") === "important") return style.visibility;
   if (word.hasAttribute(HIDING)) return "hidden";
-  return (word as HTMLElement).style.visibility || "visible";
+  return style.visibility || "visible";
 }
 
 /**
@@ -583,24 +585,27 @@ describe("motion-blur declarative attribute", () => {
     expect(target.groups()[0]?.children).toHaveLength(5);
   });
 
-  it("keeps a descendant's own visibility in a copy, not one it only inherits", async () => {
+  it("keeps a descendant's own hiding in a copy of a target hidden at attach", async () => {
+    // An autoAlpha entrance hides the target when it is blurred. A child hidden by its own
+    // rule must still differ from it, or the smear would show what the element hides.
     const target = declare("");
     const own = document.createElement("span");
     const inheriting = document.createElement("span");
     target.word.append(own, inheriting);
-    const visibility = new Map<Element, string>([
-      [target.word, "hidden"],
-      [own, "visible"],
-      [inheriting, "hidden"],
-    ]);
+    target.word.style.visibility = "hidden";
     const mocked = globalThis.getComputedStyle;
-    globalThis.getComputedStyle = ((element: Element) => {
-      const value = visibility.get(element);
-      if (value === undefined) return mocked(element);
-      return Object.assign(Object.create(mocked(element)), ["visibility"], {
+    const resolved = (element: Element, value: string) =>
+      Object.assign(Object.create(mocked(element)), ["visibility"], {
         length: 1,
+        visibility: value,
         getPropertyValue: (name: string) => (name === "visibility" ? value : ""),
       });
+    globalThis.getComputedStyle = ((element: Element) => {
+      if (element === own) return resolved(element, "hidden");
+      if (element === inheriting || element === target.word) {
+        return resolved(element, wordVisibility(target.word));
+      }
+      return mocked(element);
     }) as typeof globalThis.getComputedStyle;
 
     target.register();
@@ -609,8 +614,10 @@ describe("motion-blur declarative attribute", () => {
 
     const copy = target.groups()[0]?.children[0];
     if (!copy) throw new Error("motion-blur group carries no copies");
-    expect((copy.children[0] as HTMLElement).style.visibility).toBe("visible");
+    expect((copy.children[0] as HTMLElement).style.visibility).toBe("hidden");
     expect((copy.children[1] as HTMLElement).style.visibility).toBe("");
+    expect(target.word.style.visibility).toBe("hidden");
+    expect(target.word.style.getPropertyPriority("visibility")).toBe("");
   });
 
   it("leaves a target alone when another composition registers", async () => {
