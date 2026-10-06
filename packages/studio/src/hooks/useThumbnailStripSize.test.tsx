@@ -7,6 +7,15 @@ import { NearScreenIntersectionObserver } from "./intersectionObserverTestUtils"
 import { MockResizeObserver, reportResize } from "./resizeObserverTestUtils";
 import { useThumbnailStripSize } from "./useThumbnailStripSize";
 
+const zoom = vi.hoisted(() => ({ previewing: false, listeners: new Set<() => void>() }));
+vi.mock("../player/components/timelineZoomInput", () => ({
+  isTimelineZoomPreviewing: () => zoom.previewing,
+  subscribeTimelineZoomPreview: (listener: () => void) => {
+    zoom.listeners.add(listener);
+    return () => zoom.listeners.delete(listener);
+  },
+}));
+
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 it("does not re-render the strip when the observer reports the size it already holds", () => {
@@ -42,6 +51,36 @@ it("does not re-render the strip when the observer reports the size it already h
     expect(stripRenders).toBe(settled + 1);
     expect(host.textContent).toBe("320x40");
   } finally {
+    act(() => root.unmount());
+    host.remove();
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
+});
+
+it("measures a strip once a zoom preview ends, not while the preview scales it", () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const host = document.createElement("div");
+  document.body.append(host);
+  let width = 300;
+  Object.defineProperty(host, "clientWidth", { configurable: true, get: () => width });
+  Object.defineProperty(host, "clientHeight", { configurable: true, value: 40 });
+  const root = createRoot(host);
+  function Harness() {
+    const [size, ref] = useThumbnailStripSize();
+    return <div ref={ref}>{`${size.width}x${size.height}`}</div>;
+  }
+  try {
+    act(() => root.render(<Harness />));
+    zoom.previewing = true;
+    width = 600;
+    act(() => reportResize(600, 40));
+    expect(host.textContent).toBe("300x40");
+    zoom.previewing = false;
+    act(() => zoom.listeners.forEach((listener) => listener()));
+    expect(host.textContent).toBe("600x40");
+  } finally {
+    zoom.previewing = false;
     act(() => root.unmount());
     host.remove();
     globalThis.ResizeObserver = originalResizeObserver;
