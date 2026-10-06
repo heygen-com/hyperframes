@@ -102,6 +102,7 @@ describe("ClawHub skill sync", () => {
   it("fails on any taken version other than the one acknowledged, without publishing", () => {
     const others = [
       { slug: "figma", message: TAKEN("1.0.17") },
+      { slug: "figma", message: TAKEN("1.0.13") },
       { slug: "hyperframes-creative", message: TAKEN("1.0.15") },
     ];
     const clawhub = fakeClawhub({ syncFailed: others });
