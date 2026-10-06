@@ -705,10 +705,15 @@ describe("the desktop app's private files", () => {
       '{"engine":"claude","sessionId":"secret"}',
     );
     writeFileSync(join(project, ".hyperframes", "app-history.jsonl"), '{"said":"secret"}');
+    writeFileSync(
+      join(project, ".hyperframes", "agent-handoff-read.json"),
+      '{"sessionId":"secret"}',
+    );
     for (const path of [
       ".hyperframes/agent-handoff.json",
       ".hyperframes/app-history.jsonl",
       ".HyperFrames/Agent-Handoff.JSON",
+      ".hyperframes/agent-handoff-read.json",
     ]) {
       const res = await app.request(`/projects/p/files/${path}`);
       expect([403, 404]).toContain(res.status);
@@ -733,7 +738,20 @@ describe("the desktop app's private files", () => {
     expect(await viaLink.text()).not.toContain("secret");
   });
 
-  it("leave the rest of .hyperframes/ to Studio", async () => {
+  it("can't be reached by renaming their folder", async () => {
+    const { app, project } = fixture();
+    mkdirSync(join(project, ".hyperframes"));
+    writeFileSync(join(project, ".hyperframes", "app-history.jsonl"), '{"said":"secret"}');
+    const rename = await app.request("/projects/p/files/.hyperframes", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "x" }),
+    });
+    expect(rename.status).toBeGreaterThanOrEqual(400);
+    expect(existsSync(join(project, "x"))).toBe(false);
+  });
+
+  it("leave Studio's own files under .hyperframes/ reachable", async () => {
     const { app, project } = fixture();
     mkdirSync(join(project, ".hyperframes", "prepared-assets", "gif"), { recursive: true });
     writeFileSync(
@@ -769,12 +787,17 @@ describe("routes that write a path from the request", () => {
     expect(duplicate.status).toBeGreaterThanOrEqual(400);
     expect(readdirSync(join(project, ".hyperframes"))).toEqual(["agent-handoff.json"]);
     const form = new FormData();
-    form.append("file", new File(['{"said":"t"}'], "app-history.jsonl"));
+    // A file uploads accept anywhere else, so the folder is the only reason it is refused.
+    form.append("file", new File(["plain words"], "notes.txt"));
     const upload = await app.request("/projects/p/upload?dir=.hyperframes", {
       method: "POST",
       body: form,
     });
-    expect((await upload.json()).files ?? []).toEqual([]);
-    expect(existsSync(join(project, ".hyperframes", "app-history.jsonl"))).toBe(false);
+    expect(upload.status).toBe(403);
+    expect(existsSync(join(project, ".hyperframes", "notes.txt"))).toBe(false);
+    const elsewhere = new FormData();
+    elsewhere.append("file", new File(["plain words"], "notes.txt"));
+    const fine = await app.request("/projects/p/upload", { method: "POST", body: elsewhere });
+    expect((await fine.json()).files).toEqual(["notes.txt"]);
   });
 });

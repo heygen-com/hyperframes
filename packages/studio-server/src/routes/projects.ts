@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
-import { isInHiddenOrVendorDir, walkDir } from "../helpers/safePath.js";
+import { isInHiddenOrVendorDir, isPrivateProjectPath, walkDir } from "../helpers/safePath.js";
 import { isCompositionSource } from "../helpers/hfIdPersist.js";
 import { resolveProjectSignature } from "../helpers/projectSignature.js";
 
@@ -50,7 +50,7 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.get("/projects/:id", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    const files = walkDir(project.dir);
+    const files = walkDir(project.dir).filter((file) => !isPrivateProjectPath(file));
     const compositions = await filterCompositionFiles(project.dir, files);
     return c.json({ id: project.id, dir: project.dir, title: project.title, files, compositions });
   });

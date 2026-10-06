@@ -30,17 +30,28 @@ export function realFilePath(filePath: string): string {
   }
 }
 
-// The desktop app's hand-off and its records of the chat: no route reads or writes them, by any spelling or a link.
-const PRIVATE_FILES = new Set([
-  ".hyperframes/agent-handoff.json",
-  ".hyperframes/agent-runs.jsonl",
-  ".hyperframes/app-history.jsonl",
+// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no route
+// reaches any of it, the folder itself included, but these files of Studio's own.
+const STUDIO_FILES = new Set([
+  ".hyperframes/studio-motion.json",
+  ".hyperframes/studio-manual-edits.json",
 ]);
+const STUDIO_FOLDERS = [".hyperframes/prepared-assets/"];
+
+/** For a project-relative path with `/` separators. */
+export function isPrivateProjectPath(relPath: string): boolean {
+  const path = relPath.toLowerCase();
+  return (
+    (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
+    !STUDIO_FILES.has(path) &&
+    !STUDIO_FOLDERS.some((folder) => path.startsWith(folder))
+  );
+}
 
 export function isPrivateProjectFile(projectDir: string, filePath: string): boolean {
-  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/").toLowerCase();
+  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
   return [rel(projectDir, filePath), rel(realFilePath(projectDir), realFilePath(filePath))].some(
-    (path) => PRIVATE_FILES.has(path),
+    isPrivateProjectPath,
   );
 }
 
