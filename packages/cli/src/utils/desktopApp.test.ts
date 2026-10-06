@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { seenAt } from "./appHistory.js";
+import { readSeen } from "./appHistory.js";
 import {
   AGENT_HANDOFF_FILE,
   HANDOFF_READY,
@@ -176,7 +176,7 @@ describe("agent hand-off", () => {
       sessionId: session,
     });
     // `catch-up` shows only what the app does from here on.
-    expect(seenAt(dir)).toBeGreaterThan(Date.now() - 60_000);
+    expect(readSeen(dir).at).toBeGreaterThan(Date.now() - 60_000);
   });
 
   it("writes nothing when gated, when no app took the folder, or when no agent runs the command", () => {

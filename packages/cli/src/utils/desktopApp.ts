@@ -1,8 +1,9 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
 import { markSeen } from "./appHistory.js";
+import { writeRecord } from "./projectRecords.js";
 
 // The HyperFrames desktop app (not "Studio"): `open -b` on macOS, its executable elsewhere; released, then Canary.
 const DESKTOP_BUNDLE_IDS = ["dev.hyperframes.desktop", "dev.hyperframes.desktop.canary"] as const;
@@ -122,15 +123,10 @@ function desktopApps({
 
 /** The app reads the hand-off at its first chat send, so a project it cannot be written to just opens without it. */
 function leaveHandoff(dir: string, session: AgentSession | null): AgentSession | null {
-  if (!session) return null;
-  try {
-    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
-    writeFileSync(join(dir, AGENT_HANDOFF_FILE), JSON.stringify(session));
-    markSeen(dir);
-    return session;
-  } catch {
-    return null;
-  }
+  if (!session || !writeRecord(dir, "agent-handoff.json", JSON.stringify(session))) return null;
+  const now = Date.now();
+  markSeen(dir, { at: now, checked: now });
+  return session;
 }
 
 // ponytail: success on Windows and Linux means the spawn started, not that the app took the folder; wait for the

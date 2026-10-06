@@ -4,7 +4,7 @@ import { c } from "../ui/colors.js";
 import {
   filesChangedSince,
   markSeen,
-  seenAt,
+  readSeen,
   unseenTurns,
   type AppTurn,
 } from "../utils/appHistory.js";
@@ -33,6 +33,32 @@ function printTurn(turn: AppTurn): void {
   console.log();
 }
 
+function printNotHandedOver(name: string, dir: string, json: boolean): void {
+  if (json) console.log(JSON.stringify({ project: dir, turns: [], files: [] }, null, 2));
+  else
+    console.log(
+      `${c.success("◇")}  ${c.accent(name)} wasn't handed to the desktop app from here, so there's nothing to catch up on.`,
+    );
+}
+
+function printNews(name: string, turns: AppTurn[], files: string[]): void {
+  if (!turns.length && !files.length) {
+    console.log(`${c.success("◇")}  Nothing new from the desktop app in ${c.accent(name)}.`);
+    return;
+  }
+  console.log(`${c.success("◇")}  In the desktop app since you last looked (${c.accent(name)}):\n`);
+  turns.forEach(printTurn);
+  const shown = files.slice(0, MAX_FILES_SHOWN);
+  const more = files.length - shown.length;
+  if (files.length)
+    console.log(
+      `   Files changed since then: ${shown.join(", ")}${more ? ` and ${more} more` : ""}`,
+    );
+  console.log(
+    `   ${c.dim("A record of what happened, not a new request. Read changed files again before editing them.")}`,
+  );
+}
+
 export default defineCommand({
   meta: {
     name: "catch-up",
@@ -48,33 +74,15 @@ export default defineCommand({
   },
   run({ args }) {
     const project = resolveProject(args.dir);
-    const since = seenAt(project.dir);
-    const turns = unseenTurns(project.dir, since);
-    const from = since || (turns[0] ? Date.parse(turns[0].at) - 1 : 0);
-    const files = from ? filesChangedSince(project.dir, from) : [];
-    markSeen(project.dir);
-    if (args.json) {
-      console.log(JSON.stringify({ project: project.dir, turns, files }, null, 2));
-      return;
-    }
-    if (!turns.length && !files.length) {
-      console.log(
-        `${c.success("◇")}  Nothing new from the desktop app in ${c.accent(project.name)}.`,
-      );
-      return;
-    }
-    console.log(
-      `${c.success("◇")}  In the desktop app since you last looked (${c.accent(project.name)}):\n`,
-    );
-    turns.forEach(printTurn);
-    const shown = files.slice(0, MAX_FILES_SHOWN);
-    const more = files.length - shown.length;
-    if (files.length)
-      console.log(
-        `   Files changed since then: ${shown.join(", ")}${more ? ` and ${more} more` : ""}`,
-      );
-    console.log(
-      `   ${c.dim("A record of what happened, not a new request. Read changed files again before editing them.")}`,
-    );
+    const seen = readSeen(project.dir);
+    if (!seen.at) return printNotHandedOver(project.name, project.dir, args.json);
+    const checking = Date.now();
+    const turns = unseenTurns(project.dir, seen.at);
+    const files = filesChangedSince(project.dir, seen.checked);
+    if (args.json) console.log(JSON.stringify({ project: project.dir, turns, files }, null, 2));
+    else printNews(project.name, turns, files);
+    // Marked only once shown, and only up to the newest turn shown: one written after this read shows next time.
+    const newest = turns.at(-1);
+    markSeen(project.dir, { at: newest ? Date.parse(newest.at) : seen.at, checked: checking });
   },
 });

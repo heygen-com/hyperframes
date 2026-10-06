@@ -1,20 +1,12 @@
-import {
-  closeSync,
-  fstatSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  readSync,
-  writeFileSync,
-} from "node:fs";
+import { lstatSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { readRecord, recordChangedAt, writeRecord } from "./projectRecords.js";
 
-// The desktop app records each chat turn here (hyperframes-internal appHistory.mjs), one JSON object a line.
-export const APP_HISTORY_FILE = join(".hyperframes", "app-history.jsonl");
-// When this project was handed to the app or last caught up on; turns and edits after it are new.
-const SEEN_FILE = join(".hyperframes", "app-history-seen.json");
+// The desktop app records each chat turn in .hyperframes/ (hyperframes-internal appHistory.mjs), one JSON object
+// a line. The seen record holds the newest turn shown here and when files were last checked; both start at the
+// hand-off, so a project never handed over from this machine shows nothing.
+export const APP_HISTORY = "app-history.jsonl";
+const SEEN = "app-history-seen.json";
 const MAX_READ_BYTES = 1024 * 1024;
 const MAX_FIELD_CHARS = 2000;
 const MAX_WALKED_FILES = 5000;
@@ -44,54 +36,44 @@ function toTurn(line: string): AppTurn | null {
   return { at, engine: text(raw.engine), asked: text(raw.asked), did: text(raw.did), files };
 }
 
-/** The file's last MAX_READ_BYTES, read only when it is a plain file: never a link or a device. */
-function readTail(path: string): string {
-  let fd: number;
-  try {
-    if (!lstatSync(path).isFile()) return "";
-    fd = openSync(path, "r");
-  } catch {
-    return "";
-  }
-  try {
-    const size = fstatSync(fd).size;
-    const length = Math.min(size, MAX_READ_BYTES);
-    const buffer = Buffer.alloc(length);
-    readSync(fd, buffer, 0, length, size - length);
-    return buffer.toString("utf8");
-  } finally {
-    closeSync(fd);
-  }
-}
-
 export function readAppTurns(dir: string): AppTurn[] {
-  return readTail(join(dir, APP_HISTORY_FILE))
+  return readRecord(dir, APP_HISTORY, MAX_READ_BYTES)
     .split("\n")
     .flatMap((line) => toTurn(line) ?? []);
 }
 
-/** 0 when the project was never handed over or caught up on here. */
-export function seenAt(dir: string): number {
+export interface Seen {
+  /** The newest turn already shown; 0 when the project was never handed over from here. */
+  at: number;
+  /** When the project's files were last checked for changes. */
+  checked: number;
+}
+
+const stamp = (value: unknown): number => (typeof value === "string" ? Date.parse(value) || 0 : 0);
+
+export function readSeen(dir: string): Seen {
   try {
-    const seen: unknown = JSON.parse(readFileSync(join(dir, SEEN_FILE), "utf8"));
-    const at = typeof seen === "object" && seen !== null && "at" in seen ? seen.at : null;
-    return typeof at === "string" ? Date.parse(at) || 0 : 0;
+    const seen: Record<string, unknown> = Object(JSON.parse(readRecord(dir, SEEN, 4096)));
+    const at = stamp(seen.at);
+    return { at, checked: stamp(seen.checked) || at };
   } catch {
-    return 0;
+    return { at: 0, checked: 0 };
   }
 }
 
-export function markSeen(dir: string, at: Date = new Date()): void {
-  try {
-    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
-    writeFileSync(join(dir, SEEN_FILE), JSON.stringify({ at: at.toISOString() }));
-  } catch {
-    // A read-only project just shows the same turns again next time.
-  }
-}
+/** False when it could not be written; the same turns then show again, never fewer. */
+export const markSeen = (dir: string, seen: Seen): boolean =>
+  writeRecord(
+    dir,
+    SEEN,
+    JSON.stringify({
+      at: new Date(seen.at).toISOString(),
+      checked: new Date(seen.checked).toISOString(),
+    }),
+  );
 
-export const unseenTurns = (dir: string, since = seenAt(dir)): AppTurn[] =>
-  readAppTurns(dir).filter((turn) => Date.parse(turn.at) > since);
+export const unseenTurns = (dir: string, since: number): AppTurn[] =>
+  since ? readAppTurns(dir).filter((turn) => Date.parse(turn.at) > since) : [];
 
 /** Project files changed after `since`, by the app or by hand; hidden folders and outputs are not the video. */
 export function filesChangedSince(dir: string, since: number): string[] {
@@ -129,7 +111,9 @@ function projectsNamed(cwd: string, args: string[]): string[] {
 /** One line for the end of any command run on a project the app has chatted about since it was last looked at. */
 export function appHistoryNotice(cwd: string, args: string[]): string | null {
   for (const dir of projectsNamed(cwd, args)) {
-    const count = unseenTurns(dir).length;
+    const { at } = readSeen(dir);
+    if (!at || recordChangedAt(dir, APP_HISTORY) <= at) continue;
+    const count = unseenTurns(dir, at).length;
     if (count === 0) continue;
     const where = relative(cwd, dir);
     const turns = count === 1 ? "1 chat turn" : `${count} chat turns`;
