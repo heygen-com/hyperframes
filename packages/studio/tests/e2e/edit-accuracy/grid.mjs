@@ -178,6 +178,11 @@ function gsapLines(spec) {
   if (spec.gsap === "idle") return [`tl.to("#other", { x: 120, duration: 4, ease: "none" }, 0);`];
   const percent = spec.placement === "xpercent" ? ", xPercent: -50, yPercent: -50" : "";
   if (spec.gsap === "hold") return [`gsap.set("#target", { x: 40, y: 20${percent} });`];
+  if (spec.gsap === "tlhold")
+    return [
+      `tl.to("#other", { x: 120, duration: 10 }, 0);`,
+      `tl.set("#target", { x: 40, y: 20 }, 0);`,
+    ];
   const lines = [`tl.to("#target", { x: 120, y: 60, duration: 4, ease: "none" }, 0);`];
   if (percent) lines.unshift(`gsap.set("#target", { ${percent.slice(2)} });`);
   return lines;

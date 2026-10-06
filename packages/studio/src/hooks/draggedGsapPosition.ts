@@ -1,4 +1,5 @@
 import { roundTo3 } from "../utils/rounding";
+import { STUDIO_EDIT_MOMENT_ATTR, type EditMoment } from "../components/editor/manualEditsTypes";
 
 /**
  * Drag → GSAP position math, shared by the commit path
@@ -41,6 +42,7 @@ export interface DragStamp {
   origY: number;
   baseX: number;
   baseY: number;
+  at?: EditMoment;
   frozen?: boolean;
 }
 
@@ -52,7 +54,13 @@ export function readDragStamp(element: HTMLElement): DragStamp {
     origY: read("data-hf-drag-initial-offset-y") || 0,
     baseX: read("data-hf-drag-gsap-base-x"),
     baseY: read("data-hf-drag-gsap-base-y"),
+    at: readEditMoment(element),
   };
+}
+
+function readEditMoment(element: HTMLElement): EditMoment | undefined {
+  const raw = element.getAttribute(STUDIO_EDIT_MOMENT_ATTR);
+  return raw ? (JSON.parse(raw) as EditMoment) : undefined;
 }
 
 /** A gesture's stamp read at its release, for commits that finish after the next gesture re-stamps the element. */

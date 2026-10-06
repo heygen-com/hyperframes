@@ -524,6 +524,15 @@
       "packages/studio/src/components/editor/domEditOverlayStartGesture.test.ts",
       "packages/studio/src/components/editor/anchoredResizeCommitFeedsOffset.test.ts",
       "packages/studio/src/components/editor/rotateInlineSave.test.ts",
+      // Waiting-press and drag tests: each case spells out its own press, reload and release; a shared
+      // helper would hide the sequence each one asserts.
+      "packages/studio/src/components/editor/domEditOverlayStartGesture.blocked.test.ts",
+      "packages/studio/src/components/editor/dragUndoPaint.test.ts",
+      "packages/studio/src/components/editor/manualOffsetDrag.test.ts",
+      "packages/studio/src/components/editor/gestureHoldsPreviewReload.test.tsx",
+      // Preview reload tests: each case spells out its own mount, reload and swap sequence.
+      "packages/studio/src/player/hooks/useTimelinePlayer.shadowReload.test.ts",
+      "packages/studio/src/components/nle/NLEContext.test.ts",
       "packages/studio/src/hooks/useDomGeometryCommits.test.tsx",
       // extractionCache.test.ts: pre-existing parallel describe setup and publish-case arrange/assert blocks.
       "packages/engine/src/services/extractionCache.test.ts",

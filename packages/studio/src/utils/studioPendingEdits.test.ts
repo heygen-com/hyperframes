@@ -5,14 +5,41 @@ import {
   adoptingStudioPendingEdit,
   beginStudioPendingEdit,
   flushStudioPendingEdits,
+  afterStudioPendingEdits,
   hasStudioPendingEdits,
   isStudioEditSaving,
   paintBackNewestStudioPendingEdit,
+  setStudioWaitingPressCancel,
   trackStudioPendingEdit,
   trackedStudioEdit,
 } from "./studioPendingEdits";
 import { StudioFileConflictError } from "./studioSaveDiagnostics";
 import { revertNewestStudioPendingEdit as hostRevert } from "../index";
+
+describe("a canvas press still waiting to run", () => {
+  it("is not what a host's revert takes back, since the host steps history after it", () => {
+    const cancel = vi.fn(() => true);
+    setStudioWaitingPressCancel(cancel);
+    try {
+      expect(hostRevert()).toBeNull();
+      expect(cancel).not.toHaveBeenCalled();
+    } finally {
+      setStudioWaitingPressCancel(null);
+    }
+  });
+
+  it("is never a pending edit, since a reload waits for those and the press waits for the reload", () => {
+    setStudioWaitingPressCancel(() => true);
+    const reload = vi.fn();
+    try {
+      afterStudioPendingEdits(reload);
+      expect(reload).toHaveBeenCalledOnce();
+      expect(hasStudioPendingEdits()).toBe(false);
+    } finally {
+      setStudioWaitingPressCancel(null);
+    }
+  });
+});
 
 describe("studio pending edit flush", () => {
   it("waits for mounted panels to persist pending local edits", async () => {

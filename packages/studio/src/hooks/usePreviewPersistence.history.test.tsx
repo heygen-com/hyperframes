@@ -19,10 +19,11 @@ afterEach(() => {
 });
 
 describe("undo that reloads the preview", () => {
-  it("keeps the timeline's clips until the reloaded preview reports its own", async () => {
+  it("keeps the timeline's clips and selection until the reloaded preview reports its own", async () => {
     const clips = [{ id: "a" }, { id: "b" }] as unknown as TimelineElement[];
     usePlayerStore.getState().setElements(clips);
     usePlayerStore.getState().setTimelineReady(true);
+    usePlayerStore.getState().setSelectedElementId("a");
     const reloadPreview = vi.fn();
     let sync: ReturnType<typeof usePreviewPersistence>["syncHistoryPreviewAfterApply"] | null =
       null;
@@ -46,7 +47,11 @@ describe("undo that reloads the preview", () => {
 
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     const player = usePlayerStore.getState();
-    expect([player.elements, player.timelineReady]).toEqual([clips, true]);
+    expect([player.elements, player.timelineReady, player.selectedElementId]).toEqual([
+      clips,
+      true,
+      "a",
+    ]);
   });
 });
 

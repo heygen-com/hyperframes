@@ -3,6 +3,7 @@
  * These are pure "start a new gesture" operations — no draft rect updates.
  */
 import { type DomEditSelection } from "./domEditing";
+import type { EditMoment } from "./manualEditsTypes";
 import {
   applyManualOffsetDragDraft,
   createManualOffsetDragMember,
@@ -49,6 +50,7 @@ export function notifyBlockedPress(
 export function startGroupDrag(
   e: React.PointerEvent<HTMLElement>,
   opts: UseDomEditOverlayGesturesOptions,
+  at?: EditMoment,
 ): boolean {
   const items = opts.groupOverlayItemsRef.current;
   if (items.length <= 1) return false;
@@ -73,6 +75,7 @@ export function startGroupDrag(
       element: item.element,
       rect: item.rect,
       gesture: "drag",
+      at,
     });
     if (!result.ok) {
       restoreManualOffsetDragMembers(members);
@@ -144,8 +147,10 @@ export function startGesture(
     selection?: DomEditSelection;
     rect?: OverlayRect | null;
     resizeHandle?: ResizeHandle;
+    at?: EditMoment;
   },
 ): boolean {
+  const at = options?.at;
   const sel = options?.selection ?? opts.selectionRef.current;
   const rect = options?.rect ?? opts.overlayRectRef.current;
   const box = opts.boxRef.current;
@@ -196,6 +201,7 @@ export function startGesture(
       element: sel.element,
       rect,
       gesture: "drag",
+      at,
     });
     if (!result.ok) {
       opts.onBlockedMoveRef.current(result.selection, result.reason);
@@ -217,6 +223,7 @@ export function startGesture(
         element: sel.element,
         rect,
         gesture: "resize",
+        at,
       });
       if (result.ok) {
         pathOffsetMember = result.member;
@@ -225,12 +232,13 @@ export function startGesture(
         // Hold a % translate as the same px now, so a growing box can't drag it along mid-frame.
         if (result.member.plainTranslate) applyManualOffsetDragDraft(result.member, 0, 0);
       } else {
-        manualEditDragToken = beginStudioManualEditGesture(sel.element, "resize");
+        manualEditDragToken = beginStudioManualEditGesture(sel.element, "resize", at);
       }
     } else {
       manualEditDragToken = beginStudioManualEditGesture(
         sel.element,
         kind === "rotate" ? "rotate" : "resize",
+        at,
       );
     }
   }

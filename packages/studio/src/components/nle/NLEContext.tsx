@@ -10,6 +10,7 @@ import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { createStableContext } from "../../utils/hmrStableContext";
 import { studioApiFetch } from "../../utils/studioApiFetch";
+import { previewReloadBegun } from "../../player/previewReloading";
 
 export function shouldDisableTimelineWhileCompositionLoading(compositionLoading: boolean): boolean {
   return compositionLoading;
@@ -130,9 +131,13 @@ export function NLEProvider({
   // Lightweight reload: change iframe src instead of destroying the Player.
   const prevRefreshKeyRef = useRef(refreshKey);
   useEffect(() => {
-    if (refreshKey === prevRefreshKeyRef.current) return;
-    prevRefreshKeyRef.current = refreshKey;
-    refreshPlayer();
+    try {
+      if (refreshKey === prevRefreshKeyRef.current) return;
+      prevRefreshKeyRef.current = refreshKey;
+      refreshPlayer();
+    } finally {
+      previewReloadBegun();
+    }
   }, [refreshKey, refreshPlayer]);
 
   // Steps that follow every load of the live iframe, including a reload promoted in place.

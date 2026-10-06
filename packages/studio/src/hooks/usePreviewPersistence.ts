@@ -248,10 +248,7 @@ export function usePreviewPersistence({
         reloadPreview,
         nestedFiles,
       );
-      if (strategy === "full") {
-        usePlayerStore.getState().setSelectedElementId(null);
-        return;
-      }
+      if (strategy === "full") return;
       // A soft restore patched the reverted attributes onto the live preview, but the
       // player store keeps its own copy and that copy is what the automation lanes
       // draw — so without this an undone envelope edit stayed invisible until a

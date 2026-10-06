@@ -30,6 +30,7 @@ it("a drag press the layer cannot take gets the notice, counts as handled, and l
     snapGuidesRef: ref(null),
     groupGestureRef: ref(null),
     blockedMoveRef: ref(null),
+    waitingPressRef: ref(null),
     setOverlayRect: vi.fn(),
     suppressNextBoxClickRef: ref(false),
     hoverSelectionRef: ref(null),

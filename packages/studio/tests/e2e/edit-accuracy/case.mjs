@@ -307,7 +307,7 @@ export async function openStudio(ctx) {
   return settled(ctx);
 }
 
-async function seekTo(ctx, time) {
+export async function seekTo(ctx, time) {
   const seek = await ctx.page.evaluate(
     (t) => window.__editBench.call("studio_seek", { time: t }),
     time,
@@ -517,6 +517,15 @@ async function cropOutline(ctx, map) {
   return (await contentQuad(h)).map(map.toComp);
 }
 
+/** Holds every save request `ms` before it is sent, so a later press lands while it is still in flight. */
+function slowSaves(ms) {
+  const send = window.fetch;
+  window.fetch = (url, init) =>
+    /\/file-mutations\/patch-|gsap-mutations/.test(String(url))
+      ? new Promise((resolve) => setTimeout(resolve, ms)).then(() => send(url, init))
+      : send(url, init);
+}
+
 /** Screen path (one point per frame) and the per-frame tracking error for each pointer gesture. */
 function plan(gesture, pre, pressComp) {
   const at = (p) => pre.map.toScreen(p);
@@ -527,10 +536,10 @@ function plan(gesture, pre, pressComp) {
       dist([s.p[0] - s0.p[0], s.p[1] - s0.p[1]], [s.c[0] - s0.c[0], s.c[1] - s0.c[1]]),
   });
   if (gesture === "move") {
-    const local = quadToLocal(pre.quad, pre.size, pressComp);
+    const local = quadToLocal(pre.quad, { width: 1, height: 1 }, pressComp);
     return {
       path: steps.map((k) => at([pressComp[0] + MOVE_BY[0] * k, pressComp[1] + MOVE_BY[1] * k])),
-      ...follow((m) => localToQuad(m.quad, m.size, local)),
+      ...follow((m) => localToQuad(m.quad, { width: 1, height: 1 }, local)),
     };
   }
   if (gesture === "resize") {
@@ -567,10 +576,20 @@ function plan(gesture, pre, pressComp) {
   };
 }
 
+// A press made while the preview reloads waits for it: Studio draws its box at the pointer meanwhile.
+async function waitingQuad(page, map) {
+  const waiting = await page.$("[data-dom-edit-press-waiting]");
+  const quad = waiting && (await contentQuad(waiting)).map(map.toComp);
+  await waiting?.dispose();
+  return quad;
+}
+
 async function sample(ctx, gesture, point, pointerScreen) {
   const m = await measure(ctx);
   if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
-  return { m, p: point(m), c: m.map.toComp(pointerScreen) };
+  const waiting = await waitingQuad(ctx.page, m.map);
+  const shown = waiting ? { ...m, quad: waiting, visible: waiting } : m;
+  return { m: shown, actual: m.visible, p: point(shown), c: m.map.toComp(pointerScreen) };
 }
 
 const TRACE_CATEGORIES = ["toplevel", "devtools.timeline", "blink.user_timing"];
@@ -725,6 +744,8 @@ async function strayMove(page, [x, y]) {
  * `{ pause }` holds still; `{ stray }`: see strayMove. */
 // fallow-ignore-next-line complexity
 export async function pointerGesture(ctx, gesture, pre, route) {
+  const quad = await waitingQuad(ctx.page, pre.map);
+  if (quad) pre = { ...pre, quad, visible: quad };
   const press = await handlePoint(ctx, pre, gesture);
   const pressComp = pre.map.toComp(press);
   const g = { ...plan(gesture, pre, pressComp), ...(route && { path: route(press) }) };
@@ -769,6 +790,8 @@ export async function pointerGesture(ctx, gesture, pre, route) {
     smooth,
     diag: {
       hit,
+      actualAtRelease: last.actual,
+      shownAtRelease: lastQuad,
       grabOffset: gesture === "rotate" ? 0 : dist(s0.p, s0.c),
       errors: errors.map((e) => Math.round(e * 1000) / 1000),
     },
@@ -826,6 +849,7 @@ export async function serveFixtureAssetsLocally(page) {
  * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
  * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
  */
+// fallow-ignore-next-line complexity
 export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
@@ -847,6 +871,7 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
     await page.setViewport(VIEWPORT);
     await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
+    if (spec.slowSaves) await page.evaluateOnNewDocument(slowSaves, spec.slowSaves);
     await page.evaluateOnNewDocument(frameSamplerScript);
     await page.goto(url);
     let pre = await openStudio(ctx);

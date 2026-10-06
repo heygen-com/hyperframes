@@ -18,15 +18,15 @@ export interface OverlayRect {
   height: number;
   editScaleX: number;
   editScaleY: number;
-  /**
-   * The element's live transform rotation in DEGREES (screen/CSS convention, CW
-   * positive), decomposed from its computed transform matrix. Present so the
-   * selection chrome can render as an oriented bounding box (OBB) that co-rotates
-   * with the element. Omitted (treated as 0) for group/union rects and when the
-   * transform is unmeasurable — those render axis-aligned exactly as before.
-   */
+  /** Live screen-space rotation; omitted for axis-aligned group bounds. */
   angle?: number;
 }
+
+export const shiftedOverlayRect = (rect: OverlayRect, dx: number, dy: number): OverlayRect => ({
+  ...rect,
+  left: rect.left + dx,
+  top: rect.top + dy,
+});
 
 export interface GroupOverlayItem {
   key: string;

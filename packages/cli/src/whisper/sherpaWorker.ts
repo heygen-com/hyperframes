@@ -5,6 +5,7 @@ import {
   spliceGap,
   SHERPA_ERROR_PREFIX,
   SHERPA_RESULT_PREFIX,
+  SHERPA_WINDOW_PREFIX,
   type SherpaWindow,
 } from "./parakeet.js";
 
@@ -77,7 +78,10 @@ try {
       const retry = decodeWindow(recognizer, slice, RETRY_PAD_SECONDS);
       if (retry.tokens.length > decoded.tokens.length) decoded = retry;
     }
-    windows.push({ offset: cuts[k]! / wave.sampleRate, ...decoded });
+    const window = { offset: cuts[k]! / wave.sampleRate, ...decoded };
+    windows.push(window);
+    const through = cuts[k + 1]! / wave.sampleRate;
+    process.stdout.write(`${SHERPA_WINDOW_PREFIX}${JSON.stringify({ window, through })}\n`);
   }
   process.stdout.write(`${SHERPA_RESULT_PREFIX}${JSON.stringify(windows)}\n`);
 } catch (err) {

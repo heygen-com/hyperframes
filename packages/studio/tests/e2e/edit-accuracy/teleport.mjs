@@ -144,10 +144,12 @@ function frameSampler() {
     // A page with no preview (the blank-page control) holds its element itself.
     return best?.el ?? document.querySelector(selector);
   };
+  // fallow-ignore-next-line complexity
   const read = () => {
     const el = findElement(rec.selector);
     const root = el?.ownerDocument.querySelector('[data-composition-id="main"]');
     const outline = document.querySelector("[data-dom-edit-crop-frame] > div.border-dashed");
+    const waiting = document.querySelector("[data-dom-edit-press-waiting]");
     rec.samples.push({
       t: performance.now(),
       pointer: rec.pointer,
@@ -159,6 +161,7 @@ function frameSampler() {
         clip: el.ownerDocument.defaultView.getComputedStyle(el).clipPath,
       }),
       ...(outline && { outline: quadOf(outline) }),
+      ...(waiting && { waitingQuad: quadOf(waiting) }),
     });
   };
   // ResizeObserver runs after every document's rAF callbacks and layout, just before paint, so it reads
@@ -211,6 +214,10 @@ export async function stopFrames(page) {
 const boxOf = (s, map) => {
   const quad = s.quad.map(map.toComp);
   const size = { width: s.size[0], height: s.size[1] };
+  if (s.waitingQuad) {
+    const shown = s.waitingQuad.map(map.toComp);
+    return { quad: shown, size, visible: shown };
+  }
   return { quad, size, visible: visibleQuad(quad, size, parseInset(s.clip)) };
 };
 
@@ -231,10 +238,10 @@ function trackers(gesture, first, p0) {
     };
     return [follow(edge), { grab: (s) => centre(boxOf(s, s.map).quad), implied: () => c0 }];
   }
-  const local = quadToLocal(b.quad, b.size, p0);
+  const local = quadToLocal(b.quad, { width: 1, height: 1 }, p0);
   const grab = (s) => {
     const m = boxOf(s, s.map);
-    return localToQuad(m.quad, m.size, local);
+    return localToQuad(m.quad, { width: 1, height: 1 }, local);
   };
   if (gesture !== "rotate") return [follow(grab)];
   const c = centre(b.visible);

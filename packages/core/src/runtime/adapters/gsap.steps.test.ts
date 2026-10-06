@@ -62,6 +62,96 @@ describe("gsap adapter on a step", () => {
 });
 
 describe("gsap adapter at a tween's start", () => {
+  // Issue #5122: a render seeks every frame in order; only the from-vars set transformOrigin.
+  it("keeps a fromTo's from-only values from the frame it starts on, with immediateRender off", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.fromTo(
+      box,
+      { scale: 1.5, transformOrigin: "0% 0%" },
+      { scale: 1, duration: 0.45, ease: "none", immediateRender: false },
+      0.1,
+    );
+    timeline.set({}, {}, 1);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    const origins = [2, 3, 4, 5].map((frame) => {
+      adapter.seek({ time: frame / 30 });
+      return box.style.transformOrigin;
+    });
+    expect(origins).toEqual(["", "0% 0%", "0% 0%", "0% 0%"]);
+    expect(gsap.getProperty(box, "scaleX")).toBeCloseTo(1.4259, 3);
+  });
+
+  it("keeps a keyframed fromTo's from-only values over an earlier tween's on the same element", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    const fromTo = (origin: string, to: gsap.TweenVars, at: number) =>
+      timeline.fromTo(
+        box,
+        { scale: 1.5, transformOrigin: origin },
+        { scale: 1, immediateRender: false, ...to },
+        at,
+      );
+    fromTo("0% 0%", { duration: 0.1 }, 0);
+    fromTo("100% 100%", { duration: 0.1 }, 0.1);
+    fromTo("0% 0%", { keyframes: { y: [0, 40] }, duration: 0.5 }, 0.2);
+    timeline.set({}, {}, 1);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    const origins = [0, 2 / 30, 0.1, 4 / 30, 0.2, 7 / 30].map((time) => {
+      adapter.seek({ time });
+      return box.style.transformOrigin;
+    });
+    expect(origins.slice(1)).toEqual(["0% 0%", "100% 100%", "100% 100%", "0% 0%", "0% 0%"]);
+  });
+
+  it("keeps each staggered target's from-only values from the frame it starts on", () => {
+    const film = () => {
+      const boxes = [0, 1, 2].map(() => document.body.appendChild(document.createElement("div")));
+      const timeline = gsap.timeline({ paused: true });
+      timeline.fromTo(
+        boxes,
+        { scale: 1.5, transformOrigin: "0% 0%" },
+        { scale: 1, duration: 0.3, stagger: 0.1, ease: "none", immediateRender: false },
+        0.1,
+      );
+      timeline.set({}, {}, 1);
+      return { boxes, timeline };
+    };
+    const played = film();
+    const seeked = film();
+    const adapter = createGsapAdapter({
+      getTimeline: () => seeked.timeline as unknown as RuntimeTimelineLike,
+    });
+    for (let frame = 0; frame <= 12; frame++) {
+      played.timeline.totalTime(frame / 30, false);
+      adapter.seek({ time: frame / 30 });
+      const origins = (film: { boxes: HTMLElement[] }) =>
+        film.boxes.map((box) => box.style.transformOrigin);
+      expect(origins(seeked), `frame ${frame}`).toEqual(origins(played));
+    }
+  });
+
+  it("still lets a set authored later on the tween's start win over its from-values", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.fromTo(
+      box,
+      { opacity: 0, transformOrigin: "0% 0%" },
+      { opacity: 1, duration: 0.5, immediateRender: false },
+      0.1,
+    );
+    timeline.set(box, { opacity: 0.3, transformOrigin: "100% 100%" }, 0.1);
+    timeline.set({}, {}, 1);
+    createGsapAdapter({ getTimeline: () => timeline as unknown as RuntimeTimelineLike }).seek({
+      time: 0.1,
+    });
+    expect([box.style.opacity, box.style.transformOrigin]).toEqual(["0.3", "100% 100%"]);
+  });
+
   // An edit at 2 s turns the later tween into keyframes; its first keyframe must win over the from() end.
   it.each([0, 1, 2, 2.5, 3])(
     "shows the tween that starts at the seek time, seeking from %s s",

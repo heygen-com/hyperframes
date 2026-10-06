@@ -1,5 +1,8 @@
 // fallow-ignore-file complexity
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { once } from "node:events";
+import { createInterface } from "node:readline";
+import type { Readable } from "node:stream";
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,6 +10,8 @@ import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
+import type { Word } from "./normalize.js";
+import { emitWords } from "./progress.js";
 
 function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null {
   if (buf.length < 12) return null;
@@ -248,7 +253,15 @@ export type TranscribeProgress =
       receivedBytes: number;
       totalBytes: number | null;
     }
-  | { type: "progress"; phase: "transcription"; model: string; status: "started" | "completed" };
+  | {
+      type: "progress";
+      phase: "transcription";
+      model: string;
+      status: "started" | "completed";
+      durationSeconds?: number | null;
+    }
+  /** Words heard so far, before the final transcript replaces them; `through` is audio seconds done. */
+  | { type: "words"; model: string; words: Word[]; through: number };
 
 export interface TranscribeOptions {
   installRuntime?: boolean;
@@ -256,6 +269,8 @@ export interface TranscribeOptions {
   language?: string;
   onProgress?: (message: string) => void;
   onEvent?: (event: TranscribeProgress) => void;
+  /** Called as whisper starts, so a stop during install or download still ends the CLI at once. */
+  startCancellation?: () => AbortSignal;
   /**
    * Explicit whisper spawn timeout in ms. Overrides the duration+model auto-
    * scaled default. Callers that leave this undefined get the auto-scaled
@@ -472,7 +487,14 @@ export async function transcribe(
   const automaticLanguage = options?.language === undefined && !model.endsWith(".en");
   const language = options?.language ?? (automaticLanguage ? "auto" : "en");
   options?.onProgress?.("Transcribing...");
-  options?.onEvent?.({ type: "progress", phase: "transcription", model, status: "started" });
+  const wavSeconds = getPreparedWavDurationSeconds(wavPath);
+  options?.onEvent?.({
+    type: "progress",
+    phase: "transcription",
+    model,
+    status: "started",
+    durationSeconds: wavSeconds,
+  });
   const outputBase = join(outputDir, "transcript");
   mkdirSync(outputDir, { recursive: true });
 
@@ -487,16 +509,37 @@ export async function transcribe(
     "--suppress-nst",
   ];
   whisperArgs.push("--language", language);
+  const onEvent = options?.onEvent;
+  if (onEvent) whisperArgs.push("--print-progress");
   whisperArgs.push(wavPath);
 
-  const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath), {
+  const whisperTimeoutMs = resolveWhisperTimeoutMs(wavSeconds, {
     model,
     overrideMs: options?.timeoutMs,
   });
+  let through = 0;
+  const heard = (words: Word[], at: number) => {
+    if (!onEvent || (words.length === 0 && at <= through)) return;
+    through = Math.max(through, at);
+    emitWords(onEvent, model, words, through);
+  };
   try {
-    execFileSync(whisper.executablePath, whisperArgs, {
-      stdio: "ignore",
-      timeout: whisperTimeoutMs,
+    await runWhisper(whisper.executablePath, whisperArgs, {
+      timeoutMs: whisperTimeoutMs,
+      signal: options?.startCancellation?.(),
+      onStdout:
+        onEvent &&
+        ((line) => {
+          const segment = segmentWords(line);
+          if (segment) heard(segment.words, segment.end);
+        }),
+      onStderr:
+        onEvent && wavSeconds
+          ? (line) => {
+              const percent = /progress =\s*(\d+)%/.exec(line)?.[1];
+              if (percent) heard([], (Number(percent) / 100) * wavSeconds);
+            }
+          : undefined,
     });
   } catch (err) {
     // Surface the timeout knob when the child was killed by our own timeout —
@@ -556,6 +599,65 @@ export async function transcribe(
     durationSeconds: maxEnd / 1000,
     speechOnsetSeconds,
   };
+}
+
+const SEGMENT_LINE = /^\[(\d+):(\d+):([\d.]+) --> (\d+):(\d+):([\d.]+)\]\s*(.*)$/;
+const toSeconds = (h: string, m: string, s: string) =>
+  Number(h) * 3600 + Number(m) * 60 + Number(s);
+const toMs = (seconds: number) => Math.round(seconds * 1000) / 1000;
+
+/** A segment line whisper-cli prints as it decodes; word times are spread by length until the JSON's. */
+function segmentWords(line: string): { words: Word[]; end: number } | null {
+  const m = SEGMENT_LINE.exec(line);
+  if (!m) return null;
+  const start = toSeconds(m[1]!, m[2]!, m[3]!);
+  const end = toSeconds(m[4]!, m[5]!, m[6]!);
+  const texts = m[7]!
+    .split(/\s+/)
+    .filter((t) => t && !t.startsWith("[_") && !t.startsWith("[BLANK"));
+  const letters = texts.reduce((n, t) => n + t.length, 0);
+  let at = start;
+  const words = texts.map((text) => {
+    const from = at;
+    at += ((end - start) * text.length) / letters;
+    return { text, start: toMs(from), end: toMs(at) };
+  });
+  return { words, end };
+}
+
+/** Resolves once whisper exits and both its streams are read, so no printed line is lost. */
+async function runWhisper(
+  executable: string,
+  args: string[],
+  options: {
+    timeoutMs: number;
+    signal?: AbortSignal;
+    onStdout?: (line: string) => void;
+    onStderr?: (line: string) => void;
+  },
+): Promise<void> {
+  let stdout: Readable | null = null;
+  let stderr: Readable | null = null;
+  const exited = new Promise<void>((resolve, reject) => {
+    const child = execFile(
+      executable,
+      args,
+      { timeout: options.timeoutMs, signal: options.signal, maxBuffer: 256 * 1024 * 1024 },
+      (err, _out, errText) => {
+        if (!err) return resolve();
+        // execFileSync named its own timeout ETIMEDOUT; execFile only marks the child killed.
+        const timedOut = err.killed && err.signal === "SIGTERM" && !options.signal?.aborted;
+        // execFile appends all of stderr to the message; the command shows its last lines instead.
+        err.message = err.message.split("\n")[0]!;
+        reject(Object.assign(err, { stderr: errText }, timedOut ? { code: "ETIMEDOUT" } : {}));
+      },
+    );
+    stdout = child.stdout;
+    stderr = child.stderr;
+  });
+  const read = (stream: Readable | null, onLine?: (line: string) => void) =>
+    stream && onLine ? once(createInterface({ input: stream }).on("line", onLine), "close") : null;
+  await Promise.all([exited, read(stdout, options.onStdout), read(stderr, options.onStderr)]);
 }
 
 // ---------------------------------------------------------------------------

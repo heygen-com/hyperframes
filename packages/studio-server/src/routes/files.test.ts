@@ -2830,6 +2830,30 @@ ${authored}
     expect(result.after).toContain("tl.to(kicker,");
   });
 
+  it.each([
+    ["#b", false],
+    ["#p", true],
+  ])("shifting %s pins #p before its first key: %s", async (targetSelector, held) => {
+    const dir = createProjectDir();
+    writeHtml(
+      dir,
+      "index.html",
+      `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+tl.to("#p", { keyframes: { "0%": { x: -150 }, "100%": { x: 0 } }, duration: 2 }, 1.2);
+tl.to("#b", { duration: 1, x: 200 }, 2);
+</script></body></html>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(dir));
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/index.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shift-positions", targetSelector, delta: 1 }),
+    });
+    expect(((await res.json()) as { after: string }).after.includes("hf-hold")).toBe(held);
+  });
+
   it("shift-positions-batch equals sequential single shifts (atomic multi-clip)", async () => {
     const TWO_TWEENS = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
 const tl = gsap.timeline({ paused: true });

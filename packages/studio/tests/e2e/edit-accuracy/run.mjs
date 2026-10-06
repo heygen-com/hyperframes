@@ -124,7 +124,8 @@ async function runOne(spec, browser, decoder, port) {
     });
     await stopServer(server);
     server = null;
-    result = await withRender(dir, decoder, measured, evidence, spec.playhead);
+    const at = measured.reloaded?.time ?? spec.playhead;
+    result = await withRender(dir, decoder, measured, evidence, at);
     if (keyRender) result.renderKey = await renderKeyframe(dir, decoder, keyRender);
   } catch (error) {
     result = errorResult(error, log);

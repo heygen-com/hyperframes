@@ -8,6 +8,7 @@ import { boxSteps, liveTween, previewWith, tween } from "./gsapParsedTween.test-
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { planValueAtPlayhead, planValueEdit, type PlayheadEdit } from "./gsapValueAtPlayhead";
+import { STUDIO_EDIT_MOMENT_ATTR } from "../components/editor/manualEditsTypes";
 
 let el: HTMLElement;
 let selection: DomEditSelection;
@@ -179,6 +180,20 @@ describe("a move on a GSAP-animated layer, at the playhead", () => {
       { percentage: 66.667, properties: { x: 60, y: 0 }, ease: "none" },
       { percentage: 100, properties: { x: 120, y: 0 }, ease: "none" },
     ]);
+  });
+
+  it("keys the time the drag was pressed at, wherever the playhead is when it commits", async () => {
+    const { keys, live } = boxSteps([
+      [2, { x: 60 }],
+      [1, { x: 120 }],
+    ]);
+    el.setAttribute(STUDIO_EDIT_MOMENT_ATTR, JSON.stringify({ time: 1, keyframePct: null }));
+    const { mutations } = await drag([keys], [live(el)], { time: 2, base: [30, 0], dx: 10 });
+    expect(mutations[0].keyframes[0]).toEqual({
+      percentage: 33.333,
+      properties: { x: 40, y: 0 },
+      ease: "none",
+    });
   });
 
   it("never writes x and y into a tween that only animates size", async () => {

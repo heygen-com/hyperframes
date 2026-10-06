@@ -7,10 +7,12 @@ import {
   captureStudioPathOffset,
   clearStudioPathOffset,
   endStudioManualEditGesture,
+  isStudioManualEditGestureCurrent,
   readAppliedStudioPathOffset,
   restoreStudioPathOffset,
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
+import type { EditMoment } from "./manualEditsTypes";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
@@ -315,6 +317,7 @@ export function createManualOffsetDragMember(input: {
   element: HTMLElement;
   rect: ManualOffsetDragRect;
   gesture?: "drag" | "nudge" | "resize"; // resize: the anchor that keeps its centre planted
+  at?: EditMoment;
 }): ManualOffsetDragMemberResult {
   const plainTranslate =
     !!input.gesture && editsPlainCss(input.element, input.gesture === "resize" ? "resize" : "move");
@@ -357,6 +360,7 @@ export function createManualOffsetDragMember(input: {
   const gestureToken = beginStudioManualEditGesture(
     input.element,
     input.gesture === "resize" ? "resize" : "move",
+    input.at,
   );
   const measured = measureManualOffsetDragScreenToOffsetMatrix(input.element, initialOffset, {
     scaleX: input.rect.editScaleX,
@@ -531,6 +535,7 @@ function settleDraftTranslate(element: HTMLElement, gsapOwnsPosition: boolean): 
 /** Teardown after a COMMITTED drag. */
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
+    if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
     endStudioManualEditGesture(member.element, member.gestureToken);
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");

@@ -10,6 +10,7 @@ import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFla
 import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 import {
   type BlockedMoveState,
+  type WaitingPressState,
   type DomEditGroupPathOffsetCommit,
   type FocusableDomEditOverlay,
   type MoveCommitOptions,
@@ -166,6 +167,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const gestureRef = useRef<GestureState | null>(null);
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
+  const waitingPressRef = useRef<WaitingPressState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
@@ -273,6 +275,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   });
 
   const gestures = createDomEditOverlayGestureHandlers({
+    activeCompositionPathRef,
     overlayRef,
     iframeRef,
     boxRef,
@@ -283,6 +286,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
+    waitingPressRef,
     rafPausedRef,
     suppressNextBoxClickRef,
     setOverlayRect,
@@ -299,17 +303,17 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   });
 
   useEffect(() => {
-    if (readOnly) gestures.clearPointerState(selectionRef);
+    if (readOnly) gestures.clearPointerState(selectionRef, true);
   }, [gestures, readOnly, selectionRef]);
   // A gesture that loses its pointer, the window or the overlay is cancelled, so its mark goes too.
-  const cancelGestureRef = useRef(() => {});
-  cancelGestureRef.current = () => gestures.clearPointerState(selectionRef);
+  const cancelGestureRef = useRef((_dropQueued?: boolean) => {});
+  cancelGestureRef.current = (dropQueued) => gestures.clearPointerState(selectionRef, dropQueued);
   useMountEffect(() => {
     const cancel = () => cancelGestureRef.current();
     window.addEventListener("blur", cancel);
     return () => {
       window.removeEventListener("blur", cancel);
-      cancel();
+      cancelGestureRef.current(true);
     };
   });
 
@@ -493,7 +497,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={marquee.onPointerUp}
       onPointerCancel={marquee.onPointerCancel}
-      onLostPointerCapture={() => cancelGestureRef.current()}
+      onLostPointerCapture={gestures.onLostPointerCapture}
       onContextMenu={hostInput ? undefined : handleContextMenu}
     >
       {!hostInput && hoverSelection && hoverRect && compRect.width > 0 && (

@@ -43,11 +43,30 @@ const PLAIN_TO_KEYS = [
   { do: "seek", time: 1 },
 ];
 
+/** Add keyframe, then moves pressed before its tween reaches the preview: each must key where it is let go. */
+const FAST_KEYS = [
+  { do: "drag", gesture: "move", by: [90, -40] },
+  { do: "autokey" },
+  { do: "addkey" },
+  { do: "seek", time: 2 },
+  { do: "drag", gesture: "move", by: [60, -30] },
+  { do: "seek", time: 3 },
+  { do: "drag", gesture: "move", by: [-50, 20] },
+];
+
 /** On a GSAP-tweened box: a resize, then a drag (with or without an undo between) must save where it is let go. */
 const GSAP_SEQUENCES = {
   resizeundodrag: [{ do: "drag", gesture: "resize" }, { do: "undo" }, MOVE],
   resizedrag: [{ do: "drag", gesture: "resize" }, MOVE],
 };
+
+/** A box a timeline set holds: a second resize and drag after the first pair must save too. */
+const HELD_TWICE = [
+  { do: "drag", gesture: "resize" },
+  MOVE,
+  { do: "drag", gesture: "resize" },
+  { ...MOVE, by: [-90, -60] },
+];
 
 /** Text in place: a double press opens it, Enter commits; `select` first double-clicks a word to replace. */
 const TEXT = {
@@ -93,6 +112,12 @@ export function dragCases() {
       keyRender: 3,
     })),
   );
+  const fastKeys = [row("seqfastkeys", pxRoot(), FAST_KEYS)];
+  // Saves slowed as on a busy machine: each press lands before the previous save does.
+  const heldTwice = ["root", "nested"].map((nesting) => ({
+    ...row("seqheldtwice", pxRoot({ nesting }), HELD_TWICE, "tlhold"),
+    slowSaves: 800,
+  }));
   // Settled: a resize on a tween saves its size and its anchor separately, still one undo.
   const gsapSequences = Object.entries(GSAP_SEQUENCES).flatMap(([name, steps]) =>
     ["root", "nested"].map((nesting) => ({
@@ -108,5 +133,14 @@ export function dragCases() {
       other: false,
     })),
   );
-  return [...paths, ...sequences, ...plainToKeys, ...gsapSequences, ...texts, ...centred];
+  return [
+    ...paths,
+    ...sequences,
+    ...plainToKeys,
+    ...fastKeys,
+    ...heldTwice,
+    ...gsapSequences,
+    ...texts,
+    ...centred,
+  ];
 }

@@ -226,8 +226,10 @@ module.exports = {
     const result = JSON.parse(readFileSync(join(out, "transcript.json"), "utf-8"));
     expect(result).toEqual([{ text: "hello", start: 0, end: 1 }]);
     const event = { type: "progress", phase: "transcription", model: "parakeet-tdt-0.6b-v3" };
+    // The worker's one 1 s window streams its words before the final transcript.
     expect(onEvent.mock.calls).toEqual([
-      [{ ...event, status: "started" }],
+      [{ ...event, status: "started", durationSeconds: null }],
+      [{ type: "words", model: event.model, words: result, through: 1 }],
       [{ ...event, status: "completed" }],
     ]);
     expect(existsSync(join(root, "loaded-in-parent"))).toBe(false);

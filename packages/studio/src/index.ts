@@ -160,6 +160,7 @@ export type {
 // can race a write still in flight (see useTrackPendingTimelineEdit.ts).
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
 export { revertNewestStudioPendingEdit } from "./utils/studioPendingEdits";
+export { cancelNewestStudioWaitingPress } from "./utils/studioPendingEdits";
 export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,

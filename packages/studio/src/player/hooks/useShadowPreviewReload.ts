@@ -18,7 +18,7 @@ import {
   type UseTimelineSyncCallbacksParams,
 } from "./useTimelineSyncCallbacks";
 import type { IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
-import { thumbnailScheduler } from "../lib/thumbnailScheduler";
+import { setPreviewReloading } from "../previewReloading";
 import { announcePreviewPromoted } from "../sceneSwap";
 import { afterStudioPendingEdits, isStudioEditSaving } from "../../utils/studioPendingEdits";
 import { usePlayerStore } from "../store/playerStore";
@@ -110,7 +110,7 @@ export function useShadowPreviewReload({
       isRefreshingRef.current = false;
       pendingSeekRef.current = null;
       setPreviewSlots(planShadowDiscard);
-      thumbnailScheduler.setPreviewReloading(false);
+      setPreviewReloading(false);
       const message = `The preview did not reload (${cause}). The previous preview is still showing.`;
       logReload("shadow-failed", { cause });
       console.error(`[studio] ${message}`);
@@ -188,7 +188,7 @@ export function useShadowPreviewReload({
       if (liveTime != null) handOverPlaybackRef.current(liveTime, playing);
       announcePreviewPromoted({ retired, live: shadow });
       onPromotedRef.current?.();
-      thumbnailScheduler.setPreviewReloading(false);
+      setPreviewReloading(false);
     },
     [
       stopPendingShadow,
@@ -285,7 +285,7 @@ export function useShadowPreviewReload({
       armReadyTimer(gen);
       setPreviewSlots((prev) => planShadowReload(prev, gen, url));
       // Thumbnails of the edit wait for the new preview instead of competing with it.
-      thumbnailScheduler.setPreviewReloading(true);
+      setPreviewReloading(true);
     },
     [stopPendingShadow, armReadyTimer, gestureSavesOnScreen],
   );
@@ -300,7 +300,7 @@ export function useShadowPreviewReload({
     pendingSeekRef.current = null;
     usePlayerStore.getState().setTimelineReady(false);
     setPreviewSlots(planShadowDiscard);
-    thumbnailScheduler.setPreviewReloading(false);
+    setPreviewReloading(false);
   }, [stopPendingShadow, isRefreshingRef, pendingSeekRef]);
 
   // Hiding the tab pauses the budget; showing it again restarts the full budget for a pending shadow.
@@ -317,7 +317,7 @@ export function useShadowPreviewReload({
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       stopPendingShadow();
-      thumbnailScheduler.setPreviewReloading(false);
+      setPreviewReloading(false);
     };
   });
 

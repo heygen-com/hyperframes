@@ -353,7 +353,7 @@ async function transcribeAudio(
   const onEvent = opts.json ? createProgressWriter(process.stderr) : undefined;
   let wavPath = inputPath;
   // Before audio prep: under --json no spinner listens for SIGINT, so Ctrl-C would kill Node.
-  const cancellation = runner === "sherpa" ? createRenderCancellationScope() : null;
+  let cancellation = runner === "sherpa" ? createRenderCancellationScope() : null;
   const run = (r: Runner) => {
     switch (r) {
       case "sherpa":
@@ -375,6 +375,7 @@ async function transcribeAudio(
           onEvent,
           timeoutMs: opts.timeoutMs,
           installRuntime: opts.installRuntime,
+          startCancellation: () => (cancellation ??= createRenderCancellationScope()).signal,
         });
       default: {
         const unreachable: never = r;
@@ -401,7 +402,7 @@ async function transcribeAudio(
       try {
         result = await run(runner);
       } catch (fallbackErr) {
-        // Whisper runs synchronously, so Ctrl-C shows as its child's signal before any listener runs.
+        // Ctrl-C reaches whisper too, so it can stop on its own signal before the scope aborts it.
         if (stoppedByCancelSignal(fallbackErr as { signal?: string })) {
           throw new DecodeCancelled("Transcription cancelled");
         }

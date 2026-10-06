@@ -44,9 +44,9 @@ function animHasPosition(anim: GsapAnimation): boolean {
 export function findGsapPositionAnimation(
   animations: GsapAnimation[],
   selector?: string,
+  currentTime = usePlayerStore.getState().currentTime,
 ): GsapAnimation | null {
   if (animations.length === 0) return null;
-  const currentTime = usePlayerStore.getState().currentTime;
 
   const scored = animations.filter(animHasPosition).map((a) => {
     let score = 0;
@@ -87,9 +87,11 @@ function statesValueAt(anim: GsapAnimation, time: number): boolean {
  * playhead (the later one, which renders, if both do), then most keyframes.
  */
 // fallow-ignore-next-line complexity
-export function pickClosestToPlayhead(anims: GsapAnimation[]): GsapAnimation | null {
+export function pickClosestToPlayhead(
+  anims: GsapAnimation[],
+  ct = usePlayerStore.getState().currentTime,
+): GsapAnimation | null {
   if (anims.length <= 1) return anims[0] ?? null;
-  const ct = usePlayerStore.getState().currentTime;
   return anims.reduce((best, a) => {
     const dist = playheadDistance(a, ct);
     const bestDist = playheadDistance(best, ct);

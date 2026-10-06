@@ -47,6 +47,7 @@ function pressOptions(element: HTMLElement) {
     snapGuidesRef: ref(null),
     groupGestureRef: ref(null),
     blockedMoveRef: ref(null),
+    waitingPressRef: ref(null),
     setOverlayRect: vi.fn(),
     suppressNextBoxClickRef: ref(false),
     hoverSelectionRef: ref(null),
@@ -169,6 +170,7 @@ describe("a rotate on a page that loads GSAP", () => {
       gestureRef: ref<GestureState | null>(null),
       groupGestureRef: ref(null),
       blockedMoveRef: ref(null),
+      waitingPressRef: ref(null),
       rafPausedRef: ref(false),
       onCanvasPointerMoveRef: ref(vi.fn()),
     };
@@ -222,6 +224,7 @@ describe("a rotate press on an element a GSAP tween turns", () => {
       iframeRef: ref(null),
       gestureRef: ref<GestureState | null>(null),
       rafPausedRef: ref(false),
+      waitingPressRef: ref(null),
     };
     const press = {
       clientX: 25,

@@ -1527,7 +1527,7 @@ function clipRetimeOf(mutation: GsapMutationRequest): RetimeSlot | null {
 function retimeRun(script: string, run: readonly RetimeSlot[], root: ParentNode | undefined) {
   const live = run.filter((slot): slot is ClipTweenRetime => slot !== "no-op");
   const retimed = retimeClipTweensInScript(script, live, root);
-  const synced = syncPositionHoldsBeforeKeyframes(retimed.script);
+  const synced = syncPositionHoldsBeforeKeyframes(retimed.script, script);
   let next = 0;
   const changed = run.map((slot) => slot !== "no-op" && retimed.changed[next++]!);
   if (synced !== retimed.script) changed[changed.length - 1] = true;

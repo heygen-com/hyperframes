@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { downloadToFile } from "../cloud/download.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
@@ -20,10 +21,12 @@ import {
   mergeWindowsToWords,
   SHERPA_ERROR_PREFIX,
   SHERPA_RESULT_PREFIX,
+  SHERPA_WINDOW_PREFIX,
   PARAKEET_MODEL_LABEL,
   writeParakeetTranscript,
   type SherpaWindow,
 } from "./parakeet.js";
+import { emitWords } from "./progress.js";
 import {
   getPreparedWavDurationSeconds,
   prepareWav,
@@ -394,13 +397,14 @@ function decode(
   wavPath: string,
   runtimePath: string,
   signal: AbortSignal,
+  onWindow?: (window: SherpaWindow, through: number) => void,
 ): Promise<SherpaWindow[]> {
   const sourceMode = import.meta.url.endsWith(".ts");
   const worker = new URL(sourceMode ? "./sherpaWorker.ts" : "./sherpaWorker.js", import.meta.url);
   const args = [...(sourceMode ? ["--import", "tsx"] : []), fileURLToPath(worker)];
   const input = { wavPath, runtimePath, config: recognizerConfig() };
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       process.execPath,
       args,
       {
@@ -419,6 +423,18 @@ function decode(
         else reject(new Error(`Parakeet decoder ${failureReason(err, stderr)}`));
       },
     );
+    if (onWindow && child.stdout) {
+      createInterface({ input: child.stdout }).on("line", (l) => {
+        if (!l.startsWith(SHERPA_WINDOW_PREFIX)) return;
+        let streamed: { window: SherpaWindow; through: number };
+        try {
+          streamed = JSON.parse(l.slice(SHERPA_WINDOW_PREFIX.length));
+        } catch {
+          return;
+        }
+        onWindow(streamed.window, streamed.through);
+      });
+    }
   });
 }
 
@@ -455,6 +471,7 @@ export async function transcribeWithSherpa(
     phase: "transcription",
     model: PARAKEET_MODEL_LABEL,
     status: "started",
+    durationSeconds: getPreparedWavDurationSeconds(wavPath),
   });
   if (options.signal.aborted) throw new DecodeCancelled("Transcription cancelled");
   const selected = await selectRuntime(
@@ -468,7 +485,15 @@ export async function transcribeWithSherpa(
       `Parakeet runtime does not load (${selected.error}). Run hyperframes models install parakeet to repair it, or use --engine whisper.`,
     );
   }
-  const windows = await decode(wavPath, selected.path, options.signal);
+  const onEvent = options.onEvent;
+  const windows = await decode(
+    wavPath,
+    selected.path,
+    options.signal,
+    onEvent &&
+      ((window, through) =>
+        emitWords(onEvent, PARAKEET_MODEL_LABEL, mergeWindowsToWords([window]), through)),
+  );
   const result = writeParakeetTranscript(dir, mergeWindowsToWords(windows));
   options.onEvent?.({
     type: "progress",

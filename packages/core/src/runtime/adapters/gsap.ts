@@ -6,7 +6,7 @@ type GsapAdapterDeps = {
 
 /**
  * Re-renders a timeline already at `t`, silently, from just below (above at 0) so same-time steps apply in authored
- * order. That step skips a keyframed tween already at its start, so each one is first moved across its start alone.
+ * order. That step skips a keyframed tween at its start and undoes a tween's from-values there, so both are redone.
  */
 export function rerenderGsapTimelineAt(
   timeline: {
@@ -33,7 +33,7 @@ export function rerenderGsapTimelineAt(
   for (const [child] of skipped) child._ts = 0;
   try {
     timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
-    primeKeyframedTweensStartingAt(children, t);
+    primeTweensStartingAt(children, t);
     timeline.totalTime(t, true);
   } finally {
     for (const [child, timeScale] of skipped) child._ts = timeScale;
@@ -96,7 +96,11 @@ type GsapAnimation = {
   paused: () => boolean;
   render: (totalTime: number, suppressEvents: boolean) => unknown;
   vars?: { keyframes?: unknown };
+  _startAt?:
+    | 0
+    | { render: (totalTime: number, suppressEvents: boolean, force: boolean) => unknown };
   getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => unknown[];
+  timeline?: Pick<GsapAnimation, "getChildren">;
 };
 
 const BELOW_GSAP_TIME_RESOLUTION = 2e-8;
@@ -113,14 +117,22 @@ const playsForward = (value: unknown): value is GsapAnimation => {
   );
 };
 
-function primeKeyframedTweensStartingAt(children: unknown[], time: number): void {
+function primedAtItsStart(tween: GsapAnimation): boolean {
+  if (tween.vars?.keyframes) {
+    tween.render(BELOW_GSAP_TIME_RESOLUTION, true);
+    tween.render(-BELOW_GSAP_TIME_RESOLUTION, true);
+  }
+  if (tween._startAt) tween._startAt.render(BELOW_GSAP_TIME_RESOLUTION, true, true);
+  return Boolean(tween.vars?.keyframes || tween._startAt);
+}
+
+function primeTweensStartingAt(children: unknown[], time: number): void {
   for (const child of children.filter(playsForward)) {
     const local = (time - child.startTime()) * child.timeScale();
-    if (Math.abs(local) < 1e-9 && child.vars?.keyframes) {
-      child.render(BELOW_GSAP_TIME_RESOLUTION, true);
-      child.render(-BELOW_GSAP_TIME_RESOLUTION, true);
-    } else if (child.getChildren && local > 0 && local <= child.totalDuration()) {
-      primeKeyframedTweensStartingAt(child.getChildren(false, true, true), local);
+    if (Math.abs(local) < 1e-9 && primedAtItsStart(child)) continue;
+    const nested = child.getChildren ? child : child.timeline;
+    if (nested?.getChildren && local > 0 && local <= child.totalDuration()) {
+      primeTweensStartingAt(nested.getChildren(false, true, true), local);
     }
   }
 }

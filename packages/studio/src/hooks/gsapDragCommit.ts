@@ -56,8 +56,9 @@ function newTweenTarget(selection: DomEditSelection): string | null {
 export function computeCurrentPercentage(
   selection: DomEditSelection,
   animation?: GsapAnimation,
+  time = usePlayerStore.getState().currentTime,
 ): number {
-  return computeElementPercentage(usePlayerStore.getState().currentTime, selection, animation);
+  return computeElementPercentage(time, selection, animation);
 }
 
 // When a drag edits a SELECTED keyframe, park the playhead on that keyframe's exact

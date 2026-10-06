@@ -19,6 +19,7 @@ function gestureHarness(gesture: Partial<GestureState> | null, group: GroupGestu
     hoverSelectionRef: { current: null },
     boxRef: { current: null },
     blockedMoveRef: { current: null },
+    waitingPressRef: { current: null },
     rafPausedRef: { current: false },
     suppressNextBoxClickRef: { current: false },
     snapGuidesRef: { current: null },

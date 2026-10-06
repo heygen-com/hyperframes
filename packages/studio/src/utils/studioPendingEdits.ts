@@ -34,6 +34,15 @@ export function setStudioPendingEditClaimClock(read: (() => number) | null): voi
   historyClaims = read ?? (() => 0);
 }
 const NOT_SAVED = () => Promise.resolve(false);
+let cancelWaitingPress: (() => boolean) | null = null;
+
+export function setStudioWaitingPressCancel(cancel: (() => boolean) | null): void {
+  cancelWaitingPress = cancel;
+}
+
+export function cancelNewestStudioWaitingPress(): boolean {
+  return cancelWaitingPress?.() ?? false;
+}
 let adopting: StudioEditInFlight | null = null;
 
 export function adoptingStudioPendingEdit(): StudioEditInFlight | null {

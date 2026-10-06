@@ -1,6 +1,8 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
+import type { EditMoment } from "../components/editor/manualEditsTypes";
+import { editMoment, playheadMoment } from "./editMoment";
 import { resolveTweenDuration, resolveTweenStart } from "../utils/globalTimeCompiler";
 import { ARRAY_STEP_EASE, PERCENTAGE_SEGMENT_EASE, runEaseOf } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
@@ -287,11 +289,15 @@ export function planValueEdit(
   anim: GsapAnimation,
   values: Record<string, number>,
   iframe: HTMLIFrameElement | null,
-  { backfill, holdFromStart }: Pick<PlayheadEdit, "backfill" | "holdFromStart"> = {},
+  {
+    backfill,
+    holdFromStart,
+    moment = playheadMoment(),
+  }: Pick<PlayheadEdit, "backfill" | "holdFromStart"> & { moment?: EditMoment } = {},
 ): PlayheadEditPlan {
   // One keyframe of a tween its siblings share would move them all.
   if (tweenReach(anim, selection.element) === "shared") return refuse("shared-tween");
-  const { activeKeyframePct, currentTime } = usePlayerStore.getState();
+  const { keyframePct: activeKeyframePct, time: currentTime } = moment;
   const tween = findParsedTween(iframe, selection.element, anim);
   const timed = withExactStepTimes(anim, tween);
   return planValueAtPlayhead({
@@ -321,11 +327,12 @@ export async function commitValueAtPlayhead(
   },
 ): Promise<GsapEditOutcome> {
   await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
-  const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+  const moment = editMoment(callbacks.stamp);
+  const { setActiveKeyframePct } = usePlayerStore.getState();
   const tween = findParsedTween(iframe, selection.element, anim);
   const parkAt =
-    activeKeyframePct == null ? null : exactKeyframePct(anim, tween, activeKeyframePct);
-  const plan = planValueEdit(selection, anim, values, iframe, options);
+    moment.keyframePct == null ? null : exactKeyframePct(anim, tween, moment.keyframePct);
+  const plan = planValueEdit(selection, anim, values, iframe, { ...options, moment });
   if (!plan.ok) return { status: "blocked", reason: "keyframes-uneditable", detail: plan.reason };
   await callbacks.commitMutation(selection, plan.mutation, {
     label: options.label,

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldDisableTimelineWhileCompositionLoading, NLEProvider } from "./NLEContext";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
+import { isPreviewChanging, requestPreviewReload } from "../../player/previewReloading";
 
 installReactActEnvironment();
 
@@ -138,6 +139,31 @@ describe("NLEProvider — composition source-map scoping", () => {
     } as Response);
     await act(async () => Promise.resolve());
     expect(observed.at(-1)).toEqual(new Map([["b-comp", "compositions/b.html"]]));
+
+    act(() => root.unmount());
+    host.remove();
+  });
+});
+
+describe("NLEProvider — a requested reload", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("no network in tests"))),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("stops counting as a preview change once the refresh begins, so later presses do not wait", async () => {
+    const { host, root } = await mountNleProvider({ projectId: "p", refreshKey: 0 });
+    requestPreviewReload();
+    expect(isPreviewChanging()).toBe(true);
+
+    await renderNleProvider(root, { projectId: "p", refreshKey: 1 });
+    expect(isPreviewChanging()).toBe(false);
 
     act(() => root.unmount());
     host.remove();

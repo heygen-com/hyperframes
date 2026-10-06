@@ -452,6 +452,29 @@ describe("GSAP-element drag — dot-a flies regressions", () => {
   });
 });
 
+describe("a drag that starts while an earlier gesture is still saving", () => {
+  it("keeps the timelines paused until the later drag ends", () => {
+    const { element, member } = makeGsapDot();
+    let paused = false;
+    const timeline = {
+      pause: () => (paused = true),
+      paused: (v?: boolean) => (paused = v ?? paused),
+    };
+    (element.ownerDocument.defaultView as unknown as { __timelines: unknown }).__timelines = {
+      main: timeline,
+    };
+    const earlier = member();
+    applyManualOffsetDragCommit(earlier, -50, 0);
+    const later = member();
+
+    endManualOffsetDragMembers([earlier]);
+
+    expect(paused).toBe(true);
+    endManualOffsetDragMembers([later]);
+    expect(paused).toBe(false);
+  });
+});
+
 describe("sub-pixel drags", () => {
   it("draft and commit both land the exact fractional position", () => {
     const { element, sets, member } = makeGsapDot();

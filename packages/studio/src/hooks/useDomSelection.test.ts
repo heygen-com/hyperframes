@@ -22,7 +22,7 @@ interface TimelineSpies {
 
 function renderHarness(
   initialProps: HarnessProps,
-  options: { timelineElements?: TimelineElement[] } = {},
+  options: { timelineElements?: TimelineElement[]; previewDoc?: Document } = {},
 ): {
   current: () => ReturnType<typeof useDomSelection>;
   rerender: (props: HarnessProps) => void;
@@ -49,7 +49,11 @@ function renderHarness(
       isMasterView: false,
       compIdToSrc: new Map(),
       captionEditMode: false,
-      previewIframeRef: { current: null },
+      previewIframeRef: {
+        current: options.previewDoc
+          ? ({ contentDocument: options.previewDoc } as HTMLIFrameElement)
+          : null,
+      },
       timelineElements: options.timelineElements ?? [],
       getTimelineSelectionSet: () => publishedSet,
       setSelectedTimelineElementId: timeline.setSelectedTimelineElementId,
@@ -304,6 +308,21 @@ describe("useDomSelection", () => {
     refresh(moved);
     expect(harness.current().domEditSelection).toBe(moved);
     expect(harness.current().domEditGroupSelections).toEqual([moved]);
+    harness.cleanup();
+  });
+
+  it("drops the selection when the reloaded preview no longer has its element", async () => {
+    const selection = makeSelection("Headline", document.createElement("div"));
+    const harness = renderHarness(
+      { activeCompPath: "index.html", projectId: "project-1", refreshKey: 0 },
+      { previewDoc: document.implementation.createHTMLDocument("") },
+    );
+    act(() => harness.current().applyDomSelection(selection));
+
+    await act(() => harness.current().refreshDomEditSelectionFromPreview(selection));
+
+    expect(harness.current().domEditSelection).toBeNull();
+    expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenLastCalledWith(null);
     harness.cleanup();
   });
 

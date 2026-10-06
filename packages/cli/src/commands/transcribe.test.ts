@@ -219,6 +219,21 @@ describe("transcribe command", () => {
       return { engine: out.engine, model: out.model, word: words[0]?.text, start: words[0]?.start };
     }
 
+    it("installs whisper's stop handling only when whisper starts, after any install or download", async () => {
+      const run = transcribeMock.getMockImplementation()!;
+      const handlers: number[] = [];
+      let signal: unknown;
+      transcribeMock.mockImplementationOnce(async (input, outputDir, options) => {
+        handlers.push(process.listenerCount("SIGTERM"));
+        signal = options.startCancellation();
+        handlers.push(process.listenerCount("SIGTERM"));
+        return run(input, outputDir, options);
+      });
+      await transcribeWith("whisper", { sherpa: false, mlx: false });
+      expect(signal).toBeInstanceOf(AbortSignal);
+      expect(handlers[1]).toBeGreaterThan(handlers[0]!);
+    });
+
     it("auto and parakeet prefer sherpa-onnx, then parakeet-mlx, then whisper", async () => {
       const sherpa = {
         engine: "parakeet",

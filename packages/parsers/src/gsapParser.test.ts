@@ -1787,6 +1787,15 @@ describe("keyframe mutations", () => {
       expect((out2.match(/hf-hold/g) ?? []).length).toBe(1); // still just one
     });
 
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: an edit to another element pins no position on a tween it did not touch", (_, sync) => {
+      const before = `${posTweenAt(1.2)}\ntl.to("#q", { x: 10, duration: 1 }, 0);`;
+      const after = before.replace("x: 10", "x: 40");
+      expect(sync(after, before)).toBe(after);
+    });
+
     it("adds no hold for a tween that already starts at t=0", () => {
       expect(syncPositionHoldsBeforeKeyframes(posTweenAt(0))).not.toContain("hf-hold");
     });

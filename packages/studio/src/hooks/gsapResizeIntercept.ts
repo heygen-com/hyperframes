@@ -33,6 +33,7 @@ import {
   type DragStamp,
 } from "./draggedGsapPosition";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
+import { editMoment } from "./editMoment";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import { resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -141,8 +142,9 @@ function firstSizeKey(
   size: { width: number; height: number },
   resizeGroup: PropertyGroupName,
   animations: GsapAnimation[],
+  currentTime: number,
 ): Record<string, unknown> | null {
-  const { autoKeyframeEnabled, currentTime } = usePlayerStore.getState();
+  const { autoKeyframeEnabled } = usePlayerStore.getState();
   const keyframed = animations.some(
     (a) => a.keyframes && animationWritesAnyProperty(a, MOVED_OR_SIZED),
   );
@@ -180,6 +182,7 @@ export async function tryGsapResizeIntercept(
   draw: <T>(run: () => T) => T = (run) => run(),
   stamp?: DragStamp,
 ): Promise<GsapEditOutcome> {
+  const moment = editMoment(stamp);
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
   const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
   if (outcome.status === "blocked") return outcome;
@@ -199,6 +202,7 @@ export async function tryGsapResizeIntercept(
     selection,
     commitMutation,
     postSplitFetch,
+    moment.time,
   );
 
   const anim =
@@ -218,7 +222,7 @@ export async function tryGsapResizeIntercept(
       animationWritesAnyProperty(a, SIZE_PROPS),
     );
     if (!scriptWritesSize) {
-      const firstKey = firstSizeKey(selection, sized, resizeGroup, workingAnimations);
+      const firstKey = firstSizeKey(selection, sized, resizeGroup, workingAnimations, moment.time);
       if (!firstKey) return { status: "element-size" };
       await commitMutation(selection, firstKey, { label: "Resize", softReload: true });
       return handOverDraftSize(selection, { status: "persisted" }, sized, draw);
@@ -249,6 +253,7 @@ export async function tryGsapResizeIntercept(
             resolveTweenDuration(a) > 0 &&
             animationWritesAnyProperty(a, resizeProperties),
         ),
+        moment.time,
       );
       if (animatedTween) {
         logResize("intercept-route", { route: "keyframed-size", tweenId: animatedTween.id });
@@ -284,8 +289,9 @@ export async function tryGsapResizeIntercept(
     return { status: "blocked", reason: "source-uneditable", detail: "zero-duration-tween" };
   }
 
-  const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
-  const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
+  const { setActiveKeyframePct } = usePlayerStore.getState();
+  const activeKeyframePct = moment.keyframePct;
+  const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim, moment.time);
   const selector = selectorFromSelection(selection);
 
   let resizeProps: Record<string, number>;
@@ -473,6 +479,7 @@ export async function tryGsapResizeIntercept(
       currentAnimations.filter(
         (a) => a.propertyGroup === "position" && !isInstantHold(a) && resolveTweenDuration(a) > 0,
       ),
+      moment.time,
     );
     if (positionTween) {
       logResize("scale-finalize", { route: "position-keyframe", tweenId: positionTween.id });

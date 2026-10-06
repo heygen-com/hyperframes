@@ -6,6 +6,8 @@ import {
   STUDIO_ROTATION_PROP,
   STUDIO_PATH_OFFSET_ATTR,
   STUDIO_MANUAL_EDIT_GESTURE_ATTR,
+  STUDIO_EDIT_MOMENT_ATTR,
+  type EditMoment,
   STUDIO_BOX_SIZE_ATTR,
   STUDIO_ROTATION_ATTR,
   STUDIO_ORIGINAL_TRANSLATE_ATTR,
@@ -52,10 +54,13 @@ const GESTURE_DRAWS: Record<StudioGestureDraws, readonly string[]> = {
 export function beginStudioManualEditGesture(
   element: HTMLElement,
   draws: StudioGestureDraws,
+  at?: EditMoment,
 ): string {
   studioManualEditGestureId += 1;
   const token = `gesture-${studioManualEditGestureId}:${draws}`;
   element.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, token);
+  if (at) element.setAttribute(STUDIO_EDIT_MOMENT_ATTR, JSON.stringify(at));
+  else element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
   return token;
 }
 
@@ -65,6 +70,7 @@ export function endStudioManualEditGesture(element: HTMLElement, token?: string)
   if (token && element.getAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) !== token) return;
   if (!element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   element.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
+  element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
   const doc = element.ownerDocument;
   doc.dispatchEvent(new (doc.defaultView?.Event ?? Event)(GESTURE_ENDED));
 }
@@ -132,13 +138,7 @@ export function readStudioPathOffset(element: HTMLElement): { x: number; y: numb
   };
 }
 
-/**
- * The path offset ACTUALLY applied right now. The `--hf-studio-offset` vars can
- * linger after GSAP re-bakes the element's transform (`translate:"none"`), so the
- * raw var isn't a safe drag base — using it re-commits a phantom offset and flings
- * the element off-screen. The offset only counts when the inline `translate` is the
- * studio var-translate; otherwise it's dormant and the applied offset is zero.
- */
+// GSAP can leave dormant offset vars behind; only the live var-translate counts.
 export function readAppliedStudioPathOffset(element: HTMLElement): { x: number; y: number } {
   return (element.style.translate || "").includes(STUDIO_OFFSET_X_PROP)
     ? readStudioPathOffset(element)
