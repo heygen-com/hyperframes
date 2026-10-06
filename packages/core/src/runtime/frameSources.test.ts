@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFrameSourceAdapter, registerFrameSource } from "./frameSources";
+import { createFrameSourceAdapter, hasFrameSources, registerFrameSource } from "./frameSources";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 
@@ -214,5 +214,27 @@ describe("frame sources", () => {
     a.resolve();
     b.resolve();
     await waitForSeekCompletion();
+  });
+  it("drains a queued seek after an earlier draw fails and retains the failure for capture", async () => {
+    const first = deferred();
+    const render = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValue(undefined);
+    const unregister = registerFrameSource({ element: mount(), render });
+    disposers.push(unregister);
+    expect(hasFrameSources()).toBe(true);
+    const runtime = adapter();
+    runtime.seek({ time: 1 });
+    await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(1));
+    runtime.seek({ time: 2 });
+    const capture = expect(waitForSeekCompletion()).rejects.toThrow("first draw failed");
+    first.reject(new Error("first draw failed"));
+    await capture;
+    expect(render.mock.calls.map(([time]) => time)).toEqual([1, 2]);
+    runtime.seek({ time: 3 });
+    await expect(waitForSeekCompletion()).resolves.toBeUndefined();
+    unregister();
+    expect(hasFrameSources()).toBe(false);
   });
 });

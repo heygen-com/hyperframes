@@ -19,6 +19,8 @@ interface RegisteredSource {
 
 const sources = new Map<Element, RegisteredSource>();
 
+export const hasFrameSources = (): boolean => sources.size > 0;
+
 /** Bind a frame source to a timed host. Unregister before replacing its source. */
 export function registerFrameSource(source: FrameSource): () => void {
   if (sources.has(source.element)) throw new Error("This element already has a frame source");
@@ -31,13 +33,19 @@ export function registerFrameSource(source: FrameSource): () => void {
   let pending: number | null = null;
   let work: Promise<void> | null = null;
   const drain = async () => {
+    let failure: { reason: unknown } | undefined;
     try {
       await ready;
       while (!controller.signal.aborted && pending !== null) {
         const time = pending;
         pending = null;
-        await Promise.race([source.render(time, controller.signal), cancelled]);
+        try {
+          await Promise.race([source.render(time, controller.signal), cancelled]);
+        } catch (reason) {
+          failure ??= { reason };
+        }
       }
+      if (failure) throw failure.reason;
     } finally {
       pending = null;
       work = null;
