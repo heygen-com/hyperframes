@@ -276,12 +276,14 @@ describe("useTimelineDeleteOps: undo race", () => {
     });
   });
 
-  it("shows the shortened length as soon as the last clip is deleted", async () => {
-    const { gate, deleteSelection } = mountRaceHarness();
+  it("shows the shortened length while the last clip's delete is still saving", async () => {
+    const { gate, recordEdit, deleteSelection } = mountRaceHarness();
     usePlayerStore.getState().setDuration(6);
-    gate.resolve();
-    await deleteSelection();
+    const deletePromise = deleteSelection();
+    await vi.waitFor(() => expect(recordEdit).toHaveBeenCalled());
     expect(usePlayerStore.getState().duration).toBe(4);
+    gate.resolve();
+    await deletePromise;
   });
 });
 
