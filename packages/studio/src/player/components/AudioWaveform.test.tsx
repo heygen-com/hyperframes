@@ -11,8 +11,34 @@ vi.mock("../../hooks/useThumbnailLease", () => ({
   useThumbnailLease: leaseSpy,
 }));
 
+const EMPTY_STRIP = { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 };
+const strip = vi.hoisted(() => ({
+  size: { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 },
+  listeners: new Set<() => void>(),
+}));
+// The strip hook's own tests cover scrolls and moves; here it reports what the test sets.
+vi.mock("../../hooks/useThumbnailStripSize", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const subscribe = (listener: () => void) => {
+    strip.listeners.add(listener);
+    return () => strip.listeners.delete(listener);
+  };
+  return {
+    useThumbnailStripSize: () => [
+      useSyncExternalStore(subscribe, () => strip.size),
+      () => {},
+      () => {},
+    ],
+  };
+});
+
+const setStrip = (size: typeof EMPTY_STRIP) =>
+  act(() => {
+    strip.size = size;
+    strip.listeners.forEach((listener) => listener());
+  });
+
 import { AudioWaveform, drawWaveformCanvas } from "./AudioWaveform";
-import { markTimelineMotion } from "./timelineMotion";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,6 +50,7 @@ afterEach(() => {
   vi.useRealTimers();
   leaseSpy.mockReset();
   leaseSpy.mockImplementation(() => ({ status: "loading" as const }));
+  strip.size = EMPTY_STRIP;
   document.body.innerHTML = "";
 });
 
@@ -92,45 +119,18 @@ describe("AudioWaveform", () => {
     ]);
   });
 
-  it("redraws when the timeline comes to rest, not at each zoom step", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  it("draws only the stretch of a long clip near the screen, and follows it as the clip moves", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    setStrip({ width: 10_000, height: 40, inViewStart: 2048, inViewEnd: 4096 });
     renderReadyWaveform();
-    const drawn = getContext.mock.calls.length;
-    expect(drawn).toBeGreaterThan(0);
-    act(() => markTimelineMotion());
-    expect(getContext.mock.calls.length).toBe(drawn);
-    act(() => vi.runOnlyPendingTimers());
-    expect(getContext.mock.calls.length).toBe(drawn + 1);
-  });
-
-  it("redraws on scroll only once the view leaves the drawn stretch, as playback follows", () => {
-    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
-    const scroller = document.createElement("div");
-    scroller.setAttribute("data-timeline-scroll-viewport", "");
-    document.body.append(scroller);
-    // A 10000px clip in a 1000px view; the clip's left edge moves as the view scrolls.
-    let clipLeft = 0;
-    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: Element) {
-        return (
-          this === scroller
-            ? { left: 0, right: 1000, width: 1000 }
-            : { left: clipLeft, right: clipLeft + 10_000, width: 10_000 }
-        ) as DOMRect;
-      },
-    );
-    renderReadyWaveform(scroller);
-    const drawn = getContext.mock.calls.length;
-    const scrollTo = (left: number) => {
-      clipLeft = -left;
-      act(() => scroller.dispatchEvent(new Event("scroll")));
-    };
-    // Drawn to 2000px, one view past the screen: 500..1500 is still drawn.
-    scrollTo(500);
-    expect(getContext.mock.calls.length).toBe(drawn);
-    scrollTo(1500);
-    expect(getContext.mock.calls.length).toBe(drawn + 1);
+    const canvas = document.querySelector("canvas")!;
+    const placed = () => [parseFloat(canvas.style.left), parseFloat(canvas.style.width)];
+    expect(placed()[0]).toBeCloseTo(20.48);
+    expect(placed()[1]).toBeCloseTo(20.48);
+    // A move or scroll carries the clip: the hook reports a new stretch and the bars follow.
+    setStrip({ width: 10_000, height: 40, inViewStart: 4096, inViewEnd: 6144 });
+    expect(placed()[0]).toBeCloseTo(40.96);
+    expect(placed()[1]).toBeCloseTo(20.48);
   });
 
   it("shrinks each bar to the fade's gain and keeps the cut-away part as a ghost", () => {

@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
-import { isTimelineMoving, subscribeTimelineMotion } from "./timelineMotion";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../store/playerStore";
+import { isTimelineMoving, subscribeTimelineMotion } from "./timelineMotion";
 import {
   cancelTimelineZoom,
   redrawTimelineZoomPreview,

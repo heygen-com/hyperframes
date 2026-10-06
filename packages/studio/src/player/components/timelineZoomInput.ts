@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 import { usePlayerStore } from "../store/playerStore";
-import { markTimelineMotion } from "./timelineMotion";
+import { markTimelineMotion, TIMELINE_REST_MS } from "./timelineMotion";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 import {
   clampTimelineZoomPercent,
@@ -42,8 +42,6 @@ interface ZoomPreview {
 
 const RANGE_MARGIN_PX = 24;
 const SMOOTH_ZOOM_MS = 220;
-/** How long a gesture holds still before its zoom is laid out for real. */
-const REST_MS = 150;
 /** Past this the scaled-up preview turns soft. */
 const MAX_PREVIEW_SCALE = 4;
 const SCALED = "[data-timeline-zoom-scale]";
@@ -233,8 +231,8 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
   preview.byPerson ||= byPerson;
   if (!frame) frame = requestAnimationFrame(drawPreview);
   if (restTimer) clearTimeout(restTimer);
-  restTimer = setTimeout(commitPreview, REST_MS);
-  // After the commit timer, so the zoom is laid out before the timeline counts as at rest.
+  restTimer = setTimeout(commitPreview, TIMELINE_REST_MS);
+  // After the commit timer of the same delay, so the zoom is laid out before the timeline rests.
   markTimelineMotion();
 }
 

@@ -1,11 +1,10 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import { fadeGain } from "@hyperframes/core/audio-fade";
-import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decimatePeaks, loudnessToOpacity } from "./audioWaveformPeaks";
 import { ClipFadesContext, type ClipFadeShape } from "./TimelineClipFades";
-import { isTimelineMoving, subscribeTimelineMotion } from "./timelineMotion";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export interface AudioWaveformProps {
@@ -32,24 +31,8 @@ export const WAVEFORM_LAYER_Z = 10;
 type BarGeometry = { x: number; width: number; height: number; gain: number };
 
 /** A stretch of the clip as fractions of its width. */
-export type ClipSpan = { from: number; to: number };
+type ClipSpan = { from: number; to: number };
 const WHOLE_CLIP: ClipSpan = { from: 0, to: 1 };
-// Drawn past the viewport by this many widths each side, so a short scroll shows bars already drawn.
-const OVERSCAN_VIEWPORTS = 1;
-
-/** The part of the clip on screen, with overscan; a long clip never draws past it. */
-function visibleClipSpan(root: HTMLElement, overscan = OVERSCAN_VIEWPORTS): ClipSpan {
-  const box = root.getBoundingClientRect();
-  if (box.width <= 0) return WHOLE_CLIP;
-  const scroller = root.closest("[data-timeline-scroll-viewport]");
-  const view = scroller?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth };
-  const margin = (view.right - view.left) * overscan;
-  const clamp = (x: number) => Math.max(0, Math.min(1, x));
-  const from = clamp((view.left - margin - box.left) / box.width);
-  const to = clamp((view.right + margin - box.left) / box.width);
-  return { from, to: Math.max(from, to) };
-}
-
 function paintWaveformBars(
   context: CanvasRenderingContext2D,
   bars: readonly BarGeometry[],
@@ -218,14 +201,15 @@ export const AudioWaveform = memo(function AudioWaveform({
     snapshot.status === "ready" && snapshot.value.kind === "waveform" ? snapshot.value.peaks : null;
 
   const fades = useContext(ClipFadesContext);
-  const drawnSpan = useRef<ClipSpan | null>(null);
+  // The clip's size and the stretch of it near the screen, kept current through scrolls and moves.
+  const [strip, setStripRef] = useThumbnailStripSize();
+  const from = strip.width > 0 ? strip.inViewStart / strip.width : 0;
+  const to = strip.width > 0 ? strip.inViewEnd / strip.width : 1;
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    const root = rootRef.current;
-    if (!canvas || !root || !peaks) return;
-    const span = visibleClipSpan(root);
-    drawnSpan.current = span;
-    // Placed in fractions of the clip, so a zoom stretches the drawn bars with time until the redraw.
+    if (!canvas || !peaks) return;
+    const span = { from, to };
+    // Placed in fractions of the clip, so a zoom preview stretches the drawn bars with time.
     canvas.style.left = `${span.from * 100}%`;
     canvas.style.width = `${(span.to - span.from) * 100}%`;
     if (span.to <= span.from) return;
@@ -238,35 +222,9 @@ export const AudioWaveform = memo(function AudioWaveform({
       fades,
       span,
     );
-  }, [fades, muted, peaks, trimEndFraction, trimStartFraction]);
-  const drawRef = useRef(draw);
-  drawRef.current = draw;
-  useEffect(draw, [draw]);
-
-  // Redrawn when the clip resizes or a zoom comes to rest, never per zoom step: a step only
-  // stretches what is drawn. A scroll redraws only once the view leaves the drawn stretch.
-  useMountEffect(() => {
-    const root = rootRef.current;
-    const redrawAtRest = () => {
-      if (!isTimelineMoving()) drawRef.current();
-    };
-    const redrawIfUncovered = () => {
-      const drawn = drawnSpan.current;
-      if (!root || !drawn || isTimelineMoving()) return;
-      const seen = visibleClipSpan(root, 0);
-      if (seen.from < drawn.from || seen.to > drawn.to) drawRef.current();
-    };
-    const observer = root ? new ResizeObserver(redrawAtRest) : null;
-    if (root) observer?.observe(root);
-    const scroller = root?.closest("[data-timeline-scroll-viewport]");
-    scroller?.addEventListener("scroll", redrawIfUncovered, { passive: true });
-    const unsubscribe = subscribeTimelineMotion(redrawAtRest);
-    return () => {
-      observer?.disconnect();
-      scroller?.removeEventListener("scroll", redrawIfUncovered);
-      unsubscribe();
-    };
-  });
+  }, [fades, from, muted, peaks, to, trimEndFraction, trimStartFraction]);
+  // Also on a height change: the bars are drawn at the canvas size, which follows the clip.
+  useEffect(draw, [draw, strip.height]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -288,7 +246,11 @@ export const AudioWaveform = memo(function AudioWaveform({
 
   return (
     <div ref={rootRef} className="absolute inset-0">
-      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: WAVEFORM_LAYER_Z }}>
+      <div
+        ref={setStripRef}
+        className="absolute inset-0 overflow-hidden"
+        style={{ zIndex: WAVEFORM_LAYER_Z }}
+      >
         <canvas
           ref={canvasRef}
           className="absolute bottom-0"

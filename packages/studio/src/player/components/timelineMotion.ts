@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 
 /** How long the timeline must go without a zoom step to count as at rest. */
-const TIMELINE_REST_MS = 150;
+export const TIMELINE_REST_MS = 150;
 
 let moving = false;
 let restTimer: ReturnType<typeof setTimeout> | null = null;
@@ -32,14 +32,10 @@ export function subscribeTimelineMotion(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** True while the timeline zooms; re-renders only when that starts and when it rests. */
-function useTimelineMoving(): boolean {
-  return useSyncExternalStore(subscribeTimelineMotion, isTimelineMoving, () => false);
-}
-
 /** `value` at rest; while the timeline moves, the value it had when it last rested. */
 export function useValueAtRest<T>(value: T): T {
-  const moving = useTimelineMoving();
+  // Re-renders only when a zoom starts and when it rests.
+  const moving = useSyncExternalStore(subscribeTimelineMotion, isTimelineMoving, () => false);
   const [held, setHeld] = useState(value);
   if (!moving && !Object.is(held, value)) setHeld(value);
   return moving ? held : value;
