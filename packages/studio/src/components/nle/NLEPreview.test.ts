@@ -12,6 +12,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const playerMounts: string[] = [];
 let livePlayerProps: { onReadyToShowChange?: (ready: boolean) => void } = {};
 
+const measured = vi.hoisted(() => ({ size: null as { width: number; height: number } | null }));
+vi.mock("../../utils/previewCompositionSize", async (original) => ({
+  ...(await original<typeof import("../../utils/previewCompositionSize")>()),
+  readPreviewCompositionSize: () => measured.size,
+}));
+
 vi.mock("../../player", async () => {
   const React = await import("react");
 
@@ -398,6 +404,21 @@ describe("NLEPreview", () => {
     expect(shape).toBeCloseTo(1276 / 1078, 3);
     expect(hinted.stage.style.height).toBe("584px");
     hinted.cleanup();
+  });
+
+  it("lets the size the preview measures win over the host's hint", () => {
+    measured.size = { width: 1920, height: 1080 };
+    try {
+      const box = { width: 800, height: 600 };
+      const hinted = renderPreview(undefined, {
+        box,
+        compositionSizeHint: { width: 1276, height: 1078 },
+      });
+      expect([hinted.stage.style.width, hinted.stage.style.height]).toEqual(["784px", "441px"]);
+      hinted.cleanup();
+    } finally {
+      measured.size = null;
+    }
   });
 
   it("clips a shadow reload so its own loading overlay cannot paint over the live frame", () => {
