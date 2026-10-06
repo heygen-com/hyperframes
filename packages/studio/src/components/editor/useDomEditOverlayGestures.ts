@@ -536,8 +536,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
   };
 
-  // fallow-ignore-next-line complexity
   /** `dropQueued`: released presses still waiting go too, as when the overlay leaves or turns read-only. */
+  // fallow-ignore-next-line complexity
   const clearPointerState = (
     selectionRef: RefObject<DomEditSelection | null>,
     dropQueued = false,
