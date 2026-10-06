@@ -496,7 +496,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onLostPointerCapture={() => cancelGestureRef.current()}
       onContextMenu={hostInput ? undefined : handleContextMenu}
     >
-      {!hostInput && hoverSelection && hoverRect && compRect.width > 0 && (
+      {hoverSelection && hoverRect && compRect.width > 0 && (
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"

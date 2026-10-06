@@ -50,6 +50,9 @@ interface NLEPreviewProps extends Pick<
   onCompositionSizeChange?: (size: PreviewCompositionSize | null) => void;
   /** Draws the picture edge to edge in this box, without Studio's inset band. */
   fillBox?: boolean;
+  /** The composition's size when the host knows it before the preview loads: the stage keeps its shape until the
+   * preview or its poster measures one, so the first frame does not snap. */
+  compositionSizeHint?: PreviewCompositionSize;
 }
 
 export function getPreviewPlayerKey({
@@ -127,6 +130,7 @@ export const NLEPreview = memo(function NLEPreview({
   onStageRef,
   onCompositionSizeChange,
   fillBox,
+  compositionSizeHint,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -183,7 +187,7 @@ export const NLEPreview = memo(function NLEPreview({
         resolvePreviewStageSize(
           rect.width,
           rect.height,
-          compositionSize,
+          compositionSize ?? compositionSizeHint ?? null,
           portrait,
           gutterPx,
           insetPx,
@@ -195,7 +199,7 @@ export const NLEPreview = memo(function NLEPreview({
     const observer = new ResizeObserver(updateStageSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [compositionSize, portrait, gutterPx, insetPx]);
+  }, [compositionSize, compositionSizeHint, portrait, gutterPx, insetPx]);
 
   const onCompositionSizeChangeRef = useRef(onCompositionSizeChange);
   onCompositionSizeChangeRef.current = onCompositionSizeChange;

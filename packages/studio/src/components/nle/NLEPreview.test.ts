@@ -390,7 +390,10 @@ describe("NLEPreview", () => {
     expect([plain.stage.style.width, plain.stage.style.height]).toEqual(["784px", "441px"]);
     plain.cleanup();
 
-    const hinted = renderPreview(undefined, { box, compositionSizeHint: { width: 1276, height: 1078 } });
+    const hinted = renderPreview(undefined, {
+      box,
+      compositionSizeHint: { width: 1276, height: 1078 },
+    });
     const shape = parseFloat(hinted.stage.style.width) / parseFloat(hinted.stage.style.height);
     expect(shape).toBeCloseTo(1276 / 1078, 3);
     expect(hinted.stage.style.height).toBe("584px");
