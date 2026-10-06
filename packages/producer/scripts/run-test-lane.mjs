@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { discoverProducerTests, PRODUCER_ROOT } from "./test-classification.mjs";
 
 const lane = process.argv[2];
@@ -14,10 +15,13 @@ const tests = discoverProducerTests().filter(
   (test) => test.lane === lane && (!requestedRunner || test.runner === requestedRunner),
 );
 
-function run(args) {
+const noNetwork = fileURLToPath(new URL("./no-network.mjs", import.meta.url));
+const unit = lane === "unit";
+
+function run(args, env = {}) {
   const result = spawnSync("bun", args, {
     cwd: PRODUCER_ROOT,
-    env: { ...process.env, HYPERFRAMES_TEST_LANE: lane },
+    env: { ...process.env, HYPERFRAMES_TEST_LANE: lane, ...env },
     stdio: "inherit",
   });
   if (result.error) throw result.error;
@@ -25,10 +29,13 @@ function run(args) {
 }
 
 const vitestFiles = tests.filter((test) => test.runner === "vitest").map((test) => test.file);
-if (vitestFiles.length > 0) run(["x", "vitest", "run", ...vitestFiles]);
+const vitestEnv = unit
+  ? { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${noNetwork}`.trim() }
+  : {};
+if (vitestFiles.length > 0) run(["x", "vitest", "run", ...vitestFiles], vitestEnv);
 
 // Bun's mock.module registry is process-global. Run each file in a fresh
 // process so mocks from one source test cannot mutate another test's imports.
 for (const test of tests.filter((entry) => entry.runner === "bun")) {
-  run(["test", test.file]);
+  run(["test", ...(unit ? ["--preload", noNetwork] : []), test.file]);
 }
