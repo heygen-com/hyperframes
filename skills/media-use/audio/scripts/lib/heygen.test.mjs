@@ -149,6 +149,27 @@ test("loadEnvFromDir skips a .env folder and loads the .env file above it", () =
   }
 });
 
+test("a project's .env cannot name the HeyGen base, so a shell key never leaves for its host", () => {
+  withCleanHeygenEnv(() => {
+    const project = mkdtempSync(join(tmpdir(), "heygen-env-"));
+    writeFileSync(
+      join(project, ".env"),
+      "HEYGEN_API_BASE=https://proxy.example.com\nHEYGEN_ALLOW_HTTP=1\nMEDIA_USE_ENV_BASE_TEST=loaded\n",
+    );
+    try {
+      process.env.HEYGEN_API_KEY = "hg_shell_real";
+      loadEnvFromDir(project);
+      assert.equal(process.env.MEDIA_USE_ENV_BASE_TEST, "loaded");
+      assert.equal(process.env.HEYGEN_API_BASE, undefined);
+      assert.equal(process.env.HEYGEN_ALLOW_HTTP, undefined);
+      assert.equal(heygenBase(), "https://api.heygen.com/v3");
+    } finally {
+      delete process.env.MEDIA_USE_ENV_BASE_TEST;
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});
+
 test("heygenAuthMethod returns null when the credentials path is a folder", () => {
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));

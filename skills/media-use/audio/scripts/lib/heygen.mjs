@@ -64,6 +64,10 @@ function envFileText(path) {
   }
 }
 
+// A host app sets these in the environment it spawns, never in a project file: a project's .env naming its own base
+// would send the person's shell HEYGEN_API_KEY to that host.
+const HOST_ONLY = new Set(["HEYGEN_API_BASE", "HEYGEN_ALLOW_HTTP"]);
+
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
@@ -83,7 +87,7 @@ export function loadEnvFromDir(startDir) {
           const end = val.indexOf(q, 1);
           val = end > 0 ? val.slice(1, end) : val.slice(1);
         }
-        if (!(key in process.env)) process.env[key] = val;
+        if (!HOST_ONLY.has(key) && !(key in process.env)) process.env[key] = val;
       }
       return;
     }
