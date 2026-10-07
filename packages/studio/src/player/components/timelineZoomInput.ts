@@ -164,7 +164,6 @@ function drawnRange(
   return getTimelineRenderTimeRange(scroll, pps, contentOrigin, contentEnd, overscanRatio);
 }
 
-/** Called once the wider window a preview asked for is mounted, so the preview may show it. */
 export function markTimelineZoomWindowMounted(overscanRatio: number) {
   const view = viewport;
   if (!preview || !view) return;

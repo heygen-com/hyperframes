@@ -63,7 +63,6 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   directScrollSafetyPx: 8_000_000,
   rowOverscanPerSide: 2,
   timeOverscanViewportRatio: 0.25,
-  // Wider only while a zoom previews, so a zoom-out has clips to show; every scroll step pays for the window.
   zoomOverscanViewportRatio: 0.5,
   maxMountedRows: 64,
   maxMountedClipRoots: 512,
