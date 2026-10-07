@@ -460,8 +460,7 @@ export function useExternalFileChangeCoordinator({
         !readFileChangeAffectsPreview(payload);
       if (!waitingChangeOutranksThis) {
         pendingPayloadRef.current = {
-          payload:
-            waiting == null ? payload : mergeFileChangePayloads(waiting, payload),
+          payload: waiting == null ? payload : mergeFileChangePayloads(waiting, payload),
         };
       }
       void startDrainLoop();
