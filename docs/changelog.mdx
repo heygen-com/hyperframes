@@ -9,6 +9,47 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.140"
+  description="Released - 2026-10-07"
+  tags={["Release", "Engine", "CLI", "Check"]}
+>
+Renders now report encoding and assembly progress, and motion blur works over video. Automatic workers respect memory limits, while composition checks avoid false motion and text-overlap alarms.
+
+## Features
+
+- **Core:** Bound imported scene timing to source intervals ([f74f26028](https://github.com/heygen-com/hyperframes/commit/f74f26028616eea9baa99b4610d0960688436f27), [#5132](https://github.com/heygen-com/hyperframes/pull/5132)).
+- **Render:** Show progress while encoding frames and assembling the output file ([cffc3aa4e](https://github.com/heygen-com/hyperframes/commit/cffc3aa4e1f888b4867e4b69f602d1c12dc58e32), [#5137](https://github.com/heygen-com/hyperframes/pull/5137)).
+- **Core:** Bridge preserved film HTML to native capture ([891a18af7](https://github.com/heygen-com/hyperframes/commit/891a18af76bc24f8b8b5895a43b51df58dde8713), [#5131](https://github.com/heygen-com/hyperframes/pull/5131)).
+- **Core:** Support deterministic async frame sources ([a17d0bfc0](https://github.com/heygen-com/hyperframes/commit/a17d0bfc00e14413bdf7eac19ec18cdf0439d670), [#5130](https://github.com/heygen-com/hyperframes/pull/5130)).
+- **Engine:** Render WebGPU compositions on SwiftShader behind an opt-in ([4cf5cf9b5](https://github.com/heygen-com/hyperframes/commit/4cf5cf9b53d102837d8747a6f8ac32057c541d40), [#5133](https://github.com/heygen-com/hyperframes/pull/5133)).
+
+## Fixes
+
+- **Engine:** Keep automatic capture workers within the render process memory budget ([9e0d05d45](https://github.com/heygen-com/hyperframes/commit/9e0d05d450641a491ee9fc254a122671ba94a223), [#5149](https://github.com/heygen-com/hyperframes/pull/5149)).
+- **CLI:** Start CLI commands with fewer loaded modules and make history lock tests wait for the actual lock attempt ([9fbec2259](https://github.com/heygen-com/hyperframes/commit/9fbec22596035dbc9a056d75ed362b0d00012860), [#5153](https://github.com/heygen-com/hyperframes/pull/5153)).
+- **Engine:** Enable motion blur over video while keeping footage fixed across each output frame’s samples ([3b89bfe8a](https://github.com/heygen-com/hyperframes/commit/3b89bfe8a71fb966c9fd7129935ada39d1fdb1d1), [#5150](https://github.com/heygen-com/hyperframes/pull/5150)).
+- **Check:** Recognize paint and media changes, and measure text overlap using visible glyphs ([2d98d5c15](https://github.com/heygen-com/hyperframes/commit/2d98d5c15ffb4510c44961e20f4e9f78d22a3837), [#5147](https://github.com/heygen-com/hyperframes/pull/5147)).
+- **Ci:** Skills sync publishes hyperframes-creative past its hidden 1.0.13 and checks it went live ([0ca99b30d](https://github.com/heygen-com/hyperframes/commit/0ca99b30daaa85c8d9012da88e397a8646fbe2c7), [#5081](https://github.com/heygen-com/hyperframes/pull/5081)).
+- The preview preloads the coming scene's images, and check stops failing on image swaps ([11e684d30](https://github.com/heygen-com/hyperframes/commit/11e684d3050f27c546425fdbff1d38a94fe3ecb7), [#5128](https://github.com/heygen-com/hyperframes/pull/5128)).
+
+## Performance
+
+- **Studio:** Smooth timeline zoom on long projects ([eee0c5101](https://github.com/heygen-com/hyperframes/commit/eee0c5101c00dcc1c6c5f02589ee52619611b837), [#5109](https://github.com/heygen-com/hyperframes/pull/5109)).
+
+## Catalog
+
+- **Catalog:** Run block scripts inline in the docs player, and pages for six shader blocks ([f6b382162](https://github.com/heygen-com/hyperframes/commit/f6b38216263e0f9a8d67b4518a9b5dde71284169), [#5139](https://github.com/heygen-com/hyperframes/pull/5139)).
+- **Registry:** Six WebGPU shader backgrounds from the Shaders library ([7cf042d74](https://github.com/heygen-com/hyperframes/commit/7cf042d74f8aa32e5eb625ce233bc8791e09e4c6), [#5138](https://github.com/heygen-com/hyperframes/pull/5138)).
+
+## Internal
+
+- **Producer:** Unit tests never reach the network ([04736006b](https://github.com/heygen-com/hyperframes/commit/04736006b1f448c0136fbe147c4bad7e66016b70), [#5135](https://github.com/heygen-com/hyperframes/pull/5135)).
+- **Studio:** Launch real-Chrome tests like the e2e launcher, bounded by the test budget ([1825c3726](https://github.com/heygen-com/hyperframes/commit/1825c37268af363c55d1930ee560fa2a60bc84ae), [#5134](https://github.com/heygen-com/hyperframes/pull/5134)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.139...v0.8.140).
+</Update>
+
+<Update
   label="HyperFrames v0.8.139"
   description="Released - 2026-10-06"
   tags={["Release", "Studio", "CLI", "Core"]}
