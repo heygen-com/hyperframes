@@ -317,10 +317,65 @@ describe("resolveSessionMotionBlur rejects what accumulation cannot render", () 
     expect(() => resolveSessionMotionBlur(session)).toThrow(/format "png"/);
   });
 
-  it("rejects injected video frames, which cannot follow a sub-frame seek", () => {
-    expect(() =>
-      resolveSessionMotionBlur(withOptions({ onBeforeCapture: async () => {} })),
-    ).toThrow(/video/);
+  it("accepts a session that injects video frames (#5144)", () => {
+    const plan = resolveSessionMotionBlur(withOptions({ onBeforeCapture: async () => {} }));
+    expect(plan).not.toBeUndefined();
+  });
+});
+
+describe("injected video is held for the whole shutter window (#5144)", () => {
+  /** Records each injector call's time and how many page seeks had run before it. */
+  function recordInjections(): {
+    calls: Array<{ time: number; seeksBefore: number }>;
+    hook: CaptureSession["onBeforeCapture"];
+  } {
+    const calls: Array<{ time: number; seeksBefore: number }> = [];
+    return {
+      calls,
+      hook: async (_page, time) => {
+        calls.push({ time, seeksBefore: seeks.length });
+      },
+    };
+  }
+
+  it("injects at the frame time before any sample, then gives every sample that same time", async () => {
+    const { calls, hook } = recordInjections();
+
+    await captureFrameToBuffer(makeSession({ onBeforeCapture: hook }), 10, 10 / 30);
+
+    // One injection right after the eventful seek, then one per sample, all at frame 10.
+    expect(calls).toHaveLength(1 + 16);
+    expect(calls.every((call) => call.time === 10 / 30)).toBe(true);
+    expect(calls[0]?.seeksBefore).toBe(1);
+    // The samples themselves still seek 16 distinct sub-frame times.
+    const samples = seeks.filter((s) => s.subFrameDivisions !== undefined);
+    expect(new Set(samples.map((s) => s.time)).size).toBe(16);
+  });
+
+  it("holds the frame time for the adaptive probes too", async () => {
+    const { calls, hook } = recordInjections();
+
+    await captureFrameToBuffer(
+      makeSession({ onBeforeCapture: hook, motionBlur: resolveMotionBlurPlan({}) ?? undefined }),
+      10,
+      10 / 30,
+    );
+
+    const sampleCount = seeks.filter((s) => s.subFrameDivisions !== undefined).length;
+    expect(calls).toHaveLength(1 + sampleCount);
+    expect(calls.every((call) => call.time === 10 / 30)).toBe(true);
+  });
+
+  it("still gives a frame without blur its own time", async () => {
+    const { calls, hook } = recordInjections();
+
+    await captureFrameToBuffer(
+      makeSession({ onBeforeCapture: hook, motionBlur: undefined }),
+      10,
+      10 / 30,
+    );
+
+    expect(calls.map((call) => call.time)).toEqual([10 / 30]);
   });
 });
 
