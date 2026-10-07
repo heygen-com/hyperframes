@@ -30,10 +30,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      # HEAD is the PR merge ref; its first parent is the current base tip, unlike the payload's
+      # base.sha, which goes stale and would count main's newer commits as the PR's changes.
+      - name: Find the pull request's current base
+        id: base
+        if: github.event_name == 'pull_request'
+        run: echo "sha=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
           token: ""
+          base: ${{ steps.base.outputs.sha }}
           filters: |
             perf:
               - "packages/player/**"
