@@ -178,19 +178,14 @@ describe("useSdkSession ownership", () => {
   it("reopens on a project-wide external change whatever composition it holds", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => response("FILM")),
+      vi.fn(async () => response("INDEX")),
     );
     openComposition.mockImplementation(async () => fakeSession());
-    function FilmProbe() {
-      useSdkSession("project-a", "film.html");
-      return null;
-    }
-
     const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<FilmProbe />));
+    await act(async () => root.render(<Probe projectId="project-a" />));
     await flushAsyncEffects();
     expect(openComposition).toHaveBeenCalledOnce();
-    await act(async () => notifyExternalFileReload("index.html"));
+    await act(async () => notifyExternalFileReload("film.html"));
     await flushAsyncEffects();
     expect(openComposition).toHaveBeenCalledOnce();
     await act(async () => notifyExternalFileReload("."));

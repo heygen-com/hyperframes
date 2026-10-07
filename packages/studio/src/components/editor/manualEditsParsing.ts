@@ -44,7 +44,7 @@ export function readFileChangeAffectedCompositions(payload: unknown): readonly s
   return value.map(normalizeStudioFileChangePath);
 }
 
-export function mergeFileChangeAffectedCompositions(waiting: unknown, incoming: unknown): unknown {
+export function mergeFileChangePayloads(waiting: unknown, incoming: unknown): unknown {
   const before = readFileChangeAffectedCompositions(waiting);
   const after = readFileChangeAffectedCompositions(incoming);
   const merged = before && after ? [...new Set([...before, ...after])] : null;

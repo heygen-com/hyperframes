@@ -89,6 +89,10 @@ describe("external file change coordinator", () => {
       act(async () => {
         source.dispatchEvent(new Event("open"));
       });
+    const send = (payload: object) =>
+      act(async () => {
+        source.dispatchEvent(new MessageEvent("file-change", { data: JSON.stringify(payload) }));
+      });
 
     it("waits for pending edits before refreshing Preview, SDK, thumbnails and tree on each reconnect", async () => {
       let finishDrain = () => {};
@@ -194,10 +198,6 @@ describe("external file change coordinator", () => {
       const pendingEdit = new Promise<void>((resolve) => {
         finishDrain = resolve;
       });
-      const send = (payload: object) =>
-        act(async () => {
-          source.dispatchEvent(new MessageEvent("file-change", { data: JSON.stringify(payload) }));
-        });
       const reloadSdkSession = vi.fn();
       await mountCoordinator({
         reloadSdkSession,
@@ -258,13 +258,7 @@ describe("external file change coordinator", () => {
         getPendingCandidate: () => ({ path: "script.js", content: "unsaved script" }),
         persistFailureSnapshot,
       });
-      await act(async () => {
-        source.dispatchEvent(
-          new MessageEvent("file-change", {
-            data: JSON.stringify({ path: "index.html", version: "v2", content: "agent html" }),
-          }),
-        );
-      });
+      await send({ path: "index.html", version: "v2", content: "agent html" });
       expect(persistFailureSnapshot).toHaveBeenCalledExactlyOnceWith(
         "project-a",
         "script.js",
@@ -429,10 +423,6 @@ describe("external file change coordinator", () => {
         refreshFileTree,
         onAcceptedPersistedFileChange,
       });
-      const send = (payload: object) =>
-        act(async () => {
-          source.dispatchEvent(new MessageEvent("file-change", { data: JSON.stringify(payload) }));
-        });
       await send({ path: "index.html", content: "external", version: "v2" });
       await send({ path: "scenes/old.html", content: "agent", version: "v3" });
       await rerender({ activeCompPath: "scenes/next.html" });

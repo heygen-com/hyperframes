@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import {
-  mergeFileChangeAffectedCompositions,
+  mergeFileChangePayloads,
   readFileChangeAffectedCompositions,
   readFileChangeAffectsPreview,
   readFileChangeField,
@@ -177,11 +177,11 @@ export function useExternalFileChangeCoordinator({
   const drainingRef = useRef(false);
   const pendingPayloadRef = useRef<{ payload: unknown } | null>(null);
   blockedRef.current = blocked;
-  // A newer blocked change replaces the held one, so it inherits the thumbnails the held one owed.
+  // A newer blocked change replaces the held one, so it inherits what the held one owed.
   const setBlocked = useCallback((next: ExternalFileChangeBlockedState | null) => {
     setBlockedState((held) =>
       next && held
-        ? { ...next, payload: mergeFileChangeAffectedCompositions(held.payload, next.payload) }
+        ? { ...next, payload: mergeFileChangePayloads(held.payload, next.payload) }
         : next,
     );
   }, []);
@@ -301,7 +301,7 @@ export function useExternalFileChangeCoordinator({
                 ...previousBlocked,
                 generation,
                 error,
-                payload: mergeFileChangeAffectedCompositions(payload, previousBlocked.payload),
+                payload: mergeFileChangePayloads(payload, previousBlocked.payload),
               });
             }
             return;
@@ -310,7 +310,7 @@ export function useExternalFileChangeCoordinator({
         if (!mountedRef.current || generation !== generationRef.current) return;
         setBlocked(null);
         const owed = previousBlocked
-          ? mergeFileChangeAffectedCompositions(previousBlocked.payload, payload)
+          ? mergeFileChangePayloads(previousBlocked.payload, payload)
           : payload;
         onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(owed));
         reloadAcceptedGeneration(path, readFileChangeAffectsPreview(payload));
@@ -459,7 +459,7 @@ export function useExternalFileChangeCoordinator({
       if (!waitingChangeOutranksThis) {
         pendingPayloadRef.current = {
           payload:
-            waiting == null ? payload : mergeFileChangeAffectedCompositions(waiting, payload),
+            waiting == null ? payload : mergeFileChangePayloads(waiting, payload),
         };
       }
       void startDrainLoop();
