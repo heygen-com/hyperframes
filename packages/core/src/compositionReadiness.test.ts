@@ -309,7 +309,7 @@ describe("paintAndIdleReadinessInput", () => {
     await flushMicrotasks();
     expect(isResolved()).toBe(false);
 
-    // First quiet gap (10ms < 50ms threshold) — one is not enough.
+    // First quiet gap relative to the document's cadence: one is not enough.
     fireFrame(26);
     await flushMicrotasks();
     expect(isResolved()).toBe(false);
@@ -358,29 +358,46 @@ describe("paintAndIdleReadinessInput", () => {
     expect(pendingFrameCount()).toBe(0); // the in-flight rAF was cancelled, not left pending
   });
 
-  it("gives up and resolves after MAX_PAINT_WAIT_MS of steady sub-20fps painting, never reaching a quiet gap", async () => {
-    // A composition rendering a real, steady 15fps (~66ms/frame) never
-    // produces a sub-50ms gap — this is the exact shape that used to hang
-    // paintAndIdleReadinessInput until settleCompositionReadiness's 8s
-    // shared timeout won the race on every single Play.
+  it("settles a steady slow document after two of its own quiet gaps", async () => {
     const { fireFrame, isResolved } = startPaintAndIdleTracking();
-    const FRAME_GAP_MS = 66;
+    for (const ts of [0, 66, 132]) {
+      fireFrame(ts);
+      await flushMicrotasks();
+      expect(isResolved()).toBe(false);
+    }
+    fireFrame(198);
+    await flushMicrotasks();
+    expect(isResolved()).toBe(true);
+  });
 
+  it("accepts ordinary jitter up to one and a half of the shortest gap", async () => {
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
+    for (const ts of [0, 50, 125]) {
+      fireFrame(ts);
+      await flushMicrotasks();
+      expect(isResolved()).toBe(false);
+    }
+    fireFrame(200);
+    await flushMicrotasks();
+    expect(isResolved()).toBe(true);
+  });
+
+  it("keeps the paint cap when stalls prevent two consecutive quiet gaps", async () => {
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
     let ts = 0;
-    fireFrame(ts); // first paint scheduled
+    fireFrame(ts);
     await flushMicrotasks();
-    ts += FRAME_GAP_MS;
-    fireFrame(ts); // first paint presented, lastTs = 66
+    ts = 66;
+    fireFrame(ts);
     await flushMicrotasks();
-
+    let slow = true;
     while (ts < 1_500) {
       expect(isResolved()).toBe(false);
-      ts += FRAME_GAP_MS;
+      ts += slow ? 200 : 66;
+      slow = !slow;
       fireFrame(ts);
       await flushMicrotasks();
     }
-    // The frame that crosses MAX_PAINT_WAIT_MS resolves on its own — no
-    // quiet gap was ever produced, only elapsed steady-paint time.
     expect(isResolved()).toBe(true);
   });
 });

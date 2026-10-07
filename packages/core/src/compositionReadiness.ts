@@ -227,18 +227,14 @@ export function computeReadinessInput(doc: Document, signal: AbortSignal): Promi
   });
 }
 
-// Frame-to-frame gap under which the main thread counts as free. Generous
-// relative to a 16.7ms (60fps) frame budget — this detects a busy stretch
-// (a mesh build, a shader compile), not ordinary frame-time variance.
-const IDLE_FRAME_GAP_MS = 50;
+// Ordinary frame jitter can span 1.5x the document's shortest observed gap.
+const IDLE_FRAME_GAP_RATIO = 1.5;
 // Two consecutive quiet frames, not one: a single fast gap can follow
 // directly after the busy work finishes mid-frame and says nothing about
 // whether the next frame is also free.
 const IDLE_FRAMES_REQUIRED = 2;
-// Gives up on a doc that keeps producing frames below 20fps. Does NOT bound
-// a doc that stops painting entirely (backgrounded tab, or fewer than 3
-// frames total) — that still rides the full shared 8s timeout, same as
-// before this input existed. ponytail: 1500ms is unmeasured, retune later.
+// Bounds continuing stalls. A backgrounded document with no frames still
+// rides the shared timeout; this budget only bounds frames that arrive.
 const MAX_PAINT_WAIT_MS = 1_500;
 
 // Resolves with -1 on abort instead of rejecting: every caller already
@@ -267,7 +263,7 @@ function nextAnimationFrame(win: Window, signal: AbortSignal): Promise<number> {
 
 /** Composition-agnostic readiness input: waits for a frame to paint, then
  * two consecutive quiet frame gaps — an early-out once the main thread is
- * free, not a hold on steady sub-20fps painting. See MAX_PAINT_WAIT_MS for
+ * free relative to its own frame cadence. See MAX_PAINT_WAIT_MS for
  * what this bound does and does not cover. */
 export function paintAndIdleReadinessInput(
   doc: Document,
@@ -279,12 +275,15 @@ export function paintAndIdleReadinessInput(
     const firstTs = await nextAnimationFrame(win, signal);
     if (signal.aborted) return;
     let lastTs = await nextAnimationFrame(win, signal);
+    let shortestGap = lastTs - firstTs;
     let quietStreak = 0;
     while (!signal.aborted && quietStreak < IDLE_FRAMES_REQUIRED) {
       if (lastTs - firstTs >= MAX_PAINT_WAIT_MS) return;
       const ts = await nextAnimationFrame(win, signal);
       if (signal.aborted) return;
-      quietStreak = ts - lastTs < IDLE_FRAME_GAP_MS ? quietStreak + 1 : 0;
+      const gap = ts - lastTs;
+      shortestGap = Math.min(shortestGap, gap);
+      quietStreak = gap <= shortestGap * IDLE_FRAME_GAP_RATIO ? quietStreak + 1 : 0;
       lastTs = ts;
     }
   })();
