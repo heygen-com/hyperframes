@@ -1350,7 +1350,9 @@ async function captureResolveEvent({ provider, type = "bgm", intent }) {
     // their real email into this test's local-server payload despite HOME
     // being sandboxed (HEYGEN_CONFIG_DIR, not HOME, resolves the credentials
     // path). Every other test in this file keeps its untouched default env.
-    runResolve(["--type", type, "--intent", intent, "--project", tmp, "--json"], {
+    // Async, so this process serves the POST while the child waits on it: a blocking spawn froze the server
+    // until the child gave up on its telemetry timeout, and the event arrived or not by luck.
+    await spawnResolveAsync(["--type", type, "--intent", intent, "--project", tmp, "--json"], {
       env: {
         DO_NOT_TRACK: "0",
         HYPERFRAMES_NO_TELEMETRY: "0",
@@ -1361,15 +1363,6 @@ async function captureResolveEvent({ provider, type = "bgm", intent }) {
         MEDIA_USE_TELEMETRY_HOST: `http://127.0.0.1:${port}`,
       },
     });
-
-    // runResolve blocks synchronously (execFileSync) until the child exits, which
-    // pauses this process's own event loop for that whole span -- the child's
-    // request to our local server sits accepted-but-unprocessed in the kernel
-    // backlog until control returns here. Poll briefly to let the event loop
-    // drain it rather than asserting before the server has had a turn to run.
-    for (let i = 0; i < 100 && received.length === 0; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
   } finally {
     await new Promise((resolve) => server.close(resolve));
     rmSync(sandboxHome, { recursive: true, force: true });
