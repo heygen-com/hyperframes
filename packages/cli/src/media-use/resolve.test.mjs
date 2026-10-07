@@ -1352,17 +1352,21 @@ async function captureResolveEvent({ provider, type = "bgm", intent }) {
     // path). Every other test in this file keeps its untouched default env.
     // Async, so this process serves the POST while the child waits on it: a blocking spawn froze the server
     // until the child gave up on its telemetry timeout, and the event arrived or not by luck.
-    await spawnResolveAsync(["--type", type, "--intent", intent, "--project", tmp, "--json"], {
-      env: {
-        DO_NOT_TRACK: "0",
-        HYPERFRAMES_NO_TELEMETRY: "0",
-        CI: "",
-        NODE_ENV: "test",
-        HOME: sandboxHome,
-        HEYGEN_CONFIG_DIR: join(sandboxHome, ".heygen"),
-        MEDIA_USE_TELEMETRY_HOST: `http://127.0.0.1:${port}`,
+    const run = await spawnResolveAsync(
+      ["--type", type, "--intent", intent, "--project", tmp, "--json"],
+      {
+        env: {
+          DO_NOT_TRACK: "0",
+          HYPERFRAMES_NO_TELEMETRY: "0",
+          CI: "",
+          NODE_ENV: "test",
+          HOME: sandboxHome,
+          HEYGEN_CONFIG_DIR: join(sandboxHome, ".heygen"),
+          MEDIA_USE_TELEMETRY_HOST: `http://127.0.0.1:${port}`,
+        },
       },
-    });
+    );
+    assert.equal(run.status, 0, run.stderr);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     rmSync(sandboxHome, { recursive: true, force: true });
