@@ -322,15 +322,16 @@ export function reportEncodeProgress(
   onProgress: ProgressCallback | undefined,
   from: number,
 ): void {
-  const progress = from + ((90 - from) * Math.min(done, total)) / total;
+  if (total <= 0) return;
+  const frames = Math.min(done, total);
   reportThrottled(
     lastEncodeReportAt,
     job,
-    `Encoding frame ${done}/${total}`,
-    progress,
+    `Encoding frame ${frames}/${total}`,
+    from + ((90 - from) * frames) / total,
     onProgress,
-    done >= total,
-    { code: "encode", done, total },
+    frames === total,
+    { code: "encode", done: frames, total },
     "encoding",
   );
 }
@@ -344,6 +345,7 @@ export function reportAssembleProgress(
   total: number,
   onProgress: ProgressCallback | undefined,
 ): void {
+  if (total <= 0) return;
   const seconds = Math.min(done, total);
   reportThrottled(
     lastAssembleReportAt,

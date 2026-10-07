@@ -92,6 +92,16 @@ describe("stage progress for machines", () => {
     ]);
   });
 
+  it("reports nothing for a stage with no frames or seconds, so the bar never turns NaN", () => {
+    const j = job();
+    j.progress = 80;
+    const { seen, onProgress } = heard(j);
+    reportEncodeProgress(j, 0, 0, onProgress, 80);
+    reportAssembleProgress(j, 0, 0, onProgress);
+    expect(seen).toEqual([]);
+    expect(j.progress).toBe(80);
+  });
+
   it("keeps assemble under 100 until the render completes, even past the end", () => {
     const j = job();
     j.progress = 90;

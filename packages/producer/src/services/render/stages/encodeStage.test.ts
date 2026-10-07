@@ -209,23 +209,40 @@ describe("frame pattern follows the capture format, not the output's alpha need"
 });
 
 describe("runEncodeStage progress", () => {
-  it("reports the frames ffmpeg has encoded, for the bar and for machines", async () => {
+  async function stagesSeen(input: EncodeStageInput, totalFrames: number): Promise<unknown[]> {
     const { runEncodeStage } = await import("./encodeStage.js");
-    encodeFramesFromDirMock.mockImplementationOnce(async (...args: unknown[]) => {
-      (args[6] as (frames: number) => void)(2);
-      return { success: true, outputPath: "", durationMs: 1, framesEncoded: 4, fileSize: 1 };
-    });
-    const input = makeInput();
-    input.job.totalFrames = 4;
+    input.job.totalFrames = totalFrames;
     const seen: unknown[] = [];
     await runEncodeStage({
       ...input,
       onProgress: (job, stage) =>
         void seen.push({ stage, progress: job.progress, ...job.stageProgress }),
     });
-    expect(seen).toEqual([
+    return seen;
+  }
+
+  it("reports the frames ffmpeg has encoded, for the bar and for machines", async () => {
+    encodeFramesFromDirMock.mockImplementationOnce(async (...args: unknown[]) => {
+      (args[6] as (frames: number) => void)(2);
+      return { success: true, outputPath: "", durationMs: 1, framesEncoded: 4, fileSize: 1 };
+    });
+    expect(await stagesSeen(makeInput(), 4)).toEqual([
       { stage: "Encoding video", progress: 75, code: "encode", done: 0, total: 4 },
       { stage: "Encoding frame 2/4", progress: 83, code: "encode", done: 2, total: 4 },
+      { stage: "Encoding frame 4/4", progress: 90, code: "encode", done: 4, total: 4 },
+    ]);
+  });
+
+  it("closes a GIF encode at its last frame, though ffmpeg reports none in between", async () => {
+    const paths = createFramesDir("jpg");
+    const gif = makeInput({
+      framesDir: paths.framesDir,
+      outputPath: join(paths.root, "out.gif"),
+      isGif: true,
+    });
+    expect(await stagesSeen(gif, 4)).toEqual([
+      { stage: "Encoding GIF", progress: 75, code: "encode", done: 0, total: 4 },
+      { stage: "Encoding frame 4/4", progress: 90, code: "encode", done: 4, total: 4 },
     ]);
   });
 });

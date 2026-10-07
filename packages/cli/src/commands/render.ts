@@ -72,7 +72,7 @@ import {
   errorBox,
 } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
-import { renderProgress, renderMachineProgress, type MachineProgress } from "../ui/progress.js";
+import { renderProgress, renderMachineProgress } from "../ui/progress.js";
 import {
   trackRenderComplete,
   trackRenderError,
@@ -801,6 +801,7 @@ async function renderDocker(
     outputDir: resolve(outputDir),
     outputFilename,
     platform,
+    hostStdoutIsTty: process.stdout.isTTY === true,
     options: {
       fps: options.fps,
       quality: options.quality,
@@ -1095,7 +1096,7 @@ async function executeLocalRender(
 
   const onProgress = options.quiet
     ? undefined
-    : (progressJob: { progress: number; stageProgress?: MachineProgress }, message: string) => {
+    : (progressJob: Pick<RenderJob, "progress" | "stageProgress">, message: string) => {
         renderProgress(progressJob.progress, message);
         renderMachineProgress(progressJob.progress, progressJob.stageProgress);
       };

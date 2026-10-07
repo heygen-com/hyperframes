@@ -56,6 +56,14 @@ describe("buildDockerRunArgs", () => {
     `);
   });
 
+  it("gives the container a terminal only when the host's stdout is one", () => {
+    const flags = (hostStdoutIsTty?: boolean) =>
+      buildDockerRunArgs({ ...FIXED_INPUT, hostStdoutIsTty, options: BASE }).slice(0, 3);
+    expect(flags(true)).toEqual(["run", "--rm", "-t"]);
+    expect(flags(false)).toEqual(["run", "--rm", "--platform"]);
+    expect(flags(undefined)).toEqual(["run", "--rm", "--platform"]);
+  });
+
   it("omits --workers when auto sizing should happen inside the container", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--workers");

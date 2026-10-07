@@ -1,4 +1,5 @@
 import { c } from "./colors.js";
+import type { RenderJob } from "@hyperframes/producer";
 
 const { stdout } = process;
 
@@ -19,13 +20,7 @@ export function renderProgress(percent: number, stage: string, row?: number): vo
   }
 }
 
-export interface MachineProgress {
-  code: string;
-  done?: number;
-  total?: number;
-}
-
-export function renderMachineProgress(percent: number, stage: MachineProgress | undefined): void {
+export function renderMachineProgress(percent: number, stage: RenderJob["stageProgress"]): void {
   if (stdout.isTTY || !stage) return;
   stdout.write(`@hf-progress ${JSON.stringify({ ...stage, pct: Math.round(percent) })}\n`);
 }

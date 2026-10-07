@@ -68,7 +68,10 @@ export function ffmpegStatsReader(onStats: (stats: FfmpegStats) => void): (chunk
       if (frame === undefined && !time) continue;
       onStats({
         frames: frame === undefined ? undefined : Number(frame),
-        seconds: time ? Number(time[1]) * 3600 + Number(time[2]) * 60 + Number(time[3]) : undefined,
+        seconds: time
+          ? Math.round((Number(time[1]) * 3600 + Number(time[2]) * 60 + Number(time[3])) * 100) /
+            100
+          : undefined,
       });
     }
   };

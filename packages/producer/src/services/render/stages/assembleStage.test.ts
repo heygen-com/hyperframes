@@ -179,6 +179,12 @@ describe("runAssembleStage progress", () => {
     await runAssembleStage(input);
     expect(reportAssembleProgressMock).toHaveBeenCalledWith(input.job, 0.5, 1, undefined);
   });
+
+  it("closes at the video's full length when no pass reports seconds", async () => {
+    const input = makeInput({ hasAudio: false });
+    await runAssembleStage(input);
+    expect(reportAssembleProgressMock.mock.calls).toEqual([[input.job, 1, 1, undefined]]);
+  });
 });
 
 describe("runAssembleStage HLS packaging", () => {

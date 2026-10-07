@@ -17,6 +17,7 @@ export interface DockerRunArgsInput {
   outputDir: string;
   /** Filename within `outputDir` (joined to /output inside the container). */
   outputFilename: string;
+  hostStdoutIsTty?: boolean;
   /**
    * Docker `--platform` value (`linux/amd64` or `linux/arm64`). When omitted,
    * resolves to the host architecture via `resolveDockerPlatform()`. Pinning
@@ -109,6 +110,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
   return [
     "run",
     "--rm",
+    ...(input.hostStdoutIsTty ? ["-t"] : []),
     "--platform",
     platform,
     "--shm-size=2g",

@@ -437,6 +437,7 @@ export async function runCaptureHdrStage(
     if (!hdrEncodeResult.success) {
       throw encoderFailureError("HDR encode failed", hdrEncodeResult);
     }
+    reportEncodeProgress(job, totalFrames, totalFrames, onProgress, encodeFrom);
     captureDurationMs = Date.now() - stageStart;
     encodeMs = hdrEncodeResult.durationMs;
   } catch (error) {

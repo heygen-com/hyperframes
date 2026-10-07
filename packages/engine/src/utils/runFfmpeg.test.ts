@@ -313,4 +313,10 @@ describe("ffmpegStatsReader", () => {
     ffmpegStatsReader((s) => stats.push(s))("size=  9000kB time=00:00:12.00 bitrate=6000kbits/s\r");
     expect(stats).toEqual([{ frames: undefined, seconds: 12 }]);
   });
+
+  it("keeps ffmpeg's centiseconds exact", () => {
+    const stats: unknown[] = [];
+    ffmpegStatsReader((s) => stats.push(s))("size=  9000kB time=00:01:08.04 bitrate=6000kbits/s\r");
+    expect(stats).toEqual([{ frames: undefined, seconds: 68.04 }]);
+  });
 });

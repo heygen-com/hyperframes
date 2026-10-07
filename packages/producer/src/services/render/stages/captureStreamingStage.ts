@@ -1006,6 +1006,7 @@ export async function runCaptureStreamingStage(
     if (!encodeResult.success) {
       throw encoderFailureError("Streaming encode failed", encodeResult);
     }
+    reportEncodeProgress(job, totalFrames, totalFrames, onProgress, encodeFrom);
 
     return {
       success: true,
