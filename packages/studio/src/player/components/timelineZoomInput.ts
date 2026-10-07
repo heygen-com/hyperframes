@@ -52,6 +52,7 @@ let viewport: TimelineZoomViewport | null = null;
 /** While a preview shows, scales rows and strips React mounts into the timeline before they paint. */
 let mounts: MutationObserver | null = null;
 let preview: ZoomPreview | null = null;
+let wideWindow = false;
 let frame = 0;
 let restTimer: ReturnType<typeof setTimeout> | null = null;
 let anchorForCommit: TimelineZoomAnchor | null = null;
@@ -88,6 +89,7 @@ export function timelineZoomMapping(pps: number, contentOrigin: number) {
 
 /** Whether a zoom is drawn scaled right now, so boxes read off the page are scaled too. */
 export const isTimelineZoomPreviewing = (): boolean => preview !== null;
+export const isTimelineZoomWindowWide = (): boolean => wideWindow;
 
 /** Called each frame a zoom preview moves, and once when it is laid out or dropped. */
 export function subscribeTimelineZoomPreview(listener: () => void): () => void {
@@ -213,6 +215,7 @@ function commitPreview() {
   const done = preview;
   if (!view || !done) return;
   const left = view.scroll.scrollLeft - done.shift;
+  wideWindow = false;
   // Ending at the scale already laid out (an eased zoom-out) needs a scroll, not a layout.
   if (done.pps !== done.basePps) {
     flushSync(() =>
@@ -267,7 +270,10 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
   preview.shift = scroll.scrollLeft - left;
   preview.byPerson ||= byPerson;
   // Before the first frame, so the timeline mounts the preview's wider window in time to show it.
-  if (starting) emitPreview();
+  if (starting) {
+    wideWindow = true;
+    emitPreview();
+  }
   if (!frame) frame = requestAnimationFrame(drawPreview);
   if (restTimer) clearTimeout(restTimer);
   restTimer = setTimeout(commitPreview, TIMELINE_REST_MS);
@@ -302,6 +308,7 @@ function dropPreview() {
   if (!preview) return;
   if (viewport) clearScaled(viewport.scroll);
   preview = null;
+  wideWindow = false;
   emitPreview();
 }
 
@@ -425,6 +432,8 @@ function easeZoom(
   const holdsOld =
     old.start >= start && old.end <= start + (old.end - old.start) * (from.pps / toPps);
   let layoutFirst = toPps < from.pps && from.pps / toPps <= MAX_PREVIEW_SCALE && holdsOld;
+  // A preview at the current scale, so the timeline mounts the zoom's wider window before frame one.
+  if (!layoutFirst) request(fromPercent, anchorAt(0), byPerson);
   const began = performance.now();
   easingTo = toPercent;
   const step = (now: number) => {

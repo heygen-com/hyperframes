@@ -7,7 +7,7 @@ import {
 } from "./timelineViewportGeometry";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
 import {
-  isTimelineZoomPreviewing,
+  isTimelineZoomWindowWide,
   markTimelineZoomWindowMounted,
   subscribeTimelineZoomPreview,
 } from "./timelineZoomInput";
@@ -42,7 +42,7 @@ export function useTimelineClipRenderWindow({
   keyframeContextMenuElementId,
 }: UseTimelineClipRenderWindowInput) {
   const clipIndex = useMemo(() => createTimelineClipIndex(tracks), [tracks]);
-  const zooming = useSyncExternalStore(subscribeTimelineZoomPreview, isTimelineZoomPreviewing);
+  const zooming = useSyncExternalStore(subscribeTimelineZoomPreview, isTimelineZoomWindowWide);
   const overscanRatio = zooming
     ? TIMELINE_VIEWPORT_BUDGETS.zoomOverscanViewportRatio
     : TIMELINE_VIEWPORT_BUDGETS.timeOverscanViewportRatio;

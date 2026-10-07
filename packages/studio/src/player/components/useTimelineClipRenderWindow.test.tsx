@@ -7,7 +7,10 @@ import {
   cancelTimelineZoom,
   registerTimelineZoomViewport,
   requestTimelineZoom,
+  settleTimelineZoom,
+  zoomTimelineToRange,
 } from "./timelineZoomInput";
+import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 import { useTimelineClipRenderWindow } from "./useTimelineClipRenderWindow";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
 
@@ -46,16 +49,20 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function renderWindow() {
+const SNAPSHOT = { scrollLeft: 5000, clientWidth: 1080 } as TimelineScrollViewportSnapshot;
+
+function renderWindow(renders: { start: number; end: number }[] = []) {
   let range = { start: 0, end: 0 };
   function Harness() {
+    const pixelsPerSecond = usePlayerStore((state) => state.timelinePps);
     ({ renderTimeRange: range } = useTimelineClipRenderWindow({
       tracks: [],
-      viewport: { scrollLeft: 5000, clientWidth: 1080 } as TimelineScrollViewportSnapshot,
-      pixelsPerSecond: 100,
+      viewport: SNAPSHOT,
+      pixelsPerSecond,
       contentOrigin: 32,
       duration: 100,
     }));
+    renders.push(range);
     return null;
   }
   const host = document.body.appendChild(document.createElement("div"));
@@ -77,6 +84,22 @@ it("lets a zoom-out preview show the wider window it mounted", () => {
   renderWindow();
   // At 60 px/s about 55.24 s the view shows 46.5..63.97 s: past the rest window, inside the zoom's.
   act(() => requestTimelineZoom(600, { time: 55.24, x: 556 }));
+  act(() => vi.advanceTimersToNextFrame());
+  expect(usePlayerStore.getState().timelinePps).toBe(100);
+});
+
+it("lays a zoom out in one render, with the rest window", () => {
+  const renders: { start: number; end: number }[] = [];
+  renderWindow(renders);
+  act(() => requestTimelineZoom(600, { time: 55.24, x: 556 }));
+  renders.length = 0;
+  act(() => settleTimelineZoom());
+  expect(renders).toEqual([getTimelineRenderTimeRange(SNAPSHOT, 60, 32, 100)]);
+});
+
+it("keeps an eased zoom-out a preview in its first frame", () => {
+  renderWindow();
+  act(() => void zoomTimelineToRange(60, 80, { smooth: true }));
   act(() => vi.advanceTimersToNextFrame());
   expect(usePlayerStore.getState().timelinePps).toBe(100);
 });

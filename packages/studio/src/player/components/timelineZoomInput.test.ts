@@ -2,10 +2,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../store/playerStore";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { isTimelineMoving, subscribeTimelineMotion } from "./timelineMotion";
 import {
   cancelTimelineZoom,
   isTimelineZoomPreviewing,
+  isTimelineZoomWindowWide,
   markTimelineZoomWindowMounted,
   subscribeTimelineZoomPreview,
   redrawTimelineZoomPreview,
@@ -68,8 +70,11 @@ function viewport(scrollLeft = 0, scrollWidth = 20_000) {
 /** What the timeline's render window does: mounts the zoom's wider window while a preview shows. */
 let unmountZoomWindow = () => {};
 beforeEach(() => {
+  let mounted = false;
   unmountZoomWindow = subscribeTimelineZoomPreview(() => {
-    if (isTimelineZoomPreviewing()) markTimelineZoomWindowMounted(0.5);
+    if (isTimelineZoomWindowWide() === mounted) return;
+    mounted = isTimelineZoomWindowWide();
+    if (mounted) markTimelineZoomWindowMounted(TIMELINE_VIEWPORT_BUDGETS.zoomOverscanViewportRatio);
   });
 });
 afterEach(() => unmountZoomWindow());
