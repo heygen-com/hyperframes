@@ -764,3 +764,97 @@ describe("deriveCodecMapKey", () => {
     expect(deriveCodecMapKey(el)).toBeNull();
   });
 });
+
+describe("a copy sized to how large the video shows", () => {
+  // A framed document learns its on-screen scale from its host; load a module that is framed.
+  async function framed() {
+    vi.resetModules();
+    vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
+    return import("./mediaProxy");
+  }
+
+  function layOut(el: HTMLElement, width: number, height: number): void {
+    el.getBoundingClientRect = () => ({ width, height }) as DOMRect;
+    Object.defineProperty(document.documentElement, "clientWidth", {
+      configurable: true,
+      value: 1080,
+    });
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      configurable: true,
+      value: 1920,
+    });
+    vi.spyOn(window, "devicePixelRatio", "get").mockReturnValue(2);
+  }
+
+  const boxOf = (el: HTMLMediaElement) =>
+    new URL(el.src, document.baseURI).searchParams.get("hf-proxy-box");
+
+  it("asks only once the host says how large it shows the frame, for that size", async () => {
+    const { maybeProxyProactively: proxy, setProxyDisplayScale } = await framed();
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+    const el = createVideo("/video.mp4");
+    stubCanPlayType(el, "");
+    layOut(el, 1080, 1920);
+
+    proxy(el);
+    await settle();
+    expect(fetch).not.toHaveBeenCalled();
+
+    // A 1080x1920 stage at half size on a 2x screen is 1080x1920 device pixels.
+    setProxyDisplayScale(0.5);
+    await settle();
+    expect(boxOf(el)).toBe("1448x2048");
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(el.src);
+  });
+
+  it("measures a video scaled past the stage by its own box", async () => {
+    const { maybeProxyProactively: proxy, setProxyDisplayScale } = await framed();
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+    const el = createVideo("/video.mp4");
+    stubCanPlayType(el, "");
+    layOut(el, 2160, 3840);
+
+    proxy(el);
+    setProxyDisplayScale(0.5);
+    await settle();
+    expect(boxOf(el)).toBe("2896x4096");
+  });
+
+  it("asks for the source-size copy when the host never says", async () => {
+    vi.useFakeTimers();
+    const { maybeProxyProactively: proxy } = await framed();
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+    const el = createVideo("/video.mp4");
+    stubCanPlayType(el, "");
+    layOut(el, 1080, 1920);
+
+    proxy(el);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetch).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(isProxied(el)).toBe(true);
+    expect(boxOf(el)).toBeNull();
+  });
+
+  it("moves to a larger copy when the video shows larger, and keeps it when it shrinks", async () => {
+    const { maybeProxyProactively: proxy, setProxyDisplayScale } = await framed();
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+    const el = createVideo("/video.mp4");
+    stubCanPlayType(el, "");
+    layOut(el, 1080, 1920);
+    proxy(el);
+    setProxyDisplayScale(0.5);
+    await settle();
+
+    setProxyDisplayScale(1);
+    setProxyDisplayScale(1);
+    await settle();
+    expect(boxOf(el)).toBe("2896x4096");
+    expect(el.load).toHaveBeenCalledTimes(2);
+
+    setProxyDisplayScale(0.25);
+    await settle();
+    expect(boxOf(el)).toBe("2896x4096");
+    expect(el.load).toHaveBeenCalledTimes(2);
+  });
+});

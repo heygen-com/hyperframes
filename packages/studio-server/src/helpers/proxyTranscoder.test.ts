@@ -417,6 +417,43 @@ describe("resolveProxy", () => {
     60_000,
   );
 
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe"))(
+    "makes a preview copy that fills the shown box, never larger than the source",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "portrait.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=1080x1920:d=0.1"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", sourcePath],
+      ]);
+      const size = (path: string) =>
+        execFileSync(
+          findFfBinary("ffprobe")!,
+          [
+            ...["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height"],
+            ...["-of", "csv=p=0", path],
+          ],
+          { encoding: "utf8" },
+        ).trim();
+
+      // The width side binds: 512/1080 > 724/1920, so the height follows the source's shape.
+      const boxed = await resolveProxy(projectDir, sourcePath, "h264", { width: 512, height: 724 });
+      expect(size(boxed)).toBe("512,912");
+      const roomy = await resolveProxy(projectDir, sourcePath, "h264", {
+        width: 2048,
+        height: 2048,
+      });
+      expect(size(roomy)).toBe("1080,1920");
+      const full = await resolveProxy(projectDir, sourcePath);
+      expect(size(full)).toBe("1080,1920");
+      expect(new Set([boxed, roomy, full]).size).toBe(3);
+    },
+    60_000,
+  );
+
   it("dedupes two concurrent same-key calls to one spawn", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH);

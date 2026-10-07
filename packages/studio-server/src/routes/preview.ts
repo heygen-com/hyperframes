@@ -17,6 +17,11 @@ import {
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
+import {
+  PREVIEW_PROXY_BOX_PARAM,
+  parsePreviewProxyBox,
+  type PreviewProxyBox,
+} from "@hyperframes/core";
 import { gsapCdnDist, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -648,6 +653,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
     // so a bogus/disabled request never spawns ffmpeg.
     const proxyParam = c.req.query("hf-proxy");
+    const boxParam = c.req.query(PREVIEW_PROXY_BOX_PARAM);
+    const proxyBox: PreviewProxyBox | undefined =
+      boxParam === undefined ? undefined : (parsePreviewProxyBox(boxParam) ?? undefined);
+    if (boxParam !== undefined && (!proxyBox || proxyParam === undefined)) {
+      return c.text("not found", 404);
+    }
     let proxyVariant: ProxyVariant | undefined;
     if (proxyParam !== undefined) {
       if (
@@ -670,7 +681,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     }
 
     const tag = settledFileTag(stat);
-    const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant)}"`;
+    const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant, proxyBox)}"`;
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
       : { "Cache-Control": "private, no-cache", ...(etag && { ETag: etag }) };
@@ -691,7 +702,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       try {
         // A cached copy settles before any timer; a transcode never holds one of
         // the browser's few connections to this host. 202 until the copy lands.
-        servedPath = await waitForProxy(resolveProxy(project.dir, file, proxyVariant), 0);
+        servedPath = await waitForProxy(resolveProxy(project.dir, file, proxyVariant, proxyBox), 0);
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
           return c.text("media proxy is being made", 202, {

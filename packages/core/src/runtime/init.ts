@@ -44,7 +44,12 @@ import {
   syncRuntimeMedia,
   type RuntimeMediaClip,
 } from "./media";
-import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
+import {
+  handleErrorForProxy,
+  handleMetadataForProxy,
+  maybeProxyProactively,
+  setProxyDisplayScale,
+} from "./mediaProxy";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer, resolveRenderSeekTime, type RuntimePlayerTransport } from "./player";
@@ -5019,6 +5024,7 @@ export function initSandboxRuntimeModular(): void {
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
+    onSetDisplayScale: setProxyDisplayScale,
     onSetIdleHeartbeat: (slow) => {
       slowIdleHeartbeat = slow;
       wakeTransport();

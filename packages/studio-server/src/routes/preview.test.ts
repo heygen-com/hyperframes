@@ -1316,6 +1316,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       projectDir: string,
       absoluteSourcePath: string,
       variant?: "h264" | "vp8",
+      box?: { width: number; height: number },
     ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
@@ -1426,6 +1427,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         projectDir,
         join(projectDir, "clip.mp4"),
         "h264",
+        undefined,
       );
 
       const ranged = await app.request(
@@ -1470,6 +1472,62 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(second.status).toBe(304);
       // The 304 shortcut never needs the proxy — no second transcode call.
       expect(resolveProxyMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("makes the copy for the shown size, under its own tag", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      pastSettleWindow();
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "proxy-bytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const sized = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-box=1448x2048",
+      );
+      expect(sized.status).toBe(200);
+      expect(resolveProxyMock).toHaveBeenLastCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+        { width: 1448, height: 2048 },
+      );
+      const full = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(resolveProxyMock).toHaveBeenLastCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+        undefined,
+      );
+      expect(sized.headers.get("ETag")).toBeTruthy();
+      expect(sized.headers.get("ETag")).not.toBe(full.headers.get("ETag"));
+    });
+
+    it.each([
+      ["a size off the ladder", "?hf-proxy=h264&hf-proxy-box=1000x2000"],
+      ["a size without a copy", "?hf-proxy-box=1448x2048"],
+    ])("refuses %s before making anything", async (_name, query) => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(`http://localhost/projects/demo/preview/clip.mp4${query}`);
+      expect(res.status).toBe(404);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 
     it("tags no asset written in the last moments, so a same-size rewrite cannot reuse its tag", async () => {
@@ -1579,6 +1637,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         projectDir,
         join(projectDir, "clip.mov"),
         "vp8",
+        undefined,
       );
     });
 
@@ -1767,7 +1826,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       const html = await res.text();
       expect(html).not.toContain("data-hf-media-codec-map");
     });
-    it("injects the scanned map naming the hostile fixture, and pre-warms resolveProxy for it", async () => {
+    it("injects the scanned map naming the hostile fixture, and makes no copy before the page asks for its size", async () => {
       const projectDir = createProjectDir();
       const resolveProxyMock = vi.fn(async () => join(projectDir, ".transcode-cache", "x.mp4"));
       const scanMapMock = vi.fn(async () => ({
@@ -1793,14 +1852,10 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(html).not.toContain("h264.mp4");
       expect(scanMapMock).toHaveBeenCalled();
 
-      // Pre-warm: fire-and-forget resolveProxy for the hostile entry.
+      // A source-size pre-warm would be a copy Studio never shows.
       await Promise.resolve();
       await Promise.resolve();
-      expect(resolveProxyMock).toHaveBeenCalledWith(
-        projectDir,
-        join(projectDir, "/videos/hevc.mp4"),
-        "h264",
-      );
+      expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 
     it("injects and serves a proxy for a hostile video through an external asset symlink", async () => {
@@ -1845,6 +1900,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         projectDir,
         join(projectDir, "assets", "shared", "clip.mov"),
         "h264",
+        undefined,
       );
     });
 

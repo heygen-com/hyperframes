@@ -431,6 +431,8 @@ class HyperframesPlayer extends HTMLElement {
     // starts playback — this premature call must not ALSO dispatch "play"
     // for what hasn't started, or a host listener sees it fire twice.
     let queuedForReady = false;
+    // A host zoom moves no player size, so play re-reports how large the frame shows.
+    this._sendDisplayScale();
     if (!directTimelineStarted) {
       this._sendControl("play");
       // Only start the parent tick clock once the composition is ready and
@@ -1002,6 +1004,15 @@ class HyperframesPlayer extends HTMLElement {
       disabled: this._isSlideshowPlayer(),
     });
     this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
+    this._sendDisplayScale();
+  }
+
+  /** How large the frame shows on screen, page zoom included, so the runtime sizes its video copies. */
+  private _sendDisplayScale(): void {
+    const shownWidth = this.iframe.getBoundingClientRect().width;
+    if (shownWidth > 0 && this._compositionWidth > 0) {
+      this._sendControl("set-display-scale", { scale: shownWidth / this._compositionWidth });
+    }
   }
 
   private _reloadShaderOptions(): void {
@@ -1537,6 +1548,7 @@ class HyperframesPlayer extends HTMLElement {
     // why in the field. Surface it once (not on every ResizeObserver tick —
     // a legitimately hidden/zero-sized player, e.g. a collapsed tab or
     // off-screen carousel card, would otherwise spam the console forever).
+    if (applied) this._sendDisplayScale();
     if (!applied && this._ready && !this._rescaleWarned) {
       this._rescaleWarned = true;
       console.warn("[hyperframes-player] rescale no-op after ready — zero-size player element", {

@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
 import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
@@ -62,9 +63,9 @@ export function resolvePreviewMediaCodecProbeCache(
  * or a different proxy variant invalidates cached 304s without needing to
  * touch the proxy file itself.
  */
-export function proxyEtagSalt(raw: string | undefined): string {
+export function proxyEtagSalt(raw: string | undefined, box?: PreviewProxyBox): string {
   if (raw === undefined) return "";
-  return `:proxy:${raw}:${PROXY_PARAMS_VERSION}`;
+  return `:proxy:${raw}:${PROXY_PARAMS_VERSION}${box ? `:${formatPreviewProxyBox(box)}` : ""}`;
 }
 
 /**
@@ -91,6 +92,7 @@ export async function injectMediaCodecMapIntoHtml(
   projectDir: string,
   htmlSources: HtmlSourceLike[],
   probeCache?: MediaCodecProbeCache,
+  prewarm = true,
 ): Promise<string> {
   let map: MediaCodecMap;
   try {
@@ -105,7 +107,7 @@ export async function injectMediaCodecMapIntoHtml(
   }
   if (Object.keys(map).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
-    if (!shouldPrewarmProxy(facts)) continue;
+    if (!prewarm || !shouldPrewarmProxy(facts)) continue;
     recordProxyPrewarm();
     resolveProxy(
       projectDir,
@@ -128,7 +130,8 @@ export async function injectMediaCodecMapIntoHtml(
 
 /**
  * Adapter-aware wrapper used by the studio preview routes: skipped entirely
- * (no scan, no injection) when auto-proxy is off for this adapter.
+ * (no scan, no injection) when auto-proxy is off for this adapter. No pre-warm:
+ * Studio asks for a copy sized to the shown video once its layout is known.
  */
 export async function injectMediaCodecMap(
   html: string,
@@ -138,5 +141,5 @@ export async function injectMediaCodecMap(
   probeCache: MediaCodecProbeCache,
 ): Promise<string> {
   if (!isAutoProxyEnabled(adapter)) return html;
-  return injectMediaCodecMapIntoHtml(html, projectDir, [{ html, compSrcPath }], probeCache);
+  return injectMediaCodecMapIntoHtml(html, projectDir, [{ html, compSrcPath }], probeCache, false);
 }
