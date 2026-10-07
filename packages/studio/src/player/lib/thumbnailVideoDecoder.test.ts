@@ -198,6 +198,24 @@ describe("decodeVideoThumbnail", () => {
     for (const result of [four, eight, two]) result.dispose?.();
   });
 
+  it("decodes a frame again when the one shared for its time sits too far before it", async () => {
+    // Every keyframe is 2 s before the time asked: a 2-frame strip of 8 s accepts that (its
+    // frames stand for 4 s each), a 4-frame strip does not, or its frames would run backwards.
+    getKeyPacket.mockImplementation(async (time) => ({ timestamp: time - 2 }));
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    const range = { source, sourceStart: 0, sourceRangeDuration: 8 };
+    const signal = new AbortController().signal;
+    const two = await decodeVideoThumbnail({ ...range, frameCount: 2 }, signal);
+    const four = await decodeVideoThumbnail({ ...range, frameCount: 4 }, signal);
+    expect(decoded).toEqual([
+      [0, 2],
+      [2, 4, 6],
+    ]);
+    two.dispose?.();
+    four.dispose?.();
+  });
+
   it("revokes a shared frame only once no strip shows it", async () => {
     vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:${Math.random()}`);
     recordDecodes([]);
@@ -223,10 +241,12 @@ describe("decodeVideoThumbnail", () => {
   it("revokes partial results when cancellation lands during extraction", async () => {
     const controller = new AbortController();
     const canvas = document.createElement("canvas");
-    canvasesAtTimestamps.mockImplementation(async function* () {
-      yield { canvas, timestamp: 1, duration: 1 };
-      controller.abort();
-      yield { canvas, timestamp: 2, duration: 1 };
+    canvasesAtTimestamps.mockImplementation(async function* (timestamps: AsyncIterable<number>) {
+      let frames = 0;
+      for await (const timestamp of timestamps) {
+        if (frames++ === 1) controller.abort();
+        yield { canvas, timestamp, duration: 1 };
+      }
     });
     await expect(
       decodeVideoThumbnail({ source, frameCount: 2 }, controller.signal),

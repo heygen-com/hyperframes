@@ -5,6 +5,7 @@ import {
   resolveMediaPreviewUrl,
   quantizeThumbnailFrameCount,
 } from "./thumbnailUtils";
+import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 
 describe("computeThumbnailStrip", () => {
   it("sizes tiles by aspect ratio at the clip height", () => {
@@ -55,11 +56,13 @@ describe("quantizeThumbnailFrameCount", () => {
   it("uses doubling buckets and never exceeds the 4K geometry ceiling", () => {
     expect(quantizeThumbnailFrameCount(5)).toBe(8);
     expect(quantizeThumbnailFrameCount(32)).toBe(32);
-    expect(quantizeThumbnailFrameCount(34)).toBe(33);
   });
 
-  it("caps decode requests at the shared visible-frame budget", () => {
-    expect(quantizeThumbnailFrameCount(124)).toBe(33);
+  it("caps decode requests at the largest step within the visible-frame budget", () => {
+    // A step that is not a power of two would share no frames with the step below it.
+    expect(MAX_VISIBLE_THUMBNAIL_FRAMES).toBeGreaterThan(32);
+    expect(quantizeThumbnailFrameCount(34)).toBe(32);
+    expect(quantizeThumbnailFrameCount(124)).toBe(32);
   });
 });
 

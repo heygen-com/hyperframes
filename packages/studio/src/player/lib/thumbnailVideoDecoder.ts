@@ -25,37 +25,56 @@ export function videoThumbnailTimestamps(
   return Array.from({ length: count }, (_, index) => safeStart + (safeDuration * index) / count);
 }
 
-/** A decoded frame shared by every strip of its source that shows that time. */
+/** A decoded frame, shared by every strip of its source that would accept it for a time. */
 interface SharedFrame {
   url: string;
+  decodedAt: number;
   users: number;
 }
 
-const sharedFrames = new Map<string, SharedFrame>();
+interface HeldFrame {
+  key: string;
+  frame: SharedFrame;
+}
+
+/** A strip takes a frame decoded inside its range, at most `lead` before the time it shows. */
+interface FrameWindow {
+  sourceStart: number;
+  lead: number;
+}
+
+const sharedFrames = new Map<string, SharedFrame[]>();
 const sourceInfos = new Map<string, SourceInfo>();
 
-function takeSharedFrame(key: string): string | undefined {
-  const frame = sharedFrames.get(key);
+const accepts = (window: FrameWindow, time: number, decodedAt: number) =>
+  decodedAt >= window.sourceStart && time - decodedAt <= window.lead;
+
+function takeSharedFrame(key: string, time: number, window: FrameWindow): SharedFrame | undefined {
+  const frame = sharedFrames.get(key)?.find((shared) => accepts(window, time, shared.decodedAt));
   if (frame) frame.users += 1;
-  return frame?.url;
+  return frame;
 }
 
-/** Shares a newly decoded frame, or the copy another strip decoded meanwhile. */
-function shareFrame(key: string, url: string): string {
-  const existing = takeSharedFrame(key);
-  if (existing === undefined) {
-    sharedFrames.set(key, { url, users: 1 });
-    return url;
+/** Shares a newly decoded frame, or the same frame another strip decoded meanwhile. */
+function shareFrame(key: string, decodedAt: number, url: string): SharedFrame {
+  const frames = sharedFrames.get(key) ?? [];
+  const existing = frames.find((shared) => shared.decodedAt === decodedAt);
+  if (existing) {
+    existing.users += 1;
+    URL.revokeObjectURL(url);
+    return existing;
   }
-  URL.revokeObjectURL(url);
-  return existing;
+  const frame = { url, decodedAt, users: 1 };
+  sharedFrames.set(key, [...frames, frame]);
+  return frame;
 }
 
-function releaseSharedFrames(keys: string[]): void {
-  for (const key of keys.splice(0)) {
-    const frame = sharedFrames.get(key);
-    if (!frame || --frame.users > 0) continue;
-    sharedFrames.delete(key);
+function releaseSharedFrames(held: HeldFrame[]): void {
+  for (const { key, frame } of held.splice(0)) {
+    if (--frame.users > 0) continue;
+    const rest = sharedFrames.get(key)?.filter((shared) => shared !== frame) ?? [];
+    if (rest.length > 0) sharedFrames.set(key, rest);
+    else sharedFrames.delete(key);
     URL.revokeObjectURL(frame.url);
   }
 }
@@ -77,7 +96,7 @@ interface DecodedResources {
   /** One frame per slot of the strip; a slot the source could not decode stays empty. */
   urls: (string | undefined)[];
   /** The shared frames this strip holds, released when the strip is. */
-  keys: string[];
+  held: HeldFrame[];
   canvases: Set<HTMLCanvasElement | OffscreenCanvas>;
 }
 
@@ -99,7 +118,7 @@ function throwIfAborted(signal: AbortSignal): void {
 
 function releaseDecodedResources(resources: DecodedResources): void {
   resources.urls.length = 0;
-  releaseSharedFrames(resources.keys);
+  releaseSharedFrames(resources.held);
   for (const canvas of resources.canvases) {
     canvas.width = 0;
     canvas.height = 0;
@@ -121,7 +140,7 @@ function targetDimensions(
   };
 }
 
-/** The strip's source range and frame times, clamped to what the file holds. */
+/** The strip's frame times, clamped to what the file holds, and the frames it accepts for them. */
 function stripTimes(
   request: VideoThumbnailDecodeRequest,
   info: SourceInfo,
@@ -144,21 +163,23 @@ function stripTimes(
     duration,
     Math.min(request.frameCount, budgets.richPreviewFrameCount),
   );
-  return { sourceStart, duration, timestamps };
+  const window: FrameWindow = { sourceStart, lead: duration / Math.max(2, timestamps.length) / 2 };
+  return { window, timestamps };
 }
 
 /** Holds every frame of the strip already decoded; returns the slots still to decode. */
 function takeDecodedFrames(
-  timestamps: number[],
+  { timestamps, window }: ReturnType<typeof stripTimes>,
   keyOf: (time: number) => string,
   resources: DecodedResources,
 ): number[] {
   const missing: number[] = [];
   timestamps.forEach((time, slot) => {
-    const url = takeSharedFrame(keyOf(time));
-    if (url === undefined) return void missing.push(slot);
-    resources.urls[slot] = url;
-    resources.keys.push(keyOf(time));
+    const key = keyOf(time);
+    const frame = takeSharedFrame(key, time, window);
+    if (!frame) return void missing.push(slot);
+    resources.urls[slot] = frame.url;
+    resources.held.push({ key, frame });
   });
   return missing;
 }
@@ -166,7 +187,7 @@ function takeDecodedFrames(
 async function decodeFrames(
   sink: ThumbnailCanvasSink,
   times: AsyncIterable<number>,
-  slots: { slot: number; key: string }[],
+  slots: { slot: number; key: string; decodedAt?: number }[],
   signal: AbortSignal,
   resources: DecodedResources,
 ): Promise<void> {
@@ -174,12 +195,13 @@ async function decodeFrames(
   for await (const wrapped of sink.canvasesAtTimestamps(times)) {
     throwIfAborted(signal);
     const target = slots[next++];
-    if (!wrapped || !target) continue;
+    if (!wrapped || target?.decodedAt === undefined) continue;
     resources.canvases.add(wrapped.canvas);
     const blob = await canvasToBlob(wrapped.canvas);
     throwIfAborted(signal);
-    resources.urls[target.slot] = shareFrame(target.key, URL.createObjectURL(blob));
-    resources.keys.push(target.key);
+    const frame = shareFrame(target.key, target.decodedAt, URL.createObjectURL(blob));
+    resources.urls[target.slot] = frame.url;
+    resources.held.push({ key: target.key, frame });
   }
   throwIfAborted(signal);
 }
@@ -215,12 +237,11 @@ export async function decodeVideoThumbnail(
 ): Promise<ThumbnailLoadedResult> {
   const fit = request.fit ?? "cover";
   const keyOf = (time: number) => `${request.source}\u0000${fit}\u0000${time}`;
-  const resources: DecodedResources = { urls: [], keys: [], canvases: new Set() };
+  const resources: DecodedResources = { urls: [], held: [], canvases: new Set() };
   const known = sourceInfos.get(request.source);
   try {
     if (known) {
-      const { timestamps } = stripTimes(request, known, budgets);
-      if (takeDecodedFrames(timestamps, keyOf, resources).length === 0) {
+      if (takeDecodedFrames(stripTimes(request, known, budgets), keyOf, resources).length === 0) {
         throwIfAborted(signal);
         return loadedResult(resources, known.aspect, budgets);
       }
@@ -263,22 +284,22 @@ async function decodeMissingFrames(
     throwIfAborted(signal);
     const info: SourceInfo = { aspect: displayWidth / displayHeight, metadataDuration };
     sourceInfos.set(request.source, info);
-    const { sourceStart, duration, timestamps } = stripTimes(request, info, budgets);
-    const slots = takeDecodedFrames(timestamps, keyOf, resources).map((slot) => ({
-      slot,
-      key: keyOf(timestamps[slot]!),
-    }));
+    const strip = stripTimes(request, info, budgets);
+    const { timestamps, window } = strip;
+    const slots: { slot: number; key: string; decodedAt?: number }[] = takeDecodedFrames(
+      strip,
+      keyOf,
+      resources,
+    ).map((slot) => ({ slot, key: keyOf(timestamps[slot]!) }));
     if (slots.length > 0) {
       const keys = new mediabunny.EncodedPacketSink(track);
-      const maxKeyframeLead = duration / Math.max(2, timestamps.length) / 2;
       async function* decodeTimesAtNearbyKeyframes() {
-        for (const { slot } of slots) {
-          const time = timestamps[slot]!;
+        for (const target of slots) {
+          const time = timestamps[target.slot]!;
           const key = await keys.getKeyPacket(time, { metadataOnly: true });
           if (signal.aborted) return;
-          const near =
-            key && key.timestamp >= sourceStart && time - key.timestamp <= maxKeyframeLead;
-          yield near ? key.timestamp : time;
+          target.decodedAt = key && accepts(window, time, key.timestamp) ? key.timestamp : time;
+          yield target.decodedAt;
         }
       }
       const target = targetDimensions(info.aspect, budgets);
