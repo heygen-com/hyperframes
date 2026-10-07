@@ -3669,6 +3669,57 @@ describe("initSandboxRuntimeModular", () => {
     }
   });
 
+  it("keeps a root rebound during playback paused on GSAP's ticker", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    const raf = createManualRaf();
+    window.requestAnimationFrame = raf.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame;
+    document.body.innerHTML =
+      '<div data-composition-id="main" data-root="true" data-start="0" data-duration="1">' +
+      '<video data-start="0"></video></div>';
+    const video = document.querySelector("video")!;
+    vi.spyOn(video, "play").mockResolvedValue(undefined);
+    vi.spyOn(video, "pause").mockImplementation(() => {});
+    const authored = gsap.timeline({ paused: true });
+    window.gsap = gsap;
+    window.__timelines = { main: authored };
+    const timelines = vi.spyOn(gsap, "timeline");
+    const messages = vi.spyOn(window.parent, "postMessage");
+
+    try {
+      initSandboxRuntimeModular();
+      vi.advanceTimersByTime(0);
+      window.__player!.play();
+      nowMs = 1250;
+      raf.step(250);
+      Object.defineProperty(video, "duration", { value: 12, configurable: true });
+      video.dispatchEvent(new Event("loadedmetadata"));
+      vi.advanceTimersByTime(100);
+
+      expect(
+        messages.mock.calls.some(
+          ([message]) =>
+            (message as { code?: string }).code === "timeline_rebind_after_media_metadata",
+        ),
+      ).toBe(true);
+      const rebound = timelines.mock.results.at(-1)?.value as gsap.core.Timeline;
+      expect(window.__player!.isPlaying()).toBe(true);
+      expect(rebound.paused()).toBe(true);
+      const time = rebound.time();
+      gsap.updateRoot(gsap.globalTimeline.time() + 0.5);
+      expect(rebound.time()).toBe(time);
+      expect(window.__player!.getTime()).toBe(0.25);
+    } finally {
+      window.__hfRuntimeTeardown?.();
+      for (const result of timelines.mock.results) {
+        if (result.type === "return") (result.value as gsap.core.Timeline).kill();
+      }
+      authored.kill();
+    }
+  });
+
   it("sets __renderReady only after timeline is bound, not at __playerReady time", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
