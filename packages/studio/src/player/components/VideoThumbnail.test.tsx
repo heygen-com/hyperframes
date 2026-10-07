@@ -333,6 +333,56 @@ describe("VideoThumbnail during a zoom", () => {
     expect(new Set(shownSources())).toEqual(new Set(["blob:a", "blob:b"]));
   });
 
+  it("holds the strip, and decodes only the new width, when the cache is over its budget", async () => {
+    const disposed: number[] = [];
+    vi.mocked(decodeVideoThumbnail).mockImplementation(async ({ frameCount }) =>
+      frameCount === 1
+        ? { value: { kind: "image", url: "blob:poster", aspect: 16 / 9 }, weight: 1 }
+        : {
+            value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
+            weight: 2,
+            dispose: () => disposed.push(frameCount),
+          },
+    );
+    await render(440);
+    const held = vi.mocked(decodeVideoThumbnail).mock.calls.at(-1)![0].frameCount;
+    // Fill the project's cache past its entry budget, so a strip without a lease is evicted.
+    await act(async () => {
+      for (let i = 0; i < 100; i++) {
+        const lease = thumbnailScheduler.acquire(
+          {
+            key: `filler-${i}`,
+            projectId: "p",
+            sessionEpoch: 1,
+            kind: "image",
+            priority: "visible",
+            load: async () => ({
+              value: { kind: "image", url: `blob:f${i}`, aspect: 1 },
+              weight: 1,
+            }),
+          },
+          () => {},
+        );
+        for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+        lease.release();
+      }
+    });
+    const decodes = vi.mocked(decodeVideoThumbnail).mock.calls.length;
+    vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
+    await act(async () => {
+      reportResize(880, 40);
+      await Promise.resolve();
+    });
+    await rest();
+    const newWidths = vi
+      .mocked(decodeVideoThumbnail)
+      .mock.calls.slice(decodes)
+      .map(([r]) => r.frameCount);
+    expect(newWidths).not.toContain(held);
+    expect(disposed).toEqual([]);
+    expect(new Set(shownSources())).toEqual(new Set(["blob:a", "blob:b"]));
+  });
+
   it("never holds one clip's strip for another while the other decodes", async () => {
     vi.mocked(decodeVideoThumbnail).mockImplementation(({ source }) =>
       source.endsWith("clip.mp4")

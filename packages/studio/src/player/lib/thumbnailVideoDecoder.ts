@@ -210,10 +210,16 @@ function loadedResult(
   resources: DecodedResources,
   aspect: number,
   budgets: Readonly<TimelineViewportBudgets>,
+  frameCount = resources.urls.length,
 ): ThumbnailLoadedResult {
-  const urls = resources.urls.filter((url): url is string => url !== undefined);
-  const firstUrl = urls[0];
+  const decoded = resources.urls.filter((url): url is string => url !== undefined);
+  const firstUrl = decoded[0];
   if (!firstUrl) throw new Error("Video source returned no thumbnail frames");
+  let nearest = firstUrl;
+  const urls = Array.from(
+    { length: frameCount },
+    (_, slot) => (nearest = resources.urls[slot] ?? nearest),
+  );
   const { width, height } = targetDimensions(aspect, budgets);
   const value: ThumbnailValue =
     urls.length === 1
@@ -221,7 +227,7 @@ function loadedResult(
       : { kind: "filmstrip", urls, aspect };
   return {
     value,
-    weight: width * height * 4 * urls.length,
+    weight: width * height * 4 * decoded.length,
     dispose: () => releaseDecodedResources(resources),
   };
 }
@@ -308,7 +314,7 @@ async function decodeMissingFrames(
       });
       await decodeFrames(sink, decodeTimesAtNearbyKeyframes(), slots, signal, resources);
     }
-    return loadedResult(resources, info.aspect, budgets);
+    return loadedResult(resources, info.aspect, budgets, timestamps.length);
   } finally {
     input.dispose();
   }

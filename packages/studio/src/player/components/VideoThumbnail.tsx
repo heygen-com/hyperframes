@@ -83,6 +83,8 @@ function selectThumbnailSnapshot(
 
 type VideoThumbnailRequest = ReturnType<typeof createVideoThumbnailRequest>;
 
+const IDLE: ThumbnailSnapshot = { status: "idle" };
+
 function useVideoThumbnailSnapshot(
   poster: VideoThumbnailRequest | null,
   rich: VideoThumbnailRequest | null,
@@ -93,9 +95,9 @@ function useVideoThumbnailSnapshot(
   const [shown, setShown] = useState({ media, request: rich });
   const settled = richSnapshot.status === "ready" || rich === null;
   if (settled && shown.request !== rich) setShown({ media, request: rich });
+  const shownSnapshot = useThumbnailLease(shown.media === media ? shown.request : null);
   const holdsShown = rich !== null && shown.media === media && shown.request !== rich;
-  const shownSnapshot = useThumbnailLease(holdsShown ? shown.request : null);
-  return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
+  return selectThumbnailSnapshot(posterSnapshot, richSnapshot, holdsShown ? shownSnapshot : IDLE);
 }
 
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */

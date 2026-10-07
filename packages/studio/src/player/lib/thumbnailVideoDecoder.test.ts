@@ -262,6 +262,49 @@ describe("decodeVideoThumbnail", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(8);
   });
 
+  it("fills a frame that failed to decode from the one before it, so tiles stay on their times", async () => {
+    canvasesAtTimestamps.mockImplementation(async function* (timestamps: AsyncIterable<number>) {
+      let slot = 0;
+      for await (const _time of timestamps) {
+        yield slot++ === 2 ? null : { canvas: document.createElement("canvas") };
+      }
+    });
+    const result = await decodeVideoThumbnail(
+      { source, sourceStart: 0, sourceRangeDuration: 8, frameCount: 2 },
+      new AbortController().signal,
+    );
+    expect(result.value).toMatchObject({
+      kind: "filmstrip",
+      urls: ["blob:one", "blob:two", "blob:two"],
+    });
+    result.dispose?.();
+  });
+
+  it("snaps a poster up to a quarter of its range and a strip frame up to half a slice", async () => {
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    const signal = new AbortController().signal;
+    getKeyPacket.mockImplementation(async (time) => ({ timestamp: time - 2.4 }));
+    await decodeVideoThumbnail(
+      { source, sourceStart: 0, sourceRangeDuration: 10, frameCount: 1 },
+      signal,
+    );
+    getKeyPacket.mockImplementation(async (time) => ({ timestamp: time - 2.6 }));
+    await decodeVideoThumbnail(
+      { source: `${source}?b`, sourceStart: 0, sourceRangeDuration: 10, frameCount: 1 },
+      signal,
+    );
+    // Four slices of 8 s: a keyframe 0.9 s early snaps, one 1.1 s early does not.
+    getKeyPacket.mockImplementation(async (time) => ({
+      timestamp: time - (time === 4 ? 0.9 : 1.1),
+    }));
+    await decodeVideoThumbnail(
+      { source: `${source}?c`, sourceStart: 0, sourceRangeDuration: 8, frameCount: 4 },
+      signal,
+    );
+    expect(decoded).toEqual([[5 - 2.4], [5], [0, 2, 4 - 0.9, 6, endOf(0, 8)]]);
+  });
+
   it("revokes a shared frame only once no strip shows it", async () => {
     vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:${Math.random()}`);
     recordDecodes([]);
