@@ -133,7 +133,7 @@ Start audio after Step 3 approval. Run it in the background, then continue to St
 
 `node <SKILL_DIR>/scripts/audio.mjs --script ./SCRIPT.md --storyboard ./STORYBOARD.md --hyperframes . --out ./audio_meta.json --voice <voice-id> &`
 
-The audio script handles narration, word timings, BGM lookup from HeyGen's music library, and timing metadata. BGM mood comes from the storyboard's `music:` field. This uses the HeyGen Audio API for retrieval, not generation, and the same `~/.heygen` credential as TTS. For provider details, read `../media-use/audio/references/tts.md`. When the host app's own music tool supplies the track instead, set `music: none` in the storyboard and, after the audio script, set `bgm` in `audio_meta.json` to `{ "path": "<the track under assets/>", "volume": 0.12 }`.
+The audio script handles narration, word timings, BGM lookup from HeyGen's music library, and timing metadata. BGM mood comes from the storyboard's `music:` field. This uses the HeyGen Audio API for retrieval, not generation, and the same `~/.heygen` credential as TTS. For provider details, read `../media-use/audio/references/tts.md`. When the host app's own music tool supplies the track instead, set `music: none` in the storyboard; then, after the `fetch-sfx` pass (every audio pass rewrites `audio_meta.json`) and just before assembling, set `bgm` in `audio_meta.json` to `{ "path": "<the track under assets/>" }`, creating the file if there is none.
 
 If there is no narration and no `SCRIPT.md`, skip voice generation. BGM may still run if the storyboard has a music mood.
 
