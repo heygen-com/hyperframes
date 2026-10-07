@@ -330,6 +330,109 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     expect(after.sweep).not.toBe(before.sweep);
   });
 
+  it.each([
+    ["a blur", "#title { color: #fff; }", "filter = 'blur(8px)'"],
+    ["a text color", "#title { color: #fff; }", "color = 'rgb(255, 51, 0)'"],
+    ["a background color", "#title { background: #000; }", "backgroundColor = 'rgb(40, 0, 0)'"],
+    ["a box shadow", "#title { box-shadow: none; }", "boxShadow = '0 0 12px red'"],
+  ])("sees %s tween on a title that never moves", async (_, css, change) => {
+    await load(composition(css, '<h1 id="title" class="fixed">Title</h1>'));
+    const before = await sample();
+    await mutate(`document.getElementById("title").style.${change}`);
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  it("sees an SVG shape's fill color change", async () => {
+    await load(
+      composition(
+        "",
+        '<svg width="200" height="100"><rect id="shape" width="120" height="60" fill="#fff" /></svg>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("shape").style.fill = "rgb(255, 51, 0)"');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  it("sees the time of a video whose picture is drawn elsewhere advance, in both samplers", async () => {
+    await load(
+      composition(
+        "",
+        '<h1 class="fixed">Title</h1><video id="media" style="display:none"></video>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("media").currentTime = 4');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  it("counts audio time as the timeline running, but never as a moving picture", async () => {
+    await load(composition("", '<h1 class="fixed">Title</h1><audio id="media"></audio>'));
+    const before = await sample();
+    await mutate('document.getElementById("media").currentTime = 4');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).toBe(before.liveness);
+  });
+
+  it.each([
+    ["no border", ""],
+    ["a border drawn on one side in its own color", "border-bottom: 2px solid #fff;"],
+  ])(
+    "ignores a color change on a skipped host with %s, though Blink resolves undrawn border colors from it",
+    async (_, border) => {
+      await load(
+        composition(
+          `#host { content-visibility: hidden; width: 200px; height: 80px; color: #fff; ${border} }`,
+          '<div id="host">Title</div>',
+        ),
+      );
+      const before = await sample();
+      await mutate('document.getElementById("host").style.color = "rgb(255, 51, 0)"');
+      const after = await sample();
+
+      expect(after.sweep).toBe(before.sweep);
+    },
+  );
+
+  it.each([
+    ["border", "border: 4px solid #fff;", "borderColor"],
+    ["outline", "outline: 4px solid #fff;", "outlineColor"],
+  ])("sees a drawn %s change color", async (_, stroke, property) => {
+    await load(
+      composition(`#box { width: 120px; height: 60px; ${stroke} }`, '<div id="box"></div>'),
+    );
+    const before = await sample();
+    await mutate(`document.getElementById("box").style.${property} = "rgb(255, 51, 0)"`);
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+  });
+
+  it("ignores media time on a data-layout-ignore layer", async () => {
+    await load(
+      composition(
+        "",
+        '<h1 class="fixed">Title</h1><div data-layout-ignore><audio id="media"></audio></div>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("media").currentTime = 4');
+    const after = await sample();
+
+    expect(after.sweep).toBe(before.sweep);
+  });
+
   it("sees a clip-path wipe over a box that never moves", async () => {
     await load(
       composition(

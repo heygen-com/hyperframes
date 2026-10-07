@@ -96,6 +96,38 @@ const neverDecodes = (clip: HTMLElement) => {
 describe("runtime entry", () => {
   afterEach(resetRuntimeGlobals);
 
+  it("drives an async frame source without a GSAP timeline and waits before capture", async () => {
+    const root = mountRoot();
+    root.setAttribute("data-duration", "10");
+    root.appendChild(document.createElement("div"));
+    window.__timelines = {};
+    Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
+    await evaluateRuntime();
+    expect(window.__hyperframes!.createFilmBridge).toEqual(expect.any(Function));
+    let finish!: () => void;
+    const first = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const render = vi
+      .fn()
+      .mockImplementationOnce(() => first)
+      .mockResolvedValue(undefined);
+    window.__hyperframes!.registerFrameSource({ element: root, render });
+    delete (document as { readyState?: unknown }).readyState;
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    await vi.waitFor(() => expect(render).toHaveBeenCalled());
+    window.__player!.seek(1.2);
+    let captured = false;
+    const capture = window.__hfWaitForSeekCompletion!().then(() => {
+      captured = true;
+    });
+    await Promise.resolve();
+    expect(captured).toBe(false);
+    finish();
+    await capture;
+    expect(render).toHaveBeenLastCalledWith(1.2, expect.any(AbortSignal));
+  });
+
   it("paints no timed clip, from script evaluation until the first visibility pass decides it", async () => {
     servePreview();
     const root = mountRoot();

@@ -51,6 +51,7 @@ import {
   resolveHeadlessShellPath,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
+  usesSoftwareWebGpu,
   type BrowserLease,
   type CaptureMode,
 } from "./browserManager.js";
@@ -114,6 +115,8 @@ export interface CaptureSession {
   outputDir: string;
   /** The composition served at `serverUrl` declares `data-requires-webgpu`. */
   requiresWebGpu?: boolean;
+  /** The browser was launched to run that WebGPU on SwiftShader ({@link usesSoftwareWebGpu}). */
+  softwareWebGpu?: boolean;
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
   /**
@@ -1305,9 +1308,10 @@ export async function createCaptureSession(
       .then((res) => res.text())
       .then(compositionRequiresWebGpu)
       .catch(() => false));
+  const gpuConfig = { ...config, browserGpuMode: resolvedGpuMode };
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
-    { ...config, browserGpuMode: resolvedGpuMode },
+    gpuConfig,
   );
 
   const browserLease = await acquireBrowser(chromeArgs, config);
@@ -1320,6 +1324,7 @@ export async function createCaptureSession(
     config,
     useDrawElement,
     requiresWebGpu,
+    softwareWebGpu: usesSoftwareWebGpu(requiresWebGpu, gpuConfig),
   });
 }
 
@@ -1332,6 +1337,7 @@ interface CaptureSessionConstructionInput {
   config?: Partial<EngineConfig>;
   useDrawElement: boolean;
   requiresWebGpu?: boolean;
+  softwareWebGpu?: boolean;
 }
 
 async function constructCaptureSessionWithRollback(
@@ -1386,6 +1392,7 @@ async function constructCaptureSession(
     config,
     useDrawElement,
     requiresWebGpu,
+    softwareWebGpu,
     onPageCreated,
   } = input;
   const { browser, captureMode } = browserLease;
@@ -1511,6 +1518,7 @@ async function constructCaptureSession(
     outputDir,
     onBeforeCapture,
     requiresWebGpu,
+    softwareWebGpu,
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
@@ -2391,7 +2399,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
       throw error;
     }
-    await assertWebGpuAdapterAvailable(page, session.requiresWebGpu ?? false);
+    await assertWebGpuAdapterAvailable(
+      page,
+      session.requiresWebGpu ?? false,
+      session.softwareWebGpu,
+    );
   };
 
   if (session.captureMode === "screenshot") {
@@ -3032,12 +3044,15 @@ export async function computeStaticFrameSet(
     const w = window as unknown as {
       __timelines?: Record<string, AnyTween>;
       __hf?: { duration?: number };
+      __hfHasFrameSources?: () => boolean;
     };
     for (const tl of Object.values(w.__timelines || {})) {
       if (tl && typeof tl.getChildren === "function") walk(tl, 0);
     }
     const hasVideo = !!document.querySelector("video");
     const hasCanvas = !!document.querySelector("canvas");
+    const hasFrameSources = w.__hfHasFrameSources?.() ?? false;
+    const hasIframe = !!document.querySelector("iframe");
     // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
     // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
     // unprotected and could be deduped into the previous scene. Disqualify the comp.
@@ -3067,6 +3082,8 @@ export async function computeStaticFrameSet(
       duration: w.__hf?.duration ?? 0,
       hasVideo,
       hasCanvas,
+      hasFrameSources,
+      hasIframe,
       hasNonGsapAnim,
       hasUnresolvableClipStart,
       hasTimelineCall,
@@ -3079,6 +3096,8 @@ export async function computeStaticFrameSet(
     duration,
     hasVideo,
     hasCanvas,
+    hasFrameSources,
+    hasIframe,
     hasNonGsapAnim,
     hasUnresolvableClipStart,
     hasTimelineCall,
@@ -3088,6 +3107,8 @@ export async function computeStaticFrameSet(
     duration: number;
     hasVideo: boolean;
     hasCanvas: boolean;
+    hasFrameSources: boolean;
+    hasIframe: boolean;
     hasNonGsapAnim: boolean;
     hasUnresolvableClipStart: boolean;
     hasTimelineCall: boolean;
@@ -3121,6 +3142,9 @@ export async function computeStaticFrameSet(
   if (!(duration > 0)) reasons.push("unknown/zero duration");
   if (hasVideo) reasons.push("video");
   if (hasCanvas) reasons.push("canvas/webgl");
+  // GSAP intervals cannot predict frame-source or opaque iframe draws.
+  if (hasFrameSources) reasons.push("registered frame source");
+  if (hasIframe) reasons.push("iframe");
   if (tweenCount === 0) reasons.push("no GSAP tweens (non-GSAP animation)");
   if (hasNonGsapAnim) reasons.push("running CSS/WAAPI animation");
   // tl.call() side effects are not seek-idempotent (see hasTimelineCall detection

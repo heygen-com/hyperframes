@@ -27,7 +27,7 @@ import { AAC_DELIVERY_TRUE_PEAK_DBFS, padOrTrimAudioToVideoFrameCount } from "..
 import { encoderFailureError } from "../encoderInterruption.js";
 import { DEFAULT_HLS_SEGMENT_SECONDS } from "../hlsConfig.js";
 import type { RenderOutputFormat } from "../renderFormat.js";
-import { updateJobStatus } from "../shared.js";
+import { reportAssembleProgress, updateJobStatus } from "../shared.js";
 import { defaultLogger } from "../../../logger.js";
 
 export interface AssembleStageInput {
@@ -66,7 +66,31 @@ function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number | undef
   );
 }
 
+function startAssembleProgress(
+  job: AssembleStageInput["job"],
+  seconds: number,
+  onProgress: AssembleStageInput["onProgress"],
+): ((secondsWritten: number) => void) | undefined {
+  updateJobStatus(job, "assembling", "Assembling final video", 90, onProgress, {
+    code: "assemble",
+    ...(seconds > 0 && { done: 0, total: seconds }),
+  });
+  if (seconds <= 0) return undefined;
+  return (done) => reportAssembleProgress(job, done, seconds, onProgress);
+}
+
 export async function runAssembleStage(input: AssembleStageInput): Promise<AssembleStageResult> {
+  const { job, onProgress } = input;
+  const seconds = job.duration ?? 0;
+  const result = await assembleOutput(input, startAssembleProgress(job, seconds, onProgress));
+  reportAssembleProgress(job, seconds, seconds, onProgress);
+  return result;
+}
+
+async function assembleOutput(
+  input: AssembleStageInput,
+  onSecondsWritten: ((secondsWritten: number) => void) | undefined,
+): Promise<AssembleStageResult> {
   const {
     job,
     videoOnlyPath,
@@ -76,12 +100,10 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
     format,
     abortSignal,
     assertNotAborted,
-    onProgress,
   } = input;
   const isHls = format === "hls";
 
   const stage6Start = Date.now();
-  updateJobStatus(job, "assembling", "Assembling final video", 90, onProgress);
 
   if (hasAudio) {
     const audioExtension = extname(audioOutputPath);
@@ -112,6 +134,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
           audioCodec: "aac",
         },
         job.config.fps,
+        onSecondsWritten,
       );
       assertNotAborted();
       if (!muxResult.success) {
@@ -127,6 +150,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
       abortSignal,
       undefined,
       job.config.fps,
+      onSecondsWritten,
     );
     assertNotAborted();
     if (!faststartResult.success) {

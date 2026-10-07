@@ -20,6 +20,7 @@ import { createGoogleMapsAdapter } from "./adapters/google-maps";
 import { createMaplibreAdapter } from "./adapters/maplibre";
 import { createD3Adapter } from "./adapters/d3";
 import { createTypegpuAdapter } from "./adapters/typegpu";
+import { createFrameSourceAdapter } from "./frameSources";
 import {
   patchVideoTextureCompat,
   patchWebGLVideoTextureCompat,
@@ -3940,6 +3941,9 @@ export function initSandboxRuntimeModular(): void {
         activateChildren: true,
         suppressEvents: options?.suppressEvents,
       });
+      // The explicit seek owns this paused frame; the transport must not redraw after capture waits.
+      lastTransportSeekTime = state.currentTime;
+      lastTransportSeekTimeline = state.capturedTimeline;
       runAdapters("pause", 0, pageAnimations);
       syncMediaForCurrentState();
       colorGrading.redraw();
@@ -4018,6 +4022,13 @@ export function initSandboxRuntimeModular(): void {
   });
 
   state.deterministicAdapters = [
+    createFrameSourceAdapter({
+      start: (element) => resolveStartForElement(element, 0),
+      duration: (element) => resolveDurationForElement(element),
+      compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
+      canonicalFps: () => state.canonicalFps,
+      exportRenderSeek: () => Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
+    }),
     createWaapiAdapter(),
     createCssAdapter({
       resolveStartSeconds: (element) => resolveStartForElement(element, 0),

@@ -85,6 +85,12 @@ describe("resolveConfig", () => {
     expect(config.enableBrowserPool).toBe(true);
   });
 
+  it("keeps software WebGPU off unless PRODUCER_ALLOW_SOFTWARE_WEBGPU opts in", () => {
+    expect(resolveConfig().allowSoftwareWebGpu).toBe(false);
+    setEnv("PRODUCER_ALLOW_SOFTWARE_WEBGPU", "true");
+    expect(resolveConfig().allowSoftwareWebGpu).toBe(true);
+  });
+
   it("lets env vars opt out of default streaming encode", () => {
     setEnv("PRODUCER_ENABLE_STREAMING_ENCODE", "false");
 

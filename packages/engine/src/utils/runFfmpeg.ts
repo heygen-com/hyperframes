@@ -50,6 +50,33 @@ export function isExternalFfmpegInterruption(
   return result.exitCode === 255 && FFMPEG_SIGTERM_EXIT_LINE.test(result.stderr);
 }
 
+/** ffmpeg's stats line as it writes: frames encoded so far and seconds of output written. */
+export interface FfmpegStats {
+  frames?: number;
+  seconds?: number;
+}
+
+/** Reads stderr chunks, which split stats lines anywhere, and reports each complete stats line. */
+export function ffmpegStatsReader(onStats: (stats: FfmpegStats) => void): (chunk: string) => void {
+  let rest = "";
+  return (chunk) => {
+    const lines = (rest + chunk).split(/[\r\n]/);
+    rest = lines.pop() ?? "";
+    for (const line of lines) {
+      const frame = /frame=\s*(\d+)/.exec(line)?.[1];
+      const time = /time=\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line);
+      if (frame === undefined && !time) continue;
+      onStats({
+        frames: frame === undefined ? undefined : Number(frame),
+        seconds: time
+          ? Math.round((Number(time[1]) * 3600 + Number(time[2]) * 60 + Number(time[3])) * 100) /
+            100
+          : undefined,
+      });
+    }
+  };
+}
+
 const DEFAULT_TIMEOUT = 300_000;
 
 const DEFAULT_STDERR_TAIL_LINES = 15;

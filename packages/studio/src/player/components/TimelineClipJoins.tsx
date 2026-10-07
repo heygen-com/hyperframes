@@ -1,6 +1,7 @@
 import { CLIP_Y } from "./timelineLayout";
 import { sortedLaneClips, TRACK_GAP_EPSILON_S } from "./timelineGaps";
 import type { TimelineElement } from "../store/playerStore";
+import { TimelineTimeLayer, timeLayerPercent } from "./TimelineTimeLayer";
 
 /** Times where one clip on a row ends exactly where the next begins. */
 export function deriveTimelineClipJoins(elements: readonly TimelineElement[]): number[] {
@@ -31,22 +32,26 @@ export function TimelineClipJoins({
   color,
 }: TimelineClipJoinsProps) {
   const height = clipBarHeight ?? rowHeight - 2 * CLIP_Y;
-  return deriveTimelineClipJoins(elements).map((time) => (
-    <div
-      key={time}
-      data-timeline-clip-join=""
-      aria-hidden="true"
-      className="absolute pointer-events-none"
-      style={{
-        left: time * pixelsPerSecond,
-        top: CLIP_Y,
-        width: 1,
-        height,
-        transform: "translateX(-50%)",
-        background: color,
-        // Over an idle or hovered clip, under the diamonds (6) and a selected clip (10).
-        zIndex: 5,
-      }}
-    />
-  ));
+  return (
+    <TimelineTimeLayer pixelsPerSecond={pixelsPerSecond}>
+      {deriveTimelineClipJoins(elements).map((time) => (
+        <div
+          key={time}
+          data-timeline-clip-join=""
+          aria-hidden="true"
+          className="absolute pointer-events-none"
+          style={{
+            left: timeLayerPercent(time),
+            top: CLIP_Y,
+            width: 1,
+            height,
+            transform: "translateX(-50%)",
+            background: color,
+            // Over an idle or hovered clip, under the diamonds (6) and a selected clip (10).
+            zIndex: 5,
+          }}
+        />
+      ))}
+    </TimelineTimeLayer>
+  );
 }

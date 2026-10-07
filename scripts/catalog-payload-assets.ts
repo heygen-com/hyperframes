@@ -27,6 +27,8 @@ import {
   constants,
 } from "node:fs";
 import { extname, join, resolve, relative, isAbsolute, sep } from "node:path";
+import { escapeInlineScriptSource } from "../packages/core/src/compiler/htmlDocument.ts";
+import { INLINED_FILE_ATTR } from "../packages/core/src/compiler/scriptRuns.ts";
 
 export const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -353,15 +355,45 @@ export function processAssets(
     target,
     scriptsInlinedByCaller,
   };
+  const scriptTags = context.scriptsInlinedByCaller ? new Set<string>() : localScriptTagRefs(html);
   const candidates = [
     ...localReferences(html).map((ref) => ({ ref, strict: true })),
     ...probableReferences(html).map((ref) => ({ ref, strict: false })),
-  ];
+  ].filter((candidate) => !scriptTags.has(candidate.ref));
   const result: AssetResult = { html, hosted: 0, inlined: 0, unresolved: [] };
   for (const candidate of candidates) {
     applyOutcome(result, candidate.ref, classifyCandidate(candidate, context));
   }
+  // Last, so no reference rewrite above ever reaches into a script's own text.
+  if (scriptTags.size > 0) inlineScriptTags(result, scriptTags, context);
   return result;
+}
+
+const SCRIPT_WITH_SRC = /<script\b([^>]*?)\s+src=(["'])([^"']+)\2([^>]*)>\s*<\/script>/gi;
+const isScriptFile = (ref: string) => isFileReference(ref) && /\.m?js$/i.test(pathPart(ref));
+
+/** Project script files a `<script src>` loads; their bytes are read later, so missing ones stay. */
+function localScriptTagRefs(html: string): Set<string> {
+  return new Set([...html.matchAll(SCRIPT_WITH_SRC)].map((m) => m[3] ?? "").filter(isScriptFile));
+}
+
+/** The docs host's CSP runs inline scripts but refuses a `data:` script, so a project script file
+ * ships as inline text, marked the way the compiler marks one so `defer` keeps its order. */
+function inlineScriptTags(result: AssetResult, refs: Set<string>, context: AssetContext): void {
+  result.html = result.html.replace(
+    SCRIPT_WITH_SRC,
+    (tag, before: string, _q, ref: string, after: string) => {
+      if (!refs.has(ref)) return tag;
+      const bytes = readProjectFile(context.root, resolve(context.projectDir, pathPart(ref)));
+      if (bytes === null) {
+        result.unresolved.push(ref);
+        return tag;
+      }
+      result.inlined += 1;
+      const code = escapeInlineScriptSource(bytes.toString("utf8"));
+      return `<script${before}${after} ${INLINED_FILE_ATTR}="${ref}">${code}</script>`;
+    },
+  );
 }
 
 /** `image/png` -> `.png`, for naming a blob that arrives without a filename. */
