@@ -83,10 +83,6 @@ function selectThumbnailSnapshot(
 
 type VideoThumbnailRequest = ReturnType<typeof createVideoThumbnailRequest>;
 
-/**
- * The strip to show: the requested width once ready, else the strip already on screen, kept leased
- * while a zoom's new width decodes, else the poster.
- */
 function useVideoThumbnailSnapshot(
   poster: VideoThumbnailRequest | null,
   rich: VideoThumbnailRequest | null,

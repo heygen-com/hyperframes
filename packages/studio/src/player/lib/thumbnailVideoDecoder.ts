@@ -9,12 +9,7 @@ export interface VideoThumbnailDecodeRequest {
   fit?: "contain" | "cover";
 }
 
-/**
- * The times a strip of `frameCount` slices shows: each slice's left edge, so a strip twice as long
- * holds every frame of this one, then the clip's last frame. A poster is the midpoint.
- */
-// Inside the last frame: a time at the very end of a file can decode to nothing.
-const END_FRAME_LEAD_S = 0.001;
+const LAST_FRAME_INSET_S = 0.001;
 
 export function videoThumbnailTimestamps(
   start: number,
@@ -29,10 +24,9 @@ export function videoThumbnailTimestamps(
     { length: count },
     (_, index) => safeStart + (safeDuration * index) / count,
   );
-  return [...edges, safeStart + Math.max(0, safeDuration - END_FRAME_LEAD_S)];
+  return [...edges, safeStart + Math.max(0, safeDuration - LAST_FRAME_INSET_S)];
 }
 
-/** A decoded frame, shared by every strip of its source that would accept it for a time. */
 interface SharedFrame {
   url: string;
   decodedAt: number;
@@ -44,11 +38,9 @@ interface HeldFrame {
   frame: SharedFrame;
 }
 
-/** A strip takes a frame decoded inside its range, at most `lead` before the time it shows. */
 interface FrameWindow {
   sourceStart: number;
   lead: number;
-  /** The clip's last frame, shown as decoded at its own time, never from an earlier keyframe. */
   end: number;
 }
 
@@ -64,7 +56,6 @@ function takeSharedFrame(key: string, time: number, window: FrameWindow): Shared
   return frame;
 }
 
-/** Shares a newly decoded frame, or the same frame another strip decoded meanwhile. */
 function shareFrame(key: string, decodedAt: number, url: string): SharedFrame {
   const frames = sharedFrames.get(key) ?? [];
   const existing = frames.find((shared) => shared.decodedAt === decodedAt);
@@ -102,9 +93,7 @@ async function canvasToBlob(canvas: HTMLCanvasElement | OffscreenCanvas): Promis
 }
 
 interface DecodedResources {
-  /** One frame per slot of the strip; a slot the source could not decode stays empty. */
   urls: (string | undefined)[];
-  /** The shared frames this strip holds, released when the strip is. */
   held: HeldFrame[];
   canvases: Set<HTMLCanvasElement | OffscreenCanvas>;
 }
@@ -115,7 +104,6 @@ interface ThumbnailCanvasSink {
   ): AsyncIterable<{ canvas: HTMLCanvasElement | OffscreenCanvas } | null>;
 }
 
-/** What a strip of a source needs before it can name its frames. */
 interface SourceInfo {
   aspect: number;
   metadataDuration: number | null;
@@ -149,7 +137,6 @@ function targetDimensions(
   };
 }
 
-/** The strip's frame times, clamped to what the file holds, and the frames it accepts for them. */
 function stripTimes(
   request: VideoThumbnailDecodeRequest,
   info: SourceInfo,
@@ -181,7 +168,6 @@ function stripTimes(
   return { window, timestamps };
 }
 
-/** Holds every frame of the strip already decoded; returns the slots still to decode. */
 function takeDecodedFrames(
   { timestamps, window }: ReturnType<typeof stripTimes>,
   keyOf: (time: number) => string,
@@ -240,10 +226,7 @@ function loadedResult(
   };
 }
 
-/**
- * Sparse Mediabunny extraction with one pooled canvas and one cleanup owner. Frames another strip
- * of the source already shows are reused, so a zoom decodes only the frames that are new.
- */
+/** Sparse Mediabunny extraction with one pooled canvas and one cleanup owner. */
 export async function decodeVideoThumbnail(
   request: VideoThumbnailDecodeRequest,
   signal: AbortSignal,

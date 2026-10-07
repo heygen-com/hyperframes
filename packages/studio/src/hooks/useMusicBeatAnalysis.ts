@@ -80,7 +80,6 @@ async function loadBeatAnalysis(
 ): Promise<{ analysis: MusicAnalysis; times: number[]; strengths: number[] } | null> {
   let promise = analysisCache.get(musicSrc);
   if (!promise) {
-    // Each long stage of the analysis waits for the timeline to rest, so it never lands mid-zoom.
     promise = analyzeMusicFromUrl(musicSrc, { pause: whenTimelineIdle });
     cacheAnalysis(musicSrc, promise);
   }

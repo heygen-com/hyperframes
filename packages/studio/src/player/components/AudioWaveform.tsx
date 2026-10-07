@@ -158,8 +158,6 @@ async function decodeWaveformPeaks(url: string, signal: AbortSignal): Promise<nu
 }
 
 /** Bounded waveform subscriber; cache, cancellation and dedupe live in one scheduler. */
-// One screen each side and half a screen above and below; scrollMargin applies it inside the
-// timeline's own scroller too (TypeScript's DOM types lack it).
 const NEAR_SCREEN: IntersectionObserverInit & { scrollMargin: string } = {
   rootMargin: "50% 100%",
   scrollMargin: "50% 100%",
@@ -167,7 +165,6 @@ const NEAR_SCREEN: IntersectionObserverInit & { scrollMargin: string } = {
 const nearScreenListeners = new Map<Element, (near: boolean) => void>();
 let nearScreen: IntersectionObserver | null = null;
 
-/** Whether `element` is on or near the screen, kept current by one observer for all waveforms. */
 function useNearScreen(element: Element | null): boolean {
   const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined");
   useEffect(() => {
@@ -247,7 +244,6 @@ export const AudioWaveform = memo(function AudioWaveform({
       span,
     );
   }, [fades, from, muted, peaks, to, trimEndFraction, trimStartFraction]);
-  // A waveform off screen draws when it comes near, not at every zoom that resizes it.
   const near = useNearScreen(root);
   useEffect(() => {
     if (near) draw();

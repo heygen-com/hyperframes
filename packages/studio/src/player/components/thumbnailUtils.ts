@@ -11,7 +11,6 @@ export interface ThumbnailStripLayout {
 /** Quantize request identities so a pixel-by-pixel resize does not thrash the cache. */
 export function quantizeThumbnailFrameCount(frameCount: number): number {
   const safeCount = Math.max(1, Number.isFinite(frameCount) ? Math.ceil(frameCount) : 1);
-  // Capped at a power of two too, so the top step still holds every frame of the one below it.
   const cap = 2 ** Math.floor(Math.log2(MAX_VISIBLE_THUMBNAIL_FRAMES));
   return Math.min(cap, 2 ** Math.ceil(Math.log2(safeCount)));
 }
