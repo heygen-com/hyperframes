@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -73,8 +73,9 @@ const COMPOSITION = `<!DOCTYPE html>
 
 // The repo's two-scene fixture: two sub-composition hosts, each a full-frame video, cut at
 // 1 s. Its media is swapped for a generated clip.
-const CUT_FIXTURE = fileURLToPath(
-  new URL("../../../tests/nested-sequential-video-local-start/src", import.meta.url),
+const CUT_FIXTURE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../tests/nested-sequential-video-local-start/src",
 );
 const CUT_FPS = 24;
 const CUT_FRAME = 24;
