@@ -3836,7 +3836,6 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
-  let transportRenderedSinceHostTick = false;
   const transport: RuntimePlayerTransport = {
     play: () => {
       flushHeldSeek();
@@ -3858,7 +3857,6 @@ export function initSandboxRuntimeModular(): void {
       }
       pauseTimelineIfPossible(tl);
       if (!clock.play()) return;
-      transportRenderedSinceHostTick = false;
       state.isPlaying = true;
       state.mediaForceSyncNextTick = true;
       hardSyncAllMedia(clock.now());
@@ -3944,8 +3942,6 @@ export function initSandboxRuntimeModular(): void {
         suppressEvents: options?.suppressEvents,
       });
       // The explicit seek owns this paused frame; the transport must not redraw after capture waits.
-      lastTransportSeekTime = state.currentTime;
-      lastTransportSeekTimeline = state.capturedTimeline;
       runAdapters("pause", 0, pageAnimations);
       syncMediaForCurrentState();
       colorGrading.redraw();
@@ -4341,7 +4337,10 @@ export function initSandboxRuntimeModular(): void {
     // play(), so without the rearm it holds its initial CSS state (opacity:0).
     const rearmed = tl && opts?.activateChildren ? activateSiblingTimelines(tl) : [];
     try {
-      return seekRootChildrenAndAdapters(tl, t, opts);
+      const animations = seekRootChildrenAndAdapters(tl, t, opts);
+      lastTransportSeekTime = t;
+      lastTransportSeekTimeline = tl;
+      return animations;
     } finally {
       for (const sibling of rearmed) pauseTimelineIfPossible(sibling);
     }
@@ -4577,6 +4576,44 @@ export function initSandboxRuntimeModular(): void {
     return longest;
   };
 
+  function refreshTransportClockSource(): void {
+    // Audio-master clock: three tiers of timing precision.
+    // 1. WebAudio (AudioContext.currentTime) while it plays a decoded buffer: ~21µs, sample-accurate
+    // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
+    // 3. Monotonic (performance.now()): ~1ms, no audio coupling
+    if (clock.isPlaying() && !state.mediaOutputMuted) {
+      if (
+        !state.nativeMediaSyncDisabled &&
+        !state.webAudioMediaDisabled &&
+        webAudio.ownsClock() &&
+        webAudio.context
+      ) {
+        const webAudioTime = webAudio.getTime();
+        if (webAudioTime >= 0) {
+          clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
+        }
+      } else {
+        const source = followedOrLongestRunningAudio(clock.audioElement());
+        if (source && !source.el.paused) {
+          clock.attachAudioSource({
+            el: source.el,
+            compositionStart: source.start,
+            mediaStart: readElementPlaybackStart(source.el),
+            rate: readElementRateSpec(source.el),
+          });
+        } else if (source && source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+          // Audio is buffering — freeze visuals at last known position
+          // instead of falling through to monotonic (which runs ahead).
+          clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
+        } else if (clock.hasAudioSource()) {
+          clock.detachAudioSource();
+        }
+      }
+    } else if (clock.hasAudioSource()) {
+      clock.detachAudioSource();
+    }
+  }
+
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
@@ -4667,41 +4704,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
 
-      // Audio-master clock: three tiers of timing precision.
-      // 1. WebAudio (AudioContext.currentTime) while it plays a decoded buffer: ~21µs, sample-accurate
-      // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
-      // 3. Monotonic (performance.now()): ~1ms, no audio coupling
-      if (clock.isPlaying() && !state.mediaOutputMuted) {
-        if (
-          !state.nativeMediaSyncDisabled &&
-          !state.webAudioMediaDisabled &&
-          webAudio.ownsClock() &&
-          webAudio.context
-        ) {
-          const webAudioTime = webAudio.getTime();
-          if (webAudioTime >= 0) {
-            clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
-          }
-        } else {
-          const source = followedOrLongestRunningAudio(clock.audioElement());
-          if (source && !source.el.paused) {
-            clock.attachAudioSource({
-              el: source.el,
-              compositionStart: source.start,
-              mediaStart: readElementPlaybackStart(source.el),
-              rate: readElementRateSpec(source.el),
-            });
-          } else if (source && source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-            // Audio is buffering — freeze visuals at last known position
-            // instead of falling through to monotonic (which runs ahead).
-            clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
-          } else if (clock.hasAudioSource()) {
-            clock.detachAudioSource();
-          }
-        }
-      } else if (clock.hasAudioSource()) {
-        clock.detachAudioSource();
-      }
+      refreshTransportClockSource();
 
       const t = clock.now();
       state.currentTime = t;
@@ -4725,9 +4728,6 @@ export function initSandboxRuntimeModular(): void {
         state.capturedTimeline !== lastTransportSeekTimeline
       ) {
         seekTimelineAndAdapters(t);
-        if (isPlaying) transportRenderedSinceHostTick = true;
-        lastTransportSeekTime = t;
-        lastTransportSeekTimeline = state.capturedTimeline;
         if (!isPlaying) pausedSeekDeferredByManualGesture = false;
       }
       if (isPlaying) {
@@ -5045,13 +5045,12 @@ export function initSandboxRuntimeModular(): void {
     },
     onTick: () => {
       if (state.tornDown || !clock.isPlaying()) return;
-      if (transportRenderedSinceHostTick) {
-        transportRenderedSinceHostTick = false;
-        return;
-      }
+      refreshTransportClockSource();
       const t = clock.now();
       state.currentTime = t;
-      seekTimelineAndAdapters(t);
+      if (t !== lastTransportSeekTime || state.capturedTimeline !== lastTransportSeekTimeline) {
+        seekTimelineAndAdapters(t);
+      }
       if (clock.reachedEnd()) {
         webAudio.stopAll();
         clock.detachAudioSource();

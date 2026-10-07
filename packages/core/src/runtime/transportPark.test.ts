@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
+import { WebAudioTransport } from "./webAudioTransport";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type { RuntimeTimelineLike } from "./types";
 
@@ -348,7 +349,8 @@ describe("parked transport loop", () => {
     return seeks;
   };
 
-  it("renders a playing frame once when the host also ticks it", () => {
+  it("does not seek a timeline time already rendered by its frame loop", () => {
+    vi.spyOn(performance, "now").mockReturnValue(1000);
     mount();
     initSandboxRuntimeModular();
     quiesce();
@@ -362,6 +364,65 @@ describe("parked transport loop", () => {
 
     expect(perFrame).toBeGreaterThan(0);
     expect(seeks.length).toBe(perFrame);
+  });
+
+  it("renders a newer host time after its own frame rendered an earlier time", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    nowMs = 1008;
+    frame120Hz();
+    const seeks = countSeeks();
+
+    nowMs = 1024;
+    hostTick();
+
+    expect(seeks).toContain(0.024);
+  });
+
+  it("reapplies an explicit seek even when that timeline time was already rendered", () => {
+    vi.spyOn(performance, "now").mockReturnValue(1000);
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    frame120Hz();
+    const timeline = window.__timelines!["main"]!;
+    timeline.totalTime!(1);
+    const seeks = countSeeks();
+
+    window.__player!.seek(0);
+
+    expect(seeks).toContain(0);
+    expect(timeline.totalTime!()).toBe(0);
+  });
+
+  it("refreshes the WebAudio snapshot on host ticks without iframe frames", () => {
+    let audioTime = 0;
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    vi.spyOn(WebAudioTransport.prototype, "ownsClock").mockReturnValue(true);
+    vi.spyOn(WebAudioTransport.prototype, "context", "get").mockReturnValue({} as AudioContext);
+    vi.spyOn(WebAudioTransport.prototype, "getTime").mockImplementation(() => audioTime);
+    frame120Hz();
+    const seeks = countSeeks();
+
+    audioTime = 0.024;
+    hostTick();
+    const firstSeekCount = seeks.length;
+    hostTick();
+    expect(seeks.length).toBe(firstSeekCount);
+    audioTime = 0.048;
+    hostTick();
+
+    expect(seeks).toContain(0.024);
+    expect(seeks.at(-1)).toBe(0.048);
+    expect(window.__player!.getTime()).toBe(0.048);
   });
 
   it.each([false, true])(
