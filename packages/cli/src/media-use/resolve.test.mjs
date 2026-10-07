@@ -868,9 +868,12 @@ test("missing required args exits 2", () => {
 
 test("--json returns error JSON on stub provider failure", () => {
   setup();
+  // A HeyGen CLI that finds nothing: the miss is the generic one on every machine, with or without a real CLI.
+  const binDir = writeFakeHeygen(`echo '{"data":[]}'`);
   try {
     runResolve(["--type", "bgm", "--intent", "stub fail", "--project", tmp, "--json"], {
       stdio: "pipe",
+      env: { HOME: tmp, PATH: binDir },
     });
     assert.fail("should have exited");
   } catch (err) {
