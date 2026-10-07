@@ -325,23 +325,26 @@ describe("resolveSessionMotionBlur rejects what accumulation cannot render", () 
 
 describe("injected video is held for the whole shutter window (#5144)", () => {
   function recordInjections() {
-    const calls: Array<{ time: number; held: number | undefined }> = [];
+    const calls: Array<{ time: number; held: number | undefined; seeksBefore: number }> = [];
     const hook: CaptureSession["onBeforeCapture"] = async (_page, time, held) => {
-      calls.push({ time, held });
+      calls.push({ time, held, seeksBefore: seeks.length });
     };
     return { calls, hook };
   }
   const sampleSeekTimes = () =>
     seeks.filter((s) => s.subFrameDivisions !== undefined).map((s) => s.time);
 
-  it("injects each sample at its own time, holding the frame time for the video", async () => {
+  it("injects at the frame time first, then each sample at its own time holding the frame", async () => {
     const { calls, hook } = recordInjections();
 
     await captureFrameToBuffer(makeSession({ onBeforeCapture: hook }), 10, 10 / 30);
 
-    expect(calls.map((call) => call.time)).toEqual(sampleSeekTimes());
-    expect(new Set(calls.map((call) => call.time)).size).toBe(16);
-    expect(calls.map((call) => call.held)).toEqual(Array(16).fill(10 / 30));
+    // The first call comes right after the eventful seek, before any sample seek.
+    expect(calls[0]).toEqual({ time: 10 / 30, held: 10 / 30, seeksBefore: 1 });
+    const sampleCalls = calls.slice(1);
+    expect(sampleCalls.map((call) => call.time)).toEqual(sampleSeekTimes());
+    expect(new Set(sampleCalls.map((call) => call.time)).size).toBe(16);
+    expect(sampleCalls.map((call) => call.held)).toEqual(Array(16).fill(10 / 30));
   });
 
   it("holds the frame time for the adaptive probes too", async () => {
@@ -353,7 +356,7 @@ describe("injected video is held for the whole shutter window (#5144)", () => {
       10 / 30,
     );
 
-    expect(calls.map((call) => call.time)).toEqual(sampleSeekTimes());
+    expect(calls.map((call) => call.time)).toEqual([10 / 30, ...sampleSeekTimes()]);
     expect(calls.map((call) => call.held)).toEqual(Array(calls.length).fill(10 / 30));
   });
 
@@ -366,7 +369,7 @@ describe("injected video is held for the whole shutter window (#5144)", () => {
       10 / 30,
     );
 
-    expect(calls).toEqual([{ time: 10 / 30, held: undefined }]);
+    expect(calls).toEqual([{ time: 10 / 30, held: undefined, seeksBefore: 1 }]);
   });
 });
 

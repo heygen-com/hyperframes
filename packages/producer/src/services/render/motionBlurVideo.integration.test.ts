@@ -1,10 +1,10 @@
 /**
  * Motion blur over a `<video>`, rendered for real (#5144).
  *
- * The footage fills the frame; a white bar slides across its bottom third. With blur on,
- * the video rows must match the unblurred render byte for byte (each injected video
- * frame is held for the whole shutter window), while the bar's rows must differ (the
- * bar is smeared). A second project, a repo fixture, cuts between two sub-composition
+ * The footage fills the frame and drifts left; a white bar slides across its bottom third.
+ * With blur on, the video rows must match the unblurred render byte for byte (each injected
+ * video frame, with the video's own style, is held for the whole shutter window), while the
+ * bar's rows must differ (the bar is smeared). A second project, a repo fixture, cuts between two sub-composition
  * scenes, each a full-frame video: the blurred cut frame must not lose its video.
  * Needs Chrome + ffmpeg, so it lives in the integration lane.
  */
@@ -49,7 +49,11 @@ const COMPOSITION = `<!DOCTYPE html>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; }
-    #clip { position: absolute; left: 0; top: 0; width: ${WIDTH}px; height: ${HEIGHT}px; }
+    #clip {
+      position: absolute; left: 0; top: 0; width: ${WIDTH}px; height: ${HEIGHT}px;
+      animation: drift ${DURATION_SECONDS}s linear both;
+    }
+    @keyframes drift { from { transform: translateX(0); } to { transform: translateX(-30px); } }
     #bar {
       position: absolute; left: 0; top: ${BAR_TOP}px; width: 20px; height: ${HEIGHT - BAR_TOP}px;
       background: #fff; animation: slide ${DURATION_SECONDS}s linear both;
@@ -229,6 +233,7 @@ describe.skipIf(!HAS_FFMPEG)("motion blur over video — real render (#5144)", (
     }
     // The cut frame blends scene A's last frame into scene B's first; it must not dim.
     const plainLevel = meanLevel(cutPlain[CUT_FRAME]!);
+    expect(plainLevel).toBeGreaterThan(50);
     expect(Math.abs(meanLevel(cutBlurred[CUT_FRAME]!) - plainLevel)).toBeLessThan(plainLevel * 0.1);
   });
 
