@@ -539,7 +539,7 @@ function detectSweepStatic(
       message:
         "Timeline did not advance under seek; every green verdict on this run is unreliable.",
       fixHint:
-        "Confirm the composition seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
+        "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
     },
   ];
 }

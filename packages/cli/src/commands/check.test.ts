@@ -1512,7 +1512,8 @@ describe("check pipeline", () => {
           (finding) =>
             finding.code === "sweep_static" &&
             finding.severity === "error" &&
-            finding.message.includes("did not advance"),
+            finding.message.includes("did not advance") &&
+            finding.fixHint?.includes("data-no-timeline"),
         ),
       ).toBe(true);
     });

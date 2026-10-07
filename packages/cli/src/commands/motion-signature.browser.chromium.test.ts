@@ -330,6 +330,63 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     expect(after.sweep).not.toBe(before.sweep);
   });
 
+  it.each([
+    ["a blur", "#title { color: #fff; }", "filter = 'blur(8px)'"],
+    ["a text color", "#title { color: #fff; }", "color = 'rgb(255, 51, 0)'"],
+    ["a background color", "#title { background: #000; }", "backgroundColor = 'rgb(40, 0, 0)'"],
+    ["a box shadow", "#title { box-shadow: none; }", "boxShadow = '0 0 12px red'"],
+  ])("sees %s tween on a title that never moves", async (_, css, change) => {
+    await load(composition(css, '<h1 id="title" class="fixed">Title</h1>'));
+    const before = await sample();
+    await mutate(`document.getElementById("title").style.${change}`);
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  it("sees an SVG shape's fill color change", async () => {
+    await load(
+      composition(
+        "",
+        '<svg width="200" height="100"><rect id="shape" width="120" height="60" fill="#fff" /></svg>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("shape").style.fill = "rgb(255, 51, 0)"');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  it.each([
+    ["audio, which has no box", '<audio id="media"></audio>'],
+    ["a video whose picture is drawn elsewhere", '<video id="media" style="display:none"></video>'],
+  ])("sees the media time of %s advance under seek", async (_, media) => {
+    await load(composition("", `<h1 class="fixed">Title</h1>${media}`));
+    const before = await sample();
+    await mutate('document.getElementById("media").currentTime = 4');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  it("ignores media time on a data-layout-ignore layer", async () => {
+    await load(
+      composition(
+        "",
+        '<h1 class="fixed">Title</h1><div data-layout-ignore><audio id="media"></audio></div>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("media").currentTime = 4');
+    const after = await sample();
+
+    expect(after.sweep).toBe(before.sweep);
+  });
+
   it("sees a clip-path wipe over a box that never moves", async () => {
     await load(
       composition(
