@@ -315,8 +315,11 @@ export function useExternalFileChangeCoordinator({
         }
         if (!mountedRef.current || generation !== generationRef.current) return;
         setBlocked(null);
+        const restored = previousBlocked?.status === "failed" && previousBlocked.recovered;
         deliverOwed(
-          previousBlocked ? mergeFileChangePayloads(previousBlocked.payload, payload) : payload,
+          previousBlocked && !restored
+            ? mergeFileChangePayloads(previousBlocked.payload, payload)
+            : payload,
         );
         return;
       }
@@ -389,7 +392,6 @@ export function useExternalFileChangeCoordinator({
       persistFailureSnapshot,
       persistSnapshotInOrder,
       deliverOwed,
-      onAcceptedPersistedFileChange,
     ],
   );
 
@@ -519,7 +521,6 @@ export function useExternalFileChangeCoordinator({
       setBlocked,
       discardPendingChanges,
       onUseExternalFile,
-      onAcceptedPersistedFileChange,
       projectId,
       readProjectFile,
       deliverOwed,

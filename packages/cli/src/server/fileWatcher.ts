@@ -91,6 +91,9 @@ function watchProjectTree(
     }
     watcher.on("error", () => unwatch(dir));
     directories.set(dir, watcher);
+    walkChildren(dir, movedIn);
+  };
+  const walkChildren = (dir: string, movedIn: boolean) => {
     let entries: Dirent[] = [];
     try {
       entries = readdirSync(dir, { withFileTypes: true });

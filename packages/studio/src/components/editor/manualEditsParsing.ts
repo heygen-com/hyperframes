@@ -55,5 +55,10 @@ export function mergeFileChangePayloads(waiting: unknown, incoming: unknown): un
     return { ...next, affectsPreview, affectedCompositions: merged };
   }
   // Changes to two files are owed: only a project-wide reload ("." path) covers both.
-  return { path: ".", projectId: next?.projectId, affectsPreview, affectedCompositions: merged };
+  return {
+    path: ".",
+    projectId: next?.projectId,
+    affectsPreview,
+    affectedCompositions: merged,
+  };
 }

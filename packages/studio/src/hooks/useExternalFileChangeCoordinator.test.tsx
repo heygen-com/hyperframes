@@ -875,7 +875,7 @@ describe("external file change coordinator", () => {
 
   it("keeps a restored draft's snapshot when an unrelated change saves cleanly", async () => {
     const deleteConflictSnapshot = vi.fn(async () => undefined);
-    const { captured } = await mountCoordinator({
+    const { captured, options } = await mountCoordinator({
       recoveryFilePath: "script.js",
       deleteConflictSnapshot,
       loadConflictSnapshot: vi.fn(async () => ({
@@ -892,6 +892,7 @@ describe("external file change coordinator", () => {
     await vi.waitFor(() => expect(captured.handle?.blocked?.status).toBe("failed"));
     await act(async () => handler?.({ path: "index.html", version: "v2" }));
     expect(deleteConflictSnapshot).not.toHaveBeenCalled();
+    expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith("index.html");
   });
 
   it("reloads the held change's scope too when Keep Studio settles a held conflict", async () => {
