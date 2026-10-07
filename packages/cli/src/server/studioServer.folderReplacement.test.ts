@@ -93,9 +93,12 @@ it.runIf(process.platform === "linux")(
   },
 );
 
-it.runIf(process.platform === "linux")(
-  "refreshes the cached preview when a populated .hyperframes folder is replaced",
-  async () => {
+it.runIf(process.platform === "linux").each([
+  { kept: "a changed manifest", file: "studio-motion.json", content: '{"intro":{"opacity":0.5}}' },
+  { kept: "no manifest", file: "arbitrary.txt", content: "not a manifest" },
+])(
+  "refreshes the cached preview when a populated .hyperframes folder is replaced by one with $kept",
+  async ({ file, content }) => {
     const fixture = makeStudioServerRoot("hf-preview-replace-manifests-");
     root = fixture.root;
     const { projectDir } = fixture;
@@ -114,7 +117,7 @@ it.runIf(process.platform === "linux")(
 
     const replacement = join(root, "next-manifests");
     mkdirSync(replacement);
-    writeFileSync(join(replacement, "studio-motion.json"), '{"intro":{"opacity":0.5}}');
+    writeFileSync(join(replacement, file), content);
     renameSync(join(projectDir, ".hyperframes"), join(root, "previous-manifests"));
     renameSync(replacement, join(projectDir, ".hyperframes"));
 

@@ -1,7 +1,10 @@
 import { lstatSync, readdirSync, watch, type Dirent, type FSWatcher } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
-import { affectsProjectSignature } from "@hyperframes/studio-server";
+import {
+  affectsProjectSignature,
+  STUDIO_SIGNATURE_MANIFEST_PATHS,
+} from "@hyperframes/studio-server";
 
 export type FileChangeListener = (relativePath: string) => void;
 
@@ -96,9 +99,12 @@ function watchProjectTree(
     }
     for (const entry of entries) {
       const child = join(dir, entry.name);
-      // A folder moved in brings files that never get an event of their own.
+      // A folder moved in brings files that never get an event of their own, and drops others.
       if (entry.isDirectory()) descend(child, movedIn);
       else if (movedIn) onChange(relative(projectDir, child));
+    }
+    if (movedIn && relative(projectDir, dir) === ".hyperframes") {
+      for (const manifest of STUDIO_SIGNATURE_MANIFEST_PATHS) onChange(manifest);
     }
   };
   // `.hyperframes/` itself holds the two manifests the signature reads; nothing below it matters.

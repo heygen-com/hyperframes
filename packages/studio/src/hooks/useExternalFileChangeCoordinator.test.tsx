@@ -217,6 +217,24 @@ describe("external file change coordinator", () => {
       expect(reloadSdkSession.mock.calls.map(([path]) => path)).toEqual(["notes.md", "."]);
     });
 
+    it("delivers a held reconnect's project-wide reload when a later change saves cleanly", async () => {
+      const { options } = await mountCoordinator({
+        drainPendingChanges: vi
+          .fn()
+          .mockResolvedValueOnce({ status: "failed" as const, error: new Error("offline") })
+          .mockResolvedValue({ status: "clean" as const }),
+        getPendingCandidate: () => ({ path: "script.js", content: "unsaved script" }),
+        persistFailureSnapshot: vi.fn(async () => undefined),
+      });
+      await open();
+      await open();
+      expect(options.reloadSdkSession).not.toHaveBeenCalled();
+      await send({ path: "scenes/nested.html", version: "n1", affectsPreview: false });
+      expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith(".");
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(".", null);
+    });
+
     it("keeps the unsaved draft of the file open in the code panel when a reconnect cannot save it", async () => {
       const failure = new Error("network unavailable");
       const persistFailureSnapshot = vi.fn(async () => undefined);
@@ -874,6 +892,30 @@ describe("external file change coordinator", () => {
     await vi.waitFor(() => expect(captured.handle?.blocked?.status).toBe("failed"));
     await act(async () => handler?.({ path: "index.html", version: "v2" }));
     expect(deleteConflictSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("reloads the held change's scope too when Keep Studio settles a held conflict", async () => {
+    const conflict = new StudioFileConflictError({
+      filePath: "film.html",
+      currentVersion: "v2",
+      currentContent: "external",
+      attemptedContent: "studio",
+    });
+    const { captured, options } = await mountCoordinator({
+      drainPendingChanges: vi.fn(async () => ({ status: "conflict" as const, error: conflict })),
+    });
+    await act(async () => handler?.({ path: "film.html", version: "v2" }));
+    await act(async () =>
+      handler?.({
+        path: "scenes/nested.html",
+        version: "n1",
+        affectedCompositions: ["scenes/nested.html"],
+      }),
+    );
+    await act(async () => captured.handle?.keepStudioFile());
+    expect(options.overwriteConflict).toHaveBeenCalledWith(conflict);
+    expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith(".");
+    expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(".", null);
   });
 
   it("names the conflicting file when its conflict snapshot cannot be saved", async () => {

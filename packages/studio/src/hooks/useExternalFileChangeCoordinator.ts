@@ -248,8 +248,12 @@ export function useExternalFileChangeCoordinator({
     };
   }, [loadConflictSnapshot, projectId, recoveryFilePath, setBlocked]);
 
-  const reloadAcceptedGeneration = useCallback(
-    (path: string, affectsPreview = true) => {
+  // What a settled change owes: thumbnails (unless its own write's echo brings them), then reloads.
+  const deliverOwed = useCallback(
+    (owed: unknown, accept = true) => {
+      const path = readStudioFileChangePath(owed) ?? ".";
+      const affectsPreview = readFileChangeAffectsPreview(owed);
+      if (accept) onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(owed));
       logReload(affectsPreview ? "reload" : "file-tree only", {
         path,
         by: "external-change coordinator",
@@ -263,7 +267,7 @@ export function useExternalFileChangeCoordinator({
       // a watcher event the SSE never delivered).
       void refreshFileTree?.();
     },
-    [reloadPreview, reloadSdkSession, refreshFileTree],
+    [onAcceptedPersistedFileChange, reloadPreview, reloadSdkSession, refreshFileTree],
   );
 
   const persistSnapshotInOrder = useCallback(async (write: () => Promise<void>) => {
@@ -311,11 +315,9 @@ export function useExternalFileChangeCoordinator({
         }
         if (!mountedRef.current || generation !== generationRef.current) return;
         setBlocked(null);
-        const owed = previousBlocked
-          ? mergeFileChangePayloads(previousBlocked.payload, payload)
-          : payload;
-        onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(owed));
-        reloadAcceptedGeneration(path, readFileChangeAffectsPreview(payload));
+        deliverOwed(
+          previousBlocked ? mergeFileChangePayloads(previousBlocked.payload, payload) : payload,
+        );
         return;
       }
       if (result.status === "failed") {
@@ -386,7 +388,7 @@ export function useExternalFileChangeCoordinator({
       persistConflictSnapshot,
       persistFailureSnapshot,
       persistSnapshotInOrder,
-      reloadAcceptedGeneration,
+      deliverOwed,
       onAcceptedPersistedFileChange,
     ],
   );
@@ -510,11 +512,7 @@ export function useExternalFileChangeCoordinator({
       onUseExternalFile?.(path, external);
       await deleteConflictSnapshot?.(projectId, path);
       setBlocked(null);
-      onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(current.payload));
-      reloadAcceptedGeneration(
-        readStudioFileChangePath(current.payload) ?? path,
-        readFileChangeAffectsPreview(current.payload),
-      );
+      deliverOwed(current.payload);
     },
     [
       deleteConflictSnapshot,
@@ -524,7 +522,7 @@ export function useExternalFileChangeCoordinator({
       onAcceptedPersistedFileChange,
       projectId,
       readProjectFile,
-      reloadAcceptedGeneration,
+      deliverOwed,
       resetSaveQueues,
     ],
   );
@@ -574,7 +572,10 @@ export function useExternalFileChangeCoordinator({
     resetSaveQueues?.();
     await deleteConflictSnapshot?.(projectId, conflict.filePath);
     setBlocked(null);
-    reloadAcceptedGeneration(conflict.filePath);
+    deliverOwed(
+      mergeFileChangePayloads(current.payload, { path: conflict.filePath, affectsPreview: true }),
+      readStudioFileChangePath(current.payload) !== conflict.filePath,
+    );
   }, [
     deleteConflictSnapshot,
     setBlocked,
@@ -582,7 +583,7 @@ export function useExternalFileChangeCoordinator({
     overwriteConflict,
     projectId,
     readProjectFile,
-    reloadAcceptedGeneration,
+    deliverOwed,
     resetSaveQueues,
   ]);
 
