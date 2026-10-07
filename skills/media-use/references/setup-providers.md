@@ -15,6 +15,19 @@ This unlocks the FREE path for bgm/sfx/image/icon catalog search, TTS (voice), a
 npx hyperframes media-use resolve --doctor
 ```
 
+## Host HeyGen access (no CLI sign-in)
+
+A host app can give media-use HeyGen access of its own by setting
+`HEYGEN_API_BASE` (its gateway), `HEYGEN_API_KEY` (the token that gateway
+accepts) and, for a loopback gateway, `HEYGEN_ALLOW_HTTP=1`. The gateway adds
+the host's key, so it never enters the agent's environment, and every
+call is charged to that key's API credits. The `heygen` CLI honours the same
+variables, so `resolve` (bgm/sfx/image/icon/voice/avatar-video) and the audio
+engine's TTS all go through the host. With host access, skip CLI install and
+sign-in, prefer the host's own HeyGen tools where it has them, never fall back
+to a local or third-party generator on your own, and relay a refused call's
+message (for example "add a key in Settings > Account") as written.
+
 ## Providers
 
 media-use holds no keys; every external tool owns its auth. Generation is

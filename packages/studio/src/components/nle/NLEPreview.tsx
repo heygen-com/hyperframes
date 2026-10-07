@@ -50,6 +50,7 @@ interface NLEPreviewProps extends Pick<
   onCompositionSizeChange?: (size: PreviewCompositionSize | null) => void;
   /** Draws the picture edge to edge in this box, without Studio's inset band. */
   fillBox?: boolean;
+  compositionSizeHint?: PreviewCompositionSize;
 }
 
 export function getPreviewPlayerKey({
@@ -127,6 +128,7 @@ export const NLEPreview = memo(function NLEPreview({
   onStageRef,
   onCompositionSizeChange,
   fillBox,
+  compositionSizeHint,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -151,6 +153,8 @@ export const NLEPreview = memo(function NLEPreview({
   const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
   const insetPx = fillBox ? 0 : PREVIEW_STAGE_INSET_PX;
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
+  const hintWidth = compositionSizeHint?.width;
+  const hintHeight = compositionSizeHint?.height;
 
   const zoomRef = useRef<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
@@ -183,7 +187,8 @@ export const NLEPreview = memo(function NLEPreview({
         resolvePreviewStageSize(
           rect.width,
           rect.height,
-          compositionSize,
+          compositionSize ??
+            (hintWidth && hintHeight ? { width: hintWidth, height: hintHeight } : null),
           portrait,
           gutterPx,
           insetPx,
@@ -195,7 +200,7 @@ export const NLEPreview = memo(function NLEPreview({
     const observer = new ResizeObserver(updateStageSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [compositionSize, portrait, gutterPx, insetPx]);
+  }, [compositionSize, hintWidth, hintHeight, portrait, gutterPx, insetPx]);
 
   const onCompositionSizeChangeRef = useRef(onCompositionSizeChange);
   onCompositionSizeChangeRef.current = onCompositionSizeChange;
