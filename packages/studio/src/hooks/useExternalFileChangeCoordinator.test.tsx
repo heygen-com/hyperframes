@@ -110,8 +110,8 @@ describe("external file change coordinator", () => {
       expect(options.reloadSdkSession).not.toHaveBeenCalled();
       await act(async () => finishDrain());
       expect(options.reloadPreview).toHaveBeenCalledOnce();
-      expect(options.reloadSdkSession).toHaveBeenCalledWith("index.html");
-      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
+      expect(options.reloadSdkSession).toHaveBeenCalledWith(".");
+      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledWith(".", null);
       expect(options.refreshFileTree).toHaveBeenCalledOnce();
       await open();
       expect(options.reloadPreview).toHaveBeenCalledTimes(2);
@@ -120,7 +120,7 @@ describe("external file change coordinator", () => {
       expect(options.refreshFileTree).toHaveBeenCalledTimes(2);
     });
 
-    it("drains a project-directory change against the current nested composition", async () => {
+    it("reloads every session for a project-directory change, not just the current composition", async () => {
       let finishDrain = () => {};
       const pendingEdit = new Promise<void>((resolve) => {
         finishDrain = resolve;
@@ -149,11 +149,8 @@ describe("external file change coordinator", () => {
       expect(options.reloadSdkSession).not.toHaveBeenCalled();
       await act(async () => finishDrain());
       expect(options.reloadPreview).toHaveBeenCalledOnce();
-      expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith("scenes/intro.html");
-      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(
-        "scenes/intro.html",
-        null,
-      );
+      expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith(".");
+      expect(options.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(".", null);
     });
 
     it("holds a reconnect behind a persisted conflict until the user accepts the external file", async () => {
@@ -176,19 +173,110 @@ describe("external file change coordinator", () => {
       await act(async () => captured.handle?.useExternalFile());
       expect(options.discardPendingChanges).toHaveBeenCalledOnce();
       expect(options.reloadPreview).toHaveBeenCalledOnce();
-      expect(options.reloadSdkSession).toHaveBeenCalledWith("index.html");
+      expect(options.reloadSdkSession).toHaveBeenCalledWith(".");
     });
 
-    it("uses the current composition after navigation and the root when none is selected", async () => {
+    it("reloads every session after navigation and when no composition is selected", async () => {
       const { options, rerender } = await mountCoordinator();
       await open();
       await rerender({ activeCompPath: "scenes/next.html" });
       await open();
-      expect(options.reloadSdkSession).toHaveBeenLastCalledWith("scenes/next.html");
+      expect(options.reloadSdkSession).toHaveBeenLastCalledWith(".");
       await rerender({ activeCompPath: null });
       await open();
-      expect(options.reloadSdkSession).toHaveBeenLastCalledWith("index.html");
+      expect(options.reloadSdkSession).toHaveBeenCalledTimes(2);
+      expect(options.reloadSdkSession).toHaveBeenLastCalledWith(".");
       expect(close).not.toHaveBeenCalled();
+    });
+
+    it("keeps a reconnect's project-wide reload when a file change queues behind it", async () => {
+      let finishDrain = () => {};
+      const pendingEdit = new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+      const send = (payload: object) =>
+        act(async () => {
+          source.dispatchEvent(new MessageEvent("file-change", { data: JSON.stringify(payload) }));
+        });
+      const reloadSdkSession = vi.fn();
+      await mountCoordinator({
+        reloadSdkSession,
+        drainPendingChanges: vi
+          .fn()
+          .mockImplementationOnce(async () => {
+            await pendingEdit;
+            return { status: "clean" as const };
+          })
+          .mockImplementation(async () => ({ status: "clean" as const })),
+      });
+      await send({ path: "notes.md", version: "n1" });
+      await open();
+      await open();
+      await send({ path: "index.html", version: "v2" });
+      await act(async () => finishDrain());
+      expect(reloadSdkSession.mock.calls.map(([path]) => path)).toEqual(["notes.md", "."]);
+    });
+
+    it("keeps the unsaved draft of the file open in the code panel when a reconnect cannot save it", async () => {
+      const failure = new Error("network unavailable");
+      const persistFailureSnapshot = vi.fn(async () => undefined);
+      const readProjectFile = vi.fn(async () => "disk script");
+      const onUseExternalFile = vi.fn();
+      const { captured, options } = await mountCoordinator({
+        drainPendingChanges: vi.fn(async () => ({ status: "failed" as const, error: failure })),
+        getPendingCandidate: () => ({ path: "script.js", content: "unsaved script" }),
+        persistFailureSnapshot,
+        readProjectFile,
+        onUseExternalFile,
+      });
+      await open();
+      await open();
+      expect(captured.handle?.blocked).toMatchObject({
+        status: "failed",
+        path: "script.js",
+        studioContent: "unsaved script",
+      });
+      expect(persistFailureSnapshot).toHaveBeenCalledExactlyOnceWith(
+        "project-a",
+        "script.js",
+        "unsaved script",
+        null,
+        null,
+        failure,
+      );
+      await act(async () => captured.handle?.useExternalFile());
+      expect(readProjectFile).toHaveBeenCalledWith("script.js");
+      expect(onUseExternalFile).toHaveBeenCalledWith("script.js", "disk script");
+      expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith(".");
+    });
+
+    it("keeps the drafted file's recovery off another file's external version", async () => {
+      const failure = new Error("network unavailable");
+      const persistFailureSnapshot = vi.fn(async () => undefined);
+      const { captured } = await mountCoordinator({
+        drainPendingChanges: vi.fn(async () => ({ status: "failed" as const, error: failure })),
+        getPendingCandidate: () => ({ path: "script.js", content: "unsaved script" }),
+        persistFailureSnapshot,
+      });
+      await act(async () => {
+        source.dispatchEvent(
+          new MessageEvent("file-change", {
+            data: JSON.stringify({ path: "index.html", version: "v2", content: "agent html" }),
+          }),
+        );
+      });
+      expect(persistFailureSnapshot).toHaveBeenCalledExactlyOnceWith(
+        "project-a",
+        "script.js",
+        "unsaved script",
+        null,
+        null,
+        failure,
+      );
+      expect(captured.handle?.blocked).toMatchObject({
+        path: "script.js",
+        payload: { path: "index.html" },
+      });
     });
 
     it("keeps foreign project changes out of recovery", async () => {
@@ -241,11 +329,8 @@ describe("external file change coordinator", () => {
       expect(first.onAcceptedPersistedFileChange).not.toHaveBeenCalled();
       expect(next.drainPendingChanges).toHaveBeenCalledOnce();
       expect(next.reloadPreview).toHaveBeenCalledOnce();
-      expect(next.reloadSdkSession).toHaveBeenCalledExactlyOnceWith("scenes/next.html");
-      expect(next.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(
-        "scenes/next.html",
-        null,
-      );
+      expect(next.reloadSdkSession).toHaveBeenCalledExactlyOnceWith(".");
+      expect(next.onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(".", null);
     });
 
     it("persists a queued reconnect conflict with the new project's owner", async () => {
@@ -735,16 +820,17 @@ describe("external file change coordinator", () => {
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
   });
 
-  it("keeps the failed file's payload when a snapshot delete fails for another file", async () => {
+  it("keeps the failed draft blocked, owing both files, when deleting its snapshot fails", async () => {
+    const deleteConflictSnapshot = vi.fn(async () => {
+      throw new Error("delete failed");
+    });
     const { captured } = await mountCoordinator({
       drainPendingChanges: vi
         .fn()
         .mockResolvedValueOnce({ status: "failed" as const, error: new Error("offline") })
         .mockResolvedValueOnce({ status: "clean" as const }),
       getPendingCandidate: () => ({ path: "scene.html", content: "studio" }),
-      deleteConflictSnapshot: vi.fn(async () => {
-        throw new Error("delete failed");
-      }),
+      deleteConflictSnapshot,
     });
     await act(async () =>
       handler?.({ path: "scene.html", content: "scene-external", version: "s1" }),
@@ -754,7 +840,51 @@ describe("external file change coordinator", () => {
     );
     expect(captured.handle?.blocked).toMatchObject({
       status: "failed",
-      payload: { path: "scene.html", content: "scene-external", version: "s1" },
+      path: "scene.html",
+      payload: { path: "." },
+    });
+    expect(deleteConflictSnapshot).toHaveBeenCalledExactlyOnceWith("project-a", "scene.html");
+  });
+
+  it("keeps a restored draft's snapshot when an unrelated change saves cleanly", async () => {
+    const deleteConflictSnapshot = vi.fn(async () => undefined);
+    const { captured } = await mountCoordinator({
+      recoveryFilePath: "script.js",
+      deleteConflictSnapshot,
+      loadConflictSnapshot: vi.fn(async () => ({
+        kind: "failed" as const,
+        projectId: "project-a",
+        filePath: "script.js",
+        externalVersion: null,
+        externalContent: null,
+        studioContent: "recover me",
+        failureMessage: "network unavailable",
+        createdAt: 100,
+      })),
+    });
+    await vi.waitFor(() => expect(captured.handle?.blocked?.status).toBe("failed"));
+    await act(async () => handler?.({ path: "index.html", version: "v2" }));
+    expect(deleteConflictSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("names the conflicting file when its conflict snapshot cannot be saved", async () => {
+    const conflict = new StudioFileConflictError({
+      filePath: "script.js",
+      currentVersion: "v2",
+      currentContent: "external",
+      attemptedContent: "studio",
+    });
+    const { captured } = await mountCoordinator({
+      drainPendingChanges: vi.fn(async () => ({ status: "conflict" as const, error: conflict })),
+      persistConflictSnapshot: vi.fn(async () => {
+        throw new Error("storage full");
+      }),
+    });
+    await act(async () => handler?.({ path: "index.html", version: "v2" }));
+    expect(captured.handle?.blocked).toMatchObject({
+      status: "failed",
+      path: "script.js",
+      studioContent: "studio",
     });
   });
 

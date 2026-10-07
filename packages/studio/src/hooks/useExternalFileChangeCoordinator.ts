@@ -287,9 +287,14 @@ export function useExternalFileChangeCoordinator({
 
       if (result.status === "clean") {
         const previousBlocked = blockedRef.current;
-        if (previousBlocked?.status === "failed" && deleteConflictSnapshot) {
+        // A draft restored after a reload is not in the save queue, so this drain did not save it.
+        if (
+          previousBlocked?.status === "failed" &&
+          !previousBlocked.recovered &&
+          deleteConflictSnapshot
+        ) {
           try {
-            await deleteConflictSnapshot(projectId!, path);
+            await deleteConflictSnapshot(projectId!, previousBlocked.path);
           } catch (error) {
             if (mountedRef.current && generation === generationRef.current) {
               setBlocked({
@@ -311,20 +316,22 @@ export function useExternalFileChangeCoordinator({
         reloadAcceptedGeneration(path, readFileChangeAffectsPreview(payload));
         return;
       }
-      const content = readFileChangeContent(payload);
       if (result.status === "failed") {
+        // The draft names the file to recover; the payload stays the scope to reload.
         const candidate = getPendingCandidate?.();
-        const studioContent = candidate?.path === path ? candidate.content : null;
+        const failedPath = candidate?.path ?? (path === "." ? (recoveryFilePath ?? path) : path);
+        const studioContent = candidate?.content ?? null;
+        const external = failedPath === path ? payload : null;
         let error = result.error;
         if (studioContent != null && persistFailureSnapshot) {
           try {
             await persistSnapshotInOrder(() =>
               persistFailureSnapshot(
                 projectId!,
-                path,
+                failedPath,
                 studioContent,
-                readFileChangeVersion(payload),
-                content,
+                readFileChangeVersion(external),
+                readFileChangeContent(external),
                 result.error,
               ),
             );
@@ -341,7 +348,7 @@ export function useExternalFileChangeCoordinator({
         setBlocked({
           status: "failed",
           generation,
-          path,
+          path: failedPath,
           error,
           payload,
           studioContent,
@@ -356,7 +363,7 @@ export function useExternalFileChangeCoordinator({
         setBlocked({
           status: "failed",
           generation,
-          path,
+          path: result.error.filePath,
           error,
           payload,
           studioContent: result.error.attemptedContent,
@@ -373,6 +380,7 @@ export function useExternalFileChangeCoordinator({
       projectId,
       deleteConflictSnapshot,
       getPendingCandidate,
+      recoveryFilePath,
       persistConflictSnapshot,
       persistFailureSnapshot,
       persistSnapshotInOrder,
@@ -402,9 +410,6 @@ export function useExternalFileChangeCoordinator({
   const processChange = useCallback(
     // fallow-ignore-next-line complexity
     (payload: unknown) => {
-      if (payload && typeof payload === "object" && readStudioFileChangePath(payload) === ".") {
-        payload = { ...payload, path: activeCompPath ?? "index.html" };
-      }
       const path = readStudioFileChangePath(payload);
       if (!path || !projectId) {
         logReload("file-change", { path: null, why: path ? "no project" : "no path in payload" });
@@ -459,13 +464,7 @@ export function useExternalFileChangeCoordinator({
       }
       void startDrainLoop();
     },
-    [
-      projectId,
-      activeCompPath,
-      pendingTimelineEditPathRef,
-      startDrainLoop,
-      onAcceptedPersistedFileChange,
-    ],
+    [projectId, pendingTimelineEditPathRef, startDrainLoop, onAcceptedPersistedFileChange],
   );
 
   const processChangeRef = useRef(processChange);
@@ -511,7 +510,10 @@ export function useExternalFileChangeCoordinator({
       await deleteConflictSnapshot?.(projectId, path);
       setBlocked(null);
       onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(current.payload));
-      reloadAcceptedGeneration(path, readFileChangeAffectsPreview(current.payload));
+      reloadAcceptedGeneration(
+        readStudioFileChangePath(current.payload) ?? path,
+        readFileChangeAffectsPreview(current.payload),
+      );
     },
     [
       deleteConflictSnapshot,
