@@ -455,9 +455,8 @@ export interface RenderPerfSummary {
   /**
    * Provenance of the auto worker-sizing decision (undefined when the
    * htmlInCanvas / low-memory pins short-circuited sizing). `boundBy` names
-   * the binding constraint; the heap fields are the advisory budget being
-   * validated by fleet telemetry before enforcement — see
-   * `computeWorkerSizing` in @hyperframes/engine.
+   * the binding constraint; the heap fields are the budget that caps auto
+   * sizing — see `computeWorkerSizing` in @hyperframes/engine.
    */
   workerSizing?: WorkerSizing;
   chunkedEncode: boolean;

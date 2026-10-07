@@ -116,8 +116,8 @@ function combineCaptureCostEstimates(
  * - Auto-sized renders only (`requestedWorkers === undefined`) — the field
  *   failure was auto sizing, and an explicit `--workers N` is the operator's
  *   own call.
- * - Auto sizing is already capped at the heap budget (computeWorkerSizing), so
- *   this only names the knobs for an operator who asks for more.
+ * - Auto sizing is capped at the heap budget (computeWorkerSizing), so the
+ *   warning cannot fire today; it stays for a budget that stops being a cap.
  *
  * Pure so the message shape + firing condition are unit-testable with a
  * synthetic `WorkerSizing` (the real one depends on the host's heap).

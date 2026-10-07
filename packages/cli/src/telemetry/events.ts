@@ -341,8 +341,8 @@ export function trackRenderComplete(
     catalogUsage?: CatalogUsage;
     workers?: number;
     // Worker auto-sizing provenance (RenderPerfSummary.workerSizing). Answers
-    // "why N workers?" fleet-wide, and validates the advisory per-worker heap
-    // budget before it's enforced (field OOM: 6 auto workers on a 24GB/4GB-heap
+    // "why N workers?" fleet-wide, and reports the per-worker heap budget
+    // that caps auto sizing (field OOM: 6 auto workers on a 24GB/4GB-heap
     // machine — see computeWorkerSizing in @hyperframes/engine).
     workersBoundBy?: string;
     workersCpuBased?: number;
