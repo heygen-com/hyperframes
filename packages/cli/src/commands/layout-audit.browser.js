@@ -479,6 +479,8 @@
     let text = textContentFor(element, true);
     if (style.textTransform === "uppercase") text = text.toUpperCase();
     if (style.textTransform === "lowercase") text = text.toLowerCase();
+    if (style.textTransform === "capitalize")
+      text = text.replace(/(^|\s)(\S)/g, (m, space, first) => space + first.toUpperCase());
     const metrics = context.measureText(text);
     return metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent > 0 ? metrics : null;
   }
@@ -497,7 +499,7 @@
       rect.top + (metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent) * scale;
     const bottom =
       rect.bottom - (metrics.fontBoundingBoxDescent - metrics.actualBoundingBoxDescent) * scale;
-    return { ...rect, top, bottom };
+    return { ...rect, top, bottom, height: bottom - top };
   }
 
   function visibleTextLineRects(element, rects, style, clip, tolerance) {

@@ -156,19 +156,14 @@
     "boxShadow",
   ]);
 
-  const BORDER_SIDES = ["borderTop", "borderRight", "borderBottom", "borderLeft"];
-  function isDrawn(style, edge) {
-    return style[`${edge}Style`] !== "none" && Number.parseFloat(style[`${edge}Width`]) > 0;
-  }
-  function drawnColor(style, edges, color) {
-    return edges.some((edge) => isDrawn(style, edge)) ? style[color] : "";
-  }
+  const STROKE_EDGES = ["borderTop", "borderRight", "borderBottom", "borderLeft", "outline"];
   // Blink computes border and outline colors as `currentColor` even when none is drawn, so they follow `color`.
+  function drawnColor(style, edge) {
+    const drawn = style[`${edge}Style`] !== "none" && Number.parseFloat(style[`${edge}Width`]) > 0;
+    return drawn ? style[`${edge}Color`] : "";
+  }
   function strokePaintChannel(element, ctx) {
-    const values = [
-      drawnColor(ctx.style, BORDER_SIDES, "borderColor"),
-      drawnColor(ctx.style, ["outline"], "outlineColor"),
-    ];
+    const values = STROKE_EDGES.map((edge) => drawnColor(ctx.style, edge));
     return values.some(Boolean) ? hashFields(values) : "";
   }
   const contentPaintChannel = paintChannel(["color", "textShadow", "fill", "stroke"]);

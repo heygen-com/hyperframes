@@ -11,6 +11,8 @@ declare global {
 const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
 const script = readFileSync(new URL("./layout-audit.browser.js", import.meta.url), "utf8");
 
+const heading = (top: number, text: string, style = "") =>
+  `<h1 style="position:absolute;left:100px;top:${top}px;margin:0;font:120px/1 Arial;${style}">${text}</h1>`;
 const WORDS_08 =
   '<h1 style="position:absolute;left:120px;top:200px;width:900px;margin:0;font:700 140px/0.8 Arial"><span style="display:inline-block;margin-right:.25em">Launch</span><span style="display:inline-block;margin-right:.25em">faster</span><span style="display:inline-block;margin-right:.25em">ship</span><span style="display:inline-block;margin-right:.25em">sooner</span></h1>';
 const WORDS_04 =
@@ -94,6 +96,18 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     {
       name: "the same words at line-height .4, where the glyphs collide",
       html: WORDS_04,
+      overlap: true,
+    },
+    {
+      name: "two headings 60px apart whose letters collide",
+      html: heading(100, "HELLO") + heading(160, "WORLD"),
+      overlap: true,
+    },
+    {
+      name: "capitalized words 60px apart whose capitals collide",
+      html:
+        heading(100, "ace", "text-transform:capitalize") +
+        heading(160, "ace", "text-transform:capitalize"),
       overlap: true,
     },
     {

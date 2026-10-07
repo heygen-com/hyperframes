@@ -385,19 +385,25 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     expect(after.liveness).toBe(before.liveness);
   });
 
-  it("ignores a color change on a host whose text is skipped, though Blink resolves its border color from it", async () => {
-    await load(
-      composition(
-        "#host { content-visibility: hidden; width: 200px; height: 80px; color: #fff; }",
-        '<div id="host">Title</div>',
-      ),
-    );
-    const before = await sample();
-    await mutate('document.getElementById("host").style.color = "rgb(255, 51, 0)"');
-    const after = await sample();
+  it.each([
+    ["no border", ""],
+    ["a border drawn on one side in its own color", "border-bottom: 2px solid #fff;"],
+  ])(
+    "ignores a color change on a skipped host with %s, though Blink resolves undrawn border colors from it",
+    async (_, border) => {
+      await load(
+        composition(
+          `#host { content-visibility: hidden; width: 200px; height: 80px; color: #fff; ${border} }`,
+          '<div id="host">Title</div>',
+        ),
+      );
+      const before = await sample();
+      await mutate('document.getElementById("host").style.color = "rgb(255, 51, 0)"');
+      const after = await sample();
 
-    expect(after.sweep).toBe(before.sweep);
-  });
+      expect(after.sweep).toBe(before.sweep);
+    },
+  );
 
   it("sees a drawn border change color", async () => {
     await load(
