@@ -30,6 +30,7 @@ import {
 } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
@@ -604,6 +605,7 @@ async function captureSnapshots(
         console.warn(`   ${c.warn("⚠")} No player API — seeks will be skipped`);
       }
 
+      let pairSheetFailure: string | null = null;
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
 
@@ -790,14 +792,24 @@ async function captureSnapshots(
             const refPath = join(snapshotDir, `ref-${index}-at-${timeLabel}.png`);
             writeFileSync(refPath, refPng);
             const pairPath = join(snapshotDir, `pair-${index}-at-${timeLabel}.jpg`);
-            const { createContactSheet } = await import("../capture/contactSheet.js");
-            await createContactSheet([framePath, refPath], pairPath, {
-              cols: 2,
-              maxImages: 2,
-              cellWidth: 960,
-              labelMode: "custom",
-              labels: ["render", "reference"],
-            });
+            if (!pairSheetFailure) {
+              try {
+                const { createContactSheet } = await import("../capture/contactSheet.js");
+                await createContactSheet([framePath, refPath], pairPath, {
+                  cols: 2,
+                  maxImages: 2,
+                  cellWidth: 960,
+                  labelMode: "custom",
+                  labels: ["render", "reference"],
+                });
+              } catch (err) {
+                pairSheetFailure = describeSharpLoadFailure(err);
+                if (!pairSheetFailure) throw err;
+                console.error(
+                  `   ${c.warn("⚠")} Reference pair sheets skipped: ${pairSheetFailure}`,
+                );
+              }
+            }
           }
         }
         // Only the capture itself is a "snapshot": the reference frame and the
@@ -989,6 +1001,7 @@ export default defineCommand({
         console.log(`   ${p}`);
       }
       if (against) {
+        // TODO(#4845): omit pair-*.jpg when captureSnapshots skipped the pair sheets.
         console.log(
           `   ${c.dim("ref-*.png + pair-*.jpg")} beside each frame (reference frame, render | reference sheet)`,
         );
@@ -1006,8 +1019,9 @@ export default defineCommand({
             sheets.length === 1 ? "contact-sheet.jpg" : `contact-sheet-1..${sheets.length}.jpg`;
           console.log(`   ${c.dim(label)} (grid view for AI review)`);
         }
-      } catch {
-        /* non-critical */
+      } catch (err) {
+        const sharpFailure = describeSharpLoadFailure(err);
+        if (sharpFailure) console.warn(`   ${c.warn("⚠")} Contact sheet skipped: ${sharpFailure}`);
       }
 
       // Gemini vision descriptions. Runs by default — see describeArg
@@ -1044,11 +1058,12 @@ export default defineCommand({
               resize: (w: number) => { jpeg: () => { toBuffer: () => Promise<Buffer> } };
             };
             let sharpFn: SharpFn | null = null;
+            let sharpFailure: string | null = null;
             try {
               const s = await import("sharp");
               sharpFn = (s.default ?? s) as unknown as SharpFn;
-            } catch {
-              /* sharp not installed — fall back to size check */
+            } catch (err) {
+              sharpFailure = describeSharpLoadFailure(err);
             }
 
             const results = await Promise.allSettled(
@@ -1066,7 +1081,9 @@ export default defineCommand({
                   if (raw.length > 3_800_000)
                     return {
                       filename,
-                      desc: "file too large for Gemini — install sharp to enable auto-resize",
+                      desc: sharpFailure
+                        ? "file too large for Gemini — sharp failed to load, so it was not resized"
+                        : "file too large for Gemini — install sharp to enable auto-resize",
                     };
                   imageData = raw;
                 }
