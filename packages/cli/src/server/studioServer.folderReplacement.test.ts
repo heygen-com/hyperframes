@@ -92,3 +92,38 @@ it.runIf(process.platform === "linux")(
     }
   },
 );
+
+it.runIf(process.platform === "linux")(
+  "refreshes the cached preview when a populated .hyperframes folder is replaced",
+  async () => {
+    const fixture = makeStudioServerRoot("hf-preview-replace-manifests-");
+    root = fixture.root;
+    const { projectDir } = fixture;
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="320" data-height="180"></div></body></html>`,
+    );
+    mkdirSync(join(projectDir, ".hyperframes"));
+    writeFileSync(join(projectDir, ".hyperframes/studio-motion.json"), "{}");
+    server = createStudioServer({ projectDir, projectName: "film" });
+    const endpoint = "/api/projects/film/preview/comp/index.html";
+    const before = await server.app.request(endpoint);
+    expect(before.status).toBe(200);
+    const beforeTag = before.headers.get("etag");
+    expect(beforeTag).toBeTruthy();
+
+    const replacement = join(root, "next-manifests");
+    mkdirSync(replacement);
+    writeFileSync(join(replacement, "studio-motion.json"), '{"intro":{"opacity":0.5}}');
+    renameSync(join(projectDir, ".hyperframes"), join(root, "previous-manifests"));
+    renameSync(replacement, join(projectDir, ".hyperframes"));
+
+    await vi.waitFor(async () => {
+      const after = await server!.app.request(endpoint, {
+        headers: { "If-None-Match": beforeTag! },
+      });
+      expect(after.status).toBe(200);
+      expect(after.headers.get("etag")).not.toBe(beforeTag);
+    });
+  },
+);
