@@ -350,6 +350,7 @@ export function useTimelineProviderState({
     elementsLength: timelineElements.length,
     onSeek,
     contentOrigin,
+    syncScrollViewport,
   });
   const { razorGuideX, updateRazorGuide, clearRazorGuide, splitAllAtPointer } =
     useTimelineRazorInteraction({

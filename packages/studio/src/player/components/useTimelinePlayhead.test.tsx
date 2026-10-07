@@ -29,6 +29,10 @@ interface HarnessProps {
   zoomMode?: ZoomMode;
 }
 
+/** The scroll positions the hook published, read at the moment it published them. */
+const published: number[] = [];
+const syncScrollViewport = (el: HTMLDivElement) => published.push(el.scrollLeft);
+
 function Harness({ pps: fixedPps, scroll, dragging = false, zoomMode = "manual" }: HarnessProps) {
   const storePps = usePlayerStore((s) => s.timelinePps);
   const pps = fixedPps ?? storePps;
@@ -50,6 +54,7 @@ function Harness({ pps: fixedPps, scroll, dragging = false, zoomMode = "manual" 
     timelineReady: true,
     elementsLength: 1,
     contentOrigin: ORIGIN,
+    syncScrollViewport,
   });
   return null;
 }
@@ -67,6 +72,7 @@ function mount(props: HarnessProps) {
 }
 
 beforeEach(() => {
+  published.length = 0;
   usePlayerStore.setState({ currentTime: 0, isPlaying: false, beatDragging: false });
 });
 afterEach(() => {
@@ -101,6 +107,16 @@ describe("useTimelinePlayhead zoom anchor", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll })({ pps: 150 });
     expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("publishes the scroll a zoom lands on, so the clips mounted for it are the ones shown", () => {
+    usePlayerStore.setState({ currentTime: 6 });
+    const scroll = scrollBox(400);
+    const rezoom = mount({ pps: 100, scroll });
+    published.length = 0;
+    rezoom({ pps: 200 }, true);
+    expect(published).toEqual([scroll.scrollLeft]);
+    expect(scroll.scrollLeft).not.toBe(400);
   });
 
   it("keeps the playhead where it is on screen when the toolbar zooms", () => {

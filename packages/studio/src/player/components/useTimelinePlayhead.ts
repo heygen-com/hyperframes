@@ -56,6 +56,7 @@ interface UseTimelinePlayheadInput {
   elementsLength: number;
   onSeek?: (time: number) => void;
   contentOrigin: number;
+  syncScrollViewport: (el: HTMLDivElement) => void;
 }
 
 export function useTimelinePlayhead({
@@ -75,6 +76,7 @@ export function useTimelinePlayhead({
   elementsLength,
   onSeek,
   contentOrigin,
+  syncScrollViewport,
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
@@ -100,6 +102,7 @@ export function useTimelinePlayhead({
       const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
       const left = anchor.time * pps + contentOrigin - anchor.x;
       scroll.scrollLeft = Math.max(0, Math.min(maxScrollLeft, left));
+      syncScrollViewport(scroll);
       return;
     }
     const zoomed = userZoomCount !== prevZoomCount;
@@ -121,7 +124,8 @@ export function useTimelinePlayhead({
     scroll.scrollLeft = zoomed
       ? revealPlayheadScrollLeft(scroll, contentOrigin + time * pps, contentOrigin, anchored)
       : anchored;
-  }, [pps, userZoomCount, scrollRef, durationRef, contentOrigin]);
+    syncScrollViewport(scroll);
+  }, [pps, userZoomCount, scrollRef, durationRef, contentOrigin, syncScrollViewport]);
 
   const syncPlayheadPosition = useCallback(
     (time: number) => {

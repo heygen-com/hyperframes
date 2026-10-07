@@ -131,12 +131,18 @@ describe("attemptPassed", () => {
 describe("gatePassed", () => {
   const pass = { passed: true };
   const fail = { passed: false };
-  const passing = { directScrollApproved: true, attempts: [pass], memoryReturned: true };
+  const passing = {
+    directScrollApproved: true,
+    attempts: [pass],
+    memoryReturned: true,
+    zoomOutBlankFrames: 0,
+  };
 
   it("passes only when every check holds", () => {
     expect(gatePassed(passing)).toBe(true);
     expect(gatePassed({ ...passing, directScrollApproved: false })).toBe(false);
     expect(gatePassed({ ...passing, memoryReturned: false })).toBe(false);
+    expect(gatePassed({ ...passing, zoomOutBlankFrames: 1 })).toBe(false);
   });
 
   it("fails timing only when the attempt and its one rerun both fail", () => {

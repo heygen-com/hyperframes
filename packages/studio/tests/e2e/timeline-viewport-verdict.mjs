@@ -63,7 +63,7 @@ export function attemptPassed({ responsivenessPassed, passingRuns, requiredPassi
   return responsivenessPassed && passingRuns >= requiredPassingRuns;
 }
 
-export function gatePassed({ directScrollApproved, attempts, memoryReturned }) {
+export function gatePassed({ directScrollApproved, attempts, memoryReturned, zoomOutBlankFrames }) {
   const timingPassed = attempts.slice(0, TIMING_ATTEMPTS).some((attempt) => attempt.passed);
-  return directScrollApproved && timingPassed && memoryReturned;
+  return directScrollApproved && timingPassed && memoryReturned && zoomOutBlankFrames === 0;
 }

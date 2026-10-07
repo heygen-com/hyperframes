@@ -352,6 +352,14 @@ try {
     );
   }
 
+  const zoomOut = {
+    ctrlWheel: await countZoomOutBlankFrames(page, { steps: 16, deltaY: 100 }),
+    pinch: await countZoomOutBlankFrames(page, { steps: 60, deltaY: 8 }),
+  };
+  console.error(
+    `timeline zoom-out blank frames: Ctrl+wheel ${zoomOut.ctrlWheel}, pinch ${zoomOut.pinch}`,
+  );
+
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
   await page.waitForFunction(
     () => document.querySelector('[aria-label="Timeline track view"]') === null,
@@ -406,6 +414,7 @@ try {
       },
     },
     directScrollGate,
+    zoomOut,
     attempts,
     aggregate: {
       timingPassed: attempts.some((attempt) => attempt.passed),
@@ -419,6 +428,7 @@ try {
     directScrollApproved: directScrollGate.decision === "approved",
     attempts,
     memoryReturned,
+    zoomOutBlankFrames: zoomOut.ctrlWheel + zoomOut.pinch,
   })
     ? 0
     : 1;
@@ -426,6 +436,63 @@ try {
   await browser.close();
 }
 process.exit(exitCode);
+
+/**
+ * Zooms in with the toolbar, then out with a Ctrl+wheel gesture (`deltaY` 8 is a trackpad pinch), and
+ * counts frames until the zoom rests with no ruler tick in view: the ticks are drawn from the render window.
+ */
+async function countZoomOutBlankFrames(page, { steps, deltaY }) {
+  for (let i = 0; i < 7; i += 1) await page.click('button[aria-label="Zoom in"]');
+  await waitForZoomRest(page);
+  // Far from the start, where a zoom laid out against the old scroll would show nothing.
+  await page.evaluate(() => {
+    const view = document.querySelector("[data-timeline-scroll-viewport]");
+    view.scrollLeft = (view.scrollWidth - view.clientWidth) / 2;
+  });
+  await waitForZoomRest(page);
+  const box = await (await page.$("[data-timeline-scroll-viewport]")).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+  await page.evaluate(() => {
+    const view = document.querySelector("[data-timeline-scroll-viewport]");
+    const blank = { frames: 0, running: true };
+    const tick = () => {
+      const r = view.getBoundingClientRect();
+      const shown = [...view.querySelectorAll("[data-timeline-grid-cell]")].some((tick) => {
+        const t = tick.getBoundingClientRect();
+        return t.right > r.left && t.left < r.right;
+      });
+      if (!shown) blank.frames += 1;
+      if (blank.running) requestAnimationFrame(tick);
+    };
+    window.__zoomOutBlank = blank;
+    requestAnimationFrame(tick);
+  });
+  await page.keyboard.down("Control");
+  for (let i = 0; i < steps; i += 1) {
+    await page.mouse.wheel({ deltaY });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  }
+  await page.keyboard.up("Control");
+  await waitForZoomRest(page);
+  return page.evaluate(() => {
+    window.__zoomOutBlank.running = false;
+    return window.__zoomOutBlank.frames;
+  });
+}
+
+/** Until the zoom label holds for 30 frames: a zoom lays out about 150 ms after its last input. */
+async function waitForZoomRest(page) {
+  await page.evaluate(async () => {
+    const label = () => document.querySelector('[aria-label="Timeline zoom level"]')?.textContent;
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    for (let held = 0, last = label(); held < 30; ) {
+      await nextFrame();
+      const now = label();
+      held = now === last ? held + 1 : 0;
+      last = now;
+    }
+  });
+}
 
 async function waitForFixtureRender(page, elementCount) {
   const deadline = Date.now() + 60_000;
