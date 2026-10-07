@@ -1,13 +1,5 @@
-/**
- * Motion blur over a `<video>`, rendered for real (#5144).
- *
- * The footage fills the frame and drifts left; a white bar slides across its bottom third.
- * With blur on, the video rows must match the unblurred render byte for byte (each injected
- * video frame, with the video's own style, is held for the whole shutter window), while the
- * bar's rows must differ (the bar is smeared). A second project, a repo fixture, cuts between two sub-composition
- * scenes, each a full-frame video: the blurred cut frame must not lose its video.
- * Needs Chrome + ffmpeg, so it lives in the integration lane.
- */
+// Motion blur over a <video>, rendered for real (#5144): held video rows match blur-off, the
+// bar smears, and a sub-composition cut keeps its video. Needs Chrome + ffmpeg: integration lane.
 
 import { spawnSync } from "node:child_process";
 import {
