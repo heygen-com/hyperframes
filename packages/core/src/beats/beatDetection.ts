@@ -213,7 +213,6 @@ function gateBeatsBySilence(
 }
 
 export interface MusicAnalysisOptions {
-  /** Awaited before each long stage, so a caller can hold the analysis while its page is busy. */
   pause?: () => Promise<void>;
 }
 
@@ -231,7 +230,6 @@ export async function analyzeMusicFromBuffer(
   const onsetBpm = computeBpmFromBeats(rawBeats);
 
   let detectiveBpm: number | null = null;
-  // Pause after the import: a cold import can resolve mid-interaction.
   const detect = await loadBpmDetective();
   await pause?.();
   try {
