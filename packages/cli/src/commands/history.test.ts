@@ -450,9 +450,15 @@ describe("hyperframes history, one owner", () => {
         HYPERFRAMES_NO_TELEMETRY: "1",
       },
     });
+    onTestFinished(() => void child.kill());
     const exited = new Promise<number | null>((done) => child.on("exit", done));
     const logFile = join(historyRoot, held.projectId, "log.jsonl");
-    await triedLock;
+    await Promise.race([
+      triedLock,
+      exited.then((code) => {
+        throw new Error(`the CLI exited (${code}) before trying the held lock`);
+      }),
+    ]);
     expect(
       readFileSync(logFile, "utf-8").trim().split("\n"),
       "nothing written while held",
