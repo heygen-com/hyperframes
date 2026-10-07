@@ -8,8 +8,10 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../telemetry/client.js", () => ({ shouldTrack: () => true, flush: mocks.flush }));
 const trackRenderFeedback = vi.hoisted(() => vi.fn());
+const trackFeedbackComment = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/events.js", () => ({
   trackCatalogSearchMiss: vi.fn(),
+  trackFeedbackComment,
   trackRenderFeedback,
 }));
 vi.mock("../telemetry/feedback.js", () => ({ getDoctorSummary: async () => "os=test" }));
@@ -56,5 +58,29 @@ it("refuses a source that is neither person nor agent, and sends nothing", async
   mocks.submitFeedback.mockClear();
   const { default: feedback } = await import("./feedback.js");
   await expect(feedback.run?.({ args: { rating: "6", source: "bot" } } as never)).rejects.toThrow();
+  expect(mocks.submitFeedback).not.toHaveBeenCalled();
+});
+
+it("sends a comment with no rating as its own report, never as a rating", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  trackRenderFeedback.mockClear();
+  const comment = "MISSING FEATURE: trim a clip | WORKAROUND: none";
+  const { default: feedback } = await import("./feedback.js");
+  await feedback.run?.({ args: { comment, source: "agent" } } as never);
+  expect(trackRenderFeedback).not.toHaveBeenCalled();
+  expect(trackFeedbackComment).toHaveBeenLastCalledWith(expect.objectContaining({ comment }));
+  expect(mocks.submitFeedback).toHaveBeenLastCalledWith(
+    expect.objectContaining({ rating: undefined, comment }),
+  );
+});
+
+it.each([
+  ["neither a rating nor a comment", {}],
+  ["--file-issue with no rating", { comment: "MISSING FEATURE: x", "file-issue": true }],
+])("refuses %s, and sends nothing", async (_, args) => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.submitFeedback.mockClear();
+  const { default: feedback } = await import("./feedback.js");
+  await expect(feedback.run?.({ args } as never)).rejects.toThrow();
   expect(mocks.submitFeedback).not.toHaveBeenCalled();
 });

@@ -46,6 +46,15 @@ describe("hyperframes-core contract docs", () => {
     expect(renderReference).toContain("WORKAROUND:");
   });
 
+  it("sends missing features and host-app friction as ratingless comments", () => {
+    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+
+    expect(skill).toContain(
+      'npx hyperframes feedback --comment "MISSING FEATURE: <what the person asked for, in their words> | WORKAROUND:',
+    );
+    expect(skill).toMatch(/HYPERFRAMES_CLIENT[^\n]*npx hyperframes feedback --comment "HOST APP:/);
+  });
+
   it("mandates a composition-structure block for visual-defect feedback", () => {
     const skill = read("skills", "hyperframes-cli", "SKILL.md");
     const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");

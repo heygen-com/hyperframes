@@ -992,6 +992,22 @@ export function trackSkillsInstallSkipped(props: { reason: string }): void {
   trackEvent("cli skill install skipped", { reason: props.reason });
 }
 
+export function trackFeedbackComment(props: {
+  comment: string;
+  doctorSummary?: string;
+  feedbackId?: string;
+  recentRenderIds?: string[];
+}): void {
+  trackEvent("cli_feedback_comment", {
+    comment: props.comment,
+    ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
+    ...(props.feedbackId ? { feedback_id: props.feedbackId } : {}),
+    ...(props.recentRenderIds?.length
+      ? { recent_render_ids: props.recentRenderIds.join(",") }
+      : {}),
+  });
+}
+
 export function trackRenderFeedback(props: {
   rating: number;
   renderDurationMs?: number;

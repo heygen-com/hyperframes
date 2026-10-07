@@ -18,6 +18,18 @@ describe("submitFeedback", () => {
     vi.unstubAllGlobals();
   });
 
+  it("leaves the rating and its scale out of a report that has none", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitFeedback({ comment: "MISSING FEATURE: trim", cliVersion: "1.2.3" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).not.toHaveProperty("rating");
+    expect(body).not.toHaveProperty("rating_scale");
+    expect(body.comment).toBe("MISSING FEATURE: trim");
+  });
+
   it("posts feedback to the backend endpoint", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
