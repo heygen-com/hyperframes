@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, onTestFailed } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { bundleToSingleHtml } from "@hyperframes/core/compiler";
@@ -1251,7 +1251,10 @@ describe("film bridge browser capture contract", () => {
   });
 
   it("captures the acknowledged frame for reverse, repeated and fresh-page seeks", async () => {
+    let phase = "opening film";
+    onTestFailed(() => console.error(`Film capture failed during: ${phase}`));
     const page = await openFilm();
+    phase = "opening reference";
     const reference = await browser.newPage();
     await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
     const errors: string[] = [];
@@ -1259,40 +1262,56 @@ describe("film bridge browser capture contract", () => {
     const captures = new Map<number, Uint8Array>();
     try {
       for (const time of [0, 0.5, 0.2, 0.5, 0.9, 1, 0]) {
+        phase = `seeking ${time}`;
         await page.evaluate((t) => window.__player?.renderSeek?.(t), time);
+        phase = `waiting for frame ${time}`;
         await waitForPendingSeekCompletion(page);
+        phase = `capturing frame ${time}`;
         const actual = await page.screenshot();
         const sourceTime = 3 + Math.min(time, 1 - 1 / 30);
+        phase = `setting reference ${time}`;
         await reference.setContent(
           `<style>html,body{margin:0;background:rgb(${Math.round(sourceTime * 40)},20,80)}</style>`,
         );
+        phase = `capturing reference ${time}`;
         expect(Buffer.from(actual)).toEqual(Buffer.from(await reference.screenshot()));
         const previous = captures.get(time);
         if (previous) expect(Buffer.from(actual)).toEqual(Buffer.from(previous));
         captures.set(time, actual);
       }
+      phase = "opening fresh film";
       const fresh = await openFilm();
       try {
+        phase = "seeking fresh film";
         await fresh.evaluate(() => window.__player?.renderSeek?.(0.5));
+        phase = "waiting for fresh frame";
         await waitForPendingSeekCompletion(fresh);
+        phase = "capturing fresh frame";
         expect(Buffer.from(await fresh.screenshot())).toEqual(Buffer.from(captures.get(0.5)!));
       } finally {
+        phase = "closing fresh film";
         await fresh.close();
       }
+      phase = "seeking edited film";
       await page.evaluate(() => {
         const scene = document.getElementById("scene")!;
         scene.setAttribute("data-playback-start", "0.25");
         scene.setAttribute("data-playback-rate", "2");
         window.__player?.renderSeek?.(0.2);
       });
+      phase = "waiting for edited frame";
       await waitForPendingSeekCompletion(page);
+      phase = "setting edited reference";
       await reference.setContent("<style>html,body{margin:0;background:rgb(146,20,80)}</style>");
+      phase = "capturing edited frame";
       expect(Buffer.from(await page.screenshot())).toEqual(
         Buffer.from(await reference.screenshot()),
       );
       expect(errors).toEqual([]);
     } finally {
+      phase = "closing film";
       await page.close();
+      phase = "closing reference";
       await reference.close();
     }
   }, 30_000);
