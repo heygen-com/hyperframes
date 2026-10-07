@@ -836,6 +836,25 @@ describe("external file change coordinator", () => {
     expect(deleteConflictSnapshot).toHaveBeenCalledExactlyOnceWith("project-a", "scene.html");
   });
 
+  it("keeps a failed draft's snapshot when a clean save was for another file", async () => {
+    const deleteConflictSnapshot = vi.fn(async () => undefined);
+    let candidate = { path: "script.js", content: "unsaved script" };
+    const { captured } = await mountCoordinator({
+      drainPendingChanges: vi
+        .fn()
+        .mockResolvedValueOnce({ status: "failed" as const, error: new Error("offline") })
+        .mockResolvedValue({ status: "clean" as const }),
+      getPendingCandidate: () => candidate,
+      persistFailureSnapshot: vi.fn(async () => undefined),
+      deleteConflictSnapshot,
+    });
+    await act(async () => handler?.({ path: "index.html", version: "v1" }));
+    expect(captured.handle?.blocked).toMatchObject({ status: "failed", path: "script.js" });
+    candidate = { path: "style.css", content: "saved style" };
+    await act(async () => handler?.({ path: "index.html", version: "v2" }));
+    expect(deleteConflictSnapshot).not.toHaveBeenCalled();
+  });
+
   it("keeps a restored draft's snapshot when an unrelated change saves cleanly", async () => {
     const deleteConflictSnapshot = vi.fn(async () => undefined);
     const { captured } = await mountCoordinator({

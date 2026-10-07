@@ -282,15 +282,17 @@ export function useExternalFileChangeCoordinator({
       if (!path) return;
 
       const generation = ++generationRef.current;
+      const savingPath = getPendingCandidate?.()?.path;
       const result = await drainPendingChanges();
       if (!mountedRef.current || generation !== generationRef.current) return;
 
       if (result.status === "clean") {
         const previousBlocked = blockedRef.current;
-        // A draft restored after a reload is not in the save queue, so this drain did not save it.
+        // Only saving the failed draft's file retires its copy; restored drafts are never queued.
         if (
           previousBlocked?.status === "failed" &&
           !previousBlocked.recovered &&
+          previousBlocked.path === savingPath &&
           deleteConflictSnapshot
         ) {
           try {
