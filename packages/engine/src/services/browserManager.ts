@@ -877,9 +877,8 @@ type GpuConfig = Partial<
 >;
 
 /**
- * Whether this launch renders WebGPU on SwiftShader: the composition needs WebGPU, the render opted in, and no GPU is
- * in use. SwiftShader can draw canvas WebGPU only through its Vulkan backend with GPU compositing on, and not at all
- * under --disable-gpu.
+ * Whether this launch renders WebGPU on SwiftShader: the composition needs it, the render opted in, no GPU is in use.
+ * SwiftShader draws canvas WebGPU only via Vulkan with GPU compositing on, and not at all under --disable-gpu.
  */
 export function usesSoftwareWebGpu(
   requiresWebGpu: boolean | undefined,
