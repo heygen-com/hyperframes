@@ -157,7 +157,12 @@ function runGenerate(argv) {
     // No narration and no looked-up music: the host's entries and any sounds fetch-sfx already found; a stale
     // voice or bed in the engine's sidecar goes.
     const neutral = neutralPath(outPath);
-    const looked = existsSync(neutral) ? (JSON.parse(readFileSync(neutral, "utf8")).sfx ?? []) : [];
+    let looked = [];
+    try {
+      looked = JSON.parse(readFileSync(neutral, "utf8")).sfx ?? [];
+    } catch (err) {
+      if (err.code !== "ENOENT") die(`${neutral} does not parse: ${err.message}`);
+    }
     const kept = { voices: [], bgm: null, bgm_pending: false, sfx: looked };
     writeFileSync(neutral, JSON.stringify(kept));
     const meta = keepHostAudio(toProductLaunchMeta(kept), host);
@@ -227,8 +232,7 @@ function previousHostAudio(outPath, hyperframesDir, die) {
     if (err.code !== "ENOENT") die(`${outPath} does not parse: ${err.message}`);
   }
   const host = hostAudio(previous, (path) => existsSync(join(hyperframesDir, path)));
-  for (const path of host.dropped)
-    console.warn(`⚠ audio: host audio ${path} is not on disk — dropped`);
+  for (const why of host.dropped) console.warn(`⚠ audio: host audio dropped: ${why}`);
   return host;
 }
 

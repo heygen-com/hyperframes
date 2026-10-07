@@ -90,7 +90,17 @@ test("a frame written as a string is the same frame, and a gone host file is rep
   const host = hostAudio(previous, exists);
   assert.deepEqual(host.sfx, [hostWhoosh]);
   assert.ok(host.frames.has(1));
-  assert.deepEqual(host.dropped, ["assets/bgm/gone.mp3"]);
+  assert.deepEqual(host.dropped, ["assets/bgm/gone.mp3 is not on disk"]);
   const rebuilt = { bgm: null, voices: [], sfx: [{ frame: 1, file: "assets/sfx/whoosh.mp3" }] };
   assert.deepEqual(keepHostAudio(rebuilt, host).sfx, [hostWhoosh]);
+});
+
+test("a host entry with no path is reported, not thrown", () => {
+  const throwsOnNonString = (path) => {
+    if (typeof path !== "string") throw new TypeError("path must be a string");
+    return onDisk.has(path);
+  };
+  const host = hostAudio({ bgm: { src: "x.mp3", source: "host" }, sfx: [] }, throwsOnNonString);
+  assert.equal(host.bgm, null);
+  assert.deepEqual(host.dropped, ['a host entry has no "path"']);
 });

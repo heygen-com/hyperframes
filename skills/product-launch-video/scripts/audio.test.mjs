@@ -310,7 +310,7 @@ test("generate keeps a host bed when there is no narration and music: none", () 
 });
 
 test("fetch-sfx stops on an audio_meta.json that does not parse, so host entries are not lost", () => {
-  const { dir, result } = runFetchSfx({ storyboard: FRAME_WITH_SFX("whoosh") });
+  const { dir } = runFetchSfx({ storyboard: FRAME_WITH_SFX("whoosh") });
   writeFileSync(
     join(dir, "audio_meta.json"),
     '{ "bgm": { "path": "assets/bgm/host.mp3", "source": "host" }, }',
