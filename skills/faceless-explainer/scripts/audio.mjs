@@ -226,8 +226,9 @@ function sfxCueLines(manifest) {
   return lines;
 }
 
-// The host's own entries in audio_meta.json now (lib/host-audio.mjs). A pass reads them again for its final write, since
-// the host may add audio while the engine runs. Only a missing file means none: one that does not parse stops the pass.
+// The host's own entries in audio_meta.json now (lib/host-audio.mjs). A pass reads them again for its final
+// write, since the host may add audio while the engine runs. Only a missing file means none: one that does not
+// parse stops the pass.
 function previousHostAudio(outPath, hyperframesDir, die, warn = true) {
   let previous = null;
   try {
