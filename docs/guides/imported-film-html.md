@@ -5,7 +5,7 @@ description: "Connect preserved film-runner HTML to HyperFrames capture."
 
 The runtime supports the `appifact-film:` message protocol used by current Claude Motion HTML exports. Keep the original `film-runner` HTML and scene modules intact. The MCP importer packages them with a HyperFrames wrapper; HyperFrames controls time and captures the resulting pixels using its existing renderer.
 
-Create and mount an iframe with `sandbox="allow-scripts"`, explicit picture dimensions, and no player controls. Then connect it before assigning any runner HTML yourself:
+Create and mount an iframe with `sandbox="allow-scripts"`, explicit picture dimensions, and no player controls. Give its timed host, and a root without a GSAP timeline, `data-no-timeline` as described in Frame sources. Then connect it before assigning any runner HTML yourself:
 
 ```javascript
 const bridge = window.__hyperframes.createFilmBridge({
