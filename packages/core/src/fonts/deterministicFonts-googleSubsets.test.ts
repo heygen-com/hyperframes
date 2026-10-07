@@ -209,19 +209,139 @@ describe("authored Google font stylesheet", () => {
     );
   });
 
-  it("does not replace a failed link with the weight-only file", async () => {
+  it("embeds the default request when Google rejects the page's link", async () => {
     const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
     const { fetchImpl, urls } = authoredFetch(400);
+    const warnings: string[] = [];
     const result = await injectDeterministicFontFaces(
       authoredPage(
         `<link rel="stylesheet" href="${AUTHORED_HREF}"><style>h1 { font-family: "Fraunces", serif; }</style>`,
       ),
-      { fetchImpl, allowSystemFontCapture: false },
+      {
+        fetchImpl,
+        allowSystemFontCapture: false,
+        failClosedFontFetch: true,
+        logger: { warn: (message) => warnings.push(message), info: () => {} },
+      },
+    );
+
+    expect(urls.some((url) => url.includes("family=Fraunces:ital,wght@"))).toBe(true);
+    expect(result).toContain(b64("FRAUNCES_WIDE"));
+    expect(warnings.some((message) => message.includes("HTTP 400"))).toBe(true);
+  });
+
+  it("does not swap a link a transient failure blocked under fail-closed", async () => {
+    const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
+    const { fetchImpl, urls } = authoredFetch(503);
+    const compile = injectDeterministicFontFaces(
+      authoredPage(
+        `<link rel="stylesheet" href="${AUTHORED_HREF}"><style>h1 { font-family: "Fraunces", serif; }</style>`,
+      ),
+      {
+        fetchImpl,
+        allowSystemFontCapture: false,
+        failClosedFontFetch: true,
+        fontFetchRetryPolicy: { maxAttempts: 1 },
+      },
+    );
+
+    await expect(compile).rejects.toThrow();
+    expect(urls.some((url) => url.includes("ital,wght@"))).toBe(false);
+  });
+
+  it.each([
+    [403, true],
+    [404, true],
+    [503, false],
+    [200, true],
+  ])(
+    "embeds the default request when the link answers HTTP %s with no faces (fail-closed: %s)",
+    async (status, failClosedFontFetch) => {
+      const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
+      const urls: string[] = [];
+      const base = authoredFetch(200).fetchImpl;
+      const fetchImpl = (async (input: unknown) => {
+        const url = String(input);
+        urls.push(url);
+        if (isAuthoredRequest(url, AUTHORED_HREF)) return new Response("", { status });
+        return base(url);
+      }) as unknown as typeof fetch;
+      const result = await injectDeterministicFontFaces(
+        authoredPage(
+          `<link rel="stylesheet" href="${AUTHORED_HREF}"><style>h1 { font-family: "Fraunces", serif; }</style>`,
+        ),
+        {
+          fetchImpl,
+          allowSystemFontCapture: false,
+          failClosedFontFetch,
+          fontFetchRetryPolicy: { maxAttempts: 1 },
+        },
+      );
+
+      expect(urls.some((url) => url.includes("family=Fraunces:ital,wght@"))).toBe(true);
+      expect(result).toContain(b64("FRAUNCES_WIDE"));
+    },
+  );
+
+  it("keeps the linked faces without the default request when the link works", async () => {
+    const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
+    const { fetchImpl, urls } = authoredFetch(200);
+    await injectDeterministicFontFaces(
+      authoredPage(
+        `<link rel="stylesheet" href="${AUTHORED_HREF}"><style>h1 { font-family: "Fraunces", serif; }</style>`,
+      ),
+      { fetchImpl, allowSystemFontCapture: false, failClosedFontFetch: true },
     );
 
     expect(urls.some((url) => url.includes("ital,wght@"))).toBe(false);
-    expect(result).not.toContain(b64("FRAUNCES_WIDE"));
-    expect(result).not.toContain("data-hyperframes-deterministic-fonts");
+  });
+
+  it("embeds the same faces in preview and render when the page's link is rejected", async () => {
+    const { injectDeterministicFontFaces, _clearGoogleFontCssCacheForTests } =
+      await import("./deterministicFonts.js");
+    const html = authoredPage(
+      `<link rel="stylesheet" href="${AUTHORED_HREF}"><style>h1 { font-family: "Fraunces", serif; }</style>`,
+    );
+    const preview = await injectDeterministicFontFaces(html, {
+      fetchImpl: authoredFetch(400).fetchImpl,
+      allowSystemFontCapture: false,
+    });
+    _clearGoogleFontCssCacheForTests();
+    const render = await injectDeterministicFontFaces(html, {
+      fetchImpl: authoredFetch(400).fetchImpl,
+      allowSystemFontCapture: false,
+      failClosedFontFetch: true,
+    });
+
+    expect(preview).toContain(b64("FRAUNCES_WIDE"));
+    expect(render).toBe(preview);
+  });
+
+  it("renders fail-closed when a link asks for weights past the family's range", async () => {
+    // Bricolage Grotesque spans 200..800; Google answers `wght@100..900` with HTTP 400.
+    const href = "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@100..900";
+    const file = "https://fonts.gstatic.com/s/bricolagegrotesque/default.woff2";
+    const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      if (url.startsWith(href)) return new Response("", { status: 400 });
+      if (url.includes("family=Bricolage%20Grotesque:ital,wght@")) {
+        return new Response(
+          `@font-face { font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 200 800; src: url(${file}) format('woff2'); }`,
+        );
+      }
+      if (url === file) return new Response("BRICOLAGE_DEFAULT");
+      return new Response("", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const result = await injectDeterministicFontFaces(
+      authoredPage(
+        `<link rel="stylesheet" href="${href}"><style>h1 { font-family: "Bricolage Grotesque", sans-serif; }</style>`,
+      ),
+      { fetchImpl, allowSystemFontCapture: false, failClosedFontFetch: true },
+    );
+
+    expect(result).toContain(b64("BRICOLAGE_DEFAULT"));
   });
 
   it("still requests by family name when the page has no Google link", async () => {
@@ -364,6 +484,7 @@ describe("authored Google font stylesheet", () => {
           { status: 200 },
         );
       }
+      if (url === file) return new Response("BODONI_RANGE");
       return new Response("", { status: 404 });
     }) as unknown as typeof fetch;
 
@@ -452,7 +573,7 @@ describe("authored Google font stylesheet", () => {
       { fetchImpl, allowSystemFontCapture: true },
     );
 
-    expect(urls.some((url) => url.includes("ital,wght@"))).toBe(false);
+    expect(urls.some((url) => url.includes("ital,wght@"))).toBe(true);
     expect(result).not.toContain(b64(LOCAL_FONT_BYTES));
   });
 
