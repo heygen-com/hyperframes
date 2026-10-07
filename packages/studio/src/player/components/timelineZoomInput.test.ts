@@ -49,6 +49,7 @@ afterEach(() => {
 });
 
 let unregisterViewport = () => {};
+const publishScroll = vi.fn();
 
 /** A 1080px timeline viewport with 32px of track headers, holding one scaled row. */
 function viewport(scrollLeft = 0, scrollWidth = 20_000) {
@@ -60,7 +61,7 @@ function viewport(scrollLeft = 0, scrollWidth = 20_000) {
   });
   const row = scroll.appendChild(document.createElement("div"));
   row.setAttribute("data-timeline-zoom-scale", "");
-  unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
+  unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll });
   return { scroll, row };
 }
 
@@ -230,7 +231,7 @@ describe("requestTimelineZoom", () => {
     const { scroll } = viewport();
     requestTimelineZoom(150);
     unregisterViewport();
-    unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
+    unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll });
     await Promise.resolve();
     vi.advanceTimersByTime(200);
     expect(usePlayerStore.getState().timelinePps).toBe(15);
@@ -240,6 +241,7 @@ describe("requestTimelineZoom", () => {
     const unregisterOlder = registerTimelineZoomViewport({
       scroll: document.createElement("div"),
       contentOrigin: 32,
+      publishScroll,
     });
     viewport();
     unregisterOlder();
@@ -399,6 +401,23 @@ describe("zoomTimelineStep", () => {
     expect(laidOut).toEqual([20]);
     // Counted once as the person's zoom: the end of the ease writes nothing more.
     expect(usePlayerStore.getState().userZoomCount).toBe(1);
+  });
+
+  it("tells the timeline where a zoom-out that ends at its laid-out scale scrolled to", () => {
+    usePlayerStore.setState({
+      currentTime: 110,
+      duration: 1000,
+      zoomMode: "manual",
+      manualZoomPercent: 400,
+      timelinePps: 40,
+    });
+    const { scroll } = viewport(4000);
+    publishScroll.mockClear();
+    zoomTimelineStep("out");
+    run();
+    expect(scroll.scrollLeft).not.toBe(4000);
+    expect(publishScroll).toHaveBeenLastCalledWith(scroll);
+    expect(publishScroll.mock.lastCall?.[0].scrollLeft).toBe(scroll.scrollLeft);
   });
 
   it("eases a zoom-out that pans away without laying its target out first", () => {

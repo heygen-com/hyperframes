@@ -21,6 +21,7 @@ export interface TimelineZoomAnchor {
 export interface TimelineZoomViewport {
   scroll: HTMLDivElement;
   contentOrigin: number;
+  publishScroll: (scroll: HTMLDivElement) => void;
 }
 
 /** How an eased zoom ended: it reached its range, or a person's zoom or the caller stopped it. */
@@ -209,7 +210,10 @@ function commitPreview() {
     );
   }
   preview = null;
-  if (Math.abs(view.scroll.scrollLeft - left) >= 0.5) view.scroll.scrollLeft = left;
+  if (Math.abs(view.scroll.scrollLeft - left) >= 0.5) {
+    view.scroll.scrollLeft = left;
+    view.publishScroll(view.scroll);
+  }
   clearScaled(view.scroll);
   emitPreview();
 }

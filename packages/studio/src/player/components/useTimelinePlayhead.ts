@@ -283,14 +283,25 @@ export function useTimelinePlayhead({
     // A press meets the zoom it sees, not the one still waiting to be laid out.
     scroll.addEventListener("pointerdown", settleTimelineZoom, { capture: true });
     scroll.addEventListener("scroll", redrawTimelineZoomPreview, { passive: true });
-    const unregisterZoomViewport = registerTimelineZoomViewport({ scroll, contentOrigin });
+    const unregisterZoomViewport = registerTimelineZoomViewport({
+      scroll,
+      contentOrigin,
+      publishScroll: syncScrollViewport,
+    });
     return () => {
       scroll.removeEventListener("wheel", handlePinchWheel, { capture: true });
       scroll.removeEventListener("pointerdown", settleTimelineZoom, { capture: true });
       scroll.removeEventListener("scroll", redrawTimelineZoomPreview);
       unregisterZoomViewport();
     };
-  }, [handlePinchWheel, scrollRef, timelineReady, elementsLength, contentOrigin]);
+  }, [
+    handlePinchWheel,
+    scrollRef,
+    timelineReady,
+    elementsLength,
+    contentOrigin,
+    syncScrollViewport,
+  ]);
 
   return { seekFromX, autoScrollDuringDrag, dragScrollRaf };
 }
