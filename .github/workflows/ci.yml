@@ -826,7 +826,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arm: [before-5109, at-5109, at-5109-overscan-025]
+        arm: [fix-5151]
         sample: [1, 2, 3]
     timeout-minutes: 18
     steps:
@@ -834,8 +834,7 @@ jobs:
       - name: Check out the arm under test
         run: |
           case "${{ matrix.arm }}" in
-            before-5109) ref=1825c37268af363c55d1930ee560fa2a60bc84ae ;;
-            *) ref=eee0c5101c00dcc1c6c5f02589ee52619611b837 ;;
+            fix-5151) ref=5edee34a45cb202c1e468454ce5f39a6b5fcb65e ;;
           esac
           git fetch -q --depth=1 origin "$ref"
           git checkout -q --detach FETCH_HEAD
