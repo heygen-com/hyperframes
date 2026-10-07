@@ -3902,6 +3902,9 @@ export function initSandboxRuntimeModular(): void {
         activateChildren: true,
         suppressEvents: options?.suppressEvents,
       });
+      // The explicit seek owns this paused frame; the transport must not redraw after capture waits.
+      lastTransportSeekTime = state.currentTime;
+      lastTransportSeekTimeline = state.capturedTimeline;
       runAdapters("pause", 0, pageAnimations);
       syncMediaForCurrentState();
       colorGrading.redraw();
