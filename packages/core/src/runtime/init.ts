@@ -3941,7 +3941,6 @@ export function initSandboxRuntimeModular(): void {
         activateChildren: true,
         suppressEvents: options?.suppressEvents,
       });
-      // The explicit seek owns this paused frame; the transport must not redraw after capture waits.
       runAdapters("pause", 0, pageAnimations);
       syncMediaForCurrentState();
       colorGrading.redraw();
@@ -4184,10 +4183,8 @@ export function initSandboxRuntimeModular(): void {
   }
   let transportTickCount = 0;
   let inTransportTick = false;
-  // A paused transport has no new frame to render. Re-seeking the same GSAP timeline at the
-  // same time on every rAF is not merely redundant: one picker can embed several paused
-  // players, multiplying full timeline traversal and style invalidation across every iframe.
-  // Keep enough identity to render once when time or the asynchronously-bound timeline changes.
+  // Reuse a completed seek only for the exact requested time and captured timeline.
+  // Paused players and host ticks can share the frame without suppressing a newer time.
   let lastTransportSeekTime = Number.NaN;
   let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
   let pausedSeekDeferredByManualGesture = false;

@@ -428,6 +428,8 @@ describe("parked transport loop", () => {
   it.each([false, true])(
     "renders the first host tick after play with prior playback %s",
     (resume) => {
+      let nowMs = 1000;
+      vi.spyOn(performance, "now").mockImplementation(() => nowMs);
       mount();
       initSandboxRuntimeModular();
       quiesce();
@@ -439,6 +441,7 @@ describe("parked transport loop", () => {
       }
       window.__player!.play();
       const seeks = countSeeks();
+      nowMs += 8;
       vi.advanceTimersByTime(8);
       hostTick();
       expect(seeks.length).toBeGreaterThan(0);
@@ -446,6 +449,8 @@ describe("parked transport loop", () => {
   );
 
   it("advances on the host's ticks while its own animation frames are throttled", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
     mount();
     initSandboxRuntimeModular();
     quiesce();
@@ -455,11 +460,14 @@ describe("parked transport loop", () => {
     const seeks = countSeeks();
 
     for (let i = 0; i < 3; i += 1) {
+      nowMs += 8;
       vi.advanceTimersByTime(8);
       hostTick();
     }
 
-    expect(seeks.length).toBeGreaterThanOrEqual(3);
+    expect(seeks).toContain(0.008);
+    expect(seeks).toContain(0.016);
+    expect(seeks.at(-1)).toBe(0.024);
   });
 
   it("posts the paused bridge heartbeat on its documented interval while parked", () => {
