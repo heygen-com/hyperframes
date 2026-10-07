@@ -4,13 +4,24 @@
  * The footage fills the frame; a white bar slides across its bottom third. With blur on,
  * the video rows must match the unblurred render byte for byte (each injected video
  * frame is held for the whole shutter window), while the bar's rows must differ (the
- * bar is smeared). Needs Chrome + ffmpeg, so it lives in the integration lane.
+ * bar is smeared). A second project, a repo fixture, cuts between two sub-composition
+ * scenes, each a full-frame video: the blurred cut frame must not lose its video.
+ * Needs Chrome + ffmpeg, so it lives in the integration lane.
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   decodePng,
@@ -64,12 +75,26 @@ const COMPOSITION = `<!DOCTYPE html>
 </html>
 `;
 
+// The repo's two-scene fixture: two sub-composition hosts, each a full-frame video, cut at
+// 1 s. Its media is swapped for a generated clip.
+const CUT_FIXTURE = fileURLToPath(
+  new URL("../../../tests/nested-sequential-video-local-start/src", import.meta.url),
+);
+const CUT_FPS = 24;
+const CUT_FRAME = 24;
+const CUT_FRAME_COUNT = 48;
+
 let root: string;
 
-async function renderFrames(name: string, motionBlur?: MotionBlurOptions): Promise<Buffer[]> {
+async function renderFrames(
+  name: string,
+  motionBlur?: MotionBlurOptions,
+  projectDir = root,
+  fps = FPS,
+): Promise<Buffer[]> {
   const outputDir = join(root, name);
   const job = createRenderJob({
-    fps: FPS,
+    fps,
     quality: "draft",
     format: "png-sequence",
     hdrMode: "force-sdr",
@@ -78,11 +103,19 @@ async function renderFrames(name: string, motionBlur?: MotionBlurOptions): Promi
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     producerConfig: resolveConfig({ browserGpuMode: "software" }),
   });
-  await executeRenderJob(job, root, outputDir);
+  await executeRenderJob(job, projectDir, outputDir);
   return readdirSync(outputDir)
     .filter((file) => file.endsWith(".png"))
     .sort()
     .map((file) => readFileSync(join(outputDir, file)));
+}
+
+/** Mean of a PNG frame's RGB channels, 0-255. */
+function meanLevel(png: Buffer): number {
+  const { data } = decodePng(png);
+  let sum = 0;
+  for (let i = 0; i < data.length; i += 4) sum += data[i]! + data[i + 1]! + data[i + 2]!;
+  return sum / ((data.length / 4) * 3);
 }
 
 /** The RGBA bytes of rows [top, bottom) of a PNG frame. */
@@ -95,6 +128,8 @@ describe.skipIf(!HAS_FFMPEG)("motion blur over video — real render (#5144)", (
   let plain: Buffer[];
   let blurred: Buffer[];
   let blurredAgain: Buffer[];
+  let cutPlain: Buffer[];
+  let cutBlurred: Buffer[];
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), "hf-motion-blur-video-"));
@@ -124,10 +159,37 @@ describe.skipIf(!HAS_FFMPEG)("motion blur over video — real render (#5144)", (
     );
     if (clip.status !== 0) throw new Error(`clip fixture failed: ${clip.stderr}`);
 
+    const cutDir = join(root, "cut");
+    cpSync(CUT_FIXTURE, cutDir, { recursive: true, filter: (src) => !src.endsWith(".mp4") });
+    mkdirSync(join(cutDir, "media"), { recursive: true });
+    const cutClip = spawnSync(
+      FFMPEG,
+      [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `testsrc2=size=${WIDTH}x${HEIGHT}:rate=${CUT_FPS}:duration=2`,
+        "-pix_fmt",
+        "yuv420p",
+        "-c:v",
+        "libx264",
+        "-g",
+        "1",
+        "-y",
+        join(cutDir, "media", "source.mp4"),
+      ],
+      { encoding: "utf-8" },
+    );
+    if (cutClip.status !== 0) throw new Error(`cut clip fixture failed: ${cutClip.stderr}`);
+
     const blur: MotionBlurOptions = { samplesPerFrame: 8 };
     plain = await renderFrames("plain");
     blurred = await renderFrames("blurred", blur);
     blurredAgain = await renderFrames("blurred-again", blur);
+    cutPlain = await renderFrames("cut-plain", undefined, cutDir, CUT_FPS);
+    cutBlurred = await renderFrames("cut-blurred", blur, cutDir, CUT_FPS);
   }, 600_000);
 
   afterAll(() => {
@@ -156,6 +218,18 @@ describe.skipIf(!HAS_FFMPEG)("motion blur over video — real render (#5144)", (
         `frame ${i}`,
       ).toBe(false);
     }
+  });
+
+  it("keeps both scenes' video through a sub-composition cut", () => {
+    expect(cutBlurred).toHaveLength(CUT_FRAME_COUNT);
+    for (let i = 0; i < CUT_FRAME_COUNT; i++) {
+      if (i === CUT_FRAME) continue;
+      const blurredPixels = rows(cutBlurred[i]!, 0, HEIGHT);
+      expect(blurredPixels.equals(rows(cutPlain[i]!, 0, HEIGHT)), `frame ${i}`).toBe(true);
+    }
+    // The cut frame blends scene A's last frame into scene B's first; it must not dim.
+    const plainLevel = meanLevel(cutPlain[CUT_FRAME]!);
+    expect(Math.abs(meanLevel(cutBlurred[CUT_FRAME]!) - plainLevel)).toBeLessThan(plainLevel * 0.1);
   });
 
   it("is deterministic", () => {

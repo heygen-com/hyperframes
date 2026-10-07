@@ -103,7 +103,13 @@ export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailu
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
 
 /** Called after seeking, before screenshot. Use for video frame injection or other pre-capture work. */
-export type BeforeCaptureHook = (page: Page, time: number) => Promise<void>;
+/** `heldVideoTime` (motion-blur samples only) is the output frame's time: a video on screen at
+ * both times shows its frame for `heldVideoTime`, so footage does not smear. */
+export type BeforeCaptureHook = (
+  page: Page,
+  time: number,
+  heldVideoTime?: number,
+) => Promise<void>;
 
 export interface CaptureSession {
   browser: Browser;
@@ -2805,7 +2811,7 @@ async function prepareFrameForCapture(
   frameIndex: number,
   time: number,
   seekOptions?: HfSeekOptions,
-  videoTime?: number,
+  heldVideoTime?: number,
 ): Promise<{
   quantizedTime: number;
   seekMs: number;
@@ -2836,7 +2842,7 @@ async function prepareFrameForCapture(
   // replacements for <video> elements.
   const beforeCaptureStart = Date.now();
   if (session.onBeforeCapture) {
-    await session.onBeforeCapture(page, videoTime ?? quantizedTime);
+    await session.onBeforeCapture(page, quantizedTime, heldVideoTime);
   }
   await waitForPendingSeekCompletion(page);
   await page.evaluate(async () => {
@@ -3901,7 +3907,7 @@ async function captureFrameSurface(
   frameIndex: number,
   time: number,
   seekOptions?: HfSeekOptions,
-  videoTime?: number,
+  heldVideoTime?: number,
 ): Promise<CapturedSurface> {
   const { page, options } = session;
   const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
@@ -3909,7 +3915,7 @@ async function captureFrameSurface(
     frameIndex,
     time,
     seekOptions,
-    videoTime,
+    heldVideoTime,
   );
 
   const screenshotStart = Date.now();
@@ -4145,13 +4151,6 @@ async function captureAccumulatedFrame(
   const eventfulSeekStart = Date.now();
   await seekPageTimeline(session.page, frameTime, undefined);
   const totals = { seekMs: Date.now() - eventfulSeekStart, beforeCaptureMs: 0, screenshotMs: 0 };
-  if (session.onBeforeCapture) {
-    // Every sample and probe reuses frameTime's video frame. Inject it now, at the page's own
-    // time, because the injector re-renders GPU layers at the time it is given.
-    const injectStart = Date.now();
-    await session.onBeforeCapture(session.page, frameTime);
-    totals.beforeCaptureMs += Date.now() - injectStart;
-  }
 
   const sampleSeek: HfSeekOptions = {
     suppressEvents: true,

@@ -204,9 +204,14 @@ export function createVideoFrameInjector(
   }
 
   // fallow-ignore-next-line complexity
-  return async (page: Page, time: number) => {
+  return async (page: Page, time: number, heldVideoTime?: number) => {
     for (const cacheDir of frameLookup.frameDirs()) renewCacheLease(cacheDir);
     const activePayloads = frameLookup.getActiveFramePayloads(time);
+    if (heldVideoTime !== undefined) {
+      for (const [videoId, payload] of frameLookup.getActiveFramePayloads(heldVideoTime)) {
+        if (activePayloads.has(videoId)) activePayloads.set(videoId, payload);
+      }
+    }
 
     const updates: Array<{ videoId: string; dataUri: string; frameIndex: number }> = [];
     const activeIds = new Set<string>();
