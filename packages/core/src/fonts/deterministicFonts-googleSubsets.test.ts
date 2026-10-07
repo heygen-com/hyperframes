@@ -227,7 +227,12 @@ describe("authored Google font stylesheet", () => {
 
     expect(urls.some((url) => url.includes("family=Fraunces:ital,wght@"))).toBe(true);
     expect(result).toContain(b64("FRAUNCES_WIDE"));
-    expect(warnings.some((message) => message.includes("HTTP 400"))).toBe(true);
+    const fallbackWarning = warnings.find((message) =>
+      message.includes("google_font_link_fallback"),
+    );
+    expect(fallbackWarning).toContain("link_outcomes=http_400");
+    expect(fallbackWarning).toContain("fallback_faces=1");
+    expect(fallbackWarning).not.toContain("googleapis");
   });
 
   it("does not swap a link a transient failure blocked under fail-closed", async () => {

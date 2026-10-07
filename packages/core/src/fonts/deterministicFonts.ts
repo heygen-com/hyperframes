@@ -1525,7 +1525,7 @@ async function fetchGoogleFont(
     return (await fetchGoogleFontStylesheet(googleFamilyName, defaultUrl, options)).faces;
   }
   const faces: GoogleFontFace[] = [];
-  const failures: string[] = [];
+  const outcomes: string[] = [];
   for (const url of authoredStylesheet) {
     const result = await fetchGoogleFontStylesheet(
       googleFamilyName,
@@ -1533,17 +1533,18 @@ async function fetchGoogleFont(
       options,
     );
     faces.push(...result.faces);
-    if (result.faces.length === 0) {
-      failures.push(`${url} (${result.status ? `HTTP ${result.status}` : "no usable faces"})`);
-    }
+    if (result.faces.length === 0)
+      outcomes.push(result.status ? `http_${result.status}` : "no_faces");
   }
   if (faces.length > 0) return faces;
   // Fail-closed transient errors threw above; any other miss gets the weight-list request.
+  const fallback = (await fetchGoogleFontStylesheet(googleFamilyName, defaultUrl, options)).faces;
+  // No URL in the message: an authored link can carry page text in `text=`.
   options.log.warn(
-    `[Compiler] The page's Google Fonts link gave no faces for "${familyName}": ${failures.join(", ")}. ` +
-      `Embedding the default request instead; fix the link so the page loads it too.`,
+    `[Compiler] google_font_link_fallback family="${familyName}" link_outcomes=${outcomes.join(",")} ` +
+      `fallback_faces=${fallback.length}`,
   );
-  return (await fetchGoogleFontStylesheet(googleFamilyName, defaultUrl, options)).faces;
+  return fallback;
 }
 
 type GoogleFontStylesheetRead = { css: string } | { css: null; status?: number };
