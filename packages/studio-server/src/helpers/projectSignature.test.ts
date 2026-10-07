@@ -55,10 +55,6 @@ describe("affectsProjectSignature", () => {
     expect(affects(".hyperframes/studio-manual-edits.json")).toBe(true);
   });
 
-  it("accepts the .hyperframes folder itself, since replacing it swaps both manifests", () => {
-    expect(affects(".hyperframes")).toBe(true);
-  });
-
   it("rejects everything else inside .hyperframes", () => {
     expect(affects(".hyperframes/cache/blob.bin")).toBe(false);
   });

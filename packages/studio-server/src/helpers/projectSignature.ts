@@ -69,13 +69,7 @@ export function affectsProjectSignature(projectDir: string, changedPath: string)
     return false;
   }
   const segments = relativePath.split(sep);
-  const path = segments.join("/");
-  // The folder holding a manifest counts too: replacing `.hyperframes/` swaps both at once.
-  if (
-    STUDIO_SIGNATURE_MANIFEST_PATHS.some((file) => file === path || file.startsWith(`${path}/`))
-  ) {
-    return true;
-  }
+  if (STUDIO_SIGNATURE_MANIFEST_PATHS.includes(segments.join("/") as never)) return true;
   return !segments.some((segment) => SIGNATURE_EXCLUDED_DIRS.has(segment));
 }
 

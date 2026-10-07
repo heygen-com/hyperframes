@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, watch, type FSWatcher } from "node:fs";
+import { lstatSync, readdirSync, watch, type Dirent, type FSWatcher } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import { affectsProjectSignature } from "@hyperframes/studio-server";
@@ -70,7 +70,7 @@ function watchProjectTree(
       }
     }
   };
-  const watchDirectory = (dir: string) => {
+  const watchDirectory = (dir: string, movedIn = false) => {
     if (directories.has(dir)) unwatch(dir);
     let watcher: FSWatcher;
     try {
@@ -79,7 +79,7 @@ function watchProjectTree(
         const path = join(dir, name.toString());
         onChange(relative(projectDir, path));
         if (event !== "rename") return;
-        if (isDirectory(path)) descend(path);
+        if (isDirectory(path)) descend(path, true);
         else unwatch(path);
       });
     } catch {
@@ -88,20 +88,23 @@ function watchProjectTree(
     }
     watcher.on("error", () => unwatch(dir));
     directories.set(dir, watcher);
-    let entries: string[] = [];
+    let entries: Dirent[] = [];
     try {
-      entries = readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => join(dir, entry.name));
+      entries = readdirSync(dir, { withFileTypes: true });
     } catch {
       // Gone before we could list it; its parent reports the removal.
     }
-    for (const child of entries) descend(child);
+    for (const entry of entries) {
+      const child = join(dir, entry.name);
+      // A folder moved in brings files that never get an event of their own.
+      if (entry.isDirectory()) descend(child, movedIn);
+      else if (movedIn) onChange(relative(projectDir, child));
+    }
   };
   // `.hyperframes/` itself holds the two manifests the signature reads; nothing below it matters.
-  const descend = (dir: string) => {
+  const descend = (dir: string, movedIn = false) => {
     const rel = relative(projectDir, dir);
-    if (shouldWatchProjectFile(rel) || rel === ".hyperframes") watchDirectory(dir);
+    if (shouldWatchProjectFile(rel) || rel === ".hyperframes") watchDirectory(dir, movedIn);
   };
 
   let parent: FSWatcher | null = null;
