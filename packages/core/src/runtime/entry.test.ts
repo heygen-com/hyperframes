@@ -229,6 +229,34 @@ describe("runtime entry", () => {
     expect(imageSkipped(later)).toEqual([false]);
   });
 
+  it("loads the next scene's images within the look-ahead while its clip is still hidden", async () => {
+    servePreview();
+    const root = mountRoot();
+    timed(root, "div", "0");
+    const soon = timed(root, "div", "1.5");
+    const later = timed(root, "div", "5");
+    const lazyPlate = (clip: HTMLElement) => {
+      const img = clip.appendChild(document.createElement("img"));
+      img.setAttribute("loading", "lazy");
+      img.setAttribute(STUDIO_PREVIEW_LAZY_ATTR, "");
+      return img;
+    };
+    const plate = lazyPlate(soon);
+    const farPlate = lazyPlate(later);
+    // A clip nested in the coming one waits for its own look-ahead.
+    const nestedPlate = lazyPlate(timed(soon, "div", "8"));
+    const authored = soon.appendChild(document.createElement("img"));
+    authored.setAttribute("loading", "lazy");
+
+    await evaluateRuntime();
+    expect(visibility(soon)).toEqual(["hidden"]);
+    expect(
+      [plate, farPlate, nestedPlate, authored].map((img) => img.getAttribute("loading")),
+    ).toEqual(["eager", "lazy", "lazy", "lazy"]);
+    window.__player?.seek(3.5);
+    expect(farPlate.getAttribute("loading")).toBe("eager");
+  });
+
   it("holds a paused jump on the previous picture until the next scene's image decodes", async () => {
     servePreview();
     const root = mountRoot();

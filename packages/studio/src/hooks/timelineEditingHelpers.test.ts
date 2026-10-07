@@ -233,6 +233,28 @@ describe("extendRootDurationIfNeeded", () => {
   });
 });
 
+describe("buildTimelineMoveTimingPatch", () => {
+  it.each([
+    { root: ' data-duration="20"', length: 'data-composition-id="c" data-duration="8"' },
+    { root: "", length: 'data-composition-id="c">' },
+  ])(
+    "parses the saved file once to move a clip and sync the length (root$root)",
+    ({ root, length }) => {
+      const source = `<div data-composition-id="c"${root}><div id="a" class="clip" data-start="1" data-duration="3"></div></div>`;
+      const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
+      try {
+        const patched = buildTimelineMoveTimingPatch(source, { id: "a" }, 5, 3);
+
+        expect(patched).toContain('data-start="5"');
+        expect(patched).toContain(length);
+        expect(parse).toHaveBeenCalledTimes(1);
+      } finally {
+        parse.mockRestore();
+      }
+    },
+  );
+});
+
 describe("buildTimelineResizeTimingPatch", () => {
   it("moves a source-only in-point by the caller's own start change", () => {
     const source = `<div id="root"><video id="a" class="clip" data-start="5" data-duration="3" data-media-start="0.337"></video></div>`;

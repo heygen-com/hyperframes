@@ -8,11 +8,13 @@ import { usePlayerStore } from "../player";
 import { saveServerRewriteWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
-import { buildPatchTarget, removeIframeTimelineElements } from "./timelineEditingHelpers";
+import {
+  buildPatchTarget,
+  removeIframeTimelineElements,
+  syncCompositionDurationWithEnd,
+} from "./timelineEditingHelpers";
 import { captureDurationRollback, timingGestureStep } from "./timelineTimingSync";
 import { setLinkInSource } from "../components/editor/mediaLinkEdits";
-import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
-import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import {
   resolveMainTrackDeleteRippleShifts,
   resolveShiftedElements,
@@ -143,16 +145,13 @@ export function useTimelineDeleteOps({
                 typeof removeData.content === "string" ? removeData.content : originalContent;
               // Shrink to the furthest remaining clip end, read from the post-removal source:
               // store durations are runtime-truncated.
-              const deleteContentEnd = furthestClipEndFromSource(removedContent);
-              const patchedContent = unlinkInSource(
-                setCompositionDurationToContent(removedContent, deleteContentEnd),
-                alsoUnlink,
-              );
+              const synced = syncCompositionDurationWithEnd(removedContent);
+              const patchedContent = unlinkInSource(synced.source, alsoUnlink);
               // Optimistically reflect the shrunk length in the readout/seek bar,
               // rolling it back if the persist below fails (see captureDurationRollback).
               rollbackDuration = captureDurationRollback(previewIframeRef.current);
-              if (deleteContentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
-                usePlayerStore.getState().setDuration(deleteContentEnd);
+              if (synced.contentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
+                usePlayerStore.getState().setDuration(synced.contentEnd);
               }
               return { disk: removedContent, after: patchedContent };
             },

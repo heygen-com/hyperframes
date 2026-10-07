@@ -17,6 +17,7 @@ import { linkLabelColor } from "./linkLabelColor";
 import { OutOfSyncBadge } from "./OutOfSyncBadge";
 import { clipSpeedSuffix } from "./clipToolAttrs";
 import { ClipPeakTooltip } from "./ClipPeakTooltip";
+import { timeLayerPercent } from "./TimelineTimeLayer";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -42,6 +43,20 @@ interface TimelineClipProps {
   onDoubleClick: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   children?: ReactNode;
+}
+
+const HANDLES_MIN_PX = 32;
+
+const CLIP_MIN_WIDTH_PX = 4;
+export const clipWidthPx = (el: TimelineElement, pps: number) =>
+  Math.max(el.duration * pps, CLIP_MIN_WIDTH_PX);
+
+/** Zoom-dependent drawing as one value: width tier and trim fit, or the scale while fades show. */
+export function clipZoomKey(el: TimelineElement, pps: number, interacting: boolean) {
+  const fadesLive = interacting || (el.fadeIn ?? 0) > 0 || (el.fadeOut ?? 0) > 0;
+  if (fadesLive) return pps;
+  const widthPx = clipWidthPx(el, pps);
+  return `${clipWidthLadder(widthPx)}${widthPx >= HANDLES_MIN_PX ? "+handles" : ""}`;
 }
 
 // fallow-ignore-next-line complexity
@@ -70,13 +85,12 @@ export const TimelineClip = memo(function TimelineClip({
   onContextMenu,
   children,
 }: TimelineClipProps) {
-  const leftPx = el.start * pps;
-  const widthPx = Math.max(el.duration * pps, 4);
+  const widthPx = clipWidthPx(el, pps);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = `${el.label || el.id || el.tag}${clipSpeedSuffix(el.playbackRate, el.automation)}`;
   const isAudioClip = isAudioTimelineElement(el);
   const ladder = clipWidthLadder(widthPx);
-  const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
+  const showHandles = handleOpacity > 0.01 && (widthPx >= HANDLES_MIN_PX || isSelected);
   const showLabel = !isAudioClip || ladder === "labeled";
   const showDefaultText = !hasCustomContent && ladder === "labeled";
   const startLabel = el.start.toFixed(1);
@@ -111,14 +125,14 @@ export const TimelineClip = memo(function TimelineClip({
     .filter((className) => className.length > 0)
     .join(" ");
   const style: CSSProperties = {
-    left: leftPx,
-    width: widthPx,
+    left: timeLayerPercent(el.start),
+    width: timeLayerPercent(el.duration),
+    minWidth: CLIP_MIN_WIDTH_PX,
     top: clipY,
     ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
     borderRadius: isAudioClip ? theme.audioClipRadius : theme.clipRadius,
     ...themeVariables,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
-    // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
     cursor: "default",
     appearance: "none",
     color: "inherit",

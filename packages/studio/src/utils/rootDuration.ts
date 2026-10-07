@@ -33,10 +33,11 @@ const DATA_DURATION_ATTR_RE = /(\bdata-duration\s*=\s*)(["'])[^"']*\2/i;
  * Deterministic and render-safe: DOMParser is the only DOM global used.
  */
 export function readRootCompositionDuration(source: string): number | null {
-  const root = new DOMParser()
-    .parseFromString(source, "text/html")
-    .querySelector("[data-composition-id]");
-  const raw = root?.getAttribute("data-duration");
+  return rootCompositionDurationOf(new DOMParser().parseFromString(source, "text/html"));
+}
+
+export function rootCompositionDurationOf(doc: Document): number | null {
+  const raw = doc.querySelector("[data-composition-id]")?.getAttribute("data-duration");
   if (raw == null) return null;
   return Number.parseFloat(raw);
 }

@@ -5,23 +5,20 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { SHERPA_ERROR_PREFIX, SHERPA_RESULT_PREFIX, SHERPA_WINDOW_PREFIX } from "./parakeet.js";
+import { encodeWav } from "./wav.test-helpers.js";
 
 const WORKER = fileURLToPath(new URL("./sherpaWorker.ts", import.meta.url));
 
 // Stand-in sherpa-onnx-node, 3 s of sound: the whole window (300 samples) drops the first 2 s; the
 // padded window (350) hears it, and for speech.wav so does the padded gap +-0.5 s (308) alone.
 const FAKE_SHERPA = `
-let path;
+const path = JSON.parse(process.env.HYPERFRAMES_PARAKEET_INPUT).wavPath;
 module.exports = {
-  readWave(p) {
-    path = p;
-    if (path.endsWith("broken.wav")) throw new Error("Failed to read " + path);
-    if (path.endsWith("lines.wav")) throw new Error("Could not find it. Tried\\n\\n  ../a.node\\n  ./b.node\\n");
-    if (path.endsWith("long.wav")) return { sampleRate: 100, samples: new Float32Array(60000) };
-    return { sampleRate: 100, samples: new Float32Array(300).fill(0.5) };
-  },
+  // What Electron's V8 sandbox throws for this reader's native buffer: the worker reads the WAV itself.
+  readWave() { throw new Error("External buffers are not allowed"); },
   OfflineRecognizer: class {
     constructor() {
+      if (path.endsWith("lines.wav")) throw new Error("Could not find it. Tried\\n\\n  ../a.node\\n  ./b.node\\n");
       if (process.env.STARTED) require("fs").writeFileSync(process.env.STARTED, "");
     }
     createStream() { return { acceptWaveform(w) { this.w = w; } }; }
@@ -69,13 +66,20 @@ describe("sherpaWorker", () => {
     return root;
   }
 
+  /** 3 s of steady sound at 100 Hz, as the stand-in decoder expects; long.wav is 600 s of silence. */
+  function wav(name: string): string {
+    const samples = name === "long.wav" ? new Float32Array(60000) : new Float32Array(300).fill(0.5);
+    writeFileSync(join(root, name), encodeWav(samples, 100));
+    return join(root, name);
+  }
+
   function windowsOf(stdout: string) {
     const line = stdout.split("\n").find((l) => l.startsWith(SHERPA_RESULT_PREFIX))!;
     return JSON.parse(line.slice(SHERPA_RESULT_PREFIX.length));
   }
 
   it("decodes a gap that skipped loud audio on its own and splices in its new tokens", async () => {
-    const { code, stdout } = await runWorker(fakeRuntime(), "speech.wav");
+    const { code, stdout } = await runWorker(fakeRuntime(), wav("speech.wav"));
     expect(code).toBe(0);
     expect(windowsOf(stdout)).toEqual([
       { offset: 0, tokens: [" ask", " not"], timestamps: [0.5, 2.08], durations: [0.4, 0.4] },
@@ -83,7 +87,7 @@ describe("sherpaWorker", () => {
   });
 
   it("prints each window as it is decoded, with the audio seconds done", async () => {
-    const { stdout } = await runWorker(fakeRuntime(), "speech.wav");
+    const { stdout } = await runWorker(fakeRuntime(), wav("speech.wav"));
     const streamed = stdout
       .split("\n")
       .filter((l) => l.startsWith(SHERPA_WINDOW_PREFIX))
@@ -92,7 +96,7 @@ describe("sherpaWorker", () => {
   });
 
   it("re-decodes the window with leading silence when the gap alone gives nothing", async () => {
-    const { code, stdout } = await runWorker(fakeRuntime(), "hum.wav");
+    const { code, stdout } = await runWorker(fakeRuntime(), wav("hum.wav"));
     expect(code).toBe(0);
     expect(windowsOf(stdout)).toEqual([
       { offset: 0, tokens: [" ask", " not"], timestamps: [0.25, 1], durations: [0.4, 0.4] },
@@ -100,9 +104,11 @@ describe("sherpaWorker", () => {
   });
 
   it("exits non-zero with one prefixed error line when it cannot read the audio", async () => {
-    const { code, stderr } = await runWorker(fakeRuntime(), "broken.wav");
+    const broken = join(fakeRuntime(), "broken.wav");
+    writeFileSync(broken, "not audio");
+    const { code, stderr } = await runWorker(root, broken);
     expect(code).toBe(1);
-    expect(stderr).toContain(`${SHERPA_ERROR_PREFIX}Failed to read broken.wav`);
+    expect(stderr).toContain(`${SHERPA_ERROR_PREFIX}${broken} is not a 16-bit mono PCM WAV`);
   });
 
   it("keeps every line of a multi-line error on its one prefixed line", async () => {
@@ -116,7 +122,7 @@ describe("sherpaWorker", () => {
     async () => {
       const started = join(fakeRuntime(), "started");
       const input = JSON.stringify({
-        wavPath: "long.wav",
+        wavPath: wav("long.wav"),
         runtimePath: join(root, "node_modules", "sherpa-onnx-node", "index.js"),
         config: {},
       });

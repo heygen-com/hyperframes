@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildTimelineFileDropPlacements,
   buildTimelineAssetInsertHtml,
@@ -24,9 +24,18 @@ describe("setCompositionDurationToContent", () => {
     expect(setCompositionDurationToContent(src(5), 12)).toContain('data-duration="12"');
   });
 
-  it("is a no-op when content end is 0 (empty timeline keeps its declared length)", () => {
-    expect(setCompositionDurationToContent(src(12), 0)).toBe(src(12));
-  });
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "keeps the declared length without parsing when content end is %s",
+    (contentEnd) => {
+      const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
+      try {
+        expect(setCompositionDurationToContent(src(12), contentEnd)).toBe(src(12));
+        expect(parse).not.toHaveBeenCalled();
+      } finally {
+        parse.mockRestore();
+      }
+    },
+  );
 
   it("is a no-op when already equal", () => {
     expect(setCompositionDurationToContent(src(9), 9)).toBe(src(9));

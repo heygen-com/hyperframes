@@ -1,5 +1,9 @@
 import { useCallback, useState } from "react";
 import { flushSync } from "react-dom";
+import {
+  isTimelineZoomPreviewing,
+  subscribeTimelineZoomPreview,
+} from "../player/components/timelineZoomInput";
 
 export interface StripSize {
   width: number;
@@ -24,7 +28,6 @@ const GAP_WARNING: IntersectionObserverInit & { scrollMargin: string } = {
   scrollMargin: `0px ${IN_VIEW_CHUNK_PX / 2}px`,
 };
 
-// A short strip keeps every tile, as before, so only long clips do work on a scroll.
 const SHORT_STRIP_MAX_PX = 8 * IN_VIEW_CHUNK_PX;
 const isShort = (width: number) => width <= SHORT_STRIP_MAX_PX;
 
@@ -62,6 +65,7 @@ let shared: {
   resize: ResizeObserver;
   presence: IntersectionObserver | null;
   gaps: IntersectionObserver | null;
+  stopZoomWatch: () => void;
 } | null = null;
 
 const offsetOf = (scroller: Element | null) =>
@@ -97,8 +101,23 @@ const read = (target: Element, strip: Strip) => {
 const commit = (updates: (readonly [Apply, Partial<StripSize>])[]) =>
   flushSync(() => updates.forEach(([apply, patch]) => apply(patch)));
 
+// A zoom preview scales the strips: reads wait, and each preview's layout re-measures them all.
+const remeasureAfterPreview = () => {
+  if (isTimelineZoomPreviewing()) return;
+  commit(
+    [...strips].map(
+      ([target, strip]) =>
+        [
+          strip.apply,
+          { width: target.clientWidth, height: target.clientHeight, ...read(target, strip) },
+        ] as const,
+    ),
+  );
+};
+
 const refresh = () => {
   frame = 0;
+  if (isTimelineZoomPreviewing()) return;
   const offsetsNow = new Map<Element | null, { x: number; y: number }>();
   const updates: (readonly [Apply, Partial<StripSize>])[] = [];
   for (const [target, strip] of strips) {
@@ -122,6 +141,7 @@ const scheduleRefresh = () => {
 };
 
 const measure = (entries: { target: Element; size?: { width: number; height: number } }[]) =>
+  isTimelineZoomPreviewing() ||
   commit(
     entries.flatMap(({ target, size }) => {
       const strip = strips.get(target);
@@ -153,6 +173,7 @@ function acquire() {
       gaps: observeIntersections(
         (entries) => entries.some((entry) => entry.isIntersecting) && scheduleRefresh(),
       ),
+      stopZoomWatch: subscribeTimelineZoomPreview(remeasureAfterPreview),
     };
     window.addEventListener("scroll", scheduleRefresh, { capture: true, passive: true });
   }
@@ -164,6 +185,7 @@ function release() {
   shared?.resize.disconnect();
   shared?.presence?.disconnect();
   shared?.gaps?.disconnect();
+  shared?.stopZoomWatch();
   shared = null;
   window.removeEventListener("scroll", scheduleRefresh, { capture: true });
   cancelAnimationFrame(frame);

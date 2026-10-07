@@ -20,6 +20,7 @@ import {
   buildChromeArgs,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
+  usesSoftwareWebGpu,
   WebGpuUnavailableError,
   drainBrowserPool,
   forceReleaseBrowser,
@@ -208,6 +209,37 @@ describe("buildChromeArgs browser GPU mode", () => {
   it("is byte-identical to the requiresWebGpu-absent case for a non-declaring composition", () => {
     expect(buildChromeArgs({ ...base, requiresWebGpu: false })).toEqual(buildChromeArgs(base));
   });
+
+  it("runs an opted-in WebGPU composition on SwiftShader's Vulkan with GPU compositing on", () => {
+    const args = buildChromeArgs(
+      { ...base, platform: "linux", requiresWebGpu: true },
+      { browserGpuMode: "software", allowSoftwareWebGpu: true },
+    );
+    expect(args).toContain("--enable-features=CanvasDrawElement,Vulkan");
+    expect(args).not.toContain("--enable-features=CanvasDrawElement");
+    expect(args).toContain("--use-vulkan=swiftshader");
+    expect(args).toContain("--enable-unsafe-webgpu");
+    expect(args).not.toContain("--disable-gpu-compositing");
+  });
+
+  it.each([
+    ["without the opt-in", true, { browserGpuMode: "software" }],
+    [
+      "for a composition without WebGPU",
+      false,
+      { browserGpuMode: "software", allowSoftwareWebGpu: true },
+    ],
+    ["on a GPU", true, { browserGpuMode: "hardware", allowSoftwareWebGpu: true }],
+    ["under --disable-gpu", true, { disableGpu: true, allowSoftwareWebGpu: true }],
+  ] as const)("leaves the launch as it was %s", (_, requiresWebGpu, config) => {
+    expect(usesSoftwareWebGpu(requiresWebGpu, config)).toBe(false);
+    expect(buildChromeArgs({ ...base, platform: "linux", requiresWebGpu }, config)).toEqual(
+      buildChromeArgs(
+        { ...base, platform: "linux", requiresWebGpu },
+        { ...config, allowSoftwareWebGpu: false },
+      ),
+    );
+  });
 });
 
 describe("compositionRequiresWebGpu", () => {
@@ -255,7 +287,7 @@ describe("assertWebGpuAdapterAvailable", () => {
 
   describe("in-page adapter check (real callback, stubbed navigator.gpu)", () => {
     const runInPage = {
-      evaluate: (fn: (t: number) => unknown, t: number) => fn(t),
+      evaluate: (fn: (...args: unknown[]) => unknown, ...args: unknown[]) => fn(...args),
     } as unknown as Page;
     const stubAdapter = (adapter: unknown) =>
       vi.stubGlobal("navigator", { gpu: { requestAdapter: async () => adapter } });
@@ -269,6 +301,14 @@ describe("assertWebGpuAdapterAvailable", () => {
     it("refuses a software fallback adapter such as swiftshader", async () => {
       stubAdapter({ info: { isFallbackAdapter: true } });
       await expect(assertWebGpuAdapterAvailable(runInPage, true)).rejects.toBeInstanceOf(
+        WebGpuUnavailableError,
+      );
+    });
+
+    it("accepts a software fallback adapter only on a launch that runs software WebGPU", async () => {
+      stubAdapter({ info: { isFallbackAdapter: true } });
+      await expect(assertWebGpuAdapterAvailable(runInPage, true, true)).resolves.toBeUndefined();
+      await expect(assertWebGpuAdapterAvailable(runInPage, true, false)).rejects.toBeInstanceOf(
         WebGpuUnavailableError,
       );
     });

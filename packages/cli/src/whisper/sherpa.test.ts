@@ -25,6 +25,7 @@ import {
   transcribeWithSherpa,
   type ModelFile,
 } from "./sherpa.js";
+import { encodeWav } from "./wav.test-helpers.js";
 
 const file = (name: string, content: string): ModelFile => ({
   name,
@@ -183,6 +184,7 @@ describe("a pinned Sherpa copy beside the CLI", () => {
   let root: string;
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "hf-sherpa-beside-"));
+    writeFileSync(join(root, "speech.wav"), encodeWav(new Float32Array(100).fill(0.5), 100));
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -204,7 +206,7 @@ describe("a pinned Sherpa copy beside the CLI", () => {
     return `
 if (process.pid === ${process.pid}) require("node:fs").writeFileSync(${JSON.stringify(parentMarker)}, "");
 module.exports = {
-  readWave() { return { sampleRate: 100, samples: new Float32Array(100).fill(0.5) }; },
+  readWave() { throw new Error("External buffers are not allowed"); },
   OfflineRecognizer: class {
     createStream() { return { acceptWaveform() {} }; }
     decode() {}
@@ -228,7 +230,8 @@ module.exports = {
     const event = { type: "progress", phase: "transcription", model: "parakeet-tdt-0.6b-v3" };
     // The worker's one 1 s window streams its words before the final transcript.
     expect(onEvent.mock.calls).toEqual([
-      [{ ...event, status: "started", durationSeconds: null }],
+      // The started line sizes the WAV as 16 kHz mono: 44 header bytes and 100 samples here.
+      [{ ...event, status: "started", durationSeconds: (44 + 2 * 100) / 32_000 }],
       [{ type: "words", model: event.model, words: result, through: 1 }],
       [{ ...event, status: "completed" }],
     ]);

@@ -139,10 +139,12 @@ export function TimelineClipFades({
     radius: 0,
     toolsLeft: null,
   });
+  const handlesVisible = showHandles || dragging !== null || focused !== null;
+  // Measured only while the handles show: a zoom step must not force a layout per clip.
   useLayoutEffect(() => {
     const root = rootRef.current;
     const clip = root?.parentElement;
-    if (!root || !clip) return;
+    if (!handlesVisible || !root || !clip) return;
     const radius = parseFloat(getComputedStyle(clip).borderTopLeftRadius) || 0;
     const { clientHeight: height, clientWidth: width } = root;
     const fx = clip.querySelector('[data-badge="fx"]');
@@ -157,7 +159,7 @@ export function TimelineClipFades({
         ? box
         : { height, width, radius, toolsLeft },
     );
-  }, [widthPx, visible]);
+  }, [widthPx, handlesVisible]);
 
   const gesture = useRef<{
     edge: FadeEdge;
@@ -205,7 +207,6 @@ export function TimelineClipFades({
     const g = gesture.current;
     if (!g) return 0;
     const deltaSeconds = (clientX - g.originClientX) / Math.max(pps, 1e-6);
-    // Fade-in grows to the right, fade-out grows to the left.
     const raw = g.edge === "in" ? g.originSeconds + deltaSeconds : g.originSeconds - deltaSeconds;
     const limit = dragLimit(g);
     const clamped = Math.min(limit, Math.max(0, raw));
@@ -342,7 +343,6 @@ export function TimelineClipFades({
 
   const showIn = fades.fadeIn > 0;
   const showOut = fades.fadeOut > 0;
-  const handlesVisible = showHandles || dragging !== null || focused !== null;
   if (!visible) return null;
 
   // A handle with no 0.01 s step to move is not drawn, unless in use: its twin owns the spot.

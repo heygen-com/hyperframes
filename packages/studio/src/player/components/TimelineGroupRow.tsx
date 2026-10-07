@@ -201,6 +201,7 @@ export function TimelineGroupRow({
         // from x=0.
         <div
           role="gridcell"
+          data-timeline-zoom-scale=""
           aria-colindex={2}
           style={{ width: trackContentWidth, marginLeft: contentGutter }}
           className="relative"
