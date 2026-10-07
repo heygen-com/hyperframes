@@ -172,18 +172,19 @@ export function useExternalFileChangeCoordinator({
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
   const lastEventIdentityRef = useRef<string | null>(null);
-  const blockedRef = useRef(blocked);
+  const blockedRef = useRef<ExternalFileChangeBlockedState | null>(null);
   const snapshotWriteTailRef = useRef<Promise<void>>(Promise.resolve());
   const drainingRef = useRef(false);
   const pendingPayloadRef = useRef<{ payload: unknown } | null>(null);
-  blockedRef.current = blocked;
   // A newer blocked change replaces the held one, so it inherits what the held one owed.
   const setBlocked = useCallback((next: ExternalFileChangeBlockedState | null) => {
-    setBlockedState((held) =>
+    const held = blockedRef.current;
+    const current =
       next && held
         ? { ...next, payload: mergeFileChangePayloads(held.payload, next.payload) }
-        : next,
-    );
+        : next;
+    blockedRef.current = current;
+    setBlockedState(current);
   }, []);
 
   useEffect(() => {

@@ -94,6 +94,50 @@ describe("external file change coordinator", () => {
         source.dispatchEvent(new MessageEvent("file-change", { data: JSON.stringify(payload) }));
       });
 
+    it("delivers the held reconnect scope when a queued clean drain precedes React's commit", async () => {
+      let finishAcceptance = () => {};
+      const accepted = new Promise<void>((resolve) => {
+        finishAcceptance = resolve;
+      });
+      const blockedAtSecondDrain: Array<ExternalFileChangeCoordinatorHandle["blocked"]> = [];
+      const onAcceptedPersistedFileChange = vi.fn(() => finishAcceptance());
+      const drainPendingChanges = vi.fn(async () => {
+        if (drainPendingChanges.mock.calls.length === 1) {
+          return { status: "failed" as const, error: new Error("save rejected") };
+        }
+        blockedAtSecondDrain.push(captured.handle?.blocked ?? null);
+        return { status: "clean" as const };
+      });
+      const { captured, options } = await mountCoordinator({
+        activeCompPath: "film.html",
+        drainPendingChanges,
+        onAcceptedPersistedFileChange,
+        refreshFileTree: vi.fn(),
+      });
+      await open();
+      await act(async () => {
+        source.dispatchEvent(new Event("open"));
+        source.dispatchEvent(
+          new MessageEvent("file-change", {
+            data: JSON.stringify({
+              path: "scenes/nested.html",
+              affectsPreview: false,
+              affectedCompositions: ["scenes/nested.html"],
+            }),
+          }),
+        );
+        await accepted;
+      });
+
+      expect(blockedAtSecondDrain).toEqual([null]);
+      expect(drainPendingChanges).toHaveBeenCalledTimes(2);
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      expect(options.reloadSdkSession).toHaveBeenCalledExactlyOnceWith(".");
+      expect(onAcceptedPersistedFileChange).toHaveBeenCalledExactlyOnceWith(".", null);
+      expect(options.refreshFileTree).toHaveBeenCalledOnce();
+      expect(captured.handle?.blocked).toBeNull();
+    });
+
     it("waits for pending edits before refreshing Preview, SDK, thumbnails and tree on each reconnect", async () => {
       let finishDrain = () => {};
       const pendingEdit = new Promise<void>((resolve) => {
