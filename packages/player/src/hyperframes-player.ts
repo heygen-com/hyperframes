@@ -1192,8 +1192,8 @@ class HyperframesPlayer extends HTMLElement {
    * iframe on every frame. Used for the runtime bridge path so that animation
    * advances even when the composition iframe's own rAF is throttled by
    * Chromium (e.g. deeply nested cross-origin iframes in Electron / Claude desktop).
-   * The runtime seeks on a tick only when its own rAF loop has not run since
-   * the previous tick, so a frame is rendered once either way.
+   * The runtime skips a tick seek when its own rAF has rendered playback
+   * since the previous tick. Host ticks still advance a throttled iframe.
    */
   private _startParentTickClock(): void {
     this._stopParentTickClock();

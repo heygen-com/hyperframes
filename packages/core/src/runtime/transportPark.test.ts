@@ -364,6 +364,26 @@ describe("parked transport loop", () => {
     expect(seeks.length).toBe(perFrame);
   });
 
+  it.each([false, true])(
+    "renders the first host tick after play with prior playback %s",
+    (resume) => {
+      mount();
+      initSandboxRuntimeModular();
+      quiesce();
+      if (resume) {
+        window.__player!.play();
+        frame120Hz();
+        window.__player!.pause();
+        quiesce();
+      }
+      window.__player!.play();
+      const seeks = countSeeks();
+      vi.advanceTimersByTime(8);
+      hostTick();
+      expect(seeks.length).toBeGreaterThan(0);
+    },
+  );
+
   it("advances on the host's ticks while its own animation frames are throttled", () => {
     mount();
     initSandboxRuntimeModular();

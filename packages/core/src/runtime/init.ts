@@ -3836,6 +3836,7 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  let transportRenderedSinceHostTick = false;
   const transport: RuntimePlayerTransport = {
     play: () => {
       flushHeldSeek();
@@ -3857,6 +3858,7 @@ export function initSandboxRuntimeModular(): void {
       }
       pauseTimelineIfPossible(tl);
       if (!clock.play()) return;
+      transportRenderedSinceHostTick = false;
       state.isPlaying = true;
       state.mediaForceSyncNextTick = true;
       hardSyncAllMedia(clock.now());
@@ -4193,7 +4195,6 @@ export function initSandboxRuntimeModular(): void {
   let lastTransportSeekTime = Number.NaN;
   let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
   let pausedSeekDeferredByManualGesture = false;
-  let transportRanSinceHostTick = false;
   // Set while the transport is parked (see scheduleNextTransportFrame).
   let transportParkTimerId: number | null = null;
   let slowIdleHeartbeat = false;
@@ -4581,7 +4582,6 @@ export function initSandboxRuntimeModular(): void {
     inTransportTick = true;
     try {
       transportTickCount += 1;
-      transportRanSinceHostTick = true;
 
       // The jobs below run when the composition revision moves (rate-limited). What no
       // observer sees is polled: on the frame counter paused, on a timer playing.
@@ -4725,6 +4725,7 @@ export function initSandboxRuntimeModular(): void {
         state.capturedTimeline !== lastTransportSeekTimeline
       ) {
         seekTimelineAndAdapters(t);
+        if (isPlaying) transportRenderedSinceHostTick = true;
         lastTransportSeekTime = t;
         lastTransportSeekTimeline = state.capturedTimeline;
         if (!isPlaying) pausedSeekDeferredByManualGesture = false;
@@ -5044,8 +5045,8 @@ export function initSandboxRuntimeModular(): void {
     },
     onTick: () => {
       if (state.tornDown || !clock.isPlaying()) return;
-      if (transportRanSinceHostTick) {
-        transportRanSinceHostTick = false;
+      if (transportRenderedSinceHostTick) {
+        transportRenderedSinceHostTick = false;
         return;
       }
       const t = clock.now();
