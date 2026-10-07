@@ -36,11 +36,16 @@ const syncArgs = (provenance, dryRun) =>
     dryRun ? ["--dry-run"] : [],
   );
 
-function republishTaken(run, provenance, { slug, message }) {
+function versionPastSkippable(slug, message) {
   const taken = takenVersion(message);
-  if (!taken || SKIPPABLE_TAKEN.get(slug) !== taken.join(".")) return `${slug}: ${message}`;
+  if (!taken || SKIPPABLE_TAKEN.get(slug) !== taken.join(".")) return null;
   const [major, minor, patch] = taken;
-  const version = `${major}.${minor}.${patch + 1}`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+function republishTaken(run, provenance, { slug, message }) {
+  const version = versionPastSkippable(slug, message);
+  if (!version) return `${slug}: ${message}`;
   const folder = `skills/${slug}`;
   const published = run(
     ["publish", folder, "--slug", slug, "--version", version, "--source-path", folder].concat(
@@ -52,7 +57,7 @@ function republishTaken(run, provenance, { slug, message }) {
   const latest = latestTag(run, slug);
   if (latest !== version)
     return `${slug}: published ${version}, but the registry's latest is ${latest}`;
-  console.log(`${slug}: ${taken.join(".")} is taken, published ${version}`);
+  console.log(`${slug}: ${SKIPPABLE_TAKEN.get(slug)} is taken, published ${version}`);
   return null;
 }
 
