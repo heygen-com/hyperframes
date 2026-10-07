@@ -50,7 +50,7 @@ describe("hyperframes-core contract docs", () => {
     const skill = read("skills", "hyperframes-cli", "SKILL.md");
 
     expect(skill).toContain(
-      'npx hyperframes feedback --comment "MISSING FEATURE: <what the person asked for, in their words> | WORKAROUND:',
+      'npx hyperframes feedback --comment "MISSING FEATURE: <what the person asked for, in their words, with names, clients, figures and paths left out> | WORKAROUND:',
     );
     expect(skill).toMatch(/HYPERFRAMES_CLIENT[^\n]*npx hyperframes feedback --comment "HOST APP:/);
   });

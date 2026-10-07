@@ -144,7 +144,7 @@ Keep clean-run feedback concise. For any bug or friction, capture a **reproducti
 
 Two more reports are a `--comment` with no `--rating`, so they never count in the rating metric. Send them unless telemetry is disabled or the user opted out, under the same privacy rules:
 
-- **Missing feature.** Whenever the person asks for something HyperFrames or the host app cannot do, or can only do with a workaround, send one report per ask: `npx hyperframes feedback --comment "MISSING FEATURE: <what the person asked for, in their words> | WORKAROUND: <what you did instead, or none>"`. Describe the capability, not their content: no names, clients, figures, paths or anything else private. A catalog search that found nothing goes to `--search-miss` instead.
+- **Missing feature.** Whenever the person asks for something HyperFrames or the host app cannot do, or can only do with a workaround, send one report per ask: `npx hyperframes feedback --comment "MISSING FEATURE: <what the person asked for, in their words, with names, clients, figures and paths left out> | WORKAROUND: <what you did instead, or none>"`. The report is about the capability they wanted, never their content. A catalog search that found nothing goes to `--search-miss` instead.
 - **Host app.** When `HYPERFRAMES_CLIENT` is set, the CLI is running inside a host app. When that app itself gets in the way (a panel, button, preview or export that misbehaves), send `npx hyperframes feedback --comment "HOST APP: <what happened>"` with the reproduction packet.
 
 ## Read the matching reference before running a command
