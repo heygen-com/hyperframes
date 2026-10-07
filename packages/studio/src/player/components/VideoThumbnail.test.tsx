@@ -30,24 +30,34 @@ afterEach(() => {
 // Registered after the reset above, so each test's strip unmounts before the cache is cleared.
 const harness = createHappyDomRootHarness();
 
+function clip(
+  videoSrc = "/api/projects/p/preview/assets/clip.mp4",
+  priority: "visible" | "overscan" = "visible",
+) {
+  return (
+    <VideoThumbnail
+      videoSrc={videoSrc}
+      label=""
+      labelColor="#fff"
+      projectId="p"
+      sessionEpoch={1}
+      priority={priority}
+    />
+  );
+}
+
 async function render(width = 0, height = 40) {
   Object.defineProperty(host, "clientWidth", { configurable: true, value: width });
   Object.defineProperty(host, "clientHeight", { configurable: true, value: height });
   const root = harness.mount(host);
   await act(async () => {
-    root.render(
-      <VideoThumbnail
-        videoSrc="/api/projects/p/preview/assets/clip.mp4"
-        label=""
-        labelColor="#fff"
-        projectId="p"
-        sessionEpoch={1}
-        priority="visible"
-      />,
-    );
+    root.render(clip());
     await Promise.resolve();
   });
+  return root;
 }
+
+const shownSources = () => [...host.querySelectorAll("img")].map((img) => img.getAttribute("src"));
 
 describe("VideoThumbnail", () => {
   it("does not acquire a thumbnail lease before the clip is measured", async () => {
@@ -91,7 +101,8 @@ describe("VideoThumbnail", () => {
     await render(300);
 
     const tiles = [...host.querySelectorAll("img")].map((img) => img.getAttribute("src"));
-    expect(tiles).toEqual(["blob:0", "blob:2", "blob:4", "blob:5", "blob:7"]);
+    // Seven slices and the end frame: the last tile shows the end.
+    expect(tiles).toEqual(["blob:0", "blob:2", "blob:3", "blob:4", "blob:7"]);
   });
 
   describe("on a 10-minute clip at full zoom", () => {
@@ -303,6 +314,65 @@ describe("VideoThumbnail during a zoom", () => {
     const shown = [...host.querySelectorAll("img")].map((img) => img.getAttribute("src"));
     expect(shown.length).toBeGreaterThan(0);
     expect(shown).not.toContain("blob:poster");
+  });
+
+  it("keeps holding the strip when the clip moves between on and off screen mid-decode", async () => {
+    vi.mocked(decodeVideoThumbnail).mockImplementation(async ({ frameCount }) =>
+      frameCount === 1
+        ? { value: { kind: "image", url: "blob:poster", aspect: 16 / 9 }, weight: 1 }
+        : { value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 }, weight: 2 },
+    );
+    const root = await render(440);
+    vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
+    await act(async () => {
+      reportResize(880, 40);
+      root.render(clip(undefined, "overscan"));
+      await Promise.resolve();
+    });
+    await rest();
+    expect(new Set(shownSources())).toEqual(new Set(["blob:a", "blob:b"]));
+  });
+
+  it("never holds one clip's strip for another while the other decodes", async () => {
+    vi.mocked(decodeVideoThumbnail).mockImplementation(({ source }) =>
+      source.endsWith("clip.mp4")
+        ? Promise.resolve({
+            value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
+            weight: 2,
+          })
+        : new Promise(() => {}),
+    );
+    const root = await render(440);
+    expect(shownSources()).toContain("blob:a");
+    await act(async () => {
+      root.render(clip("/api/projects/p/preview/assets/other.mp4"));
+      await Promise.resolve();
+    });
+    await rest();
+    expect(shownSources()).toEqual([]);
+  });
+
+  it("lets go of the strip it held once the clip narrows to one frame", async () => {
+    vi.mocked(decodeVideoThumbnail).mockImplementation(async ({ frameCount }) =>
+      frameCount === 1
+        ? { value: { kind: "image", url: "blob:poster", aspect: 16 / 9 }, weight: 1 }
+        : { value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 }, weight: 2 },
+    );
+    await render(440);
+    await act(async () => {
+      reportResize(50, 40);
+      await Promise.resolve();
+    });
+    await rest();
+    expect(new Set(shownSources())).toEqual(new Set(["blob:poster"]));
+    // Widening again shows the poster until the new width lands, not the strip it once held.
+    vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
+    await act(async () => {
+      reportResize(880, 40);
+      await Promise.resolve();
+    });
+    await rest();
+    expect(new Set(shownSources())).toEqual(new Set(["blob:poster"]));
   });
 
   it("keeps its filmstrip while the zoom resizes it, and decodes the new width at rest", async () => {

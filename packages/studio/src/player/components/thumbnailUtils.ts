@@ -17,19 +17,18 @@ export function quantizeThumbnailFrameCount(frameCount: number): number {
 }
 
 /**
- * The decoded frame tile `index` of `tileCount` shows. Frame `i` of `frameCount` stands for its
- * slice of the clip from its left-edge time (videoThumbnailTimestamps); a tile shows the frame
- * whose slice holds the tile's centre.
+ * The decoded frame tile `index` of `tileCount` shows, of a strip's `frameCount`: the last tile
+ * shows the clip's last frame; the others the slice (videoThumbnailTimestamps) holding their centre.
  */
 export function thumbnailFrameForTile(
   index: number,
   tileCount: number,
   frameCount: number,
 ): number {
-  return Math.min(
-    frameCount - 1,
-    Math.floor(((index + 0.5) * frameCount) / Math.max(1, tileCount)),
-  );
+  if (frameCount < 2) return 0;
+  if (tileCount > 1 && index >= tileCount - 1) return frameCount - 1;
+  const slices = frameCount - 1;
+  return Math.min(slices - 1, Math.floor(((index + 0.5) * slices) / tileCount));
 }
 
 /**

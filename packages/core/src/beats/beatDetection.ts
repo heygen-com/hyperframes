@@ -212,12 +212,12 @@ function gateBeatsBySilence(
   return { times, strengths, peak };
 }
 
-// fallow-ignore-next-line complexity
 export interface MusicAnalysisOptions {
   /** Awaited before each long stage, so a caller can hold the analysis while its page is busy. */
   pause?: () => Promise<void>;
 }
 
+// fallow-ignore-next-line complexity
 export async function analyzeMusicFromBuffer(
   audioBuffer: AudioBuffer,
   { pause }: MusicAnalysisOptions = {},

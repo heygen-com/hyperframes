@@ -10,9 +10,12 @@ export interface VideoThumbnailDecodeRequest {
 }
 
 /**
- * The times a strip of `frameCount` frames shows: each frame's left edge, so a strip twice as long
- * holds every frame of this one and a zoom decodes only the new half. A poster is the midpoint.
+ * The times a strip of `frameCount` slices shows: each slice's left edge, so a strip twice as long
+ * holds every frame of this one, then the clip's last frame. A poster is the midpoint.
  */
+// Inside the last frame: a time at the very end of a file can decode to nothing.
+const END_FRAME_LEAD_S = 0.001;
+
 export function videoThumbnailTimestamps(
   start: number,
   duration: number,
@@ -22,7 +25,11 @@ export function videoThumbnailTimestamps(
   const safeDuration = Math.max(0, Number.isFinite(duration) ? duration : 0);
   const count = Math.max(1, Number.isFinite(frameCount) ? Math.floor(frameCount) : 1);
   if (count === 1) return [safeStart + safeDuration / 2];
-  return Array.from({ length: count }, (_, index) => safeStart + (safeDuration * index) / count);
+  const edges = Array.from(
+    { length: count },
+    (_, index) => safeStart + (safeDuration * index) / count,
+  );
+  return [...edges, safeStart + Math.max(0, safeDuration - END_FRAME_LEAD_S)];
 }
 
 /** A decoded frame, shared by every strip of its source that would accept it for a time. */
@@ -41,13 +48,15 @@ interface HeldFrame {
 interface FrameWindow {
   sourceStart: number;
   lead: number;
+  /** The clip's last frame, shown as decoded at its own time, never from an earlier keyframe. */
+  end: number;
 }
 
 const sharedFrames = new Map<string, SharedFrame[]>();
 const sourceInfos = new Map<string, SourceInfo>();
 
 const accepts = (window: FrameWindow, time: number, decodedAt: number) =>
-  decodedAt >= window.sourceStart && time - decodedAt <= window.lead;
+  decodedAt >= window.sourceStart && time - decodedAt <= (time >= window.end ? 0 : window.lead);
 
 function takeSharedFrame(key: string, time: number, window: FrameWindow): SharedFrame | undefined {
   const frame = sharedFrames.get(key)?.find((shared) => accepts(window, time, shared.decodedAt));
@@ -163,7 +172,12 @@ function stripTimes(
     duration,
     Math.min(request.frameCount, budgets.richPreviewFrameCount),
   );
-  const window: FrameWindow = { sourceStart, lead: duration / Math.max(2, timestamps.length) / 2 };
+  const slices = Math.max(1, timestamps.length - 1);
+  const window: FrameWindow = {
+    sourceStart,
+    lead: duration / Math.max(2, slices) / 2,
+    end: timestamps.length > 1 ? timestamps.at(-1)! : Infinity,
+  };
   return { window, timestamps };
 }
 

@@ -90,13 +90,14 @@ type VideoThumbnailRequest = ReturnType<typeof createVideoThumbnailRequest>;
 function useVideoThumbnailSnapshot(
   poster: VideoThumbnailRequest | null,
   rich: VideoThumbnailRequest | null,
-  props: object,
+  media: string,
 ): ThumbnailSnapshot {
   const posterSnapshot = useThumbnailLease(poster);
   const richSnapshot = useThumbnailLease(rich);
-  const [shown, setShown] = useState({ props, request: rich });
-  if (richSnapshot.status === "ready" && shown.request !== rich) setShown({ props, request: rich });
-  const holdsShown = rich !== null && shown.props === props && shown.request !== rich;
+  const [shown, setShown] = useState({ media, request: rich });
+  const settled = richSnapshot.status === "ready" || rich === null;
+  if (settled && shown.request !== rich) setShown({ media, request: rich });
+  const holdsShown = rich !== null && shown.media === media && shown.request !== rich;
   const shownSnapshot = useThumbnailLease(holdsShown ? shown.request : null);
   return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
@@ -143,7 +144,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   const snapshot = useVideoThumbnailSnapshot(
     measured ? posterRequest : null,
     measured && requestFrameCount > 1 ? richRequest : null,
-    requestProps,
+    posterRequest.key,
   );
   const value = snapshot.status === "ready" ? snapshot.value : null;
   const urls =

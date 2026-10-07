@@ -4,6 +4,7 @@ import {
   encodePreviewPath,
   resolveMediaPreviewUrl,
   quantizeThumbnailFrameCount,
+  thumbnailFrameForTile,
 } from "./thumbnailUtils";
 import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 
@@ -49,6 +50,16 @@ describe("computeThumbnailStrip", () => {
       frameW: 48,
       frameCount: 7,
     });
+  });
+});
+
+describe("thumbnailFrameForTile", () => {
+  it("shows the clip's last frame in the last tile, and the slice under each other tile's centre", () => {
+    // 8 slices and the end frame.
+    expect([0, 1, 2].map((tile) => thumbnailFrameForTile(tile, 3, 9))).toEqual([1, 4, 8]);
+    // 2 slices and the end frame across 4 tiles.
+    expect([0, 1, 2, 3].map((tile) => thumbnailFrameForTile(tile, 4, 3))).toEqual([0, 0, 1, 2]);
+    expect(thumbnailFrameForTile(0, 1, 9)).toBe(4);
   });
 });
 
