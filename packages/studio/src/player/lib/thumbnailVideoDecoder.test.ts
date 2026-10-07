@@ -269,15 +269,24 @@ describe("decodeVideoThumbnail", () => {
         yield slot++ === 2 ? null : { canvas: document.createElement("canvas") };
       }
     });
+    const signal = new AbortController().signal;
     const result = await decodeVideoThumbnail(
       { source, sourceStart: 0, sourceRangeDuration: 8, frameCount: 2 },
-      new AbortController().signal,
+      signal,
     );
     expect(result.value).toMatchObject({
       kind: "filmstrip",
       urls: ["blob:one", "blob:two", "blob:two"],
     });
+    // The cache is charged for the two decoded frames, not the filled copy.
+    recordDecodes([]);
+    const whole = await decodeVideoThumbnail(
+      { source: `${source}?whole`, sourceStart: 0, sourceRangeDuration: 8, frameCount: 2 },
+      signal,
+    );
+    expect(result.weight * 3).toBe(whole.weight * 2);
     result.dispose?.();
+    whole.dispose?.();
   });
 
   it("snaps a poster up to a quarter of its range and a strip frame up to half a slice", async () => {
