@@ -382,6 +382,40 @@ describe("paintAndIdleReadinessInput", () => {
     expect(isResolved()).toBe(true);
   });
 
+  it.each([
+    { label: "variable-refresh", frames: [0, 8, 24, 40] },
+    { label: "alternating", frames: [0, 16, 49, 65] },
+  ])("preserves fast $label gaps", async ({ frames }) => {
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
+    for (const ts of frames) {
+      expect(isResolved()).toBe(false);
+      fireFrame(ts);
+      await flushMicrotasks();
+    }
+    expect(isResolved()).toBe(true);
+  });
+
+  it("preserves fast-page settlement after zero timestamps", async () => {
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
+    for (const ts of [0, 0, 16]) {
+      fireFrame(ts);
+      await flushMicrotasks();
+      expect(isResolved()).toBe(false);
+    }
+    fireFrame(32);
+    await flushMicrotasks();
+    expect(isResolved()).toBe(true);
+  });
+
+  it("does not raise the shortest-gap baseline during later stalls", async () => {
+    const { fireFrame, isResolved } = startPaintAndIdleTracking();
+    for (const ts of [0, 100, 140, 230, 320, 410]) {
+      fireFrame(ts);
+      await flushMicrotasks();
+      expect(isResolved()).toBe(false);
+    }
+  });
+
   it("keeps the paint cap when stalls prevent two consecutive quiet gaps", async () => {
     const { fireFrame, isResolved } = startPaintAndIdleTracking();
     let ts = 0;

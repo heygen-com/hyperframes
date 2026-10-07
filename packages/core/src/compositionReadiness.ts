@@ -227,6 +227,8 @@ export function computeReadinessInput(doc: Document, signal: AbortSignal): Promi
   });
 }
 
+// Preserve the established fast-page path; slower documents use their own cadence.
+const IDLE_FRAME_GAP_MS = 50;
 // Ordinary frame jitter can span 1.5x the document's shortest observed gap.
 const IDLE_FRAME_GAP_RATIO = 1.5;
 // Two consecutive quiet frames, not one: a single fast gap can follow
@@ -235,6 +237,7 @@ const IDLE_FRAME_GAP_RATIO = 1.5;
 const IDLE_FRAMES_REQUIRED = 2;
 // Bounds continuing stalls. A backgrounded document with no frames still
 // rides the shared timeout; this budget only bounds frames that arrive.
+// ponytail: retain the unmeasured 1500ms budget; these traces tune the gap ratio.
 const MAX_PAINT_WAIT_MS = 1_500;
 
 // Resolves with -1 on abort instead of rejecting: every caller already
@@ -264,7 +267,7 @@ function nextAnimationFrame(win: Window, signal: AbortSignal): Promise<number> {
 /** Composition-agnostic readiness input: waits for a frame to paint, then
  * two consecutive quiet frame gaps — an early-out once the main thread is
  * free relative to its own frame cadence. See MAX_PAINT_WAIT_MS for
- * what this bound does and does not cover. */
+ * what this bound does and does not cover. Compute and media inputs own completion. */
 export function paintAndIdleReadinessInput(
   doc: Document,
   signal: AbortSignal,
@@ -283,7 +286,8 @@ export function paintAndIdleReadinessInput(
       if (signal.aborted) return;
       const gap = ts - lastTs;
       shortestGap = Math.min(shortestGap, gap);
-      quietStreak = gap <= shortestGap * IDLE_FRAME_GAP_RATIO ? quietStreak + 1 : 0;
+      const quiet = gap < IDLE_FRAME_GAP_MS || gap <= shortestGap * IDLE_FRAME_GAP_RATIO;
+      quietStreak = quiet ? quietStreak + 1 : 0;
       lastTs = ts;
     }
   })();
