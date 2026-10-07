@@ -15,10 +15,11 @@ function mount(
   Panel: typeof StyleSections | typeof FlatStyleSection,
   tag = "img",
   sourceFile = "index.html",
+  src = "assets/old.png",
 ) {
   const selected = document.createElement(tag);
   selected.id = "picture";
-  selected.setAttribute("src", "assets/old.png");
+  selected.setAttribute("src", src);
   document.body.append(selected);
   const element: DomEditSelection = {
     element: selected,
@@ -96,6 +97,17 @@ describe.each([
   it("shows the img source as the current project asset", () => {
     const view = mount(Panel);
     expect(view.assetSelect.value).toBe("assets/old.png");
+    act(() => view.root.unmount());
+  });
+  it.each([
+    "assets/100%.png",
+    'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100%"></svg>',
+  ])("shows an authored source containing a literal percent: %s", (src) => {
+    const view = mount(Panel, "img", "index.html", src);
+    const input = Array.from(view.host.querySelectorAll("label"))
+      .find((node) => node.querySelector("span")?.textContent === "External URL")
+      ?.querySelector("input");
+    expect(input?.value).toBe(src);
     act(() => view.root.unmount());
   });
   it("replaces the img source rather than writing a hidden background", () => {

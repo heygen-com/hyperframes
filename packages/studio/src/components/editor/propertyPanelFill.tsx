@@ -28,9 +28,13 @@ import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 function normalizeProjectPath(value: string): string {
   const trimmed = value.trim();
   const maybeUrl = /^[a-z]+:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
-  return decodeURIComponent(maybeUrl)
-    .replace(/\\/g, "/")
-    .replace(/^\.?\//, "");
+  let decodedPath = maybeUrl;
+  try {
+    decodedPath = decodeURIComponent(maybeUrl);
+  } catch (error) {
+    if (!(error instanceof URIError)) throw error;
+  }
+  return decodedPath.replace(/\\/g, "/").replace(/^\.?\//, "");
 }
 
 function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
