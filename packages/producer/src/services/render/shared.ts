@@ -276,6 +276,7 @@ export function updateJobStatus(
 const PROGRESS_REPORT_INTERVAL_MS = 250;
 const lastFrameReportAt = new WeakMap<RenderJob, number>();
 const lastStartupReportAt = new WeakMap<RenderJob, number>();
+const lastReportSent = new WeakMap<RenderJob, string>();
 
 // The job updates on every call; the callback fires on the first call per job, when forced,
 // and at most once per interval in between.
@@ -291,8 +292,14 @@ function reportThrottled(
 ): void {
   const now = Date.now();
   const last = lastReportAt.get(job);
-  const due = force || last === undefined || now - last >= PROGRESS_REPORT_INTERVAL_MS;
-  if (due) lastReportAt.set(job, now);
+  const sent = `${stage}|${progress}`;
+  const due =
+    lastReportSent.get(job) !== sent &&
+    (force || last === undefined || now - last >= PROGRESS_REPORT_INTERVAL_MS);
+  if (due) {
+    lastReportAt.set(job, now);
+    lastReportSent.set(job, sent);
+  }
   updateJobStatus(job, status, stage, progress, due ? onProgress : undefined, stageProgress);
 }
 

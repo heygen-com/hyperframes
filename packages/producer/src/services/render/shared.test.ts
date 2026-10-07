@@ -92,6 +92,14 @@ describe("stage progress for machines", () => {
     ]);
   });
 
+  it("sends a stage's closing update once when ffmpeg already reported the last frame", () => {
+    const j = job();
+    const { seen, onProgress } = heard(j);
+    reportEncodeProgress(j, 600, 600, onProgress, 75);
+    reportEncodeProgress(j, 600, 600, onProgress, 75);
+    expect(seen).toHaveLength(1);
+  });
+
   it("reports nothing for a stage with no frames or seconds, so the bar never turns NaN", () => {
     const j = job();
     j.progress = 80;
