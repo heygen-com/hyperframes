@@ -14,7 +14,7 @@ const unregister = window.__hyperframes.registerFrameSource({
 });
 ```
 
-The host uses the usual composition attributes: `data-composition-id`, `data-start`, `data-duration`, and `data-track-index`. Declare the root's dimensions, FPS, and duration. A frame source does not need a dummy GSAP timeline.
+The host uses the usual composition attributes: `data-composition-id`, `data-start`, `data-duration`, and `data-track-index`. Declare the root's dimensions, FPS, and duration. A frame source does not need a dummy GSAP timeline. Add `data-no-timeline` to the host, and to a root that registers no timeline; otherwise `hyperframes lint` reports `missing_timeline_registry` and each render waits 45 seconds for timeline registration.
 
 The callback receives seconds in source time: playback inpoint (`data-playback-start`) plus the rate-adjusted time since the host's resolved start. Existing playback rate and speed-ramp semantics apply. Timing is read again on every seek, so move, trim and rate edits do not require rewriting the animation code. Each overlapping scene needs its own source instance.
 
