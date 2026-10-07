@@ -150,12 +150,16 @@ function runGenerate(argv) {
     String(g.extra?.music ?? "")
       .trim()
       .toLowerCase() === "none";
-  const host = previousHostAudio(outPath, hyperframesDir);
+  const host = previousHostAudio(outPath, hyperframesDir, die);
   const scored = sfxCueLines(manifest).length || host.bgm || host.sfx.length;
   if (bgmOff && !lines.length && scored) {
-    // No narration and no looked-up music: the host's entries now, fetch-sfx's sounds later.
-    rmSync(neutralPath(outPath), { force: true });
-    const meta = keepHostAudio({ bgm: null, bgm_pending: false, voices: [], sfx: [] }, host);
+    // No narration and no looked-up music: the host's entries and any sounds fetch-sfx already found; a stale
+    // voice or bed in the engine's sidecar goes.
+    const neutral = neutralPath(outPath);
+    const looked = existsSync(neutral) ? (JSON.parse(readFileSync(neutral, "utf8")).sfx ?? []) : [];
+    const kept = { voices: [], bgm: null, bgm_pending: false, sfx: looked };
+    writeFileSync(neutral, JSON.stringify(kept));
+    const meta = keepHostAudio(toProductLaunchMeta(kept), host);
     writeFileSync(outPath, JSON.stringify(meta, null, 2));
     console.log(`✓ audio generate: no narration or music to make → ${outPath}`);
     return;
@@ -197,8 +201,8 @@ function runGenerate(argv) {
 
 // Per-frame `sfx:` cues (comma-separated) → engine lines carrying only sfx.
 // `filter(Boolean)` alone is not enough: a storyboard that spells "no SFX here" as
-// `sfx: none` used to reach the engine as a cue literally NAMED "none", which then failed
-// to resolve. The absence sentinels are part of the storyboard vocabulary, so drop them.
+// `sfx: none` reaches the engine as a cue literally NAMED "none", which then fails to
+// resolve. The absence sentinels are part of the storyboard vocabulary, so drop them.
 const SFX_NONE = new Set(["none", "no", "n/a", "na", "skip", "-", "—", "–"]);
 function sfxCueLines(manifest) {
   const lines = [];
@@ -212,15 +216,19 @@ function sfxCueLines(manifest) {
   return lines;
 }
 
-// The host's own entries in the audio_meta.json a pass is about to rebuild (lib/host-audio.mjs).
-function previousHostAudio(outPath, hyperframesDir) {
+// The host's own entries in the audio_meta.json a pass is about to rebuild (lib/host-audio.mjs). Only a missing file
+// means none: a file that does not parse stops the pass rather than lose the host's entries.
+function previousHostAudio(outPath, hyperframesDir, die) {
   let previous = null;
   try {
     previous = JSON.parse(readFileSync(outPath, "utf8"));
-  } catch {
-    previous = null;
+  } catch (err) {
+    if (err.code !== "ENOENT") die(`${outPath} does not parse: ${err.message}`);
   }
-  return hostAudio(previous, (path) => existsSync(join(hyperframesDir, path)));
+  const host = hostAudio(previous, (path) => existsSync(join(hyperframesDir, path)));
+  for (const path of host.dropped)
+    console.warn(`⚠ audio: host audio ${path} is not on disk — dropped`);
+  return host;
 }
 
 // ── fetch-sfx ────────────────────────────────────────────────────────────────
@@ -236,7 +244,7 @@ function runFetchSfx(argv) {
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
 
-  const host = previousHostAudio(outPath, hyperframesDir);
+  const host = previousHostAudio(outPath, hyperframesDir, die);
   const lines = sfxCueLines(manifest).filter((line) => !host.frames.has(Number(line.id)));
 
   const neutral = neutralPath(outPath);

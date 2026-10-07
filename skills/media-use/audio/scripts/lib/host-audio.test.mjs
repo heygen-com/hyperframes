@@ -76,8 +76,21 @@ test("each narrated workflow tells a host app's music and sounds the way in, and
     );
     assert.match(
       workflowText(skill, "references/story-design.md"),
-      /no `SCRIPT.md` \+ no `sfx:` cues\*\* — the canonical/,
+      /no `SCRIPT.md` \+ no `sfx:` cues or host audio\*\* — the canonical/,
       skill,
     );
   }
+});
+
+test("a frame written as a string is the same frame, and a gone host file is reported", () => {
+  const previous = {
+    bgm: { path: "assets/bgm/gone.mp3", source: "host" },
+    sfx: [{ ...hostWhoosh, frame: "1" }],
+  };
+  const host = hostAudio(previous, exists);
+  assert.deepEqual(host.sfx, [hostWhoosh]);
+  assert.ok(host.frames.has(1));
+  assert.deepEqual(host.dropped, ["assets/bgm/gone.mp3"]);
+  const rebuilt = { bgm: null, voices: [], sfx: [{ frame: 1, file: "assets/sfx/whoosh.mp3" }] };
+  assert.deepEqual(keepHostAudio(rebuilt, host).sfx, [hostWhoosh]);
 });

@@ -308,3 +308,51 @@ test("generate keeps a host bed when there is no narration and music: none", () 
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8")).bgm, HOST_BED);
 });
+
+test("fetch-sfx stops on an audio_meta.json that does not parse, so host entries are not lost", () => {
+  const { dir, result } = runFetchSfx({ storyboard: FRAME_WITH_SFX("whoosh") });
+  writeFileSync(
+    join(dir, "audio_meta.json"),
+    '{ "bgm": { "path": "assets/bgm/host.mp3", "source": "host" }, }',
+  );
+  const again = spawnSync(
+    process.execPath,
+    [script, "fetch-sfx", "--hyperframes", dir, "--storyboard", join(dir, "STORYBOARD.md")],
+    { encoding: "utf8", env: { ...process.env, HF_MEDIA_ENGINE: join(dir, "engine.mjs") } },
+  );
+
+  assert.equal(again.status, 1);
+  assert.match(again.stderr, /does not parse/);
+  assert.match(readFileSync(join(dir, "audio_meta.json"), "utf8"), /host\.mp3/);
+});
+
+test("re-running generate with no narration keeps the sounds fetch-sfx found", () => {
+  const storyboard =
+    "---\nmessage: Test\nmusic: none\n---\n\n## Frame 1 — Hook\n- duration: 3s\n- sfx: whoosh\n";
+  const { dir, result } = runAudioRaw({ storyboard });
+  assert.equal(result.status, 0, result.stderr);
+  writeFileSync(
+    join(dir, "audio_engine_meta.json"),
+    JSON.stringify({
+      voices: [{ id: "01", path: "old.wav" }],
+      bgm: { path: "old.mp3" },
+      sfx: [{ id: "01", file: "assets/sfx/whoosh.mp3" }],
+    }),
+  );
+  const again = spawnSync(
+    process.execPath,
+    [script, "--hyperframes", dir, "--storyboard", join(dir, "STORYBOARD.md")],
+    {
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(again.status, 0, again.stderr);
+  const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+  assert.deepEqual(
+    meta.sfx.map((s) => s.file),
+    ["assets/sfx/whoosh.mp3"],
+  );
+  assert.deepEqual(meta.voices, []);
+  assert.equal(meta.bgm, null);
+});
