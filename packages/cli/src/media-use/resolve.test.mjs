@@ -16,7 +16,11 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendRecord, findByPrompt, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
-import { HEYGEN_NOT_FOUND_MESSAGE } from "./lib/heygen-cli.mjs";
+import {
+  HEYGEN_INSTALL_COMMAND,
+  HEYGEN_NOT_FOUND_MESSAGE,
+  HEYGEN_UPDATE_COMMAND,
+} from "./lib/heygen-cli.mjs";
 import { freezeLocalFile } from "./lib/freeze.mjs";
 import { cachePut, cacheGet, importFromCache } from "./lib/cache.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
@@ -242,6 +246,53 @@ test("explicit local bundled SFX resolution does not advise installation", () =>
     assert.equal(parsed.advisory, undefined);
     cleanup();
   }
+});
+
+test("music without the HeyGen CLI fails naming it and the host app's own tool", () => {
+  setup();
+  const result = spawnResolve(
+    ["--type", "bgm", "--intent", "calm piano", "--project", tmp, "--json"],
+    {
+      env: { HOME: tmp, PATH: tmp },
+    },
+  );
+  assert.equal(result.status, 1, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.code, "heygen_cli_missing");
+  assert.equal(parsed.fix, HEYGEN_INSTALL_COMMAND);
+  assert.match(parsed.error, /needs the heygen CLI, which is not installed/);
+  assert.match(parsed.error, /host app's own music tool/);
+  cleanup();
+});
+
+test("a sound effect nothing bundled matches fails the same way without the HeyGen CLI", () => {
+  setup();
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "dog barking", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: tmp } },
+  );
+  assert.equal(result.status, 1, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.code, "heygen_cli_missing");
+  assert.match(parsed.error, /host app's own sound-effect tool/);
+  cleanup();
+});
+
+test("music with an outdated HeyGen CLI fails naming the update", () => {
+  setup();
+  const binDir = writeFakeHeygen('echo "heygen v0.1.5 does not support --headers" >&2', 1);
+  const result = spawnResolve(
+    ["--type", "bgm", "--intent", "calm piano", "--project", tmp, "--json"],
+    {
+      env: { HOME: tmp, PATH: binDir },
+    },
+  );
+  assert.equal(result.status, 1, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.code, "heygen_cli_outdated");
+  assert.equal(parsed.fix, HEYGEN_UPDATE_COMMAND);
+  cleanup();
 });
 
 test("human bundled fallback prints the install hint once", () => {

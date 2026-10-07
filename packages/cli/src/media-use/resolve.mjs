@@ -49,6 +49,7 @@ import {
   HEYGEN_MIN_VERSION,
   HEYGEN_UPDATE_COMMAND,
   consumeHeygenRemediation,
+  heygenMiss,
   firstSemver,
   flushHeygenFailureTracking,
   versionLessThan,
@@ -530,10 +531,15 @@ async function run() {
     });
     // brand stays local: no frame.md/design.md -> upsell the HyperFrames design
     // flow rather than reporting a generic miss (B5).
-    const msg =
+    const ownFailure =
       providerFailure instanceof BundledSfxAssetsError ||
-      providerFailure instanceof FfBinarySettingError
-        ? providerFailure.message
+      providerFailure instanceof FfBinarySettingError;
+    const heygen = consumeHeygenRemediation();
+    const miss = heygen && !ownFailure ? heygenMiss(type, heygen) : null;
+    const msg = ownFailure
+      ? providerFailure.message
+      : miss
+        ? miss.error
         : type === "brand"
           ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
           : args.provider
@@ -545,7 +551,9 @@ async function run() {
           ok: false,
           ...(providerFailure instanceof BundledSfxAssetsError
             ? { code: providerFailure.code, fix: providerFailure.fix }
-            : {}),
+            : miss
+              ? { code: miss.code, fix: miss.fix }
+              : {}),
           error: msg,
         }),
       );
