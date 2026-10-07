@@ -823,6 +823,10 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.studio == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2, 3]
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -1039,7 +1043,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: timeline-viewport-gate-evidence
+          name: timeline-viewport-gate-evidence-${{ matrix.sample }}
           path: |
             /tmp/timeline-gate-*.json
             /tmp/studio-open-counts.json
