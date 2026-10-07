@@ -360,17 +360,57 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     expect(after.liveness).not.toBe(before.liveness);
   });
 
-  it.each([
-    ["audio, which has no box", '<audio id="media"></audio>'],
-    ["a video whose picture is drawn elsewhere", '<video id="media" style="display:none"></video>'],
-  ])("sees the media time of %s advance under seek", async (_, media) => {
-    await load(composition("", `<h1 class="fixed">Title</h1>${media}`));
+  it("sees the time of a video whose picture is drawn elsewhere advance, in both samplers", async () => {
+    await load(
+      composition(
+        "",
+        '<h1 class="fixed">Title</h1><video id="media" style="display:none"></video>',
+      ),
+    );
     const before = await sample();
     await mutate('document.getElementById("media").currentTime = 4');
     const after = await sample();
 
     expect(after.sweep).not.toBe(before.sweep);
     expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  it("counts audio time as the timeline running, but never as a moving picture", async () => {
+    await load(composition("", '<h1 class="fixed">Title</h1><audio id="media"></audio>'));
+    const before = await sample();
+    await mutate('document.getElementById("media").currentTime = 4');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).toBe(before.liveness);
+  });
+
+  it("ignores a color change on a host whose text is skipped, though Blink resolves its border color from it", async () => {
+    await load(
+      composition(
+        "#host { content-visibility: hidden; width: 200px; height: 80px; color: #fff; }",
+        '<div id="host">Title</div>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("host").style.color = "rgb(255, 51, 0)"');
+    const after = await sample();
+
+    expect(after.sweep).toBe(before.sweep);
+  });
+
+  it("sees a drawn border change color", async () => {
+    await load(
+      composition(
+        "#box { width: 120px; height: 60px; border: 4px solid #fff; }",
+        '<div id="box"></div>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("box").style.borderColor = "rgb(255, 51, 0)"');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
   });
 
   it("ignores media time on a data-layout-ignore layer", async () => {

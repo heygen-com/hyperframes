@@ -1518,6 +1518,33 @@ describe("check pipeline", () => {
       ).toBe(true);
     });
 
+    it("warns, without failing, when only the audio advanced and nothing on screen moved", async () => {
+      let call = 0;
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        collectLayoutGeometry: vi.fn(async () => `still\u001f${call++}`),
+      });
+      const { report } = await runScenario(driver);
+
+      const sweep = report.layout.findings.filter((finding) => finding.code === "sweep_static");
+      expect(sweep.map((finding) => [finding.severity, finding.message])).toEqual([
+        ["warning", "Only the audio advanced under seek; nothing on screen moved."],
+      ]);
+      expect(sweep[0]?.fixHint).toContain("data-no-timeline");
+      expect(report.ok).toBe(true);
+    });
+
+    it("does not flag a sweep where something on screen moved", async () => {
+      let call = 0;
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        collectLayoutGeometry: vi.fn(async () => `frame${call++}\u001f0`),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+    });
+
     it("does not flag --at times the user picked on a still end card", async () => {
       const driver = fakeDriver({
         getDuration: vi.fn(async () => 53.7),

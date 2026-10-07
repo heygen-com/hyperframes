@@ -147,16 +147,30 @@
       return values.some(Boolean) ? hashFields(values) : "";
     };
   }
-  const boxPaintChannel = paintChannel([
+  const backgroundPaintChannel = paintChannel([
     "filter",
     "backdropFilter",
     "backgroundColor",
     "backgroundImage",
     "backgroundPosition",
-    "borderColor",
     "boxShadow",
-    "outlineColor",
   ]);
+
+  const BORDER_SIDES = ["borderTop", "borderRight", "borderBottom", "borderLeft"];
+  function isDrawn(style, edge) {
+    return style[`${edge}Style`] !== "none" && Number.parseFloat(style[`${edge}Width`]) > 0;
+  }
+  function drawnColor(style, edges, color) {
+    return edges.some((edge) => isDrawn(style, edge)) ? style[color] : "";
+  }
+  // Blink computes border and outline colors as `currentColor` even when none is drawn, so they follow `color`.
+  function strokePaintChannel(element, ctx) {
+    const values = [
+      drawnColor(ctx.style, BORDER_SIDES, "borderColor"),
+      drawnColor(ctx.style, ["outline"], "outlineColor"),
+    ];
+    return values.some(Boolean) ? hashFields(values) : "";
+  }
   const contentPaintChannel = paintChannel(["color", "textShadow", "fill", "stroke"]);
 
   // Direct text nodes only: descendants are signed separately, and a hidden
@@ -243,7 +257,8 @@
     fontAxesChannel,
     clipPathChannel,
     controlWidgetChannel,
-    boxPaintChannel,
+    backgroundPaintChannel,
+    strokePaintChannel,
   ];
   const CONTENT_CHANNELS = [
     textChannel,
@@ -324,11 +339,11 @@
     return parts;
   }
 
-  // Media time moves under seek where no pixel can be read: audio has no box, and a graded video is
-  // drawn into a WebGL canvas that reads back blank.
-  function mediaTimeParts(root, quantize) {
+  // Media time moves under seek where no pixel can be read: a graded video is drawn into a WebGL canvas that
+  // reads back blank, and audio has no box. Audio shows the timeline ran but is no picture, so it is kept apart.
+  function mediaTimeParts(root, quantize, selector) {
     const parts = [];
-    for (const media of root.querySelectorAll("audio, video")) {
+    for (const media of root.querySelectorAll(selector)) {
       if (isOptedOut(media, root)) continue;
       const time = media.currentTime;
       parts.push(
@@ -389,7 +404,7 @@
       const channels = skipped ? BOX_CHANNELS : ELEMENT_CHANNELS;
       parts.push(channels.map((channel) => channel(element, ctx)).join(","));
     }
-    parts.push(...counterParts(root, boxOwners), ...mediaTimeParts(root, quantize));
+    parts.push(...counterParts(root, boxOwners), ...mediaTimeParts(root, quantize, "video"));
     return parts.join("|");
   }
 
@@ -405,6 +420,9 @@
   // The name predates the textual/media channels and is kept for driver
   // compatibility.
   window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
-    return compositionSignature(compositionRoot(), { quantize: false });
+    const root = compositionRoot();
+    // AUDIO_TIME_SEPARATOR in utils/checkPipeline.ts: what follows it is audio time, not something seen.
+    const audio = root ? mediaTimeParts(root, false, "audio").join("|") : "";
+    return `${compositionSignature(root, { quantize: false })}\u001f${audio}`;
   };
 })();
