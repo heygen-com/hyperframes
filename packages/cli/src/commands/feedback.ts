@@ -46,8 +46,8 @@ function normalizeComment(raw?: string): string | undefined {
 /**
  * Compact PostHog join keys appended to the environment string that rides
  * along with the forwarded report (and therefore lands verbatim in the wild
- * feedback channel): `fid` = this submission's PostHog `feedback_id` (on
- * `cli_render_feedback`, or `cli_feedback_comment` for a ratingless report); `tid` = the install's telemetry distinct_id; `renders` =
+ * feedback channel): `fid` = the PostHog `feedback_id` (`cli_render_feedback` or
+ * `cli_feedback_comment`); `tid` = the install's telemetry distinct_id; `renders` =
  * recent `render_job_id`s (newest last, `!` suffix = the render failed).
  * Together they turn a wild report into an exact telemetry lookup instead of
  * a hardware-fingerprint hunt.
