@@ -18,9 +18,46 @@ vi.mock("../player/components/timelineZoomInput", () => ({
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
+/** Runs the frames the hook asked for, as the browser does after the observer's delivery. */
+function nextFrames() {
+  const frames: FrameRequestCallback[] = [];
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => frames.push(frame));
+  return () => act(() => frames.splice(0).forEach((frame) => frame(0)));
+}
+
+// A strip that re-rendered inside the observer's delivery resized the timeline Chromium had already measured that
+// frame, which it reported as a ResizeObserver loop on every frame of a trim.
+it("applies a reported size on the next frame, never inside the observer's delivery", () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const runFrames = nextFrames();
+  const host = document.createElement("div");
+  document.body.append(host);
+  Object.defineProperty(host, "clientWidth", { configurable: true, value: 300 });
+  Object.defineProperty(host, "clientHeight", { configurable: true, value: 40 });
+  const root = createRoot(host);
+  function Harness() {
+    const [size, ref] = useThumbnailStripSize();
+    return <div ref={ref}>{`${size.width}x${size.height}`}</div>;
+  }
+  try {
+    act(() => root.render(<Harness />));
+    reportResize(320, 40);
+    expect(host.textContent).toBe("300x40");
+    runFrames();
+    expect(host.textContent).toBe("320x40");
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
+});
+
 it("does not re-render the strip when the observer reports the size it already holds", () => {
   const originalResizeObserver = globalThis.ResizeObserver;
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const runFrames = nextFrames();
   const host = document.createElement("div");
   document.body.append(host);
   Object.defineProperty(host, "clientWidth", { configurable: true, value: 300 });
@@ -45,14 +82,17 @@ it("does not re-render the strip when the observer reports the size it already h
     const settled = stripRenders;
 
     act(() => reportResize(300, 40));
+    runFrames();
     expect(stripRenders).toBe(settled);
 
     act(() => reportResize(320, 40));
+    runFrames();
     expect(stripRenders).toBe(settled + 1);
     expect(host.textContent).toBe("320x40");
   } finally {
     act(() => root.unmount());
     host.remove();
+    vi.restoreAllMocks();
     globalThis.ResizeObserver = originalResizeObserver;
   }
 });

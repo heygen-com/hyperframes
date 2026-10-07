@@ -188,6 +188,8 @@ describe("ImageThumbnail", () => {
     });
 
     act(() => reportResize(500, 40));
+    // The strip applies a reported size on the next frame, after the observer's delivery.
+    await act(() => new Promise<void>((frame) => requestAnimationFrame(() => frame())));
 
     expect(host.querySelector("img")?.parentElement?.style.width).toBe("108px");
   });
