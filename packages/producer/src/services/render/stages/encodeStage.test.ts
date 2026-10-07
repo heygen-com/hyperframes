@@ -233,6 +233,19 @@ describe("runEncodeStage progress", () => {
     ]);
   });
 
+  it("closes a PNG sequence at its last frame", async () => {
+    const paths = createFramesDir("png");
+    const pngs = makeInput({
+      framesDir: paths.framesDir,
+      outputPath: join(paths.root, "frames-out"),
+      isPngSequence: true,
+    });
+    expect(await stagesSeen(pngs, 4)).toEqual([
+      { stage: "Writing PNG sequence", progress: 75, code: "encode", done: 0, total: 4 },
+      { stage: "Encoding frame 4/4", progress: 90, code: "encode", done: 4, total: 4 },
+    ]);
+  });
+
   it("closes a GIF encode at its last frame, though ffmpeg reports none in between", async () => {
     const paths = createFramesDir("jpg");
     const gif = makeInput({

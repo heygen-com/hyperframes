@@ -21,6 +21,6 @@ export function renderProgress(percent: number, stage: string, row?: number): vo
 }
 
 export function renderMachineProgress(percent: number, stage: RenderJob["stageProgress"]): void {
-  if (stdout.isTTY || !stage) return;
+  if (stdout.isTTY || process.env.HYPERFRAMES_STDOUT_IS_TTY === "1" || !stage) return;
   stdout.write(`@hf-progress ${JSON.stringify({ ...stage, pct: Math.round(percent) })}\n`);
 }

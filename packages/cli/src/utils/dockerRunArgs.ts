@@ -110,7 +110,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
   return [
     "run",
     "--rm",
-    ...(input.hostStdoutIsTty ? ["-t"] : []),
+    ...(input.hostStdoutIsTty ? ["-e", "HYPERFRAMES_STDOUT_IS_TTY=1"] : []),
     "--platform",
     platform,
     "--shm-size=2g",

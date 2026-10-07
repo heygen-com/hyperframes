@@ -5,7 +5,6 @@ export type ManagedProcessTerminationReason =
   | "abort"
   | "deadline"
   | "inactivity"
-  | "callback_error"
   | "spawn_error";
 
 export interface ManagedChildProcessOutcome {
@@ -39,7 +38,6 @@ export class ManagedChildProcess {
   private requestedReason: Exclude<ManagedProcessTerminationReason, "exit" | "spawn_error"> | null =
     null;
   private stderrTail = Buffer.alloc(0);
-  private callbackError: Error | undefined;
   private spawned = false;
   private settled = false;
   private deadlineTimer: NodeJS.Timeout | null = null;
@@ -90,13 +88,7 @@ export class ManagedChildProcess {
     if (this.stderrTail.byteLength > maxBytes) {
       this.stderrTail = this.stderrTail.subarray(this.stderrTail.byteLength - maxBytes);
     }
-    if (this.callbackError) return;
-    try {
-      this.options.onStderr?.(chunk.toString());
-    } catch (error) {
-      this.callbackError = error instanceof Error ? error : new Error(String(error));
-      this.requestTermination("callback_error");
-    }
+    this.options.onStderr?.(chunk.toString());
   };
 
   private readonly onSpawn = (): void => {
@@ -110,7 +102,6 @@ export class ManagedChildProcess {
       signal,
       stderr: this.stderrTail.toString(),
       durationMs: this.now() - this.startedAtMs,
-      ...(this.callbackError && { error: this.callbackError }),
     });
   };
 

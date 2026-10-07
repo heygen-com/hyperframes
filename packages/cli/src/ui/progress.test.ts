@@ -53,4 +53,13 @@ describe("renderMachineProgress", () => {
   it("stays silent in a terminal", () => {
     expect(capture(true)).toBe("");
   });
+
+  it("stays silent in a container whose host prints to a terminal", () => {
+    process.env.HYPERFRAMES_STDOUT_IS_TTY = "1";
+    try {
+      expect(capture(false)).toBe("");
+    } finally {
+      delete process.env.HYPERFRAMES_STDOUT_IS_TTY;
+    }
+  });
 });

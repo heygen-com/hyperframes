@@ -34,28 +34,6 @@ describe("ManagedChildProcess", () => {
     });
   });
 
-  it("stops the child and fails with the error when an onStderr hook throws", async () => {
-    const child = childProcess();
-    const hookError = new Error("progress consumer broke");
-    const heard: string[] = [];
-    const managed = new ManagedChildProcess(child, {
-      onStderr: (chunk) => {
-        heard.push(chunk);
-        throw hookError;
-      },
-    });
-    child.stderr.emit("data", Buffer.from("frame=1"));
-    child.stderr.emit("data", Buffer.from("frame=2"));
-    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
-    child.emit("close", null, "SIGTERM");
-
-    await expect(managed.wait()).resolves.toMatchObject({
-      reason: "callback_error",
-      error: hookError,
-    });
-    expect(heard).toEqual(["frame=1"]);
-  });
-
   it("escalates abort from SIGTERM to SIGKILL and resolves only after close", async () => {
     vi.useFakeTimers();
     const child = childProcess();
