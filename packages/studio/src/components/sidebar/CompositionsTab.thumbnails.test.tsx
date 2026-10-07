@@ -270,6 +270,21 @@ describe("composition card thumbnails", () => {
         expect.objectContaining({ action: "set-display-scale", scale: 80 / 1920 }),
         "*",
       );
+
+      // A module-script composition starts listening only after load, then says it is ready.
+      postMessage.mockClear();
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: frame.contentWindow,
+            data: { source: "hf-preview", type: "ready" },
+          }),
+        );
+      });
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "set-display-scale", scale: 80 / 1920 }),
+        "*",
+      );
     } finally {
       vi.useRealTimers();
     }

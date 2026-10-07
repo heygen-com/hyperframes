@@ -264,6 +264,18 @@ function CompCard({
   }, [livePreviewLoaded, previewScale]);
 
   useEffect(() => {
+    if (!hovered) return;
+    const onRuntimeReady = (event: MessageEvent) => {
+      const frame = iframeRef.current;
+      if (frame && event.source === frame.contentWindow && event.data?.type === "ready") {
+        postFrameDisplayScale(frame);
+      }
+    };
+    window.addEventListener("message", onRuntimeReady);
+    return () => window.removeEventListener("message", onRuntimeReady);
+  }, [hovered]);
+
+  useEffect(() => {
     return () => {
       if (hoverTimer.current) clearTimeout(hoverTimer.current);
       if (syncTimer.current) clearTimeout(syncTimer.current);
