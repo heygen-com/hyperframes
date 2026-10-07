@@ -278,8 +278,8 @@ const lastFrameReportAt = new WeakMap<RenderJob, number>();
 const lastStartupReportAt = new WeakMap<RenderJob, number>();
 const lastReportSent = new WeakMap<RenderJob, string>();
 
-// The job updates on every call; the callback fires on the first call per job, when forced,
-// and at most once per interval in between.
+// The job updates on every call; the callback fires on the first call per job, when forced, and at
+// most once per interval in between, never twice in a row with the same stage and percent.
 function reportThrottled(
   lastReportAt: WeakMap<RenderJob, number>,
   job: RenderJob,
