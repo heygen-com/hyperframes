@@ -1537,9 +1537,7 @@ async function fetchGoogleFont(
       outcomes.push(result.status ? `http_${result.status}` : "no_faces");
   }
   if (faces.length > 0) return faces;
-  // Fail-closed transient errors threw above; any other miss gets the weight-list request.
   const fallback = (await fetchGoogleFontStylesheet(googleFamilyName, defaultUrl, options)).faces;
-  // No URL in the message: an authored link can carry page text in `text=`.
   options.log.warn(
     `[Compiler] google_font_link_fallback family="${familyName}" link_outcomes=${outcomes.join(",")} ` +
       `fallback_faces=${fallback.length}`,
