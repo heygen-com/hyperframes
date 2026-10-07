@@ -328,6 +328,59 @@ describe("parked transport loop", () => {
     expect(raf.pending()).toBeGreaterThan(0);
   });
 
+  /** The host's per-frame tick, as the player posts it on the runtime-bridge path. */
+  const hostTick = () =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "tick" },
+      }),
+    );
+
+  const countSeeks = () => {
+    const timeline = window.__timelines!["main"] as RuntimeTimelineLike;
+    const seeks: number[] = [];
+    const originalTotalTime = timeline.totalTime!.bind(timeline);
+    timeline.totalTime = (time?: number, suppress?: boolean) => {
+      if (time !== undefined) seeks.push(time);
+      return originalTotalTime(time, suppress);
+    };
+    return seeks;
+  };
+
+  it("renders a playing frame once when the host also ticks it", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    frame120Hz();
+    const seeks = countSeeks();
+
+    frame120Hz();
+    const perFrame = seeks.length;
+    hostTick();
+
+    expect(perFrame).toBeGreaterThan(0);
+    expect(seeks.length).toBe(perFrame);
+  });
+
+  it("advances on the host's ticks while its own animation frames are throttled", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    frame120Hz();
+    hostTick();
+    const seeks = countSeeks();
+
+    for (let i = 0; i < 3; i += 1) {
+      vi.advanceTimersByTime(8);
+      hostTick();
+    }
+
+    expect(seeks.length).toBeGreaterThanOrEqual(3);
+  });
+
   it("posts the paused bridge heartbeat on its documented interval while parked", () => {
     mount();
     initSandboxRuntimeModular();
