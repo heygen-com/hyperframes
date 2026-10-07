@@ -2,6 +2,7 @@ export interface TimelineViewportBudgets {
   directScrollSafetyPx: number;
   rowOverscanPerSide: number;
   timeOverscanViewportRatio: number;
+  zoomOverscanViewportRatio: number;
   maxMountedRows: number;
   maxMountedClipRoots: number;
   maxMountedClipRootsPerRow: number;
@@ -61,7 +62,9 @@ export const MAX_VISIBLE_THUMBNAIL_FRAMES = Math.ceil(3840 / (66 * (16 / 9))); /
 export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Object.freeze({
   directScrollSafetyPx: 8_000_000,
   rowOverscanPerSide: 2,
-  timeOverscanViewportRatio: 0.5,
+  timeOverscanViewportRatio: 0.25,
+  // Wider only while a zoom previews, so a zoom-out has clips to show; every scroll step pays for the window.
+  zoomOverscanViewportRatio: 0.5,
   maxMountedRows: 64,
   maxMountedClipRoots: 512,
   maxMountedClipRootsPerRow: 128,

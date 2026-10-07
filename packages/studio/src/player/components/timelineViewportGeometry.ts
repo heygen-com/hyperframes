@@ -8,11 +8,12 @@ export function getTimelineRenderTimeRange(
   pixelsPerSecond: number,
   contentOrigin: number,
   duration: number,
+  overscanRatio = TIMELINE_VIEWPORT_BUDGETS.timeOverscanViewportRatio,
 ): TimelineTimeRange {
   if (!(pixelsPerSecond > 0) || !(duration > 0) || !(viewport.clientWidth > 0)) {
     return { start: 0, end: 0 };
   }
-  const overscanPx = viewport.clientWidth * TIMELINE_VIEWPORT_BUDGETS.timeOverscanViewportRatio;
+  const overscanPx = viewport.clientWidth * overscanRatio;
   const startPx = viewport.scrollLeft - contentOrigin - overscanPx;
   const endPx = viewport.scrollLeft + viewport.clientWidth - contentOrigin + overscanPx;
   return {

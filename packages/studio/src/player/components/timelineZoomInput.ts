@@ -154,9 +154,21 @@ function previewNeedsLayout(p: ZoomPreview, scroll: HTMLDivElement, contentOrigi
 }
 
 /** The times laid out now: the render window clips, ruler ticks and beat lines are drawn in. */
-function drawnRange(scroll: HTMLDivElement, pps: number, contentOrigin: number): TimelineTimeRange {
+function drawnRange(
+  scroll: HTMLDivElement,
+  pps: number,
+  contentOrigin: number,
+  overscanRatio?: number,
+): TimelineTimeRange {
   const contentEnd = (scroll.scrollWidth - contentOrigin) / pps;
-  return getTimelineRenderTimeRange(scroll, pps, contentOrigin, contentEnd);
+  return getTimelineRenderTimeRange(scroll, pps, contentOrigin, contentEnd, overscanRatio);
+}
+
+/** Called once the wider window a preview asked for is mounted, so the preview may show it. */
+export function markTimelineZoomWindowMounted(overscanRatio: number) {
+  const view = viewport;
+  if (!preview || !view) return;
+  preview.drawn = drawnRange(view.scroll, preview.basePps, view.contentOrigin, overscanRatio);
 }
 
 function scalePreview(scroll: HTMLElement) {
@@ -237,6 +249,7 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
   const { scroll, contentOrigin } = view;
   const now = shown(scroll);
   const at = anchor ?? defaultAnchor(view, now.pps, now.left);
+  const starting = !preview;
   preview ??= {
     percent: clamped,
     pps,
@@ -254,6 +267,8 @@ function request(percent: number, anchor: TimelineZoomAnchor | null, byPerson: b
   preview.pps = pps;
   preview.shift = scroll.scrollLeft - left;
   preview.byPerson ||= byPerson;
+  // Before the first frame, so the timeline mounts the preview's wider window in time to show it.
+  if (starting) emitPreview();
   if (!frame) frame = requestAnimationFrame(drawPreview);
   if (restTimer) clearTimeout(restTimer);
   restTimer = setTimeout(commitPreview, TIMELINE_REST_MS);

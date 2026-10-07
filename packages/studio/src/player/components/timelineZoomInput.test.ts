@@ -6,6 +6,7 @@ import { isTimelineMoving, subscribeTimelineMotion } from "./timelineMotion";
 import {
   cancelTimelineZoom,
   isTimelineZoomPreviewing,
+  markTimelineZoomWindowMounted,
   subscribeTimelineZoomPreview,
   redrawTimelineZoomPreview,
   currentTimelineRange,
@@ -63,6 +64,15 @@ function viewport(scrollLeft = 0, scrollWidth = 20_000) {
   unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
   return { scroll, row };
 }
+
+/** What the timeline's render window does: mounts the zoom's wider window while a preview shows. */
+let unmountZoomWindow = () => {};
+beforeEach(() => {
+  unmountZoomWindow = subscribeTimelineZoomPreview(() => {
+    if (isTimelineZoomPreviewing()) markTimelineZoomWindowMounted(0.5);
+  });
+});
+afterEach(() => unmountZoomWindow());
 
 /** Where `time` lands on screen once the committed zoom is laid out. */
 const laidOutX = (time: number) => {
@@ -138,6 +148,21 @@ describe("requestTimelineZoom", () => {
     requestTimelineZoom(600, { time: 55.24, x: 556 });
     vi.advanceTimersToNextFrame();
     expect(usePlayerStore.getState().timelinePps).toBe(100);
+  });
+
+  it("lays the same zoom-out out at once while only the rest window is mounted", () => {
+    unmountZoomWindow();
+    usePlayerStore.setState({
+      duration: 100,
+      zoomMode: "manual",
+      manualZoomPercent: 1000,
+      timelinePps: 100,
+    });
+    viewport(5000);
+    // Mounted 46.98..63.18 s at rest, short of the 46.5..63.97 s the preview would show.
+    requestTimelineZoom(600, { time: 55.24, x: 556 });
+    vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(60);
   });
 
   it("lays out a zoom-out before it shows past the window ruler ticks are drawn in", () => {

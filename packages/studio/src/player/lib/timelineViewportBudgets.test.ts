@@ -9,7 +9,8 @@ describe("timeline viewport budgets", () => {
     expect(TIMELINE_VIEWPORT_BUDGETS).toMatchObject({
       directScrollSafetyPx: 8_000_000,
       rowOverscanPerSide: 2,
-      timeOverscanViewportRatio: 0.5,
+      timeOverscanViewportRatio: 0.25,
+      zoomOverscanViewportRatio: 0.5,
       maxMountedRows: 64,
       maxMountedClipRoots: 512,
       maxMountedClipRootsPerRow: 128,
