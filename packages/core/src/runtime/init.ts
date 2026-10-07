@@ -385,6 +385,16 @@ const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
 
+/** Studio's lazy images in `root` load now: a hidden clip has no layout box, so lazy ones would never fetch. */
+function loadPreviewImagesIn(root: Element): void {
+  const images = root.matches(`[${STUDIO_PREVIEW_LAZY_ATTR}]`)
+    ? [root]
+    : Array.from(root.querySelectorAll(`img[${STUDIO_PREVIEW_LAZY_ATTR}]`)).filter(
+        (img) => img.closest("[data-start]") === root,
+      );
+  for (const img of images) img.setAttribute("loading", "eager");
+}
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   authoredMediaObserver?.disconnect();
@@ -1376,6 +1386,8 @@ export function initSandboxRuntimeModular(): void {
 
   // Sub-composition timelines the runtime nested into the root: the host composition id, and where.
   const autoNested = new WeakMap<object, { hostId: string; parent: unknown; at: number }>();
+  // The composite that holds the children of a root with no timeline, and how many it holds.
+  let missingRootComposite: { timeline: RuntimeTimelineLike; size: number } | null = null;
 
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
     const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
@@ -1431,16 +1443,25 @@ export function initSandboxRuntimeModular(): void {
       parent.add(candidate.timeline, at);
       autoNested.set(candidate.timeline, { hostId: candidate.compositionId, parent, at });
     };
+    /** Placed by the runtime in `root` and still there; under another root a re-run script owns its place. */
+    const placedIn = (
+      root: RuntimeTimelineLike,
+      candidate: { compositionId: string; timeline: RuntimeTimelineLike },
+    ) => {
+      const nested = candidate.timeline as RuntimeTimelineLike & RuntimeTimelineChildLike;
+      const placed = autoNested.get(nested);
+      return placed && placed.parent === root && nested.parent === (root as unknown)
+        ? placed
+        : null;
+    };
+    const atHostStart = (placed: { at: number }, candidate: { compositionId: string }) =>
+      Math.abs(placed.at - resolveCompositionStartSeconds(candidate.compositionId)) < 1e-6;
     const followHostStart = (
       root: RuntimeTimelineLike,
       candidate: { compositionId: string; timeline: RuntimeTimelineLike },
     ): void => {
-      const nested = candidate.timeline as RuntimeTimelineLike & RuntimeTimelineChildLike;
-      const placed = autoNested.get(nested);
-      // Under another root, a re-run script placed it, and owns that place as on a fresh load.
-      if (!placed || placed.parent !== root || nested.parent !== (root as unknown)) return;
-      if (Math.abs(placed.at - resolveCompositionStartSeconds(candidate.compositionId)) < 1e-6)
-        return;
+      const placed = placedIn(root, candidate);
+      if (!placed || atHostStart(placed, candidate)) return;
       // GSAP takes a child out of its parent before adding it; the rebind's unpause aligns it to the root.
       nestAtHostStart(root, candidate);
     };
@@ -1455,6 +1476,8 @@ export function initSandboxRuntimeModular(): void {
       if (!gsapApi || typeof gsapApi.timeline !== "function") return null;
       const compositeTimeline = gsapApi.timeline({ paused: true }) as RuntimeTimelineLike;
       for (const candidate of candidates) nestAtHostStart(compositeTimeline, candidate);
+      // Before any duration read: GSAP leaves paused children out of the duration it caches.
+      ensureChildCandidatesActive(nestedCandidates(compositeTimeline, candidates));
       return compositeTimeline;
     };
     const createDurationFloorTimeline = (
@@ -1633,7 +1656,6 @@ export function initSandboxRuntimeModular(): void {
         const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
         const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
         if (compositeTimeline && isUsableTimelineDuration(compositeDurationSeconds)) {
-          ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
           return {
             timeline: compositeTimeline,
             selectedTimelineIds,
@@ -1787,10 +1809,25 @@ export function initSandboxRuntimeModular(): void {
     }
     if (rootChildCandidates.length > 0) {
       const selectedTimelineIds = rootChildCandidates.map((candidate) => candidate.compositionId);
-      const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
+      // A rebuild re-parents every child at time 0 and paints it there, under a paused drag too,
+      // so the same children, each still at its host's start, keep the composite they sit in.
+      const held = missingRootComposite;
+      const reused =
+        held?.size === rootChildCandidates.length &&
+        isUsableTimelineDuration(getTimelineDurationSeconds(held.timeline)) &&
+        rootChildCandidates.every((candidate) => {
+          const placed = placedIn(held.timeline, candidate);
+          return placed !== null && atHostStart(placed, candidate);
+        })
+          ? held.timeline
+          : null;
+      const compositeTimeline =
+        reused ?? createCompositeTimelineFromCandidates(rootChildCandidates);
       const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
       if (compositeTimeline) {
-        ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
+        if (!reused) {
+          missingRootComposite = { timeline: compositeTimeline, size: rootChildCandidates.length };
+        }
         return {
           timeline: compositeTimeline,
           selectedTimelineIds,
@@ -2772,6 +2809,8 @@ export function initSandboxRuntimeModular(): void {
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
       const upcoming =
         hiddenImagesSkipped && !isVisibleNow && dueSoon(rawNode, visibleAt, currentTime);
+      if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
+        loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
       if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
         preloadNearPlayhead(
@@ -3862,7 +3901,7 @@ export function initSandboxRuntimeModular(): void {
       const held = { time: quantized, apply: () => applySeek(quantized, options) };
       heldSeek = held;
       for (const img of undecoded) {
-        if (img.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) img.setAttribute("loading", "eager");
+        loadPreviewImagesIn(img);
         for (let clip = img.closest(SKIPPED_CLIP); clip; clip = img.closest(SKIPPED_CLIP))
           clip.setAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, "");
       }

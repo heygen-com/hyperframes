@@ -61,7 +61,7 @@ export const MAX_VISIBLE_THUMBNAIL_FRAMES = Math.ceil(3840 / (66 * (16 / 9))); /
 export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Object.freeze({
   directScrollSafetyPx: 8_000_000,
   rowOverscanPerSide: 2,
-  timeOverscanViewportRatio: 0.25,
+  timeOverscanViewportRatio: 0.5,
   maxMountedRows: 64,
   maxMountedClipRoots: 512,
   maxMountedClipRootsPerRow: 128,

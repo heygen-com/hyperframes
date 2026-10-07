@@ -1,0 +1,12 @@
+{
+  "name": "shader-blocks-source",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.7",
+    "shaders": "4.0.0"
+  }
+}

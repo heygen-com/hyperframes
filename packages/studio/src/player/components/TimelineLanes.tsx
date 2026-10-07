@@ -1,6 +1,6 @@
-import { Fragment, useId, useMemo, type CSSProperties } from "react";
+import { Fragment, useId, useMemo, useRef, type CSSProperties } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
-import { TimelineClip } from "./TimelineClip";
+import { TimelineLaneClip, type TimelineLaneClipActions } from "./TimelineLaneClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
@@ -10,6 +10,8 @@ import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { TimelineGroupRow } from "./TimelineGroupRow";
 import { useTimelineLaneRowIndexes, useTimelineGroupDisclosure } from "./useTimelineLaneRowIndexes";
 import { useTimelineClipDisclosure } from "./useTimelineClipDisclosure";
+import { TimelineTimeLayer } from "./TimelineTimeLayer";
+import { clipWidthPx } from "./TimelineClip";
 import {
   isTrackRowExpanded,
   resolveTrackKeyframeClip,
@@ -24,8 +26,7 @@ import { isMultiDragPassenger, multiDragPassengerOffsetPx } from "./timelineMult
 import { useTimelineMultiDragActorWindows } from "./useTimelineMultiDragActorWindows";
 import type { TimelineLanesProps } from "./timelineLaneProps";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
-import { createClipGestureHandlers } from "./timelineClipGestureHandlers";
-import { renderClipChildren, resolveClipRenderContext } from "./timelineClipChildren";
+import { resolveClipRenderContext } from "./timelineClipChildren";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
@@ -143,6 +144,28 @@ export function TimelineLanes({
     onToggleRow: (row) => row.elementId && toggleClipExpandedTracked(row.elementId),
     onDrillDown,
   });
+  const clipActions = useRef<TimelineLaneClipActions>(null!);
+  clipActions.current = {
+    gestures: {
+      pps,
+      onResizeElement,
+      onMoveElement,
+      onRazorSplit,
+      onRazorSplitAll,
+      blockedClipRef,
+      suppressClickRef,
+      scrollRef,
+      setShowPopover,
+      setRangeSelection,
+      setResizingClip,
+      setDraggedClip,
+      setSelectedElementId,
+      onSelectElement,
+    },
+    setHoveredClip,
+    onContextMenuClip,
+    onDrillDown,
+  };
   return (
     <div
       role="treegrid"
@@ -330,6 +353,7 @@ export function TimelineLanes({
               <div
                 role="gridcell"
                 aria-colindex={2}
+                data-timeline-zoom-scale=""
                 style={{
                   width: trackContentWidth,
                   marginLeft: contentGutter, // room for a 0% diamond left of t=0
@@ -368,181 +392,145 @@ export function TimelineLanes({
                     renderTimeRange={rowsVirtualized ? renderTimeRange : undefined}
                   />
                 )}
-                {
-                  // fallow-ignore-next-line complexity
-                  renderElements.map((el) => {
-                    const clipStyle = getTrackStyle(el.tag);
-                    const elementKey = getTimelineElementIdentity(el);
-                    // Only the track's active keyframe clip shows expanded lanes;
-                    // other clips (incl. siblings on a shared track) show compact
-                    // diamonds on their own bar instead.
-                    const isTrackKeyframeClip = elementKey === keyframeClipKey;
-                    const showsLanes = isTrackKeyframeClip && rowExpanded;
-                    const capabilities = getClipCapabilities(el);
-                    const isSelected =
-                      selectedElementId === elementKey || selectedElementIds.has(elementKey);
-                    const isComposition = !!el.compositionSrc;
-                    // Element identity stays stable across clip splices and reorders.
-                    const clipKey = elementKey;
-                    const isDraggingClip =
-                      draggedClip?.started === true &&
-                      draggedElement != null &&
-                      getTimelineElementIdentity(draggedElement) === elementKey;
-                    if (isDraggingClip) return null;
-                    const previewElement = getPreviewElement(el);
-                    const renderContext = resolveClipRenderContext(
-                      previewElement,
-                      visibleTimeRange,
-                      isSelected || hoveredClip === clipKey || pinnedClipIdentities.has(clipKey),
-                    );
-                    // Passenger of a live multi-drag: preserve the formation without changing
-                    // the passenger's timeline data until the owning drag commits.
-                    const isPassenger =
-                      multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
-                    const passengerStyle = isPassenger
-                      ? passengerStyleAt(multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview))
-                      : undefined;
-                    const clipGestures = createClipGestureHandlers(
-                      el,
-                      elementKey,
-                      previewElement,
-                      capabilities,
-                      {
-                        pps,
-                        onResizeElement,
-                        onMoveElement,
-                        onRazorSplit,
-                        onRazorSplitAll,
-                        blockedClipRef,
-                        suppressClickRef,
-                        scrollRef,
-                        setShowPopover,
-                        setRangeSelection,
-                        setResizingClip,
-                        setDraggedClip,
-                        setSelectedElementId,
-                        onSelectElement,
-                      },
-                    );
-                    const clip = (
-                      <TimelineClip
-                        key={clipKey}
-                        onContextMenu={(e: React.MouseEvent) => {
-                          e.preventDefault();
-                          onContextMenuClip?.(e, el);
-                        }}
-                        el={previewElement}
-                        pps={pps}
-                        passengerStyle={passengerStyle}
-                        clipY={CLIP_Y}
-                        clipHeight={clipBarHeight}
-                        isSelected={isSelected}
-                        isHovered={hoveredClip === clipKey}
-                        isDragging={false}
-                        isActive={isTimelineClipActive(previewElement, currentTime)}
-                        hasCustomContent={!!renderClipContent}
-                        capabilities={capabilities}
-                        theme={theme}
-                        isComposition={isComposition}
-                        tabIndex={
-                          keyboard.rovingTargetId === timelineClipFocusId(elementKey) ? 0 : -1
-                        }
-                        onHoverStart={() => setHoveredClip(clipKey)}
-                        onHoverEnd={() => setHoveredClip(null)}
-                        onResizeStart={clipGestures.onResizeStart}
-                        onPointerDown={clipGestures.onPointerDown}
-                        onClick={clipGestures.onClick}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          if (suppressClickRef.current) return;
-                          if (isComposition && onDrillDown) onDrillDown(el);
-                        }}
-                      >
-                        {renderClipChildren(
-                          previewElement,
-                          clipStyle,
-                          renderClipContent,
-                          renderClipOverlay,
-                          renderContext,
-                        )}
-                      </TimelineClip>
-                    );
-                    const compactKeyframes = keyframeCache?.get(elementKey);
-                    const compactDiamonds = !showsLanes && compactKeyframes && (
-                      <TimelineCompactDiamonds
-                        key={`${clipKey}-diamonds`}
-                        element={previewElement}
-                        elementId={elementKey}
-                        keyframesData={compactKeyframes}
-                        pixelsPerSecond={pps}
-                        rowHeight={rowHeight}
-                        beatsActive={beatStripOnTrack}
-                        accentColor={clipStyle.accent}
-                        isSelected={isSelected}
-                        passengerStyle={passengerStyle}
-                        currentTime={currentTime}
-                        selectedKeyframes={selectedKeyframes}
-                        rovingTargetId={keyboard.rovingTargetId}
-                        onClickKeyframe={onClickKeyframe}
-                        onShiftClickKeyframe={onShiftClickKeyframe}
-                        onContextMenuKeyframe={onContextMenuKeyframe}
-                        onMoveKeyframe={onMoveKeyframe}
-                        onSelectSegment={onSelectSegment}
-                        suppressClickRef={suppressClickRef}
-                      />
-                    );
-                    // Keep this shell mounted while collapsed so aria-controls stays valid
-                    // and multi-drag cannot remount the subtree mid-gesture.
-                    const propertyLanes = isTrackKeyframeClip && (
-                      <TimelinePropertyLanes
-                        key={`${clipKey}-property-lanes`}
-                        id={lanesId}
-                        animations={showsLanes ? (gsapAnimations.get(elementKey) ?? []) : []}
-                        // clipTimingStart, not the raw start: an expanded sub-comp
-                        // child's start is host-absolute while its tweens are
-                        // local to its own file.
-                        clipStart={clipTimingStart(previewElement)}
-                        clipDuration={previewElement.duration}
-                        clipLeftPx={previewElement.start * pps}
-                        clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                        passengerStyle={passengerStyle}
-                        accentColor={clipStyle.accent}
-                        isSelected={isSelected}
-                        currentPercentage={
-                          previewElement.duration > 0
-                            ? ((currentTime - previewElement.start) / previewElement.duration) * 100
-                            : 0
-                        }
-                        elementId={elementKey}
-                        selectedKeyframes={selectedKeyframes}
-                        rovingTargetId={keyboard.rovingTargetId}
-                        onSelectSegment={(target) => onSelectSegment?.(elementKey, target)}
-                        onClickKeyframe={(target) => onClickKeyframe?.(previewElement, target)}
-                        onShiftClickKeyframe={(target) =>
-                          onShiftClickKeyframe?.(elementKey, target)
-                        }
-                        onContextMenuKeyframe={(e, target) =>
-                          onContextMenuKeyframe?.(e, elementKey, target)
-                        }
-                        onMoveKeyframe={(target, toClipPercentage) =>
-                          onMoveKeyframe?.(elementKey, target, toClipPercentage) ??
-                          Promise.resolve(false)
-                        }
-                        suppressClickRef={suppressClickRef}
-                      />
-                    );
+                <TimelineTimeLayer pixelsPerSecond={pps}>
+                  {
+                    // fallow-ignore-next-line complexity
+                    renderElements.map((el) => {
+                      const clipStyle = getTrackStyle(el.tag);
+                      const elementKey = getTimelineElementIdentity(el);
+                      // Only the track's active keyframe clip shows expanded lanes;
+                      // other clips (incl. siblings on a shared track) show compact
+                      // diamonds on their own bar instead.
+                      const isTrackKeyframeClip = elementKey === keyframeClipKey;
+                      const showsLanes = isTrackKeyframeClip && rowExpanded;
+                      const capabilities = getClipCapabilities(el);
+                      const isSelected =
+                        selectedElementId === elementKey || selectedElementIds.has(elementKey);
+                      // Element identity stays stable across clip splices and reorders.
+                      const clipKey = elementKey;
+                      const isDraggingClip =
+                        draggedClip?.started === true &&
+                        draggedElement != null &&
+                        getTimelineElementIdentity(draggedElement) === elementKey;
+                      if (isDraggingClip) return null;
+                      const previewElement = getPreviewElement(el);
+                      const renderContext = resolveClipRenderContext(
+                        previewElement,
+                        visibleTimeRange,
+                        isSelected || hoveredClip === clipKey || pinnedClipIdentities.has(clipKey),
+                      );
+                      // Passenger of a live multi-drag: preserve the formation without changing
+                      // the passenger's timeline data until the owning drag commits.
+                      const isPassenger =
+                        multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
+                      const passengerStyle = isPassenger
+                        ? passengerStyleAt(
+                            multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview),
+                          )
+                        : undefined;
+                      const clip = (
+                        <TimelineLaneClip
+                          key={clipKey}
+                          el={el}
+                          previewElement={previewElement}
+                          elementKey={elementKey}
+                          capabilities={capabilities}
+                          pps={pps}
+                          passengerStyle={passengerStyle}
+                          clipBarHeight={clipBarHeight}
+                          isSelected={isSelected}
+                          isHovered={hoveredClip === clipKey}
+                          isActive={isTimelineClipActive(previewElement, currentTime)}
+                          tabIndex={
+                            keyboard.rovingTargetId === timelineClipFocusId(elementKey) ? 0 : -1
+                          }
+                          priority={renderContext.priority}
+                          rich={renderContext.rich}
+                          theme={theme}
+                          clipStyle={clipStyle}
+                          renderClipContent={renderClipContent}
+                          renderClipOverlay={renderClipOverlay}
+                          actions={clipActions}
+                        />
+                      );
+                      const compactKeyframes = keyframeCache?.get(elementKey);
+                      const compactDiamonds = !showsLanes && compactKeyframes && (
+                        <TimelineCompactDiamonds
+                          key={`${clipKey}-diamonds`}
+                          element={previewElement}
+                          elementId={elementKey}
+                          keyframesData={compactKeyframes}
+                          pixelsPerSecond={pps}
+                          rowHeight={rowHeight}
+                          beatsActive={beatStripOnTrack}
+                          accentColor={clipStyle.accent}
+                          isSelected={isSelected}
+                          passengerStyle={passengerStyle}
+                          currentTime={currentTime}
+                          selectedKeyframes={selectedKeyframes}
+                          rovingTargetId={keyboard.rovingTargetId}
+                          onClickKeyframe={onClickKeyframe}
+                          onShiftClickKeyframe={onShiftClickKeyframe}
+                          onContextMenuKeyframe={onContextMenuKeyframe}
+                          onMoveKeyframe={onMoveKeyframe}
+                          onSelectSegment={onSelectSegment}
+                          suppressClickRef={suppressClickRef}
+                        />
+                      );
+                      // Keep this shell mounted while collapsed so aria-controls stays valid
+                      // and multi-drag cannot remount the subtree mid-gesture.
+                      const propertyLanes = isTrackKeyframeClip && (
+                        <TimelinePropertyLanes
+                          key={`${clipKey}-property-lanes`}
+                          id={lanesId}
+                          animations={showsLanes ? (gsapAnimations.get(elementKey) ?? []) : []}
+                          // clipTimingStart, not the raw start: an expanded sub-comp
+                          // child's start is host-absolute while its tweens are
+                          // local to its own file.
+                          clipStart={clipTimingStart(previewElement)}
+                          clipDuration={previewElement.duration}
+                          clipLeftPx={previewElement.start * pps}
+                          clipWidthPx={clipWidthPx(previewElement, pps)}
+                          passengerStyle={passengerStyle}
+                          accentColor={clipStyle.accent}
+                          isSelected={isSelected}
+                          currentPercentage={
+                            previewElement.duration > 0
+                              ? ((currentTime - previewElement.start) / previewElement.duration) *
+                                100
+                              : 0
+                          }
+                          elementId={elementKey}
+                          selectedKeyframes={selectedKeyframes}
+                          rovingTargetId={keyboard.rovingTargetId}
+                          onSelectSegment={(target) => onSelectSegment?.(elementKey, target)}
+                          onClickKeyframe={(target) => onClickKeyframe?.(previewElement, target)}
+                          onShiftClickKeyframe={(target) =>
+                            onShiftClickKeyframe?.(elementKey, target)
+                          }
+                          onContextMenuKeyframe={(e, target) =>
+                            onContextMenuKeyframe?.(e, elementKey, target)
+                          }
+                          onMoveKeyframe={(target, toClipPercentage) =>
+                            onMoveKeyframe?.(elementKey, target, toClipPercentage) ??
+                            Promise.resolve(false)
+                          }
+                          suppressClickRef={suppressClickRef}
+                        />
+                      );
 
-                    // No wrapper node per clip, and the same Fragment whether or not it rides a
-                    // drag, so joining or leaving one restyles it, never remounts it.
-                    return (
-                      <Fragment key={clipKey}>
-                        {clip}
-                        {compactDiamonds}
-                        {propertyLanes}
-                      </Fragment>
-                    );
-                  })
-                }
+                      // No wrapper node per clip, and the same Fragment whether or not it rides a
+                      // drag, so joining or leaving one restyles it, never remounts it.
+                      return (
+                        <Fragment key={clipKey}>
+                          {clip}
+                          {compactDiamonds}
+                          {propertyLanes}
+                        </Fragment>
+                      );
+                    })
+                  }
+                </TimelineTimeLayer>
                 <TimelineTransitionOverlays
                   seams={transitionSeamsByTrack.get(trackNum) ?? []}
                   rowElements={draggedClip?.started ? [] : automationElements}

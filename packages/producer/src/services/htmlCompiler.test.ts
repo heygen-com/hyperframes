@@ -1686,7 +1686,7 @@ describe("crossorigin attribute stripping", () => {
 //
 // Tests run on localizeRemoteMediaSources directly (exported for testing) to
 // avoid invoking ffprobe / the full compileForRender pipeline. fetch is patched
-// in-process for success cases; real 404s from example.com cover fallback.
+// in-process for success cases; the unit lane's refused network covers fallback.
 
 describe("localizeRemoteMediaSources", () => {
   it("rewrites remote <video> src to _remote_media path when download succeeds", async () => {

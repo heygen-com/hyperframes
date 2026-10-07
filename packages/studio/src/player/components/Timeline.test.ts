@@ -208,7 +208,9 @@ describe("Timeline provider boundary", () => {
       renderTimelineGeometry("clip-1");
 
     expect(trackHeader.style.width).toBe(`${GUTTER + TRACKS_LEFT_PAD}px`);
-    expect(clip.style.left).toBe("1000px");
+    // 10 s at 100 px/s: 1000% of a one-second layer 100px wide.
+    expect(clip.style.left).toBe("1000%");
+    expect((clip.closest("[data-timeline-time-layer]") as HTMLElement).style.width).toBe("100px");
     expect(clip.style.height).toBe("");
     expect(clip.style.bottom).toBe(`${CLIP_Y}px`);
     expect(rulerOrigin.style.width).toBe(`${GUTTER + TRACKS_LEFT_PAD}px`);

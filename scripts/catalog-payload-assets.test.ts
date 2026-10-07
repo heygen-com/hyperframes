@@ -109,11 +109,20 @@ describe("processAssets", () => {
     assert.ok(!existsSync(join(out.dir, "scene.glb")));
   });
 
-  it("embeds a script as a data URI when no inliner owns the item", () => {
-    const dir = project({ "lib/a.js": "var a=1;" });
-    const result = processAssets(`<script src="lib/a.js"></script>`, dir, target());
+  it("embeds a script as inline text when no inliner owns the item, never a data: script the docs CSP refuses", () => {
+    const dir = project({ "lib/fx.iife.js": 'window.fx = "</script>";' });
+    const result = processAssets(
+      `<script type="text/hf-after-fonts" src="lib/fx.iife.js" defer></script>`,
+      dir,
+      target(),
+    );
 
-    assert.match(result.html, /src="data:text\/javascript;base64,/);
+    // The inlined-file marker keeps a deferred script running after the classic ones.
+    assert.equal(
+      result.html,
+      `<script type="text/hf-after-fonts" defer data-hf-inlined-src="lib/fx.iife.js">window.fx = "<\\/script>";</script>`,
+    );
+    assert.equal(result.inlined, 1);
     assert.deepEqual(result.unresolved, []);
   });
 

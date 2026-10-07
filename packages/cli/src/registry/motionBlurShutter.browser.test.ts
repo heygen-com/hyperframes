@@ -116,6 +116,14 @@ function makeTimeline(onTo?: () => void): Fake {
   return { tl, currentTime: () => now, fire: () => onUpdate?.(), trackers: () => trackers };
 }
 
+/** What the browser resolves for the target: an inline !important, else the marker's rule, else the inline value. */
+function wordVisibility(word: Element): string {
+  const style = (word as HTMLElement).style;
+  if (style.getPropertyPriority("visibility") === "important") return style.visibility;
+  if (word.hasAttribute(HIDING)) return "hidden";
+  return style.visibility || "visible";
+}
+
 /**
  * happy-dom resolves no transforms of its own, so the element's computed style is the trajectory.
  * The stub also answers the declaration enumeration the style replay uses, and the perspective.
@@ -135,6 +143,7 @@ function installComputedStyle(
       transformOrigin: "50% 50%",
       opacity: element === word ? opacity() : "1",
       perspective: element === word ? "none" : perspective(),
+      visibility: element === word ? wordVisibility(word) : "visible",
     }) as unknown as CSSStyleDeclaration) as typeof globalThis.getComputedStyle;
 }
 
@@ -232,6 +241,8 @@ function copyPitches(offsets: number[]): number[] {
 }
 
 const originalGetComputedStyle = globalThis.getComputedStyle;
+/** The marker sharp 0 sets on a moving target; a stylesheet rule does the hiding. */
+const HIDING = "data-hf-motion-blur-hiding";
 
 beforeEach(() => {
   // The snippet polls the registry on a timer for seconds. Fake timers let a test reach the
@@ -255,12 +266,13 @@ afterEach(async () => {
 
 describe("motion-blur snippet copies", () => {
   // The demos and the example composition have to inline the snippet — a catalog plate is a single
-  // self-contained file and cannot import one. That makes four copies of the same shutter model, so
+  // self-contained file and cannot import one. That makes five copies of the same shutter model, so
   // the copies are asserted equal here rather than left to drift silently.
   it.each([
     "registry/components/motion-blur/demo.html",
     "registry/components/shutter-slam/shutter-slam.html",
     "registry/components/shutter-slam/demo.html",
+    "registry/blocks/gooey-split/gooey-split.html",
   ])("%s inlines the installable snippet verbatim", (relativePath) => {
     expect(snippetBody(readRepoFile(relativePath))).toBe(snippetBody(snippetHtml));
   });
@@ -314,6 +326,87 @@ describe("motion-blur shutter matches the After Effects reference", () => {
     // group has to precede the element rather than follow it.
     expect(group.nextElementSibling).toBe(word);
     expect(word.style.opacity).toBe("");
+    expect(word.hasAttribute(HIDING)).toBe(false);
+    expect(word.style.visibility).toBe("");
+  });
+
+  it("leaves only the shutter average while moving at sharp 0, and the element at rest", async () => {
+    let speed = 1;
+    const { group, word, fire } = await attach({ sharp: 0 }, (df) => translating(df * speed));
+
+    expect(group.style.display).toBe("");
+    expect(word.hasAttribute(HIDING)).toBe(true);
+
+    speed = 0;
+    fire();
+    await Promise.resolve();
+
+    expect(group.style.display).toBe("none");
+    expect(word.hasAttribute(HIDING)).toBe(false);
+  });
+
+  it("leaves the element's own visibility to the timeline at sharp 0", async () => {
+    // An autoAlpha fade writes visibility itself; hiding through it would keep the element
+    // hidden after the fade brings it back.
+    let speed = 1;
+    const { word, fire } = await attach({ sharp: 0 }, (df) => translating(df * speed));
+    word.style.visibility = "inherit";
+
+    speed = 0;
+    fire();
+    await Promise.resolve();
+
+    expect(word.style.visibility).toBe("inherit");
+  });
+
+  it("smears in the element's current visibility, read without its own marker", async () => {
+    // A second frame starts with the marker set, so a read that did not lift it would hide
+    // the smear along with the element.
+    const { group, word, fire } = await attach({ sharp: 0 });
+    fire();
+    await Promise.resolve();
+
+    expect(word.hasAttribute(HIDING)).toBe(true);
+    expect(group.style.visibility).toBe("");
+  });
+
+  it("leaves the smear's visibility to an ancestor while the element shares it", async () => {
+    // A clip that ends hides its subtree after the last moving frame; an explicit visible on
+    // the group would keep the copies on screen past it.
+    const { group } = await attach();
+
+    expect(group.style.display).toBe("");
+    expect(group.style.visibility).toBe("");
+  });
+
+  it("hides the smear with an element the timeline hides", async () => {
+    const { group, word, fire } = await attach();
+    word.style.visibility = "hidden";
+    fire();
+    await Promise.resolve();
+
+    expect(group.style.visibility).toBe("hidden");
+  });
+
+  it("does not freeze the element's visibility into the copies", async () => {
+    // An element attached while an autoAlpha entrance still hides it would otherwise smear
+    // as nothing for the rest of the timeline.
+    const observer = installResizeObserver();
+    const { word, copies } = await attach();
+    const mocked = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((element: Element) => {
+      if (element !== word) return mocked(element);
+      const values: Record<string, string> = { visibility: "hidden", color: "red" };
+      return Object.assign(Object.create(mocked(element)), Object.keys(values), {
+        length: 2,
+        getPropertyValue: (name: string) => values[name] ?? "",
+      });
+    }) as typeof globalThis.getComputedStyle;
+
+    observer.resize();
+
+    expect(copies[0]?.style.color).toBe("red");
+    expect(copies[0]?.style.visibility).toBe("");
   });
 
   it("carries the element's own opacity on the smear", async () => {
@@ -499,6 +592,61 @@ describe("motion-blur declarative attribute", () => {
     await Promise.resolve();
 
     expect(target.groups()[0]?.children).toHaveLength(5);
+  });
+
+  it("keeps a descendant's own hiding in a copy of a target hidden at attach", async () => {
+    // An autoAlpha entrance hides the target when it is blurred. A child hidden by its own
+    // rule must still differ from it, or the smear would show what the element hides.
+    const target = declare("");
+    const own = document.createElement("span");
+    const inheriting = document.createElement("span");
+    target.word.append(own, inheriting);
+    target.word.style.setProperty("visibility", "hidden", "important");
+    const mocked = globalThis.getComputedStyle;
+    const resolved = (element: Element, value: string) =>
+      Object.assign(Object.create(mocked(element)), ["visibility"], {
+        length: 1,
+        visibility: value,
+        getPropertyValue: (name: string) => (name === "visibility" ? value : ""),
+      });
+    globalThis.getComputedStyle = ((element: Element) => {
+      if (element === own) return resolved(element, "hidden");
+      if (element === inheriting || element === target.word) {
+        return resolved(element, wordVisibility(target.word));
+      }
+      return mocked(element);
+    }) as typeof globalThis.getComputedStyle;
+
+    target.register();
+    target.fire();
+    await Promise.resolve();
+
+    const copy = target.groups()[0]?.children[0];
+    if (!copy) throw new Error("motion-blur group carries no copies");
+    expect((copy.children[0] as HTMLElement).style.visibility).toBe("hidden");
+    expect((copy.children[1] as HTMLElement).style.visibility).toBe("");
+    expect(target.word.style.visibility).toBe("hidden");
+    expect(target.word.style.getPropertyPriority("visibility")).toBe("important");
+  });
+
+  it("puts a hidden target's visibility back when copying its styles throws", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const target = declare("");
+    const child = document.createElement("span");
+    target.word.append(child);
+    target.word.style.visibility = "hidden";
+    const mocked = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((element: Element) => {
+      if (element === child) throw new Error("no style");
+      return mocked(element);
+    }) as typeof globalThis.getComputedStyle;
+
+    target.register();
+
+    expect(target.groups()).toHaveLength(0);
+    expect(target.word.style.visibility).toBe("hidden");
+    expect(target.word.style.getPropertyPriority("visibility")).toBe("");
+    warn.mockRestore();
   });
 
   it("leaves a target alone when another composition registers", async () => {
@@ -762,6 +910,18 @@ describe("motion-blur declarative attribute, the cases only executing found", ()
 
     expect(trailing).toBeCloseTo(-reference.trailingDisplacementPx, 1);
     expect(leading).toBeCloseTo(reference.leadingDisplacementPx, 1);
+  });
+
+  it("refuses a sharp other than 0 or 1 instead of reading it as crisp", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const target = declare('{"sharp": 0.5}');
+
+    target.register();
+    await target.settle();
+
+    expect(target.groups()).toHaveLength(0);
+    expect(String(warn.mock.calls[0]?.[0])).toContain("needs 0 or 1 for sharp");
+    warn.mockRestore();
   });
 
   it("refuses an option name it does not know instead of rendering with the defaults", async () => {

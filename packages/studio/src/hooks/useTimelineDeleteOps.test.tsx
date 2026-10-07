@@ -275,6 +275,16 @@ describe("useTimelineDeleteOps: undo race", () => {
       await flushStudioPendingEdits();
     });
   });
+
+  it("shows the shortened length while the last clip's delete is still saving", async () => {
+    const { gate, recordEdit, deleteSelection } = mountRaceHarness();
+    usePlayerStore.getState().setDuration(6);
+    const deletePromise = deleteSelection();
+    await vi.waitFor(() => expect(recordEdit).toHaveBeenCalled());
+    expect(usePlayerStore.getState().duration).toBe(4);
+    gate.resolve();
+    await deletePromise;
+  });
 });
 
 // Regression: the live preview kept a deleted clip until its reload landed, and composition
