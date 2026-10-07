@@ -1,6 +1,6 @@
 import { cpus, totalmem } from "os";
 import { getHeapStatistics } from "v8";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   calculateOptimalWorkers,
   computeWorkerSizing,
@@ -140,6 +140,12 @@ vi.mock("v8", async (importOriginal) => {
 });
 
 describe("computeWorkerSizing", () => {
+  afterEach(() => {
+    vi.mocked(cpus).mockRestore();
+    vi.mocked(totalmem).mockRestore();
+    vi.mocked(getHeapStatistics).mockRestore();
+  });
+
   // The field case: a 24GB 14-core Mac, Node's default ~4GB heap, a long 1080x1920 project.
   it("never auto-picks more workers than the V8 heap can feed", () => {
     vi.mocked(cpus).mockReturnValue(
@@ -159,9 +165,6 @@ describe("computeWorkerSizing", () => {
       heap_size_limit: 8192 * 1024 ** 2,
     } as ReturnType<typeof getHeapStatistics>);
     expect(computeWorkerSizing(1300, undefined, { concurrency: "auto" }).workers).toBe(5);
-    vi.mocked(cpus).mockRestore();
-    vi.mocked(totalmem).mockRestore();
-    vi.mocked(getHeapStatistics).mockRestore();
   });
 
   it("matches calculateOptimalWorkers and reports every constraint", () => {

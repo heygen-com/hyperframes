@@ -141,9 +141,8 @@ const MEMORY_PER_WORKER_MB = 1536;
 const HEAP_RESERVED_MB = 1024;
 // Parent-process V8 heap consumed per worker (protocol buffers + in-flight
 // frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
-// default heap ⇒ >~500MB/worker + base. Caps auto sizing (an explicit
-// `--workers N` is still the operator's call): a desktop 24GB Mac auto-picked 5
-// workers against a 4192MB heap that feeds ~4, and died at 62% on a big project.
+// default heap ⇒ >~500MB/worker + base. Caps auto sizing; an explicit
+// `--workers N` is still the operator's call.
 const HEAP_PER_WORKER_MB = 640;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
