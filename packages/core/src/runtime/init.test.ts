@@ -3705,12 +3705,16 @@ describe("initSandboxRuntimeModular", () => {
         ),
       ).toBe(true);
       const rebound = timelines.mock.results.at(-1)?.value as gsap.core.Timeline;
+      expect(authored.parent).toBe(rebound);
       expect(window.__player!.isPlaying()).toBe(true);
       expect(rebound.paused()).toBe(true);
       const time = rebound.time();
       gsap.updateRoot(gsap.globalTimeline.time() + 0.5);
       expect(rebound.time()).toBe(time);
       expect(window.__player!.getTime()).toBe(0.25);
+      nowMs = 1350;
+      raf.step(100);
+      expect(rebound.time()).toBeCloseTo(0.35, 5);
     } finally {
       window.__hfRuntimeTeardown?.();
       for (const result of timelines.mock.results) {
