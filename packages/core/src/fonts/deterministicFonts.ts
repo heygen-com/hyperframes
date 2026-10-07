@@ -10,6 +10,15 @@ import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
 import { fontToDataUri } from "./fontCompression.js";
 import { authoredGoogleFontStylesheets, withPageText } from "./authoredGoogleFonts.js";
+import {
+  FontDiagCollector,
+  type FontAssetDiag,
+  type FontAttemptDiag,
+  type FontDiagnostics,
+  type FontDiagPath,
+} from "./fontDiagnostics.js";
+
+export type { FontDiagnostics };
 
 type FontFaceSpec = {
   weight: string;
@@ -697,7 +706,7 @@ async function bundledFamilyFaceRules(
   // `emitFamily` so the authored CSS keeps matching.
   const canonicalFamily = resolveAliasDisplayName(normalizedFamily);
   const googleFaces = canonicalFamily
-    ? await fetchFamilyFaces(canonicalFamily, optional, options, fontText)
+    ? await fetchFamilyFaces(canonicalFamily, "bundled_supplement", optional, options, fontText)
     : [];
 
   // Bundled weights only cover Latin. Keep other subsets (including
@@ -738,7 +747,13 @@ async function googleFamilyFaceRules(
   options: InternalFontFetchOptions,
   fontText?: string,
 ): Promise<string[] | null> {
-  const googleFaces = await fetchFamilyFaces(lookupFamily, optional, options, fontText);
+  const googleFaces = await fetchFamilyFaces(
+    lookupFamily,
+    "direct_google",
+    optional,
+    options,
+    fontText,
+  );
   if (googleFaces.length === 0) return null;
   return googleFaces.map((face) =>
     buildFontFaceRule(emitFamily, face.dataUri, face.weight, face.style, face.unicodeRange),
@@ -1011,6 +1026,7 @@ async function buildFontFaceCss(
     ([, a], [, b]) => Number(a.optional) - Number(b.optional),
   );
   for (const [normalizedFamily, { family: originalCaseFamily, optional }] of requiredFirst) {
+    options.diag.beginFamily(!optional);
     const familyRules =
       (await resolveFamilyFaceRules(
         normalizedFamily,
@@ -1028,6 +1044,7 @@ async function buildFontFaceCss(
         options,
         fontText,
       ));
+    options.diag.endFamily(Boolean(familyRules));
     if (familyRules) {
       rules.push(...familyRules);
       continue;
@@ -1161,6 +1178,11 @@ export class FontFetchError extends Error {
   readonly cause?: unknown;
   /** Unlike `message`, holds no URLs: safe for callers that must not echo resolver output. */
   readonly unresolvedFamilies: readonly string[];
+  /**
+   * Resolver stage record for log forwarding. Set ONLY on the per-compile Unresolved error; shared
+   * (cached or retry-exhausted) errors are never mutated. Never part of `message` or any response body.
+   */
+  declare diagnostics?: FontDiagnostics;
 
   constructor(
     familyName: string,
@@ -1220,6 +1242,7 @@ interface InternalFontFetchOptions {
   retryDeadlineMs: number;
   /** Google stylesheet URL the page already wrote, keyed by normalized family name. */
   authoredStylesheets: ReadonlyMap<string, readonly string[]>;
+  diag: FontDiagCollector;
 }
 
 /**
@@ -1399,9 +1422,13 @@ async function ensureWoff2DataUri(
   weight: string,
   style: string,
   options: InternalFontFetchOptions,
+  tally: FontAssetDiag,
 ): Promise<string | null> {
+  tally.total += 1;
   try {
-    return `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
+    const cached = `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
+    tally.diskCacheHit += 1;
+    return cached;
   } catch {
     // Not cached yet — fall through to fetch.
   }
@@ -1416,15 +1443,21 @@ async function ensureWoff2DataUri(
       woff2What,
       options,
     );
-    if (!fontResult.ok) return null;
+    if (!fontResult.ok) {
+      const status = String(fontResult.response.status);
+      tally.nonOk[status] = (tally.nonOk[status] ?? 0) + 1;
+      return null;
+    }
     // wx = O_CREAT|O_EXCL: atomic create, rejects symlinks, fails with
     // EEXIST if a concurrent call cached it between our read and write.
     writeFileSync(cachePath, Buffer.from(fontResult.body), { flag: "wx", mode: 0o644 });
+    tally.fetchedOk += 1;
   } catch (err) {
     throwIfCallerAborted(options.abortSignal);
     if (err instanceof FontFetchError) throw err;
     if ((err as NodeJS.ErrnoException).code === "EEXIST") {
       // Concurrent call wrote it — read their result below.
+      tally.diskCacheHit += 1;
     } else if (options.failClosedFontFetch) {
       throw fontFetchError(familyName, woff2Url, woff2What, { error: err });
     } else {
@@ -1437,7 +1470,8 @@ async function ensureWoff2DataUri(
 // Per-process cache for Google Fonts CSS lookups, keyed by request URL —
 // repeat compiles of the same family reuse one network round trip. A
 // rejected lookup evicts itself so a later call still retries.
-const googleFontCssCache = new Map<string, Promise<{ ok: true; body: string } | { ok: false }>>();
+type CssFetchResult = { ok: true; body: string; status: number } | { ok: false; status: number };
+const googleFontCssCache = new Map<string, Promise<CssFetchResult>>();
 
 /** Test-only reset — the cache is otherwise process-lifetime, shared across calls. */
 export function _clearGoogleFontCssCacheForTests(): void {
@@ -1459,11 +1493,12 @@ function fetchGoogleFontCss(
   url: string,
   familyName: string,
   options: InternalFontFetchOptions,
-): Promise<{ ok: true; body: string } | { ok: false }> {
+): Promise<CssFetchResult & { cache: "hit" | "fresh" }> {
   // Retries decide the outcome, so only callers with the same mode and attempt count share an entry.
   const mode = options.failClosedFontFetch ? `closed${options.retryPolicy.maxAttempts}` : "open";
   const key = `${mode}:${url}`;
   let shared = googleFontCssCache.get(key);
+  const cache = shared ? ("hit" as const) : ("fresh" as const);
   if (!shared) {
     // The shared fetch must not carry any one caller's abortSignal, or that
     // caller cancelling would fail the lookup for every other waiter.
@@ -1475,15 +1510,16 @@ function fetchGoogleFontCss(
       "Google Fonts CSS",
       { ...options, abortSignal: undefined },
     ).then((result) => {
-      if (result.ok) return { ok: true as const, body: result.body };
+      if (result.ok)
+        return { ok: true as const, body: result.body, status: result.response.status };
       // A transient status must not stick for the process lifetime.
       if (isRetryableFontFetchStatus(result.response.status)) googleFontCssCache.delete(key);
-      return { ok: false as const };
+      return { ok: false as const, status: result.response.status };
     });
     googleFontCssCache.set(key, shared);
     shared.catch(() => googleFontCssCache.delete(key));
   }
-  return raceAgainstAbort(shared, options.abortSignal);
+  return raceAgainstAbort(shared, options.abortSignal).then((result) => ({ ...result, cache }));
 }
 
 function pageNamedThisFile(familyName: string, options: InternalFontFetchOptions): boolean {
@@ -1498,6 +1534,7 @@ function declaredFaceFamily(block: string): string | undefined {
 // fallow-ignore-next-line complexity
 async function fetchGoogleFont(
   familyName: string,
+  path: FontDiagPath,
   options: InternalFontFetchOptions,
   fontText?: string,
 ): Promise<GoogleFontFace[]> {
@@ -1525,7 +1562,12 @@ async function fetchGoogleFont(
       ];
   const faces: GoogleFontFace[] = [];
   for (const url of urls) {
-    faces.push(...(await fetchGoogleFontStylesheet(googleFamilyName, url, options)));
+    const attempt = options.diag.startAttempt(
+      path,
+      authoredStylesheet ? "authored" : "default",
+      /[?&]text=/.test(url) ? "present" : "absent",
+    );
+    faces.push(...(await fetchGoogleFontStylesheet(googleFamilyName, url, options, attempt)));
   }
   return faces;
 }
@@ -1534,9 +1576,12 @@ async function readGoogleFontStylesheet(
   familyName: string,
   url: string,
   options: InternalFontFetchOptions,
+  attempt: FontAttemptDiag,
 ): Promise<string | null> {
   try {
     const cssResult = await fetchGoogleFontCss(url, familyName, options);
+    attempt.cssCache = cssResult.cache;
+    attempt.cssStatus = cssResult.status;
     if (!cssResult.ok) {
       // Missing families are deterministic; transient failures follow the
       // caller's retry and fail-closed policy.
@@ -1578,10 +1623,12 @@ async function fetchGoogleFontStylesheet(
   familyName: string,
   url: string,
   options: InternalFontFetchOptions,
+  attempt: FontAttemptDiag,
 ): Promise<GoogleFontFace[]> {
   const slug = fontSlug(familyName);
-  const cssText = await readGoogleFontStylesheet(familyName, url, options);
+  const cssText = await readGoogleFontStylesheet(familyName, url, options, attempt);
   if (!cssText) return [];
+  attempt.blocksTotal = (cssText.match(/@font-face\s*\{/gi) ?? []).length;
 
   // Parse @font-face blocks from the CSS response. The optional trailing
   // capture grabs each face's `unicode-range` (Google emits it after `src`)
@@ -1595,6 +1642,7 @@ async function fetchGoogleFontStylesheet(
   const faces: GoogleFontFace[] = [];
 
   for (const match of cssText.matchAll(faceRegex)) {
+    attempt.regexMatches += 1;
     const source = parseGoogleFontSource(match, familyName);
     if (!source) continue;
     const { weight, style, unicodeRange, url: woff2Url } = source;
@@ -1607,6 +1655,7 @@ async function fetchGoogleFontStylesheet(
       weight,
       style,
       options,
+      attempt.assets,
     );
     if (dataUri) faces.push({ weight, style, dataUri, unicodeRange });
   }
@@ -1623,15 +1672,17 @@ async function fetchGoogleFontStylesheet(
 /** An optional family gets one retry on a transient failure, then renders its fallback with a warning. */
 async function fetchFamilyFaces(
   familyName: string,
+  path: FontDiagPath,
   optional: boolean,
   options: InternalFontFetchOptions,
   fontText?: string,
 ): Promise<GoogleFontFace[]> {
-  if (!optional) return fetchGoogleFont(familyName, options, fontText);
+  if (!optional) return fetchGoogleFont(familyName, path, options, fontText);
   const maxAttempts = Math.min(options.retryPolicy.maxAttempts, 2);
   try {
     return await fetchGoogleFont(
       familyName,
+      path,
       { ...options, retryPolicy: { ...options.retryPolicy, maxAttempts } },
       fontText,
     );
@@ -1868,6 +1919,7 @@ export async function injectDeterministicFontFaces(
   html: string,
   options: InjectDeterministicFontFacesOptions = {},
 ): Promise<string> {
+  const diag = new FontDiagCollector();
   const failClosedFontFetch = options.failClosedFontFetch === true;
   const fetchImpl = options.fetchImpl ?? fetch;
   const allowSystemFontCapture = options.allowSystemFontCapture !== false;
@@ -1881,6 +1933,7 @@ export async function injectDeterministicFontFaces(
     retryPolicy,
     retryDeadlineMs: Date.now() + retryPolicy.maxElapsedMs,
     authoredStylesheets: authoredGoogleFontStylesheets(html),
+    diag,
   };
 
   const existingFaces = extractExistingFontFaces(html);
@@ -1909,7 +1962,7 @@ export async function injectDeterministicFontFaces(
     (family) => !pendingFamilies.get(family.toLowerCase())?.optional,
   );
   if (required.length > 0 && options.failClosedFontFetch) {
-    throw new FontFetchError(
+    const unresolvedError = new FontFetchError(
       required.join(", "),
       "",
       `[Compiler] Unresolved fonts in fail-closed mode: ${required.join(", ")}. ` +
@@ -1918,6 +1971,8 @@ export async function injectDeterministicFontFaces(
       FONT_FETCH_FAILED,
       unresolved,
     );
+    unresolvedError.diagnostics = diag.snapshot();
+    throw unresolvedError;
   }
   if (!css) {
     if (unresolved.length > 0) {
