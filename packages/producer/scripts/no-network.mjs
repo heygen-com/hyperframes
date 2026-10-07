@@ -10,5 +10,7 @@ globalThis.fetch = async (input) => {
 };
 
 const { lookup } = dns;
-dns.lookup = (host, ...rest) =>
+const guarded = (host, ...rest) =>
   LOCAL.has(host) ? lookup(host, ...rest) : process.nextTick(rest.at(-1), refusal(host));
+// Keeps the original's own properties, among them what util.promisify reads to resolve { address, family }.
+dns.lookup = Object.defineProperties(guarded, Object.getOwnPropertyDescriptors(lookup));

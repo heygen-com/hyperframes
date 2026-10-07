@@ -9,11 +9,7 @@ it("refuses happy-dom's own fetch in the unit lane", async () => {
 
 it("refuses a node:http request to another host in the unit lane", async () => {
   const request = new Promise((resolve, reject) => {
-    try {
-      get("http://example.com", resolve).on("error", reject);
-    } catch (error) {
-      reject(error);
-    }
+    get("http://example.com", resolve).on("error", reject);
   });
   await expect(request).rejects.toThrow("No network in unit tests");
 });
