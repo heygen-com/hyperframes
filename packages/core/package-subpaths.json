@@ -26,6 +26,12 @@
       "types": "./dist/canaryRegistry.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./telemetry-redaction": {
+      "source": "./src/telemetryRedaction.ts",
+      "runtime": "./dist/telemetryRedaction.js",
+      "types": "./dist/telemetryRedaction.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./beats": {
       "source": "./src/beats/index.ts",
       "runtime": "./dist/beats/index.js",

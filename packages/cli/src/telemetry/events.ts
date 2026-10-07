@@ -1,5 +1,7 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
-import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
+import type { OutputResolutionIssueKind } from "@hyperframes/core";
+// Leaf subpaths, not the package barrels: every command loads telemetry on the startup path.
+import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
 import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";

@@ -40,6 +40,12 @@
       "import": "./src/canaryRegistry.ts",
       "types": "./src/canaryRegistry.ts"
     },
+    "./telemetry-redaction": {
+      "bun": "./src/telemetryRedaction.ts",
+      "node": "./dist/telemetryRedaction.js",
+      "import": "./src/telemetryRedaction.ts",
+      "types": "./src/telemetryRedaction.ts"
+    },
     "./beats": {
       "bun": "./src/beats/index.ts",
       "node": "./dist/beats/index.js",
@@ -527,6 +533,10 @@
       "./canary-registry": {
         "import": "./dist/canaryRegistry.js",
         "types": "./dist/canaryRegistry.d.ts"
+      },
+      "./telemetry-redaction": {
+        "import": "./dist/telemetryRedaction.js",
+        "types": "./dist/telemetryRedaction.d.ts"
       },
       "./beats": {
         "import": "./dist/beats/index.js",
