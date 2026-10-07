@@ -151,7 +151,7 @@ function runGenerate(argv) {
     String(g.extra?.music ?? "")
       .trim()
       .toLowerCase() === "none";
-  const host = previousHostAudio(outPath, hyperframesDir, die);
+  const host = previousHostAudio(outPath, hyperframesDir, die, false);
   const scored = sfxCueLines(manifest).length || host.bgm || host.sfx.length;
   if (bgmOff && !lines.length && scored) {
     // No narration and no looked-up music: the host's entries and any sounds fetch-sfx already found; a stale
@@ -165,7 +165,10 @@ function runGenerate(argv) {
     }
     const kept = { voices: [], bgm: null, bgm_pending: false, sfx: looked };
     writeFileSync(neutral, JSON.stringify(kept));
-    const meta = keepHostAudio(toProductLaunchMeta(kept), host);
+    const meta = keepHostAudio(
+      toProductLaunchMeta(kept),
+      previousHostAudio(outPath, hyperframesDir, die),
+    );
     writeFileSync(outPath, JSON.stringify(meta, null, 2));
     console.log(`✓ audio generate: no narration or music to make → ${outPath}`);
     return;
@@ -198,7 +201,8 @@ function runGenerate(argv) {
   const neutral = neutralPath(outPath);
   runEngine({ request, hyperframesDir, neutral, only: "tts,bgm" }, die);
 
-  const meta = keepHostAudio(toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8"))), host);
+  const rebuilt = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  const meta = keepHostAudio(rebuilt, previousHostAudio(outPath, hyperframesDir, die));
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(
     `✓ audio generate: ${meta.voices.length} voice + ${meta.bgm ? "1 bgm" : "no bgm"} → ${outPath}`,
@@ -222,9 +226,9 @@ function sfxCueLines(manifest) {
   return lines;
 }
 
-// The host's own entries in the audio_meta.json a pass is about to rebuild (lib/host-audio.mjs). Only a missing file
-// means none: a file that does not parse stops the pass rather than lose the host's entries.
-function previousHostAudio(outPath, hyperframesDir, die) {
+// The host's own entries in audio_meta.json now (lib/host-audio.mjs). A pass reads them again for its final write, since
+// the host may add audio while the engine runs. Only a missing file means none: one that does not parse stops the pass.
+function previousHostAudio(outPath, hyperframesDir, die, warn = true) {
   let previous = null;
   try {
     previous = JSON.parse(readFileSync(outPath, "utf8"));
@@ -232,7 +236,7 @@ function previousHostAudio(outPath, hyperframesDir, die) {
     if (err.code !== "ENOENT") die(`${outPath} does not parse: ${err.message}`);
   }
   const host = hostAudio(previous, (path) => existsSync(join(hyperframesDir, path)));
-  for (const why of host.dropped) console.warn(`⚠ audio: host audio dropped: ${why}`);
+  if (warn) for (const why of host.dropped) console.warn(`⚠ audio: host audio dropped: ${why}`);
   return host;
 }
 
@@ -249,7 +253,7 @@ function runFetchSfx(argv) {
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
 
-  const host = previousHostAudio(outPath, hyperframesDir, die);
+  const host = previousHostAudio(outPath, hyperframesDir, die, false);
   const lines = sfxCueLines(manifest).filter((line) => !host.frames.has(Number(line.id)));
 
   const neutral = neutralPath(outPath);
@@ -259,7 +263,8 @@ function runFetchSfx(argv) {
   // voices/bgm written by the earlier generate (--only tts,bgm) pass are preserved.
   runEngine({ request, hyperframesDir, neutral, only: "sfx" }, die);
 
-  const meta = keepHostAudio(toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8"))), host);
+  const rebuilt = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  const meta = keepHostAudio(rebuilt, previousHostAudio(outPath, hyperframesDir, die));
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(`✓ audio fetch-sfx: ${meta.sfx.length} SFX cue(s) → ${outPath}`);
   // This pass rewrites audio_meta.json from the neutral sidecar. If a detached BGM generate is
