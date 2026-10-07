@@ -434,7 +434,7 @@ describe("resolveProxy", () => {
           findFfBinary("ffprobe")!,
           [
             ...["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height"],
-            ...["-of", "csv=p=0", path],
+            ...["-of", "csv=p=0", "--", path],
           ],
           { encoding: "utf8" },
         ).trim();
