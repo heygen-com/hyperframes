@@ -46,8 +46,8 @@ function normalizeComment(raw?: string): string | undefined {
 /**
  * Compact PostHog join keys appended to the environment string that rides
  * along with the forwarded report (and therefore lands verbatim in the wild
- * feedback channel): `fid` = this submission's PostHog `cli_render_feedback`
- * `feedback_id`; `tid` = the install's telemetry distinct_id; `renders` =
+ * feedback channel): `fid` = this submission's PostHog `feedback_id` (on
+ * `cli_render_feedback`, or `cli_feedback_comment` for a ratingless report); `tid` = the install's telemetry distinct_id; `renders` =
  * recent `render_job_id`s (newest last, `!` suffix = the render failed).
  * Together they turn a wild report into an exact telemetry lookup instead of
  * a hardware-fingerprint hunt.
@@ -171,7 +171,11 @@ function reportRating(
   fileIssue: boolean,
 ): number | undefined {
   const rating = raw === undefined ? undefined : parseFeedbackRating(raw);
-  if (rating === null || (rating === undefined && !comment)) {
+  if (rating === null) {
+    console.error(c.error("Rating must be an integer between 0 and 10"));
+    failCommand();
+  }
+  if (rating === undefined && !comment?.trim()) {
     console.error(c.error("Give a --rating (an integer from 0 to 10), a --comment, or both"));
     failCommand();
   }
@@ -208,13 +212,13 @@ export default defineCommand({
   args: {
     rating: {
       type: "string",
-      // Required for a rating report, but --search-miss is a different report
-      // with no rating to give, so the check moved into the run body.
+      // Optional: --search-miss and a lone --comment are reports with no
+      // rating to give, so the check lives in the run body.
       description: "Likelihood to recommend (0=not likely, 10=extremely likely)",
     },
     comment: {
       type: "string",
-      description: "Optional details about your experience",
+      description: "Details about your experience; alone, a report with no rating",
     },
     source: {
       type: "string",

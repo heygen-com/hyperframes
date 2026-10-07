@@ -1016,7 +1016,8 @@ export function trackRenderFeedback(props: {
   /**
    * Join key shared with the forwarded feedback report (Slack/backend): the
    * same uuid rides in the report's env string as `fid=…`, so a wild report
-   * resolves to exactly one PostHog `cli_render_feedback` event and vice versa.
+   * resolves to exactly one PostHog `cli_render_feedback` or
+   * `cli_feedback_comment` event and vice versa.
    */
   feedbackId?: string;
   /** render_job_id values of this install's recent renders (newest last). */

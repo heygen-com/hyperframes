@@ -76,6 +76,7 @@ it("sends a comment with no rating as its own report, never as a rating", async 
 
 it.each([
   ["neither a rating nor a comment", {}],
+  ["a blank comment with no rating", { comment: "   " }],
   ["--file-issue with no rating", { comment: "MISSING FEATURE: x", "file-issue": true }],
 ])("refuses %s, and sends nothing", async (_, args) => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -83,4 +84,15 @@ it.each([
   const { default: feedback } = await import("./feedback.js");
   await expect(feedback.run?.({ args } as never)).rejects.toThrow();
   expect(mocks.submitFeedback).not.toHaveBeenCalled();
+});
+
+it("keeps the rating error for an unreadable rating, so a retry keeps the rating", async () => {
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { default: feedback } = await import("./feedback.js");
+  await expect(
+    feedback.run?.({ args: { rating: "8/10", comment: "x" } } as never),
+  ).rejects.toThrow();
+  expect(String(errors.mock.calls.at(-1)?.[0])).toContain(
+    "Rating must be an integer between 0 and 10",
+  );
 });
