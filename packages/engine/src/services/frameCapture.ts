@@ -102,14 +102,10 @@ export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailu
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
 
-/** Called after seeking, before screenshot. Use for video frame injection or other pre-capture work. */
-/** `heldVideoTime` (motion-blur samples only) is the output frame's time: a video on screen at
+/** Called after seeking, before screenshot. Use for video frame injection or other pre-capture work.
+ * `heldVideoTime` (motion-blur samples only) is the output frame's time: a video on screen at
  * both times shows its frame for `heldVideoTime`, so footage does not smear. */
-export type BeforeCaptureHook = (
-  page: Page,
-  time: number,
-  heldVideoTime?: number,
-) => Promise<void>;
+export type BeforeCaptureHook = (page: Page, time: number, heldVideoTime?: number) => Promise<void>;
 
 export interface CaptureSession {
   browser: Browser;
