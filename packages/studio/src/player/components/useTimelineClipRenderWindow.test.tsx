@@ -21,7 +21,13 @@ let unregisterViewport = () => {};
 
 beforeEach(() => {
   vi.useFakeTimers({
-    toFake: ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout"],
+    toFake: [
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "setTimeout",
+      "clearTimeout",
+      "performance",
+    ],
   });
   // 1000% of a 10 px/s fit, scrolled to 50 s in a 1080px viewport with 32px of track headers.
   usePlayerStore.setState({
