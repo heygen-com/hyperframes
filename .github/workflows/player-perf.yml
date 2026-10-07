@@ -31,11 +31,14 @@ jobs:
         with:
           fetch-depth: 0
       # HEAD is the PR merge ref; its first parent is the current base tip, unlike the payload's
-      # base.sha, which goes stale and would count main's newer commits as the PR's changes.
+      # base.sha, which goes stale and would count the base's newer commits as the PR's changes.
       - name: Find the pull request's current base
         id: base
         if: github.event_name == 'pull_request'
-        run: echo "sha=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+        run: |
+          git rev-parse --verify -q HEAD^2 > /dev/null || { echo "::error::HEAD is not the pull request merge commit"; exit 1; }
+          sha="$(git rev-parse --verify HEAD^1)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
