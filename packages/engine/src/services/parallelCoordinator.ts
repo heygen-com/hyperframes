@@ -141,10 +141,9 @@ const MEMORY_PER_WORKER_MB = 1536;
 const HEAP_RESERVED_MB = 1024;
 // Parent-process V8 heap consumed per worker (protocol buffers + in-flight
 // frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
-// default heap ⇒ >~500MB/worker + base. ponytail: advisory-only until the
-// workers_heap_* telemetry added alongside this constant validates the figure
-// — enforcing a guessed budget could silently cut worker counts fleet-wide.
-// TODO(PRINFRA-341): decide enforcement after ~2 weeks of fleet soak.
+// default heap ⇒ >~500MB/worker + base. Caps auto sizing (an explicit
+// `--workers N` is still the operator's call): a desktop 24GB Mac auto-picked 5
+// workers against a 4192MB heap that feeds ~4, and died at 62% on a big project.
 const HEAP_PER_WORKER_MB = 640;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
@@ -275,7 +274,8 @@ export type WorkerSizingBound =
   | "frames"
   | "max_workers"
   | "min_parallel_floor"
-  | "contention";
+  | "contention"
+  | "heap";
 
 /**
  * Full provenance of a worker-sizing decision. Threaded into render
@@ -290,9 +290,8 @@ export interface WorkerSizing {
   frameBasedWorkers: number;
   effectiveMaxWorkers: number;
   /**
-   * ADVISORY, not enforced (see HEAP_PER_WORKER_MB): how many workers the
-   * parent process's V8 heap could feed. Compare against `workers` in
-   * telemetry to validate the budget before enforcement.
+   * How many workers the parent process's V8 heap can feed (see
+   * HEAP_PER_WORKER_MB); auto sizing never exceeds it.
    */
   heapBasedWorkers: number;
   /** V8 `heap_size_limit` for the parent process, MB. */
@@ -300,7 +299,7 @@ export interface WorkerSizing {
   totalMemoryMb: number;
   cpuCount: number;
   captureCostMultiplier: number;
-  /** true when the chosen count exceeds the advisory heap budget. */
+  /** true when the chosen count exceeds the heap budget (only an explicit request can). */
   exceedsHeapAdvisory: boolean;
 }
 
@@ -403,6 +402,11 @@ export function computeWorkerSizing(
       finalWorkers = cpuScaledMax;
       boundBy = "contention";
     }
+  }
+
+  if (finalWorkers > heapBasedWorkers) {
+    finalWorkers = heapBasedWorkers;
+    boundBy = "heap";
   }
 
   return finish(finalWorkers, boundBy, effectiveMaxWorkers);
