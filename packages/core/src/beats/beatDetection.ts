@@ -231,9 +231,10 @@ export async function analyzeMusicFromBuffer(
   const onsetBpm = computeBpmFromBeats(rawBeats);
 
   let detectiveBpm: number | null = null;
+  // Pause after the import: a cold import can resolve mid-interaction.
+  const detect = await loadBpmDetective();
   await pause?.();
   try {
-    const detect = await loadBpmDetective();
     if (detect) detectiveBpm = detect(audioBuffer);
   } catch {
     // Not enough peaks or browser context unavailable
