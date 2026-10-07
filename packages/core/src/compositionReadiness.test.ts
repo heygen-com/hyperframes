@@ -309,7 +309,7 @@ describe("paintAndIdleReadinessInput", () => {
     await flushMicrotasks();
     expect(isResolved()).toBe(false);
 
-    // First quiet gap relative to the document's cadence: one is not enough.
+    // First quiet gap (10ms < 50ms threshold): one is not enough.
     fireFrame(26);
     await flushMicrotasks();
     expect(isResolved()).toBe(false);

@@ -227,7 +227,7 @@ export function computeReadinessInput(doc: Document, signal: AbortSignal): Promi
   });
 }
 
-// Preserve the established fast-page path; slower documents use their own cadence.
+// Gaps under this bound count as quiet on any document.
 const IDLE_FRAME_GAP_MS = 50;
 // Ordinary frame jitter can span 1.5x the document's shortest observed gap.
 const IDLE_FRAME_GAP_RATIO = 1.5;
@@ -237,7 +237,7 @@ const IDLE_FRAME_GAP_RATIO = 1.5;
 const IDLE_FRAMES_REQUIRED = 2;
 // Bounds continuing stalls. A backgrounded document with no frames still
 // rides the shared timeout; this budget only bounds frames that arrive.
-// ponytail: retain the unmeasured 1500ms budget; these traces tune the gap ratio.
+// ponytail: 1500ms is unmeasured; retune with frame traces.
 const MAX_PAINT_WAIT_MS = 1_500;
 
 // Resolves with -1 on abort instead of rejecting: every caller already
