@@ -233,6 +233,49 @@ describe("decodeVideoThumbnail", () => {
     two.dispose?.();
   });
 
+  it("reopens the same asset after a project round trip and keeps new-session frames separate", async () => {
+    let frame = 0;
+    vi.mocked(URL.createObjectURL)
+      .mockReset()
+      .mockImplementation(() => `blob:version-${++frame}`);
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    const signal = new AbortController().signal;
+    const original = await decodeVideoThumbnail(
+      { source, contentVersion: "A:1", frameCount: 1 },
+      signal,
+    );
+    const other = await decodeVideoThumbnail(
+      { source: `${source}?B`, contentVersion: "B:2", frameCount: 1 },
+      signal,
+    );
+    input.getPrimaryVideoTrack.mockResolvedValue({
+      getDisplayWidth: vi.fn(async () => 1280),
+      getDisplayHeight: vi.fn(async () => 360),
+      getDurationFromMetadata: vi.fn(async () => 10),
+    });
+    const reopened = await decodeVideoThumbnail(
+      { source, contentVersion: "A:3", frameCount: 1 },
+      signal,
+    );
+    const shared = await decodeVideoThumbnail(
+      { source, contentVersion: "A:3", frameCount: 1 },
+      signal,
+    );
+    expect(reopened.value).toEqual({ kind: "image", url: "blob:version-3", aspect: 32 / 9 });
+    expect(shared.value).toEqual(reopened.value);
+    expect(decoded).toEqual([[5], [5], [5]]);
+    expect(input.getPrimaryVideoTrack).toHaveBeenCalledTimes(3);
+    original.dispose?.();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:version-1");
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith("blob:version-3");
+    other.dispose?.();
+    reopened.dispose?.();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith("blob:version-3");
+    shared.dispose?.();
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
+  });
+
   it("keeps one copy of a frame two strips decode at once, and revokes the other", async () => {
     vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:${Math.random()}`);
     // The first strip holds its first frame until the second is decoding too.

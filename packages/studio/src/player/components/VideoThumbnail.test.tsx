@@ -81,7 +81,7 @@ describe("VideoThumbnail", () => {
 
     expect(decodeVideoThumbnail).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ frameCount: 1 }),
+      expect.objectContaining({ frameCount: 1, contentVersion: "project=p&session=1" }),
       expect.any(AbortSignal),
     );
     expect(decodeVideoThumbnail).toHaveBeenCalledWith(

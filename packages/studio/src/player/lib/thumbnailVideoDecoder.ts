@@ -1,8 +1,13 @@
 import { TIMELINE_VIEWPORT_BUDGETS, type TimelineViewportBudgets } from "./timelineViewportBudgets";
-import type { ThumbnailLoadedResult, ThumbnailValue } from "./thumbnailScheduler";
+import {
+  createThumbnailKey,
+  type ThumbnailLoadedResult,
+  type ThumbnailValue,
+} from "./thumbnailScheduler";
 
 export interface VideoThumbnailDecodeRequest {
   source: string;
+  contentVersion?: string;
   sourceStart?: number;
   sourceRangeDuration?: number;
   frameCount: number;
@@ -45,7 +50,7 @@ interface FrameWindow {
 }
 
 const sharedFrames = new Map<string, SharedFrame[]>();
-const sourceInfos = new Map<string, SourceInfo>();
+const sourceInfos = new Map<string, { version: string | undefined; info: SourceInfo }>();
 
 const accepts = (window: FrameWindow, time: number, decodedAt: number) =>
   decodedAt >= window.sourceStart && time - decodedAt <= (time >= window.end ? 0 : window.lead);
@@ -239,9 +244,11 @@ export async function decodeVideoThumbnail(
   budgets: Readonly<TimelineViewportBudgets> = TIMELINE_VIEWPORT_BUDGETS,
 ): Promise<ThumbnailLoadedResult> {
   const fit = request.fit ?? "cover";
-  const keyOf = (time: number) => `${request.source}\u0000${fit}\u0000${time}`;
+  const sourceKey = createThumbnailKey({ source: request.source, version: request.contentVersion });
+  const keyOf = (time: number) => `${sourceKey}\u0000${fit}\u0000${time}`;
   const resources: DecodedResources = { urls: [], held: [], canvases: new Set() };
-  const known = sourceInfos.get(request.source);
+  const entry = sourceInfos.get(request.source);
+  const known = entry?.version === request.contentVersion ? entry?.info : undefined;
   try {
     if (known) {
       if (takeDecodedFrames(stripTimes(request, known, budgets), keyOf, resources).length === 0) {
@@ -286,7 +293,7 @@ async function decodeMissingFrames(
     const metadataDuration = await track.getDurationFromMetadata({ skipLiveWait: true });
     throwIfAborted(signal);
     const info: SourceInfo = { aspect: displayWidth / displayHeight, metadataDuration };
-    sourceInfos.set(request.source, info);
+    sourceInfos.set(request.source, { version: request.contentVersion, info });
     const strip = stripTimes(request, info, budgets);
     const { timestamps, window } = strip;
     const slots: { slot: number; key: string; decodedAt?: number }[] = takeDecodedFrames(

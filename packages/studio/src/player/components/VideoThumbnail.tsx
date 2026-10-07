@@ -59,6 +59,7 @@ function createVideoThumbnailRequest(
       decodeVideoThumbnail(
         {
           source: videoSrc,
+          contentVersion: createThumbnailKey({ project: projectId, session: sessionEpoch }),
           sourceStart,
           sourceRangeDuration: sourceRangeDuration ?? duration,
           frameCount,
