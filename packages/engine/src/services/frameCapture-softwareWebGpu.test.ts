@@ -40,7 +40,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** What a WebGPU capture session launches with and hands the adapter check. */
+/** The args a WebGPU capture session launches with, after its adapter check has run. */
 async function webGpuSession(allowSoftwareWebGpu: boolean) {
   const dir = mkdtempSync(join(tmpdir(), "hf-software-webgpu-"));
   dirs.push(dir);
@@ -52,18 +52,14 @@ async function webGpuSession(allowSoftwareWebGpu: boolean) {
     { forceScreenshot: true, browserGpuMode: "auto", allowSoftwareWebGpu },
   );
   await expect(initializeSession(session)).rejects.toThrow("adapter checked");
-  return {
-    args: launches.at(-1) ?? [],
-    checked: vi.mocked(assertWebGpuAdapterAvailable).mock.calls.at(-1),
-  };
+  return launches.at(-1) ?? [];
 }
 
 describe("software WebGPU in a capture session", () => {
   it("launches on SwiftShader's Vulkan and accepts its adapter when opted in on a software host", async () => {
     resolvedMode = "software";
-    const { args, checked } = await webGpuSession(true);
-    expect(args).toContain("--use-vulkan=swiftshader");
-    expect(checked?.slice(1)).toEqual([true, true]);
+    expect(await webGpuSession(true)).toContain("--use-vulkan=swiftshader");
+    expect(assertWebGpuAdapterAvailable).toHaveBeenLastCalledWith(expect.anything(), true, true);
   });
 
   it.each([
@@ -71,8 +67,7 @@ describe("software WebGPU in a capture session", () => {
     ["on a GPU", true, "hardware"],
   ] as const)("refuses a fallback adapter %s", async (_, allowSoftwareWebGpu, mode) => {
     resolvedMode = mode;
-    const { args, checked } = await webGpuSession(allowSoftwareWebGpu);
-    expect(args).not.toContain("--use-vulkan=swiftshader");
-    expect(checked?.slice(1)).toEqual([true, false]);
+    expect(await webGpuSession(allowSoftwareWebGpu)).not.toContain("--use-vulkan=swiftshader");
+    expect(assertWebGpuAdapterAvailable).toHaveBeenLastCalledWith(expect.anything(), true, false);
   });
 });
