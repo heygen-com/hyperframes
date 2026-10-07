@@ -101,7 +101,7 @@ let pendingRemediation = null;
 const TOOL_WORDS = { bgm: "music", sfx: "sound-effect" };
 
 /** A music or sound-effect resolve miss after the heygen CLI was missing or too old: what is missing, the host
- * app's own tool, the fix. Other types have local providers, so their miss names none of this. */
+ * app's own tool, the fix. Other types keep the generic miss. */
 export function heygenMiss(type, { code }) {
   const tool = TOOL_WORDS[type];
   if (!tool) return null;
