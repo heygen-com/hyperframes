@@ -70,7 +70,6 @@ export function runtimeProtocolMetadata(fps: number): RuntimeProtocolV1 {
   };
 }
 
-/** How large a frame shows per pixel of its own layout width: ancestor transforms and page zoom included. */
 export function frameDisplayScale(frame: HTMLElement): number | null {
   const layoutWidth = frame.offsetWidth;
   const shownWidth = frame.getBoundingClientRect().width;

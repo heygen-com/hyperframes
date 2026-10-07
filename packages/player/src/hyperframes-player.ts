@@ -431,7 +431,6 @@ class HyperframesPlayer extends HTMLElement {
     // starts playback — this premature call must not ALSO dispatch "play"
     // for what hasn't started, or a host listener sees it fire twice.
     let queuedForReady = false;
-    // A host zoom moves no player size, so play re-reports how large the frame shows.
     this._sendDisplayScale();
     if (!directTimelineStarted) {
       this._sendControl("play");
@@ -1007,7 +1006,6 @@ class HyperframesPlayer extends HTMLElement {
     this._sendDisplayScale();
   }
 
-  /** How large the frame shows on screen, page zoom included, so the runtime sizes its video copies. */
   private _sendDisplayScale(): void {
     const scale = frameDisplayScale(this.iframe);
     if (scale) this._sendControl("set-display-scale", { scale });

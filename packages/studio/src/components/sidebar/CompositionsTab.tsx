@@ -259,7 +259,6 @@ function CompCard({
     if (hovered) requestIframePlaybackSync(true);
   }, [hovered, requestIframePlaybackSync]);
 
-  // Without this, its video copies would be made at source size for an 80px card.
   useEffect(() => {
     if (livePreviewLoaded) postFrameDisplayScale(iframeRef.current);
   }, [livePreviewLoaded, previewScale]);

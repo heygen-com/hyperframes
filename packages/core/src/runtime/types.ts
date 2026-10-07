@@ -40,7 +40,6 @@ type RuntimeBridgeControlMessageBase = {
   endSeconds?: number | null;
   disabled?: boolean;
   slow?: boolean;
-  /** Host CSS pixels per document CSS pixel: how large the host shows this document. */
   scale?: number;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;

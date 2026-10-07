@@ -159,7 +159,6 @@ export const NLEPreview = memo(function NLEPreview({
 
   const zoomRef = useRef<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
-  // Zoom is a transform the player cannot see, so the preview's video copies follow it from here.
   useEffect(() => postFrameDisplayScale(previewIframeRef.current), [settledZoom]);
   const hudRef = useRef<HTMLDivElement>(null);
   const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

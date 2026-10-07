@@ -130,8 +130,7 @@ export async function injectMediaCodecMapIntoHtml(
 
 /**
  * Adapter-aware wrapper used by the studio preview routes: skipped entirely
- * (no scan, no injection) when auto-proxy is off for this adapter. No pre-warm:
- * Studio asks for a copy sized to the shown video once its layout is known.
+ * (no scan, no injection) when auto-proxy is off for this adapter.
  */
 export async function injectMediaCodecMap(
   html: string,
