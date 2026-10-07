@@ -93,6 +93,61 @@ describe("core runtime browser contract", () => {
     }
   });
 
+  it.each(["preview", "export"])(
+    "does not redraw async sources on transport ticks after an explicit render seek (%s)",
+    async (mode) => {
+      const sourcePage = await browser.newPage();
+      try {
+        await sourcePage.setContent(
+          `<div id="source" data-no-timeline data-composition-id="root" data-duration="2" data-width="320" data-height="180"></div>`,
+        );
+        if (mode === "export")
+          await sourcePage.addScriptTag({
+            content: "window.__HF_EXPORT_RENDER_SEEK_CONFIG={fps:30};",
+          });
+        await sourcePage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await sourcePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+        await sourcePage.evaluate(() => {
+          const element = document.getElementById("source")!;
+          window.__hyperframes!.registerFrameSource({
+            element,
+            render: async (time) => {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              element.setAttribute(
+                "data-draws",
+                (element.getAttribute("data-draws") ?? "") + time + ",",
+              );
+            },
+          });
+        });
+        for (const [index, time] of [0.5, 0.5, 0.2].entries()) {
+          await sourcePage.evaluate((t) => window.__player!.renderSeek!(t), time);
+          await waitForPendingSeekCompletion(sourcePage);
+          // Let the transport run after the capture barrier has already settled.
+          await sourcePage.evaluate(async () => {
+            for (let frame = 0; frame < 4; frame++)
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            await window.__hfWaitForSeekCompletion!();
+          });
+          expect(await sourcePage.$eval("#source", (el) => el.getAttribute("data-draws"))).toBe(
+            [0.5, 0.5, 0.2].slice(0, index + 1).join(",") + ",",
+          );
+        }
+        await sourcePage.evaluate(() => window.__player!.play());
+        await sourcePage.waitForFunction(
+          () =>
+            (document.getElementById("source")!.getAttribute("data-draws") ?? "")
+              .split(",")
+              .filter(Boolean).length > 3,
+        );
+        await sourcePage.evaluate(() => window.__player!.pause());
+        await waitForPendingSeekCompletion(sourcePage);
+      } finally {
+        await sourcePage.close();
+      }
+    },
+  );
+
   it("initializes the public player contract and seeks the CSS adapter", async () => {
     const result = await page.evaluate(() => {
       const runtimeWindow = window as unknown as {
