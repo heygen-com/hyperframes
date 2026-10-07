@@ -266,17 +266,33 @@ test("music without the HeyGen CLI fails naming it and the host app's own tool",
   cleanup();
 });
 
-test("a sound effect nothing bundled matches fails the same way without the HeyGen CLI", () => {
+test("a sound effect nothing bundled matches fails the same way without the HeyGen CLI", async () => {
   setup();
-  const result = spawnResolve(
-    ["--type", "sfx", "--intent", "dog barking", "--project", tmp, "--json"],
-    { env: { HOME: tmp, PATH: tmp } },
-  );
-  assert.equal(result.status, 1, result.stderr);
-  const parsed = JSON.parse(result.stdout);
-  assert.equal(parsed.code, "heygen_cli_missing");
-  assert.match(parsed.error, /host app's own sound-effect tool/);
-  cleanup();
+  // The local media index answers 404, so the miss never depends on the network.
+  const server = createServer((_req, res) => {
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const result = await spawnResolveAsync(
+      ["--type", "sfx", "--intent", "dog barking", "--project", tmp, "--json"],
+      {
+        env: {
+          HOME: tmp,
+          PATH: tmp,
+          HYPERFRAMES_REGISTRY: `http://127.0.0.1:${server.address().port}`,
+        },
+      },
+    );
+    assert.equal(result.status, 1, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.code, "heygen_cli_missing");
+    assert.match(parsed.error, /host app's own sound-effect tool/);
+  } finally {
+    server.close();
+    cleanup();
+  }
 });
 
 test("music with an outdated HeyGen CLI fails naming the update", () => {

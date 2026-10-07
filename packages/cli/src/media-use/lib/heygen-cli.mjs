@@ -100,11 +100,13 @@ let pendingRemediation = null;
 
 const TOOL_WORDS = { bgm: "music", sfx: "sound-effect" };
 
-/** A resolve miss after the heygen CLI was missing or too old: what is missing, the host app's own tool, the fix. */
+/** A music or sound-effect resolve miss after the heygen CLI was missing or too old: what is missing, the host
+ * app's own tool, the fix. Other types have local providers, so their miss names none of this. */
 export function heygenMiss(type, { code }) {
+  const tool = TOOL_WORDS[type];
+  if (!tool) return null;
   const outdated = code === "outdated";
   const state = outdated ? `older than v${HEYGEN_MIN_VERSION}` : "not installed";
-  const tool = TOOL_WORDS[type] ?? type;
   return {
     code: outdated ? "heygen_cli_outdated" : "heygen_cli_missing",
     fix: outdated ? HEYGEN_UPDATE_COMMAND : HEYGEN_INSTALL_COMMAND,

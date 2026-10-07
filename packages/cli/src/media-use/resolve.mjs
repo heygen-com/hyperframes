@@ -536,6 +536,7 @@ async function run() {
       providerFailure instanceof FfBinarySettingError;
     const heygen = consumeHeygenRemediation();
     const miss = heygen && !ownFailure ? heygenMiss(type, heygen) : null;
+    const typed = providerFailure instanceof BundledSfxAssetsError ? providerFailure : miss;
     const msg = ownFailure
       ? providerFailure.message
       : miss
@@ -549,11 +550,7 @@ async function run() {
       console.log(
         JSON.stringify({
           ok: false,
-          ...(providerFailure instanceof BundledSfxAssetsError
-            ? { code: providerFailure.code, fix: providerFailure.fix }
-            : miss
-              ? { code: miss.code, fix: miss.fix }
-              : {}),
+          ...(typed ? { code: typed.code, fix: typed.fix } : {}),
           error: msg,
         }),
       );
