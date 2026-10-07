@@ -2833,8 +2833,7 @@ async function prepareFrameForCapture(
 
   // Before-capture hook (e.g. video frame injection) — runs before
   // page-side compositor clones so cloneNode picks up injected <img>
-  // replacements for <video> elements. Motion-blur samples pass the output
-  // frame's time as `videoTime`, so every sample shows the same video frame.
+  // replacements for <video> elements.
   const beforeCaptureStart = Date.now();
   if (session.onBeforeCapture) {
     await session.onBeforeCapture(page, videoTime ?? quantizedTime);
@@ -3869,8 +3868,7 @@ export async function withFrameDeadline<T>(
  *
  * Called once initialization has settled the capture mode. `format: "png"` is required
  * because samples are averaged pixel by pixel: JPEG samples would be averaged after
- * lossy quantization and the blended frame is re-encoded as PNG. Injected `<video>`
- * frames are held for the whole frame (see `captureAccumulatedFrame`), so video is allowed.
+ * lossy quantization and the blended frame is re-encoded as PNG.
  */
 export function resolveSessionMotionBlur(session: CaptureSession): MotionBlurPlan | undefined {
   const plan = resolveMotionBlurPlan(session.options.motionBlur);
@@ -4134,9 +4132,6 @@ async function resolveAdaptiveSampleCount(
  * suppresses events and the playhead is restored to the frame time afterwards, so a
  * composition's own onUpdate/onComplete fire on the same interval boundaries as a
  * render with blur off.
- *
- * Injected `<video>` frames are held: every sample and probe shows the video frame for
- * `frameTime`, so footage stays as shot and only the layers over it blur.
  */
 async function captureAccumulatedFrame(
   session: CaptureSession,
@@ -4151,8 +4146,8 @@ async function captureAccumulatedFrame(
   await seekPageTimeline(session.page, frameTime, undefined);
   const totals = { seekMs: Date.now() - eventfulSeekStart, beforeCaptureMs: 0, screenshotMs: 0 };
   if (session.onBeforeCapture) {
-    // Inject while the page is still at frameTime: the injector re-renders GPU layers at
-    // the time it is given, which must be the page's time.
+    // Every sample and probe reuses frameTime's video frame. Inject it now, at the page's own
+    // time, because the injector re-renders GPU layers at the time it is given.
     const injectStart = Date.now();
     await session.onBeforeCapture(session.page, frameTime);
     totals.beforeCaptureMs += Date.now() - injectStart;
