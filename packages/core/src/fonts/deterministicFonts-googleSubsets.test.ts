@@ -344,6 +344,42 @@ describe("authored Google font stylesheet", () => {
     expect(result).toContain(b64("BRICOLAGE_DEFAULT"));
   });
 
+  it("renders fail-closed when a multi-family link silently drops one family", async () => {
+    // Bricolage's opsz axis starts at 12; Google answers this link with 200 and only Hanken Grotesk.
+    const href =
+      "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@7..96,500&family=Hanken+Grotesk:wght@400;500;600&display=swap";
+    const hanken = "https://fonts.gstatic.com/s/hankengrotesk/linked.woff2";
+    const bricolage = "https://fonts.gstatic.com/s/bricolagegrotesque/default.woff2";
+    const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      if (url.startsWith(href)) {
+        return new Response(
+          `@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 400; src: url(${hanken}) format('woff2'); }`,
+        );
+      }
+      if (url.includes("family=Bricolage%20Grotesque:ital,wght@")) {
+        return new Response(
+          `@font-face { font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 200 800; src: url(${bricolage}) format('woff2'); }`,
+        );
+      }
+      if (url === hanken) return new Response("HANKEN_LINKED");
+      if (url === bricolage) return new Response("BRICOLAGE_DEFAULT");
+      return new Response("", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const result = await injectDeterministicFontFaces(
+      authoredPage(
+        `<link rel="stylesheet" href="${href}">` +
+          `<style>h1 { font-family: "Bricolage Grotesque"; } p { font-family: "Hanken Grotesk"; }</style>`,
+      ),
+      { fetchImpl, allowSystemFontCapture: false, failClosedFontFetch: true },
+    );
+
+    expect(result).toContain(b64("BRICOLAGE_DEFAULT"));
+    expect(result).toContain(b64("HANKEN_LINKED"));
+  });
+
   it("still requests by family name when the page has no Google link", async () => {
     const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
     const { fetchImpl, urls } = authoredFetch(200);
