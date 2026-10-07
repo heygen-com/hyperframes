@@ -826,10 +826,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        arm: [before-5109, at-5109, at-5109-overscan-025]
         sample: [1, 2, 3]
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check out the arm under test
+        run: |
+          case "${{ matrix.arm }}" in
+            before-5109) ref=1825c37268af363c55d1930ee560fa2a60bc84ae ;;
+            *) ref=eee0c5101c00dcc1c6c5f02589ee52619611b837 ;;
+          esac
+          git fetch -q --depth=1 origin "$ref"
+          git checkout -q --detach FETCH_HEAD
+          if [ "${{ matrix.arm }}" = at-5109-overscan-025 ]; then
+            sed -i 's/timeOverscanViewportRatio: 0.5,/timeOverscanViewportRatio: 0.25,/' packages/studio/src/player/lib/timelineViewportBudgets.ts
+            grep -n 'timeOverscanViewportRatio' packages/studio/src/player/lib/timelineViewportBudgets.ts
+          fi
+          git log -1 --format='arm ${{ matrix.arm }} at %H'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -1043,7 +1057,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: timeline-viewport-gate-evidence-${{ matrix.sample }}
+          name: timeline-viewport-gate-evidence-${{ matrix.arm }}-${{ matrix.sample }}
           path: |
             /tmp/timeline-gate-*.json
             /tmp/studio-open-counts.json
