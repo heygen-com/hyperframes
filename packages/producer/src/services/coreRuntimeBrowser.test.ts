@@ -1136,7 +1136,7 @@ parent.postMessage({type:"appifact-film:hello"}, "*");
 function filmRuntimeFixture(runtime: string): string {
   const runnerLiteral = JSON.stringify(FILM_RUNNER_FIXTURE).replaceAll("<", "\\u003c");
   return `<!doctype html><html><head>
-<style>html,body{margin:0} iframe{display:block;border:0;width:320px;height:180px}</style>
+<style>html,body{margin:0} html{background:#f0e6d2} iframe{display:block;border:0;width:320px;height:180px}</style>
 <script>${runtime.replaceAll("</script", "<\\/script")}</script></head><body>
 <div data-hf-id="hf-root" data-hf-root data-composition-id="root" data-start="0" data-duration="1" data-width="320" data-height="180" data-fps="30">
 <div id="scene" data-hf-id="hf-scene" class="clip" data-composition-id="scene" data-start="0" data-duration="1" data-track-index="0">
@@ -1240,7 +1240,7 @@ describe("film bridge browser capture contract", () => {
           background: getComputedStyle(document.body).backgroundColor,
         })),
       ).toEqual({ duration: 3, visibility: "hidden", background: "rgba(0, 0, 0, 0)" });
-      await reference.setContent("<style>html,body{margin:0;background:#121212}</style>");
+      await reference.setContent("<style>html,body{margin:0;background:#f0e6d2}</style>");
       expect(Buffer.from(await page.screenshot())).toEqual(
         Buffer.from(await reference.screenshot()),
       );
