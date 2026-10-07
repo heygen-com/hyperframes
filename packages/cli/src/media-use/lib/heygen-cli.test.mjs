@@ -309,3 +309,7 @@ test("only a music or sound-effect miss names the heygen CLI and the host app's 
   assert.equal(sfx.code, "heygen_cli_outdated");
   assert.match(sfx.error, /host app's own sound-effect tool/);
 });
+
+test("a CLI that rejects --headers without printing a version is outdated", () => {
+  assert.equal(classifyHeygenErrorCode({ stderr: "Error: unknown flag: --headers" }), "outdated");
+});

@@ -68,7 +68,11 @@ function classifyHeygenErrorResult(err) {
   }
 
   const version = firstSemver(text);
-  if (version && versionLessThan(version, HEYGEN_MIN_VERSION)) {
+  // A CLI older than the --headers flag rejects it before printing any version.
+  if (
+    (version && versionLessThan(version, HEYGEN_MIN_VERSION)) ||
+    lower.includes("unknown flag: --headers")
+  ) {
     return { code: "outdated", message: HEYGEN_OUTDATED_MESSAGE };
   }
 

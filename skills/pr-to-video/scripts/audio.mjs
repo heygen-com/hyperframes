@@ -26,6 +26,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hostAudio, keepHostAudio } from "./lib/host-audio.mjs";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -150,6 +151,16 @@ function runGenerate(argv) {
     String(g.extra?.music ?? "")
       .trim()
       .toLowerCase() === "none";
+  const host = previousHostAudio(outPath, hyperframesDir);
+  const scored = sfxCueLines(manifest).length || host.bgm || host.sfx.length;
+  if (bgmOff && !lines.length && scored) {
+    // No narration and no looked-up music: the host's entries now, fetch-sfx's sounds later.
+    rmSync(neutralPath(outPath), { force: true });
+    const meta = keepHostAudio({ bgm: null, bgm_pending: false, voices: [], sfx: [] }, host);
+    writeFileSync(outPath, JSON.stringify(meta, null, 2));
+    console.log(`✓ audio generate: no narration or music to make → ${outPath}`);
+    return;
+  }
   if (bgmOff && !lines.length) {
     rmSync(outPath, { force: true });
     rmSync(neutralPath(outPath), { force: true });
@@ -178,11 +189,39 @@ function runGenerate(argv) {
   const neutral = neutralPath(outPath);
   runEngine({ request, hyperframesDir, neutral, only: "tts,bgm" }, die);
 
-  const meta = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  const meta = keepHostAudio(toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8"))), host);
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(
     `✓ audio generate: ${meta.voices.length} voice + ${meta.bgm ? "1 bgm" : "no bgm"} → ${outPath}`,
   );
+}
+
+// Per-frame `sfx:` cues (comma-separated) → engine lines carrying only sfx.
+// `filter(Boolean)` alone is not enough: a storyboard that spells "no SFX here" as
+// `sfx: none` reaches the engine as a cue literally NAMED "none", which then fails to
+// resolve. The absence sentinels are part of the storyboard vocabulary, so drop them.
+const SFX_NONE = new Set(["none", "no", "n/a", "na", "skip", "-", "—", "–"]);
+function sfxCueLines(manifest) {
+  const lines = [];
+  for (const f of manifest.frames) {
+    const names = (f.extra?.sfx ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && !SFX_NONE.has(s.toLowerCase()));
+    if (names.length && f.number != null) lines.push({ id: pad2(f.number), sfx: names });
+  }
+  return lines;
+}
+
+// The host's own entries in the audio_meta.json a pass is about to rebuild (lib/host-audio.mjs).
+function previousHostAudio(outPath, hyperframesDir) {
+  let previous = null;
+  try {
+    previous = JSON.parse(readFileSync(outPath, "utf8"));
+  } catch {
+    previous = null;
+  }
+  return hostAudio(previous, (path) => existsSync(join(hyperframesDir, path)));
 }
 
 // ── fetch-sfx ────────────────────────────────────────────────────────────────
@@ -198,19 +237,8 @@ function runFetchSfx(argv) {
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
 
-  // Per-frame `sfx:` cues (comma-separated) → engine lines carrying only sfx.
-  // `filter(Boolean)` alone is not enough: a storyboard that spells "no SFX here" as
-  // `sfx: none` reaches the engine as a cue literally NAMED "none", which then fails to
-  // resolve. The absence sentinels are part of the storyboard vocabulary, so drop them.
-  const SFX_NONE = new Set(["none", "no", "n/a", "na", "skip", "-", "—", "–"]);
-  const lines = [];
-  for (const f of manifest.frames) {
-    const names = (f.extra?.sfx ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s && !SFX_NONE.has(s.toLowerCase()));
-    if (names.length && f.number != null) lines.push({ id: pad2(f.number), sfx: names });
-  }
+  const host = previousHostAudio(outPath, hyperframesDir);
+  const lines = sfxCueLines(manifest).filter((line) => !host.frames.has(Number(line.id)));
 
   const neutral = neutralPath(outPath);
   const request = { lines, bgm: { mode: "none" } };
@@ -219,7 +247,7 @@ function runFetchSfx(argv) {
   // voices/bgm written by the earlier generate (--only tts,bgm) pass are preserved.
   runEngine({ request, hyperframesDir, neutral, only: "sfx" }, die);
 
-  const meta = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  const meta = keepHostAudio(toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8"))), host);
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(`✓ audio fetch-sfx: ${meta.sfx.length} SFX cue(s) → ${outPath}`);
   // This pass rewrites audio_meta.json from the neutral sidecar. If a detached BGM generate is

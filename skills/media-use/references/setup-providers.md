@@ -19,7 +19,8 @@ npx hyperframes media-use resolve --doctor
 
 media-use holds no keys; every external tool owns its auth. Generation is
 centered on the HeyGen CLI free-usage path. Install and authenticate `heygen`
-before resolving bgm/sfx/image/icon/voice/avatar-video. Local tools are opt-in
+before resolving bgm/sfx/image/icon/voice/avatar-video; music and sound effects from
+a host app's own tools need none of it. Local tools are opt-in
 alternatives where they exist: mflux for image, Kokoro for voice, Parakeet for
 transcription, and LTX for local video generation. `resolve` spec-checks
 AVAILABLE RAM for those local ladders (`describeModelLadder`); the agent can

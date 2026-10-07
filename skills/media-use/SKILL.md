@@ -9,7 +9,7 @@ description: Agent Media OS for a HyperFrames project. Resolve BGM, SFX, image, 
 
 The media OS for HyperFrames: resolve · generate · operate · remember — every media type, one skill, zero context noise.
 
-First run: install and sign in to the `heygen` CLI (the free-usage path), then verify with `npx hyperframes media-use resolve --doctor`. Setup and providers: `references/setup-providers.md`.
+First run, when you will use HeyGen media (catalog search, TTS, avatar video): install and sign in to the `heygen` CLI (the free-usage path), then verify with `npx hyperframes media-use resolve --doctor`. Setup and providers: `references/setup-providers.md`.
 
 Music and sound effects inside a host app: when the app you run in gives you its own music or sound-effect tools, use those. `resolve --type bgm` and `--type sfx` search the HeyGen catalog through the `heygen` CLI; without it they fail and say so (`sfx` still answers from its bundled library).
 
