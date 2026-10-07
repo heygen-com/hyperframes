@@ -405,15 +405,15 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     },
   );
 
-  it("sees a drawn border change color", async () => {
+  it.each([
+    ["border", "border: 4px solid #fff;", "borderColor"],
+    ["outline", "outline: 4px solid #fff;", "outlineColor"],
+  ])("sees a drawn %s change color", async (_, stroke, property) => {
     await load(
-      composition(
-        "#box { width: 120px; height: 60px; border: 4px solid #fff; }",
-        '<div id="box"></div>',
-      ),
+      composition(`#box { width: 120px; height: 60px; ${stroke} }`, '<div id="box"></div>'),
     );
     const before = await sample();
-    await mutate('document.getElementById("box").style.borderColor = "rgb(255, 51, 0)"');
+    await mutate(`document.getElementById("box").style.${property} = "rgb(255, 51, 0)"`);
     const after = await sample();
 
     expect(after.sweep).not.toBe(before.sweep);

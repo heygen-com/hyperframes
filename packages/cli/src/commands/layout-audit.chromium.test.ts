@@ -111,6 +111,13 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       overlap: true,
     },
     {
+      name: "capitalized words led by punctuation, whose capitals collide",
+      html:
+        heading(100, "\u2026ace", "text-transform:capitalize") +
+        heading(160, "-ace", "text-transform:capitalize"),
+      overlap: true,
+    },
+    {
       name: "two headings placed on the same spot",
       html: '<h1 style="position:absolute;left:100px;top:100px;margin:0;font:120px/1 Arial">HELLO</h1><h1 style="position:absolute;left:110px;top:110px;margin:0;font:120px/1 Arial">WORLD</h1>',
       overlap: true,

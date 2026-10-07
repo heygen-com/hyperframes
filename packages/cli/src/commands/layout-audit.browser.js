@@ -479,8 +479,12 @@
     let text = textContentFor(element, true);
     if (style.textTransform === "uppercase") text = text.toUpperCase();
     if (style.textTransform === "lowercase") text = text.toLowerCase();
-    if (style.textTransform === "capitalize")
-      text = text.replace(/(^|\s)(\S)/g, (m, space, first) => space + first.toUpperCase());
+    if (style.textTransform === "capitalize") {
+      text = text.replace(
+        /(^|\s)([^\s\p{L}]*)(\p{L})/gu,
+        (m, space, lead, first) => space + lead + first.toUpperCase(),
+      );
+    }
     const metrics = context.measureText(text);
     return metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent > 0 ? metrics : null;
   }

@@ -540,7 +540,6 @@ function allSame(values: string[]): boolean {
   return values.every((value) => value === values[0]);
 }
 
-// Only audio advancing is a still picture over a soundtrack, or an animation that never got registered.
 function sweepStaticIssue(severity: "error" | "warning"): AnchoredLayoutIssue {
   return {
     code: "sweep_static",

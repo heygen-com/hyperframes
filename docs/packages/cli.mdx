@@ -705,8 +705,9 @@ compliant colour you could use instead.
 Severity is persistence-aware: a finding at a single sample demotes to info, a
 finding that persists gates the exit code, and a timeline that never moves on a
 composition of 3s or more fails with `sweep_static`. When only audio advanced
-and nothing on screen moved, `sweep_static` is a warning instead (an error under
-`--strict`); add `data-no-timeline` to a composition that is meant to be still.
+and nothing on screen moved, `sweep_static` is a warning instead (`--strict`
+fails the run on it); add `data-no-timeline` to a composition that is meant to
+be still.
 
 {/* VISUAL: a `check --snapshots` overview frame beside one finding crop, with the labelled finding box visible on both */}
 
