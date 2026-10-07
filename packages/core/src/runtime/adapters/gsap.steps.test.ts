@@ -482,3 +482,290 @@ describe("re-rendering leaves the rest as the seek left it", () => {
     expect(timeline.duration()).toBe(20);
   });
 });
+
+describe("gsap frame refresh from-state", () => {
+  it("keeps a from-state when the tween starts between output frames", () => {
+    const target = { x: 0, pivot: 50 };
+    const timeline = gsap
+      .timeline({ paused: true })
+      .fromTo(
+        target,
+        { x: 10, pivot: 0 },
+        { x: 100, duration: 1, ease: "none", immediateRender: false },
+        0.0995,
+      );
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 3 / 30 });
+    expect(target.pivot).toBe(0);
+    expect(target.x).toBeCloseTo(10.045, 6);
+    timeline.kill();
+  });
+
+  it("keeps from-only values after a short tween ends within the redraw's rewind", () => {
+    const target = { x: 0, pivot: 50 };
+    const timeline = gsap
+      .timeline({ paused: true })
+      .fromTo(
+        target,
+        { x: 10, pivot: 0 },
+        { x: 100, duration: 0.0002, ease: "none", immediateRender: false },
+        0.1,
+      );
+    timeline.set({}, {}, 1);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 0.1005 });
+    expect(target.pivot).toBe(0);
+    expect(target.x).toBe(100);
+    timeline.kill();
+  });
+
+  it("restores the normal tween render when replaying a from-state throws", () => {
+    let pivot = 50;
+    let rejectFromState = false;
+    const target = {
+      x: 0,
+      get pivot() {
+        return pivot;
+      },
+      set pivot(value: number) {
+        if (rejectFromState && value === 0) throw new Error("from-state rejected");
+        pivot = value;
+      },
+    };
+    const timeline = gsap
+      .timeline({ paused: true })
+      .fromTo(
+        target,
+        { x: 10, pivot: 0 },
+        { x: 100, duration: 1, ease: "none", immediateRender: false },
+        0.1,
+      );
+    timeline.totalTime(0.1, true);
+    const tween = timeline.getChildren(false, true, false)[0]!;
+    const renderDescriptor = Object.getOwnPropertyDescriptor(tween, "render");
+    rejectFromState = true;
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    expect(() => adapter.seek({ time: 0.1 })).toThrow("from-state rejected");
+    expect(Object.getOwnPropertyDescriptor(tween, "render")).toEqual(renderDescriptor);
+    expect(() => adapter.seek({ time: 0.2 })).not.toThrow();
+    expect(target.x).toBeCloseTo(19, 6);
+    timeline.kill();
+  });
+
+  it.each([false, true])("restores the tween's render descriptor (own=%s)", (own) => {
+    const target = { x: 0, pivot: 50 };
+    const timeline = gsap.timeline({ paused: true });
+    timeline.fromTo(
+      target,
+      { x: 10, pivot: 0 },
+      { x: 100, duration: 1, ease: "none", immediateRender: false },
+      0.0995,
+    );
+    const tween = timeline.getChildren(false, true, false)[0]!;
+    if (own) {
+      Object.defineProperty(tween, "render", {
+        value: tween.render,
+        writable: true,
+        configurable: true,
+        enumerable: false,
+      });
+    }
+    const renderDescriptor = Object.getOwnPropertyDescriptor(tween, "render");
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 0.1 });
+    expect(target.x).toBeCloseTo(10.045, 6);
+    expect(Object.getOwnPropertyDescriptor(tween, "render")).toEqual(renderDescriptor);
+    timeline.kill();
+  });
+
+  it("keeps interpolation when a from-state setter reenters the refresh", () => {
+    let pivot = 50;
+    let armed = false;
+    let entered = false;
+    const target = {
+      x: 0,
+      get pivot() {
+        return pivot;
+      },
+      set pivot(value: number) {
+        pivot = value;
+        if (armed && value === 0 && !entered) {
+          entered = true;
+          rerenderGsapTimelineAt(timeline, 0.1005);
+        }
+      },
+    };
+    const timeline = gsap
+      .timeline({ paused: true })
+      .fromTo(
+        target,
+        { x: 10, pivot: 0 },
+        { x: 100, duration: 1, ease: "none", immediateRender: false },
+        0.1,
+      );
+    timeline.totalTime(0.1005, true);
+    armed = true;
+    rerenderGsapTimelineAt(timeline, 0.1005);
+    expect(entered).toBe(true);
+    expect(target.pivot).toBe(0);
+    expect(target.x).toBeCloseTo(10.045, 6);
+    timeline.kill();
+  });
+
+  it("preserves repeatRefresh function evaluation for very short immediate tweens", () => {
+    let calls = 0;
+    const target = { x: 0, pivot: 50 };
+    const timeline = gsap
+      .timeline({ paused: true })
+      .fromTo(
+        target,
+        { x: () => 10 * ++calls, pivot: 0 },
+        {
+          x: 100,
+          duration: 0.0002,
+          repeat: 2,
+          repeatRefresh: true,
+          immediateRender: true,
+          ease: "none",
+        },
+        0.1,
+      )
+      .to({}, { duration: 1 });
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const time of [0, 0.1, 0.1005]) adapter.seek({ time });
+    expect(target.x).toBe(80);
+    expect(calls).toBe(6);
+    timeline.kill();
+  });
+
+  it("reuses the initialized function-valued from-state on repeated seeks", () => {
+    let calls = 0;
+    const target = { x: 0, pivot: 50 };
+    const timeline = gsap.timeline({ paused: true }).fromTo(
+      target,
+      {
+        x: 10,
+        pivot: () => {
+          calls++;
+          return 0;
+        },
+      },
+      { x: 100, duration: 1, ease: "none", immediateRender: false },
+      0.1,
+    );
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const time of [0.1, 0.1, 0.1005]) adapter.seek({ time });
+    expect(target.pivot).toBe(0);
+    expect(calls).toBe(1);
+    timeline.kill();
+  });
+
+  it.each([
+    { label: "exactly at the start", at: 0.1, x: 10 },
+    { label: "within the redraw's rewind", at: 0.1005, x: 10.045 },
+    { label: "after the redraw's rewind", at: 0.2, x: 19 },
+  ])("keeps from-only values $label and restores them before the tween", ({ at, x }) => {
+    const target = { x: 0, pivot: 50 };
+    const timeline = gsap
+      .timeline({ paused: true })
+      .fromTo(
+        target,
+        { x: 10, pivot: 0 },
+        { x: 100, duration: 1, ease: "none", immediateRender: false, autoRevert: true },
+        0.1,
+      );
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: at });
+    adapter.seek({ time: at });
+    expect(target.pivot).toBe(0);
+    expect(target.x).toBeCloseTo(x, 6);
+    adapter.seek({ time: 0.05 });
+    expect(target.pivot).toBe(50);
+    expect(target.x).toBe(0);
+    timeline.kill();
+  });
+
+  it.each([1, 2])("keeps from-only values in a scene playing at %sx", (speed) => {
+    const target = { x: 0, pivot: 50 };
+    const scene = gsap
+      .timeline()
+      .fromTo(
+        target,
+        { x: 10, pivot: 0 },
+        { x: 100, duration: 1, ease: "none", immediateRender: false },
+        0.1,
+      )
+      .timeScale(speed);
+    const timeline = gsap.timeline({ paused: true }).add(scene, 1);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 1 + 0.1 / speed });
+    expect(target.pivot).toBe(0);
+    expect(target.x).toBeCloseTo(10, 6);
+    timeline.kill();
+  });
+
+  it.each([false, true])("keeps from-only writers in authored order (set last: %s)", (setLast) => {
+    const target = { x: 0, pivot: 50 };
+    const timeline = gsap.timeline({ paused: true });
+    const set = () => timeline.set(target, { pivot: 42 }, 0.1);
+    const fromTo = () =>
+      timeline.fromTo(
+        target,
+        { x: 10, pivot: 0 },
+        { x: 100, duration: 1, ease: "none", immediateRender: false },
+        0.1,
+      );
+    if (setLast) {
+      fromTo();
+      set();
+    } else {
+      set();
+      fromTo();
+    }
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    for (const time of [0.1, 0.1, 0.2]) {
+      adapter.seek({ time });
+      expect(target.pivot).toBe(setLast ? 42 : 0);
+    }
+    timeline.kill();
+  });
+
+  it("leaves uninitialized scene siblings alone at the scene's opening", () => {
+    const target = { x: 0 };
+    const other = { x: 0, pivot: 50 };
+    const timeline = gsap
+      .timeline({ paused: true })
+      .to(target, { x: 100, duration: 10, ease: "none" });
+    const scene = gsap
+      .timeline()
+      .to(target, { x: 200, duration: 1, overwrite: "auto", ease: "none" }, 0);
+    scene.fromTo(other, { x: 10, pivot: 0 }, { x: 100, duration: 1, immediateRender: false }, 0);
+    timeline.add(scene, 2);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 2 });
+    adapter.seek({ time: 1 });
+    expect(target.x).toBe(10);
+    expect(other).toMatchObject({ x: 0, pivot: 50 });
+    timeline.kill();
+  });
+});

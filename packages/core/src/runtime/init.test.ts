@@ -1600,6 +1600,24 @@ describe("initSandboxRuntimeModular", () => {
         initSandboxRuntimeModular();
       };
 
+      it("keeps from-only values across export frames that land on a fromTo start", () => {
+        const target = { x: 0, pivot: 50 };
+        const root = paused().fromTo(
+          target,
+          { x: 10, pivot: 0 },
+          { x: 100, duration: 0.45, ease: "none", immediateRender: false },
+          0.0995,
+        );
+        root.set({}, {}, 1);
+        initWithRoot("1", root);
+        expect(window.__player).toBeDefined();
+        for (const frame of [0, 3, 4, 5]) {
+          window.__player?.renderSeek(frame / 30);
+          expect(target.pivot).toBe(frame === 0 ? 50 : 0);
+        }
+        root.kill();
+      });
+
       it("skips the filler that pads a short timeline to the declared length", () => {
         const root = paused().to({ x: 0 }, { x: 1, duration: 4 }, 0);
         initWithRoot("10", root);
