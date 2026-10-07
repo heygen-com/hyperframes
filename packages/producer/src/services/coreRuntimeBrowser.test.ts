@@ -1172,6 +1172,12 @@ describe("film bridge browser capture contract", () => {
     return page;
   }
 
+  async function capture(page: Page): Promise<Buffer> {
+    // Linux headless Chrome can stall capture when the reference tab is foreground.
+    await page.bringToFront();
+    return Buffer.from(await page.screenshot());
+  }
+
   it("renders the executable wrapper after SDK edits, save and reopen", async () => {
     const composition = await openComposition(html);
     composition.setTiming("hf-scene", { start: 0.2, duration: 0.6 });
@@ -1188,9 +1194,7 @@ describe("film bridge browser capture contract", () => {
       ).toBeCloseTo(3.5, 10);
       await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
       await reference.setContent("<style>html,body{margin:0;background:rgb(140,20,80)}</style>");
-      expect(Buffer.from(await page.screenshot())).toEqual(
-        Buffer.from(await reference.screenshot()),
-      );
+      expect(await capture(page)).toEqual(await capture(reference));
     } finally {
       await page.close();
       await reference.close();
@@ -1223,9 +1227,7 @@ describe("film bridge browser capture contract", () => {
         await reference.setContent(
           `<style>html,body{margin:0;background:rgb(${Math.round(sourceTime! * 40)},20,80)}</style>`,
         );
-        expect(Buffer.from(await page.screenshot())).toEqual(
-          Buffer.from(await reference.screenshot()),
-        );
+        expect(await capture(page)).toEqual(await capture(reference));
       }
       const last = await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"));
       await page.evaluate(() => window.__player?.renderSeek?.(2));
@@ -1241,9 +1243,7 @@ describe("film bridge browser capture contract", () => {
         })),
       ).toEqual({ duration: 3, visibility: "hidden", background: "rgba(0, 0, 0, 0)" });
       await reference.setContent("<style>html,body{margin:0;background:#f0e6d2}</style>");
-      expect(Buffer.from(await page.screenshot())).toEqual(
-        Buffer.from(await reference.screenshot()),
-      );
+      expect(await capture(page)).toEqual(await capture(reference));
     } finally {
       await page.close();
       await reference.close();
@@ -1267,14 +1267,14 @@ describe("film bridge browser capture contract", () => {
         phase = `waiting for frame ${time}`;
         await waitForPendingSeekCompletion(page);
         phase = `capturing frame ${time}`;
-        const actual = await page.screenshot();
+        const actual = await capture(page);
         const sourceTime = 3 + Math.min(time, 1 - 1 / 30);
         phase = `setting reference ${time}`;
         await reference.setContent(
           `<style>html,body{margin:0;background:rgb(${Math.round(sourceTime * 40)},20,80)}</style>`,
         );
         phase = `capturing reference ${time}`;
-        expect(Buffer.from(actual)).toEqual(Buffer.from(await reference.screenshot()));
+        expect(Buffer.from(actual)).toEqual(await capture(reference));
         const previous = captures.get(time);
         if (previous) expect(Buffer.from(actual)).toEqual(Buffer.from(previous));
         captures.set(time, actual);
@@ -1287,7 +1287,7 @@ describe("film bridge browser capture contract", () => {
         phase = "waiting for fresh frame";
         await waitForPendingSeekCompletion(fresh);
         phase = "capturing fresh frame";
-        expect(Buffer.from(await fresh.screenshot())).toEqual(Buffer.from(captures.get(0.5)!));
+        expect(await capture(fresh)).toEqual(Buffer.from(captures.get(0.5)!));
       } finally {
         phase = "closing fresh film";
         await fresh.close();
@@ -1304,9 +1304,7 @@ describe("film bridge browser capture contract", () => {
       phase = "setting edited reference";
       await reference.setContent("<style>html,body{margin:0;background:rgb(146,20,80)}</style>");
       phase = "capturing edited frame";
-      expect(Buffer.from(await page.screenshot())).toEqual(
-        Buffer.from(await reference.screenshot()),
-      );
+      expect(await capture(page)).toEqual(await capture(reference));
       expect(errors).toEqual([]);
     } finally {
       phase = "closing film";
