@@ -2,7 +2,11 @@ import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
+import {
+  formatPreviewProxyBox,
+  hdrToSdrToneMapFilter,
+  type PreviewProxyBox,
+} from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
@@ -180,7 +184,7 @@ function buildProxyCacheKey(
   box: PreviewProxyBox | undefined,
 ): string {
   const stat = statSync(source.sourcePath);
-  const size = box ? `\0${box.width}x${box.height}` : "";
+  const size = box ? `\0${formatPreviewProxyBox(box)}` : "";
   return createHash("sha256")
     .update(
       `${source.relativePath}\0${source.cacheIdentity}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}${size}`,
@@ -334,7 +338,7 @@ export function clearFailedTranscodesForTest(): void {
 }
 
 /** Even dimensions; with a box, the source shrinks until its tighter side fills the box, never grows. */
-export function proxyScaleFilter(box?: PreviewProxyBox): string {
+function proxyScaleFilter(box?: PreviewProxyBox): string {
   if (!box) return "scale=trunc(iw/2)*2:trunc(ih/2)*2";
   const factor = `min(1\\,max(${box.width}/iw\\,${box.height}/ih))`;
   const side = (d: string) => `min(trunc(${d}/2)*2\\,ceil(${d}*${factor}/2)*2)`;

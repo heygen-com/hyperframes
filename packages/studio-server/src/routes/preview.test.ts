@@ -1853,8 +1853,6 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(scanMapMock).toHaveBeenCalled();
 
       // A source-size pre-warm would be a copy Studio never shows.
-      await Promise.resolve();
-      await Promise.resolve();
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 

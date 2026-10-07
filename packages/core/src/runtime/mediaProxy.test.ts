@@ -767,13 +767,13 @@ describe("deriveCodecMapKey", () => {
 
 describe("a copy sized to how large the video shows", () => {
   // A framed document learns its on-screen scale from its host; load a module that is framed.
-  async function framed() {
+  async function framedVideo(width: number, height: number) {
     vi.resetModules();
     vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
-    return import("./mediaProxy");
-  }
-
-  function layOut(el: HTMLElement, width: number, height: number): void {
+    const { maybeProxyProactively, setProxyDisplayScale } = await import("./mediaProxy");
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+    const el = createVideo("/video.mp4");
+    stubCanPlayType(el, "");
     el.getBoundingClientRect = () => ({ width, height }) as DOMRect;
     Object.defineProperty(document.documentElement, "clientWidth", {
       configurable: true,
@@ -784,19 +784,15 @@ describe("a copy sized to how large the video shows", () => {
       value: 1920,
     });
     vi.spyOn(window, "devicePixelRatio", "get").mockReturnValue(2);
+    maybeProxyProactively(el);
+    return { el, setProxyDisplayScale };
   }
 
   const boxOf = (el: HTMLMediaElement) =>
     new URL(el.src, document.baseURI).searchParams.get("hf-proxy-box");
 
   it("asks only once the host says how large it shows the frame, for that size", async () => {
-    const { maybeProxyProactively: proxy, setProxyDisplayScale } = await framed();
-    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
-    const el = createVideo("/video.mp4");
-    stubCanPlayType(el, "");
-    layOut(el, 1080, 1920);
-
-    proxy(el);
+    const { el, setProxyDisplayScale } = await framedVideo(1080, 1920);
     await settle();
     expect(fetch).not.toHaveBeenCalled();
 
@@ -808,13 +804,7 @@ describe("a copy sized to how large the video shows", () => {
   });
 
   it("measures a video scaled past the stage by its own box", async () => {
-    const { maybeProxyProactively: proxy, setProxyDisplayScale } = await framed();
-    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
-    const el = createVideo("/video.mp4");
-    stubCanPlayType(el, "");
-    layOut(el, 2160, 3840);
-
-    proxy(el);
+    const { el, setProxyDisplayScale } = await framedVideo(2160, 3840);
     setProxyDisplayScale(0.5);
     await settle();
     expect(boxOf(el)).toBe("2896x4096");
@@ -822,13 +812,7 @@ describe("a copy sized to how large the video shows", () => {
 
   it("asks for the source-size copy when the host never says", async () => {
     vi.useFakeTimers();
-    const { maybeProxyProactively: proxy } = await framed();
-    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
-    const el = createVideo("/video.mp4");
-    stubCanPlayType(el, "");
-    layOut(el, 1080, 1920);
-
-    proxy(el);
+    const { el } = await framedVideo(1080, 1920);
     await vi.advanceTimersByTimeAsync(999);
     expect(fetch).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
@@ -837,12 +821,7 @@ describe("a copy sized to how large the video shows", () => {
   });
 
   it("moves to a larger copy when the video shows larger, and keeps it when it shrinks", async () => {
-    const { maybeProxyProactively: proxy, setProxyDisplayScale } = await framed();
-    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
-    const el = createVideo("/video.mp4");
-    stubCanPlayType(el, "");
-    layOut(el, 1080, 1920);
-    proxy(el);
+    const { el, setProxyDisplayScale } = await framedVideo(1080, 1920);
     setProxyDisplayScale(0.5);
     await settle();
 
@@ -856,5 +835,37 @@ describe("a copy sized to how large the video shows", () => {
     await settle();
     expect(boxOf(el)).toBe("2896x4096");
     expect(el.load).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads the newest size asked for, even when an older, smaller copy is served first", async () => {
+    const { el, setProxyDisplayScale } = await framedVideo(1080, 1920);
+    setProxyDisplayScale(0.5);
+    await settle();
+
+    setProxyDisplayScale(1);
+    setProxyDisplayScale(2);
+    await settle();
+    expect(boxOf(el)).toBe("5792x8192");
+    expect(el.load).toHaveBeenCalledTimes(2);
+  });
+
+  it("grows a first copy that was made while the frame grew", async () => {
+    vi.useFakeTimers();
+    let made = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        made
+          ? new Response("x", { status: 206 })
+          : new Response(null, { status: 202, headers: { "Retry-After": "2" } }),
+      ),
+    );
+    const { el, setProxyDisplayScale } = await framedVideo(1080, 1920);
+    setProxyDisplayScale(0.5);
+    await vi.advanceTimersByTimeAsync(0);
+    setProxyDisplayScale(1);
+    made = true;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(boxOf(el)).toBe("2896x4096");
   });
 });

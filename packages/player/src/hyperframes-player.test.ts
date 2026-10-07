@@ -2351,9 +2351,11 @@ describe("HyperframesPlayer runtime ready handshake", () => {
   it("tells the runtime how large the frame shows, on fit and again on play", () => {
     Object.defineProperty(player, "offsetWidth", { configurable: true, value: 540 });
     Object.defineProperty(player, "offsetHeight", { configurable: true, value: 960 });
-    // The frame's on-screen box, after the fit and any zoom the page puts around the player.
+    // The frame's on-screen box, after the fit and any zoom the page puts around the player,
+    // over its layout width, which a default size can hold before the stage size arrives.
     let shownWidth = 540;
     player.iframe.getBoundingClientRect = () => ({ width: shownWidth }) as DOMRect;
+    Object.defineProperty(player.iframe, "offsetWidth", { configurable: true, value: 1080 });
     postSpy.mockClear();
 
     player._onMessage(stageSizeMessage(1080, 1920));

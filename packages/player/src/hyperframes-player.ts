@@ -26,7 +26,7 @@ import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
 import { createVideoSource, isVideoType, type VideoSource } from "./video-source.js";
-import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import { frameDisplayScale, runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import {
   FIRST_FRAME_READINESS_SCOPE,
   scanPendingCompositionAssets,
@@ -1009,10 +1009,8 @@ class HyperframesPlayer extends HTMLElement {
 
   /** How large the frame shows on screen, page zoom included, so the runtime sizes its video copies. */
   private _sendDisplayScale(): void {
-    const shownWidth = this.iframe.getBoundingClientRect().width;
-    if (shownWidth > 0 && this._compositionWidth > 0) {
-      this._sendControl("set-display-scale", { scale: shownWidth / this._compositionWidth });
-    }
+    const scale = frameDisplayScale(this.iframe);
+    if (scale) this._sendControl("set-display-scale", { scale });
   }
 
   private _reloadShaderOptions(): void {

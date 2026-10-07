@@ -1,4 +1,5 @@
 import {
+  frameDisplayScale,
   inspectRuntimeProtocol,
   runtimeProtocolMetadata,
   type RuntimeProtocolInspection,
@@ -32,6 +33,12 @@ export function postRuntimeControlMessage(
   fps = 30,
 ): void {
   target?.postMessage(createRuntimeControlMessage(action, payload, fps), "*");
+}
+
+/** Tells a preview's runtime how large its frame shows, where no player is there to measure it. */
+export function postFrameDisplayScale(iframe: HTMLIFrameElement | null | undefined): void {
+  const scale = iframe && frameDisplayScale(iframe);
+  if (scale) postRuntimeControlMessage(iframe.contentWindow, "set-display-scale", { scale });
 }
 
 export function inspectStudioRuntimeMessage(value: unknown): RuntimeProtocolInspection {

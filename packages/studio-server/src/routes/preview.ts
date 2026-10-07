@@ -17,11 +17,7 @@ import {
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
-import {
-  PREVIEW_PROXY_BOX_PARAM,
-  parsePreviewProxyBox,
-  type PreviewProxyBox,
-} from "@hyperframes/core";
+import { PREVIEW_PROXY_BOX_PARAM, parsePreviewProxyBox } from "@hyperframes/core";
 import { gsapCdnDist, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -654,9 +650,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // so a bogus/disabled request never spawns ffmpeg.
     const proxyParam = c.req.query("hf-proxy");
     const boxParam = c.req.query(PREVIEW_PROXY_BOX_PARAM);
-    const proxyBox: PreviewProxyBox | undefined =
-      boxParam === undefined ? undefined : (parsePreviewProxyBox(boxParam) ?? undefined);
-    if (boxParam !== undefined && (!proxyBox || proxyParam === undefined)) {
+    const proxyBox = boxParam === undefined ? undefined : parsePreviewProxyBox(boxParam);
+    if (proxyBox === null || (proxyBox && proxyParam === undefined)) {
       return c.text("not found", 404);
     }
     let proxyVariant: ProxyVariant | undefined;

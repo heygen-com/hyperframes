@@ -13,6 +13,7 @@ import {
   THUMBNAIL_SEEK_TIME_SECONDS,
 } from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
+import { postFrameDisplayScale } from "../../player/lib/runtimeProtocol";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
@@ -257,6 +258,11 @@ function CompCard({
   useEffect(() => {
     if (hovered) requestIframePlaybackSync(true);
   }, [hovered, requestIframePlaybackSync]);
+
+  // Without this, its video copies would be made at source size for an 80px card.
+  useEffect(() => {
+    if (livePreviewLoaded) postFrameDisplayScale(iframeRef.current);
+  }, [livePreviewLoaded, previewScale]);
 
   useEffect(() => {
     return () => {

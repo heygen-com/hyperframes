@@ -71,10 +71,10 @@ const displayScaleKnown = new Promise<void>((arrived) => (displayScaleArrived = 
 // A host that never says (an older player) gets the source-size copy after this wait.
 const DISPLAY_SCALE_WAIT_MS = 1000;
 
-// Elements on a size-bounded copy, with the source URL and the box the copy was made for.
-type BoxedCopy = { originalSrc: string; variant: string; box: PreviewProxyBox };
+// Elements on a size-bounded copy: the source, the copy's URL and the box it was made for.
+type BoxedCopy = { originalSrc: string; variant: string; href: string; box: PreviewProxyBox };
 const boxedElements = new Map<HTMLMediaElement, BoxedCopy>();
-// The larger copy each element is waiting for, so repeated resizes ask once.
+// The larger copy each element waits for; a newer ask replaces it and the older wait stops.
 const pendingUpgrades = new WeakMap<HTMLMediaElement, string>();
 
 function shownScale(): Promise<number | null> {
@@ -98,40 +98,47 @@ function shownBox(el: HTMLMediaElement, scale: number): PreviewProxyBox | null {
   );
 }
 
-function fits(box: PreviewProxyBox, served: PreviewProxyBox): boolean {
-  return box.width <= served.width && box.height <= served.height;
-}
-
 /** The host reports how large it shows this document; copies too small for it are replaced. */
 export function setProxyDisplayScale(scale: number): void {
   if (!(scale > 0) || !Number.isFinite(scale)) return;
   displayScale = scale;
   displayScaleArrived();
-  for (const [el, { originalSrc, variant, box }] of boxedElements) {
-    if (!el.isConnected) {
-      boxedElements.delete(el);
-      continue;
-    }
-    const needed = shownBox(el, scale);
-    if (needed && fits(needed, box)) continue;
-    const href = appendProxyParam(originalSrc, variant, needed);
-    if (pendingUpgrades.get(el) === href) continue;
-    pendingUpgrades.set(el, href);
-    const servedHref = el.getAttribute("src");
-    const live = () => el.isConnected && el.getAttribute("src") === servedHref;
-    void waitForServedProxy(href, live).then((served) => {
-      if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
-      if (served && live()) loadProxy(el, href, { originalSrc, variant, box: needed });
-    });
+  for (const el of boxedElements.keys()) keepSized(el, scale);
+}
+
+function keepSized(el: HTMLMediaElement, scale: number): void {
+  const copy = boxedElements.get(el);
+  if (!copy) return;
+  if (!el.isConnected || el.getAttribute("src") !== copy.href) {
+    boxedElements.delete(el);
+    return;
   }
+  const needed = shownBox(el, scale);
+  if (needed && needed.width <= copy.box.width && needed.height <= copy.box.height) return;
+  // Never smaller on either side than the copy it replaces.
+  const box = needed && {
+    width: Math.max(needed.width, copy.box.width),
+    height: Math.max(needed.height, copy.box.height),
+  };
+  const href = appendProxyParam(copy.originalSrc, copy.variant, box);
+  if (pendingUpgrades.get(el) === href) return;
+  pendingUpgrades.set(el, href);
+  const wanted = () =>
+    pendingUpgrades.get(el) === href && el.isConnected && el.getAttribute("src") === copy.href;
+  void waitForServedProxy(href, wanted).then((served) => {
+    if (served && wanted()) loadProxy(el, href, copy.originalSrc, copy.variant, box);
+    if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
+  });
 }
 
 function loadProxy(
   el: HTMLMediaElement,
   href: string,
-  copy: Omit<BoxedCopy, "box"> & { box: PreviewProxyBox | null },
+  originalSrc: string,
+  variant: string,
+  box: PreviewProxyBox | null,
 ): void {
-  if (copy.box) boxedElements.set(el, { ...copy, box: copy.box });
+  if (box) boxedElements.set(el, { originalSrc, variant, href, box });
   else boxedElements.delete(el);
   // Sync state measured on the previous file would read the new file's buffering as drift.
   evictMediaSyncState(el);
@@ -331,7 +338,9 @@ export function swapToProxy(
       return;
     }
     swappedElements.set(el, originalAttr);
-    loadProxy(el, proxiedSrc, { originalSrc, variant, box });
+    loadProxy(el, proxiedSrc, originalSrc, variant, box);
+    // The shown size may have grown while this copy was being made.
+    if (displayScale !== null) keepSized(el, displayScale);
     return new Promise((landed) => {
       el.addEventListener("loadeddata", landed, { once: true });
       el.addEventListener("error", landed, { once: true });

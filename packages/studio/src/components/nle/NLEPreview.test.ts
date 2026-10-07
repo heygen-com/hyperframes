@@ -344,6 +344,22 @@ describe("NLEPreview", () => {
       view.cleanup();
     });
 
+    it("tells the preview how large it shows once a zoom settles, which the player cannot see", () => {
+      const view = renderPreview();
+      const frame = view.host.querySelector<HTMLElement>('[data-testid="mock-player"]')!;
+      const postMessage = vi.fn();
+      Object.defineProperty(frame, "contentWindow", { value: { postMessage } });
+      Object.defineProperty(frame, "offsetWidth", { value: 800 });
+      frame.getBoundingClientRect = () => ({ width: 1600 }) as DOMRect;
+
+      pinchIn(view, 10);
+      expect(postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ action: "set-display-scale", scale: 2 }),
+        "*",
+      );
+      view.cleanup();
+    });
+
     it("says how far it is zoomed, shows where in the frame, and Fit puts it back", () => {
       const view = renderPreview();
       expect([chip(view), navigator(view)]).toEqual([null, null]);
