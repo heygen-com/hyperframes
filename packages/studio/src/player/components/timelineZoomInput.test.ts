@@ -260,6 +260,23 @@ describe("requestTimelineZoom", () => {
 });
 
 describe("zoomTimelineToRange", () => {
+  it("tells the timeline where a pan at the laid-out scale scrolled to", () => {
+    usePlayerStore.setState({
+      duration: 1000,
+      zoomMode: "manual",
+      manualZoomPercent: 1000,
+      timelineFitPps: 10,
+      timelinePps: 100,
+    });
+    const { scroll } = viewport(0);
+    publishScroll.mockClear();
+    void zoomTimelineToRange(60, 70);
+    for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
+    expect(usePlayerStore.getState().timelinePps).toBe(100);
+    expect(scroll.scrollLeft).toBeGreaterThan(5000);
+    expect(publishScroll.mock.lastCall?.[0].scrollLeft).toBe(scroll.scrollLeft);
+  });
+
   it("fills the width with the range and puts its start at the left margin", () => {
     viewport();
     void zoomTimelineToRange(40, 90, { smooth: false });
@@ -401,23 +418,6 @@ describe("zoomTimelineStep", () => {
     expect(laidOut).toEqual([20]);
     // Counted once as the person's zoom: the end of the ease writes nothing more.
     expect(usePlayerStore.getState().userZoomCount).toBe(1);
-  });
-
-  it("tells the timeline where a zoom-out that ends at its laid-out scale scrolled to", () => {
-    usePlayerStore.setState({
-      currentTime: 110,
-      duration: 1000,
-      zoomMode: "manual",
-      manualZoomPercent: 400,
-      timelinePps: 40,
-    });
-    const { scroll } = viewport(4000);
-    publishScroll.mockClear();
-    zoomTimelineStep("out");
-    run();
-    expect(scroll.scrollLeft).not.toBe(4000);
-    expect(publishScroll).toHaveBeenLastCalledWith(scroll);
-    expect(publishScroll.mock.lastCall?.[0].scrollLeft).toBe(scroll.scrollLeft);
   });
 
   it("eases a zoom-out that pans away without laying its target out first", () => {

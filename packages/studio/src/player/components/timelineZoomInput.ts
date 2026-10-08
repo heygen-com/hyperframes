@@ -212,7 +212,7 @@ function commitPreview() {
   preview = null;
   if (Math.abs(view.scroll.scrollLeft - left) >= 0.5) {
     view.scroll.scrollLeft = left;
-    view.publishScroll(view.scroll);
+    flushSync(() => view.publishScroll(view.scroll));
   }
   clearScaled(view.scroll);
   emitPreview();
