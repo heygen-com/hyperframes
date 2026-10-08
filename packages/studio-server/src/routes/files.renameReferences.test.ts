@@ -27,6 +27,17 @@ describe("rename references", () => {
     expect(rewrite('<img src="old.png">', "old.png", filename, false)).toBe(`<img src="${url}">`);
   });
 
+  it("renames a reference spelled percent-encoded", () => {
+    expect(
+      rewrite(
+        '<video src="assets/My%20clip.mp4"></video>',
+        "assets/My clip.mp4",
+        "assets/New clip.mp4",
+        false,
+      ),
+    ).toBe('<video src="assets/New%20clip.mp4"></video>');
+  });
+
   it("does not classify active URL fields through script-looking comments", () => {
     expect(
       rewrite(`<!-- <script> --><img src="a.png"><!-- </script> -->`, "a.png", "a?#.png", false),
