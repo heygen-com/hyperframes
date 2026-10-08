@@ -60,6 +60,7 @@ export {
   type EngineConfig,
   type ExtractCacheDirResolution,
 } from "./config.js";
+export { SDR_RGB_TO_BT709_FILTER } from "./utils/sdrCaptureColor.js";
 export {
   DEFAULT_VP9_CPU_USED,
   MAX_VP9_CPU_USED,
