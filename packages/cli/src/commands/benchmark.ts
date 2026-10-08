@@ -1,4 +1,4 @@
-import { failCommand } from "../utils/commandResult.js";
+import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, statSync } from "node:fs";
@@ -157,6 +157,10 @@ export default defineCommand({
           : null;
 
       results.push({ config, runs, failures, avgTime, avgSize });
+    }
+
+    if (results.every((result) => result.runs.length === 0)) {
+      setCommandExitCode(1);
     }
 
     // ── Output results ───────────────────────────────────────────────────
