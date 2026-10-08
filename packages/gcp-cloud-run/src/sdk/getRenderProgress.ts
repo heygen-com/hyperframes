@@ -94,15 +94,18 @@ const DEFAULT_VCPU = 4;
 const DEFAULT_MEMORY_GIB = 16;
 
 /** Result body the handler returns for each action; the workflow accumulates these. */
+interface InvocationResult {
+  TotalFrames?: number;
+  FramesEncoded?: number;
+  DurationMs?: number;
+  OutputGcsUri?: string;
+  FileSize?: number;
+}
+
 interface AccumulatedResult {
-  Plan?: { TotalFrames?: number; DurationMs?: number } | null;
-  Chunks?: Array<{ FramesEncoded?: number; DurationMs?: number } | null> | null;
-  Assemble?: {
-    OutputGcsUri?: string;
-    FileSize?: number;
-    FramesEncoded?: number;
-    DurationMs?: number;
-  } | null;
+  Plan: InvocationResult | null;
+  Chunks: Array<InvocationResult | null>;
+  Assemble: InvocationResult | null;
 }
 
 /** Pull a current progress snapshot for one render. */
@@ -213,15 +216,38 @@ function mapState(state: string | null | undefined): RenderStatus {
 
 // fallow-ignore-next-line complexity
 function parseAccumulated(result: string | null | undefined): AccumulatedResult {
-  if (!result) return {};
+  const empty = { Plan: null, Chunks: [], Assemble: null };
+  if (!result) return empty;
   try {
-    const parsed = JSON.parse(result) as unknown;
-    if (parsed && typeof parsed === "object") return parsed as AccumulatedResult;
+    const parsed: unknown = JSON.parse(result);
+    if (!isResultRecord(parsed)) return empty;
+    return {
+      Plan: parseInvocationResult(parsed.Plan),
+      Chunks: Array.isArray(parsed.Chunks) ? parsed.Chunks.map(parseInvocationResult) : [],
+      Assemble: parseInvocationResult(parsed.Assemble),
+    };
   } catch {
-    // Non-JSON result — treat as empty so cost/frames degrade to zero
-    // rather than throwing on a snapshot read.
+    return empty;
   }
-  return {};
+}
+
+function isResultRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function parseInvocationResult(value: unknown): InvocationResult | null {
+  if (!isResultRecord(value)) return null;
+  return {
+    TotalFrames: nonNegativeNumber(value.TotalFrames),
+    FramesEncoded: nonNegativeNumber(value.FramesEncoded),
+    DurationMs: nonNegativeNumber(value.DurationMs),
+    OutputGcsUri: typeof value.OutputGcsUri === "string" ? value.OutputGcsUri : undefined,
+    FileSize: nonNegativeNumber(value.FileSize),
+  };
 }
 
 /**

@@ -100,6 +100,134 @@ describe("getRenderProgress", () => {
     expect(p.fatalErrorEncountered).toBe(true);
   });
 
+  it.each(["", "not-json", "null", "true", "[]", '{"Chunks":{}}', '{"Chunks":"invalid"}'])(
+    "keeps a successful execution readable with malformed result %s",
+    async (result) => {
+      const progress = await getRenderProgress({
+        executionName: "x",
+        executions: fakeExecutions({ state: "SUCCEEDED", result }),
+      });
+      expect(progress.status).toBe("succeeded");
+      expect(progress.overallProgress).toBe(1);
+      expect(progress.framesRendered).toBe(0);
+      expect(progress.totalFrames).toBeNull();
+      expect(progress.outputFile).toBeNull();
+      expect(progress.invocationsObserved).toBe(0);
+      expect(progress.costs.accruedSoFarUsd).toBeFinite();
+    },
+  );
+
+  it("retains valid stages and ignores non-object chunks", async () => {
+    const progress = await getRenderProgress({
+      executionName: "x",
+      executions: fakeExecutions({
+        state: "SUCCEEDED",
+        result: JSON.stringify({
+          Plan: { TotalFrames: 30, DurationMs: 500 },
+          Chunks: [null, true, "invalid", [], { FramesEncoded: 30, DurationMs: 1000 }],
+          Assemble: { OutputGcsUri: "gs://b/output.mp4", FileSize: 42, DurationMs: 250 },
+        }),
+      }),
+    });
+    expect(progress.totalFrames).toBe(30);
+    expect(progress.framesRendered).toBe(30);
+    expect(progress.invocationsObserved).toBe(3);
+    expect(progress.outputFile).toEqual({ gcsUri: "gs://b/output.mp4", bytes: 42 });
+    expect(progress.costs.breakdown.estimated).toBe(false);
+  });
+
+  it("does not coerce frame counts or expose non-string output paths", async () => {
+    const progress = await getRenderProgress({
+      executionName: "x",
+      executions: fakeExecutions({
+        state: "SUCCEEDED",
+        result: JSON.stringify({
+          Plan: { TotalFrames: "30" },
+          Chunks: [
+            { FramesEncoded: "30", DurationMs: "1000" },
+            { FramesEncoded: 12, DurationMs: 0 },
+          ],
+          Assemble: { OutputGcsUri: 42, FileSize: "123" },
+        }),
+      }),
+    });
+    expect(progress.totalFrames).toBeNull();
+    expect(progress.framesRendered).toBe(12);
+    expect(progress.outputFile).toBeNull();
+    expect(progress.costs.breakdown.estimated).toBe(true);
+  });
+
+  it.each(["-30", "1e400"])("ignores invalid numeric result fields %s", async (value) => {
+    const result = `{"Plan":{"TotalFrames":${value},"DurationMs":${value}},"Chunks":[{"FramesEncoded":${value},"DurationMs":${value}}],"Assemble":{"OutputGcsUri":"gs://b/output.mp4","FileSize":${value},"DurationMs":${value}}}`;
+    const progress = await getRenderProgress({
+      executionName: "x",
+      executions: fakeExecutions({ state: "SUCCEEDED", result }),
+    });
+    expect(progress.totalFrames).toBeNull();
+    expect(progress.framesRendered).toBe(0);
+    expect(progress.outputFile).toEqual({ gcsUri: "gs://b/output.mp4", bytes: null });
+    expect(progress.costs.accruedSoFarUsd).toBeGreaterThanOrEqual(0);
+    expect(progress.costs.accruedSoFarUsd).toBeFinite();
+    expect(progress.costs.breakdown.estimated).toBe(true);
+  });
+
+  it.each([{ stage: true }, { stage: [] }, { stage: "invalid" }])(
+    "ignores non-object stage result %j",
+    async ({ stage }) => {
+      const progress = await getRenderProgress({
+        executionName: "x",
+        executions: fakeExecutions({
+          state: "SUCCEEDED",
+          result: JSON.stringify({ Plan: stage, Chunks: [], Assemble: stage }),
+        }),
+      });
+      expect(progress.totalFrames).toBeNull();
+      expect(progress.outputFile).toBeNull();
+      expect(progress.invocationsObserved).toBe(0);
+    },
+  );
+
+  it.each([{ chunks: {} }, { chunks: "invalid" }])(
+    "preserves valid stages when the chunk list is malformed %j",
+    async ({ chunks }) => {
+      const progress = await getRenderProgress({
+        executionName: "x",
+        executions: fakeExecutions({
+          state: "SUCCEEDED",
+          result: JSON.stringify({
+            Plan: { TotalFrames: 30, DurationMs: 500 },
+            Chunks: chunks,
+            Assemble: { OutputGcsUri: "gs://b/output.mp4", FileSize: 42, DurationMs: 250 },
+          }),
+        }),
+      });
+      expect(progress.totalFrames).toBe(30);
+      expect(progress.framesRendered).toBe(0);
+      expect(progress.invocationsObserved).toBe(2);
+      expect(progress.outputFile).toEqual({ gcsUri: "gs://b/output.mp4", bytes: 42 });
+      expect(progress.costs.breakdown.estimated).toBe(false);
+    },
+  );
+
+  it("preserves zero-valued result fields", async () => {
+    const progress = await getRenderProgress({
+      executionName: "x",
+      executions: fakeExecutions({
+        state: "SUCCEEDED",
+        result: JSON.stringify({
+          Plan: { TotalFrames: 0, DurationMs: 0 },
+          Chunks: [{ FramesEncoded: 0, DurationMs: 0 }],
+          Assemble: { OutputGcsUri: "gs://b/output.mp4", FileSize: 0, DurationMs: 0 },
+        }),
+      }),
+    });
+    expect(progress.totalFrames).toBe(0);
+    expect(progress.framesRendered).toBe(0);
+    expect(progress.invocationsObserved).toBe(3);
+    expect(progress.outputFile).toEqual({ gcsUri: "gs://b/output.mp4", bytes: 0 });
+    expect(progress.costs.breakdown.estimated).toBe(false);
+  });
+
   it("requires an executionName", async () => {
     await expect(
       getRenderProgress({ executionName: "", executions: fakeExecutions({}) }),
