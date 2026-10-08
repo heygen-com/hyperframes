@@ -39,6 +39,11 @@ const QUALITY_ALIASES = {
   looks: { quality: "standard" as const, crf: 16 },
   delivery: { quality: "high" as const },
 } as const;
+
+function isQualityAlias(value: string): value is keyof typeof QUALITY_ALIASES {
+  return Object.hasOwn(QUALITY_ALIASES, value);
+}
+
 const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif", "hls"] as const;
 const VALID_FORMAT = new Set<string>(RENDER_FORMATS);
 const RENDER_FORMAT_LABEL = "mp4, webm, mov, png-sequence, gif, or hls";
@@ -238,14 +243,14 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   let fps = fpsParse.value;
 
   const qualityRaw = args.quality ?? "looks";
-  if (!(qualityRaw in QUALITY_ALIASES)) {
+  if (!isQualityAlias(qualityRaw)) {
     errorBox(
       "Invalid quality",
       `Got "${qualityRaw}". Must be draft, looks, delivery, standard, or high.`,
     );
     failUsage();
   }
-  const qualityAlias = QUALITY_ALIASES[qualityRaw as keyof typeof QUALITY_ALIASES];
+  const qualityAlias = QUALITY_ALIASES[qualityRaw];
   const quality = qualityAlias.quality;
 
   // Attribution resolves the explicit --skill flag first, then falls back to

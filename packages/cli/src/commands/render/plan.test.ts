@@ -126,6 +126,27 @@ describe("createRenderPlan", () => {
     expect(() => createRenderPlan({ dir: projectDir, quality: "maximum" })).toThrow(CliUsageError);
   });
 
+  it.each([
+    "constructor",
+    "__proto__",
+    "toString",
+    "valueOf",
+    "hasOwnProperty",
+    "propertyIsEnumerable",
+  ])("rejects the inherited property %s as a quality preset", (quality) => {
+    expect(() => createRenderPlan({ dir: projectDir, quality })).toThrow(CliUsageError);
+    const diagnostic = vi.mocked(console.error).mock.calls.flat().join("\n");
+    expect(diagnostic).toContain("Invalid quality");
+    expect(diagnostic).toContain(`Got "${quality}"`);
+  });
+
+  it.each(["draft", "standard", "high"])("preserves the %s quality preset", (quality) => {
+    expect(createRenderPlan({ dir: projectDir, quality })).toMatchObject({
+      quality,
+      crf: undefined,
+    });
+  });
+
   it("maps looks to standard encode with CRF 16, and delivery to high", () => {
     expect(createRenderPlan({ dir: projectDir, quality: "looks" })).toMatchObject({
       quality: "standard",
