@@ -340,7 +340,6 @@ export function installAuthoredMediaCapture(): void {
 // Mid-tween, GSAP's default force3D writes translate3d, and Chrome snaps a crop edge on it to whole pixels.
 // Runs at script evaluation: GSAP is configured as its bundle assigns window.gsap, before a composition's
 // set() or from() parses an element. Chains to an accessor already there (the producer's early stub).
-// The same early owner preserves percentage translation before a zoom-snapped matrix loses its intent.
 export function installFlatGsapTransforms(): void {
   const configure = (g: Window["gsap"]) => {
     g?.config?.({ force3D: false });
