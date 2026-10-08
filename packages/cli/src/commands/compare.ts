@@ -1,5 +1,15 @@
 import { failCommand } from "../utils/commandResult.js";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { defineCommand } from "citty";
@@ -15,6 +25,7 @@ import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import type { Example } from "./_examples.js";
+import { isPathInside } from "@hyperframes/parsers/asset-paths";
 
 const MAX_COMPARE_VARIANTS = 16;
 const MAX_COLUMNS = 4;
@@ -197,18 +208,39 @@ function inputError(variant: CompareVariantSpec): Error {
   );
 }
 
-function stageHtmlVariant(variant: CompareVariantSpec): PreparedCompareVariant {
+function copyVariantSiblings(
+  sourceDir: string,
+  destinationDir: string,
+  stagingPaths: readonly string[],
+): void {
+  mkdirSync(destinationDir, { recursive: true });
+  for (const entry of readdirSync(sourceDir)) {
+    if (entry === "node_modules" || entry === ".git") continue;
+    const src = join(sourceDir, entry);
+    const dest = join(destinationDir, entry);
+    if (stagingPaths.includes(src)) continue;
+    if (stagingPaths.some((path) => isPathInside(path, src))) {
+      copyVariantSiblings(src, dest, stagingPaths);
+      continue;
+    }
+    cpSync(src, dest, {
+      recursive: true,
+      filter: (path) => basename(path) !== "node_modules" && basename(path) !== ".git",
+    });
+  }
+}
+
+function stageHtmlVariant(
+  variant: CompareVariantSpec,
+  existingStagedDirs: readonly string[],
+): PreparedCompareVariant {
   const stagedDir = mkdtempSync(join(tmpdir(), "hf-compare-variant-"));
   try {
     // Copy the composition's sibling files but skip heavy/irrelevant trees — a
     // variant sitting next to node_modules or .git shouldn't drag them into tmp.
-    cpSync(dirname(variant.inputPath), stagedDir, {
-      recursive: true,
-      filter: (src) => {
-        const base = basename(src);
-        return base !== "node_modules" && base !== ".git";
-      },
-    });
+    const sourceDir = realpathSync(dirname(variant.inputPath));
+    const stagingPaths = [stagedDir, ...existingStagedDirs].map((path) => realpathSync(path));
+    copyVariantSiblings(sourceDir, realpathSync(stagedDir), stagingPaths);
     const sourceName = basename(variant.inputPath);
     if (sourceName !== "index.html") {
       renameSync(join(stagedDir, sourceName), join(stagedDir, "index.html"));
@@ -242,7 +274,10 @@ export function prepareCompareVariantProjects(
         continue;
       }
       if (stat.isFile() && extname(variant.inputPath).toLowerCase() === ".html") {
-        prepared.push(stageHtmlVariant(variant));
+        const stagedDirs = prepared.flatMap((project) =>
+          project.stagedDir ? [project.stagedDir] : [],
+        );
+        prepared.push(stageHtmlVariant(variant, stagedDirs));
         continue;
       }
       throw inputError(variant);

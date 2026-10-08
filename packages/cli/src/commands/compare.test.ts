@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCompareSuccessPayload,
@@ -8,6 +8,12 @@ import {
   parseCompareArgs,
   prepareCompareVariantProjects,
 } from "./compare.js";
+
+const temporaryRoot = vi.hoisted(() => ({ path: "" }));
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return { ...actual, tmpdir: () => temporaryRoot.path || actual.tmpdir() };
+});
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-compare-test-"));
@@ -78,6 +84,74 @@ describe("capCompareVariants", () => {
 });
 
 describe("prepareCompareVariantProjects", () => {
+  it("keeps earlier temporary staging folders out of later variants", () => {
+    const dir = tempDir();
+    const first = join(dir, "first.html");
+    const second = join(dir, "second.html");
+    writeFileSync(first, "<!doctype html><title>First</title>");
+    writeFileSync(second, "<!doctype html><title>Second</title>");
+    temporaryRoot.path = dir;
+
+    try {
+      const prepared = prepareCompareVariantProjects([
+        { label: "First", inputPath: first, displayPath: "first.html" },
+        { label: "Second", inputPath: second, displayPath: "second.html" },
+      ]);
+      const firstStage = prepared[0];
+      const secondStage = prepared[1];
+      if (!firstStage || !secondStage) throw new Error("expected two staged variants");
+      expect(existsSync(join(secondStage.projectDir, basename(firstStage.projectDir)))).toBe(false);
+      expect(readFileSync(join(secondStage.projectDir, "first.html"), "utf8")).toContain("First");
+      expect(readFileSync(join(secondStage.projectDir, "index.html"), "utf8")).toContain("Second");
+    } finally {
+      temporaryRoot.path = "";
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["direct", "nested"])(
+    "stages siblings when the temporary output is %s inside the source directory",
+    (placement) => {
+      const dir = tempDir();
+      const htmlFile = join(dir, "candidate.html");
+      mkdirSync(join(dir, "assets"));
+      writeFileSync(htmlFile, "<!doctype html><title>Temporary candidate</title>");
+      writeFileSync(join(dir, "assets", "asset.txt"), "sibling asset");
+      mkdirSync(join(dir, "node_modules"));
+      writeFileSync(join(dir, "node_modules", "ignored.txt"), "ignored");
+      temporaryRoot.path = placement === "direct" ? dir : join(dir, "temporary");
+      mkdirSync(temporaryRoot.path, { recursive: true });
+      writeFileSync(join(temporaryRoot.path, "sibling.txt"), "temporary-root sibling");
+
+      try {
+        const prepared = prepareCompareVariantProjects([
+          { label: "Temp", inputPath: htmlFile, displayPath: "candidate.html" },
+        ]);
+        const staged = prepared[0];
+        if (!staged) throw new Error("expected a staged variant");
+        expect(staged.stagedDir).toBe(staged.projectDir);
+        expect(readFileSync(join(staged.projectDir, "index.html"), "utf8")).toContain(
+          "Temporary candidate",
+        );
+        expect(readFileSync(join(staged.projectDir, "assets", "asset.txt"), "utf8")).toBe(
+          "sibling asset",
+        );
+        expect(
+          readFileSync(
+            join(staged.projectDir, placement === "direct" ? "" : "temporary", "sibling.txt"),
+            "utf8",
+          ),
+        ).toBe("temporary-root sibling");
+        expect(existsSync(join(staged.projectDir, "candidate.html"))).toBe(false);
+        expect(existsSync(join(staged.projectDir, "node_modules"))).toBe(false);
+        expect(readFileSync(htmlFile, "utf8")).toContain("Temporary candidate");
+      } finally {
+        temporaryRoot.path = "";
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("uses project directories directly and stages standalone html files as index.html", () => {
     const dir = tempDir();
     try {
