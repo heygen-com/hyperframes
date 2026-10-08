@@ -12,8 +12,8 @@ import {
   lintProject,
 } from "../utils/lintProject.js";
 import { formatLintStartupMessage } from "../utils/lintFormat.js";
+import { ENV_CREDENTIAL_VAR } from "../auth/resolver.js";
 import {
-  ENV_CREDENTIAL_VAR,
   buildPublishFileMap,
   publishProjectArchive,
   resolvePublishCredential,

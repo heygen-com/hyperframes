@@ -40,6 +40,12 @@ interface OAuthCredential {
 
 export type ResolvedCredential = ApiKeyCredential | OAuthCredential;
 
+export const ENV_CREDENTIAL_VAR: Partial<Record<CredentialSource, string>> = {
+  env: "HEYGEN_API_KEY",
+  env_alias: "HYPERFRAMES_API_KEY",
+  env_oauth: "HEYGEN_ACCESS_TOKEN",
+};
+
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 export interface ResolveOptions {

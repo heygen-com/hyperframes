@@ -17,6 +17,7 @@ import {
   readStore,
   revokeTokens,
 } from "../../auth/index.js";
+import { ENV_CREDENTIAL_VAR } from "../../auth/resolver.js";
 import { c } from "../../ui/colors.js";
 
 export default defineCommand({
@@ -57,11 +58,10 @@ export default defineCommand({
 });
 
 function warnIfEnvCredentialActive(): void {
-  if (process.env["HEYGEN_API_KEY"] || process.env["HYPERFRAMES_API_KEY"]) {
+  const active = Object.values(ENV_CREDENTIAL_VAR).filter((name) => process.env[name]);
+  if (active.length > 0) {
     console.log(
-      c.warn(
-        "An env-var credential is active. Unset HEYGEN_API_KEY / HYPERFRAMES_API_KEY to remove it.",
-      ),
+      c.warn(`An env-var credential is active. Unset ${active.join(" / ")} to remove it.`),
     );
   }
 }
