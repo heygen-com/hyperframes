@@ -448,6 +448,22 @@ describe("Plan v2 manifest", () => {
     );
   });
 
+  it("keeps a deferred source the page itself loads in every chunk", () => {
+    const root = tempPath("hf-plan-v2-deferred-compiled-source-");
+    const v1 = createV1Plan(root, {
+      video: true,
+      videoStart: 1 / 30,
+      deferredSource: "compiled/hero.mp4",
+    });
+    const manifest = readPlanV2Manifest(createPlanV2FromV1(v1, join(root, "v2")).planDir);
+
+    expect(manifest.limitations.videoDependencyMode).toBe("source-extract");
+    for (const chunkIndex of [0, 1]) {
+      const artifacts = listPlanV2ArtifactsForTarget(manifest, { role: "chunk", chunkIndex });
+      expect(artifacts.some((artifact) => artifact.path === "compiled/hero.mp4")).toBe(true);
+    }
+  });
+
   it("rejects a deferred video source outside the plan directory", () => {
     const root = tempPath("hf-plan-v2-deferred-escape-");
     const v1 = createV1Plan(root, { video: true, deferredSource: "../outside.mp4" });

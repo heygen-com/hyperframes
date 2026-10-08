@@ -288,6 +288,8 @@ function artifactTargets(
   if (path === "plan.json" || path === "meta/chunks.json" || path === "meta/encoder.json") {
     return { chunks: "all", assembler: true };
   }
+  // Each chunk's page loads every <video> src at init (a missing one fails the
+  // chunk), so deferred sources under compiled/ still go to every chunk.
   if (
     path === "meta/composition.json" ||
     path === "meta/videos.json" ||
@@ -310,7 +312,6 @@ function listVideoFramePaths(executionPlanDir: string, videos: PlanVideosJson): 
   return videos.extracted.map((video) => {
     const outputDir = resolveExtractedVideoOutputDir(executionPlanDir, video.videoId);
     if (video.deferredRange) {
-      // Chunks extract these frames; name them all so the walk below sees each one shown.
       const framePaths = new Map<number, string>();
       for (let index = 0; index < video.totalFrames; index++) {
         framePaths.set(index, join(outputDir, String(index)));
