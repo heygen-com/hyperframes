@@ -96,8 +96,8 @@ describe("whisperModelSlowdownFactor", () => {
 });
 
 describe("resolveWhisperTimeoutMs with model factor", () => {
-  it("keeps small.en (default) at the historical baseline for 63s clips", () => {
-    // Regression guard: `small.en` (the CLI default model) must not lose
+  it("keeps small.en at the historical baseline for 63s clips", () => {
+    // Regression guard: `small.en` (the CLI default until `small`) must not lose
     // headroom when the caller passes a model. 63s * 10s/s * 1 = 630_000ms.
     expect(resolveWhisperTimeoutMs(63, { model: "small.en" })).toBe(630_000);
   });

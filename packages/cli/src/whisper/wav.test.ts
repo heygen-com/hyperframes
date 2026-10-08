@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { readWav } from "./wav.js";
+import { readWav, writeWavWindow } from "./wav.js";
 import { encodeWav } from "./wav.test-helpers.js";
 
 let dir: string;
@@ -32,4 +32,14 @@ it("names a file that is not a 16-bit mono WAV", () => {
     "text.wav is not a 16-bit mono PCM WAV",
   );
   expect(() => readWav(file("stereo.wav", stereo))).toThrow("is not a 16-bit mono PCM WAV");
+});
+
+it("writes a window of a prepared WAV as a WAV of its own", () => {
+  const second = (n: number) => new Array(16_000).fill(n / 32768);
+  const source = file("in.wav", encodeWav([...second(1), ...second(2), ...second(3)], 16_000));
+  writeWavWindow(source, join(dir, "out.wav"), 1, 1);
+  const window = readWav(join(dir, "out.wav"));
+  expect(window.sampleRate).toBe(16_000);
+  expect(window.samples).toHaveLength(16_000);
+  expect(new Set(window.samples)).toEqual(new Set([2 / 32768]));
 });

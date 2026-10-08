@@ -3,16 +3,34 @@ import { execFile, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
-import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
-import { findWavChunk } from "./wav.js";
+import { findWavChunk, writeWavWindow } from "./wav.js";
 import type { Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
+import {
+  confidentLanguage,
+  detectionWindows,
+  parseDetection,
+  pickLanguage,
+  requestedLanguage,
+  WINDOW_SECONDS,
+  type LanguageVote,
+} from "./language.js";
 
 const WHISPER_TIMEOUT_FLOOR_MS = 300_000;
 const WHISPER_TIMEOUT_PER_AUDIO_SECOND_MS = 10_000;
@@ -22,7 +40,7 @@ const AUDIO_PREPARATION_TIMEOUT_PER_MEDIA_SECOND_MS = 500;
 const AUDIO_PREPARATION_TIMEOUT_CAP_MS = 21_600_000;
 
 /**
- * Model-specific slowdown factors relative to the `small.en` default. whisper.cpp's
+ * Model-specific slowdown factors relative to the `small` default. whisper.cpp's
  * per-token inference cost scales with model size — `medium` runs ~2x slower than
  * `small`, and the `large` family ~4x slower — so the 10x-realtime baseline that
  * comfortably covers `small.en` can still time out on `medium.en`/`large-v3` when
@@ -49,13 +67,13 @@ const WHISPER_MODEL_SLOWDOWN_FACTORS: Readonly<Record<string, number>> = {
   "large-v3-turbo": 2,
 };
 
-// Unknown model names fall back to the `small.en` baseline so the returned
+// Unknown model names fall back to the `small` baseline so the returned
 // timeout never dips below the historical safe window for a novel/custom model.
 const DEFAULT_MODEL_SLOWDOWN_FACTOR = 1;
 
 /**
  * Look up the auto-scale slowdown factor for a whisper model name. Case-
- * insensitive. Unknown names fall back to the `small.en` baseline (factor 1)
+ * insensitive. Unknown names fall back to the `small` baseline (factor 1)
  * rather than a smaller factor so unknown models never accidentally shorten
  * the safety window.
  */
@@ -472,10 +490,22 @@ export async function transcribe(
   // 3. Prepare audio
   const wavPath = prepareWav(inputPath, options?.onProgress);
 
-  const automaticLanguage = options?.language === undefined && !model.endsWith(".en");
-  const language = options?.language ?? (automaticLanguage ? "auto" : "en");
-  options?.onProgress?.("Transcribing...");
+  // Desktop always sends `--language auto`.
+  const requested = requestedLanguage(options?.language);
+  const automaticLanguage = requested === undefined && !model.endsWith(".en");
   const wavSeconds = getPreparedWavDurationSeconds(wavPath);
+  const speechOnsetSeconds = detectSpeechOnset(wavPath);
+  const signal = options?.startCancellation?.();
+  const picked = automaticLanguage
+    ? await languageFromWindows(whisper.executablePath, { model, modelPath }, wavPath, {
+        seconds: wavSeconds,
+        onset: speechOnsetSeconds,
+        signal,
+        onProgress: options?.onProgress,
+      })
+    : null;
+  const language = requested ?? picked ?? (automaticLanguage ? "auto" : "en");
+  options?.onProgress?.("Transcribing...");
   options?.onEvent?.({
     type: "progress",
     phase: "transcription",
@@ -506,6 +536,7 @@ export async function transcribe(
     overrideMs: options?.timeoutMs,
   });
   let through = 0;
+  let ownPick: LanguageVote | null = null;
   const heard = (words: Word[], at: number) => {
     if (!onEvent || (words.length === 0 && at <= through)) return;
     through = Math.max(through, at);
@@ -514,20 +545,18 @@ export async function transcribe(
   try {
     await runWhisper(whisper.executablePath, whisperArgs, {
       timeoutMs: whisperTimeoutMs,
-      signal: options?.startCancellation?.(),
+      signal,
       onStdout:
         onEvent &&
         ((line) => {
           const segment = segmentWords(line);
           if (segment) heard(segment.words, segment.end);
         }),
-      onStderr:
-        onEvent && wavSeconds
-          ? (line) => {
-              const percent = /progress =\s*(\d+)%/.exec(line)?.[1];
-              if (percent) heard([], (Number(percent) / 100) * wavSeconds);
-            }
-          : undefined,
+      onStderr: (line) => {
+        ownPick ??= parseDetection(line);
+        const percent = /progress =\s*(\d+)%/.exec(line)?.[1];
+        if (percent && wavSeconds) heard([], (Number(percent) / 100) * wavSeconds);
+      },
     });
   } catch (err) {
     // Surface the timeout knob when the child was killed by our own timeout —
@@ -548,11 +577,8 @@ export async function transcribe(
   }
 
   const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
-  const reportedLanguage: unknown = transcript.result?.language;
-  const detectedLanguage =
-    automaticLanguage && typeof reportedLanguage === "string" && reportedLanguage.length > 0
-      ? reportedLanguage
-      : null;
+  // whisper's own pick (its first 30 s) labels the transcript only when it was sure.
+  const detectedLanguage = automaticLanguage ? (picked ?? confidentLanguage(ownPick)) : null;
   const segments = transcript.transcription ?? [];
 
   let wordCount = 0;
@@ -564,10 +590,6 @@ export async function transcribe(
       if (token.offsets?.to > maxEnd) maxEnd = token.offsets.to;
     }
   }
-
-  // 7. Detect speech onset before cleaning up the WAV
-  options?.onProgress?.("Detecting speech onset...");
-  const speechOnsetSeconds = detectSpeechOnset(wavPath);
 
   // Clean up temp WAV if we created one
   if (wavPath !== inputPath) {
@@ -611,6 +633,56 @@ function segmentWords(line: string): { words: Word[]; end: number } | null {
     return { text, start: toMs(from), end: toMs(at) };
   });
   return { words, end };
+}
+
+/** The language up to three windows spread over the speech agree on; null keeps whisper's own pick, which hears
+ * only the first 30 s. A window whose detection fails loses its vote, said aloud. */
+async function languageFromWindows(
+  executable: string,
+  { model, modelPath }: { model: string; modelPath: string },
+  wavPath: string,
+  clip: {
+    seconds: number | null;
+    onset: number | null;
+    signal?: AbortSignal;
+    onProgress?: (message: string) => void;
+  },
+): Promise<string | null> {
+  const starts = clip.seconds === null ? [] : detectionWindows(clip.seconds, clip.onset);
+  if (starts.length === 0) return null;
+  clip.onProgress?.("Detecting the language...");
+  const windowDir = mkdtempSync(join(tmpdir(), "hyperframes-language-"));
+  const window = join(windowDir, "window.wav");
+  const votes: LanguageVote[] = [];
+  try {
+    for (const start of starts) {
+      try {
+        writeWavWindow(wavPath, window, start, WINDOW_SECONDS);
+        await runWhisper(
+          executable,
+          ["--model", modelPath, "--language", "auto", "--detect-language", window],
+          {
+            timeoutMs: resolveWhisperTimeoutMs(WINDOW_SECONDS, { model }),
+            signal: clip.signal,
+            onStderr: (line) => {
+              const vote = parseDetection(line);
+              if (vote) votes.push(vote);
+            },
+          },
+        );
+      } catch (err) {
+        if (clip.signal?.aborted) throw err;
+        clip.onProgress?.(
+          `Language detection failed for one window (${normalizeErrorMessage(err)}).`,
+        );
+        // A hung whisper-cli would hang on every window.
+        if (isWhisperTimeoutError(err)) break;
+      }
+    }
+  } finally {
+    rmSync(windowDir, { recursive: true, force: true });
+  }
+  return pickLanguage(votes);
 }
 
 /** Resolves once whisper exits and both its streams are read, so no printed line is lost. */

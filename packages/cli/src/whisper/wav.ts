@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 /** Where a RIFF chunk's bytes start and how many there are, or null when the file has none. */
 export function findWavChunk(buf: Buffer, want: string): { offset: number; size: number } | null {
@@ -37,4 +37,32 @@ export function readWav(path: string): { samples: Float32Array; sampleRate: numb
   for (let i = 0; i < samples.length; i++)
     samples[i] = buf.readInt16LE(data.offset + 2 * i) / 32768;
   return { samples, sampleRate: buf.readUInt32LE(fmt.offset + 4) };
+}
+
+/** The 44-byte header of a 16-bit mono PCM WAV holding `bytes` of samples. */
+export function wavHeader(bytes: number, sampleRate: number): Buffer {
+  const head = Buffer.alloc(44);
+  head.write("RIFF", 0, "ascii");
+  head.writeUInt32LE(36 + bytes, 4);
+  head.write("WAVEfmt ", 8, "ascii");
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(PCM, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(sampleRate, 24);
+  head.writeUInt32LE(sampleRate * 2, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write("data", 36, "ascii");
+  head.writeUInt32LE(bytes, 40);
+  return head;
+}
+
+/** `seconds` of a prepared WAV (16 kHz mono s16) from `start`, written as a WAV of its own. */
+export function writeWavWindow(source: string, dest: string, start: number, seconds: number): void {
+  const buf = readFileSync(source);
+  const data = findWavChunk(buf, "data");
+  if (!data) throw new Error(`${source} has no WAV data`);
+  const from = data.offset + Math.floor(start * 16_000) * 2;
+  const pcm = buf.subarray(from, Math.min(from + seconds * 32_000, data.offset + data.size));
+  writeFileSync(dest, Buffer.concat([wavHeader(pcm.length, 16_000), pcm]));
 }
