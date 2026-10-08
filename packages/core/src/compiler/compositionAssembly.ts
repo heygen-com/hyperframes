@@ -55,14 +55,16 @@ const JAVASCRIPT_TYPES = new Set([
   "text/x-javascript",
 ]);
 
+const scriptType = (el: AssemblyAttributed) => (el.getAttribute("type") || "").trim().toLowerCase();
+
 export function isJavaScriptType(el: AssemblyAttributed): boolean {
-  return JAVASCRIPT_TYPES.has((el.getAttribute("type") || "").trim().toLowerCase());
+  return JAVASCRIPT_TYPES.has(scriptType(el));
 }
 
 /** A data block (application/json, text/template, ...) never runs, so it stays in the content as authored. */
 function isExecutableScript(el: AssemblyAttributed): boolean {
-  const type = (el.getAttribute("type") || "").trim().toLowerCase();
-  return type === "module" || type === "importmap" || isJavaScriptType(el);
+  const type = scriptType(el);
+  return type === "module" || type === "importmap" || JAVASCRIPT_TYPES.has(type);
 }
 
 function executableScripts<TElement extends AssemblyAttributed>(

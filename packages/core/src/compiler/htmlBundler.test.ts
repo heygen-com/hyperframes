@@ -2877,7 +2877,11 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
   <script>window.__timelines = window.__timelines || {}; window.__timelines.${id} = 1;</script>
 </div></template>`;
 
-  async function bundleFilm(sceneExtra: string, options?: { sceneParts?: boolean }) {
+  async function bundleFilm(
+    sceneExtra: string,
+    options?: { sceneParts?: boolean },
+    files: Record<string, string> = {},
+  ) {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
 <html><body>
@@ -2889,9 +2893,11 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
 </body></html>`,
       "compositions/intro.html": sceneFile("intro", ""),
       "compositions/scene.html": sceneFile("scene", sceneExtra),
+      ...files,
     });
     try {
-      return parseHTML(await bundleToSingleHtml(dir, options)).document;
+      const html = await bundleToSingleHtml(dir, options);
+      return Object.assign(parseHTML(html).document, { html });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -2936,6 +2942,25 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
       expect(broken).toHaveLength(1);
       expect(broken[0]!.textContent).toContain("window.broken");
       expect(timelinesThatRun(document)).toEqual(["main", "intro", "scene"]);
+    },
+  );
+
+  it.each([
+    [false, `<script>window.broken = {:</script>`],
+    [true, `<script>window.broken = {:</script>`],
+    [true, ""],
+  ])(
+    "escapes a composition script it does not merge (sceneParts %s, extra %j)",
+    async (sceneParts, extra) => {
+      const document = await bundleFilm(
+        `<script src="lib.js"></script>${extra}`,
+        { sceneParts },
+        { "compositions/lib.js": 'window.tag = "</script><b>LEAK</b><!--";' },
+      );
+      expect(document.html).not.toContain("</script><b>LEAK");
+      const lib = runnable(document).find((el) => el.textContent?.includes("LEAK"));
+      const literal = lib?.textContent?.match(/window\.tag\s*=\s*("(?:[^"\\]|\\.)*")/)?.[1];
+      expect(new Function(`return ${literal}`)()).toBe("</script><b>LEAK</b><!--");
     },
   );
 });

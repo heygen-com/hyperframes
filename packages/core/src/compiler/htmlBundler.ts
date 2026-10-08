@@ -6,10 +6,10 @@ import {
   headStyleRuns,
   INLINED_FILE_ATTR,
   inlineScriptRuns,
-  isJavaScriptType,
   styleElementsFor,
   type CompositionStyle,
 } from "./scriptRuns";
+import { isJavaScriptType } from "./compositionAssembly";
 import { SCENE_PART_ATTR } from "../sceneParts";
 import {
   ensureExternalScriptTag,
@@ -745,8 +745,11 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
   )) {
     const mergedJs = joinJsChunks(members.map((el) => el.textContent || ""));
     const stripped = mergedJs ? stripJsComments(mergedJs) : "";
-    // Left unmerged, a script that does not parse fails alone instead of taking every timeline with it.
-    if (stripped === null) continue;
+    if (stripped === null) {
+      // Left unmerged, a script that does not parse fails alone instead of taking every timeline with it.
+      for (const el of members) el.textContent = inlineScriptSource(el.textContent || "");
+      continue;
+    }
     for (const el of members) el.remove();
     if (!stripped) continue;
     const inlineScript = document.createElement("script");
@@ -815,8 +818,17 @@ function stripJsComments(source: string): string | null {
   }
 }
 
+/** Whether script text parses; a run that does not is left as separate scripts, so one bad script fails alone. */
+export function parsesAsScript(source: string): boolean {
+  return stripJsComments(source) !== null;
+}
+
 function stripJsCommentsParserSafe(source: string): string {
   return source ? (stripJsComments(source) ?? source) : source;
+}
+
+function inlineScriptSource(js: string): string {
+  return escapeInlineScriptSource(stripJsCommentsParserSafe(js));
 }
 
 export interface BundleOptions {
@@ -1274,10 +1286,11 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const texts = chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk()));
     const joined = joinJsChunks(texts);
     // One script per chunk when the run does not parse, so one bad composition script fails alone.
-    for (const text of stripJsComments(joined) === null ? texts : [joined]) {
+    for (const text of parsesAsScript(joined) ? [joined] : texts.filter(Boolean)) {
       const script = document.createElement("script");
+      // Scene parts are pinned, so the run merge that escapes the other scripts never reaches them.
       if (scene) script.setAttribute(SCENE_PART_ATTR, scene);
-      script.textContent = text;
+      script.textContent = scene ? inlineScriptSource(text) : text;
       document.body.appendChild(script);
     }
   }

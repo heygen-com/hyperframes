@@ -1,7 +1,5 @@
 import { isJavaScriptType } from "./compositionAssembly";
 
-export { isJavaScriptType };
-
 export interface InlineScriptRun {
   members: Element[];
   /** First later script that executes on its own; the merged run must stay before it. Null: end of body. */
