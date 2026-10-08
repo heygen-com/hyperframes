@@ -1,5 +1,91 @@
 import { describe, expect, it } from "vitest";
-import { annotateGifAssetMetadata, type CatalogedAsset } from "./assetCataloger.js";
+import { runInNewContext } from "node:vm";
+import { Window } from "happy-dom";
+import type { Page } from "puppeteer-core";
+import { annotateGifAssetMetadata, catalogAssets, type CatalogedAsset } from "./assetCataloger.js";
+
+async function catalog(body: string): Promise<CatalogedAsset[]> {
+  const window = new Window({ url: "https://example.com/gallery/" });
+  window.document.body.innerHTML = body;
+  const evaluate: Page["evaluate"] = async (script, ..._args) => {
+    if (typeof script !== "string") throw new Error("Expected a page expression");
+    return runInNewContext(script, {
+      URL,
+      window,
+      document: window.document,
+      getComputedStyle: window.getComputedStyle.bind(window),
+    });
+  };
+  try {
+    return await catalogAssets({ evaluate });
+  } finally {
+    await window.happyDOM.close();
+  }
+}
+
+describe("catalogAssets", () => {
+  it("catalogs every srcset-only image candidate with its DOM context", async () => {
+    const assets = await catalog(`
+      <header><h1>Waterfall gallery</h1><figure>
+        <img srcset="waterfall.jpg 1x, waterfall-large.jpg 2x" alt="A waterfall">
+      </figure></header>
+    `);
+
+    expect(assets).toHaveLength(2);
+    expect(assets.map((asset) => asset.url)).toEqual([
+      "https://example.com/gallery/waterfall.jpg",
+      "https://example.com/gallery/waterfall-large.jpg",
+    ]);
+    for (const asset of assets) {
+      expect(asset).toMatchObject({
+        type: "Image",
+        contexts: ["img[srcset]"],
+        notes: "A waterfall",
+        description: "A waterfall",
+        nearestHeading: "Waterfall gallery",
+        inBanner: true,
+      });
+    }
+  });
+
+  it("keeps the largest optimized variant of a srcset-only image", async () => {
+    const assets = await catalog(`
+      <img srcset="/_next/image?url=%2Fhero.jpg&amp;w=640&amp;q=75 640w,
+                   /_next/image?url=%2Fhero.jpg&amp;w=1280&amp;q=75 1280w" alt="Hero photograph">
+    `);
+
+    expect(assets).toHaveLength(1);
+    expect(assets[0]).toMatchObject({
+      url: "https://example.com/_next/image?url=%2Fhero.jpg&w=1280&q=75",
+      contexts: ["img[srcset]"],
+      description: "Hero photograph",
+    });
+  });
+
+  it("merges src and srcset references to the same image", async () => {
+    const assets = await catalog('<img src="hero.jpg" srcset="hero.jpg 1x" alt="Hero">');
+
+    expect(assets).toHaveLength(1);
+    expect(assets[0]).toMatchObject({
+      url: "https://example.com/gallery/hero.jpg",
+      contexts: ["img[src]", "img[srcset]"],
+      description: "Hero",
+    });
+  });
+
+  it("retains picture sources without cataloging an image that has no source", async () => {
+    const assets = await catalog(`
+      <picture><source srcset="portrait.webp 1x"><img alt="Portrait"></picture>
+      <img alt="Unloaded">
+    `);
+
+    expect(assets).toHaveLength(1);
+    expect(assets[0]).toMatchObject({
+      url: "https://example.com/gallery/portrait.webp",
+      contexts: ["source[srcset]"],
+    });
+  });
+});
 
 function u16(value: number): number[] {
   return [value & 0xff, (value >> 8) & 0xff];

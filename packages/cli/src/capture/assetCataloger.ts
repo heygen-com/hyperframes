@@ -36,7 +36,7 @@ export interface CatalogedAsset {
 /**
  * Extract all referenced assets from the rendered page with their HTML contexts.
  */
-export async function catalogAssets(page: Page): Promise<CatalogedAsset[]> {
+export async function catalogAssets(page: Pick<Page, "evaluate">): Promise<CatalogedAsset[]> {
   const assets = await page.evaluate(`(() => {
     var assetMap = {};
 
@@ -131,7 +131,7 @@ export async function catalogAssets(page: Page): Promise<CatalogedAsset[]> {
     }
 
     // ── Images: <img src="..."> and <img srcset="..."> ──
-    document.querySelectorAll('img[src]').forEach(function(img) {
+    document.querySelectorAll('img[src], img[srcset]').forEach(function(img) {
       var notes = img.alt || img.getAttribute('aria-label') || null;
       var ctx = getElementContext(img);
       add(img.src, 'Image', 'img[src]', notes, ctx);
