@@ -75,7 +75,9 @@ npx hyperframes render --output renders/final.mp4
 
 Use the CLI for a direct local render, a script, CI, or a repeatable batch. The
 installed version remains authoritative: run
-`npx hyperframes render --help` for every available option.
+`npx -y hyperframes@<exact-version> render --help` for every available option.
+
+Replace `<exact-version>` with the exact HyperFrames release installed for your project. Plugin installs use their bundled launcher and manifest pin instead.
 
 ## 4. Choose what the destination needs
 

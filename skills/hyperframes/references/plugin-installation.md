@@ -15,7 +15,7 @@ in every workflow and reference:
   of downloading a different release. Resolve all skill references inside this
   bundle, even if a standalone copy is also installed. Claude exposes the router
   as `/hyperframes:hyperframes`; other clients may expose `/hyperframes`.
-- Replace `npx hyperframes` (or bare `hyperframes`) in command examples with:
+- Replace every HyperFrames CLI command in examples, including bare `hyperframes`, `npx hyperframes`, and explicitly pinned npx commands, with:
 
   ```bash
   node "<PLUGIN_ROOT>/skills/hyperframes/scripts/plugin-cli.mjs" <command> <args...>

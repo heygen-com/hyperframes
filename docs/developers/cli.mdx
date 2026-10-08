@@ -5,7 +5,9 @@ description: "Find the HyperFrames command for creating, checking, rendering, pu
 
 Use this page to choose a command. The [CLI reference](/packages/cli) contains
 detailed flags, examples, and environment settings. The installed version
-remains authoritative: run `npx hyperframes <command> --help`.
+remains authoritative: run `npx -y hyperframes@<exact-version> <command> --help`.
+
+Replace `<exact-version>` with the exact HyperFrames release installed for your project. Plugin installs use their bundled launcher and manifest pin instead.
 
 ## Everyday project loop
 
@@ -51,7 +53,7 @@ Google Cloud Run. Most commands take `--json` when you need to read the result f
 Start with the simple command, then open the [full reference](/packages/cli) for the exact options needed by automation or infrastructure.
 
 <Tip>
-  Run `npx hyperframes <command> --help` for the installed version’s exact syntax.
+  Run `npx -y hyperframes@<exact-version> <command> --help` for the installed version’s exact syntax.
 </Tip>
 
 ## Related topics

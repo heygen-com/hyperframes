@@ -3,9 +3,11 @@ name: pr-to-video
 description: "Turn a GitHub pull request (a PR URL, owner/repo#N, or 'this PR' in a checked-out repo) into a code-change explainer video — changelog, feature reveal, fix, or refactor walkthrough built from the diff, commits, and files: the input is a code change, not a website. Not a product promo (/product-launch-video) or a no-PR topic explainer (/faceless-explainer). Unclear → /hyperframes."
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Plugin installs use the manifest-pinned launcher for every HyperFrames CLI command below, including explicitly pinned examples.
 
-> **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update pr-to-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+**Standalone installs:** Set `HF_CLI_VERSION="<exact-version>"` to the exact CLI release for this workflow before running any commands. Preflight and every later CLI command must use this same exact release. Do not use `latest`, a range, or bare npx resolution. Pass this release variable to delegated workflows and keep it set in each shell.
+
+> **First, keep this skill fresh — confirm with the user before running:** `npx --yes "hyperframes@$HF_CLI_VERSION" skills update pr-to-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 > **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill. When the host app provides its own music or sound-effect tools, use those for music and sound effects.
 
@@ -37,20 +39,24 @@ else
   PROJECT_DIR="$(node <SKILL_DIR>/scripts/project-dir.mjs --pr "$PR")"
 fi
 echo "PR-to-video project: $PROJECT_DIR"
-node <SKILL_DIR>/scripts/preflight.mjs
 ```
+
+Run the capability preflight next, using the command for your installation:
+
+- Plugin: `node "<PLUGIN_ROOT>/skills/pr-to-video/scripts/preflight.mjs"`. The launcher fetches the manifest-pinned release with `--yes`.
+- Standalone: `node "<SKILL_DIR>/scripts/preflight.mjs" "$HF_CLI_VERSION"`, using the same exact release as the later commands. This needs no sibling skill or plugin manifest and fetches that pin with `--yes`. Do not substitute `latest` or a version range.
 
 The capability preflight runs before fetch, story work, audio, or frame dispatch. If the installed CLI cannot run the validation command required by this skill, stop with its upgrade instruction rather than spending the run's context first.
 
 Initialize only if `$PROJECT_DIR/hyperframes.json` is missing. Its basename comes from the PR, such as `acme-sdk-pr-1842`; never use the workspace name or a timestamp.
 
-`npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=pr-to-video` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
+`npx --yes "hyperframes@$HF_CLI_VERSION" init "$PROJECT_DIR" --non-interactive --example=blank --skill=pr-to-video` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
 Every relative-path command below runs with `$PROJECT_DIR` as its working directory. Examples without an explicit subshell mean `(cd "$PROJECT_DIR" && …)`; never change the caller repository's working tree.
 
 **Write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory): the intent layer's locked brief, shape per `../hyperframes/references/brief-format.md`. Resolve `<MEDIA_DIR>` as the installed `/media-use` skill directory. Then record each preference-backed answer with `node <MEDIA_DIR>/scripts/prefs.mjs record --hyperframes .` (`brief-format.md` names the subset). If the intent layer adopted a recipe, run `node <MEDIA_DIR>/scripts/recipe.mjs use --hyperframes . --name <name>`; it copies its `frame.md` into the project (Step 2 is then skipped) and returns the skeletons Step 3 drafts from. A recipe fills answers, not approvals; the review gates still run.
 
-**Show sign-in status before proceeding past Setup** — run `npx hyperframes auth status` and relay its output verbatim. It reports whether voice/BGM will use HeyGen or local engines and, when signed out, how to sign in. Apply one branch:
+**Show sign-in status before proceeding past Setup** — run `npx --yes "hyperframes@$HF_CLI_VERSION" auth status` and relay its output verbatim. It reports whether voice/BGM will use HeyGen or local engines and, when signed out, how to sign in. Apply one branch:
 
 - **Collaborative:** wait for the user to sign in or explicitly choose `offline` / `go`.
 - **Autonomous:** state the status and continue through the available local engines.
@@ -153,7 +159,7 @@ Edit `STORYBOARD.md` in place. Do not create another storyboard. Use `frame.md` 
 
 Read `references/visual-design.md`, `../hyperframes-animation/blueprints-index.md`, `references/motion-language.md`, `references/code-vocabulary.md`, and `../hyperframes-animation/rules-index.md`. Use `visual-design.md` for the method (the time-coded shot sequence, the inline Layout vocabulary, and the code-beat treatment), plus the required `## Video direction` block. Use `../hyperframes-animation/blueprints-index.md` to pick each frame's shot shape. Use `code-vocabulary.md` to pick the right `code-*` block per code beat (diff = `code-diff`, refactor = `code-morph`, new code = `code-typing`, …). Use `motion-language.md` (the motion vocabulary + the motion doctrine) and `../hyperframes-animation/rules-index.md` (valid rule names) for motion — do not invent motion or block/blueprint names.
 
-**Search the live catalog before you design any named look.** `code-vocabulary.md` covers the code beats; it does not cover the rest. For every other look, effect, treatment or transition the brief names — "CRT scanlines", "glitch", "film grain", "shimmer sweep", "confetti burst" — run `npx hyperframes catalog --query "<the look, in plain English>" --json` and read the top results BEFORE you write that look into `STORYBOARD.md`. The search needs **nothing installed**: no project, no prior `add`, no account. It ranks the whole hosted registry (~400 blocks and components) from any directory. Name the block you found here; Step 5 pre-installs every block the storyboard names. Hand-author a look only after a search for it came back with nothing that fits.
+**Search the live catalog before you design any named look.** `code-vocabulary.md` covers the code beats; it does not cover the rest. For every other look, effect, treatment or transition the brief names — "CRT scanlines", "glitch", "film grain", "shimmer sweep", "confetti burst" — run `npx --yes "hyperframes@$HF_CLI_VERSION" catalog --query "<the look, in plain English>" --json` and read the top results BEFORE you write that look into `STORYBOARD.md`. The search needs **nothing installed**: no project, no prior `add`, no account. It ranks the whole hosted registry (~400 blocks and components) from any directory. Name the block you found here; Step 5 pre-installs every block the storyboard names. Hand-author a look only after a search for it came back with nothing that fits.
 
 For every frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS frame's content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. **For a code beat, the `code-*` block is the frame's `focal`** and the Scenes choreograph the surrounding code-editorial Code Surface (the entry of the file/header, the camera onto the hunk, the landing line) — **not** the code animation itself, which the block owns. Immediately after each code frame's fields, add a `### Source excerpt` fenced `diff` block containing only the exact real hunk the worker must render (12 lines maximum). Select it here from `capture/diff.patch`; workers are forbidden from reopening that full diff. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
 
@@ -177,7 +183,7 @@ Duration sync is mechanical: real voice duration wins; silent frames keep estima
 
 **Pre-install the registry blocks** named across `STORYBOARD.md` once, before dispatch, so parallel workers don't race on the registry:
 
-`for b in <each registry block named in the storyboard>; do npx hyperframes add "$b"; done`
+`for b in <each registry block named in the storyboard>; do npx --yes "hyperframes@$HF_CLI_VERSION" add "$b"; done`
 
 Before dispatch, read `../hyperframes/references/subagent-dispatch.md`. Build bounded packets and the worker role payload:
 
@@ -215,11 +221,11 @@ Inject transitions, run checks, pause for review, then render.
 
 `node <SKILL_DIR>/scripts/transitions.mjs verify --storyboard ./STORYBOARD.md --index ./index.html`
 
-`npx hyperframes lint`
+`npx --yes "hyperframes@$HF_CLI_VERSION" lint`
 
-`npx hyperframes check`
+`npx --yes "hyperframes@$HF_CLI_VERSION" check`
 
-`npx hyperframes snapshot --at <frame-midpoints>`
+`npx --yes "hyperframes@$HF_CLI_VERSION" snapshot --at <frame-midpoints>`
 
 `snapshot` stitches the captured frames into one contact sheet (`snapshots/contact-sheet.jpg`). Glance at it; if nothing is obviously broken, move on — don't linger here.
 
@@ -229,15 +235,15 @@ If a command fails, surface stderr and stop — don't pile on recovery commands.
 
 After checks pass, pause for user review — the review loop's final look (`../hyperframes/references/review-loop.md` § 4): one question, on the final Studio preview — render now, or what changes? (Autonomous: the same, as the one kept question — open the preview with the command below even though the user didn't ask for one.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
 
-Preview: `npx hyperframes preview "$PROJECT_DIR" --background`
+Preview: `npx --yes "hyperframes@$HF_CLI_VERSION" preview "$PROJECT_DIR" --background`
 
 Render only after user approval (autonomous mode: after the render-or-changes question):
 
-`npx hyperframes render --skill=pr-to-video --quality high --output renders/video.mp4`
+`npx --yes "hyperframes@$HF_CLI_VERSION" render --skill=pr-to-video --quality high --output renders/video.mp4`
 
 Do not rerun `lint`, `check`, or `snapshot` after rendering unless the user asks.
 
-After the user is done reviewing (or after render when no more live edits are expected), stop only this project's background server: `npx hyperframes preview "$PROJECT_DIR" --stop`. Never tear it down while waiting for review.
+After the user is done reviewing (or after render when no more live edits are expected), stop only this project's background server: `npx --yes "hyperframes@$HF_CLI_VERSION" preview "$PROJECT_DIR" --stop`. Never tear it down while waiting for review.
 
 **Gate:** `lint` and `check` passed and the snapshots were inspected before render; user approved at the review pause (autonomous: checks passed and the delivery includes the contact sheet); `renders/video.mp4` exists. Final reply states the MP4 path and final duration.
 
@@ -249,7 +255,7 @@ After the user is done reviewing (or after render when no more live edits are ex
 
 **PR deltas vs a captured-asset workflow:** no Step 1 capture (the `gh` CLI ingests the PR into a synthetic `capture/extracted/` package — `tokens.json` + `visible-text.txt` + `people.json`); the only real assets are the contributors' `assets/<login>.png` avatars (the credits close); no `asset-descriptions.md`, no asset-staging step. Code beats are rendered by the `code-*` registry blocks on code-editorial's navy Code Surface; the style is always **code-editorial**.
 
-**Background scripts:** the workflow ships these under `scripts/`: `fetch-pr` (PR → `capture/pr.json` + `diff.patch` via `gh`; large-PR-safe, no scratch), `ingest` (→ synthetic capture package; offline), and `fetch-people-avatars` (contributor avatars → `assets/`); plus the shared engine — `build-frame` (adopt + brand-remix a preset into `frame.md` + caption skin), `audio` (TTS, BGM, SFX, duration sync), `captions`, `transitions` (inject + verify), and `assemble-index`. Everything else is the `hyperframes` CLI. Code blocks install via `npx hyperframes add <name>`.
+**Background scripts:** the workflow ships these under `scripts/`: `fetch-pr` (PR → `capture/pr.json` + `diff.patch` via `gh`; large-PR-safe, no scratch), `ingest` (→ synthetic capture package; offline), and `fetch-people-avatars` (contributor avatars → `assets/`); plus the shared engine — `build-frame` (adopt + brand-remix a preset into `frame.md` + caption skin), `audio` (TTS, BGM, SFX, duration sync), `captions`, `transitions` (inject + verify), and `assemble-index`. Everything else is the `hyperframes` CLI. Code blocks install via `npx --yes "hyperframes@$HF_CLI_VERSION" add <name>`.
 
 The reusable, domain-agnostic shot shapes live in `../hyperframes-animation/blueprints/` (indexed by `../hyperframes-animation/blueprints-index.md`); the `code-*` registry blocks are the code-beat vocabulary (`references/code-vocabulary.md`).
 

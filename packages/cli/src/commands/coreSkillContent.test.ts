@@ -184,7 +184,10 @@ describe("media treatment routing documentation", () => {
       ["skills", "remotion-to-hyperframes", "SKILL.md"],
     ]) {
       const doc = read(...file);
-      expect(doc, file.join("/")).toContain("npx hyperframes catalog --query");
+      // A workflow that pins one CLI release runs the search through that release.
+      expect(doc, file.join("/")).toMatch(
+        /npx (?:hyperframes|--yes "hyperframes@\$HF_CLI_VERSION") catalog --query/,
+      );
       // "I forgot to install the components" was the wrong self-diagnosis that
       // hid this bug. Every copy of the instruction has to kill it on the spot.
       expect(doc, file.join("/")).toContain("nothing installed");

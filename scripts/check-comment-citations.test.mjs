@@ -76,6 +76,13 @@ test("a bare project file a skill workflow writes is not this repo's to resolve"
   assert.deepEqual(failures, []);
 });
 
+test("a project file a skill workflow writes under its own folder is not resolved", (t) => {
+  const { failures } = checkSubject(t, {
+    "skills/demo/SKILL.md": ["`fetch-pr` writes `capture/pr.json`.", ""].join("\n"),
+  });
+  assert.deepEqual(failures, []);
+});
+
 test("a repo path ending in a project file name is still resolved", (t) => {
   const { failures } = checkSubject(t, {
     "skills/demo/references/visual-design.md": ["See `skills/demo/frame.md`.", ""].join("\n"),

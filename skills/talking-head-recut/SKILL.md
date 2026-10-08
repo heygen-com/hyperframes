@@ -3,9 +3,11 @@ name: talking-head-recut
 description: Package an existing talking-head / interview / podcast video with timed, designed GRAPHIC OVERLAY cards — kinetic titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript, on a 16:9 / 9:16 / 4:5 canvas of your choice; the clip plays untouched underneath. Trigger on "graphic overlays", "on-screen graphics", "package / dress up my video". Not plain subtitles (/embedded-captions). Unclear → /hyperframes.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Plugin installs use the manifest-pinned launcher for every HyperFrames CLI command below, including explicitly pinned examples.
 
-> **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update talking-head-recut`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+**Standalone installs:** Set `HF_CLI_VERSION="<exact-version>"` to the exact CLI release for this workflow before running any commands. Preflight and every later CLI command must use this same exact release. Do not use `latest`, a range, or bare npx resolution. Pass this release variable to delegated workflows and keep it set in each shell.
+
+> **First, keep this skill fresh — confirm with the user before running:** `npx --yes "hyperframes@$HF_CLI_VERSION" skills update talking-head-recut`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Talking Head Recut
 
@@ -38,9 +40,11 @@ Inspectable intermediate files in the work directory:
 
 ## CLI Resolution
 
+For plugin installs, use the launcher below. It fetches the exact manifest release with `--yes` when the package is missing from the cache. For standalone installs, probe and execute the same exact release with `npx --yes "hyperframes@$HF_CLI_VERSION" --help`.
+
 ```bash
 # hyperframes — transcription (local Whisper) + rendering the assembled HTML to MP4
-npx hyperframes --help
+node "<PLUGIN_ROOT>/skills/hyperframes/scripts/plugin-cli.mjs" --help
 ```
 
 This skill runs entirely on the **hyperframes** CLI plus system `ffmpeg` / `ffprobe`.
@@ -52,7 +56,7 @@ service, API key, or rate-limited proxy.
 ### 1. Check Environment
 
 ```bash
-npx hyperframes doctor          # ffmpeg, headless browser, render deps
+npx --yes "hyperframes@$HF_CLI_VERSION" doctor          # ffmpeg, headless browser, render deps
 # confirm bundled assets:
 ls "<SKILL_DIR>/assets/fonts" "<SKILL_DIR>/assets/vendor/gsap.min.js"
 ```
@@ -99,7 +103,7 @@ fraction evaluated, e.g. `30000/1001 → 29.97`) + `audio.mp3`.
 ### 4. Transcribe
 
 ```bash
-npx hyperframes transcribe "$WORK_DIR/audio.mp3" -d "$WORK_DIR" --json --model small.en
+npx --yes "hyperframes@$HF_CLI_VERSION" transcribe "$WORK_DIR/audio.mp3" -d "$WORK_DIR" --json --model small.en
 ```
 
 Local **Whisper** — no API key, no proxy, no rate limit. Writes a word-level
@@ -756,7 +760,7 @@ table column that matches the storyboard's `layout` field.
 This list is closed, and deliberately so: a card is an HTML fragment whose motion this
 skill compiles into the shared overlay timeline in Step 9 (see the GSAP mapping table
 there). That is why this workflow does not search the HyperFrames component registry the
-way the composition workflows do — `npx hyperframes catalog` returns standalone
+way the composition workflows do — `npx --yes "hyperframes@$HF_CLI_VERSION" catalog` returns standalone
 compositions that carry their own timeline, and a card has no place to mount one. Reach a
 look the kinds below cannot express with plain CSS inside the card's scoped `<style>`.
 
@@ -1162,7 +1166,7 @@ decides where the actual visible card sits.
 
 ```bash
 cd "$WORK_DIR"
-PRODUCER_BROWSER_GPU_MODE=hardware npx hyperframes render public \
+PRODUCER_BROWSER_GPU_MODE=hardware npx --yes "hyperframes@$HF_CLI_VERSION" render public \
   --skill=talking-head-recut \
   -o output.mp4 \
   --fps 30
@@ -1179,7 +1183,7 @@ For a sanity check before the full render, capture a single frame at a
 specific timestamp:
 
 ```bash
-npx hyperframes snapshot public --at 5    # → public/snapshots/frame-00-at-5s.png (a single --at ignores --out)
+npx --yes "hyperframes@$HF_CLI_VERSION" snapshot public --at 5    # → public/snapshots/frame-00-at-5s.png (a single --at ignores --out)
 ```
 
 ### 11. Report Results
@@ -1198,7 +1202,7 @@ Tell the user:
 **Optional live preview (on request only).** The clip plays unchanged inside `public/index.html` with the overlays on top, so it previews faithfully. **Don't open it during the run.** When the user asks, start a long-lived server **after** render and report the URL:
 
 ```bash
-(cd "$WORK_DIR/public" && npx hyperframes preview --background)   # or `npx hyperframes play` for a shareable link
+(cd "$WORK_DIR/public" && npx --yes "hyperframes@$HF_CLI_VERSION" preview --background)   # or `npx --yes "hyperframes@$HF_CLI_VERSION" play` for a shareable link
 ```
 
 Do not delete the work directory unless the user asks.

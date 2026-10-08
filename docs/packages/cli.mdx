@@ -8,7 +8,9 @@ This page lists every command and every flag. If you are still deciding which
 command you need, the [CLI guide](/developers/cli) is the shorter route.
 
 The installed version is always the authority. Run
-`npx hyperframes <command> --help` to see exactly what your copy accepts.
+`npx -y hyperframes@<exact-version> <command> --help` to see exactly what your copy accepts.
+
+Replace `<exact-version>` with the exact HyperFrames release installed for your project. Plugin installs use their bundled launcher and manifest pin instead.
 
 ```bash
 # No install needed
@@ -881,7 +883,7 @@ All three still run, and all three print a deprecation line on stderr and set
 browser check; `inspect` (and its alias `layout`) was the layout sweep and
 motion-sidecar pass. [`check`](#check) does everything they did, in one browser
 session, and it is where new work should go. Their flags are unchanged — run
-`npx hyperframes inspect --help` if you are maintaining automation that still
+`npx -y hyperframes@<exact-version> inspect --help` if you are maintaining automation that still
 calls them.
 
 ## Render to a file

@@ -1,19 +1,39 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { existsSync, realpathSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export function hasCliCommand(helpText, command) {
   const escaped = command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`^\\s+${escaped}(?:\\s+|$)`, "m").test(String(helpText));
 }
 
-export function runCliPreflight({ command = "check", spawn = spawnSync } = {}) {
-  const result = spawn("npx", ["hyperframes", "--help"], {
+export function runCliPreflight({ command = "check", cliVersion, spawn = spawnSync } = {}) {
+  const launcher = fileURLToPath(
+    new URL("../../hyperframes/scripts/plugin-cli.mjs", import.meta.url),
+  );
+  let executable = process.execPath;
+  let args = [launcher, "--help"];
+  let shell = false;
+  if (cliVersion !== undefined) {
+    if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(cliVersion))
+      throw new Error("Standalone preflight requires an exact CLI release, such as 1.2.3.");
+    executable = "npx";
+    args = ["--yes", `hyperframes@${cliVersion}`, "--help"];
+    // Only the validated release and fixed arguments enter the Windows command shim.
+    shell = process.platform === "win32";
+  } else if (!existsSync(launcher)) {
+    throw new Error(
+      "Standalone install: run this preflight with the exact CLI release as its argument, or run npx -y hyperframes@<exact-version> --help and confirm it lists check.",
+    );
+  }
+  const result = spawn(executable, args, {
     encoding: "utf8",
-    shell: process.platform === "win32",
+    windowsHide: true,
+    shell,
   });
+  if (result.error) throw result.error;
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   if (result.status !== 0) {
     throw new Error(`unable to inspect HyperFrames CLI capabilities\n${output.trim()}`);
@@ -28,7 +48,9 @@ export function runCliPreflight({ command = "check", spawn = spawnSync } = {}) {
 
 function main() {
   try {
-    runCliPreflight();
+    const [cliVersion, ...extra] = process.argv.slice(2);
+    if (extra.length > 0) throw new Error("Usage: preflight.mjs [exact-cli-version]");
+    runCliPreflight({ cliVersion });
     console.log("✓ pr-to-video preflight: required CLI capabilities are available");
   } catch (error) {
     console.error(`✗ pr-to-video preflight: ${error.message}`);

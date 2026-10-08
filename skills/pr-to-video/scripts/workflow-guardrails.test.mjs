@@ -1,12 +1,23 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import test from "node:test";
 
 import { parsePrReference, resolvePrToVideoProjectDir } from "./project-dir.mjs";
 import { buildFramePackets } from "./frame-packets.mjs";
-import { hasCliCommand } from "./preflight.mjs";
+import { hasCliCommand, runCliPreflight } from "./preflight.mjs";
 
 function write(path, contents) {
   mkdirSync(dirname(path), { recursive: true });
@@ -195,4 +206,89 @@ test("CLI capability detection rejects skills newer than the available command s
 
   assert.equal(hasCliCommand(stableHelp, "check"), false);
   assert.equal(hasCliCommand(currentHelp, "check"), true);
+});
+
+test("CLI preflight delegates capability probing to the plugin launcher", () => {
+  let calls = 0;
+  assert.equal(
+    runCliPreflight({
+      spawn(command, args, options) {
+        calls += 1;
+        assert.equal(command, process.execPath);
+        assert.deepEqual(args, [
+          fileURLToPath(new URL("../../hyperframes/scripts/plugin-cli.mjs", import.meta.url)),
+          "--help",
+        ]);
+        assert.equal(options.shell, false);
+        return { status: 0, stdout: "  check Validate project", stderr: "" };
+      },
+    }),
+    true,
+  );
+  assert.equal(calls, 1);
+});
+
+function installedProbeFixture(t, plugin) {
+  const root = mkdtempSync(join(tmpdir(), "hf-probe install-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const preflight = join(root, "skills/pr-to-video/scripts/preflight.mjs");
+  mkdirSync(dirname(preflight), { recursive: true });
+  copyFileSync(new URL("./preflight.mjs", import.meta.url), preflight);
+  if (plugin) {
+    const launcher = join(root, "skills/hyperframes/scripts/plugin-cli.mjs");
+    mkdirSync(dirname(launcher), { recursive: true });
+    copyFileSync(new URL("../../hyperframes/scripts/plugin-cli.mjs", import.meta.url), launcher);
+    write(join(root, "plugin.json"), JSON.stringify({ name: "hyperframes", version: "1.2.3" }));
+  }
+  const bin = join(root, "bin");
+  const receipt = join(root, "argv.json");
+  const shim = `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(receipt)}, JSON.stringify(process.argv.slice(2))); console.log("  check Validate project");`;
+  write(join(bin, "npx"), `#!${process.execPath}\n${shim}`);
+  chmodSync(join(bin, "npx"), 0o755);
+  write(join(bin, "npx-cli.js"), shim);
+  write(
+    join(bin, "npx.cmd"),
+    `@echo off\r\n"${process.execPath}" "${join(bin, "npx-cli.js")}" %*\r\n`,
+  );
+  const env = { ...process.env };
+  const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  env[pathKey] = `${bin}${delimiter}${env[pathKey] ?? ""}`;
+  env.npm_execpath = join(bin, "npm-cli.js");
+  return { preflight, env, receipt };
+}
+
+test("installed capability probe never launches unpinned npx", (t) => {
+  const { preflight, env, receipt } = installedProbeFixture(t, true);
+  const result = spawnSync(process.execPath, [preflight], { env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(receipt, "utf8")), [
+    "--yes",
+    "hyperframes@1.2.3",
+    "--help",
+  ]);
+});
+
+test("single-skill standalone preflight fetches its explicitly pinned release", (t) => {
+  const { preflight, env, receipt } = installedProbeFixture(t, false);
+  const result = spawnSync(process.execPath, [preflight, "4.5.6"], { env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(receipt, "utf8")), [
+    "--yes",
+    "hyperframes@4.5.6",
+    "--help",
+  ]);
+});
+test("standalone preflight rejects floating releases before spawning", () => {
+  for (const cliVersion of ["latest", "^1.2.3", "1.2.3 & echo unsafe"]) {
+    assert.throws(
+      () =>
+        runCliPreflight({
+          cliVersion,
+          spawn() {
+            assert.fail("must not spawn");
+          },
+        }),
+      /exact CLI release/,
+    );
+  }
 });
