@@ -2,10 +2,10 @@
   "studio-open": {
     "browser": "154",
     "counts": {
-      "thumbnailRenders": 14,
+      "thumbnailRenders": 13,
       "total.frameNavigations": 7,
       "total.requests.document": 2,
-      "total.requests.thumbnail": 15
+      "total.requests.thumbnail": 14
     }
   }
 }
