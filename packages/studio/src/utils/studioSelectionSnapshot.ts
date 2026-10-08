@@ -1,5 +1,6 @@
 import type { StudioSelectionSnapshot } from "@hyperframes/studio-server";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { encodeUrlPath } from "@hyperframes/parsers";
 
 function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -24,7 +25,7 @@ function thumbnailUrl({
   });
   if (selection.selector) params.set("selector", selection.selector);
   if (selection.selectorIndex != null) params.set("selectorIndex", String(selection.selectorIndex));
-  return `/api/projects/${encodeURIComponent(projectId)}/thumbnail/${compPath}?${params.toString()}`;
+  return `/api/projects/${encodeURIComponent(projectId)}/thumbnail/${encodeUrlPath(compPath)}?${params.toString()}`;
 }
 
 export function buildStudioSelectionSnapshot({

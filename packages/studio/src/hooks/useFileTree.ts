@@ -4,6 +4,7 @@ import { FONT_EXT } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import { captureProjectProvenance } from "../components/feedback/projectProvenance";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { encodeUrlPath } from "@hyperframes/parsers";
 
 interface UseFileTreeOptions {
   projectId: string | null;
@@ -119,7 +120,7 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
         .map((asset) => ({
           family: fontFamilyFromAssetPath(asset),
           path: asset,
-          url: projectId ? buildProjectApiPath(projectId, `/preview/${asset}`) : "",
+          url: projectId ? buildProjectApiPath(projectId, `/preview/${encodeUrlPath(asset)}`) : "",
         })),
     [assets, projectId],
   );
