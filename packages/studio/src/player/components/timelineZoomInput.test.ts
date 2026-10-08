@@ -269,12 +269,14 @@ describe("zoomTimelineToRange", () => {
       timelinePps: 100,
     });
     const { scroll } = viewport(0);
-    publishScroll.mockClear();
+    const published: number[] = [];
+    publishScroll.mockImplementation((el: HTMLDivElement) => published.push(el.scrollLeft));
     void zoomTimelineToRange(60, 70);
     for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
+    publishScroll.mockReset();
     expect(usePlayerStore.getState().timelinePps).toBe(100);
     expect(scroll.scrollLeft).toBeGreaterThan(5000);
-    expect(publishScroll.mock.lastCall?.[0].scrollLeft).toBe(scroll.scrollLeft);
+    expect(published.at(-1)).toBe(scroll.scrollLeft);
   });
 
   it("fills the width with the range and puts its start at the left margin", () => {

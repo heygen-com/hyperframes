@@ -250,7 +250,7 @@ describe("useTimelinePlayhead follow while paused", () => {
 });
 
 describe("useTimelinePlayhead committed viewport", () => {
-  it("keeps the visible 59-second clip mounted when a pointer zoom commits", () => {
+  function mountViewport(scrollLeft: number) {
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -264,7 +264,7 @@ describe("useTimelinePlayhead committed viewport", () => {
       timelineFitPps: 10,
       timelinePps: 100,
     });
-    const scroll = scrollBox(5000, 1080);
+    const scroll = scrollBox(scrollLeft, 1080);
     const container = document.createElement("div");
     function Probe() {
       const pps = usePlayerStore((s) => s.timelinePps);
@@ -290,18 +290,36 @@ describe("useTimelinePlayhead committed viewport", () => {
     }
     const root = createRoot(container);
     roots.push(root);
+    act(() => root.render(<Probe />));
+    return { scroll, container };
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps the visible 59-second clip mounted when a pointer zoom commits", () => {
+    const { scroll, container } = mountViewport(5000);
+    expect(container.querySelector('[data-clip="59"]')).not.toBeNull();
+    act(() => {
+      requestTimelineZoom(1090, { time: 55.24, x: 556 });
+      settleTimelineZoom();
+    });
+    expect(scroll.scrollLeft).toBeCloseTo(5497.16);
+    expect(container.querySelector('[data-clip="59"]')).not.toBeNull();
+    expect(Number(container.querySelector("output")?.textContent)).toBeCloseTo(5497.16);
+  });
+
+  it("renders a pan at the laid-out scale before the browser paints", () => {
+    const { scroll, container } = mountViewport(0);
+    const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const wasActEnvironment = actEnvironment.IS_REACT_ACT_ENVIRONMENT;
+    actEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
     try {
-      act(() => root.render(<Probe />));
-      expect(container.querySelector('[data-clip="59"]')).not.toBeNull();
-      act(() => {
-        requestTimelineZoom(1090, { time: 55.24, x: 556 });
-        settleTimelineZoom();
-      });
-      expect(scroll.scrollLeft).toBeCloseTo(5497.16);
-      expect(container.querySelector('[data-clip="59"]')).not.toBeNull();
-      expect(Number(container.querySelector("output")?.textContent)).toBeCloseTo(5497.16);
+      requestTimelineZoom(1000, { time: 60, x: ORIGIN });
+      settleTimelineZoom();
+      expect(scroll.scrollLeft).toBe(6000);
+      expect(container.querySelector("output")?.textContent).toBe("6000");
     } finally {
-      vi.unstubAllGlobals();
+      actEnvironment.IS_REACT_ACT_ENVIRONMENT = wasActEnvironment;
     }
   });
 });
