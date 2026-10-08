@@ -727,6 +727,7 @@ export async function renderChunk(
       // declare `data-composition-variables` leave this undefined and the
       // engine skips the `evaluateOnNewDocument` injection.
       variables: encoder.variables,
+      subTimelineWaitMemo: {},
       ...(videoCaptureBeyondViewport !== undefined
         ? { captureBeyondViewport: videoCaptureBeyondViewport }
         : {}),

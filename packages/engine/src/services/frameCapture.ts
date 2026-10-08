@@ -1790,43 +1790,45 @@ export async function waitForSubCompositionTimelines(
   timeoutMs: number,
 ): Promise<void> {
   const memo = session.subTimelineWaitMemo;
-  session.subTimelineWaitOutcome = await pollSubCompositionTimelines(
-    page,
-    timeoutMs,
-    undefined,
-    () => session.scriptLoadFailures,
-    undefined,
-    (ids) => {
+  session.subTimelineWaitOutcome = await pollSubCompositionTimelines(page, timeoutMs, {
+    getScriptLoadFailures: () => session.scriptLoadFailures,
+    onPending: (ids) => {
       session.pendingTimelineIds = [...ids];
     },
-    () => session.vfxFailure !== undefined,
-    memo.unregisteredIds,
-  );
+    shouldStop: () => session.vfxFailure !== undefined,
+    knownUnregisteredIds: memo.unregisteredIds,
+  });
   // A VFX failure also ends the wait as "timeout" without the full wait; never memoise that.
   if (session.subTimelineWaitOutcome === "timeout" && session.vfxFailure === undefined) {
     memo.unregisteredIds = session.pendingTimelineIds ?? [];
   }
 }
 
+export interface SubTimelinePollOptions {
+  intervalMs?: number;
+  // Fail-fast: a script resource that failed to load can never register its timeline,
+  // so once failures exist the poll ends `scriptFailureGraceMs` after it started.
+  getScriptLoadFailures?: () => readonly string[];
+  scriptFailureGraceMs?: number;
+  // Receives the ids still unregistered at bail time, for the structured warning.
+  onPending?: (ids: readonly string[]) => void;
+  // Ends the wait at once; the caller then fails the render for its own reason.
+  shouldStop?: () => boolean;
+  // Ids an earlier session of this render already timed out on: not waited for again.
+  knownUnregisteredIds?: readonly string[];
+}
+
 export async function pollSubCompositionTimelines(
   page: Page,
   timeoutMs: number,
-  intervalMs: number = 150,
-  // Fail-fast hook: when a SCRIPT resource failed to load (404 / request
-  // failure), the timeline registration it carried can never arrive — the
-  // full-timeout wait buys nothing (measured: a 705-render spike at the 45s
-  // setup bucket in 30 days of wild local renders, ~1% of renders, each also
-  // shipping silently-broken animations). Once failures are present the poll
-  // is cut to `scriptFailureGraceMs` from its start.
-  getScriptLoadFailures?: () => readonly string[],
-  scriptFailureGraceMs: number = 2_000,
-  // Reports the composition ids still unregistered at bail time, so the caller
-  // can put them in the structured warning as well as in stderr.
-  onPending?: (ids: readonly string[]) => void,
-  // Ends the wait at once; the caller then fails the render for its own reason.
-  shouldStop?: () => boolean,
-  // Ids an earlier session of this render already timed out on: not waited for again.
-  knownUnregisteredIds: readonly string[] = [],
+  {
+    intervalMs = 150,
+    getScriptLoadFailures,
+    scriptFailureGraceMs = 2_000,
+    onPending,
+    shouldStop,
+    knownUnregisteredIds = [],
+  }: SubTimelinePollOptions = {},
 ): Promise<SubTimelineWaitOutcome> {
   // Hosts may opt out of the timeline wait with `data-no-timeline` —
   // compositions driven purely by CSS animations / rAF (the render-compat
@@ -1867,6 +1869,9 @@ export async function pollSubCompositionTimelines(
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
+  // Skipped known ids still count: if one is still unregistered, report the timeout again.
+  const pendingIds =
+    ready && knownUnregisteredIds.length === 0 ? [] : await listUnregisteredTimelineIds(page);
   // Always force a timeline rebind once sub-composition timelines are
   // confirmed present. The previous implementation only called rebind
   // when the timeline count grew during the poll, which missed the case
@@ -1874,9 +1879,6 @@ export async function pollSubCompositionTimelines(
   // started — leaving child timelines un-nested in the root and causing
   // the earliest sub-composition (data-start near 0) to render without
   // its GSAP animations.
-  // Skipped known ids still count: if one is still unregistered, report the timeout again.
-  const pendingIds =
-    ready && knownUnregisteredIds.length === 0 ? [] : await listUnregisteredTimelineIds(page);
   if (ready && pendingIds.length === 0) {
     await page.evaluate(`(function() {
       if (typeof window.__hfForceTimelineRebind === "function") {
@@ -3401,16 +3403,10 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
     });
     await page.evaluate(`window.__hfFlushSync?.()`);
     await pollHfReady(page, pageReadyTimeout);
-    await pollSubCompositionTimelines(
-      page,
-      pageReadyTimeout,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      session.subTimelineWaitMemo.unregisteredIds,
-    );
+    await pollSubCompositionTimelines(page, pageReadyTimeout, {
+      getScriptLoadFailures: () => session.scriptLoadFailures,
+      knownUnregisteredIds: session.subTimelineWaitMemo.unregisteredIds,
+    });
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
 
     const skipVideoIds = session.options.skipReadinessVideoIds ?? [];

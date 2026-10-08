@@ -70,16 +70,10 @@ describe("sub-composition timeline wait memo", () => {
   it("still waits out the timeout for hosts the memo does not name", async () => {
     const onPending = vi.fn();
     const wait = track(
-      pollSubCompositionTimelines(
-        makeDomPage({}),
-        TIMEOUT_MS,
-        undefined,
-        undefined,
-        undefined,
+      pollSubCompositionTimelines(makeDomPage({}), TIMEOUT_MS, {
         onPending,
-        undefined,
-        ["badge"],
-      ),
+        knownUnregisteredIds: ["badge"],
+      }),
     );
     await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
     expect(wait.settled()).toBe(false);
@@ -90,16 +84,9 @@ describe("sub-composition timeline wait memo", () => {
 
   it("reports ready and rebinds when a memo host has registered since", async () => {
     const page = makeDomPage({ main: {}, badge: {} });
-    const outcome = await pollSubCompositionTimelines(
-      page,
-      TIMEOUT_MS,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      ["badge"],
-    );
+    const outcome = await pollSubCompositionTimelines(page, TIMEOUT_MS, {
+      knownUnregisteredIds: ["badge"],
+    });
     expect(outcome).toBe("ready");
     const exprs = (page.evaluate as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
     expect(exprs.some((e) => e.includes("__hfForceTimelineRebind"))).toBe(true);
