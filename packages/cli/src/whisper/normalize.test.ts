@@ -6,7 +6,6 @@ import {
   loadTranscript,
   detectFormat,
   patchCaptionHtml,
-  stripBeforeOnset,
   formatSrt,
   formatVtt,
   wordsToCues,
@@ -669,46 +668,5 @@ describe("detectSpeechOnset", () => {
     const wavPath = makeSyntheticWav(16000, 10, (t) => (t < 1 ? 0.01 : 0.8));
     const onset = detectSpeechOnset(wavPath);
     expect(onset).toBeNull();
-  });
-});
-
-describe("stripBeforeOnset", () => {
-  it("removes words before onset time", () => {
-    const words = [
-      { text: "ghost", start: 0.5, end: 2.0 },
-      { text: "alone", start: 3.0, end: 5.0 },
-      { text: "Given", start: 19.0, end: 19.5 },
-      { text: "the", start: 19.5, end: 20.0 },
-    ];
-    const result = stripBeforeOnset(words, 18.5);
-    expect(result).toHaveLength(2);
-    expect(result[0]!.text).toBe("Given");
-  });
-
-  it("keeps words within 0.5s tolerance of onset", () => {
-    const words = [
-      { text: "hello", start: 18.2, end: 18.8 },
-      { text: "world", start: 19.0, end: 19.5 },
-    ];
-    const result = stripBeforeOnset(words, 18.5);
-    expect(result).toHaveLength(2);
-  });
-
-  it("keeps everything when onset is 0", () => {
-    const words = [
-      { text: "hello", start: 0.1, end: 0.5 },
-      { text: "world", start: 0.6, end: 1.0 },
-    ];
-    const result = stripBeforeOnset(words, 0);
-    expect(result).toHaveLength(2);
-  });
-
-  it("returns empty array when all words are before onset", () => {
-    const words = [
-      { text: "ghost", start: 0.5, end: 2.0 },
-      { text: "alone", start: 3.0, end: 5.0 },
-    ];
-    const result = stripBeforeOnset(words, 20.0);
-    expect(result).toHaveLength(0);
   });
 });

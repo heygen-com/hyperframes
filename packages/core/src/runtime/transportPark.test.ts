@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
+import { WebAudioTransport } from "./webAudioTransport";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type { RuntimeTimelineLike } from "./types";
 
@@ -326,6 +327,147 @@ describe("parked transport loop", () => {
       raf.step();
     }
     expect(raf.pending()).toBeGreaterThan(0);
+  });
+
+  /** The host's per-frame tick, as the player posts it on the runtime-bridge path. */
+  const hostTick = () =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "tick" },
+      }),
+    );
+
+  const countSeeks = () => {
+    const timeline = window.__timelines!["main"] as RuntimeTimelineLike;
+    const seeks: number[] = [];
+    const originalTotalTime = timeline.totalTime!.bind(timeline);
+    timeline.totalTime = (time?: number, suppress?: boolean) => {
+      if (time !== undefined) seeks.push(time);
+      return originalTotalTime(time, suppress);
+    };
+    return seeks;
+  };
+
+  it("does not seek a timeline time already rendered by its frame loop", () => {
+    vi.spyOn(performance, "now").mockReturnValue(1000);
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    frame120Hz();
+    const seeks = countSeeks();
+
+    frame120Hz();
+    const perFrame = seeks.length;
+    hostTick();
+
+    expect(perFrame).toBeGreaterThan(0);
+    expect(seeks.length).toBe(perFrame);
+  });
+
+  it("renders a newer host time after its own frame rendered an earlier time", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    nowMs = 1008;
+    frame120Hz();
+    const seeks = countSeeks();
+
+    nowMs = 1024;
+    hostTick();
+
+    expect(seeks).toContain(0.024);
+  });
+
+  it("reapplies an explicit seek even when that timeline time was already rendered", () => {
+    vi.spyOn(performance, "now").mockReturnValue(1000);
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    frame120Hz();
+    const timeline = window.__timelines!["main"]!;
+    timeline.totalTime!(1);
+    const seeks = countSeeks();
+
+    window.__player!.seek(0);
+
+    expect(seeks).toContain(0);
+    expect(timeline.totalTime!()).toBe(0);
+  });
+
+  it("refreshes the WebAudio snapshot on host ticks without iframe frames", () => {
+    let audioTime = 0;
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    vi.spyOn(WebAudioTransport.prototype, "ownsClock").mockReturnValue(true);
+    vi.spyOn(WebAudioTransport.prototype, "context", "get").mockReturnValue({} as AudioContext);
+    vi.spyOn(WebAudioTransport.prototype, "getTime").mockImplementation(() => audioTime);
+    frame120Hz();
+    const seeks = countSeeks();
+
+    audioTime = 0.024;
+    hostTick();
+    const firstSeekCount = seeks.length;
+    hostTick();
+    expect(seeks.length).toBe(firstSeekCount);
+    audioTime = 0.048;
+    hostTick();
+
+    expect(seeks).toContain(0.024);
+    expect(seeks.at(-1)).toBe(0.048);
+    expect(window.__player!.getTime()).toBe(0.048);
+  });
+
+  it.each([false, true])(
+    "renders the first host tick after play with prior playback %s",
+    (resume) => {
+      let nowMs = 1000;
+      vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+      mount();
+      initSandboxRuntimeModular();
+      quiesce();
+      if (resume) {
+        window.__player!.play();
+        frame120Hz();
+        window.__player!.pause();
+        quiesce();
+      }
+      window.__player!.play();
+      const seeks = countSeeks();
+      nowMs += 8;
+      vi.advanceTimersByTime(8);
+      hostTick();
+      expect(seeks.length).toBeGreaterThan(0);
+    },
+  );
+
+  it("advances on the host's ticks while its own animation frames are throttled", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    frame120Hz();
+    hostTick();
+    const seeks = countSeeks();
+
+    for (let i = 0; i < 3; i += 1) {
+      nowMs += 8;
+      vi.advanceTimersByTime(8);
+      hostTick();
+    }
+
+    expect(seeks).toContain(0.008);
+    expect(seeks).toContain(0.016);
+    expect(seeks.at(-1)).toBe(0.024);
   });
 
   it("posts the paused bridge heartbeat on its documented interval while parked", () => {

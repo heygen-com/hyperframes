@@ -565,6 +565,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             styles={styles}
             assets={assets}
             onSetStyle={onSetStyle}
+            onSetHtmlAttribute={props.onSetHtmlAttribute}
             onImportAssets={onImportAssets}
             gsapBorderRadius={gsapBorderRadius}
           />

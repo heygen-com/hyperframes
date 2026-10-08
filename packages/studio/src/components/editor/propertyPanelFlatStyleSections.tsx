@@ -43,6 +43,7 @@ function FlatFillFields({
   styles,
   assets,
   onSetStyle,
+  onSetHtmlAttribute,
   onPreviewStyle,
   onImportAssets,
 }: {
@@ -51,18 +52,19 @@ function FlatFillFields({
   styles: Record<string, string>;
   assets: string[];
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
+  onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   onPreviewStyle?: (prop: string, value: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const backgroundImage = styles["background-image"] ?? "none";
   const hasTextControls = isTextEditableSelection(element);
-  const fillMode =
-    backgroundImage && backgroundImage !== "none"
-      ? backgroundImage.includes("gradient")
-        ? "Gradient"
-        : "Image"
-      : "Solid";
+  let fillMode = "Solid";
+  if (element.tagName === "img") {
+    fillMode = "Image";
+  } else if (backgroundImage && backgroundImage !== "none") {
+    fillMode = backgroundImage.includes("gradient") ? "Gradient" : "Image";
+  }
   const [preferredFillMode, setPreferredFillMode] = useState(fillMode);
   const imageUrl = extractBackgroundImageUrl(backgroundImage);
 
@@ -124,7 +126,8 @@ function FlatFillFields({
       ) : (
         <ImageFillField
           projectId={projectId}
-          sourceFile={element.sourceFile}
+          element={element}
+          onSetHtmlAttribute={onSetHtmlAttribute}
           value={imageUrl}
           assets={assets}
           disabled={styleEditingDisabled}
@@ -456,6 +459,7 @@ export function FlatStyleSection({
   styles,
   assets,
   onSetStyle,
+  onSetHtmlAttribute,
   onPreviewStyle,
   onImportAssets,
   gsapBorderRadius,
@@ -465,6 +469,7 @@ export function FlatStyleSection({
   styles: Record<string, string>;
   assets: string[];
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
+  onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   onPreviewStyle?: (prop: string, value: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
@@ -478,6 +483,7 @@ export function FlatStyleSection({
         styles={styles}
         assets={assets}
         onSetStyle={onSetStyle}
+        onSetHtmlAttribute={onSetHtmlAttribute}
         onPreviewStyle={onPreviewStyle}
         onImportAssets={onImportAssets}
       />

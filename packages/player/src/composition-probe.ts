@@ -3,13 +3,15 @@
  * and detect whether the HyperFrames runtime needs to be injected.
  *
  * The probe interval polls every 200 ms until one of:
- *   - A `PlaybackDurationAdapter` resolves with a positive duration, or
+ *   - An adapter or the document resolves with a positive duration, or
  *   - 40 attempts (~8 s) expire without a result.
  *
  * The `CompositionProbe` class owns the interval; the caller must call
  * `stop()` on disconnect or src change.
  */
 
+import { readStaticCompositionMeta } from "@hyperframes/core/runtime/composition-length";
+import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import {
   type DirectTimelineAdapter,
@@ -63,9 +65,29 @@ export function readCompositionSizeFromDocument(
   return width !== null && height !== null ? { width, height } : null;
 }
 
+type ProbeOutcome =
+  | { kind: "ready"; result: ProbeResult }
+  | { kind: "error"; message: string }
+  | null;
+
+function firstAuthorError(errors: unknown): string | null {
+  if (!Array.isArray(errors)) return null;
+  return (
+    errors.find(
+      (value): value is string =>
+        typeof value === "string" && value.trim() !== "" && value !== "[object Event]",
+    ) ?? null
+  );
+}
+
 export class CompositionProbe {
   private _interval: ReturnType<typeof setInterval> | null = null;
   private _runtimeInjected = false;
+  private _failure: { document: Document | null } | null = null;
+
+  get failed(): boolean {
+    return this._failure !== null && this._failure.document === this._iframe.contentDocument;
+  }
 
   constructor(
     private readonly _iframe: HTMLIFrameElement,
@@ -77,68 +99,87 @@ export class CompositionProbe {
     return this._runtimeInjected;
   }
 
-  /** Start (or restart) the probe. Stops any previously running probe first. */
+  /** Start or restart the probe, stopping the active interval first. */
   start(): void {
     this.stop();
+    this._failure = null;
     this._runtimeInjected = false;
     let attempts = 0;
 
-    // fallow-ignore-next-line complexity
     this._interval = setInterval(() => {
       attempts++;
+      let outcome: ProbeOutcome = null;
       try {
-        const win = this._iframe.contentWindow as Window & {
-          __player?: { getDuration: () => number };
-          __timelines?: Record<string, { duration: () => number }>;
-          __hf?: unknown;
-        };
-        if (!win) return;
-
-        const hasRuntime = !!(win.__hf || win.__player);
-        const hasTimelines = !!(win.__timelines && Object.keys(win.__timelines).length > 0);
-        const hasNestedCompositions =
-          !!this._iframe.contentDocument?.querySelector("[data-composition-src]");
-
-        if (
-          shouldInjectRuntime({
-            hasRuntime,
-            hasTimelines,
-            hasNestedCompositions,
-            runtimeInjected: this._runtimeInjected,
-            attempts,
-          })
-        ) {
-          this._injectRuntime();
-          return;
+        outcome = this._poll(attempts);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "SecurityError")) {
+          outcome = {
+            kind: "error",
+            message: error instanceof Error ? error.message : String(error),
+          };
         }
-
-        if (this._runtimeInjected && !hasRuntime) return;
-
-        const adapter = this._resolvePlaybackDurationAdapter(win);
-        if (adapter && adapter.getDuration() > 0) {
-          this.stop();
-
-          const compositionSize = readCompositionSizeFromDocument(this._iframe.contentDocument);
-
-          this._callbacks.onReady({
-            duration: adapter.getDuration(),
-            adapter,
-            compositionSize,
-          });
-          return;
-        }
-      } catch {
-        /* cross-origin */
       }
-
+      if (outcome) {
+        this.stop();
+        if (outcome.kind === "error") {
+          this._failure = { document: this._iframe.contentDocument };
+          this._callbacks.onError(outcome.message);
+        } else this._callbacks.onReady(outcome.result);
+        return;
+      }
       if (attempts >= 40) {
         this.stop();
+        this._failure = { document: this._iframe.contentDocument };
         this._callbacks.onError("Composition timeline not found after 8s");
       }
     }, 200);
   }
 
+  private _poll(attempts: number): ProbeOutcome {
+    const win = this._iframe.contentWindow;
+    if (!win) return null;
+    const message = firstAuthorError(Reflect.get(win, STUDIO_PREVIEW_ERRORS));
+    if (message !== null) return { kind: "error", message };
+    const doc = this._iframe.contentDocument;
+    const timelines = Reflect.get(win, "__timelines");
+    const hasRuntime = this.hasRuntimeBridge(win);
+    if (
+      shouldInjectRuntime({
+        hasRuntime,
+        hasTimelines: isObjectRecord(timelines) && Object.keys(timelines).length > 0,
+        hasNestedCompositions: !!doc?.querySelector("[data-composition-src]"),
+        runtimeInjected: this._runtimeInjected,
+        attempts,
+      })
+    ) {
+      this._injectRuntime();
+      return null;
+    }
+    if (this._runtimeInjected && !hasRuntime) return null;
+    const result = this._resolveReadyResult(win, doc);
+    return result ? { kind: "ready", result } : null;
+  }
+
+  private _resolveReadyResult(win: Window, doc: Document | null): ProbeResult | null {
+    const adapter: PlaybackDurationAdapter = this._resolvePlaybackDurationAdapter(win) ?? {
+      kind: "document",
+      getDuration: () => 0,
+    };
+    let duration = adapter.getDuration();
+    if (!Number.isFinite(duration) || duration <= 0) {
+      if (adapter.kind === "direct-timeline") return null;
+      duration = doc ? (readStaticCompositionMeta(doc)?.durationSeconds ?? 0) : 0;
+    }
+    if (duration <= 0) return null;
+    return {
+      duration,
+      adapter: { ...adapter, getDuration: () => duration },
+      compositionSize: readCompositionSizeFromDocument(doc),
+    };
+  }
+
   stop(): void {
+    if (!this.failed) this._failure = null;
     if (this._interval !== null) {
       clearInterval(this._interval);
       this._interval = null;
