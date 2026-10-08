@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+      }
+      .centered {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 340px;
+        height: 227px;
+        translate: -50% -50%;
+      }
+    </style>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+    <script src="/vendor/gsap.min.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+    >
+      <div id="target" class="centered"></div>
+      <div id="lazy" class="centered"></div>
+      <div id="explicit" class="centered"></div>
+      <div id="combined" class="centered" style="transform: translate(-20%, -10%)"></div>
+      <div id="opacity" class="centered"></div>
+      <div
+        id="content"
+        class="centered"
+        style="padding: 10px; border: 2px solid; transform-box: content-box"
+      ></div>
+      <div
+        id="pixels"
+        style="
+          position: absolute;
+          width: 340px;
+          height: 227px;
+          transform: translate(0px, -113.49px);
+        "
+      ></div>
+    </div>
+    <script>
+      gsap.set("#target", { x: 40, y: 20 });
+      gsap.set("#explicit", { x: 40, y: 20, xPercent: 25, yPercent: -25 });
+      gsap.set("#pixels", { x: 40, y: 20 });
+      gsap.set("#combined", { x: 40, y: 20 });
+      gsap.set("#opacity", { autoAlpha: 0.5 });
+      gsap.set("#content", { x: 40, y: 20 });
+      window.__timelines = {
+        main: gsap
+          .timeline({ paused: true })
+          .to("#lazy", { x: 40, y: 20, duration: 4, ease: "none" }),
+      };
+    </script>
+  </body>
+</html>

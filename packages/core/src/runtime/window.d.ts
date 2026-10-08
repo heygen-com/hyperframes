@@ -141,6 +141,8 @@ declare global {
     __hfResolveMediaStartSeconds?: (element: Element) => number;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
+      plugins?: import("./gsapPercentTranslations").GsapTransformInternals["plugins"];
+      core?: import("./gsapPercentTranslations").GsapTransformInternals["core"];
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
       set?: (target: Element, vars: Record<string, unknown>) => unknown;
       config?: (vars: Record<string, unknown>) => unknown;
