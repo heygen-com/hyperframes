@@ -171,6 +171,11 @@ function tweenUsesScaleLonghands(anim: GsapAnimation | null): boolean {
 // ── Resize intercept ──────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
+// The resize is centre-anchored, so a scale that cannot reproduce the dragged size splits the gap evenly.
+function rectCentre(rect: DOMRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
 export async function tryGsapResizeIntercept(
   selection: DomEditSelection,
   size: { width: number; height: number },
@@ -371,15 +376,10 @@ export async function tryGsapResizeIntercept(
     committedScale = useScaleLonghands
       ? { x: newScaleX, y: newScaleY }
       : { x: newScaleX, y: newScaleX };
-    // Where the user DROPPED the box: the draft (anchor-pinned to the
-    // gesture-start top-left) is still applied here, so this rect is exactly
-    // what the preview showed at release. The committed scale renders around
-    // the element CENTER instead — the finalize step below measures that
-    // difference and compensates, so release matches the drop pixel-for-pixel
-    // regardless of live scale or repeat resizes.
+    // Where the user DROPPED the box: the draft is still applied, so this is what the preview showed
+    // at release. The finalize step below moves the committed scale's box onto it.
     if (el) {
-      const dropRect = draw(() => el.getBoundingClientRect());
-      scaleDraftDropPoint = { x: dropRect.x, y: dropRect.y };
+      scaleDraftDropPoint = draw(() => rectCentre(el.getBoundingClientRect()));
     }
   } else {
     resizeProps = {
@@ -428,7 +428,7 @@ export async function tryGsapResizeIntercept(
       );
       const base = { x: baseGsapX, y: baseGsapY };
       setElementGsapPosition(draftEl, base.x, base.y);
-      const post = draftEl.getBoundingClientRect();
+      const post = rectCentre(draftEl.getBoundingClientRect());
       const residual = { x: dropPoint.x - post.x, y: dropPoint.y - post.y };
       if (!Number.isFinite(residual.x) || !Number.isFinite(residual.y)) return null;
       // The ONE corrected position — rounded once so the live runtime and the
@@ -446,7 +446,7 @@ export async function tryGsapResizeIntercept(
       }
       logResize("scale-finalize", {
         dropPoint,
-        post: { x: post.x, y: post.y },
+        post,
         residual,
         gsapPos,
         base,

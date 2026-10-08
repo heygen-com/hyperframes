@@ -458,7 +458,16 @@ it("does not mix the scale shorthand into a tween that speaks longhands", async 
  * point at its pre-gesture position, so the correct persisted correction is
  * NONE.
  */
-it("does not move a statically positioned element when a scale resize lands", async () => {
+it.each([
+  {
+    name: "does not move a statically positioned element when a scale resize lands",
+    shift: { x: 0, y: 0 },
+  },
+  {
+    name: "puts a statically positioned element on a sub-pixel drop point",
+    shift: { x: 0.3, y: -0.2 },
+  },
+])("$name", async ({ shift }) => {
   document.body.innerHTML = "";
   const el = document.createElement("div");
   el.id = "clip";
@@ -476,7 +485,7 @@ it("does not move a statically positioned element when a scale resize lands", as
   el.style.height = "128px";
   document.body.append(el);
 
-  const pos = { x: 587, y: 235 };
+  const pos = { x: 587 + shift.x, y: 235 + shift.y };
   const scale = { x: 1.648, y: 1.648 };
   const [LEFT, TOP] = [120, 520];
   el.getBoundingClientRect = () => {
@@ -533,14 +542,16 @@ it("does not move a statically positioned element when a scale resize lands", as
   const positionWrites = commitMutation.mock.calls
     .map((call) => call[1] as { properties?: Record<string, number> })
     .filter((mutation) => mutation.properties?.x != null || mutation.properties?.y != null);
-  // At most the sub-pixel correction onto the drop point, never the drag's translation.
+  // No position write, or one that moves the hold by exactly the drop's sub-pixel offset.
+  if (shift.x !== 0) expect(positionWrites.length).toBeGreaterThan(0);
   for (const write of positionWrites) {
-    expect(Math.abs(write.properties!.x! - 432)).toBeLessThan(0.05);
-    expect(Math.abs(write.properties!.y! - 173)).toBeLessThan(0.05);
+    expect(write.properties?.x).toBeCloseTo(432 + shift.x, 3);
+    expect(write.properties?.y).toBeCloseTo(173 + shift.y, 3);
   }
-  // And the live element ends on the drop point (603.32, 713.528).
-  expect(el.getBoundingClientRect().x).toBeCloseTo(603.32, 3);
-  expect(el.getBoundingClientRect().y).toBeCloseTo(713.528, 3);
+  // And the live box is centred where it was dropped (left 120 + 587 + 160, top 520 + 235 + 64).
+  const box = el.getBoundingClientRect();
+  expect(box.x + box.width / 2).toBeCloseTo(867 + shift.x, 3);
+  expect(box.y + box.height / 2).toBeCloseTo(819 + shift.y, 3);
 });
 
 function titleSelection(): DomEditSelection {
