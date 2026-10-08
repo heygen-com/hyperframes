@@ -13,6 +13,7 @@ vi.mock("@hyperframes/sdk", () => ({
 import type { Composition } from "@hyperframes/sdk";
 import { useSdkSession, type SdkSessionHandle } from "./useSdkSession";
 import { usePlayerStore } from "../player/store/playerStore";
+import { notifyExternalFileReload } from "./externalFileReloadBus";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
@@ -172,6 +173,25 @@ describe("useSdkSession ownership", () => {
 
     await act(async () => root.unmount());
     expect(published.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("reopens on a project-wide external change whatever composition it holds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response("INDEX")),
+    );
+    openComposition.mockImplementation(async () => fakeSession());
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+    expect(openComposition).toHaveBeenCalledOnce();
+    await act(async () => notifyExternalFileReload("film.html"));
+    await flushAsyncEffects();
+    expect(openComposition).toHaveBeenCalledOnce();
+    await act(async () => notifyExternalFileReload("."));
+    await flushAsyncEffects();
+    expect(openComposition).toHaveBeenCalledTimes(2);
+    act(() => root.unmount());
   });
 });
 

@@ -4,7 +4,9 @@ import {
   encodePreviewPath,
   resolveMediaPreviewUrl,
   quantizeThumbnailFrameCount,
+  thumbnailFrameForTile,
 } from "./thumbnailUtils";
+import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 
 describe("computeThumbnailStrip", () => {
   it("sizes tiles by aspect ratio at the clip height", () => {
@@ -51,15 +53,27 @@ describe("computeThumbnailStrip", () => {
   });
 });
 
+describe("thumbnailFrameForTile", () => {
+  it("shows the clip's last frame in the last tile, and the slice under each other tile's centre", () => {
+    // 8 slices and the end frame.
+    expect([0, 1, 2].map((tile) => thumbnailFrameForTile(tile, 3, 9))).toEqual([1, 4, 8]);
+    // 2 slices and the end frame across 4 tiles.
+    expect([0, 1, 2, 3].map((tile) => thumbnailFrameForTile(tile, 4, 3))).toEqual([0, 0, 1, 2]);
+    expect(thumbnailFrameForTile(0, 1, 9)).toBe(4);
+  });
+});
+
 describe("quantizeThumbnailFrameCount", () => {
   it("uses doubling buckets and never exceeds the 4K geometry ceiling", () => {
     expect(quantizeThumbnailFrameCount(5)).toBe(8);
     expect(quantizeThumbnailFrameCount(32)).toBe(32);
-    expect(quantizeThumbnailFrameCount(34)).toBe(33);
   });
 
-  it("caps decode requests at the shared visible-frame budget", () => {
-    expect(quantizeThumbnailFrameCount(124)).toBe(33);
+  it("caps decode requests at the largest step within the visible-frame budget", () => {
+    // A step that is not a power of two would share no frames with the step below it.
+    expect(MAX_VISIBLE_THUMBNAIL_FRAMES).toBeGreaterThan(32);
+    expect(quantizeThumbnailFrameCount(34)).toBe(32);
+    expect(quantizeThumbnailFrameCount(124)).toBe(32);
   });
 });
 

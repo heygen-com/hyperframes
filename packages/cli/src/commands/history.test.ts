@@ -8,6 +8,7 @@ import {
   renameSync,
   rmSync,
   utimesSync,
+  watch,
   writeFileSync,
 } from "node:fs";
 import type { AddressInfo } from "node:net";
@@ -429,6 +430,15 @@ describe("hyperframes history, one owner", () => {
     const home = tempDir("hf-history-cli-home-");
     const historyRoot = join(home, ".cache", "hyperframes", "history");
     const held = await openProjectHistory({ projectDir: dir, historyRoot });
+    // The CLI's first try at the lock leaves a claim draft beside owner.pid: proof it found the history held.
+    const triedLock = new Promise<void>((tried) => {
+      const watcher = watch(join(historyRoot, held.projectId), (_event, name) => {
+        if (!name?.startsWith("owner.pid-")) return;
+        watcher.close();
+        tried();
+      });
+      onTestFinished(() => watcher.close());
+    });
     write("index.html", "A2");
     const cli = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
     const child = spawn("bun", ["run", cli, "history", "--dir", dir], {
@@ -440,9 +450,15 @@ describe("hyperframes history, one owner", () => {
         HYPERFRAMES_NO_TELEMETRY: "1",
       },
     });
+    onTestFinished(() => void child.kill());
     const exited = new Promise<number | null>((done) => child.on("exit", done));
     const logFile = join(historyRoot, held.projectId, "log.jsonl");
-    await new Promise((settle) => setTimeout(settle, 1500));
+    await Promise.race([
+      triedLock,
+      exited.then((code) => {
+        throw new Error(`the CLI exited (${code}) before trying the held lock`);
+      }),
+    ]);
     expect(
       readFileSync(logFile, "utf-8").trim().split("\n"),
       "nothing written while held",

@@ -322,6 +322,60 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
   });
 });
 
+describe("createVideoFrameInjector holds video frames for motion blur (#5144)", () => {
+  // Scene A's video plays until 1 s, scene B's from 1 s; frame index = 10 × time.
+  const clips = [
+    { videoId: "a", start: 0, end: 1 },
+    { videoId: "b", start: 1, end: 2 },
+  ];
+  const table = {
+    frameDirs: () => [],
+    getActiveFramePayloads: (time: number) =>
+      new Map(
+        clips
+          .filter((clip) => time >= clip.start && time < clip.end)
+          .map((clip) => {
+            const frameIndex = Math.floor(time * 10);
+            return [clip.videoId, { framePath: `/${clip.videoId}/${frameIndex}`, frameIndex }];
+          }),
+      ),
+  } as unknown as FrameLookupTable;
+  const page = { evaluate: vi.fn(async () => undefined) } as unknown as Page;
+
+  beforeEach(() => {
+    injectVideoFramesBatchMock.mockReset();
+    injectVideoFramesBatchMock.mockImplementation(async (_page, updates) =>
+      updates.map((u) => u.videoId),
+    );
+    syncVideoFrameVisibilityMock.mockReset();
+    syncVideoFrameVisibilityMock.mockResolvedValue(undefined);
+  });
+
+  it("shows the held frame of a video on screen at both times", async () => {
+    const hook = createVideoFrameInjector(table, { frameSrcResolver: inlineResolver });
+
+    // The sample alone would pick frame 14; the held frame time picks 15.
+    await hook!(page, 1.42, 1.5);
+
+    expect(syncVideoFrameVisibilityMock).toHaveBeenLastCalledWith(page, ["b"]);
+    expect(injectVideoFramesBatchMock.mock.calls[0]?.[1]).toEqual([
+      { videoId: "b", dataUri: inlineResolver("/b/15") },
+    ]);
+  });
+
+  it("follows the sample time across a cut, so neither scene's video drops out", async () => {
+    const hook = createVideoFrameInjector(table, { frameSrcResolver: inlineResolver });
+
+    // Frame 1.0 is scene B's first frame; a sample just before it still shows scene A.
+    await hook!(page, 0.98, 1.0);
+
+    expect(syncVideoFrameVisibilityMock).toHaveBeenLastCalledWith(page, ["a"]);
+    expect(injectVideoFramesBatchMock.mock.calls[0]?.[1]).toEqual([
+      { videoId: "a", dataUri: inlineResolver("/a/9") },
+    ]);
+  });
+});
+
 describe("createVideoFrameInjector extraction-cache lease renewal", () => {
   // Regression: a render can hold a compiled-dir symlink into a shared
   // extraction-cache entry far longer than the entry's one-time cache-hit

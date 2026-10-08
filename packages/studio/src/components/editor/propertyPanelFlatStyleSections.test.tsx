@@ -63,6 +63,7 @@ function renderSection(
         styles={mergedStyles}
         assets={[]}
         onSetStyle={onSetStyle}
+        onSetHtmlAttribute={vi.fn()}
         gsapBorderRadius={gsapBorderRadius}
       />,
     );
@@ -375,6 +376,7 @@ describe("FlatStyleSection — blur sliders", () => {
           styles={{ filter: "blur(4px)" }}
           assets={[]}
           onSetStyle={onSetStyle}
+          onSetHtmlAttribute={vi.fn()}
           gsapBorderRadius={null}
         />,
       );
@@ -483,6 +485,7 @@ describe("FlatStyleSection — Overflow and Mask", () => {
           styles={{}}
           assets={[]}
           onSetStyle={onSetStyle}
+          onSetHtmlAttribute={vi.fn()}
           gsapBorderRadius={null}
         />,
       );
@@ -593,6 +596,7 @@ describe("FlatStyleSection — Opacity", () => {
           styles={{}}
           assets={[]}
           onSetStyle={onSetStyle}
+          onSetHtmlAttribute={vi.fn()}
           gsapBorderRadius={null}
         />,
       );

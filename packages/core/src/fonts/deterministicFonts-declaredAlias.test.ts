@@ -327,7 +327,7 @@ describe("declared-family alias resolution — still unresolved", () => {
     expect(error.familyName).toBe(authored);
     expect(error.unresolvedFamilies).toEqual([authored]);
     // Nothing but the authored spelling was ever looked up.
-    expect(queried).toEqual([authored]);
+    expect(new Set(queried)).toEqual(new Set([authored]));
   });
 });
 

@@ -524,24 +524,39 @@ function detectSweepStatic(
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
   if (layoutStateSignatures.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
-  const [first, ...rest] = layoutStateSignatures;
-  if (!first || rest.some((signature) => signature !== first)) return [];
-  return [
-    {
-      code: "sweep_static",
-      severity: "error",
-      time: 0,
-      selector: "[data-composition-id]",
-      dataAttributes: {},
-      sourceFile: "index.html",
-      bbox: ZERO_BBOX,
-      rect: ZERO_LAYOUT_RECT,
-      message:
-        "Timeline did not advance under seek; every green verdict on this run is unreliable.",
-      fixHint:
-        "Confirm the composition seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
-    },
-  ];
+  if (allSame(layoutStateSignatures)) return [sweepStaticIssue("error")];
+  if (allSame(layoutStateSignatures.map(seenPart))) return [sweepStaticIssue("warning")];
+  return [];
+}
+
+// motion-signature.browser.js appends audio time after this; a signature without it is all "seen".
+const AUDIO_TIME_SEPARATOR = "\u001f";
+
+function seenPart(signature: string): string {
+  return signature.split(AUDIO_TIME_SEPARATOR)[0] ?? signature;
+}
+
+function allSame(values: string[]): boolean {
+  return values.every((value) => value === values[0]);
+}
+
+function sweepStaticIssue(severity: "error" | "warning"): AnchoredLayoutIssue {
+  return {
+    code: "sweep_static",
+    severity,
+    time: 0,
+    selector: "[data-composition-id]",
+    dataAttributes: {},
+    sourceFile: "index.html",
+    bbox: ZERO_BBOX,
+    rect: ZERO_LAYOUT_RECT,
+    message:
+      severity === "error"
+        ? "Timeline did not advance under seek; every green verdict on this run is unreliable."
+        : "Only the audio advanced under seek; nothing on screen moved.",
+    fixHint:
+      "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
+  };
 }
 
 // rotation_pivot_drift: bbox center should stay fixed while the element spins.

@@ -7,6 +7,12 @@ import { isVideoElement } from "./domRealm";
 import { swappedElements } from "./proxySrc";
 import { waitForServedProxy } from "./proxyWait";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
+import {
+  formatPreviewProxyBox,
+  PREVIEW_PROXY_BOX_PARAM,
+  quantizePreviewProxyBox,
+  type PreviewProxyBox,
+} from "../previewProxyBox";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -55,6 +61,89 @@ const proxyRequested = new WeakMap<HTMLMediaElement, string | null>();
 
 function currentSrcValue(el: HTMLMediaElement): string {
   return el.currentSrc || el.src;
+}
+
+// How large the host shows this document, in its CSS pixels per ours (player fit x page zoom).
+// A top-level page shows itself at 1; a framed one waits for its host to say.
+let displayScale: number | null = window.parent === window ? 1 : null;
+let displayScaleArrived: () => void = () => {};
+const displayScaleKnown = new Promise<void>((arrived) => (displayScaleArrived = arrived));
+// A host that never says (an older player) gets the source-size copy after this wait.
+const DISPLAY_SCALE_WAIT_MS = 1000;
+
+// Elements on a size-bounded copy: the source, the copy's URL and the box it was made for.
+type BoxedCopy = { originalSrc: string; variant: string; href: string; box: PreviewProxyBox };
+const boxedElements = new Map<HTMLMediaElement, BoxedCopy>();
+// The larger copy each element waits for; a newer ask replaces it and the older wait stops.
+const pendingUpgrades = new WeakMap<HTMLMediaElement, string>();
+
+function shownScale(): Promise<number | null> {
+  if (displayScale !== null) return Promise.resolve(displayScale);
+  return Promise.race([
+    displayScaleKnown.then(() => displayScale),
+    new Promise<null>((give) => setTimeout(() => give(null), DISPLAY_SCALE_WAIT_MS)),
+  ]);
+}
+
+/** The video's box in device pixels, at least the stage so a later zoom or a clip still hidden fits. */
+function shownBox(el: HTMLMediaElement, scale: number): PreviewProxyBox | null {
+  // object-fit: none shows the source at its own size.
+  if (getComputedStyle(el).objectFit === "none") return null;
+  const rect = el.getBoundingClientRect();
+  const stage = document.documentElement;
+  const pixels = scale * (window.devicePixelRatio || 1);
+  return quantizePreviewProxyBox(
+    Math.max(rect.width, stage.clientWidth) * pixels,
+    Math.max(rect.height, stage.clientHeight) * pixels,
+  );
+}
+
+/** The host reports how large it shows this document; copies too small for it are replaced. */
+export function setProxyDisplayScale(scale: number): void {
+  if (!(scale > 0) || !Number.isFinite(scale)) return;
+  displayScale = scale;
+  displayScaleArrived();
+  for (const el of boxedElements.keys()) keepSized(el, scale);
+}
+
+function keepSized(el: HTMLMediaElement, scale: number): void {
+  const copy = boxedElements.get(el);
+  if (!copy) return;
+  if (!el.isConnected || el.getAttribute("src") !== copy.href) {
+    boxedElements.delete(el);
+    return;
+  }
+  const needed = shownBox(el, scale);
+  if (needed && needed.width <= copy.box.width && needed.height <= copy.box.height) return;
+  // Never smaller on either side than the copy it replaces.
+  const box = needed && {
+    width: Math.max(needed.width, copy.box.width),
+    height: Math.max(needed.height, copy.box.height),
+  };
+  const href = appendProxyParam(copy.originalSrc, copy.variant, box);
+  if (pendingUpgrades.get(el) === href) return;
+  pendingUpgrades.set(el, href);
+  const wanted = () =>
+    pendingUpgrades.get(el) === href && el.isConnected && el.getAttribute("src") === copy.href;
+  void waitForServedProxy(href, wanted).then((served) => {
+    if (served && wanted()) loadProxy(el, href, copy.originalSrc, copy.variant, box);
+    if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
+  });
+}
+
+function loadProxy(
+  el: HTMLMediaElement,
+  href: string,
+  originalSrc: string,
+  variant: string,
+  box: PreviewProxyBox | null,
+): void {
+  if (box) boxedElements.set(el, { originalSrc, variant, href, box });
+  else boxedElements.delete(el);
+  // Sync state measured on the previous file would read the new file's buffering as drift.
+  evictMediaSyncState(el);
+  el.src = href;
+  el.load();
 }
 
 /**
@@ -164,9 +253,10 @@ function lookupCodecMapEntry(
   );
 }
 
-function appendProxyParam(src: string, entry: MediaCodecMapEntry | null): string {
+function appendProxyParam(src: string, variant: string, box: PreviewProxyBox | null): string {
   const url = new URL(src, document.baseURI);
-  url.searchParams.set(PROXY_QUERY_PARAM, entry ? (entry.hasAlpha ? "vp8" : "h264") : "auto");
+  url.searchParams.set(PROXY_QUERY_PARAM, variant);
+  if (box) url.searchParams.set(PREVIEW_PROXY_BOX_PARAM, formatPreviewProxyBox(box));
   return url.href;
 }
 
@@ -223,9 +313,9 @@ export function swapToProxy(
   if (swappedElements.has(el)) return;
   if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);
-  let proxiedSrc: string;
+  const variant = entry ? (entry.hasAlpha ? "vp8" : "h264") : "auto";
   try {
-    proxiedSrc = appendProxyParam(originalSrc, entry);
+    new URL(originalSrc, document.baseURI);
   } catch (err) {
     swallow("runtime.mediaProxy.swap", err);
     emitUnavailableDiagnostic(el, "invalid_source_url", originalSrc);
@@ -234,7 +324,11 @@ export function swapToProxy(
   const originalAttr = el.getAttribute("src");
   proxyRequested.set(el, originalAttr);
   const live = () => el.isConnected && el.getAttribute("src") === originalAttr;
-  const swap = waitForServedProxy(proxiedSrc, live).then((served) => {
+  const swap = shownScale().then(async (scale) => {
+    // Asked once the shown size is known, so the copy is made at that size and only once.
+    const box = scale === null ? null : shownBox(el, scale);
+    const proxiedSrc = appendProxyParam(originalSrc, variant, box);
+    const served = await waitForServedProxy(proxiedSrc, live);
     if (!live()) {
       if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
       return;
@@ -244,10 +338,9 @@ export function swapToProxy(
       return;
     }
     swappedElements.set(el, originalAttr);
-    // Sync state measured on the original would read the new file's buffering as drift.
-    evictMediaSyncState(el);
-    el.src = proxiedSrc;
-    el.load();
+    loadProxy(el, proxiedSrc, originalSrc, variant, box);
+    // The shown size may have grown while this copy was being made.
+    if (displayScale !== null) keepSized(el, displayScale);
     return new Promise((landed) => {
       el.addEventListener("loadeddata", landed, { once: true });
       el.addEventListener("error", landed, { once: true });

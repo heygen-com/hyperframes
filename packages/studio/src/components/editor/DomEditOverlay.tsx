@@ -61,7 +61,7 @@ export interface DomEditOverlayProps {
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
   allowBodyDrag?: boolean;
-  /** "host": no hover, marquee, box re-select, or body drag if allowBodyDrag is false; Enter still opens text. */
+  /** "host": no marquee, box re-select, or body drag if allowBodyDrag is false; Enter still opens text. */
   canvasInput?: "overlay" | "host";
   onTextEditingChange?: (editing: boolean) => void;
   /** A click on a single selection's box, in either mode; the event may be the pointerup. */
@@ -500,7 +500,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onLostPointerCapture={gestures.onLostPointerCapture}
       onContextMenu={hostInput ? undefined : handleContextMenu}
     >
-      {!hostInput && hoverSelection && hoverRect && compRect.width > 0 && (
+      {hoverSelection && hoverRect && compRect.width > 0 && (
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
