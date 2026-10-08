@@ -596,6 +596,9 @@ export function inlineSubCompositions(
     if (innerRoot?.hasAttribute("data-timeline-locked")) {
       hostEl.setAttribute("data-timeline-locked", "");
     }
+    if (innerRoot?.hasAttribute("data-no-timeline")) {
+      hostEl.setAttribute("data-no-timeline", "");
+    }
 
     // Copy dimension attributes from inner root to host if missing
     if (innerRoot) {
