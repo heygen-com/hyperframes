@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
+import { parseHTML } from "linkedom";
 
 export interface Word {
   /** Stable identifier for referencing this word in overrides and compositions.
@@ -217,6 +218,14 @@ function parseSrt(content: string): Word[] {
   return words;
 }
 
+function decodeVttText(text: string): string {
+  if (!text.includes("&")) return text;
+  const { document } = parseHTML("<html><body></body></html>");
+  const element = document.createElement("span");
+  element.innerHTML = text.replace(/</g, "&lt;");
+  return element.textContent ?? "";
+}
+
 function parseVtt(content: string): Word[] {
   // Strip the WEBVTT header and any metadata blocks
   const body = content.replace(/^WEBVTT[^\n]*\n/, "").replace(/^[A-Z-]+:.*\n/gm, "");
@@ -240,7 +249,7 @@ function parseVtt(content: string): Word[] {
     if (!text) continue;
 
     words.push({
-      text,
+      text: decodeVttText(text),
       start: parseVttTimestamp(startStr),
       end: parseVttTimestamp(endStr),
     });
@@ -468,7 +477,8 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
     "WEBVTT\n\n" +
     cues
       .map(
-        (cue) => `${formatVttTimestamp(cue.start)} --> ${formatVttTimestamp(cue.end)}\n${cue.text}`,
+        (cue) =>
+          `${formatVttTimestamp(cue.start)} --> ${formatVttTimestamp(cue.end)}\n${cue.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}`,
       )
       .join("\n\n") +
     "\n"

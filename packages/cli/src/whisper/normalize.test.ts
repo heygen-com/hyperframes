@@ -244,6 +244,33 @@ Short format
 });
 
 describe("caption formatting", () => {
+  it.each([
+    ["R&D <config> next", "R&amp;D &lt;config&gt; next"],
+    ["Literal &lt; &amp; references", "Literal &amp;lt; &amp;amp; references"],
+    ["3 < 4 and 5 > 2", "3 &lt; 4 and 5 &gt; 2"],
+    ["R&D --> next", "R&amp;D --&gt; next"],
+  ])("preserves literal WebVTT text %j on export and reimport", (text, payload) => {
+    const words = [{ text, start: 1, end: 2, id: "w0" }];
+    const output = formatVtt(words);
+    expect(output).toBe(`WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n${payload}\n`);
+    expect(loadTranscript(tmpFile("literal.vtt", output)).words).toEqual(words);
+  });
+
+  it.each([
+    ["R&amp;D &lt;config&gt; next", "R&D <config> next"],
+    ["&quot;quoted&quot; &apos;text&apos;", "\"quoted\" 'text'"],
+    ["&#38; &#x3c; &#60;", "& < <"],
+    ["Literal &amp;lt; &amp;amp; references", "Literal &lt; &amp; references"],
+    ["<b>R&amp;D</b> &lt;config&gt;", "R&D <config>"],
+    ["A&nbsp;B&lrm;&rlm;", "A\u00a0B\u200e\u200f"],
+    ["Keep &unknown;", "Keep &unknown;"],
+  ])("decodes the WebVTT cue payload %j once", (payload, text) => {
+    const input = `WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n${payload}\n`;
+    expect(loadTranscript(tmpFile("entities.vtt", input)).words).toEqual([
+      { text, start: 1, end: 2, id: "w0" },
+    ]);
+  });
+
   it("round-trips SRT cues through normalized words", () => {
     const srt = `1
 00:00:01,000 --> 00:00:03,500
