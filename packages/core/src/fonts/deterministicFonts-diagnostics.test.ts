@@ -262,6 +262,102 @@ describe("families", () => {
   });
 });
 
+describe("authored stylesheet falling back to the default request", () => {
+  const AUTHORED = "Zorblax Display";
+  const OTHER = "Quillmark Serif";
+  const LINK = `https://fonts.googleapis.com/css2?family=${AUTHORED.replace(" ", "+")}:wght@400;700&display=swap`;
+  const authoredPage = (extraFamily = ""): string =>
+    `<!doctype html><html><head><link rel="stylesheet" href="${LINK}"><style>.a{font-family:'${AUTHORED}',sans-serif}${extraFamily}</style></head><body><p class="a o">The ${PAGE_TEXT} jumps.</p></body></html>`;
+  const isDefault = (url: string): boolean => url.includes("ital,wght@");
+  const authoredAttempt = (o: Partial<FontAttemptDiag> = {}): FontAttemptDiag =>
+    attempt({ urlSource: "authored", ...o });
+
+  it("records the rejected authored stylesheet and then the default attempt that found no usable file", async () => {
+    const e = await fail(
+      authoredPage(),
+      stub(
+        (url) => (isDefault(url) ? ok(blocks(1, AUTHORED)) : status(400)),
+        () => status(404),
+      ),
+    );
+    expect(diagnosticsOf(e).families).toEqual([
+      {
+        required: true,
+        resolved: false,
+        attempts: [
+          authoredAttempt({ cssStatus: 400 }),
+          attempt({
+            blocksTotal: 1,
+            regexMatches: 1,
+            assets: { total: 1, diskCacheHit: 0, fetchedOk: 0, nonOk: { "404": 1 } },
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("records an authored 200 with zero faces and then the default attempt", async () => {
+    const e = await fail(
+      authoredPage(),
+      stub((url) => (isDefault(url) ? status(400) : ok(blocks(2, AUTHORED, "woff2-variations")))),
+    );
+    expect(diagnosticsOf(e).families[0]?.attempts).toEqual([
+      authoredAttempt({ blocksTotal: 2 }),
+      attempt({ cssStatus: 400 }),
+    ]);
+  });
+
+  it("records no default attempt for a family whose authored stylesheet worked", async () => {
+    const s = stub((url) => {
+      if (url.includes("Quillmark")) return status(400);
+      return ok(blocks(1, AUTHORED));
+    });
+    const e = await fail(authoredPage(`.o{font-family:'${OTHER}',serif}`), s);
+    expect(diagnosticsOf(e).families).toEqual([
+      {
+        required: true,
+        resolved: true,
+        attempts: [
+          authoredAttempt({
+            blocksTotal: 1,
+            regexMatches: 1,
+            assets: { total: 1, diskCacheHit: 0, fetchedOk: 1, nonOk: {} },
+          }),
+        ],
+      },
+      { required: true, resolved: false, attempts: [attempt({ cssStatus: 400 })] },
+    ]);
+    expect(s.css.filter((url) => isDefault(url) && url.includes("Zorblax"))).toEqual([]);
+  });
+
+  it("keeps a transient UNAVAILABLE exactly as before: no default request, no diagnostics", async () => {
+    const s = stub(() => status(503));
+    const e = await fail(authoredPage(), s);
+    expect(e.code).toBe(FONT_FETCH_UNAVAILABLE);
+    expect(e.name).toBe("FontFetchUnavailableError");
+    expect(e.diagnostics).toBeUndefined();
+    expect(s.css.some(isDefault)).toBe(false);
+  });
+
+  it("records both attempts when the authored and default requests both fail, with the error contract unchanged", async () => {
+    const e = await fail(
+      authoredPage(),
+      stub(() => status(400)),
+    );
+    expect(diagnosticsOf(e).families[0]?.attempts).toEqual([
+      authoredAttempt({ cssStatus: 400 }),
+      attempt({ cssStatus: 400 }),
+    ]);
+    expect(e.message).toBe(
+      `[Compiler] Unresolved fonts in fail-closed mode: ${AUTHORED}. Distributed renders require all fonts to be resolvable.`,
+    );
+    expect(e.code).toBe(FONT_FETCH_FAILED);
+    expect(e.name).toBe("FontFetchError");
+    expect(e.familyName).toBe(AUTHORED);
+    expect(e.unresolvedFamilies).toEqual([AUTHORED]);
+  });
+});
+
 describe("leak check", () => {
   for (const { name, css, woff } of ROWS) {
     it(`${name}: no family name, URL, CSS, page text or hash in the serialized diagnostics`, async () => {

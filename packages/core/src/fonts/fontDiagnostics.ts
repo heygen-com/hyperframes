@@ -12,7 +12,7 @@ export interface FontAttemptDiag {
   urlSource: "authored" | "default";
   textParam: "present" | "absent";
   cssCache: "hit" | "fresh";
-  /** The real HTTP status of the CSS lookup; null when the fetch threw before a response. */
+  /** The real HTTP status of the CSS lookup; null when no HTTP response was recorded for that attempt. */
   cssStatus: number | null;
   /** blocksTotal > 0 with regexMatches 0 is a coarse stage: no block had a woff2 url in the expected shape. */
   blocksTotal: number;
