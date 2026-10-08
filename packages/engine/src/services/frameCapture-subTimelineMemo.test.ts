@@ -27,8 +27,16 @@ function makeDomPage(timelines: Record<string, unknown>): Page {
   } as unknown as Page;
 }
 
-function makeSession(memo: SubTimelineWaitMemo): CaptureSession {
-  return { subTimelineWaitMemo: memo, scriptLoadFailures: [] } as unknown as CaptureSession;
+function makeSession(
+  memo: SubTimelineWaitMemo,
+  extra: Partial<Pick<CaptureSession, "pageErrors" | "scriptLoadFailures" | "vfxFailure">> = {},
+): CaptureSession {
+  return {
+    subTimelineWaitMemo: memo,
+    scriptLoadFailures: [],
+    pageErrors: [],
+    ...extra,
+  } as unknown as CaptureSession;
 }
 
 function track<T>(promise: Promise<T>): { settled: () => boolean; promise: Promise<T> } {
@@ -65,6 +73,39 @@ describe("sub-composition timeline wait memo", () => {
     expect(secondWait.settled()).toBe(true);
     expect(second.subTimelineWaitOutcome).toBe("timeout");
     expect(second.pendingTimelineIds).toEqual(["badge"]);
+  });
+
+  it("does not remember a timeout whose session saw a page error", async () => {
+    const memo: SubTimelineWaitMemo = {};
+    const session = makeSession(memo, { pageErrors: ["TypeError: d.items is undefined"] });
+    const wait = track(
+      waitForSubCompositionTimelines(session, makeDomPage({ main: {} }), TIMEOUT_MS),
+    );
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);
+    await wait.promise;
+    expect(session.subTimelineWaitOutcome).toBe("timeout");
+    expect(memo.unregisteredIds).toBeUndefined();
+  });
+
+  it("does not remember a wait a VFX failure stopped early", async () => {
+    const memo: SubTimelineWaitMemo = {};
+    const session = makeSession(memo, { vfxFailure: "chain failed" });
+    await waitForSubCompositionTimelines(session, makeDomPage({ main: {} }), TIMEOUT_MS);
+    expect(session.subTimelineWaitOutcome).toBe("timeout");
+    expect(memo.unregisteredIds).toBeUndefined();
+  });
+
+  it("a replaying session that sees a failed script load reports a script failure", async () => {
+    const session = makeSession(
+      { unregisteredIds: ["badge"] },
+      { scriptLoadFailures: ["http://127.0.0.1:3000/badge.js"] },
+    );
+    const wait = track(
+      waitForSubCompositionTimelines(session, makeDomPage({ main: {} }), TIMEOUT_MS),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wait.settled()).toBe(true);
+    expect(session.subTimelineWaitOutcome).toBe("script_failure");
   });
 
   it("still waits out the timeout for hosts the memo does not name", async () => {

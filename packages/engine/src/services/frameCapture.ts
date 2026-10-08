@@ -1798,8 +1798,14 @@ export async function waitForSubCompositionTimelines(
     shouldStop: () => session.vfxFailure !== undefined,
     knownUnregisteredIds: memo.unregisteredIds,
   });
-  // A VFX failure also ends the wait as "timeout" without the full wait; never memoise that.
-  if (session.subTimelineWaitOutcome === "timeout" && session.vfxFailure === undefined) {
+  // Only a clean full-length timeout is replayed: a VFX stop ends early, and page or script
+  // errors must reach each session so it can still classify the wait as a script failure.
+  const cleanTimeout =
+    session.subTimelineWaitOutcome === "timeout" &&
+    session.vfxFailure === undefined &&
+    session.pageErrors.length === 0 &&
+    session.scriptLoadFailures.length === 0;
+  if (cleanTimeout) {
     memo.unregisteredIds = session.pendingTimelineIds ?? [];
   }
 }
@@ -1872,6 +1878,9 @@ export async function pollSubCompositionTimelines(
   // Skipped known ids still count: if one is still unregistered, report the timeout again.
   const pendingIds =
     ready && knownUnregisteredIds.length === 0 ? [] : await listUnregisteredTimelineIds(page);
+  if (ready && pendingIds.length > 0 && (getScriptLoadFailures?.() ?? []).length > 0) {
+    scriptFailureBail = true;
+  }
   // Always force a timeline rebind once sub-composition timelines are
   // confirmed present. The previous implementation only called rebind
   // when the timeline count grew during the poll, which missed the case
