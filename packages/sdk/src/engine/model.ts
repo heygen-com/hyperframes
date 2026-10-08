@@ -5,7 +5,7 @@
  * go here. serialize() walks the live DOM; no separate mutable tree to sync.
  */
 
-import { parseHTML } from "linkedom";
+import { isFullHtmlDocument, parseHTMLContent } from "@hyperframes/core/compiler/html-document";
 import { findTimelineScript } from "@hyperframes/core/gsap-parser-acorn";
 import { findVariableDeclaration } from "./variableModel.js";
 import {
@@ -24,12 +24,9 @@ export interface ParsedDocument {
 
 export function parseMutable(html: string): ParsedDocument {
   const stamped = ensureHfIds(html);
-  const hasShell = /<!doctype|<html[\s>]/i.test(stamped);
-  const wrapped = !hasShell;
-  const { document } = wrapped
-    ? parseHTML(`<!DOCTYPE html><html><head></head><body>${stamped}</body></html>`)
-    : parseHTML(stamped);
-  return { document: document as unknown as Document, wrapped, stamped };
+  const wrapped = !isFullHtmlDocument(stamped);
+  const document = parseHTMLContent(stamped);
+  return { document, wrapped, stamped };
 }
 
 // ─── Element lookup ───────────────────────────────────────────────────────────

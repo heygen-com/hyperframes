@@ -17,6 +17,7 @@ import {
   findById,
   escapeHfId,
   readVariableDefault,
+  buildDocument,
 } from "./index.js";
 import { createMemoryAdapter } from "./adapters/memory.js";
 
@@ -40,6 +41,28 @@ const BASE_HTML = `
 `.trim();
 
 // ─── init → mutate → serialize ────────────────────────────────────────────────
+
+describe("fragment document detection", () => {
+  it.each([
+    `<!-- Example: <html> --><div data-hf-root><p data-hf-id="hf-title">Hello</p></div>`,
+    `<!-- Example: <!doctype html> --><div data-hf-root><p data-hf-id="hf-title">Hello</p></div>`,
+    `<div data-hf-root title="<html>"><p data-hf-id="hf-title">Hello</p></div>`,
+  ])("models and edits a fragment containing inert document markers: %s", async (html) => {
+    const snapshot = buildDocument(html);
+    expect(snapshot.roots).toHaveLength(1);
+    expect(snapshot.roots[0]?.children[0]?.id).toBe("hf-title");
+    const comp = await openComposition(html);
+    expect(comp.getElement("hf-title")?.text).toBe("Hello");
+    comp.setText("hf-title", "Edited");
+    const serialized = comp.serialize();
+    expect(serialized).toContain("Edited");
+    expect(serialized).not.toContain("<body>");
+    const reopened = await openComposition(serialized);
+    expect(reopened.getElement("hf-title")?.text).toBe("Edited");
+    comp.dispose();
+    reopened.dispose();
+  });
+});
 
 describe("openComposition + basic mutations", () => {
   it("opens without error and exposes element snapshots", async () => {
