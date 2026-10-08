@@ -1,7 +1,8 @@
 // Builds lib/shaders.iife.js, shared by every shader block: the driver plus only the shaders below. shaders/core's
 // index imports every shader for side effects and the registry for media sizing and presets, which these never use.
 import { build } from "esbuild";
-import { access, copyFile, readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { copyFile, readdir, readFile } from "node:fs/promises";
 
 const SHADERS = [
   "Aurora",
@@ -99,14 +100,7 @@ await build({
 const blocks = [];
 for (const block of await readdir("../..")) {
   const lib = `../../${block}/lib/shaders.iife.js`;
-  if (
-    block === "godrays" ||
-    !(await access(lib).then(
-      () => true,
-      () => false,
-    ))
-  )
-    continue;
+  if (block === "godrays" || !existsSync(lib)) continue;
   await copyFile(out, lib);
   blocks.push(block);
 }
