@@ -239,6 +239,20 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
   });
 
+  it.each([false, true])("shows a large text diff completely (json=%s)", async (json) => {
+    const { hf, turn } = await setup();
+    const before = `before-${"a".repeat(600_000)}-end-before\n`;
+    const after = `after-${"b".repeat(600_000)}-end-after-🎬\n`;
+    await turn("claude", "Write notes", "notes.html", before);
+    const entry = await turn("claude", "Rewrite notes", "notes.html", after);
+
+    const result = await hf("show", entry.id, "--diff", ...(json ? ["--json"] : []));
+
+    expect(result.code, result.err).toBe(0);
+    const diff = json ? JSON.parse(result.out).diff : result.out;
+    expect(diff).toContain(`-${before}+${after.trimEnd()}`);
+  });
+
   it("peek reads a file as it was without writing, and restore puts every file back", async () => {
     const { read, hf, turn } = await setup();
     const entry = await turn("claude", "Retitle", "index.html", "A2");

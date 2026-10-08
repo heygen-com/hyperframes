@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { defineCommand, type ArgsDef } from "citty";
@@ -156,12 +164,19 @@ async function textDiff(owner: Owner, entry: HistoryEntry): Promise<string> {
         writeFileSync(join(work, path), sides[index]!);
         return path;
       });
-      const diff = spawnSync("git", ["diff", "--no-index", "--no-color", "--no-prefix", a!, b!], {
-        cwd: work,
-        encoding: "utf-8",
-      });
-      if (diff.error) throw new Refusal("--diff needs git on PATH");
-      out.push(diff.stdout.trimEnd());
+      const outputPath = join(work, "diff");
+      const outputFd = openSync(outputPath, "w", 0o600);
+      try {
+        const diff = spawnSync("git", ["diff", "--no-index", "--no-color", "--no-prefix", a!, b!], {
+          cwd: work,
+          encoding: "utf-8",
+          stdio: ["ignore", outputFd, "pipe"],
+        });
+        if (diff.error) throw new Refusal("--diff needs git on PATH");
+        out.push(readFileSync(outputPath, "utf-8").trimEnd());
+      } finally {
+        closeSync(outputFd);
+      }
     }
     return out.join("\n");
   } finally {
