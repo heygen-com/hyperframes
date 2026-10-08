@@ -3,7 +3,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _clearGoogleFontCssCacheForTests,
   FONT_FETCH_FAILED,
@@ -51,12 +51,13 @@ const POLICY = { maxAttempts: 2, baseDelayMs: 0, attemptTimeoutMs: 2000, maxElap
 const page = (extraCss = ""): string =>
   `<!doctype html><html><head><style>.a{font-family:'${FAMILY}',sans-serif;font-weight:700}${extraCss}</style></head><body><p class="a">The ${PAGE_TEXT} jumps.</p></body></html>`;
 
-async function fail(html: string, s: Stub): Promise<FontFetchError> {
+async function fail(html: string, s: Stub, abortSignal?: AbortSignal): Promise<FontFetchError> {
   try {
     await injectDeterministicFontFaces(html, {
       failClosedFontFetch: true,
       allowSystemFontCapture: false,
       fetchImpl: s.fetchImpl,
+      abortSignal,
       fontFetchRetryPolicy: POLICY,
       logger: { info: () => undefined, warn: () => undefined },
     });
@@ -380,6 +381,10 @@ describe("a lookup joined while another compile's request is in flight", () => {
   const OPTIONAL = "Zorblax Display";
   const html = `<!doctype html><html><head><style>.r{font-family:'${REQUIRED}',serif}.o{font-family:var(--none, '${OPTIONAL}')}</style></head><body><p class="r o">The ${PAGE_TEXT} jumps.</p></body></html>`;
   const drain = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+  const until = async (done: () => boolean, what: string): Promise<void> => {
+    for (let turn = 0; turn < 200 && !done(); turn += 1) await drain();
+    if (!done()) throw new Error(`timed out waiting for ${what}`);
+  };
 
   it("labels the joiner's swallowed optional lookup as a hit with no status", async () => {
     let release: () => void = () => undefined;
@@ -393,28 +398,40 @@ describe("a lookup joined while another compile's request is in flight", () => {
       if (optionalRequests === 1) await gate;
       return status(503);
     });
-    const compiles = [fail(html, s), fail(html, s)];
-    while (optionalRequests === 0) await drain();
-    for (let i = 0; i < 5; i += 1) await drain();
-    release();
-    const errors = await Promise.all(compiles);
-
-    expect(optionalRequests).toBe(POLICY.maxAttempts);
-    const optional = errors.map((e) => diagnosticsOf(e).families[1]);
-    expect(optional.map((f) => [f?.required, f?.resolved, f?.attempts.length])).toEqual([
-      [false, false, 1],
-      [false, false, 1],
-    ]);
-    const attempts = optional.flatMap((f) => f?.attempts ?? []);
-    expect(attempts.map((a) => a.cssCache).sort()).toEqual(["fresh", "hit"]);
-    expect(attempts.map((a) => a.cssStatus)).toEqual([null, null]);
-    for (const e of errors) {
-      expect(e.code).toBe(FONT_FETCH_FAILED);
-      expect(e.message).toBe(
-        `[Compiler] Unresolved fonts in fail-closed mode: ${REQUIRED}. Distributed renders require all fonts to be resolvable.`,
+    // A lookup that awaits a shared promise registers an abort listener on its caller's signal, so
+    // the second compile's listener count shows when it has reached the optional family's lookup.
+    const joiner = new AbortController();
+    const joinerListeners = vi.spyOn(joiner.signal, "addEventListener");
+    try {
+      const first = fail(html, s);
+      await until(() => optionalRequests === 1, "the first compile's optional request");
+      const second = fail(html, s, joiner.signal);
+      await until(
+        () => joinerListeners.mock.calls.length >= 2,
+        "the second compile to await the optional lookup",
       );
-      expect(e.url).toBe("");
-      expect(e.cause).toBeUndefined();
+      expect(optionalRequests).toBe(1);
+      release();
+      const errors = await Promise.all([first, second]);
+
+      expect(optionalRequests).toBe(POLICY.maxAttempts);
+      const optional = errors.map((e) => diagnosticsOf(e).families[1]);
+      expect(optional.map((f) => [f?.required, f?.resolved, f?.attempts.length])).toEqual([
+        [false, false, 1],
+        [false, false, 1],
+      ]);
+      expect(optional.map((f) => f?.attempts[0]?.cssCache)).toEqual(["fresh", "hit"]);
+      expect(optional.map((f) => f?.attempts[0]?.cssStatus)).toEqual([null, null]);
+      for (const e of errors) {
+        expect(e.code).toBe(FONT_FETCH_FAILED);
+        expect(e.message).toBe(
+          `[Compiler] Unresolved fonts in fail-closed mode: ${REQUIRED}. Distributed renders require all fonts to be resolvable.`,
+        );
+        expect(e.url).toBe("");
+        expect(e.cause).toBeUndefined();
+      }
+    } finally {
+      release();
     }
   });
 });
