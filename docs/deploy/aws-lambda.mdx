@@ -210,6 +210,20 @@ Most often a Lambda cold-start chain on a many-chunk render. The Map state's res
 
 If progress doesn't advance for >10 minutes, check the Step Functions execution in the AWS console — failed Lambda invocations include the typed error name (`FONT_FETCH_FAILED`, `FFMPEG_VERSION_MISMATCH`, etc.) which short-circuits the state machine.
 
+### Long-video planning times out
+
+A Plan failure with `VIDEO_EXTRACTION_FAILED` and `ffmpeg_timeout` means an FFmpeg process exceeded its deadline. Plan extracts video frames before Step Functions starts the chunk workers. Constant-frame-rate ranges longer than two minutes are extracted in two-minute segments; the default 300,000 ms timeout applies to each segment. Variable-frame-rate sources are not divided into these segments, so extraction of a long range can still exceed that deadline.
+
+For a variable-frame-rate source whose extraction fits within the Lambda invocation budget, increase `FFMPEG_PROCESS_TIMEOUT_MS` on the deployed render function. Setting it only in the terminal running `lambda render` does not configure the remote function. CDK users can add the environment variable before deploying their stack:
+
+```ts
+render.renderFunction.addEnvironment("FFMPEG_PROCESS_TIMEOUT_MS", "600000");
+```
+
+This gives each FFmpeg process ten minutes. The entire Plan invocation still has to finish within the function's configured timeout, at most 15 minutes, including project download, probing, audio preparation, and artifact uploads. Check the Plan invocation's CloudWatch logs to measure that budget. Reducing `chunkSize` or increasing chunk-worker concurrency does not divide Plan's extraction work.
+
+If planning cannot fit, split the composition into shorter, frame-aligned projects, render each as a separate job, and combine the results. Choose part lengths from measured planning times. There is no fixed maximum video length: resolution, frame rate, codec, and Lambda resources affect extraction time.
+
 ### Tearing down doesn't reclaim S3 storage
 
 The render bucket is created with CloudFormation `Retain` on delete — `hyperframes lambda destroy` (or `sam delete`) tears the function + state machine down but the bucket survives. This is intentional: it protects final-rendered MP4s from being lost when you re-deploy. To fully reclaim storage, empty + delete the bucket via the AWS console / `aws s3 rb`.
@@ -225,12 +239,15 @@ The render bucket is created with CloudFormation `Retain` on delete — `hyperfr
 - The distributed AWS path is SDR-only.
 - Video length is bounded by the plan step. One Lambda invocation extracts
   every frame of every video and uploads them before any chunk starts, and it
-  must finish inside Lambda's 15-minute limit. On a 10,240 MB function, a
+  must finish within the configured Lambda timeout, at most 15 minutes.
+  RenderChunk and Assemble each have their own invocation deadline; all three
+  phases must also fit the function's `/tmp` storage. On a 10,240 MB function, a
   26-minute 576×1024 24 fps H.264 clip plans in about 3.5 minutes. Larger
   frames, high-bitrate footage and more videos take proportionally longer.
-  ffmpeg extracts long clips in 2-minute segments, so `FFMPEG_PROCESS_TIMEOUT_MS`
-  applies to each segment, not to the whole clip. Split edits that approach the
-  limit into separate renders.
+  FFmpeg extracts long constant-frame-rate ranges in two-minute segments, so
+  `FFMPEG_PROCESS_TIMEOUT_MS` applies to each segment. Variable-frame-rate
+  sources remain unsegmented. See [long-video planning timeouts](#long-video-planning-times-out)
+  for timeout configuration and splitting edits that approach the limit.
 
 ## Related topics
 

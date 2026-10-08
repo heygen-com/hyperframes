@@ -44,7 +44,7 @@ The Lambda adapter wraps the distributed producer primitives behind one dispatch
 
 <Steps>
   <Step title="Plan">
-    Downloads the project archive from S3, runs the producer planner, and uploads the plan directory.
+    Downloads the project archive from S3, probes the composition, extracts its video frames, prepares audio, and publishes the plan artifacts before chunk workers start.
   </Step>
   <Step title="Render chunks">
     Step Functions fans out chunk jobs. Each Lambda invocation downloads the plan assets, renders one chunk, and uploads the result.
@@ -53,6 +53,8 @@ The Lambda adapter wraps the distributed producer primitives behind one dispatch
     Downloads all rendered chunks plus audio assets, assembles the final output, and writes the finished file to S3.
   </Step>
 </Steps>
+
+All three phases must fit the configured per-invocation Lambda timeout, at most 15 minutes. Video extraction happens in Plan, so smaller chunks do not reduce this phase's work. See [long-video planning limits](/deploy/aws-lambda#long-video-planning-times-out) for per-segment and variable-frame-rate FFmpeg timeouts and how to split jobs that cannot fit.
 
 The handler uses `@sparticuz/chromium` by default, with a build-time fallback for bundling `chrome-headless-shell` directly when needed.
 
