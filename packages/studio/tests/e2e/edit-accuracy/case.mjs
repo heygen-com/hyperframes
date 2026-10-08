@@ -189,10 +189,7 @@ async function contentQuad(handle) {
     objectId: handle.remoteObject().objectId,
   });
   if (!quads.length) throw new Error("element has no rendered box");
-  const density = await handle.evaluate(
-    () => window.devicePixelRatio / window.top.devicePixelRatio,
-  );
-  return toPoints(quads[0]).map(([x, y]) => [x * density, y * density]);
+  return toPoints(quads[0]);
 }
 
 async function findHandles(ctx) {
