@@ -28,6 +28,7 @@ function httpsResponse(
   statusCode: number,
   headers: Record<string, string> = {},
   body?: string | ((url: string) => string),
+  onResponse?: (response: IncomingMessage) => void,
 ): typeof httpsGet {
   return ((_url: string, callback: (response: IncomingMessage) => void) => {
     const response = new PassThrough() as PassThrough & {
@@ -38,7 +39,9 @@ function httpsResponse(
     response.headers = headers;
     const request = new EventEmitter() as ClientRequest;
     request.setTimeout = vi.fn();
-    callback(response as unknown as IncomingMessage);
+    const message = response as unknown as IncomingMessage;
+    onResponse?.(message);
+    callback(message);
     if (body !== undefined) {
       queueMicrotask(() => response.end(typeof body === "function" ? body(_url) : body));
     }
@@ -180,6 +183,78 @@ describe("downloadFile", () => {
 });
 
 describe("redirect handling", () => {
+  it("closes each redirect response before opening the next request", async () => {
+    const responses: IncomingMessage[] = [];
+    const capture = (response: IncomingMessage) => responses.push(response);
+    mockGet
+      .mockImplementationOnce(httpsResponse(302, { location: "/second" }, undefined, capture))
+      .mockImplementationOnce(
+        httpsResponse(307, { location: "/model" }, undefined, (response) => {
+          expect(responses[0]?.destroyed).toBe(true);
+          capture(response);
+        }),
+      )
+      .mockImplementationOnce(
+        httpsResponse(200, {}, "hello", () => {
+          expect(responses[1]?.destroyed).toBe(true);
+        }),
+      );
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-redirect-"));
+    tempDirs.push(dir);
+    await downloadFile("https://example.test/first", join(dir, "model"));
+
+    expect(responses).toHaveLength(2);
+    expect(responses.every((response) => response.destroyed)).toBe(true);
+    expect(mockGet).toHaveBeenCalledTimes(3);
+    expect(readFileSync(join(dir, "model"), "utf8")).toBe("hello");
+  });
+
+  it("does not let a discarded redirect request fail the active download", async () => {
+    mockGet
+      .mockImplementationOnce(httpsResponse(302, { location: "/model" }))
+      .mockImplementationOnce(httpsResponse(200, {}, "hello"));
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-redirect-"));
+    tempDirs.push(dir);
+    const pending = downloadFile("https://example.test/first", join(dir, "model"));
+    const firstRequest = mockGet.mock.results[0]?.value;
+    firstRequest?.emit("error", new Error("old redirect socket failed"));
+
+    await expect(pending).resolves.toBeUndefined();
+    expect(readFileSync(join(dir, "model"), "utf8")).toBe("hello");
+    expect(readdirSync(dir)).toEqual(["model"]);
+  });
+
+  it("closes redirect loop responses when reaching the hop limit", async () => {
+    const responses: IncomingMessage[] = [];
+    mockGet.mockImplementation(
+      httpsResponse(302, { location: "/loop" }, undefined, (response) => responses.push(response)),
+    );
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-redirect-"));
+    tempDirs.push(dir);
+
+    await expect(downloadFile("https://example.test/loop", join(dir, "model"))).rejects.toThrow(
+      "more than 10 redirects",
+    );
+    expect(responses).toHaveLength(11);
+    expect(responses.every((response) => response.destroyed)).toBe(true);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it.each([302, 404, 503])("closes rejected HTTP %s responses", async (status) => {
+    const responses: IncomingMessage[] = [];
+    mockGet.mockImplementation(
+      httpsResponse(status, {}, undefined, (response) => responses.push(response)),
+    );
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-http-error-"));
+    tempDirs.push(dir);
+
+    await expect(downloadFile("https://example.test/model", join(dir, "model"))).rejects.toThrow(
+      `HTTP ${status}`,
+    );
+    expect(responses[0]?.destroyed).toBe(true);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
   it("rejects a redirect that the HTTPS client cannot follow", async () => {
     mockGet
       .mockImplementationOnce(
