@@ -91,7 +91,6 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     warnings,
     progress,
     remainingMs,
-    maxScreenshots,
     pageContentCheck,
     contentCheckTimedOut,
     discoveredLotties,
@@ -109,6 +108,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     downloadByteBudget,
     canWrite,
   } = input;
+  const { maxScreenshots } = input;
   let exhaustedPhase: string | undefined = remainingMs() <= 0 ? "navigation checks" : undefined;
   const recordBudget = (phase: string): void => {
     if (exhaustedPhase === undefined && remainingMs() <= 0) exhaustedPhase = phase;
@@ -312,6 +312,10 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     }
 
     recordBudget("animation catalog");
+  };
+  await runAnimationCapture();
+
+  const runScreenshotCapture = async (): Promise<void> => {
     progress("screenshots", "Capturing scroll screenshots...");
     const { captureScrollScreenshots } = await import("./screenshotCapture.js");
     if (!canWrite()) {
@@ -330,11 +334,14 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     });
     if (capture.interruption || screenshots.length === 0) {
       recordBudget("screenshots");
-      const reason = capture.interruption?.reason ?? "internal-error";
+      const { reason, message: detail }: ScreenshotInterruption = capture.interruption ?? {
+        reason: "internal-error",
+        message: "screenshot capture produced no files",
+      };
       const cause =
         reason === "budget-exhausted"
           ? `--capture-budget exhausted during ${exhaustedPhase}`
-          : (capture.interruption?.message ?? "screenshot capture produced no files");
+          : detail;
       const message = `${screenshots.length}/${maxScreenshots} requested screenshot files captured: ${cause}`;
       screenshotOutcome = {
         kind: screenshots.length === 0 ? "failed" : "partial",
@@ -345,7 +352,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     }
     progress("screenshots", `${screenshots.length} scroll screenshots captured`);
   };
-  await runAnimationCapture();
+  await runScreenshotCapture();
   const runHtmlExtraction = async (): Promise<void> => {
     // Catalog all assets (must run before extractHtml which converts img src to data URLs)
     progress("design", "Cataloging assets...");

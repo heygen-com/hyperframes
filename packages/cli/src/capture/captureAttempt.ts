@@ -238,7 +238,6 @@ export async function captureWebsiteAttempt(
       warnings,
       progress,
       remainingMs,
-      maxScreenshots,
       pageContentCheck,
       contentCheckTimedOut,
       discoveredLotties,
@@ -255,6 +254,7 @@ export async function captureWebsiteAttempt(
       screenshots,
       downloadByteBudget,
       canWrite,
+      maxScreenshots,
     });
     ({
       animationCatalog,
