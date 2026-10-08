@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
 import { canonicalJsonStringify, sha256Hex } from "../render/stages/planHash.js";
 import { CURRENT_PLAN_PROTOCOL } from "./planProtocol.js";
@@ -65,6 +65,8 @@ function createV1Plan(
     framePattern?: string;
     videoStart?: number;
     videoEnd?: number;
+    /** Ship this planDir-relative source instead of extracted frames. */
+    deferredSource?: string;
   },
 ): string {
   const {
@@ -79,6 +81,7 @@ function createV1Plan(
     framePattern = "frame_%05d.jpg",
     videoStart = 0,
     videoEnd = 1,
+    deferredSource,
   } = options ?? {};
   const planDir = join(root, "v1");
   mkdirSync(join(planDir, "compiled"), { recursive: true });
@@ -97,9 +100,14 @@ function createV1Plan(
   if (video) {
     const framesDir = join(planDir, "video-frames", "hero");
     mkdirSync(framesDir, { recursive: true });
-    writeFileSync(join(framesDir, "frame_00001.jpg"), "frame zero");
-    writeFileSync(join(framesDir, "frame_00002.jpg"), "frame one");
-    writeFileSync(join(framesDir, "frame_00003.jpg"), "never rendered");
+    if (deferredSource === undefined) {
+      writeFileSync(join(framesDir, "frame_00001.jpg"), "frame zero");
+      writeFileSync(join(framesDir, "frame_00002.jpg"), "frame one");
+      writeFileSync(join(framesDir, "frame_00003.jpg"), "never rendered");
+    } else if (!deferredSource.startsWith("..")) {
+      mkdirSync(dirname(join(planDir, deferredSource)), { recursive: true });
+      writeFileSync(join(planDir, deferredSource), "source video");
+    }
     writeFileSync(
       join(planDir, "meta", "videos.json"),
       JSON.stringify({
@@ -133,6 +141,16 @@ function createV1Plan(
               hasAlpha: false,
               colorSpace: videoColorSpace,
             },
+            ...(deferredSource === undefined
+              ? {}
+              : {
+                  deferredRange: {
+                    sourcePath: deferredSource,
+                    startTime: 0,
+                    durationSeconds: 0.1,
+                    format: "jpg",
+                  },
+                }),
           },
         ],
       }),
@@ -407,6 +425,33 @@ describe("Plan v2 manifest", () => {
     expect(manifest.artifacts.some((artifact) => artifact.path.endsWith("frame_00003.jpg"))).toBe(
       false,
     );
+  });
+
+  it("ships a deferred video's source only to the chunks that show it", () => {
+    const root = tempPath("hf-plan-v2-deferred-source-");
+    const v1 = createV1Plan(root, {
+      video: true,
+      videoStart: 1 / 30,
+      deferredSource: "video-sources/0.mp4",
+    });
+    const manifest = readPlanV2Manifest(createPlanV2FromV1(v1, join(root, "v2")).planDir);
+    const chunk0 = listPlanV2ArtifactsForTarget(manifest, { role: "chunk", chunkIndex: 0 });
+    const chunk1 = listPlanV2ArtifactsForTarget(manifest, { role: "chunk", chunkIndex: 1 });
+    const assembler = listPlanV2ArtifactsForTarget(manifest, { role: "assembler" });
+
+    expect(manifest.limitations.videoDependencyMode).toBe("source-extract");
+    expect(chunk0.some((artifact) => artifact.path === "video-sources/0.mp4")).toBe(false);
+    expect(chunk1.some((artifact) => artifact.path === "video-sources/0.mp4")).toBe(true);
+    expect(assembler.some((artifact) => artifact.path === "video-sources/0.mp4")).toBe(false);
+    expect(manifest.artifacts.some((artifact) => artifact.path.startsWith("video-frames/"))).toBe(
+      false,
+    );
+  });
+
+  it("rejects a deferred video source outside the plan directory", () => {
+    const root = tempPath("hf-plan-v2-deferred-escape-");
+    const v1 = createV1Plan(root, { video: true, deferredSource: "../outside.mp4" });
+    expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(PlanV2IntegrityError);
   });
 
   it("gives a chunk the frames of a video starting a hair after its frame, as export shows it", () => {

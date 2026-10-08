@@ -220,6 +220,8 @@ export {
   type VideoElement,
   type ImageElement,
   type ExtractedFrames,
+  type DeferredFrameRange,
+  type FrameRange,
   type ExtractionOptions,
   type ExtractionResult,
   type ExtractionPhaseBreakdown,
