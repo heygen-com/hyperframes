@@ -110,6 +110,46 @@ describe("registry blocks", () => {
     expect(missing).toEqual([]);
   });
 
+  // Blocks installing the same shared library overwrite each other's copy, so a stale one downgrades the rest.
+  it("ships the same bytes from every block that installs a shared library", () => {
+    // target -> bytes -> blocks installing those bytes there
+    const installs = new Map<string, Map<string, string[]>>();
+    for (const entry of readdirSync(blocksDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const itemDir = join(blocksDir, entry.name);
+      for (const file of loadRegistryManifest(itemDir).files) {
+        if (!file.target.startsWith("compositions/lib/")) continue;
+        const content = readFileSync(join(itemDir, file.path), "latin1");
+        const byContent = installs.get(file.target) ?? new Map<string, string[]>();
+        byContent.set(content, [...(byContent.get(content) ?? []), entry.name]);
+        installs.set(file.target, byContent);
+      }
+    }
+
+    expect(installs.get("compositions/lib/shaders.iife.js")?.size).toBe(1);
+    const diverged = [...installs]
+      .filter(([, byContent]) => byContent.size > 1)
+      .map(([target, byContent]) => `${target}: ${[...byContent.values()].join(" vs ")}`);
+    expect(diverged).toEqual([]);
+  });
+
+  it("names a shader the shared bundle holds in every shader block", () => {
+    const missing: string[] = [];
+    for (const entry of readdirSync(blocksDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const itemDir = join(blocksDir, entry.name);
+      const manifest = loadRegistryManifest(itemDir);
+      const bundle = manifest.files.find((f) => f.target === "compositions/lib/shaders.iife.js");
+      const composition = manifest.files.find((f) => f.type === "hyperframes:composition");
+      if (!bundle || !composition) continue;
+      const html = readFileSync(join(itemDir, composition.path), "utf8");
+      const shader = html.match(/data-shader="([^"]+)"/)?.[1];
+      const code = readFileSync(join(itemDir, bundle.path), "utf8");
+      if (!shader || !code.includes(`name:"${shader}"`)) missing.push(`${entry.name}: ${shader}`);
+    }
+    expect(missing).toEqual([]);
+  });
+
   it("keeps the Camcorder HUD seekable inside a differently named host composition", async () => {
     const bundled = await bundleToSingleHtml(resolve(blocksDir, "camcorder-hud"), {
       entryFile: "demo.html",

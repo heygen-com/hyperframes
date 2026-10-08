@@ -2,7 +2,7 @@
 // index imports every shader for side effects and the registry for media sizing and presets, which these never use.
 import { build } from "esbuild";
 import { existsSync } from "node:fs";
-import { copyFile, readdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
 
 const SHADERS = [
   "Aurora",
@@ -65,19 +65,23 @@ const onlyTheseShaders = {
   name: "only-these-shaders",
   setup(b) {
     b.onLoad({ filter: /node_modules\/shaders\/dist\/core\/index\.js$/ }, async ({ path }) => {
-      let src = await readFile(path, "utf8");
-      const before = src.length;
-      src = src.replace(/^import "\.\/[A-Z][\w-]*\.js";\n/gm, "");
-      src = src.replace(
-        /import \{ n as getShaderByName, t as getAllShaders \} from "\.\/shaderRegistry-[\w-]+\.js";/,
-        `${imports}
+      const src = await readFile(path, "utf8");
+      const patched = [
+        [/^import "\.\/[A-Z][\w-]*\.js";\n/gm, ""],
+        [
+          /import \{ n as getShaderByName, t as getAllShaders \} from "\.\/shaderRegistry-[\w-]+\.js";/,
+          `${imports}
 const __defs = [${SHADERS.join(", ")}].map((definition) => ({ definition }));
 const getShaderByName = (n) => __defs.find((s) => s.definition.name === n);
 const getAllShaders = () => __defs;`,
-      );
-      if (src.length === before)
-        throw new Error("shaders/core index.js changed shape; this build needs a look");
-      return { contents: src, loader: "js", resolveDir: path.replace(/\/[^/]+$/, "") };
+        ],
+      ].reduce((code, [pattern, replacement]) => {
+        const next = code.replace(pattern, replacement);
+        if (next === code)
+          throw new Error("shaders/core index.js changed shape; this build needs a look");
+        return next;
+      }, src);
+      return { contents: patched, loader: "js", resolveDir: path.replace(/\/[^/]+$/, "") };
     });
   },
 };
@@ -96,12 +100,16 @@ await build({
   plugins: [shaderDefs, onlyTheseShaders],
   logLevel: "error",
 });
-// Every sibling block that ships the bundle gets the same bytes.
+// Every block whose registry-item.json installs the bundle gets the same lib/ files.
+const LIB = ["shaders.iife.js", "shaders.THIRD-PARTY-LICENSES.txt"];
 const blocks = [];
 for (const block of await readdir("../..")) {
-  const lib = `../../${block}/lib/shaders.iife.js`;
-  if (block === "godrays" || !existsSync(lib)) continue;
-  await copyFile(out, lib);
+  const manifest = `../../${block}/registry-item.json`;
+  if (block === "godrays" || !existsSync(manifest)) continue;
+  const { files } = JSON.parse(await readFile(manifest, "utf8"));
+  if (!files.some((f) => f.target === "compositions/lib/shaders.iife.js")) continue;
+  await mkdir(`../../${block}/lib`, { recursive: true });
+  for (const name of LIB) await copyFile(`../lib/${name}`, `../../${block}/lib/${name}`);
   blocks.push(block);
 }
 console.log(
