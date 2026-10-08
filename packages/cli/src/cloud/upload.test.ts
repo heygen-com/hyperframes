@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { HyperframesApiError } from "./_gen/client.js";
 import type { HyperframesCloudClient } from "./_gen/client.js";
 import { uploadZipViaDirectUpload } from "./upload.js";
@@ -83,6 +84,59 @@ describe("uploadZipViaDirectUpload", () => {
       "x-signed-header": "signed-value",
       "x-other": "other-value",
     });
+  });
+
+  it.each([
+    { headerName: "Content-Type", headerValue: "application/zip" },
+    { headerName: "CONTENT-TYPE", headerValue: "application/zip" },
+    { headerName: "CoNtEnT-TyPe", headerValue: "application/zip; profile=signed" },
+    { headerName: "content-type", headerValue: "application/zip" },
+    { headerName: undefined, headerValue: "application/zip" },
+  ])("sends exactly one content type for $headerName", async ({ headerName, headerValue }) => {
+    let receivedContentType: string | undefined;
+    let contentTypeHeaders = 0;
+    const receivedChunks: Buffer[] = [];
+    const server = createServer((request, response) => {
+      receivedContentType = request.headers["content-type"];
+      for (let index = 0; index < request.rawHeaders.length; index += 2) {
+        if (request.rawHeaders[index]?.toLowerCase() === "content-type") contentTypeHeaders++;
+      }
+      request.on("data", (chunk: Buffer) => receivedChunks.push(chunk));
+      request.on("end", () => {
+        response.writeHead(200);
+        response.end();
+      });
+    });
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", resolve);
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Missing server address");
+      const uploadHeaders: Record<string, unknown> = {};
+      if (headerName) uploadHeaders[headerName] = headerValue;
+      const client = makeClient({
+        createAssetUpload: vi.fn(async () => ({
+          asset_id: "asset_xyz",
+          upload_url: `http://127.0.0.1:${address.port}/upload`,
+          upload_headers: uploadHeaders,
+          expires_in_seconds: 60,
+          max_bytes: 1024,
+          status: "pending_upload" as const,
+        })),
+      });
+      const bytes = Buffer.from("zip bytes");
+      await uploadZipViaDirectUpload({ client, bytes, filename: "x.zip" });
+      expect(receivedContentType).toBe(headerValue);
+      expect(contentTypeHeaders).toBe(1);
+      expect(Buffer.concat(receivedChunks)).toEqual(bytes);
+      expect(client.completeAssetUpload).toHaveBeenCalledOnce();
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("does NOT attach CLI auth headers to the S3 PUT — presigned URL carries auth", async () => {

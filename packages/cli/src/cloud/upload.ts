@@ -86,10 +86,10 @@ async function putBytesToPresignedUrl(
   uploadHeaders: Record<string, unknown>,
   bytes: Uint8Array,
 ): Promise<void> {
-  const headers: Record<string, string> = {
-    "content-type": CONTENT_TYPE_ZIP,
-    ...normalizeUploadHeaders(uploadHeaders),
-  };
+  const headers = normalizeUploadHeaders(uploadHeaders);
+  if (!Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) {
+    headers["content-type"] = CONTENT_TYPE_ZIP;
+  }
   // `Uint8Array<ArrayBufferLike>` is a valid `BodyInit` at runtime but
   // not strictly assignable per lib.dom.d.ts — cast rather than copy,
   // since a 200MB buffer copy would be wasteful.
