@@ -89,6 +89,35 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(host.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
   });
 
+  it("preserves URL suffixes when hoisting nested scene assets", () => {
+    const document = makeHostDocument("intro");
+    const host = document.querySelector("[data-composition-src]");
+    if (!host) throw new Error("Missing composition host");
+    host.setAttribute("data-composition-src", "scenes/intro.html");
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => `<!doctype html><html><head>
+        <link rel="stylesheet" href="../theme.css?source=https://example.com/a//b">
+        <style>.cover { background-image: url("../sprites.svg#icons/../logo"); }</style>
+      </head><body><div data-composition-id="intro">
+        <img id="cover" src="../cover.png?source=https://example.com/a//b">
+      </div></body></html>`,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+    expect(result.externalLinks).toEqual([
+      {
+        href: "theme.css?source=https://example.com/a//b",
+        rel: "stylesheet",
+        crossorigin: undefined,
+      },
+    ]);
+    expect(result.styles.map((style) => style.css).join("\n")).toContain(
+      `url("sprites.svg#icons/../logo")`,
+    );
+    expect(host.querySelector("img")?.getAttribute("src")).toBe(
+      "cover.png?source=https://example.com/a//b",
+    );
+  });
+
   it("passes the failure reason through to onMissingComposition", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;

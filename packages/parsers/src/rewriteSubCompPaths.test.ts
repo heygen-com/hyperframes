@@ -10,6 +10,41 @@ describe("rewriteAssetPath", () => {
     expect(rewriteAssetPath("compositions/scene.html", "../icon.svg")).toBe("icon.svg");
   });
 
+  it.each([
+    { source: "../sprites.svg#icons/../logo", expected: "sprites.svg#icons/../logo" },
+    {
+      source: "../movie.mp4?url=https://example.com/a//b",
+      expected: "movie.mp4?url=https://example.com/a//b",
+    },
+    { source: "../movie.mp4?path=/a/../../b#t=2", expected: "movie.mp4?path=/a/../../b#t=2" },
+    {
+      source: "../../cover.png?x=1/../2#same//fragment",
+      expected: "cover.png?x=1/../2#same//fragment",
+    },
+  ])("preserves the suffix of $source", ({ source, expected }) => {
+    const composition = source.startsWith("../../")
+      ? "scenes/nested/scene.html"
+      : "scenes/scene.html";
+    expect(rewriteAssetPath(composition, source)).toBe(expected);
+    expect(rewriteAssetPath(composition, source, () => true)).toBe(expected);
+  });
+
+  it("normalizes parent segments in the path before preserving the suffix", () => {
+    expect(
+      rewriteAssetPath(
+        "scenes/nested/scene.html",
+        "../images/../cover.png?url=https://example.com/x",
+      ),
+    ).toBe("scenes/cover.png?url=https://example.com/x");
+  });
+
+  it("preserves query strings and fragments in CSS URL references", () => {
+    const css = `background-image: url("../cover.png?url=https://example.com/a//b#icon/../hero");`;
+    expect(rewriteCssAssetUrls(css, "scenes/scene.html")).toBe(
+      `background-image: url("cover.png?url=https://example.com/a//b#icon/../hero");`,
+    );
+  });
+
   it("leaves plain relative paths untouched", () => {
     expect(rewriteAssetPath("compositions/scene.html", "assets/logo.png")).toBe("assets/logo.png");
   });

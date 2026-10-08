@@ -83,9 +83,10 @@ export function rewriteAssetPath(
     const sibling = resolve("/", join(compDir, filePart)).slice(1);
     return assetExists(sibling) ? sibling + suffix : relativePath;
   }
-  const resolved = join(compDir, relativePath);
+  const [filePart, suffix] = splitPathSuffix(relativePath);
+  const resolved = join(compDir, filePart);
   const normalized = resolve("/", resolved).slice(1);
-  return normalized;
+  return normalized + suffix;
 }
 
 /**
