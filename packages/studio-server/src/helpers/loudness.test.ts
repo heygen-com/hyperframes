@@ -62,6 +62,40 @@ describe("audioTags with video", () => {
   });
 });
 
+describe("audioTags with HTML character references", () => {
+  it.each([
+    { src: "Q&amp;A.wav", expected: "Q&A.wav" },
+    { src: "Q&#38;A.wav", expected: "Q&A.wav" },
+    { src: "Q&#x26;A.wav", expected: "Q&A.wav" },
+    { src: "an&#39;s &quot;reply&quot;.wav", expected: 'an\'s "reply".wav' },
+    { src: "Q&amp;amp;A.wav", expected: "Q&amp;A.wav" },
+  ])("decodes $src once for local file lookup", ({ src, expected }) => {
+    const html = `<audio id="vo" src="${src}"></audio>`;
+    expect(audioTags(html)[0]?.src).toBe(expected);
+  });
+
+  it("patches an entity-encoded id while preserving every other authored byte", () => {
+    const html = `<audio id="voice&#45;over" src="Q&amp;A.wav" data-volume="&#49;"></audio>`;
+    expect(audioTags(html)[0]).toEqual(expect.objectContaining({ id: "voice-over", volume: 1 }));
+    expect(updateAudioVolume(html, "voice-over", 0.5)).toBe(
+      `<audio id="voice&#45;over" src="Q&amp;A.wav" data-volume="0.5"></audio>`,
+    );
+  });
+
+  it("decodes video audibility and timing attributes before interpreting them", () => {
+    const html = `<video id="vo" src="Q&amp;A.mp4" data-has-audio="tr&#117;e" data-media-start="&#50;" data-duration="&#51;" data-playback-rate="&#49;"></video>`;
+    expect(audioTags(html)[0]).toEqual(
+      expect.objectContaining({
+        id: "vo",
+        src: "Q&A.mp4",
+        mediaStart: 2,
+        duration: 3,
+        playbackRate: 1,
+      }),
+    );
+  });
+});
+
 describe("loudnessMeasureArgs with a playback rate", () => {
   it("measures the source span a sped-up clip actually plays", () => {
     const args = loudnessMeasureArgs("clip.mp4", { mediaStart: 0, duration: 4, playbackRate: 2 });
