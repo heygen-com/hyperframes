@@ -5,7 +5,11 @@ import { defineCommand } from "citty";
 import * as clack from "@clack/prompts";
 import open from "open";
 import type { Example } from "./_examples.js";
-import { trackCatalogSearchMiss, trackRenderFeedback } from "../telemetry/events.js";
+import {
+  trackCatalogSearchMiss,
+  trackFeedbackComment,
+  trackRenderFeedback,
+} from "../telemetry/events.js";
 import { shouldTrack } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
 import { readConfig, type RecentRenderRecord } from "../telemetry/config.js";
@@ -21,6 +25,10 @@ import { lintFeedbackComment, type FeedbackLintInput } from "../utils/feedbackLi
 export const examples: Example[] = [
   ["Submit render feedback", 'hyperframes feedback --rating 8 --comment "fast but font missing"'],
   ["Quick rating only", "hyperframes feedback --rating 10"],
+  [
+    "Report something you needed that is missing (no rating)",
+    'hyperframes feedback --comment "MISSING FEATURE: trim a clip from the timeline | WORKAROUND: none"',
+  ],
   [
     "Report a catalog gap after a fruitless search",
     'hyperframes feedback --search-miss "typewriter that deletes" --wanted "text that types then backspaces"',
@@ -38,8 +46,8 @@ function normalizeComment(raw?: string): string | undefined {
 /**
  * Compact PostHog join keys appended to the environment string that rides
  * along with the forwarded report (and therefore lands verbatim in the wild
- * feedback channel): `fid` = this submission's PostHog `cli_render_feedback`
- * `feedback_id`; `tid` = the install's telemetry distinct_id; `renders` =
+ * feedback channel): `fid` = the PostHog `feedback_id` (`cli_render_feedback` or
+ * `cli_feedback_comment`); `tid` = the install's telemetry distinct_id; `renders` =
  * recent `render_job_id`s (newest last, `!` suffix = the render failed).
  * Together they turn a wild report into an exact telemetry lookup instead of
  * a hardware-fingerprint hunt.
@@ -155,18 +163,62 @@ async function fileGithubIssue(opts: {
   await openAndPrintIssue(url);
 }
 
+// A comment with no rating is its own report (a missing feature, host-app
+// friction): it scores nothing, so it must stay out of the rating metric.
+function reportRating(
+  raw: string | undefined,
+  comment: string | undefined,
+  fileIssue: boolean,
+): number | undefined {
+  const rating = raw === undefined ? undefined : parseFeedbackRating(raw);
+  if (rating === null) {
+    console.error(c.error("Rating must be an integer between 0 and 10"));
+    failCommand();
+  }
+  if (rating === undefined && !comment?.trim()) {
+    console.error(c.error("Give a --rating (an integer from 0 to 10), a --comment, or both"));
+    failCommand();
+  }
+  if (rating === undefined && fileIssue) {
+    console.error(c.error("--file-issue needs a --rating"));
+    failCommand();
+  }
+  return rating;
+}
+
+function trackFeedback(report: {
+  rating: number | undefined;
+  comment: string | undefined;
+  doctorSummary: string;
+  feedbackId: string;
+  recentRenderIds: string[] | undefined;
+}): void {
+  const { rating, comment, ...keys } = report;
+  if (rating === undefined) {
+    if (comment) trackFeedbackComment({ comment, ...keys });
+    return;
+  }
+  // Soft-warn (never blocks) when the comment for a non-clean report is
+  // missing the mandated reproduction-packet markers. Prints before the
+  // submission ack so the reporter sees the nudge while their run is fresh.
+  printFeedbackLintWarnings({ rating, comment });
+  // The standalone command runs separately from `render`, so it has no real
+  // elapsed time to report. Omit it rather than recording a fake duration.
+  trackRenderFeedback({ rating, comment, ...keys });
+}
+
 export default defineCommand({
   meta: { name: "feedback", description: "Submit feedback about your experience" },
   args: {
     rating: {
       type: "string",
-      // Required for a rating report, but --search-miss is a different report
-      // with no rating to give, so the check moved into the run body.
+      // Optional: --search-miss and a lone --comment are reports with no
+      // rating to give, so the check lives in the run body.
       description: "Likelihood to recommend (0=not likely, 10=extremely likely)",
     },
     comment: {
       type: "string",
-      description: "Optional details about your experience",
+      description: "Details about your experience; alone, a report with no rating",
     },
     source: {
       type: "string",
@@ -220,13 +272,8 @@ export default defineCommand({
       return;
     }
 
-    // `--rating` is no longer required at the arg level, so an absent one
-    // reaches here as undefined rather than being rejected by the parser.
-    const rating = args.rating === undefined ? null : parseFeedbackRating(args.rating);
-    if (rating === null) {
-      console.error(c.error("Rating must be an integer between 0 and 10"));
-      failCommand();
-    }
+    const comment = normalizeComment(args.comment);
+    const rating = reportRating(args.rating, comment, args["file-issue"] === true);
 
     const source = parseFeedbackSource(args.source);
     if (source === null) {
@@ -239,7 +286,6 @@ export default defineCommand({
       return;
     }
 
-    const comment = normalizeComment(args.comment);
     const doctorSummary = await getDoctorSummary();
 
     // Join keys tying this report to the install's PostHog rows — see
@@ -254,14 +300,7 @@ export default defineCommand({
     });
     const envWithJoinKeys = doctorSummary ? `${doctorSummary} ${joinKeys}` : joinKeys;
 
-    // Soft-warn (never blocks) when the comment for a non-clean report is
-    // missing the mandated reproduction-packet markers. Prints before the
-    // submission ack so the reporter sees the nudge while their run is fresh.
-    printFeedbackLintWarnings({ rating, comment });
-
-    // The standalone command runs separately from `render`, so it has no real
-    // elapsed time to report. Omit it rather than recording a fake duration.
-    trackRenderFeedback({
+    trackFeedback({
       rating,
       comment,
       doctorSummary,
@@ -281,7 +320,7 @@ export default defineCommand({
       email: feedbackEmail(),
     });
 
-    if (args["file-issue"] === true) {
+    if (args["file-issue"] === true && rating !== undefined) {
       await fileGithubIssue({
         rating,
         comment,

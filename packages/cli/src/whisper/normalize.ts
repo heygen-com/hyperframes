@@ -525,16 +525,6 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   return { words, format };
 }
 
-/**
- * Remove words that fall before the detected speech onset.
- * Whisper can hallucinate words over non-speech sections at the start of audio.
- */
-export function stripBeforeOnset(words: Word[], onsetSeconds: number): Word[] {
-  // 0.5s tolerance: keep words whose timestamps straddle the onset boundary,
-  // since whisper may assign a slightly early start to the first spoken word.
-  return words.filter((w) => w.start >= onsetSeconds - 0.5);
-}
-
 export function patchCaptionHtml(dir: string, words: Word[]): void {
   if (words.length === 0) return;
 

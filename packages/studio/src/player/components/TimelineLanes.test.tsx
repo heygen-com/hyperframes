@@ -89,7 +89,10 @@ interface RenderLanesOptions {
   renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
   snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
   withoutSelectHandler?: boolean;
+  pps?: number;
 }
+
+const lanePps = (options: RenderLanesOptions) => options.pps ?? 100;
 
 const selectHandlerFor = (
   options: RenderLanesOptions,
@@ -102,12 +105,14 @@ function renderLanes(options: RenderLanesOptions = {}): {
   rerender: (next: RenderLanesOptions) => void;
   setSelectedElementId: ReturnType<typeof vi.fn>;
   onSelectElement: ReturnType<typeof vi.fn>;
+  onRazorSplit: ReturnType<typeof vi.fn>;
 } {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   const setSelectedElementId = vi.fn();
   const onSelectElement = vi.fn();
+  const onRazorSplit = vi.fn();
   const render = (next: RenderLanesOptions) => {
     const elements = next.elements ?? [element("clip-a", TRACK_A)];
     const gsapAnimations = next.animations ?? new Map<string, GsapAnimation[]>();
@@ -124,7 +129,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
       usePlayerStore.setState({ expandedClipIds: new Set(next.expandedClipIds ?? []) });
       root.render(
         <TimelineLanes
-          pps={100}
+          pps={lanePps(next)}
           contentOrigin={232}
           contentGutter={32}
           trackContentWidth={800}
@@ -186,14 +191,14 @@ function renderLanes(options: RenderLanesOptions = {}): {
           onResizeElement={vi.fn()}
           onMoveElement={vi.fn()}
           onSelectElement={selectHandlerFor(next, onSelectElement)}
-          onRazorSplit={vi.fn()}
+          onRazorSplit={onRazorSplit}
           onRazorSplitAll={vi.fn()}
         />,
       );
     });
   };
   render(options);
-  return { host, root, rerender: render, setSelectedElementId, onSelectElement };
+  return { host, root, rerender: render, setSelectedElementId, onSelectElement, onRazorSplit };
 }
 
 function visibilityLabels(host: HTMLElement): (string | null)[] {
@@ -586,12 +591,18 @@ describe("TimelineLanes clip joins", () => {
 
     const joins = view.host.querySelectorAll<HTMLElement>("[data-timeline-clip-join]");
     expect(joins).toHaveLength(1);
-    expect(joins[0]?.style.left).toBe("200px");
+    // Both sit in one-second layers 100px wide: 200% is 200px, at the 2 s join.
+    const layerWidth = (el: Element | null | undefined) =>
+      (el?.closest("[data-timeline-time-layer]") as HTMLElement | null)?.style.width;
+    expect(joins[0]?.style.left).toBe("200%");
+    expect(layerWidth(joins[0])).toBe("100px");
     expect(joins[0]?.style.width).toBe("1px");
     expect(joins[0]?.style.background).toBe(defaultTimelineTheme.rowBackground);
     const clipB = view.host.querySelector<HTMLElement>('[data-el-id="clip-b"]');
-    expect(clipB?.style.left).toBe("200px");
-    expect(clipB?.style.width).toBe("150px");
+    expect(clipB?.style.left).toBe("200%");
+    expect(clipB?.style.width).toBe("150%");
+    expect(clipB?.style.minWidth).toBe("4px");
+    expect(layerWidth(clipB)).toBe("100px");
     act(() => view.root.unmount());
   });
 
@@ -621,6 +632,40 @@ describe("TimelineLanes transition seams", () => {
 
     expect(view.host.querySelectorAll("[data-timeline-row]").length).toBeGreaterThanOrEqual(3);
     expect(derivations.reduce((calls, derive) => calls + derive.mock.calls.length, 0)).toBe(1);
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes clips during a zoom", () => {
+  afterEach(() => {
+    usePlayerStore.setState({ activeTool: "select" });
+  });
+
+  it("leaves a clip unrendered by a zoom step that does not change what it draws", () => {
+    const renderClipContent = vi.fn(() => null);
+    const clip = { ...element("clip-a", TRACK_A), start: 0, duration: 2 };
+    const view = renderLanes({ elements: [clip], renderClipContent, pps: 100 });
+    const drawn = renderClipContent.mock.calls.length;
+    // 200px to 220px: still a labelled clip with handles.
+    view.rerender({ elements: [clip], renderClipContent, pps: 110 });
+    expect(renderClipContent.mock.calls.length).toBe(drawn);
+    // 40px: the clip drops its label, so it draws again.
+    view.rerender({ elements: [clip], renderClipContent, pps: 20 });
+    expect(renderClipContent.mock.calls.length).toBeGreaterThan(drawn);
+    act(() => view.root.unmount());
+  });
+
+  it("splits with the razor at the time under the pointer at the current zoom", () => {
+    usePlayerStore.setState({ activeTool: "razor" });
+    const clip = { ...element("clip-a", TRACK_A), start: 0, duration: 2 };
+    const view = renderLanes({ elements: [clip], pps: 100 });
+    view.rerender({ elements: [clip], pps: 105 });
+    act(() => {
+      view.host
+        .querySelector('[data-el-id="clip-a"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 105 }));
+    });
+    expect(view.onRazorSplit).toHaveBeenCalledWith(expect.objectContaining({ id: "clip-a" }), 1);
     act(() => view.root.unmount());
   });
 });

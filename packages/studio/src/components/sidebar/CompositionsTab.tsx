@@ -13,6 +13,7 @@ import {
   THUMBNAIL_SEEK_TIME_SECONDS,
 } from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
+import { postFrameDisplayScale } from "../../player/lib/runtimeProtocol";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
@@ -257,6 +258,22 @@ function CompCard({
   useEffect(() => {
     if (hovered) requestIframePlaybackSync(true);
   }, [hovered, requestIframePlaybackSync]);
+
+  useEffect(() => {
+    if (livePreviewLoaded) postFrameDisplayScale(iframeRef.current);
+  }, [livePreviewLoaded, previewScale]);
+
+  useEffect(() => {
+    if (!hovered) return;
+    const onRuntimeReady = (event: MessageEvent) => {
+      const frame = iframeRef.current;
+      if (frame && event.source === frame.contentWindow && event.data?.type === "ready") {
+        postFrameDisplayScale(frame);
+      }
+    };
+    window.addEventListener("message", onRuntimeReady);
+    return () => window.removeEventListener("message", onRuntimeReady);
+  }, [hovered]);
 
   useEffect(() => {
     return () => {

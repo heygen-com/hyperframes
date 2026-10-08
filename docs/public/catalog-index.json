@@ -1821,6 +1821,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart-vertical.png"
   },
   {
+    "name": "flowing-gradient",
+    "type": "block",
+    "title": "Flowing Gradient",
+    "description": "Bands of orange and violet flow across the frame in a smooth gradient. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "gradient",
+      "color",
+      "flow"
+    ],
+    "href": "/catalog/blocks/flowing-gradient"
+  },
+  {
     "name": "focus-blur-resolve",
     "type": "component",
     "title": "Focus Blur Resolve",
@@ -1975,6 +1990,20 @@
     ],
     "href": "/catalog/components/gloss-sweep",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gloss-sweep.png"
+  },
+  {
+    "name": "godrays",
+    "type": "block",
+    "title": "Godrays",
+    "description": "Rays of light fan out from a corner and drift across a deep blue field. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "light",
+      "rays"
+    ],
+    "href": "/catalog/blocks/godrays"
   },
   {
     "name": "grade-split-reveal",
@@ -2537,6 +2566,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-widgets.png"
   },
   {
+    "name": "liquid-metal",
+    "type": "block",
+    "title": "Liquid Metal",
+    "description": "A chrome sphere ripples and flows like molten metal on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "metal",
+      "chrome",
+      "liquid",
+      "sphere"
+    ],
+    "href": "/catalog/blocks/liquid-metal"
+  },
+  {
     "name": "locked-nucleus-orbit",
     "type": "component",
     "title": "Locked Nucleus Orbit",
@@ -2837,6 +2882,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
   },
   {
+    "name": "marble",
+    "type": "block",
+    "title": "Marble",
+    "description": "Ink-dark veins wind through white in a marbled pattern that slowly shifts. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "marble",
+      "texture"
+    ],
+    "href": "/catalog/blocks/marble"
+  },
+  {
     "name": "marker-checklist-card",
     "type": "component",
     "title": "Marker Checklist Card",
@@ -2907,6 +2966,20 @@
     ],
     "href": "/catalog/components/menu-morph",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/menu-morph.png"
+  },
+  {
+    "name": "mesh-gradient",
+    "type": "block",
+    "title": "Mesh Gradient",
+    "description": "Soft coral, orange and violet fields blend and drift in a mesh gradient. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "gradient",
+      "color"
+    ],
+    "href": "/catalog/blocks/mesh-gradient"
   },
   {
     "name": "mesh-gradient-bg",
@@ -3186,6 +3259,21 @@
     ],
     "href": "/catalog/components/native-notification-pop",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/native-notification-pop.png"
+  },
+  {
+    "name": "nebula",
+    "type": "block",
+    "title": "Nebula",
+    "description": "A small world of pink and blue gas swirls inside a sphere on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "space",
+      "nebula",
+      "sphere"
+    ],
+    "href": "/catalog/blocks/nebula"
   },
   {
     "name": "news-ticker",

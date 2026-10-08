@@ -1,3 +1,4 @@
+export { buildTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
@@ -14,21 +15,6 @@ export function getTimelineAssetKind(assetPath: string): TimelineAssetKind | nul
   if (VIDEO_EXT.test(assetPath)) return "video";
   if (AUDIO_EXT.test(assetPath)) return "audio";
   return null;
-}
-
-export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<string>): string {
-  const baseName = assetPath.split("/").pop() ?? "asset";
-  const normalized = baseName
-    .replace(/\.[^.]+$/, "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toLowerCase();
-  const baseId = normalized || "asset";
-  const ids = new Set(existingIds);
-  if (!ids.has(baseId)) return baseId;
-  let suffix = 2;
-  while (ids.has(`${baseId}_${suffix}`)) suffix += 1;
-  return `${baseId}_${suffix}`;
 }
 
 export function resolveTimelineAssetSrc(targetPath: string, assetPath: string): string {
@@ -155,9 +141,13 @@ export function extendCompositionDurationIfNeeded(source: string, requiredEnd: n
  * reduce the furthest clip end (delete/trim). No-op when `contentEnd` is not > 0, so
  * an empty timeline keeps its declared duration instead of collapsing to 0.
  */
-export function setCompositionDurationToContent(source: string, contentEnd: number): string {
+export function setCompositionDurationToContent(
+  source: string,
+  contentEnd: number,
+  rootDuration?: number | null,
+): string {
   if (!Number.isFinite(contentEnd) || contentEnd <= 0) return source;
-  const rootDur = readRootCompositionDuration(source);
+  const rootDur = rootDuration === undefined ? readRootCompositionDuration(source) : rootDuration;
   if (rootDur == null) return source;
   const next = roundToCenti(contentEnd);
   if (rootDur === next) return source;

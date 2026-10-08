@@ -9,6 +9,7 @@
   const FNV_PRIME = 16777619;
   const LIVENESS_POSITION_BUCKET_PX = 2;
   const LIVENESS_OPACITY_BUCKET = 0.08;
+  const LIVENESS_MEDIA_TIME_BUCKET_SEC = 0.1;
   const IGNORE_SELECTOR = "[data-layout-ignore], [data-layout-check='ignore']";
   // counter(name) / counters(name, sep) in generated content. A list-item box
   // whose ::marker content is `normal` paints counter(list-item) implicitly.
@@ -139,6 +140,34 @@
     return clip ? hashFields([clip]) : "";
   }
 
+  // Paint that moves no geometry: a filter, color, background, shadow or SVG paint tween restyles a box in place.
+  function paintChannel(properties) {
+    return (element, ctx) => {
+      const values = properties.map((property) => cssValue(ctx.style[property]));
+      return values.some(Boolean) ? hashFields(values) : "";
+    };
+  }
+  const backgroundPaintChannel = paintChannel([
+    "filter",
+    "backdropFilter",
+    "backgroundColor",
+    "backgroundImage",
+    "backgroundPosition",
+    "boxShadow",
+  ]);
+
+  const STROKE_EDGES = ["borderTop", "borderRight", "borderBottom", "borderLeft", "outline"];
+  // Blink computes border and outline colors as `currentColor` even when none is drawn, so they follow `color`.
+  function drawnColor(style, edge) {
+    const drawn = style[`${edge}Style`] !== "none" && Number.parseFloat(style[`${edge}Width`]) > 0;
+    return drawn ? style[`${edge}Color`] : "";
+  }
+  function strokePaintChannel(element, ctx) {
+    const values = STROKE_EDGES.map((edge) => drawnColor(ctx.style, edge));
+    return values.some(Boolean) ? hashFields(values) : "";
+  }
+  const contentPaintChannel = paintChannel(["color", "textShadow", "fill", "stroke"]);
+
   // Direct text nodes only: descendants are signed separately, and a hidden
   // descendant's text mutation must not masquerade as visible motion.
   function textChannel(element) {
@@ -223,12 +252,15 @@
     fontAxesChannel,
     clipPathChannel,
     controlWidgetChannel,
+    backgroundPaintChannel,
+    strokePaintChannel,
   ];
   const CONTENT_CHANNELS = [
     textChannel,
     controlValueChannel,
     generatedContentChannel,
     mediaPixelChannel,
+    contentPaintChannel,
   ];
   const ELEMENT_CHANNELS = [...BOX_CHANNELS, ...CONTENT_CHANNELS];
 
@@ -302,6 +334,20 @@
     return parts;
   }
 
+  // Media time moves under seek where no pixel can be read: a graded video is drawn into a WebGL canvas that
+  // reads back blank, and audio has no box. Audio shows the timeline ran but is no picture, so it is kept apart.
+  function mediaTimeParts(root, quantize, selector) {
+    const parts = [];
+    for (const media of root.querySelectorAll(selector)) {
+      if (isOptedOut(media, root)) continue;
+      const time = media.currentTime;
+      parts.push(
+        String(quantize ? Math.round(time / LIVENESS_MEDIA_TIME_BUCKET_SEC) : round(time)),
+      );
+    }
+    return parts;
+  }
+
   // One signature of everything under `root`, root included, that a viewer could see change between seeks.
   // Opted-out elements inside the root may animate off the timeline, so they are neither signed nor counter
   // consumers, but stay counter owners; the root itself is always measured.
@@ -353,7 +399,7 @@
       const channels = skipped ? BOX_CHANNELS : ELEMENT_CHANNELS;
       parts.push(channels.map((channel) => channel(element, ctx)).join(","));
     }
-    parts.push(...counterParts(root, boxOwners));
+    parts.push(...counterParts(root, boxOwners), ...mediaTimeParts(root, quantize, "video"));
     return parts.join("|");
   }
 
@@ -369,6 +415,9 @@
   // The name predates the textual/media channels and is kept for driver
   // compatibility.
   window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
-    return compositionSignature(compositionRoot(), { quantize: false });
+    const root = compositionRoot();
+    // AUDIO_TIME_SEPARATOR in utils/checkPipeline.ts: what follows it is audio time, not something seen.
+    const audio = root ? mediaTimeParts(root, false, "audio").join("|") : "";
+    return `${compositionSignature(root, { quantize: false })}\u001f${audio}`;
   };
 })();

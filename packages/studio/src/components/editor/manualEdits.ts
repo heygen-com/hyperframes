@@ -10,7 +10,7 @@ export {
 } from "./manualEditsTypes";
 
 export {
-  mergeFileChangeAffectedCompositions,
+  mergeFileChangePayloads,
   readFileChangeAffectedCompositions,
   readFileChangeAffectsPreview,
   readFileChangeField,

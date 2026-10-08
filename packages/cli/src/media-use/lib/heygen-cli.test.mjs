@@ -9,6 +9,7 @@ import {
   HEYGEN_NOT_AUTHENTICATED_MESSAGE,
   HEYGEN_NOT_FOUND_MESSAGE,
   HEYGEN_OUTDATED_MESSAGE,
+  heygenMiss,
   reportHeygenFailure,
 } from "./heygen-cli.mjs";
 
@@ -298,4 +299,17 @@ test("flushHeygenFailureTracking waits for a pending report before resolving", a
 
 test("flushHeygenFailureTracking resolves immediately when nothing is pending", async () => {
   await flushHeygenFailureTracking();
+});
+
+test("only a music or sound-effect miss names the heygen CLI and the host app's own tool", () => {
+  for (const type of ["image", "icon", "voice", "video"])
+    assert.equal(heygenMiss(type, { code: "not_found" }), null, type);
+  assert.equal(heygenMiss("bgm", { code: "not_found" }).code, "heygen_cli_missing");
+  const sfx = heygenMiss("sfx", { code: "outdated" });
+  assert.equal(sfx.code, "heygen_cli_outdated");
+  assert.match(sfx.error, /host app's own sound-effect tool/);
+});
+
+test("a CLI that rejects --headers without printing a version is outdated", () => {
+  assert.equal(classifyHeygenErrorCode({ stderr: "Error: unknown flag: --headers" }), "outdated");
 });

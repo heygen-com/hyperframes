@@ -10,6 +10,7 @@ import type { DraggedClipState } from "./timelineClipDragTypes";
 import type { TrackVisualStyle } from "./timelineIcons";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import type { TimelineProps } from "./TimelineTypes";
+import { TimelineTimeLayer } from "./TimelineTimeLayer";
 
 interface TimelineGestureOverlayProps {
   drag: DraggedClipState | null;
@@ -103,33 +104,35 @@ export const TimelineGestureOverlay = memo(function TimelineGestureOverlay({
               + New track<span className="sr-only">, before track {insertRow + 1}</span>
             </span>
           )}
-          <TimelineClip
-            el={{ ...element, start: 0 }}
-            pps={pixelsPerSecond}
-            clipY={0}
-            isSelected={selectedElementId === (element.key ?? element.id)}
-            isHovered={false}
-            isDragging
-            isGestureActor
-            isActive={isTimelineClipActive(element, currentTime)}
-            hasCustomContent={!!renderClipContent}
-            capabilities={getTimelineEditCapabilities(element)}
-            theme={theme}
-            isComposition={!!element.compositionSrc}
-            onHoverStart={() => {}}
-            onHoverEnd={() => {}}
-            onResizeStart={() => {}}
-            onClick={() => {}}
-            onDoubleClick={() => {}}
-          >
-            {renderClipChildren(
-              element,
-              getTrackStyle(element.tag),
-              renderClipContent,
-              renderClipOverlay,
-              { priority: "interaction", rich: false },
-            )}
-          </TimelineClip>
+          <TimelineTimeLayer pixelsPerSecond={pixelsPerSecond}>
+            <TimelineClip
+              el={{ ...element, start: 0 }}
+              pps={pixelsPerSecond}
+              clipY={0}
+              isSelected={selectedElementId === (element.key ?? element.id)}
+              isHovered={false}
+              isDragging
+              isGestureActor
+              isActive={isTimelineClipActive(element, currentTime)}
+              hasCustomContent={!!renderClipContent}
+              capabilities={getTimelineEditCapabilities(element)}
+              theme={theme}
+              isComposition={!!element.compositionSrc}
+              onHoverStart={() => {}}
+              onHoverEnd={() => {}}
+              onResizeStart={() => {}}
+              onClick={() => {}}
+              onDoubleClick={() => {}}
+            >
+              {renderClipChildren(
+                element,
+                getTrackStyle(element.tag),
+                renderClipContent,
+                renderClipOverlay,
+                { priority: "interaction", rich: false },
+              )}
+            </TimelineClip>
+          </TimelineTimeLayer>
         </div>
       )}
     </div>

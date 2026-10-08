@@ -157,7 +157,7 @@ npx hyperframes feedback --rating 10                              # clean run, n
 npx hyperframes feedback --rating 6 --comment "bg <video> renders grey in multi-scene; worked around with --format png-sequence"
 ```
 
-`--rating` is an integer from 0-10 (required); `--comment` is free text. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat those fields. A clean run needs only a short result. Before sending any bug, workaround, or confusing behavior, collect this compact reproduction packet:
+`--rating` is an integer from 0-10; `--comment` is free text. A `--comment` with no `--rating` is a ratingless report (`MISSING FEATURE:` and `HOST APP:` in `SKILL.md`) that never counts in the rating metric. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat those fields. A clean run needs only a short result. Before sending any bug, workaround, or confusing behavior, collect this compact reproduction packet:
 
 ```text
 REPRO COMMAND: <HF_*/PRODUCER_* env> npx hyperframes <exact command>   # run from the project directory; do NOT paste absolute paths

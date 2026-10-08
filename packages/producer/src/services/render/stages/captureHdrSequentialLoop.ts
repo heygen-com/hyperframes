@@ -224,7 +224,8 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       `Layered composite frame ${i + 1}/${job.totalFrames}`,
       Math.round(25 + ((i + 1) / totalFrames) * 55),
       onProgress,
-      i + 1 === totalFrames,
+      i + 1,
+      totalFrames,
     );
   }
 }

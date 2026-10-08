@@ -12,6 +12,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const playerMounts: string[] = [];
 let livePlayerProps: { onReadyToShowChange?: (ready: boolean) => void } = {};
 
+const measured = vi.hoisted(() => ({ size: null as { width: number; height: number } | null }));
+vi.mock("../../utils/previewCompositionSize", async (original) => ({
+  ...(await original<typeof import("../../utils/previewCompositionSize")>()),
+  readPreviewCompositionSize: () => measured.size,
+}));
+
 vi.mock("../../player", async () => {
   const React = await import("react");
 
@@ -81,7 +87,12 @@ function renderPreview(
   {
     box = { width: 800, height: 600 },
     fillBox,
-  }: { box?: { width: number; height: number }; fillBox?: boolean } = {},
+    compositionSizeHint,
+  }: {
+    box?: { width: number; height: number };
+    fillBox?: boolean;
+    compositionSizeHint?: { width: number; height: number };
+  } = {},
 ) {
   resizeCallbacks = [];
   const host = document.createElement("div");
@@ -103,6 +114,7 @@ function renderPreview(
           setShadowIframeNode: () => {},
           resetPreviewSlots: () => {},
           fillBox,
+          compositionSizeHint,
         }),
       );
     });
@@ -332,6 +344,22 @@ describe("NLEPreview", () => {
       view.cleanup();
     });
 
+    it("tells the preview how large it shows once a zoom settles, which the player cannot see", () => {
+      const view = renderPreview();
+      const frame = view.host.querySelector<HTMLElement>('[data-testid="mock-player"]')!;
+      const postMessage = vi.fn();
+      Object.defineProperty(frame, "contentWindow", { value: { postMessage } });
+      Object.defineProperty(frame, "offsetWidth", { value: 800 });
+      frame.getBoundingClientRect = () => ({ width: 1600 }) as DOMRect;
+
+      pinchIn(view, 10);
+      expect(postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ action: "set-display-scale", scale: 2 }),
+        "*",
+      );
+      view.cleanup();
+    });
+
     it("says how far it is zoomed, shows where in the frame, and Fit puts it back", () => {
       const view = renderPreview();
       expect([chip(view), navigator(view)]).toEqual([null, null]);
@@ -376,6 +404,37 @@ describe("NLEPreview", () => {
     expect([filled.stage.style.width, filled.stage.style.height]).toEqual(["640px", "360px"]);
     expect(parseFloat(filled.stage.parentElement!.style.inset)).toBe(0);
     filled.cleanup();
+  });
+
+  it("takes the host's composition size as the stage's shape until the preview measures its own", () => {
+    const box = { width: 800, height: 600 };
+    const plain = renderPreview(undefined, { box });
+    expect([plain.stage.style.width, plain.stage.style.height]).toEqual(["784px", "441px"]);
+    plain.cleanup();
+
+    const hinted = renderPreview(undefined, {
+      box,
+      compositionSizeHint: { width: 1276, height: 1078 },
+    });
+    const shape = parseFloat(hinted.stage.style.width) / parseFloat(hinted.stage.style.height);
+    expect(shape).toBeCloseTo(1276 / 1078, 3);
+    expect(hinted.stage.style.height).toBe("584px");
+    hinted.cleanup();
+  });
+
+  it("lets the size the preview measures win over the host's hint", () => {
+    measured.size = { width: 1920, height: 1080 };
+    try {
+      const box = { width: 800, height: 600 };
+      const hinted = renderPreview(undefined, {
+        box,
+        compositionSizeHint: { width: 1276, height: 1078 },
+      });
+      expect([hinted.stage.style.width, hinted.stage.style.height]).toEqual(["784px", "441px"]);
+      hinted.cleanup();
+    } finally {
+      measured.size = null;
+    }
   });
 
   it("clips a shadow reload so its own loading overlay cannot paint over the live frame", () => {

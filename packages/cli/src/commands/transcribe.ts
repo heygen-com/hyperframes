@@ -309,8 +309,7 @@ async function transcribeAudio(
   },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
-  const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
-    await import("../whisper/normalize.js");
+  const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
 
   const {
     DecodeCancelled,
@@ -411,18 +410,7 @@ async function transcribeAudio(
       }
     }
 
-    let { words } = loadTranscript(result.transcriptPath);
-
-    if (result.speechOnsetSeconds != null) {
-      const before = words.length;
-      words = stripBeforeOnset(words, result.speechOnsetSeconds);
-      const stripped = before - words.length;
-      if (stripped > 0 && !opts.json) {
-        spin?.message(
-          `Stripped ${stripped} words before speech onset at ${result.speechOnsetSeconds.toFixed(1)}s`,
-        );
-      }
-    }
+    const { words } = loadTranscript(result.transcriptPath);
 
     writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
     patchCaptionHtml(dir, words);

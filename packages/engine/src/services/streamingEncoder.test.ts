@@ -604,6 +604,27 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     expect(result.fileSize).toBe(0); // No real ffmpeg, no file written
   });
 
+  it("reports ffmpeg's encoded-frame count while close() waits, and stops at exit", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-encoded-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+    const proc = calls[0]!.proc;
+    proc.stderr.emit("data", Buffer.from("frame=   10 fps=20 q=28.0 size=1kB time=00:00:00.33\r"));
+
+    const heard: number[] = [];
+    const closePromise = encoder.close((frames) => heard.push(frames));
+    proc.stderr.emit("data", Buffer.from("frame=   25 fps=20 q=28.0 size=2kB time=00:00:00.83\r"));
+    process.nextTick(() => proc.emit("close", 0));
+    await closePromise;
+    proc.stderr.emit("data", Buffer.from("frame=   30 fps=20 q=28.0 size=2kB time=00:00:01.00\r"));
+
+    expect(heard).toEqual([10, 25]);
+  });
+
   it("returns a failure result (does NOT throw) when ffmpeg exits non-zero before close()", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

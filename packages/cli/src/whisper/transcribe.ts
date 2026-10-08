@@ -10,21 +10,9 @@ import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
+import { findWavChunk } from "./wav.js";
 import type { Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
-
-function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null {
-  if (buf.length < 12) return null;
-  let pos = 12; // skip RIFF header
-  while (pos + 8 < buf.length) {
-    const id = buf.toString("ascii", pos, pos + 4);
-    const size = buf.readUInt32LE(pos + 4);
-    if (id === "data") return { offset: pos + 8, size: Math.min(size, buf.length - pos - 8) };
-    pos += 8 + size;
-    if (size % 2 !== 0) pos++; // RIFF chunks are word-aligned
-  }
-  return null;
-}
 
 const WHISPER_TIMEOUT_FLOOR_MS = 300_000;
 const WHISPER_TIMEOUT_PER_AUDIO_SECOND_MS = 10_000;
@@ -196,7 +184,7 @@ export function detectSpeechOnset(wavPath: string): number | null {
 
   try {
     const buf = readFileSync(wavPath);
-    const dataChunk = findWavDataChunk(buf);
+    const dataChunk = findWavChunk(buf, "data");
     if (!dataChunk) return null;
     const pcm = new Int16Array(buf.buffer, buf.byteOffset + dataChunk.offset, dataChunk.size / 2);
     const totalWindows = Math.floor(pcm.length / WINDOW_SAMPLES);

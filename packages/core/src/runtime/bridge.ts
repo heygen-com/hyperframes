@@ -32,6 +32,7 @@ type BridgeDeps = {
   onDisablePickMode: () => void;
   onSetRuntimeData?: (channel: string, payload: unknown, requestId?: number) => void;
   onClearRuntimeData?: (channel: string, requestId?: number) => void;
+  onSetDisplayScale?: (scale: number) => void;
   getCanonicalFps: () => number;
 };
 
@@ -74,6 +75,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
       deps.onSetWebAudioMediaDisabled(Boolean(data.disabled)),
     "set-playback-rate": (data, deps) => deps.onSetPlaybackRate(Number(data.playbackRate ?? 1)),
     "set-idle-heartbeat": (data, deps) => deps.onSetIdleHeartbeat(Boolean(data.slow)),
+    "set-display-scale": (data, deps) => deps.onSetDisplayScale?.(Number(data.scale)),
     "set-root-duration": (data, deps) => deps.onSetRootDuration(Number(data.durationSeconds ?? 0)),
     "set-play-range": (data, deps) =>
       deps.onSetPlayRange(

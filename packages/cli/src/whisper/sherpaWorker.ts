@@ -8,6 +8,7 @@ import {
   SHERPA_WINDOW_PREFIX,
   type SherpaWindow,
 } from "./parakeet.js";
+import { readWav } from "./wav.js";
 
 interface Wave {
   samples: Float32Array;
@@ -15,7 +16,6 @@ interface Wave {
 }
 
 interface SherpaOnnx {
-  readWave(path: string): Wave;
   OfflineRecognizer: new (config: object) => {
     createStream(): { acceptWaveform(wave: Wave): void };
     decode(stream: unknown): void;
@@ -49,7 +49,7 @@ function decodeWindow(
 try {
   const sherpa = createRequire(import.meta.url)(runtimePath) as SherpaOnnx;
   const recognizer = new sherpa.OfflineRecognizer(config);
-  const wave = sherpa.readWave(wavPath);
+  const wave = readWav(wavPath);
   const cuts = silenceCuts(wave.samples, wave.sampleRate);
   const windows: SherpaWindow[] = [];
   for (let k = 0; k + 1 < cuts.length; k++) {

@@ -130,17 +130,6 @@ export function readTimelineDurationFromDocument(doc: Document | null | undefine
   return furthestClipEndFromDocument(doc);
 }
 
-/**
- * Furthest clip end parsed straight from a composition SOURCE STRING (the HTML
- * being saved). Uses raw `data-duration`, so it is the correct input for syncing
- * the root duration after an edit — reading the store instead would use the
- * runtime-truncated durations and shrink the composition (the feedback loop).
- */
-export function furthestClipEndFromSource(source: string): number {
-  if (!source) return 0;
-  return furthestClipEndFromDocument(new DOMParser().parseFromString(source, "text/html"));
-}
-
 // ---------------------------------------------------------------------------
 // DOM element type guards
 // ---------------------------------------------------------------------------

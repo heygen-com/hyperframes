@@ -63,6 +63,7 @@ export interface CheckAnchor {
   sourceFile: string;
   bbox: CheckBbox;
   time: number;
+  times?: number[];
 }
 
 export interface CheckFinding extends CheckAnchor {

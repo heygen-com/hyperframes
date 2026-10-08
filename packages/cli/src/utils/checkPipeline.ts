@@ -1,3 +1,4 @@
+import { findingElementKey, groupSampledFindings } from "./checkFindings.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { trackCheckReport, trackCommandFailure } from "../telemetry/events.js";
@@ -9,6 +10,7 @@ import {
   buildLayoutSampleTimes,
   buildTransitionSampleTimes,
   collapseStaticLayoutIssues,
+  longestContiguousRunMs,
   dedupeLayoutIssues,
   limitLayoutIssues,
   mergeSampleTimes,
@@ -226,11 +228,6 @@ interface GridSamples {
   indicatorFrames: OffPivotFrame[];
 }
 
-interface GeometrySeen {
-  caption: Set<string>;
-  frame: Set<string>;
-}
-
 function geometryRequest(
   time: number,
   grid: SampleGrid,
@@ -283,7 +280,7 @@ function captionFinding(
   options: CheckOptions,
   canvas: Canvas,
   time: number,
-): { key: string; issue: AnchoredLayoutIssue } | null {
+): AnchoredLayoutIssue | null {
   const zone = options.captionZone;
   if (!zone || candidate.kind !== "text" || !candidateIsSized(candidate, canvas)) return null;
   // Backstop for mocks/non-browser sources; browser already strips via closest() (own attrs only here).
@@ -293,16 +290,13 @@ function captionFinding(
   const text = candidate.text.slice(0, 48);
   const pctFromBottom = Math.round(((canvas.height - cy) / canvas.height) * 100);
   return {
-    key: `${candidate.tag}|${text}`,
-    issue: {
-      ...geometryIssueAnchor(candidate, time),
-      code: "caption_zone_collision",
-      severity: zone.severity === "error" ? "error" : "warning",
-      text,
-      message: `<${candidate.tag}> "${text}" overlaps the reserved caption band (~${pctFromBottom}% up from the bottom).`,
-      fixHint:
-        "Keep main content outside the configured caption band, or mark intentional lower-third copy with data-layout-allow-caption-zone.",
-    },
+    ...geometryIssueAnchor(candidate, time),
+    code: "caption_zone_collision",
+    severity: zone.severity === "error" ? "error" : "warning",
+    text,
+    message: `<${candidate.tag}> "${text}" overlaps the reserved caption band (~${pctFromBottom}% up from the bottom).`,
+    fixHint:
+      "Keep main content outside the configured caption band, or mark intentional lower-third copy with data-layout-allow-caption-zone.",
   };
 }
 
@@ -331,7 +325,7 @@ function frameFinding(
   options: CheckOptions,
   canvas: Canvas,
   time: number,
-): { key: string; issue: AnchoredLayoutIssue } | null {
+): AnchoredLayoutIssue | null {
   if (!options.frameCheck || candidate.kind !== "media" || !candidateIsSized(candidate, canvas)) {
     return null;
   }
@@ -342,27 +336,14 @@ function frameFinding(
   if (maxOverflow(candidate) < floor) return null;
   const text = candidate.text.slice(0, 48);
   return {
-    key: `${candidate.tag}|${text}|${Math.round(candidate.rect.left)},${Math.round(candidate.rect.top)}`,
-    issue: {
-      ...geometryIssueAnchor(candidate, time),
-      code: "frame_out_of_frame",
-      severity: options.frameCheck.severity === "error" ? "error" : "warning",
-      text,
-      overflow: candidate.overflow,
-      message: overflowMessage(candidate),
-      fixHint: "Keep media within the composition frame's safe area.",
-    },
+    ...geometryIssueAnchor(candidate, time),
+    code: "frame_out_of_frame",
+    severity: options.frameCheck.severity === "error" ? "error" : "warning",
+    text,
+    overflow: candidate.overflow,
+    message: overflowMessage(candidate),
+    fixHint: "Keep media within the composition frame's safe area.",
   };
-}
-
-function appendGeometryFinding(
-  result: { key: string; issue: AnchoredLayoutIssue } | null,
-  seen: Set<string>,
-  issues: AnchoredLayoutIssue[],
-): void {
-  if (!result || seen.has(result.key)) return;
-  seen.add(result.key);
-  issues.push(result.issue);
 }
 
 async function collectGeometryAt(
@@ -371,7 +352,6 @@ async function collectGeometryAt(
   grid: SampleGrid,
   canvas: Canvas,
   time: number,
-  seen: GeometrySeen,
 ): Promise<AnchoredLayoutIssue[]> {
   const request = geometryRequest(time, grid, options);
   if (!request) return [];
@@ -379,10 +359,12 @@ async function collectGeometryAt(
   const issues: AnchoredLayoutIssue[] = [];
   for (const candidate of candidates) {
     if (request.text) {
-      appendGeometryFinding(captionFinding(candidate, options, canvas, time), seen.caption, issues);
+      const finding = captionFinding(candidate, options, canvas, time);
+      if (finding) issues.push(finding);
     }
     if (request.media) {
-      appendGeometryFinding(frameFinding(candidate, options, canvas, time), seen.frame, issues);
+      const finding = frameFinding(candidate, options, canvas, time);
+      if (finding) issues.push(finding);
     }
   }
   return issues;
@@ -399,7 +381,6 @@ async function collectGridSamples(
   const contrastSet = new Set(grid.contrastSamples);
   const geometryEnabled = grid.captionSamples.length > 0 || grid.frameSamples.length > 0;
   const canvas = geometryEnabled ? await driver.getCanvas() : null;
-  const geometrySeen: GeometrySeen = { caption: new Set(), frame: new Set() };
   const collected: GridSamples = {
     layoutIssues: [],
     motionFrames: [],
@@ -428,14 +409,7 @@ async function collectGridSamples(
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
     }
     if (canvas) {
-      const geometryIssues = await collectGeometryAt(
-        driver,
-        options,
-        grid,
-        canvas,
-        time,
-        geometrySeen,
-      );
+      const geometryIssues = await collectGeometryAt(driver, options, grid, canvas, time);
       collected.layoutIssues.push(...geometryIssues);
       issuesAtTime.push(...geometryIssues);
     }
@@ -524,24 +498,39 @@ function detectSweepStatic(
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
   if (layoutStateSignatures.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
-  const [first, ...rest] = layoutStateSignatures;
-  if (!first || rest.some((signature) => signature !== first)) return [];
-  return [
-    {
-      code: "sweep_static",
-      severity: "error",
-      time: 0,
-      selector: "[data-composition-id]",
-      dataAttributes: {},
-      sourceFile: "index.html",
-      bbox: ZERO_BBOX,
-      rect: ZERO_LAYOUT_RECT,
-      message:
-        "Timeline did not advance under seek; every green verdict on this run is unreliable.",
-      fixHint:
-        "Confirm the composition seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
-    },
-  ];
+  if (allSame(layoutStateSignatures)) return [sweepStaticIssue("error")];
+  if (allSame(layoutStateSignatures.map(seenPart))) return [sweepStaticIssue("warning")];
+  return [];
+}
+
+// motion-signature.browser.js appends audio time after this; a signature without it is all "seen".
+const AUDIO_TIME_SEPARATOR = "\u001f";
+
+function seenPart(signature: string): string {
+  return signature.split(AUDIO_TIME_SEPARATOR)[0] ?? signature;
+}
+
+function allSame(values: string[]): boolean {
+  return values.every((value) => value === values[0]);
+}
+
+function sweepStaticIssue(severity: "error" | "warning"): AnchoredLayoutIssue {
+  return {
+    code: "sweep_static",
+    severity,
+    time: 0,
+    selector: "[data-composition-id]",
+    dataAttributes: {},
+    sourceFile: "index.html",
+    bbox: ZERO_BBOX,
+    rect: ZERO_LAYOUT_RECT,
+    message:
+      severity === "error"
+        ? "Timeline did not advance under seek; every green verdict on this run is unreliable."
+        : "Only the audio advanced under seek; nothing on screen moved.",
+    fixHint:
+      "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
+  };
 }
 
 // rotation_pivot_drift: bbox center should stay fixed while the element spins.
@@ -1310,13 +1299,13 @@ function contrastFailureHeld(
   const failureSamples = new Map<string, Set<number>>();
   for (const entry of entries) {
     if (entry.wcagAA) continue;
-    const key = `${entry.selector}|${entry.text}`;
+    const key = findingElementKey(entry);
     const times = failureSamples.get(key) ?? new Set<number>();
     times.add(entry.time);
     failureSamples.set(key, times);
   }
   return (entry) =>
-    sampledTimes < 2 || (failureSamples.get(`${entry.selector}|${entry.text}`)?.size ?? 0) >= 2;
+    sampledTimes < 2 || (failureSamples.get(findingElementKey(entry))?.size ?? 0) >= 2;
 }
 
 function buildContrastResults(entries: ContrastAuditEntry[]): {
@@ -1351,7 +1340,13 @@ function buildContrastResults(entries: ContrastAuditEntry[]): {
       time: entry.time,
     });
   }
-  return { findings, passed };
+  return {
+    findings: groupSampledFindings(
+      findings,
+      (next, current) => current.ratio / current.requiredRatio - next.ratio / next.requiredRatio,
+    ),
+    passed,
+  };
 }
 
 function suggestedColor(fg: string, bg: string, requiredRatio: number): string {
@@ -1493,7 +1488,18 @@ function shapeLayoutFindings(
   const all = options.collapseStatic
     ? collapseStaticLayoutIssues(deduped, totalSampleCount)
     : deduped;
-  const limited = limitLayoutIssues(all, options.maxIssues);
+  const anchored = all.map(ensureAnchoredLayoutIssue);
+  let grouped = anchored;
+  if (options.collapseStatic) {
+    grouped = groupSampledFindings(anchored).map((finding) => ({
+      ...finding,
+      firstSeen: finding.times[0] ?? finding.time,
+      lastSeen: finding.times.at(-1) ?? finding.time,
+      occurrences: finding.times.length,
+      heldMs: longestContiguousRunMs(finding.times),
+    }));
+  }
+  const limited = limitLayoutIssues(grouped, options.maxIssues);
   return {
     findings: limited.issues.map(ensureAnchoredLayoutIssue),
     totalIssueCount: limited.totalIssueCount,

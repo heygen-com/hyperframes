@@ -10,6 +10,7 @@ import {
 } from "./gradientValue";
 import { ReverseGradientIcon } from "../icons/ReverseGradientIcon";
 import { IMAGE_EXT } from "../../utils/mediaTypes";
+import type { DomEditSelection } from "./domEditing";
 import { FIELD, LABEL, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import {
   DetailField,
@@ -27,9 +28,13 @@ import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 function normalizeProjectPath(value: string): string {
   const trimmed = value.trim();
   const maybeUrl = /^[a-z]+:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
-  return decodeURIComponent(maybeUrl)
-    .replace(/\\/g, "/")
-    .replace(/^\.?\//, "");
+  let decodedPath = maybeUrl;
+  try {
+    decodedPath = decodeURIComponent(maybeUrl);
+  } catch (error) {
+    if (!(error instanceof URIError)) throw error;
+  }
+  return decodedPath.replace(/\\/g, "/").replace(/^\.?\//, "");
 }
 
 function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
@@ -75,7 +80,8 @@ function resolveSelectedAsset(
 
 export function ImageFillField({
   projectId,
-  sourceFile,
+  element,
+  onSetHtmlAttribute,
   value,
   assets,
   disabled,
@@ -83,7 +89,8 @@ export function ImageFillField({
   onImportAssets,
 }: {
   projectId: string;
-  sourceFile: string;
+  element: DomEditSelection;
+  onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   value: string;
   assets: string[];
   disabled?: boolean;
@@ -91,15 +98,29 @@ export function ImageFillField({
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
   const track = useTrackDesignInput();
+  const sourceFile = element.sourceFile;
+  const isImage = element.tagName === "img";
+  const imageUrl = isImage ? (element.element.getAttribute("src") ?? "") : value;
+  const commitImage = (next: string, projectAsset = false) => {
+    if (isImage) {
+      if (next)
+        void onSetHtmlAttribute(
+          "src",
+          projectAsset ? toRelativeProjectAssetPath(sourceFile, next) : next,
+        );
+      return;
+    }
+    onCommit(next ? `url("${next}")` : "none");
+  };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const imageAssets = useMemo(() => assets.filter((a) => IMAGE_EXT.test(a)), [assets]);
   const selectedAsset = useMemo(
-    () => resolveSelectedAsset(value, sourceFile, imageAssets),
-    [imageAssets, sourceFile, value],
+    () => resolveSelectedAsset(imageUrl, sourceFile, imageAssets),
+    [imageAssets, sourceFile, imageUrl],
   );
-  const externalUrlValue = selectedAsset ? "" : value;
+  const externalUrlValue = selectedAsset ? "" : imageUrl;
 
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length || !onImportAssets) return;
@@ -110,7 +131,7 @@ export function ImageFillField({
       const nextImage = uploaded.find((a) => IMAGE_EXT.test(a));
       if (nextImage) {
         track("button", "Upload image");
-        onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
+        commitImage(toProjectRootAssetPath(nextImage), true);
       }
     } catch {
       setUploadError("Upload failed — check the file and try again.");
@@ -174,14 +195,16 @@ export function ImageFillField({
                   const next = e.target.value;
                   track("select", "Project asset");
                   if (!next) {
-                    onCommit("none");
+                    commitImage("");
                     return;
                   }
-                  onCommit(`url("${toProjectRootAssetPath(next)}")`);
+                  commitImage(toProjectRootAssetPath(next), true);
                 }}
                 className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
               >
-                <option value="">None</option>
+                <option value="" disabled={isImage}>
+                  None
+                </option>
                 {imageAssets.map((asset) => (
                   <option key={asset} value={asset}>
                     {asset}
@@ -201,7 +224,7 @@ export function ImageFillField({
         label="External URL"
         value={externalUrlValue}
         disabled={disabled}
-        onCommit={(next) => onCommit(next.trim() ? `url("${next.trim()}")` : "none")}
+        onCommit={(next) => commitImage(next.trim())}
       />
     </div>
   );

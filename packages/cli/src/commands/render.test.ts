@@ -2047,6 +2047,16 @@ describe("normalizeStageCode", () => {
     expect(normalizeStageCode("Starting browsers (5/6 ready)")).toBe("starting_browsers");
   });
 
+  it("keeps one code per stage whatever its live frame counts", () => {
+    expect(normalizeStageCode("Encoding frame 600/600")).toBe("encoding_video");
+    expect(normalizeStageCode("Encoding frame 12/90")).toBe("encoding_video");
+    expect(normalizeStageCode("Capturing frame 120/600 (6 workers)")).toBe("capturing_frame");
+    expect(normalizeStageCode("Streaming frame 3/40 (segment 1/2, 2 workers)")).toBe(
+      "streaming_frame",
+    );
+    expect(normalizeStageCode("Assembling final video")).toBe("assembling_final_video");
+  });
+
   it("slugifies an unrecognized stage string instead of bucketing it as unknown", () => {
     expect(normalizeStageCode("Some New Stage!")).toBe("some_new_stage");
   });
