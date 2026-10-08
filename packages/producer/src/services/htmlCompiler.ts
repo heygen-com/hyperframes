@@ -39,7 +39,6 @@ import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import {
   assignBundledRuntimeCompositionIds,
   assignMediaRenderIds,
-  type BundledHostCompositionIdentity,
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   ensureExternalLinkTag,
@@ -841,55 +840,6 @@ function promoteCssImportsToLinkTags(html: string): string {
   return document.toString();
 }
 
-class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
-  readonly #document: Document;
-  readonly #lateInstanceByCompositionId = new Map<string, number>();
-
-  constructor(document: Document, initialHosts: Element[]) {
-    super(assignBundledRuntimeCompositionIds(initialHosts));
-    this.#document = document;
-  }
-
-  override get(host: Element): BundledHostCompositionIdentity | undefined {
-    const existing = super.get(host);
-    if (existing) return existing;
-
-    // The shared inliner discovers nested hosts after the producer's initial
-    // DOM scan. Assign those late hosts on first use so their scope and
-    // variables key are fixed before any content is processed.
-    const authoredCompositionId =
-      (
-        host.getAttribute("data-hf-original-composition-id") ||
-        host.getAttribute("data-composition-id") ||
-        ""
-      ).trim() || null;
-    if (!authoredCompositionId) {
-      const identity = { authoredCompositionId: null, runtimeCompositionId: null };
-      this.set(host, identity);
-      return identity;
-    }
-
-    let instanceIndex = this.#lateInstanceByCompositionId.get(authoredCompositionId) || 0;
-    let runtimeCompositionId: string;
-    do {
-      instanceIndex += 1;
-      runtimeCompositionId = `${authoredCompositionId}__hf${instanceIndex}`;
-    } while (
-      Array.from(this.#document.querySelectorAll("[data-composition-id]")).some(
-        (element) =>
-          element !== host && element.getAttribute("data-composition-id") === runtimeCompositionId,
-      )
-    );
-    this.#lateInstanceByCompositionId.set(authoredCompositionId, instanceIndex);
-
-    host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
-    host.setAttribute("data-composition-id", runtimeCompositionId);
-    const identity = { authoredCompositionId, runtimeCompositionId };
-    this.set(host, identity);
-    return identity;
-  }
-}
-
 /**
  * Merge each run of adjacent same-condition `<head>` `<style>` blocks into one, `@import`
  * rules at its top, and merge each run of adjacent inline `<body>` `<script>` blocks
@@ -989,7 +939,7 @@ function inlineSubCompositions(
   // Assign per-instance runtime composition ids before each host is inlined,
   // mirroring the preview bundler. Initial hosts are assigned as one pre-pass;
   // hosts discovered by the shared inliner's queue are assigned lazily by the
-  // map above. When the same sub-composition (same authored
+  // same identity map. When the same sub-composition (same authored
   // data-composition-id) is mounted more than once — the reusable-template
   // pattern from issue #2064 — each host is rewritten to a unique runtime id
   // (`card__hf1`, `card__hf2`). Without this, every instance shares one
@@ -997,10 +947,7 @@ function inlineSubCompositions(
   // data-variable-values clobbers the earlier ones and all-but-one instance
   // renders blank. #2066 fixed the single-instance case but left this
   // divergence (snapshot/preview correct, render wrong).
-  const hostIdentityByElement = new ProducerHostIdentityMap(
-    document as unknown as Document,
-    hosts as unknown as Element[],
-  );
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(hosts as unknown as Element[]);
 
   const result = inlineSubCompositionsShared(
     document as unknown as Document,

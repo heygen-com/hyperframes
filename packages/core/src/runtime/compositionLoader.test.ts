@@ -122,6 +122,33 @@ describe("loadCompositions external hosts", () => {
     expect(document.querySelectorAll("[data-composition-src] p")).toHaveLength(8);
   });
 
+  it("adds stylesheets in document order even when an earlier host's fetch finishes last", async () => {
+    appendExternalHost("https://example.com/order-a.html", "order-a");
+    appendExternalHost("https://example.com/order-b.html", "order-b");
+    const page = (name: string) =>
+      new Response(
+        `<html><head><link rel="stylesheet" href="./${name}.css"></head><body><p>${name}</p></body></html>`,
+        { status: 200 },
+      );
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        if (!String(input).endsWith("order-a.html")) return page("order-b");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return page("order-a");
+      });
+      const loading = loadFixture();
+      await vi.runAllTimersAsync();
+      await loading;
+    } finally {
+      vi.useRealTimers();
+    }
+    const hrefs = Array.from(document.head.querySelectorAll('link[href*="order-"]'), (link) =>
+      link.getAttribute("href"),
+    );
+    expect(hrefs).toEqual(["https://example.com/order-a.css", "https://example.com/order-b.css"]);
+  });
+
   it("refuses a circular nested external reference without fetching it again", async () => {
     const base = document.createElement("base");
     base.href = "https://example.com/";

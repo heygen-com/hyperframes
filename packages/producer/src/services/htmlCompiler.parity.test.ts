@@ -11,8 +11,10 @@ import {
 // Deep import: the mount path is not part of core's published export map (it is
 // bundled into the runtime IIFE, not imported by consumers). Same shape as
 // engine/src/services/videoFrameExtractor.test.ts reaching into core's runtime.
+import { nestedCompositionPathFixture } from "../../../core/src/compiler/nestedCompositionPath.testFixture.js";
 import { loadCompositions } from "../../../core/src/runtime/compositionLoader.js";
 import { compileForRender } from "./htmlCompiler.js";
+import { createFileServer } from "@hyperframes/engine";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 
 vi.mock("../utils/urlDownloader.js", async (importOriginal) => ({
@@ -76,7 +78,7 @@ type ParityContract = ReturnType<typeof extractCompiledHtmlParityContract>;
 
 /**
  * Mount the project the way the player does — parse `index.html` into the live
- * document, serve its sub-compositions over a stubbed `fetch`, and let the
+ * document, serve its sub-compositions through the capture file server, and let the
  * runtime assemble them — then read the same contract off the resulting DOM.
  *
  * This is the third assembly path. Both compiler arms below run the same code
@@ -88,20 +90,26 @@ async function mountContract(dir: string, indexHtml: string): Promise<ParityCont
   const parsed = new DOMParser().parseFromString(indexHtml, "text/html");
   document.head.innerHTML = parsed.head.innerHTML;
   document.body.innerHTML = parsed.body.innerHTML;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-    Promise.resolve(new Response(readFileSync(join(dir, String(input)), "utf8"), { status: 200 })),
-  );
-  await loadCompositions({
-    injectedStyles: [],
-    injectedScripts: [],
-    injectedLinks: [],
-    parseDimensionPx: (value: string | null) => (value ? `${value}px` : null),
-    // A mount that fails is not a parity result. Surface it instead of
-    // comparing the contract of an empty host against a compiled one.
-    onDiagnostic: ({ code, details }) => {
-      throw new Error(`mount diagnostic ${code}: ${JSON.stringify(details)}`);
-    },
-  });
+  const server = await createFileServer({ projectDir: dir });
+  const base = document.createElement("base");
+  base.href = `${server.url}/`;
+  document.head.prepend(base);
+  try {
+    await loadCompositions({
+      injectedStyles: [],
+      injectedScripts: [],
+      injectedLinks: [],
+      parseDimensionPx: (value: string | null) => (value ? `${value}px` : null),
+      // A mount that fails is not a parity result. Surface it instead of
+      // comparing the contract of an empty host against a compiled one.
+      onDiagnostic: ({ code, details }) => {
+        throw new Error(`mount diagnostic ${code}: ${JSON.stringify(details)}`);
+      },
+    });
+  } finally {
+    base.remove();
+    server.close();
+  }
   return extractCompiledHtmlParityContract(`<!doctype html>${document.documentElement.outerHTML}`);
 }
 
@@ -453,6 +461,42 @@ function assembledContract(contract: ParityContract) {
 }
 
 describe("mount/compile assembly parity", () => {
+  it.each([
+    { name: "a free authored id", extraHosts: "", ids: ["card"] },
+    {
+      name: "an authored id collision",
+      extraHosts:
+        '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div>',
+      ids: ["card", "card__hf1"],
+    },
+    {
+      name: "a reserved suffix collision",
+      extraHosts:
+        '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div><div data-composition-id="card__hf1" data-composition-src="compositions/cards/card.html"></div>',
+      ids: ["card", "card__hf1", "card__hf2"],
+    },
+  ])(
+    "mounts nested project-root paths with $name identically on all three paths",
+    async ({ extraHosts, ids }) => {
+      const result = await contracts({
+        ...nestedCompositionPathFixture,
+        "index.html": nestedCompositionPathFixture["index.html"]!.replace(
+          '<div data-composition-id="scene"',
+          `${extraHosts}<div data-composition-id="scene"`,
+        ),
+      });
+      expect(result.render).toEqual(result.preview);
+      expect(assembledContract(result.mount)).toEqual(assembledContract(result.preview));
+      expect(result.preview.compositions.map((c) => c.id)).toEqual(expect.arrayContaining(ids));
+      const cards = [...document.querySelectorAll("[data-proof]")];
+      expect(cards.map((card) => card.textContent)).toEqual(ids.map(() => "Project-root card"));
+      const hostIds = cards.map((card) =>
+        card.closest("[data-composition-src]")?.getAttribute("data-composition-id"),
+      );
+      expect(hostIds).toEqual(ids);
+    },
+  );
+
   it("keeps a fixture set that still covers the shape the mount path used to drop", () => {
     expect(MOUNT_PARITY_FIXTURES.length).toBeGreaterThan(0);
     const siblingShaped = MOUNT_PARITY_FIXTURES.filter((fixture) =>

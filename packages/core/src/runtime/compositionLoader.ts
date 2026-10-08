@@ -725,10 +725,11 @@ async function mountExternalCompositions(
     return !parent || attemptedPaths.has(parent);
   });
 
+  type PendingMount = () => Promise<MountedComposition | null>;
   const mounted: Array<MountedComposition | null> = [];
   for (let offset = 0; offset < hosts.length; offset += 4) {
     const batch = await Promise.all(
-      hosts.slice(offset, offset + 4).map(async (host): Promise<MountedComposition | null> => {
+      hosts.slice(offset, offset + 4).map(async (host): Promise<PendingMount | null> => {
         const src = host.getAttribute("data-composition-src");
         if (!src) return null;
         const hostIdentity = hostIdentityByElement.get(host);
@@ -764,18 +765,25 @@ async function mountExternalCompositions(
           failed(new Error(refusal));
           return null;
         }
-        const mount = async (mountParams: Parameters<typeof mountCompositionContent>[0]) => {
-          const composition = await mountCompositionContent(mountParams);
-          const runScripts = composition.runScripts;
-          composition.runScripts = async () => {
+        const mount =
+          (mountParams: Parameters<typeof mountCompositionContent>[0]): PendingMount =>
+          async () => {
             try {
-              await runScripts();
+              const composition = await mountCompositionContent(mountParams);
+              const runScripts = composition.runScripts;
+              composition.runScripts = async () => {
+                try {
+                  await runScripts();
+                } catch (error) {
+                  failed(error);
+                }
+              };
+              return composition;
             } catch (error) {
               failed(error);
+              return null;
             }
           };
-          return composition;
-        };
         try {
           const localTemplate =
             authoredCompositionId != null
@@ -784,7 +792,7 @@ async function mountExternalCompositions(
                 )
               : null;
           if (localTemplate) {
-            return await mount({
+            return mount({
               host,
               authoredCompositionId,
               runtimeCompositionId,
@@ -816,7 +824,7 @@ async function mountExternalCompositions(
                 )
               : null) ?? doc.querySelector<HTMLTemplateElement>("template");
           const sourceNode = template ? template.content : doc.body;
-          return await mount({
+          return mount({
             host,
             authoredCompositionId,
             runtimeCompositionId,
@@ -848,7 +856,9 @@ async function mountExternalCompositions(
         }
       }),
     );
-    mounted.push(...batch);
+    // Fetch concurrently, mount in document order: mounting appends each composition's
+    // links and styles to <head>, and that order is the cascade order.
+    for (const pending of batch) mounted.push(pending ? await pending() : null);
   }
   return mounted.filter((composition): composition is MountedComposition => composition !== null);
 }

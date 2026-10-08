@@ -542,13 +542,53 @@ function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, numbe
   return counts;
 }
 
+const MOUNTED_HOST =
+  "[data-composition-src], [data-composition-file], [data-hf-original-composition-id]";
+
+/** Assigns hosts the inliner discovers after the initial pass, on first lookup: a repeated
+ * composition is suffixed on every late instance, a single one keeps its authored id when free. */
+class BundledHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
+  override get(host: Element): BundledHostCompositionIdentity | undefined {
+    const existing = super.get(host);
+    if (existing) return existing;
+
+    const identity = getBundledHostCompositionIdentity(host);
+    const authoredId = identity.authoredCompositionId;
+    if (!authoredId || !shouldAssignBundledRuntimeCompositionId(host, host.ownerDocument)) {
+      this.set(host, identity);
+      return identity;
+    }
+
+    const others = Array.from(host.ownerDocument.querySelectorAll("[data-composition-id]")).filter(
+      (element) => element !== host,
+    );
+    const taken = new Set(others.map((element) => element.getAttribute("data-composition-id")));
+    const repeated = others.some(
+      (element) =>
+        element.matches(MOUNTED_HOST) &&
+        getBundledHostCompositionIdentity(element).authoredCompositionId === authoredId,
+    );
+    let instanceIndex = repeated ? 1 : 0;
+    const idAt = (index: number) =>
+      index === 0 ? authoredId : uniqueCompositionId(authoredId, index);
+    while (taken.has(idAt(instanceIndex))) instanceIndex += 1;
+    const runtimeId = idAt(instanceIndex);
+    if (instanceIndex > 0) host.setAttribute("data-hf-original-composition-id", authoredId);
+    else host.removeAttribute("data-hf-original-composition-id");
+    host.setAttribute("data-composition-id", runtimeId);
+    const assigned = { authoredCompositionId: authoredId, runtimeCompositionId: runtimeId };
+    this.set(host, assigned);
+    return assigned;
+  }
+}
+
 // fallow-ignore-next-line complexity
 export function assignBundledRuntimeCompositionIds(
   hosts: Element[],
   counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),
 ): Map<Element, BundledHostCompositionIdentity> {
   const instanceByCompositionId = new Map<string, number>();
-  const identities = new Map<Element, BundledHostCompositionIdentity>();
+  const identities = new BundledHostIdentityMap();
 
   for (const host of hosts) {
     const { authoredCompositionId, runtimeCompositionId: previousRuntimeCompositionId } =
