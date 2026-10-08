@@ -210,7 +210,7 @@ export function transcodeToMp4(inputPath: string, outputPath: string): Promise<b
         "-y",
         outputPath,
       ],
-      { stdio: "pipe", windowsHide: true },
+      { stdio: "ignore", windowsHide: true },
     );
 
     child.on("close", (code) => resolvePromise(code === 0));
