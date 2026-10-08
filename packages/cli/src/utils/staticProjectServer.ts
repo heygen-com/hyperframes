@@ -68,6 +68,12 @@ function serveFileWithRange(
   }
   headers["Content-Length"] = String(end - start + 1);
 
+  if (size === 0) {
+    res.writeHead(status, headers);
+    res.end();
+    return;
+  }
+
   // Stream only the requested window instead of buffering the whole file: a
   // 1KB Range of a 50MB asset must not allocate 50MB. createReadStream reads
   // just `[start, end]` and closes its own fd on end/error. writeHead is
