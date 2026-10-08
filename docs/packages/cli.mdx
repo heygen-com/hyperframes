@@ -1383,7 +1383,8 @@ First match wins:
 
 1. `HEYGEN_API_KEY`
 2. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
-3. `~/.heygen/credentials`
+3. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
+4. `~/.heygen/credentials`
 
 ### `auth login`
 
@@ -1441,6 +1442,7 @@ hyperframes auth logout --yes            # no prompt
 | --------------------- | ------------------------------------------------ |
 | `HEYGEN_API_KEY`      | Override the stored credential.                  |
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
+| `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; never refreshed.    |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
 | `HEYGEN_CONFIG_DIR`   | Credentials directory (default `~/.heygen`).     |
 
