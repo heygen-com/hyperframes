@@ -223,6 +223,14 @@ The render bucket is created with CloudFormation `Retain` on delete — `hyperfr
 - Each `--region` is an independent stack. Cross-region failover is not built
   in.
 - The distributed AWS path is SDR-only.
+- Video length is bounded by the plan step. One Lambda invocation extracts
+  every frame of every video and uploads them before any chunk starts, and it
+  must finish inside Lambda's 15-minute limit. On a 10,240 MB function, a
+  26-minute 576×1024 24 fps H.264 clip plans in about 3.5 minutes. Larger
+  frames, high-bitrate footage and more videos take proportionally longer.
+  ffmpeg extracts long clips in 2-minute segments, so `FFMPEG_PROCESS_TIMEOUT_MS`
+  applies to each segment, not to the whole clip. Split edits that approach the
+  limit into separate renders.
 
 ## Related topics
 

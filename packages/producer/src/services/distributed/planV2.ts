@@ -593,14 +593,21 @@ export async function publishPlanV2FromExecutionPlan(
 ): Promise<PlanV2Manifest> {
   try {
     const publication = buildPlanV2Publication(executionPlanDir);
-    const concurrency = 16;
-    for (let offset = 0; offset < publication.blobs.length; offset += concurrency) {
-      const batch = publication.blobs.slice(offset, offset + concurrency);
-      const results = await Promise.allSettled(batch.map((blob) => publisher.putBlob(blob)));
-      for (const result of results) {
-        if (result.status === "rejected") throw result.reason;
+    const uploadSlots = 32;
+    let next = 0;
+    let failure: { reason: unknown } | undefined;
+    const upload = async () => {
+      while (!failure && next < publication.blobs.length) {
+        const blob = publication.blobs[next++]!;
+        try {
+          await publisher.putBlob(blob);
+        } catch (reason) {
+          failure ??= { reason };
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: uploadSlots }, upload));
+    if (failure) throw failure.reason;
     await publisher.commitManifest(canonicalJsonStringify(publication.manifest));
     return publication.manifest;
   } catch (error) {

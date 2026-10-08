@@ -9,6 +9,7 @@
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
+import { cpus } from "os";
 import { parseHTML } from "linkedom";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import {
@@ -856,6 +857,83 @@ function restoreSourceColourFilter(metadata: VideoMetadata): string[] {
     : [];
 }
 
+/**
+ * Longest stretch of output one ffmpeg process extracts. `ffmpegProcessTimeout` bounds a
+ * single process, so one process over a long clip timed out however much time the render
+ * had left. Longer ranges split into segments that run side by side. Segments sample the
+ * same absolute times as a single pass, so their frames are byte-identical to it.
+ */
+const EXTRACTION_SEGMENT_SECONDS = 120;
+
+interface SegmentedExtraction {
+  decodeArgs: string[];
+  filterAndEncodeArgs: string[];
+  videoPath: string;
+  startTime: number;
+  duration: number;
+  fps: number;
+  segmentFrames: number;
+  runOptions: { signal?: AbortSignal; timeout: number };
+}
+
+async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmpegResult> {
+  const { decodeArgs, filterAndEncodeArgs, videoPath, startTime, duration, fps, segmentFrames } =
+    job;
+  const segmentCount = Math.ceil((duration * fps) / segmentFrames);
+  // One failed segment fails the range, so stop the others instead of finishing them.
+  const failed = new AbortController();
+  const signal = job.runOptions.signal
+    ? AbortSignal.any([job.runOptions.signal, failed.signal])
+    : failed.signal;
+  const results: RunFfmpegResult[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < segmentCount && !signal.aborted) {
+      const index = next++;
+      const offset = (index * segmentFrames) / fps;
+      const last = index === segmentCount - 1;
+      const result = await runFfmpeg(
+        [
+          ...decodeArgs,
+          "-noaccurate_seek",
+          "-ss",
+          String(startTime + offset),
+          "-i",
+          videoPath,
+          // A middle segment reads one frame past its end and keeps exactly its own frames.
+          "-t",
+          String(last ? duration - offset : (segmentFrames + 1) / fps),
+          ...(last ? [] : ["-frames:v", String(segmentFrames)]),
+          "-start_number",
+          String(index * segmentFrames + 1),
+          ...filterAndEncodeArgs,
+        ],
+        { ...job.runOptions, signal },
+      );
+      results[index] = result;
+      if (!result.success) failed.abort();
+    }
+  };
+  const workers = Math.min(segmentCount, Math.max(1, Math.floor(cpus().length / 2)));
+  await Promise.all(Array.from({ length: workers }, worker));
+  const ran = results.filter(Boolean);
+  // Report the segment that failed, not the ones stopped because of it.
+  const failure =
+    ran.find((r) => !r.success && r.terminationReason !== "abort") ?? ran.find((r) => !r.success);
+  if (failure) return failure;
+  // A cancel between segments leaves later ones unrun; their frames are missing, not done.
+  if (ran.length < segmentCount) {
+    return {
+      success: false,
+      exitCode: null,
+      stderr: "",
+      durationMs: 0,
+      terminationReason: "abort",
+    };
+  }
+  return ran[ran.length - 1]!;
+}
+
 export async function extractVideoFramesRange(
   videoPath: string,
   videoId: string,
@@ -929,6 +1007,7 @@ export async function extractVideoFramesRange(
   if (codecMayHaveAlpha(metadata.videoCodec)) {
     args.push("-c:v", decoderForCodec(metadata.videoCodec));
   }
+  const decodeArgs = [...args];
   if (options.finalFrameOnly) {
     // Output-side seek decodes from the start before selecting the final
     // sample. This is intentionally reserved for the one-frame path: input
@@ -1008,8 +1087,21 @@ export async function extractVideoFramesRange(
       runOptions,
     );
   } else {
-    if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
-    processResult = await runFfmpeg([...args, ...encodeArgs], runOptions);
+    const filterArgs = vfFilters.length > 0 ? ["-vf", vfFilters.join(",")] : [];
+    const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
+    processResult =
+      sampleCfrAtOutputFps && duration * fps > segmentFrames
+        ? await runSegmentedExtraction({
+            decodeArgs,
+            filterAndEncodeArgs: [...filterArgs, ...encodeArgs],
+            videoPath,
+            startTime,
+            duration,
+            fps,
+            segmentFrames,
+            runOptions,
+          })
+        : await runFfmpeg([...args, ...filterArgs, ...encodeArgs], runOptions);
   }
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(

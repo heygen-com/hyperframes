@@ -1879,6 +1879,39 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
     },
     30_000,
   );
+
+  // #5260: one ffmpeg process over a 26-minute clip hit ffmpegProcessTimeout.
+  it("splits a range longer than one ffmpeg segment without dropping or repeating a frame", async () => {
+    const source = join(FIXTURE_DIR, "index-2fps-long.mp4");
+    const synth = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `nullsrc=s=${WIDTH}x${HEIGHT}:r=2:d=135,geq=lum='16+2*mod(N\\,100)':cb=128:cr=128`,
+      "-c:v",
+      "libx264",
+      "-qp",
+      "0",
+      "-pix_fmt",
+      "yuv420p",
+      source,
+    ]);
+    if (!synth.success) throw new Error(`long fixture synthesis failed: ${synth.stderr}`);
+
+    // 130 s at 2 fps is 260 frames: one 240-frame segment, then 20 more.
+    const extracted = await extractVideoFramesRange(source, "long-2fps", 0.5, 130, {
+      fps: 2,
+      outputDir: FIXTURE_DIR,
+      format: "png",
+    });
+    const onScreen = Array.from({ length: 260 }, (_, i) => (i + 1) % 100);
+    expect(extracted.totalFrames).toBe(260);
+    expect(sourceIndexes(extracted)).toEqual(onScreen);
+  }, 60_000);
 });
 
 describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {

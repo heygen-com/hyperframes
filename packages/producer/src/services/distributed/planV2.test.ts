@@ -874,6 +874,33 @@ describe("Plan v2 artifact publisher", () => {
     await publisher.abort();
   });
 
+  it("keeps publishing the other blobs while one upload is slow", async () => {
+    const root = tempPath("hf-plan-v2-publisher-slow-");
+    const v1 = createV1Plan(root);
+    for (let i = 0; i < 40; i++)
+      writeFileSync(join(v1, "compiled", `frame-${i}.txt`), `frame ${i}`);
+    refreshV1PlanHash(v1);
+    const manifest = await publishPlanV2FromV1(v1, {
+      async commitManifest() {},
+      async abort() {},
+      putBlob: (() => {
+        let started = 0;
+        let releaseSlow: (byOthers: boolean) => void = () => {};
+        const slow = new Promise<boolean>((resolve) => (releaseSlow = resolve));
+        setTimeout(() => releaseSlow(false), 2_000);
+        return async () => {
+          started += 1;
+          if (started === 1) {
+            expect(await slow).toBe(true);
+            return;
+          }
+          if (started === 41) releaseSlow(true);
+        };
+      })(),
+    });
+    expect(manifest.artifacts.length).toBeGreaterThan(40);
+  });
+
   it("aborts without committing a manifest when a blob publish fails", async () => {
     const root = tempPath("hf-plan-v2-publisher-failure-");
     const calls: string[] = [];
