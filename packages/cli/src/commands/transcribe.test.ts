@@ -686,6 +686,54 @@ Render video. Built for agents.
     });
   });
 
+  it.each([
+    ["an existing folder", (dir: string) => dir, "--output is a folder"],
+    [
+      "a path ending in a slash",
+      (dir: string) => join(dir, "captions") + "/",
+      "--output is a folder",
+    ],
+    [
+      "a path under a file",
+      (dir: string) => join(dir, "narration.wav", "out.srt"),
+      "Output folder not found",
+    ],
+  ])("fails --output naming %s before transcribing", async (_name, output, error) => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+
+    await expect(
+      transcribeCmd.run!({
+        args: { input, json: true, engine: "whisper", to: "srt", output: output(dir) },
+      } as never),
+    ).rejects.toThrow(CliRuntimeError);
+
+    expect(transcribeMock).not.toHaveBeenCalled();
+    expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+  });
+
+  it("groups transcribed CJK words into captions instead of one cue per word", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    transcribeMock.mockImplementation(async (_input, outputDir) => {
+      const result = fakeTranscript(outputDir, "whisper");
+      writeFileSync(
+        result.transcriptPath,
+        JSON.stringify([
+          { text: "今日はいい", start: 0, end: 0.8 },
+          { text: "天気ですね", start: 0.8, end: 1.6 },
+        ]),
+      );
+      return { ...result, wordCount: 2 };
+    });
+
+    await transcribeCmd.run!({
+      args: { input, dir, json: true, engine: "whisper", to: "srt" },
+    } as never);
+
+    expect(readFileSync(join(dir, "transcript.srt"), "utf-8").match(/-->/g)).toHaveLength(1);
+  });
+
   it("rejects a below-minimum --timeout with a discoverable error", async () => {
     const { dir, input } = dummyAudio();
     dirs.push(dir);

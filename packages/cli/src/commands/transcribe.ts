@@ -4,7 +4,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
 import {
   findParakeet,
   PARAKEET_LANGUAGES,
@@ -216,8 +216,18 @@ function parseSidecar(args: {
 }): CaptionSidecar | undefined {
   const to = parseExportFormat(args.to, args.json);
   if (!to) return undefined;
-  if (args.output && !existsSync(dirname(resolve(args.output)))) {
-    failWith(`Output folder not found: ${dirname(resolve(args.output))}`, args.json);
+  if (args.output) {
+    const outPath = resolve(args.output);
+    const folder = dirname(outPath);
+    if (!existsSync(folder) || !statSync(folder).isDirectory()) {
+      failWith(`Output folder not found: ${folder}`, args.json);
+    }
+    if (/[\\/]$/.test(args.output) || (existsSync(outPath) && statSync(outPath).isDirectory())) {
+      failWith(
+        `--output is a folder; give a file path such as ${join(outPath, `transcript.${to}`)}`,
+        args.json,
+      );
+    }
   }
   return { to, output: args.output, preserveCues: args["preserve-cues"] };
 }
