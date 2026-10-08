@@ -167,16 +167,16 @@ async function metadataRequestError(response: Response, fallback: string): Promi
 
 const LOGIN_EXPIRED = "Your login expired. Run hyperframes auth login, then publish again.";
 const LOGIN_CHANGED = "Your login changed during publish. Run publish again.";
-export const API_KEY_ENV_VAR = { env: "HEYGEN_API_KEY", env_alias: "HYPERFRAMES_API_KEY" } as const;
+// A rejected environment credential outranks any login, so name it instead of asking for one.
+export const ENV_CREDENTIAL_VAR: Partial<Record<ResolvedCredential["source"], string>> = {
+  env: "HEYGEN_API_KEY",
+  env_alias: "HYPERFRAMES_API_KEY",
+  env_oauth: "HEYGEN_ACCESS_TOKEN",
+};
 
 function rejectedCredentialMessage(credential: ResolvedCredential): string {
-  if (
-    credential.type === "api_key" &&
-    (credential.source === "env" || credential.source === "env_alias")
-  ) {
-    return `${API_KEY_ENV_VAR[credential.source]} was rejected. Fix or unset it, then publish again.`;
-  }
-  return LOGIN_EXPIRED;
+  const envVar = ENV_CREDENTIAL_VAR[credential.source];
+  return envVar ? `${envVar} was rejected. Fix or unset it, then publish again.` : LOGIN_EXPIRED;
 }
 
 /** Resolves the credential, or refreshes `checked` (a credential already resolved) without re-resolving. */

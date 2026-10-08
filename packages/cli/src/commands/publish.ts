@@ -13,7 +13,7 @@ import {
 } from "../utils/lintProject.js";
 import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
-  API_KEY_ENV_VAR,
+  ENV_CREDENTIAL_VAR,
   buildPublishFileMap,
   publishProjectArchive,
   resolvePublishCredential,
@@ -183,10 +183,7 @@ export default defineCommand({
     if (updateTarget || spaceOverride) {
       if (credential?.type !== "oauth") {
         const flag = updateTarget ? "--update" : "--space";
-        const envKey =
-          credential?.source === "env" || credential?.source === "env_alias"
-            ? API_KEY_ENV_VAR[credential.source]
-            : undefined;
+        const envKey = credential && ENV_CREDENTIAL_VAR[credential.source];
         console.log();
         console.log(
           `  ${c.error(
