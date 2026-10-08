@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { WhisperUnavailableError } from "../whisper/manager.js";
-import { formatVtt } from "../whisper/normalize.js";
+import { formatVtt, loadTranscript } from "../whisper/normalize.js";
 import { CliRuntimeError, consumeCommandResult } from "../utils/commandResult.js";
 
 // Make the whisper core report "unavailable" so we exercise the soft-skip path.
@@ -731,7 +731,8 @@ Render video. Built for agents.
       args: { input, dir, json: true, engine: "whisper", to: "srt" },
     } as never);
 
-    expect(readFileSync(join(dir, "transcript.srt"), "utf-8").match(/-->/g)).toHaveLength(1);
+    const { words: cues } = loadTranscript(join(dir, "transcript.srt"));
+    expect(cues.map((cue) => cue.text)).toEqual(["今日はいい天気ですね"]);
   });
 
   it("rejects a below-minimum --timeout with a discoverable error", async () => {
