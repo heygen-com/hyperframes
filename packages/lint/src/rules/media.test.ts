@@ -523,6 +523,31 @@ describe("media rules", () => {
     expect(findings.every((finding) => finding.fixHint?.includes("data-var-src"))).toBe(true);
   });
 
+  it.each([
+    {
+      script: `const target = document.getElementById("clip"); { const target = document.getElementById("poster"); target.src = "b.png"; } target.src = "b.mp4";`,
+      expected: ["clip"],
+    },
+    {
+      script: `const target = document.getElementById("clip"); function update(target) { target.src = "b.png"; }`,
+      expected: [],
+    },
+    {
+      script: `function updateVideo() { const target = document.getElementById("clip"); target.src = "b.mp4"; } function updateImage() { const target = document.getElementById("poster"); target.src = "b.png"; }`,
+      expected: ["clip"],
+    },
+  ])("checks the media source write in its own scope ($expected)", async ({ script, expected }) => {
+    const html = `<html><body><div data-composition-id="c1" data-width="1920" data-height="1080">
+      <video id="clip" src="a.mp4"></video><img id="poster" src="a.png">
+      <script>${script}</script></div></body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(
+      result.findings
+        .filter((finding) => finding.code === "media_runtime_src_mutation")
+        .map((finding) => finding.elementId),
+    ).toEqual(expected);
+  });
+
   it("does not flag img or script src mutations", async () => {
     const html = `
 <html><body>
