@@ -20,9 +20,8 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 /** Runs the frames the hook asked for, as the browser does after the observer's delivery. */
 function nextFrames() {
-  const frames: FrameRequestCallback[] = [];
-  vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => frames.push(frame));
-  return () => act(() => frames.splice(0).forEach((frame) => frame(0)));
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+  return () => act(() => vi.advanceTimersToNextFrame());
 }
 
 // A strip that re-rendered inside the observer's delivery resized the timeline Chromium had already measured that
@@ -42,13 +41,43 @@ it("applies a reported size on the next frame, never inside the observer's deliv
   }
   try {
     act(() => root.render(<Harness />));
+    reportResize(310, 40);
     reportResize(320, 40);
+    expect(vi.getTimerCount()).toBe(1);
     expect(host.textContent).toBe("300x40");
     runFrames();
     expect(host.textContent).toBe("320x40");
   } finally {
     act(() => root.unmount());
     host.remove();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
+});
+
+it("cancels a pending resize frame when the last strip unmounts", () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const runFrames = nextFrames();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  function Harness() {
+    const [, ref] = useThumbnailStripSize();
+    return <div ref={ref} />;
+  }
+  try {
+    act(() => root.render(<Harness />));
+    reportResize(320, 40);
+    expect(vi.getTimerCount()).toBe(1);
+    act(() => root.unmount());
+    expect(vi.getTimerCount()).toBe(0);
+    runFrames();
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     globalThis.ResizeObserver = originalResizeObserver;
   }
@@ -92,6 +121,7 @@ it("does not re-render the strip when the observer reports the size it already h
   } finally {
     act(() => root.unmount());
     host.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     globalThis.ResizeObserver = originalResizeObserver;
   }
