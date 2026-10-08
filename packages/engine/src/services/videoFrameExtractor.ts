@@ -870,16 +870,16 @@ interface SegmentedExtraction {
   filterAndEncodeArgs: string[];
   videoPath: string;
   startTime: number;
-  duration: number;
+  totalFrames: number;
   fps: number;
   segmentFrames: number;
   runOptions: { signal?: AbortSignal; timeout: number };
 }
 
 async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmpegResult> {
-  const { decodeArgs, filterAndEncodeArgs, videoPath, startTime, duration, fps, segmentFrames } =
+  const { decodeArgs, filterAndEncodeArgs, videoPath, startTime, totalFrames, fps, segmentFrames } =
     job;
-  const segmentCount = Math.ceil((duration * fps) / segmentFrames);
+  const segmentCount = Math.ceil(totalFrames / segmentFrames);
   // One failed segment fails the range, so stop the others instead of finishing them.
   const failed = new AbortController();
   const signal = job.runOptions.signal
@@ -890,22 +890,23 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
   const worker = async () => {
     while (next < segmentCount && !signal.aborted) {
       const index = next++;
-      const offset = (index * segmentFrames) / fps;
-      const last = index === segmentCount - 1;
+      const firstFrame = index * segmentFrames;
+      const frames = Math.min(segmentFrames, totalFrames - firstFrame);
       const result = await runFfmpeg(
         [
           ...decodeArgs,
           "-noaccurate_seek",
           "-ss",
-          String(startTime + offset),
+          String(startTime + firstFrame / fps),
           "-i",
           videoPath,
-          // A middle segment reads one frame past its end and keeps exactly its own frames.
+          // Read one frame past the segment and keep exactly its own frames.
           "-t",
-          String(last ? duration - offset : (segmentFrames + 1) / fps),
-          ...(last ? [] : ["-frames:v", String(segmentFrames)]),
+          String((frames + 1) / fps),
+          "-frames:v",
+          String(frames),
           "-start_number",
-          String(index * segmentFrames + 1),
+          String(firstFrame + 1),
           ...filterAndEncodeArgs,
         ],
         { ...job.runOptions, signal },
@@ -1089,14 +1090,15 @@ export async function extractVideoFramesRange(
   } else {
     const filterArgs = vfFilters.length > 0 ? ["-vf", vfFilters.join(",")] : [];
     const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
+    const totalFrames = extractionFrameCountForDuration(duration, normalizedFps, false);
     processResult =
-      sampleCfrAtOutputFps && duration * fps > segmentFrames
+      sampleCfrAtOutputFps && totalFrames > segmentFrames
         ? await runSegmentedExtraction({
             decodeArgs,
             filterAndEncodeArgs: [...filterArgs, ...encodeArgs],
             videoPath,
             startTime,
-            duration,
+            totalFrames,
             fps,
             segmentFrames,
             runOptions,
