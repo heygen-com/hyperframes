@@ -475,14 +475,21 @@ describe("mount/compile assembly parity", () => {
         '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div><div data-composition-id="card__hf1" data-composition-src="compositions/cards/card.html"></div>',
       ids: ["card", "card__hf1", "card__hf2"],
     },
+    { name: "two copies inside one scene", sceneCopies: 2, ids: ["card__hf1", "card__hf2"] },
   ])(
     "mounts nested project-root paths with $name identically on all three paths",
-    async ({ extraHosts, ids }) => {
+    async ({ extraHosts = "", sceneCopies = 1, ids }) => {
+      const cardHost =
+        '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div>';
       const result = await contracts({
         ...nestedCompositionPathFixture,
         "index.html": nestedCompositionPathFixture["index.html"]!.replace(
           '<div data-composition-id="scene"',
           `${extraHosts}<div data-composition-id="scene"`,
+        ),
+        "compositions/scene.html": nestedCompositionPathFixture["compositions/scene.html"]!.replace(
+          cardHost,
+          cardHost.repeat(sceneCopies),
         ),
       });
       expect(result.render).toEqual(result.preview);

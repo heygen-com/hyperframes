@@ -188,6 +188,21 @@ function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
 }
 
+const headNodeHost = new WeakMap<Element, Element>();
+
+/** Mounts finish in any order; `<head>` keeps their links and styles in host document order. */
+function insertIntoHeadInHostOrder(node: Element, host: Element): void {
+  const next = Array.from(document.head.children).find((element) => {
+    const owner = headNodeHost.get(element);
+    return (
+      owner?.isConnected === true &&
+      (host.compareDocumentPosition(owner) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+    );
+  });
+  headNodeHost.set(node, host);
+  document.head.insertBefore(node, next ?? null);
+}
+
 const waitForExternalScriptLoad = (
   scriptEl: HTMLScriptElement,
 ): Promise<{ status: "load" | "error" | "timeout"; elapsedMs: number }> =>
@@ -495,7 +510,7 @@ async function mountCompositionContent(params: {
     if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
     if (hasSameLink(document.head, clonedLink)) continue;
-    document.head.appendChild(clonedLink);
+    insertIntoHeadInHostOrder(clonedLink, params.host);
     params.injectedLinks.push(clonedLink);
   }
 
@@ -517,7 +532,7 @@ async function mountCompositionContent(params: {
           { scopeRootSelectors: true },
         );
       }
-      document.head.appendChild(clonedStyle);
+      insertIntoHeadInHostOrder(clonedStyle, params.host);
       params.injectedStyles.push(clonedStyle);
       const authored = clonedStyle.textContent || "";
       styles.push({ element: clonedStyle, authored, applied: authored });
@@ -725,11 +740,10 @@ async function mountExternalCompositions(
     return !parent || attemptedPaths.has(parent);
   });
 
-  type PendingMount = () => Promise<MountedComposition | null>;
   const mounted: Array<MountedComposition | null> = [];
   for (let offset = 0; offset < hosts.length; offset += 4) {
     const batch = await Promise.all(
-      hosts.slice(offset, offset + 4).map(async (host): Promise<PendingMount | null> => {
+      hosts.slice(offset, offset + 4).map(async (host): Promise<MountedComposition | null> => {
         const src = host.getAttribute("data-composition-src");
         if (!src) return null;
         const hostIdentity = hostIdentityByElement.get(host);
@@ -765,25 +779,18 @@ async function mountExternalCompositions(
           failed(new Error(refusal));
           return null;
         }
-        const mount =
-          (mountParams: Parameters<typeof mountCompositionContent>[0]): PendingMount =>
-          async () => {
+        const mount = async (mountParams: Parameters<typeof mountCompositionContent>[0]) => {
+          const composition = await mountCompositionContent(mountParams);
+          const runScripts = composition.runScripts;
+          composition.runScripts = async () => {
             try {
-              const composition = await mountCompositionContent(mountParams);
-              const runScripts = composition.runScripts;
-              composition.runScripts = async () => {
-                try {
-                  await runScripts();
-                } catch (error) {
-                  failed(error);
-                }
-              };
-              return composition;
+              await runScripts();
             } catch (error) {
               failed(error);
-              return null;
             }
           };
+          return composition;
+        };
         try {
           const localTemplate =
             authoredCompositionId != null
@@ -792,7 +799,7 @@ async function mountExternalCompositions(
                 )
               : null;
           if (localTemplate) {
-            return mount({
+            return await mount({
               host,
               authoredCompositionId,
               runtimeCompositionId,
@@ -824,7 +831,7 @@ async function mountExternalCompositions(
                 )
               : null) ?? doc.querySelector<HTMLTemplateElement>("template");
           const sourceNode = template ? template.content : doc.body;
-          return mount({
+          return await mount({
             host,
             authoredCompositionId,
             runtimeCompositionId,
@@ -856,8 +863,7 @@ async function mountExternalCompositions(
         }
       }),
     );
-    // Mount in document order: mounting appends <head> links and styles in cascade order.
-    for (const pending of batch) mounted.push(pending ? await pending() : null);
+    mounted.push(...batch);
   }
   return mounted.filter((composition): composition is MountedComposition => composition !== null);
 }
