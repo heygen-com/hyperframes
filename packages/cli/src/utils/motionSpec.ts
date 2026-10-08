@@ -69,7 +69,10 @@ const VALIDATORS: Record<string, Validator> = {
 function validateAssertion(raw: unknown, index: number): MotionAssertion | string {
   const at = `assertions[${index}]`;
   if (!isObject(raw)) return `${at}: must be an object`;
-  const validator = typeof raw.kind === "string" ? VALIDATORS[raw.kind] : undefined;
+  const validator =
+    typeof raw.kind === "string" && Object.hasOwn(VALIDATORS, raw.kind)
+      ? VALIDATORS[raw.kind]
+      : undefined;
   if (!validator) return `${at}: unknown assertion kind ${JSON.stringify(raw.kind)}`;
   return validator(raw, at);
 }

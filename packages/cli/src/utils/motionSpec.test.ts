@@ -47,6 +47,16 @@ describe("parseMotionSpec", () => {
     if (!result.ok) expect(result.errors[0]).toContain("unknown assertion kind");
   });
 
+  it.each(["constructor", "__proto__", "hasOwnProperty", "toString", "valueOf"])(
+    "rejects inherited validator name %s as an unknown assertion kind",
+    (kind) => {
+      expect(parseMotionSpec({ assertions: [{ kind }] })).toEqual({
+        ok: false,
+        errors: [`assertions[0]: unknown assertion kind ${JSON.stringify(kind)}`],
+      });
+    },
+  );
+
   it("reports per-field errors for missing required fields", () => {
     const result = parseMotionSpec({
       assertions: [
@@ -158,6 +168,22 @@ describe("readMotionSpec", () => {
     const result = readMotionSpec(path);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]).toContain("no assertions");
+  });
+
+  it("reports an inherited kind alongside other validation errors from a sidecar", () => {
+    const dir = tempDir("motion-inherited-");
+    const path = join(dir, "index.motion.json");
+    writeFileSync(
+      path,
+      JSON.stringify({ assertions: [{ kind: "__proto__" }, { kind: "before", a: "#a" }] }),
+    );
+    expect(readMotionSpec(path)).toEqual({
+      ok: false,
+      errors: [
+        'assertions[0]: unknown assertion kind "__proto__"',
+        'assertions[1] (before): "b" must be a non-empty string',
+      ],
+    });
   });
 
   it("parses a valid sidecar file", () => {
