@@ -4,12 +4,13 @@ import { failCommand } from "../../utils/commandResult.js";
  * `--keep-api-key`, only the OAuth block is cleared (no-op for
  * API-key-only stores).
  *
- * Env-only credentials (`HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`) can't
- * be cleared by this command — we tell the user to unset them.
+ * Env-only credentials (`HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`,
+ * `HEYGEN_ACCESS_TOKEN`) can't be cleared by this command — we tell the user to unset them.
  */
 
 import { defineCommand } from "citty";
 import {
+  ENV_CREDENTIAL_VAR,
   clearOAuth,
   configDir,
   credentialPath,
@@ -17,7 +18,6 @@ import {
   readStore,
   revokeTokens,
 } from "../../auth/index.js";
-import { ENV_CREDENTIAL_VAR } from "../../auth/resolver.js";
 import { c } from "../../ui/colors.js";
 
 export default defineCommand({

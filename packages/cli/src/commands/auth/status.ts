@@ -17,6 +17,7 @@ import { failCommand, setCommandExitCode } from "../../utils/commandResult.js";
 
 import { defineCommand } from "citty";
 import {
+  ENV_CREDENTIAL_VAR,
   AuthClient,
   isAuthError,
   loadUserInfo,
@@ -258,9 +259,9 @@ function identityRows(user: UserInfo): [string, string][] {
 }
 
 const SOURCE_LABELS: Record<ResolvedCredential["source"], string> = {
-  env: "env (HEYGEN_API_KEY)",
-  env_alias: "env (HYPERFRAMES_API_KEY)",
-  env_oauth: "env (HEYGEN_ACCESS_TOKEN)",
+  env: `env (${ENV_CREDENTIAL_VAR.env})`,
+  env_alias: `env (${ENV_CREDENTIAL_VAR.env_alias})`,
+  env_oauth: `env (${ENV_CREDENTIAL_VAR.env_oauth})`,
   file_legacy: "file (~/.heygen/credentials — legacy plaintext)",
   file_json: "file (~/.heygen/credentials)",
 };

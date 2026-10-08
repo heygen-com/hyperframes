@@ -19,7 +19,17 @@
 import { isHeaderSafe, readStore } from "./store.js";
 import { ErrInvalidStore, ErrLoginExpired, ErrNotConfigured, isAuthError } from "./errors.js";
 
-type CredentialSource = "env" | "env_alias" | "env_oauth" | "file_json" | "file_legacy";
+type EnvSource = "env" | "env_alias" | "env_oauth";
+type CredentialSource = EnvSource | "file_json" | "file_legacy";
+
+export const ENV_CREDENTIAL_VAR: Record<EnvSource, string> = {
+  env: "HEYGEN_API_KEY",
+  env_alias: "HYPERFRAMES_API_KEY",
+  env_oauth: "HEYGEN_ACCESS_TOKEN",
+};
+
+export const envCredentialVar = (source: CredentialSource): string | undefined =>
+  source in ENV_CREDENTIAL_VAR ? ENV_CREDENTIAL_VAR[source as EnvSource] : undefined;
 
 interface ApiKeyCredential {
   type: "api_key";
@@ -40,12 +50,6 @@ interface OAuthCredential {
 
 export type ResolvedCredential = ApiKeyCredential | OAuthCredential;
 
-export const ENV_CREDENTIAL_VAR: Partial<Record<CredentialSource, string>> = {
-  env: "HEYGEN_API_KEY",
-  env_alias: "HYPERFRAMES_API_KEY",
-  env_oauth: "HEYGEN_ACCESS_TOKEN",
-};
-
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 export interface ResolveOptions {
@@ -55,17 +59,17 @@ export interface ResolveOptions {
 export async function resolveCredential(opts: ResolveOptions = {}): Promise<ResolvedCredential> {
   const now = (opts.now ?? (() => new Date()))();
 
-  const heygenEnv = headerSafeEnv("HEYGEN_API_KEY");
+  const heygenEnv = headerSafeEnv(ENV_CREDENTIAL_VAR.env);
   if (heygenEnv) {
     return { type: "api_key", key: heygenEnv, source: "env" };
   }
 
-  const hfEnv = headerSafeEnv("HYPERFRAMES_API_KEY");
+  const hfEnv = headerSafeEnv(ENV_CREDENTIAL_VAR.env_alias);
   if (hfEnv) {
     return { type: "api_key", key: hfEnv, source: "env_alias" };
   }
 
-  const accessToken = headerSafeEnv("HEYGEN_ACCESS_TOKEN");
+  const accessToken = headerSafeEnv(ENV_CREDENTIAL_VAR.env_oauth);
   if (accessToken) {
     return { type: "oauth", access_token: accessToken, source: "env_oauth", refreshable: false };
   }
