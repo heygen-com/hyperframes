@@ -212,4 +212,12 @@ describe("summarizeCatalogUsage", () => {
       manifestUnreadable: false,
     });
   });
+
+  it.each(["[]", "42"])("reports a non-object config as unreadable: %s", (text) => {
+    expect(usageOfRawConfig(text)).toEqual({
+      installed: [],
+      usedBlocks: [],
+      manifestUnreadable: true,
+    });
+  });
 });

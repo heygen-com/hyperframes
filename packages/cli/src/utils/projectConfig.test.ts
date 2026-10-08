@@ -8,6 +8,7 @@ import {
   normalizeConfig,
   projectConfigPath,
   readProjectConfig,
+  readProjectConfigWithStatus,
   resolveAutoProxy,
   recordProjectRegistryItems,
   seedProjectAuthoringSkill,
@@ -105,6 +106,7 @@ describe("projectConfig", () => {
       const dir = tmp();
       try {
         expect(readProjectConfig(dir)).toBeUndefined();
+        expect(readProjectConfigWithStatus(dir)).toEqual({ status: "missing" });
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -115,10 +117,27 @@ describe("projectConfig", () => {
       try {
         writeFileSync(projectConfigPath(dir), "{ not valid json", "utf-8");
         expect(readProjectConfig(dir)).toBeUndefined();
+        expect(readProjectConfigWithStatus(dir)).toEqual({ status: "unreadable" });
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+
+    it.each(["[]", '[{"registry":"https://example.test"}]', '"invalid"', "42", "true", "null"])(
+      "rejects a non-object config root: %s",
+      (text) => {
+        const dir = tmp();
+        try {
+          writeFileSync(projectConfigPath(dir), text, "utf-8");
+          expect(readProjectConfigWithStatus(dir)).toEqual({ status: "unreadable" });
+          expect(readProjectConfig(dir)).toBeUndefined();
+          expect(loadProjectConfig(dir)).toEqual(DEFAULT_PROJECT_CONFIG);
+          expect(readFileSync(projectConfigPath(dir), "utf-8")).toBe(text);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    );
 
     it("normalizes a partial on-disk config", () => {
       const dir = tmp();
@@ -131,6 +150,7 @@ describe("projectConfig", () => {
         const read = readProjectConfig(dir);
         expect(read?.registry).toBe("https://only-this.example.com");
         expect(read?.paths).toEqual(DEFAULT_PROJECT_CONFIG.paths);
+        expect(readProjectConfigWithStatus(dir)).toEqual({ status: "ok", config: read });
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

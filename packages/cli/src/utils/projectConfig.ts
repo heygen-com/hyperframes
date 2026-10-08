@@ -119,7 +119,9 @@ export function readProjectConfigWithStatus(projectDir: string): {
     return { status: isFileNotFound(error) ? "missing" : "unreadable" };
   }
   try {
-    return { status: "ok", config: normalizeConfig(JSON.parse(text) as Partial<ProjectConfig>) };
+    const parsed: unknown = JSON.parse(text);
+    if (!isJsonObject(parsed)) return { status: "unreadable" };
+    return { status: "ok", config: normalizeConfig(parsed) };
   } catch {
     return { status: "unreadable" };
   }
