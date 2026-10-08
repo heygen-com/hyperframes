@@ -102,7 +102,7 @@ export function createPreviewGestureStarts(
   // A corner resize scales about the element's centre by the pointer's distance from it, as the resize does.
   const drawResizedBox = (
     origin: OverlayRect | null,
-    press: { x: number; y: number },
+    grabbed: { x: number; y: number },
   ): WaitingPressState["draw"] => {
     if (!origin) return null;
     const bounds = opts.overlayRef.current?.getBoundingClientRect();
@@ -111,8 +111,12 @@ export function createPreviewGestureStarts(
       y: (bounds?.top ?? 0) + origin.top + origin.height / 2,
     };
     return (dx, dy) => {
-      const pointer = { x: press.x + dx, y: press.y + dy };
-      const scale = resolveCenterResizeScale({ pointer, pointerStart: press, centerStart: centre });
+      const pointer = { x: grabbed.x + dx, y: grabbed.y + dy };
+      const scale = resolveCenterResizeScale({
+        pointer,
+        pointerStart: grabbed,
+        centerStart: centre,
+      });
       const [width, height] = [origin.width * scale, origin.height * scale];
       opts.setOverlayRect({
         ...origin,
@@ -248,6 +252,7 @@ export function createPreviewGestureStarts(
       selection?: DomEditSelection;
       rect?: OverlayRect | null;
       resizeHandle?: ResizeHandle;
+      resizeCorner?: { x: number; y: number };
     },
   ) => {
     // A replay edits what was pressed, though another element may be selected by then.
@@ -255,7 +260,10 @@ export function createPreviewGestureStarts(
     let draw: WaitingPressState["draw"] = null;
     if (kind === "drag") draw = drawPressedBox(opts.overlayRectRef.current);
     if (kind === "resize")
-      draw = drawResizedBox(opts.overlayRectRef.current, { x: e.clientX, y: e.clientY });
+      draw = drawResizedBox(
+        opts.overlayRectRef.current,
+        options?.resizeCorner ?? { x: e.clientX, y: e.clientY },
+      );
     return startOnShownPreview(
       e,
       () => {
@@ -272,6 +280,7 @@ export function createPreviewGestureStarts(
             selection,
             rect,
             resizeHandle: options?.resizeHandle,
+            resizeCorner: options?.resizeCorner,
             at,
           })
         );

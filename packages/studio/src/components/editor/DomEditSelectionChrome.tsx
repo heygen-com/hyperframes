@@ -30,35 +30,40 @@ const RESIZE_HANDLE_DEFS: Array<{
 type CropInset = { top: number; right: number; bottom: number; left: number };
 const NO_CROP_INSET: CropInset = { top: 0, right: 0, bottom: 0, left: 0 };
 
-function resizeHandleStyle(
+function resizeHandleLayout(
   def: (typeof RESIZE_HANDLE_DEFS)[number],
   overlayRect: { left: number; top: number; width: number; height: number },
   cropInset?: CropInset,
-): React.CSSProperties {
+): { style: React.CSSProperties; anchor: React.CSSProperties } {
   const half = RESIZE_HANDLE_HIT_PX / 2;
   const inset = cropInset ?? NO_CROP_INSET;
-  const style: React.CSSProperties = { cursor: def.cursor, touchAction: "none" };
   // Position relative to the overlay container (not the selection box).
   // This ensures the dots render as siblings of the box border div — strictly
   // above it — rather than as children where the parent border can visually
   // overlap the dot circle at the corner.
-  const slideOutToFreeMiddleX = Math.max(
-    0,
-    half - (overlayRect.width - inset.left - inset.right) / 4,
-  );
-  const slideOutToFreeMiddleY = Math.max(
-    0,
-    half - (overlayRect.height - inset.top - inset.bottom) / 4,
-  );
-  style.left =
+  const cornerX =
     def.x === "left"
-      ? overlayRect.left + inset.left - half - slideOutToFreeMiddleX
-      : overlayRect.left + overlayRect.width - inset.right - half + slideOutToFreeMiddleX;
-  style.top =
+      ? overlayRect.left + inset.left
+      : overlayRect.left + overlayRect.width - inset.right;
+  const cornerY =
     def.y === "top"
-      ? overlayRect.top + inset.top - half - slideOutToFreeMiddleY
-      : overlayRect.top + overlayRect.height - inset.bottom - half + slideOutToFreeMiddleY;
-  return style;
+      ? overlayRect.top + inset.top
+      : overlayRect.top + overlayRect.height - inset.bottom;
+  const slideOutToFreeMiddleX =
+    (def.x === "left" ? -1 : 1) *
+    Math.max(0, half - (overlayRect.width - inset.left - inset.right) / 4);
+  const slideOutToFreeMiddleY =
+    (def.y === "top" ? -1 : 1) *
+    Math.max(0, half - (overlayRect.height - inset.top - inset.bottom) / 4);
+  return {
+    style: {
+      cursor: def.cursor,
+      touchAction: "none",
+      left: cornerX - half + slideOutToFreeMiddleX,
+      top: cornerY - half + slideOutToFreeMiddleY,
+    },
+    anchor: { left: half - slideOutToFreeMiddleX, top: half - slideOutToFreeMiddleY },
+  };
 }
 
 type GestureHandlers = ReturnType<typeof createDomEditOverlayGestureHandlers>;
@@ -250,26 +255,39 @@ export function DomEditSelectionChrome({
         {canManipulate &&
           !editing &&
           selection.capabilities.canApplyManualSize &&
-          RESIZE_HANDLE_DEFS.map((def) =>
-            def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
+          RESIZE_HANDLE_DEFS.map((def) => {
+            if (def.handle !== "se" && !selection.capabilities.canApplyManualOffset) return null;
+            const layout = resizeHandleLayout(def, overlayRect, cropOutlineInsetPx ?? undefined);
+            return (
               <div
                 key={def.handle}
                 className="pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
                 style={{
-                  ...resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined),
+                  ...layout.style,
                   // Cursor rotates with the object: bucket the corner's base
                   // diagonal + element rotation into the 8 CSS resize cursors.
                   cursor: resolveRotatedResizeCursor(def.handle, overlayRect.angle ?? 0),
                 }}
                 onPointerDown={(e) => {
                   e.stopPropagation();
-                  gestures.startGesture("resize", e, { resizeHandle: def.handle });
+                  const corner = e.currentTarget
+                    .querySelector("[data-resize-corner]")
+                    ?.getBoundingClientRect();
+                  gestures.startGesture("resize", e, {
+                    resizeHandle: def.handle,
+                    resizeCorner: corner && { x: corner.left, y: corner.top },
+                  });
                 }}
               >
+                <span
+                  data-resize-corner
+                  className="pointer-events-none absolute"
+                  style={layout.anchor}
+                />
                 <div className="pointer-events-none h-[12px] w-[12px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
               </div>
-            ),
-          )}
+            );
+          })}
       </div>
       {/* Crop owns its element-local oriented frame. Keep it outside the chrome's
           rotated plane or a rotated selection applies the angle twice. */}
