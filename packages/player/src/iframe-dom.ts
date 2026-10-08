@@ -72,6 +72,35 @@ export function scaleIframeToFit(
   const scale = Math.min(w / compositionWidth, h / compositionHeight);
   iframe.style.width = `${compositionWidth}px`;
   iframe.style.height = `${compositionHeight}px`;
-  iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  // Zoom rasters the composition at the size shown. Under a scale() transform Chromium rasters every
+  // will-change: transform layer at full size, which runs heavy compositions out of tile memory.
+  if (engineZoomsFramesWhole(iframe.ownerDocument)) {
+    iframe.style.zoom = String(scale);
+    iframe.style.transform = "translate(-50%, -50%)";
+  } else {
+    iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  }
   return true;
+}
+
+let zoomsFramesWhole: boolean | undefined;
+
+/** Whether a zoomed iframe keeps its viewport exactly and only lowers its devicePixelRatio (Chromium, WebKit). */
+// Firefox's viewport drifts a few pixels. Probed on a blank frame: an opaque-origin composition can't be read.
+function engineZoomsFramesWhole(doc: Document): boolean {
+  if (zoomsFramesWhole !== undefined) return zoomsFramesWhole;
+  if (!doc.body) return false;
+  const zoom = 0.3646; // an awkward scale: Firefox's viewport drifts here
+  const probe = doc.createElement("iframe");
+  probe.style.cssText = `position:fixed;left:-9999px;top:0;border:0;visibility:hidden;width:1920px;height:1080px;zoom:${zoom}`;
+  doc.body.appendChild(probe);
+  const win = probe.contentWindow;
+  const hostRatio = doc.defaultView?.devicePixelRatio ?? 1;
+  zoomsFramesWhole =
+    !!win &&
+    win.innerWidth === 1920 &&
+    win.innerHeight === 1080 &&
+    Math.abs(win.devicePixelRatio - hostRatio * zoom) < 0.01;
+  probe.remove();
+  return zoomsFramesWhole;
 }
