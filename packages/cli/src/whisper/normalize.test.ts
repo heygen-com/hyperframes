@@ -83,6 +83,45 @@ describe("detectFormat", () => {
 });
 
 describe("loadTranscript", () => {
+  it.each([
+    ["srt", "\r\n"],
+    ["srt", "\r"],
+    ["vtt", "\r\n"],
+    ["vtt", "\r"],
+  ])("keeps separate %s cues with %j line endings", (ext, newline) => {
+    const timestamp = ext === "srt" ? "," : ".";
+    const lines = [
+      ...(ext === "vtt" ? ["WEBVTT", ""] : []),
+      "1",
+      `00:00:01${timestamp}000 --> 00:00:03${timestamp}500`,
+      "<b>Hello</b> world",
+      "Again",
+      "",
+      "2",
+      `00:00:04${timestamp}000 --> 00:00:06${timestamp}000`,
+      "How are you",
+      "",
+    ];
+    const { words, format } = loadTranscript(tmpFile(`captions.${ext}`, lines.join(newline)));
+    expect(format).toBe(ext);
+    expect(words).toEqual([
+      { text: "Hello world Again", start: 1, end: 3.5, id: "w0" },
+      { text: "How are you", start: 4, end: 6, id: "w1" },
+    ]);
+    expect(formatSrt(words, { preGrouped: true })).toBe(
+      "1\n00:00:01,000 --> 00:00:03,500\nHello world Again\n\n2\n00:00:04,000 --> 00:00:06,000\nHow are you\n",
+    );
+  });
+
+  it("preserves WebVTT cues when newline forms are mixed", () => {
+    const source =
+      "WEBVTT\r\n\r\n00:01.000 --> 00:02.000\rFirst phrase\r\r00:03.000 --> 00:04.000\nSecond phrase\n";
+    expect(loadTranscript(tmpFile("mixed.vtt", source)).words).toEqual([
+      { text: "First phrase", start: 1, end: 2, id: "w0" },
+      { text: "Second phrase", start: 3, end: 4, id: "w1" },
+    ]);
+  });
+
   it("reads an empty word list as a transcript with no words", () => {
     expect(loadTranscript(tmpFile("transcript.json", "[]"))).toEqual({
       words: [],
