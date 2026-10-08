@@ -5,7 +5,7 @@ import {
 } from "../compiler/svgSelectorAliases";
 import {
   planCompositionAssembly,
-  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+  extractedCompositionAssets,
 } from "../compiler/compositionAssembly";
 import {
   scopeCssToComposition,
@@ -225,7 +225,7 @@ function resetCompositionHost(host: Element) {
  * inline-template path, and mutating it would leave a remount with no styles.
  */
 function stripExtractedCompositionAssets(node: ParentNode): void {
-  for (const el of Array.from(node.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR))) {
+  for (const el of extractedCompositionAssets(node)) {
     el.remove();
   }
 }

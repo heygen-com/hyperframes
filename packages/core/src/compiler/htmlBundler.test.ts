@@ -2870,6 +2870,76 @@ describe("bundleToSingleHtml script order", () => {
   });
 });
 
+describe("bundleToSingleHtml composition scripts that are not JavaScript", () => {
+  const sceneFile = (id: string, extra: string) => `<template id="${id}-template">
+<div data-composition-id="${id}" data-width="320" data-height="180" data-duration="2">
+  ${extra}
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.${id} = 1;</script>
+</div></template>`;
+
+  async function bundleFilm(sceneExtra: string, options?: { sceneParts?: boolean }) {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="4">
+    <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="2" data-duration="2"></div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.main = 1;</script>
+</body></html>`,
+      "compositions/intro.html": sceneFile("intro", ""),
+      "compositions/scene.html": sceneFile("scene", sceneExtra),
+    });
+    try {
+      return parseHTML(await bundleToSingleHtml(dir, options)).document;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const runnable = (document: Document) =>
+    [...document.querySelectorAll("body script:not([src])")].filter((el) =>
+      [null, AFTER_FONTS_SCRIPT_TYPE].includes(el.getAttribute("type")),
+    );
+  const parses = (el: Element) => {
+    try {
+      new Function(el.textContent ?? "");
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const timelinesThatRun = (document: Document) =>
+    ["main", "intro", "scene"].filter((id) =>
+      runnable(document).some(
+        (el) => parses(el) && (el.textContent ?? "").includes(`__timelines.${id} =`),
+      ),
+    );
+
+  it("keeps a sub-composition's JSON data script readable and out of the JavaScript", async () => {
+    const document = await bundleFilm(
+      `<script type="application/json" id="meta">{"title": "x", "beats": [1, 2]}</script>`,
+    );
+    const meta = document.querySelector('script[type="application/json"]');
+    expect(meta?.getAttribute("id")).toBe("meta");
+    expect(JSON.parse(meta?.textContent ?? "")).toEqual({ title: "x", beats: [1, 2] });
+    expect(runnable(document).every(parses)).toBe(true);
+    expect(runnable(document).some((el) => el.textContent?.includes('"beats"'))).toBe(false);
+    expect(timelinesThatRun(document)).toEqual(["main", "intro", "scene"]);
+  });
+
+  it.each([false, true])(
+    "keeps a sub-composition script that does not parse apart, so the others still run (sceneParts %s)",
+    async (sceneParts) => {
+      const document = await bundleFilm(`<script>window.broken = {:</script>`, { sceneParts });
+      const broken = runnable(document).filter((el) => !parses(el));
+      expect(broken).toHaveLength(1);
+      expect(broken[0]!.textContent).toContain("window.broken");
+      expect(timelinesThatRun(document)).toEqual(["main", "intro", "scene"]);
+    },
+  );
+});
+
 describe("bundleToSingleHtml sceneParts", () => {
   const film = () =>
     makeTempProject({

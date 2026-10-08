@@ -34,7 +34,52 @@ const SCRIPT_SELECTOR = "script";
  */
 const HOISTED_LINK_SELECTOR = 'link[rel="stylesheet"], link[rel="preconnect"]';
 
-export const EXTRACTED_COMPOSITION_ASSET_SELECTOR = `${STYLE_SELECTOR}, ${SCRIPT_SELECTOR}, ${HOISTED_LINK_SELECTOR}`;
+// The HTML spec's JavaScript MIME type essence matches: a script with any of these types runs as classic.
+const JAVASCRIPT_TYPES = new Set([
+  "",
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
+
+export function isJavaScriptType(el: AssemblyAttributed): boolean {
+  return JAVASCRIPT_TYPES.has((el.getAttribute("type") || "").trim().toLowerCase());
+}
+
+/** A data block (application/json, text/template, ...) never runs, so it stays in the content as authored. */
+function isExecutableScript(el: AssemblyAttributed): boolean {
+  const type = (el.getAttribute("type") || "").trim().toLowerCase();
+  return type === "module" || type === "importmap" || isJavaScriptType(el);
+}
+
+function executableScripts<TElement extends AssemblyAttributed>(
+  node: AssemblyQueryable<TElement> | null | undefined,
+): TElement[] {
+  return toArray(node?.querySelectorAll(SCRIPT_SELECTOR)).filter(isExecutableScript);
+}
+
+/** The styles, scripts and links both paths extract, so the mounted copy must drop them. */
+export function extractedCompositionAssets<TElement extends AssemblyAttributed>(
+  node: AssemblyQueryable<TElement>,
+): TElement[] {
+  return [
+    ...toArray(node.querySelectorAll(`${STYLE_SELECTOR}, ${HOISTED_LINK_SELECTOR}`)),
+    ...executableScripts(node),
+  ];
+}
 
 /**
  * The compiler's nesting cap, enforced against the ancestry chain rather than a
@@ -187,10 +232,7 @@ export function planCompositionAssembly<TElement extends AssemblyAttributed>(
       ...toArray(assetHead?.querySelectorAll(STYLE_SELECTOR)),
       ...toArray(contentNode.querySelectorAll(STYLE_SELECTOR)),
     ],
-    scriptSources: [
-      ...toArray(assetHead?.querySelectorAll(SCRIPT_SELECTOR)),
-      ...toArray(contentNode.querySelectorAll(SCRIPT_SELECTOR)),
-    ],
+    scriptSources: [...executableScripts(assetHead), ...executableScripts(contentNode)],
     linkSources: [
       ...toArray(head?.querySelectorAll(HOISTED_LINK_SELECTOR)),
       ...toArray(contentNode.querySelectorAll(HOISTED_LINK_SELECTOR)),

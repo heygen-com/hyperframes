@@ -744,10 +744,13 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     isPinned,
   )) {
     const mergedJs = joinJsChunks(members.map((el) => el.textContent || ""));
+    const stripped = mergedJs ? stripJsComments(mergedJs) : "";
+    // Left unmerged, a script that does not parse fails alone instead of taking every timeline with it.
+    if (stripped === null) continue;
     for (const el of members) el.remove();
-    if (!mergedJs) continue;
+    if (!stripped) continue;
     const inlineScript = document.createElement("script");
-    inlineScript.textContent = escapeInlineScriptSource(stripJsCommentsParserSafe(mergedJs));
+    inlineScript.textContent = escapeInlineScriptSource(stripped);
     if (anchor) anchor.before(inlineScript);
     else document.body.appendChild(inlineScript);
   }
@@ -799,14 +802,21 @@ function joinJsChunks(chunks: string[]): string {
     .join("\n");
 }
 
-function stripJsCommentsParserSafe(source: string): string {
-  if (!source) return source;
+/** Null when the source does not parse. */
+function stripJsComments(source: string): string | null {
   try {
-    const result = transformSync(source, { loader: "js", minify: false, legalComments: "none" });
-    return result.code.trim();
+    return transformSync(source, {
+      loader: "js",
+      minify: false,
+      legalComments: "none",
+    }).code.trim();
   } catch {
-    return source;
+    return null;
   }
+}
+
+function stripJsCommentsParserSafe(source: string): string {
+  return source ? (stripJsComments(source) ?? source) : source;
 }
 
 export interface BundleOptions {
@@ -1261,12 +1271,15 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     }
   }
   for (const { scene, chunks } of scriptRuns) {
-    const script = document.createElement("script");
-    if (scene) script.setAttribute(SCENE_PART_ATTR, scene);
-    script.textContent = joinJsChunks(
-      chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
-    );
-    document.body.appendChild(script);
+    const texts = chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk()));
+    const joined = joinJsChunks(texts);
+    // One script per chunk when the run does not parse, so one bad composition script fails alone.
+    for (const text of stripJsComments(joined) === null ? texts : [joined]) {
+      const script = document.createElement("script");
+      if (scene) script.setAttribute(SCENE_PART_ATTR, scene);
+      script.textContent = text;
+      document.body.appendChild(script);
+    }
   }
   emitMountedModuleScripts(document, subCompResult.importMaps, subCompResult.moduleScripts);
 

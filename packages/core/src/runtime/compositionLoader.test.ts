@@ -1503,6 +1503,31 @@ describe("loadCompositions inline templates", () => {
     expect(injectedScripts[0].textContent).toContain("inline template script");
   });
 
+  it("leaves a JSON data script in the mounted content instead of running it", async () => {
+    const template = document.createElement("template");
+    template.id = "data-comp-template";
+    template.innerHTML = `
+      <div data-composition-id="data-comp" data-width="1920" data-height="1080">
+        <script type="application/json" id="meta">{"title": "x"}</script>
+        <script>window.__dataCompRan = 1;</script>
+      </div>
+    `;
+    document.body.appendChild(template);
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "data-comp");
+    document.body.appendChild(host);
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(injectedScripts.map((script) => script.textContent).join("\n")).not.toContain("title");
+    expect(injectedScripts.some((script) => script.textContent?.includes("__dataCompRan"))).toBe(
+      true,
+    );
+    const meta = host.querySelector("#meta");
+    expect(meta?.getAttribute("type")).toBe("application/json");
+    expect(JSON.parse(meta?.textContent ?? "")).toEqual({ title: "x" });
+  });
+
   it("copies dimension attributes from template inner root to host", async () => {
     const template = document.createElement("template");
     template.id = "dim-comp-template";
