@@ -533,13 +533,14 @@ it("does not move a statically positioned element when a scale resize lands", as
   const positionWrites = commitMutation.mock.calls
     .map((call) => call[1] as { properties?: Record<string, number> })
     .filter((mutation) => mutation.properties?.x != null || mutation.properties?.y != null);
-  // Either it left the position alone, or it rewrote the same value.
+  // At most the sub-pixel correction onto the drop point, never the drag's translation.
   for (const write of positionWrites) {
-    expect(write.properties?.x).toBe(432);
-    expect(write.properties?.y).toBe(173);
+    expect(Math.abs(write.properties!.x! - 432)).toBeLessThan(0.05);
+    expect(Math.abs(write.properties!.y! - 173)).toBeLessThan(0.05);
   }
-  // And the live element ends on the drop point, not a drag away from it.
-  expect(el.getBoundingClientRect().x).toBeCloseTo(603.3, 0);
+  // And the live element ends on the drop point (603.32, 713.528).
+  expect(el.getBoundingClientRect().x).toBeCloseTo(603.32, 3);
+  expect(el.getBoundingClientRect().y).toBeCloseTo(713.528, 3);
 });
 
 function titleSelection(): DomEditSelection {

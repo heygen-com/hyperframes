@@ -431,12 +431,6 @@ export async function tryGsapResizeIntercept(
       const post = draftEl.getBoundingClientRect();
       const residual = { x: dropPoint.x - post.x, y: dropPoint.y - post.y };
       if (!Number.isFinite(residual.x) || !Number.isFinite(residual.y)) return null;
-      if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
-        logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
-        // Settled, with nothing to write. Still ours: forwarding the drag offset
-        // on top would move the box off the point it is already sitting on.
-        return "settled" as const;
-      }
       // The ONE corrected position — rounded once so the live runtime and the
       // persisted file agree exactly (commitStaticGsapPosition composes the same
       // rounded value from this delta).
@@ -444,6 +438,12 @@ export async function tryGsapResizeIntercept(
         x: roundTo3(base.x + residual.x),
         y: roundTo3(base.y + residual.y),
       };
+      if (corrected.x === roundTo3(base.x) && corrected.y === roundTo3(base.y)) {
+        logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
+        // Settled, with nothing to write. Still ours: forwarding the drag offset
+        // on top would move the box off the point it is already sitting on.
+        return "settled" as const;
+      }
       logResize("scale-finalize", {
         dropPoint,
         post: { x: post.x, y: post.y },
