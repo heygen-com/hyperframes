@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { WhisperUnavailableError } from "../whisper/manager.js";
+import { formatVtt } from "../whisper/normalize.js";
 import { CliRuntimeError, consumeCommandResult } from "../utils/commandResult.js";
 
 // Make the whisper core report "unavailable" so we exercise the soft-skip path.
@@ -637,6 +638,30 @@ Render video. Built for agents.
       wordCount: 2,
       outputPath,
     });
+  });
+
+  it("transcribes a media file straight to a VTT sidecar in one run", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const words = [
+      { id: "w0", text: "Write", start: 0, end: 0.5 },
+      { id: "w1", text: "HTML.", start: 0.5, end: 1 },
+    ];
+    transcribeMock.mockImplementation(async (_input, outputDir) => {
+      const result = fakeTranscript(outputDir, "whisper");
+      writeFileSync(result.transcriptPath, JSON.stringify(words));
+      return { ...result, wordCount: 2 };
+    });
+
+    await runCommand(transcribeCmd, {
+      rawArgs: [input, "--dir", dir, "--engine", "whisper", "--to", "vtt", "--json"],
+    });
+
+    const outputPath = join(dir, "transcript.vtt");
+    expect(readFileSync(outputPath, "utf-8")).toBe(formatVtt(words));
+    expect(JSON.parse(readFileSync(join(dir, "transcript.json"), "utf8"))).toEqual(words);
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(lastJson()).toMatchObject({ ok: true, wordCount: 2, format: "vtt", outputPath });
   });
 
   it("rejects a below-minimum --timeout with a discoverable error", async () => {

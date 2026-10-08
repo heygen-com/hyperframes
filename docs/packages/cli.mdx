@@ -268,8 +268,9 @@ npx hyperframes transcribe video.mp4 --model medium.en --language en
 npx hyperframes transcribe subtitles.srt
 npx hyperframes transcribe openai-response.json
 
-# Export a caption sidecar
+# Export a caption sidecar, from a transcript or straight from the media
 npx hyperframes transcribe transcript.json --to srt
+npx hyperframes transcribe video.mp4 --to vtt
 ```
 
 | Flag              | Description                                                                                                                                                                                       |
@@ -278,7 +279,7 @@ npx hyperframes transcribe transcript.json --to srt
 | `--engine, -e`    | ASR engine: `auto` (default — Parakeet if installed and the language is one of its 25, else whisper), `parakeet` (fails if Parakeet is missing, broken, or lacks the `--language`), or `whisper` |
 | `--model, -m`     | Whisper model (default `small.en`): `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3`                                                                                                       |
 | `--language, -l`  | Language code (`en`, `es`, `ja`, …). Whisper transcribes as this language; Parakeet, used when it covers it, detects the language itself.                                                          |
-| `--to`            | Export a sidecar instead: `srt` or `vtt`                                                                                                                                                           |
+| `--to`            | Write an `srt` or `vtt` sidecar: from a transcript file it exports instead of importing; from audio or video it is written beside `transcript.json` |
 | `--output, -o`    | Where the exported SRT/VTT goes                                                                                                                                                                    |
 | `--preserve-cues` | Keep each transcript entry as its own caption cue, skipping word-level grouping                                                                                                                    |
 | `--optional`      | Skip and exit 0 when whisper-cpp is unavailable, instead of failing. For pipelines that can carry on without captions. A broken Parakeet install is a real failure: it exits 1 even when whisper-cpp is missing. |
