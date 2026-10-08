@@ -264,6 +264,24 @@ describe("HyperframesRenderStack — snapshot", () => {
     expect(v2).not.toContain("PlanS3Uri");
   });
 
+  it("sends the same payload from every Lambda task as the SAM template", () => {
+    // CDK drops null-valued payload fields when it renders the definition (#5259), so compare
+    // what each deployed task sends rather than the construct source.
+    const sam = readSamDefinition();
+    const cdkTasks = {
+      ...getV1TaskStates(SYNTHED.definition),
+      ...getV2TaskStates(SYNTHED.definition),
+    };
+    const samTasks = { ...getV1TaskStates(sam), ...getV2TaskStates(sam) };
+    for (const [taskName, cdkTask] of Object.entries(cdkTasks)) {
+      const samTask = samTasks[taskName as keyof typeof samTasks];
+      expect({ taskName, payload: sentPayload(cdkTask) }).toEqual({
+        taskName,
+        payload: sentPayload(samTask),
+      });
+    }
+  });
+
   it("materializes null audio in the synthesized CDK v2 assembly payload", () => {
     const state = requireRecord(SYNTHED.definition.States.AssembleV2, "AssembleV2 state");
     const parameters = requireRecordProperty(state, "Parameters", "AssembleV2 parameters");
@@ -316,6 +334,23 @@ function requireRecordProperty(
   label: string,
 ): Record<string, unknown> {
   return requireRecord(record[property], label);
+}
+
+/** A task's payload as Step Functions sends it: a `States.StringToJson('null')` field is a null. */
+function sentPayload(state: unknown): Record<string, unknown> {
+  const parameters = requireRecordProperty(
+    requireRecord(state, "task state"),
+    "Parameters",
+    "task parameters",
+  );
+  const payload = requireRecordProperty(parameters, "Payload", "task payload");
+  return Object.fromEntries(
+    Object.entries(payload).map(([key, value]) =>
+      key.endsWith(".$") && value === "States.StringToJson('null')"
+        ? [key.slice(0, -2), null]
+        : [key, value],
+    ),
+  );
 }
 
 function getV2TaskStates(definition: {
