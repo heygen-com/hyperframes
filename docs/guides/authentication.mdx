@@ -47,7 +47,7 @@ The credential lives in `~/.heygen/credentials` (mode `0600`) — no per-repo `.
 
 ## How the HeyGen credential resolves
 
-Bundled media workflows use the HeyGen credential for hosted TTS and music /
+The bundled audio scripts use the HeyGen credential for hosted TTS and music /
 sound retrieval. It resolves first-match-wins:
 
 1. `HEYGEN_API_BASE` with `HEYGEN_API_KEY` — a host app's own gateway, set by the app that started the workflow
@@ -58,7 +58,8 @@ sound retrieval. It resolves first-match-wins:
 
 A nearby project `.env` can supply the keys, but never `HEYGEN_API_BASE`. Point at a different config directory
 with `HEYGEN_CONFIG_DIR`. The `hyperframes` CLI's own commands check the API keys before `HEYGEN_ACCESS_TOKEN`; see
-the [CLI reference](/packages/cli).
+the [CLI reference](/packages/cli). `media-use resolve` searches through the separate `heygen` CLI, which resolves its
+own credential.
 
 ## Providers used by agent workflows
 
