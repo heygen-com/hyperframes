@@ -529,7 +529,9 @@ export function patchCaptionHtml(dir: string, words: Word[]): void {
   if (words.length === 0) return;
 
   // Indent to 10 spaces to match typical composition script indentation
-  const wordsJson = JSON.stringify(words, null, 2).replace(/\n/g, "\n          ");
+  const wordsJson = JSON.stringify(words, null, 2)
+    .replace(/</g, "\\u003c")
+    .replace(/\n/g, "\n          ");
 
   let htmlFiles: string[];
   try {
@@ -552,7 +554,7 @@ export function patchCaptionHtml(dir: string, words: Word[]): void {
     const match = scriptMatch ?? transcriptMatch;
     if (match) {
       const varName = scriptMatch ? "script" : "TRANSCRIPT";
-      content = content.replace(match[0], `const ${varName} = ${wordsJson};`);
+      content = content.replace(match[0], () => `const ${varName} = ${wordsJson};`);
       writeFileSync(file, content, "utf-8");
     }
   }

@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Window } from "happy-dom";
 import {
   loadTranscript,
   detectFormat,
@@ -546,6 +547,36 @@ describe("whisper-cpp zero-duration interpolation", () => {
 });
 
 describe("patchCaptionHtml", () => {
+  it.each([
+    "</ScRiPt><span data-unexpected>caption</span>",
+    "</script\t><span data-unexpected>caption</span>",
+    "</script/><span data-unexpected>caption</span>",
+    "<!--<script>caption",
+    "$&",
+    "$`",
+    "$'",
+    "$$",
+    'quotes " and \\ and > & \u2028 \u2029 🎥',
+  ])("preserves literal caption text in the HTML script: %s", (text) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
+    dirs.push(dir);
+    const file = join(dir, "captions.html");
+    const html =
+      '<html><body><span id="caption"></span><script>const TRANSCRIPT = [];</script></body></html>';
+    writeFileSync(file, html);
+    const words = [{ id: `word-${text}`, text, start: 0, end: 1 }];
+
+    patchCaptionHtml(dir, words);
+
+    const template = new Window().document.createElement("template");
+    template.innerHTML = readFileSync(file, "utf-8");
+    expect(template.content.querySelectorAll("script")).toHaveLength(1);
+    expect(template.content.querySelector("[data-unexpected]")).toBeNull();
+    const source = template.content.querySelector("script")?.textContent ?? "";
+    const json = source.slice("const TRANSCRIPT = ".length, -1);
+    expect(JSON.parse(json)).toEqual(words);
+  });
+
   it("replaces const script = [] in HTML files", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
     dirs.push(dir);
