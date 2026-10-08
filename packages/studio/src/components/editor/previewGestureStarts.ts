@@ -99,7 +99,7 @@ export function createPreviewGestureStarts(
   const drawPressedBox = (origin: OverlayRect | null): WaitingPressState["draw"] =>
     origin && ((dx, dy) => opts.setOverlayRect(shiftedOverlayRect(origin, dx, dy)));
 
-  // A corner resize scales about the element's centre by the pointer's distance from it, as the resize does.
+  // A corner resize scales about the element's centre by the grabbed corner's distance from it, as the resize does.
   const drawResizedBox = (
     origin: OverlayRect | null,
     grabbed: { x: number; y: number },

@@ -284,10 +284,12 @@ describe("DomEditSelectionChrome with body drag off", () => {
   it("keeps the resize and rotate handles working", () => {
     const { host, gestures, cleanup } = renderChrome(false);
     const corner = host.querySelector<HTMLElement>('[style*="nwse-resize"]')!;
+    corner.querySelector("[data-resize-corner]")!.getBoundingClientRect = () =>
+      ({ left: 7, top: 9 }) as DOMRect;
     press(corner);
     expect(gestures.startGesture).toHaveBeenCalledWith("resize", expect.anything(), {
       resizeHandle: "nw",
-      resizeCorner: { x: expect.any(Number), y: expect.any(Number) },
+      resizeCorner: { x: 7, y: 9 },
     });
     press(host.querySelector('[aria-label="Rotate selection"]')!);
     expect(gestures.startGesture).toHaveBeenCalledWith("rotate", expect.anything());
