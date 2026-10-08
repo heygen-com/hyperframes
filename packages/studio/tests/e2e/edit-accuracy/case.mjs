@@ -209,6 +209,7 @@ async function readQuads({ handles }) {
       width: e.offsetWidth,
       height: e.offsetHeight,
       clip: getComputedStyle(e).clipPath,
+      density: window.devicePixelRatio / window.top.devicePixelRatio,
     })),
   ]);
 }
@@ -227,7 +228,10 @@ export async function measure(ctx) {
       },
     );
   }
-  const [rootQuad, targetQuad, box] = read;
+  const [rootFrameQuad, targetFrameQuad, box] = read;
+  const [rootQuad, targetQuad] = [rootFrameQuad, targetFrameQuad].map((quad) =>
+    quad.map(([x, y]) => [x * box.density, y * box.density]),
+  );
   const map = compositionMapper(rootQuad, COMPOSITION);
   const quad = targetQuad.map(map.toComp);
   const size = { width: box.width, height: box.height };

@@ -19,12 +19,31 @@ try {
   await page.evaluateOnNewDocument(() => {
     if (window !== window.top) return;
     const createElement = Document.prototype.createElement;
-    const state = { frames: 0, probeBeforeSource: false };
+    const state = {
+      frames: 0,
+      sourceAssignments: 0,
+      probe: null as null | {
+        width: number;
+        height: number;
+        density: number;
+        beforeSource: boolean;
+      },
+    };
     Object.assign(window, { __iframeScalingWitness: state });
     Document.prototype.createElement = function (...args) {
       if (args[0].toLowerCase() === "iframe") state.frames++;
       return createElement.apply(this, args);
     };
+    for (const key of ["src", "srcdoc"]) {
+      const source = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, key)!;
+      Object.defineProperty(HTMLIFrameElement.prototype, key, {
+        ...source,
+        set(value) {
+          state.sourceAssignments++;
+          source.set!.call(this, value);
+        },
+      });
+    }
     const contentWindow = Object.getOwnPropertyDescriptor(
       HTMLIFrameElement.prototype,
       "contentWindow",
@@ -32,11 +51,45 @@ try {
     Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
       ...contentWindow,
       get() {
-        if (!this.hasAttribute("src") && !this.hasAttribute("srcdoc"))
-          state.probeBeforeSource = true;
-        return contentWindow.get!.call(this);
+        const win = contentWindow.get!.call(this) as Window | null;
+        if (win && !this.hasAttribute("src") && !this.hasAttribute("srcdoc")) {
+          const width = Object.getOwnPropertyDescriptor(win, "innerWidth")!;
+          Object.defineProperty(win, "innerWidth", {
+            ...width,
+            get: () => {
+              const value = width.get!.call(win);
+              if (this.style.zoom === "0.3646")
+                state.probe = {
+                  width: value,
+                  height: win.innerHeight,
+                  density: win.devicePixelRatio,
+                  beforeSource: state.sourceAssignments === 0,
+                };
+              return value;
+            },
+          });
+        }
+        return win;
       },
     });
+  });
+  await page.setRequestInterception(true);
+  page.on("request", async (request) => {
+    if (request.url() === `${server.origin}/host.html?fixture=gsap-heavy`) {
+      const html = await (await fetch(request.url())).text();
+      await request.respond({
+        status: 200,
+        contentType: "text/html",
+        body: html.replace(
+          "<hyperframes-player",
+          '<hyperframes-player shader-capture-scale="1" shader-loading="none" runtime-src="/vendor/hyperframe.runtime.iife.js"',
+        ),
+      });
+    } else await request.continue();
+  });
+  let sourceNavigations = 0;
+  page.on("framenavigated", (frame) => {
+    if (frame.url().includes("/fixtures/gsap-heavy/")) sourceNavigations++;
   });
   await page.goto(`${server.origin}/host.html?fixture=gsap-heavy`, {
     waitUntil: "domcontentloaded",
@@ -46,12 +99,26 @@ try {
     () =>
       (
         window as Window & {
-          __iframeScalingWitness: { frames: number; probeBeforeSource: boolean };
+          __iframeScalingWitness: {
+            frames: number;
+            sourceAssignments: number;
+            probe: { width: number; height: number; density: number; beforeSource: boolean } | null;
+          };
         }
       ).__iframeScalingWitness,
   );
   assert.equal(witness.frames, 1, "scaling must reuse the composition iframe");
-  assert.equal(witness.probeBeforeSource, true, "scaling must inspect the initial blank frame");
+  assert.equal(witness.sourceAssignments, 1, "initial attributes must navigate only once");
+  assert.equal(sourceNavigations, 1, "the composition must commit one source navigation");
+  assert.ok(witness.probe, "scaling must measure the initial blank frame at the probe zoom");
+  assert.equal(
+    witness.probe.beforeSource,
+    true,
+    "the scaling probe must precede source assignment",
+  );
+  assert.ok(Math.abs(witness.probe.width - 1920) < 3 && Math.abs(witness.probe.height - 1080) < 3);
+  const hostDensity = await page.evaluate(() => window.devicePixelRatio);
+  assert.ok(Math.abs(witness.probe.density - hostDensity * 0.3646) < 0.01);
   await page.evaluate(() => {
     document.getElementById("player")!.style.height = "100vh";
   });
