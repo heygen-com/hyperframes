@@ -142,7 +142,14 @@ describe("createAssetContactSheet", () => {
         expect(pixel[2]).toBeLessThan(25);
         expect(readFileSync(original)).toEqual(bytes);
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        // libvips caches GIF file handles, which prevent Windows fixture cleanup.
+        const cache = sharp.cache();
+        sharp.cache(false);
+        try {
+          rmSync(dir, { recursive: true, force: true });
+        } finally {
+          sharp.cache({ memory: cache.memory.max, files: cache.files.max, items: cache.items.max });
+        }
       }
     },
     60_000,
