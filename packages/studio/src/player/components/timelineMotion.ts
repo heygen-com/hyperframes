@@ -23,6 +23,26 @@ export function markTimelineMotion(): void {
   }, TIMELINE_REST_MS);
 }
 
+const onIdle = (callback: () => void) => {
+  if (typeof requestIdleCallback === "function") requestIdleCallback(callback, { timeout: 1000 });
+  else setTimeout(callback, 0);
+};
+
+/** Resolves at an idle moment with no zoom moving the timeline: long work waits there, not mid-zoom. */
+export function whenTimelineIdle(): Promise<void> {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!moving) return resolve();
+      const stop = subscribeTimelineMotion(() => {
+        if (moving) return;
+        stop();
+        onIdle(check);
+      });
+    };
+    onIdle(check);
+  });
+}
+
 export function isTimelineMoving(): boolean {
   return moving;
 }

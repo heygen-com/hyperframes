@@ -409,7 +409,10 @@ export function useSdkSession(
   useEffect(
     () =>
       addExternalFileReloadListener((changedPath) => {
-        if (changedPath === activeCompPathRef.current) setReloadToken((token) => token + 1);
+        // "." is a project-wide change (a reconnect or a replaced folder): every session reloads.
+        if (changedPath === "." || changedPath === activeCompPathRef.current) {
+          setReloadToken((token) => token + 1);
+        }
       }),
     [],
   );

@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import {
@@ -8,7 +8,11 @@ import {
 } from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
 import { ThumbnailTiles } from "./ThumbnailTiles";
-import { computeThumbnailStrip, quantizeThumbnailFrameCount } from "./thumbnailUtils";
+import {
+  computeThumbnailStrip,
+  quantizeThumbnailFrameCount,
+  thumbnailFrameForTile,
+} from "./thumbnailUtils";
 import { useValueAtRest } from "./timelineMotion";
 
 interface VideoThumbnailProps {
@@ -55,6 +59,7 @@ function createVideoThumbnailRequest(
       decodeVideoThumbnail(
         {
           source: videoSrc,
+          contentVersion: createThumbnailKey({ project: projectId, session: sessionEpoch }),
           sourceStart,
           sourceRangeDuration: sourceRangeDuration ?? duration,
           frameCount,
@@ -68,11 +73,29 @@ function createVideoThumbnailRequest(
 function selectThumbnailSnapshot(
   poster: ThumbnailSnapshot,
   rich: ThumbnailSnapshot,
+  shown: ThumbnailSnapshot,
 ): ThumbnailSnapshot {
   if (rich.status === "ready") return rich;
+  if (shown.status === "ready") return shown;
   if (poster.status === "ready") return poster;
   if (rich.status === "loading" || poster.status === "loading") return { status: "loading" };
   return poster;
+}
+
+type VideoThumbnailRequest = ReturnType<typeof createVideoThumbnailRequest>;
+
+function useVideoThumbnailSnapshot(
+  poster: VideoThumbnailRequest | null,
+  rich: VideoThumbnailRequest | null,
+  media: string,
+): ThumbnailSnapshot {
+  const posterSnapshot = useThumbnailLease(poster);
+  const richSnapshot = useThumbnailLease(rich);
+  const [shown, setShown] = useState({ media, request: rich });
+  const settled = richSnapshot.status === "ready" || rich === null;
+  if (settled && shown.request !== rich) setShown({ media, request: rich });
+  const shownSnapshot = useThumbnailLease(shown.media === media ? shown.request : null);
+  return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
 
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
@@ -114,9 +137,11 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     [requestFrameCount, requestProps],
   );
   const measured = useValueAtRest(container.width > 0);
-  const posterSnapshot = useThumbnailLease(measured ? posterRequest : null);
-  const richSnapshot = useThumbnailLease(measured && requestFrameCount > 1 ? richRequest : null);
-  const snapshot = selectThumbnailSnapshot(posterSnapshot, richSnapshot);
+  const snapshot = useVideoThumbnailSnapshot(
+    measured ? posterRequest : null,
+    measured && requestFrameCount > 1 ? richRequest : null,
+    posterRequest.key,
+  );
   const value = snapshot.status === "ready" ? snapshot.value : null;
   const urls =
     value?.kind === "filmstrip" ? value.urls : value?.kind === "image" ? [value.url] : [];
@@ -133,7 +158,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
           watchGap={watchGap}
         >
           {(index) => {
-            const src = urls[Math.round((index * (urls.length - 1)) / Math.max(1, frameCount - 1))];
+            const src = urls[thumbnailFrameForTile(index, frameCount, urls.length)];
             return (
               <div
                 key={index}

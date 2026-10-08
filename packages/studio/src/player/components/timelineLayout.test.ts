@@ -27,13 +27,13 @@ import { resolveInsertRow } from "./timelineCollision";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 
 describe("horizontal timeline window", () => {
-  it("adds the shared half-viewport overscan on each side and clamps to duration", () => {
+  it("adds the shared quarter-viewport overscan on each side and clamps to duration", () => {
     expect(getTimelineRenderTimeRange({ scrollLeft: 300, clientWidth: 500 }, 100, 200, 20)).toEqual(
-      { start: 0, end: 8.5 },
+      { start: 0, end: 7.25 },
     );
     expect(
       getTimelineRenderTimeRange({ scrollLeft: 1_900, clientWidth: 500 }, 100, 200, 20),
-    ).toEqual({ start: 14.5, end: 20 });
+    ).toEqual({ start: 15.75, end: 20 });
   });
 
   it("generates globally aligned ticks directly inside the bounded window", () => {
