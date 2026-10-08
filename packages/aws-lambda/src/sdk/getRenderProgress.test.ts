@@ -258,6 +258,128 @@ describe("getRenderProgress", () => {
     ]);
   });
 
+  describe("parallel history event attribution", () => {
+    const wire: Array<{
+      name: string;
+      scheduled: () => HistoryEvent;
+      succeeded: (payload: unknown) => HistoryEvent;
+      failed: (error: string, cause: string) => HistoryEvent;
+      started: "TaskStarted" | "LambdaFunctionStarted";
+    }> = [
+      {
+        name: "optimized",
+        scheduled: taskScheduled,
+        succeeded: taskSucceeded,
+        failed: taskFailed,
+        started: "TaskStarted",
+      },
+      {
+        name: "raw",
+        scheduled: () => ({ type: "LambdaFunctionScheduled", id: 1, timestamp: new Date(0) }),
+        succeeded: lambdaSucceeded,
+        failed: (error: string, cause: string) => ({
+          type: "LambdaFunctionFailed",
+          id: 1,
+          timestamp: new Date(0),
+          lambdaFunctionFailedEventDetails: { error, cause },
+        }),
+        started: "LambdaFunctionStarted",
+      },
+    ];
+
+    it.each(wire)(
+      "$name counts a chunk whose completion follows another branch",
+      async ({ scheduled, succeeded, started }) => {
+        const sfn = new FakeSFN();
+        sfn.historyPages = [
+          [
+            { ...stateEntered("RenderChunkV2"), id: 1 },
+            { ...scheduled(), id: 2, previousEventId: 1 },
+            { type: started, id: 3, previousEventId: 2, timestamp: new Date(0) },
+            { ...stateEntered("AnotherBranch"), type: "PassStateEntered", id: 4 },
+            {
+              ...succeeded({ Action: "renderChunk", FramesEncoded: 30, DurationMs: 1000 }),
+              id: 5,
+              previousEventId: 3,
+            },
+          ],
+        ];
+        const progress = await getRenderProgress({
+          executionArn: "arn",
+          sfn: sfn as unknown as SFNClient,
+        });
+        expect(progress.framesRendered).toBe(30);
+        expect(progress.lambdasInvoked).toBe(1);
+        expect(progress.costs.breakdown.lambdaUsd).toBeGreaterThan(0);
+      },
+    );
+
+    it.each(wire)(
+      "$name assigns a failure to its own state across history pages",
+      async ({ scheduled, failed, started }) => {
+        const sfn = new FakeSFN();
+        sfn.historyPages = [
+          [
+            { ...stateEntered("RenderChunkV2"), id: 1 },
+            { ...scheduled(), id: 2, previousEventId: 1 },
+            { type: started, id: 3, previousEventId: 2, timestamp: new Date(0) },
+          ],
+          [
+            { ...stateEntered("UnrelatedState"), id: 4 },
+            { ...failed("FONT_FETCH_FAILED", "missing font"), id: 5, previousEventId: 3 },
+          ],
+        ];
+        const progress = await getRenderProgress({
+          executionArn: "arn",
+          sfn: sfn as unknown as SFNClient,
+        });
+        expect(progress.errors).toEqual([
+          { state: "RenderChunkV2", error: "FONT_FETCH_FAILED", cause: "missing font" },
+        ]);
+      },
+    );
+
+    it.each(wire)(
+      "$name does not count another task as a render chunk",
+      async ({ scheduled, succeeded, started }) => {
+        const sfn = new FakeSFN();
+        sfn.historyPages = [
+          [
+            { ...stateEntered("OtherTask"), id: 1 },
+            { ...scheduled(), id: 2, previousEventId: 1 },
+            { type: started, id: 3, previousEventId: 2, timestamp: new Date(0) },
+            { ...stateEntered("RenderChunk"), id: 4 },
+            { ...succeeded({ FramesEncoded: 30, DurationMs: 1000 }), id: 5, previousEventId: 3 },
+          ],
+        ];
+        const progress = await getRenderProgress({
+          executionArn: "arn",
+          sfn: sfn as unknown as SFNClient,
+        });
+        expect(progress.framesRendered).toBe(0);
+      },
+    );
+    it.each(wire)(
+      "$name reports an unknown state when the parent event is missing",
+      async ({ failed }) => {
+        const sfn = new FakeSFN();
+        sfn.historyPages = [
+          [
+            { ...stateEntered("UnrelatedState"), id: 1 },
+            { ...failed("FONT_FETCH_FAILED", "missing font"), id: 2, previousEventId: 99 },
+          ],
+        ];
+        const progress = await getRenderProgress({
+          executionArn: "arn",
+          sfn: sfn as unknown as SFNClient,
+        });
+        expect(progress.errors).toEqual([
+          { state: "<unknown>", error: "FONT_FETCH_FAILED", cause: "missing font" },
+        ]);
+      },
+    );
+  });
+
   it("marks fatalErrorEncountered when execution ends FAILED", async () => {
     const sfn = new FakeSFN();
     sfn.historyPages = [[]];

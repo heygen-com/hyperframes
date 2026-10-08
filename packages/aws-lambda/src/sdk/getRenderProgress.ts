@@ -175,13 +175,17 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
   const errors: RenderError[] = [];
   const lambdaInvocations: BilledLambdaInvocation[] = [];
 
-  // Track the state name we most recently entered, so we can:
-  //   - attach the enclosing state to LambdaFunctionFailed errors, and
-  //   - identify when the Assemble state finished (StateExited.Assemble)
-  //     without relying on the inner Lambda payload's `Action` field.
-  let currentLambdaState: string | null = null;
+  // Parallel branches interleave; parent event IDs carry each state's ancestry.
+  const stateByEventId = new Map<number, string | null>();
+  let latestState: string | null = null;
 
   for (const ev of events) {
+    const eventState: string | null =
+      ev.stateEnteredEventDetails?.name ??
+      (ev.previousEventId === undefined
+        ? latestState
+        : (stateByEventId.get(ev.previousEventId) ?? null));
+    if (ev.id !== undefined) stateByEventId.set(ev.id, eventState);
     switch (ev.type) {
       case "TaskStateEntered":
       case "MapStateEntered":
@@ -196,7 +200,7 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
         // each (Scheduled / Started / Succeeded / TaskStateExited / …);
         // counting every event as a transition over-reports cost by 3-5×.
         stateTransitions++;
-        currentLambdaState = ev.stateEnteredEventDetails?.name ?? currentLambdaState;
+        latestState = eventState;
         break;
       // Optimized `lambda:invoke` task emits Task* events; raw
       // `lambda:invokeFunction.sync` emits LambdaFunction*. Handle both.
@@ -218,7 +222,7 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
           memorySizeMb: memoryMb,
           estimated: billedDurationMs === 0,
         });
-        applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
+        applyPayloadFrameCounts(payload, eventState, (delta) => {
           framesRendered += delta;
         });
         if (payload && typeof payload === "object") {
@@ -235,7 +239,7 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
           memorySizeMb: memoryMb,
           estimated: billedDurationMs === 0,
         });
-        applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
+        applyPayloadFrameCounts(payload, eventState, (delta) => {
           framesRendered += delta;
         });
         if (payload && typeof payload === "object") {
@@ -266,14 +270,14 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
       case "TaskFailed":
         if (ev.taskFailedEventDetails?.resourceType !== "lambda") break;
         errors.push({
-          state: currentLambdaState ?? "<unknown>",
+          state: eventState ?? "<unknown>",
           error: ev.taskFailedEventDetails?.error ?? "UNKNOWN",
           cause: ev.taskFailedEventDetails?.cause ?? "",
         });
         break;
       case "LambdaFunctionFailed":
         errors.push({
-          state: currentLambdaState ?? "<unknown>",
+          state: eventState ?? "<unknown>",
           error: ev.lambdaFunctionFailedEventDetails?.error ?? "UNKNOWN",
           cause: ev.lambdaFunctionFailedEventDetails?.cause ?? "",
         });
