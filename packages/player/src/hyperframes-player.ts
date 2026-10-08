@@ -1,6 +1,11 @@
 import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
-import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
+import {
+  adoptShadowStyles,
+  createCompositionIframe,
+  initializeIframeScaling,
+  scaleIframeToFit,
+} from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
@@ -222,6 +227,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   connectedCallback() {
+    initializeIframeScaling(this.iframe);
     this._connected = true;
     this._applySandboxOriginPolicy();
     this.resizeObserver.observe(this);
@@ -270,17 +276,17 @@ class HyperframesPlayer extends HTMLElement {
         // every render). Navigating the inner iframe here would let its one-shot runtime `ready`
         // message fire before connectedCallback installs the parent message listener. Initial
         // attributes are applied below by connectedCallback; only live changes navigate here.
-        if (!this.isConnected) break;
+        if (!this._connected) break;
         if (val) this._navigateSrc(val);
         break;
       case "type": {
         const src = this.getAttribute("src");
-        if (!this.isConnected || src === null || !!this._videoSource === this._wantsVideo()) break;
+        if (!this._connected || src === null || !!this._videoSource === this._wantsVideo()) break;
         this._navigateSrc(src);
         break;
       }
       case "srcdoc":
-        if (!this.isConnected) break;
+        if (!this._connected) break;
         this._pendingPlay = false;
         this._abandonComposition("Composition navigated before runtime data was applied");
         if (val !== null) {
@@ -294,7 +300,7 @@ class HyperframesPlayer extends HTMLElement {
         }
         break;
       case SANDBOX_ORIGIN_ATTR:
-        this._applySandboxOriginPolicy(this.isConnected && oldVal !== val);
+        if (this._connected) this._applySandboxOriginPolicy(oldVal !== val);
         break;
       // Reject NaN/zero/negative dimensions the same way the composition
       // probe does (a typo like width="abc" or width="0" would otherwise

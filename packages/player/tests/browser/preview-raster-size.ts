@@ -16,10 +16,42 @@ type Layer = {
 
 try {
   const page = await browser.newPage();
+  await page.evaluateOnNewDocument(() => {
+    if (window !== window.top) return;
+    const createElement = Document.prototype.createElement;
+    const state = { frames: 0, probeBeforeSource: false };
+    Object.assign(window, { __iframeScalingWitness: state });
+    Document.prototype.createElement = function (...args) {
+      if (args[0].toLowerCase() === "iframe") state.frames++;
+      return createElement.apply(this, args);
+    };
+    const contentWindow = Object.getOwnPropertyDescriptor(
+      HTMLIFrameElement.prototype,
+      "contentWindow",
+    )!;
+    Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
+      ...contentWindow,
+      get() {
+        if (!this.hasAttribute("src") && !this.hasAttribute("srcdoc"))
+          state.probeBeforeSource = true;
+        return contentWindow.get!.call(this);
+      },
+    });
+  });
   await page.goto(`${server.origin}/host.html?fixture=gsap-heavy`, {
     waitUntil: "domcontentloaded",
   });
   await page.waitForFunction(() => window.__playerReady === true);
+  const witness = await page.evaluate(
+    () =>
+      (
+        window as Window & {
+          __iframeScalingWitness: { frames: number; probeBeforeSource: boolean };
+        }
+      ).__iframeScalingWitness,
+  );
+  assert.equal(witness.frames, 1, "scaling must reuse the composition iframe");
+  assert.equal(witness.probeBeforeSource, true, "scaling must inspect the initial blank frame");
   await page.evaluate(() => {
     document.getElementById("player")!.style.height = "100vh";
   });

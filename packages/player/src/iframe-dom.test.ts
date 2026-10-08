@@ -4,21 +4,33 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 function engineFrames(viewport: (zoom: number) => [number, number], ratioFollowsZoom: boolean) {
   vi.spyOn(HTMLIFrameElement.prototype, "contentWindow", "get").mockImplementation(
     function (this: HTMLIFrameElement) {
-      const zoom = Number(this.style.zoom) || 1;
-      const [innerWidth, innerHeight] = viewport(zoom);
-      const devicePixelRatio = window.devicePixelRatio * (ratioFollowsZoom ? zoom : 1);
-      return { innerWidth, innerHeight, devicePixelRatio } as unknown as Window;
+      const zoom = () => Number(this.style.zoom) || 1;
+      return {
+        get innerWidth() {
+          return viewport(zoom())[0];
+        },
+        get innerHeight() {
+          return viewport(zoom())[1];
+        },
+        get devicePixelRatio() {
+          return window.devicePixelRatio * (ratioFollowsZoom ? zoom() : 1);
+        },
+      } as unknown as Window;
     },
   );
 }
 
 async function fit() {
   vi.resetModules(); // the engine probe is cached per module
-  const { scaleIframeToFit } = await import("./iframe-dom.js");
+  const { initializeIframeScaling, scaleIframeToFit } = await import("./iframe-dom.js");
   const player = document.body.appendChild(document.createElement("div"));
   Object.defineProperty(player, "offsetWidth", { value: 528 });
   Object.defineProperty(player, "offsetHeight", { value: 297 });
   const iframe = player.appendChild(document.createElement("iframe"));
+  const cssText = iframe.style.cssText;
+  initializeIframeScaling(iframe);
+  expect(iframe.style.cssText).toBe(cssText);
+  expect(player.querySelectorAll("iframe")).toHaveLength(1);
   expect(scaleIframeToFit(player, iframe, 1920, 1080)).toBe(true);
   return iframe;
 }

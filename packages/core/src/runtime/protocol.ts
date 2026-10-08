@@ -70,8 +70,6 @@ export function runtimeProtocolMetadata(fps: number): RuntimeProtocolV1 {
   };
 }
 
-/** How much smaller the host shows the frame than its own devicePixelRatio says. */
-// A zoomed frame's devicePixelRatio already includes its zoom.
 export function frameDisplayScale(frame: HTMLElement): number | null {
   const layoutWidth = frame.offsetWidth;
   const shownWidth = frame.getBoundingClientRect().width;

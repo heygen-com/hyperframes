@@ -40,7 +40,11 @@ function ownLinear(node) {
   const s = node.ownerDocument.defaultView.getComputedStyle(node);
   const [sx, sy = sx] = s.scale === "none" ? [1] : s.scale.split(/\s+/).map(Number);
   const t = s.transform === "none" ? null : new DOMMatrix(s.transform);
-  return mul(mul(rotation(s.rotate), [sx, 0, 0, sy]), t ? [t.a, t.b, t.c, t.d] : [1, 0, 0, 1]);
+  const zoom = Number(s.zoom);
+  return mul(
+    mul(rotation(s.rotate), [sx * zoom, 0, 0, sy * zoom]),
+    t ? [t.a, t.b, t.c, t.d] : [1, 0, 0, 1],
+  );
 }
 
 function parentOf(node) {
