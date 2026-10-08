@@ -2188,6 +2188,7 @@ describe("golden gate wiring", () => {
     return {
       ok: true,
       strict: false,
+      browserSkipped: false,
       lint: { ...section, filesScanned: 1 },
       runtime: { ...section },
       layout: {
@@ -2204,6 +2205,7 @@ describe("golden gate wiring", () => {
       motion: { ...section, enabled: false, samples: 0 },
       contrast: { ...section, findings: [], enabled: true, samples: [0.5], checked: 1, passed: 1 },
       snapshots: { enabled: false, files: [], times: [], findingFiles: [] },
+      hdr: { autoPromotion: null, inspection: "available" },
     };
   }
 
