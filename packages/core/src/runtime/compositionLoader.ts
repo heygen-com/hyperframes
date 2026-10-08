@@ -856,8 +856,7 @@ async function mountExternalCompositions(
         }
       }),
     );
-    // Fetch concurrently, mount in document order: mounting appends each composition's
-    // links and styles to <head>, and that order is the cascade order.
+    // Mount in document order: mounting appends <head> links and styles in cascade order.
     for (const pending of batch) mounted.push(pending ? await pending() : null);
   }
   return mounted.filter((composition): composition is MountedComposition => composition !== null);
