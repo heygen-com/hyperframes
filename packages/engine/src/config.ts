@@ -51,6 +51,11 @@ export interface EngineConfig {
    *   Cost: one extra Chrome launch (~1-2 s) per process; result cached.
    */
   browserGpuMode: "software" | "hardware" | "auto";
+  /**
+   * Render a `data-requires-webgpu` composition on SwiftShader when no GPU is in use, instead of refusing it.
+   * Off by default: software WebGPU is slow and skips the compositor workaround for HF#3049.
+   */
+  allowSoftwareWebGpu: boolean;
   enableBrowserPool: boolean;
   browserTimeout: number;
   protocolTimeout: number;
@@ -287,6 +292,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
 
   disableGpu: false,
   browserGpuMode: "software",
+  allowSoftwareWebGpu: false,
   enableBrowserPool: true,
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
@@ -340,6 +346,7 @@ const OPTIONAL_ENGINE_CONFIG_FIELDS = [
 
 const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "disableGpu",
+  "allowSoftwareWebGpu",
   "enableBrowserPool",
   "forceScreenshot",
   "staticFrameDedup",
@@ -840,6 +847,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     chromePath: env("PRODUCER_HEADLESS_SHELL_PATH"),
     disableGpu: envBool("PRODUCER_DISABLE_GPU", DEFAULT_CONFIG.disableGpu),
     browserGpuMode: envBrowserGpuMode(),
+    allowSoftwareWebGpu: envBool(
+      "PRODUCER_ALLOW_SOFTWARE_WEBGPU",
+      DEFAULT_CONFIG.allowSoftwareWebGpu,
+    ),
     enableBrowserPool: envBool("PRODUCER_ENABLE_BROWSER_POOL", DEFAULT_CONFIG.enableBrowserPool),
     browserTimeout: envNum("PRODUCER_PUPPETEER_LAUNCH_TIMEOUT_MS", DEFAULT_CONFIG.browserTimeout),
     protocolTimeout: envNum(

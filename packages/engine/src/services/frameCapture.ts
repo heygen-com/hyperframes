@@ -51,6 +51,7 @@ import {
   resolveHeadlessShellPath,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
+  usesSoftwareWebGpu,
   type BrowserLease,
   type CaptureMode,
 } from "./browserManager.js";
@@ -101,8 +102,10 @@ export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailu
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
 
-/** Called after seeking, before screenshot. Use for video frame injection or other pre-capture work. */
-export type BeforeCaptureHook = (page: Page, time: number) => Promise<void>;
+/** Called after seeking, before screenshot. Use for video frame injection or other pre-capture work.
+ * `heldVideoTime` (motion-blur samples only) is the output frame's time: a video on screen at
+ * both times shows its frame for `heldVideoTime`, so footage does not smear. */
+export type BeforeCaptureHook = (page: Page, time: number, heldVideoTime?: number) => Promise<void>;
 
 export interface CaptureSession {
   browser: Browser;
@@ -114,6 +117,8 @@ export interface CaptureSession {
   outputDir: string;
   /** The composition served at `serverUrl` declares `data-requires-webgpu`. */
   requiresWebGpu?: boolean;
+  /** The browser was launched to run that WebGPU on SwiftShader ({@link usesSoftwareWebGpu}). */
+  softwareWebGpu?: boolean;
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
   /**
@@ -1305,9 +1310,10 @@ export async function createCaptureSession(
       .then((res) => res.text())
       .then(compositionRequiresWebGpu)
       .catch(() => false));
+  const gpuConfig = { ...config, browserGpuMode: resolvedGpuMode };
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
-    { ...config, browserGpuMode: resolvedGpuMode },
+    gpuConfig,
   );
 
   const browserLease = await acquireBrowser(chromeArgs, config);
@@ -1320,6 +1326,7 @@ export async function createCaptureSession(
     config,
     useDrawElement,
     requiresWebGpu,
+    softwareWebGpu: usesSoftwareWebGpu(requiresWebGpu, gpuConfig),
   });
 }
 
@@ -1332,6 +1339,7 @@ interface CaptureSessionConstructionInput {
   config?: Partial<EngineConfig>;
   useDrawElement: boolean;
   requiresWebGpu?: boolean;
+  softwareWebGpu?: boolean;
 }
 
 async function constructCaptureSessionWithRollback(
@@ -1386,6 +1394,7 @@ async function constructCaptureSession(
     config,
     useDrawElement,
     requiresWebGpu,
+    softwareWebGpu,
     onPageCreated,
   } = input;
   const { browser, captureMode } = browserLease;
@@ -1511,6 +1520,7 @@ async function constructCaptureSession(
     outputDir,
     onBeforeCapture,
     requiresWebGpu,
+    softwareWebGpu,
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
@@ -2391,7 +2401,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
       throw error;
     }
-    await assertWebGpuAdapterAvailable(page, session.requiresWebGpu ?? false);
+    await assertWebGpuAdapterAvailable(
+      page,
+      session.requiresWebGpu ?? false,
+      session.softwareWebGpu,
+    );
   };
 
   if (session.captureMode === "screenshot") {
@@ -2793,6 +2807,7 @@ async function prepareFrameForCapture(
   frameIndex: number,
   time: number,
   seekOptions?: HfSeekOptions,
+  heldVideoTime?: number,
 ): Promise<{
   quantizedTime: number;
   seekMs: number;
@@ -2823,7 +2838,7 @@ async function prepareFrameForCapture(
   // replacements for <video> elements.
   const beforeCaptureStart = Date.now();
   if (session.onBeforeCapture) {
-    await session.onBeforeCapture(page, quantizedTime);
+    await session.onBeforeCapture(page, quantizedTime, heldVideoTime);
   }
   await waitForPendingSeekCompletion(page);
   await page.evaluate(async () => {
@@ -3032,12 +3047,15 @@ export async function computeStaticFrameSet(
     const w = window as unknown as {
       __timelines?: Record<string, AnyTween>;
       __hf?: { duration?: number };
+      __hfHasFrameSources?: () => boolean;
     };
     for (const tl of Object.values(w.__timelines || {})) {
       if (tl && typeof tl.getChildren === "function") walk(tl, 0);
     }
     const hasVideo = !!document.querySelector("video");
     const hasCanvas = !!document.querySelector("canvas");
+    const hasFrameSources = w.__hfHasFrameSources?.() ?? false;
+    const hasIframe = !!document.querySelector("iframe");
     // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
     // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
     // unprotected and could be deduped into the previous scene. Disqualify the comp.
@@ -3067,6 +3085,8 @@ export async function computeStaticFrameSet(
       duration: w.__hf?.duration ?? 0,
       hasVideo,
       hasCanvas,
+      hasFrameSources,
+      hasIframe,
       hasNonGsapAnim,
       hasUnresolvableClipStart,
       hasTimelineCall,
@@ -3079,6 +3099,8 @@ export async function computeStaticFrameSet(
     duration,
     hasVideo,
     hasCanvas,
+    hasFrameSources,
+    hasIframe,
     hasNonGsapAnim,
     hasUnresolvableClipStart,
     hasTimelineCall,
@@ -3088,6 +3110,8 @@ export async function computeStaticFrameSet(
     duration: number;
     hasVideo: boolean;
     hasCanvas: boolean;
+    hasFrameSources: boolean;
+    hasIframe: boolean;
     hasNonGsapAnim: boolean;
     hasUnresolvableClipStart: boolean;
     hasTimelineCall: boolean;
@@ -3121,6 +3145,9 @@ export async function computeStaticFrameSet(
   if (!(duration > 0)) reasons.push("unknown/zero duration");
   if (hasVideo) reasons.push("video");
   if (hasCanvas) reasons.push("canvas/webgl");
+  // GSAP intervals cannot predict frame-source or opaque iframe draws.
+  if (hasFrameSources) reasons.push("registered frame source");
+  if (hasIframe) reasons.push("iframe");
   if (tweenCount === 0) reasons.push("no GSAP tweens (non-GSAP animation)");
   if (hasNonGsapAnim) reasons.push("running CSS/WAAPI animation");
   // tl.call() side effects are not seek-idempotent (see hasTimelineCall detection
@@ -3855,9 +3882,7 @@ export async function withFrameDeadline<T>(
  *
  * Called once initialization has settled the capture mode. `format: "png"` is required
  * because samples are averaged pixel by pixel: JPEG samples would be averaged after
- * lossy quantization and the blended frame is re-encoded as PNG. `<video>` content is
- * out of scope because it is supplied by the before-capture frame-injection hook rather
- * than by the timeline seek, so it cannot follow a sub-frame time.
+ * lossy quantization and the blended frame is re-encoded as PNG.
  */
 export function resolveSessionMotionBlur(session: CaptureSession): MotionBlurPlan | undefined {
   const plan = resolveMotionBlurPlan(session.options.motionBlur);
@@ -3870,11 +3895,6 @@ export function resolveSessionMotionBlur(session: CaptureSession): MotionBlurPla
   if (session.options.format !== "png") {
     throw new Error(
       `[MotionBlur] sub-frame motion blur requires format "png", got "${session.options.format ?? "jpeg"}"`,
-    );
-  }
-  if (session.onBeforeCapture) {
-    throw new Error(
-      "[MotionBlur] sub-frame motion blur cannot run with injected video frames: video content is extracted per output frame and does not follow a sub-frame seek",
     );
   }
   return plan;
@@ -3895,6 +3915,7 @@ async function captureFrameSurface(
   frameIndex: number,
   time: number,
   seekOptions?: HfSeekOptions,
+  heldVideoTime?: number,
 ): Promise<CapturedSurface> {
   const { page, options } = session;
   const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
@@ -3902,6 +3923,7 @@ async function captureFrameSurface(
     frameIndex,
     time,
     seekOptions,
+    heldVideoTime,
   );
 
   const screenshotStart = Date.now();
@@ -4088,6 +4110,7 @@ async function resolveAdaptiveSampleCount(
   plan: MotionBlurPlan,
   fps: number,
   sampleSeek: HfSeekOptions,
+  frameTime: number,
 ): Promise<{
   samplesPerFrame: number;
   seekMs: number;
@@ -4103,8 +4126,8 @@ async function resolveAdaptiveSampleCount(
     };
   }
   const { windowStart, windowEnd } = motionBlurProbeTimes(plan, absFrameIndex, fps);
-  const probeA = await captureFrameSurface(session, frameIndex, windowStart, sampleSeek);
-  const probeB = await captureFrameSurface(session, frameIndex, windowEnd, sampleSeek);
+  const probeA = await captureFrameSurface(session, frameIndex, windowStart, sampleSeek, frameTime);
+  const probeB = await captureFrameSurface(session, frameIndex, windowEnd, sampleSeek, frameTime);
   return {
     samplesPerFrame: adaptiveSampleCount(probeDiffMagnitude(probeA.buffer, probeB.buffer)),
     seekMs: probeA.seekMs + probeB.seekMs,
@@ -4136,6 +4159,13 @@ async function captureAccumulatedFrame(
   const eventfulSeekStart = Date.now();
   await seekPageTimeline(session.page, frameTime, undefined);
   const totals = { seekMs: Date.now() - eventfulSeekStart, beforeCaptureMs: 0, screenshotMs: 0 };
+  if (session.onBeforeCapture) {
+    // The injector copies a video's own style only when its frame changes: inject at frameTime
+    // first so the held frame carries frameTime's style, not the first sample's.
+    const injectStart = Date.now();
+    await session.onBeforeCapture(session.page, frameTime, frameTime);
+    totals.beforeCaptureMs += Date.now() - injectStart;
+  }
 
   const sampleSeek: HfSeekOptions = {
     suppressEvents: true,
@@ -4151,6 +4181,7 @@ async function captureAccumulatedFrame(
       plan,
       fps,
       sampleSeek,
+      frameTime,
     );
     samplesPerFrame = chosen.samplesPerFrame;
     totals.seekMs += chosen.seekMs;
@@ -4160,7 +4191,13 @@ async function captureAccumulatedFrame(
 
   const accumulator = new MotionBlurAccumulator(plan.blend);
   for (const sampleTime of motionBlurSampleTimes(plan, absFrameIndex, fps, samplesPerFrame)) {
-    const sample = await captureFrameSurface(session, frameIndex, sampleTime, sampleSeek);
+    const sample = await captureFrameSurface(
+      session,
+      frameIndex,
+      sampleTime,
+      sampleSeek,
+      frameTime,
+    );
     totals.seekMs += sample.seekMs;
     totals.beforeCaptureMs += sample.beforeCaptureMs;
     totals.screenshotMs += sample.screenshotMs;

@@ -11,7 +11,7 @@ import {
   type HistoryListItem,
   type HistoryResult,
   type HistoryWho,
-} from "@hyperframes/studio-server";
+} from "@hyperframes/studio-server/history";
 import type { Example } from "./_examples.js";
 import { trackHistoryAction } from "../telemetry/events.js";
 import { setCommandExitCode } from "../utils/commandResult.js";

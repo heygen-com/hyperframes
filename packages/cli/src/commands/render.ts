@@ -72,7 +72,7 @@ import {
   errorBox,
 } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
-import { renderProgress } from "../ui/progress.js";
+import { renderProgress, renderMachineProgress } from "../ui/progress.js";
 import {
   trackRenderComplete,
   trackRenderError,
@@ -801,6 +801,7 @@ async function renderDocker(
     outputDir: resolve(outputDir),
     outputFilename,
     platform,
+    hostStdoutIsTty: process.stdout.isTTY === true,
     options: {
       fps: options.fps,
       quality: options.quality,
@@ -1095,8 +1096,9 @@ async function executeLocalRender(
 
   const onProgress = options.quiet
     ? undefined
-    : (progressJob: { progress: number }, message: string) => {
+    : (progressJob: Pick<RenderJob, "progress" | "stageProgress">, message: string) => {
         renderProgress(progressJob.progress, message);
+        renderMachineProgress(progressJob.progress, progressJob.stageProgress);
       };
 
   try {
@@ -1654,15 +1656,19 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
   "Render complete": "render_complete",
   "Render cancelled": "render_cancelled",
   pipeline: "pipeline",
+  "Starting browsers": "starting_browsers",
+  // Was "Encoding video" before encode reported frames; keeps the same bucket.
+  "Encoding frame": "encoding_video",
 };
 
+// Live counts in a progress label ("Capturing frame 120/600 (6 workers)") would make a code per render.
+const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+/g;
+
 export function normalizeStageCode(stage: string): string {
-  const known = KNOWN_STAGE_CODES[stage];
+  const base = stage.replace(STAGE_COUNTS, "").trim();
+  const known = KNOWN_STAGE_CODES[base];
   if (known) return known;
-  // The producer's "Starting browsers (k/n ready)" carries live counts; keep one code for it.
-  if (stage.startsWith("Starting browsers")) return "starting_browsers";
-  const slug = stage
-    .trim()
+  const slug = base
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");

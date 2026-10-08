@@ -96,6 +96,38 @@ const neverDecodes = (clip: HTMLElement) => {
 describe("runtime entry", () => {
   afterEach(resetRuntimeGlobals);
 
+  it("drives an async frame source without a GSAP timeline and waits before capture", async () => {
+    const root = mountRoot();
+    root.setAttribute("data-duration", "10");
+    root.appendChild(document.createElement("div"));
+    window.__timelines = {};
+    Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
+    await evaluateRuntime();
+    expect(window.__hyperframes!.createFilmBridge).toEqual(expect.any(Function));
+    let finish!: () => void;
+    const first = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const render = vi
+      .fn()
+      .mockImplementationOnce(() => first)
+      .mockResolvedValue(undefined);
+    window.__hyperframes!.registerFrameSource({ element: root, render });
+    delete (document as { readyState?: unknown }).readyState;
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    await vi.waitFor(() => expect(render).toHaveBeenCalled());
+    window.__player!.seek(1.2);
+    let captured = false;
+    const capture = window.__hfWaitForSeekCompletion!().then(() => {
+      captured = true;
+    });
+    await Promise.resolve();
+    expect(captured).toBe(false);
+    finish();
+    await capture;
+    expect(render).toHaveBeenLastCalledWith(1.2, expect.any(AbortSignal));
+  });
+
   it("paints no timed clip, from script evaluation until the first visibility pass decides it", async () => {
     servePreview();
     const root = mountRoot();
@@ -195,6 +227,34 @@ describe("runtime entry", () => {
     // How Studio's layer reveal shows a hidden clip.
     later.style.visibility = "visible";
     expect(imageSkipped(later)).toEqual([false]);
+  });
+
+  it("loads the next scene's images within the look-ahead while its clip is still hidden", async () => {
+    servePreview();
+    const root = mountRoot();
+    timed(root, "div", "0");
+    const soon = timed(root, "div", "1.5");
+    const later = timed(root, "div", "5");
+    const lazyPlate = (clip: HTMLElement) => {
+      const img = clip.appendChild(document.createElement("img"));
+      img.setAttribute("loading", "lazy");
+      img.setAttribute(STUDIO_PREVIEW_LAZY_ATTR, "");
+      return img;
+    };
+    const plate = lazyPlate(soon);
+    const farPlate = lazyPlate(later);
+    // A clip nested in the coming one waits for its own look-ahead.
+    const nestedPlate = lazyPlate(timed(soon, "div", "8"));
+    const authored = soon.appendChild(document.createElement("img"));
+    authored.setAttribute("loading", "lazy");
+
+    await evaluateRuntime();
+    expect(visibility(soon)).toEqual(["hidden"]);
+    expect(
+      [plate, farPlate, nestedPlate, authored].map((img) => img.getAttribute("loading")),
+    ).toEqual(["eager", "lazy", "lazy", "lazy"]);
+    window.__player?.seek(3.5);
+    expect(farPlate.getAttribute("loading")).toBe("eager");
   });
 
   it("holds a paused jump on the previous picture until the next scene's image decodes", async () => {

@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { makeSelection } from "../hooks/domSelectionTestHarness";
@@ -11,6 +11,7 @@ import { readStudioUiPreferences } from "../utils/studioUiPreferences";
 import { dispatchPlainKey, type HotkeyCallbacks } from "../hooks/appHotkeysDispatch";
 import { AudioMeterStrip } from "./nle/AudioMeterStrip";
 import { TimelineToolbar } from "./TimelineToolbar";
+import { registerTimelineZoomViewport } from "../player/components/timelineZoomInput";
 
 vi.mock("../contexts/StudioContext", () => ({
   useStudioShellContextOptional: () => ({
@@ -239,6 +240,81 @@ describe("TimelineToolbar snap key", () => {
 });
 
 describe("TimelineToolbar Fit", () => {
+  // A zoom lands on the next frame; these tests step frames instead of waiting for them.
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: [
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "setTimeout",
+        "clearTimeout",
+        "performance",
+      ],
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A mounted timeline for the zoom to preview on: 1080px wide, 32px of headers. */
+  function mountTimelineViewport() {
+    const scroll = document.createElement("div");
+    Object.defineProperties(scroll, {
+      clientWidth: { value: 1080 },
+      // At Fit the content is as wide as the view.
+      scrollWidth: { value: 1080 },
+      scrollLeft: { value: 0, writable: true },
+    });
+    usePlayerStore.setState({
+      zoomMode: "fit",
+      manualZoomPercent: 100,
+      timelineFitPps: 10,
+      timelinePps: 10,
+    });
+    return registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll: () => {} });
+  }
+
+  it("moves the slider and its readout with a zoom while it is previewed", () => {
+    const unregister = mountTimelineViewport();
+    const { host, root } = renderToolbar();
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="Timeline zoom"]')!;
+    const before = slider.value;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+        slider,
+        String(Number(before) + 5),
+      );
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersToNextFrame());
+    // Not laid out yet: the store still holds Fit, but the toolbar shows the zoom on screen.
+    expect(usePlayerStore.getState().zoomMode).toBe("fit");
+    expect(slider.value).not.toBe(before);
+    expect(host.querySelector('[aria-label="Timeline zoom level"]')?.textContent).not.toBe("Fit");
+    act(() => root.unmount());
+    act(() => unregister());
+  });
+
+  it("keeps Fit when it is picked while a zoom waits to be laid out", () => {
+    const unregister = mountTimelineViewport();
+    const { host, root } = renderToolbar();
+    act(() =>
+      host
+        .querySelector('button[aria-label="Zoom in"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+
+    act(() =>
+      host
+        .querySelector('button[aria-label="Fit timeline to width"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    act(() => vi.advanceTimersByTime(1000));
+    expect(usePlayerStore.getState().zoomMode).toBe("fit");
+    act(() => root.unmount());
+    act(() => unregister());
+  });
+
   it("shows Fit as a named icon and says whether fit is on", () => {
     const { host, root } = renderToolbar();
     const fit = () => host.querySelector('button[aria-label="Fit timeline to width"]');
@@ -251,6 +327,7 @@ describe("TimelineToolbar Fit", () => {
         .querySelector('button[aria-label="Zoom in"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
+    act(() => vi.advanceTimersToNextFrame());
     expect(fit()?.getAttribute("aria-pressed")).toBe("false");
     act(() => root.unmount());
   });
@@ -263,6 +340,7 @@ describe("TimelineToolbar Fit", () => {
         .querySelector('button[aria-label="Zoom in"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
+    act(() => vi.advanceTimersToNextFrame());
     expect(usePlayerStore.getState().userZoomCount).toBe(before + 1);
     act(() => root.unmount());
   });

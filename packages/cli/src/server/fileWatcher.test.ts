@@ -97,6 +97,29 @@ describe("createProjectWatcher", () => {
     },
   );
 
+  it.runIf(process.platform === "linux")("closes every watch it opened, its parent's too", () => {
+    const projectWatcher = createProjectWatcher("/fake/project/dir");
+    const opened = vi.mocked(watch).mock.calls.map(([path]) => path);
+    expect(opened).toContain("/fake/project");
+    projectWatcher.close();
+    expect(mockWatcher.close).toHaveBeenCalledTimes(opened.length);
+  });
+
+  it.runIf(process.platform === "linux")(
+    "keeps reporting project files when its parent cannot be watched",
+    () => {
+      vi.useFakeTimers();
+      fakeDirs.unwatchable = "/fake/project";
+      const projectWatcher = createProjectWatcher("/fake/project/dir");
+      const listener = vi.fn();
+      projectWatcher.addListener(listener);
+      mockWatcher.emit("change", "change", "index.html");
+      vi.advanceTimersByTime(30);
+      expect(listener).toHaveBeenCalledExactlyOnceWith("index.html");
+      projectWatcher.close();
+    },
+  );
+
   it("degrades to no live reload when the project root cannot be watched", () => {
     fakeDirs.unwatchable = "/fake/project/dir";
     let projectWatcher: ReturnType<typeof createProjectWatcher> | null = null;

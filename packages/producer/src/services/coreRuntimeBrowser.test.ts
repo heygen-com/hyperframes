@@ -1,9 +1,15 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, onTestFailed } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { bundleToSingleHtml } from "@hyperframes/core/compiler";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
+import type {} from "../../../core/src/runtime/window";
+import { openComposition } from "../../../sdk/src/session";
+import {
+  computeStaticFrameSet,
+  waitForPendingSeekCompletion,
+} from "../../../engine/src/services/frameCapture";
 
 const RUNTIME_PATH = resolve(import.meta.dirname, "../../../core/dist/hyperframe.runtime.iife.js");
 const PNG_1PX =
@@ -38,6 +44,109 @@ describe("core runtime browser contract", () => {
   afterAll(async () => {
     await browser?.close();
   });
+
+  it("disables static dedup for an async frame source even alongside a GSAP tween", async () => {
+    const sourcePage = await browser.newPage();
+    try {
+      await sourcePage.setContent(
+        `<div id="source" data-composition-id="root" data-start="0" data-duration="2" data-width="320" data-height="180"><div id="probe"></div></div>`,
+      );
+      await sourcePage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await sourcePage.addScriptTag({
+        content:
+          'window.__timelines = {root:gsap.timeline({paused:true}).to("#probe",{opacity:0.5,duration:0.1})};',
+      });
+      await sourcePage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await sourcePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+      await sourcePage.evaluate(() => {
+        window.__hf = { duration: window.__player!.getDuration!() };
+      });
+      const baseline = await computeStaticFrameSet(sourcePage, 30);
+      expect(baseline.reason).toBe("eligible");
+      expect(baseline.eligible).toBe(true);
+      await sourcePage.evaluate(() => {
+        const element = document.getElementById("source")!;
+        window.__hyperframes!.registerFrameSource({
+          element,
+          render: async (time) => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            element.setAttribute("data-rendered-time", String(time));
+          },
+        });
+        window.__player!.renderSeek!(0.5);
+      });
+      await waitForPendingSeekCompletion(sourcePage);
+      expect(await sourcePage.$eval("#source", (el) => el.getAttribute("data-rendered-time"))).toBe(
+        "0.5",
+      );
+      const analysis = await computeStaticFrameSet(sourcePage, 30);
+      expect(analysis.tweenCount).toBeGreaterThan(0);
+      expect(analysis.eligible).toBe(false);
+      expect(analysis.staticFrameSet.size).toBe(0);
+      expect(analysis.reason).toContain("registered frame source");
+      await sourcePage.evaluate(() => document.body.appendChild(document.createElement("iframe")));
+      expect((await computeStaticFrameSet(sourcePage, 30)).reason).toContain("iframe");
+    } finally {
+      await sourcePage.close();
+    }
+  });
+
+  it.each(["preview", "export"])(
+    "does not redraw async sources on transport ticks after an explicit render seek (%s)",
+    async (mode) => {
+      const sourcePage = await browser.newPage();
+      try {
+        await sourcePage.setContent(
+          `<div id="source" data-no-timeline data-composition-id="root" data-duration="2" data-width="320" data-height="180"></div>`,
+        );
+        if (mode === "export")
+          await sourcePage.addScriptTag({
+            content: "window.__HF_EXPORT_RENDER_SEEK_CONFIG={fps:30};",
+          });
+        await sourcePage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await sourcePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+        await sourcePage.evaluate(() => {
+          const element = document.getElementById("source")!;
+          window.__hyperframes!.registerFrameSource({
+            element,
+            render: async (time) => {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              element.setAttribute(
+                "data-draws",
+                (element.getAttribute("data-draws") ?? "") + time + ",",
+              );
+            },
+          });
+        });
+        for (const [index, time] of [0.5, 0.5, 0.2].entries()) {
+          await sourcePage.evaluate((t) => window.__player!.renderSeek!(t), time);
+          await waitForPendingSeekCompletion(sourcePage);
+          // Let the transport run after the capture barrier has already settled.
+          await sourcePage.evaluate(async () => {
+            for (let frame = 0; frame < 4; frame++)
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            await window.__hfWaitForSeekCompletion!();
+          });
+          expect(await sourcePage.$eval("#source", (el) => el.getAttribute("data-draws"))).toBe(
+            [0.5, 0.5, 0.2].slice(0, index + 1).join(",") + ",",
+          );
+        }
+        await sourcePage.evaluate(() => window.__player!.play());
+        await sourcePage.waitForFunction(
+          () =>
+            (document.getElementById("source")!.getAttribute("data-draws") ?? "")
+              .split(",")
+              .filter(Boolean).length > 3,
+        );
+        await sourcePage.evaluate(() => window.__player!.pause());
+        await waitForPendingSeekCompletion(sourcePage);
+      } finally {
+        await sourcePage.close();
+      }
+    },
+  );
 
   it("initializes the public player contract and seeks the CSS adapter", async () => {
     const result = await page.evaluate(() => {
@@ -1007,4 +1116,201 @@ describe("core runtime browser contract", () => {
 
     expect(result).toEqual({ hadTeardown: true, teardownCleared: true, isPlaying: false });
   });
+});
+
+// This is a first-party protocol fixture, not the partner runner or its animation code.
+const FILM_RUNNER_FIXTURE = `<!doctype html><style>html,body{margin:0;width:100%;height:100%;background:black}</style>
+<script>
+addEventListener("message", async ({data}) => {
+  if (data.type === "appifact-film:load") {
+    parent.postMessage({type:"appifact-film:ready"}, "*");
+  } else if (data.type === "appifact-film:frame") {
+    await new Promise(resolve => setTimeout(resolve, 40));
+    document.body.style.background = "rgb(" + Math.round(data.t * 40) + ",20,80)";
+    parent.postMessage({type:"appifact-film:frame",seq:data.seq}, "*");
+  }
+});
+parent.postMessage({type:"appifact-film:hello"}, "*");
+</script>`;
+
+function filmRuntimeFixture(runtime: string): string {
+  const runnerLiteral = JSON.stringify(FILM_RUNNER_FIXTURE).replaceAll("<", "\\u003c");
+  return `<!doctype html><html><head>
+<style>html,body{margin:0} html{background:#f0e6d2} iframe{display:block;border:0;width:320px;height:180px}</style>
+<script>${runtime.replaceAll("</script", "<\\/script")}</script></head><body>
+<div data-hf-id="hf-root" data-hf-root data-composition-id="root" data-start="0" data-duration="1" data-width="320" data-height="180" data-fps="30">
+<div id="scene" data-hf-id="hf-scene" class="clip" data-composition-id="scene" data-start="0" data-duration="1" data-track-index="0">
+<iframe id="stage" sandbox="allow-scripts" title="First-party protocol fixture"></iframe>
+</div></div>
+<script>
+const bridge = window.__hyperframes.createFilmBridge({iframe:document.getElementById("stage"),runnerHtml:${runnerLiteral},load:{}});
+window.__hyperframes.registerFrameSource({element:document.getElementById("scene"),ready:bridge.ready,render:async (time) => { await bridge.render(time); document.getElementById("scene").setAttribute("data-rendered-source-time",String(time)); },dispose:bridge.dispose,sourceRange:{start:3,duration:1,fps:30}});
+</script></body></html>`;
+}
+
+describe("film bridge browser capture contract", () => {
+  let browser: Browser;
+  let html: string;
+  beforeAll(async () => {
+    html = filmRuntimeFixture(readFileSync(RUNTIME_PATH, "utf8"));
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+  }, 30_000);
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  async function openFilm(source = html): Promise<Page> {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+    await page.setContent(source);
+    await page.waitForFunction(
+      () => window.__playerReady === true && window.__renderReady === true,
+    );
+    return page;
+  }
+
+  async function capture(page: Page): Promise<Buffer> {
+    // Linux headless Chrome can stall capture when the reference tab is foreground.
+    await page.bringToFront();
+    return Buffer.from(await page.screenshot());
+  }
+
+  it("renders the executable wrapper after SDK edits, save and reopen", async () => {
+    const composition = await openComposition(html);
+    composition.setTiming("hf-scene", { start: 0.2, duration: 0.6 });
+    composition.setAttribute("hf-scene", "data-playback-start", "0.1");
+    composition.setAttribute("hf-scene", "data-playback-rate", "2");
+    const reopened = await openComposition(composition.serialize());
+    const page = await openFilm(reopened.serialize());
+    const reference = await browser.newPage();
+    try {
+      await page.evaluate(() => window.__player?.renderSeek?.(0.4));
+      await waitForPendingSeekCompletion(page);
+      expect(
+        Number(await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"))),
+      ).toBeCloseTo(3.5, 10);
+      await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+      await reference.setContent("<style>html,body{margin:0;background:rgb(140,20,80)}</style>");
+      expect(await capture(page)).toEqual(await capture(reference));
+    } finally {
+      await page.close();
+      await reference.close();
+    }
+  });
+
+  it("draws the first visible export frame at a near-frame start and stops at its snapped end", async () => {
+    const composition = await openComposition(html);
+    composition.setTiming("hf-root", { duration: 3 });
+    composition.setTiming("hf-scene", { start: 1.00001, duration: 1 });
+    const source = composition
+      .serialize()
+      .replace(
+        "<head>",
+        '<head><script>window.__HF_EXPORT_RENDER_SEEK_CONFIG={fps:30,fpsSource:"render-options"};</script>',
+      );
+    const page = await openFilm(source);
+    const reference = await browser.newPage();
+    await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+    try {
+      for (const [time, sourceTime] of [
+        [1, 3],
+        [59 / 30, 3 + 59 / 30 - 1.00001],
+      ]) {
+        await page.evaluate((t) => window.__player?.renderSeek?.(t), time);
+        await waitForPendingSeekCompletion(page);
+        expect(
+          Number(await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"))),
+        ).toBeCloseTo(sourceTime!, 10);
+        await reference.setContent(
+          `<style>html,body{margin:0;background:rgb(${Math.round(sourceTime! * 40)},20,80)}</style>`,
+        );
+        expect(await capture(page)).toEqual(await capture(reference));
+      }
+      const last = await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"));
+      await page.evaluate(() => window.__player?.renderSeek?.(2));
+      await waitForPendingSeekCompletion(page);
+      expect(await page.$eval("#scene", (el) => el.getAttribute("data-rendered-source-time"))).toBe(
+        last,
+      );
+      expect(
+        await page.evaluate(() => ({
+          duration: window.__player?.getDuration?.(),
+          visibility: getComputedStyle(document.getElementById("scene")!).visibility,
+          background: getComputedStyle(document.body).backgroundColor,
+        })),
+      ).toEqual({ duration: 3, visibility: "hidden", background: "rgba(0, 0, 0, 0)" });
+      await reference.setContent("<style>html,body{margin:0;background:#f0e6d2}</style>");
+      expect(await capture(page)).toEqual(await capture(reference));
+    } finally {
+      await page.close();
+      await reference.close();
+    }
+  });
+
+  it("captures the acknowledged frame for reverse, repeated and fresh-page seeks", async () => {
+    let phase = "opening film";
+    onTestFailed(() => console.error(`Film capture failed during: ${phase}`));
+    const page = await openFilm();
+    phase = "opening reference";
+    const reference = await browser.newPage();
+    await reference.setViewport({ width: 320, height: 180, deviceScaleFactor: 1 });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const captures = new Map<number, Uint8Array>();
+    try {
+      for (const time of [0, 0.5, 0.2, 0.5, 0.9, 1, 0]) {
+        phase = `seeking ${time}`;
+        await page.evaluate((t) => window.__player?.renderSeek?.(t), time);
+        phase = `waiting for frame ${time}`;
+        await waitForPendingSeekCompletion(page);
+        phase = `capturing frame ${time}`;
+        const actual = await capture(page);
+        const sourceTime = 3 + Math.min(time, 1 - 1 / 30);
+        phase = `setting reference ${time}`;
+        await reference.setContent(
+          `<style>html,body{margin:0;background:rgb(${Math.round(sourceTime * 40)},20,80)}</style>`,
+        );
+        phase = `capturing reference ${time}`;
+        expect(Buffer.from(actual)).toEqual(await capture(reference));
+        const previous = captures.get(time);
+        if (previous) expect(Buffer.from(actual)).toEqual(Buffer.from(previous));
+        captures.set(time, actual);
+      }
+      phase = "opening fresh film";
+      const fresh = await openFilm();
+      try {
+        phase = "seeking fresh film";
+        await fresh.evaluate(() => window.__player?.renderSeek?.(0.5));
+        phase = "waiting for fresh frame";
+        await waitForPendingSeekCompletion(fresh);
+        phase = "capturing fresh frame";
+        expect(await capture(fresh)).toEqual(Buffer.from(captures.get(0.5)!));
+      } finally {
+        phase = "closing fresh film";
+        await fresh.close();
+      }
+      phase = "seeking edited film";
+      await page.evaluate(() => {
+        const scene = document.getElementById("scene")!;
+        scene.setAttribute("data-playback-start", "0.25");
+        scene.setAttribute("data-playback-rate", "2");
+        window.__player?.renderSeek?.(0.2);
+      });
+      phase = "waiting for edited frame";
+      await waitForPendingSeekCompletion(page);
+      phase = "setting edited reference";
+      await reference.setContent("<style>html,body{margin:0;background:rgb(146,20,80)}</style>");
+      phase = "capturing edited frame";
+      expect(await capture(page)).toEqual(await capture(reference));
+      expect(errors).toEqual([]);
+    } finally {
+      phase = "closing film";
+      await page.close();
+      phase = "closing reference";
+      await reference.close();
+    }
+  }, 30_000);
 });

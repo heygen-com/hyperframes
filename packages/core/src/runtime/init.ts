@@ -20,6 +20,7 @@ import { createGoogleMapsAdapter } from "./adapters/google-maps";
 import { createMaplibreAdapter } from "./adapters/maplibre";
 import { createD3Adapter } from "./adapters/d3";
 import { createTypegpuAdapter } from "./adapters/typegpu";
+import { createFrameSourceAdapter } from "./frameSources";
 import {
   patchVideoTextureCompat,
   patchWebGLVideoTextureCompat,
@@ -43,7 +44,12 @@ import {
   syncRuntimeMedia,
   type RuntimeMediaClip,
 } from "./media";
-import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
+import {
+  handleErrorForProxy,
+  handleMetadataForProxy,
+  maybeProxyProactively,
+  setProxyDisplayScale,
+} from "./mediaProxy";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer, resolveRenderSeekTime, type RuntimePlayerTransport } from "./player";
@@ -383,6 +389,16 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
+
+/** Studio's lazy images in `root` load now: a hidden clip has no layout box, so lazy ones would never fetch. */
+function loadPreviewImagesIn(root: Element): void {
+  const images = root.matches(`[${STUDIO_PREVIEW_LAZY_ATTR}]`)
+    ? [root]
+    : Array.from(root.querySelectorAll(`img[${STUDIO_PREVIEW_LAZY_ATTR}]`)).filter(
+        (img) => img.closest("[data-start]") === root,
+      );
+  for (const img of images) img.setAttribute("loading", "eager");
+}
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
@@ -2283,20 +2299,16 @@ export function initSandboxRuntimeModular(): void {
       return false;
     }
     const previousTime = Math.max(0, state.currentTime || 0);
-    const wasPlaying = state.isPlaying;
     state.capturedTimeline = resolution.timeline;
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
     try {
       // pause guarded separately: a PARTIAL timeline without pause() must not
-      // abort the seek/play restore below (the catch would swallow them too).
+      // abort restoring the transport time below (the catch would swallow it too).
       pauseTimelineIfPossible(state.capturedTimeline);
       if (typeof state.capturedTimeline.seek === "function") {
         state.capturedTimeline.seek(previousTime, false);
-      }
-      if (wasPlaying && typeof state.capturedTimeline.play === "function") {
-        state.capturedTimeline.play();
       }
     } catch (err) {
       // keep runtime resilient even if a timeline implementation throws
@@ -2798,6 +2810,8 @@ export function initSandboxRuntimeModular(): void {
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
       const upcoming =
         hiddenImagesSkipped && !isVisibleNow && dueSoon(rawNode, visibleAt, currentTime);
+      if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
+        loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
       if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
         preloadNearPlayhead(
@@ -3888,7 +3902,7 @@ export function initSandboxRuntimeModular(): void {
       const held = { time: quantized, apply: () => applySeek(quantized, options) };
       heldSeek = held;
       for (const img of undecoded) {
-        if (img.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) img.setAttribute("loading", "eager");
+        loadPreviewImagesIn(img);
         for (let clip = img.closest(SKIPPED_CLIP); clip; clip = img.closest(SKIPPED_CLIP))
           clip.setAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, "");
       }
@@ -4006,6 +4020,13 @@ export function initSandboxRuntimeModular(): void {
   });
 
   state.deterministicAdapters = [
+    createFrameSourceAdapter({
+      start: (element) => resolveStartForElement(element, 0),
+      duration: (element) => resolveDurationForElement(element),
+      compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
+      canonicalFps: () => state.canonicalFps,
+      exportRenderSeek: () => Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
+    }),
     createWaapiAdapter(),
     createCssAdapter({
       resolveStartSeconds: (element) => resolveStartForElement(element, 0),
@@ -4166,10 +4187,8 @@ export function initSandboxRuntimeModular(): void {
   }
   let transportTickCount = 0;
   let inTransportTick = false;
-  // A paused transport has no new frame to render. Re-seeking the same GSAP timeline at the
-  // same time on every rAF is not merely redundant: one picker can embed several paused
-  // players, multiplying full timeline traversal and style invalidation across every iframe.
-  // Keep enough identity to render once when time or the asynchronously-bound timeline changes.
+  // Reuse a completed seek only for the exact requested time and captured timeline.
+  // Paused players and host ticks can share the frame without suppressing a newer time.
   let lastTransportSeekTime = Number.NaN;
   let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
   let pausedSeekDeferredByManualGesture = false;
@@ -4319,7 +4338,10 @@ export function initSandboxRuntimeModular(): void {
     // play(), so without the rearm it holds its initial CSS state (opacity:0).
     const rearmed = tl && opts?.activateChildren ? activateSiblingTimelines(tl) : [];
     try {
-      return seekRootChildrenAndAdapters(tl, t, opts);
+      const animations = seekRootChildrenAndAdapters(tl, t, opts);
+      lastTransportSeekTime = t;
+      lastTransportSeekTimeline = tl;
+      return animations;
     } finally {
       for (const sibling of rearmed) pauseTimelineIfPossible(sibling);
     }
@@ -4555,6 +4577,44 @@ export function initSandboxRuntimeModular(): void {
     return longest;
   };
 
+  function refreshTransportClockSource(): void {
+    // Audio-master clock: three tiers of timing precision.
+    // 1. WebAudio (AudioContext.currentTime) while it plays a decoded buffer: ~21µs, sample-accurate
+    // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
+    // 3. Monotonic (performance.now()): ~1ms, no audio coupling
+    if (clock.isPlaying() && !state.mediaOutputMuted) {
+      if (
+        !state.nativeMediaSyncDisabled &&
+        !state.webAudioMediaDisabled &&
+        webAudio.ownsClock() &&
+        webAudio.context
+      ) {
+        const webAudioTime = webAudio.getTime();
+        if (webAudioTime >= 0) {
+          clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
+        }
+      } else {
+        const source = followedOrLongestRunningAudio(clock.audioElement());
+        if (source && !source.el.paused) {
+          clock.attachAudioSource({
+            el: source.el,
+            compositionStart: source.start,
+            mediaStart: readElementPlaybackStart(source.el),
+            rate: readElementRateSpec(source.el),
+          });
+        } else if (source && source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+          // Audio is buffering — freeze visuals at last known position
+          // instead of falling through to monotonic (which runs ahead).
+          clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
+        } else if (clock.hasAudioSource()) {
+          clock.detachAudioSource();
+        }
+      }
+    } else if (clock.hasAudioSource()) {
+      clock.detachAudioSource();
+    }
+  }
+
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
@@ -4645,41 +4705,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
 
-      // Audio-master clock: three tiers of timing precision.
-      // 1. WebAudio (AudioContext.currentTime) while it plays a decoded buffer: ~21µs, sample-accurate
-      // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
-      // 3. Monotonic (performance.now()): ~1ms, no audio coupling
-      if (clock.isPlaying() && !state.mediaOutputMuted) {
-        if (
-          !state.nativeMediaSyncDisabled &&
-          !state.webAudioMediaDisabled &&
-          webAudio.ownsClock() &&
-          webAudio.context
-        ) {
-          const webAudioTime = webAudio.getTime();
-          if (webAudioTime >= 0) {
-            clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
-          }
-        } else {
-          const source = followedOrLongestRunningAudio(clock.audioElement());
-          if (source && !source.el.paused) {
-            clock.attachAudioSource({
-              el: source.el,
-              compositionStart: source.start,
-              mediaStart: readElementPlaybackStart(source.el),
-              rate: readElementRateSpec(source.el),
-            });
-          } else if (source && source.el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-            // Audio is buffering — freeze visuals at last known position
-            // instead of falling through to monotonic (which runs ahead).
-            clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
-          } else if (clock.hasAudioSource()) {
-            clock.detachAudioSource();
-          }
-        }
-      } else if (clock.hasAudioSource()) {
-        clock.detachAudioSource();
-      }
+      refreshTransportClockSource();
 
       const t = clock.now();
       state.currentTime = t;
@@ -4703,8 +4729,6 @@ export function initSandboxRuntimeModular(): void {
         state.capturedTimeline !== lastTransportSeekTimeline
       ) {
         seekTimelineAndAdapters(t);
-        lastTransportSeekTime = t;
-        lastTransportSeekTimeline = state.capturedTimeline;
         if (!isPlaying) pausedSeekDeferredByManualGesture = false;
       }
       if (isPlaying) {
@@ -5000,6 +5024,7 @@ export function initSandboxRuntimeModular(): void {
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
+    onSetDisplayScale: setProxyDisplayScale,
     onSetIdleHeartbeat: (slow) => {
       slowIdleHeartbeat = slow;
       wakeTransport();
@@ -5022,9 +5047,12 @@ export function initSandboxRuntimeModular(): void {
     },
     onTick: () => {
       if (state.tornDown || !clock.isPlaying()) return;
+      refreshTransportClockSource();
       const t = clock.now();
       state.currentTime = t;
-      seekTimelineAndAdapters(t);
+      if (t !== lastTransportSeekTime || state.capturedTimeline !== lastTransportSeekTimeline) {
+        seekTimelineAndAdapters(t);
+      }
       if (clock.reachedEnd()) {
         webAudio.stopAll();
         clock.detachAudioSource();

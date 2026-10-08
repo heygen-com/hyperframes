@@ -112,6 +112,34 @@ describe("transcribe command", () => {
     vi.unstubAllEnvs();
   });
 
+  it("keeps quiet Spanish words before the relative speech onset in transcript and captions", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const words = [
+      { id: "w0", text: "Siempre", start: 0.2, end: 0.49 },
+      { id: "w1", text: "que", start: 0.49, end: 0.7 },
+      { id: "w2", text: "los", start: 0.7, end: 0.91 },
+      { id: "w3", text: "nietos", start: 0.91, end: 1.33 },
+      { id: "w4", text: "vecindario", start: 10.03, end: 11.02 },
+    ];
+    const htmlPath = join(dir, "index.html");
+    writeFileSync(htmlPath, "<script>const TRANSCRIPT = [];</script>");
+    transcribeMock.mockImplementation(async (_input, outputDir) => {
+      const result = fakeTranscript(outputDir, "whisper");
+      writeFileSync(result.transcriptPath, JSON.stringify(words));
+      return { ...result, wordCount: 5, durationSeconds: 50, speechOnsetSeconds: 10 };
+    });
+
+    await runCommand(transcribeCmd, {
+      rawArgs: [input, "--dir", dir, "--engine", "whisper", "--language", "es", "--json"],
+    });
+
+    expect(JSON.parse(readFileSync(join(dir, "transcript.json"), "utf8"))).toEqual(words);
+    const captions = readFileSync(htmlPath, "utf8").match(/const TRANSCRIPT = ([\s\S]*?);/)![1]!;
+    expect(JSON.parse(captions)).toEqual(words);
+    expect(lastJson()).toMatchObject({ ok: true, wordCount: 5, speechOnsetSeconds: 10 });
+  });
+
   it("keeps typed progress on stderr and reports resolved metadata in one stdout result", async () => {
     const { dir, input } = dummyAudio();
     dirs.push(dir);

@@ -247,6 +247,49 @@ describe("composition card thumbnails", () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith("blob:frame-2");
   });
 
+  it("tell a hover preview how large it shows, so its videos are not copied at source size", () => {
+    vi.useFakeTimers();
+    try {
+      const host = mount();
+      const card = host.querySelector<HTMLElement>('[aria-label^="Open composition"]')!;
+      act(() => {
+        card.dispatchEvent(
+          new MouseEvent("pointerover", { bubbles: true, relatedTarget: document.body }),
+        );
+      });
+      act(() => vi.advanceTimersByTime(300));
+      const frame = host.querySelector("iframe")!;
+      const postMessage = vi.fn();
+      Object.defineProperty(frame, "contentWindow", { value: { postMessage } });
+      Object.defineProperty(frame, "offsetWidth", { value: 1920 });
+      frame.getBoundingClientRect = () => ({ width: 80 }) as DOMRect;
+      act(() => {
+        frame.dispatchEvent(new Event("load"));
+      });
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "set-display-scale", scale: 80 / 1920 }),
+        "*",
+      );
+
+      // A module-script composition starts listening only after load, then says it is ready.
+      postMessage.mockClear();
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: frame.contentWindow,
+            data: { source: "hf-preview", type: "ready" },
+          }),
+        );
+      });
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "set-display-scale", scale: 80 / 1920 }),
+        "*",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("show a fallback when the render fails, and retry it at the next content revision", async () => {
     const host = mount();
     renders[0]!.answer(500);

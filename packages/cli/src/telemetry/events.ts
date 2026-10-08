@@ -1,5 +1,6 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
-import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
+import type { OutputResolutionIssueKind } from "@hyperframes/core";
+import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
 import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
@@ -341,8 +342,8 @@ export function trackRenderComplete(
     catalogUsage?: CatalogUsage;
     workers?: number;
     // Worker auto-sizing provenance (RenderPerfSummary.workerSizing). Answers
-    // "why N workers?" fleet-wide, and validates the advisory per-worker heap
-    // budget before it's enforced (field OOM: 6 auto workers on a 24GB/4GB-heap
+    // "why N workers?" fleet-wide, and reports the per-worker heap budget
+    // that caps auto sizing (field OOM: 6 auto workers on a 24GB/4GB-heap
     // machine — see computeWorkerSizing in @hyperframes/engine).
     workersBoundBy?: string;
     workersCpuBased?: number;
@@ -992,6 +993,22 @@ export function trackSkillsInstallSkipped(props: { reason: string }): void {
   trackEvent("cli skill install skipped", { reason: props.reason });
 }
 
+export function trackFeedbackComment(props: {
+  comment: string;
+  doctorSummary?: string;
+  feedbackId?: string;
+  recentRenderIds?: string[];
+}): void {
+  trackEvent("cli_feedback_comment", {
+    comment: props.comment,
+    ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
+    ...(props.feedbackId ? { feedback_id: props.feedbackId } : {}),
+    ...(props.recentRenderIds?.length
+      ? { recent_render_ids: props.recentRenderIds.join(",") }
+      : {}),
+  });
+}
+
 export function trackRenderFeedback(props: {
   rating: number;
   renderDurationMs?: number;
@@ -1000,7 +1017,8 @@ export function trackRenderFeedback(props: {
   /**
    * Join key shared with the forwarded feedback report (Slack/backend): the
    * same uuid rides in the report's env string as `fid=…`, so a wild report
-   * resolves to exactly one PostHog `cli_render_feedback` event and vice versa.
+   * resolves to exactly one PostHog `cli_render_feedback` or
+   * `cli_feedback_comment` event and vice versa.
    */
   feedbackId?: string;
   /** render_job_id values of this install's recent renders (newest last). */
