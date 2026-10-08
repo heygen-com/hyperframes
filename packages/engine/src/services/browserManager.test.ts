@@ -882,6 +882,23 @@ describe("browser pool", () => {
     _setPuppeteerForTests(undefined);
   });
 
+  it("keeps the launch diagnostic on stderr when a command emits JSON", async () => {
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const result = await acquireBrowser(["--no-sandbox"], poolCfg);
+      await result.release();
+
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringMatching(/^\[BrowserManager\] Browser launched/),
+      );
+      expect(stdout).not.toHaveBeenCalled();
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
   it("sequential acquires with pool enabled return the same browser", async () => {
     const first = await acquireBrowser(["--no-sandbox"], poolCfg);
     const second = await acquireBrowser(["--no-sandbox"], poolCfg);
