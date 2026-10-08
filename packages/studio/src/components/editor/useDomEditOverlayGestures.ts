@@ -257,7 +257,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         pointerStart: { x: g.startX, y: g.startY },
         centerStart: { x: g.centerX, y: g.centerY },
       });
-      applyStudioBoxSizeDraft(sel.element, nextSize);
+      const writtenSize = applyStudioBoxSizeDraft(sel.element, nextSize);
 
       const overlayEl = opts.overlayRef.current;
       const iframe = opts.iframeRef.current;
@@ -270,6 +270,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         overlayEl,
         iframe,
         measureOrientedRect,
+        { wanted: nextSize, written: writtenSize },
       );
       logResizeMove({
         pointer: { x: e.clientX, y: e.clientY },

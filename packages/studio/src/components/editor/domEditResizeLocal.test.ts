@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resizeRemainderShift,
   resolveCenterResizeScale,
   resolveCenterResizeSize,
   resolveRotatedResizeCursor,
@@ -127,5 +128,38 @@ describe("resolveRotatedResizeCursor", () => {
 
   it("wraps negative rotations", () => {
     expect(resolveRotatedResizeCursor("se", -90)).toBe("nesw-resize");
+  });
+});
+
+describe("resizeRemainderShift", () => {
+  // A 30 deg, 1.5x scaled box: local (u, v) px map to overlay px through M.
+  const angle = Math.PI / 6;
+  const k = 1.5;
+  const M = (u: number, v: number) => ({
+    x: k * (u * Math.cos(angle) - v * Math.sin(angle)),
+    y: k * (u * Math.sin(angle) + v * Math.cos(angle)),
+  });
+  const centre = { x: 400, y: 300 };
+  const at = (u: number, v: number) => ({ x: centre.x + M(u, v).x, y: centre.y + M(u, v).y });
+  const written = { width: 301, height: 150 };
+  const wanted = { width: 300.6, height: 150.3 };
+  const corners = {
+    nw: at(-written.width / 2, -written.height / 2),
+    ne: at(written.width / 2, -written.height / 2),
+    sw: at(-written.width / 2, written.height / 2),
+    se: at(written.width / 2, written.height / 2),
+  };
+
+  it.each([
+    ["nw", -1, -1],
+    ["ne", 1, -1],
+    ["sw", -1, 1],
+    ["se", 1, 1],
+  ] as const)("moves the %s corner to where the wanted size puts it", (handle, sx, sy) => {
+    const shift = resizeRemainderShift(corners, handle, wanted, written);
+    const grabbed = corners[handle];
+    const target = at((sx * wanted.width) / 2, (sy * wanted.height) / 2);
+    expect(grabbed.x + shift.x).toBeCloseTo(target.x, 9);
+    expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
   });
 });

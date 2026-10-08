@@ -36,7 +36,7 @@ import {
 } from "./manualEditsTypes";
 import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
-import { roundTo3, roundToLayoutPx } from "../../utils/rounding";
+import { roundTo3, roundToLayoutPx, roundToLayoutSize } from "../../utils/rounding";
 import { BOX_SIZE_STYLE_PROPS } from "./manualEditsDomPatches";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
@@ -477,8 +477,8 @@ function writeStudioBoxSizeVars(
   }
 
   element.setAttribute(STUDIO_BOX_SIZE_ATTR, "true");
-  element.style.setProperty(STUDIO_WIDTH_PROP, `${roundToLayoutPx(Math.max(1, size.width))}px`);
-  element.style.setProperty(STUDIO_HEIGHT_PROP, `${roundToLayoutPx(Math.max(1, size.height))}px`);
+  element.style.setProperty(STUDIO_WIDTH_PROP, `${roundToLayoutSize(size).width}px`);
+  element.style.setProperty(STUDIO_HEIGHT_PROP, `${roundToLayoutSize(size).height}px`);
 }
 
 function applyStudioBoxSizeDimensions(
@@ -488,8 +488,7 @@ function applyStudioBoxSizeDimensions(
   writeStudioBoxSizeVars(element, size);
   restoreStaleStudioScaleResize(element);
 
-  const width = roundToLayoutPx(Math.max(1, size.width));
-  const height = roundToLayoutPx(Math.max(1, size.height));
+  const { width, height } = roundToLayoutSize(size);
   element.style.setProperty("box-sizing", "border-box");
   element.style.setProperty("width", `${width}px`);
   element.style.setProperty("height", `${height}px`);
@@ -533,12 +532,13 @@ export function forgetStudioBoxSizeDraftBase(element: HTMLElement): void {
 export function applyStudioBoxSizeDraft(
   element: HTMLElement,
   size: { width: number; height: number },
-): void {
+): { width: number; height: number } {
   if (!boxSizeDraftBases.has(element)) {
     boxSizeDraftBases.set(element, { width: element.offsetWidth, height: element.offsetHeight });
   }
   promoteInlineForTransform(element);
   applyStudioBoxSizeDimensions(element, size);
+  return roundToLayoutSize(size);
 }
 
 /* ── Rotation apply ───────────────────────────────────────────────── */

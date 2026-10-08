@@ -14,6 +14,7 @@
  * rendered center, feeding the center-pin translate through the manual-offset
  * channel) lives in useDomEditOverlayGestures.ts.
  */
+import type { FixedCorner } from "./domEditOverlayGeometry";
 import type { ResizeHandle } from "./domEditOverlayGestures";
 
 /** Minimum element edge in LOCAL px — mirrors the old MIN_RESIZE_EDGE_PX clamp
@@ -110,6 +111,31 @@ export function resolveRotatedResizeCursor(handle: ResizeHandle, rotationDeg: nu
   const normalized = ((angle % 360) + 360) % 360;
   const bucket = Math.round(normalized / 45) % 8;
   return CURSORS_8[bucket]!;
+}
+
+type Size = { width: number; height: number };
+const HANDLE_SIGN: Record<ResizeHandle, readonly [number, number]> = {
+  nw: [-1, -1],
+  ne: [1, -1],
+  sw: [-1, 1],
+  se: [1, 1],
+};
+
+/** Overlay shift of the pinned center that puts the grabbed corner where the wanted size would: the
+ *  written size is whole px, so half the remainder moves along the element's own rendered edges. */
+export function resizeRemainderShift(
+  corners: Record<FixedCorner, { x: number; y: number }>,
+  handle: ResizeHandle,
+  wanted: Size,
+  written: Size,
+): { x: number; y: number } {
+  const [sx, sy] = HANDLE_SIGN[handle];
+  const kw = (sx * (wanted.width - written.width)) / (2 * written.width);
+  const kh = (sy * (wanted.height - written.height)) / (2 * written.height);
+  return {
+    x: (corners.ne.x - corners.nw.x) * kw + (corners.sw.x - corners.nw.x) * kh,
+    y: (corners.ne.y - corners.nw.y) * kw + (corners.sw.y - corners.nw.y) * kh,
+  };
 }
 
 /** Per-frame anchored-resize center accumulator: ADD the residual center correction

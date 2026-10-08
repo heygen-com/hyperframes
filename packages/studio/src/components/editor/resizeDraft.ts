@@ -6,10 +6,13 @@ import {
   elementCornerOverlayPoints,
   overlayCornersCentroid,
 } from "./domEditOverlayGeometry";
-import { computeNextResizeAnchor } from "./domEditResizeLocal";
+import { computeNextResizeAnchor, resizeRemainderShift } from "./domEditResizeLocal";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
 
 type Corners = ReturnType<typeof elementCornerOverlayPoints>;
+type Size = { width: number; height: number };
+/** The size the pointer asks for and the whole-px size written for it. */
+type ResizeDraftSizes = { wanted: Size; written: Size };
 
 /**
  * The residual center-pin offset for this frame. With measurable corners and a
@@ -25,10 +28,18 @@ function resolveResizeAnchor(
   g: GestureState,
   corners: Corners | null,
   measureOrientedRect: () => OverlayRect | null,
+  sizes: ResizeDraftSizes,
 ): { dx: number; dy: number } {
   const fixedStart = g.resizeFixedCenterStart;
   if (corners && fixedStart) {
-    return computeNextResizeAnchor(g.lastResizeAnchor, fixedStart, overlayCornersCentroid(corners));
+    const shift = resizeRemainderShift(
+      corners,
+      g.resizeHandle ?? "se",
+      sizes.wanted,
+      sizes.written,
+    );
+    const target = { x: fixedStart.x + shift.x, y: fixedStart.y + shift.y };
+    return computeNextResizeAnchor(g.lastResizeAnchor, target, overlayCornersCentroid(corners));
   }
   const fallbackRect = measureOrientedRect();
   return resolveResizeCenterAnchorOffset({
@@ -52,11 +63,12 @@ function resolveAnchoredResizeDraft(
   overlayEl: HTMLDivElement | null,
   iframe: HTMLIFrameElement | null,
   measureOrientedRect: () => OverlayRect | null,
+  sizes: ResizeDraftSizes,
 ): OverlayRect {
   // Measure real corners ONCE — reused for the anchor and the fallback size.
   const corners =
     overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, element) : null;
-  const anchor = resolveResizeAnchor(g, corners, measureOrientedRect);
+  const anchor = resolveResizeAnchor(g, corners, measureOrientedRect, sizes);
   g.lastResizeAnchor = anchor;
   applyManualOffsetDragDraft(member, anchor.dx, anchor.dy);
   // Re-measure AFTER the anchor translate so it hugs the element every frame.
@@ -80,6 +92,7 @@ export function resolveResizeDraftRect(
   overlayEl: HTMLDivElement | null,
   iframe: HTMLIFrameElement | null,
   measureOrientedRect: () => OverlayRect | null,
+  sizes: ResizeDraftSizes,
 ): OverlayRect {
   if (g.pathOffsetMember) {
     return resolveAnchoredResizeDraft(
@@ -89,6 +102,7 @@ export function resolveResizeDraftRect(
       overlayEl,
       iframe,
       measureOrientedRect,
+      sizes,
     );
   }
   // Re-measure the element's oriented box AFTER the size write. The size draft

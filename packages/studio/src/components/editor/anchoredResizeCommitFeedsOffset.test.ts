@@ -259,6 +259,26 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     expect(offset.y).toBeCloseTo(-(size.height - ORIGIN.height) / 2, 0);
   });
 
+  it("puts the grabbed corner on the pointer when the size rounds to whole px", () => {
+    const { handlers, commits } = buildHarness();
+    handlers.startGesture("resize", evt(ORIGIN_CENTER.x + 100, ORIGIN_CENTER.y), {
+      resizeHandle: "se",
+    });
+    // Radial scale 1.503: the pointer asks for 300.6 x 150.3, Studio writes 301 x 150.
+    for (let i = 0; i < 5; i++)
+      handlers.onPointerMove(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y));
+    handlers.onPointerUp(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y));
+
+    const { size, offset } = commits[0]!;
+    expect(size).toEqual({ width: 301, height: 150 });
+    const corner = {
+      x: ORIGIN_CENTER.x + (size.width - ORIGIN.width) / 2 + offset!.x + size.width / 2,
+      y: ORIGIN_CENTER.y + (size.height - ORIGIN.height) / 2 + offset!.y + size.height / 2,
+    };
+    expect(corner.x).toBeCloseTo(ORIGIN_CENTER.x + 300.6 / 2, 6);
+    expect(corner.y).toBeCloseTo(ORIGIN_CENTER.y + 150.3 / 2, 6);
+  });
+
   it("keeps the centre on the first frame when the authored translate is a percent", async () => {
     const { orientedOverlayRect } = await import("./domEditOverlayGeometry");
     authored.percent = 0.25;
