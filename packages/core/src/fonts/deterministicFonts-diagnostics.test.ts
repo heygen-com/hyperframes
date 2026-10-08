@@ -375,6 +375,50 @@ describe("authored stylesheet falling back to the default request", () => {
   });
 });
 
+describe("a lookup joined while another compile's request is in flight", () => {
+  const REQUIRED = "Quillmark Serif";
+  const OPTIONAL = "Zorblax Display";
+  const html = `<!doctype html><html><head><style>.r{font-family:'${REQUIRED}',serif}.o{font-family:var(--none, '${OPTIONAL}')}</style></head><body><p class="r o">The ${PAGE_TEXT} jumps.</p></body></html>`;
+  const drain = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+  it("labels the joiner's swallowed optional lookup as a hit with no status", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let optionalRequests = 0;
+    const s = stub(async (url) => {
+      if (!url.includes("Zorblax")) return status(400);
+      optionalRequests += 1;
+      if (optionalRequests === 1) await gate;
+      return status(503);
+    });
+    const compiles = [fail(html, s), fail(html, s)];
+    while (optionalRequests === 0) await drain();
+    for (let i = 0; i < 5; i += 1) await drain();
+    release();
+    const errors = await Promise.all(compiles);
+
+    expect(optionalRequests).toBe(POLICY.maxAttempts);
+    const optional = errors.map((e) => diagnosticsOf(e).families[1]);
+    expect(optional.map((f) => [f?.required, f?.resolved, f?.attempts.length])).toEqual([
+      [false, false, 1],
+      [false, false, 1],
+    ]);
+    const attempts = optional.flatMap((f) => f?.attempts ?? []);
+    expect(attempts.map((a) => a.cssCache).sort()).toEqual(["fresh", "hit"]);
+    expect(attempts.map((a) => a.cssStatus)).toEqual([null, null]);
+    for (const e of errors) {
+      expect(e.code).toBe(FONT_FETCH_FAILED);
+      expect(e.message).toBe(
+        `[Compiler] Unresolved fonts in fail-closed mode: ${REQUIRED}. Distributed renders require all fonts to be resolvable.`,
+      );
+      expect(e.url).toBe("");
+      expect(e.cause).toBeUndefined();
+    }
+  });
+});
+
 describe("leak check", () => {
   for (const { name, css, woff } of ROWS) {
     it(`${name}: no family name, URL, CSS, page text or hash in the serialized diagnostics`, async () => {

@@ -1496,12 +1496,13 @@ function fetchGoogleFontCss(
   url: string,
   familyName: string,
   options: InternalFontFetchOptions,
-): Promise<GoogleFontCssResult & { cache: "hit" | "fresh" }> {
+  attempt: FontAttemptDiag,
+): Promise<GoogleFontCssResult> {
   // Retries decide the outcome, so only callers with the same mode and attempt count share an entry.
   const mode = options.failClosedFontFetch ? `closed${options.retryPolicy.maxAttempts}` : "open";
   const key = `${mode}:${url}`;
   let shared = googleFontCssCache.get(key);
-  const cache = shared ? ("hit" as const) : ("fresh" as const);
+  attempt.cssCache = shared ? "hit" : "fresh";
   if (!shared) {
     // The shared fetch must not carry any one caller's abortSignal, or that
     // caller cancelling would fail the lookup for every other waiter.
@@ -1522,7 +1523,7 @@ function fetchGoogleFontCss(
     googleFontCssCache.set(key, shared);
     shared.catch(() => googleFontCssCache.delete(key));
   }
-  return raceAgainstAbort(shared, options.abortSignal).then((result) => ({ ...result, cache }));
+  return raceAgainstAbort(shared, options.abortSignal);
 }
 
 function pageNamedThisFile(familyName: string, options: InternalFontFetchOptions): boolean {
@@ -1595,8 +1596,7 @@ async function readGoogleFontStylesheet(
   attempt: FontAttemptDiag,
 ): Promise<GoogleFontStylesheetRead> {
   try {
-    const cssResult = await fetchGoogleFontCss(url, familyName, options);
-    attempt.cssCache = cssResult.cache;
+    const cssResult = await fetchGoogleFontCss(url, familyName, options, attempt);
     attempt.cssStatus = cssResult.status;
     if (!cssResult.ok) {
       // Missing families are deterministic; transient failures follow the
