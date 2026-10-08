@@ -67,6 +67,22 @@ describe("POST /projects/:id/loudness/normalize", () => {
     expect(plan.limitedBy).toBe("true-peak");
   });
 
+  it("measures a project file whose name holds %, # or ?, given raw or as a URL", async () => {
+    const measure = vi.fn<MeasureLoudness>(async () => ({ integratedLufs: -16, truePeakDbfs: -3 }));
+    const { post, projectDir } = setup(measure);
+    const name = "sale 50% off #1?.mp3";
+    writeFileSync(join(projectDir, name), "audio");
+
+    for (const src of [name, encodeURIComponent(name), "talk.mp4?v=2#t=1"]) {
+      expect((await post({ src })).status, src).toBe(200);
+    }
+    expect(measure.mock.calls.map(([file]) => file)).toEqual([
+      join(projectDir, name),
+      join(projectDir, name),
+      join(projectDir, "talk.mp4"),
+    ]);
+  });
+
   it("refuses a source outside the project", async () => {
     const { post } = setup(async () => ({ integratedLufs: -16, truePeakDbfs: -3 }));
     expect((await post({ src: "../etc/passwd" })).status).toBe(400);

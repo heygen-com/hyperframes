@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { isAudibleVideoElement } from "@hyperframes/core/audible-video";
 import { formatAudioGain, MAX_AUDIO_GAIN_DB } from "@hyperframes/core/audio-gain";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { requestedProjectPath } from "./requestSubPath.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -333,13 +334,7 @@ export function audioTags(html: string): AudioTag[] {
 
 /** Resolve only a file contained by the project. Remote and traversal sources are not measured. */
 export function resolveLocalAudioPath(projectDir: string, src: string): string {
-  const withoutSuffix = src.split(/[?#]/, 1)[0] ?? "";
-  let decoded = "";
-  try {
-    decoded = decodeURIComponent(withoutSuffix);
-  } catch {
-    throw new Error(`Audio source must be a local project file: ${src}`);
-  }
+  const decoded = requestedProjectPath(projectDir, src);
   if (!decoded || isAbsolute(decoded) || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(decoded)) {
     throw new Error(`Audio source must be a local project file: ${src}`);
   }
