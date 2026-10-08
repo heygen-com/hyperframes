@@ -9,6 +9,26 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.142"
+  description="Released - 2026-10-08"
+  tags={["Release", "CLI", "Studio"]}
+>
+The CLI now accepts a HeyGen access token handed over by a host app, so the app can sign it in without saving credentials. If your shell already exports `HEYGEN_ACCESS_TOKEN`, the CLI now uses it ahead of `~/.heygen/credentials`.
+
+## Features
+
+- **CLI:** Accept host-managed HeyGen access tokens ([cf1b04bb7](https://github.com/heygen-com/hyperframes/commit/cf1b04bb71662b20a236bb8d0e80499d541cae8f), [#5177](https://github.com/heygen-com/hyperframes/pull/5177)).
+
+## Fixes
+
+- **CLI:** Group sampled check findings by element and rule ([188475aaf](https://github.com/heygen-com/hyperframes/commit/188475aaf2cc94d05a5a641341cab3020c131f16), [#5174](https://github.com/heygen-com/hyperframes/pull/5174)).
+- **Studio:** Update unreferenced generated media names on replace ([de4b31a26](https://github.com/heygen-com/hyperframes/commit/de4b31a262b4f4599b4705996d2a906c6fac26e8), [#5169](https://github.com/heygen-com/hyperframes/pull/5169)).
+- **Studio:** Restore overscan and publish the zoom viewport ([042ec2ebd](https://github.com/heygen-com/hyperframes/commit/042ec2ebd07f296477f80658e391365b38749c22), [#5151](https://github.com/heygen-com/hyperframes/pull/5151)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.141...v0.8.142).
+</Update>
+
+<Update
   label="HyperFrames v0.8.141"
   description="Released - 2026-10-08"
   tags={["Release", "Fonts", "Studio", "Core"]}
