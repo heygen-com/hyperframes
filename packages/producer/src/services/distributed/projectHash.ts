@@ -18,7 +18,7 @@ import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
  * SHA-256 over every regular file under `projectDir` (sorted by relative
  * path) → 16-character hex prefix. The prefix is the `siteId`.
  *
- * The hash includes the relative path plus every byte of each file, so a
+ * The hash includes the relative path, byte length, and contents of each file, so a
  * same-bytes rename still yields a fresh id. We trim to 16 chars because the
  * full 64 isn't useful in an object key for legibility. Top-level segments in
  * {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} (e.g. `node_modules`) are skipped to
@@ -44,9 +44,12 @@ export function hashProjectDir(projectDir: string): string {
   walk(projectDir, true);
   for (const file of files) {
     const rel = relative(projectDir, file).replaceAll("\\", "/");
+    const content = readFileSync(file);
     hash.update(rel);
     hash.update("\0");
-    hash.update(readFileSync(file));
+    hash.update(String(content.length));
+    hash.update("\0");
+    hash.update(content);
   }
   return hash.digest("hex").slice(0, 16);
 }

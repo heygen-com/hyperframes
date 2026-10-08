@@ -72,6 +72,27 @@ describe("deploySite", () => {
     expect(gcs.ops.filter((o) => o.kind === "upload").length).toBe(1);
   });
 
+  it("uploads a distinct tree when its contents resemble another file record", async () => {
+    const gcs = new FakeGcs();
+    const directory = mkProject("<html>same</html>");
+    writeFileSync(join(directory, "a"), "bc\0def");
+    const first = await deploySite({
+      projectDir: directory,
+      bucketName: "b",
+      storage: asStorage(gcs),
+    });
+    writeFileSync(join(directory, "a"), "");
+    writeFileSync(join(directory, "bc"), "def");
+    const second = await deploySite({
+      projectDir: directory,
+      bucketName: "b",
+      storage: asStorage(gcs),
+    });
+    expect(second.siteId).not.toBe(first.siteId);
+    expect(second.uploaded).toBe(true);
+    expect(gcs.ops.filter((op) => op.kind === "upload")).toHaveLength(2);
+  });
+
   it("honours an explicit siteId override", async () => {
     const gcs = new FakeGcs();
     const handle = await deploySite({

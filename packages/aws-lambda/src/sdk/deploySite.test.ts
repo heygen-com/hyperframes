@@ -94,6 +94,18 @@ describe("deploySite", () => {
     expect(s3.ops.filter((op) => op.kind === "head")).toHaveLength(2);
   });
 
+  it("uploads a distinct tree when its contents resemble another file record", async () => {
+    const s3 = new FakeS3();
+    writeFileSync(join(projectDir, "a"), "ab\0def");
+    const first = await deploySite({ projectDir, bucketName: "test-bucket", s3: asS3Client(s3) });
+    writeFileSync(join(projectDir, "a"), "");
+    writeFileSync(join(projectDir, "ab"), "def");
+    const second = await deploySite({ projectDir, bucketName: "test-bucket", s3: asS3Client(s3) });
+    expect(second.siteId).not.toBe(first.siteId);
+    expect(second.uploaded).toBe(true);
+    expect(s3.ops.filter((op) => op.kind === "put")).toHaveLength(2);
+  });
+
   it("honours a caller-supplied siteId", async () => {
     const s3 = new FakeS3();
     const result = await deploySite({
