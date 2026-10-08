@@ -133,7 +133,7 @@ describe("registry blocks", () => {
       }
     }
 
-    expect(installs.get("compositions/lib/shaders.iife.js")?.size).toBe(1);
+    expect(installs.has("compositions/lib/shaders.iife.js")).toBe(true);
     const diverged = [...installs]
       .filter(([, byContent]) => byContent.size > 1)
       .map(([target, byContent]) => `${target}: ${[...byContent.values()].join(" vs ")}`);
@@ -149,7 +149,7 @@ describe("registry blocks", () => {
       const html = readFileSync(join(itemDir, composition.path), "utf8");
       const shader = html.match(/data-shader="([^"]+)"/)?.[1];
       const code = readFileSync(join(itemDir, bundle.path), "utf8");
-      if (!shader || !code.includes(`name:"${shader}"`)) missing.push(`${name}: ${shader}`);
+      if (!shader || !code.includes(`name:"${shader}",role:`)) missing.push(`${name}: ${shader}`);
     }
     expect(missing).toEqual([]);
   });
