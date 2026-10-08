@@ -45,11 +45,10 @@ function isImagePath(path: string): boolean {
   return IMAGE_EXTENSIONS.has(extname(path).toLowerCase());
 }
 
-function normalizeProjectAssetPath(path: string): string {
-  return path
-    .trim()
-    .replace(/^[.]\//, "")
-    .replace(/[?#].*$/, "");
+function normalizeProjectAssetPath(path: string, projectDir: string): string {
+  const trimmed = path.trim().replace(/^[.]\//, "");
+  const named = resolveWithinProject(projectDir, trimmed);
+  return named && existsSync(named) ? trimmed : trimmed.replace(/[?#].*$/, "");
 }
 
 function containsNullByte(path: string): boolean {
@@ -149,7 +148,7 @@ export function registerMediaRoutes(
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
-    const assetPath = normalizeProjectAssetPath(c.req.query("path") ?? "");
+    const assetPath = normalizeProjectAssetPath(c.req.query("path") ?? "", project.dir);
     if (!assetPath) return c.json({ error: "path required" }, 400);
     if (containsNullByte(assetPath)) return c.json({ error: "forbidden" }, 403);
     if (/^(?:https?:|data:|blob:)/i.test(assetPath)) {
@@ -177,7 +176,9 @@ export function registerMediaRoutes(
       if (!project) return c.json({ error: "not found" }, 404);
 
       const body = (await c.req.json().catch(() => ({}))) as BackgroundRemovalBody;
-      const inputAssetPath = body.inputPath ? normalizeProjectAssetPath(body.inputPath) : "";
+      const inputAssetPath = body.inputPath
+        ? normalizeProjectAssetPath(body.inputPath, project.dir)
+        : "";
       if (!inputAssetPath) return c.json({ error: "inputPath required" }, 400);
       if (containsNullByte(inputAssetPath)) return c.json({ error: "forbidden" }, 403);
       if (/^(?:https?:|data:|blob:)/i.test(inputAssetPath)) {
@@ -195,7 +196,7 @@ export function registerMediaRoutes(
       }
 
       const requestedOutput = body.outputPath
-        ? posix.normalize(normalizeProjectAssetPath(body.outputPath))
+        ? posix.normalize(normalizeProjectAssetPath(body.outputPath, project.dir))
         : "";
       if (requestedOutput && containsNullByte(requestedOutput)) {
         return c.json({ error: "forbidden" }, 403);

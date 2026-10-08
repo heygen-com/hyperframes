@@ -4,8 +4,8 @@ import { Hono } from "hono";
 import {
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -91,6 +91,19 @@ describe("registerMediaRoutes", () => {
     expect(response.status).toBe(200);
     expect(data.metadata.color.label).toBe("HDR HLG");
     expect(probe).toHaveBeenCalledWith(join(projectDir, "assets", "clip.mp4"));
+  });
+
+  it("finds a project file whose name holds %, # or ?", async () => {
+    const probe = vi.fn(async () => ({ kind: "video" as const }));
+    const { app, projectDir } = createAdapter(undefined, probe);
+    writeFileSync(join(projectDir, "assets", "sale 50% off #1?.mp4"), "");
+
+    const response = await app.request(
+      `http://localhost/projects/demo/media/metadata?path=${encodeURIComponent("assets/sale 50% off #1?.mp4")}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(probe).toHaveBeenCalledWith(join(projectDir, "assets", "sale 50% off #1?.mp4"));
   });
 
   it("rejects media metadata paths outside the project", async () => {
