@@ -341,7 +341,7 @@ comp.dispatch({
     position: 0,
     duration: 0.8,
     ease: "power3.out",
-    fromProperties: { opacity: 0, y: 40 },
+    properties: { opacity: 0, y: 40 },
   },
 });
 ```
@@ -354,9 +354,9 @@ comp.dispatch({
 | `position` | `number \| string` | Timeline position. Accepts numbers (seconds) or label-relative strings (`"intro+=0.5"`). |
 | `duration` | `number` | Tween duration in seconds. |
 | `ease` | `string` | GSAP ease string (e.g. `"power3.out"`). |
-| `fromProperties` | `Record<string, unknown>` | Start-state properties (used by `from` and `fromTo`). |
+| `fromProperties` | `Record<string, unknown>` | Start-state properties for `fromTo` tweens. |
 | `toProperties` | `Record<string, unknown>` | End-state properties (used by `fromTo`). |
-| `properties` | `Record<string, unknown>` | Animated properties for `to` tweens. |
+| `properties` | `Record<string, unknown>` | Starting values for `from`, target values for `to`, immediate values for `set`, or the `fromTo` destination when `toProperties` is omitted. |
 | `repeat` | `number` | Repeat count (`-1` = infinite). |
 | `yoyo` | `boolean` | Reverse on alternating repeats. |
 | `stagger` | `number \| Record<string, unknown>` | Stagger config for multi-target tweens. |
@@ -501,7 +501,7 @@ comp.dispatch({
     method: "from",
     position: "outro-=0.5",
     duration: 0.4,
-    fromProperties: { opacity: 0 },
+    properties: { opacity: 0 },
   },
 });
 
