@@ -320,6 +320,37 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('var __hfCompositionSrc = "compositions/blk/blk.html";');
   });
 
+  it("bundles mounted import maps with blocked entries and object-property specifiers", async () => {
+    const dir = makeTempProject({
+      "index.html":
+        '<!doctype html><html><head></head><body><div data-composition-id="main" data-width="320" data-height="180"><div data-composition-id="blk" data-composition-src="blocks/blk.html" data-start="0" data-duration="2"></div></div></body></html>',
+      "blocks/ok.js": "export const VALUE = 1;",
+      "blocks/lib/witness.js": "export const WITNESS = 3;",
+      "blocks/scoped.js": "export const VALUE = 2;",
+      "blocks/blk.html":
+        '<div data-composition-id="blk" data-width="320" data-height="180"><script type="importmap">{"imports":{"ok":"./ok.js","blocked":null,"number":17,"constructor":"./ok.js","__proto__":"./ok.js"},"scopes":{"./lib/":{"ok":"./scoped.js","blocked":null}}}</script><script type="module">import "ok";</script></div>',
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const map = document.querySelector('script[type="importmap"]');
+      expect(JSON.parse(map?.textContent || "null")).toEqual({
+        imports: Object.fromEntries([
+          ["ok", "./blocks/ok.js"],
+          ["blocked", null],
+          ["number", null],
+          ["constructor", "./blocks/ok.js"],
+          ["__proto__", "./blocks/ok.js"],
+        ]),
+        scopes: { "./blocks/lib/": { ok: "./blocks/scoped.js", blocked: null } },
+      });
+      expect(
+        document.querySelector(`script[type="${AFTER_FONTS_SCRIPT_TYPE}+module"]`),
+      ).not.toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a mounted file's import map and module script as such, bound to that file", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
