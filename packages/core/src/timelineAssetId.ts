@@ -1,3 +1,5 @@
+import { decodedUrlPath } from "@hyperframes/parsers";
+
 function trimIdUnderscores(value: string): string {
   let start = 0;
   let end = value.length;
@@ -85,7 +87,7 @@ function readMediaIdentity(element: Element): MediaIdentity | null {
 }
 
 function matchesGeneratedId({ id, src }: MediaIdentity): boolean {
-  const base = buildTimelineAssetId(src, []);
+  const base = buildTimelineAssetId(decodedUrlPath(src), []);
   const suffix = id.slice(base.length);
   return id === base || (id.startsWith(base) && /^_(?:[2-9]\d*|1\d+)$/.test(suffix));
 }
@@ -110,5 +112,5 @@ export function replacementTimelineAssetId(
     .filter((other) => other !== element)
     .map((other) => other.getAttribute("id"))
     .filter((value): value is string => value !== null);
-  return buildTimelineAssetId(newSrc, ids);
+  return buildTimelineAssetId(decodedUrlPath(newSrc), ids);
 }
