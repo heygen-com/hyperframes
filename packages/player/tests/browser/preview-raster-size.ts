@@ -20,26 +20,36 @@ try {
     waitUntil: "domcontentloaded",
   });
   await page.waitForFunction(() => window.__playerReady === true);
+  await page.evaluate(() => {
+    document.getElementById("player")!.style.height = "100vh";
+  });
+  await page.waitForFunction(() => {
+    const frame = document.getElementById("player")?.shadowRoot?.querySelector("iframe");
+    return frame?.getBoundingClientRect().width === 528;
+  });
   await page.evaluate(() =>
     (document.getElementById("player") as HTMLElement & { play(): void }).play(),
   );
 
-  await page.tracing.start({ categories: ["disabled-by-default-cc.debug"] });
-  await page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
-  );
-  const trace = JSON.parse(String(await page.tracing.stop())) as {
-    traceEvents: { args?: { snapshot?: { active_tree?: { layers?: Layer[] } } } }[];
-  };
-  const layers = trace.traceEvents.flatMap(
-    (event) => event.args?.snapshot?.active_tree?.layers ?? [],
-  );
-  const tiles = layers.filter(
-    (layer) =>
-      layer.compositing_reason_ids?.includes("WillChangeTransform") &&
-      layer.raster_scales?.contents_scale &&
-      layer.ideal_contents_scale,
-  );
+  // A snapshot is only written on a compositor draw, so trace frames until one carries the tiles.
+  let tiles: Layer[] = [];
+  for (let attempt = 0; attempt < 20 && tiles.length === 0; attempt++) {
+    await page.tracing.start({ categories: ["disabled-by-default-cc.debug"] });
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    const trace = JSON.parse(new TextDecoder().decode(await page.tracing.stop())) as {
+      traceEvents: { args?: { snapshot?: { active_tree?: { layers?: Layer[] } } } }[];
+    };
+    tiles = trace.traceEvents
+      .flatMap((event) => event.args?.snapshot?.active_tree?.layers ?? [])
+      .filter(
+        (layer) =>
+          layer.compositing_reason_ids?.includes("WillChangeTransform") &&
+          layer.raster_scales?.contents_scale &&
+          layer.ideal_contents_scale,
+      );
+  }
   assert.ok(tiles.length > 0, "the trace should show the fixture's will-change tiles");
   for (const layer of tiles) {
     const oversize = layer.raster_scales!.contents_scale![0] / layer.ideal_contents_scale!;

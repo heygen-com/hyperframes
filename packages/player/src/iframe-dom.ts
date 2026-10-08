@@ -85,8 +85,8 @@ export function scaleIframeToFit(
 
 let zoomsFramesWhole: boolean | undefined;
 
-/** Whether a zoomed iframe keeps its viewport exactly and only lowers its devicePixelRatio (Chromium, WebKit). */
-// Firefox's viewport drifts a few pixels. Probed on a blank frame: an opaque-origin composition can't be read.
+/** Whether a zoomed iframe keeps its viewport and lowers its devicePixelRatio by the zoom (Chromium, WebKit). */
+// Firefox keeps the ratio and drifts the viewport. Probed on a blank frame: an opaque-origin one can't be read.
 function engineZoomsFramesWhole(doc: Document): boolean {
   if (zoomsFramesWhole !== undefined) return zoomsFramesWhole;
   if (!doc.body) return false;
@@ -96,10 +96,11 @@ function engineZoomsFramesWhole(doc: Document): boolean {
   doc.body.appendChild(probe);
   const win = probe.contentWindow;
   const hostRatio = doc.defaultView?.devicePixelRatio ?? 1;
+  const devicePixel = 1 / (zoom * hostRatio); // the frame snaps to whole device pixels
   zoomsFramesWhole =
     !!win &&
-    win.innerWidth === 1920 &&
-    win.innerHeight === 1080 &&
+    Math.abs(win.innerWidth - 1920) <= devicePixel &&
+    Math.abs(win.innerHeight - 1080) <= devicePixel &&
     Math.abs(win.devicePixelRatio - hostRatio * zoom) < 0.01;
   probe.remove();
   return zoomsFramesWhole;

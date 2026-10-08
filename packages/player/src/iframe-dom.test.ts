@@ -37,7 +37,13 @@ describe("scaleIframeToFit", () => {
     expect(iframe.style.width).toBe("1920px");
   });
 
-  it("keeps the transform where zoom shifts the frame's viewport", async () => {
+  it("zooms when the frame's viewport only snaps to a whole device pixel", async () => {
+    engineFrames(() => [1919, 1080], true);
+    const iframe = await fit();
+    expect(Number(iframe.style.zoom)).toBeCloseTo(0.275, 6);
+  });
+
+  it("keeps the transform where zoom leaves the pixel ratio and shifts the viewport", async () => {
     engineFrames((zoom) => (zoom === 1 ? [1920, 1080] : [1925, 1084]), false);
     const iframe = await fit();
     expect(iframe.style.zoom).toBe("");
