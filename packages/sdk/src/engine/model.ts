@@ -239,11 +239,11 @@ interface StyleDeclarationScan {
 }
 
 function advanceStyleDeclarationScan(scan: StyleDeclarationScan, ch: string, next: string): void {
+  if (ch === "\\" && next) {
+    scan.skip = true;
+    return;
+  }
   if (scan.quote) {
-    if (ch === "\\" && next) {
-      scan.skip = true;
-      return;
-    }
     if (ch === scan.quote) scan.quote = null;
     return;
   }
