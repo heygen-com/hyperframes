@@ -355,6 +355,23 @@ describe("authored stylesheet falling back to the default request", () => {
     expect(e.name).toBe("FontFetchError");
     expect(e.familyName).toBe(AUTHORED);
     expect(e.unresolvedFamilies).toEqual([AUTHORED]);
+    expect(e.url).toBe("");
+    expect(e.cause).toBeUndefined();
+  });
+
+  it("labels both attempts of a repeated compile as cache hits while the first compile's are fresh", async () => {
+    const s = stub(() => status(400));
+    const first = await fail(authoredPage(), s);
+    const second = await fail(authoredPage(), s);
+    expect(s.css.length).toBe(2);
+    expect(diagnosticsOf(first).families[0]?.attempts).toEqual([
+      authoredAttempt({ cssStatus: 400, cssCache: "fresh" }),
+      attempt({ cssStatus: 400, cssCache: "fresh" }),
+    ]);
+    expect(diagnosticsOf(second).families[0]?.attempts).toEqual([
+      authoredAttempt({ cssStatus: 400, cssCache: "hit" }),
+      attempt({ cssStatus: 400, cssCache: "hit" }),
+    ]);
   });
 });
 
