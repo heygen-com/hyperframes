@@ -19,6 +19,15 @@ function loadRegistryManifest(itemDir: string): RegistryManifest {
   return JSON.parse(readFileSync(join(itemDir, "registry-item.json"), "utf8")) as RegistryManifest;
 }
 
+function loadBlocks(): Array<{ name: string; itemDir: string; manifest: RegistryManifest }> {
+  return readdirSync(blocksDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const itemDir = join(blocksDir, entry.name);
+      return { name: entry.name, itemDir, manifest: loadRegistryManifest(itemDir) };
+    });
+}
+
 function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): string[] {
   const manifestPaths = new Set(manifest.files.map((file) => file.path));
   const missing: string[] = [];
@@ -114,14 +123,12 @@ describe("registry blocks", () => {
   it("ships the same bytes from every block that installs a shared library", () => {
     // target -> bytes -> blocks installing those bytes there
     const installs = new Map<string, Map<string, string[]>>();
-    for (const entry of readdirSync(blocksDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const itemDir = join(blocksDir, entry.name);
-      for (const file of loadRegistryManifest(itemDir).files) {
+    for (const { name, itemDir, manifest } of loadBlocks()) {
+      for (const file of manifest.files) {
         if (!file.target.startsWith("compositions/lib/")) continue;
         const content = readFileSync(join(itemDir, file.path), "latin1");
         const byContent = installs.get(file.target) ?? new Map<string, string[]>();
-        byContent.set(content, [...(byContent.get(content) ?? []), entry.name]);
+        byContent.set(content, [...(byContent.get(content) ?? []), name]);
         installs.set(file.target, byContent);
       }
     }
@@ -135,17 +142,14 @@ describe("registry blocks", () => {
 
   it("names a shader the shared bundle holds in every shader block", () => {
     const missing: string[] = [];
-    for (const entry of readdirSync(blocksDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const itemDir = join(blocksDir, entry.name);
-      const manifest = loadRegistryManifest(itemDir);
+    for (const { name, itemDir, manifest } of loadBlocks()) {
       const bundle = manifest.files.find((f) => f.target === "compositions/lib/shaders.iife.js");
       const composition = manifest.files.find((f) => f.type === "hyperframes:composition");
       if (!bundle || !composition) continue;
       const html = readFileSync(join(itemDir, composition.path), "utf8");
       const shader = html.match(/data-shader="([^"]+)"/)?.[1];
       const code = readFileSync(join(itemDir, bundle.path), "utf8");
-      if (!shader || !code.includes(`name:"${shader}"`)) missing.push(`${entry.name}: ${shader}`);
+      if (!shader || !code.includes(`name:"${shader}"`)) missing.push(`${name}: ${shader}`);
     }
     expect(missing).toEqual([]);
   });
