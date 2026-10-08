@@ -106,8 +106,9 @@ export function analyseLevelling(
   const levels: number[] = [];
   const times: number[] = [];
   for (let start = 0; start < samples.length; start += hop) {
-    levels.push(windowDb(samples, start, FRAME));
-    times.push((start + FRAME / 2) / sampleRate);
+    const count = Math.min(FRAME, samples.length - start);
+    levels.push(windowDb(samples, start, count));
+    times.push((start + count / 2) / sampleRate);
   }
   const speaking = levels.filter((d) => Number.isFinite(d));
   if (speaking.length === 0) return [];
@@ -130,6 +131,7 @@ export function analyseLevelling(
 
   const attack = 1 - Math.exp(-(hop / sampleRate) / ATTACK_S);
   const release = 1 - Math.exp(-(hop / sampleRate) / RELEASE_S);
+  const duration = samples.length / sampleRate;
 
   let applied = 0;
   const raw: HfAutomationPoint[] = [];
@@ -141,7 +143,7 @@ export function analyseLevelling(
         : 0;
     applied += (wanted > applied ? attack : release) * (wanted - applied);
     const v = Math.abs(applied) < SNAP_DB ? 0 : Number(applied.toFixed(1));
-    raw.push({ t: Number((times[i] ?? 0).toFixed(3)), v });
+    raw.push({ t: Math.min(duration, Number((times[i] ?? 0).toFixed(3))), v });
   });
 
   // Keep only the moves. A run of equal values is held by keeping the last of

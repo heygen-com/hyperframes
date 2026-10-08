@@ -121,6 +121,41 @@ describe("measuring", () => {
     expect(points[0]?.t).toBe(0);
   });
 
+  it.each([
+    { sampleRate: 48000, tailSamples: 512 },
+    { sampleRate: 48000, tailSamples: 1024 },
+    { sampleRate: 48000, tailSamples: 1536 },
+    { sampleRate: 44100, tailSamples: 512 },
+    { sampleRate: 96000, tailSamples: 3072 },
+    { sampleRate: 48000, tailSamples: 1 },
+  ])("centres the final point in the available audio with %j", ({ sampleRate, tailSamples }) => {
+    const tailStart = 20 * 4096;
+    const samples = Float32Array.from(
+      { length: tailStart + tailSamples },
+      (_, i) => (i < 16 * 4096 ? 0.5 : 0.06) * Math.sin((2 * Math.PI * 300 * i) / sampleRate),
+    );
+    const points = analyseLevelling(samples, sampleRate, 1);
+    const last = points.at(-1);
+
+    expect(last?.v).toBeGreaterThan(0);
+    expect(last?.t).toBe(
+      Math.min(
+        samples.length / sampleRate,
+        Number(((tailStart + tailSamples / 2) / sampleRate).toFixed(3)),
+      ),
+    );
+    expect(points.every((point) => point.t <= samples.length / sampleRate)).toBe(true);
+  });
+
+  it("centres a complete final window without shifting its gain points", () => {
+    const samples = Float32Array.from(
+      { length: 21 * 4096 },
+      (_, i) => (i < 16 * 4096 ? 0.5 : 0.06) * Math.sin((2 * Math.PI * 300 * i) / SR),
+    );
+    const points = analyseLevelling(samples, SR, 1);
+    expect(points.at(-1)).toEqual({ t: 1.749, v: 8.5 });
+  });
+
   it("handles an empty track without inventing a lane", () => {
     expect(analyseLevelling(new Float32Array(0), SR)).toEqual([]);
     expect(analyseLevelling(uneven([{ seconds: 1, amp: 0.4 }]), 0)).toEqual([]);
