@@ -70,6 +70,12 @@ export function runtimeProtocolMetadata(fps: number): RuntimeProtocolV1 {
   };
 }
 
+export function frameDisplayScale(frame: HTMLElement): number | null {
+  const layoutWidth = frame.offsetWidth;
+  const shownWidth = frame.getBoundingClientRect().width;
+  return layoutWidth > 0 && shownWidth > 0 ? shownWidth / layoutWidth : null;
+}
+
 function hasDeclaredCapabilities(value: unknown): boolean {
   return Array.isArray(value) && value.every((capability) => typeof capability === "string");
 }

@@ -44,7 +44,12 @@ import {
   syncRuntimeMedia,
   type RuntimeMediaClip,
 } from "./media";
-import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
+import {
+  handleErrorForProxy,
+  handleMetadataForProxy,
+  maybeProxyProactively,
+  setProxyDisplayScale,
+} from "./mediaProxy";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer, resolveRenderSeekTime, type RuntimePlayerTransport } from "./player";
@@ -2294,20 +2299,16 @@ export function initSandboxRuntimeModular(): void {
       return false;
     }
     const previousTime = Math.max(0, state.currentTime || 0);
-    const wasPlaying = state.isPlaying;
     state.capturedTimeline = resolution.timeline;
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
     try {
       // pause guarded separately: a PARTIAL timeline without pause() must not
-      // abort the seek/play restore below (the catch would swallow them too).
+      // abort restoring the transport time below (the catch would swallow it too).
       pauseTimelineIfPossible(state.capturedTimeline);
       if (typeof state.capturedTimeline.seek === "function") {
         state.capturedTimeline.seek(previousTime, false);
-      }
-      if (wasPlaying && typeof state.capturedTimeline.play === "function") {
-        state.capturedTimeline.play();
       }
     } catch (err) {
       // keep runtime resilient even if a timeline implementation throws
@@ -5023,6 +5024,7 @@ export function initSandboxRuntimeModular(): void {
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
+    onSetDisplayScale: setProxyDisplayScale,
     onSetIdleHeartbeat: (slow) => {
       slowIdleHeartbeat = slow;
       wakeTransport();
