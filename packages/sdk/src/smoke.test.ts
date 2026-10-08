@@ -9,7 +9,7 @@
  * If it breaks, the SDK's public contract has changed.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   openComposition,
   ORIGIN_APPLY_PATCHES,
@@ -221,6 +221,142 @@ describe("undo / redo", () => {
 // ─── persist adapter ─────────────────────────────────────────────────────────
 
 describe("persist adapter", () => {
+  function deferredSave() {
+    const adapter = createMemoryAdapter();
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { adapter, write: adapter.write.bind(adapter), gate, release: () => release() };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("flushes storage without writing a new version when no edit is pending", async () => {
+    const adapter = createMemoryAdapter();
+    const writeSpy = vi.spyOn(adapter, "write");
+    const flushSpy = vi.spyOn(adapter, "flush");
+    const comp = await openComposition(BASE_HTML, { persist: adapter });
+
+    await comp.flush();
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(flushSpy).toHaveBeenCalledOnce();
+    expect(await adapter.listVersions("composition.html")).toEqual([]);
+    comp.dispose();
+  });
+
+  it("does not duplicate a saved edit on repeated flushes", async () => {
+    const adapter = createMemoryAdapter();
+    const writeSpy = vi.spyOn(adapter, "write");
+    const comp = await openComposition(BASE_HTML, { persist: adapter });
+    comp.setText("hf-title", "Saved once");
+
+    await comp.flush();
+    await comp.flush();
+    await comp.flush();
+    expect(writeSpy).toHaveBeenCalledOnce();
+    expect(await adapter.listVersions("composition.html")).toHaveLength(1);
+    comp.dispose();
+  });
+
+  it("commits an adapter's buffered save before flush resolves", async () => {
+    const adapter = createMemoryAdapter();
+    const write = adapter.write.bind(adapter);
+    const pending: Array<{ path: string; content: string }> = [];
+    vi.spyOn(adapter, "write").mockImplementation(async (path, content) => {
+      pending.push({ path, content });
+    });
+    const flushSpy = vi.spyOn(adapter, "flush").mockImplementation(async () => {
+      for (const save of pending.splice(0)) await write(save.path, save.content);
+    });
+    const comp = await openComposition(BASE_HTML, { persist: adapter });
+    comp.setText("hf-title", "Durably saved");
+
+    await comp.flush();
+    expect(flushSpy).toHaveBeenCalledOnce();
+    expect(pending).toEqual([]);
+    expect(await adapter.read("composition.html")).toContain("Durably saved");
+    comp.dispose();
+  });
+
+  it("waits for an in-flight autosave without queuing another copy", async () => {
+    vi.useFakeTimers();
+    const { adapter, write, gate, release } = deferredSave();
+    const writeSpy = vi.spyOn(adapter, "write").mockImplementation(async (path, content) => {
+      await gate;
+      await write(path, content);
+    });
+    const flushSpy = vi.spyOn(adapter, "flush");
+    const comp = await openComposition(BASE_HTML, { persist: adapter });
+    comp.setText("hf-title", "In flight");
+    await vi.advanceTimersByTimeAsync(0);
+
+    let settled = false;
+    const flushing = comp.flush().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(flushSpy).not.toHaveBeenCalled();
+    release();
+    await flushing;
+    expect(writeSpy).toHaveBeenCalledOnce();
+    expect(flushSpy).toHaveBeenCalledOnce();
+    expect(await adapter.read("composition.html")).toContain("In flight");
+    comp.dispose();
+  });
+
+  it("keeps adapter flushes and later saves in order", async () => {
+    vi.useFakeTimers();
+    const { adapter, write, gate, release } = deferredSave();
+    const events: string[] = [];
+    vi.spyOn(adapter, "write").mockImplementation(async (path, content) => {
+      events.push(content.includes("First edit") ? "write:first" : "write:second");
+      await write(path, content);
+    });
+    vi.spyOn(adapter, "flush").mockImplementationOnce(async () => {
+      events.push("flush:start");
+      await gate;
+      events.push("flush:end");
+    });
+    const comp = await openComposition(BASE_HTML, { persist: adapter });
+    comp.setText("hf-title", "First edit");
+    const first = comp.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(events).toEqual(["write:first", "flush:start"]);
+
+    comp.setText("hf-title", "Second edit");
+    const second = comp.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(events).toEqual(["write:first", "flush:start"]);
+    release();
+    await Promise.all([first, second]);
+    expect(events).toEqual(["write:first", "flush:start", "flush:end", "write:second"]);
+    expect(await adapter.read("composition.html")).toContain("Second edit");
+    comp.dispose();
+  });
+
+  it("reports an adapter flush failure and permits the next save", async () => {
+    const adapter = createMemoryAdapter();
+    vi.spyOn(adapter, "flush").mockRejectedValueOnce(new Error("storage unavailable"));
+    const comp = await openComposition(BASE_HTML, { persist: adapter });
+    const onError = vi.fn();
+    comp.on("persist:error", onError);
+    comp.setText("hf-title", "First save");
+
+    await expect(comp.flush()).resolves.toBeUndefined();
+    expect(onError).toHaveBeenCalledWith({
+      error: { message: "storage unavailable", cause: expect.any(Error) },
+    });
+    comp.setText("hf-title", "Recovered save");
+    await comp.flush();
+    expect(await adapter.read("composition.html")).toContain("Recovered save");
+    expect(onError).toHaveBeenCalledOnce();
+    comp.dispose();
+  });
+
   it("writes serialized HTML to the adapter on mutation", async () => {
     const adapter = createMemoryAdapter();
     const writeSpy = vi.spyOn(adapter, "write");
