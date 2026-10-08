@@ -376,7 +376,8 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
           `Capturing frame ${progress.capturedFrames}/${progress.totalFrames} (${progress.activeWorkers} workers)`,
           Math.round(25 + frameProgress * 45),
           onProgress,
-          progress.capturedFrames === progress.totalFrames,
+          progress.capturedFrames,
+          progress.totalFrames,
         );
       },
       cfg: captureCfg,
@@ -577,7 +578,8 @@ async function captureSessionFrames(
       `Capturing frame ${fileIndex + 1}/${rangeFrames}`,
       Math.round(25 + ((fileIndex + 1) / rangeFrames) * 45),
       onProgress,
-      fileIndex + 1 === rangeFrames,
+      fileIndex + 1,
+      rangeFrames,
     );
   };
 

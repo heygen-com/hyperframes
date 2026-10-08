@@ -102,8 +102,10 @@ export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailu
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
 
-/** Called after seeking, before screenshot. Use for video frame injection or other pre-capture work. */
-export type BeforeCaptureHook = (page: Page, time: number) => Promise<void>;
+/** Called after seeking, before screenshot. Use for video frame injection or other pre-capture work.
+ * `heldVideoTime` (motion-blur samples only) is the output frame's time: a video on screen at
+ * both times shows its frame for `heldVideoTime`, so footage does not smear. */
+export type BeforeCaptureHook = (page: Page, time: number, heldVideoTime?: number) => Promise<void>;
 
 export interface CaptureSession {
   browser: Browser;
@@ -2805,6 +2807,7 @@ async function prepareFrameForCapture(
   frameIndex: number,
   time: number,
   seekOptions?: HfSeekOptions,
+  heldVideoTime?: number,
 ): Promise<{
   quantizedTime: number;
   seekMs: number;
@@ -2835,7 +2838,7 @@ async function prepareFrameForCapture(
   // replacements for <video> elements.
   const beforeCaptureStart = Date.now();
   if (session.onBeforeCapture) {
-    await session.onBeforeCapture(page, quantizedTime);
+    await session.onBeforeCapture(page, quantizedTime, heldVideoTime);
   }
   await waitForPendingSeekCompletion(page);
   await page.evaluate(async () => {
@@ -3879,9 +3882,7 @@ export async function withFrameDeadline<T>(
  *
  * Called once initialization has settled the capture mode. `format: "png"` is required
  * because samples are averaged pixel by pixel: JPEG samples would be averaged after
- * lossy quantization and the blended frame is re-encoded as PNG. `<video>` content is
- * out of scope because it is supplied by the before-capture frame-injection hook rather
- * than by the timeline seek, so it cannot follow a sub-frame time.
+ * lossy quantization and the blended frame is re-encoded as PNG.
  */
 export function resolveSessionMotionBlur(session: CaptureSession): MotionBlurPlan | undefined {
   const plan = resolveMotionBlurPlan(session.options.motionBlur);
@@ -3894,11 +3895,6 @@ export function resolveSessionMotionBlur(session: CaptureSession): MotionBlurPla
   if (session.options.format !== "png") {
     throw new Error(
       `[MotionBlur] sub-frame motion blur requires format "png", got "${session.options.format ?? "jpeg"}"`,
-    );
-  }
-  if (session.onBeforeCapture) {
-    throw new Error(
-      "[MotionBlur] sub-frame motion blur cannot run with injected video frames: video content is extracted per output frame and does not follow a sub-frame seek",
     );
   }
   return plan;
@@ -3919,6 +3915,7 @@ async function captureFrameSurface(
   frameIndex: number,
   time: number,
   seekOptions?: HfSeekOptions,
+  heldVideoTime?: number,
 ): Promise<CapturedSurface> {
   const { page, options } = session;
   const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
@@ -3926,6 +3923,7 @@ async function captureFrameSurface(
     frameIndex,
     time,
     seekOptions,
+    heldVideoTime,
   );
 
   const screenshotStart = Date.now();
@@ -4112,6 +4110,7 @@ async function resolveAdaptiveSampleCount(
   plan: MotionBlurPlan,
   fps: number,
   sampleSeek: HfSeekOptions,
+  frameTime: number,
 ): Promise<{
   samplesPerFrame: number;
   seekMs: number;
@@ -4127,8 +4126,8 @@ async function resolveAdaptiveSampleCount(
     };
   }
   const { windowStart, windowEnd } = motionBlurProbeTimes(plan, absFrameIndex, fps);
-  const probeA = await captureFrameSurface(session, frameIndex, windowStart, sampleSeek);
-  const probeB = await captureFrameSurface(session, frameIndex, windowEnd, sampleSeek);
+  const probeA = await captureFrameSurface(session, frameIndex, windowStart, sampleSeek, frameTime);
+  const probeB = await captureFrameSurface(session, frameIndex, windowEnd, sampleSeek, frameTime);
   return {
     samplesPerFrame: adaptiveSampleCount(probeDiffMagnitude(probeA.buffer, probeB.buffer)),
     seekMs: probeA.seekMs + probeB.seekMs,
@@ -4160,6 +4159,13 @@ async function captureAccumulatedFrame(
   const eventfulSeekStart = Date.now();
   await seekPageTimeline(session.page, frameTime, undefined);
   const totals = { seekMs: Date.now() - eventfulSeekStart, beforeCaptureMs: 0, screenshotMs: 0 };
+  if (session.onBeforeCapture) {
+    // The injector copies a video's own style only when its frame changes: inject at frameTime
+    // first so the held frame carries frameTime's style, not the first sample's.
+    const injectStart = Date.now();
+    await session.onBeforeCapture(session.page, frameTime, frameTime);
+    totals.beforeCaptureMs += Date.now() - injectStart;
+  }
 
   const sampleSeek: HfSeekOptions = {
     suppressEvents: true,
@@ -4175,6 +4181,7 @@ async function captureAccumulatedFrame(
       plan,
       fps,
       sampleSeek,
+      frameTime,
     );
     samplesPerFrame = chosen.samplesPerFrame;
     totals.seekMs += chosen.seekMs;
@@ -4184,7 +4191,13 @@ async function captureAccumulatedFrame(
 
   const accumulator = new MotionBlurAccumulator(plan.blend);
   for (const sampleTime of motionBlurSampleTimes(plan, absFrameIndex, fps, samplesPerFrame)) {
-    const sample = await captureFrameSurface(session, frameIndex, sampleTime, sampleSeek);
+    const sample = await captureFrameSurface(
+      session,
+      frameIndex,
+      sampleTime,
+      sampleSeek,
+      frameTime,
+    );
     totals.seekMs += sample.seekMs;
     totals.beforeCaptureMs += sample.beforeCaptureMs;
     totals.screenshotMs += sample.screenshotMs;

@@ -471,6 +471,15 @@
     };
   }
 
+  function capitalizeWords(text) {
+    const words = new Intl.Segmenter(undefined, { granularity: "word" }).segment(text);
+    return Array.from(words, ({ segment, isWordLike }) => {
+      if (!isWordLike) return segment;
+      const [first, ...rest] = segment;
+      return first.toUpperCase() + rest.join("");
+    }).join("");
+  }
+
   function horizontalTextMetrics(element, style) {
     if (style.writingMode && style.writingMode !== "horizontal-tb") return null;
     const context = document.createElement("canvas").getContext("2d");
@@ -479,6 +488,7 @@
     let text = textContentFor(element, true);
     if (style.textTransform === "uppercase") text = text.toUpperCase();
     if (style.textTransform === "lowercase") text = text.toLowerCase();
+    if (style.textTransform === "capitalize") text = capitalizeWords(text);
     const metrics = context.measureText(text);
     return metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent > 0 ? metrics : null;
   }
@@ -490,6 +500,16 @@
     );
   }
 
+  // The glyphs' own extent inside a Range rect (the font's content area); font metrics scale with the rect.
+  function inkRect(rect, metrics) {
+    const scale = rect.height / (metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent);
+    const top =
+      rect.top + (metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent) * scale;
+    const bottom =
+      rect.bottom - (metrics.fontBoundingBoxDescent - metrics.actualBoundingBoxDescent) * scale;
+    return { ...rect, top, bottom, height: bottom - top };
+  }
+
   function visibleTextLineRects(element, rects, style, clip, tolerance) {
     const metrics = horizontalTextMetrics(element, style);
     const fontHeight = metrics ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent : 0;
@@ -497,12 +517,7 @@
     return rects.flatMap((rect) => {
       if (!metrics) return intersectsTextWindow(rect, clip, tolerance) ? [rect] : [];
       const scale = rect.height / fontHeight;
-      const inkTop =
-        rect.top + (metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent) * scale;
-      const inkBottom =
-        rect.bottom - (metrics.fontBoundingBoxDescent - metrics.actualBoundingBoxDescent) * scale;
-      const ink = { ...rect, top: inkTop, bottom: inkBottom };
-      if (!intersectsTextWindow(ink, clip, tolerance)) return [];
+      if (!intersectsTextWindow(inkRect(rect, metrics), clip, tolerance)) return [];
       // Negative leading belongs outside the used line box. Font metrics scale
       // with the Range rect, so zoomed cards retain the same clipping decision.
       const inset = Math.max(0, (rect.height - lineHeight * scale) / 2);
@@ -718,6 +733,20 @@
     return total;
   }
 
+  function overlapsByAFifth(a, b) {
+    return fragmentIntersectionArea(a, b) > Math.min(rectsArea(a), rectsArea(b)) * 0.2;
+  }
+
+  // Collision is judged on the glyphs: at line-height < 1 the content areas of stacked lines overlap
+  // while the words do not touch. Measured only for pairs whose content areas already overlap.
+  function glyphRects(block) {
+    if (!block.glyphRects) {
+      const metrics = horizontalTextMetrics(block.element, getComputedStyle(block.element));
+      block.glyphRects = metrics ? block.rects.map((rect) => inkRect(rect, metrics)) : block.rects;
+    }
+    return block.glyphRects;
+  }
+
   function isNested(a, b) {
     return a.contains(b) || b.contains(a);
   }
@@ -753,8 +782,8 @@
   function overlapIssue(a, b, time) {
     if (isNested(a.element, b.element)) return null;
     if (isManagedFlowOverlap(a.element, b.element)) return null;
-    const area = fragmentIntersectionArea(a.rects, b.rects);
-    if (area <= Math.min(rectsArea(a.rects), rectsArea(b.rects)) * 0.2) return null;
+    if (!overlapsByAFifth(a.rects, b.rects)) return null;
+    if (!overlapsByAFifth(glyphRects(a), glyphRects(b))) return null;
     return {
       // Warning at the per-sample level: a single-sample overlap is usually an
       // entrance/exit transient (two blocks crossing mid-animation), not a real

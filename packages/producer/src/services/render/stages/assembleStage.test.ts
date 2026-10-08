@@ -20,7 +20,9 @@ vi.mock("../audioPadTrim.js", () => ({
   padOrTrimAudioToVideoFrameCount: padOrTrimAudioMock,
 }));
 
+const { reportAssembleProgressMock } = vi.hoisted(() => ({ reportAssembleProgressMock: vi.fn() }));
 vi.mock("../shared.js", () => ({
+  reportAssembleProgress: reportAssembleProgressMock,
   updateJobStatus: vi.fn(),
 }));
 
@@ -84,6 +86,7 @@ describe("runAssembleStage audio duration parity", () => {
       undefined,
       { audioCodec: "aac" },
       { num: 30, den: 1 },
+      expect.any(Function),
     );
   });
 
@@ -153,6 +156,34 @@ describe("runAssembleStage audio duration parity", () => {
       expect(muxVideoWithAudioMock).toHaveBeenCalledTimes(1);
       expect(packageHlsMock).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("runAssembleStage progress", () => {
+  beforeEach(() => {
+    resetMocks();
+    reportAssembleProgressMock.mockReset();
+  });
+
+  it.each([
+    ["the audio mux", true],
+    ["MP4 faststart", false],
+  ])("reports the seconds %s has written against the video's length", async (_pass, hasAudio) => {
+    const write = async (...args: unknown[]) => {
+      (args.at(-1) as (seconds: number) => void)(0.5);
+      return { success: true };
+    };
+    muxVideoWithAudioMock.mockImplementation(write);
+    applyFaststartMock.mockImplementation(write);
+    const input = makeInput({ hasAudio });
+    await runAssembleStage(input);
+    expect(reportAssembleProgressMock).toHaveBeenCalledWith(input.job, 0.5, 1, undefined);
+  });
+
+  it("closes at the video's full length when no pass reports seconds", async () => {
+    const input = makeInput({ hasAudio: false });
+    await runAssembleStage(input);
+    expect(reportAssembleProgressMock.mock.calls).toEqual([[input.job, 1, 1, undefined]]);
   });
 });
 

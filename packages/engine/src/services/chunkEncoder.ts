@@ -32,7 +32,12 @@ import {
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
-import { formatFfmpegError, isExternalFfmpegInterruption, runFfmpeg } from "../utils/runFfmpeg.js";
+import {
+  ffmpegStatsReader,
+  formatFfmpegError,
+  isExternalFfmpegInterruption,
+  runFfmpeg,
+} from "../utils/runFfmpeg.js";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
@@ -491,6 +496,11 @@ export function buildEncoderArgs(
   return args;
 }
 
+const framesReader = (onFrames?: (frames: number) => void) =>
+  onFrames && ffmpegStatsReader(({ frames }) => frames !== undefined && onFrames(frames));
+const secondsReader = (onSeconds?: (seconds: number) => void) =>
+  onSeconds && ffmpegStatsReader(({ seconds }) => seconds !== undefined && onSeconds(seconds));
+
 export async function encodeFramesFromDir(
   framesDir: string,
   framePattern: string,
@@ -498,6 +508,7 @@ export async function encodeFramesFromDir(
   options: EncoderOptions,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegEncodeTimeout">>,
+  onFramesEncoded?: (frames: number) => void,
 ): Promise<EncodeResult> {
   const startTime = Date.now();
 
@@ -527,7 +538,11 @@ export async function encodeFramesFromDir(
   const inputArgs = ["-framerate", fpsToFfmpegArg(options.fps), "-i", inputPath];
   const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-  const result = await runFfmpeg(args, { signal, timeout: encodeTimeout });
+  const result = await runFfmpeg(args, {
+    signal,
+    timeout: encodeTimeout,
+    onStderr: framesReader(onFramesEncoded),
+  });
   if (result.terminationReason === "abort") {
     return {
       success: false,
@@ -636,6 +651,7 @@ export async function encodeFramesChunkedConcat(
   chunkSizeFrames: number,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegEncodeTimeout">>,
+  onFramesEncoded?: (frames: number) => void,
 ): Promise<EncodeResult> {
   const start = Date.now();
   const files = readdirSync(framesDir)
@@ -693,7 +709,13 @@ export async function encodeFramesChunkedConcat(
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
     const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
     const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-    const processResult = await runFfmpeg(args, { signal, timeout: encodeTimeout });
+    const processResult = await runFfmpeg(args, {
+      signal,
+      timeout: encodeTimeout,
+      onStderr: framesReader(
+        onFramesEncoded && ((frames) => onFramesEncoded(startNumber + frames)),
+      ),
+    });
     const chunkResult = {
       success: processResult.success,
       error: processResult.success
@@ -750,6 +772,7 @@ export async function muxVideoWithAudio(
   signal?: AbortSignal,
   config?: MuxVideoWithAudioOptions,
   fps?: Fps,
+  onSecondsWritten?: (seconds: number) => void,
 ): Promise<MuxResult> {
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
@@ -804,7 +827,11 @@ export async function muxVideoWithAudio(
   args.push("-y", outputPath);
 
   const processTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const result = await runFfmpeg(args, { signal, timeout: processTimeout });
+  const result = await runFfmpeg(args, {
+    signal,
+    timeout: processTimeout,
+    onStderr: secondsReader(onSecondsWritten),
+  });
 
   if (signal?.aborted) {
     return {
@@ -977,6 +1004,7 @@ export async function applyFaststart(
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
   fps?: Fps,
+  onSecondsWritten?: (seconds: number) => void,
 ): Promise<MuxResult> {
   // faststart is MP4-only (moves moov atom to file start for streaming).
   // WebM and MOV don't need it — skip the re-mux.
@@ -995,7 +1023,11 @@ export async function applyFaststart(
   args.push("-y", outputPath);
 
   const processTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const result = await runFfmpeg(args, { signal, timeout: processTimeout });
+  const result = await runFfmpeg(args, {
+    signal,
+    timeout: processTimeout,
+    onStderr: secondsReader(onSecondsWritten),
+  });
 
   if (signal?.aborted) {
     return {

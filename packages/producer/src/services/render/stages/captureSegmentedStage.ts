@@ -221,7 +221,8 @@ async function captureSegmentFrames(
         ")",
       Math.round(25 + ((i + 1) / ctx.totalFrames) * 55),
       ctx.onProgress,
-      i + 1 === ctx.totalFrames,
+      i + 1,
+      ctx.totalFrames,
     );
   }
 }

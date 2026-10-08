@@ -437,7 +437,8 @@ describe("runCaptureStreamingStage", () => {
       "Streaming frame 1/40 (2 workers)",
       "Streaming frame 2/40 (2 workers)",
     ]);
-    expect(stages).toHaveLength(41);
+    expect(stages).toHaveLength(42);
+    expect(stages.at(-1)).toBe("Encoding frame 40/40");
   });
 
   it("does not flood the callback when frames arrive faster than the report interval", async () => {

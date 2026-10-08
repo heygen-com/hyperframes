@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.8.139",
+  "version": "0.8.141",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -30,6 +30,11 @@
       "import": "./src/services/chromeHostCeiling.ts",
       "types": "./src/services/chromeHostCeiling.ts"
     },
+    "./system-memory": {
+      "bun": "./src/services/systemMemory.ts",
+      "import": "./src/services/systemMemory.ts",
+      "types": "./src/services/systemMemory.ts"
+    },
     "./shader-transitions": {
       "bun": "./src/utils/shaderTransitions.ts",
       "import": "./src/utils/shaderTransitions.ts",
@@ -51,6 +56,10 @@
       "./chrome-host-ceiling": {
         "import": "./dist/services/chromeHostCeiling.js",
         "types": "./dist/services/chromeHostCeiling.d.ts"
+      },
+      "./system-memory": {
+        "import": "./dist/services/systemMemory.js",
+        "types": "./dist/services/systemMemory.d.ts"
       },
       "./shader-transitions": {
         "import": "./dist/utils/shaderTransitions.js",

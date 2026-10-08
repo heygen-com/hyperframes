@@ -1,7 +1,7 @@
 import { cpus, freemem, platform, release } from "node:os";
 import { existsSync, readFileSync, statfsSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { getSystemTotalMb } from "@hyperframes/engine";
+import { getSystemTotalMb } from "@hyperframes/engine/system-memory";
 import {
   detectAgentRuntime,
   detectAgentHints,

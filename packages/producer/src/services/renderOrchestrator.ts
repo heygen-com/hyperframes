@@ -455,9 +455,8 @@ export interface RenderPerfSummary {
   /**
    * Provenance of the auto worker-sizing decision (undefined when the
    * htmlInCanvas / low-memory pins short-circuited sizing). `boundBy` names
-   * the binding constraint; the heap fields are the advisory budget being
-   * validated by fleet telemetry before enforcement — see
-   * `computeWorkerSizing` in @hyperframes/engine.
+   * the binding constraint; the heap fields are the budget that caps auto
+   * sizing — see `computeWorkerSizing` in @hyperframes/engine.
    */
   workerSizing?: WorkerSizing;
   chunkedEncode: boolean;
@@ -708,12 +707,29 @@ export interface CaptureAttemptSummary {
   reason: "initial" | "retry" | "transient-retry";
 }
 
+/** The stage a render is in, for machines; capture and encode count frames, assemble seconds. */
+export type RenderStageCode =
+  | "compile"
+  | "extract_video"
+  | "process_audio"
+  | "start_browsers"
+  | "capture"
+  | "encode"
+  | "assemble";
+
+export interface RenderStageProgress {
+  code: RenderStageCode;
+  done?: number;
+  total?: number;
+}
+
 export interface RenderJob {
   id: string;
   config: RenderConfig;
   status: RenderStatus;
   progress: number;
   currentStage: string;
+  stageProgress?: RenderStageProgress;
   createdAt: Date;
   startedAt?: Date;
   completedAt?: Date;
@@ -3100,7 +3116,9 @@ async function executeRenderPipeline(input: {
 
     // ── Stage 1: Compile ─────────────────────────────────────────────────
     const stage1Start = Date.now();
-    updateJobStatus(job, "preprocessing", "Compiling composition", 5, onProgress);
+    updateJobStatus(job, "preprocessing", "Compiling composition", 5, onProgress, {
+      code: "compile",
+    });
 
     const compileResult = await observeRenderStage(observability, "compile", { needsAlpha }, () =>
       runCompileStage({
@@ -3313,7 +3331,9 @@ async function executeRenderPipeline(input: {
     });
 
     // ── Stage 2: Video frame extraction ─────────────────────────────────
-    updateJobStatus(job, "preprocessing", "Extracting video frames", 10, onProgress);
+    updateJobStatus(job, "preprocessing", "Extracting video frames", 10, onProgress, {
+      code: "extract_video",
+    });
 
     const compiledDir = join(workDir, "compiled");
     const extractResult = await observeRenderStage(
@@ -3412,7 +3432,9 @@ async function executeRenderPipeline(input: {
     });
 
     // ── Stage 3: Audio processing ───────────────────────────────────────
-    updateJobStatus(job, "preprocessing", "Processing audio tracks", 20, onProgress);
+    updateJobStatus(job, "preprocessing", "Processing audio tracks", 20, onProgress, {
+      code: "process_audio",
+    });
 
     const audioResult = await observeRenderStage(
       observability,
@@ -3467,7 +3489,9 @@ async function executeRenderPipeline(input: {
 
     // ── Stage 4: Frame capture ──────────────────────────────────────────
     const stage4Start = Date.now();
-    updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress);
+    updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
+      code: "start_browsers",
+    });
 
     // Start file server (may already be running from duration discovery).
     // The page-side compositing stub is injected later (after hasHdrContent
@@ -3499,7 +3523,9 @@ async function executeRenderPipeline(input: {
     const framesDir = join(workDir, "captured-frames");
     if (!existsSync(framesDir)) mkdirSync(framesDir, { recursive: true });
 
-    updateJobStatus(job, "rendering", "Checking browser GPU", 25, onProgress);
+    updateJobStatus(job, "rendering", "Checking browser GPU", 25, onProgress, {
+      code: "start_browsers",
+    });
     const resolvedBrowserGpuMode = await resolveBrowserGpuMode(cfg.browserGpuMode, {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
@@ -3899,7 +3925,9 @@ async function executeRenderPipeline(input: {
       !deInversionEligible &&
       !deParallelRouterEligible
     ) {
-      updateJobStatus(job, "rendering", "Measuring capture speed", 25, onProgress);
+      updateJobStatus(job, "rendering", "Measuring capture speed", 25, onProgress, {
+        code: "start_browsers",
+      });
       const outcome = await observeRenderStage(
         observability,
         "capture_calibration",
