@@ -94,7 +94,7 @@ await build({
   format: "iife",
   legalComments: "eof",
   banner: {
-    js: "/*! Shaders library (shaders@4.0.0), Copyright 2026 Shader Effects Inc., MIT. See shaders.THIRD-PARTY-LICENSES.txt */",
+    js: "/*! Shaders library (shaders@4.0.0), Copyright 2026 Shader Effects Inc., MIT. Full licence texts are in the licence file installed beside this bundle. */",
   },
   outfile: out,
   plugins: [shaderDefs, onlyTheseShaders],
