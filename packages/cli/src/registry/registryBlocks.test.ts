@@ -140,7 +140,7 @@ describe("registry blocks", () => {
     expect(diverged).toEqual([]);
   });
 
-  it("names a shader the shared bundle holds in every shader block", () => {
+  it("names a shader the shared bundle holds, and installs its licences, in every shader block", () => {
     const missing: string[] = [];
     for (const { name, itemDir, manifest } of loadBlocks()) {
       const bundle = manifest.files.find((f) => f.target === "compositions/lib/shaders.iife.js");
@@ -150,6 +150,8 @@ describe("registry blocks", () => {
       const shader = html.match(/data-shader="([^"]+)"/)?.[1];
       const code = readFileSync(join(itemDir, bundle.path), "utf8");
       if (!shader || !code.includes(`name:"${shader}",role:`)) missing.push(`${name}: ${shader}`);
+      const licences = "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt";
+      if (!manifest.files.some((f) => f.target === licences)) missing.push(`${name}: no licences`);
     }
     expect(missing).toEqual([]);
   });
