@@ -18,6 +18,36 @@ describe("scanVariableUsage", () => {
     );
   });
 
+  it.each([
+    `const { title } = __hyperframes["getVariables"]();`,
+    `const { title } = window.__hyperframes['getVariables']();`,
+    `const vars = __hyperframes["getVariables"](); const title = vars.title;`,
+  ])("collects reads through a literal bracket getter: %s", (script) => {
+    expect(scanVariableUsage(script)).toEqual({ usedIds: ["title"], scanIncomplete: false });
+  });
+
+  it.each([
+    `const vars = getVariables(); const result = lookup[vars];`,
+    `const vars = getVariables(); lookup[vars] = "value";`,
+    `const vars = getVariables(); delete lookup[vars];`,
+  ])("flags an alias used as a computed key as incomplete: %s", (script) => {
+    expect(scanVariableUsage(script)).toEqual({ usedIds: [], scanIncomplete: true });
+  });
+
+  it("does not treat a noncomputed property name as an alias read", () => {
+    expect(scanVariableUsage(`const vars = getVariables(); const result = lookup.vars;`)).toEqual({
+      usedIds: [],
+      scanIncomplete: false,
+    });
+  });
+
+  it("ignores a different literal bracket getter", () => {
+    expect(scanVariableUsage(`const { title } = service["getValues"]();`)).toEqual({
+      usedIds: [],
+      scanIncomplete: false,
+    });
+  });
+
   it("collects ids from member access on the call and on an alias", () => {
     const scan = scanVariableUsage(`
       const x = __hyperframes.getVariables().headline;

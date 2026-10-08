@@ -35,12 +35,12 @@ interface Sink {
 
 // oxlint-disable no-explicit-any -- untyped acorn AST traversal, see header
 
-function isGetVariablesCallee(callee: any): boolean {
-  if (callee?.type === "Identifier") return callee.name === "getVariables";
-  if (callee?.type === "MemberExpression" && !callee.computed) {
-    return callee.property?.type === "Identifier" && callee.property.name === "getVariables";
-  }
-  return false;
+function isGetVariablesCallee(callee: acorn.Expression | acorn.Super): boolean {
+  if (callee.type === "Identifier") return callee.name === "getVariables";
+  if (callee.type !== "MemberExpression") return false;
+  return callee.computed
+    ? callee.property.type === "Literal" && callee.property.value === "getVariables"
+    : callee.property.type === "Identifier" && callee.property.name === "getVariables";
 }
 
 /** Collect ids from an ObjectPattern destructuring of the values object. */
@@ -159,7 +159,12 @@ export function scanVariableUsage(scriptText: string): VariableUsageScan {
         // Skip the declarator that introduced the alias and property-position
         // identifiers that merely share the name.
         if (parent.type === "VariableDeclarator" && parent.id === node) return;
-        if (parent.type === "MemberExpression" && parent.property === node) return;
+        if (
+          parent.type === "MemberExpression" &&
+          parent.property === node &&
+          parent.computed !== true
+        )
+          return;
         if (parent.type === "Property" && parent.key === node && parent.computed !== true) return;
         // Chained aliases (const v2 = vars) are not followed — flag instead
         // of silently missing reads through the second name.

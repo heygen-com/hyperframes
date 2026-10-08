@@ -51,6 +51,23 @@ describe("getVariableUsage", () => {
     expect(usage.scanIncomplete).toBe(false);
   });
 
+  it("cross-references reads through a literal bracket getter", async () => {
+    const comp = await openComposition(
+      doc(`const { title, ghost } = window.__hyperframes["getVariables"]();`),
+    );
+    expect(comp.getVariableUsage()).toEqual({
+      usedIds: ["title", "ghost"],
+      unusedDeclarations: ["accent", "orphan"],
+      undeclaredReads: ["ghost"],
+      scanIncomplete: false,
+    });
+  });
+
+  it("degrades the report when a values alias escapes as a computed key", async () => {
+    const comp = await openComposition(doc(`const vars = getVariables(); lookup[vars];`));
+    expect(comp.getVariableUsage().scanIncomplete).toBe(true);
+  });
+
   it("propagates scanIncomplete from opaque access", async () => {
     const comp = await openComposition(
       doc(`const vars = getVariables(); const v = vars[pickKey()];`),
