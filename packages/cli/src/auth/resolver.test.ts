@@ -20,6 +20,7 @@ describe("auth/resolver", () => {
   });
 
   it("prefers HEYGEN_API_KEY over everything else", async () => {
+    process.env["HEYGEN_ACCESS_TOKEN"] = "host-token";
     process.env["HEYGEN_API_KEY"] = "env-key";
     process.env["HYPERFRAMES_API_KEY"] = "alias-key";
     await writeStore({ api_key: "file-key" });
@@ -28,10 +29,33 @@ describe("auth/resolver", () => {
   });
 
   it("falls through to HYPERFRAMES_API_KEY", async () => {
+    process.env["HEYGEN_ACCESS_TOKEN"] = "host-token";
     process.env["HYPERFRAMES_API_KEY"] = "alias-key";
     await writeStore({ api_key: "file-key" });
     const r = await resolveCredential();
     expect(r).toEqual({ type: "api_key", key: "alias-key", source: "env_alias" });
+  });
+
+  it("accepts host-managed OAuth without a credential file or a refresh token", async () => {
+    process.env["HEYGEN_ACCESS_TOKEN"] = "host-token";
+    expect(await resolveCredential()).toEqual({
+      type: "oauth",
+      access_token: "host-token",
+      source: "env_oauth",
+      refreshable: false,
+    });
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it("rejects an unsafe host token without exposing it", async () => {
+    process.env["HEYGEN_ACCESS_TOKEN"] = "secret\r\nInjected: value";
+    await expect(resolveCredential()).rejects.toMatchObject({ code: "INVALID_STORE" });
+    await expect(resolveCredential()).rejects.not.toThrow("secret");
+  });
+
+  it("treats an empty host token as absent", async () => {
+    process.env["HEYGEN_ACCESS_TOKEN"] = "";
+    expect(await tryResolveCredential()).toBeNull();
   });
 
   it("returns file api_key when no env is set", async () => {

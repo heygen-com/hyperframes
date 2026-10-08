@@ -25,7 +25,7 @@ export {
 
 export { configDir, credentialPath } from "./paths.js";
 
-export { tryResolveCredential } from "./resolver.js";
+export { ENV_CREDENTIAL_VAR, tryResolveCredential } from "./resolver.js";
 export type { ResolvedCredential } from "./resolver.js";
 
 export { AuthClient } from "./client.js";

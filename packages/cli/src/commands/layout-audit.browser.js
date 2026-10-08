@@ -454,7 +454,7 @@
     const overflow = {};
     if (overflowX > tolerance) overflow.right = round(overflowX);
     if (overflowY > tolerance) overflow.bottom = round(overflowY);
-    const selector = selectorFor(element);
+    const selector = uniqueSelectorFor(element);
     const text = textContentFor(element);
     const rect = toRect(element.getBoundingClientRect());
     const fontSize = parsePx(style.fontSize);
@@ -537,7 +537,7 @@
     const textRect = unionRects(lineRects);
     if (!textRect) return [];
     const text = textContentFor(element, true);
-    const selector = selectorFor(element);
+    const selector = uniqueSelectorFor(element);
     const issues = [];
 
     const container = nearestConstraint(element, root, rootRect);
@@ -568,7 +568,7 @@
         severity: "error",
         time,
         selector,
-        containerSelector: selectorFor(container),
+        containerSelector: uniqueSelectorFor(container),
         text,
         message: "Text extends outside its nearest visual/container box.",
         rect: visibleTextRect,
@@ -591,7 +591,7 @@
         severity: "info",
         time,
         selector,
-        containerSelector: selectorFor(root),
+        containerSelector: uniqueSelectorFor(root),
         text,
         message: "Text extends outside the composition canvas.",
         rect: textRect,
@@ -644,8 +644,8 @@
           code: "container_overflow",
           severity: "warning",
           time,
-          selector: selectorFor(child),
-          containerSelector: selectorFor(container),
+          selector: uniqueSelectorFor(child),
+          containerSelector: uniqueSelectorFor(container),
           message: checksEveryChild
             ? "Element extends outside a clipping layout container."
             : "Nowrap text is wider than its container.",
@@ -1198,7 +1198,7 @@
       code: "text_not_painted",
       severity: "error",
       time,
-      selector: selectorFor(element),
+      selector: uniqueSelectorFor(element),
       text,
       message:
         "Text paints with an effectively transparent fill (-webkit-text-fill-color / color), so its glyphs are invisible.",
@@ -1242,8 +1242,8 @@
         code: "escaped_container",
         severity: "warning",
         time,
-        selector: selectorFor(element),
-        containerSelector: selectorFor(parent),
+        selector: uniqueSelectorFor(element),
+        containerSelector: uniqueSelectorFor(parent),
         text: textContentFor(element),
         message:
           "Positioned element renders far outside its offset parent — its coordinates were likely computed in a different frame (canvas/viewport pixels).",
@@ -1319,8 +1319,8 @@
         code: "panel_out_of_canvas",
         severity: rectArea(rect) >= rootArea * PANEL_HERO_AREA_FRACTION ? "warning" : "info",
         time,
-        selector: selectorFor(element),
-        containerSelector: selectorFor(root),
+        selector: uniqueSelectorFor(element),
+        containerSelector: uniqueSelectorFor(root),
         text: textContentFor(element).slice(0, 48),
         message: "Painted panel extends outside the composition canvas.",
         rect,
@@ -1436,8 +1436,8 @@
         code: "canvas_content_at_edge",
         severity: "warning",
         time,
-        selector: selectorFor(canvas),
-        containerSelector: selectorFor(root),
+        selector: uniqueSelectorFor(canvas),
+        containerSelector: uniqueSelectorFor(root),
         message: `Canvas content touches the frame edge (${sides.join(", ")}).`,
         rect,
         containerRect: rootRect,
@@ -1605,8 +1605,8 @@
         code: "connector_detached",
         severity: "warning",
         time,
-        selector: selectorFor(path),
-        containerSelector: selectorFor(svg),
+        selector: uniqueSelectorFor(path),
+        containerSelector: uniqueSelectorFor(svg),
         message: pasteBug
           ? `Connector path endpoints render ${gap}px from the nearest anchorable element, but the path's user-space coordinates would attach if read as screen pixels — screen/viewport numbers were likely written into SVG \`d\` without inverting the CTM.`
           : `Connector path endpoints render ${gap}px from the nearest anchorable element — a marked shaft that meets no node.`,
@@ -1743,9 +1743,9 @@
         code: "connector_orphan",
         severity: "warning",
         time,
-        selector: selectorFor(path),
-        containerSelector: selectorFor(svg),
-        message: `Connector shaft is visible while ${dark.length === 2 ? "both endpoints are" : `its endpoint ${selectorFor(dark[0].element)} is`} not on stage.`,
+        selector: uniqueSelectorFor(path),
+        containerSelector: uniqueSelectorFor(svg),
+        message: `Connector shaft is visible while ${dark.length === 2 ? "both endpoints are" : `its endpoint ${uniqueSelectorFor(dark[0].element)} is`} not on stage.`,
         rect: toRect({
           left: Math.min(rendered.start.x, rendered.end.x),
           top: Math.min(rendered.start.y, rendered.end.y),
@@ -1925,7 +1925,7 @@
       const box = element.getBoundingClientRect();
       if (box.width * box.height <= 400) continue;
       samples.push({
-        selector: selectorFor(element),
+        selector: uniqueSelectorFor(element),
         cx: round(box.left + box.width / 2),
         cy: round(box.top + box.height / 2),
         w: round(box.width),
@@ -2113,7 +2113,7 @@
         hubCache.set(svg, hub);
       }
       samples.push({
-        selector: selectorFor(element),
+        selector: uniqueSelectorFor(element),
         ax: round(a.x),
         ay: round(a.y),
         bx: round(b.x),

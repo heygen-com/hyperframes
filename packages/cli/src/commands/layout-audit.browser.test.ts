@@ -1298,6 +1298,26 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     n2: { backgroundColor: "rgb(30, 40, 50)" },
   };
 
+  it("identifies two same-class detached connectors separately", () => {
+    document.body.innerHTML = foreignFrameDom
+      .replace('id="detached" ', "")
+      .replace(
+        'id="anchored" class="connector-line" d="M 900 353 L 300 53"',
+        'class="connector-line" d="M 970 570 L 370 270"',
+      );
+    installGeometry(foreignFrameRects, foreignFrameStyles);
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+    const issues = runAudit().filter((issue) => issue.code === "connector_detached");
+    expect(issues.map((issue) => issue.selector)).toEqual([
+      "#connector-svg > path:nth-of-type(1)",
+      "#connector-svg > path:nth-of-type(2)",
+    ]);
+    const paths = document.querySelectorAll("#connector-svg > path");
+    expect(document.querySelector(issues[0]!.selector)).toBe(paths[0]);
+    expect(document.querySelector(issues[1]!.selector)).toBe(paths[1]);
+  });
+
   it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
     document.body.innerHTML = foreignFrameDom;
     installGeometry(foreignFrameRects, foreignFrameStyles);
