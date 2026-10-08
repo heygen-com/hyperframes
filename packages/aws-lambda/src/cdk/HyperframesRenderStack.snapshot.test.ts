@@ -267,17 +267,14 @@ describe("HyperframesRenderStack — snapshot", () => {
   it("sends the same payload from every Lambda task as the SAM template", () => {
     // CDK drops null-valued payload fields when it renders the definition (#5259), so compare
     // what each deployed task sends rather than the construct source.
-    const sam = readSamDefinition();
-    const cdkTasks = {
-      ...getV1TaskStates(SYNTHED.definition),
-      ...getV2TaskStates(SYNTHED.definition),
-    };
-    const samTasks = { ...getV1TaskStates(sam), ...getV2TaskStates(sam) };
+    const cdkTasks = lambdaTasks(SYNTHED.definition.States);
+    const samTasks = lambdaTasks(readSamDefinition().States);
+    expect(Object.keys(cdkTasks).sort()).toEqual(Object.keys(samTasks).sort());
+    expect(Object.keys(cdkTasks).length).toBeGreaterThanOrEqual(6);
     for (const [taskName, cdkTask] of Object.entries(cdkTasks)) {
-      const samTask = samTasks[taskName as keyof typeof samTasks];
       expect({ taskName, payload: sentPayload(cdkTask) }).toEqual({
         taskName,
-        payload: sentPayload(samTask),
+        payload: sentPayload(samTasks[taskName]),
       });
     }
   });
@@ -334,6 +331,29 @@ function requireRecordProperty(
   label: string,
 ): Record<string, unknown> {
   return requireRecord(record[property], label);
+}
+
+const isLambdaTask = (state: Record<string, unknown>): boolean =>
+  state.Type === "Task" && String(state.Resource).endsWith(":states:::lambda:invoke");
+
+/** The state maps nested in a Map processor or Parallel branches. */
+function nestedStates(state: Record<string, unknown>): Record<string, unknown>[] {
+  const branches = Array.isArray(state.Branches) ? state.Branches : [];
+  return [state.Iterator, state.ItemProcessor, ...branches]
+    .filter(isRecord)
+    .map((processor) => processor.States)
+    .filter(isRecord);
+}
+
+/** Every Lambda-invoking task by state name, including those inside Map and Parallel states. */
+function lambdaTasks(states: Record<string, unknown>): Record<string, unknown> {
+  const records = Object.entries(states).filter(
+    (entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]),
+  );
+  return Object.assign(
+    Object.fromEntries(records.filter(([, state]) => isLambdaTask(state))),
+    ...records.flatMap(([, state]) => nestedStates(state).map(lambdaTasks)),
+  );
 }
 
 /** A task's payload as Step Functions sends it: a `States.StringToJson('null')` field is a null. */
