@@ -61,9 +61,8 @@ export async function pollUntilTerminal(
   const intervalMs = options.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const maxWaitMs = options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
   const now = options.now ?? (() => Date.now());
-  // Default sleep honors the abort signal so Ctrl+C feels immediate
-  // instead of waiting out the full interval. Tests inject a no-op
-  // sleep that ignores the signal — that's fine, they don't abort.
+  // Default sleep honors the abort signal so cancellation does not
+  // have to wait out the full interval.
   const sleep = options.sleep ?? defaultAbortableSleep(options.signal);
 
   const started = now();
@@ -95,6 +94,10 @@ function defaultAbortableSleep(signal?: AbortSignal): (ms: number) => Promise<vo
   // fallow-ignore-next-line complexity
   return (ms: number) =>
     new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signalAbortError(signal));
+        return;
+      }
       const onAbort = (): void => {
         clearTimeout(timer);
         reject(signalAbortError(signal!));

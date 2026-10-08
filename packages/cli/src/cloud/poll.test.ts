@@ -113,6 +113,93 @@ describe("cloud/poll", () => {
       ).rejects.toBeInstanceOf(PollTimeoutError);
     });
 
+    it.each([
+      { reason: new Error("user cancelled"), message: "user cancelled" },
+      { reason: "user cancelled", message: "Poll aborted" },
+    ])("rejects without waiting when onTick aborts ($message)", async ({ reason, message }) => {
+      vi.useFakeTimers();
+      const client = stubClient([makeDetail({ status: "queued" })]);
+      const getRender = vi.spyOn(client, "getRender");
+      const controller = new AbortController();
+      let settled = false;
+      let rejection: unknown;
+      const polling = pollUntilTerminal(client, "hfr_test", {
+        signal: controller.signal,
+        onTick: () => controller.abort(reason),
+      }).then(
+        () => {
+          settled = true;
+        },
+        (error: unknown) => {
+          settled = true;
+          rejection = error;
+        },
+      );
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        expect(settled).toBe(true);
+        expect(rejection).toBeInstanceOf(Error);
+        expect(rejection).toHaveProperty("message", message);
+        if (reason instanceof Error) expect(rejection).toBe(reason);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(getRender).toHaveBeenCalledTimes(1);
+      } finally {
+        await vi.runAllTimersAsync();
+        await polling;
+        vi.useRealTimers();
+      }
+    });
+
+    it("aborts an active polling interval immediately", async () => {
+      vi.useFakeTimers();
+      const client = stubClient([makeDetail({ status: "queued" })]);
+      const getRender = vi.spyOn(client, "getRender");
+      const controller = new AbortController();
+      const reason = new Error("cancel during wait");
+      let rejection: unknown;
+      const polling = pollUntilTerminal(client, "hfr_test", { signal: controller.signal }).catch(
+        (error: unknown) => {
+          rejection = error;
+        },
+      );
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        expect(vi.getTimerCount()).toBe(1);
+        controller.abort(reason);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(rejection).toBe(reason);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(getRender).toHaveBeenCalledTimes(1);
+      } finally {
+        await vi.runAllTimersAsync();
+        await polling;
+        vi.useRealTimers();
+      }
+    });
+
+    it("continues polling after a normal interval with an active signal", async () => {
+      vi.useFakeTimers();
+      const client = stubClient([
+        makeDetail({ status: "queued" }),
+        makeDetail({ status: "completed" }),
+      ]);
+      const getRender = vi.spyOn(client, "getRender");
+      const controller = new AbortController();
+      const polling = pollUntilTerminal(client, "hfr_test", { signal: controller.signal });
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(DEFAULT_POLL_INTERVAL_MS);
+        expect((await polling).status).toBe("completed");
+        expect(vi.getTimerCount()).toBe(0);
+        expect(getRender).toHaveBeenCalledTimes(2);
+      } finally {
+        await vi.runAllTimersAsync();
+        await polling;
+        vi.useRealTimers();
+      }
+    });
+
     it("aborts when the AbortSignal is fired", async () => {
       const client = stubClient([makeDetail({ status: "queued" })]);
       const controller = new AbortController();
