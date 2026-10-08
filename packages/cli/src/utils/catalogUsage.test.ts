@@ -119,6 +119,23 @@ describe("summarizeCatalogUsage", () => {
     ).toEqual(["inner", "outer"]);
   });
 
+  it("counts a nested block after a quoted tag delimiter and ignores metadata examples", () => {
+    expect(
+      usageOf(
+        {
+          "index.html": entryDoc("compositions/outer.html"),
+          "compositions/outer.html": `<template><div data-composition-id="outer">
+            <div title="Sales > costs" data-composition-src="compositions/inner.html"></div>
+            <span title='data-composition-src="compositions/ghost.html"'>Example</span>
+          </div></template>`,
+          "compositions/inner.html": subCompDoc("inner"),
+          "compositions/ghost.html": subCompDoc("ghost"),
+        },
+        [BLOCK("outer"), BLOCK("inner"), BLOCK("ghost")],
+      ).usedBlocks,
+    ).toEqual(["inner", "outer"]);
+  });
+
   // A cyclic project must not wedge a render that already produced a video.
   it("terminates on a mount cycle", () => {
     expect(

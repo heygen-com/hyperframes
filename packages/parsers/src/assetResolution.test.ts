@@ -110,6 +110,51 @@ describe("collectSubCompositionSrcs", () => {
     expect(collectSubCompositionSrcs('data-composition-src="a.html"')).toEqual([]);
   });
 
+  it.each([
+    {
+      name: "greater-than sign before the mount attribute",
+      html: '<div title="Sales > costs" data-composition-src="scene.html"></div>',
+      expected: ["scene.html"],
+    },
+    {
+      name: "apostrophe in a double-quoted source",
+      html: `<div data-composition-src="scene's.html"></div>`,
+      expected: ["scene's.html"],
+    },
+    {
+      name: "double quote in a single-quoted source",
+      html: `<div data-composition-src='scene"s.html'></div>`,
+      expected: ['scene"s.html'],
+    },
+    {
+      name: "source attribute mentioned inside another attribute",
+      html: `<div title='data-composition-src="ghost.html"'></div>`,
+      expected: [],
+    },
+    {
+      name: "mount after a quoted markup example",
+      html: `<div title="<span data-composition-src='ghost.html'>" data-composition-src="real.html"></div>`,
+      expected: ["real.html"],
+    },
+    {
+      name: "attribute name with a prefixed lookalike",
+      html: '<div data-example-data-composition-src="ghost.html"></div>',
+      expected: [],
+    },
+    {
+      name: "unquoted source and mixed-case attribute name",
+      html: "<div DATA-COMPOSITION-SRC = scene.html></div>",
+      expected: ["scene.html"],
+    },
+    {
+      name: "first duplicate attribute wins",
+      html: '<div data-composition-src="" data-composition-src="ghost.html"></div>',
+      expected: [],
+    },
+  ])("reads the actual mount for $name", ({ html, expected }) => {
+    expect(collectSubCompositionSrcs(html)).toEqual(expected);
+  });
+
   // Regression guard, and it needs no timing assertion to bite: the previous
   // whole-file regex had two open-ended `[^>]*` spans, which is quadratic on
   // input full of `<` with no `>`. At 1MB that ran for minutes, so this case
@@ -118,6 +163,11 @@ describe("collectSubCompositionSrcs", () => {
   // of stray `<` must not be able to hang a render before it starts.
   it("stays fast on a megabyte of unterminated tag openings", () => {
     expect(collectSubCompositionSrcs("<".repeat(1024 * 1024))).toEqual([]);
+  });
+
+  it("does not rescan repeated incomplete tags or an unterminated quoted value", () => {
+    expect(collectSubCompositionSrcs("<div ".repeat(200_000))).toEqual([]);
+    expect(collectSubCompositionSrcs('<div title="' + "<".repeat(1024 * 1024))).toEqual([]);
   });
 });
 

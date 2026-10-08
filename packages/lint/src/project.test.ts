@@ -289,6 +289,30 @@ describe("missing_or_empty_sub_composition", () => {
     expect(finding?.message).toContain("does not exist");
   });
 
+  it("reports a missing mount after a quoted greater-than sign", async () => {
+    const html = htmlWithSubComp("compositions/missing.html").replace(
+      "<div data-composition-src=",
+      '<div title="Sales > costs" data-composition-src=',
+    );
+    const { results } = await lintProject(makeProject(html));
+    const finding = results
+      .flatMap((result) => result.result.findings)
+      .find((item) => item.code === "missing_or_empty_sub_composition");
+    expect(finding?.message).toContain("compositions/missing.html");
+    expect(finding?.message).toContain("does not exist");
+  });
+
+  it("does not follow a source attribute mentioned in a quoted title", async () => {
+    const html = validHtml().replace(
+      "</div>",
+      `<span title='data-composition-src="compositions/ghost.html"'>Example</span></div>`,
+    );
+    const { results } = await lintProject(makeProject(html));
+    expect(
+      results.flatMap((result) => result.result.findings).map((finding) => finding.code),
+    ).not.toContain("missing_or_empty_sub_composition");
+  });
+
   it("errors, instead of crashing, when the referenced sub-composition is a folder", async () => {
     const project = makeProject(htmlWithSubComp("compositions/scene-title"), {});
     mkdirSync(join(project, "compositions", "scene-title"));
