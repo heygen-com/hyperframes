@@ -42,14 +42,22 @@ function resizeHandleStyle(
   // This ensures the dots render as siblings of the box border div — strictly
   // above it — rather than as children where the parent border can visually
   // overlap the dot circle at the corner.
+  const slideOutToFreeMiddleX = Math.max(
+    0,
+    half - (overlayRect.width - inset.left - inset.right) / 4,
+  );
+  const slideOutToFreeMiddleY = Math.max(
+    0,
+    half - (overlayRect.height - inset.top - inset.bottom) / 4,
+  );
   style.left =
     def.x === "left"
-      ? overlayRect.left + inset.left - half
-      : overlayRect.left + overlayRect.width - inset.right - half;
+      ? overlayRect.left + inset.left - half - slideOutToFreeMiddleX
+      : overlayRect.left + overlayRect.width - inset.right - half + slideOutToFreeMiddleX;
   style.top =
     def.y === "top"
-      ? overlayRect.top + inset.top - half
-      : overlayRect.top + overlayRect.height - inset.bottom - half;
+      ? overlayRect.top + inset.top - half - slideOutToFreeMiddleY
+      : overlayRect.top + overlayRect.height - inset.bottom - half + slideOutToFreeMiddleY;
   return style;
 }
 

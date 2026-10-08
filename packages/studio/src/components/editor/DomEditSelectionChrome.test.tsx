@@ -327,3 +327,63 @@ describe("DomEditSelectionChrome with body drag off", () => {
     act(() => root.unmount());
   });
 });
+
+describe("DomEditSelectionChrome corner handles", () => {
+  const HIT = 16;
+  function cornerHits(rect: { left: number; top: number; width: number; height: number }) {
+    const { selection, host, root } = selectionFixture(document.createElement("div"), "#t", true);
+    (selection.capabilities as { canCrop: boolean }).canCrop = false;
+    act(() => {
+      root.render(
+        <DomEditSelectionChrome
+          selection={selection}
+          overlayRect={{ ...rect, editScaleX: 1, editScaleY: 1 }}
+          allowCanvasMovement
+          allowBodyDrag
+          boxRef={createRef()}
+          boxChromeClass=""
+          boxClipPath={undefined}
+          selectionKey="t"
+          groupSelectionCount={0}
+          gestures={{ startGesture: vi.fn() } as never}
+          onStyleCommit={vi.fn()}
+          onBoxClick={vi.fn()}
+        />,
+      );
+    });
+    const hits = [
+      ...host.querySelectorAll<HTMLElement>('[style*="nwse-resize"], [style*="nesw-resize"]'),
+    ].map((handle) => ({ left: parseFloat(handle.style.left), top: parseFloat(handle.style.top) }));
+    act(() => root.unmount());
+    host.remove();
+    return hits;
+  }
+
+  it.each([
+    [14, 8],
+    [4, 4],
+    [30, 6],
+  ])("leave the middle of a %ix%i pick free, so dragging it moves the pick", (width, height) => {
+    const rect = { left: 100, top: 100, width, height };
+    const hits = cornerHits(rect);
+    const cx = rect.left + width / 2;
+    const cy = rect.top + height / 2;
+    expect(hits).toHaveLength(4);
+    for (const hit of hits) {
+      const coversCentre =
+        cx >= hit.left && cx <= hit.left + HIT && cy >= hit.top && cy <= hit.top + HIT;
+      expect(coversCentre, JSON.stringify(hit)).toBe(false);
+    }
+  });
+
+  it("stay centred on the corners of a pick large enough to hold them", () => {
+    expect(cornerHits({ left: 100, top: 100, width: 32, height: 40 })).toEqual(
+      expect.arrayContaining([
+        { left: 92, top: 92 },
+        { left: 124, top: 92 },
+        { left: 92, top: 132 },
+        { left: 124, top: 132 },
+      ]),
+    );
+  });
+});
