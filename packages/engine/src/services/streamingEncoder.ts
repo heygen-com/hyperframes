@@ -369,10 +369,10 @@ export function buildStreamingArgs(
       } else {
         args.push(xParamsFlag, `aq-mode=3:aq-strength=0.8:deblock=1,1:${colorParams}${gopParams}`);
       }
-      // Apple devices require hvc1 tag for HEVC playback (default hev1 won't open in QuickTime)
-      if (codec === "h265") {
-        args.push("-tag:v", "hvc1");
-      }
+    }
+    // Apple devices require hvc1 tag for HEVC playback (default hev1 won't open in QuickTime)
+    if (codec === "h265") {
+      args.push("-tag:v", "hvc1");
     }
   } else if (codec === "vp9") {
     args.push("-c:v", "libvpx-vp9", "-b:v", bitrate || "0", "-crf", String(quality));
