@@ -9,6 +9,7 @@ import { isBlockedNetworkHost } from "@hyperframes/engine";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
+import { DOMParser } from "linkedom";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
@@ -86,18 +87,18 @@ function svgContentHashSlug(svgSource: string | Buffer, isLogo: boolean): string
  * is a parse error in a standalone document, so declare that too — but only when it is used.
  */
 export function toStandaloneSvg(outerHTML: string): string {
-  const open = outerHTML.match(/<svg\b[^>]*>/i);
-  if (!open) return outerHTML;
-  const original = open[0];
-  let tag = original;
+  const root = new DOMParser().parseFromString(outerHTML, "image/svg+xml").documentElement;
+  if (root?.localName.toLowerCase() !== "svg") return outerHTML;
   const add: string[] = [];
-  if (!/\sxmlns\s*=/i.test(tag)) add.push('xmlns="http://www.w3.org/2000/svg"');
-  if (/\sxlink:[a-z-]+\s*=/i.test(outerHTML) && !/\sxmlns:xlink\s*=/i.test(tag)) {
+  if (!root.hasAttribute("xmlns")) add.push('xmlns="http://www.w3.org/2000/svg"');
+  const usesXlink = [root, ...Array.from(root.querySelectorAll("*"))].some((element) =>
+    element.getAttributeNames().some((name: string) => name.startsWith("xlink:")),
+  );
+  if (usesXlink && !root.hasAttribute("xmlns:xlink")) {
     add.push('xmlns:xlink="http://www.w3.org/1999/xlink"');
   }
   if (!add.length) return outerHTML;
-  tag = tag.replace(/^<svg\b/i, `<svg ${add.join(" ")}`);
-  return outerHTML.replace(original, tag);
+  return outerHTML.replace(/^<svg\b/i, `<svg ${add.join(" ")}`);
 }
 
 /** One icon the page declared, as downloaded and inspected. */

@@ -22,6 +22,7 @@ import type { DesignTokens } from "./types.js";
 import type { IconCandidate } from "./faviconRanker.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import sharp from "sharp";
+import { DOMParser } from "linkedom";
 
 describe("isPrivateUrl — SSRF denylist (security: F-003)", () => {
   it("blocks loopback, private, and metadata IPv4", () => {
@@ -181,6 +182,69 @@ describe("toStandaloneSvg — scraped inline SVGs must survive as .svg files", (
 
   it("returns non-SVG input unchanged rather than corrupting it", () => {
     expect(toStandaloneSvg("<div>not an svg</div>")).toBe("<div>not an svg</div>");
+  });
+
+  it.each([
+    'aria-label="use xmlns=demo"',
+    "aria-label='use xmlns=demo'",
+    'data-label="example xmlns=http://www.w3.org/2000/svg"',
+  ])("adds a real namespace when %s contains namespace-like text", (attribute) => {
+    const inline = `<svg ${attribute} width="24" height="24"><rect width="24" height="24" fill="red"/></svg>`;
+    const output = toStandaloneSvg(inline);
+    const root = new DOMParser().parseFromString(output, "image/svg+xml").documentElement;
+
+    expect(root?.getAttribute("xmlns")).toBe("http://www.w3.org/2000/svg");
+    expect(output).toContain(attribute);
+    expect(output).toContain('<rect width="24" height="24" fill="red"/>');
+    expect(toStandaloneSvg(output)).toBe(output);
+  });
+
+  it("recognizes a namespace after a quoted greater-than sign", () => {
+    const inline = '<svg aria-label="A > B" xmlns="http://www.w3.org/2000/svg"><rect/></svg>';
+    expect(toStandaloneSvg(inline)).toBe(inline);
+  });
+
+  it("adds xlink's namespace when a label only looks like its declaration", () => {
+    const inline =
+      '<svg aria-label="use xmlns:xlink=demo"><defs><rect id="a"/></defs><use xlink:href="#a"/></svg>';
+    const output = toStandaloneSvg(inline);
+    const root = new DOMParser().parseFromString(output, "image/svg+xml").documentElement;
+
+    expect(root?.getAttribute("xmlns:xlink")).toBe("http://www.w3.org/1999/xlink");
+    expect(output).toContain('aria-label="use xmlns:xlink=demo"');
+    expect(output).toContain('<use xlink:href="#a"/>');
+  });
+
+  it("does not declare xlink for attribute-looking label text", () => {
+    const inline = '<svg aria-label="example xlink:href=demo"><rect/></svg>';
+    const output = toStandaloneSvg(inline);
+    const root = new DOMParser().parseFromString(output, "image/svg+xml").documentElement;
+
+    expect(root?.hasAttribute("xmlns:xlink")).toBe(false);
+    expect(output).toContain('aria-label="example xlink:href=demo"');
+  });
+
+  it("writes a usable namespace into downloaded inline SVG assets", async () => {
+    await withTempDir(async (dir) => {
+      const tokens = tokensWithNoSvgs();
+      tokens.svgs.push({
+        width: 24,
+        height: 24,
+        isLogo: true,
+        outerHTML:
+          '<svg aria-label="use xmlns=demo" width="24" height="24"><rect width="24" height="24" fill="red"/></svg>',
+      });
+      const { assets, drops } = await downloadAssets(tokens, dir, [], []);
+      expect(assets).toHaveLength(1);
+      expect(drops.unavailable).toBe(0);
+      const asset = assets[0];
+      expect(asset?.type).toBe("svg");
+      if (!asset) throw new Error("SVG asset missing");
+      const saved = readFileSync(join(dir, asset.localPath), "utf8");
+      const root = new DOMParser().parseFromString(saved, "image/svg+xml").documentElement;
+      expect(root?.getAttribute("xmlns")).toBe("http://www.w3.org/2000/svg");
+      expect(root?.getAttribute("aria-label")).toBe("use xmlns=demo");
+    });
   });
 });
 
