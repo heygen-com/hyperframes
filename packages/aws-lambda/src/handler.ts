@@ -235,7 +235,7 @@ function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | Assembl
     error.name = "PLAN_PROTOCOL_UNSUPPORTED";
     throw error;
   }
-  if (effectiveProtocol === "v2" && event.Action === "assemble" && event.AudioS3Uri !== null) {
+  if (effectiveProtocol === "v2" && event.Action === "assemble" && event.AudioS3Uri != null) {
     const error = new Error("[handler] v2 assemble audio must be materialized from the manifest");
     error.name = "PLAN_PROTOCOL_UNSUPPORTED";
     throw error;
@@ -290,7 +290,7 @@ function summarizeEvent(
           ? { planV2ManifestS3Uri: event.PlanV2ManifestS3Uri }
           : { planS3Uri: event.PlanS3Uri }),
         chunkCount: event.ChunkS3Uris.length,
-        hasAudio: event.AudioS3Uri !== null,
+        hasAudio: event.AudioS3Uri != null,
         outputS3Uri: event.OutputS3Uri,
         format: event.Format,
       };

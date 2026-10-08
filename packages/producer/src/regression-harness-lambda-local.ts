@@ -196,7 +196,6 @@ export async function runLambdaLocalRender(
   const assembleShared = {
     Action: "assemble" as const,
     ChunkS3Uris: chunkUris,
-    AudioS3Uri: planResult.AudioS3Uri,
     OutputS3Uri: finalUri,
     Format: input.format,
   };
@@ -213,6 +212,7 @@ export async function runLambdaLocalRender(
           ...assembleShared,
           PlanProtocol: "v1",
           PlanS3Uri: requireV1PlanResult(planResult).PlanS3Uri,
+          AudioS3Uri: planResult.AudioS3Uri,
         };
   const assembleResponse = await observe(() => handler(assembleEvent, deps));
   if (assembleResponse.Action !== "assemble") {

@@ -245,6 +245,25 @@ describe("HyperframesRenderStack — snapshot", () => {
     }
   });
 
+  it("sends the same payload from every Lambda task as the SAM template", () => {
+    // CDK drops null-valued fields when it renders a payload, so a field the
+    // construct source sets to null never reaches the handler. Compare what each
+    // deployed task actually sends, not the construct props.
+    const sam = readSamDefinition();
+    const cdkTasks = {
+      ...getV1TaskStates(SYNTHED.definition),
+      ...getV2TaskStates(SYNTHED.definition),
+    };
+    const samTasks = { ...getV1TaskStates(sam), ...getV2TaskStates(sam) };
+    for (const [taskName, cdkTask] of Object.entries(cdkTasks)) {
+      const samTask = samTasks[taskName as keyof typeof samTasks];
+      expect({ taskName, payload: taskPayload(cdkTask) }).toEqual({
+        taskName,
+        payload: taskPayload(samTask),
+      });
+    }
+  });
+
   it("keeps v1 and v2 locators disjoint across orchestration branches", () => {
     const { definition } = SYNTHED;
     const v1 = JSON.stringify({
@@ -290,6 +309,15 @@ function requireRecordProperty(
   label: string,
 ): Record<string, unknown> {
   return requireRecord(record[property], label);
+}
+
+function taskPayload(state: unknown): Record<string, unknown> {
+  const parameters = requireRecordProperty(
+    requireRecord(state, "task state"),
+    "Parameters",
+    "task parameters",
+  );
+  return requireRecordProperty(parameters, "Payload", "task payload");
 }
 
 function getV2TaskStates(definition: {

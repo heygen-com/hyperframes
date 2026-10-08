@@ -117,8 +117,6 @@ interface AssembleEventBase {
   Action: "assemble";
   /** S3 URIs of every chunk, ordered by chunk index. Length must equal `chunkCount`. */
   ChunkS3Uris: string[];
-  /** S3 URI of the planDir's audio artifact if the composition has audio; `null` otherwise. */
-  AudioS3Uri: string | null;
   /** Final output S3 URI (`s3://bucket/key.mp4`). */
   OutputS3Uri: string;
   /** Output container format; drives file vs frame-dir handling. */
@@ -144,6 +142,8 @@ export interface AssembleV1Event extends AssembleEventBase {
   PlanProtocol: "v1";
   /** S3 URI of the v1 plan tar produced by a PlanEvent invocation. */
   PlanS3Uri: string;
+  /** S3 URI of the planDir's audio artifact if the composition has audio; `null` otherwise. */
+  AudioS3Uri: string | null;
 }
 
 /** V2 assemble event, scoped to manifest-declared assembler artifacts. */
@@ -152,6 +152,8 @@ export interface AssembleV2Event extends AssembleEventBase {
   PlanV2ManifestS3Uri: string;
   PlanV2ArtifactS3Prefix: string;
   PlanHash: string;
+  /** V2 reads audio from the plan manifest, so the event carries none. Absent and `null` are equivalent. */
+  AudioS3Uri?: null;
 }
 
 export type AssembleEvent = AssembleV1Event | AssembleV2Event;

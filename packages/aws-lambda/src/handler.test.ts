@@ -671,7 +671,6 @@ describe("handler dispatch", () => {
         PlanV2ArtifactS3Prefix: planned.PlanV2ArtifactS3Prefix,
         PlanHash: planned.PlanHash,
         ChunkS3Uris: [chunk.ChunkS3Uri],
-        AudioS3Uri: null,
         OutputS3Uri: "s3://bucket/renders/v2/output.mp4",
         Format: "mp4",
       },
@@ -702,6 +701,35 @@ describe("handler dispatch", () => {
         },
       ),
     ).rejects.toMatchObject({ name: "PLAN_PROTOCOL_UNSUPPORTED" });
+    expect(s3.ops).toHaveLength(0);
+  });
+
+  it("rejects a v2 assemble that names its own audio", async () => {
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+
+    await expect(
+      handler(
+        {
+          Action: "assemble",
+          PlanV2ManifestS3Uri: "s3://bucket/renders/v2/plan-v2.json",
+          PlanV2ArtifactS3Prefix: "s3://bucket/renders/v2/artifacts",
+          PlanHash: "fakehash",
+          ChunkS3Uris: ["s3://bucket/renders/v2/chunk-0000.mp4"],
+          AudioS3Uri: "s3://bucket/renders/v2/audio.aac",
+          OutputS3Uri: "s3://bucket/renders/v2/output.mp4",
+          Format: "mp4",
+        } as unknown as LambdaEvent,
+        {
+          s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+          tmpRoot,
+          skipChromeResolution: true,
+        },
+      ),
+    ).rejects.toMatchObject({
+      name: "PLAN_PROTOCOL_UNSUPPORTED",
+      message: expect.stringContaining("materialized from the manifest"),
+    });
     expect(s3.ops).toHaveLength(0);
   });
 
