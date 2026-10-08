@@ -38,6 +38,30 @@ function portraitCompositionWithScaffold(bodyCss: string, viewportContent: strin
 }
 
 describe("core rules", () => {
+  it("does not invent a composition host from an attribute mentioned in a title", async () => {
+    const html = `<html><body>
+      <div id="root" data-composition-id="main" data-no-timeline data-width="640" data-height="360">
+        <span id="example" title='data-composition-src="ghost.html"'>Example</span>
+      </div>
+    </body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.map((finding) => finding.code)).not.toContain(
+      "host_missing_composition_id",
+    );
+  });
+
+  it("does not invent timing from attributes mentioned in a title", async () => {
+    const html = `<html><body>
+      <div id="root" data-composition-id="main" data-no-timeline data-width="640" data-height="360">
+        <span id="example" title='data-start="0" data-duration="1"'>Example</span>
+      </div>
+    </body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.map((finding) => finding.code)).not.toContain(
+      "timed_element_missing_clip_class",
+    );
+  });
+
   it("does not lint scripts embedded inside an iframe srcdoc attribute", async () => {
     const html = `
 <html><body>

@@ -223,14 +223,7 @@ export function hasUnquotedLessThan(attrs: string): boolean {
 }
 
 export function readAttr(tagSource: string, attr: string): string | null {
-  if (!tagSource) return null;
-  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // `(?<![\w-])` not `\b`: a plain `\b` boundary treats the hyphen in a longer
-  // attribute as a word break, so reading "id" would wrongly match the trailing
-  // `id="…"` inside `data-hf-id="…"` (and "width" inside `data-width`, etc.).
-  // The lookbehind requires the match to start a fresh attribute name.
-  const match = tagSource.match(new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*["']([^"']+)["']`, "i"));
-  return match?.[1] || null;
+  return readAttributeValue(tagSource, attr, false) || null;
 }
 
 export function hasAttrName(tagSource: string, attr: string): boolean {
@@ -263,15 +256,23 @@ export function mediaWindowsOverlap(
 
 /** Read an HTML attribute using browser-equivalent character-reference decoding. */
 export function readDecodedAttr(tagSource: string, attr: string): string | null {
+  return readAttributeValue(tagSource, attr, true);
+}
+
+function readAttributeValue(
+  tagSource: string,
+  attr: string,
+  decodeEntities: boolean,
+): string | null {
   if (!tagSource) return null;
   let value: string | null = null;
   const parser = new Parser(
     {
-      onattribute(name, decodedValue) {
-        if (value === null && name.toLowerCase() === attr.toLowerCase()) value = decodedValue;
+      onattribute(name, attributeValue) {
+        if (value === null && name.toLowerCase() === attr.toLowerCase()) value = attributeValue;
       },
     },
-    { decodeEntities: true, lowerCaseAttributeNames: false, lowerCaseTags: true },
+    { decodeEntities, lowerCaseAttributeNames: false, lowerCaseTags: true },
   );
   parser.end(tagSource);
   return value;

@@ -2,6 +2,16 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
+  it("reports a missing real media id even when the title mentions one", async () => {
+    const html = `<html><body>
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <video title='id="ghost"' src="clip.mp4" data-start="0" data-duration="1" muted></video>
+      </div>
+    </body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.map((finding) => finding.code)).toContain("media_missing_id");
+  });
+
   it.each([
     'title="an unmuted muted crossorigin clip"',
     "title='an unmuted muted crossorigin clip'",
