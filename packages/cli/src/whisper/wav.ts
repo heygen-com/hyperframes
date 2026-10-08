@@ -23,7 +23,7 @@ export function readWav(path: string): { samples: Float32Array; sampleRate: numb
   const riff = buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WAVE";
   const fmt = riff ? findWavChunk(buf, "fmt ") : null;
   const data = fmt && findWavChunk(buf, "data");
-  const format = fmt && buf.readUInt16LE(fmt.offset);
+  const format = fmt && fmt.size >= 16 ? buf.readUInt16LE(fmt.offset) : null;
   if (
     !fmt ||
     !data ||

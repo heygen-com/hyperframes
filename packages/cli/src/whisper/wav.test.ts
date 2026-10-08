@@ -25,6 +25,26 @@ it("reads a WAV with no samples as silence, as ffmpeg writes for empty audio", (
   expect(readWav(file("empty.wav", encodeWav([], 16_000))).samples).toHaveLength(0);
 });
 
+it.each([0, 1, 2, 4, 8, 14, 15])(
+  "rejects a %i-byte fmt chunk before reading its fields",
+  (size) => {
+    const valid = encodeWav([], 16_000);
+    const head = Buffer.from(valid.subarray(0, 20));
+    head.writeUInt32LE(size, 16);
+    const short = Buffer.concat([head, valid.subarray(20, 20 + size)]);
+    const path = file(`short-${size}.wav`, short);
+    expect(() => readWav(path)).toThrow(`${path} is not a 16-bit mono PCM WAV`);
+  },
+);
+
+it("does not read format fields from the following data chunk", () => {
+  const valid = encodeWav([0.5], 16_000);
+  const short = Buffer.concat([valid.subarray(0, 20), valid.subarray(20, 34), valid.subarray(36)]);
+  short.writeUInt32LE(14, 16);
+  const path = file("short-with-data.wav", short);
+  expect(() => readWav(path)).toThrow(`${path} is not a 16-bit mono PCM WAV`);
+});
+
 it("names a file that is not a 16-bit mono WAV", () => {
   const stereo = encodeWav([0, 0], 16_000);
   stereo.writeUInt16LE(2, 22);

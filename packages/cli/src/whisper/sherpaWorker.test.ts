@@ -111,6 +111,17 @@ describe("sherpaWorker", () => {
     expect(stderr).toContain(`${SHERPA_ERROR_PREFIX}${broken} is not a 16-bit mono PCM WAV`);
   });
 
+  it.each([0, 1])("names the audio file when its fmt chunk has only %i bytes", async (size) => {
+    const broken = join(fakeRuntime(), "short.wav");
+    const bytes = encodeWav([], 16_000).subarray(0, 20 + size);
+    bytes.writeUInt32LE(size, 16);
+    writeFileSync(broken, bytes);
+    const { code, stderr } = await runWorker(root, broken);
+    expect(code).toBe(1);
+    const errors = stderr.split("\n").filter((line) => line.startsWith(SHERPA_ERROR_PREFIX));
+    expect(errors).toEqual([`${SHERPA_ERROR_PREFIX}${broken} is not a 16-bit mono PCM WAV`]);
+  });
+
   it("keeps every line of a multi-line error on its one prefixed line", async () => {
     const { code, stderr } = await runWorker(fakeRuntime(), "lines.wav");
     expect(code).toBe(1);
