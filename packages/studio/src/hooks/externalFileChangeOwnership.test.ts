@@ -21,9 +21,30 @@ describe("external file-change subscription ownership", () => {
       new URL("./useExternalFileChangeCoordinator.ts", import.meta.url),
       "utf8",
     );
-    // vitest defines `import.meta.hot`, so the selection is the one claim left to
-    // the source; the channel's own behaviour is exercised below.
-    expect(coordinator.match(/sseFileChangeChannel\(handler\)/g)).toHaveLength(1);
+    expect(coordinator.match(/sseFileChangeChannel\(handler, catchUp\)/g)).toHaveLength(1);
+  });
+
+  it("asks to catch up on every reconnect, since changes made while disconnected are never resent", () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    class FakeEventSource {
+      addEventListener(type: string, listener: (event: unknown) => void) {
+        listeners.set(type, listener);
+      }
+      close = vi.fn();
+    }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    try {
+      const onReconnect = vi.fn();
+      sseFileChangeChannel(vi.fn(), onReconnect);
+      listeners.get("open")?.(new Event("open"));
+      expect(onReconnect).not.toHaveBeenCalled();
+      listeners.get("error")?.(new Event("error"));
+      listeners.get("open")?.(new Event("open"));
+      listeners.get("open")?.(new Event("open"));
+      expect(onReconnect).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("delivers the raw file-change event from EventSource to the handler and closes on cleanup", () => {
@@ -42,7 +63,7 @@ describe("external file-change subscription ownership", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     try {
       const onDelivery = vi.fn();
-      const stop = sseFileChangeChannel(onDelivery);
+      const stop = sseFileChangeChannel(onDelivery, vi.fn());
       const event = new MessageEvent("file-change", { data: JSON.stringify({ path: "a.html" }) });
       listeners.get("file-change")?.(event);
       expect(opened).toEqual(["/api/events"]);

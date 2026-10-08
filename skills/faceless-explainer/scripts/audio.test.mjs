@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
@@ -24,12 +24,22 @@ test("audio.mjs is byte-identical to pr-to-video's copy (the stated contract)", 
 // the storyboard's top YAML block + no SCRIPT.md ⇒ generate nothing; with
 // narration ⇒ TTS runs, BGM off.
 
-function runAudioRaw({ storyboard, scriptMd = null, preexistingMeta = null }) {
+function runAudioRaw({
+  storyboard,
+  scriptMd = null,
+  preexistingMeta = null,
+  files = [],
+  duringEngine = "",
+}) {
   const dir = mkdtempSync(join(tmpdir(), "faceless-audio-"));
   const engine = join(dir, "engine.mjs");
   writeFileSync(join(dir, "STORYBOARD.md"), storyboard);
   if (scriptMd != null) writeFileSync(join(dir, "SCRIPT.md"), scriptMd);
   if (preexistingMeta != null) writeFileSync(join(dir, "audio_meta.json"), preexistingMeta);
+  for (const file of files) {
+    mkdirSync(dirname(join(dir, file)), { recursive: true });
+    writeFileSync(join(dir, file), "");
+  }
   writeFileSync(
     engine,
     `import { readFileSync, writeFileSync } from "node:fs";
@@ -38,7 +48,7 @@ const flag = (name) => argv[argv.indexOf(name) + 1];
 const request = JSON.parse(readFileSync(flag("--request"), "utf8"));
 writeFileSync(new URL("request.json", import.meta.url), JSON.stringify(request));
 writeFileSync(flag("--out"), JSON.stringify({ voices: [], bgm: null, sfx: [] }));
-`,
+${duringEngine}`,
   );
   const result = spawnSync(
     process.execPath,
@@ -95,10 +105,22 @@ test("a storyboard music mood still retrieves BGM (marker is exact, not fuzzy)",
 // (linear.app site showcase, 2026-07-30).
 
 /** Runs the fetch-sfx subcommand. `neutralOut` is what the stub engine writes to --out. */
-function runFetchSfx({ storyboard, neutralOut = { voices: [], bgm: null, sfx: [] } }) {
+function runFetchSfx({
+  storyboard,
+  neutralOut = { voices: [], bgm: null, sfx: [] },
+  preexistingMeta = null,
+  files = [],
+  duringEngine = "",
+}) {
   const dir = mkdtempSync(join(tmpdir(), "product-launch-sfx-"));
   const engine = join(dir, "engine.mjs");
   writeFileSync(join(dir, "STORYBOARD.md"), storyboard);
+  if (preexistingMeta != null)
+    writeFileSync(join(dir, "audio_meta.json"), JSON.stringify(preexistingMeta));
+  for (const file of files) {
+    mkdirSync(dirname(join(dir, file)), { recursive: true });
+    writeFileSync(join(dir, file), "");
+  }
   writeFileSync(
     engine,
     `import { readFileSync, writeFileSync } from "node:fs";
@@ -107,7 +129,7 @@ const flag = (name) => argv[argv.indexOf(name) + 1];
 const request = JSON.parse(readFileSync(flag("--request"), "utf8"));
 writeFileSync(new URL("request.json", import.meta.url), JSON.stringify(request));
 writeFileSync(flag("--out"), ${JSON.stringify(JSON.stringify(neutralOut))});
-`,
+${duringEngine}`,
   );
   const result = spawnSync(
     process.execPath,
@@ -173,4 +195,147 @@ test("fetch-sfx: a resolved bed reports bgm_pending false and no warning", () =>
   assert.equal(meta.bgm_pending, false);
   assert.equal(meta.bgm.path, "assets/bgm/track.mp3");
   assert.doesNotMatch(result.stderr, /pending/i);
+});
+
+// ── host audio (lib/host-audio.mjs) ─────────────────────────────────────────
+// A host app's own music or sound, listed in audio_meta.json as "source": "host", survives every audio pass.
+
+const HOST_WHOOSH = {
+  frame: 1,
+  file: "assets/sfx/custom-whoosh.mp3",
+  offset_s: 0,
+  duration_s: 2,
+  source: "host",
+};
+const HOST_BED = { path: "assets/bgm/host.mp3", source: "host" };
+
+test("fetch-sfx keeps a host sound and looks up no cue for its frame", () => {
+  const { dir, result } = runFetchSfx({
+    storyboard: FRAME_WITH_SFX("whoosh"),
+    preexistingMeta: { bgm: null, voices: [], sfx: [HOST_WHOOSH] },
+    files: [HOST_WHOOSH.file],
+    neutralOut: { voices: [], bgm: null, sfx: [{ id: "01", file: "assets/sfx/whoosh.mp3" }] },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, "request.json"), "utf8")).lines, []);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8")).sfx, [
+    HOST_WHOOSH,
+  ]);
+});
+
+test("fetch-sfx keeps a host bed the storyboard does not look up", () => {
+  const { dir, result } = runFetchSfx({
+    storyboard: FRAME_WITH_SFX("whoosh"),
+    preexistingMeta: { bgm: HOST_BED, voices: [], sfx: [] },
+    files: [HOST_BED.path],
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8")).bgm, HOST_BED);
+});
+
+test("music: none + no SCRIPT.md with a sound cue is not silent: audio_meta.json stays for fetch-sfx", () => {
+  const { dir, result } = runAudioRaw({
+    storyboard:
+      "---\nmessage: Test\nmusic: none\n---\n\n## Frame 1 — Hook\n- duration: 3s\n- sfx: whoosh\n",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /marked silent/);
+  assert.equal(existsSync(join(dir, "request.json")), false);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8")).sfx, []);
+});
+
+test("generate keeps a host bed when there is no narration and music: none", () => {
+  const { dir, result } = runAudioRaw({
+    storyboard: "---\nmessage: Test\nmusic: none\n---\n",
+    preexistingMeta: JSON.stringify({ bgm: HOST_BED, voices: [], sfx: [] }),
+    files: [HOST_BED.path],
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8")).bgm, HOST_BED);
+});
+
+test("fetch-sfx stops on an audio_meta.json that does not parse, so host entries are not lost", () => {
+  const { dir } = runFetchSfx({ storyboard: FRAME_WITH_SFX("whoosh") });
+  writeFileSync(
+    join(dir, "audio_meta.json"),
+    '{ "bgm": { "path": "assets/bgm/host.mp3", "source": "host" }, }',
+  );
+  const again = spawnSync(
+    process.execPath,
+    [script, "fetch-sfx", "--hyperframes", dir, "--storyboard", join(dir, "STORYBOARD.md")],
+    { encoding: "utf8", env: { ...process.env, HF_MEDIA_ENGINE: join(dir, "engine.mjs") } },
+  );
+
+  assert.equal(again.status, 1);
+  assert.match(again.stderr, /does not parse/);
+  assert.match(readFileSync(join(dir, "audio_meta.json"), "utf8"), /host\.mp3/);
+});
+
+test("re-running generate with no narration keeps the sounds fetch-sfx found", () => {
+  const storyboard =
+    "---\nmessage: Test\nmusic: none\n---\n\n## Frame 1 — Hook\n- duration: 3s\n- sfx: whoosh\n";
+  const { dir, result } = runAudioRaw({ storyboard });
+  assert.equal(result.status, 0, result.stderr);
+  writeFileSync(
+    join(dir, "audio_engine_meta.json"),
+    JSON.stringify({
+      voices: [{ id: "01", path: "old.wav" }],
+      bgm: { path: "old.mp3" },
+      sfx: [{ id: "01", file: "assets/sfx/whoosh.mp3" }],
+    }),
+  );
+  const again = spawnSync(
+    process.execPath,
+    [script, "--hyperframes", dir, "--storyboard", join(dir, "STORYBOARD.md")],
+    {
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(again.status, 0, again.stderr);
+  const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+  assert.deepEqual(
+    meta.sfx.map((s) => s.file),
+    ["assets/sfx/whoosh.mp3"],
+  );
+  assert.deepEqual(meta.voices, []);
+  assert.equal(meta.bgm, null);
+});
+
+// What a host app writes into audio_meta.json while a pass's engine is still running.
+const HOST_WRITES_MID_PASS = `
+const { mkdirSync } = await import("node:fs");
+for (const dir of ["assets/bgm/", "assets/sfx/"]) mkdirSync(new URL(dir, import.meta.url), { recursive: true });
+writeFileSync(new URL("${HOST_BED.path}", import.meta.url), "");
+writeFileSync(new URL("${HOST_WHOOSH.file}", import.meta.url), "");
+writeFileSync(new URL("audio_meta.json", import.meta.url), ${JSON.stringify(JSON.stringify({ bgm: HOST_BED, voices: [], sfx: [HOST_WHOOSH] }))});
+`;
+
+test("generate keeps host audio written while its engine runs", () => {
+  const { dir, result } = runAudioRaw({
+    storyboard: "---\nmessage: Test\nmusic: calm piano\n---\n",
+    duringEngine: HOST_WRITES_MID_PASS,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+  assert.deepEqual(meta.bgm, HOST_BED);
+  assert.deepEqual(meta.sfx, [HOST_WHOOSH]);
+});
+
+test("fetch-sfx keeps host audio written while its engine runs, and the host's sound wins its frame", () => {
+  const { dir, result } = runFetchSfx({
+    storyboard: FRAME_WITH_SFX("whoosh"),
+    neutralOut: { voices: [], bgm: null, sfx: [{ id: "01", file: "assets/sfx/whoosh.mp3" }] },
+    duringEngine: HOST_WRITES_MID_PASS,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+  assert.deepEqual(meta.bgm, HOST_BED);
+  assert.deepEqual(meta.sfx, [HOST_WHOOSH]);
 });

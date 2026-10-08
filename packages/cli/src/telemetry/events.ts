@@ -993,6 +993,22 @@ export function trackSkillsInstallSkipped(props: { reason: string }): void {
   trackEvent("cli skill install skipped", { reason: props.reason });
 }
 
+export function trackFeedbackComment(props: {
+  comment: string;
+  doctorSummary?: string;
+  feedbackId?: string;
+  recentRenderIds?: string[];
+}): void {
+  trackEvent("cli_feedback_comment", {
+    comment: props.comment,
+    ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
+    ...(props.feedbackId ? { feedback_id: props.feedbackId } : {}),
+    ...(props.recentRenderIds?.length
+      ? { recent_render_ids: props.recentRenderIds.join(",") }
+      : {}),
+  });
+}
+
 export function trackRenderFeedback(props: {
   rating: number;
   renderDurationMs?: number;
@@ -1001,7 +1017,8 @@ export function trackRenderFeedback(props: {
   /**
    * Join key shared with the forwarded feedback report (Slack/backend): the
    * same uuid rides in the report's env string as `fid=…`, so a wild report
-   * resolves to exactly one PostHog `cli_render_feedback` event and vice versa.
+   * resolves to exactly one PostHog `cli_render_feedback` or
+   * `cli_feedback_comment` event and vice versa.
    */
   feedbackId?: string;
   /** render_job_id values of this install's recent renders (newest last). */

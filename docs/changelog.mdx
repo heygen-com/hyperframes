@@ -9,6 +9,63 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.141"
+  description="Released - 2026-10-08"
+  tags={["Release", "Fonts", "Studio", "Core"]}
+>
+Renders no longer fail when a page links a Google font with axis values the family lacks. Studio previews of hard-to-play videos decode at their on-screen size.
+
+## Changes
+
+- A font whose Google Fonts link returns no usable faces now falls back to the standard weight request, so renders keep the font instead of failing. ([#5186](https://github.com/heygen-com/hyperframes/pull/5186)).
+- Unresolved-font errors carry structured diagnostics about which resolver step failed, without font names, URLs or page text. ([#5189](https://github.com/heygen-com/hyperframes/pull/5189)).
+- The player loads compositions using the document's own duration and reports the first author error. ([#5176](https://github.com/heygen-com/hyperframes/pull/5176)).
+- Studio decodes HEVC and ProRes previews at the size they appear on screen, so back-to-back 4K clips no longer flash the background. ([#5184](https://github.com/heygen-com/hyperframes/pull/5184)).
+- media-use can reach HeyGen through a host app's gateway with `HEYGEN_API_BASE`. ([#5181](https://github.com/heygen-com/hyperframes/pull/5181)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.140...v0.8.141).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.140"
+  description="Released - 2026-10-07"
+  tags={["Release", "Engine", "CLI", "Check"]}
+>
+Motion blur now works over video, and rendering reports encoding and assembly progress. Studio previews, image replacement, and long-timeline zoom are more reliable.
+
+## Changes
+
+- Composition hosts can show the hover outline and set the stage’s starting size. ([#5116](https://github.com/heygen-com/hyperframes/pull/5116)).
+- Replacing an image fill now changes the displayed picture. ([#5170](https://github.com/heygen-com/hyperframes/pull/5170)).
+- Rebound root timelines keep advancing with the playback clock. ([#5165](https://github.com/heygen-com/hyperframes/pull/5165)).
+- Slow documents wait for their own frame cadence before capture. ([#5168](https://github.com/heygen-com/hyperframes/pull/5168)).
+- Fresh timeline updates from a host are preserved. ([#5159](https://github.com/heygen-com/hyperframes/pull/5159)).
+- Transcription keeps words spoken before the detected speech onset. ([#5164](https://github.com/heygen-com/hyperframes/pull/5164)).
+- Zooming long timelines does less image decoding and drawing. ([#5142](https://github.com/heygen-com/hyperframes/pull/5142)).
+- The preview catches up after missed file changes. ([#5126](https://github.com/heygen-com/hyperframes/pull/5126)).
+- Music requests use the host app’s music tools, with a clear error when the required CLI is missing. ([#5154](https://github.com/heygen-com/hyperframes/pull/5154)).
+- Feedback can report missing features and host-app friction without a rating. ([#5140](https://github.com/heygen-com/hyperframes/pull/5140)).
+- Automatic render worker counts respect the available memory budget. ([#5149](https://github.com/heygen-com/hyperframes/pull/5149)).
+- CLI startup loads reporting code without loading the full rendering engine, and history tests no longer race. ([#5153](https://github.com/heygen-com/hyperframes/pull/5153)).
+- Motion blur renders correctly over video by keeping the video frame steady across samples. ([#5150](https://github.com/heygen-com/hyperframes/pull/5150)).
+- Checks avoid false static-motion and text-overlap warnings on valid compositions. ([#5147](https://github.com/heygen-com/hyperframes/pull/5147)).
+- Imported scenes stay within their source time ranges. ([#5132](https://github.com/heygen-com/hyperframes/pull/5132)).
+- Rendering shows progress while encoding and assembling the output. ([#5137](https://github.com/heygen-com/hyperframes/pull/5137)).
+- Imported film HTML can use native capture while preserving its structure. ([#5131](https://github.com/heygen-com/hyperframes/pull/5131)).
+- Catalog previews run block scripts inline, and six shader blocks have dedicated documentation pages. ([#5139](https://github.com/heygen-com/hyperframes/pull/5139)).
+- The catalog adds six WebGPU shader backgrounds. ([#5138](https://github.com/heygen-com/hyperframes/pull/5138)).
+- Asynchronous frame sources can render repeatable frames. ([#5130](https://github.com/heygen-com/hyperframes/pull/5130)).
+- Skill publishing verifies that the latest creative guidance is available. ([#5081](https://github.com/heygen-com/hyperframes/pull/5081)).
+- WebGPU compositions can render with software graphics through an opt-in setting. ([#5133](https://github.com/heygen-com/hyperframes/pull/5133)).
+- Producer unit tests run without reaching the network. ([#5135](https://github.com/heygen-com/hyperframes/pull/5135)).
+- Timeline zoom stays smoother on long projects. ([#5109](https://github.com/heygen-com/hyperframes/pull/5109)).
+- Browser tests use a consistent launch path and a bounded time budget. ([#5134](https://github.com/heygen-com/hyperframes/pull/5134)).
+- The preview preloads upcoming scene images, and checks handle image swaps correctly. ([#5128](https://github.com/heygen-com/hyperframes/pull/5128)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.139...v0.8.140).
+</Update>
+
+<Update
   label="HyperFrames v0.8.139"
   description="Released - 2026-10-06"
   tags={["Release", "Studio", "CLI", "Core"]}

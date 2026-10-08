@@ -1,6 +1,10 @@
 export { createStudioApi } from "./createStudioApi.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
-export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
+export {
+  createProjectSignature,
+  affectsProjectSignature,
+  STUDIO_SIGNATURE_MANIFEST_PATHS,
+} from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export { affectsPreview } from "./helpers/previewReads.js";
 export * from "./history/index.js";

@@ -11,6 +11,29 @@ vi.mock("../../hooks/useThumbnailLease", () => ({
   useThumbnailLease: leaseSpy,
 }));
 
+// One observer serves every waveform; it reports each one near as it is watched, unless a test
+// reports by hand.
+const nearScreen = {
+  auto: true,
+  watched: [] as Element[],
+  report: (_target: Element, _near: boolean) => {},
+};
+globalThis.IntersectionObserver = class {
+  constructor(callback: IntersectionObserverCallback) {
+    nearScreen.report = (target, near) =>
+      callback(
+        [{ target, isIntersecting: near } as IntersectionObserverEntry],
+        this as unknown as IntersectionObserver,
+      );
+  }
+  observe(target: Element) {
+    nearScreen.watched.push(target);
+    if (nearScreen.auto) nearScreen.report(target, true);
+  }
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof IntersectionObserver;
+
 const EMPTY_STRIP = { width: 0, height: 0, inViewStart: 0, inViewEnd: 0 };
 const watchGap = vi.hoisted(() => vi.fn());
 const strip = vi.hoisted(() => ({
@@ -52,6 +75,7 @@ afterEach(() => {
   leaseSpy.mockReset();
   leaseSpy.mockImplementation(() => ({ status: "loading" as const }));
   strip.size = EMPTY_STRIP;
+  nearScreen.auto = true;
   watchGap.mockClear();
   document.body.innerHTML = "";
 });
@@ -139,6 +163,23 @@ describe("AudioWaveform", () => {
     setStrip({ width: 1000, height: 40, inViewStart: 0, inViewEnd: 1000 });
     renderReadyWaveform();
     expect(watchGap.mock.calls.filter(([gap]) => gap)).toEqual([]);
+  });
+
+  it("leaves a waveform off screen undrawn through a zoom, and draws it once it comes near", () => {
+    nearScreen.auto = false;
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    setStrip({ width: 1000, height: 40, inViewStart: 0, inViewEnd: 1000 });
+    renderReadyWaveform();
+    const root = nearScreen.watched.at(-1)!;
+    expect(getContext).not.toHaveBeenCalled();
+    act(() => nearScreen.report(root, true));
+    const drawn = getContext.mock.calls.length;
+    expect(drawn).toBeGreaterThan(0);
+    act(() => nearScreen.report(root, false));
+    setStrip({ width: 2000, height: 40, inViewStart: 0, inViewEnd: 2000 });
+    expect(getContext.mock.calls.length).toBe(drawn);
+    act(() => nearScreen.report(root, true));
+    expect(getContext.mock.calls.length).toBe(drawn + 1);
   });
 
   it("redraws a short clip, drawn whole, when a zoom changes its width", () => {

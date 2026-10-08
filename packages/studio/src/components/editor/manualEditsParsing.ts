@@ -44,9 +44,21 @@ export function readFileChangeAffectedCompositions(payload: unknown): readonly s
   return value.map(normalizeStudioFileChangePath);
 }
 
-export function mergeFileChangeAffectedCompositions(waiting: unknown, incoming: unknown): unknown {
+export function mergeFileChangePayloads(waiting: unknown, incoming: unknown): unknown {
   const before = readFileChangeAffectedCompositions(waiting);
   const after = readFileChangeAffectedCompositions(incoming);
   const merged = before && after ? [...new Set([...before, ...after])] : null;
-  return { ...asPayloadRecord(incoming), affectedCompositions: merged };
+  const next = asPayloadRecord(incoming);
+  const affectsPreview =
+    readFileChangeAffectsPreview(waiting) || readFileChangeAffectsPreview(incoming);
+  if (readStudioFileChangePath(waiting) === readStudioFileChangePath(incoming)) {
+    return { ...next, affectsPreview, affectedCompositions: merged };
+  }
+  // Changes to two files are owed: only a project-wide reload ("." path) covers both.
+  return {
+    path: ".",
+    projectId: next?.projectId,
+    affectsPreview,
+    affectedCompositions: merged,
+  };
 }

@@ -1250,10 +1250,11 @@ the CLI attaches your email (below).
 npx hyperframes feedback --rating 10
 npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timeline didn't animate"
 npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
+npx hyperframes feedback --comment "MISSING FEATURE: trim a clip from the timeline | WORKAROUND: none"
 ```
 
-`--rating` is required, 0–10. `--comment` adds free text. `--source person`
-or `--source agent` says who wrote a rating report (a `--search-miss` report
+`--rating` is 0–10. `--comment` adds free text; a `--comment` with no `--rating` is a report with no score (a missing feature, or friction in the app that launched the CLI), kept out of the rating metric. `--source person`
+or `--source agent` says who wrote a rating or comment report (a `--search-miss` report
 carries neither), so the team can tell a person's feedback from an agent's. `--file-issue`
 also opens a GitHub issue, `--dir` picks the project published as its repro
 (default: current directory), and `--yes, -y` skips the consent prompt for

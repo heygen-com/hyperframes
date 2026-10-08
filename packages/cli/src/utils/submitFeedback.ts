@@ -15,7 +15,7 @@ function cap(value: string | undefined, max: number): string | undefined {
 }
 
 export async function submitFeedback(input: {
-  rating: number;
+  rating?: number;
   comment?: string;
   cliVersion: string;
   env?: string;
@@ -28,7 +28,7 @@ export async function submitFeedback(input: {
       method: "POST",
       body: JSON.stringify({
         rating: input.rating,
-        rating_scale: FEEDBACK_RATING_SCALE,
+        rating_scale: input.rating === undefined ? undefined : FEEDBACK_RATING_SCALE,
         comment: cap(input.comment, MAX_COMMENT),
         cli_version: cap(input.cliVersion, MAX_CLI_VERSION),
         env: cap(input.env, MAX_ENV),
