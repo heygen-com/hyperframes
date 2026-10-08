@@ -6,9 +6,24 @@ const server = startServer({ noCache: true });
 const browser = await launchBrowser({ width: 611, height: 420 });
 try {
   const page = await browser.newPage();
-  page.on("pageerror", (error) => console.error("composition error:", error));
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  // The player must have a size before load, or the composition renders unzoomed.
+  await page.evaluateOnNewDocument(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      document.head.append(
+        Object.assign(document.createElement("style"), {
+          textContent: "hyperframes-player { height: 100vh }",
+        }),
+      );
+    });
+  });
   await page.goto(`${server.origin}/host.html?fixture=gsap-percent-centering`);
   await page.waitForFunction(() => window.__playerReady === true);
+  const zoom = await page.evaluate(
+    () => document.getElementById("player")!.shadowRoot!.querySelector("iframe")!.style.zoom,
+  );
+  assert(Number(zoom) > 0.3 && Number(zoom) < 0.33, `composition zoom ${zoom}`);
   const frame = page.frames().find((candidate) => candidate.url().includes("/fixtures/"));
   assert(frame, "composition frame loaded");
   const read = async (id: string) =>
@@ -21,12 +36,32 @@ try {
           gsap.getProperty(element, property),
         ]),
       );
-      return { cache, top: element.getBoundingClientRect().top };
+      const box = element.getBoundingClientRect();
+      return { cache, center: [box.left + box.width / 2, box.top + box.height / 2] };
     }, id);
-  const initial = await read("target");
-  assert.equal(initial.cache.xPercent, -50);
-  assert.equal(initial.cache.yPercent, -50);
-  assert(Math.abs(initial.top - 446.5) < 0.1, `startup top ${initial.top}`);
+  // A centered layer sits at the composition center plus the x and y GSAP set on it.
+  const centered = async (id: string, x = 40, y = 20) => {
+    const { cache, center } = await read(id);
+    assert.equal(cache.xPercent, -50, `${id} xPercent`);
+    assert.equal(cache.yPercent, -50, `${id} yPercent`);
+    assert(
+      Math.abs(center[0]! - 960 - x) < 0.1 && Math.abs(center[1]! - 540 - y) < 0.1,
+      `${id} ${center}`,
+    );
+  };
+  await centered("target");
+  await centered("sheet");
+  await centered("origin");
+  await centered("boxed", 0, 0);
+  await frame.evaluate(() => {
+    const gsap = window.gsap!;
+    gsap.getProperty(document.getElementById("read")!, "y");
+    gsap.set("#read", { x: 40, y: 20 });
+    gsap.quickSetter(document.getElementById("quick")!, "y", "px")(20);
+    gsap.set("#quick", { x: 40 });
+  });
+  await centered("read");
+  await centered("quick");
   await frame.evaluate(() => window.__timelines.main.seek(4));
   assert.equal((await read("lazy")).cache.yPercent, -50, "lazy tween preserves centering");
   assert.equal((await read("explicit")).cache.xPercent, 25);
@@ -34,9 +69,11 @@ try {
   assert.equal((await read("pixels")).cache.yPercent, 0, "pixel translation stays pixels");
   assert.equal((await read("combined")).cache.xPercent, -70);
   assert.equal((await read("combined")).cache.yPercent, -60);
-  const content = await read("content");
-  assert.equal(content.cache.yPercent, -50);
-  assert(Math.abs(content.top - 446.5) < 0.1, `content-box top ${content.top}`);
+  assert.equal(
+    (await read("mover")).cache.x,
+    250,
+    "a hidden layer's tween keeps the timeline rendering",
+  );
   assert.equal(
     await frame.evaluate(() => document.getElementById("opacity")!.style.translate),
     "",
@@ -47,9 +84,11 @@ try {
     window.gsap!.core.getCache(target).uncache = 1;
     window.gsap!.set(target, { x: 40, y: 20 });
   });
-  assert.equal((await read("target")).cache.yPercent, -50, "reparse preserves percentages");
+  await centered("target");
+  assert.deepEqual(errors, [], "no composition errors");
   console.log(
-    "GSAP percentage startup, lazy initialization, explicit values, pixels and reparse: PASS",
+    "GSAP percentage centering under zoom: translate, stylesheet transform, origin first, " +
+      "read first, quick setter, lazy tween, hidden layers, explicit, pixels and reparse: PASS",
   );
 } finally {
   await browser.close();

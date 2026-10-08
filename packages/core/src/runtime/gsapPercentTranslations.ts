@@ -21,30 +21,53 @@ export interface GsapTransformInternals {
 
 const installed = new WeakSet<CssPlugin>();
 
-/** The CSS centering translate plus any percentages GSAP already rendered inline. */
-function authoredPercents(target: HTMLElement, style: CSSStyleDeclaration) {
-  const [cssX, cssY] = style.translate.split(/\s+/);
-  const rendered = /^translate\((-?[\d.]+)%,\s*(-?[\d.]+)%\)/.exec(target.style.transform);
-  const axis = (css: string | undefined, inline: string | undefined): number | null => {
-    const centered = css === "-50%" ? -50 : null;
-    return inline === undefined ? centered : Number(inline) + (centered ?? 0);
-  };
-  return { x: axis(cssX, rendered?.[1]), y: axis(cssY, rendered?.[2]) };
+// CSSPlugin parses transforms for these too, but they are not in `aliases.transform`.
+const TRANSFORM_SETTINGS = [
+  "transform",
+  "transformOrigin",
+  "svgOrigin",
+  "force3D",
+  "smoothOrigin",
+  "transformPerspective",
+];
+
+/** Percent part of one computed translate length: "-50%" is -50, "12px" is 0, calc() is NaN. */
+function percentOf(length: string): number {
+  if (length.endsWith("%")) return Number(length.slice(0, -1));
+  return length.endsWith("px") ? 0 : Number.NaN;
 }
 
-/** The box CSS percentages in `translate` resolve against, per `transform-box`. */
-function referenceSize(style: CSSStyleDeclaration, dimension: "width" | "height"): number {
+/** Authored percentages of the CSS `translate` plus the leading translates of `transform`. */
+function authoredPercents(target: HTMLElement, style: CSSStyleDeclaration): [number, number] {
+  let x = 0;
+  let y = 0;
+  if (style.translate !== "none") {
+    const [lengthX = "0px", lengthY = "0px"] = style.translate.split(" ");
+    x += percentOf(lengthX);
+    y += percentOf(lengthY);
+  }
+  // Only Typed OM keeps a stylesheet transform's percentages; without it GSAP parses as before.
+  const transform = target.computedStyleMap?.().get("transform");
+  if (transform && transform instanceof CSSTransformValue)
+    for (const component of transform) {
+      if (!(component instanceof CSSTranslate)) break;
+      x += percentOf(String(component.x));
+      y += percentOf(String(component.y));
+    }
+  return [x, y];
+}
+
+/** The border box, which Chrome resolves translate percentages against in the matrix. */
+function borderBoxSize(style: CSSStyleDeclaration, dimension: "width" | "height"): number {
+  const size = Number.parseFloat(style[dimension]);
+  if (style.boxSizing === "border-box") return size;
   const sides = dimension === "width" ? ["left", "right"] : ["top", "bottom"];
   let edges = 0;
   for (const side of sides)
     edges +=
       Number.parseFloat(style.getPropertyValue(`padding-${side}`)) +
       Number.parseFloat(style.getPropertyValue(`border-${side}-width`));
-  const content =
-    Number.parseFloat(style[dimension]) - (style.boxSizing === "border-box" ? edges : 0);
-  return style.transformBox === "content-box" || style.transformBox === "fill-box"
-    ? content
-    : content + edges;
+  return size + edges;
 }
 
 /** Move GSAP's inferred percentage back to the authored one, keeping the rendered position. */
@@ -57,9 +80,10 @@ function restoreAxis(
 ): void {
   const percent = position === "x" ? "xPercent" : "yPercent";
   const inferred = cache[percent];
-  if (inferred === authored) return;
+  // An unreadable authored value or no layout box (display:none, inline) leaves GSAP's parse.
+  if (inferred === authored || !Number.isFinite(authored) || !Number.isFinite(size)) return;
   const pixels = Number.parseFloat(cache[position] ?? "");
-  if (!Number.isFinite(pixels) || !Number.isFinite(size) || !Number.isFinite(inferred))
+  if (!Number.isFinite(pixels) || !Number.isFinite(inferred))
     throw new Error("GSAP CSS transform cache no longer matches the percentage adapter");
   cache[position] = `${pixels + (offsetSize * inferred! - size * authored) / 100}px`;
   cache[percent] = authored;
@@ -71,7 +95,7 @@ export function installGsapPercentTranslations(gsap: GsapTransformInternals): vo
   const core = gsap.core;
   if (!css || !core || installed.has(css)) return;
   const get = css.get;
-  const transformProperties = new Set(css.aliases.transform.split(","));
+  const transformProperties = new Set([...css.aliases.transform.split(","), ...TRANSFORM_SETTINGS]);
   for (const [alias, properties] of Object.entries(css.aliases))
     if (properties.split(",").some((property) => transformProperties.has(property)))
       transformProperties.add(alias);
@@ -82,13 +106,11 @@ export function installGsapPercentTranslations(gsap: GsapTransformInternals): vo
     const view = target.ownerDocument.defaultView;
     if (!view) return;
     const style = view.getComputedStyle(target);
-    const { x, y } = authoredPercents(target, style);
-    if (x === null && y === null) return;
-    const width = referenceSize(style, "width");
-    const height = referenceSize(style, "height");
+    const [x, y] = authoredPercents(target, style);
+    if (x === 0 && y === 0) return;
     get.call(css, target, "x");
-    if (x !== null) restoreAxis(cache, "x", x, width, target.offsetWidth);
-    if (y !== null) restoreAxis(cache, "y", y, height, target.offsetHeight);
+    restoreAxis(cache, "x", x, borderBoxSize(style, "width"), target.offsetWidth);
+    restoreAxis(cache, "y", y, borderBoxSize(style, "height"), target.offsetHeight);
   };
   const wrap = (call: PluginCall, properties: (args: unknown[]) => string[]): PluginCall =>
     function (target, ...args) {
