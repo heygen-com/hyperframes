@@ -123,8 +123,9 @@ const ALLOW = new Set([
   ...REACT_DOM_EXPORTS,
 ]);
 
-// Files a skill workflow writes into the user's project at run time; skill docs name them bare.
+// Files a skill workflow writes into the user's project at run time, as skill docs name them.
 const PROJECT_FILES = new Set([
+  "capture/pr.json",
   "frame.md",
   "STORYBOARD.md",
   "SCRIPT.md",
