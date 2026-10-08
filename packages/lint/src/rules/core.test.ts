@@ -37,6 +37,45 @@ function portraitCompositionWithScaffold(bodyCss: string, viewportContent: strin
 </html>`;
 }
 
+describe("inline script syntax attribute semantics", () => {
+  it.each([
+    ["type=module", `import value from "pkg"; await value;`],
+    ['TYPE="module"', `import value from "pkg"; await value;`],
+    ['type=" MODULE "', `import value from "pkg"; await value;`],
+    ['type="mod&#117;le"', `import value from "pkg"; await value;`],
+    ["type=application/json", `{"value":1}`],
+    ["type=importmap", `{"imports":{"pkg":"./pkg.js"}}`],
+    ["type=application/hyperframes-slideshow+json", `{"slides":[]}`],
+    ['type="module" type="text/javascript"', `import value from "pkg"; await value;`],
+  ])("recognizes the exempt script type in %s", async (attrs, content) => {
+    const result = await lintHyperframeHtml(`<script ${attrs}>${content}</script>`);
+    expect(result.findings.filter((f) => f.code === "invalid_inline_script_syntax")).toEqual([]);
+  });
+
+  it.each([
+    'data-type="module"',
+    'data-src="external.js"',
+    `data-note='type="module"'`,
+    `data-note='src="external.js"'`,
+    `data-note=">" data-src="external.js"`,
+    'type="text/javascript" type="module"',
+    'type=""',
+  ])("checks classic inline syntax despite metadata in %s", async (attrs) => {
+    const result = await lintHyperframeHtml(`<script ${attrs}>const = broken;</script>`);
+    expect(result.findings.filter((f) => f.code === "invalid_inline_script_syntax")).toHaveLength(
+      1,
+    );
+  });
+
+  it.each(['src="external.js"', 'SRC="external.js"', "src"])(
+    "skips inline text when a real external src attribute is present: %s",
+    async (attrs) => {
+      const result = await lintHyperframeHtml(`<script ${attrs}>const = broken;</script>`);
+      expect(result.findings.filter((f) => f.code === "invalid_inline_script_syntax")).toEqual([]);
+    },
+  );
+});
+
 describe("core rules", () => {
   it("does not lint scripts embedded inside an iframe srcdoc attribute", async () => {
     const html = `
