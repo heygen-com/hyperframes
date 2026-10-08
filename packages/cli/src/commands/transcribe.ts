@@ -86,7 +86,8 @@ export default defineCommand({
     },
     to: {
       type: "string",
-      description: "Export transcript sidecar format: srt or vtt",
+      description:
+        "Write an srt or vtt caption sidecar: exported from a transcript file, or written after transcribing audio/video",
     },
     output: {
       type: "string",
@@ -138,8 +139,7 @@ export default defineCommand({
 
     // ── Import mode: convert existing transcript ──────────────────────────
     const isImport = ext === ".json" || ext === ".srt" || ext === ".vtt";
-    const to = parseExportFormat(args.to, args.json);
-    const sidecar = to && { to, output: args.output, preserveCues: args["preserve-cues"] };
+    const sidecar = parseSidecar(args);
 
     if (sidecar && isImport) {
       return exportTranscript(inputPath, dir, sidecar, args.json);
@@ -208,6 +208,20 @@ function parseExportFormat(
   failWith(`Unsupported caption export format: ${value}. Use srt or vtt.`, json);
 }
 
+function parseSidecar(args: {
+  to?: string;
+  output?: string;
+  "preserve-cues": boolean;
+  json: boolean;
+}): CaptionSidecar | undefined {
+  const to = parseExportFormat(args.to, args.json);
+  if (!to) return undefined;
+  if (args.output && !existsSync(dirname(resolve(args.output)))) {
+    failWith(`Output folder not found: ${dirname(resolve(args.output))}`, args.json);
+  }
+  return { to, output: args.output, preserveCues: args["preserve-cues"] };
+}
+
 // ---------------------------------------------------------------------------
 // Import existing transcript
 // ---------------------------------------------------------------------------
@@ -245,14 +259,14 @@ async function writeCaptionSidecar(
   words: Word[],
   dir: string,
   { to, output, preserveCues }: CaptionSidecar,
-  phraseLevelSource = false,
+  phraseLevelSource: boolean | undefined,
 ): Promise<string> {
   const { formatSrt, formatVtt } = await import("../whisper/normalize.js");
   // A .srt/.vtt source is already phrase-level; keep its cue boundaries 1:1.
   // --preserve-cues forces the same for an already-cued transcript.json whose
   // entries have no internal whitespace (single-word or CJK captions), which
   // the automatic whitespace heuristic in wordsToCues can't detect.
-  const preGrouped = preserveCues || phraseLevelSource || undefined;
+  const preGrouped = preserveCues || phraseLevelSource;
   const outPath = resolve(output ?? join(dir, `transcript.${to}`));
   const content =
     to === "srt" ? formatSrt(words, { preGrouped }) : formatVtt(words, { preGrouped });
@@ -281,7 +295,7 @@ async function exportTranscript(
     words,
     dir,
     sidecar,
-    format === "srt" || format === "vtt",
+    format === "srt" || format === "vtt" || undefined,
   );
 
   if (json) {
@@ -439,7 +453,7 @@ async function transcribeAudio(
     patchCaptionHtml(dir, words);
     const exported = opts.sidecar && {
       format: opts.sidecar.to,
-      outputPath: await writeCaptionSidecar(words, dir, opts.sidecar),
+      outputPath: await writeCaptionSidecar(words, dir, opts.sidecar, false),
     };
 
     if (opts.json) {

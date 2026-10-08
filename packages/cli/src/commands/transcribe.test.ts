@@ -586,6 +586,10 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       dirs.push(dir);
       await transcribeCmd.run!({ args: { input, json: true, engine: "auto" } } as never);
       expect(lastJson()).toMatchObject({ ok: true, engine: "parakeet", wordCount: 0 });
+
+      await transcribeCmd.run!({ args: { input, json: true, engine: "auto", to: "srt" } } as never);
+      expect(lastJson()).toMatchObject({ ok: true, wordCount: 0, format: "srt" });
+      expect(readFileSync(join(dir, "transcript.srt"), "utf-8")).toBe("");
     });
 
     it.runIf(process.platform === "linux" && process.arch === "x64")(
@@ -662,6 +666,24 @@ Render video. Built for agents.
     expect(JSON.parse(readFileSync(join(dir, "transcript.json"), "utf8"))).toEqual(words);
     expect(console.log).toHaveBeenCalledTimes(1);
     expect(lastJson()).toMatchObject({ ok: true, wordCount: 2, format: "vtt", outputPath });
+  });
+
+  it("fails on a missing --output folder before transcribing", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const output = join(dir, "missing", "captions.srt");
+
+    await expect(
+      transcribeCmd.run!({
+        args: { input, json: true, engine: "whisper", to: "srt", output },
+      } as never),
+    ).rejects.toThrow(CliRuntimeError);
+
+    expect(transcribeMock).not.toHaveBeenCalled();
+    expect(lastJson()).toEqual({
+      ok: false,
+      error: `Output folder not found: ${join(dir, "missing")}`,
+    });
   });
 
   it("rejects a below-minimum --timeout with a discoverable error", async () => {
