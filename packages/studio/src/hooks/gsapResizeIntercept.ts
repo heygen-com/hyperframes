@@ -170,12 +170,12 @@ function tweenUsesScaleLonghands(anim: GsapAnimation | null): boolean {
 
 // ── Resize intercept ──────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 // The resize is centre-anchored, so a scale that cannot reproduce the dragged size splits the gap evenly.
 function rectCentre(rect: DOMRect): { x: number; y: number } {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
+// fallow-ignore-next-line complexity
 export async function tryGsapResizeIntercept(
   selection: DomEditSelection,
   size: { width: number; height: number },
