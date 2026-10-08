@@ -279,6 +279,23 @@ describe("HyperframesRenderStack — snapshot", () => {
     }
   });
 
+  it("keeps same-named Lambda tasks in different branches apart", () => {
+    const task = (format: string) => ({
+      Type: "Task",
+      Resource: "arn:aws:states:::lambda:invoke",
+      Parameters: { Payload: { Action: "renderChunk", Format: format } },
+    });
+    const branch = (format: string) => ({
+      StartAt: "RenderChunk",
+      States: { RenderChunk: task(format) },
+    });
+    const tasks = lambdaTasks({
+      Fan: { Type: "Parallel", Branches: [branch("mp4"), branch("webm")] },
+    });
+    expect(Object.keys(tasks).sort()).toEqual(["Fan/0/RenderChunk", "Fan/1/RenderChunk"]);
+    expect(sentPayload(tasks["Fan/1/RenderChunk"]).Format).toBe("webm");
+  });
+
   it("materializes null audio in the synthesized CDK v2 assembly payload", () => {
     const state = requireRecord(SYNTHED.definition.States.AssembleV2, "AssembleV2 state");
     const parameters = requireRecordProperty(state, "Parameters", "AssembleV2 parameters");
@@ -336,23 +353,36 @@ function requireRecordProperty(
 const isLambdaTask = (state: Record<string, unknown>): boolean =>
   state.Type === "Task" && String(state.Resource).endsWith(":states:::lambda:invoke");
 
-/** The state maps nested in a Map processor or Parallel branches. */
-function nestedStates(state: Record<string, unknown>): Record<string, unknown>[] {
-  const branches = Array.isArray(state.Branches) ? state.Branches : [];
-  return [state.Iterator, state.ItemProcessor, ...branches]
-    .filter(isRecord)
-    .map((processor) => processor.States)
-    .filter(isRecord);
+/** The state maps nested in a Map processor or Parallel branches, keyed by their path. */
+function nestedStates(name: string, state: Record<string, unknown>): [string, unknown][] {
+  const processor = isRecord(state.Iterator) ? state.Iterator : state.ItemProcessor;
+  const branches: unknown[] = Array.isArray(state.Branches) ? state.Branches : [];
+  const nested: [string, unknown][] = [
+    [`${name}/`, isRecord(processor) && processor.States],
+    ...branches.map((branch, i): [string, unknown] => [
+      `${name}/${i}/`,
+      isRecord(branch) && branch.States,
+    ]),
+  ];
+  return nested.filter(([, states]) => isRecord(states));
 }
 
-/** Every Lambda-invoking task by state name, including those inside Map and Parallel states. */
-function lambdaTasks(states: Record<string, unknown>): Record<string, unknown> {
+/** Every Lambda-invoking task by its full state path, so same-named tasks in two branches stay apart. */
+function lambdaTasks(states: Record<string, unknown>, path = ""): Record<string, unknown> {
   const records = Object.entries(states).filter(
     (entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]),
   );
   return Object.assign(
-    Object.fromEntries(records.filter(([, state]) => isLambdaTask(state))),
-    ...records.flatMap(([, state]) => nestedStates(state).map(lambdaTasks)),
+    Object.fromEntries(
+      records
+        .filter(([, state]) => isLambdaTask(state))
+        .map(([name, state]) => [path + name, state]),
+    ),
+    ...records.flatMap(([name, state]) =>
+      nestedStates(path + name, state).map(([nestedPath, nested]) =>
+        lambdaTasks(nested as Record<string, unknown>, nestedPath),
+      ),
+    ),
   );
 }
 
