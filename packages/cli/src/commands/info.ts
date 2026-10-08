@@ -8,6 +8,11 @@ export const examples: Example[] = [
 ];
 import { join } from "node:path";
 import { parseHtml, CANVAS_DIMENSIONS } from "@hyperframes/core";
+import {
+  findRootCompositionElement,
+  readCompositionSize,
+} from "@hyperframes/core/runtime/composition-length";
+import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
 import { c } from "../ui/colors.js";
 import { formatBytes, label } from "../ui/format.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -26,11 +31,16 @@ export function orientation(width: number, height: number): "landscape" | "portr
  * fall back to the computed timeline end.
  */
 export function durationFromHtml(html: string, fallback: number): number {
-  const match =
-    html.match(/data-composition-id[^>]*data-duration=["']([\d.]+)["']/) ||
-    html.match(/data-duration=["']([\d.]+)["'][^>]*data-composition-id/);
-  const value = match?.[1] ? parseFloat(match[1]) : NaN;
-  return Number.isFinite(value) ? value : fallback;
+  return durationFromRoot(rootFromHtml(html), fallback);
+}
+
+function rootFromHtml(html: string): HTMLElement | null {
+  ensureDOMParser();
+  return findRootCompositionElement(new DOMParser().parseFromString(html, "text/html"));
+}
+
+function durationFromRoot(root: Element | null, fallback: number): number {
+  return readDataDurationSeconds((name) => root?.getAttribute(name)) ?? fallback;
 }
 
 function totalSize(dir: string): number {
@@ -56,7 +66,7 @@ export default defineCommand({
     const project = resolveProject(args.dir);
     const html = readFileSync(project.indexPath, "utf-8");
 
-    ensureDOMParser();
+    const root = rootFromHtml(html);
     const parsed = parseHtml(html);
 
     const tracks = new Set(parsed.elements.map((el) => el.zIndex));
@@ -64,18 +74,12 @@ export default defineCommand({
       (max, el) => Math.max(max, el.startTime + el.duration),
       0,
     );
-    // Read actual dimensions from root composition element
-    const widthMatch =
-      html.match(/data-composition-id[^>]*data-width=["'](\d+)["']/) ||
-      html.match(/data-width=["'](\d+)["'][^>]*data-composition-id/);
-    const heightMatch =
-      html.match(/data-composition-id[^>]*data-height=["'](\d+)["']/) ||
-      html.match(/data-height=["'](\d+)["'][^>]*data-composition-id/);
+    const dimensions = root ? readCompositionSize(root) : null;
     const fallback = CANVAS_DIMENSIONS[parsed.resolution];
-    const width = widthMatch?.[1] ? parseInt(widthMatch[1], 10) : fallback.width;
-    const height = heightMatch?.[1] ? parseInt(heightMatch[1], 10) : fallback.height;
+    const width = dimensions?.width ?? fallback.width;
+    const height = dimensions?.height ?? fallback.height;
     const resolution = `${width}x${height}`;
-    const duration = durationFromHtml(html, maxEnd);
+    const duration = durationFromRoot(root, maxEnd);
     const size = totalSize(project.dir);
 
     const typeCounts: Record<string, number> = {};
