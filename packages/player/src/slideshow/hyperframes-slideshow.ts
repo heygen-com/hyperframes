@@ -1497,12 +1497,12 @@ export function dropInvalidSlides(show: ResolvedSlideshow): ResolvedSlideshow {
 
   const slides = show.slides.filter(validSlide);
 
-  const sequences: ResolvedSlideshow["sequences"] = {};
+  const sequenceEntries: [string, ResolvedSlideshow["sequences"][string]][] = [];
   for (const [id, seq] of Object.entries(show.sequences)) {
-    sequences[id] = { ...seq, slides: seq.slides.filter(validSlide) };
+    sequenceEntries.push([id, { ...seq, slides: seq.slides.filter(validSlide) }]);
   }
 
-  return { slides, sequences };
+  return { slides, sequences: Object.fromEntries(sequenceEntries) };
 }
 
 function escHtml(s: string): string {

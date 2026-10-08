@@ -2310,6 +2310,24 @@ describe("dropInvalidSlides — phantom slide filtering", () => {
     expect(cleaned.sequences["branch-a"]?.slides[0]?.sceneId).toBe("good");
   });
 
+  it("retains a __proto__ sequence as an own property after filtering its phantom slides", () => {
+    const branch = {
+      id: "__proto__",
+      label: "Deep",
+      slides: [makeSlide("good", 0, 3), makeSlide("phantom", 7, 7)],
+    };
+    const show = {
+      slides: [makeSlide("main", 0, 5)],
+      sequences: Object.fromEntries([[branch.id, branch]]),
+    };
+    const cleaned = dropInvalidSlides(show);
+    expect(Object.keys(cleaned.sequences)).toEqual(["__proto__"]);
+    expect(Object.getPrototypeOf(cleaned.sequences)).toBe(Object.prototype);
+    expect(cleaned.sequences["__proto__"]?.slides.map((slide) => slide.sceneId)).toEqual(["good"]);
+    expect(JSON.parse(JSON.stringify(cleaned)).sequences["__proto__"].label).toBe("Deep");
+    expect(show.sequences["__proto__"]?.slides).toHaveLength(2);
+  });
+
   it("does not mutate the input — original slides array is unchanged", () => {
     const original = [makeSlide("a", 0, 5), makeSlide("phantom", 2, 2)];
     const show = { slides: original, sequences: {} };

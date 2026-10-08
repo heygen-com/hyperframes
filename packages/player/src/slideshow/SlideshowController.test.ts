@@ -2,6 +2,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { SlideshowController } from "./SlideshowController";
 import type { ResolvedSlideshow } from "@hyperframes/core/slideshow";
+import { parseSlideshowManifest, resolveSlideshow } from "@hyperframes/core/slideshow";
+import { dropInvalidSlides } from "./hyperframes-slideshow";
 
 function fakePlayer() {
   let cb: ((t: number) => void) | null = null;
@@ -198,6 +200,41 @@ describe("SlideshowController nextSlide", () => {
 });
 
 describe("SlideshowController branching", () => {
+  it("enters and restores a declared __proto__ branch after parsing and phantom filtering", () => {
+    const html = `<script type="application/hyperframes-slideshow+json">${JSON.stringify({
+      slides: [{ sceneId: "a", startTime: 0, endTime: 5, fragments: [2, 4] }],
+      slideSequences: [
+        {
+          id: "__proto__",
+          label: "Deep",
+          slides: [
+            { sceneId: "c", startTime: 10, endTime: 13 },
+            { sceneId: "missing", startTime: 7 },
+          ],
+        },
+      ],
+    })}</script>`;
+    const manifest = parseSlideshowManifest(html);
+    if (!manifest) throw new Error("manifest expected");
+    const { resolved } = resolveSlideshow(manifest, []);
+    const show = dropInvalidSlides(resolved);
+    const p = fakePlayer();
+    const c = new SlideshowController(p, show);
+    const position = c.position;
+
+    c.enterBranch("__proto__");
+    expect(c.currentSlide?.sceneId).toBe("c");
+    expect(c.counter).toEqual({ index: 1, total: 1 });
+    expect(c.breadcrumb.at(-1)).toEqual({ id: "__proto__", label: "Deep" });
+    expect(p.seek).toHaveBeenLastCalledWith(11.5);
+    c.back();
+    expect(c.position).toEqual(position);
+    expect(p.seek).toHaveBeenLastCalledWith(2);
+    c.syncTo("__proto__", 0, -1);
+    expect(c.currentSlide?.sceneId).toBe("c");
+    expect(p.seek).toHaveBeenLastCalledWith(11.5);
+  });
+
   it("enterBranch pushes onto the stack and enters the branch's first slide", () => {
     const p = fakePlayer();
     const c = new SlideshowController(p, SHOW);
@@ -305,6 +342,18 @@ describe("SlideshowController Fix 8b — back() restores parent fragmentIndex", 
 });
 
 describe("SlideshowController unknown-sequence degradation", () => {
+  it.each(["constructor", "__proto__", "toString"])(
+    "ignores an undeclared prototype-named branch %s without stopping media or changing navigation",
+    (sequenceId) => {
+      const p = fakePlayer();
+      const c = new SlideshowController(p, SHOW);
+      const position = c.position;
+      expect(() => c.enterBranch(sequenceId)).not.toThrow();
+      expect(c.position).toEqual(position);
+      expect(p.stopMedia).not.toHaveBeenCalled();
+    },
+  );
+
   it("enterBranch with an unknown id does not throw and leaves nav state unchanged", () => {
     const p = fakePlayer();
     const c = new SlideshowController(p, SHOW);

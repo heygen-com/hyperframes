@@ -37,7 +37,13 @@ export class SlideshowController {
 
   private slidesOf(sequenceId: string): ResolvedSlide[] {
     if (sequenceId === MAIN) return this.show.slides;
-    return this.show.sequences[sequenceId]?.slides ?? [];
+    return this.sequenceOf(sequenceId)?.slides ?? [];
+  }
+
+  private sequenceOf(sequenceId: string): ResolvedSlideshow["sequences"][string] | undefined {
+    return Object.hasOwn(this.show.sequences, sequenceId)
+      ? this.show.sequences[sequenceId]
+      : undefined;
   }
 
   private get frame(): StackFrame {
@@ -80,7 +86,7 @@ export class SlideshowController {
     return this.stack.map((f) =>
       f.sequenceId === MAIN
         ? { id: MAIN, label: "Main deck" }
-        : { id: f.sequenceId, label: this.show.sequences[f.sequenceId]?.label ?? f.sequenceId },
+        : { id: f.sequenceId, label: this.sequenceOf(f.sequenceId)?.label ?? f.sequenceId },
     );
   }
 
@@ -214,7 +220,7 @@ export class SlideshowController {
   }
 
   enterBranch(sequenceId: string): void {
-    const seq = this.show.sequences[sequenceId];
+    const seq = this.sequenceOf(sequenceId);
     if (!seq || seq.slides.length === 0) return;
     this.stopSlideMedia();
     this.stack.push({ sequenceId, slideIndex: 0, fragmentIndex: -1 });
@@ -254,7 +260,7 @@ export class SlideshowController {
   private isValidSyncTarget(sequenceId: string, slideIndex: number): boolean {
     if (!this.stack[0]) return false;
     const targetSlides =
-      sequenceId === MAIN ? this.show.slides : (this.show.sequences[sequenceId]?.slides ?? null);
+      sequenceId === MAIN ? this.show.slides : (this.sequenceOf(sequenceId)?.slides ?? null);
     if (!targetSlides) return false;
     return slideIndex >= 0 && slideIndex < targetSlides.length;
   }
@@ -275,7 +281,7 @@ export class SlideshowController {
     if (!base) return false;
     this.stack = [base];
     if (sequenceId === MAIN) return true;
-    const seq = this.show.sequences[sequenceId];
+    const seq = this.sequenceOf(sequenceId);
     if (!seq || seq.slides.length === 0) return false;
     this.stack.push({ sequenceId, slideIndex: 0, fragmentIndex: -1 });
     return true;

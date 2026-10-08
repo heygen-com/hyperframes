@@ -107,6 +107,72 @@ describe("resolveSlideshow", () => {
     expect(errors.some((e) => e.includes("nope"))).toBe(true);
   });
 
+  it.each(["constructor", "__proto__", "toString"])(
+    "reports an undeclared prototype-named target %s without throwing",
+    (target) => {
+      const { errors } = resolveSlideshow(
+        { slides: [{ sceneId: "a", hotspots: [{ id: "h1", label: "Go", target }] }] },
+        SCENES,
+      );
+      expect(errors).toEqual([`hotspot "h1" targets unknown sequence "${target}"`]);
+    },
+  );
+
+  it("preserves a declared __proto__ branch as an own serializable sequence", () => {
+    const { resolved, errors } = resolveSlideshow(
+      {
+        slides: [{ sceneId: "a", hotspots: [{ id: "h1", label: "Go", target: "__proto__" }] }],
+        slideSequences: [{ id: "__proto__", label: "Deep", slides: [{ sceneId: "c" }] }],
+      },
+      SCENES,
+    );
+    expect(errors).toEqual([]);
+    expect(Object.keys(resolved.sequences)).toEqual(["__proto__"]);
+    expect(Object.getPrototypeOf(resolved.sequences)).toBe(Object.prototype);
+    expect(JSON.parse(JSON.stringify(resolved)).sequences["__proto__"]).toMatchObject({
+      id: "__proto__",
+      label: "Deep",
+      slides: [{ sceneId: "c", start: 10, end: 13 }],
+    });
+  });
+
+  it("validates hotspots inside a declared __proto__ sequence", () => {
+    const { errors } = resolveSlideshow(
+      {
+        slides: [{ sceneId: "a" }],
+        slideSequences: [
+          {
+            id: "__proto__",
+            label: "Deep",
+            slides: [
+              { sceneId: "c", hotspots: [{ id: "nested", label: "Go", target: "missing" }] },
+            ],
+          },
+        ],
+      },
+      SCENES,
+    );
+    expect(errors).toEqual(['hotspot "nested" targets unknown sequence "missing"']);
+  });
+
+  it("reports duplicate __proto__ sequences and retains the last definition", () => {
+    const { resolved, errors } = resolveSlideshow(
+      {
+        slides: [{ sceneId: "a" }],
+        slideSequences: [
+          { id: "__proto__", label: "First", slides: [{ sceneId: "b" }] },
+          { id: "__proto__", label: "Last", slides: [{ sceneId: "c" }] },
+        ],
+      },
+      SCENES,
+    );
+    expect(errors).toEqual([
+      'duplicate slideSequence id "__proto__" — only the last definition is kept',
+    ]);
+    expect(Object.keys(resolved.sequences)).toEqual(["__proto__"]);
+    expect(resolved.sequences["__proto__"]?.label).toBe("Last");
+  });
+
   it("reports an error for overlapping main-line slides", () => {
     const m: import("./slideshow.types").SlideshowManifest = {
       slides: [

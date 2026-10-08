@@ -161,18 +161,19 @@ export function resolveSlideshow(
   const errors: string[] = [];
   const sceneById = new Map(scenes.map((s) => [s.id, s]));
 
-  const sequences: Record<string, ResolvedSlideSequence> = {};
+  const sequenceById = new Map<string, ResolvedSlideSequence>();
   for (const seq of manifest.slideSequences ?? []) {
     // Flag duplicate sequence ids rather than silently overwriting the earlier one.
-    if (Object.prototype.hasOwnProperty.call(sequences, seq.id)) {
+    if (sequenceById.has(seq.id)) {
       errors.push(`duplicate slideSequence id "${seq.id}" — only the last definition is kept`);
     }
-    sequences[seq.id] = {
+    sequenceById.set(seq.id, {
       id: seq.id,
       label: seq.label,
       slides: seq.slides.map((s) => resolveSlide(s, sceneById, errors)),
-    };
+    });
   }
+  const sequences = Object.fromEntries(sequenceById);
 
   const slides = manifest.slides.map((s) => resolveSlide(s, sceneById, errors));
 
@@ -180,7 +181,7 @@ export function resolveSlideshow(
   const allSlides = [...slides, ...Object.values(sequences).flatMap((s) => s.slides)];
   for (const slide of allSlides) {
     for (const h of slide.hotspots) {
-      const seq = sequences[h.target];
+      const seq = sequenceById.get(h.target);
       if (!seq) {
         errors.push(`hotspot "${h.id}" targets unknown sequence "${h.target}"`);
       } else if (seq.slides.length === 0) {
