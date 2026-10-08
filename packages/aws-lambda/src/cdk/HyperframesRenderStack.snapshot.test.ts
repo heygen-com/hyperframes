@@ -263,6 +263,32 @@ describe("HyperframesRenderStack — snapshot", () => {
     expect(v2).toContain("PlanV2ArtifactS3Prefix");
     expect(v2).not.toContain("PlanS3Uri");
   });
+
+  it("materializes null audio in the synthesized CDK v2 assembly payload", () => {
+    const state = requireRecord(SYNTHED.definition.States.AssembleV2, "AssembleV2 state");
+    const parameters = requireRecordProperty(state, "Parameters", "AssembleV2 parameters");
+    const payload = requireRecordProperty(parameters, "Payload", "AssembleV2 payload");
+
+    expect(payload["AudioS3Uri.$"]).toBe("States.StringToJson('null')");
+    expect(Object.hasOwn(payload, "AudioS3Uri")).toBe(false);
+    expect(payload.PlanProtocol).toBe("v2");
+    expect(payload["PlanV2ManifestS3Uri.$"]).toBe("$.Plan.PlanV2ManifestS3Uri");
+  });
+
+  it("keeps SAM v2 assembly audio null and both v1 audio result paths", () => {
+    const sam = readSamDefinition();
+    const assemble = requireRecord(sam.States.AssembleV2, "SAM AssembleV2 state");
+    const parameters = requireRecordProperty(assemble, "Parameters", "SAM AssembleV2 parameters");
+    const payload = requireRecordProperty(parameters, "Payload", "SAM AssembleV2 payload");
+    expect(payload.AudioS3Uri).toBeNull();
+
+    for (const definition of [SYNTHED.definition, sam]) {
+      const v1 = requireRecord(definition.States.Assemble, "Assemble state");
+      const params = requireRecordProperty(v1, "Parameters", "Assemble parameters");
+      const v1Payload = requireRecordProperty(params, "Payload", "Assemble payload");
+      expect(v1Payload["AudioS3Uri.$"]).toBe("$.Plan.AudioS3Uri");
+    }
+  });
 });
 
 function collectNonRetryableErrors(state: unknown, out: Set<string>): void {
