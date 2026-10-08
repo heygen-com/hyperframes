@@ -2904,7 +2904,7 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
   }
 
   const runnable = (document: Document) =>
-    [...document.querySelectorAll("body script:not([src])")].filter((el) =>
+    [...document.querySelectorAll("body script:not([src]):not([nomodule])")].filter((el) =>
       [null, AFTER_FONTS_SCRIPT_TYPE].includes(el.getAttribute("type")),
     );
   const parses = (el: Element) => {
@@ -2934,16 +2934,113 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
     expect(timelinesThatRun(document)).toEqual(["main", "intro", "scene"]);
   });
 
-  it.each([false, true])(
-    "keeps a sub-composition script that does not parse apart, so the others still run (sceneParts %s)",
-    async (sceneParts) => {
-      const document = await bundleFilm(`<script>window.broken = {:</script>`, { sceneParts });
+  const BROKEN_INLINE = [`<script>window.broken = {:</script>`, {}] as const;
+  const BROKEN_FILE = [
+    `<script src="lib.js"></script>`,
+    { "compositions/lib.js": "export const broken = 1;" },
+  ] as const;
+  it.each([
+    [false, ...BROKEN_INLINE],
+    [true, ...BROKEN_INLINE],
+    [false, ...BROKEN_FILE],
+    [true, ...BROKEN_FILE],
+  ])(
+    "keeps a sub-composition script that does not parse apart, so the others still run (sceneParts %s, %s)",
+    async (sceneParts, extra, files) => {
+      const document = await bundleFilm(extra, { sceneParts }, files);
       const broken = runnable(document).filter((el) => !parses(el));
       expect(broken).toHaveLength(1);
-      expect(broken[0]!.textContent).toContain("window.broken");
+      expect(broken[0]!.textContent).toContain("broken");
       expect(timelinesThatRun(document)).toEqual(["main", "intro", "scene"]);
     },
   );
+
+  it("mounts a JSON data script authored outside the composition root next to it", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="4">
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="page" data-composition-src="compositions/page.html" data-start="2" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <script type="application/json" id="beside">{"where": "template"}</script>
+  <div data-composition-id="scene" data-width="320" data-height="180"></div>
+</template>`,
+      "compositions/page.html": `<!doctype html>
+<html><head><script type="application/json" id="in-head">{"where": "head"}</script></head>
+<body><div data-composition-id="page" data-width="320" data-height="180"></div></body></html>`,
+    });
+    try {
+      const document = parseHTML(await bundleToSingleHtml(dir)).document;
+      const beside = document.querySelector('[data-composition-id="scene"] #beside');
+      const inHead = document.querySelector('[data-composition-id="page"] #in-head');
+      expect(JSON.parse(beside?.textContent ?? "")).toEqual({ where: "template" });
+      expect(JSON.parse(inHead?.textContent ?? "")).toEqual({ where: "head" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not run a sub-composition's nomodule script", async () => {
+    const document = await bundleFilm(`<script nomodule>window.LEGACY_ONLY = 1;</script>`);
+    expect(runnable(document).some((el) => el.textContent?.includes("LEGACY_ONLY"))).toBe(false);
+  });
+
+  it("runs an inline template composition's module script as a module and merges its import map", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <template id="card-template"><div data-composition-id="card" data-width="320" data-height="180">
+    <script type="importmap">{"imports": {"lib": "./lib.js"}}</script>
+    <script type="module">import "lib"; window.CARD_MODULE = 1;</script>
+  </div></template>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    <div data-composition-id="card" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+    });
+    try {
+      const document = parseHTML(await bundleToSingleHtml(dir)).document;
+      expect(runnable(document).some((el) => el.textContent?.includes("CARD_MODULE"))).toBe(false);
+      const modules = [...document.querySelectorAll("script")].filter((el) =>
+        (el.getAttribute("type") ?? "").includes("module"),
+      );
+      expect(modules.some((el) => el.textContent?.includes("CARD_MODULE"))).toBe(true);
+      const map = document.querySelector('script[type="importmap"]');
+      expect(JSON.parse(map?.textContent ?? "{}").imports).toEqual({ lib: "./lib.js" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an inline template composition's JSON data script readable and out of the JavaScript", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <template id="card-template"><div data-composition-id="card" data-width="320" data-height="180">
+    <script type="application/json" id="card-meta">{"title": "x"}</script>
+    <script>window.__timelines = window.__timelines || {}; window.__timelines.card = 1;</script>
+  </div></template>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    <div data-composition-id="card" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+    });
+    try {
+      const document = parseHTML(await bundleToSingleHtml(dir)).document;
+      const meta = document.querySelector('[data-composition-id="card"] #card-meta');
+      expect(meta?.getAttribute("type")).toBe("application/json");
+      expect(JSON.parse(meta?.textContent ?? "")).toEqual({ title: "x" });
+      expect(runnable(document).every(parses)).toBe(true);
+      expect(runnable(document).some((el) => el.textContent?.includes("__timelines.card ="))).toBe(
+        true,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it.each([
     [false, `<script>window.broken = {:</script>`],

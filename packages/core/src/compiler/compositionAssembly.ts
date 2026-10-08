@@ -61,13 +61,20 @@ export function isJavaScriptType(el: AssemblyAttributed): boolean {
   return JAVASCRIPT_TYPES.has(scriptType(el));
 }
 
-/** A data block (application/json, text/template, ...) never runs, so it stays in the content as authored. */
+/** A data block (application/json, text/template, ...) or a nomodule script never runs, so it is mounted as authored. */
 function isExecutableScript(el: AssemblyAttributed): boolean {
+  if (el.getAttribute("nomodule") !== null) return false;
   const type = scriptType(el);
   return type === "module" || type === "importmap" || JAVASCRIPT_TYPES.has(type);
 }
 
-function executableScripts<TElement extends AssemblyAttributed>(
+function inertScripts<TElement extends AssemblyAttributed>(
+  node: AssemblyQueryable<TElement> | null | undefined,
+): TElement[] {
+  return toArray(node?.querySelectorAll(SCRIPT_SELECTOR)).filter((el) => !isExecutableScript(el));
+}
+
+export function executableScripts<TElement extends AssemblyAttributed>(
   node: AssemblyQueryable<TElement> | null | undefined,
 ): TElement[] {
   return toArray(node?.querySelectorAll(SCRIPT_SELECTOR)).filter(isExecutableScript);
@@ -183,6 +190,9 @@ export interface CompositionAssemblyPlan<TElement extends AssemblyAttributed> {
   /** Head and content links to hoist into the host document. */
   linkSources: TElement[];
 
+  /** Inert scripts the mounted root would leave behind; both paths mount them next to it. */
+  inertScriptsOutsideRoot: TElement[];
+
   /**
    * Nodes that may declare the composition's variable defaults, in precedence
    * order — later wins. Full-document compositions declare on `<html>`;
@@ -206,9 +216,9 @@ function toArray<TElement>(items: Iterable<TElement> | null | undefined): TEleme
  * how it is identified. Pure: it reads attributes and runs selectors, and does
  * not mutate, fetch, or touch a filesystem.
  */
-export function planCompositionAssembly<TElement extends AssemblyAttributed>(
-  input: CompositionAssemblyInput<TElement>,
-): CompositionAssemblyPlan<TElement> {
+export function planCompositionAssembly<
+  TElement extends AssemblyAttributed & AssemblyQueryable<TElement>,
+>(input: CompositionAssemblyInput<TElement>): CompositionAssemblyPlan<TElement> {
   const { contentNode, head, documentElement, hasTemplate, compositionId } = input;
 
   const compositionRoots = toArray(contentNode.querySelectorAll(COMPOSITION_ROOT_SELECTOR));
@@ -224,6 +234,7 @@ export function planCompositionAssembly<TElement extends AssemblyAttributed>(
 
   // A templated composition's <head> belongs to its host page, not to it.
   const assetHead = hasTemplate ? null : (head ?? null);
+  const mountedInert = innerRoot ? inertScripts(innerRoot) : [];
 
   return {
     innerRoot,
@@ -238,6 +249,10 @@ export function planCompositionAssembly<TElement extends AssemblyAttributed>(
     linkSources: [
       ...toArray(head?.querySelectorAll(HOISTED_LINK_SELECTOR)),
       ...toArray(contentNode.querySelectorAll(HOISTED_LINK_SELECTOR)),
+    ],
+    inertScriptsOutsideRoot: [
+      ...inertScripts(assetHead),
+      ...(innerRoot ? inertScripts(contentNode).filter((el) => !mountedInert.includes(el)) : []),
     ],
     variableDefaultCarriers: [documentElement, innerRoot].filter(
       (carrier): carrier is TElement => carrier != null,

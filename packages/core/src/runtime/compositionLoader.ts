@@ -579,6 +579,8 @@ async function mountCompositionContent(params: {
     params.host.innerHTML = params.fallbackBodyInnerHtml;
     stripExtractedCompositionAssets(params.host);
   }
+  for (const el of plan.inertScriptsOutsideRoot)
+    params.host.appendChild(document.importNode(el, true));
 
   // Stash the per-instance variables BEFORE running scripts. The scoped
   // `getVariables()` injected by `compositionScoping.ts` reads from

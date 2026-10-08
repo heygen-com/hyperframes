@@ -1528,6 +1528,29 @@ describe("loadCompositions inline templates", () => {
     expect(JSON.parse(meta?.textContent ?? "")).toEqual({ title: "x" });
   });
 
+  it("mounts a JSON data script authored beside the composition root, and never runs a nomodule script", async () => {
+    const template = document.createElement("template");
+    template.id = "beside-comp-template";
+    template.innerHTML = `
+      <script type="application/json" id="beside">{"where": "template"}</script>
+      <script nomodule>window.__legacyOnly = 1;</script>
+      <div data-composition-id="beside-comp" data-width="1920" data-height="1080"></div>
+    `;
+    document.body.appendChild(template);
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "beside-comp");
+    document.body.appendChild(host);
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(JSON.parse(host.querySelector("#beside")?.textContent ?? "")).toEqual({
+      where: "template",
+    });
+    expect(injectedScripts.some((script) => script.textContent?.includes("__legacyOnly"))).toBe(
+      false,
+    );
+  });
+
   it("copies dimension attributes from template inner root to host", async () => {
     const template = document.createElement("template");
     template.id = "dim-comp-template";

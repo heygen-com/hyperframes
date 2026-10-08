@@ -641,6 +641,8 @@ export function inlineSubCompositions(
       const bodyHtml = contentDoc.body?.innerHTML || "";
       hostEl.innerHTML = bodyHtml || contentDoc.documentElement?.outerHTML || "";
     }
+    for (const el of plan.inertScriptsOutsideRoot)
+      hostEl.insertAdjacentHTML("beforeend", el.outerHTML);
 
     hostEl.setAttribute("data-composition-file", src);
     hostEl.removeAttribute("data-composition-src");

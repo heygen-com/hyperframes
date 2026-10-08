@@ -907,9 +907,9 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
-  if (!head) return html;
+  if (!head && !body) return html;
 
-  const styleEls = Array.from(head.querySelectorAll("style"));
+  const styleEls = head ? Array.from(head.querySelectorAll("style")) : [];
   const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
   for (const run of styleEls.length > 1 ? headStyleRuns(styleEls) : []) {
     const imports: string[] = [];

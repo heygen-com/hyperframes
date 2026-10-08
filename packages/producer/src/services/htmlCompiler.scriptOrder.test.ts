@@ -141,6 +141,23 @@ describe("compileForRender script order", () => {
     }
   });
 
+  it("merges adjacent inline scripts on a page with no <head>", async () => {
+    const dir = project({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.FIRST_HALF = 1;</script>
+  <script>window.SECOND_HALF = 1;</script>
+</body></html>`,
+    });
+    const { html } = await compileForRender(dir, join(dir, "index.html"), join(dir, ".downloads"), {
+      allowSystemFontCapture: false,
+    });
+    const scripts = [...parseHTML(html).document.querySelectorAll("body script")];
+    const first = scripts.find((el) => el.textContent?.includes("FIRST_HALF"));
+    expect(first?.textContent).toContain("SECOND_HALF");
+  });
+
   describe("composition scripts that are not JavaScript", () => {
     const scene = (id: string, extra: string) => `<template id="${id}-template">
 <div data-composition-id="${id}" data-width="320" data-height="180" data-duration="2">
@@ -151,7 +168,7 @@ describe("compileForRender script order", () => {
     async function compileFilm(sceneExtra: string) {
       const dir = project({
         "index.html": `<!doctype html>
-<html><body>
+<html><head></head><body>
   <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="4">
     <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="2"></div>
     <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="2" data-duration="2"></div>
