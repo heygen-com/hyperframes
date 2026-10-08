@@ -83,6 +83,24 @@ describe("detectFormat", () => {
 });
 
 describe("loadTranscript", () => {
+  it.each([
+    ["00:00:01.000", "00:00:03.500", "align:start"],
+    ["00:01.000", "00:03.500", "align:start"],
+    ["00:00:01.000", "00:00:03.500", "line:90% position:50%,center size:80% align:center"],
+    ["00:01.000", "00:03.500", "\tvertical:rl\tline:0"],
+    ["00:00:01.000", "00:00:03.500", "region:captions"],
+  ])("retains VTT end time before cue settings: %s --> %s %s", (start, end, settings) => {
+    const source = `WEBVTT\n\nfirst\n${start} --> ${end} ${settings}\nFirst phrase\n\nsecond\n00:04.000 --> 00:06.000\nSecond phrase\n`;
+    const { words } = loadTranscript(tmpFile("settings.vtt", source));
+    expect(words).toEqual([
+      { text: "First phrase", start: 1, end: 3.5, id: "w0" },
+      { text: "Second phrase", start: 4, end: 6, id: "w1" },
+    ]);
+    expect(formatSrt(words, { preGrouped: true })).toBe(
+      "1\n00:00:01,000 --> 00:00:03,500\nFirst phrase\n\n2\n00:00:04,000 --> 00:00:06,000\nSecond phrase\n",
+    );
+  });
+
   it("reads an empty word list as a transcript with no words", () => {
     expect(loadTranscript(tmpFile("transcript.json", "[]"))).toEqual({
       words: [],

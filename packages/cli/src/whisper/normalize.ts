@@ -266,8 +266,9 @@ function parseSrtTimestamp(ts: string): number {
 
 /** Parse VTT timestamp: 00:01:23.456 or 01:23.456 → seconds */
 function parseVttTimestamp(ts: string): number {
-  const parts = ts.split(":");
-  if (parts.length === 3) return parseSrtTimestamp(ts);
+  const timestamp = ts.split(/[ \t]+/, 1)[0] ?? "";
+  const parts = timestamp.split(":");
+  if (parts.length === 3) return parseSrtTimestamp(timestamp);
   // MM:SS.mmm
   if (parts.length === 2) {
     const [min, secMs] = parts;
