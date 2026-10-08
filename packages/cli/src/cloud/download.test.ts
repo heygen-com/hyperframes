@@ -10,8 +10,10 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { downloadToFile } from "./download.js";
 
@@ -50,6 +52,112 @@ describe("cloud/download", () => {
     const written = readFileSync(dest);
     expect(written.equals(Buffer.from(payload))).toBe(true);
     expect(statSync(dest).size).toBe(payload.length);
+  });
+
+  it.each([
+    { encoding: "gzip", encode: gzipSync },
+    { encoding: "x-gzip", encode: gzipSync },
+    { encoding: "GZip", encode: gzipSync },
+    { encoding: "deflate", encode: deflateSync },
+    { encoding: "br", encode: brotliCompressSync },
+    { encoding: "gzip, br", encode: (bytes: Buffer) => brotliCompressSync(gzipSync(bytes)) },
+    { encoding: "identity", encode: (bytes: Buffer) => bytes, totalKnown: true },
+    { encoding: "custom", encode: (bytes: Buffer) => bytes },
+  ])(
+    "downloads a $encoding response using the real fetch client",
+    async ({ encoding, encode, totalKnown }) => {
+      const payload = Buffer.from("rendered bytes ".repeat(128));
+      const encoded = encode(payload);
+      const server = createServer((_request, response) => {
+        response.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-encoding": encoding,
+          "content-length": encoded.byteLength,
+        });
+        response.end(encoded);
+      });
+      try {
+        await new Promise<void>((resolve) => {
+          server.listen(0, "127.0.0.1", resolve);
+        });
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("Missing server address");
+        const dest = join(dir, "out.mp4");
+        const progress: { bytes: number; total: number | undefined }[] = [];
+        const result = await downloadToFile(`http://127.0.0.1:${address.port}/out.mp4`, dest, {
+          onProgress: (bytes, total) => progress.push({ bytes, total }),
+        });
+        expect(result.bytes).toBe(payload.byteLength);
+        expect(readFileSync(dest)).toEqual(payload);
+        expect(progress.at(-1)).toEqual({
+          bytes: payload.byteLength,
+          total: totalKnown ? payload.byteLength : undefined,
+        });
+        expect(readdirSync(dir)).toEqual(["out.mp4"]);
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    },
+  );
+
+  it.each(["truncated", "cancelled"])(
+    "preserves the old output when a gzip download is %s",
+    async (failure) => {
+      const payload = Buffer.from("rendered bytes ".repeat(5000));
+      const encoded = gzipSync(payload);
+      const server = createServer((_request, response) => {
+        response.writeHead(200, {
+          "content-encoding": "gzip",
+          "content-length": encoded.byteLength,
+          connection: "close",
+        });
+        response.end(
+          failure === "truncated" ? encoded.subarray(0, encoded.byteLength - 8) : encoded,
+        );
+      });
+      try {
+        await new Promise<void>((resolve) => {
+          server.listen(0, "127.0.0.1", resolve);
+        });
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("Missing server address");
+        const dest = join(dir, "out.mp4");
+        writeFileSync(dest, "previous render");
+        const controller = new AbortController();
+        const reason = new Error("cancel gzip download");
+        const downloading = downloadToFile(`http://127.0.0.1:${address.port}/out.mp4`, dest, {
+          signal: controller.signal,
+          onProgress: () => {
+            if (failure === "cancelled") controller.abort(reason);
+          },
+        });
+        if (failure === "cancelled") await expect(downloading).rejects.toBe(reason);
+        else await expect(downloading).rejects.toThrow();
+        expect(readFileSync(dest, "utf8")).toBe("previous render");
+        expect(readdirSync(dir)).toEqual(["out.mp4"]);
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    },
+  );
+
+  it("checks the length of an identity response", async () => {
+    const dest = join(dir, "truncated.bin");
+    await expect(
+      downloadToFile("https://example/x", dest, {
+        fetchImpl: makeBytesFetch(new Uint8Array(10), {
+          "content-encoding": "identity",
+          "content-length": "20",
+        }),
+      }),
+    ).rejects.toThrow(/Truncated download/);
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it("creates the destination's parent directory if missing", async () => {

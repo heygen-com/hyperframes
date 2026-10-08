@@ -6,11 +6,10 @@
  * That's why this lives separate from the cloud client: the client
  * threads auth headers, the download path explicitly does NOT.
  *
- * Failure behavior is "all or nothing": on any error we (1) listen for
- * stream errors / aborts so awaits resolve promptly instead of hanging,
- * (2) verify the final byte count matches `content-length` when the
- * server supplied one, and (3) discard the private staged output. An
- * existing destination is replaced only after the download succeeds.
+ * Failure behavior is "all or nothing": stream errors and aborts reject
+ * promptly, response lengths are checked for unencoded bodies, and private
+ * staged output is discarded on failure. An existing destination is
+ * replaced only after the download succeeds.
  */
 
 import {
@@ -66,7 +65,12 @@ export async function downloadToFile(
 
   const totalHeader = res.headers.get("content-length");
   const total = totalHeader ? Number.parseInt(totalHeader, 10) : undefined;
-  const totalOpt = total !== undefined && Number.isFinite(total) ? total : undefined;
+  // Content-Length describes encoded bytes, which can differ from fetch's decoded body.
+  const encoded = res.headers
+    .get("content-encoding")
+    ?.split(",")
+    .some((coding) => coding.trim().toLowerCase() !== "identity");
+  const totalOpt = !encoded && total !== undefined && Number.isFinite(total) ? total : undefined;
 
   // Writes through a caller-selected symlink, as before.
   const destination = resolveWritePath(destPath);
