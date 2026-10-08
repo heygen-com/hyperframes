@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
+import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   captureVideoManifest,
@@ -37,6 +38,91 @@ afterEach(() => {
 });
 
 describe("Lottie capture budget", () => {
+  it("keeps saved embedded-image animations in the manifest above the preview limit", async () => {
+    const dir = tempDir();
+    const lottieDir = join(dir, "assets", "lottie");
+    mkdirSync(join(dir, "extracted"), { recursive: true });
+    const pixels = Buffer.alloc(800 * 800 * 3);
+    let seed = 73129;
+    for (let i = 0; i < pixels.length; i++) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      pixels[i] = seed & 255;
+    }
+    const image = await sharp(pixels, { raw: { width: 800, height: 800, channels: 3 } })
+      .png()
+      .toBuffer();
+    const data = {
+      v: "5.12.2",
+      nm: "Embedded image",
+      w: 800,
+      h: 800,
+      fr: 30,
+      ip: 0,
+      op: 90,
+      assets: [
+        {
+          id: "image",
+          w: 800,
+          h: 800,
+          u: "",
+          p: `data:image/png;base64,${image.toString("base64")}`,
+          e: 1,
+        },
+      ],
+      layers: [
+        {
+          ty: 2,
+          ind: 1,
+          refId: "image",
+          sr: 1,
+          ks: {
+            o: { a: 0, k: 100 },
+            r: { a: 0, k: 0 },
+            p: { a: 0, k: [400, 400, 0] },
+            a: { a: 0, k: [400, 400, 0] },
+            s: { a: 0, k: [100, 100, 100] },
+          },
+          ip: 0,
+          op: 90,
+          st: 0,
+          bm: 0,
+        },
+      ],
+    };
+    expect(
+      await saveLottieAnimations(
+        [{ url: "https://public.example/photo.json", data }],
+        lottieDir,
+        dir,
+      ),
+    ).toBe(1);
+    const saved = readFileSync(join(lottieDir, "animation-0.json"), "utf8");
+    expect(Buffer.byteLength(saved)).toBeGreaterThan(2_000_000);
+    const newPage = vi.fn();
+    const browser = { newPage } as unknown as Browser;
+
+    await renderLottiePreviews(browser, lottieDir, dir);
+
+    expect(newPage).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(readFileSync(join(dir, "extracted", "lottie-manifest.json"), "utf8")),
+    ).toEqual([
+      {
+        file: "assets/lottie/animation-0.json",
+        name: "Embedded image",
+        width: 800,
+        height: 800,
+        duration: 3,
+        frameRate: 30,
+        layers: 1,
+      },
+    ]);
+    expect(readdirSync(join(lottieDir, "previews"))).toEqual([]);
+    expect(readFileSync(join(lottieDir, "animation-0.json"), "utf8")).toBe(saved);
+  });
+
   it("does not start another Lottie fetch after the live budget expires", async () => {
     const dir = tempDir();
     let remainingMs = 10_000;

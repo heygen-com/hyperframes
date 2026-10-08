@@ -147,56 +147,56 @@ export async function renderLottiePreviews(
       // Render a mid-frame thumbnail using Puppeteer + lottie-web
       // Skip huge Lottie files for preview (CDP has a ~256MB message limit)
       const fileSize = statSync(join(lottieDir, file)).size;
-      if (fileSize > 2_000_000) continue;
-
-      let previewPage;
-      try {
-        if (liveRemainingMs(budget, 1) <= 0) break;
-        previewPage = await chromeBrowser.newPage();
-        if (liveRemainingMs(budget, 1) <= 0) break;
-        await guardLottiePreviewRequests(previewPage);
-        await previewPage.setViewport({ width: 400, height: 400 });
-        const animData = JSON.parse(readFileSync(join(lottieDir, file), "utf-8"));
-        const midFrame = Math.floor(((raw.op || 0) - (raw.ip || 0)) * 0.3);
-        // Load the shell page first (no untrusted data in the HTML)
-        await previewPage.setContent(
-          `<!DOCTYPE html>
+      if (fileSize <= 2_000_000) {
+        let previewPage;
+        try {
+          if (liveRemainingMs(budget, 1) <= 0) break;
+          previewPage = await chromeBrowser.newPage();
+          if (liveRemainingMs(budget, 1) <= 0) break;
+          await guardLottiePreviewRequests(previewPage);
+          await previewPage.setViewport({ width: 400, height: 400 });
+          const animData = JSON.parse(readFileSync(join(lottieDir, file), "utf-8"));
+          const midFrame = Math.floor(((raw.op || 0) - (raw.ip || 0)) * 0.3);
+          // Load the shell page first (no untrusted data in the HTML)
+          await previewPage.setContent(
+            `<!DOCTYPE html>
 <html><head>
 <script src="${LOTTIE_RUNTIME_URL}"></script>
 <style>*{margin:0;padding:0;background:transparent}#c{width:400px;height:400px}</style>
 </head><body><div id="c"></div></body></html>`,
-          { waitUntil: "load", timeout: 10000 },
-        );
-        // Pass animation data safely via parameterized evaluate (no string interpolation)
-        await previewPage.evaluate(
-          (data: unknown, frame: number) => {
-            const a = (window as any).lottie.loadAnimation({
-              container: document.getElementById("c"),
-              renderer: "svg",
-              loop: false,
-              autoplay: false,
-              animationData: data,
-            });
-            a.addEventListener("DOMLoaded", () => {
-              a.goToAndStop(frame, true);
-              (window as any).__READY = true;
-            });
-          },
-          animData,
-          midFrame,
-        );
-        await previewPage
-          .waitForFunction(() => (window as any).__READY === true, { timeout: 5000 })
-          .catch(() => {});
-        if (liveRemainingMs(budget, 1) > 0) {
-          const shot = await previewPage.screenshot({ type: "png", omitBackground: true });
-          writeCaptureFileSync(join(previewDir, previewName), shot);
-          preview = `assets/lottie/previews/${previewName}`;
+            { waitUntil: "load", timeout: 10000 },
+          );
+          // Pass animation data safely via parameterized evaluate (no string interpolation)
+          await previewPage.evaluate(
+            (data: unknown, frame: number) => {
+              const a = (window as any).lottie.loadAnimation({
+                container: document.getElementById("c"),
+                renderer: "svg",
+                loop: false,
+                autoplay: false,
+                animationData: data,
+              });
+              a.addEventListener("DOMLoaded", () => {
+                a.goToAndStop(frame, true);
+                (window as any).__READY = true;
+              });
+            },
+            animData,
+            midFrame,
+          );
+          await previewPage
+            .waitForFunction(() => (window as any).__READY === true, { timeout: 5000 })
+            .catch(() => {});
+          if (liveRemainingMs(budget, 1) > 0) {
+            const shot = await previewPage.screenshot({ type: "png", omitBackground: true });
+            writeCaptureFileSync(join(previewDir, previewName), shot);
+            preview = `assets/lottie/previews/${previewName}`;
+          }
+        } catch {
+          /* preview rendering failed — non-critical */
+        } finally {
+          await previewPage?.close().catch(() => {});
         }
-      } catch {
-        /* preview rendering failed — non-critical */
-      } finally {
-        await previewPage?.close().catch(() => {});
       }
 
       manifest.push({
