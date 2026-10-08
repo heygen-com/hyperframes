@@ -195,6 +195,24 @@ How are you
     ]);
   });
 
+  it.each([
+    ["ALICE: Hello there", "ALICE: Hello there"],
+    ["ALICE: Hello\nBOB: Welcome", "ALICE: Hello BOB: Welcome"],
+    ["Hello there\nALICE: Welcome", "Hello there ALICE: Welcome"],
+    ["ALICE: Hello\nWelcome back", "ALICE: Hello Welcome back"],
+    ["HOST-NAME: Welcome", "HOST-NAME: Welcome"],
+    ["Alice: Hello there", "Alice: Hello there"],
+  ])("preserves the VTT cue payload %j", (payload, text) => {
+    const vtt = `WEBVTT\nX-TIMESTAMP-MAP:LOCAL:00:00:00.000,MPEGTS:900000\n\n00:00:01.000 --> 00:00:03.500\n${payload}\n\n00:00:04.000 --> 00:00:06.000\nHow are you\n`;
+    const { words } = loadTranscript(tmpFile("speaker.vtt", vtt));
+    expect(words).toEqual([
+      { text, start: 1, end: 3.5, id: "w0" },
+      { text: "How are you", start: 4, end: 6, id: "w1" },
+    ]);
+    expect(loadTranscript(tmpFile("speaker-roundtrip.vtt", formatVtt(words))).words).toEqual(words);
+    expect(loadTranscript(tmpFile("speaker-roundtrip.srt", formatSrt(words))).words).toEqual(words);
+  });
+
   it("parses VTT with short timestamps (MM:SS.mmm)", () => {
     const vtt = `WEBVTT
 

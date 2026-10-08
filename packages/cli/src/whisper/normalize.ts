@@ -218,8 +218,7 @@ function parseSrt(content: string): Word[] {
 }
 
 function parseVtt(content: string): Word[] {
-  // Strip the WEBVTT header and any metadata blocks
-  const body = content.replace(/^WEBVTT[^\n]*\n/, "").replace(/^[A-Z-]+:.*\n/gm, "");
+  const body = content.replace(/^WEBVTT[^\n]*\n/, "");
   // VTT is structurally similar to SRT (without numeric indices)
   const blocks = body.trim().split(/\n\n+/);
   const words: Word[] = [];
