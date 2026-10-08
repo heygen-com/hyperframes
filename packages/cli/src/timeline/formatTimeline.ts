@@ -6,7 +6,7 @@ const n = (v: number) => String(Math.round(v * 1000) / 1000);
 function bar(row: TimelineRow, total: number): string {
   if (total <= 0) return " ".repeat(BAR_WIDTH);
   const known = row.durationAuthored || row.duration > 0;
-  const from = Math.min(BAR_WIDTH - 1, Math.floor((row.absStart / total) * BAR_WIDTH));
+  const from = Math.max(0, Math.min(BAR_WIDTH - 1, Math.floor((row.absStart / total) * BAR_WIDTH)));
   const to = known ? (row.absEnd / total) * BAR_WIDTH : BAR_WIDTH;
   const width = Math.max(1, Math.min(BAR_WIDTH, Math.ceil(to)) - from);
   const fill = known ? "█" : "░";
