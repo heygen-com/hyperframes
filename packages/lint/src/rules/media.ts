@@ -3,6 +3,7 @@ import {
   readAttr,
   readDecodedAttr,
   stripJsComments,
+  stripJsCode,
   truncateSnippet,
   isMediaTag,
   hasAttrName,
@@ -230,6 +231,7 @@ function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFin
   if (mediaTags.length === 0 || ctx.scripts.length === 0) return findings;
 
   for (const script of ctx.scripts) {
+    const code = stripJsCode(script.content);
     const mediaVars = new Map<string, string | undefined>();
     const assignmentPatterns = [
       {
@@ -249,6 +251,7 @@ function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFin
     for (const { pattern, variableIndex, targetIndex } of assignmentPatterns) {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(script.content)) !== null) {
+        if (code[match.index] !== script.content[match.index]) continue;
         const variableName = match[variableIndex];
         const target = match[targetIndex];
         if (!variableName || !target) continue;
@@ -261,13 +264,13 @@ function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFin
     const directIdPatterns = [
       {
         pattern:
-          /\b(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)\.play\s*\(/g,
+          /\b(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)\s*(?:\?\.|\.)\s*play\s*(?:\?\.\s*)?\(/g,
         kind: "play()",
         targetIndex: 1,
       },
       {
         pattern:
-          /\b(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)\.pause\s*\(/g,
+          /\b(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)\s*(?:\?\.|\.)\s*pause\s*(?:\?\.\s*)?\(/g,
         kind: "pause()",
         targetIndex: 1,
       },
@@ -285,13 +288,13 @@ function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFin
       },
       {
         pattern:
-          /\b(?:document|window\.document)\.querySelector\(\s*(["'])([\s\S]*?)\1\s*\)\.play\s*\(/g,
+          /\b(?:document|window\.document)\.querySelector\(\s*(["'])([\s\S]*?)\1\s*\)\s*(?:\?\.|\.)\s*play\s*(?:\?\.\s*)?\(/g,
         kind: "play()",
         targetIndex: 2,
       },
       {
         pattern:
-          /\b(?:document|window\.document)\.querySelector\(\s*(["'])([\s\S]*?)\1\s*\)\.pause\s*\(/g,
+          /\b(?:document|window\.document)\.querySelector\(\s*(["'])([\s\S]*?)\1\s*\)\s*(?:\?\.|\.)\s*pause\s*(?:\?\.\s*)?\(/g,
         kind: "pause()",
         targetIndex: 2,
       },
@@ -312,6 +315,7 @@ function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFin
     for (const { pattern, kind, targetIndex } of directIdPatterns) {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(script.content)) !== null) {
+        if (code[match.index] !== script.content[match.index]) continue;
         const target = match[targetIndex];
         if (!target) continue;
         const elementId = mediaIndex.ids.has(target)
@@ -335,8 +339,20 @@ function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFin
     for (const [variableName, elementId] of mediaVars) {
       const escapedVar = escapeRegExp(variableName);
       const variablePatterns = [
-        { pattern: new RegExp(`\\b${escapedVar}\\.play\\s*\\(`, "g"), kind: "play()" },
-        { pattern: new RegExp(`\\b${escapedVar}\\.pause\\s*\\(`, "g"), kind: "pause()" },
+        {
+          pattern: new RegExp(
+            `\\b${escapedVar}\\s*(?:\\?\\.|\\.)\\s*play\\s*(?:\\?\\.\\s*)?\\(`,
+            "g",
+          ),
+          kind: "play()",
+        },
+        {
+          pattern: new RegExp(
+            `\\b${escapedVar}\\s*(?:\\?\\.|\\.)\\s*pause\\s*(?:\\?\\.\\s*)?\\(`,
+            "g",
+          ),
+          kind: "pause()",
+        },
         { pattern: new RegExp(`\\b${escapedVar}\\.currentTime\\s*=`, "g"), kind: "currentTime" },
         {
           pattern: new RegExp(`\\b${escapedVar}\\.muted\\s*=`, "g"),
@@ -346,6 +362,7 @@ function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFin
       for (const { pattern, kind } of variablePatterns) {
         let match: RegExpExecArray | null;
         while ((match = pattern.exec(script.content)) !== null) {
+          if (code[match.index] !== script.content[match.index]) continue;
           findings.push({
             code: "imperative_media_control",
             severity: "error",
