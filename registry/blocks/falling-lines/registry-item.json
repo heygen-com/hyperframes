@@ -1,0 +1,34 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "falling-lines",
+  "type": "hyperframes:block",
+  "title": "Falling Lines",
+  "description": "White lines fall down the frame at varied speeds, each fading into a trail. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "tags": ["webgpu", "webgpu-shader", "background", "texture", "lines", "rain", "monochrome"],
+  "license": "Apache-2.0 AND MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 2,
+  "files": [
+    {
+      "path": "falling-lines.html",
+      "target": "compositions/falling-lines.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "lib/shaders.iife.js",
+      "target": "compositions/lib/shaders.iife.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "target": "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/falling-lines.mp4"
+  }
+}
