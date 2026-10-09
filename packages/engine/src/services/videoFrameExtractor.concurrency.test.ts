@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -12,9 +20,10 @@ vi.mock("os", async (importOriginal) => ({
   cpus: () => [{}, {}],
 }));
 
-const { extractAllVideoFrames } = await import("./videoFrameExtractor.js");
+const { extractAllVideoFrames, extractVideoFramesRange } = await import("./videoFrameExtractor.js");
+const { extractMediaMetadata } = await import("../utils/ffprobe.js");
 
-describe("extractAllVideoFrames ffmpeg concurrency", () => {
+describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg concurrency", () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-extract-concurrency-"));
   const previousFfmpeg = process.env[FFMPEG_PATH_ENV];
   const shim = join(dir, "ffmpeg-shim.sh");
@@ -62,6 +71,7 @@ describe("extractAllVideoFrames ffmpeg concurrency", () => {
         "#!/bin/sh",
         'm="$HF_TEST_SHIM_DIR/running/$$"; : > "$m"',
         'ls "$HF_TEST_SHIM_DIR/running" | wc -l >> "$HF_TEST_SHIM_DIR/alive"',
+        'case "$*" in *held-*) until [ -f "$HF_TEST_SHIM_DIR/release" ] || [ ! -d "$HF_TEST_SHIM_DIR" ]; do sleep 0.05; done ;; esac',
         `"${getFfmpegBinary()}" "$@"; rc=$?`,
         'rm -f "$m"; exit $rc',
       ].join("\n"),
@@ -101,4 +111,36 @@ describe("extractAllVideoFrames ffmpeg concurrency", () => {
     expect(alive).toHaveLength(4);
     expect(Math.max(...alive)).toBeLessThanOrEqual(2);
   }, 60_000);
+
+  it("lets a cancelled extraction leave the queue while another holds the slot", async () => {
+    const [held, queued] = await Promise.all([
+      synth("held-0", "testsrc=s=32x32:d=1:r=10"),
+      synth("queued-0", "testsrc=s=32x32:d=1:r=10,hue=h=90"),
+    ]);
+    await extractMediaMetadata(queued);
+    const run = join(dir, "cancel");
+    mkdirSync(join(run, "running"), { recursive: true });
+    const extract = (id: string, src: string, signal?: AbortSignal) =>
+      extractVideoFramesRange(src, id, 0, 1, { fps: 10, outputDir: run }, signal);
+    process.env.HF_TEST_SHIM_DIR = run;
+    process.env[FFMPEG_PATH_ENV] = shim;
+    try {
+      const holder = extract("held", held);
+      await vi.waitFor(() => expect(readdirSync(join(run, "running"))).toHaveLength(1));
+      const cancel = new AbortController();
+      const cancelled = extract("queued", queued, cancel.signal);
+      await new Promise(setImmediate);
+      cancel.abort();
+      await expect(cancelled).rejects.toThrow(/cancelled/);
+      expect(readFileSync(join(run, "alive"), "utf8").trim()).toBe("1");
+
+      writeFileSync(join(run, "release"), "");
+      expect((await holder).totalFrames).toBe(10);
+    } finally {
+      writeFileSync(join(run, "release"), "");
+      if (previousFfmpeg === undefined) delete process.env[FFMPEG_PATH_ENV];
+      else process.env[FFMPEG_PATH_ENV] = previousFfmpeg;
+      delete process.env.HF_TEST_SHIM_DIR;
+    }
+  }, 30_000);
 });
