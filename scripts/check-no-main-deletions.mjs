@@ -1130,10 +1130,6 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio-server/src/helpers/atomicFile.test.ts",
     "its tests moved with it to packages/core/src/atomicFile.test.ts",
   ],
-  [
-    "packages/cli/src/fileIds.windows.test.ts",
-    "its callers now route through @hyperframes/core/file-identity, whose built output the test's fs mock cannot reach; the collision proof moved to packages/core/src/fileIdentity.test.ts",
-  ],
   ["docs/contracts/2026-10-01-timeline-filmstrip.html", DESIGN_NOTES_REASON],
   ["docs/contracts/2026-10-02-ghost-lane-membership.html", DESIGN_NOTES_REASON],
   ["docs/contracts/2026-10-02-thumbnail-document-lifetime.html", DESIGN_NOTES_REASON],

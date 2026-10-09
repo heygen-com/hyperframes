@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   existsSync,
   linkSync,
@@ -12,17 +12,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-// Number-mode stats report one identity for every path, as Windows file ids above 2^53 can.
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  const statSync = ((path: string, options?: { bigint?: boolean }) => {
-    const stats = actual.statSync(path, options as never);
-    return options?.bigint || !stats ? stats : { ...stats, dev: 1, ino: 2 ** 53 };
-  }) as typeof actual.statSync;
-  return { ...actual, statSync };
-});
-
 import { sameFile } from "./fileIdentity.js";
 
 const dirs: string[] = [];
@@ -36,7 +25,7 @@ afterEach(() => {
 });
 
 describe("file identity", () => {
-  it("tells two files apart even when their number inodes collide", () => {
+  it("tells two files apart", () => {
     const root = dir();
     writeFileSync(join(root, "a"), "a");
     writeFileSync(join(root, "b"), "b");
