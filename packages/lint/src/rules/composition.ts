@@ -11,7 +11,11 @@ import {
   truncateSnippet,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
-import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
+import {
+  COMPOSITION_VARIABLE_TYPES,
+  isCompositionVariable,
+  isSafeMediaUrl,
+} from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
@@ -457,6 +461,17 @@ function variablesDeclarationFindings(
         code: "invalid_composition_variables_declaration",
         severity: "error",
         message: `data-composition-variables entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum, font, image.`,
+        snippet: truncateSnippet(tag.raw),
+      });
+      continue;
+    }
+    if (!isCompositionVariable(e)) {
+      findings.push({
+        code: "invalid_composition_variables_declaration",
+        severity: "error",
+        message: `data-composition-variables entry [${i}] has a default that does not match its type, or an enum without an options array.`,
+        fixHint:
+          "Use number defaults for number variables, boolean defaults for boolean variables, and string defaults for other types. Enum variables also require an options array.",
         snippet: truncateSnippet(tag.raw),
       });
       continue;
