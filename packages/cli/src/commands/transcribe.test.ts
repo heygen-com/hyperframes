@@ -720,14 +720,6 @@ Render video. Built for agents.
       "would overwrite",
     ],
     [
-      "a dangling link to the transcript it is about to write",
-      (dir: string) => {
-        symlinkSync(join(dir, "transcript.json"), join(dir, "dangling.srt"));
-        return join(dir, "dangling.srt");
-      },
-      "would overwrite",
-    ],
-    [
       "the input media by its real path",
       (dir: string) => join(realpathSync(dir), "narration.wav"),
       "would overwrite",
@@ -819,6 +811,24 @@ Render video. Built for agents.
     expect(readFileSync(input, "utf8")).toBe(srt);
   });
 
+  it("says why an export's caption file could not be written", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    const input = join(dir, "subtitles.srt");
+    writeFileSync(input, "1\n00:00:00,000 --> 00:00:01,000\nHello\n");
+    const output = join(dir, "through-file.vtt");
+    symlinkSync(join(input, "x.vtt"), output);
+
+    await expect(
+      transcribeCmd.run!({ args: { input, json: true, to: "vtt", output } } as never),
+    ).rejects.toThrow(CliRuntimeError);
+
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(`The caption file ${output} could not be written: ENOTDIR`),
+    });
+  });
+
   it("fails a trailing -o with no path before transcribing", async () => {
     const { dir, input } = dummyAudio();
     dirs.push(dir);
@@ -829,6 +839,57 @@ Render video. Built for agents.
 
     expect(transcribeMock).not.toHaveBeenCalled();
     expect(lastJson()).toEqual({ ok: false, error: "--output needs a file path" });
+  });
+
+  it.each([
+    [
+      "a link to the transcript it is about to write",
+      (dir: string) => {
+        symlinkSync(join(dir, "transcript.json"), join(dir, "dangling.srt"));
+        return join(dir, "dangling.srt");
+      },
+      "it is the same file as",
+    ],
+    [
+      "a relative link to it inside a linked folder",
+      (dir: string) => {
+        mkdirSync(join(dir, "sub"));
+        symlinkSync("../transcript.json", join(dir, "sub", "cap.srt"));
+        symlinkSync(join(dir, "sub"), join(dir, "lnk"), "dir");
+        return join(dir, "lnk", "cap.srt");
+      },
+      "it is the same file as",
+    ],
+    [
+      "a link that runs through a file",
+      (dir: string) => {
+        symlinkSync(join(dir, "narration.wav", "x.srt"), join(dir, "through-file.srt"));
+        return join(dir, "through-file.srt");
+      },
+      "ENOTDIR",
+    ],
+  ])("keeps the transcript when --output is %s", async (_name, output, reason) => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const transcript = join(dir, "transcript.json");
+    const caption = output(dir);
+    transcribeMock.mockImplementation(async (_input, outputDir) =>
+      fakeTranscript(outputDir, "whisper"),
+    );
+
+    await transcribeCmd.run!({
+      args: { input, json: true, engine: "whisper", to: "srt", output: caption },
+    } as never);
+
+    expect(consumeCommandResult().exitCode).toBe(1);
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        `Transcript saved to ${transcript}, but the caption file ${caption} could not be written: `,
+      ),
+    });
+    expect(lastJson().error).toContain(reason);
+    expect(JSON.parse(readFileSync(transcript, "utf8"))).toMatchObject([{ text: "whisper" }]);
   });
 
   it("says the transcript was saved when the caption file cannot be written", async () => {

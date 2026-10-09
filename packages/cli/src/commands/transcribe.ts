@@ -4,15 +4,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import {
-  existsSync,
-  lstatSync,
-  readlinkSync,
-  realpathSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import {
   PARAKEET_INSTALL_COMMAND,
   PARAKEET_LANGUAGES,
@@ -21,7 +13,13 @@ import {
 } from "../whisper/parakeet.js";
 
 type CaptionExportFormat = "srt" | "vtt";
-type CaptionSidecar = { to: CaptionExportFormat; outPath: string; preserveCues: boolean };
+type CaptionSidecar = {
+  to: CaptionExportFormat;
+  outPath: string;
+  preserveCues: boolean;
+  /** Files the caption write must never replace: the input and the transcript. */
+  keep: string[];
+};
 
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
@@ -226,11 +224,12 @@ function parseSidecar(
   const to = parseExportFormat(args.to, args.json);
   if (!to) return undefined;
   const outPath = resolve(args.output ?? join(dir, `transcript.${to}`));
+  const keep = [inputPath, join(dir, TRANSCRIPT_FILE)];
   const problem =
     (args.output !== undefined && outputProblem(args.output, outPath, to)) ||
-    overwriteProblem(outPath, [inputPath, join(dir, TRANSCRIPT_FILE)]);
+    overwriteProblem(outPath, keep);
   if (problem) failWith(problem, args.json);
-  return { to, outPath, preserveCues: args["preserve-cues"] };
+  return { to, outPath, preserveCues: args["preserve-cues"], keep };
 }
 
 /** Why an explicit --output cannot be used, checked before any transcription work. */
@@ -250,30 +249,20 @@ function outputProblem(
   return undefined;
 }
 
+/** Early refusal before the engine runs; writeCaptionSidecar's same-inode check is the owner. */
 function overwriteProblem(outPath: string, keep: string[]): string | undefined {
-  const target = followLinks(outPath);
-  const hit = keep.find((file) => sameFile(target, file));
+  const hit = keep.find((file) => sameFile(outPath, file));
   return hit && `The caption file would overwrite ${hit}; choose another file with --output`;
 }
 
-/** Where a write to `p` lands, even through a link whose target does not exist yet. */
-function followLinks(p: string): string {
-  for (
-    let hops = 0;
-    hops < 40 && lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink();
-    hops++
-  ) {
-    p = resolve(dirname(p), readlinkSync(p));
-  }
-  return p;
+function sameInode(a: string, b: string): boolean {
+  if (!existsSync(a) || !existsSync(b)) return false;
+  const [x, y] = [statSync(a, { bigint: true }), statSync(b, { bigint: true })];
+  return x.dev === y.dev && x.ino === y.ino;
 }
 
-/** Whether writing `out` replaces `file`, through links, folder aliases or letter case. */
 function sameFile(out: string, file: string): boolean {
-  if (existsSync(out) && existsSync(file)) {
-    const [a, b] = [statSync(out, { bigint: true }), statSync(file, { bigint: true })];
-    return a.dev === b.dev && a.ino === b.ino;
-  }
+  if (existsSync(out) && existsSync(file)) return sameInode(out, file);
   // Either may not exist yet; letter case is ignored so a case-insensitive disk cannot alias.
   const realDir = (p: string) =>
     existsSync(dirname(p)) ? realpathSync.native(dirname(p)) : dirname(p);
@@ -317,9 +306,12 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
 
 async function writeCaptionSidecar(
   words: Word[],
-  { to, outPath, preserveCues }: CaptionSidecar,
+  { to, outPath, preserveCues, keep }: CaptionSidecar,
   phraseLevelSource: boolean | undefined,
 ): Promise<void> {
+  // Checked at write time, when the transcript exists, so the OS resolves every link and alias.
+  const hit = keep.find((file) => sameInode(outPath, file));
+  if (hit) throw new Error(`it is the same file as ${hit}`);
   const { formatSrt, formatVtt } = await import("../whisper/normalize.js");
   // A .srt/.vtt source is already phrase-level; keep its cue boundaries 1:1.
   // --preserve-cues forces the same for an already-cued transcript.json whose
@@ -347,8 +339,15 @@ async function exportTranscript(
 
   if (words.length === 0) exitNoWords(json);
 
-  await writeCaptionSidecar(words, sidecar, format === "srt" || format === "vtt" || undefined);
   const { outPath } = sidecar;
+  try {
+    await writeCaptionSidecar(words, sidecar, format === "srt" || format === "vtt" || undefined);
+  } catch (err) {
+    failWith(
+      `The caption file ${outPath} could not be written: ${normalizeErrorMessage(err)}`,
+      json,
+    );
+  }
 
   if (json) {
     console.log(
