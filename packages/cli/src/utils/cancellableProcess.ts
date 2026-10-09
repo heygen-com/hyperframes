@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { terminateProcessTree } from "./processTree.js";
-import { RENDER_SETUP_RESULT_PREFIX } from "../renderSetupWorkerLifecycle.js";
+import { RENDER_SETUP_RESULT_PREFIX, renderSetupErrorFrom } from "../renderSetupWorkerLifecycle.js";
 
 export interface CancellableProcessResult {
   stdout: string;
@@ -215,8 +215,9 @@ export async function runRenderSetupWorker<T>(
     );
   } catch (error) {
     if (options.signal?.aborted) options.signal.throwIfAborted();
-    if (error instanceof CancellableProcessError && error.stderr.trim()) {
-      throw new Error(error.stderr.trim(), { cause: error });
+    if (error instanceof CancellableProcessError) {
+      const reason = renderSetupErrorFrom(error.stderr) ?? error.stderr.trim();
+      if (reason) throw new Error(reason, { cause: error });
     }
     throw error;
   }

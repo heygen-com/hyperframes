@@ -2,6 +2,7 @@ import { normalizeErrorMessage } from "./utils/errorMessage.js";
 
 const RENDER_SETUP_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 export const RENDER_SETUP_RESULT_PREFIX = "HYPERFRAMES_RENDER_SETUP_RESULT:";
+const RENDER_SETUP_ERROR_PREFIX = "HYPERFRAMES_RENDER_SETUP_ERROR:";
 
 type RenderSetupSignal = (typeof RENDER_SETUP_SIGNALS)[number];
 
@@ -34,21 +35,11 @@ export function installRenderSetupSignalHandlers(
   };
 }
 
-interface SetupOutput {
-  stdout: { write(text: string): unknown };
-  stderr: { write(text: string): unknown };
+export function renderSetupErrorLine(error: unknown): string {
+  return RENDER_SETUP_ERROR_PREFIX + JSON.stringify(normalizeErrorMessage(error)) + "\n";
 }
 
-// The parent shows a failed worker's stderr as the error, so write the reason, not Node's crash dump.
-export async function runRenderSetupStep(
-  step: () => Promise<unknown>,
-  output: SetupOutput,
-): Promise<number> {
-  try {
-    output.stdout.write(RENDER_SETUP_RESULT_PREFIX + JSON.stringify(await step()) + "\n");
-    return 0;
-  } catch (error) {
-    output.stderr.write(normalizeErrorMessage(error) + "\n");
-    return 1;
-  }
+export function renderSetupErrorFrom(stderr: string): string | undefined {
+  const line = stderr.split(/\r?\n/).find((text) => text.startsWith(RENDER_SETUP_ERROR_PREFIX));
+  return line === undefined ? undefined : JSON.parse(line.slice(RENDER_SETUP_ERROR_PREFIX.length));
 }

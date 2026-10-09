@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   installRenderSetupSignalHandlers,
-  runRenderSetupStep,
+  renderSetupErrorFrom,
+  renderSetupErrorLine,
 } from "./renderSetupWorkerLifecycle.js";
 
 describe("render setup worker signal lifecycle", () => {
@@ -57,34 +58,24 @@ describe("render setup worker signal lifecycle", () => {
   );
 });
 
-describe("render setup worker result", () => {
-  function capture() {
-    const written = { stdout: "", stderr: "" };
-    const output = {
-      stdout: { write: (text: string) => (written.stdout += text) },
-      stderr: { write: (text: string) => (written.stderr += text) },
-    };
-    return { written, output };
-  }
+describe("render setup worker failure line", () => {
+  it("carries the whole reason past the crash output around it", () => {
+    const reason =
+      "Failed to install chrome-headless-shell: missing.\n\n  export HYPERFRAMES_BROWSER_PATH=x";
+    const failure = new Error(reason, { cause: new Error("tar.exe extraction failed") });
+    const stderr = [
+      "warning before",
+      renderSetupErrorLine(failure).trimEnd(),
+      "/worker.ts:20",
+      "    throw error;",
+      "Error: Failed to install chrome-headless-shell: missing.",
+      "    at downloadBrowser (manager.ts:845:11)",
+    ].join("\n");
 
-  it("writes the step's result for the parent to parse", async () => {
-    const { written, output } = capture();
-
-    await expect(runRenderSetupStep(async () => ({ source: "cache" }), output)).resolves.toBe(0);
-
-    expect(written.stdout).toBe('HYPERFRAMES_RENDER_SETUP_RESULT:{"source":"cache"}\n');
-    expect(written.stderr).toBe("");
+    expect(renderSetupErrorFrom(stderr)).toBe(reason);
   });
 
-  it("fails with only the error's message, which the parent shows as the reason", async () => {
-    const { written, output } = capture();
-    const failure = new Error("chrome-headless-shell is missing after unzipping", {
-      cause: new Error("tar.exe extraction failed"),
-    });
-
-    await expect(runRenderSetupStep(() => Promise.reject(failure), output)).resolves.toBe(1);
-
-    expect(written.stderr).toBe("chrome-headless-shell is missing after unzipping\n");
-    expect(written.stdout).toBe("");
+  it("finds no reason in a worker that crashed without one", () => {
+    expect(renderSetupErrorFrom("Error: boom\n    at x (y.ts:1:1)")).toBeUndefined();
   });
 });

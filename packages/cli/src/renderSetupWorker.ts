@@ -3,8 +3,9 @@ import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager
 import { lintProject } from "./utils/lintProject.js";
 import { killOrphanedProcesses } from "./utils/orphanCleanup.js";
 import {
+  RENDER_SETUP_RESULT_PREFIX,
   installRenderSetupSignalHandlers,
-  runRenderSetupStep,
+  renderSetupErrorLine,
 } from "./renderSetupWorkerLifecycle.js";
 
 const mode = process.argv[2];
@@ -36,7 +37,11 @@ async function runMode(): Promise<unknown> {
   throw new Error(`Unknown render setup mode: ${mode}`);
 }
 
-process.exitCode = await runRenderSetupStep(
-  () => runMode().finally(disposeSignalHandlers),
-  process,
-);
+try {
+  const result = await runMode().finally(disposeSignalHandlers);
+  process.stdout.write(RENDER_SETUP_RESULT_PREFIX + JSON.stringify(result) + "\n");
+} catch (error) {
+  process.stderr.write(renderSetupErrorLine(error), () => {
+    throw error;
+  });
+}
