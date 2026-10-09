@@ -118,8 +118,8 @@ export type CompositionLengthInputs = {
   derived: () => number;
 };
 
-/** A declared root length is the length (a longer timeline is cut off); else the longest of the
- *  timeline (unless loop-inflated), floors and fallback; else the length derived from the clips. */
+/** A declared root length is the length; else the longest of timeline, floors and fallback (a
+ *  loop-inflated timeline yields to a floor or fallback); else the length derived from the clips. */
 export function resolveCompositionLengthSeconds(input: CompositionLengthInputs): number {
   if (input.declared !== null && Number.isFinite(input.declared) && input.declared > 0) {
     return input.declared;
