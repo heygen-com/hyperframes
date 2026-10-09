@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { parseHTMLContent } from "../compiler/htmlDocument";
 import {
   findRootCompositionElement,
+  LOOP_INFLATED_TIMELINE_SECONDS,
   MIN_VALID_TIMELINE_DURATION_SECONDS,
   readStaticCompositionMeta,
   resolveCompositionLengthSeconds,
@@ -53,6 +54,25 @@ describe("resolveCompositionLengthSeconds", () => {
     expect(
       resolveCompositionLengthSeconds({ ...base, timeline: () => oneFrame, derived: () => 2 }),
     ).toBe(2);
+  });
+
+  it("plays to the sub-composition floor, not a repeat:-1 timeline's 1e10 s", () => {
+    const endless = () => 1e10 + 2;
+    expect(resolveCompositionLengthSeconds({ ...base, timeline: endless, floors: () => [6] })).toBe(
+      6,
+    );
+    expect(resolveCompositionLengthSeconds({ ...base, timeline: endless, fallback: 5 })).toBe(5);
+  });
+
+  it("treats a timeline as loop-inflated from LOOP_INFLATED_TIMELINE_SECONDS on", () => {
+    const at = (seconds: number) =>
+      resolveCompositionLengthSeconds({ ...base, timeline: () => seconds, floors: () => [6] });
+    expect(at(LOOP_INFLATED_TIMELINE_SECONDS)).toBe(6);
+    expect(at(LOOP_INFLATED_TIMELINE_SECONDS - 1)).toBe(LOOP_INFLATED_TIMELINE_SECONDS - 1);
+  });
+
+  it("keeps a repeat:-1 timeline's length when nothing else gives one", () => {
+    expect(resolveCompositionLengthSeconds({ ...base, timeline: () => 1e10 })).toBe(1e10);
   });
 
   it("derives the length only when nothing else gives one", () => {

@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockResizeObserver, reportResize } from "../../hooks/resizeObserverTestUtils";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { ImageThumbnail } from "./ImageThumbnail";
@@ -64,6 +64,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   root = null;
+  vi.useRealTimers();
   thumbnailScheduler.invalidateProject("p");
   globalThis.IntersectionObserver = originalIO;
   globalThis.ResizeObserver = originalRO;
@@ -187,7 +188,9 @@ describe("ImageThumbnail", () => {
       probe.onload?.();
     });
 
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
     act(() => reportResize(500, 40));
+    act(() => vi.advanceTimersToNextFrame());
 
     expect(host.querySelector("img")?.parentElement?.style.width).toBe("108px");
   });

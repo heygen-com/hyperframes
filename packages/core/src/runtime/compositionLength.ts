@@ -10,6 +10,8 @@ import { createRuntimeState } from "./state";
 
 export { findRootCompositionElement };
 
+export const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
+
 /** One frame at 60 fps: a timeline, floor or fallback this short or shorter is no length at all. */
 export const MIN_VALID_TIMELINE_DURATION_SECONDS = 1 / 60;
 
@@ -116,21 +118,27 @@ export type CompositionLengthInputs = {
   derived: () => number;
 };
 
-/** A declared root length is the length (a longer timeline is cut off); else the timeline, the
- *  floors and the fallback, whichever is longest; else the length derived from the clips. */
+/** A declared root length is the length; else the longest of timeline, floors and fallback (a
+ *  loop-inflated timeline yields to a floor or fallback); else the length derived from the clips. */
 export function resolveCompositionLengthSeconds(input: CompositionLengthInputs): number {
   if (input.declared !== null && Number.isFinite(input.declared) && input.declared > 0) {
     return input.declared;
   }
-  const timeline = aboveOneFrame(input.timeline());
+  const rawTimeline = aboveOneFrame(input.timeline());
   const floor = Math.max(0, ...input.floors().map((seconds) => seconds ?? 0));
   const fallback =
     Number.isFinite(input.fallback) && input.fallback > MIN_VALID_TIMELINE_DURATION_SECONDS
       ? input.fallback
       : 0;
+  const floorOrFallback = Math.max(floor, fallback);
+  const loopInflated =
+    rawTimeline !== null &&
+    rawTimeline >= LOOP_INFLATED_TIMELINE_SECONDS &&
+    aboveOneFrame(floorOrFallback) !== null;
+  const timeline = loopInflated ? null : rawTimeline;
   let seconds: number;
-  if (timeline !== null) seconds = Math.max(timeline, floor, fallback);
-  else if (aboveOneFrame(floor) !== null) seconds = Math.max(floor, fallback);
+  if (timeline !== null) seconds = Math.max(timeline, floorOrFallback);
+  else if (aboveOneFrame(floor) !== null) seconds = floorOrFallback;
   else if (fallback > 0) seconds = fallback;
   else seconds = input.derived();
   return seconds > 0 ? seconds : 0;

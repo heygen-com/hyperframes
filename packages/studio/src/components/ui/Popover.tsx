@@ -6,9 +6,13 @@
 import { Popover as BasePopover } from "@base-ui/react/popover";
 import type { ComponentPropsWithoutRef, ReactElement, ReactNode } from "react";
 import { cn } from "./cn";
-import { POPUP_LAYER, popupSurface, type PopupPreviewState } from "./Menu";
-
-type PortalContainer = ComponentPropsWithoutRef<typeof BasePopover.Portal>["container"];
+import {
+  POPUP_LAYER,
+  popupSurface,
+  useInlinePortal,
+  type PopupPreviewState,
+  type PortalContainer,
+} from "./Menu";
 
 /** Matches Menu's gap from its trigger, and its viewport margin. */
 const SIDE_OFFSET = 6;
@@ -33,7 +37,7 @@ interface PopoverProps extends Omit<ComponentPropsWithoutRef<typeof BasePopover.
   sideOffset?: number;
   /** Points the popup at its trigger. Off by default; the default gap from the trigger grows by the arrow's height. */
   arrow?: boolean;
-  /** Portal target. Pass the shadow root when the trigger lives in one. */
+  /** Portal target. Pass the shadow root when the trigger lives in one; `null` keeps it inline. */
   container?: PortalContainer;
   /** Names the popup for assistive tech. */
   "aria-label"?: string;
@@ -60,10 +64,12 @@ export function Popover({
   "data-preview-state": previewState,
   ...root
 }: PopoverProps) {
+  const inline = useInlinePortal(container);
   return (
     <BasePopover.Root {...root}>
       <BasePopover.Trigger render={trigger} />
-      <BasePopover.Portal container={container}>
+      {inline.host}
+      <BasePopover.Portal {...inline.portal}>
         <BasePopover.Positioner
           side={side}
           align={align}

@@ -298,12 +298,14 @@ bindings. Use `getVariables()` when the value affects logic.
 A composition using GSAP must:
 
 - create one finite timeline with `{ paused: true }`;
-- register it synchronously on `window.__timelines`;
+- register it on `window.__timelines` after adding its tweens;
 - use the same key as `data-composition-id`;
 - avoid wall-clock state, unseeded randomness, and infinite repeats.
 
 HyperFrames controls seeking. Composition code describes how the visual state
 looks at a given time.
+
+Asynchronous setup, such as [loading a font before measuring text](/guides/gsap-animation#load-fonts-before-measuring-text), is supported. Register the completed timeline at the end of the callback, after its tweens are added. Do not register an empty timeline before the asynchronous build finishes.
 
 Every element with `data-composition-id` participates in timeline readiness.
 For a static nested section, use an ordinary `id` instead, or add
