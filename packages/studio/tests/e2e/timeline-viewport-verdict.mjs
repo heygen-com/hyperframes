@@ -112,8 +112,8 @@ export function describeAgainstBase({ head, base, interactions, frameIntervals, 
     `interaction p95 ${head.interactionP95Ms.toFixed(1)} vs ${base.interactionP95Ms.toFixed(1)} ms`,
     pair(interactions.atBudget, "steps over budget"),
     pair(interactions.frameLater, "a frame later"),
-    pair(frameIntervals.atBudget, "dropped frames"),
-    pair(frameIntervals.frameLater, "two dropped"),
+    pair(frameIntervals.atBudget, "frame gaps over budget"),
+    pair(frameIntervals.frameLater, "a frame past that"),
     passed ? "pass" : "fail",
   ].join(", ");
 }
