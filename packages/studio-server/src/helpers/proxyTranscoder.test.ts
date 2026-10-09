@@ -556,8 +556,8 @@ describe("resolveProxy", () => {
       await expect(left).rejects.toBe(leaving.signal.reason);
     }
 
-    async function oneSlot(queue = 8) {
-      process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY = "1";
+    async function oneSlot(queue = 8, slots = 1) {
+      process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY = String(slots);
       process.env.HYPERFRAMES_PROXY_MAX_QUEUE = String(queue);
       const spy = createSpawnSpy();
       return { ...spy, ...(await loadModule(spy.spawn, FFMPEG_PATH)), projectDir: tmpProject() };
@@ -683,6 +683,34 @@ describe("resolveProxy", () => {
       expect(clipOf(calls[1]!)).toBe("handoff");
       succeed(calls[1]!);
       await expect(preview).resolves.toBeTruthy();
+    });
+
+    it("keeps one copy per clip when a dropped copy settles after its replacement started", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot(8, 2);
+      const clip = clips(projectDir, ["first", "second", "handoff"]);
+      const leaving = new AbortController();
+
+      const running = [
+        resolveProxy(projectDir, clip.first!),
+        resolveProxy(projectDir, clip.second!),
+      ];
+      const thumb = resolveProxy(projectDir, clip.handoff!, "h264", undefined, {
+        signal: leaving.signal,
+      });
+      await flush();
+      leaving.abort();
+      const preview = resolveProxy(projectDir, clip.handoff!);
+      await expect(thumb).rejects.toBe(leaving.signal.reason);
+      await flush(12);
+      const later = resolveProxy(projectDir, clip.handoff!);
+
+      succeed(calls[0]!);
+      succeed(calls[1]!);
+      await Promise.all(running);
+      await flush(12);
+      expect(calls.map(clipOf).filter((name) => name === "handoff")).toHaveLength(1);
+      succeed(calls[2]!);
+      await expect(Promise.all([preview, later])).resolves.toHaveLength(2);
     });
 
     it("accepts a priority ask in the same moment a normal ask for that clip was refused", async () => {
