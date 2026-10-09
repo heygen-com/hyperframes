@@ -165,6 +165,37 @@ export function captureScene(
   return captureSceneWithHtml2Canvas(sceneEl, bgColor, width, height, options);
 }
 
+type Html2CanvasCache = NonNullable<NonNullable<Parameters<typeof html2canvas>[1]>["cache"]>;
+
+const loadImage = (src: string, cors: boolean): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = document.createElement("img");
+    if (cors) img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
+// html2canvas judges same-origin by the page URL, which an opaque (sandboxed) document does not share, so it loads
+// pictures no-cors and the snapshot can't reach WebGL. Ask with CORS first; a refused picture loads as before.
+export function corsFirstImageCache(): Html2CanvasCache {
+  const images = new Map<string, Promise<HTMLImageElement>>();
+  const cache = {
+    addImage(src: string): Promise<void> {
+      if (!images.has(src)) {
+        const image = loadImage(src, true).catch(() => loadImage(src, false));
+        image.catch(() => undefined);
+        images.set(src, image);
+      }
+      return Promise.resolve();
+    },
+    match: (src: string) => images.get(src),
+    has: (src: string) => images.has(src),
+    keys: () => Promise.resolve([...images.keys()]),
+  };
+  return cache as unknown as Html2CanvasCache;
+}
+
 function captureSceneWithHtml2Canvas(
   sceneEl: HTMLElement,
   bgColor: string,
@@ -207,6 +238,7 @@ function captureSceneWithHtml2Canvas(
       //             CORS headers).
       useCORS: true,
       allowTaint: true,
+      cache: window.origin === "null" ? corsFirstImageCache() : undefined,
       onclone: (cloneDoc) => {
         if (!sceneEl.id) return;
         const clone = cloneDoc.getElementById(sceneEl.id);

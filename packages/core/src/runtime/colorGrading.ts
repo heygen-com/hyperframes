@@ -2495,6 +2495,27 @@ function keepCanvasAboveSource(entry: ColorGradingEntry, source: HTMLImageElemen
   }
 }
 
+const corsCopies = new WeakMap<HTMLImageElement, HTMLImageElement>();
+
+// An opaque (sandboxed) document loads its own <img> no-cors, so WebGL cannot read it: upload a copy requested with
+// CORS. Null while the copy loads; a refused copy leaves the element, which fails as it always did.
+function readablePixels(source: TexImageSource, redraw: () => void): TexImageSource | null {
+  if (!isImageElement(source) || window.origin !== "null" || source.crossOrigin !== null)
+    return source;
+  if (!/^https?:/i.test(source.currentSrc)) return source;
+  let copy = corsCopies.get(source);
+  if (copy?.src !== source.currentSrc) {
+    copy = source.ownerDocument.createElement("img");
+    copy.crossOrigin = "anonymous";
+    copy.addEventListener("load", redraw, { once: true });
+    copy.addEventListener("error", redraw, { once: true });
+    copy.src = source.currentSrc;
+    corsCopies.set(source, copy);
+  }
+  if (!copy.complete) return null;
+  return copy.naturalWidth > 0 ? copy : source;
+}
+
 function getDrawableSource(element: ColorGradingMediaElement): TexImageSource | null {
   if (isVideoElement(element)) {
     const renderFrame = findRenderFrameImage(element);
@@ -3053,7 +3074,8 @@ function bindProgramTextures(
 function drawEntry(entry: ColorGradingEntry): boolean {
   if (entry.destroyed || entry.contextLost) return false;
   const source = getDrawableSource(entry.element);
-  if (!source) {
+  const pixels = source && readablePixels(source, () => drawEntry(entry));
+  if (!source || !pixels) {
     if (!entry.hasDrawn) entry.canvas.style.display = "none";
     return false;
   }
@@ -3112,7 +3134,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
     const lut = ensureEntryLut(entry);
     // Browser media elements are top-left oriented; WebGL texture coordinates
     // are bottom-left oriented unless the upload is flipped.
-    uploadSourceTexture(gl, program.texture, source);
+    uploadSourceTexture(gl, program.texture, pixels);
     const hasAnimatedKuwahara =
       readAnimatedValue(entry.element, ANIMATED_KUWAHARA_PROPERTY) !== null;
     const prepared = prepareEffectTextures(entry, grading, layout, uv, {
@@ -3212,7 +3234,8 @@ function preparePreviewFrame(
   useMediaTime: boolean,
 ): PreviewFrame | null {
   const source = getDrawableSource(element);
-  if (!source) return null;
+  const pixels = source && readablePixels(source, () => undefined);
+  if (!source || !pixels) return null;
   const sourceSize = readSourceSize(source);
   if (!sourceSize) return null;
   const dimensions = previewDimensions(element, sourceSize, maxDimension);
@@ -3228,7 +3251,7 @@ function preparePreviewFrame(
     style.objectFit,
     style.objectPosition,
   );
-  uploadSourceTexture(renderer.gl, renderer.program.texture, source);
+  uploadSourceTexture(renderer.gl, renderer.program.texture, pixels);
   return {
     dimensions,
     uv,
