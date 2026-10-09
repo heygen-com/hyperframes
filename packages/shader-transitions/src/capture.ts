@@ -178,7 +178,7 @@ const loadImage = (src: string, cors: boolean): Promise<HTMLImageElement> =>
 
 // html2canvas judges same-origin by the page URL, which an opaque (sandboxed) document does not share, so it loads
 // pictures no-cors and the snapshot can't reach WebGL. Ask with CORS first; a refused picture loads as before.
-export function corsFirstImageCache(): Html2CanvasCache {
+function corsFirstImageCache(): Html2CanvasCache {
   const images = new Map<string, Promise<HTMLImageElement>>();
   const cache = {
     addImage(src: string): Promise<void> {
