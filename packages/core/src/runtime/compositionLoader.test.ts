@@ -122,6 +122,20 @@ describe("loadCompositions external hosts", () => {
     expect(document.querySelectorAll("[data-composition-src] p")).toHaveLength(8);
   });
 
+  it("starts a queued load as soon as any earlier load finishes", async () => {
+    for (let i = 0; i < 5; i++)
+      appendExternalHost(`https://example.com/pool-${i}.html`, `pool-${i}`);
+    let releaseSlow = () => {};
+    const slow = new Promise<void>((resolve) => (releaseSlow = resolve));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("pool-0.html")) await slow;
+      if (String(input).endsWith("pool-4.html")) releaseSlow();
+      return new Response("<html><body><p>Loaded</p></body></html>", { status: 200 });
+    });
+    await loadFixture();
+    expect(document.querySelectorAll("[data-composition-src] p")).toHaveLength(5);
+  });
+
   it("adds stylesheets in document order even when an earlier host's fetch finishes last", async () => {
     appendExternalHost("https://example.com/order-a.html", "order-a");
     appendExternalHost("https://example.com/order-b.html", "order-b");
