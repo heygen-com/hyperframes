@@ -40,7 +40,12 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
       errorHandler = null;
     };
 
+    let capturedDocument: Document | null = null;
     const attachErrorCapture = () => {
+      // The page's own late load event (after a stalled font or asset) must not wipe its errors.
+      const doc = previewIframe.contentDocument;
+      if (doc && doc === capturedDocument) return;
+      capturedDocument = doc;
       detachErrorCapture();
       resetErrors();
       try {

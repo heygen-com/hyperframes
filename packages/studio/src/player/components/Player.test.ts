@@ -200,7 +200,8 @@ describe("callbacks after the player is already mounted", () => {
     const onLoad = vi.fn();
     const { player } = await mountPlayer({ onLoad });
     const iframe = (player as TestHyperframesPlayer).iframeElement;
-    document.body.append(iframe);
+    let page = {};
+    Object.defineProperty(iframe, "contentDocument", { get: () => page });
 
     act(() => void player.dispatchEvent(new Event("ready")));
     expect(onLoad).toHaveBeenCalledTimes(1);
@@ -208,6 +209,10 @@ describe("callbacks after the player is already mounted", () => {
     act(() => void iframe.dispatchEvent(new Event("load")));
     act(() => void player.dispatchEvent(new Event("ready")));
     expect(onLoad).toHaveBeenCalledTimes(1);
+
+    page = {};
+    act(() => void player.dispatchEvent(new Event("ready")));
+    expect(onLoad).toHaveBeenCalledTimes(2);
   });
 
   it("reports the preview error cause", async () => {

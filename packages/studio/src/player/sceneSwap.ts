@@ -10,10 +10,18 @@ export function onPreviewContentReplaced(
   iframe: HTMLIFrameElement,
   onReplaced: () => void,
 ): () => void {
-  iframe.addEventListener("load", onReplaced);
+  // A page can be in use before its load event (a stalled font holds it back); that late load replaced nothing.
+  let current = iframe.contentDocument;
+  const onLoad = () => {
+    const loaded = iframe.contentDocument;
+    if (loaded && loaded === current) return;
+    current = loaded;
+    onReplaced();
+  };
+  iframe.addEventListener("load", onLoad);
   iframe.addEventListener(SCENES_SWAPPED, onReplaced);
   return () => {
-    iframe.removeEventListener("load", onReplaced);
+    iframe.removeEventListener("load", onLoad);
     iframe.removeEventListener(SCENES_SWAPPED, onReplaced);
   };
 }

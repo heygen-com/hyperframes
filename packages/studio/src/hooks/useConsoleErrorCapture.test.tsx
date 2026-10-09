@@ -85,3 +85,22 @@ it("clears a document's errors when its load replaces it, and when the preview g
   await act(async () => root?.render(React.createElement(NullableHarness, { frame: null })));
   expect(capture.consoleErrors).toBeNull();
 });
+
+it("keeps a page's errors through that page's own late load, and clears them for a new page", async () => {
+  const { iframe, previewWindow } = previewFrame();
+  let page = {};
+  Object.defineProperty(iframe, "contentDocument", { get: () => page });
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(React.createElement(Harness, { iframe })));
+  await act(async () =>
+    previewWindow.dispatchEvent(new ErrorEvent("error", { message: "Uncaught Error: kept" })),
+  );
+
+  await act(async () => iframe.dispatchEvent(new Event("load")));
+  expect(shown()).toEqual(["Uncaught Error: kept"]);
+
+  page = {};
+  Object.assign(previewWindow, { [STUDIO_PREVIEW_ERRORS]: ["Uncaught Error: new page"] });
+  await act(async () => iframe.dispatchEvent(new Event("load")));
+  expect(shown()).toEqual(["Uncaught Error: new page"]);
+});

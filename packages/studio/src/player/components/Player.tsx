@@ -228,14 +228,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           const loading = getShaderTransitionLoading(event);
           if (loading !== null) setShaderTransitionLoading(loading);
         };
-        // The document handleLoad last ran for: a load event after the runtime's ready is the same document.
+        // handleLoad runs once per document: both ready and load can trigger it.
         let loadedDocument: Document | null = null;
         const handleReady = () => {
           setPreviewError(null);
           setCompositionLoading(false);
           // A stalled font or asset can hold the window's load event forever; the runtime's ready is enough.
-          const doc = iframe.contentDocument;
-          if (doc && doc !== loadedDocument) handleLoad();
+          if (iframe.contentDocument) handleLoad();
         };
         const handlePainted = () => {
           setPainted(true);
