@@ -47,6 +47,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   root = null;
+  vi.useRealTimers();
   thumbnailScheduler.invalidateProject("/api/projects/demo/preview");
   globalThis.ResizeObserver = originalResizeObserver;
   globalThis.Image = originalImage;
@@ -175,7 +176,9 @@ describe("CompositionThumbnail", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
     act(() => reportResize(500, 40));
+    act(() => vi.advanceTimersToNextFrame());
 
     expect(host.querySelector("img")?.parentElement?.style.width).toBe("108px");
   });

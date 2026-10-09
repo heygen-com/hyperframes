@@ -23,6 +23,12 @@ import {
 import { trackBrowserInstall } from "../telemetry/events.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
+function failSpinner(s: ReturnType<typeof clack.spinner>, label: string, err: unknown): never {
+  s.stop(c.error(label));
+  clack.log.error(normalizeErrorMessage(err));
+  failCommand(1, err);
+}
+
 function printBrowser(browser: BrowserResult): void {
   console.log();
   console.log(`   ${c.dim("Source:")}  ${c.bold(browser.source)}`);
@@ -38,7 +44,9 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
   if (isLinuxArm()) {
     const s = clack.spinner();
     s.start("Linux ARM64 detected — looking for system Chromium...");
-    const existing = await findBrowser();
+    const existing = await findBrowser().catch((err: unknown) =>
+      failSpinner(s, "Browser lookup failed", err),
+    );
     if (existing) {
       s.stop(c.success("System Chromium found"));
       printBrowser(existing);
@@ -88,9 +96,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
       },
     });
   } catch (err) {
-    s.stop(c.error("Browser not available"));
-    clack.log.error(normalizeErrorMessage(err));
-    failCommand(1, err);
+    failSpinner(s, "Browser not available", err);
   }
 
   if (result.source === "download") trackBrowserInstall();

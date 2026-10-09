@@ -54,6 +54,7 @@ import {
   parseHostVariableValues,
   headStyleRuns,
   inlineScriptRuns,
+  parsesAsScript,
   styleElementsFor,
   insertBeforeCloseTag,
   isRuntimeFileUrl,
@@ -906,9 +907,9 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
-  if (!head) return html;
+  if (!head && !body) return html;
 
-  const styleEls = Array.from(head.querySelectorAll("style"));
+  const styleEls = head ? Array.from(head.querySelectorAll("style")) : [];
   const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
   for (const run of styleEls.length > 1 ? headStyleRuns(styleEls) : []) {
     const imports: string[] = [];
@@ -945,6 +946,7 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
         .filter(Boolean)
         .join("\n;\n")
         .trim();
+      if (mergedJs && !parsesAsScript(mergedJs)) continue;
       for (const el of members) el.remove();
       if (!mergedJs) continue;
       const script = document.createElement("script");
@@ -1103,9 +1105,12 @@ function inlineSubCompositions(
     let pending = variablesByCompScript ? [variablesByCompScript] : [];
     const flushInline = () => {
       if (!pending.length) return;
-      const scriptEl = document.createElement("script");
-      scriptEl.textContent = pending.join("\n;\n");
-      body.appendChild(scriptEl);
+      const joined = pending.join("\n;\n");
+      for (const text of parsesAsScript(joined) ? [joined] : pending) {
+        const scriptEl = document.createElement("script");
+        scriptEl.textContent = text;
+        body.appendChild(scriptEl);
+      }
       pending = [];
     };
     for (const item of result.scriptItems) {

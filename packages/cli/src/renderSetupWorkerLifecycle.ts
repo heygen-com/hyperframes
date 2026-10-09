@@ -61,7 +61,7 @@ export function renderSetupResultFrom(stdout: string): unknown {
 }
 
 export function renderSetupErrorLine(error: unknown): string {
-  return prefixedLine(RENDER_SETUP_ERROR_PREFIX, normalizeErrorMessage(error));
+  return "\n" + prefixedLine(RENDER_SETUP_ERROR_PREFIX, normalizeErrorMessage(error));
 }
 
 export function renderSetupFailureFrom(

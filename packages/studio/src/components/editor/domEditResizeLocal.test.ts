@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resizeRemainderShift,
   resolveCenterResizeScale,
   resolveCenterResizeSize,
   resolveRotatedResizeCursor,
@@ -138,4 +139,73 @@ describe("resolveRotatedResizeCursor", () => {
   it("wraps negative rotations", () => {
     expect(resolveRotatedResizeCursor("se", -90)).toBe("nesw-resize");
   });
+});
+
+describe("resizeRemainderShift", () => {
+  const written = { width: 301, height: 150 };
+  const wanted = { width: 300.6, height: 150.3 };
+  const centre = { x: 400, y: 300 };
+  // Local (u, v) px map to overlay px through a 1.5x scale, a rotation and an optional x mirror.
+  const box = (angle: number, mirror: 1 | -1) => {
+    const at = (u: number, v: number) => ({
+      x: centre.x + 1.5 * (mirror * u * Math.cos(angle) - v * Math.sin(angle)),
+      y: centre.y + 1.5 * (mirror * u * Math.sin(angle) + v * Math.cos(angle)),
+    });
+    const [w, h] = [written.width / 2, written.height / 2];
+    return { at, corners: { nw: at(-w, -h), ne: at(w, -h), sw: at(-w, h), se: at(w, h) } };
+  };
+
+  // A rotated parent composes into the same map, and a mirror moves each handle onto another local corner.
+  it.each([
+    [30, 1, -1, -1],
+    [30, 1, 1, -1],
+    [30, 1, -1, 1],
+    [30, 1, 1, 1],
+    [-120, 1, 1, 1],
+    [90, 1, 1, -1],
+    [0, -1, -1, 1],
+    [150, -1, 1, 1],
+    [180, -1, -1, -1],
+  ] as const)("at %i deg, mirror %i, lands local corner (%i, %i)", (deg, mirror, su, sv) => {
+    const { at, corners } = box((deg * Math.PI) / 180, mirror);
+    const grabbed = at((su * written.width) / 2, (sv * written.height) / 2);
+    const grab = { x: grabbed.x - centre.x, y: grabbed.y - centre.y };
+    const shift = resizeRemainderShift(corners, grab, { wanted, written });
+    const target = at((su * wanted.width) / 2, (sv * wanted.height) / 2);
+    expect(grabbed.x + shift.x).toBeCloseTo(target.x, 9);
+    expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
+  });
+});
+
+describe("resizeRemainderShift on a skewed box", () => {
+  // A 30 deg child of a parent scaled 2 x 1 renders as a parallelogram; a 10 x 200 bar flips a projected sign.
+  const angle = Math.PI / 6;
+  const at = (u: number, v: number) => ({
+    x: 400 + 2 * (u * Math.cos(angle) - v * Math.sin(angle)),
+    y: 300 + (u * Math.sin(angle) + v * Math.cos(angle)),
+  });
+  const written = { width: 10, height: 200 };
+  const wanted = { width: 10.4, height: 199.7 };
+  const corners = { nw: at(-5, -100), ne: at(5, -100), sw: at(-5, 100), se: at(5, 100) };
+
+  it.each([
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+  ] as const)("lands local corner (%i, %i) on the wanted size", (su, sv) => {
+    const grabbed = at((su * written.width) / 2, (sv * written.height) / 2);
+    const grab = { x: grabbed.x - 400, y: grabbed.y - 300 };
+    const shift = resizeRemainderShift(corners, grab, { wanted, written });
+    const target = at((su * wanted.width) / 2, (sv * wanted.height) / 2);
+    expect(grabbed.x + shift.x).toBeCloseTo(target.x, 9);
+    expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
+  });
+});
+
+it("shifts nothing for a box that renders with no area", () => {
+  const p = { x: 400, y: 300 };
+  const corners = { nw: p, ne: p, sw: p, se: p };
+  const sizes = { wanted: { width: 300.6, height: 150.3 }, written: { width: 301, height: 150 } };
+  expect(resizeRemainderShift(corners, { x: 1, y: 1 }, sizes)).toEqual({ x: 0, y: 0 });
 });

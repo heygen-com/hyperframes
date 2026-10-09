@@ -66,15 +66,17 @@ describe("render setup worker failure line", () => {
       "Failed to install chrome-headless-shell: missing.\n\n  export HYPERFRAMES_BROWSER_PATH=x";
     const failure = new Error(reason, { cause: new Error("tar.exe extraction failed") });
     const stderr = [
-      "warning before",
-      renderSetupErrorLine(failure).trimEnd(),
+      `warning without a newline${renderSetupErrorLine(failure).trimEnd()}`,
       "/worker.ts:20",
       "    throw error;",
       "Error: Failed to install chrome-headless-shell: missing.",
       "    at downloadBrowser (manager.ts:845:11)",
     ].join("\n");
 
-    expect(renderSetupFailureFrom(stderr)).toEqual({ reason, earlierOutput: "warning before" });
+    expect(renderSetupFailureFrom(stderr)).toEqual({
+      reason,
+      earlierOutput: "warning without a newline",
+    });
   });
 
   it.each([

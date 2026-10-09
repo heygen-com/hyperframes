@@ -18,13 +18,15 @@ vi.mock("@clack/prompts", () => ({
 }));
 
 const ensureBrowser = vi.fn();
+const findBrowser = vi.fn();
+let linuxArm = false;
 vi.mock("../browser/manager.js", () => ({
   ensureBrowser: (...args: unknown[]) => ensureBrowser(...args),
-  findBrowser: vi.fn(),
+  findBrowser: (...args: unknown[]) => findBrowser(...args),
   clearBrowser: vi.fn(),
   managedChromeVersion: () => "152.0.7977.30",
   CACHE_DIR: "/cache",
-  isLinuxArm: () => false,
+  isLinuxArm: () => linuxArm,
 }));
 vi.mock("../telemetry/events.js", () => ({ trackBrowserInstall: vi.fn() }));
 
@@ -44,6 +46,8 @@ describe("browser ensure", () => {
     spinners.length = 0;
     logError.mockReset();
     ensureBrowser.mockReset();
+    findBrowser.mockReset();
+    linuxArm = false;
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -68,6 +72,16 @@ describe("browser ensure", () => {
     await runEnsure(force);
 
     expect(spinners.length).toBeGreaterThan(0);
+    expect(spinners.filter((s) => s.running)).toEqual([]);
+  });
+
+  it("stops its spinner and fails when the Linux ARM64 lookup throws", async () => {
+    linuxArm = true;
+    findBrowser.mockRejectedValue(new Error("EACCES: permission denied"));
+
+    await expect(runEnsure(false)).rejects.toThrow("Command failed");
+
+    expect(logError).toHaveBeenCalledWith("EACCES: permission denied");
     expect(spinners.filter((s) => s.running)).toEqual([]);
   });
 });

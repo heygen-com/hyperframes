@@ -126,6 +126,14 @@ describe("planCompositionAssembly", () => {
     expect(ids(plan.scriptSources)).toEqual(["head-script", "body-script"]);
   });
 
+  it.each([
+    [`<script nomodule></script>`, false],
+    [`<script type="module" nomodule></script>`, true],
+  ])("extracts %s only when a browser runs it: %s", (script, runs) => {
+    const plan = planFor(`<template><div data-composition-id="s">${script}</div></template>`, "s");
+    expect(plan.scriptSources).toHaveLength(runs ? 1 : 0);
+  });
+
   it("does not treat a templated composition's page head as an asset source", () => {
     // The head belongs to the host page, not to the composition; only the
     // non-templated (full-document) shape carries composition assets in <head>.

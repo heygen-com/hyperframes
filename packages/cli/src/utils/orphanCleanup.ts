@@ -85,7 +85,13 @@ export interface ProcessAncestor {
 
 interface ProcessRecord extends ProcessAncestor {
   parentPid: number;
+  startedAt?: bigint | undefined;
 }
+
+const holdsReusedPid = (parent: ProcessRecord, child: ProcessRecord | undefined): boolean =>
+  parent.startedAt !== undefined &&
+  child?.startedAt !== undefined &&
+  parent.startedAt > child.startedAt;
 
 function recordsToAncestors(pid: number, records: readonly ProcessRecord[]): ProcessAncestor[] {
   const byPid = new Map(records.map((record) => [record.pid, record]));
@@ -94,11 +100,12 @@ function recordsToAncestors(pid: number, records: readonly ProcessRecord[]): Pro
   let current = pid;
 
   for (let depth = 0; depth < 64; depth++) {
-    const parent = byPid.get(current)?.parentPid;
+    const child = byPid.get(current);
+    const parent = child?.parentPid;
     if (parent === undefined || parent <= 1 || visited.has(parent)) break;
     visited.add(parent);
     const ancestor = byPid.get(parent);
-    if (!ancestor) break;
+    if (!ancestor || holdsReusedPid(ancestor, child)) break;
     ancestors.push({ pid: ancestor.pid, identity: ancestor.identity });
     current = parent;
   }
@@ -128,13 +135,17 @@ export function processAncestorSnapshot(pid: number): ProcessAncestor[] {
       const records = output
         .split(/\r?\n/)
         .map((line) => line.trim().split(/\s+/))
-        .map(([processId, parentProcessId, creationDate]) => ({
-          pid: Number(processId),
-          parentPid: Number(parentProcessId),
-          identity: creationDate ? `windows:${creationDate}` : "",
-        }))
+        .map(
+          ([processId, parentProcessId, creationDate]): ProcessRecord => ({
+            pid: Number(processId),
+            parentPid: Number(parentProcessId),
+            identity: creationDate ? `windows:${creationDate}` : "",
+            startedAt:
+              creationDate && /^\d+$/.test(creationDate) ? BigInt(creationDate) : undefined,
+          }),
+        )
         .filter(
-          (record): record is ProcessRecord =>
+          (record) =>
             Number.isInteger(record.pid) &&
             record.pid > 0 &&
             Number.isInteger(record.parentPid) &&

@@ -378,7 +378,7 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
       b.buildId === managedChromeVersion() &&
       b.platform === hostPlatform,
   );
-  if (match && existsSync(match.executablePath)) {
+  if (match && isUsableExecutable(match.executablePath)) {
     return { result: { executablePath: match.executablePath, source: "cache" } };
   }
   if (match) {
@@ -499,7 +499,7 @@ function findFromPuppeteerCache(): BrowserResult | undefined {
     // keep them aligned. If puppeteer ever changes the on-disk layout the two
     // need to move together.
     const binary = join(PUPPETEER_CACHE_DIR, version, ...executable);
-    if (existsSync(binary)) {
+    if (isUsableExecutable(binary)) {
       return { executablePath: binary, source: "cache" };
     }
   }
@@ -568,14 +568,14 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   if (fromCache.result) return fromCache.result;
   if (fromCache.staleHyperframesCachePath) {
     console.warn(
-      `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+      `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
     );
     try {
       return await withInstallLock(() => downloadBrowser());
     } catch (err) {
       const cause = normalizeErrorMessage(err);
       throw new Error(
-        `Cached Chrome binary was missing at ${fromCache.staleHyperframesCachePath}, and re-download failed: ${cause}\n` +
+        `Cached Chrome binary was unusable at ${fromCache.staleHyperframesCachePath}, and re-download failed: ${cause}\n` +
           `Run \`hyperframes browser ensure --force\` to re-download.`,
       );
     }
@@ -662,7 +662,7 @@ async function ensureBrowserInCurrentProcess(
     if (fromCache.result) return fromCache.result;
     if (fromCache.staleHyperframesCachePath) {
       console.warn(
-        `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+        `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
       );
       return withInstallLock(() => downloadBrowser(options));
     }
@@ -779,11 +779,15 @@ function browserPathHintForPlatform(): string {
   return "/usr/bin/google-chrome";
 }
 
-function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
+function wrapDownloadFailureWithBrowserPathHint(
+  cause: unknown,
+  unzipLog: readonly string[],
+): Error {
   const original = normalizeErrorMessage(cause);
+  const unzipErrors = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
   const example = browserPathHintForPlatform();
   const message =
-    `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}\n\n` +
+    `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
     `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
     `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
     `Then re-run your command. Any Chrome build works for the screenshot ` +
@@ -839,27 +843,37 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
         `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
       ),
     );
-    assertExecutableUnpacked(stagingDir, staged.executablePath, unzipLog);
+    assertExecutableUnpacked(stagingDir, staged.executablePath);
+    unzipLog = [];
     return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
   } catch (err) {
-    throw wrapDownloadFailureWithBrowserPathHint(err);
+    throw wrapDownloadFailureWithBrowserPathHint(err, unzipLog);
   } finally {
     clearStaging();
   }
 }
 
+function executableState(path: string): "usable" | "is missing" | "is empty" | "is not a file" {
+  const stat = statSync(path, { throwIfNoEntry: false });
+  if (!stat) return "is missing";
+  if (!stat.isFile()) return "is not a file";
+  return stat.size > 0 ? "usable" : "is empty";
+}
+
+function isUsableExecutable(path: string): boolean {
+  try {
+    return executableState(path) === "usable";
+  } catch {
+    return false;
+  }
+}
+
 // install() returns without checking that the unzip produced the executable.
-function assertExecutableUnpacked(
-  stagingDir: string,
-  executablePath: string,
-  unzipLog: readonly string[],
-): void {
-  const size = statSync(executablePath, { throwIfNoEntry: false })?.size;
-  if (size) return;
-  const state = size === 0 ? "is empty" : "is missing";
-  const log = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
+function assertExecutableUnpacked(stagingDir: string, executablePath: string): void {
+  const state = executableState(executablePath);
+  if (state === "usable") return;
   throw new Error(
-    `the archive downloaded, but ${relative(stagingDir, executablePath)} ${state} after unzipping.${log}`,
+    `the archive downloaded, but ${relative(stagingDir, executablePath)} ${state} after unzipping.`,
   );
 }
 

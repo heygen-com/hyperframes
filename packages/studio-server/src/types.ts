@@ -128,7 +128,7 @@ export interface StudioApiAdapter {
   /** Lint a single HTML string. */
   lint(
     html: string,
-    opts?: { filePath?: string; isSubComposition?: boolean },
+    opts?: { filePath?: string; isSubComposition?: boolean; compSrcPath?: string },
   ): Promise<LintResult> | LintResult;
 
   /**

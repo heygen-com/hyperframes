@@ -132,12 +132,13 @@ describe("mirrorGlobalSkills", () => {
     installMarker(home, ".config/goose"); // goose present (XDG base)
     // windsurf NOT installed (no ~/.codeium/windsurf)
 
-    const { mirrored } = mirrorGlobalSkills({
+    const { mirrored, skipped } = mirrorGlobalSkills({
       skills: ["hyperframes", "hyperframes-core"],
       home,
       platform: "linux",
       env: ENV,
     });
+    expect(skipped).toEqual([]);
     const agents = mirrored.map((m) => m.agent);
     expect(agents).toContain("cursor");
     expect(agents).toContain("bob");

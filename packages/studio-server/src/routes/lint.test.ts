@@ -142,6 +142,7 @@ describe("registerLintRoutes — dot-directory exclusion (#1384)", () => {
     expect(singleFileLint).toHaveBeenCalledWith("<html><body>intro</body></html>", {
       filePath: "scenes/intro.html",
       isSubComposition: true,
+      compSrcPath: "scenes/intro.html",
     });
     expect(payload.findings).toContainEqual(
       expect.objectContaining({ code: "scene_finding", file: "scenes/intro.html" }),

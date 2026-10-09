@@ -190,7 +190,7 @@ function parseOpenAI(data: Record<string, unknown>): Word[] {
 function parseSrt(content: string): Word[] {
   // SRT doesn't have word-level timestamps — parse as phrase-level entries.
   // Each cue becomes one "word" entry (the full phrase).
-  const blocks = content.trim().split(/\n\n+/);
+  const blocks = content.replace(/\r\n?/g, "\n").trim().split(/\n\n+/);
   const words: Word[] = [];
 
   for (const block of blocks) {
@@ -227,7 +227,7 @@ function decodeVttText(text: string): string {
 }
 
 function parseVtt(content: string): Word[] {
-  const body = content.replace(/^WEBVTT[^\n]*\n/, "");
+  const body = content.replace(/\r\n?/g, "\n").replace(/^WEBVTT[^\n]*\n/, "");
   // VTT is structurally similar to SRT (without numeric indices)
   const blocks = body.trim().split(/\n\n+/);
   const words: Word[] = [];

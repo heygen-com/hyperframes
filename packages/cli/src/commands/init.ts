@@ -777,10 +777,6 @@ export default defineCommand({
       failCommand();
     }
     const exampleFlag = args.example;
-    if (exampleFlag?.startsWith("-")) {
-      console.error(c.error(`--example requires a value; received flag "${exampleFlag}" instead.`));
-      failCommand();
-    }
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
