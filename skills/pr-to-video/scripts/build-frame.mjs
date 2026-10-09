@@ -569,7 +569,12 @@ const outColors = parseColors(md);
 if (outColors.length !== presetColors.length) {
   die(`color keys changed (${presetColors.length}→${outColors.length}) — keys must be preserved`);
 }
-const outRoles = semanticColors(outColors);
+// The preset's role keys stay fixed when a dark brand reverses their luminance order.
+const presetRoles = semanticColors(presetColors);
+const inkKey = presetColors.find(([, value]) => value === presetRoles.ink)?.[0];
+const canvasKey = presetColors.find(([, value]) => value === presetRoles.canvas)?.[0];
+const outByKey = new Map(outColors);
+const outRoles = { ink: outByKey.get(inkKey), canvas: outByKey.get(canvasKey) };
 const li = lum(outRoles.ink),
   lc = lum(outRoles.canvas);
 // ink (type) and canvas (ground) must differ enough to READ — in EITHER direction. A

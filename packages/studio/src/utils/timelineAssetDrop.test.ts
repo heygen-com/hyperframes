@@ -292,3 +292,17 @@ describe("fitTimelineAssetGeometry", () => {
     });
   });
 });
+
+it("writes a dropped file's name as a URL, so %, #, ? and apostrophes load", () => {
+  const html = buildTimelineAssetInsertHtml({
+    id: "clip",
+    hfId: "hf-clip",
+    assetPath: "../assets/50% off #1?'s take.mp4",
+    kind: "video",
+    start: 0,
+    duration: 2,
+    track: 1,
+    zIndex: 1,
+  });
+  expect(html).toContain('src="../assets/50%25%20off%20%231%3F%27s%20take.mp4"');
+});

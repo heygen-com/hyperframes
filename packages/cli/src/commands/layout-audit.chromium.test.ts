@@ -41,6 +41,110 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     }
   }
 
+  function gradientHeading(content: string, backgroundStyle = ""): string {
+    return `<div data-composition-id="main" data-width="640" data-height="360" style="position:relative;width:640px;height:360px;background:#0a0a0a">
+      <h1 style="position:absolute;left:40px;top:100px;width:560px;margin:0;font:700 64px/1.2 Arial;-webkit-text-fill-color:transparent;background-image:linear-gradient(90deg,#f4f4f4,#f5e6c8);background-clip:text;${backgroundStyle}">${content}</h1>
+    </div>`;
+  }
+
+  async function gradientFrame(body: string) {
+    const page = await browser.newPage();
+    try {
+      await page.setViewport({ width: 640, height: 360, deviceScaleFactor: 1 });
+      await page.setContent(`<body style="margin:0">${body}</body>`);
+      await page.addScriptTag({ content: script });
+      const codes = await page.evaluate(() =>
+        window.__hyperframesLayoutAudit({ time: 1, tolerance: 2 }).map((issue) => issue.code),
+      );
+      return { codes, image: await page.screenshot() };
+    } finally {
+      await page.close();
+    }
+  }
+
+  it.each([
+    { name: "inline child", content: "<span>Gradient text</span>", layered: false },
+    { name: "nested child", content: "<div><span>Gradient text</span></div>", layered: false },
+    {
+      name: "transformed child",
+      content: '<div style="transform:translateY(0)">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "translated child",
+      content: '<div style="transform:translateY(150px)">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "positioned child",
+      content: '<div style="position:relative">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "filtered child",
+      content: '<div style="filter:blur(0px)">Gradient text</div>',
+      layered: true,
+    },
+    { name: "faded child", content: '<div style="opacity:.9">Gradient text</div>', layered: true },
+  ])("recognizes ancestor gradient paint for a $name", async ({ content, layered }) => {
+    const direct = await gradientFrame(gradientHeading("Gradient text"));
+    const descendant = await gradientFrame(gradientHeading(content));
+    const version = await browser.version();
+    const chromiumVersion = Number(version.split("/")[1]?.split(".")[0]);
+    if (chromiumVersion >= 150) {
+      expect(descendant.image).toEqual(direct.image);
+      expect(descendant.codes).not.toContain("text_not_painted");
+    } else {
+      if (layered) expect(descendant.image).not.toEqual(direct.image);
+      else expect(descendant.image).toEqual(direct.image);
+      expect(descendant.codes).toContain("text_not_painted");
+    }
+  });
+
+  it.each([
+    { name: "absent gradient", backgroundStyle: "background-image:none" },
+    {
+      name: "transparent gradient",
+      backgroundStyle: "background-image:linear-gradient(transparent,transparent)",
+    },
+    { name: "unclipped background", backgroundStyle: "background-clip:border-box" },
+    {
+      name: "misaligned background layers",
+      backgroundStyle:
+        "background-image:linear-gradient(red,blue),none;background-clip:border-box,text",
+    },
+  ])("reports invisible glyphs beneath an $name", async ({ backgroundStyle }) => {
+    expect(
+      await auditCodes(gradientHeading("<span>Gradient text</span>", backgroundStyle)),
+    ).toContain("text_not_painted");
+  });
+
+  it("reports transparent SVG text beneath an HTML text mask", async () => {
+    const codes = await auditCodes(
+      gradientHeading(
+        '<svg width="500" height="80"><text x="0" y="60" fill="transparent">Gradient text</text></svg>',
+      ),
+    );
+    expect(codes).toContain("text_not_painted");
+  });
+
+  it("reports text positioned outside the ancestor background", async () => {
+    const codes = await auditCodes(
+      gradientHeading('<span style="position:relative;top:150px">Gradient text</span>'),
+    );
+    expect(codes).toContain("text_not_painted");
+  });
+
+  it.each([
+    { name: "padding", css: "padding-top:150px" },
+    { name: "text indentation", css: "text-indent:1000px;white-space:nowrap" },
+  ])("reports glyphs moved outside the mask by $name", async ({ css }) => {
+    const codes = await auditCodes(
+      gradientHeading(`<div style="${css}">Gradient text</div>`, "height:100px"),
+    );
+    expect(codes).toContain("text_not_painted");
+  });
+
   it.each([
     { name: "line-height 1", css: "height:120px", textStyle: "", error: false },
     { name: "line-height .9", css: "height:108px;line-height:.9", textStyle: "", error: false },

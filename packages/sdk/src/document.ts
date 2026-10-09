@@ -8,7 +8,7 @@
  *   HyperFramesElement is the editing view (ALL editable elements, with raw attrs).
  */
 
-import { parseHTML } from "linkedom";
+import { parseHTMLContent } from "@hyperframes/core/compiler/html-document";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import {
@@ -261,11 +261,7 @@ export function buildRoots(document: Document): HyperFramesElement[] {
 export function buildDocument(html: string): SdkDocument {
   const stamped = ensureHfIds(html);
 
-  const hasShell = /<!doctype|<html[\s>]/i.test(stamped);
-  const wrapped = !hasShell;
-  const { document } = wrapped
-    ? parseHTML(`<!DOCTYPE html><html><head></head><body>${stamped}</body></html>`)
-    : parseHTML(stamped);
+  const document = parseHTMLContent(stamped);
 
   const dims = extractDimensions(document);
 

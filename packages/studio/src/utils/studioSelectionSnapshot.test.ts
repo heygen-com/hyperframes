@@ -44,4 +44,35 @@ describe("buildStudioSelectionSnapshot", () => {
     expect(JSON.stringify(snapshot)).not.toContain("HTMLElement");
     expect(snapshot).not.toHaveProperty("element");
   });
+
+  it("links a selection inside a sub-composition to its own thumbnail", () => {
+    const snapshot = buildStudioSelectionSnapshot({
+      projectId: "demo",
+      selection: {
+        element: { tagName: "H1" } as HTMLElement,
+        id: null,
+        hfId: "intro-title",
+        selector: ".title",
+        selectorIndex: 0,
+        label: "Intro title",
+        tagName: "h1",
+        sourceFile: "compositions/intro #1.html",
+        compositionPath: "compositions/intro #1.html",
+        isCompositionHost: false,
+        isInsideLockedComposition: false,
+        boundingBox: { x: 0, y: 0, width: 10, height: 10 },
+        textContent: "Intro",
+        dataAttributes: {},
+        inlineStyles: {},
+        computedStyles: {},
+        textFields: [],
+        capabilities: { canSelect: true, canEditStyles: true },
+      } as DomEditSelection,
+      currentTime: 0,
+    });
+
+    expect(snapshot.thumbnailUrl).toMatch(
+      /^\/api\/projects\/demo\/thumbnail\/compositions%2Fintro%20%231\.html\?/,
+    );
+  });
 });

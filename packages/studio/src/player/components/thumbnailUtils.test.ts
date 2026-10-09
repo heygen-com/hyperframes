@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { buildTimelineAssetInsertHtml } from "../../utils/timelineAssetDrop";
 import {
+  authoredSrcPath,
   computeThumbnailStrip,
   encodePreviewPath,
   resolveMediaPreviewUrl,
@@ -185,5 +187,36 @@ describe("encodePreviewPath", () => {
 
   it("leaves a plain path unchanged", () => {
     expect(encodePreviewPath("assets/music.mp3")).toBe("assets/music.mp3");
+  });
+});
+
+describe("authoredSrcPath", () => {
+  const droppedSrc = (assetPath: string) =>
+    /src="([^"]*)"/.exec(
+      buildTimelineAssetInsertHtml({
+        id: "clip",
+        hfId: "hf-clip",
+        assetPath,
+        kind: "video",
+        start: 0,
+        duration: 2,
+        track: 1,
+        zIndex: 1,
+      }),
+    )![1]!;
+
+  it.each([
+    ["assets/My clip.mp4", "/api/projects/p/preview/assets/My%20clip.mp4"],
+    ["assets/café.mp4", "/api/projects/p/preview/assets/caf%C3%A9.mp4"],
+    ["assets/50% off #1?.mp4", "/api/projects/p/preview/assets/50%25%20off%20%231%3F.mp4"],
+  ])("previews a dropped %j at its own file", (assetPath, url) => {
+    expect(resolveMediaPreviewUrl(authoredSrcPath(droppedSrc(assetPath)), "p")).toBe(url);
+  });
+
+  it("drops the query and fragment, and leaves URLs with a scheme alone", () => {
+    expect(authoredSrcPath("assets/a%20b.mp4?v=2#t=1")).toBe("assets/a b.mp4");
+    expect(authoredSrcPath("assets/100%.png")).toBe("assets/100%.png");
+    expect(authoredSrcPath("https://cdn.example/a%20b.mp4")).toBe("https://cdn.example/a%20b.mp4");
+    expect(authoredSrcPath("//cdn.example/a%20b.mp4")).toBe("//cdn.example/a%20b.mp4");
   });
 });

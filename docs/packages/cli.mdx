@@ -236,7 +236,7 @@ thin with counts on it was cut short.
 | `--capture-budget`  | Budget in ms for everything after the page loads (default 120000). Cooperative — it stops new work, but cannot interrupt work already running.     |
 | `--skip-assets`     | Do not download images and SVGs                                                                                                                   |
 | `--skip-vision`     | Do not run AI image captioning                                                                                                                    |
-| `--max-screenshots` | Accepted, but has no effect — capture picks its own scroll positions.                                                                              |
+| `--max-screenshots` | Maximum page-capture files, including the full-page plate; derived contact sheets are excluded. Positive integer; default 21. A value of 1 captures only the top viewport.                                                                              |
 | `--json`            | Structured output for programmatic use                                                                                                             |
 | `--video <folder>`  | Switch to video-download mode against a captured folder's manifest. Pair with `--list`, `--index`, or `--video-url`.                               |
 
@@ -435,7 +435,7 @@ npx hyperframes media-treatment --selector '#hero' --analyze --json
 npx hyperframes media-treatment --selector '#hero' \
   --grading '{"preset":"skin-soft","intensity":0.6}' --apply
 npx hyperframes media-treatment --file compositions/scene.html --selector 'video' \
-  --grading '{"preset":"warm-daylight"}' --apply --dry-run --json
+  --grading '{"preset":"warm-daylight"}' --dry-run --json
 npx hyperframes media-treatment --selector '#hero' --clear
 ```
 
@@ -454,6 +454,8 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--clear`              | Remove colour grading from the target                                 |
 | `--dry-run`            | Validate and report without writing                                   |
 | `--json`               | Agent-readable JSON                                                   |
+
+`--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML.
 
 The command writes `data-color-grading` — the same contract Studio, preview, and
 render all read, so the two can never disagree. It does not recognise subjects

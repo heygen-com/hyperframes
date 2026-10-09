@@ -15,6 +15,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
+import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
 import {
   installPageFunctionGuard,
@@ -89,6 +90,10 @@ export function shouldIgnoreRequestFailure(
   } catch {
     return false;
   }
+}
+
+export function projectPathOfUrl(url: string): string {
+  return decodeWellFormedEscapes(new URL(url).pathname).replace(/^\//, "");
 }
 
 export function shouldIgnoreHttpError(url: string, status: number): boolean {
@@ -477,7 +482,7 @@ async function validateInBrowser(
       if (url.includes("favicon") || url.startsWith("data:")) return;
       const failureText = req.failure()?.errorText;
       if (shouldIgnoreRequestFailure(url, failureText, req.resourceType())) return;
-      const path = decodeURIComponent(new URL(url).pathname).replace(/^\//, "");
+      const path = projectPathOfUrl(url);
       errors.push({
         level: "error",
         text: `Failed to load ${path}: ${failureText ?? "net::ERR_FAILED"}`,
@@ -490,7 +495,7 @@ async function validateInBrowser(
         const url = res.url();
         if (url.includes("favicon")) return;
         if (shouldIgnoreHttpError(url, res.status())) return;
-        const path = decodeURIComponent(new URL(url).pathname).replace(/^\//, "");
+        const path = projectPathOfUrl(url);
         errors.push({ level: "error", text: `${res.status()} loading ${path}`, url });
       }
     });

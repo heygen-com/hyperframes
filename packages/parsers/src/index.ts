@@ -17,7 +17,7 @@ export * from "./compositionDuration.js";
 // consume them without depending on @hyperframes/core). The Node-only asset
 // path helpers live behind the ./asset-paths subpath to keep this entry
 // browser-safe.
-export { decodeUrlPathVariants } from "./utils/urlPath.js";
+export { decodeUrlPathVariants, decodedUrlPath, encodeUrlPath } from "./utils/urlPath.js";
 export { scanVariableUsage, type VariableUsageScan } from "./variableUsage.js";
 export { extractMediaSrcMutations, type MediaSrcMutation } from "./mediaSrcMutation.js";
 export {
@@ -26,3 +26,5 @@ export {
   CANONICAL_FONT_DISPLAY_NAMES,
   resolveAliasDisplayName,
 } from "./fontAliases.js";
+
+export * from "./htmlAttributeSpans.js";

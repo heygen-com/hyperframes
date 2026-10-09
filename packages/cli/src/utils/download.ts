@@ -88,6 +88,7 @@ export function downloadFile(
   return new Promise((resolve, reject) => {
     const follow = (u: string, hops = 0) => {
       let activeResponse: IncomingMessage | undefined;
+      let responseDiscarded = false;
       let responsePipelineStarted = false;
       let requestError: Error | undefined;
       let request: ClientRequest;
@@ -97,15 +98,15 @@ export function downloadFile(
           if (res.statusCode && REDIRECT_CODES.has(res.statusCode)) {
             const location = res.headers.location;
             if (location) {
+              responseDiscarded = true;
+              res.destroy();
               if (hops >= MAX_REDIRECTS) {
-                res.resume();
                 removePartialFile(tmp);
                 reject(
                   new Error(`Download failed: more than ${MAX_REDIRECTS} redirects from ${url}`),
                 );
                 return;
               }
-              res.resume();
               try {
                 follow(redirectTarget(location, u), hops + 1);
               } catch (error) {
@@ -116,7 +117,8 @@ export function downloadFile(
             }
           }
           if (res.statusCode !== 200) {
-            res.resume();
+            responseDiscarded = true;
+            res.destroy();
             removePartialFile(tmp);
             reject(new Error(`Download failed: HTTP ${res.statusCode}`));
             return;
@@ -145,6 +147,7 @@ export function downloadFile(
         request.destroy(new Error(`Download timed out after ${timeoutMs}ms`));
       });
       request.on("error", (err) => {
+        if (responseDiscarded) return;
         if (responsePipelineStarted) {
           requestError = err;
           activeResponse?.destroy(err);

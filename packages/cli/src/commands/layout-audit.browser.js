@@ -1163,6 +1163,73 @@
     };
   }
 
+  function layoutOffset(element) {
+    let left = 0;
+    let top = 0;
+    for (let current = element; current instanceof HTMLElement; current = current.offsetParent) {
+      left += current.offsetLeft;
+      top += current.offsetTop;
+      if (current !== element) {
+        left += current.clientLeft;
+        top += current.clientTop;
+      }
+    }
+    return { left, top };
+  }
+
+  function ancestorBackgroundPaintsText(element, textRect) {
+    // Chromium 150+ includes independently painted descendants in text masks;
+    // older builds drop their glyphs: https://github.com/heygen-com/hyperframes/issues/5117.
+    const chromium = window.navigator.userAgent.match(/(?:HeadlessChrome|Chrome)\/(\d+)/);
+    if (!chromium || Number(chromium[1]) < 150 || !(element instanceof HTMLElement)) return false;
+
+    for (
+      let ancestor = element.parentElement;
+      ancestor instanceof HTMLElement;
+      ancestor = ancestor.parentElement
+    ) {
+      const style = getComputedStyle(ancestor);
+      const clips = splitTopLevelCommas(
+        style.webkitBackgroundClip || style.backgroundClip || "border-box",
+      ).map((clip) => clip.trim());
+      if (!clips.includes("text")) continue;
+      // Chromium builds the mask before descendant transforms, so moving the
+      // child must not move its glyphs out of the mask for this check.
+      const offset = layoutOffset(element);
+      const parentOffset = layoutOffset(ancestor);
+      const elementRect = element.getBoundingClientRect();
+      const scaleX = elementRect.width > 0 ? element.offsetWidth / elementRect.width : 1;
+      const scaleY = elementRect.height > 0 ? element.offsetHeight / elementRect.height : 1;
+      const backgroundRect = rectFromOrigin(0, 0, ancestor.offsetWidth, ancestor.offsetHeight);
+      const overlaps =
+        element.offsetWidth > 0 && element.offsetHeight > 0
+          ? textClientRects(element, true).some((rect) => {
+              const layoutRect = rectFromOrigin(
+                offset.left - parentOffset.left + (rect.left - elementRect.left) * scaleX,
+                offset.top - parentOffset.top + (rect.top - elementRect.top) * scaleY,
+                rect.width * scaleX,
+                rect.height * scaleY,
+              );
+              return intersectionArea(layoutRect, backgroundRect) > 0;
+            })
+          : !overflowFor(textRect, ancestor.getBoundingClientRect(), 2);
+      if (!overlaps) continue;
+
+      const images = splitTopLevelCommas(style.backgroundImage || "none");
+      const imagePaints = images.some(
+        (image, index) =>
+          clips[index % clips.length] === "text" &&
+          /(?:linear|radial|conic)-gradient\(/i.test(image) &&
+          gradientMaxAlpha(image) > 0.05,
+      );
+      const colorPaints =
+        clips[(images.length - 1) % clips.length] === "text" &&
+        colorAlpha(style.backgroundColor || "rgba(0, 0, 0, 0)") > 0.05;
+      if (imagePaints || colorPaints) return true;
+    }
+    return false;
+  }
+
   // Text whose glyphs paint with an effectively transparent fill renders
   // invisibly even though the element, its box, opacity and color all read as
   // present — so geometry/occlusion/contrast audits miss it (contrast reads
@@ -1194,6 +1261,7 @@
       // clipped text. If nothing paints, fall through and report it.
       if (paintsGlyphs) return null;
     }
+    if (ancestorBackgroundPaintsText(element, textRect)) return null;
     return {
       code: "text_not_painted",
       severity: "error",
