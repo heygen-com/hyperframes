@@ -4,14 +4,19 @@ import React, { act, useRef } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const domDelete = vi.fn(async () => undefined);
+const historyUndo = vi.fn(async () => ({ ok: false }));
+const historyRedo = vi.fn(async () => ({ ok: false }));
+const settle = vi.fn(async () => undefined);
 let root: Root | null = null;
 let sync: ((iframe: HTMLIFrameElement | null) => void) | null = null;
 
@@ -36,8 +41,8 @@ function Harness() {
     domEditSelectionRef: selectionRef,
     clearDomSelectionRef: useRef<() => void>(() => undefined),
     editHistory: {
-      undo: vi.fn(async () => ({ ok: false })),
-      redo: vi.fn(async () => ({ ok: false })),
+      undo: historyUndo,
+      redo: historyRedo,
       state: { undo: [], redo: [] },
     },
     readOptionalProjectFile: vi.fn(async () => ""),
@@ -45,8 +50,7 @@ function Harness() {
     writeProjectFile: vi.fn(async () => undefined),
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
-    waitForPendingDomEditSaves: vi.fn(async () => undefined),
-    leftSidebarRef: useRef<LeftSidebarHandle | null>(null),
+    settlePendingEdits: settle,
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(() => false),
     handleCut: vi.fn(() => false),
@@ -64,6 +68,11 @@ afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
   domDelete.mockClear();
+  historyUndo.mockClear();
+  historyRedo.mockClear();
+  settle.mockReset();
+  settle.mockImplementation(async () => undefined);
+  vi.mocked(trackStudioEvent).mockClear();
 });
 
 describe("preview iframe hotkey forwarding", () => {
@@ -88,5 +97,74 @@ describe("preview iframe hotkey forwarding", () => {
     );
 
     expect(domDelete).toHaveBeenCalledTimes(1);
+  });
+
+  function mountWithPreview(): Window & typeof globalThis {
+    root = mountReactHarness(<Harness />);
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    act(() => sync?.(iframe));
+    const inner = iframe.contentWindow as (Window & typeof globalThis) | null;
+    if (!inner) throw new Error("expected an iframe window");
+    return inner;
+  }
+
+  async function press(inner: Window & typeof globalThis, init: KeyboardEventInit) {
+    await act(async () => {
+      inner.document.body.dispatchEvent(
+        new inner.KeyboardEvent("keydown", { ...init, bubbles: true }),
+      );
+    });
+  }
+
+  it("takes one tracked undo step per Cmd+Z pressed inside the preview", async () => {
+    await press(mountWithPreview(), { key: "z", ctrlKey: true });
+
+    expect(historyUndo).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledWith("keyboard_shortcut", { action: "undo" });
+  });
+
+  it("settles pending edits, failed ones included, before Cmd+Z steps the history", async () => {
+    let settled!: () => void;
+    settle.mockImplementation(
+      () => new Promise<undefined>((resolve) => (settled = () => resolve(undefined))),
+    );
+    await press(mountWithPreview(), { key: "z", ctrlKey: true });
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(historyUndo).not.toHaveBeenCalled();
+    await act(async () => settled());
+    expect(historyUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["Shift+Cmd+Z", { key: "Z", metaKey: true, shiftKey: true }],
+    ["Ctrl+Y", { key: "y", ctrlKey: true }],
+  ])("takes one tracked redo step per %s pressed inside the preview", async (_, init) => {
+    await press(mountWithPreview(), init);
+
+    expect(historyRedo).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledWith("keyboard_shortcut", { action: "redo" });
+  });
+
+  it("stops handling preview keys once the app unmounts", async () => {
+    root = mountReactHarness(<Harness />);
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const inner = iframe.contentWindow as (Window & typeof globalThis) | null;
+    if (!inner) throw new Error("expected an iframe window");
+    const add = vi.spyOn(inner, "addEventListener");
+    const remove = vi.spyOn(inner, "removeEventListener");
+    act(() => sync?.(iframe));
+    act(() => root?.unmount());
+    root = null;
+
+    await press(inner, { key: "z", ctrlKey: true });
+
+    expect(historyUndo).not.toHaveBeenCalled();
+    // happy-dom removes a listener whatever its capture flag; a browser does not, so pin the flag.
+    expect(add).toHaveBeenCalled();
+    expect(remove.mock.calls).toEqual(add.mock.calls);
   });
 });

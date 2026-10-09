@@ -4,6 +4,7 @@ import { compareVersions } from "compare-versions";
 import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "./env.js";
+import { hostAnswers } from "./hostAnswers.js";
 import { detectInstaller } from "./installerDetection.js";
 import { readPinnedHyperframesVersions } from "./projectPin.js";
 import { isSafeVersion } from "./safeVersion.js";
@@ -41,42 +42,29 @@ export interface UpdateMeta {
  * Check npm registry for the latest version. Uses a 24h cache to avoid
  * hitting the registry on every invocation.
  *
- * @param force - Skip cache and fetch fresh data
+ * @param force - Skip the cache, opt-outs and DNS probe: the caller waits for the registry
  */
 export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult> {
   const config = readConfig();
-  const now = Date.now();
-
-  // Also guard the cache read: a cache written before this boundary guard
-  // existed could hold an unsafe latestVersion — re-validate before trusting it.
-  if (
-    !force &&
-    config.lastUpdateCheck &&
-    config.latestVersion &&
-    isSafeVersion(config.latestVersion)
-  ) {
-    const lastCheck = new Date(config.lastUpdateCheck).getTime();
-    if (now - lastCheck < CHECK_INTERVAL_MS) {
-      return {
-        current: VERSION,
-        latest: config.latestVersion,
-        updateAvailable: isNewerSemver(config.latestVersion, VERSION),
-      };
-    }
-  }
+  if (!force && !updateCheckDue(config)) return fallbackResult(config.latestVersion);
 
   try {
+    if (!force && !(await hostAnswers(new URL(NPM_REGISTRY_URL).hostname))) {
+      return fallbackResult(config.latestVersion);
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(NPM_REGISTRY_URL, {
-      signal: controller.signal,
-      headers: { Connection: "close" },
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) return fallbackResult(config.latestVersion);
-
-    const data = (await res.json()) as { version?: unknown };
+    let data: { version?: unknown };
+    try {
+      const res = await fetch(NPM_REGISTRY_URL, {
+        signal: controller.signal,
+        headers: { Connection: "close" },
+      });
+      if (!res.ok) return fallbackResult(config.latestVersion);
+      data = (await res.json()) as { version?: unknown };
+    } finally {
+      clearTimeout(timeout);
+    }
     // Registry boundary guard: only a strict-semver STRING is trusted. This
     // value is cached and later flows into an install command that the
     // background auto-updater executes, so a poisoned or non-string
@@ -103,10 +91,24 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   }
 }
 
+/** Whether the background check should ask the registry: not opted out, and no fresh safe cache. */
+export function updateCheckDue(config = readConfig()): boolean {
+  if (updateCheckDisabled()) return false;
+  if (!config.lastUpdateCheck || !config.latestVersion || !isSafeVersion(config.latestVersion)) {
+    return true;
+  }
+  const fresh = Date.now() - new Date(config.lastUpdateCheck).getTime() < CHECK_INTERVAL_MS;
+  return !fresh;
+}
+
+export function cachedUpdateCheck(): UpdateCheckResult {
+  return fallbackResult(readConfig().latestVersion);
+}
+
 function fallbackResult(cachedLatest?: string): UpdateCheckResult {
   // Only surface a cached version we can prove is safe — a pre-existing
   // poisoned cache must not leak through the fallback path either.
-  const safeCached = cachedLatest && isSafeVersion(cachedLatest) ? cachedLatest : undefined;
+  const safeCached = safeCachedVersion(cachedLatest);
   return {
     current: VERSION,
     latest: safeCached ?? VERSION,
@@ -114,16 +116,20 @@ function fallbackResult(cachedLatest?: string): UpdateCheckResult {
   };
 }
 
+function safeCachedVersion(value: unknown): string | undefined {
+  return typeof value === "string" && isSafeVersion(value) ? value : undefined;
+}
+
 /**
  * Synchronous read from cache — for _meta envelope on --json commands.
  * Never fetches. Returns what the last background check found.
  */
 export function getUpdateMeta(): UpdateMeta {
-  const config = readConfig();
+  const latestVersion = safeCachedVersion(readConfig().latestVersion);
   return {
     version: VERSION,
-    latestVersion: config.latestVersion,
-    updateAvailable: config.latestVersion ? isNewerSemver(config.latestVersion, VERSION) : false,
+    latestVersion,
+    updateAvailable: latestVersion ? isNewerSemver(latestVersion, VERSION) : false,
   };
 }
 
@@ -156,17 +162,19 @@ export function printDeprecationNotice(command: string): void {
   );
 }
 
-/**
- * True when update / freshness notices should stay silent — CI, non-TTY, dev
- * mode, or the HYPERFRAMES_NO_UPDATE_CHECK opt-out. Shared with the skills
- * freshness notice so both honour the same gating.
- */
-export function updateNoticesSuppressed(): boolean {
+/** True when the update check is off: dev mode, CI, or the HYPERFRAMES_NO_UPDATE_CHECK opt-out. */
+export function updateCheckDisabled(): boolean {
   if (isDevMode()) return true;
   if (process.env["CI"] === "true" || process.env["CI"] === "1") return true;
-  if (!process.stderr.isTTY) return true;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return true;
-  return false;
+  return process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1";
+}
+
+/**
+ * True when update / freshness notices should stay silent: the check is off or stderr is not a
+ * terminal. Shared with the skills freshness notice so both honour the same gating.
+ */
+export function updateNoticesSuppressed(): boolean {
+  return updateCheckDisabled() || !process.stderr.isTTY;
 }
 
 /**
@@ -197,20 +205,14 @@ export function printUpdateNotice(): void {
 const STALE_PIN_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Actionable, throttled notice for a project whose package.json still pins an
- * OLD hyperframes version. Unlike printUpdateNotice this DOES fire on non-TTY
- * (agents render with piped stderr) \u2014 but only when there's a concrete stale
- * pin to act on, at most once/24h per install, and never under --json/CI/dev/
- * opt-out. The whole cli.ts update block is already skipped for --json, so a
- * JSON stdout stays clean regardless.
+ * Actionable notice when the running CLI is older than the project's pin (every
+ * run), or when the pin is older than the latest release (once/24h per install).
+ * Unlike printUpdateNotice this DOES fire on non-TTY (agents render with piped
+ * stderr), but never under --json/CI/dev/opt-out: the whole cli.ts update block
+ * is skipped for --json, so a JSON stdout stays clean regardless.
  */
 export function printStalePinNotice(cwd: string = process.cwd()): void {
-  if (isDevMode()) return;
-  if (process.env["CI"] === "true" || process.env["CI"] === "1") return;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return;
-
-  const latest = getUpdateMeta().latestVersion;
-  if (!latest || !isSafeVersion(latest)) return;
+  if (updateCheckDisabled()) return;
 
   let scripts: Record<string, string> = {};
   try {
@@ -220,7 +222,20 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   } catch {
     return;
   }
-  const stale = readPinnedHyperframesVersions(scripts).filter((v) => {
+  const pins = readPinnedHyperframesVersions(scripts);
+  // A CLI older than the pin (e.g. a stale npx cache) misjudges every run, so this is never throttled.
+  const newerPins = pins.filter((v) => isNewerSemver(v, VERSION)).sort(compareVersions);
+  if (newerPins.length > 0) {
+    process.stderr.write(
+      `\n  This is hyperframes ${VERSION}, but this project pins hyperframes@${newerPins.join(", ")}.\n` +
+        `  Run it through the project's npm scripts, or npx hyperframes@${newerPins.at(-1)}.\n\n`,
+    );
+    return;
+  }
+
+  const latest = getUpdateMeta().latestVersion;
+  if (!latest || !isSafeVersion(latest)) return;
+  const stale = pins.filter((v) => {
     try {
       return compareVersions(latest, v) > 0;
     } catch {
@@ -229,9 +244,9 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   });
   if (stale.length === 0) return;
 
-  const config = readConfig();
-  const last = config.lastStalePinNoticeAt ?? 0;
+  const last = readConfig().lastStalePinNoticeAt ?? 0;
   if (Date.now() - last < STALE_PIN_THROTTLE_MS) return;
+  const config = readConfigFresh();
   config.lastStalePinNoticeAt = Date.now();
   writeConfig(config);
 

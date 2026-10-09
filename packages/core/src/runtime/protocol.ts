@@ -1,11 +1,14 @@
 export const RUNTIME_PROTOCOL_VERSION = 1 as const;
 
+export const RUNTIME_FILLER = "hf-runtime-filler";
+
 export const RUNTIME_PROTOCOL_CAPABILITIES = [
   "seconds-time",
   "rational-fps",
   "seek-keep-playing",
   "composition-manifest-v1",
   "runtime-data",
+  "play-range",
 ] as const;
 
 export type RuntimeProtocolFps = {
@@ -47,6 +50,10 @@ export function runtimeProtocolFpsFromNumber(value: number): RuntimeProtocolFps 
   return { numerator: numerator / divisor, denominator: denominator / divisor };
 }
 
+export function playRangeHoldTime(start: number, end: number, fps: number): number {
+  return Math.max(start, (Math.ceil(end * fps - 1e-6) - 1) / fps);
+}
+
 export function runtimeProtocolFpsToNumber(value: unknown): number | null {
   if (typeof value !== "object" || value === null) return null;
   const fps = value as Partial<RuntimeProtocolFps>;
@@ -61,6 +68,12 @@ export function runtimeProtocolMetadata(fps: number): RuntimeProtocolV1 {
     capabilities: RUNTIME_PROTOCOL_CAPABILITIES,
     fps: runtimeProtocolFpsFromNumber(fps),
   };
+}
+
+export function frameDisplayScale(frame: HTMLElement): number | null {
+  const layoutWidth = frame.offsetWidth;
+  const shownWidth = frame.getBoundingClientRect().width;
+  return layoutWidth > 0 && shownWidth > 0 ? shownWidth / layoutWidth : null;
 }
 
 function hasDeclaredCapabilities(value: unknown): boolean {

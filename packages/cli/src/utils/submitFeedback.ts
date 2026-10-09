@@ -7,6 +7,7 @@ import { FEEDBACK_RATING_SCALE } from "./feedbackRating.js";
 const MAX_COMMENT = 2000;
 const MAX_CLI_VERSION = 100;
 const MAX_ENV = 500;
+const MAX_EMAIL = 254;
 
 function cap(value: string | undefined, max: number): string | undefined {
   if (value === undefined) return undefined;
@@ -14,10 +15,12 @@ function cap(value: string | undefined, max: number): string | undefined {
 }
 
 export async function submitFeedback(input: {
-  rating: number;
+  rating?: number;
   comment?: string;
   cliVersion: string;
   env?: string;
+  source?: "person" | "agent";
+  email?: string;
 }): Promise<void> {
   try {
     const apiBaseUrl = getPublishApiBaseUrl();
@@ -25,10 +28,12 @@ export async function submitFeedback(input: {
       method: "POST",
       body: JSON.stringify({
         rating: input.rating,
-        rating_scale: FEEDBACK_RATING_SCALE,
+        rating_scale: input.rating === undefined ? undefined : FEEDBACK_RATING_SCALE,
         comment: cap(input.comment, MAX_COMMENT),
         cli_version: cap(input.cliVersion, MAX_CLI_VERSION),
         env: cap(input.env, MAX_ENV),
+        source: input.source,
+        email: cap(input.email, MAX_EMAIL),
       }),
       headers: {
         "content-type": "application/json",

@@ -1,18 +1,36 @@
+import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
+import { onPreviewContentReplaced } from "../../player/sceneSwap";
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
   getDomEditLayerKey,
+  liveLayerElement,
   resolveDomEditSelection,
   type DomEditLayerItem,
 } from "./domEditing";
-import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
+import {
+  useStudioPlaybackContextOptional,
+  useStudioShellContextOptional,
+  type StudioPlaybackValue,
+  type StudioShellValue,
+} from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore, liveTime } from "../../player";
 import {
   findMatchingTimelineElementId,
   resolveTimelineSelectionSeekTime,
 } from "../../utils/studioHelpers";
-import { Layers } from "../../icons/SystemIcons";
+import {
+  Film,
+  Folder,
+  ImageIcon,
+  Layers,
+  Music,
+  Square,
+  Type,
+  Vector,
+} from "../../icons/SystemIcons";
+import { isCompositionHost, layerKindOf } from "./layerKind";
 import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
 import { getVisibleLayers, sortLayersByZIndex } from "./layersPanelSort";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
@@ -26,38 +44,18 @@ import { useLayerRevealOverride } from "./useLayerRevealOverride";
 // Rows this panel renders before it stops. A display budget, not a document limit.
 const LAYERS_PANEL_MAX_ROWS = 80;
 
-const TAG_ICONS: Record<string, string> = {
-  video: "Vi",
-  audio: "Au",
-  img: "Im",
-  svg: "Sv",
-  canvas: "Cn",
-  div: "Di",
-  section: "Se",
-  span: "Sp",
-  p: "P",
-  h1: "H1",
-  h2: "H2",
-  h3: "H3",
-  h4: "H4",
-  h5: "H5",
-  h6: "H6",
-  a: "A",
-  button: "Bt",
-  ul: "Ul",
-  ol: "Ol",
-  li: "Li",
-  style: "St",
-  template: "Te",
-};
+const [CARET, ICON, GAP] = [16, 20, 6];
+const CHILD_INDENT = CARET + GAP + ICON + GAP;
 
-function getTagBadge(tagName: string): string {
-  return TAG_ICONS[tagName] ?? tagName.slice(0, 2).toUpperCase();
-}
-
-function isCompositionHost(el: HTMLElement): boolean {
-  return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
-}
+const KIND_ICON = {
+  image: ImageIcon,
+  video: Film,
+  audio: Music,
+  vector: Vector,
+  group: Folder,
+  text: Type,
+  shape: Square,
+} as const;
 
 /**
  * A trailing-rAF + cooldown throttle: `invoke` runs `run` at most once per
@@ -91,11 +89,36 @@ interface CollapsedState {
   [key: string]: boolean;
 }
 
+/** Studio state the panel reads; passed by hosts outside Studio's providers. Keep previewIframeRef stable,
+ * and bump refreshKey when the preview document is rebuilt without an iframe load. */
+export type LayersPanelHost = Pick<
+  StudioShellValue,
+  "previewIframeRef" | "activeCompPath" | "showToast"
+> &
+  Pick<StudioPlaybackValue, "timelineElements" | "isPlaying"> &
+  Partial<Pick<StudioPlaybackValue, "refreshKey" | "compositionLoading">>;
+
+function useLayersPanelHost(host: LayersPanelHost | undefined): LayersPanelHost {
+  const shell = useStudioShellContextOptional();
+  const playback = useStudioPlaybackContextOptional();
+  if (host) return host;
+  if (!shell || !playback) {
+    throw new Error("LayersPanel needs a host prop outside Studio's shell and playback providers");
+  }
+  return { ...shell, ...playback };
+}
+
 // fallow-ignore-next-line complexity
-export const LayersPanel = memo(function LayersPanel() {
-  const { previewIframeRef, activeCompPath, showToast } = useStudioShellContext();
-  const { refreshKey, compositionLoading, timelineElements, isPlaying } =
-    useStudioPlaybackContext();
+export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPanelHost }) {
+  const {
+    previewIframeRef,
+    activeCompPath,
+    showToast,
+    refreshKey,
+    compositionLoading,
+    timelineElements,
+    isPlaying,
+  } = useLayersPanelHost(host);
   const currentTime = usePlayerStore((s) => s.currentTime);
   // Flashless z commits (canvas menu, timeline lane-drag z-sync) mutate iframe
   // z-indexes with no reload and no refreshKey bump — while paused, nothing
@@ -122,6 +145,7 @@ export const LayersPanel = memo(function LayersPanel() {
 
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
+  const livePreviewIframe = useLivePreviewIframe();
   const collectLayers = useCallback(() => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
@@ -152,7 +176,7 @@ export const LayersPanel = memo(function LayersPanel() {
 
   useEffect(() => {
     collectLayers();
-  }, [collectLayers, refreshKey, zEditVersion]);
+  }, [collectLayers, refreshKey, zEditVersion, livePreviewIframe]);
 
   useEffect(() => {
     const iframe = previewIframeRef.current;
@@ -161,9 +185,8 @@ export const LayersPanel = memo(function LayersPanel() {
       prevDocVersionRef.current += 1;
       collectLayers();
     };
-    iframe.addEventListener("load", handleLoad);
-    return () => iframe.removeEventListener("load", handleLoad);
-  }, [previewIframeRef, collectLayers]);
+    return onPreviewContentReplaced(iframe, handleLoad);
+  }, [previewIframeRef, livePreviewIframe, collectLayers]);
 
   useEffect(() => {
     if (!compositionLoading) {
@@ -188,20 +211,8 @@ export const LayersPanel = memo(function LayersPanel() {
 
   const resolveSelection = useCallback(
     (layer: DomEditLayerItem) => {
-      // Re-find the element from the live DOM — layer.element may be stale
-      // after soft reload (which replaces scripts without reloading the iframe).
-      let el = layer.element;
-      if (!el.isConnected) {
-        const iframe = previewIframeRef.current;
-        const doc = iframe?.contentDocument;
-        if (doc) {
-          const found =
-            (layer.id ? doc.getElementById(layer.id) : null) ??
-            (layer.hfId ? doc.querySelector(`[data-hf-id="${CSS.escape(layer.hfId)}"]`) : null) ??
-            doc.getElementById(layer.key);
-          if (found instanceof HTMLElement) el = found;
-        }
-      }
+      const doc = previewIframeRef.current?.contentDocument;
+      const el = liveLayerElement(layer, doc, activeCompPath);
       return resolveDomEditSelection(el, {
         activeCompositionPath: activeCompPath,
         isMasterView,
@@ -352,7 +363,7 @@ export const LayersPanel = memo(function LayersPanel() {
 
       // ONE undo entry for the whole gesture: the z persist and the timeline
       // lane mirror below share this per-gesture-unique key (same contract as
-      // the canvas menu's wiring in PreviewOverlays).
+      // the canvas menu's wiring in ConnectedDomEditOverlay).
       const coalesceKey = zReorderCoalesceKey(entries, "layer-drag");
       const desiredOrderKeys = desiredBottomToTop.map(
         (l) =>
@@ -422,7 +433,7 @@ export const LayersPanel = memo(function LayersPanel() {
       </div>
       <div
         ref={scrollContainerRef}
-        className="relative min-h-0 flex-1 overflow-y-auto py-1"
+        className="relative min-h-0 flex-1 select-none overflow-y-auto py-1"
         onPointerMove={handleContainerPointerMove}
         onPointerUp={handleContainerPointerUp}
         onPointerCancel={handleContainerPointerUp}
@@ -431,7 +442,7 @@ export const LayersPanel = memo(function LayersPanel() {
           <button
             type="button"
             onClick={() => setActiveGroupElement(null)}
-            className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-[11px] text-panel-text-3 hover:bg-panel-hover/40 hover:text-panel-text-1"
+            className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] text-panel-text-3 hover:bg-panel-hover/40 hover:text-panel-text-1"
           >
             <span aria-hidden="true">←</span>
             <span className="truncate">
@@ -446,6 +457,14 @@ export const LayersPanel = memo(function LayersPanel() {
           const isCollapsed = collapsed[layer.key] ?? false;
           const hasChildren = layer.childCount > 0;
           const isCompHost = isCompositionHost(layer.element);
+          const kind = layerKindOf(layer.element, hasChildren);
+          const KindIcon = KIND_ICON[kind];
+          const kindName = kind[0].toUpperCase() + kind.slice(1);
+          const hint = draggable
+            ? layer.element.hasAttribute("data-hf-group")
+              ? "Double-click to enter group"
+              : undefined
+            : "This layer can't be reordered";
 
           return (
             <div
@@ -463,21 +482,15 @@ export const LayersPanel = memo(function LayersPanel() {
                   handleSelectLayer(layer);
                 }
               }}
-              className={`group flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors ${
+              className={`group mx-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors ${
                 isDragged
                   ? "opacity-40"
                   : selected
-                    ? "bg-panel-accent/14 text-panel-accent"
+                    ? "bg-panel-accent/14 text-accent-ink"
                     : "text-panel-text-2 hover:bg-panel-hover/40 hover:text-panel-text-1"
               } ${dragKey ? "cursor-grabbing" : "cursor-pointer"}`}
-              style={{ paddingLeft: 8 + layer.depth * 16 }}
-              title={
-                draggable
-                  ? layer.element.hasAttribute("data-hf-group")
-                    ? "Double-click to enter group"
-                    : undefined
-                  : "This layer can't be reordered"
-              }
+              style={{ paddingLeft: 8 + layer.depth * CHILD_INDENT }}
+              title={hint}
             >
               {hasChildren ? (
                 <button
@@ -485,7 +498,7 @@ export const LayersPanel = memo(function LayersPanel() {
                   onClick={(e) => toggleCollapse(layer.key, e)}
                   aria-expanded={!isCollapsed}
                   aria-label={isCollapsed ? "Expand children" : "Collapse children"}
-                  className="relative flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-neutral-500 hover:text-neutral-300 before:absolute before:-inset-1.5 before:content-['']"
+                  className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-neutral-500 hover:text-neutral-300 before:absolute before:-inset-1.5 before:content-['']"
                 >
                   <svg
                     width="8"
@@ -497,19 +510,19 @@ export const LayersPanel = memo(function LayersPanel() {
                     <path d="M2 1l4 3-4 3z" />
                   </svg>
                 </button>
-              ) : (
-                <span className="w-4 flex-shrink-0" />
-              )}
+              ) : null}
               <span
-                className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[8px] font-bold uppercase ${
+                data-layer-kind={kind}
+                title={hint ? `${kindName} · ${hint}` : kindName}
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${
                   selected
-                    ? "bg-panel-accent/18 text-panel-accent"
+                    ? "bg-panel-accent/18 text-accent-ink"
                     : isCompHost
-                      ? "bg-panel-accent/40 text-panel-accent"
+                      ? "bg-on text-accent-ink"
                       : "bg-panel-hover text-panel-text-4"
                 }`}
               >
-                {getTagBadge(layer.tagName)}
+                <KindIcon size={12} />
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px]">{layer.label}</span>
               {hasChildren && (

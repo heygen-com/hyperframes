@@ -1,0 +1,179 @@
+---
+title: "Install the HyperFrames plugin"
+sidebarTitle: "Agent plugins"
+description: "Install video creation skills as one versioned plugin and let your agent manage updates."
+---
+
+The HyperFrames plugin gives your coding agent the complete set of video workflows:
+product promos, explainers, captions, motion graphics, and more. Skills load when
+needed; you do not have to install each workflow separately.
+
+Choose one installation method per agent. Plugins receive updates through the
+agent's plugin manager. [Standalone skills](/guides/skills) remain available for
+OpenCode and other agents, or when you prefer the smaller core-only install.
+
+| Agent | Installation route |
+| --- | --- |
+| Claude Code | HyperFrames' GitHub marketplace |
+| Copilot CLI | HyperFrames' GitHub marketplace |
+| VS Code / Copilot | Add the GitHub marketplace in the Extensions view |
+| Cursor | Import through a team marketplace, or load a local plugin |
+| Gemini CLI | Install the HyperFrames extension from GitHub |
+| Codex | Use your existing HyperFrames plugin; directory updates are published separately |
+| OpenCode | Use standalone skills |
+
+You need Node.js 22+ and npm for the local CLI, plus FFmpeg for rendering.
+Install on each machine you use; a plugin does not synchronize your machines.
+
+## Claude Code
+
+Run in your terminal:
+
+```bash
+claude plugin marketplace add heygen-com/hyperframes
+claude plugin install hyperframes@hyperframes
+claude plugin details hyperframes
+```
+
+The inventory should include `hyperframes`, `general-video`, and `media-use`.
+Start a new session or run `/reload-plugins`, then try:
+
+```text
+Using /hyperframes:hyperframes, make a 5-second title card that says "Hello world".
+```
+
+**Enable automatic updates:** run `/plugin`, open **Marketplaces**, select
+**hyperframes**, and choose **Enable auto-update**. Third-party marketplaces do
+not enable this by default. To update manually:
+
+```bash
+claude plugin update hyperframes@hyperframes
+```
+
+Reload plugins after updating. To remove the plugin:
+
+```bash
+claude plugin uninstall hyperframes@hyperframes
+```
+
+See [Claude's plugin guide](https://code.claude.com/docs/en/plugins/install)
+for project-wide installation and managed update policies.
+
+## GitHub Copilot CLI
+
+```bash
+copilot plugin marketplace add heygen-com/hyperframes
+copilot plugin install hyperframes@hyperframes
+copilot plugin list
+```
+
+Start a fresh session and ask Copilot to use the HyperFrames skill to make the
+same title card. Check `/skills list` if the skill is not visible.
+
+```bash
+copilot plugin update hyperframes
+copilot plugin uninstall hyperframes
+```
+
+These are explicit updates; do not assume Copilot CLI shares VS Code's update
+schedule. See [Copilot's plugin guide](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing).
+
+## VS Code
+
+Open the Extensions view and search `@agentPlugins`. Add
+`heygen-com/hyperframes` as a marketplace using the plugin marketplace command,
+then install **hyperframes** and verify its skills in Agent Customizations.
+Agent plugins must be enabled in VS Code settings.
+
+VS Code checks for updates every 24 hours when `extensions.autoUpdate` is enabled.
+Use **Extensions: Check for Extension Updates** for a manual check. Disable or
+uninstall the plugin from the Extensions view. See [VS Code's plugin guide](https://code.visualstudio.com/docs/agent-customization/agent-plugins)
+for the current UI and workspace recommendations.
+
+## Cursor
+
+For a team marketplace, import `heygen-com/hyperframes` in **Dashboard → Plugins &
+MCPs** and add the HyperFrames plugin. Teammates install it from **Customize**.
+GitHub marketplace auto-refresh requires the Cursor GitHub App and the marketplace's
+**Enable Auto Refresh** setting.
+
+For a local install, copy an extracted HyperFrames plugin folder to
+`~/.cursor/plugins/local/hyperframes`, then reload Cursor and check **Customize**.
+The folder must contain `plugin.json` and `skills/`. Local copies require manual
+replacement to update; they do not subscribe to GitHub changes. Enterprise policy
+may disable local plugin imports. Remove the local folder to uninstall that copy.
+
+This repository's manifests are not proof of a public Cursor marketplace listing.
+Public listings and their updates go through Cursor review. See [Cursor's plugin
+guide](https://cursor.com/docs/plugins) for marketplace and local-install controls.
+
+## Gemini CLI
+
+```bash
+gemini extensions install https://github.com/heygen-com/hyperframes --auto-update
+gemini extensions list
+```
+
+Restart Gemini CLI and ask it to use the HyperFrames skill for the title card.
+To manage the extension explicitly:
+
+```bash
+gemini extensions update hyperframes
+gemini extensions uninstall hyperframes
+```
+
+To stay on a specific release, install with `--ref <release-tag>` instead of
+`--auto-update`. Choose a release containing `gemini-extension.json`.
+See [Gemini's extension guide](https://geminicli.com/docs/extensions/reference/).
+
+The embedded-captions workflow additionally needs project-local Sharp, Puppeteer
+with Chromium, and GSAP. Its skill includes the versioned installation command;
+keep those dependencies and their lockfile in the caption project. The plugin
+itself remains read-only and does not include browsers or model weights.
+
+## Versions and updates
+
+The plugin bundles workflows from one source snapshot and runs the CLI version
+recorded in its manifest. Your agent should use its bundled plugin launcher;
+it should not run `npx hyperframes skills update` during a plugin workflow.
+Existing project dependencies, downloaded media, and external services have their
+own versions and are not frozen by the plugin.
+
+Update behavior depends on the client and source ref. For example,
+[Cursor GitHub Auto Refresh](https://cursor.com/docs/plugins#keep-plugins-up-to-date)
+follows pushes to the tracked branch, so skill content can change without a new
+CLI version. The manifest pins the CLI version, not the installed skill commit.
+For a repeatable installation, keep a release tag or an extracted release archive
+and disable automatic updates. Install that same release on each machine.
+Git-based installs may download the full source repository. Release ZIPs contain
+only the plugin payload, but loading an extracted ZIP locally requires manual updates.
+Only releases with a `hyperframes-agent-plugin.zip` asset provide that portable ZIP.
+
+## Move from standalone skills or core-skills
+
+Install the full plugin and verify its inventory first. In Claude, an older
+`core-skills@hyperframes` install can then be removed:
+
+```bash
+claude plugin uninstall core-skills@hyperframes
+```
+
+Use your standalone skill manager to remove only the old HyperFrames skills for
+that agent. Inspect the locations first: other agents may share a global skills
+store, and locally edited skills should be backed up. Do not delete an entire
+`.agents` or `.claude` directory. Restart the agent and confirm it selects the
+plugin copy rather than a duplicate standalone skill.
+
+## If a workflow is missing or stale
+
+1. Check the agent's installed plugin inventory and version.
+2. Update using that agent's plugin manager, then reload or restart it.
+3. Check whether an old standalone installation is also being loaded.
+4. For a pinned release, verify the workflow exists in that release. Do not mix
+   skills from a newer release into the plugin folder.
+
+## Related topics
+
+- [Make your first video](/quickstart)
+- [Install standalone skills](/guides/skills)
+- [Plugin release checklist](/contributing/agent-plugins)

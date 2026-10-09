@@ -26,8 +26,17 @@
  * never have to handle them.
  */
 
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { extname, isAbsolute, join, relative, sep } from "node:path";
 import { type CanvasResolution, fpsToNumber } from "@hyperframes/core";
 import {
   type EngineConfig,
@@ -276,6 +285,12 @@ export interface BuildLocalExecutionPlanOptions {
    * transport cap because it publishes role-scoped content-addressed objects.
    */
   readonly executionPlanSizeLimitBytes?: number;
+  /**
+   * Leave long constant-frame-rate video windows unextracted and ship their
+   * sources, so each chunk extracts only the frames it renders. Plan v2 only:
+   * chunks write those frames into their own work directory.
+   */
+  readonly deferVideoExtraction?: boolean;
 }
 
 /**
@@ -661,13 +676,13 @@ export function buildChunkSlices(
  * distributed pipeline needs it.
  */
 async function readFontSnapshotSha(): Promise<string> {
-  const module = (await import("../fontData.generated.js")) as {
+  const module = (await import("@hyperframes/core/fonts/embedded-data")) as {
     EMBEDDED_FONT_DATA?: unknown;
   };
   const data = module.EMBEDDED_FONT_DATA;
   if (!data || typeof data !== "object") {
     throw new Error(
-      "[plan] EMBEDDED_FONT_DATA missing from fontData.generated.js — was `bun run build:fonts` run?",
+      "[plan] EMBEDDED_FONT_DATA missing from @hyperframes/core/fonts/embedded-data — was `bun run build:fonts` run?",
     );
   }
   // Hash a canonical key fingerprint, not the raw font bytes — the bytes are
@@ -822,6 +837,53 @@ export function resolveDistributedEngineConfig(config: DistributedRenderConfig):
     // engine's software-GPU screenshot clamp; assigning the boolean alone
     // loses the distinction between a default false and this explicit opt-out.
     forceScreenshotExplicitlyOptedOut: true,
+  };
+}
+
+function pathInside(root: string, path: string): string | null {
+  const rel = relative(root, path);
+  return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? null : rel;
+}
+
+/**
+ * Return a planDir-relative path chunks can extract a deferred video from.
+ * Sources the plan already ships under `compiled/` are reused; anything else
+ * (downloads, files outside the project) is linked into `video-sources/`.
+ * Call after the staged `compiled/` and `video-frames/` trees are promoted.
+ */
+function createVideoSourceShipper(input: {
+  planDir: string;
+  projectDir: string;
+  workCompiledDir: string;
+  workVideoFramesDir: string;
+}): (srcPath: string) => string {
+  const shipped = new Map<string, string>();
+  return (srcPath) => {
+    const known = shipped.get(srcPath);
+    if (known) return known;
+    // Downloads were staged under the frame tree, which now lives at video-frames/.
+    const stagedRel = pathInside(input.workVideoFramesDir, srcPath);
+    const current = stagedRel === null ? srcPath : join(input.planDir, "video-frames", stagedRel);
+    let result: string | null = null;
+    for (const root of stagedRel === null ? [input.workCompiledDir, input.projectDir] : []) {
+      const rel = pathInside(root, srcPath);
+      if (rel !== null && existsSync(join(input.planDir, "compiled", rel))) {
+        result = ["compiled", ...rel.split(sep)].join("/");
+        break;
+      }
+    }
+    if (result === null) {
+      result = `video-sources/${shipped.size}${extname(current)}`;
+      const destination = join(input.planDir, ...result.split("/"));
+      mkdirSync(join(input.planDir, "video-sources"), { recursive: true });
+      try {
+        linkSync(current, destination);
+      } catch {
+        copyFileSync(current, destination);
+      }
+    }
+    shipped.set(srcPath, result);
+    return result;
   };
 }
 
@@ -1043,6 +1105,7 @@ export async function buildLocalExecutionPlan(
     abortSignal,
     assertNotAborted,
     materializeSymlinks: true,
+    deferRangeExtraction: options.deferVideoExtraction,
   });
   if (extractResult.failureToEnforce) throw extractResult.failureToEnforce;
   if (extractResult.extractionResult) {
@@ -1082,6 +1145,7 @@ export async function buildLocalExecutionPlan(
   const stagedVideoFrames = join(compiledDir, "__hyperframes_video_frames");
   const videoFramesDst = join(planDir, "video-frames");
   if (existsSync(videoFramesDst)) rmSync(videoFramesDst, { recursive: true, force: true });
+  rmSync(join(planDir, "video-sources"), { recursive: true, force: true });
   if (existsSync(stagedVideoFrames)) {
     renameSync(stagedVideoFrames, videoFramesDst);
   } else {
@@ -1097,6 +1161,12 @@ export async function buildLocalExecutionPlan(
   // page's native `<video>` element decodes the source mp4 ~1 frame
   // off the pre-extracted images the in-process baseline was captured
   // from.
+  const shipVideoSource = createVideoSourceShipper({
+    planDir,
+    projectDir,
+    workCompiledDir: compiledDir,
+    workVideoFramesDir: stagedVideoFrames,
+  });
   const planVideosJson: PlanVideosJson = buildPlanVideosJson({
     videos: composition.videos,
     compositionEnd: job.duration ?? Number.NaN,
@@ -1107,6 +1177,9 @@ export async function buildLocalExecutionPlan(
       fps: ext.fps,
       totalFrames: ext.totalFrames,
       metadata: ext.metadata,
+      ...(ext.deferredRange
+        ? { deferredRange: { ...ext.deferredRange, sourcePath: shipVideoSource(ext.srcPath) } }
+        : {}),
     })),
   });
   mkdirSync(join(planDir, "meta"), { recursive: true });

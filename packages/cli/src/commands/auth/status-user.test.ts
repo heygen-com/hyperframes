@@ -64,6 +64,17 @@ describe("auth status — persisted user block surface", () => {
     return JSON.parse(stdout[stdout.length - 1] ?? "{}");
   }
 
+  it("reports host-managed OAuth without showing its token or a stored identity", async () => {
+    process.env["HEYGEN_ACCESS_TOKEN"] = "fixture-host-secret";
+    await writeStore({ user: { email: "stored@example.com" } });
+    expect(await runStatus(true)).toBe(0);
+    expect(lastJson()).toMatchObject({ source: "env_oauth", persisted_user: null });
+    expect(await runStatus(false)).toBe(0);
+    expect(stdout.join("\n")).toContain("env (HEYGEN_ACCESS_TOKEN)");
+    expect(stdout.join("\n")).not.toContain("fixture-host-secret");
+    expect(stdout.join("\n")).not.toContain("stored@example.com");
+  });
+
   it("surfaces the persisted user block (with resolved display_name) for a file credential", async () => {
     await writeStore({
       api_key: "hg_x",

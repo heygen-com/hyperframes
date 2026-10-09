@@ -26,6 +26,22 @@ describe("resolveElementAffordances (live DOM)", () => {
     expect(a.capabilities.canSelect).toBe(true);
   });
 
+  it("audible video => audioFx; muted or data-has-audio=false video => no audioFx", () => {
+    const model = { text: null, animationIds: [], start: null };
+    expect(resolveElementAffordances(el(`<video></video>`), model).sections.audioFx).toBe(true);
+    expect(
+      resolveElementAffordances(el(`<video data-has-audio="true"></video>`), model).sections
+        .audioFx,
+    ).toBe(true);
+    expect(resolveElementAffordances(el(`<video muted></video>`), model).sections.audioFx).toBe(
+      false,
+    );
+    expect(
+      resolveElementAffordances(el(`<video data-has-audio="false"></video>`), model).sections
+        .audioFx,
+    ).toBe(false);
+  });
+
   it("absolutely-positioned div with inline left/top => canMove", () => {
     const d = el(`<div style="position:absolute;left:5px;top:5px"></div>`);
     const a = resolveElementAffordances(d, { text: null, animationIds: [], start: null });

@@ -1,6 +1,15 @@
-import { existsSync } from "node:fs";
-import { isAbsolute, posix, relative, resolve } from "node:path";
+import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpans.js";
+import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
+
+/** The subset of `node:path` that `isWithinProjectRoot` needs to run under
+ * an injected platform (tests pass `path.win32` / `path.posix`). */
+interface PathModuleLike {
+  resolve: (...segments: string[]) => string;
+  relative: (from: string, to: string) => string;
+  isAbsolute: (path: string) => boolean;
+}
 
 /**
  * Shared local-asset resolution helpers for every package that maps
@@ -42,60 +51,19 @@ export function isUnresolvedAssetPlaceholder(rawSrc: string): boolean {
   return /^__[A-Z_]+__$/.test(rawSrc.trim()) || hasUnresolvedTemplatingToken(rawSrc);
 }
 
-/** `data-composition-src="..."`, matched within a single already-delimited tag. */
-const COMPOSITION_SRC_ATTR = /\bdata-composition-src\s*=\s*["']([^"']+)["']/i;
-
 /**
- * Every `data-composition-src` reference in one composition file's raw text, in
- * document order, deduped. The single owner of "which sub-compositions does
- * this file mount", so lint, telemetry, and any future scanner cannot drift
- * apart on the answer.
- *
- * Text-scanning rather than DOM-walking, and that is the load-bearing choice.
- * Every sub-composition except the render entry is authored inside a
- * `<template>` (the root index.html is forbidden from using that wrapper;
- * everything else prefers it). Template content is inert: it lives under
- * `template.content`, not the live document, so `document.querySelectorAll`
- * on a raw sub-composition file finds nothing and every nested reference
- * disappears. The renderer only gets away with a DOM scan because it recurses
- * on COMPILED html, where the wrapper is already gone.
- *
- * Callers must resolve each value against the PROJECT ROOT, never the
- * referencing file's directory: `data-composition-src` is root-relative at
- * every nesting level (see `parseSubCompositions` in htmlCompiler.ts).
- *
- * Comments, `<style>`, and `<script>` bodies are masked first so a
- * commented-out mount is not counted as a real one. Build-time placeholders and
- * remote or inline URLs are dropped: neither names a file on disk, and every
- * caller resolves what comes back against the project root.
- *
- * The scan walks tag by tag with `indexOf` rather than running one regex with
- * two open-ended `[^>]*` spans across the whole file. That shape is quadratic:
- * on input full of `<` with no `>`, every `<` starts a scan to end-of-string
- * that then backtracks, measured at 41ms / 165ms / 660ms / 2640ms for 10k /
- * 20k / 40k / 80k characters. This function runs on every render (via the
- * render plan), so a truncated download or a blob full of stray `<` would hang
- * the plan step before any video is produced. Bounding each regex to one
- * already-delimited tag makes the whole scan linear.
+ * Collect active, local composition paths in document order, including template content.
+ * Paths are physical file names relative to the project root at every nesting level.
  */
 export function collectSubCompositionSrcs(html: string): string[] {
-  const scannable = maskNonScannableRanges(html);
   const srcs: string[] = [];
   const seen = new Set<string>();
 
-  let cursor = 0;
-  while (cursor < scannable.length) {
-    const open = scannable.indexOf("<", cursor);
-    if (open === -1) break;
-    const close = scannable.indexOf(">", open + 1);
-    // An unterminated final tag is not a tag. The previous whole-file regex
-    // also required a closing `>`, so this drops nothing it used to find.
-    if (close === -1) break;
-    cursor = close + 1;
-
-    const match = COMPOSITION_SRC_ATTR.exec(scannable.slice(open, cursor));
-    if (!match) continue;
-    const src = (match[1] ?? "").trim();
+  for (const tag of scanHtmlOpeningTags(html)) {
+    if (!tag.closed) continue;
+    const attribute = tag.attributes.find((attr) => attr.name === "data-composition-src");
+    if (attribute?.kind !== "value") continue;
+    const src = decodeAuthoredAttribute(attribute.value).trim();
     if (!src || seen.has(src)) continue;
     // __UPPER__ placeholder or late-bound templating token — not a real reference.
     if (isUnresolvedAssetPlaceholder(src)) continue;
@@ -115,10 +83,22 @@ export function cleanAssetUrl(url: string): string {
   return url.trim().split(/[?#]/, 1)[0] ?? "";
 }
 
-export function isWithinProjectRoot(projectDir: string, candidate: string): boolean {
-  const projectRoot = resolve(projectDir);
-  const relativePath = relative(projectRoot, candidate);
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+/**
+ * `pathModule` defaults to the host's native `node:path`, so every existing
+ * caller gets its actual OS's separator and drive-letter rules unchanged.
+ * Tests inject `path.win32` / `path.posix` to exercise both platforms' rules
+ * from a single OS (same pattern as producer/fileServer.ts's `isPathInside`).
+ */
+export function isWithinProjectRoot(
+  projectDir: string,
+  candidate: string,
+  pathModule: PathModuleLike = { resolve, relative, isAbsolute },
+): boolean {
+  const projectRoot = pathModule.resolve(projectDir);
+  const relativePath = pathModule.relative(projectRoot, candidate);
+  return (
+    relativePath === "" || (!relativePath.startsWith("..") && !pathModule.isAbsolute(relativePath))
+  );
 }
 
 function addCandidate(candidates: string[], candidate: string): void {
@@ -158,6 +138,41 @@ export function resolveExistingLocalAsset(
   return { resolved, rootRelativePath: relative(projectRoot, resolved) };
 }
 
+// Candidates for a variant whose join escaped the project root, re-anchored at the root.
+function reanchoredCandidates(variant: string, baseDir: string, compiledDir?: string): string[] {
+  const baseAbs = resolve(baseDir);
+  const joinedAbs = resolve(join(baseDir, variant));
+  if (joinedAbs === baseAbs || joinedAbs.startsWith(baseAbs + sep)) return [];
+  // Normalize before stripping, or `assets/../../assets/foo` becomes `assets/assets/foo`.
+  const stripped = posix.normalize(variant.replace(/\\/g, "/")).replace(/^(\.\.\/)+/, "");
+  if (!stripped || stripped === variant || stripped.startsWith("..")) return [];
+  return compiledDir
+    ? [join(compiledDir, stripped), join(baseDir, stripped)]
+    : [join(baseDir, stripped)];
+}
+
+/** Resolves a media `src` like a browser URL (`..` clamps at the project root); a miss returns the base-dir join. */
+export function resolveProjectRelativeSrc(
+  src: string,
+  baseDir: string,
+  compiledDir?: string,
+): string {
+  const cleanSrc = cleanAssetUrl(src);
+
+  // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
+  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+
+  const candidates = new Set<string>();
+  for (const variant of decodeUrlPathVariants(cleanSrc)) {
+    for (const candidate of reanchoredCandidates(variant, baseDir, compiledDir)) {
+      candidates.add(candidate);
+    }
+    if (compiledDir) candidates.add(join(compiledDir, variant));
+    candidates.add(join(baseDir, variant));
+  }
+  return [...candidates].find(existsSync) ?? join(baseDir, cleanSrc);
+}
+
 function maskRange(src: string, pattern: RegExp): string {
   return src.replace(pattern, (m) => " ".repeat(m.length));
 }
@@ -186,4 +201,29 @@ export function maskNonScannableRanges(html: string): string {
   out = maskRange(out, /<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi);
   out = maskRange(out, /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi);
   return out;
+}
+
+export type ProjectFileRead =
+  | { kind: "file"; text: string }
+  | { kind: "folder" }
+  | { kind: "missing" };
+
+/** Reads through one descriptor, so the file-type check and the read see the same file. */
+export function readProjectFile(path: string): ProjectFileRead {
+  let fd: number;
+  try {
+    // Non-blocking so a named pipe is reported, not waited on; the mode never applies (no O_CREAT).
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0), 0o600);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? "";
+    if (["EISDIR", "ENXIO"].includes(code)) return { kind: "folder" };
+    if (["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG"].includes(code)) return { kind: "missing" };
+    throw error;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return { kind: "folder" };
+    return { kind: "file", text: readFileSync(fd, "utf-8") };
+  } finally {
+    closeSync(fd);
+  }
 }

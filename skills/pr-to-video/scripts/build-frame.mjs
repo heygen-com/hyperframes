@@ -41,6 +41,8 @@ import {
   UA_DEFAULT_COLORS,
 } from "./lib/tokens.mjs";
 
+import { stageCapturedFonts } from "./lib/captured-fonts.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flag = (name, def) => {
@@ -516,11 +518,12 @@ if (brandFonts.length) {
   const famOf = (f) =>
     fams.length === 1 ? fams[0] : ranked.find((x) => norm(f).includes(norm(x)));
   const outDir = join(hyperframesDir, "assets/fonts");
-  const faces = [];
-  const stagedNames = new Set();
+  const captured = stageCapturedFonts(hyperframesDir, fams);
+  const faces = [...captured.faces];
+  const stagedNames = new Set(captured.files);
   for (const { d, f } of files) {
     const fam = famOf(f);
-    if (!fam) continue;
+    if (!fam || captured.families.has(fam.toLowerCase())) continue;
     const { n, w } = weightInfo(f);
     const style = styleOf(f);
     const clean = `${fam.replace(/[^A-Za-z0-9]/g, "")}-${w}${style === "italic" ? "-Italic" : ""}.${extOf(f)}`;
@@ -566,7 +569,12 @@ const outColors = parseColors(md);
 if (outColors.length !== presetColors.length) {
   die(`color keys changed (${presetColors.length}→${outColors.length}) — keys must be preserved`);
 }
-const outRoles = semanticColors(outColors);
+// The preset's role keys stay fixed when a dark brand reverses their luminance order.
+const presetRoles = semanticColors(presetColors);
+const inkKey = presetColors.find(([, value]) => value === presetRoles.ink)?.[0];
+const canvasKey = presetColors.find(([, value]) => value === presetRoles.canvas)?.[0];
+const outByKey = new Map(outColors);
+const outRoles = { ink: outByKey.get(inkKey), canvas: outByKey.get(canvasKey) };
 const li = lum(outRoles.ink),
   lc = lum(outRoles.canvas);
 // ink (type) and canvas (ground) must differ enough to READ — in EITHER direction. A

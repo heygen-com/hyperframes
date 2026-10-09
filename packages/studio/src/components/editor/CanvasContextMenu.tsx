@@ -16,7 +16,7 @@
  * flow, and captures the TRUE prior styles for its failure rollback.
  *
  * The prop MUST be wired at the call site to route through the full persist
- * path. PreviewOverlays.tsx builds the per-patch PatchTargets (the selected
+ * path. useDomEditZOrder.ts builds the per-patch PatchTargets (the selected
  * element carries its full selection identity; sibling elements are iframe DOM
  * nodes, so their id / selector are derived from the node and they share the
  * selection's sourceFile) and forwards them to handleDomZIndexReorderCommit.
@@ -29,11 +29,11 @@ import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import {
   isZOrderActionEnabled,
-  resolveCrossedNeighbor,
-  resolveZOrderChange,
+  resolveZOrderStep,
   type ZOrderAction,
   type ZOrderPatch,
 } from "./canvasContextMenuZOrder";
+import { menuClasses } from "../ui/menuStyle";
 
 interface CanvasContextMenuProps {
   /** Viewport x of the right-click event. */
@@ -170,13 +170,11 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
 
   function handleZAction(action: ZAction) {
     if (!onApplyZIndex) return;
-    const patches = resolveZOrderChange(el, action);
-    if (patches === null) return;
-    // Resolve the crossed neighbor BEFORE the commit path mutates live styles —
-    // both resolvers must read the same pre-change render order. Always resolved
-    // (not only for the flash): onApplyZIndex forwards it so the host can mirror
-    // the z step into a timeline lane move.
-    const crossed = resolveCrossedNeighbor(el, action);
+    // Resolved BEFORE the commit path mutates live styles. `crossed` is always
+    // resolved (not only for the flash): the host mirrors it into a lane move.
+    const step = resolveZOrderStep(el, action);
+    if (step === null) return;
+    const { patches, crossed } = step;
     // Do NOT pre-apply styles here: handleDomZIndexReorderCommit writes the
     // live z-index (and injects position:relative for static elements) in the
     // same synchronous flow, so feedback is still instant — and it must read
@@ -212,7 +210,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[200] bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
       style={{ left: adjustedX, top: adjustedY }}
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}
@@ -255,12 +253,12 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
           );
         })}
 
-      {hasDivider && <div className="my-1 border-t border-neutral-700/60" />}
+      {hasDivider && <div className={menuClasses.divider} />}
 
       {hasDelete && (
         <button
           type="button"
-          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
+          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-danger-ink hover:bg-neutral-800 cursor-pointer text-left"
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.preventDefault();

@@ -28,22 +28,18 @@ export const examples: Example[] = [
     "Disable auto-proxying of browser-hostile video codecs (HEVC, ProRes, AV1)",
     "hyperframes preview --no-proxy",
   ],
+  [
+    "Show full lint findings on startup instead of the summary line",
+    "hyperframes preview --lint-verbose",
+  ],
 ];
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  readlinkSync,
-  symlinkSync,
-  unlinkSync,
-} from "node:fs";
-import { parseStoryboard, STORYBOARD_FILENAME } from "@hyperframes/core/storyboard";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
+import { desktopHint } from "../utils/desktopApp.js";
 import { isDevMode } from "../utils/env.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
@@ -53,8 +49,9 @@ import {
   parseRemoteDebuggingPort,
   validateRemoteDebuggingPortDeps,
 } from "../utils/openBrowser.js";
-import { lintProject } from "../utils/lintProject.js";
-import { formatLintFindings } from "../utils/lintFormat.js";
+import type { ProjectLintResult } from "../utils/lintProject.js";
+import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   activeServerOnPort,
   findPortAndServe,
@@ -66,7 +63,9 @@ import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.j
 import { resolveProject, resolveProjectOrThrow } from "../utils/project.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { studioProxyEnv } from "../utils/studioProxyEnv.js";
+import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
+  PreviewPortUnavailableError,
   listBackgroundPreviewStatuses,
   readBackgroundPreviewStatus,
   startBackgroundPreview,
@@ -104,9 +103,11 @@ interface EmbeddedStudioOptions extends StudioLaunchOptions {
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
+const STUDIO_CHILD_SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+type StudioShutdownSignal = (typeof STUDIO_CHILD_SHUTDOWN_SIGNALS)[number];
 interface StudioSignalTarget {
-  once(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
-  off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+  once(event: StudioShutdownSignal, listener: () => void): unknown;
+  off(event: StudioShutdownSignal, listener: () => void): unknown;
 }
 type ContextField = "server" | "selection" | "lint" | "capabilities";
 type CompactSelectionPayload = Pick<
@@ -125,6 +126,14 @@ type CompactSelectionPayload = Pick<
 >;
 
 const DEFAULT_CONTEXT_FIELDS: ContextField[] = ["server", "selection", "lint", "capabilities"];
+
+const PREVIEW_PORT_MISMATCH_CODE = "preview-port-mismatch";
+
+export function backgroundStartFailureCode(error: unknown): string {
+  if (error instanceof PreviewServerPortMismatchError) return PREVIEW_PORT_MISMATCH_CODE;
+  if (error instanceof PreviewPortUnavailableError) return "preview-port-unavailable";
+  return "preview-start-failed";
+}
 
 export default defineCommand({
   meta: {
@@ -175,6 +184,11 @@ export default defineCommand({
     "kill-all": {
       type: "boolean",
       description: "Kill all active preview servers and exit",
+      default: false,
+    },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings on startup (default: a one-line summary)",
       default: false,
     },
     open: {
@@ -296,7 +310,7 @@ export default defineCommand({
     if (args["browser-gpu"] === true) process.env.PRODUCER_BROWSER_GPU_MODE = "hardware";
     if (args["browser-gpu"] === false) process.env.PRODUCER_BROWSER_GPU_MODE = "software";
     const startPort = parseInt(args.port ?? "3002", 10);
-    const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
+    const explicitPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
 
     if (args.status || args.stop) {
       try {
@@ -385,18 +399,13 @@ export default defineCommand({
         json: Boolean(args.json),
         fields: args["context-fields"] as string | undefined,
         detail: args["context-detail"] as string | undefined,
-        ...(preferredContextPort === undefined ? {} : { preferredPort: preferredContextPort }),
+        preferredPort: explicitPort,
       });
     }
 
     if (args.selection) {
       const project = resolveProject(args.dir);
-      return printCurrentSelection(
-        project.dir,
-        startPort,
-        Boolean(args.json),
-        preferredContextPort,
-      );
+      return printCurrentSelection(project.dir, startPort, Boolean(args.json), explicitPort);
     }
 
     const rawArg = args.dir;
@@ -415,14 +424,6 @@ export default defineCommand({
     }
     const dir = project.dir;
     const projectName = isImplicitCwd ? basename(process.env.PWD ?? dir) : project.name;
-
-    // Lint before starting — surface issues for the agent to fix.
-    const lintResult = await lintProject(dir);
-    if (!args.json && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
-      console.log();
-      for (const line of formatLintFindings(lintResult)) console.log(line);
-      console.log();
-    }
 
     // Validation: --user-data-dir requires --browser-path
     if (args["user-data-dir"] && !args["browser-path"]) {
@@ -487,6 +488,9 @@ export default defineCommand({
       );
     }
 
+    // Runs in the CLI worker while Studio starts, so it never delays the opening; --json skips it.
+    const startupLint = args.json ? null : printStartupLint(dir, Boolean(args["lint-verbose"]));
+
     const launchMode = previewLaunchMode({
       background: Boolean(args.background),
       foreground: Boolean(args.foreground),
@@ -504,11 +508,14 @@ export default defineCommand({
           // the existing managed server resolved earlier. Only an explicit
           // --browser-gpu/--no-browser-gpu request authorizes replacement.
           browserGpuMode: args["browser-gpu"] === undefined ? undefined : browserGpuMode,
+          preferredPort: explicitPort,
         });
       } catch (error) {
         const message = errorMessage(error);
         if (args.json) {
-          writeLifecycleJson(lifecycleFailurePayload("start", "preview-start-failed", message));
+          writeLifecycleJson(
+            lifecycleFailurePayload("start", backgroundStartFailureCode(error), message),
+          );
         } else {
           clack.log.error(message);
         }
@@ -543,13 +550,14 @@ export default defineCommand({
           footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
         });
       }
-      openStudioBrowser(url, projectName, dir, {
+      openStudioBrowser(url, projectName, {
         noOpen,
         browserPath,
         userDataDir,
         remoteDebuggingPort,
         browserNoGpu,
       });
+      await startupLint;
       return;
     }
 
@@ -599,6 +607,26 @@ export default defineCommand({
     });
   },
 });
+
+async function printStartupLint(dir: string, verbose: boolean): Promise<void> {
+  try {
+    const lintResult = await runRenderSetupWorker<ProjectLintResult>(
+      "lint",
+      { projectDir: dir },
+      { maxBufferBytes: 8 * 1024 * 1024 },
+    );
+    if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
+    console.log();
+    for (const line of formatLintStartupMessage(
+      lintResult,
+      verbose ? { kind: "verbose" } : { kind: "summary", pointer: "studio" },
+    ))
+      console.log(line);
+    console.log();
+  } catch (error) {
+    clack.log.warn(`Lint did not finish: ${errorMessage(error)}`);
+  }
+}
 
 export type PreviewLaunchMode = "background" | "dev" | "local" | "embedded";
 
@@ -904,7 +932,7 @@ async function printCurrentSelection(
       return;
     }
     if (err instanceof PreviewServerPortMismatchError) {
-      printSelectionFailure("preview-port-mismatch", err.message, json);
+      printSelectionFailure(PREVIEW_PORT_MISMATCH_CODE, err.message, json);
       return;
     }
     throw err;
@@ -1026,7 +1054,7 @@ async function printCurrentContext(
       return;
     }
     if (err instanceof PreviewServerPortMismatchError) {
-      printSelectionFailure("preview-port-mismatch", err.message, options.json);
+      printSelectionFailure(PREVIEW_PORT_MISMATCH_CODE, err.message, options.json);
       return;
     }
     throw err;
@@ -1167,48 +1195,32 @@ function compactSelectionPayload(selection: StudioSelectionSnapshot): CompactSel
   };
 }
 
-// Land the browser on the Storyboard view while the project is still planning
-// or sketching — the timeline only becomes the right landing once frames are
-// animated (or the storyboard never tracked statuses at all, e.g. beat plans).
-export function studioLandingSearch(projectDir: string): string {
-  const storyboardPath = join(projectDir, STORYBOARD_FILENAME);
-  if (!existsSync(storyboardPath)) return "";
-  let frames;
-  try {
-    frames = parseStoryboard(readFileSync(storyboardPath, "utf8")).frames;
-  } catch {
-    return "";
-  }
-  // Sketch review in progress — the board is the review surface.
-  if (frames.some((f) => f.status === "built")) return "?view=storyboard";
-  // Pure planning stage: frames declare src paths but none are built yet.
-  const srcs = frames
-    .map((f) => f.src)
-    .filter((s): s is string => typeof s === "string" && s.length > 0);
-  const planning =
-    frames.length > 0 &&
-    frames.every((f) => f.status === "outline") &&
-    srcs.length > 0 &&
-    !srcs.some((s) => existsSync(join(projectDir, s)));
-  return planning ? "?view=storyboard" : "";
-}
-
-// The full Studio URL to open or hand to the user: status-aware landing view
-// plus the project hash route. `url` never carries a trailing slash (both the
-// embedded server and the Vite `Local:` match strip it).
-export function studioDeepLink(url: string, projectName: string, projectDir: string): string {
-  return `${url}/${studioLandingSearch(projectDir)}#project/${encodeURIComponent(projectName)}`;
+// The full Studio URL to open or hand to the user. `url` never carries a
+// trailing slash (both the embedded server and the Vite `Local:` match strip it).
+export function studioDeepLink(url: string, projectName: string): string {
+  return `${url}/#project/${encodeURIComponent(projectName)}`;
 }
 
 export function studioSummaryUrls(
   projectName: string,
   serverUrl: string,
-  projectDir: string,
 ): { serverUrl: string; studioUrl: string } {
   return {
     serverUrl,
-    studioUrl: studioDeepLink(serverUrl, projectName, projectDir),
+    studioUrl: studioDeepLink(serverUrl, projectName),
   };
+}
+
+/** Builds the preview while the browser starts; a failed build is retried by the player's own request. */
+export function prebuildPreview(
+  fetchApp: (request: Request) => Response | Promise<Response>,
+  serverUrl: string,
+  projectName: string,
+): Promise<unknown> {
+  const previewUrl = `${serverUrl}/api/projects/${encodeURIComponent(projectName)}/preview`;
+  return Promise.resolve()
+    .then(() => fetchApp(new Request(previewUrl)))
+    .catch(() => undefined);
 }
 
 export function foregroundPreviewReadyPayload(
@@ -1252,20 +1264,15 @@ function previewLifecycleSession(options: {
     port: options.port,
     pid: options.pid,
     serverUrl,
-    studioUrl: studioDeepLink(serverUrl, options.projectName, options.projectDir),
+    studioUrl: studioDeepLink(serverUrl, options.projectName),
     ready: true,
     ...(options.logPath ? { logPath: options.logPath } : {}),
   };
 }
 
-function openStudioBrowser(
-  url: string,
-  projectName: string,
-  projectDir: string,
-  options?: BrowserLaunchOptions,
-): void {
+function openStudioBrowser(url: string, projectName: string, options?: BrowserLaunchOptions): void {
   if (options?.noOpen) return;
-  openBrowser(studioDeepLink(url, projectName, projectDir), {
+  openBrowser(studioDeepLink(url, projectName), {
     browserPath: options?.browserPath,
     userDataDir: options?.userDataDir,
     remoteDebuggingPort: options?.remoteDebuggingPort,
@@ -1279,11 +1286,13 @@ function printStudioSummary(
   projectDir: string,
   opts: { details?: string[]; footer?: string } = {},
 ): void {
-  const urls = studioSummaryUrls(projectName, serverUrl, projectDir);
+  const urls = studioSummaryUrls(projectName, serverUrl);
   console.log();
   console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
   console.log(`  ${c.dim("Studio")}    ${c.accent(urls.studioUrl)}`);
   console.log(`  ${c.dim("Server")}    ${c.accent(urls.serverUrl)}`);
+  const hint = desktopHint(projectDir);
+  if (hint) console.log(`  ${c.dim("Desktop")}   ${hint}`);
   console.log();
   for (const detail of opts.details ?? []) {
     console.log(`  ${c.dim(detail)}`);
@@ -1342,8 +1351,7 @@ export function waitForStudioChildClose(
   const shutdown = (): void => {
     if (child.pid) killProcessTree(child.pid);
   };
-  signalTarget.once("SIGINT", shutdown);
-  signalTarget.once("SIGTERM", shutdown);
+  for (const signal of STUDIO_CHILD_SHUTDOWN_SIGNALS) signalTarget.once(signal, shutdown);
 
   // A short-lived Vite child can exit before launch setup reaches this point.
   // ChildProcess does not replay lifecycle events to listeners attached later,
@@ -1360,8 +1368,7 @@ export function waitForStudioChildClose(
   return closed.finally(() => {
     // Signal listeners keep Bun's event loop alive even after Vite exits. Leaving
     // them registered makes `preview --stop` close the port but leak the wrapper.
-    signalTarget.off("SIGINT", shutdown);
-    signalTarget.off("SIGTERM", shutdown);
+    for (const signal of STUDIO_CHILD_SHUTDOWN_SIGNALS) signalTarget.off(signal, shutdown);
   });
 }
 
@@ -1396,7 +1403,7 @@ function attachStudioReadyHandler(
         footer: "Press Ctrl+C to stop",
       });
     }
-    openStudioBrowser(url, projectName, projectDir, options);
+    openStudioBrowser(url, projectName, options);
     child.stdout.removeListener("data", handleOutput);
     child.stderr.removeListener("data", handleOutput);
   }
@@ -1427,7 +1434,7 @@ export function reportPreviewShutdown(json: boolean): void {
 /**
  * Dev mode: spawn the studio dev server from the monorepo.
  */
-async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+export async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
@@ -1447,6 +1454,7 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   const child = spawn("bun", ["run", "dev", "--", ...previewViteArgs(options?.port)], {
     cwd: studioPkgDir,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
     env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
       projectDir: dir,
       projectName: pName,
@@ -1492,7 +1500,10 @@ function hasLocalStudio(dir: string): boolean {
  * Local studio mode: spawn Vite using a locally installed @hyperframes/studio.
  * Provides full Vite HMR and the complete studio experience.
  */
-async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+export async function runLocalStudioMode(
+  dir: string,
+  options?: StudioLaunchOptions,
+): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
   const pName = options?.projectName ?? basename(dir);
@@ -1509,6 +1520,7 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
     env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
       projectDir: dir,
       projectName: pName,
@@ -1566,7 +1578,11 @@ async function runEmbeddedMode(
   // Compute everything that may throw before acquiring the fs.watch handle.
   // Once createStudioServer returns, every subsequent exit path must close it.
   const serverBuildSignature = await loadPreviewServerBuildSignature();
-  const { app, watcher } = createStudioServer({
+  const {
+    app,
+    watcher,
+    shutdown: shutdownStudio,
+  } = createStudioServer({
     projectDir: dir,
     projectName: pName,
     autoProxy: options?.autoProxy,
@@ -1621,7 +1637,7 @@ async function runEmbeddedMode(
         details: ["Reusing existing server. Use --force-new to start a fresh instance."],
       });
     }
-    openStudioBrowser(url, pName, dir, options);
+    openStudioBrowser(url, pName, options);
     return;
   }
 
@@ -1643,7 +1659,8 @@ async function runEmbeddedMode(
       footer: "Press Ctrl+C to stop",
     });
   }
-  openStudioBrowser(url, pName, dir, options);
+  openStudioBrowser(url, pName, options);
+  void prebuildPreview(app.fetch, url, pName);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the
@@ -1672,8 +1689,6 @@ async function runEmbeddedMode(
     const shutdown = (): void => {
       if (shuttingDown) return;
       shuttingDown = true;
-      process.off("SIGINT", shutdown);
-      process.off("SIGTERM", shutdown);
       rl?.close();
       reportPreviewShutdown(Boolean(options?.json));
 
@@ -1682,24 +1697,18 @@ async function runEmbeddedMode(
       // can't be blocked by a stuck drainBrowserPool().
       setTimeout(() => requestCliExit(0), 3000).unref();
 
-      // Kill ffmpeg first (sync, fast), then drain browsers (async, slower).
-      const cleanup = async () => {
-        const { closeThumbnailBrowser } = await import("../server/studioServer.js");
-        const { drainBrowserPool, killTrackedProcesses } = await import("@hyperframes/engine");
-        killTrackedProcesses();
-        await closeThumbnailBrowser().catch(() => {});
-        await drainBrowserPool().catch(() => {});
-      };
-
-      cleanup()
+      shutdownStudio()
         .catch(() => {})
         .finally(() => {
           watcher.close();
           result.server.close(() => resolveRun());
         });
     };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
+    // `on`, not `once`: a repeat Ctrl+C/SIGTERM while shutdown is running must
+    // stay caught and no-op via `shuttingDown`, not fall through to the OS
+    // default once a one-shot listener has self-removed after the first signal.
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
 
     // Last-resort cleanup for crash paths (unhandled exceptions/rejections)
     // that bypass the signal handlers. Eagerly resolve the sync killer so

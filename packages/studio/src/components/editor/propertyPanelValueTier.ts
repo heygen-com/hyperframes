@@ -24,5 +24,5 @@ export const VALUE_TIER_LABEL_CLASS: Record<PropertyValueTier, string> = {
 export const VALUE_TIER_VALUE_CLASS: Record<PropertyValueTier, string> = {
   default: "text-panel-text-3",
   explicitDefault: "text-panel-text-0",
-  explicitCustom: "text-panel-accent",
+  explicitCustom: "text-accent-ink",
 };

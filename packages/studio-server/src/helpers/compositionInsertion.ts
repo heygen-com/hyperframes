@@ -1,8 +1,10 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { randomUUID } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { parseHTML } from "linkedom";
-import { isSafePath, resolveWithinProject } from "./safePath.js";
+import { ProjectRootMissingError } from "@hyperframes/core";
+import { folderGone, isSafePath, realpath, resolveWithinProject } from "./safePath.js";
 
 export class CompositionInsertionError extends Error {
   constructor(
@@ -13,7 +15,7 @@ export class CompositionInsertionError extends Error {
   }
 }
 
-function descendants(root: Document | Element, selector: string): Element[] {
+export function descendants(root: Document | Element, selector: string): Element[] {
   const found = Array.from(root.querySelectorAll(selector));
   for (const template of root.querySelectorAll("template")) {
     found.push(...descendants(template, selector));
@@ -38,16 +40,28 @@ function positiveAttribute(root: Element, ...names: string[]): number {
 
 function canonicalProjectPath(projectDir: string, candidate: string | null): string {
   if (!candidate) {
+    if (folderGone(projectDir)) throw new ProjectRootMissingError(projectDir);
     throw new CompositionInsertionError("Composition source escapes the project", 400);
   }
   if (!existsSync(candidate)) {
     throw new CompositionInsertionError("Composition source was not found", 404);
   }
-  const canonical = realpathSync(candidate);
-  if (!isSafePath(realpathSync(projectDir), canonical)) {
+  const canonical = realpath(candidate);
+  if (!isSafePath(realpath(projectDir), canonical)) {
     throw new CompositionInsertionError("Composition source escapes the project", 400);
   }
   return canonical;
+}
+
+function readCompositionSource(file: string): string {
+  const read = readProjectFile(file);
+  if (read.kind === "folder") {
+    throw new CompositionInsertionError("Composition source is a folder, not an HTML file", 400);
+  }
+  if (read.kind === "missing") {
+    throw new CompositionInsertionError("Composition source was not found", 404);
+  }
+  return read.text;
 }
 
 function validateSourcePath(sourcePath: string): void {
@@ -81,7 +95,7 @@ function validateDependencyGraph(projectDir: string, targetAbs: string, sourceAb
     }
     if (visited.has(file)) return;
     visiting.add(file);
-    const source = readFileSync(file, "utf-8");
+    const source = readCompositionSource(file);
     const { document } = compositionRoot(source);
     for (const host of descendants(document, "[data-composition-src]")) {
       const dependency = host.getAttribute("data-composition-src");
@@ -167,7 +181,7 @@ export function insertCompositionIntoSource(input: {
   const sourceAbs = canonicalProjectFile(input.projectDir, input.sourcePath);
   validateDependencyGraph(input.projectDir, targetAbs, sourceAbs);
 
-  const source = readFileSync(sourceAbs, "utf-8");
+  const source = readCompositionSource(sourceAbs);
   const sourceComposition = compositionRoot(source).root;
   const duration = positiveAttribute(
     sourceComposition,

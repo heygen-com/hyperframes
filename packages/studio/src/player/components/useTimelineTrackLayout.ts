@@ -1,15 +1,17 @@
 import { useMemo, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { animationLaneGroups } from "./TimelinePropertyLanes";
-import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
 import { elementAutomationLanes, groupAutomationLanes } from "./automationLaneData";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
+import { buildTimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import {
   TRACK_H,
   createTimelineRowGeometry,
   type TimelineRowGeometry,
+  type TimelineTrackPadding,
   trackHeights,
   type TimelineTrackHeightClip,
 } from "./timelineLayout";
@@ -44,14 +46,15 @@ export function trackShowsBeatStrip(
 }
 
 /**
- * Automation lanes on one clip, or 0 for anything that is not audio.
+ * Automation lanes on one clip.
  *
- * An audio clip can be worth expanding without carrying a single tween, so this
- * counts toward whether a track has anything to disclose. A function rather than
- * a map so every caller reads the same cached parse and none can drift.
+ * A clip can be worth expanding without carrying a single tween, so this counts
+ * toward whether a track has anything to disclose. Gated on
+ * `isAudioOrVideoTimelineElement`, matching `groupAutomationLanes`. A function
+ * rather than a map so every caller reads the same cached parse and none can drift.
  */
 function automationLaneCountOf(element: TimelineElement): number {
-  return isAudioTimelineElement(element) ? elementAutomationLanes(element).length : 0;
+  return isAudioOrVideoTimelineElement(element) ? elementAutomationLanes(element).length : 0;
 }
 
 /**
@@ -163,7 +166,10 @@ function useTimelineRowHeights(
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
   groups: readonly TimelineTrackGroupInfo[],
+  trackPadding: TimelineTrackPadding | undefined,
 ) {
+  const padTop = trackPadding?.top;
+  const padBottom = trackPadding?.bottom;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const expandedLaneOwnerIds = usePlayerStore((s) => s.expandedLaneOwnerIds);
   const { laneCounts, rowGeometry } = useMemo(() => {
@@ -206,9 +212,12 @@ function useTimelineRowHeights(
       rowGeometry: createTimelineRowGeometry(
         tracks.map(([track]) => track),
         rowHeights,
+        { top: padTop, bottom: padBottom },
       ),
     };
   }, [
+    padTop,
+    padBottom,
     expandedClipIds,
     expandedLaneOwnerIds,
     gsapAnimations,
@@ -232,17 +241,25 @@ export function useTimelineTrackLayout(
   gsapAnimations: Map<string, GsapAnimation[]>,
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
+  trackPadding?: TimelineTrackPadding,
 ) {
   const { tracks, trackStyles, trackOrder, groups, trackGroupOf } =
     useTimelineTrackDerivations(expandedElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
+  const trackInsertLayout = useMemo(
+    () => (groups.length > 0 ? buildTimelineTrackInsertLayout(trackOrder, groups) : undefined),
+    [trackOrder, groups],
+  );
+  const trackInsertLayoutRef = useRef(trackInsertLayout);
+  trackInsertLayoutRef.current = trackInsertLayout;
   const { laneCounts, rowGeometry, rowGeometryRef, rowHeights } = useTimelineRowHeights(
     tracks,
     gsapAnimations,
     selectedElementId,
     selectedElementIds,
     groups,
+    trackPadding,
   );
 
   return {
@@ -250,6 +267,7 @@ export function useTimelineTrackLayout(
     trackStyles,
     trackOrder,
     trackOrderRef,
+    trackInsertLayoutRef,
     laneCounts,
     rowGeometry,
     rowGeometryRef,
@@ -273,27 +291,40 @@ function useDisplayRowHeights(
   );
 }
 
+function insertPreviewTrack(trackOrder: number[], preview: number) {
+  const result: number[] = [];
+  let inserted = false;
+  for (const key of trackOrder) {
+    if (!inserted && Number.isInteger(key) && key > preview) {
+      result.push(preview);
+      inserted = true;
+    }
+    result.push(key);
+  }
+  if (!inserted) result.push(preview);
+  return result;
+}
+
 function useDisplayTrackOrder(draggedClip: DraggedClipState | null, trackOrder: number[]) {
+  const started = draggedClip?.started === true;
+  const insertRow = draggedClip?.insertRow ?? null;
+  const previewTrack = draggedClip?.previewTrack;
   return useMemo(() => {
-    if (!draggedClip?.started || trackOrder.includes(draggedClip.previewTrack)) return trackOrder;
+    if (!started || previewTrack === undefined) return trackOrder;
+    if (insertRow !== null) {
+      const pendingKey = trackOrder.reduce((lowest, key) => Math.min(lowest, key), 0) - 1;
+      const displayOrder = [...trackOrder];
+      displayOrder.splice(insertRow, 0, pendingKey);
+      return displayOrder;
+    }
+    if (trackOrder.includes(previewTrack)) return trackOrder;
     // A group's members sit out of raw numeric order (pulled under their
     // anchor row), so a plain numeric sort here would undo that grouping the
     // moment a clip drags onto a brand-new track. Insert the new preview
     // track only relative to other REAL (integer) tracks, leaving any
     // fractional group-anchor keys exactly where grouping placed them.
-    const preview = draggedClip.previewTrack;
-    const result: number[] = [];
-    let inserted = false;
-    for (const key of trackOrder) {
-      if (!inserted && Number.isInteger(key) && key > preview) {
-        result.push(preview);
-        inserted = true;
-      }
-      result.push(key);
-    }
-    if (!inserted) result.push(preview);
-    return result;
-  }, [draggedClip, trackOrder]);
+    return insertPreviewTrack(trackOrder, previewTrack);
+  }, [started, insertRow, previewTrack, trackOrder]);
 }
 
 export function useTimelineDisplayLayout(
@@ -304,10 +335,18 @@ export function useTimelineDisplayLayout(
   const displayTrackOrder = useDisplayTrackOrder(draggedClip, trackOrder);
   const displayRowHeights = useDisplayRowHeights(displayTrackOrder, rowGeometry);
   const displayRowGeometry = useMemo(
-    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights),
-    [displayTrackOrder, displayRowHeights],
+    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights, rowGeometry.padding),
+    [displayTrackOrder, displayRowHeights, rowGeometry.padding],
   );
+  let draggedRowKey: number | undefined;
+  if (draggedClip?.started) {
+    draggedRowKey =
+      draggedClip.insertRow !== null
+        ? displayRowGeometry.rowKeys[draggedClip.insertRow]
+        : draggedClip.previewTrack;
+  }
   return {
+    draggedRowKey,
     displayTrackOrder,
     displayRowHeights: displayRowGeometry.rowHeights,
     rowGeometry: displayRowGeometry,

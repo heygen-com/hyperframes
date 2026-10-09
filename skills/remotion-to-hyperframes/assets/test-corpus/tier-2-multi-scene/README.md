@@ -18,16 +18,16 @@ If a translation passes T2, the skill correctly handles `<Sequence>` boundaries,
 
 ## Translation walk-through
 
-| Remotion                                                            | HyperFrames                                                                                              |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `<Sequence from={0} durationInFrames={60}>`                         | `<div data-start="0" data-duration="2" data-track-index="0">`                                            |
-| `spring({frame, fps, config: {damping:12, stiffness:100, mass:1}})` | `gsap.to(target, { scale: 1, duration: 0.7, ease: "back.out(1.4)" })`                                    |
-| `<Audio src={staticFile("music.wav")} volume={0.5} />`              | `<audio src="assets/music.wav" data-start="0" data-duration="6" data-volume="0.5" data-track-index="1">` |
-| `<Img src={staticFile("square.png")} />`                            | `<img src="assets/square.png">` (with setup.sh copying into both trees)                                  |
-| `interpolate(frame, [0, 15], [0, 1])` at 30 fps                     | `gsap.to(target, { opacity: 1, duration: 0.5, ease: "none" })`                                           |
+| Remotion                                                            | HyperFrames                                                                                                         |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `<Sequence from={0} durationInFrames={60}>`                         | host `<div data-composition-src="compositions/scene-1.html" data-start="0" data-duration="2" data-track-index="0">` |
+| `spring({frame, fps, config: {damping:12, stiffness:100, mass:1}})` | `gsap.to(target, { scale: 1, duration: 0.7, ease: "back.out(1.4)" })`                                               |
+| `<Audio src={staticFile("music.wav")} volume={0.5} />`              | `<audio src="assets/music.wav" data-start="0" data-duration="6" data-volume="0.5" data-track-index="1">`            |
+| `<Img src={staticFile("square.png")} />`                            | `<img src="../assets/square.png">` inside `compositions/scene-2.html` (with setup.sh copying into both trees)       |
+| `interpolate(frame, [0, 15], [0, 1])` at 30 fps                     | `gsap.to(target, { opacity: 1, duration: 0.5, ease: "none" })`                                                      |
 
 The scene crossfading is a HyperFrames idiom, not a Remotion one: at scene boundaries
-we `gsap.set(scene, { opacity: 0 })` so the previous scene disappears at the
+each scene sub-composition sets its own `gsap.set(scene, { opacity: 0 })` at its local end so the scene disappears at the
 right time. Remotion does this implicitly by virtue of `<Sequence>`'s durationInFrames.
 
 ## How to render and evaluate

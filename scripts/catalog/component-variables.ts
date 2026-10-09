@@ -27,6 +27,18 @@
  */
 
 const DECLARATION = /data-composition-variables\s*=\s*'(\[[\s\S]*?\])'/;
+/** The variables a composition declares on its root, or none when it declares nothing readable. */
+export function declaredVariables(html: string): unknown[] {
+  const raw = DECLARATION.exec(html)?.[1];
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style>/g;
 const SCRIPT_BLOCK = /<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/g;
 const DECLARING_TAG = /<[a-zA-Z][\w-]*\b[^>]*data-composition-variables[\s\S]*?>/;
@@ -60,17 +72,14 @@ export function snippetOwnsItsMotion(snippetHtml: string): boolean {
   return live.includes("__timelines") && live.includes("gsap.timeline");
 }
 
-/**
- * Components that register a timeline but still render a still frame when the
- * preview is built from their snippet.
- *
- * Both were measured, not guessed: their previews moved before this change and
- * were static after, while every other self-contained component kept moving.
- * The cause is in the pieces themselves rather than in the rule, so they keep
- * the preview they had. That leaves their panel inert, which is the state they
- * were already in, rather than trading an inert panel for a frozen preview.
- */
-export const SNIPPET_PREVIEW_RENDERS_STILL = new Set(["ascii-render-pass", "star-rating-fill"]);
+/** Components whose authored stage is needed for a working preview. */
+export const PREFER_AUTHORED_DEMO = new Set([
+  // Their snippets render still frames; keep the demos that supply their motion.
+  "ascii-render-pass",
+  "star-rating-fill",
+  // Dark text needs the demo's light canvas and its 1280 × 720 framing.
+  "caret-swap",
+]);
 
 /** The classes the snippet hangs its declaration on, which its script targets. */
 function declaringClasses(snippetHtml: string): string[] {

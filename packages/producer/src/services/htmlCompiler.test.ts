@@ -166,6 +166,14 @@ describe("injectSdkPositionEditsRenderScript", () => {
     expect(out).toContain("data-hf-edit-base-x");
   });
 
+  it("injects before the document's own </body>, not inside an inlined script that prints one", () => {
+    const vendor = 'p.print("</body>")';
+    const html = `<html><body><h1 data-hf-edit-base-x="0">Hi</h1><script>${vendor}</script></body></html>`;
+    const out = injectSdkPositionEditsRenderScript(html);
+    expect(out).toContain(`<script>${vendor}</script><script>`);
+    expect(out.endsWith("</script></body></html>")).toBe(true);
+  });
+
   it("appends the script when there is no </body> tag", () => {
     const out = injectSdkPositionEditsRenderScript('<div data-hf-edit-base-y="0"></div>');
     expect(out.startsWith('<div data-hf-edit-base-y="0"></div>')).toBe(true);
@@ -305,6 +313,19 @@ describe("inlineExternalScripts", () => {
     const html = `<html><body><script src="./lib/app.js"></script></body></html>`;
     const result = await inlineExternalScripts(html);
     expect(result).toBe(html);
+  });
+
+  it("leaves a CDN runtime link for the file server to strip", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => new Response("window.__hyperframeRuntime = {};"));
+    globalThis.fetch = fetchMock as any;
+    try {
+      const html = `<html><head><script src="https://cdn.example.com/hyperframe.runtime.iife.js"></script></head><body></body></html>`;
+      expect(await inlineExternalScripts(html)).toBe(html);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("inlines a CDN script on successful fetch", async () => {
@@ -815,6 +836,27 @@ describe("detectRenderModeHints", () => {
     ).rejects.toThrow(/compositions\/intro\.html[\s\S]*compositions\/outro\.html/);
   });
 
+  it("compileForRender aborts naming a data-composition-src that points at a folder", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-folder-subcomp-",
+      [{ id: "intro", src: "compositions/intro" }],
+      {},
+    );
+    try {
+      mkdirSync(join(projectDir, "compositions", "intro"));
+      writeFileSync(
+        join(projectDir, "compositions", "intro", "index.html"),
+        validSubCompHtml("intro", "Intro"),
+      );
+
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/compositions\/intro[\s\S]*a folder, not an HTML file/);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("compileForRender aborts when a data-composition-src reference points at a missing file", async () => {
     const projectDir = makeSubCompProject(
       "hf-missing-subcomp-",
@@ -825,6 +867,27 @@ describe("detectRenderModeHints", () => {
     await expect(
       compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
     ).rejects.toThrow(/compositions\/does-not-exist\.html/);
+  });
+
+  it("compileForRender preserves a bare fragment's markup, sibling styles, and script", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-fragment-subcomp-",
+      [{ id: "intro", src: "compositions/intro.html" }],
+      {
+        "intro.html": `<style>.fragment-title { color: rgb(12, 34, 56); }</style>
+<div data-composition-id="intro" data-width="100" data-height="100"><div class="fragment-title">Bare fragment</div></div>
+<script>window.__fragmentLoaded = true;</script>`,
+      },
+    );
+    try {
+      const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+      const { document } = parseHTML(result.html);
+      expect(document.querySelector(".fragment-title")?.textContent).toBe("Bare fragment");
+      expect(result.html).toContain("rgb(12, 34, 56)");
+      expect(result.html).toContain("window.__fragmentLoaded = true");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("compileForRender succeeds when the sub-composition file is valid (happy path)", async () => {
@@ -1060,6 +1123,40 @@ describe("system-primary font normalization", () => {
     expect(rootStyle).toContain("--inline-system-font: Inter, system-ui, sans-serif");
     expect(rootStyle).toContain("font-family: Inter, sans-serif");
   });
+
+  it("promotes Inter inside the fallback of an undefined var() before plan validation", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-var-system-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: var(
+          --font-display,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Helvetica Neue",
+          Arial,
+          sans-serif
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Hello</div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
+    expect(compiled.html.replace(/\s+/g, "")).toContain(
+      'font-family:var(--font-display,Inter,-apple-system,BlinkMacSystemFont,"HelveticaNeue",Arial,sans-serif)',
+    );
+  });
 });
 
 describe("local font embedding", () => {
@@ -1224,17 +1321,19 @@ describe("template-wrapped sub-composition media offsets", () => {
 
     const compiled = await compileForRender(projectDir, indexPath, projectDir);
 
+    // The 4s clip closes with its 2s host (data-start 2 + data-duration 2),
+    // not at its own authored end.
     expect(compiled.videos).toHaveLength(1);
     expect(compiled.videos[0]).toMatchObject({
       id: "scene-video",
       start: 2,
-      end: 6,
+      end: 4,
     });
     expect(compiled.audios).toHaveLength(1);
     expect(compiled.audios[0]).toMatchObject({
       id: "scene-video-audio",
       start: 2,
-      end: 6,
+      end: 4,
     });
   });
 
@@ -1587,7 +1686,7 @@ describe("crossorigin attribute stripping", () => {
 //
 // Tests run on localizeRemoteMediaSources directly (exported for testing) to
 // avoid invoking ffprobe / the full compileForRender pipeline. fetch is patched
-// in-process for success cases; real 404s from example.com cover fallback.
+// in-process for success cases; the unit lane's refused network covers fallback.
 
 describe("localizeRemoteMediaSources", () => {
   it("rewrites remote <video> src to _remote_media path when download succeeds", async () => {

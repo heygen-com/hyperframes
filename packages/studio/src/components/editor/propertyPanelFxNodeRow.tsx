@@ -1,3 +1,4 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /**
  * One effect in the FX rack: its header controls, and its knobs when open.
  *
@@ -216,7 +217,7 @@ function FxNodeHeader({
       />
       <button
         type="button"
-        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-red-400 disabled:opacity-40"
+        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-danger-ink disabled:opacity-40"
         title="Remove"
         disabled={disabled}
         onClick={onRemove}
@@ -246,6 +247,7 @@ export function FxNodeRow({
   onPreview,
   trackKind,
 }: FxNodeRowProps) {
+  const trackInput = useTrackDesignInput();
   const registryDef = getAudioFxDef(node.type);
   const def = useMemo(() => (registryDef ? plainDef(registryDef) : null), [registryDef]);
   const primary = registryDef ? primaryParamOf(registryDef) : null;
@@ -306,6 +308,7 @@ export function FxNodeRow({
         onToggleBypass={() => {
           trackNodeBypassed(node.type, !bypassed, { trackKind });
           onUpdate(index, { enabled: bypassed });
+          trackInput("toggle", "effect-bypass");
         }}
         onMove={(delta) => onMove(index, delta)}
         onRemove={() => onRemove(index)}

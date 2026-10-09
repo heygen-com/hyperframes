@@ -18,6 +18,15 @@ describe("project routing utilities", () => {
     },
   );
 
+  it("opens a folder whose name has a colon, encoded once both ways", () => {
+    const id = "Customer story: Northwind";
+    expect(encodeProjectId(id)).toBe("Customer%20story%3A%20Northwind");
+    expect(buildProjectApiPath(id, "/preview")).toBe(
+      "/api/projects/Customer%20story%3A%20Northwind/preview",
+    );
+    expect(parseProjectIdFromHash(buildProjectHash(id))).toBe(id);
+  });
+
   it("decodes project ids from hash routes before building capture URLs", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-01T12:00:00Z"));

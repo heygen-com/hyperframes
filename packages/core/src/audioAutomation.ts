@@ -13,6 +13,7 @@
 
 import { getAudioFxDef, type HfAudioFxChain } from "./audioFx.js";
 import { MAX_AUDIO_GAIN } from "./audioGain.js";
+import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE } from "./playbackRateBounds.js";
 
 export const HF_AUDIO_AUTOMATION_ATTR = "data-automation";
 
@@ -80,14 +81,19 @@ export class AudioAutomationError extends Error {
 
 export const VOLUME_TARGET = "volume";
 
+/** Playback-rate lane: `v` is a speed multiplier over clip-local time. See `speedRamp.ts`. */
+export const RATE_TARGET = "rate";
+
 export type HfAutomationTarget =
   | { kind: "volume" }
+  | { kind: "rate" }
   | { kind: "fx"; nodeId: string; param: string }
   | { kind: "preset"; presetId: string };
 
 /** Split a target string. Returns null for anything unrecognised. */
 export function parseAutomationTarget(target: string): HfAutomationTarget | null {
   if (target === VOLUME_TARGET) return { kind: "volume" };
+  if (target === RATE_TARGET) return { kind: "rate" };
   const parts = target.split(".");
   // `fx.preset.<id>` before the 3-part fx form, because it IS a 3-part fx form
   // with a reserved node id — an effect can never be called "preset", since ids
@@ -169,6 +175,16 @@ export const VOLUME_RANGE: AutomationRange = {
   default: 1,
 };
 
+export const RATE_RANGE: AutomationRange = {
+  min: MIN_PLAYBACK_RATE,
+  max: MAX_PLAYBACK_RATE,
+  step: 0.05,
+  unit: "x",
+  label: "Speed",
+  scale: "log",
+  default: 1,
+};
+
 /**
  * Resolve a lane's target against a chain. Returns null when the target names
  * a node or parameter that is not there — the effect was deleted, or the
@@ -181,6 +197,7 @@ export function resolveAutomationRange(
   const parsed = parseAutomationTarget(target);
   if (!parsed) return null;
   if (parsed.kind === "volume") return VOLUME_RANGE;
+  if (parsed.kind === "rate") return RATE_RANGE;
   if (parsed.kind === "preset") {
     // Only for a preset the chain actually carries, so a lane left behind by a
     // removed preset resolves to nothing and is dropped at read time — the same
@@ -335,7 +352,12 @@ export function normalizeAutomation(automation: HfAutomation): HfAutomation {
   const lanes: HfAutomationLane[] = [];
   for (const lane of automation.lanes) {
     if (!parseAutomationTarget(lane.target)) continue;
-    const range = lane.target === VOLUME_TARGET ? VOLUME_RANGE : null;
+    const range =
+      lane.target === VOLUME_TARGET
+        ? VOLUME_RANGE
+        : lane.target === RATE_TARGET
+          ? RATE_RANGE
+          : null;
     const points = normalizePoints(lane.points ?? [], range);
     if (points.length > 0) lanes.push({ target: lane.target, points });
   }

@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/preflight
 
   render-previews:
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -69,9 +69,11 @@ jobs:
         uses: ./.github/actions/install-ffmpeg-linux
 
       - name: Render changed block/component previews
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          # HEAD is the PR merge ref; its first parent is the current base tip,
+          # unlike the event payload's base.sha, which can go stale.
+          BASE_SHA="$(git rev-parse HEAD^1)"
+
           # Find which blocks/components changed in this PR. The trailing slash
           # in the grep matters: an item is a directory, and a file sitting
           # directly under registry/components (CATALOG.md) does not match the
@@ -93,7 +95,7 @@ jobs:
                scripts/catalog-preview-temp.ts)
           if [ -n "$RENDERER_CHANGED" ]; then
             CHANGED_ITEMS=$(printf '%s\n' $CHANGED_ITEMS \
-              code-snippet-visual-studio-dark code-snippet-apple-terminal-pro | sort -u)
+              code-snippet-dark-modern code-snippet-apple-terminal-pro | sort -u)
           fi
 
           if [ -z "$CHANGED_ITEMS" ]; then

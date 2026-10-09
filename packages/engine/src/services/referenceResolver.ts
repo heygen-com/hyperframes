@@ -88,7 +88,7 @@ export function resolveReferencedStart(
  * Returns null when only the natural media duration would settle it (unknown
  * at parse time) — the caller then treats the reference as duration-0.
  */
-function resolveReferencedDuration(
+export function resolveReferencedDuration(
   doc: RefResolverDoc,
   el: RefResolverEl,
   startCache: Map<RefResolverEl, number>,

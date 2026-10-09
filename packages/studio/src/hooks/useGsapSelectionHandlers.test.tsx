@@ -42,7 +42,7 @@ function makeParams(overrides: Partial<Params> = {}): Params {
     moveKeyframe: vi.fn().mockResolvedValue(true),
     resizeKeyframedTween: vi.fn().mockResolvedValue(true),
     convertToKeyframes: resolved(),
-    removeAllKeyframes: resolved(),
+    removeAllKeyframes: vi.fn().mockResolvedValue(true),
     handleDomManualEditsReset: vi.fn(),
     selectedGsapAnimations: [],
     showToast: vi.fn(),

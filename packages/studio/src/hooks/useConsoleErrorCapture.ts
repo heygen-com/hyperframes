@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import type { LintFinding } from "../components/LintModal";
 
 /**
@@ -16,6 +17,7 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
+    resetErrors();
     if (!previewIframe) return;
 
     let patchedWin: (Window & typeof globalThis) | null = null;
@@ -40,49 +42,43 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
 
     const attachErrorCapture = () => {
       detachErrorCapture();
+      resetErrors();
       try {
         const win = previewIframe.contentWindow as (Window & typeof globalThis) | null;
         if (!win) return;
         if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
         (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
         patchedWin = win;
+        const record = (texts: readonly string[]) => {
+          if (texts.length === 0) return;
+          consoleErrorsRef.current = [
+            ...consoleErrorsRef.current,
+            ...texts.map((message) => ({ severity: "error" as const, message })),
+          ];
+          setConsoleErrors([...consoleErrorsRef.current]);
+        };
         origConsoleError = win.console.error.bind(win.console);
         win.console.error = function (...args: unknown[]) {
           origConsoleError!(...args);
           const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
-          if (text.includes("favicon")) return;
-          consoleErrorsRef.current = [
-            ...consoleErrorsRef.current,
-            { severity: "error", message: text },
-          ];
-          setConsoleErrors([...consoleErrorsRef.current]);
+          if (!text.includes("favicon")) record([text]);
         };
-        errorHandler = (e: ErrorEvent) => {
-          const text = e.message || String(e);
-          consoleErrorsRef.current = [
-            ...consoleErrorsRef.current,
-            { severity: "error", message: text },
-          ];
-          setConsoleErrors([...consoleErrorsRef.current]);
-        };
+        errorHandler = (e: ErrorEvent) => record([e.message || String(e)]);
         win.addEventListener("error", errorHandler);
+        const raised: unknown = Reflect.get(win, STUDIO_PREVIEW_ERRORS);
+        if (Array.isArray(raised)) record(raised.map(String));
       } catch {
         /* same-origin only */
       }
     };
 
     attachErrorCapture();
-    const handleLoad = () => {
-      consoleErrorsRef.current = [];
-      setConsoleErrors(null);
-      attachErrorCapture();
-    };
-    previewIframe.addEventListener("load", handleLoad);
+    previewIframe.addEventListener("load", attachErrorCapture);
     return () => {
-      previewIframe.removeEventListener("load", handleLoad);
+      previewIframe.removeEventListener("load", attachErrorCapture);
       detachErrorCapture();
     };
-  }, [previewIframe]);
+  }, [previewIframe, resetErrors]);
 
-  return { consoleErrors, setConsoleErrors, resetErrors };
+  return { consoleErrors, setConsoleErrors };
 }

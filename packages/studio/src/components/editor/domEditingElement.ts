@@ -314,6 +314,19 @@ export function findElementForSelection(
   return findAll(selection.selector)[selection.selectorIndex ?? 0] ?? null;
 }
 
+// The selected node while mounted, else its copy in the selection's own file (ids repeat across files), else any copy.
+export function findPreviewNode(
+  doc: Document | null | undefined,
+  el: DomEditSelection,
+): Element | null {
+  if (!doc) return null;
+  if (el.element?.isConnected && el.element.ownerDocument === doc) return el.element;
+  return (
+    findElementForSelection(doc, el) ??
+    findElementForSelection(doc, { ...el, sourceFile: undefined })
+  );
+}
+
 // fallow-ignore-next-line complexity
 export function findElementForTimelineElement(
   doc: Document,

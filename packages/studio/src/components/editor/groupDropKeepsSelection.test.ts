@@ -37,6 +37,7 @@ describe("dropping a dragged group eats the click that follows", () => {
       gestureRef: { current: null },
       groupGestureRef,
       blockedMoveRef: { current: null },
+      waitingPressRef: { current: null },
       rafPausedRef: { current: false },
       suppressNextBoxClickRef,
       setOverlayRect: vi.fn(),

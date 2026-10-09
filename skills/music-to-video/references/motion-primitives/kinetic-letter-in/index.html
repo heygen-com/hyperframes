@@ -13,11 +13,6 @@
         --hg-fg: #f5f5fa;
         --hg-dim: #6b6b78;
       }
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
       html,
       body {
         margin: 0;
@@ -28,31 +23,6 @@
         font-family: "Inter", system-ui, sans-serif;
         color: var(--hg-fg);
         -webkit-font-smoothing: antialiased;
-      }
-      #scene {
-        position: absolute;
-        inset: 0;
-        width: 1920px;
-        height: 1080px;
-      }
-      .stage {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .hero {
-        font-weight: 900;
-        font-size: 280px;
-        letter-spacing: -0.04em;
-        line-height: 0.95;
-        color: var(--hg-fg);
-        white-space: nowrap;
-      }
-      .char {
-        display: inline-block;
-        will-change: transform, opacity;
       }
     </style>
   </head>
@@ -65,34 +35,19 @@
       data-width="1920"
       data-height="1080"
     >
-      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
-        <div class="stage">
-          <div class="hero" id="hero">
-            <span class="char">K</span><span class="char">I</span><span class="char">N</span
-            ><span class="char">E</span><span class="char">T</span><span class="char">I</span
-            ><span class="char">C</span>
-          </div>
-        </div>
-      </div>
+      <div
+        id="scene"
+        class="clip"
+        data-composition-id="kinetic-letter-in"
+        data-composition-src="scene.html"
+        data-start="0"
+        data-duration="2"
+        data-track-index="1"
+      ></div>
     </div>
     <script>
       window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      tl.from(
-        ".char",
-        { y: 80, opacity: 0, stagger: 0.045, ease: "back.out(2)", duration: 0.55 },
-        0.05,
-      );
-      // Letters loosen apart as they settle. Animate each glyph's x (a transform), NOT the
-      // word's letter-spacing: animating letter-spacing reflows text and snaps glyph positions
-      // to the pixel grid, which micro-stutters on a slow settle under the seek-by-frame
-      // capture engine (the gsap_non_transform_motion lint rule flags it). The chars are
-      // already per-glyph spans, so spread them directly: (0.04em − (−0.04em)) × 280px = 22.4px
-      // per gap, centered about index 3 of the 7-letter word.
-      tl.to(".char", { x: (i) => (i - 3) * 22.4, duration: 0.6, ease: "power2.out" }, 0.7);
-
-      window.__timelines["main"] = tl;
+      window.__timelines["main"] = gsap.timeline({ paused: true });
     </script>
   </body>
 </html>

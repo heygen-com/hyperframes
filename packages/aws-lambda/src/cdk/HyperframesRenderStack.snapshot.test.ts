@@ -263,6 +263,64 @@ describe("HyperframesRenderStack — snapshot", () => {
     expect(v2).toContain("PlanV2ArtifactS3Prefix");
     expect(v2).not.toContain("PlanS3Uri");
   });
+
+  it("sends the same payload from every Lambda task as the SAM template", () => {
+    // CDK drops null-valued payload fields when it renders the definition (#5259), so compare
+    // what each deployed task sends rather than the construct source.
+    const cdkTasks = lambdaTasks(SYNTHED.definition.States);
+    const samTasks = lambdaTasks(readSamDefinition().States);
+    expect(Object.keys(cdkTasks).sort()).toEqual(Object.keys(samTasks).sort());
+    expect(Object.keys(cdkTasks).length).toBeGreaterThanOrEqual(6);
+    for (const [taskName, cdkTask] of Object.entries(cdkTasks)) {
+      expect({ taskName, payload: sentPayload(cdkTask) }).toEqual({
+        taskName,
+        payload: sentPayload(samTasks[taskName]),
+      });
+    }
+  });
+
+  it("keeps same-named Lambda tasks in different branches apart", () => {
+    const task = (format: string) => ({
+      Type: "Task",
+      Resource: "arn:aws:states:::lambda:invoke",
+      Parameters: { Payload: { Action: "renderChunk", Format: format } },
+    });
+    const branch = (format: string) => ({
+      StartAt: "RenderChunk",
+      States: { RenderChunk: task(format) },
+    });
+    const tasks = lambdaTasks({
+      Fan: { Type: "Parallel", Branches: [branch("mp4"), branch("webm")] },
+    });
+    expect(Object.keys(tasks).sort()).toEqual(["Fan/0/RenderChunk", "Fan/1/RenderChunk"]);
+    expect(sentPayload(tasks["Fan/1/RenderChunk"]).Format).toBe("webm");
+  });
+
+  it("materializes null audio in the synthesized CDK v2 assembly payload", () => {
+    const state = requireRecord(SYNTHED.definition.States.AssembleV2, "AssembleV2 state");
+    const parameters = requireRecordProperty(state, "Parameters", "AssembleV2 parameters");
+    const payload = requireRecordProperty(parameters, "Payload", "AssembleV2 payload");
+
+    expect(payload["AudioS3Uri.$"]).toBe("States.StringToJson('null')");
+    expect(Object.hasOwn(payload, "AudioS3Uri")).toBe(false);
+    expect(payload.PlanProtocol).toBe("v2");
+    expect(payload["PlanV2ManifestS3Uri.$"]).toBe("$.Plan.PlanV2ManifestS3Uri");
+  });
+
+  it("keeps SAM v2 assembly audio null and both v1 audio result paths", () => {
+    const sam = readSamDefinition();
+    const assemble = requireRecord(sam.States.AssembleV2, "SAM AssembleV2 state");
+    const parameters = requireRecordProperty(assemble, "Parameters", "SAM AssembleV2 parameters");
+    const payload = requireRecordProperty(parameters, "Payload", "SAM AssembleV2 payload");
+    expect(payload.AudioS3Uri).toBeNull();
+
+    for (const definition of [SYNTHED.definition, sam]) {
+      const v1 = requireRecord(definition.States.Assemble, "Assemble state");
+      const params = requireRecordProperty(v1, "Parameters", "Assemble parameters");
+      const v1Payload = requireRecordProperty(params, "Payload", "Assemble payload");
+      expect(v1Payload["AudioS3Uri.$"]).toBe("$.Plan.AudioS3Uri");
+    }
+  });
 });
 
 function collectNonRetryableErrors(state: unknown, out: Set<string>): void {
@@ -290,6 +348,59 @@ function requireRecordProperty(
   label: string,
 ): Record<string, unknown> {
   return requireRecord(record[property], label);
+}
+
+const isLambdaTask = (state: Record<string, unknown>): boolean =>
+  state.Type === "Task" && String(state.Resource).endsWith(":states:::lambda:invoke");
+
+/** The state maps nested in a Map processor or Parallel branches, keyed by their path. */
+function nestedStates(name: string, state: Record<string, unknown>): [string, unknown][] {
+  const processor = isRecord(state.Iterator) ? state.Iterator : state.ItemProcessor;
+  const branches: unknown[] = Array.isArray(state.Branches) ? state.Branches : [];
+  const nested: [string, unknown][] = [
+    [`${name}/`, isRecord(processor) && processor.States],
+    ...branches.map((branch, i): [string, unknown] => [
+      `${name}/${i}/`,
+      isRecord(branch) && branch.States,
+    ]),
+  ];
+  return nested.filter(([, states]) => isRecord(states));
+}
+
+/** Every Lambda-invoking task by its full state path, so same-named tasks in two branches stay apart. */
+function lambdaTasks(states: Record<string, unknown>, path = ""): Record<string, unknown> {
+  const records = Object.entries(states).filter(
+    (entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]),
+  );
+  return Object.assign(
+    Object.fromEntries(
+      records
+        .filter(([, state]) => isLambdaTask(state))
+        .map(([name, state]) => [path + name, state]),
+    ),
+    ...records.flatMap(([name, state]) =>
+      nestedStates(path + name, state).map(([nestedPath, nested]) =>
+        lambdaTasks(nested as Record<string, unknown>, nestedPath),
+      ),
+    ),
+  );
+}
+
+/** A task's payload as Step Functions sends it: a `States.StringToJson('null')` field is a null. */
+function sentPayload(state: unknown): Record<string, unknown> {
+  const parameters = requireRecordProperty(
+    requireRecord(state, "task state"),
+    "Parameters",
+    "task parameters",
+  );
+  const payload = requireRecordProperty(parameters, "Payload", "task payload");
+  return Object.fromEntries(
+    Object.entries(payload).map(([key, value]) =>
+      key.endsWith(".$") && value === "States.StringToJson('null')"
+        ? [key.slice(0, -2), null]
+        : [key, value],
+    ),
+  );
 }
 
 function getV2TaskStates(definition: {

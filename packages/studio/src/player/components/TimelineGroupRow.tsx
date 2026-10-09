@@ -21,7 +21,7 @@ import { usePlayerStore } from "../store/playerStore";
 
 /** Accent rail on a group-owned lane — the same green the member rail uses, so
  *  "this belongs to the group" reads the same in both places (groups doc §5). */
-const GROUP_LANE_ACCENT = "#3CE6AC";
+const GROUP_LANE_ACCENT = "var(--timeline-accent)";
 
 interface TimelineGroupRowProps {
   index: number;
@@ -33,6 +33,7 @@ interface TimelineGroupRowProps {
   virtualized: boolean;
   contentOrigin: number;
   theme: TimelineTheme;
+  showAudioEffects?: boolean;
   rovingTargetId?: string | null;
   collapsedGroupIds: ReadonlySet<string>;
   expandedLaneOwnerIds: ReadonlySet<string>;
@@ -59,6 +60,7 @@ export function TimelineGroupRow({
   virtualized,
   contentOrigin,
   theme,
+  showAudioEffects = true,
   rovingTargetId = null,
   collapsedGroupIds,
   expandedLaneOwnerIds,
@@ -80,9 +82,8 @@ export function TimelineGroupRow({
   // The group wearing a clip's shape so the lane machinery can render it — see
   // `groupAutomationElement` for why that beats a second, parallel lane path.
   const groupElement = groupAutomationElement(group, compositionDuration);
-  // The binder writes through the dom-edit selection, so a group lane is
-  // editable exactly when the group is the selected element — which clicking
-  // its name in the header does.
+  // A group lane is editable exactly when the group is the selected element,
+  // which clicking its name in the header does.
   const domSelection = useDomEditSelectionContextOptional()?.domEditSelection ?? null;
   const isGroupSelected = domSelection?.id === group.id;
   const isLaneOpen = expandedLaneOwnerIds.has(group.id);
@@ -90,14 +91,21 @@ export function TimelineGroupRow({
   // provider in read-only hosts (Timeline.test.ts asserts it), and the throwing
   // hook took the whole timeline down with it the moment a group existed —
   // not just this row.
-  const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } =
-    useTimelineEditContextOptional();
+  const {
+    onSetAudioGroupAttributeLive,
+    onSetAudioGroupAttributeQuiet,
+    onRevertAudioGroupAttributeLive,
+  } = useTimelineEditContextOptional();
   const domEditActions = useDomEditActionsContextOptional();
   const revealAudioFx = usePlayerStore((state) => state.setRevealedAudioFxTarget);
-  const writeGroupFxChain = (next: HfAudioFxChain, live: boolean) => {
+  const writeGroupFxChain = (next: HfAudioFxChain, live: boolean, ended = false) => {
     const value = next.nodes.length ? serializeAudioFxChain(next) : null;
-    if (live) onSetAudioGroupAttributeLive?.(group.id, HF_AUDIO_FX_ATTR, value);
-    else void onSetAudioGroupAttributeQuiet?.(group.id, HF_AUDIO_FX_ATTR, value, "Apply preset");
+    if (!live) {
+      void onSetAudioGroupAttributeQuiet?.(group.id, HF_AUDIO_FX_ATTR, value, "Apply preset");
+      return;
+    }
+    onSetAudioGroupAttributeLive?.(group.id, HF_AUDIO_FX_ATTR, value);
+    if (ended) onRevertAudioGroupAttributeLive?.(group.id, HF_AUDIO_FX_ATTR);
   };
   const openGroupFxRack = (automationTarget?: string) => {
     // Use the guarded timeline-selection path even though the bus is synthetic:
@@ -140,7 +148,7 @@ export function TimelineGroupRow({
           around the labels alone does not work either, because as a flex item
           after the header it starts at x = columnWidth, i.e. inside the lanes. */}
       <div
-        className="sticky left-0 z-[12] shrink-0"
+        className="sticky left-0 z-12 shrink-0"
         style={{ width: contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin }}
       >
         <TimelineGroupHeader
@@ -157,7 +165,7 @@ export function TimelineGroupRow({
           onToggleLanes={() => toggleLaneOwnerExpanded(group.id)}
           fxChain={group.fxChain}
           onFxChainChange={(next) => writeGroupFxChain(next, false)}
-          onFxChainPreview={(next) => writeGroupFxChain(next, true)}
+          onFxChainPreview={(next, ended) => writeGroupFxChain(next, true, ended)}
           auditionSpans={memberElements}
           onOpenFxRack={() => openGroupFxRack()}
           // Same width as every other row's header. The group row needs a real
@@ -167,10 +175,11 @@ export function TimelineGroupRow({
           // stays pinned there through horizontal scroll.
           columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
           theme={theme}
+          showAudioEffects={showAudioEffects}
         />
         {/* The group's OWN curves, under the strip. Selected-gated exactly like a
-          clip's: the binder writes through the dom-edit selection, so a lane is
-          editable once the group is selected — which clicking its name does. */}
+          clip's: a lane is editable once the group is selected, which clicking
+          its name does. */}
         {/* The label column for those lanes, on the accent rail — inside the
             sticky column above, so they pin with the header. */}
         {isLaneOpen && (
@@ -181,7 +190,7 @@ export function TimelineGroupRow({
             columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
             gutterBackground={theme.gutterBackground}
             accentColor={GROUP_LANE_ACCENT}
-            onReveal={openGroupFxRack}
+            onReveal={showAudioEffects ? openGroupFxRack : undefined}
           />
         )}
       </div>
@@ -192,6 +201,7 @@ export function TimelineGroupRow({
         // from x=0.
         <div
           role="gridcell"
+          data-timeline-zoom-scale=""
           aria-colindex={2}
           style={{ width: trackContentWidth, marginLeft: contentGutter }}
           className="relative"

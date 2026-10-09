@@ -21,21 +21,24 @@ export function formatDuration(ms: number): string {
  * wall-clock render time explicitly labeled "rendered in" so the two are never
  * confused (users were comparing the render time to ffprobe's media duration).
  * Directory (png-sequence) output has no single muxed video, so it shows a frame
- * count instead, or just the render time when neither is known.
+ * count instead, or just the render time when neither is known. An HLS playlist
+ * directory does play as one continuous video, so it reports a duration.
  */
 export function formatRenderSummaryDetail(input: {
   elapsedMs: number;
   outputDurationSeconds?: number;
   isDirectory: boolean;
   frameCount?: number;
+  playlistDirectory?: boolean;
 }): string {
-  const middle = input.isDirectory
-    ? input.frameCount != null
-      ? `${input.frameCount} frames`
-      : undefined
-    : input.outputDurationSeconds != null && input.outputDurationSeconds > 0
-      ? `${formatDuration(input.outputDurationSeconds * 1000)} video`
-      : undefined;
+  const middle =
+    input.isDirectory && !input.playlistDirectory
+      ? input.frameCount != null
+        ? `${input.frameCount} frames`
+        : undefined
+      : input.outputDurationSeconds != null && input.outputDurationSeconds > 0
+        ? `${formatDuration(input.outputDurationSeconds * 1000)} video`
+        : undefined;
   const renderTime = `rendered in ${formatDuration(input.elapsedMs)}`;
   return [middle, renderTime].filter(Boolean).join(" · ");
 }
@@ -91,7 +94,7 @@ export function formatRenderPipelineDetail(input: {
 }
 
 /**
- * Why a Linux auto render stayed on screenshot after BeginFrame was requested.
+ * Why a Linux render stayed on screenshot after automatic or hardware GPU selection.
  * Silent when software was requested (--docker, --no-browser-gpu) or off Linux.
  */
 export function formatScreenshotFallbackHint(input: {
@@ -100,8 +103,21 @@ export function formatScreenshotFallbackHint(input: {
   requestedGpuMode?: BrowserGpuMode;
   platform: NodeJS.Platform;
 }): string | undefined {
-  if (input.platform !== "linux" || input.requestedGpuMode !== "auto") return undefined;
-  if (input.captureMode !== "screenshot" || input.browserGpuMode !== "software") return undefined;
+  if (
+    input.platform !== "linux" ||
+    (input.requestedGpuMode !== "auto" && input.requestedGpuMode !== "hardware")
+  ) {
+    return undefined;
+  }
+  if (input.captureMode !== "screenshot") return undefined;
+  if (input.browserGpuMode === "hardware") {
+    return (
+      "Screenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no " +
+      "--resolution upscale. A BeginFrame probe timeout can occur when browsers start together " +
+      "on one GPU; fewer --workers may help."
+    );
+  }
+  if (input.browserGpuMode !== "software" || input.requestedGpuMode !== "auto") return undefined;
   return (
     "Screenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no " +
     "--resolution upscale. Heavy compositions can stall on software GL."

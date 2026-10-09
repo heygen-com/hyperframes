@@ -87,6 +87,20 @@ For anything under `three/addons/`, use an importmap so bare specifiers resolve.
 
 Pin the `three` version in both entries to the same value. Mixing versions across the map and bare imports causes silent breakage.
 
+## Heavy Setup (Large Meshes, Shader Compiles)
+
+The runtime already waits for textures/models queued through Three's `DefaultLoadingManager` before publishing render-ready. It has no visibility into CPU-bound work you do yourself after assets load — building a large procedural mesh, compiling shaders, warming a pipeline. That work can leave the canvas blank for seconds after the runtime and player already say "ready".
+
+If your setup does this kind of work, register a promise on `window.__hf.buildReady` (declared-compute hold: runtime waits, player shows its loading state instead of a blank frame):
+
+```js
+window.__hf = window.__hf || {};
+window.__hf.buildReady = window.__hf.buildReady || {};
+window.__hf.buildReady["<your-piece-name>"] = buildScene(); // resolves once the scene is actually drawable
+```
+
+Register it synchronously, in the same script block that starts the build — same timing as `DefaultLoadingManager`, so the runtime's first readiness check already sees it. Only do this for setup an adapter cannot see; render-critical seeking still comes from `hf-seek`, not this hold. The key must be unique within the composition — a second registration under the same key silently replaces the first, dropping its hold.
+
 ## AnimationMixer Pattern
 
 For GLTF or authored clip animation, seek the mixer directly:
@@ -99,6 +113,37 @@ function renderAt(time) {
 ```
 
 If several mixers exist, seek all of them from the same `time`.
+
+## Camera Cuts Inside One Canvas
+
+When one scene switches camera shots by time, declare each cut once and read that constant everywhere: in the camera's shot selector and in every object's visibility window. A window written as its own literal near the cut (`t > 22.9` against a cut at `t < 23`) shows the next shot's objects in the last frames of the previous shot. At 30 fps that is a two-frame pop-in, which one still per shot will not show.
+
+```js
+const CUT_B = 23;
+const CUT_C = 35;
+
+function shotFor(t) {
+  if (t < CUT_B) return shotA(t);
+  if (t < CUT_C) return shotB(t);
+  return shotC(t);
+}
+
+function renderAt(t) {
+  const shot = shotFor(t);
+  camera.position.copy(shot.position);
+  camera.lookAt(shot.target);
+  shotBProps.forEach((mesh) => {
+    mesh.visible = t >= CUT_B && t < CUT_C;
+  });
+  renderer.render(scene, camera);
+}
+```
+
+Verify each cut on the last frame before it and the first frame after it, not only somewhere inside each shot. The last frame before a cut is `(Math.ceil(cut * fps) - 1) / fps`: for a cut at 23 s in a 30 fps render, `npx hyperframes snapshot --at 22.9667,23 --no-end`.
+
+## Lighting Lit Meshes
+
+A `MeshStandardMaterial` lit by one `PointLight` or `DirectionalLight`, with no ambient light, environment map or emissive color, gets no light on its unlit side. When the camera faces that light, the mesh shows only that side and renders as a flat black cutout. Add a fill that stands in for the environment's bounce light, such as a `HemisphereLight` in the colors of the surrounding glow. If the key light's brightness changes over time, drive both lights from the same source at a fixed ratio, tuned by eye. Their intensity units differ, so do not copy the key light's number onto the fill.
 
 ## Good Uses
 

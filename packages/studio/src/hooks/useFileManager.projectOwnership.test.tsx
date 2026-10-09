@@ -7,7 +7,6 @@ vi.mock("./useFileTree", () => ({
   useFileTree: () => ({
     projectDir: "",
     fileTree: [],
-    setFileTree: vi.fn(),
     fileTreeLoaded: true,
     refreshFileTree: vi.fn(async () => {}),
     compositions: [],
@@ -32,19 +31,19 @@ import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function useTestFileManager(projectId: string) {
+function useTestFileManager(projectId: string, showToast = vi.fn()) {
   return useFileManager({
     projectId,
-    showToast: vi.fn(),
+    showToast,
     recordEdit: vi.fn(async () => {}),
     setRefreshKey: vi.fn(),
   });
 }
 
-async function mountTestFileManager(projectId = "project-a") {
+async function mountTestFileManager(projectId = "project-a", showToast = vi.fn()) {
   const captured: { manager: ReturnType<typeof useFileManager> | null } = { manager: null };
   function Probe() {
-    captured.manager = useTestFileManager(projectId);
+    captured.manager = useTestFileManager(projectId, showToast);
     return null;
   }
   const root = createRoot(document.createElement("div"));
@@ -130,6 +129,7 @@ describe("useFileManager project ownership", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/index.html",
+      { credentials: "omit" },
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/index.html",
@@ -137,14 +137,18 @@ describe("useFileManager project ownership", () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/missing.html",
+      { credentials: "omit" },
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-a%2F..%2Fother%3Fx%3D1/files/missing.html",
       expect.objectContaining({ method: "PUT", body: "A_NEW" }),
     );
-    expect(fetchMock).toHaveBeenCalledWith("/api/projects/project-b%23fragment/files/index.html");
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/project-b%23fragment/files/index.html", {
+      credentials: "omit",
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-b%23fragment/files/index.html?optional=1",
+      { credentials: "omit" },
     );
 
     await act(async () => root.unmount());
@@ -236,5 +240,52 @@ describe("useFileManager project ownership", () => {
     expect(headers.get("If-Match")).toBeNull();
     expect(headers.get("If-None-Match")).toBe("*");
     await act(async () => root.unmount());
+  });
+});
+
+describe("useFileManager uploads", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function uploadClip(response: Record<string, unknown>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          { ok: true, files: [], skipped: [], invalid: [], ...response },
+          { status: 201 },
+        ),
+      ),
+    );
+    const showToast = vi.fn();
+    const { manager, root } = await mountTestFileManager("project-a", showToast);
+    const added = await act(() => manager.uploadProjectFiles([new File(["x"], "clip.mp4")]));
+    await act(async () => root.unmount());
+    return { added, showToast };
+  }
+
+  it("says which uploads were added without a media check, and why", async () => {
+    const reason =
+      "not checked: ffprobe was not found. Install FFmpeg or set HYPERFRAMES_FFPROBE_PATH.";
+    const { added, showToast } = await uploadClip({
+      files: ["clip.mp4"],
+      unchecked: [{ name: "clip.mp4", reason }],
+    });
+
+    expect(added).toEqual(["clip.mp4"]);
+    expect(showToast).toHaveBeenCalledWith(`Added clip.mp4, ${reason}`, "info");
+  });
+
+  it("says why each upload was not added", async () => {
+    const { added, showToast } = await uploadClip({
+      invalid: [
+        { name: "clip.mp4", reason: "no supported video stream found" },
+        { name: "song.mp3", reason: "no supported audio stream found" },
+      ],
+    });
+
+    expect(added).toEqual([]);
+    expect(showToast).toHaveBeenCalledWith(
+      "Not added: clip.mp4 (no supported video stream found), song.mp3 (no supported audio stream found)",
+    );
   });
 });

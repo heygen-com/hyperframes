@@ -9,6 +9,8 @@ description: >
   Unclear → /hyperframes.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update slideshow`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 > **figma source**: If the deck's content or storyboard comes from a figma.com URL, run `/figma` first — asset export, brand tokens, and storyboard reconstruction if the source is a strip of scene frames — then build from its output. Don't drive Figma via raw MCP tools directly: that skips SVG sanitization, `.media/manifest.jsonl` provenance, and brand-token `var()` binding, so a later brand change can't propagate without a full re-import.
@@ -429,7 +431,7 @@ The slideshow automatically sets the `interactive` attribute on every inner `<hy
 
 Presenter-driven media playback has an autoplay-policy constraint: `BroadcastChannel` can sync intent, time, and state, but it cannot transfer the presenter's user activation to the audience tab. The shared slideshow player mirrors native media events and starts remote audience playback muted first; only fall back to the standalone harness's audience unlock behavior if muted `media.play()` is rejected or if the deck specifically requires audible audience playback. Do not keep applying remote `timeupdate` messages after a rejected play, or the audience will silently seek through the video without playback.
 
-Presenter notes are editable in the presenter view. Edits are stored in `localStorage` per deck and slide, layered over the manifest notes without rewriting the composition file. Do not add one-off note-editing scripts to decks; rely on the shared slideshow player behavior. If a standalone/custom wrapper truly needs to implement this outside the shared player, use the deterministic storage snippet in `skills/slideshow/references/standalone-harness.md`.
+Presenter notes are editable in the presenter view. Edits are stored in `localStorage` per deck and slide, layered over the manifest notes without rewriting the composition file. Do not add one-off note-editing scripts to decks; rely on the shared slideshow player behavior. If a standalone/custom wrapper truly needs to implement this outside the shared player, use the deterministic storage snippet in `references/standalone-harness.md`.
 
 ### Media cleanup on slide exit
 
@@ -470,7 +472,7 @@ The **durable answer** is engine-hosted: `hyperframes preview --slideshow` / stu
 Until then, standalone demos (a composition opened via the bare player bundle in a browser, without the engine) require workarounds for three gaps: the composition must expose a seekable root timeline, the island must be duplicated into the wrapper, and wrapper-owned SFX/global audio should live in the parent frame. These patterns are documented in:
 
 ```
-skills/slideshow/references/standalone-harness.md
+references/standalone-harness.md
 ```
 
 Do not treat the patterns there as the blessed model — they exist only to bridge the gap until the engine-hosted path lands.
@@ -506,19 +508,13 @@ At handoff, include the local presenter URL printed by the command and the minim
 
 ## Validation
 
-After authoring or editing a slideshow composition, run:
-
-```bash
-npx hyperframes lint
-```
-
-Then run runtime validation:
+After authoring or editing a slideshow composition, run validation (it reruns lint before opening the browser):
 
 ```bash
 npx hyperframes check
 ```
 
-Treat lint errors and validation `StaticGuard` contract messages as blockers even if a command exits successfully. Fix the file and rerun until lint reports `0 error(s)` and validation reports no runtime errors.
+Treat lint errors and validation `StaticGuard` contract messages as blockers even if a command exits successfully. Fix the file and rerun until `check` reports no lint or runtime errors.
 
 The slideshow lint rule checks:
 

@@ -146,7 +146,7 @@ export const FX_PRESET_STYLE: Record<string, FxPresetStyle> = {
   },
   // The name is a joke and the type is in on it.
   "doofus-worble": {
-    type: "text-[16px] tracking-[0.1em]",
+    type: "text-[16px] tracking-widest",
     color: "hsl(288, 85%, 72%)",
     family: FACE.theatrical,
   },
@@ -164,7 +164,7 @@ export const FX_PRESET_STYLE: Record<string, FxPresetStyle> = {
   },
   // Rough and too close — heavy industrial caps, growled rather than shouted.
   monster: {
-    type: "text-[15px] font-black uppercase tracking-[0.05em]",
+    type: "text-[15px] font-black uppercase tracking-wider",
     color: "hsl(350, 78%, 64%)",
     family: FACE.condensed,
   },

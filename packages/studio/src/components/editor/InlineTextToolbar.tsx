@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { applyInlineStyle } from "./inlineTextStyleRange";
-import { readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRead";
-import { parseCssColor, toHexColor } from "./colorValue";
+import {
+  readFirstPaintedElement,
+  readInlineStyle,
+  readInlineStyleSpread,
+} from "./inlineTextStyleRead";
+import { resolvePickerColor } from "./colorValue";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 /**
@@ -69,15 +74,15 @@ export function InlineTextToolbar({
     [session, refresh],
   );
 
-  if (!placement) return null;
+  if (!placement || !iframe) return null;
   const styles = placement.styles;
 
-  return (
+  return createPortal(
     <div
       data-inline-text-toolbar="true"
       role="toolbar"
       aria-label="Text formatting"
-      className="pointer-events-auto fixed z-[200] flex items-center gap-1 rounded-lg border border-white/10 bg-[#15171c] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
+      className="pointer-events-auto fixed z-200 flex items-center gap-1 rounded-lg border border-border bg-raised p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
       style={{
         left: placement.left,
         top: placement.top,
@@ -89,8 +94,8 @@ export function InlineTextToolbar({
       // The default, because a press anywhere in Studio moves the focus, and
       // moving it out of the text collapses the selection being styled.
       //
-      // The propagation, because this renders inside the canvas overlay: a
-      // press that reaches the canvas is read as a click on the composition,
+      // The propagation, because React bubbles it through the canvas overlay
+      // that renders this bar: a press that reaches the canvas is read as a click on the composition,
       // which deselects the element and commits the edit out from under the
       // button that was just pressed.
       onPointerDown={swallow}
@@ -98,12 +103,12 @@ export function InlineTextToolbar({
       onClick={(event) => event.stopPropagation()}
     >
       <label
-        className="group relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-white/10"
+        className="group relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-hover"
         title="Text colour"
       >
         <span
           aria-hidden="true"
-          className="h-4 w-4 rounded-full border-2 border-white/25 transition-transform duration-150 group-hover:scale-110 group-active:scale-95"
+          className="h-4 w-4 rounded-full border-2 border-border-strong transition-transform duration-150 group-hover:scale-110 group-active:scale-95"
           // `background` maps a gradient to the PADDING box and then repeats it
           // to fill the border box, so the 1px border shows the strip either
           // side of the tile: the end colour on the left, the start colour on
@@ -147,7 +152,8 @@ export function InlineTextToolbar({
         on={styles["text-decoration-line"] === "underline"}
         onToggle={(on) => apply({ "text-decoration-line": on ? "underline" : null })}
       />
-    </div>
+    </div>,
+    iframe.ownerDocument.body,
   );
 }
 
@@ -202,7 +208,7 @@ function ToolbarToggle({
       aria-label={label}
       aria-pressed={on}
       className={`flex h-6 w-6 items-center justify-center rounded-md text-xs ${
-        on ? "bg-studio-accent/20 text-studio-accent" : "text-white/70 hover:bg-white/10"
+        on ? "bg-studio-accent/20 text-accent-ink" : "text-text-2 hover:bg-hover"
       }`}
       style={{
         fontWeight: bold ? 700 : 400,
@@ -246,7 +252,11 @@ function placeOverSelection(
     placeBelow,
     styles,
     colours,
-    pickerColour: toPickerColour(styles.color ?? colours[0], doc),
+    pickerColour: resolvePickerColor(
+      styles.color ?? colours[0],
+      readFirstPaintedElement(range, "color"),
+      DEFAULT_COLOR,
+    ),
   };
 }
 
@@ -254,28 +264,4 @@ function isBold(weight: string | undefined): boolean {
   if (!weight) return false;
   if (weight === "bold" || weight === "bolder") return true;
   return Number.parseInt(weight, 10) >= 600;
-}
-
-/** A colour input accepts only `#rrggbb`; normalise any valid CSS colour to it. */
-function toPickerColour(value: string | undefined, doc: Document): string {
-  if (!value) return DEFAULT_COLOR;
-  const parsed = parseCssColor(value);
-  if (parsed) return toHexColor(parsed);
-
-  // Canvas delegates the full CSS colour grammar to the browser, including
-  // named colours that the small serialisation parser intentionally omits.
-  // DOM-only test environments can lack a canvas implementation, in which
-  // case the picker degrades to its explicit default while the swatch remains
-  // truthful because CSS still paints the original value.
-  try {
-    const context = doc.createElement("canvas").getContext("2d");
-    if (!context) return DEFAULT_COLOR;
-    context.fillStyle = DEFAULT_COLOR;
-    context.fillStyle = value;
-    const normalised =
-      typeof context.fillStyle === "string" ? parseCssColor(context.fillStyle) : null;
-    return normalised ? toHexColor(normalised) : DEFAULT_COLOR;
-  } catch {
-    return DEFAULT_COLOR;
-  }
 }

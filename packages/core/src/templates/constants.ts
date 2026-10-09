@@ -1,4 +1,6 @@
-export const GSAP_CDN = "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js";
+import { gsapCdnDist } from "../gsapCdn";
+
+export const GSAP_CDN = `${gsapCdnDist()}gsap.min.js`;
 
 export const BASE_STYLES = `* { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }`;

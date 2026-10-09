@@ -1,3 +1,4 @@
+import { replacementTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
 /**
  * Op handlers for Phase 3a (non-parser ops).
  *
@@ -17,6 +18,8 @@ import type {
   JsonPatchOp,
 } from "../types.js";
 import type { ParsedDocument } from "./model.js";
+import { MEDIA_LINK_ATTR, linkScopeOf } from "@hyperframes/core/media-link";
+import { idsToUnlink, linkedPartnerIds } from "./linkedTiming.js";
 import {
   resolveScoped,
   escapeHfId,
@@ -29,6 +32,7 @@ import {
   setOwnText,
   getSiblingIndex,
   getGsapScript,
+  findGsapScriptElement,
   setGsapScript,
   getStyleSheet,
   setStyleSheet,
@@ -77,6 +81,9 @@ import {
   updateArcSegmentInScript,
   removeArcPathFromScript,
   unrollDynamicAnimations,
+  clipQueryRoot,
+  clipTweenMatcher,
+  hasExplicitTime,
 } from "@hyperframes/core/gsap-writer-acorn";
 import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
 import {
@@ -272,6 +279,118 @@ function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undef
   }
 }
 
+const concatResults = (a: MutationResult, b: MutationResult): MutationResult => ({
+  forward: [...a.forward, ...b.forward],
+  inverse: [...a.inverse, ...b.inverse],
+});
+
+/**
+ * Timing edits apply to link partners too (start/duration; each keeps its own
+ * track). `linked: false` edits the targets alone and unlinks them.
+ */
+function applySetTiming(
+  parsed: ParsedDocument,
+  op: Extract<EditOp, { type: "setTiming" }>,
+): MutationResult {
+  const ids = targets(op.target);
+  const timing = { start: op.start, duration: op.duration, trackIndex: op.trackIndex };
+  if (op.linked === false) {
+    const unlink = idsToUnlink(parsed.document, ids);
+    const own = handleSetTiming(parsed, ids, timing);
+    return concatResults(own, handleSetAttribute(parsed, unlink, MEDIA_LINK_ATTR, null));
+  }
+  const plan = planLinkedTiming(parsed, ids, timing);
+  if (plan.refusal) throw new Error(plan.refusal);
+  let result = handleSetTiming(parsed, ids, timing);
+  for (const partner of plan.partners) {
+    result = concatResults(result, handleSetTiming(parsed, [partner.id], partner.timing));
+  }
+  return result;
+}
+
+type PartnerEdit = { id: HfId; timing: { start?: number; duration?: number } };
+
+function planLinkedTiming(
+  parsed: ParsedDocument,
+  ids: HfId[],
+  timing: { start?: number; duration?: number },
+): { partners: PartnerEdit[]; refusal: string | null } {
+  if (timing.start === undefined && timing.duration === undefined) {
+    return { partners: [], refusal: null };
+  }
+  const grabbedFor = grabbedBaselines(parsed, ids);
+  const partners: PartnerEdit[] = [];
+  for (const id of linkedPartnerIds(parsed.document, ids)) {
+    const el = resolveScoped(parsed.document, id);
+    const grabbed = el ? grabbedFor(el) : undefined;
+    if (!el || !grabbed) continue;
+    const partnerEdit = partnerTiming(grabbed, readClipTiming(el), timing);
+    if (partnerEdit.duration !== undefined && partnerEdit.duration <= 0) {
+      const tag = el.tagName.toLowerCase();
+      return {
+        partners: [],
+        refusal: `Linked ${tag} would start after the new end — unlink or trim the ${tag} first.`,
+      };
+    }
+    partners.push({ id, timing: partnerEdit });
+  }
+  return { partners, refusal: null };
+}
+
+type ClipWindow = { start: number | null; duration: number | null };
+
+function grabbedBaselines(
+  parsed: ParsedDocument,
+  ids: HfId[],
+): (partner: Element) => ClipWindow | undefined {
+  const byScope = new Map<Element | null, Map<string, ClipWindow>>();
+  for (const id of ids) {
+    const el = resolveScoped(parsed.document, id);
+    const link = el?.getAttribute(MEDIA_LINK_ATTR);
+    if (!el || !link) continue;
+    const byLink = byScope.get(linkScopeOf(el)) ?? new Map<string, ClipWindow>();
+    byLink.set(link, readClipTiming(el));
+    byScope.set(linkScopeOf(el), byLink);
+  }
+  return (partner) => {
+    const link = partner.getAttribute(MEDIA_LINK_ATTR);
+    return link ? byScope.get(linkScopeOf(partner))?.get(link) : undefined;
+  };
+}
+const ALIGN_EPSILON_S = 1e-3;
+
+/**
+ * A partner follows the edit without resyncing: a start change shifts it by the
+ * same delta (keeping any offset); a duration change carries over only when the
+ * partner's end sat at the edited clip's end.
+ */
+function partnerTiming(
+  grabbed: ClipWindow,
+  partner: ClipWindow,
+  edit: { start?: number; duration?: number },
+): { start?: number; duration?: number } {
+  const timing: { start?: number; duration?: number } = {};
+  const [gStart, pStart] = [grabbed.start ?? 0, partner.start ?? 0];
+  if (edit.start !== undefined) timing.start = pStart + (edit.start - gStart);
+  const duration = partnerDuration(grabbed, partner, edit, timing.start ?? pStart);
+  if (duration !== undefined) timing.duration = duration;
+  return timing;
+}
+
+function partnerDuration(
+  grabbed: ClipWindow,
+  partner: ClipWindow,
+  edit: { start?: number; duration?: number },
+  partnerStart: number,
+): number | undefined {
+  if (edit.duration === undefined) return undefined;
+  const grabbedStart = grabbed.start ?? 0;
+  const grabbedEnd = grabbedStart + (grabbed.duration ?? 0);
+  const partnerEnd = (partner.start ?? 0) + (partner.duration ?? 0);
+  if (Math.abs(partnerEnd - grabbedEnd) >= ALIGN_EPSILON_S) return undefined;
+  return (edit.start ?? grabbedStart) + edit.duration - partnerStart;
+}
+
 export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
   const gsap = applyGsapOp(parsed, op);
   if (gsap !== undefined) return gsap;
@@ -283,11 +402,7 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
     case "setAttribute":
       return handleSetAttribute(parsed, targets(op.target), op.name, op.value);
     case "setTiming":
-      return handleSetTiming(parsed, targets(op.target), {
-        start: op.start,
-        duration: op.duration,
-        trackIndex: op.trackIndex,
-      });
+      return applySetTiming(parsed, op);
     case "setHold":
       return handleSetHold(parsed, targets(op.target), op.hold);
     case "moveElement":
@@ -431,6 +546,14 @@ function handleSetAttribute(
     const oldValue = el.getAttribute(name);
     const path = attrPath(id, name);
     if (value !== null) {
+      const replacementId =
+        name === "src" ? replacementTimelineAssetId(parsed.document, el, value) : null;
+      if (replacementId !== null) {
+        const idPatch = scalarChange(attrPath(id, "id"), el.getAttribute("id"), replacementId);
+        el.setAttribute("id", replacementId);
+        result.forward.push(idPatch.forward);
+        result.inverse.push(idPatch.inverse);
+      }
       el.setAttribute(name, value);
       const p = scalarChange(path, oldValue, value);
       result.forward.push(p.forward);
@@ -457,6 +580,8 @@ function handleSetTiming(
   // we avoid re-fetching the script element on every iteration.
   const origScript = getGsapScript(parsed.document);
   const parsedGsap = origScript ? parseGsapScriptAcornForWrite(origScript) : null;
+  const scriptElement = findGsapScriptElement(parsed.document);
+  const clipRoot = scriptElement ? clipQueryRoot(scriptElement) : parsed.document;
   let currentScript = origScript;
 
   for (const id of ids) {
@@ -541,12 +666,17 @@ function handleSetTiming(
     // Sync GSAP tween positions: the GSAP script is the source of truth at play time —
     // the timeline rebuilds from it on every seek. Without this, DOM attribute edits
     // have zero playback effect; the script's position/duration silently overrides them.
-    // Match against BOTH the element's data-hf-id (the canonical form) AND its DOM
-    // id: the Studio GSAP panel / ensureElementAddressable author tweens as
-    // `#domId`, which selectorMatchesId(hfId) never matched — so moving/resizing
-    // those clips left their tweens unsynced.
-    const matchHfId = el.getAttribute("data-hf-id") ?? id;
-    const matchDomId = el.getAttribute("id");
+    const hfId = el.getAttribute("data-hf-id") ?? id;
+    const domId = el.getAttribute("id");
+    const carries = clipTweenMatcher(
+      [
+        `[data-hf-id="${hfId}"]`,
+        `[data-hf-id='${hfId}']`,
+        `#${hfId}`,
+        ...(domId ? [`#${domId}`] : []),
+      ],
+      clipRoot,
+    );
     if (parsedGsap && currentScript) {
       // A missing data-start means an implicit start of 0 (matching the server
       // shiftGsapPositions path); a malformed attr parses to NaN. Sanitize to a
@@ -566,10 +696,7 @@ function handleSetTiming(
           : 1;
       const remapStart = startChanged && newStart !== null ? newStart : oldStartNum;
       for (const { id: animId, animation } of parsedGsap.located) {
-        const matches =
-          selectorMatchesId(animation.targetSelector, matchHfId) ||
-          (matchDomId !== null && selectorMatchesId(animation.targetSelector, matchDomId));
-        if (!matches) continue;
+        if (!carries(animation)) continue;
         // Skip tweens whose position is a label or relative string ("+=0.5",
         // "<", ">"): relative positions already track their neighbours, and a
         // string position can't be safely shifted by the clip delta here.
@@ -581,7 +708,7 @@ function handleSetTiming(
         // explicit position arg → parsed as implicitPosition): the writer would
         // APPEND a position arg, collapsing the stagger onto one point. Duration
         // still scales below.
-        if ((startChanged || durChanged) && animation.implicitPosition !== true) {
+        if ((startChanged || durChanged) && hasExplicitTime(animation)) {
           const shifted = remapStart + (animation.position - oldStartNum) * ratio;
           updates.position = Math.max(0, Math.round(shifted * 1000) / 1000);
         }
@@ -867,7 +994,7 @@ function handleSetVariableValue(
 ): MutationResult {
   const root = findRoot(parsed.document);
   if (!root) return EMPTY;
-  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  const declEl = declarationElement(parsed.document, parsed.wrapped, id);
 
   const modelPath = variablePath(id);
   const oldVarDefault = readVariableDefault(declEl, id);
@@ -990,7 +1117,8 @@ function handleDeclareVariable(
   if (!declEl) return EMPTY;
   if (!isCompositionVariable(declaration)) return EMPTY;
   if (!isValidVariableId(declaration.id)) return EMPTY;
-  if (findVariableDeclaration(declEl, declaration.id) !== undefined) return EMPTY;
+  const existing = declarationElement(parsed.document, parsed.wrapped, declaration.id);
+  if (findVariableDeclaration(existing, declaration.id) !== undefined) return EMPTY;
   if (!writeVariableDeclaration(declEl, declaration)) return EMPTY;
   const path = variableDeclPath(declaration.id);
   const result: MutationResult = {
@@ -1014,7 +1142,7 @@ function handleUpdateVariableDeclaration(
   id: string,
   declaration: CompositionVariable,
 ): MutationResult {
-  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  const declEl = declarationElement(parsed.document, parsed.wrapped, id);
   if (!declEl) return EMPTY;
   if (!isCompositionVariable(declaration) || declaration.id !== id) return EMPTY;
   const old = findVariableDeclaration(declEl, id);
@@ -1043,7 +1171,7 @@ function handleUpdateVariableDeclaration(
 }
 
 function handleRemoveVariableDeclaration(parsed: ParsedDocument, id: string): MutationResult {
-  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  const declEl = declarationElement(parsed.document, parsed.wrapped, id);
   if (!declEl) return EMPTY;
   const old = findVariableDeclaration(declEl, id);
   if (old === undefined) return EMPTY;
@@ -1628,7 +1756,11 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           `Element(s) not found: ${missing.join(", ")}.`,
           "Verify the id against comp.getElements() or comp.find().",
         );
-      return CAN_OK;
+      const refusal =
+        op.type === "setTiming" && op.linked !== false
+          ? planLinkedTiming(parsed, ids, op).refusal
+          : null;
+      return refusal ? canErr("E_LINKED_PARTNER_CROSSED", refusal) : CAN_OK;
     }
     case "addElement": {
       if (op.parent !== null && resolveScoped(parsed.document, op.parent) === null)
@@ -1678,7 +1810,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
       if (preErr) return preErr;
       if (
         findVariableDeclaration(
-          declarationElement(parsed.document, parsed.wrapped),
+          declarationElement(parsed.document, parsed.wrapped, op.declaration.id),
           op.declaration.id,
         ) !== undefined
       )
@@ -1699,8 +1831,10 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           "Variable ids are immutable — rename via removeVariableDeclaration + declareVariable.",
         );
       if (
-        findVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), op.id) ===
-        undefined
+        findVariableDeclaration(
+          declarationElement(parsed.document, parsed.wrapped, op.id),
+          op.id,
+        ) === undefined
       )
         return canErr(
           "E_VARIABLE_NOT_FOUND",
@@ -1713,8 +1847,10 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
       const fragmentErr = fragmentCompositionErr(parsed);
       if (fragmentErr) return fragmentErr;
       if (
-        findVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), op.id) ===
-        undefined
+        findVariableDeclaration(
+          declarationElement(parsed.document, parsed.wrapped, op.id),
+          op.id,
+        ) === undefined
       )
         return canErr(
           "E_VARIABLE_NOT_FOUND",

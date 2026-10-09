@@ -1,4 +1,5 @@
 import { roundToCenti } from "../../utils/rounding";
+import { parseCssColor, type ParsedColor } from "./colorValue";
 
 export type GradientKind = "linear" | "radial" | "conic";
 
@@ -384,20 +385,42 @@ function interpolateGradientStopColor(model: GradientModel, position: number): s
 
   const leftColor = left.color;
   const rightColor = right.color;
-  const leftParsed = leftColor ? parseColorString(leftColor) : null;
-  const rightParsed = rightColor ? parseColorString(rightColor) : null;
+  const ratio = (clampedPosition - left.position) / Math.max(1, right.position - left.position);
+  const mixed = parseCssColor(mixLikeTheGradient(sortedStops, leftColor, rightColor, ratio));
+  if (mixed) return formatStopColor(mixed);
+
+  const leftParsed = leftColor ? parseCssColor(leftColor) : null;
+  const rightParsed = rightColor ? parseCssColor(rightColor) : null;
   if (!leftParsed || !rightParsed) return left.color;
 
-  const ratio = (clampedPosition - left.position) / Math.max(1, right.position - left.position);
   const red = blendChannel(leftParsed.red, rightParsed.red, ratio);
   const green = blendChannel(leftParsed.green, rightParsed.green, ratio);
   const blue = blendChannel(leftParsed.blue, rightParsed.blue, ratio);
-  const alpha = round(leftParsed.alpha + (rightParsed.alpha - leftParsed.alpha) * ratio);
+  const alpha = leftParsed.alpha + (rightParsed.alpha - leftParsed.alpha) * ratio;
+  return formatStopColor({ red, green, blue, alpha });
+}
 
+const LEGACY_COLOR = /^(?:#|(?:rgba?|hsla?|hwb)\(|[a-z]+$)/i;
+
+const isLegacy = (color: string) => LEGACY_COLOR.test(color.trim());
+const isModern = (color: string) => !isLegacy(color) && !/^var\(/i.test(color.trim());
+
+function mixLikeTheGradient(
+  stops: GradientStop[],
+  left: string,
+  right: string,
+  ratio: number,
+): string {
+  const space = stops.some((stop) => isModern(stop.color)) ? "oklab" : "srgb";
+  return `color-mix(in ${space}, ${left}, ${right} ${round(ratio * 100)}%)`;
+}
+
+function formatStopColor(color: ParsedColor): string {
+  const { red, green, blue } = color;
+  const alpha = round(color.alpha);
   if (alpha >= 1) {
     return `#${formatHex(red)}${formatHex(green)}${formatHex(blue)}`.toUpperCase();
   }
-
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
@@ -410,36 +433,5 @@ export function insertGradientStop(model: GradientModel, position: number): Grad
   return {
     ...model,
     stops: nextStops,
-  };
-}
-
-function parseColorString(
-  value: string,
-): { red: number; green: number; blue: number; alpha: number } | null {
-  const trimmed = value.trim().toLowerCase();
-  if (trimmed === "transparent") {
-    return { red: 0, green: 0, blue: 0, alpha: 0 };
-  }
-
-  const hex = trimmed.match(/^#([0-9a-f]{6})$/i);
-  if (hex) {
-    return {
-      red: Number.parseInt(hex[1].slice(0, 2), 16),
-      green: Number.parseInt(hex[1].slice(2, 4), 16),
-      blue: Number.parseInt(hex[1].slice(4, 6), 16),
-      alpha: 1,
-    };
-  }
-
-  const rgba = trimmed.match(
-    /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*([0-9.]+))?\s*\)$/i,
-  );
-  if (!rgba) return null;
-
-  return {
-    red: Number.parseFloat(rgba[1]),
-    green: Number.parseFloat(rgba[2]),
-    blue: Number.parseFloat(rgba[3]),
-    alpha: rgba[4] != null ? Number.parseFloat(rgba[4]) : 1,
   };
 }

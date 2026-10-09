@@ -3,7 +3,7 @@
  * current probe tick.
  *
  * The player polls the loaded iframe every 200ms to discover either:
- *   - a runtime bridge already installed (`window.__hf` / `window.__player`), or
+ *   - a runtime bridge already installed (`window.__player`), or
  *   - GSAP timelines registered at `window.__timelines`.
  *
  * Two classes of composition require different injection timing:

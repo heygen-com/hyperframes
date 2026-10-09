@@ -14,9 +14,11 @@ export interface GestureTransaction {
   element: HTMLElement;
   label: string;
   settle(): void;
-  persist(commit: TxCommit): Promise<void>;
+  persist(commit: TxCommit, coalesceKey: string): Promise<void>;
+  afterBufferedCommitsSaved?(): Promise<void>;
   restore(): void;
   skipPixelAssert?: boolean;
+  draw?<T>(run: () => T): T;
 }
 
 let transactionCounter = 0;
@@ -125,7 +127,9 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   tx.settle();
   logCommit("settled", { label: tx.label, coalesceKey });
 
-  const before = !tx.skipPixelAssert ? readPixelRect(tx.element) : null;
+  const measure = () =>
+    tx.draw ? tx.draw(() => readPixelRect(tx.element)) : readPixelRect(tx.element);
+  const before = !tx.skipPixelAssert ? measure() : null;
   const commit: TxCommit = (commitMutation) => {
     const wrapped: CommitMutation = (selection, mutation, options) => {
       mutationCount += 1;
@@ -142,13 +146,14 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   };
 
   return tx
-    .persist(commit)
+    .persist(commit, coalesceKey)
     .then(async () => {
       reloadCount = await dispatchBufferedCommits(bufferedCommits);
+      await tx.afterBufferedCommitsSaved?.();
       const durationMs = Math.round(performance.now() - startedAt);
       logCommit("persisted", { label: tx.label, coalesceKey });
       if (before) {
-        const after = readPixelRect(tx.element);
+        const after = measure();
         const delta = pixelDelta(before, after);
         if (exceedsPixelTolerance(delta)) {
           logCommit("persist-changed-pixels", { label: tx.label, before, after, delta });

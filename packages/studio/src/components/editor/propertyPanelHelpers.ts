@@ -4,6 +4,12 @@ import type { DomEditSelection } from "./domEditing";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { TimelineElement } from "../../player";
 import { roundToCenti } from "../../utils/rounding";
+import { findPreviewNode } from "./domEditingElement";
+import {
+  playbackStartAttributeForElement,
+  readPlaybackStartAttributes,
+} from "../../player/lib/timelineElementHelpers";
+import { editsPlainCss, GSAP_TRANSFORM_KEYS } from "../../hooks/gsapRuntimeKeyframes";
 
 export type {
   BackgroundRemovalProgress,
@@ -119,8 +125,7 @@ export function localFontSortScore(font: LocalFontData): number {
   return 3;
 }
 
-export function uniqueFontFamilies(values: string[]): string[] {
-  const seen = new Set<string>();
+export function uniqueFontFamilies(values: string[], seen = new Set<string>()): string[] {
   return values.reduce<string[]>((result, value) => {
     const family = value.trim();
     if (!family) return result;
@@ -222,6 +227,17 @@ export function parseNumericValue(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function readClipInPoint(dataAttributes: Record<string, string> | undefined): {
+  mediaStart: number;
+  mediaStartAttr: string;
+} {
+  const inPoint = readPlaybackStartAttributes((name) => dataAttributes?.[name.slice(5)]);
+  return {
+    mediaStart: inPoint.playbackStart ?? 0,
+    mediaStartAttr: playbackStartAttributeForElement(inPoint).slice(5),
+  };
 }
 
 export function formatTimingValue(seconds: number): string {
@@ -470,8 +486,6 @@ export function readGsapRuntimeValuesForPanel(
   if (!gsapAnimId || gsapAnimations.length === 0) return null;
   const iframe = previewIframeRef?.current;
   if (!iframe?.contentWindow) return null;
-  const selector = element.id ? `#${element.id}` : element.selector;
-  if (!selector) return null;
   try {
     const gsap = (
       iframe.contentWindow as unknown as {
@@ -479,11 +493,13 @@ export function readGsapRuntimeValuesForPanel(
       }
     ).gsap;
     if (!gsap?.getProperty) return null;
-    const el = iframe.contentDocument?.querySelector(selector);
+    const el = findPreviewNode(iframe.contentDocument, element);
     if (!el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
+    const readsTransform = !editsPlainCss(el, "move");
     const result: Record<string, number> = {};
     for (const prop of propKeys) {
+      if (!readsTransform && GSAP_TRANSFORM_KEYS.has(prop)) continue;
       const v = Number(gsap.getProperty(el, prop));
       if (Number.isFinite(v)) result[prop] = roundToCenti(v);
     }
@@ -508,10 +524,9 @@ export function readGsapBorderRadiusForPanel(
     if (!hasBRProp) return null;
   }
   const iframe = previewIframeRef?.current;
-  const selector = element.id ? `#${element.id}` : element.selector;
-  if (!iframe?.contentDocument || !selector) return null;
+  if (!iframe?.contentDocument) return null;
   try {
-    const el = iframe.contentDocument.querySelector(selector);
+    const el = findPreviewNode(iframe.contentDocument, element);
     if (!el || !iframe.contentWindow) return null;
     const cs = iframe.contentWindow.getComputedStyle(el);
     const parse = (v: string) => Number.parseFloat(v) || 0;

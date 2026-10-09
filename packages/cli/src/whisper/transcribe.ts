@@ -1,42 +1,18 @@
 // fallow-ignore-file complexity
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { once } from "node:events";
+import { createInterface } from "node:readline";
+import type { Readable } from "node:stream";
+import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
-
-/**
- * Detect the language of a WAV file using whisper's built-in language detection.
- * Returns an ISO 639-1 code (e.g. "en", "es", "hi") or null if detection fails.
- */
-function detectLanguage(whisperPath: string, modelPath: string, wavPath: string): string | null {
-  try {
-    const output = execFileSync(whisperPath, ["--model", modelPath, "--detect-language", wavPath], {
-      encoding: "utf-8",
-      timeout: 30_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const match = output.match(/auto-detected language:\s*(\w+)/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null {
-  if (buf.length < 12) return null;
-  let pos = 12; // skip RIFF header
-  while (pos + 8 < buf.length) {
-    const id = buf.toString("ascii", pos, pos + 4);
-    const size = buf.readUInt32LE(pos + 4);
-    if (id === "data") return { offset: pos + 8, size: Math.min(size, buf.length - pos - 8) };
-    pos += 8 + size;
-    if (size % 2 !== 0) pos++; // RIFF chunks are word-aligned
-  }
-  return null;
-}
+import { findWavChunk } from "./wav.js";
+import type { Word } from "./normalize.js";
+import { emitWords } from "./progress.js";
 
 const WHISPER_TIMEOUT_FLOOR_MS = 300_000;
 const WHISPER_TIMEOUT_PER_AUDIO_SECOND_MS = 10_000;
@@ -158,7 +134,7 @@ export function resolveAudioPreparationTimeoutMs(durationSeconds: number | null)
   );
 }
 
-function getMediaDurationSeconds(filePath: string): number | null {
+export function getMediaDurationSeconds(filePath: string): number | null {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return null;
@@ -183,11 +159,10 @@ function getMediaDurationSeconds(filePath: string): number | null {
   }
 }
 
-function getPreparedWavDurationSeconds(wavPath: string): number | null {
+/** A prepared WAV is 16 kHz mono s16, so its size gives the length (the header adds a few ms). */
+export function getPreparedWavDurationSeconds(wavPath: string): number | null {
   try {
-    const dataChunk = findWavDataChunk(readFileSync(wavPath));
-    if (!dataChunk) return null;
-    return dataChunk.size / (16_000 * 2);
+    return statSync(wavPath).size / (16_000 * 2);
   } catch {
     return null;
   }
@@ -209,7 +184,7 @@ export function detectSpeechOnset(wavPath: string): number | null {
 
   try {
     const buf = readFileSync(wavPath);
-    const dataChunk = findWavDataChunk(buf);
+    const dataChunk = findWavChunk(buf, "data");
     if (!dataChunk) return null;
     const pcm = new Int16Array(buf.buffer, buf.byteOffset + dataChunk.offset, dataChunk.size / 2);
     const totalWindows = Math.floor(pcm.length / WINDOW_SAMPLES);
@@ -258,10 +233,32 @@ export function detectSpeechOnset(wavPath: string): number | null {
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi"]);
 
+export type TranscribeProgress =
+  | {
+      type: "progress";
+      phase: "download";
+      model: string;
+      receivedBytes: number;
+      totalBytes: number | null;
+    }
+  | {
+      type: "progress";
+      phase: "transcription";
+      model: string;
+      status: "started" | "completed";
+      durationSeconds?: number | null;
+    }
+  /** Words heard so far, before the final transcript replaces them; `through` is audio seconds done. */
+  | { type: "words"; model: string; words: Word[]; through: number };
+
 export interface TranscribeOptions {
+  installRuntime?: boolean;
   model?: string;
   language?: string;
   onProgress?: (message: string) => void;
+  onEvent?: (event: TranscribeProgress) => void;
+  /** Called as whisper starts, so a stop during install or download still ends the CLI at once. */
+  startCancellation?: () => AbortSignal;
   /**
    * Explicit whisper spawn timeout in ms. Overrides the duration+model auto-
    * scaled default. Callers that leave this undefined get the auto-scaled
@@ -271,6 +268,8 @@ export interface TranscribeOptions {
 }
 
 export interface TranscribeResult {
+  model: string;
+  detectedLanguage: string | null;
   transcriptPath: string;
   wordCount: number;
   durationSeconds: number;
@@ -299,6 +298,27 @@ function tempWavPath(): string {
   return join(tmpdir(), `hyperframes-audio-${process.pid}-${randomUUID()}.wav`);
 }
 
+function runFfmpeg(ffmpegPath: string, args: string[], output: string, timeout: number): void {
+  try {
+    execFileSync(ffmpegPath, ["-nostats", "-hide_banner", ...args, "-y", output], {
+      stdio: ["ignore", "ignore", "pipe"],
+      maxBuffer: 64 * 1024 * 1024,
+      timeout,
+    });
+  } catch (err) {
+    rmSync(output, { force: true });
+    const stop = err as { code?: string; signal?: string; stderr?: Buffer };
+    // A code means Node stopped it; ffmpeg traps Ctrl-C and says so (exit 255 is EPERM too on 7+).
+    if (stop.code) throw err;
+    const said = String(stop.stderr ?? "").trim();
+    const cancelled = /Exiting normally, received signal/.test(said) || stoppedByCancelSignal(stop);
+    const reason = said.split("\n").at(-1) || (err as Error).message;
+    // stderr: the command shows its last lines, where ffmpeg names the cause above its summary line.
+    const failure = new Error(`ffmpeg failed: ${reason}`, { cause: err });
+    throw Object.assign(failure, { cancelled, stderr: said });
+  }
+}
+
 /**
  * Extract audio from a video file as 16kHz mono WAV (whisper requirement).
  */
@@ -310,15 +330,27 @@ function extractAudio(videoPath: string): string {
     );
   }
   const wavPath = tempWavPath();
-  execFileSync(
+  runFfmpeg(
     ffmpegPath,
-    ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    {
-      stdio: "ignore",
-      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
-    },
+    ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav"],
+    wavPath,
+    resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
   );
   return wavPath;
+}
+
+interface AudioStream {
+  codec_type?: string;
+  codec_name?: string;
+  sample_rate?: string;
+  channels?: number;
+}
+
+/** 16-bit PCM only: sherpa-onnx cannot read 24-bit WAV, so anything else goes through ffmpeg. */
+export function isPcm16kMono(stream: AudioStream | undefined): boolean {
+  return (
+    stream?.codec_name === "pcm_s16le" && stream.sample_rate === "16000" && stream.channels === 1
+  );
 }
 
 /**
@@ -333,15 +365,8 @@ function isWav16kMono(filePath: string): boolean {
       ["-v", "quiet", "-print_format", "json", "-show_streams", "--", filePath],
       { encoding: "utf-8", timeout: 10_000 },
     );
-    const parsed: {
-      streams?: {
-        codec_type?: string;
-        sample_rate?: string;
-        channels?: number;
-      }[];
-    } = JSON.parse(raw);
-    const audio = parsed.streams?.find((s) => s.codec_type === "audio");
-    return audio?.sample_rate === "16000" && audio?.channels === 1;
+    const parsed: { streams?: AudioStream[] } = JSON.parse(raw);
+    return isPcm16kMono(parsed.streams?.find((s) => s.codec_type === "audio"));
   } catch {
     return false;
   }
@@ -361,13 +386,11 @@ function prepareAudio(audioPath: string): string {
     throw new Error(`ffmpeg is required to prepare audio. Install: ${getFFmpegInstallHint()}`);
   }
   const wavPath = tempWavPath();
-  execFileSync(
+  runFfmpeg(
     ffmpegPath,
-    ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    {
-      stdio: "ignore",
-      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
-    },
+    ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav"],
+    wavPath,
+    resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
   );
   return wavPath;
 }
@@ -395,6 +418,23 @@ export function initialModelForLanguage(model: string, language?: string): strin
   return model;
 }
 
+export function prepareWav(inputPath: string, onProgress?: (message: string) => void): string {
+  if (isAudioFile(inputPath)) {
+    onProgress?.("Preparing audio...");
+    return prepareAudio(inputPath);
+  }
+  if (isVideoFile(inputPath)) {
+    if (!hasFFmpeg()) {
+      throw new Error(
+        `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
+      );
+    }
+    onProgress?.("Extracting audio from video...");
+    return extractAudio(inputPath);
+  }
+  throw new Error(`Unsupported file type: ${extname(inputPath).toLowerCase()}`);
+}
+
 /**
  * Transcribe an audio or video file and save transcript.json to the output directory.
  */
@@ -408,85 +448,86 @@ export async function transcribe(
 
   // 1. Ensure whisper binary
   options?.onProgress?.("Checking whisper...");
-  const whisper = await ensureWhisper({ onProgress: options?.onProgress });
+  const whisper = await ensureWhisper({
+    onProgress: options?.onProgress,
+    installRuntime: options?.installRuntime,
+  });
 
   // 2. Ensure model
   options?.onProgress?.("Checking model...");
   const modelPath = await ensureModel(model, {
     onProgress: options?.onProgress,
+    onDownloadProgress: options?.onEvent
+      ? (receivedBytes, totalBytes) =>
+          options.onEvent?.({
+            type: "progress",
+            phase: "download",
+            model,
+            receivedBytes,
+            totalBytes,
+          })
+      : undefined,
   });
 
   // 3. Prepare audio
-  let wavPath: string;
-  const ext = extname(inputPath).toLowerCase();
+  const wavPath = prepareWav(inputPath, options?.onProgress);
 
-  if (isAudioFile(inputPath)) {
-    options?.onProgress?.("Preparing audio...");
-    wavPath = prepareAudio(inputPath);
-  } else if (isVideoFile(inputPath)) {
-    if (!hasFFmpeg()) {
-      throw new Error(
-        `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
-      );
-    }
-    options?.onProgress?.("Extracting audio from video...");
-    wavPath = extractAudio(inputPath);
-  } else {
-    throw new Error(`Unsupported file type: ${ext}`);
-  }
-
-  // 4. Detect language and ensure correct model
-  let effectiveModel = model;
-  let effectiveModelPath = modelPath;
-  let detectedLanguage = options?.language ?? null;
-
-  // Only auto-detect language when using a multilingual model.
-  // .en models always report "en" regardless of actual language, so detection
-  // would be a no-op. If the user chose .en, they want English.
-  if (!detectedLanguage && !effectiveModel.endsWith(".en")) {
-    options?.onProgress?.("Detecting language...");
-    detectedLanguage = detectLanguage(whisper.executablePath, effectiveModelPath, wavPath);
-  }
-
-  if (detectedLanguage && detectedLanguage !== "en" && effectiveModel.endsWith(".en")) {
-    const multilingualModel = effectiveModel.replace(/\.en$/, "");
-    options?.onProgress?.(
-      `Detected ${detectedLanguage} — switching to ${multilingualModel} model...`,
-    );
-    effectiveModelPath = await ensureModel(multilingualModel, {
-      onProgress: options?.onProgress,
-    });
-    effectiveModel = multilingualModel;
-  }
-
-  // 5. Run whisper
+  const automaticLanguage = options?.language === undefined && !model.endsWith(".en");
+  const language = options?.language ?? (automaticLanguage ? "auto" : "en");
   options?.onProgress?.("Transcribing...");
+  const wavSeconds = getPreparedWavDurationSeconds(wavPath);
+  options?.onEvent?.({
+    type: "progress",
+    phase: "transcription",
+    model,
+    status: "started",
+    durationSeconds: wavSeconds,
+  });
   const outputBase = join(outputDir, "transcript");
   mkdirSync(outputDir, { recursive: true });
 
   const whisperArgs = [
     "--model",
-    effectiveModelPath,
+    modelPath,
     "--output-json-full",
     "--output-file",
     outputBase,
     "--dtw",
-    dtwPresetForModel(effectiveModel),
+    dtwPresetForModel(model),
     "--suppress-nst",
   ];
-  if (detectedLanguage) {
-    whisperArgs.push("--language", detectedLanguage);
-  }
+  whisperArgs.push("--language", language);
+  const onEvent = options?.onEvent;
+  if (onEvent) whisperArgs.push("--print-progress");
   whisperArgs.push(wavPath);
 
-  const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath), {
-    model: effectiveModel,
+  const whisperTimeoutMs = resolveWhisperTimeoutMs(wavSeconds, {
+    model,
     overrideMs: options?.timeoutMs,
   });
+  let through = 0;
+  const heard = (words: Word[], at: number) => {
+    if (!onEvent || (words.length === 0 && at <= through)) return;
+    through = Math.max(through, at);
+    emitWords(onEvent, model, words, through);
+  };
   try {
-    execFileSync(whisper.executablePath, whisperArgs, {
-      stdio: "ignore",
-      timeout: whisperTimeoutMs,
+    await runWhisper(whisper.executablePath, whisperArgs, {
+      timeoutMs: whisperTimeoutMs,
+      signal: options?.startCancellation?.(),
+      onStdout:
+        onEvent &&
+        ((line) => {
+          const segment = segmentWords(line);
+          if (segment) heard(segment.words, segment.end);
+        }),
+      onStderr:
+        onEvent && wavSeconds
+          ? (line) => {
+              const percent = /progress =\s*(\d+)%/.exec(line)?.[1];
+              if (percent) heard([], (Number(percent) / 100) * wavSeconds);
+            }
+          : undefined,
     });
   } catch (err) {
     // Surface the timeout knob when the child was killed by our own timeout —
@@ -495,7 +536,7 @@ export async function transcribe(
     // existing stderr-tail handling in `transcribeAudio` still applies.
     throw wrapWhisperTimeoutError(err, {
       effectiveTimeoutMs: whisperTimeoutMs,
-      model: effectiveModel,
+      model,
       wasOverride: options?.timeoutMs != null,
     });
   }
@@ -507,6 +548,11 @@ export async function transcribe(
   }
 
   const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
+  const reportedLanguage: unknown = transcript.result?.language;
+  const detectedLanguage =
+    automaticLanguage && typeof reportedLanguage === "string" && reportedLanguage.length > 0
+      ? reportedLanguage
+      : null;
   const segments = transcript.transcription ?? [];
 
   let wordCount = 0;
@@ -532,7 +578,10 @@ export async function transcribe(
     }
   }
 
+  options?.onEvent?.({ type: "progress", phase: "transcription", model, status: "completed" });
   return {
+    model,
+    detectedLanguage,
     transcriptPath,
     wordCount,
     durationSeconds: maxEnd / 1000,
@@ -540,18 +589,72 @@ export async function transcribe(
   };
 }
 
+const SEGMENT_LINE = /^\[(\d+):(\d+):([\d.]+) --> (\d+):(\d+):([\d.]+)\]\s*(.*)$/;
+const toSeconds = (h: string, m: string, s: string) =>
+  Number(h) * 3600 + Number(m) * 60 + Number(s);
+const toMs = (seconds: number) => Math.round(seconds * 1000) / 1000;
+
+/** A segment line whisper-cli prints as it decodes; word times are spread by length until the JSON's. */
+function segmentWords(line: string): { words: Word[]; end: number } | null {
+  const m = SEGMENT_LINE.exec(line);
+  if (!m) return null;
+  const start = toSeconds(m[1]!, m[2]!, m[3]!);
+  const end = toSeconds(m[4]!, m[5]!, m[6]!);
+  const texts = m[7]!
+    .split(/\s+/)
+    .filter((t) => t && !t.startsWith("[_") && !t.startsWith("[BLANK"));
+  const letters = texts.reduce((n, t) => n + t.length, 0);
+  let at = start;
+  const words = texts.map((text) => {
+    const from = at;
+    at += ((end - start) * text.length) / letters;
+    return { text, start: toMs(from), end: toMs(at) };
+  });
+  return { words, end };
+}
+
+/** Resolves once whisper exits and both its streams are read, so no printed line is lost. */
+async function runWhisper(
+  executable: string,
+  args: string[],
+  options: {
+    timeoutMs: number;
+    signal?: AbortSignal;
+    onStdout?: (line: string) => void;
+    onStderr?: (line: string) => void;
+  },
+): Promise<void> {
+  let stdout: Readable | null = null;
+  let stderr: Readable | null = null;
+  const exited = new Promise<void>((resolve, reject) => {
+    const child = execFile(
+      executable,
+      args,
+      { timeout: options.timeoutMs, signal: options.signal, maxBuffer: 256 * 1024 * 1024 },
+      (err, _out, errText) => {
+        if (!err) return resolve();
+        // execFileSync named its own timeout ETIMEDOUT; execFile only marks the child killed.
+        const timedOut = err.killed && err.signal === "SIGTERM" && !options.signal?.aborted;
+        // execFile appends all of stderr to the message; the command shows its last lines instead.
+        err.message = err.message.split("\n")[0]!;
+        reject(Object.assign(err, { stderr: errText }, timedOut ? { code: "ETIMEDOUT" } : {}));
+      },
+    );
+    stdout = child.stdout;
+    stderr = child.stderr;
+  });
+  const read = (stream: Readable | null, onLine?: (line: string) => void) =>
+    stream && onLine ? once(createInterface({ input: stream }).on("line", onLine), "close") : null;
+  await Promise.all([exited, read(stdout, options.onStdout), read(stderr, options.onStderr)]);
+}
+
 // ---------------------------------------------------------------------------
 // Timeout error discoverability
 // ---------------------------------------------------------------------------
 
-// Node's `execFileSync` kills the child with SIGTERM when its `timeout` option
-// fires, so the resulting Error carries `signal === "SIGTERM"`. On some platforms
-// / Node versions `code === "ETIMEDOUT"` is also set. Match either signal so we
-// don't miss a timeout on a platform we haven't validated.
+// execFileSync's own timeout sets code ETIMEDOUT (and SIGTERM); a bare SIGTERM is someone stopping it.
 export function isWhisperTimeoutError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const record = err as { signal?: unknown; code?: unknown };
-  return record.signal === "SIGTERM" || record.code === "ETIMEDOUT";
+  return err instanceof Error && (err as { code?: unknown }).code === "ETIMEDOUT";
 }
 
 export interface WrapWhisperTimeoutOptions {

@@ -1,3 +1,4 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /**
  * One preset's bracket in the rack: its own header, on/off switch, amount lane
  * and the rows it wraps — or, for a run with no preset, just the rows.
@@ -93,6 +94,7 @@ export function FxPresetRun({
   onAutomate,
   onRemoveAutomation,
 }: FxPresetRunProps) {
+  const trackInput = useTrackDesignInput();
   const rows = run.items.map(({ node, i }) => (
     <FxNodeRow
       // Keyed by id, as the carve module's list above already is. On
@@ -183,13 +185,16 @@ export function FxPresetRun({
           aria-pressed={runOn}
           title={runOn ? `Switch ${preset.label} off` : `Switch ${preset.label} back on`}
           disabled={disabled}
-          onClick={() => onSetAmount(runOn ? 0 : 1)}
+          onClick={() => {
+            onSetAmount(runOn ? 0 : 1);
+            trackInput("toggle", "preset-amount");
+          }}
         >
           {runOn ? "On" : "Off"}
         </button>
         <button
           type="button"
-          className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-red-400 disabled:opacity-40"
+          className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-danger-ink disabled:opacity-40"
           title={`Remove ${preset.label}`}
           disabled={disabled}
           onClick={onRemoveRun}
@@ -205,7 +210,10 @@ export function FxPresetRun({
         disabled={disabled || automated}
         automated={automated}
         onChange={(_k, v) => onSetAmount(Number(v), false)}
-        onCommit={(_k, v) => onSetAmount(Number(v))}
+        onCommit={(_k, v) => {
+          onSetAmount(Number(v));
+          trackInput("slider", "preset-amount");
+        }}
         onAutomate={onAutomate}
         onRemoveAutomation={onRemoveAutomation}
       />

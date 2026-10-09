@@ -491,6 +491,68 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
     }
   });
 
+  it("refuses the desktop app's records when renders/ is linked into .hyperframes/", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-renders-project-"));
+    tmpDirs.push(project);
+    mkdirSync(join(project, ".hyperframes"));
+    writeFileSync(join(project, ".hyperframes", "app-history.jsonl"), '{"asked":"secret"}');
+    if (!tryCreateSymlink(join(project, ".hyperframes"), join(project, "renders"), "dir")) return;
+    const app = new Hono();
+    registerRenderRoutes(app, {
+      listProjects: () => [],
+      resolveProject: async (id: string) => ({ id, dir: project }),
+      bundle: async () => null,
+      lint: async () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => join(project, "renders"),
+      startRender: (opts) => ({
+        id: opts.jobId,
+        status: "rendering",
+        progress: 0,
+        outputPath: opts.outputPath,
+      }),
+    });
+    const res = await app.request("http://localhost/projects/demo/renders/file/app-history.jsonl");
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("secret");
+  });
+
+  it("never lists, views or downloads a render that links to the app's records", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-renders-project-"));
+    tmpDirs.push(project);
+    mkdirSync(join(project, ".hyperframes"));
+    mkdirSync(join(project, "renders"));
+    writeFileSync(join(project, ".hyperframes", "app-history.jsonl"), '{"asked":"secret"}');
+    writeFileSync(join(project, "renders", "real.mp4"), "render-bytes");
+    const leak = join(project, "renders", "leak.mp4");
+    if (!tryCreateSymlink(join(project, ".hyperframes", "app-history.jsonl"), leak, "file")) return;
+    const app = new Hono();
+    registerRenderRoutes(app, {
+      listProjects: () => [],
+      resolveProject: async (id: string) => ({ id, dir: project }),
+      bundle: async () => null,
+      lint: async () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => join(project, "renders"),
+      startRender: (opts) => ({
+        id: opts.jobId,
+        status: "rendering",
+        progress: 0,
+        outputPath: opts.outputPath,
+      }),
+    });
+    const list = (await (await app.request("http://localhost/projects/demo/renders")).json()) as {
+      renders: { id: string }[];
+    };
+    expect(list.renders.map((r) => r.id)).toEqual(["real"]);
+    for (const kind of ["view", "download"]) {
+      const res = await app.request(`http://localhost/render/leak/${kind}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("secret");
+      expect((await app.request(`http://localhost/render/real/${kind}`)).status).toBe(200);
+    }
+  });
+
   it("serves a render file that lives inside rendersDir", async () => {
     const { app, rendersDir } = buildApp();
     writeFileSync(join(rendersDir, "demo.mp4"), "render-bytes");
@@ -758,6 +820,64 @@ describe("POST /projects/:id/render — variables forwarding", () => {
         expect(res.status).toBe(400);
       }
       expect(spy).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("audioLoweredDb — the limiter's attenuation reaches the host", () => {
+  async function completedJobProgress(audioLoweredDb: number | undefined): Promise<string> {
+    const spy = vi.fn();
+    const { adapter, rendersDir } = createAdapter(spy);
+    const baseStartRender = adapter.startRender.bind(adapter);
+    adapter.startRender = (opts) => {
+      const state = baseStartRender(opts);
+      state.status = "complete";
+      state.progress = 100;
+      if (audioLoweredDb !== undefined) state.audioLoweredDb = audioLoweredDb;
+      return state;
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    try {
+      const started = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4" }),
+      });
+      const { jobId } = (await started.json()) as { jobId: string };
+      return await (await app.request(`http://localhost/render/${jobId}/progress`)).text();
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  }
+
+  it("carries audioLoweredDb in the complete progress event", async () => {
+    const body = await completedJobProgress(1.44);
+    expect(body).toContain('"status":"complete"');
+    expect(body).toContain('"audioLoweredDb":1.44');
+  });
+
+  it("omits it when the limiter did not engage", async () => {
+    expect(await completedJobProgress(undefined)).not.toContain("audioLoweredDb");
+  });
+
+  it("lists it on the render record from the sidecar, and omits it otherwise", async () => {
+    const { app, rendersDir, cleanup } = buildApp(vi.fn());
+    try {
+      writeFileSync(join(rendersDir, "loud.mp4"), "x");
+      writeFileSync(
+        join(rendersDir, "loud.meta.json"),
+        JSON.stringify({ status: "complete", audioLoweredDb: 1.44 }),
+      );
+      writeFileSync(join(rendersDir, "quiet.mp4"), "x");
+      writeFileSync(join(rendersDir, "quiet.meta.json"), JSON.stringify({ status: "complete" }));
+      const { renders } = (await (
+        await app.request("http://localhost/projects/demo/renders")
+      ).json()) as { renders: Array<{ id: string; audioLoweredDb?: number }> };
+      expect(renders.find((r) => r.id === "loud")?.audioLoweredDb).toBe(1.44);
+      expect(renders.find((r) => r.id === "quiet")).not.toHaveProperty("audioLoweredDb");
     } finally {
       cleanup();
     }

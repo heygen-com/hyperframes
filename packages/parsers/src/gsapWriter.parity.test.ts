@@ -7,10 +7,10 @@
  * This is the safety net for porting WS-3 ops one at a time: each ported op
  * gets a fixture row here proving it matches the battle-tested original.
  *
- * The server switches between writers via STUDIO_SDK_CUTOVER_ENABLED (WS-3.F).
- * Recast remains the default; acorn runs only when the flag is enabled.
+ * The server picks the writer from HYPERFRAMES_GSAP_WRITER; acorn is the default.
  */
 import { describe, expect, it } from "vitest";
+import { parseHTML } from "linkedom";
 import {
   parseGsapScript,
   removeAllKeyframesFromScript as removeAllRecast,
@@ -18,6 +18,7 @@ import {
   materializeKeyframesInScript as materializeRecast,
   splitIntoPropertyGroups as splitGroupsRecast,
   splitAnimationsInScript as splitAnimsRecast,
+  updateAnimationInScript as updateAnimRecast,
   setArcPathInScript as setArcRecast,
   updateArcSegmentInScript as updateArcSegmentRecast,
   removeArcPathFromScript as removeArcRecast,
@@ -55,9 +56,13 @@ import {
   resizeKeyframedTweenInScript as resizeKeyframedTweenAcorn,
   addAnimationWithKeyframesToScript as addWithKfAcorn,
   removeAnimationFromScript as removeAnimAcorn,
+  updateAnimationInScript as updateAnimAcorn,
   shiftPositionsInScript as shiftAcorn,
   scalePositionsInScript as scaleAcorn,
+  retimeClipTweensInScript,
+  type ClipTweenRetime,
   dedupePositionWritesInScript as dedupePosAcorn,
+  replaceTweenWithKeyframesInScript as replaceTweenWithKeyframesAcorn,
 } from "./gsapWriterAcorn.js";
 
 function acornId(script: string): string {
@@ -198,6 +203,17 @@ describe("parity: dedupePositionWritesInScript (recast vs acorn)", () => {
     expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
   });
 
+  it("keeps an xPercent/yPercent centring set beside an x/y tween in both writers", () => {
+    const centred = `
+      const tl = gsap.timeline({ paused: true });
+      gsap.set("#box", { xPercent: -50, yPercent: -50 });
+      tl.to("#box", { x: 120, y: 60, duration: 4, ease: "none" }, 0);
+    `;
+    const keepId = parseGsapScriptAcorn(centred).animations.find((a) => a.method === "to")!.id;
+    expect(dedupePosAcorn(centred, "#box", keepId)).toBe(centred);
+    expect(dedupePosRecast(centred, "#box", keepId)).toBe(centred);
+  });
+
   it("no-op when 0 or 1 position writes — both writers", () => {
     const single = `
       const tl = gsap.timeline({ paused: true });
@@ -225,15 +241,15 @@ describe("removeKeyframeFromScript: array-form keyframes (recast + acorn parity)
     const id = acornId(arrayScript);
     expect(parseGsapScript(arrayScript).animations[0]!.id).toBe(id);
 
-    const recastOut = removeKeyframeRecast(arrayScript, id, 67);
-    const acornOut = removeKeyframeAcorn(arrayScript, id, 67);
+    const recastOut = removeKeyframeRecast(arrayScript, id, 75);
+    const acornOut = removeKeyframeAcorn(arrayScript, id, 75);
 
     expect(recastOut).not.toBe(arrayScript);
     expect(acornOut).not.toBe(arrayScript);
 
     const recShape = shapeOf(recastOut);
     expect(recShape.keyframes?.keyframes.length).toBe(3);
-    // the 67% element { x: -320, y: 40 } is the one removed
+    // the 75% element { x: -320, y: 40 } is the one removed
     expect(JSON.stringify(recShape.keyframes)).not.toContain("-320");
     expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
   });
@@ -554,6 +570,150 @@ describe("parity: splitAnimationsInScript (recast vs acorn)", () => {
       elementDuration: 4,
     };
     expect(splitAnimsAcorn(script, opts).script).toBe(script);
+  });
+});
+
+describe("splitAnimationsInScript keeps keyframes the parser cannot read", () => {
+  const STEP_SHAPES = [
+    ["a step with a flag", "", "[{ x: 0 }, { x: 100, runBackwards: true }]"],
+    ["a spread step", "const base = { x: 0 };", "[{ ...base }, { x: 100 }]"],
+    ["a named step", "const last = { x: 100 };", "[{ x: 0 }, last]"],
+    ["keyframes from a call", "", "steps()"],
+  ] as const;
+  const opts = { originalId: "a", newId: "a-2", elementStart: 0, elementDuration: 4 };
+  const writers = [
+    ["recast", splitAnimsRecast],
+    ["acorn", splitAnimsAcorn],
+  ] as const;
+
+  for (const [writer, split] of writers) {
+    for (const [shape, decl, keyframes] of STEP_SHAPES) {
+      const script = `const tl = gsap.timeline({ paused: true });
+${decl}
+tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0);`;
+
+      it(`${writer}: leaves ${shape} spanning the split as authored`, () => {
+        expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+        const result = split(script, { ...opts, splitTime: 1 });
+        expect(result.script).toContain(`tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0)`);
+        expect(result.skippedSelectors).toContain("#a (keyframes spanning split)");
+      });
+
+      it(`${writer}: moves ${shape} after the split whole`, () => {
+        const result = split(script, { ...opts, splitTime: 0 });
+        expect(result.script).toContain(
+          `tl.to("#a-2", { duration: 2, keyframes: ${keyframes} }, 0)`,
+        );
+      });
+    }
+  }
+});
+
+describe("writers leave keyframes they cannot read as authored", () => {
+  const UNREADABLE = [
+    ["a step with a flag", "[{ x: 0 }, { x: 100, runBackwards: true }]"],
+    ["keyframes from a call", "steps()"],
+  ] as const;
+  const opts = { originalId: "a", newId: "a-2", elementStart: 0, elementDuration: 4 };
+
+  for (const [shape, keyframes] of UNREADABLE) {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { opacity: 1, x: 5, duration: 1, keyframes: ${keyframes} }, 0);`;
+    const id = () => acornId(script);
+
+    for (const [writer, split] of [
+      ["recast", splitAnimsRecast],
+      ["acorn", splitAnimsAcorn],
+    ] as const) {
+      if (writer === "recast" && keyframes !== "steps()") continue;
+      it(`${writer}: a split after ${shape} reports that the new clip's start is unknown`, () => {
+        const result = split(`${script}\ntl.to("#a", { duration: 2, x: 200 }, 1);`, {
+          ...opts,
+          splitTime: 2,
+        });
+        expect(result.skippedSelectors).toContain("#a (unreadable keyframes before split)");
+      });
+    }
+
+    it.each([
+      ["recast convert to keyframes", () => convertRecast(script, id())],
+      ["acorn convert to keyframes", () => convertAcorn(script, id())],
+      ["recast split into property groups", () => splitGroupsRecast(script, id()).script],
+      ["acorn split into property groups", () => splitGroupsAcorn(script, id()).script],
+      ["acorn add keyframe", () => addKeyframeAcorn(script, id(), 50, { x: 10 })],
+      ["acorn update keyframe", () => updateKeyframeAcorn(script, id(), 100, { x: 10 })],
+      ["acorn remove keyframe", () => removeKeyframeAcorn(script, id(), 100)],
+      ["acorn move keyframe", () => moveKeyframeAcorn(script, id(), 100, 80)],
+      ["acorn resize keyframed tween", () => resizeKeyframedTweenAcorn(script, id(), 0, 2, [])],
+      [
+        "acorn property edit",
+        () => updateAnimAcorn(script, id(), { properties: { opacity: 0.5 } }),
+      ],
+    ])(`%s leaves ${shape} unchanged`, (_name, write) => {
+      expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+      expect(write()).toBe(script);
+    });
+  }
+
+  it.each(["{ x: v }", "{ [v]: { x: 1 } }", "{ ...o }"])(
+    "acorn add and resize leave object keyframes %s unchanged",
+    (keyframes) => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, keyframes: ${keyframes} }, 0);`;
+      expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+      expect(addKeyframeAcorn(script, acornId(script), 50, { x: 5 })).toBe(script);
+      expect(resizeKeyframedTweenAcorn(script, acornId(script), 0, 2, [])).toBe(script);
+    },
+  );
+
+  it.each([
+    ["recast", splitAnimsRecast],
+    ["acorn", splitAnimsAcorn],
+  ] as const)("%s: a split across unreadable keyframes writes no start value", (_writer, split) => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { opacity: 0.5, duration: 2, keyframes: steps() }, 0);`;
+    const result = split(script, { ...opts, splitTime: 1 });
+    expect(result.script).not.toContain('"#a-2"');
+    expect(result.skippedSelectors).toContain("#a (keyframes spanning split)");
+  });
+
+  it("treats keyframes with a computed percentage key as unreadable", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, keyframes: { [k]: { x: 10 }, "100%": { x: 50 } } }, 0);`;
+    const id = acornId(script);
+    expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+    expect(updateAnimAcorn(script, id, { properties: { opacity: 0.5 } })).toBe(script);
+    expect(removeKeyframeAcorn(script, id, 100)).toBe(script);
+  });
+
+  it.each([
+    ["a named step", '{ "0%": { x: 0 }, "100%": last }'],
+    ["a spread inside a step", '{ "0%": { x: 0 }, "100%": { ...base, x: 10 } }'],
+    ["a numeric key", '{ "0%": { x: 0 }, [50]: { x: 5 }, "100%": { x: 10 } }'],
+    ["a template key in an array step", "[{ x: 0 }, { x: 10, [`y`]: 5 }]"],
+    ["a variable key in an array step", "[{ x: 0 }, { x: 10, [k]: 5 }]"],
+    ["a getter in a step", '{ "0%": { x: 0 }, "100%": { get x() { return 10; } } }'],
+    ["a method in an array step", "[{ x: 0 }, { x: 10, y() {} }]"],
+    ["an array channel beside % steps", '{ "0%": { x: 0 }, "100%": { x: 10 }, y: [0, 5] }'],
+    ["an unresolved array value", "{ x: [0, 10, v] }"],
+    ["a spread in an array channel", "{ x: [0, ...rest] }"],
+    ["a hole in an array channel", "{ x: [0, , 10] }"],
+  ])(
+    "treats keyframes with %s as unreadable, so drags and deletes keep them",
+    (_shape, keyframes) => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: ${keyframes} }, 0);`;
+      const id = acornId(script);
+      expect(parseGsapScriptAcorn(script).animations[0]!.hasUnresolvedKeyframes).toBe(true);
+      expect(moveKeyframeAcorn(script, id, 100, 80)).toBe(script);
+      expect(removeKeyframeAcorn(script, id, 0)).toBe(script);
+    },
+  );
+
+  it("recast property edit leaves keyframes from a call unchanged", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { x: 5, duration: 1, keyframes: steps() }, 0);`;
+    expect(updateAnimRecast(script, acornId(script), { properties: { x: 9 } })).toBe(script);
   });
 });
 
@@ -1295,6 +1455,94 @@ describe("parity: moveKeyframeInScript (recast vs acorn)", () => {
   });
 });
 
+describe("a keyframe percentage below 1e-6", () => {
+  const tiny = 1.2860082304526747e-7;
+  const readBack = (out: string) =>
+    parseGsapScriptAcorn(out).animations[0]!.keyframes?.keyframes.map((kf) => kf.percentage);
+
+  const steps = [
+    { percentage: 0, properties: { x: 0 } },
+    { percentage: tiny, properties: { x: 1 } },
+    { percentage: 100, properties: { x: 10 } },
+  ];
+
+  it.each([
+    ["recast", addWithKfRecast],
+    ["acorn", addWithKfAcorn],
+  ])("is written as a decimal key apart from 0% (%s)", (_name, add) => {
+    const base = `const tl = gsap.timeline({ paused: true });`;
+    const out = add(base, "#a", 0, 2, steps).script;
+    expect(out).not.toMatch(/\de-\d/);
+    expect(readBack(out)).toEqual([0, expect.closeTo(tiny, 12), 100]);
+  });
+
+  it("stays apart from 0% when replace-with-keyframes writes both", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, x: 10, ease: "power4.in" }, 0);`;
+    const out = replaceTweenWithKeyframesAcorn(script, acornId(script), {
+      targetSelector: "#a",
+      position: 0,
+      duration: 2,
+      ease: "power4.in",
+      keyframes: steps,
+    })!;
+    expect(readBack(out)).toEqual([0, expect.closeTo(tiny, 12), 100]);
+  });
+});
+
+describe("a tween-level easeEach, which GSAP ignores", () => {
+  const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, keyframes: { "0%": { x: 0 }, "100%": { x: 10 } }, easeEach: "power4.in" }, 0);`;
+  it.each([
+    ["recast", parseGsapScript],
+    ["acorn", parseGsapScriptAcorn],
+  ])("is not reported as the keyframes' ease (%s)", (_name, parse) => {
+    expect(parse(script).animations[0]!.keyframes?.easeEach).toBeUndefined();
+  });
+});
+
+describe("a keyframe drag keeps the keyframes' eases", () => {
+  const writers = [
+    ["recast", updateAnimRecast, moveKeyframeRecast],
+    ["acorn", updateAnimAcorn, moveKeyframeAcorn],
+  ] as const;
+
+  for (const [writer, update, move] of writers) {
+    it(`${writer}: an ease set with Studio's ease control survives a diamond drag`, () => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0 }, "50%": { x: 5 }, "100%": { x: 10 } } }, 0);`;
+      const id = acornId(script);
+      const eased = update(script, id, { easeEach: "power2.out", resetKeyframeEases: true });
+      expect(parseGsapScriptAcorn(eased).animations[0]!.keyframes?.easeEach).toBe("power2.out");
+
+      const kf = parseGsapScriptAcorn(move(eased, id, 50, 60)).animations[0]!.keyframes!;
+      expect(kf.keyframes.map((k) => k.percentage)).toEqual([0, 60, 100]);
+      expect(kf.easeEach).toBe("power2.out");
+    });
+
+    it(`${writer}: splitting into property groups keeps the keyframes' eases`, () => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0, opacity: 0 }, "100%": { x: 10, opacity: 1 }, ease: "sine.inOut", easeEach: "power2.out" } }, 0);`;
+      const splitGroups = writer === "acorn" ? splitGroupsAcorn : splitGroupsRecast;
+      const groups = parseGsapScriptAcorn(splitGroups(script, acornId(script)).script).animations;
+      expect(groups).toHaveLength(2);
+      for (const group of groups) {
+        expect(group.keyframes?.easeEach).toBe("power2.out");
+        expect(group.keyframes?.ease ?? group.ease).toBe("sine.inOut");
+      }
+    });
+
+    it(`${writer}: an ease authored on the keyframes survives a diamond drag`, () => {
+      const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 2, keyframes: { "0%": { x: 0 }, "50%": { x: 5 }, "100%": { x: 10 }, ease: "sine.inOut" } }, 0);`;
+      const kf = parseGsapScriptAcorn(move(script, acornId(script), 50, 60)).animations[0]!
+        .keyframes!;
+      expect(kf.keyframes.map((k) => k.percentage)).toEqual([0, 60, 100]);
+      expect(kf.ease).toBe("sine.inOut");
+    });
+  }
+});
+
 // Regression: array-form `keyframes: [...]` has no explicit percentages, so
 // locateWithKeyframes/findKeyframesObjectNode (which only match the object
 // form) resolved to nothing and the move silently no-op'd — Studio's "Move to
@@ -1307,25 +1555,25 @@ describe("moveKeyframeInScript: array-form keyframes (recast + acorn parity)", (
   ] as const) {
     it(`${label}: normalizes the array then retimes the moved keyframe`, () => {
       const id = acornId(KF_ADD_ARRAY_SCRIPT);
-      const out = move(KF_ADD_ARRAY_SCRIPT, id, 50, 75);
+      const out = move(KF_ADD_ARRAY_SCRIPT, id, 66.7, 50);
       expect(out).not.toBe(KF_ADD_ARRAY_SCRIPT);
       const kfs = shapeOf(out).keyframes?.keyframes ?? [];
-      expect(kfs.map((k) => k.percentage)).toEqual([0, 75, 100]);
-      expect(kfs.find((k) => k.percentage === 75)!.properties).toEqual({ x: 50, y: 80 });
+      expect(kfs.map((k) => k.percentage)).toEqual([33.3, 50, 100]);
+      expect(kfs.find((k) => k.percentage === 50)!.properties).toEqual({ x: 50, y: 80 });
     });
   }
 
   it("parity: both writers reparse to the same model", () => {
     const id = acornId(KF_ADD_ARRAY_SCRIPT);
-    expect(modelOf(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 50, 75))).toEqual(
-      modelOf(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 50, 75)),
+    expect(modelOf(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 66.7, 50))).toEqual(
+      modelOf(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 66.7, 50)),
     );
   });
 
   it("leaves array-form source untouched when the destination is occupied", () => {
     const id = acornId(KF_ADD_ARRAY_SCRIPT);
-    expect(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
-    expect(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
+    expect(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 66.7, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
+    expect(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 66.7, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
   });
 
   it("normalizes duration-authored percentages before moving", () => {
@@ -1435,8 +1683,8 @@ describe("resizeKeyframedTweenInScript: preserves author intent (acorn + recast)
 // drag-to-retime re-keys existing keyframes to arbitrary percentages, which an
 // array can't host. Both writers now normalize array → object form first.
 const RESIZE_ARRAY_REMAP = [
-  { from: 0, to: 0 },
-  { from: 50, to: 25 },
+  { from: 33.3, to: 16.7 },
+  { from: 66.7, to: 33.3 },
   { from: 100, to: 100 },
 ];
 
@@ -1450,8 +1698,8 @@ describe("resizeKeyframedTweenInScript: array-form keyframes (recast + acorn par
       const out = resize(KF_ADD_ARRAY_SCRIPT, id, 0.2, 2, RESIZE_ARRAY_REMAP);
       expect(out).not.toBe(KF_ADD_ARRAY_SCRIPT);
       const kfs = shapeOf(out).keyframes?.keyframes ?? [];
-      expect(kfs.map((k) => k.percentage)).toEqual([0, 25, 100]);
-      expect(kfs.find((k) => k.percentage === 25)!.properties).toEqual({ x: 50, y: 80 });
+      expect(kfs.map((k) => k.percentage)).toEqual([16.7, 33.3, 100]);
+      expect(kfs.find((k) => k.percentage === 33.3)!.properties).toEqual({ x: 50, y: 80 });
     });
   }
 
@@ -1972,4 +2220,219 @@ tl.to("#el", { y: 50, duration: 1 }, "+=0.5");`;
   it("no-op when newDuration <= 0", () => {
     expect(scaleAcorn(POSITIONS_MULTI, "#hero", 0, 1, 2, 0)).toBe(POSITIONS_MULTI);
   });
+});
+
+describe("retimeClipTweensInScript: one parse, the bytes of one call per retime", () => {
+  const { document } = parseHTML(`<html><body>
+<div id="scene" data-start="1" data-duration="4"><h1>Hi</h1><p id="child">Kid</p></div>
+<div id="side" data-start="0" data-duration="8"></div>
+</body></html>`);
+  const script = `const tl = gsap.timeline({ paused: true });
+tl.from("#scene", { opacity: 0, duration: 1 }, 1);
+tl.from("#scene h1", { y: 20, duration: 1.25 }, 1.5);
+tl.to("#child", { rotation: 90 });
+tl.to(["#child", "#side"], { x: 1, duration: 1 }, 0.2);
+tl.to("#side", { x: 5, duration: 1 }, 2);
+tl.to("#side", { y: 5, duration: 1 }, "+=0.5");
+tl.to("#hero", { opacity: 0, duration: 0.5 }, 0.0004);`;
+  const oneByOne = (source: string, retimes: ClipTweenRetime[]) =>
+    retimes.reduce(
+      (current, r) =>
+        r.kind === "shift"
+          ? shiftAcorn(current, r.targetSelector, r.delta, document)
+          : scaleAcorn(
+              current,
+              r.targetSelector,
+              r.oldStart,
+              r.oldDuration,
+              r.newStart,
+              r.newDuration,
+              document,
+            ),
+      source,
+    );
+  const cases: Array<[string, ClipTweenRetime[]]> = [
+    [
+      "shifts of several clips, one clamped at zero",
+      [
+        { kind: "shift", targetSelector: "#scene", delta: 2 },
+        { kind: "shift", targetSelector: "#side", delta: -0.5 },
+        { kind: "shift", targetSelector: "#hero", delta: 0.3333 },
+      ],
+    ],
+    [
+      "two retimes landing on the same tween, in order",
+      [
+        { kind: "shift", targetSelector: "#child", delta: -0.3 },
+        {
+          kind: "scale",
+          targetSelector: "#side",
+          oldStart: 0,
+          oldDuration: 8,
+          newStart: 1,
+          newDuration: 3,
+        },
+        { kind: "shift", targetSelector: "#side", delta: 0.75 },
+      ],
+    ],
+    [
+      "scales then a shift of the parent clip",
+      [
+        {
+          kind: "scale",
+          targetSelector: "#scene",
+          oldStart: 1,
+          oldDuration: 4,
+          newStart: 1,
+          newDuration: 7,
+        },
+        {
+          kind: "scale",
+          targetSelector: "#scene",
+          oldStart: 1,
+          oldDuration: 7,
+          newStart: 2,
+          newDuration: 7,
+        },
+        { kind: "shift", targetSelector: "#scene", delta: -1.5 },
+      ],
+    ],
+  ];
+  for (const [name, retimes] of cases) {
+    it(name, () => {
+      const folded = retimeClipTweensInScript(script, retimes, document);
+      expect(folded.script).toBe(oneByOne(script, retimes));
+      expect(folded.script).not.toBe(script);
+    });
+  }
+
+  it("answers every #id lookup from one DOM walk, duplicate ids included", () => {
+    const { document: dup } = parseHTML(`<html><body>
+<div id="a" data-start="0" data-duration="2"></div><div id="b" data-start="0" data-duration="2"></div>
+<div id="a" data-start="3" data-duration="2"></div></body></html>`);
+    const retimes: ClipTweenRetime[] = ["#a", "#b", "#c"].map((targetSelector) => ({
+      kind: "shift",
+      targetSelector,
+      delta: 1,
+    }));
+    const source = `const tl = gsap.timeline();\ntl.to("#b", { x: 1 }, 1);\ntl.to("#a", { y: 1 }, 2);`;
+    const expected = retimes.reduce(
+      (current, r) =>
+        r.kind === "shift" ? shiftAcorn(current, r.targetSelector, r.delta, dup) : current,
+      source,
+    );
+    const queried: string[] = [];
+    const real = dup.querySelectorAll.bind(dup);
+    dup.querySelectorAll = ((selector: string) => (
+      queried.push(selector), real(selector)
+    )) as typeof real;
+    expect(retimeClipTweensInScript(source, retimes, dup).script).toBe(expected);
+    expect(queried).toEqual(["[id]"]);
+  });
+
+  it("reports which retimes moved something and leaves a script nothing matches alone", () => {
+    const folded = retimeClipTweensInScript(
+      script,
+      [
+        { kind: "shift", targetSelector: "#nobody", delta: 1 },
+        { kind: "shift", targetSelector: "#side", delta: 1 },
+      ],
+      document,
+    );
+    expect(folded.changed).toEqual([false, true]);
+    const none = retimeClipTweensInScript(script, [
+      { kind: "shift", targetSelector: "#nobody", delta: 1 },
+    ]);
+    expect(none.script).toBe(script);
+  });
+});
+
+describe("shift/scalePositionsInScript carry the clip's inner tweens", () => {
+  const { document } = parseHTML(`<html><body>
+<div id="scene" data-start="1" data-duration="4">
+  <h1 class="title">Hi</h1>
+  <p id="child" class="inner">Kid</p>
+  <div id="nested" data-start="2" data-duration="1"><span id="deep">x</span></div>
+</div>
+<div id="sibling" class="title">Out</div>
+</body></html>`);
+  const script = `const tl = gsap.timeline({ paused: true });
+tl.from("#scene", { opacity: 0, duration: 1 }, 1);
+tl.from("#scene h1", { y: 20, duration: 1 }, 1.5);
+tl.to("#child", { rotation: 90, duration: 1 });
+tl.to("#sibling", { y: 5, duration: 0.5 });
+tl.to("#child", { x: 10, duration: 1 }, 2);
+tl.to(["#child", "#scene h1"], { opacity: 0.5, duration: 1 }, 3);
+tl.to(".inner", { scale: 2, duration: 1 }, 3.5);
+tl.to("#sibling", { x: 5, duration: 1 }, 2);
+tl.to(".title", { color: "red", duration: 1 }, 2.5);
+tl.to("#deep", { y: 5, duration: 0.5 }, 2);
+tl.to(["#scene h1", window.logo], { x: 1, duration: 1 }, 2);
+tl.to(["#scene", window.logo], { x: 2, duration: 1 }, 2);`;
+  const timings = (out: string) =>
+    parseGsapScriptAcorn(out).animations.map((a) => [
+      a.targetSelector,
+      a.implicitPosition ? "chained" : a.position,
+      a.duration,
+    ]);
+  const writers = [
+    ["acorn", shiftAcorn, scaleAcorn],
+    ["recast", shiftRecast, scaleRecast],
+  ] as const;
+
+  const bare = parseHTML(
+    `<html><body><div id="bare" class="card"><p>x</p></div></body></html>`,
+  ).document;
+  const bareScript = `const tl = gsap.timeline({ paused: true });
+tl.to(".card", { x: 1, duration: 1 }, 1);`;
+
+  for (const [name, shift, scale] of writers) {
+    it(`${name}: a tween whose target is the clip moves with it, even without data-start`, () => {
+      expect(timings(shift(bareScript, "#bare", 1, bare))).toEqual([[".card", 2, 1]]);
+    });
+
+    it(`${name}: known limit, an outside tween chained after moved content moves with it`, () => {
+      const sibling = (out: string) => parseGsapScriptAcorn(out).animations[3]!;
+      expect(sibling(script)).toMatchObject({ targetSelector: "#sibling", resolvedStart: 3.5 });
+      expect(sibling(shift(script, "#scene", 2, document))).toMatchObject({
+        targetSelector: "#sibling",
+        implicitPosition: true,
+        resolvedStart: 5.5,
+      });
+    });
+
+    it(`${name}: a shift moves the clip and its descendants, never outside or nested clips`, () => {
+      expect(timings(shift(script, "#scene", 2, document))).toEqual([
+        ["#scene", 3, 1],
+        ["#scene h1", 3.5, 1],
+        ["#child", "chained", 1],
+        ["#sibling", "chained", 0.5],
+        ["#child", 4, 1],
+        ["#child, #scene h1", 5, 1],
+        [".inner", 5.5, 1],
+        ["#sibling", 2, 1],
+        [".title", 2.5, 1],
+        ["#deep", 2, 0.5],
+        ["#scene h1", 2, 1],
+        ["#scene", 2, 1],
+      ]);
+    });
+
+    it(`${name}: a scale retimes the clip and its descendants, never outside or nested clips`, () => {
+      expect(timings(scale(script, "#scene", 1, 4, 1, 8, document))).toEqual([
+        ["#scene", 1, 2],
+        ["#scene h1", 2, 2],
+        ["#child", "chained", 2],
+        ["#sibling", "chained", 0.5],
+        ["#child", 3, 2],
+        ["#child, #scene h1", 5, 2],
+        [".inner", 6, 2],
+        ["#sibling", 2, 1],
+        [".title", 2.5, 1],
+        ["#deep", 2, 0.5],
+        ["#scene h1", 2, 1],
+        ["#scene", 2, 1],
+      ]);
+    });
+  }
 });

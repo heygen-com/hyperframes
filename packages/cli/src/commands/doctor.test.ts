@@ -1,7 +1,13 @@
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { optionalPackageDir } from "../utils/optionalPackages.js";
 import {
   buildDoctorReport,
   checkFramesCache,
+  checkOptionalPackage,
   redactHome,
   parseToolVersion,
   type CheckOutcome,
@@ -270,5 +276,60 @@ describe("checkFramesCache", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.detail).toContain("free space unknown");
+  });
+});
+
+describe("checkOptionalPackage", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reports a package that has not been installed yet as ok, installing on first use", () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-doctor-optional-"));
+    dirs.push(cacheDir);
+    const cliUrl = pathToFileURL(join(cacheDir, "cli.js")).href;
+    expect(checkOptionalPackage("onnxruntime-node", cacheDir, cliUrl)).toEqual({
+      ok: true,
+      detail: "Not installed (installs on first use)",
+    });
+  });
+
+  it("reports the installed version read from the cached package", () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-doctor-optional-"));
+    dirs.push(cacheDir);
+    const pkgDir = join(
+      optionalPackageDir("@google/genai", cacheDir),
+      "node_modules/@google/genai",
+    );
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ version: "1.52.0" }));
+    const cliUrl = pathToFileURL(join(cacheDir, "cli.js")).href;
+    expect(checkOptionalPackage("@google/genai", cacheDir, cliUrl)).toEqual({
+      ok: true,
+      detail: "1.52.0 installed",
+    });
+  });
+});
+
+describe("checkSettingsLock", () => {
+  it("names a lock left by a process that stopped, and leaves it for the person to remove", async () => {
+    const { checkSettingsLock } = await import("./doctor.js");
+    const dir = mkdtempSync(join(tmpdir(), "hf-doctor-lock-"));
+    try {
+      const lock = join(dir, "config.json.lock");
+      expect(checkSettingsLock(lock)).toEqual({ ok: true, detail: "Not locked" });
+
+      writeFileSync(lock, "stopped");
+      const past = new Date(Date.now() - 60_000);
+      utimesSync(lock, past, past);
+      const result = checkSettingsLock(lock);
+
+      expect(result.ok).toBe(false);
+      expect(result.hint).toContain(`delete ${lock}`);
+      expect(existsSync(lock)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

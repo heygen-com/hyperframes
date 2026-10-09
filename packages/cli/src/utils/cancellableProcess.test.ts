@@ -52,8 +52,15 @@ describe.skipIf(!IS_POSIX)("cancellable process tree teardown", () => {
           },
         },
       );
-      await waitForTestCondition(() => existsSync(readyPath), 2_000);
-      grandchildPid = Number(readFileSync(readyPath, "utf8"));
+      // existsSync goes true as soon as the write opens (and truncates) the
+      // file, before its content lands — read must retry, not just exist-check.
+      await waitForTestCondition(() => {
+        if (!existsSync(readyPath)) return false;
+        const pid = Number(readFileSync(readyPath, "utf8"));
+        if (!Number.isInteger(pid) || pid <= 0) return false;
+        grandchildPid = pid;
+        return true;
+      }, 2_000);
 
       controller.abort(abortReason);
       await expect(setup).rejects.toBe(abortReason);
@@ -61,7 +68,7 @@ describe.skipIf(!IS_POSIX)("cancellable process tree teardown", () => {
       expect(rootPid).toBeDefined();
       expect(grandchildPid).toBeGreaterThan(0);
       expect(testProcessIsAlive(rootPid!)).toBe(false);
-      expect(testProcessIsAlive(grandchildPid)).toBe(false);
+      expect(testProcessIsAlive(grandchildPid!)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, completionDelayMs + 100));
       expect(existsSync(completionPath)).toBe(false);
     } finally {

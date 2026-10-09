@@ -3,6 +3,8 @@ name: remotion-to-hyperframes
 description: 'Port an existing Remotion (React) composition''s source to HyperFrames HTML. Use ONLY on an explicit ask to port/convert/migrate/translate a Remotion source — one-way, Remotion-only. A passing Remotion mention, reference-only code, or "make something like my Remotion video" is a fresh build (/general-video). Unclear → /hyperframes.'
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update remotion-to-hyperframes`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Remotion to HyperFrames
@@ -37,7 +39,7 @@ The skill ships with a **tiered test corpus** (T1–T4, 4 fixtures total) that g
 - **The reverse direction.** Exporting a HyperFrames composition back out _to_ Remotion (or to any other framework) is not a workflow — the translation is Remotion → HyperFrames only. Say so plainly.
 - **Non-Remotion sources.** An After Effects project (`.aep`), a Framer Motion / plain-React / CSS animation, or any other tool's source is not a Remotion composition — there is no Remotion source to translate. Re-create it natively via `/general-video`, or decline if HyperFrames can't represent it.
 
-When in doubt, default to authoring a native HyperFrames composition with `/general-video` (the general HyperFrames authoring flow) instead.
+When in doubt, return to `/hyperframes`; its intent layer picks the route.
 
 ## Workflow
 
@@ -74,10 +76,9 @@ Don't load all of them — load only what the specific source needs.
 Emit `index.html` with:
 
 - Root `<div id="stage">` carrying the composition's `data-composition-id`, `data-start="0"`, `data-duration` (in seconds), `data-fps`, `data-width`, `data-height`, plus one `data-*` per scalar prop.
-- A flat list of scene divs with `data-start` / `data-duration` / `data-track-index`.
-- Inline `<style>` for layout; CSS sets the `from` state of every animated property.
-- A single `<script>` tag at the bottom containing one paused `gsap.timeline({paused: true})`. Every Remotion `useCurrentFrame()` derivation becomes a tween on this timeline at the right offset.
-- `window.__timelines["<composition-id>"] = tl;` registers the timeline with HF's runtime.
+- One host `<div>` per scene with `data-composition-src="compositions/<scene>.html"` and `data-start` / `data-duration` / `data-track-index`. The root holds no nested layout.
+- One `compositions/<scene>.html` per scene (a `<template>` sub-composition): its inline `<style>` for layout (CSS sets the `from` state of every animated property), its markup, and one paused `gsap.timeline({paused: true})` in the scene's local time. Every Remotion `useCurrentFrame()` derivation becomes a tween on that timeline at the offset within the scene.
+- `window.__timelines["<scene-id>"] = tl;` in each scene file, and `window.__timelines["<composition-id>"]` for the root's own (possibly empty) timeline.
 
 Custom React subcomponents inline as repeated HTML using the prop interface as the template (see [`parameters.md`](references/parameters.md) for the per-instance `data-*` pattern).
 

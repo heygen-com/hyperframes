@@ -95,7 +95,7 @@ describe("injectScriptsIntoHtml", () => {
 </html>`;
 
     const injected = injectScriptsAtHeadStart(html, [VIRTUAL_TIME_SHIM]);
-    const injectedShimTag = `<script>${VIRTUAL_TIME_SHIM}</script>`;
+    const injectedShimTag = `<script>${VIRTUAL_TIME_SHIM}\n//# sourceURL=hyperframes://injected/0</script>`;
     const authoredHeadTag = `<script>window.__order = ["authored-head"];</script>`;
 
     expect(injected.indexOf(injectedShimTag)).toBeGreaterThanOrEqual(0);

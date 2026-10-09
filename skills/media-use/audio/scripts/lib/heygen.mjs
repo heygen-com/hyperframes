@@ -1,15 +1,51 @@
 import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // heygen.mjs — vendored HeyGen REST helpers (auth + transport) for the audio
 // pipeline. The credential resolver matches the hyperframes CLI auth: first
-// usable source wins — $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
+// usable source wins — a host gateway ($HEYGEN_API_BASE with its own
+// $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
+// $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
 // credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
-// overrides the dir). Vendored so the skill ships standalone. Pure node.
+// overrides the dir). $HEYGEN_API_BASE moves every request to that host, as it
+// does for the heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
+// Vendored so the skill ships standalone. Pure node.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export const HEYGEN_BASE = "https://api.heygen.com/v3";
+
+// The v3 base every request goes to: $HEYGEN_API_BASE when a host app names its own gateway (HyperFrames Desktop
+// forwards it to HeyGen with the API key saved in its Settings), else HeyGen's public API. Plain HTTP carries the key
+// in the clear, so it needs $HEYGEN_ALLOW_HTTP=1, the heygen CLI's own rule.
+export function heygenBase() {
+  const host = process.env.HEYGEN_API_BASE?.trim().replace(/\/+$/, "");
+  if (!host) return HEYGEN_BASE;
+  if (host.startsWith("http://") && process.env.HEYGEN_ALLOW_HTTP !== "1")
+    throw new Error(
+      `HEYGEN_API_BASE (${host}) uses HTTP, which sends the key in plaintext. Set HEYGEN_ALLOW_HTTP=1 to allow it.`,
+    );
+  return `${host}/v3`;
+}
+
+// No base override, or one on HeyGen's own hosts (a canary or dev API).
+function heygenOwnBase() {
+  const host = process.env.HEYGEN_API_BASE?.trim();
+  if (!host) return true;
+  try {
+    const name = new URL(host).hostname;
+    return name === "heygen.com" || name.endsWith(".heygen.com");
+  } catch {
+    return false;
+  }
+}
+
+// A host gateway: the host named its own API base and the key that base accepts. It pays for every call, so it wins
+// over any other credential the environment carries.
+const hostGatewayKey = () =>
+  process.env.HEYGEN_API_BASE?.trim() && process.env.HEYGEN_API_KEY
+    ? process.env.HEYGEN_API_KEY
+    : null;
 export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // Tool-attribution sent on EVERY media-use HeyGen call regardless of auth type, so
 // the backend can isolate media-use consumption from other free TTS / avatar video.
@@ -17,13 +53,28 @@ export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // OAuth-only cli-source header above, which also gates the free allowance.
 export const HEYGEN_CLIENT_SOURCE_HEADERS = { "X-HeyGen-Client-Source": "media-use" };
 
+// A missing `.env`, or a `.env` folder (some home dirs have one), is no env file: null. Read without checking first,
+// so the file cannot change between a check and the read.
+function envFileText(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (["ENOENT", "ENOTDIR", "EISDIR"].includes(error.code)) return null;
+    throw error;
+  }
+}
+
+// A host app sets these in the environment it spawns, never in a project file: a project's .env naming its own base
+// would send the person's shell HEYGEN_API_KEY to that host.
+const HOST_ONLY = new Set(["HEYGEN_API_BASE", "HEYGEN_ALLOW_HTTP"]);
+
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
   for (let i = 0; i < 5; i++) {
-    const envPath = join(dir, ".env");
-    if (existsSync(envPath)) {
-      for (const raw of readFileSync(envPath, "utf8").split("\n")) {
+    const text = envFileText(join(dir, ".env"));
+    if (text != null) {
+      for (const raw of text.split("\n")) {
         let line = raw.trim();
         if (!line || line.startsWith("#")) continue;
         if (line.startsWith("export ")) line = line.slice(7).trim();
@@ -36,7 +87,7 @@ export function loadEnvFromDir(startDir) {
           const end = val.indexOf(q, 1);
           val = end > 0 ? val.slice(1, end) : val.slice(1);
         }
-        if (!(key in process.env)) process.env[key] = val;
+        if (!HOST_ONLY.has(key) && !(key in process.env)) process.env[key] = val;
       }
       return;
     }
@@ -48,17 +99,35 @@ export function loadEnvFromDir(startDir) {
 
 // → { headers } | { expired: true } | null. Never throws.
 export function heygenCredential() {
+  const cred = resolveCredential();
+  return cred?.unreadable ? null : cred;
+}
+
+// heygenCredential's answer, or { unreadable: { file, code } } when the credentials path exists but cannot be read
+// (a folder, a locked ~/.heygen), so heygenAuthHeaders can say to fix that path: logging in again would fail there too.
+// Read without checking first, so the file cannot change between a check and the read.
+function resolveCredential() {
+  const gatewayKey = hostGatewayKey();
+  if (gatewayKey) return { headers: { "X-Api-Key": gatewayKey } };
+  // Every other credential belongs to HeyGen: a base on any other host gets none of them.
+  if (!heygenOwnBase()) return null;
+  const accessToken = process.env.HEYGEN_ACCESS_TOKEN;
+  if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
   if (envKey) return { headers: { "X-Api-Key": envKey } };
 
   const file = join(process.env.HEYGEN_CONFIG_DIR || join(homedir(), ".heygen"), "credentials");
-  if (!existsSync(file)) return null;
-  const raw = readFileSync(file, "utf8").trim();
+  let raw;
+  try {
+    raw = readFileSync(file, "utf8").trim();
+  } catch (error) {
+    return error.code === "ENOENT" ? null : { unreadable: { file, code: error.code } };
+  }
   if (!raw) return null;
   if (!raw.startsWith("{")) return { headers: { "X-Api-Key": raw } };
 
   // A malformed credentials file (partial write / wrong shape) must degrade to
-  // "no credential", not crash the engine at startup — this function never throws.
+  // "no credential", not crash the engine at startup.
   let cred;
   try {
     cred = JSON.parse(raw);
@@ -88,7 +157,7 @@ export function heygenAuthMethod() {
 
 // → auth headers object, or throw with a fix hint.
 export function heygenAuthHeaders() {
-  const cred = heygenCredential();
+  const cred = resolveCredential();
   if (cred?.headers) {
     // Only tag OAuth (Bearer) traffic as cli-source — the backend uses it to
     // grant the free allowance for OAuth requests and ignores it for API-key
@@ -98,6 +167,10 @@ export function heygenAuthHeaders() {
       ? { ...cred.headers, ...HEYGEN_CLI_SOURCE_HEADERS, ...HEYGEN_CLIENT_SOURCE_HEADERS }
       : { ...cred.headers, ...HEYGEN_CLIENT_SOURCE_HEADERS };
   }
+  if (cred?.unreadable)
+    throw new Error(
+      `HeyGen credentials at ${cred.unreadable.file} can't be read (${cred.unreadable.code}) — fix or remove that path, then run \`npx hyperframes auth login\``,
+    );
   if (cred?.expired)
     throw new Error(
       "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",
@@ -114,14 +187,25 @@ export async function heygenJSON(path, { method = "GET", headers = {}, body } = 
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(`${HEYGEN_BASE}${path}`, opts);
+  const res = await fetch(`${heygenBase()}${path}`, opts);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(
-      `HeyGen ${method} ${path} → HTTP ${res.status}${detail ? `\n${detail.slice(0, 300)}` : ""}`,
-    );
+    const message = `HeyGen ${method} ${path} → HTTP ${res.status}${detail ? `\n${detail.slice(0, 300)}` : ""}`;
+    throw Object.assign(new Error(message), { status: res.status, body: detail });
   }
-  return res.json();
+  // A DELETE may answer 204 with no body.
+  const text = await res.text();
+  return text ? JSON.parse(text) : {};
+}
+
+// HeyGen's own words for a failed call: its {"error":{"message"}}, else the raw body, else the error's message.
+export function heygenMessage(e) {
+  if (!e?.body) return e?.message ? String(e.message) : String(e);
+  try {
+    return JSON.parse(e.body).error?.message ?? e.body;
+  } catch {
+    return e.body;
+  }
 }
 
 // Download a (presigned) URL to destPath; returns byte length.

@@ -236,6 +236,17 @@ describe("createColorGradingRuntime", () => {
     },
   );
 
+  it("says an element is graded only while it draws through a grading canvas", () => {
+    const { video } = startRuntimeWithVideo();
+    const plain = document.createElement("video");
+    document.body.appendChild(plain);
+    expect(runtime!.isGraded(video)).toBe(true);
+    expect(runtime!.isGraded(plain)).toBe(false);
+    video.removeAttribute(HF_COLOR_GRADING_ATTR);
+    runtime!.refresh();
+    expect(runtime!.isGraded(video)).toBe(false);
+  });
+
   it("uses the default non-preserved drawing buffer outside capture instrumentation", () => {
     startRuntimeWithVideo();
 
@@ -575,6 +586,23 @@ describe("createColorGradingRuntime", () => {
     expect(lastUniform1f).toHaveBeenCalledWith("u_exposure", 0.35);
   });
 
+  it("reads a grading property set in a stylesheet, not only inline", () => {
+    const style = document.createElement("style");
+    style.textContent = "#plate { --hf-color-grading-blur: 0.6; }";
+    document.head.appendChild(style);
+    const video = makeDrawableVideo();
+    video.id = "plate";
+    video.setAttribute(
+      HF_COLOR_GRADING_ATTR,
+      serializeHfColorGrading({ adjust: { saturation: -0.5 } }),
+    );
+    stubCubeLutFetch();
+    startRuntimeWithVideo(video);
+
+    if (!lastUniform1f) throw new Error("Expected WebGL uniform calls");
+    expect(lastUniform1f).toHaveBeenCalledWith("u_blur", 0.6);
+  });
+
   it("samples seek-derived grading values from inline CSS properties on every redraw", () => {
     const video = makeDrawableVideo();
     video.setAttribute(
@@ -768,6 +796,47 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.display).toBe("block");
     expect(canvas.style.visibility).toBe("visible");
     expect(canvas.style.opacity).toBe("0.75");
+  });
+
+  it("keeps a staged scene copy's canvas on its own render frame (#3994)", async () => {
+    // Page-side shader transitions clone the scene, ids included, into a staging
+    // layer. When both videos paired with the live frame, their canvases traded
+    // places after it on every mutation and the render stalled.
+    function makeRenderFrame(): HTMLImageElement {
+      const frame = document.createElement("img");
+      frame.id = "__render_frame_hero-video__";
+      frame.className = "__render_frame__";
+      Object.defineProperty(frame, "complete", { value: true, configurable: true });
+      Object.defineProperty(frame, "naturalWidth", { value: 640, configurable: true });
+      Object.defineProperty(frame, "naturalHeight", { value: 360, configurable: true });
+      return frame;
+    }
+    const live = document.createElement("div");
+    live.append(makeDrawableVideo(), makeRenderFrame());
+    document.body.appendChild(live);
+    runtime = createColorGradingRuntime();
+
+    let canvasMoves = 0;
+    const insertBefore = Node.prototype.insertBefore;
+    const spy = vi.spyOn(Node.prototype, "insertBefore").mockImplementation(function <
+      T extends Node,
+    >(this: Node, node: T, child: Node | null): T {
+      // Stop moving canvases after a bound, so the loop cannot hang the test.
+      if (node instanceof HTMLCanvasElement && ++canvasMoves > 100) return node;
+      return insertBefore.call(this, node, child) as T;
+    });
+    const staged = document.createElement("div");
+    staged.append(makeDrawableVideo(), makeRenderFrame());
+    document.body.appendChild(staged);
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => window.setTimeout(resolve, 0));
+    runtime.redraw();
+    spy.mockRestore();
+
+    expect(canvasMoves).toBeLessThan(10);
+    for (const scene of [live, staged]) {
+      const frame = scene.querySelector("img.__render_frame__");
+      expect(frame?.nextElementSibling?.hasAttribute("data-hf-color-grading-canvas")).toBe(true);
+    }
   });
 
   it("hides the canvas when an ancestor clip goes out of its visibility window", () => {

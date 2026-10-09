@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { trackStudioEvent } from "../../utils/studioTelemetry";
+vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState, UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
@@ -16,23 +18,49 @@ const ORIGIN_CENTER = {
 
 // Consistent geometry stub: model the physical truth the real DOM would report.
 // A CSS width/height change grows the box from its top-left, so the rendered
-// center drifts by half the size delta; the manual offset the gesture applies
-// (read back from the element's studio vars) pulls it back. `elementCornerOverlayPoints`
+// center drifts by half the size delta; the element's own translate, which the gesture
+// writes in plain px, pulls it back. `elementCornerOverlayPoints`
 // returns the four corners of that drifted box; `overlayCornersCentroid` (kept
 // real) averages them so the anchor loop can measure the true center each frame.
+// An authored `translate: 25% 25%` follows the box size until the gesture writes px over it.
+const authored = vi.hoisted(() => ({ percent: 0 }));
+function inlineTranslate(element: HTMLElement): { x: number; y: number } | null {
+  const value = element.style.getPropertyValue("translate");
+  if (!value) return null;
+  const [x = 0, y = 0] = value.split(" ").map((v) => Number.parseFloat(v) || 0);
+  return { x, y };
+}
+function renderedTranslate(element: HTMLElement, width: number, height: number) {
+  return inlineTranslate(element) ?? { x: authored.percent * width, y: authored.percent * height };
+}
+
+vi.mock("./plainTranslate", async () => {
+  const actual = await vi.importActual<typeof import("./plainTranslate")>("./plainTranslate");
+  return {
+    ...actual,
+    readTranslatePx: (element: HTMLElement) =>
+      renderedTranslate(
+        element,
+        element.offsetWidth || ORIGIN.width,
+        element.offsetHeight || ORIGIN.height,
+      ),
+  };
+});
+
 vi.mock("./domEditOverlayGeometry", async () => {
   const actual = await vi.importActual<typeof import("./domEditOverlayGeometry")>(
     "./domEditOverlayGeometry",
   );
-  const { readStudioBoxSize, readStudioPathOffset } = await import("./manualEditsDom");
+  const { readStudioBoxSize } = await import("./manualEditsDom");
   const physicalCenter = (element: HTMLElement) => {
     const size = readStudioBoxSize(element);
     const width = size.width > 0 ? size.width : ORIGIN.width;
     const height = size.height > 0 ? size.height : ORIGIN.height;
-    const offset = readStudioPathOffset(element);
+    const offset = renderedTranslate(element, width, height);
+    const start = { x: authored.percent * ORIGIN.width, y: authored.percent * ORIGIN.height };
     return {
-      x: ORIGIN_CENTER.x + (width - ORIGIN.width) / 2 + offset.x,
-      y: ORIGIN_CENTER.y + (height - ORIGIN.height) / 2 + offset.y,
+      x: ORIGIN_CENTER.x + (width - ORIGIN.width) / 2 + offset.x - start.x,
+      y: ORIGIN_CENTER.y + (height - ORIGIN.height) / 2 + offset.y - start.y,
       width,
       height,
     };
@@ -114,6 +142,7 @@ function buildHarness(
   const iframe = document.createElement("iframe");
 
   const opts: UseDomEditOverlayGesturesOptions = {
+    activeCompositionPathRef: { current: null },
     overlayRef: ref<HTMLDivElement | null>(overlayEl),
     iframeRef: ref<HTMLIFrameElement | null>(iframe),
     boxRef: ref<HTMLDivElement | null>(document.createElement("div")),
@@ -131,6 +160,7 @@ function buildHarness(
     gestureRef: ref<GestureState | null>(null),
     groupGestureRef: ref(null),
     blockedMoveRef: ref(null),
+    waitingPressRef: ref(null),
     rafPausedRef: ref(false),
     suppressNextBoxClickRef: ref(false),
     setOverlayRect: () => {},
@@ -152,7 +182,7 @@ function buildHarness(
   };
 
   const handlers = createDomEditOverlayGestureHandlers(opts);
-  return { handlers, commits, selection };
+  return { handlers, commits, selection, opts };
 }
 
 type OverlayRectLike = {
@@ -170,6 +200,7 @@ function evt(clientX: number, clientY: number) {
     clientY,
     pointerId: 1,
     button: 0,
+    buttons: 1,
     altKey: false,
     shiftKey: false,
     preventDefault() {},
@@ -189,6 +220,7 @@ async function finishResize(handlers: ReturnType<typeof createDomEditOverlayGest
 
 afterEach(() => {
   document.body.innerHTML = "";
+  authored.percent = 0;
 });
 
 describe("anchored corner resize — the release commit feeds the center-pin offset", () => {
@@ -227,6 +259,19 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     expect(offset.y).toBeCloseTo(-(size.height - ORIGIN.height) / 2, 0);
   });
 
+  it("keeps the centre on the first frame when the authored translate is a percent", async () => {
+    const { orientedOverlayRect } = await import("./domEditOverlayGeometry");
+    authored.percent = 0.25;
+    const { handlers, selection } = buildHarness();
+    handlers.startGesture("resize", evt(ORIGIN_CENTER.x + 100, ORIGIN_CENTER.y), {
+      resizeHandle: "se",
+    });
+    handlers.onPointerMove(evt(ORIGIN_CENTER.x + 150, ORIGIN_CENTER.y));
+    const rect = orientedOverlayRect(null as never, null as never, selection.element)!;
+    expect(rect.left + rect.width / 2).toBeCloseTo(ORIGIN_CENTER.x, 1);
+    expect(rect.top + rect.height / 2).toBeCloseTo(ORIGIN_CENTER.y, 1);
+  });
+
   it("does not log a paused save queue as an ordinary resize failure", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { handlers } = buildHarness(() => Promise.reject(new DomEditSaveQueueOpenError()));
@@ -244,5 +289,50 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     await finishResize(handlers);
 
     expect(consoleError).toHaveBeenCalledWith("resize commit failed", failure);
+  });
+});
+
+describe("resize usage at pointer release", () => {
+  it("counts one completed resize despite multiple pointer moves", async () => {
+    vi.mocked(trackStudioEvent).mockClear();
+    const h = buildHarness(async () => ({ ok: true, changed: true }));
+    await finishResize(h.handlers);
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "resize",
+      surface: "preview",
+      method: "drag",
+    });
+  });
+  it.each([undefined, { ok: true as const, changed: false }])(
+    "does not count an unchanged or unconfirmed resize",
+    async (result) => {
+      vi.mocked(trackStudioEvent).mockClear();
+      const h = buildHarness(async () => result);
+      await finishResize(h.handlers);
+      expect(trackStudioEvent).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("move and rotation usage", () => {
+  it.each(["drag", "rotate"] as const)("counts %s once after pointer release", async (kind) => {
+    vi.mocked(trackStudioEvent).mockClear();
+    const h = buildHarness();
+    h.selection.capabilities.canApplyManualRotation = true;
+    const saved = vi.fn(async () => ({ ok: true as const, changed: true }));
+    h.opts.onPathOffsetCommitRef.current = saved;
+    h.opts.onRotationCommitRef.current = saved;
+    h.handlers.startGesture(kind, evt(200, 50));
+    h.handlers.onPointerMove(evt(150, 120));
+    h.handlers.onPointerMove(evt(100, 150));
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+    h.handlers.onPointerUp(evt(100, 150));
+    await Promise.resolve();
+    expect(saved).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: kind === "drag" ? "move" : "rotate",
+      surface: "preview",
+      method: "drag",
+    });
   });
 });

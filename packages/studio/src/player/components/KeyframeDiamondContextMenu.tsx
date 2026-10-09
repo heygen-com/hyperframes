@@ -4,6 +4,7 @@ import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
+import { menuClasses } from "../../components/ui/menuStyle";
 
 export interface KeyframeDiamondContextMenuState {
   x: number;
@@ -39,10 +40,8 @@ interface KeyframeDiamondContextMenuProps {
   onMoveToPlayhead?: (element: TimelineElement, keyframe: TimelineKeyframeTarget) => void;
 }
 
-const ITEM_CLS =
-  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-none cursor-pointer text-left";
-const DESTRUCTIVE_ITEM_CLS =
-  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-none cursor-pointer text-left";
+const ITEM_CLS = `${menuClasses.row} ${menuClasses.rowEnabled} flex items-center gap-2`;
+const DESTRUCTIVE_ITEM_CLS = `${menuClasses.row} text-danger-ink hover:bg-neutral-800 focus-visible:bg-neutral-800 cursor-pointer flex items-center gap-2`;
 
 export function KeyframeDiamondContextMenu({
   state,
@@ -96,7 +95,7 @@ export function KeyframeDiamondContextMenu({
       ref={menuRef}
       role="menu"
       aria-label="Keyframe actions"
-      className="fixed z-[200] bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px] overflow-y-auto"
+      className={`${menuClasses.panel} fixed z-200 min-w-[180px] overflow-y-auto`}
       style={{ left: adjustedX, top: adjustedY, maxHeight: `calc(100vh - ${adjustedY + 8}px)` }}
     >
       {onMoveToPlayhead && (
@@ -165,14 +164,14 @@ export function KeyframeDiamondContextMenu({
 
       {/* Deleting every keyframe sat adjacent to the single delete and styled
           identically. Separate and mark it so the two cannot be misread. */}
-      <div className="my-1 border-t border-neutral-700/60" role="separator" />
-
-      <div className="my-1 border-t border-neutral-700/60" role="separator" />
+      <div className={menuClasses.divider} role="separator" />
+      <div className="h-1" aria-hidden="true" />
+      <div className={menuClasses.divider} role="separator" />
 
       <button
         type="button"
         role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/40 focus-visible:bg-red-950/40 outline-none cursor-pointer text-left"
+        className={`${menuClasses.row} ${menuClasses.rowDanger} flex items-center gap-2`}
         onClick={() => {
           onDeleteAll(state.element, state.animationId);
           onClose();

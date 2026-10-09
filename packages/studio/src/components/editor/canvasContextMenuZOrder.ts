@@ -124,17 +124,8 @@ export function readEffectiveZIndex(el: HTMLElement): number {
   return 0;
 }
 
-/**
- * Realm-safe HTMLElement check. The target lives in the preview IFRAME's
- * document, but this module runs in the top window, so `child instanceof
- * HTMLElement` (top-window constructor) is ALWAYS false for iframe elements —
- * which silently emptied the sibling list and left every z-order action
- * permanently disabled. Compare against the element's own realm instead, with
- * a nodeType fallback for detached / cross-realm edge cases.
- */
+/** Any element, asked structurally: the preview's nodes are not this window's. */
 function isElementNode(node: Node): node is HTMLElement {
-  const view = node.ownerDocument?.defaultView;
-  if (view && node instanceof view.HTMLElement) return true;
   return node.nodeType === 1;
 }
 
@@ -510,4 +501,17 @@ export function isZOrderActionEnabled(
   options?: ZOrderResolveOptions,
 ): boolean {
   return resolveZOrderChange(target, action, options) !== null;
+}
+
+/**
+ * One z-order step: the patches plus the sibling it crosses, both read from the
+ * same pre-change render order. Null when the action is a no-op.
+ */
+export function resolveZOrderStep(
+  target: HTMLElement,
+  action: ZOrderAction,
+): { patches: ZOrderPatch[]; crossed: HTMLElement | null } | null {
+  const patches = resolveZOrderChange(target, action);
+  if (patches === null) return null;
+  return { patches, crossed: resolveCrossedNeighbor(target, action) };
 }

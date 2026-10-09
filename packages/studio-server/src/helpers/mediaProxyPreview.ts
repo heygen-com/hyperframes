@@ -1,4 +1,6 @@
 import { resolve } from "node:path";
+import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
+import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
@@ -30,7 +32,14 @@ import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
 export type PreviewApiAdapter = StudioApiAdapter & {
   autoProxy?: boolean;
   mediaCodecProbeCache?: MediaCodecProbeCache;
+  /** Keeps built preview documents across restarts, keyed by project id and preview ETag. */
+  previewDocuments?: PreviewDocumentStore;
 };
+
+export interface PreviewDocumentStore {
+  read(key: string): string | null;
+  write(key: string, html: string): void;
+}
 
 export function isAutoProxyEnabled(adapter: PreviewApiAdapter): boolean {
   return adapter.autoProxy !== false;
@@ -54,17 +63,9 @@ export function resolvePreviewMediaCodecProbeCache(
  * or a different proxy variant invalidates cached 304s without needing to
  * touch the proxy file itself.
  */
-export function proxyEtagSalt(raw: string | undefined): string {
+export function proxyEtagSalt(raw: string | undefined, box?: PreviewProxyBox): string {
   if (raw === undefined) return "";
-  return `:proxy:${raw}:${PROXY_PARAMS_VERSION}`;
-}
-
-// Mirrors `injectScriptTagIntoHead` in routes/preview.ts (kept local rather
-// than imported to avoid a helpers → routes dependency edge for one
-// two-line utility).
-function injectScriptTagIntoHead(html: string, scriptTag: string): string {
-  if (html.includes("</head>")) return html.replace("</head>", `${scriptTag}\n</head>`);
-  return `${scriptTag}\n${html}`;
+  return `:proxy:${raw}:${PROXY_PARAMS_VERSION}${box ? `:${formatPreviewProxyBox(box)}` : ""}`;
 }
 
 /**
@@ -91,6 +92,7 @@ export async function injectMediaCodecMapIntoHtml(
   projectDir: string,
   htmlSources: HtmlSourceLike[],
   probeCache?: MediaCodecProbeCache,
+  prewarm = true,
 ): Promise<string> {
   let map: MediaCodecMap;
   try {
@@ -105,7 +107,7 @@ export async function injectMediaCodecMapIntoHtml(
   }
   if (Object.keys(map).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
-    if (!shouldPrewarmProxy(facts)) continue;
+    if (!prewarm || !shouldPrewarmProxy(facts)) continue;
     recordProxyPrewarm();
     resolveProxy(
       projectDir,
@@ -113,7 +115,7 @@ export async function injectMediaCodecMapIntoHtml(
       proxyVariantFor(facts),
     ).catch(() => {
       // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
-      // for this asset re-attempts the transcode and reports failure (502).
+      // for this asset hears the remembered failure (502) or re-attempts it.
     });
   }
   // <-escape prevents a src path containing "</script>" from breaking out of
@@ -123,7 +125,7 @@ export async function injectMediaCodecMapIntoHtml(
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
   const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
-  return injectScriptTagIntoHead(html, tag);
+  return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
 }
 
 /**
@@ -138,5 +140,5 @@ export async function injectMediaCodecMap(
   probeCache: MediaCodecProbeCache,
 ): Promise<string> {
   if (!isAutoProxyEnabled(adapter)) return html;
-  return injectMediaCodecMapIntoHtml(html, projectDir, [{ html, compSrcPath }], probeCache);
+  return injectMediaCodecMapIntoHtml(html, projectDir, [{ html, compSrcPath }], probeCache, false);
 }

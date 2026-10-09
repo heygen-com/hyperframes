@@ -1,29 +1,29 @@
 ---
 title: "iOS 26 Liquid Glass Home Screen"
 description: "3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  compositionId="ios26-liquid-glass"
+  compositionSrc="compositions/ios26-liquid-glass.html"
+  title="iOS 26 Liquid Glass Home Screen"
+  description="3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model."
+  variables={[]}
+  meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":1342}}
+  attribution={{"path":"registry/blocks/ios26-liquid-glass","tags":["liquid-glass-html-in-canvas","webgpu","3d","iphone","ios26","notifications","gltf","html-in-canvas"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png"
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/ios26-liquid-glass/ios26-liquid-glass.html"
+>
 
-<InstallCommand command="npx hyperframes add ios26-liquid-glass" item="ios26-liquid-glass" />
+<CatalogSlot slot="code">
 
-That writes `compositions/ios26-liquid-glass.html`, plus 28 supporting files under `models/`, `lib/`, and `assets/icons/`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png" autoPlay muted loop playsInline />
-
-<Danger>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Without it this item's screen renders black. Rendering from the CLI switches
-  it on for you. [How it works](/guides/html-in-canvas)
-</Danger>
-
-## Source
-
-<Accordion title={`ios26-liquid-glass.html`}>
-
-```html
+```html ios26-liquid-glass.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -1368,15 +1368,42 @@ That writes `compositions/ios26-liquid-glass.html`, plus 28 supporting files und
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add ios26-liquid-glass" item="ios26-liquid-glass" />
 
-```html
-<div data-composition-id="ios26-liquid-glass" data-composition-src="compositions/ios26-liquid-glass.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
+That writes `compositions/ios26-liquid-glass.html`, plus 28 supporting files under `models/`, `lib/`, and `assets/icons/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+<Danger>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Without it this item's screen renders black. Rendering from the CLI switches
+  it on for you. [How it works](/guides/html-in-canvas)
+</Danger>
+
+## Add it to your video
+
+It runs for 15 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="ios26-liquid-glass"
+  data-composition-src="compositions/ios26-liquid-glass.html"
+  data-start="0"
+  data-duration="15"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -1387,3 +1414,7 @@ Tagged `liquid-glass-html-in-canvas` `webgpu` `3d` `iphone` `ios26` `notificatio
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

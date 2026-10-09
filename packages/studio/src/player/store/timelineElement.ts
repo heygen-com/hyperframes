@@ -8,10 +8,12 @@
  */
 
 import type { ClipManifestClip } from "../lib/playbackTypes";
+import { roundToCenti } from "../../utils/rounding";
 
 export interface TimelineElement {
   id: string;
   label?: string;
+  transitionLabel?: string;
   key?: string;
   kind?: ClipManifestClip["kind"];
   tag: string;
@@ -54,13 +56,17 @@ export interface TimelineElement {
   playbackRate?: number;
   sourceDuration?: number;
   volume?: number;
+  /** A video with sound to mix (`data-has-audio`, or unmuted without it); `muted` silences it. */
+  hasAudio?: boolean;
+  muted?: boolean;
+  /** Clip-edge fades from `data-fade-in` / `data-fade-out`, seconds; absent means none. */
+  fadeIn?: number;
+  fadeOut?: number;
   /** Verbatim `data-fx-chain` / `data-automation`; see automationLaneData. */
   fxChain?: string;
   automation?: string;
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;
-  /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
-  timingSource?: "authored" | "implicit";
   /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */
   timelineLocked?: boolean;
   /** Set by data-hidden on the host element — hides the clip in preview and render. */
@@ -78,14 +84,71 @@ export interface TimelineElement {
   /** The owning group's serialized `data-fx-chain`, when set — resolved once per parse. */
   audioGroupFxChain?: string;
   audioGroupAutomation?: string;
+  link?: string;
+  compositionScope?: string;
+  syncOrigin?: string;
   /**
-   * Set by useExpandedTimelineElements on an inline-expanded sub-composition
-   * child: the absolute master-timeline start of the sub-comp host the child
-   * lives in. Presence marks the element as expanded; edits subtract it to get
-   * the child's local (sourceFile-relative) time. Works at any nesting depth.
+   * Master start of the composition this row runs in, which its tweens and its
+   * `data-start` are local to; 0 at the root. Writes go through toAuthoredStart.
    */
-  expandedParentStart?: number;
+  parentCompositionStart?: number;
+  /** A legacy root-global media start: its `data-start` is already master time. */
+  authoredStartIsMasterTime?: boolean;
+  /** Legacy marker for an inline sub-composition child; current rows never set it. */
   expandedHostKey?: string;
+  /** A text layer's words and look, which its row draws live instead of a captured picture. */
+  text?: TimelineText;
+}
+
+export interface TimelineText {
+  value: string;
+  fontFamily?: string;
+  fontWeight?: string;
+  color?: string;
+  /** The layer's own opaque background colour, when it paints one. */
+  background?: string;
+}
+
+type RowClock = Pick<
+  TimelineElement,
+  "start" | "parentCompositionStart" | "authoredStartIsMasterTime"
+>;
+type SavedClip = RowClock & Pick<TimelineElement, "duration">;
+const authoredOffset = (element: RowClock) =>
+  element.authoredStartIsMasterTime ? 0 : (element.parentCompositionStart ?? 0);
+
+/**
+ * Where a clip's edges sit once saved: its file stores the local start to the centisecond, and the
+ * duration too when a resize writes it; a move keeps the authored duration.
+ */
+export function savedClipEdges(element: SavedClip, start: number, resizedDuration?: number) {
+  const savedStart = authoredOffset(element) + roundToCenti(toAuthoredStart(element, start));
+  const duration = resizedDuration === undefined ? element.duration : roundToCenti(resizedDuration);
+  return { start: savedStart, end: savedStart + duration };
+}
+
+/** The earliest master start this row can take: its host's start, or its own if already earlier. */
+export function clampToHostStart(element: RowClock, masterTime: number): number {
+  return Math.max(Math.min(authoredOffset(element), element.start), masterTime);
+}
+
+/** A master-time position on this row, as the `data-start` its source file stores. */
+export function toAuthoredStart(element: RowClock, masterTime: number): number {
+  return Math.max(0, clampToHostStart(element, masterTime) - authoredOffset(element));
+}
+
+/** A master-time position on the clock this row's tweens run on. */
+export function toCompositionTime(element: RowClock, masterTime: number): number {
+  return masterTime - (element.parentCompositionStart ?? 0);
+}
+
+type CompositionScoped = Pick<TimelineElement, "sourceFile" | "compositionScope">;
+
+export function sameCompositionScope(a: CompositionScoped, b: CompositionScoped): boolean {
+  return (
+    (a.sourceFile ?? "") === (b.sourceFile ?? "") &&
+    (a.compositionScope ?? "") === (b.compositionScope ?? "")
+  );
 }
 
 /**
@@ -116,6 +179,7 @@ export type TimelineElementPatch = Partial<
     | "audioGroupHidden"
     | "audioGroupFxChain"
     | "audioGroupAutomation"
+    | "text"
   >
 >;
 

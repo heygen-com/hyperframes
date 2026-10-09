@@ -3,9 +3,11 @@ name: faceless-explainer
 description: "Turn arbitrary text — an article, notes, a topic, a brief — into a faceless explainer video: there is no site or footage to capture, so the visuals are invented per scene (typography, abstract graphics, diagrams, data-viz). Use for topic explainers, concept breakdowns, how-tos, listicles. Not a video built from a website (/product-launch-video — promo or tour). Unclear → /hyperframes."
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update faceless-explainer`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
-> **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill.
+> **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill. When the host app provides its own music or sound-effect tools, use those for music and sound effects.
 
 # Faceless Explainer to HyperFrames
 
@@ -87,7 +89,7 @@ Read `../hyperframes-creative/references/story-spine.md` (hook language, value-b
 
 Use `story-design.md` for the explainer structure (concept / how-to / listicle / story), hook strategy, clarity techniques, emotional beats, the type-enum mapping, and `VO_MODE`. The video's sequence comes from **narrative design, not the input text's paragraph order** — reorder, merge, omit, compress. As a **soft guide**, consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`: for each beat, write the voiceover in the shape its candidate blueprint implies and tag that candidate `blueprint:` id when one fits. Teaching truth still decides which beats exist — never force a beat to fit a blueprint, and never invent a beat just because a proven shape is available. Faceless visuals are invented downstream, so frames do **not** carry an asset inventory: leave `asset_candidates` empty unless the user supplied a real `public/<basename>` image. Use the exact required fields from the storyboard and script references.
 
-After drafting, run the review loop's plan pass — `../hyperframes/references/review-loop.md` § 1: open the board (don't ask whether to), present the plan as a proposal, and ask the two questions — approve or change, and **sketches first** (recommended) or skip. Feedback loops through chat or the board's comments file until approved. This is a **checkpoint gate** (brief contract § 1): in autonomous mode there is no board and nothing to ask — post the same summary as a heads-up and proceed; sketches collapse into the build, and the one preview question comes at Step 6.
+After drafting, run the review loop's plan pass — `../hyperframes/references/review-loop.md` § 1: present the plan as a proposal, and ask the two questions — approve or change, and **sketches first** (recommended) or skip. Feedback arrives as a chat reply; loop until approved. This is a **checkpoint gate** (brief contract § 1): in autonomous mode there is nothing to ask — post the same summary as a heads-up and proceed; sketches collapse into the build, and the final preview with its one question comes at Step 6.
 
 **Gate:** `STORYBOARD.md` exists, every frame has the required narrative fields, `SCRIPT.md` exists when narration is needed, and the user approved the frame-by-frame plan (autonomous: the summary was posted as a heads-up).
 
@@ -103,13 +105,13 @@ Start audio after Step 3 approval. Run it in the background, then continue to St
 
 `node <SKILL_DIR>/scripts/audio.mjs --script ./SCRIPT.md --storyboard ./STORYBOARD.md --hyperframes . --out ./audio_meta.json --voice <voice-id> &`
 
-The audio script handles narration, word timings, BGM lookup from HeyGen's music library, and timing metadata. BGM mood comes from the storyboard's `music:` field. This uses the HeyGen Audio API for retrieval, not generation, and the same `~/.heygen` credential as TTS. For provider details, read `../media-use/audio/references/tts.md`.
+The audio script handles narration, word timings, BGM lookup from HeyGen's music library, and timing metadata. BGM mood comes from the storyboard's `music:` field. This uses the HeyGen Audio API for retrieval, not generation, and the same `~/.heygen` credential as TTS. For provider details, read `../media-use/audio/references/tts.md`. When the host app's own tools make the music or a sound effect, put the file under assets/ and list it in the audio_meta.json file marked `"source": "host"`: music as `bgm` `{ "path": "assets/…", "source": "host" }` with `music: none` in the storyboard; a sound as an `sfx` entry `{ "frame": <n>, "file": "assets/…", "offset_s": 0, "duration_s": <its length>, "source": "host" }`. Every audio pass keeps these, and a frame with a host sound gets no looked-up cue.
 
 If there is no narration and no `SCRIPT.md`, skip voice generation. BGM may still run if the storyboard has a music mood.
 
-**The canonical fully-silent marker** (shared across the workflows that reuse this audio model): `music: none` in the STORYBOARD.md top YAML block **and** no `SCRIPT.md`. That combination marks the project silent — no narration, no BGM, no SFX. `audio.mjs` recognizes it and generates nothing (it removes any stale `audio_meta.json`; an absent `audio_meta.json` is what assemble treats as silent), so this step is a clean skip. `music: none` with narration keeps TTS and turns only BGM off. Use exactly this spelling — don't improvise other markers.
+**The canonical fully-silent marker** (shared across the workflows that reuse this audio model): `music: none` in the STORYBOARD.md top YAML block, no `SCRIPT.md`, **and** no `sfx:` cues or host audio. That combination marks the project silent — no narration, no BGM, no SFX. `audio.mjs` recognizes it and generates nothing (it removes any stale `audio_meta.json`; an absent `audio_meta.json` is what assemble treats as silent), so this step is a clean skip. Without narration but with `sfx:` cues or host audio the film is not silent: `audio.mjs` writes the audio_meta.json file for `fetch-sfx` to fill. `music: none` with narration keeps TTS and turns only BGM off. Use exactly this spelling — don't improvise other markers.
 
-**Gate:** audio job has started, or the project is marked silent (`music: none` + no `SCRIPT.md`).
+**Gate:** audio job has started, or the project is marked silent (`music: none`, no `SCRIPT.md`, no `sfx:` cues or host audio).
 
 ---
 
@@ -117,19 +119,19 @@ If there is no narration and no `SCRIPT.md`, skip voice generation. BGM may stil
 
 Goal: Add the visual direction, layout intent, and motion choices to each storyboard frame.
 
-**Sketch the board first (collaborative only).** The moment the plan is approved, run the sketch pass — `../hyperframes/references/review-loop.md` § 2 (don't wait on Step 3.1; sketches don't use timings): wireframe every frame yourself, mark each `built`, pause for the one layout question when the board is full, and revise only the sketches named until the board is confirmed. Only then write the visual design below onto the confirmed layouts. In autonomous mode, or when the user chose to skip sketches at Step 3, skip this pass — frames go straight from `outline` to `animated` at Step 5.
+**Sketch the storyboard sheet first (collaborative only).** The moment the plan is approved, run the sketch pass — `../hyperframes/references/review-loop.md` § 2 (don't wait on Step 3.1; sketches don't use timings): wireframe every frame yourself as a cell of `storyboard.html` (`../hyperframes-creative/references/storyboard-recipe.md` § 3), mark each `built`, pause for the one layout question when every frame is `built`, and revise only the sketches named until the sheet is confirmed. Only then write the visual design below onto the confirmed layouts. In autonomous mode, or when the user chose to skip sketches at Step 3, skip this pass — frames go straight from `outline` to `animated` at Step 5.
 
 Edit `STORYBOARD.md` in place. Do not create another storyboard. Use `frame.md` as source of truth for color, type, layout feel, and style.
 
 Read `references/visual-design.md`, `../hyperframes-animation/blueprints-index.md`, `references/motion-language.md`, and `../hyperframes-animation/rules-index.md`. Use `visual-design.md` for the method (the time-coded shot sequence, the inline Layout vocabulary, and the invented-visual treatment), plus the required `## Video direction` block. Use `../hyperframes-animation/blueprints-index.md` to pick each frame's shot shape. Use `motion-language.md` (the motion vocabulary + the motion doctrine) and `../hyperframes-animation/rules-index.md` (valid rule names) for motion — do not invent motion names.
 
-**Search the live catalog before you invent any named look.** A faceless explainer invents every visual, which is exactly when a hand-authored rebuild of an existing block is most likely. For every look, effect, treatment or transition the brief names — "CRT scanlines", "glitch", "film grain", "shimmer sweep", "confetti burst" — run `npx hyperframes catalog --query "<the look, in plain English>" --json` and read the top results BEFORE you write that look into `STORYBOARD.md`. The search needs **nothing installed**: no project, no prior `add`, no account. It ranks the whole hosted registry (~400 blocks and components) from any directory. A block that already does the job becomes the frame's `focal` — name it here so Step 5's workers install and customize it. Invent a visual only after a search for it came back with nothing that fits.
+**Search the live catalog before you invent any named look.** A faceless explainer invents every visual, which is exactly when a hand-authored rebuild of an existing block is most likely. For every look, effect, treatment or transition the brief names — "CRT scanlines", "glitch", "film grain", "shimmer sweep", "confetti burst" — run `npx hyperframes catalog --query "<the look, in plain English>" --json` and read the top results BEFORE you write that look into `STORYBOARD.md`. The search needs **nothing installed**: no project, no prior `add`, no account. It ranks the whole hosted registry (~400 blocks and components) from any directory. A block that already does the job becomes the frame's `focal` — name it here; Step 5 pre-installs it once before dispatch and its worker customizes it. Invent a visual only after a search for it came back with nothing that fits.
 
 For every frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS frame's **invented** content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. Because the explainer is faceless, `focal`/`roles` name the **invented visual elements** (a hero word, a diagram node, a data-viz series) — you are designing them, not selecting captured assets. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
 
 Do not change story, script, `transition_in`, or the source text. Do not write HTML in this step. There is **no asset-staging step** — faceless visuals are built by the workers in Step 5. If the user supplied a real `public/<basename>` image, reference it by path in the relevant frame's `focal`/`roles`; otherwise nothing to stage.
 
-**Gate:** every frame has a time-coded shot sequence whose reveals are paced to the voiceover (no front-loading); each frame names its invented `focal` and/or `roles`; `## Video direction` exists. Collaborative: the sketch board was confirmed.
+**Gate:** every frame has a time-coded shot sequence whose reveals are paced to the voiceover (no front-loading); each frame names its invented `focal` and/or `roles`; `## Video direction` exists. Collaborative: the sketch sheet was confirmed.
 
 ---
 
@@ -144,6 +146,10 @@ Wait for Step 3.1 audio to finish if audio was started. Then sync durations and 
 `node <SKILL_DIR>/scripts/audio.mjs fetch-sfx --storyboard ./STORYBOARD.md --hyperframes .`
 
 Duration sync is mechanical: real voice duration wins; silent frames keep estimates; never hand-edit synced durations.
+
+**Pre-install the registry blocks** named across `STORYBOARD.md` once, before dispatch, so parallel workers don't race on the registry:
+
+`for b in <each registry block named in the storyboard>; do npx hyperframes add "$b"; done`
 
 Before dispatch, read `../hyperframes/references/subagent-dispatch.md`. Build the per-frame packets and the worker role payload:
 
@@ -165,7 +171,7 @@ After audio timings exist, build captions in the background and assemble the ind
 
 `captions.mjs` uses the project's `.hyperframes/caption-skin.html` (copied in Step 2) as the caption look, injecting brand tokens from `frame.md`; with no skin present it renders the built-in default pill. `captions: skipped (<reason>)` is valid. Continue without captions when explicitly skipped.
 
-**Gate:** every frame is marked `animated` (collaborative: the sketch board was confirmed at Step 4), `index.html` exists, and captions are built or explicitly skipped.
+**Gate:** every frame is marked `animated` (collaborative: the sketch sheet was confirmed at Step 4), `index.html` exists, and captions are built or explicitly skipped.
 
 ---
 
@@ -191,11 +197,11 @@ If a command fails, surface stderr and stop — don't pile on recovery commands.
 
 **Known false-positive — do not chase it.** `check` may report a handful of `text_box_overflow` findings of ~1–4px on the **caption** highlight words (selector `#caption-word-*` / `.caption-line`). The caption pill uses a deliberately snug `line-height` (set once in `scripts/captions.mjs`) and has **no `overflow:hidden`**, so a heavy display glyph's ink spills a few px into the pill's own padding — nothing is actually clipped. Treat these as expected and proceed. Do **not** inflate the caption `line-height` (it balloons the pill, which is worse). Only act on a `text_box_overflow` when it names a **frame** element (`#el-NN-*`), not a caption word.
 
-After checks pass, pause for user review — the review loop's final look (`../hyperframes/references/review-loop.md` § 4): one question, on the Studio that has been open since Step 3 — render now, or what changes? (Autonomous: the one kept question, preview first or render.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
+After checks pass, pause for user review — the review loop's final look (`../hyperframes/references/review-loop.md` § 4): one question, on the final Studio preview — render now, or what changes? (Autonomous: the same, as the one kept question — open the preview even though the user didn't ask for one.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
 
 Preview: `npx hyperframes preview --background`
 
-Render only after user approval (autonomous mode: after the preview-or-render question):
+Render only after user approval (autonomous mode: after the render-or-changes question):
 
 `npx hyperframes render --skill=faceless-explainer --quality high --output renders/video.mp4`
 

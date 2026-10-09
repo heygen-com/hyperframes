@@ -7,6 +7,7 @@ import { failCommand, finishCommand } from "../utils/commandResult.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { defineCommand, runCommand } from "citty";
 import type { Example } from "./_examples.js";
+import { patchMediaPlaceholders, type InitMediaOptions } from "./initMedia.js";
 
 export const examples: Example[] = [
   ["Create a project with the interactive wizard", "hyperframes init my-video"],
@@ -53,6 +54,11 @@ import {
   normalizeResolutionFlag,
   type CanvasResolution,
 } from "@hyperframes/core";
+import {
+  HTML_BODY_CSS_HEIGHT_FIRST_RE,
+  HTML_BODY_CSS_WIDTH_FIRST_RE,
+  VIEWPORT_META_SIZE_RE,
+} from "@hyperframes/parsers";
 
 function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
   const example = exampleFlag === "agent" ? "blank" : exampleFlag;
@@ -77,7 +83,8 @@ const DEFAULT_META: VideoMeta = {
   width: 1920,
   height: 1080,
   fps: 30,
-  hasAudio: false,
+  // ffprobe unavailable: assume sound. A wrong guess fails loudly at RENDER (lint catches it only once #3638 lands); assuming silence would mute real audio.
+  hasAudio: true,
   videoCodec: "h264",
 };
 
@@ -178,7 +185,7 @@ function isWebCompatible(codec: string): boolean {
 
 // hasFFmpeg is imported from whisper/manager.ts to avoid duplication
 
-function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean> {
+export function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean> {
   return new Promise((resolvePromise) => {
     const ffmpegPath = findFFmpeg();
     if (!ffmpegPath) {
@@ -203,7 +210,7 @@ function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean>
         "-y",
         outputPath,
       ],
-      { stdio: "pipe" },
+      { stdio: "pipe", windowsHide: true },
     );
 
     child.on("close", (code) => resolvePromise(code === 0));
@@ -239,6 +246,25 @@ function getStaticTemplateDir(templateId: string): string {
 
 function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
+}
+
+/** The longest folder name the common disks hold: 255 UTF-8 bytes on Linux, 255 UTF-16 units on macOS and Windows. */
+const MAX_FOLDER_NAME = 255;
+
+/** One plain sentence when a folder in `name` is too long for the disk, null when all fit. Checked before mkdir,
+ * which otherwise throws Node's raw ENAMETOOLONG and the full path (repro: init a 256-character name). */
+export function nameTooLongMessage(
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const inBytes = platform === "linux";
+  const unit = inBytes ? "bytes" : "characters";
+  for (const folder of name.split(platform === "win32" ? /[\\/]/ : "/")) {
+    const length = inBytes ? Buffer.byteLength(folder) : folder.length;
+    if (length > MAX_FOLDER_NAME)
+      return `That name is ${length} ${unit} long; a folder name can be at most ${MAX_FOLDER_NAME} ${unit}.`;
+  }
+  return null;
 }
 
 function toPackageName(projectName: string): string {
@@ -343,31 +369,12 @@ function writeTailwindSupport(destDir: string): void {
   }
 }
 
-function patchVideoSrc(
-  dir: string,
-  videoFilename: string | undefined,
-  durationSeconds?: number,
-): void {
+function patchVideoSrc(dir: string, media: InitMediaOptions): void {
   const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((e) => e.isFile() && e.name.endsWith(".html"))
     .map((e) => join(e.parentPath, e.name));
-
   for (const file of htmlFiles) {
-    let content = readFileSync(file, "utf-8");
-    if (videoFilename) {
-      content = content.replaceAll("__VIDEO_SRC__", videoFilename);
-    } else {
-      // Remove video elements with placeholder src
-      content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/video>/g, "");
-      content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
-      // Remove audio elements with placeholder src
-      content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/audio>/g, "");
-      content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
-    }
-    // Patch duration — use probed duration or default
-    const dur = durationSeconds ? String(Math.round(durationSeconds * 100) / 100) : "10";
-    content = content.replaceAll("__VIDEO_DURATION__", dur);
-    writeFileSync(file, content, "utf-8");
+    writeFileSync(file, patchMediaPlaceholders(readFileSync(file, "utf-8"), media), "utf-8");
   }
 }
 
@@ -399,7 +406,7 @@ async function handleVideoFile(
       );
     }
   } else {
-    const msg = `ffprobe not found — using defaults (1920x1080, 5s, 30fps). Install: ${getFFmpegInstallHint()}`;
+    const msg = `ffprobe not found — using defaults (1920x1080, 5s, 30fps) and assuming the video has sound (data-has-audio="true"); if it is silent, replace that with muted. Install: ${getFFmpegInstallHint()}`;
     if (interactive) {
       clack.log.warn(msg);
     } else {
@@ -527,20 +534,18 @@ export function applyResolutionPreset(destDir: string, resolution: CanvasResolut
 
     // Inline `html, body { ... }` CSS: handle width-before-height and
     // height-before-width orderings. Hand-authored templates can use either.
-    const bodyCssRe = /(html\s*,\s*body\s*\{[^}]*?width:\s*)\d+px([^}]*?height:\s*)\d+px/i;
-    if (bodyCssRe.test(html)) {
-      html = html.replace(bodyCssRe, `$1${width}px$2${height}px`);
+    // Groups 1 and 3 are the text before each dimension, 2 and 4 the digits.
+    if (HTML_BODY_CSS_WIDTH_FIRST_RE.test(html)) {
+      html = html.replace(HTML_BODY_CSS_WIDTH_FIRST_RE, `$1${width}px$3${height}px`);
       changed = true;
     }
-    const bodyCssReverseRe = /(html\s*,\s*body\s*\{[^}]*?height:\s*)\d+px([^}]*?width:\s*)\d+px/i;
-    if (bodyCssReverseRe.test(html)) {
-      html = html.replace(bodyCssReverseRe, `$1${height}px$2${width}px`);
+    if (HTML_BODY_CSS_HEIGHT_FIRST_RE.test(html)) {
+      html = html.replace(HTML_BODY_CSS_HEIGHT_FIRST_RE, `$1${height}px$3${width}px`);
       changed = true;
     }
 
-    const viewportRe = /(<meta[^>]*name=["']viewport["'][^>]*content=["'])width=\d+,\s*height=\d+/i;
-    if (viewportRe.test(html)) {
-      html = html.replace(viewportRe, `$1width=${width}, height=${height}`);
+    if (VIEWPORT_META_SIZE_RE.test(html)) {
+      html = html.replace(VIEWPORT_META_SIZE_RE, `$1${width}$3${height}`);
       changed = true;
     }
 
@@ -556,8 +561,7 @@ async function scaffoldProject(
   destDir: string,
   name: string,
   templateId: string,
-  localVideoName: string | undefined,
-  durationSeconds?: number,
+  media: InitMediaOptions,
   tailwind = false,
   resolution?: CanvasResolution,
   authoringSkill?: string,
@@ -573,7 +577,7 @@ async function scaffoldProject(
   } else {
     await fetchRemoteTemplate(templateId, destDir);
   }
-  patchVideoSrc(destDir, localVideoName, durationSeconds);
+  patchVideoSrc(destDir, media);
   if (tailwind) writeTailwindSupport(destDir);
   if (resolution) applyResolutionPreset(destDir, resolution);
 
@@ -833,6 +837,12 @@ export default defineCommand({
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
+      const tooLong = nameTooLongMessage(destDir);
+      if (tooLong) {
+        console.error(c.error(tooLong));
+        failCommand();
+      }
+
       if (existsSync(destDir) && readdirSync(destDir).length > 0) {
         console.error(c.error(`Directory already exists and is not empty: ${name}`));
         failCommand();
@@ -860,6 +870,7 @@ export default defineCommand({
       mkdirSync(destDir, { recursive: true });
 
       let localVideoName: string | undefined;
+      let videoHasAudio = true;
       let videoDuration: number | undefined;
       let sourceFilePath: string | undefined;
 
@@ -868,6 +879,7 @@ export default defineCommand({
         sourceFilePath = videoPath;
         const result = await handleVideoFile(videoPath, destDir, false);
         localVideoName = result.localVideoName;
+        videoHasAudio = result.meta.hasAudio;
         videoDuration = result.meta.durationSeconds;
         console.log(
           `Video: ${result.meta.width}x${result.meta.height}, ${result.meta.durationSeconds.toFixed(1)}s`,
@@ -878,6 +890,8 @@ export default defineCommand({
       if (audioPath) {
         sourceFilePath = audioPath;
         copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
+        const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
+        videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
         console.log(`Audio: ${basename(audioPath)}`);
       }
 
@@ -904,12 +918,16 @@ export default defineCommand({
 
       // Scaffold
       try {
+        const media: InitMediaOptions = {
+          video: localVideoName ? { filename: localVideoName, hasAudio: videoHasAudio } : undefined,
+          audio: audioPath ? { filename: basename(audioPath) } : undefined,
+          durationSeconds: videoDuration,
+        };
         await scaffoldProject(
           destDir,
           basename(destDir),
           templateId,
-          localVideoName,
-          videoDuration,
+          media,
           tailwind,
           resolutionPreset,
           args.skill,
@@ -942,7 +960,9 @@ export default defineCommand({
       console.log("Get started:");
       console.log();
       if (skipSkills) {
-        console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
+        console.log(
+          `  ${c.accent("1.")} Use your HyperFrames plugin, or install standalone skills:`,
+        );
         console.log(`     ${c.accent("npx hyperframes skills update")}`);
       } else {
         console.log(
@@ -1000,6 +1020,13 @@ export default defineCommand({
 
     const destDir = resolve(name);
 
+    const tooLong = nameTooLongMessage(destDir);
+    if (tooLong) {
+      clack.log.error(tooLong);
+      clack.cancel("Setup cancelled.");
+      failCommand();
+    }
+
     if (existsSync(destDir) && readdirSync(destDir).length > 0) {
       const overwrite = await clack.confirm({
         message: `Directory ${c.accent(name)} already exists and is not empty. Overwrite?`,
@@ -1013,6 +1040,7 @@ export default defineCommand({
 
     // 2. Video/audio file handling (only via --video/--audio flags, no interactive prompt)
     let localVideoName: string | undefined;
+    let videoHasAudio = true;
     let sourceFilePath: string | undefined;
     let videoDuration: number | undefined;
 
@@ -1027,6 +1055,7 @@ export default defineCommand({
       sourceFilePath = videoPath;
       const result = await handleVideoFile(videoPath, destDir, true);
       localVideoName = result.localVideoName;
+      videoHasAudio = result.meta.hasAudio;
       videoDuration = result.meta.durationSeconds;
     } else if (audioFlag) {
       const audioPath = resolve(audioFlag);
@@ -1038,6 +1067,8 @@ export default defineCommand({
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = audioPath;
       copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
+      const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
+      videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
       clack.log.info(`Audio copied to ${c.accent(basename(audioPath))}`);
     }
 
@@ -1119,12 +1150,16 @@ export default defineCommand({
       spin.start(`Downloading example ${c.accent(templateId)}...`);
     }
     try {
+      const media: InitMediaOptions = {
+        video: localVideoName ? { filename: localVideoName, hasAudio: videoHasAudio } : undefined,
+        audio: audioFlag ? { filename: basename(audioFlag) } : undefined,
+        durationSeconds: videoDuration,
+      };
       await scaffoldProject(
         destDir,
         name,
         templateId,
-        localVideoName,
-        videoDuration,
+        media,
         tailwind,
         resolutionPreset,
         args.skill,

@@ -56,14 +56,14 @@ export function TimelineLayerGroupHeader({
       }}
     >
       <div
-        className="sticky left-0 z-[13] flex h-full items-center"
+        className="sticky left-0 z-13 flex h-full items-center"
         style={{
           width: Math.min(GUTTER + 220, GUTTER + trackContentWidth),
           background: theme.gutterBackground,
         }}
       >
         <div
-          className="relative h-full flex-shrink-0"
+          className="relative h-full shrink-0"
           style={{
             width: GUTTER,
             borderRight: `1px solid ${theme.gutterBorder}`,

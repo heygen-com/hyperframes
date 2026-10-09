@@ -30,6 +30,12 @@ export interface BrowserDiagnosticSummary {
   consoleWarnings: number;
 }
 
+/**
+ * Which capture stage produced the frames. Maps 1:1 from `CapturePlan.kind`
+ * (see `capturePathForPlanKind`); named in render telemetry as `capture_path`.
+ */
+export type CapturePath = "streaming" | "disk" | "segmented" | "hdr_layered";
+
 export interface RenderCaptureObservability {
   forceScreenshot: boolean;
   captureMode: "screenshot" | "beginframe";
@@ -45,7 +51,7 @@ export interface RenderCaptureObservability {
    * render re-ran via screenshot. NARROWED semantics since the pinned-fallback
    * retry was widened (review): OOM- and generic-capture-error-triggered
    * fallbacks report FALSE here, with `deFallbackReason` ∈ {oom,
-   * capture_error}. The "any fallback fired" signal is `deFallbackReason`
+   * de_renderer_stall, encoder_death, parallel_stall, capture_error}. The "any fallback fired" signal is `deFallbackReason`
    * being set, NOT this flag — dashboards keyed on `de_self_verify_fallback =
    * true` as any-fallback must migrate to `de_fallback_reason IS NOT NULL`.
    */
@@ -53,14 +59,15 @@ export interface RenderCaptureObservability {
   /**
    * Why the capture-stage retry (self-verify OR the pinned-worker-count
    * fallback) fired: "blank"/"psnr" for a real self-verify trip,
-   * "oom"/"capture_error" for the widened generic-failure retry. Set
+   * "oom"/"de_renderer_stall"/"encoder_death"/"parallel_stall"/"capture_error"
+   * for the widened generic-failure retry. Set
    * whenever a fallback is attempted, independent of whether that retry
    * itself later succeeds — so a render that fails AFTER a fallback attempt
    * (perfSummary never built) is still distinguishable in failure-path
    * telemetry from one that never attempted any fallback.
    */
   deFallbackReason?: string;
-  /** The failing PSNR (dB) when `deFallbackReason === "psnr"`; undefined for blank/oom/capture_error (no score exists). */
+  /** The failing PSNR (dB) when `deFallbackReason === "psnr"`; undefined for every other reason (no score exists). */
   deFallbackFailedDb?: number;
   /** Frame index the verification failure was detected at; set for both "psnr" and "blank" fallback reasons. */
   deFallbackFrameIndex?: number;
@@ -74,7 +81,7 @@ export interface RenderCaptureObservability {
    * Element count for the short-comp band gate (`resolveCompositionElementCount`):
    * the LIVE DOM size from the already-running probe session when one is
    * initialized, falling back to a static scan of the compiled HTML
-   * (`countElementTags`) otherwise. Live is authoritative — a static scan
+   * (`scanElementTags`) otherwise. Live is authoritative — a static scan
    * cannot see elements a composition's own script creates at runtime.
    *
    * Emitted on every render, not just inverted ones — this is the variable the
@@ -93,6 +100,42 @@ export interface RenderCaptureObservability {
    * unlock for the band.
    */
   compositionElementCountSource?: "live" | "static";
+  /**
+   * Per-tag breakdown of the same static scan behind `compositionElementCount`
+   * — one shared regex pass feeds both fields, so a fleet query summing this
+   * map's values always reconciles against the integer. Capped by
+   * `scanElementTags` (top tags by count + an `other` bucket) so a
+   * pathological composition's distinct tag count can't inflate the event
+   * payload. Only set when
+   * `compositionElementCountSource` is "static" — the live path measures a
+   * DOM node count directly and never runs this scan.
+   */
+  compositionElementTags?: Readonly<Record<string, number>>;
+  /**
+   * `<video data-aroll="true">` elements from the same static scan as
+   * `compositionElementTags`. Only set when `compositionElementCountSource`
+   * is "static".
+   */
+  arollVideoCount?: number;
+  /**
+   * `<video data-media-source="heygen">` elements from the same static scan
+   * as `compositionElementTags` — the media-use skill stamps this attribute
+   * only when the mounted video's ledger record traces to the "heygen.video"
+   * provider. Only set when `compositionElementCountSource` is "static".
+   */
+  heygenVideoCount?: number;
+  /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`), a live+static union, always set. */
+  adaptersUsed?: readonly string[];
+  /** Element/attribute counts from the same static scan; only set when the source above is "static". */
+  audioCount?: number;
+  imageCount?: number;
+  subCompositionCount?: number;
+  audioGroupCount?: number;
+  colorGradingCount?: number;
+  hasLut?: boolean;
+  /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
   /**
    * Short-comp band decision, emitted only when the band is DECISIVE — every
    * other inversion-eligibility condition passed and only the floor (250 vs
@@ -119,13 +162,20 @@ export interface RenderCaptureObservability {
   /** Worker count the resolver would have used absent the router; undefined if it never fired. */
   dePreRouterWorkers?: number;
   /**
-   * Non-DE parallel-streaming router outcome (HF_CAPTURE_PARALLEL_STREAM):
-   * "screenshot" | "beginframe" — the render passed every gate AND the kill
-   * switch was on, so it was routed through the interleaved streaming encoder
-   * (the value is the capture mode that streamed); "eligible_off" — the render
-   * passed every gate EXCEPT the kill switch (passive cohort-sizing signal for
-   * the default-off soak: how many renders WOULD route if enabled). Absent =
+   * Non-DE parallel-streaming router outcome. "screenshot" | "beginframe" —
+   * the render passed every gate and the router was on for its capture mode
+   * (BeginFrame by default; screenshot only with HF_CAPTURE_PARALLEL_STREAM
+   * set), so it streamed through the interleaved encoder; the value is the
+   * mode that streamed. "eligible_off" — the render passed every gate but the
+   * router was off for it: the screenshot cohort the mode split holds back,
+   * plus explicit HF_CAPTURE_PARALLEL_STREAM=false opt-outs. Absent =
    * ineligible regardless of the switch.
+   *
+   * The mode comes from resolveParallelCaptureMode, which mirrors the engine's
+   * launch rule, not from the platform-only captureMode label. The two can
+   * disagree on Linux with system Chrome or DPR > 1 (captureMode says
+   * "beginframe", this field says "screenshot"); this field is the one that
+   * matches what actually streamed.
    */
   captureParallelStream?: "screenshot" | "beginframe" | "eligible_off";
   protocolTimeoutMs?: number;
@@ -140,6 +190,23 @@ export interface RenderCaptureObservability {
    */
   transientRetries?: number;
   memoryExhaustionDetected?: boolean;
+  /**
+   * Chrome process memory from the engine's per-session sampler (Phase −1 of
+   * the long-form render plan). Updated live during capture so a
+   * render_error still carries the last known state — the failure path never
+   * builds a RenderPerfSummary, so this is the only channel that survives a
+   * mid-capture target loss.
+   */
+  chromeBrowserRssPeakMb?: number;
+  chromeRendererRssPeakMb?: number;
+  chromeRssLastMb?: number;
+  chromeGpuProcessSeenLastSample?: boolean;
+  chromeMemorySamples?: number;
+  /** Which capture stage ran. Set once the capture plan resolves. */
+  capturePath?: CapturePath;
+  /** Segmented capture only (Phase 2): current segment and retries so far. */
+  segmentIndex?: number;
+  segmentRetries?: number;
 }
 
 export interface RenderExtractionObservability {

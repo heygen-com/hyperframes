@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { reapplyPositionEditsAfterSeek } from "./manualEditsDom";
+import { reapplyPositionEditsAfterSeek } from "./manualEditsSeekReapply";
 import { STUDIO_BOX_SIZE_ATTR, STUDIO_HEIGHT_PROP, STUDIO_WIDTH_PROP } from "./manualEditsTypes";
 
 /**

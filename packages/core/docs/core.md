@@ -183,7 +183,7 @@ A clip is any discrete block on the timeline. We represent clips as HTML element
 
 - `id` — Unique identifier (e.g., "el-1")
 - `data-start` — Start time in seconds, or a clip `id` reference. See [Relative Timing](#relative-timing).
-- `data-duration` — Duration in seconds. Required for `<img>` clips. Optional for `<video>` and `<audio>` (defaults to the source media's full duration). Not used on compositions.
+- `data-duration` — Duration in seconds. Optional for `<img>` (defaults to 3 seconds), `<video>` and `<audio>` (default to the source media's length, less any playback offset, over the playback rate; an authored value trims). Not used on compositions.
 - `data-track-index` — Timeline track number. Tracks serve two purposes: they determine visual layering (higher tracks render in front) and they group clips into rows on the timeline. Clips on the same track **cannot overlap in time**.
 
 ### Media Clips (video, audio)
@@ -283,6 +283,7 @@ Background music or sound effects. Audio clips are invisible.
 ```
 
 - `data-media-start` — Playback begins at this time in the source audio file (seconds). Default: `0`.
+- `data-fade-in` / `data-fade-out` — (optional) Clip-edge fades in seconds. Gain ramps linearly from silence over the first `data-fade-in` seconds and back to silence over the last `data-fade-out` seconds of the clip, on top of `data-volume` and any `data-automation` volume lane. Anchored to the clip's edges, so a fade-out follows a later trim. Also honoured on `<video>` audio.
 - `data-duration` — (optional) How long the clip occupies on the timeline, in seconds. Playback runs from `data-media-start` for up to `data-duration` seconds. If the source media runs out before `data-duration` elapses, playback naturally stops (the clip remains mounted but silent). If omitted, defaults to the remaining duration of the source file from `data-media-start`.
 
 ## Two Layers: Primitives and Scripts

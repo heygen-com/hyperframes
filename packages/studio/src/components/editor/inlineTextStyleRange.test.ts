@@ -2,7 +2,11 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyInlineStyle } from "./inlineTextStyleRange";
-import { readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRead";
+import {
+  readFirstPaintedElement,
+  readInlineStyle,
+  readInlineStyleSpread,
+} from "./inlineTextStyleRead";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -739,5 +743,31 @@ describe("readInlineStyleSpread", () => {
     const host = mount("Hello world");
 
     expect(readInlineStyleSpread(rangeOver(host, 0, 5), "color")).toEqual([]);
+  });
+});
+
+describe("readFirstPaintedElement", () => {
+  it("names the span that paints the text when the selection starts on its parent", () => {
+    const host = mount('<span style="color: red">Hello</span>');
+    const range = document.createRange();
+    range.selectNodeContents(host);
+
+    expect(readFirstPaintedElement(range, "color")).toBe(host.querySelector("span"));
+  });
+
+  it("skips a leading space, which paints nothing", () => {
+    const host = mount(' <span style="color: red">Hello</span>');
+
+    expect(readFirstPaintedElement(rangeOver(host, 0, 6), "color")).toBe(
+      host.querySelector("span"),
+    );
+  });
+
+  it("names the element of the colour the swatch shows, past text with no colour of its own", () => {
+    const host = mount('<span style="color: red"> </span>x<span style="color: lime">y</span>');
+    const range = rangeOver(host, 0, 3);
+
+    expect(readInlineStyleSpread(range, "color")).toEqual(["lime"]);
+    expect(readFirstPaintedElement(range, "color")).toBe(host.querySelectorAll("span")[1]);
   });
 });

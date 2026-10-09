@@ -1,0 +1,34 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mesh-gradient",
+  "type": "hyperframes:block",
+  "title": "Mesh Gradient",
+  "description": "Soft coral, orange and violet fields blend and drift in a mesh gradient. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "tags": ["webgpu", "webgpu-shader", "background", "gradient", "color"],
+  "license": "Apache-2.0 AND MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 2,
+  "files": [
+    {
+      "path": "mesh-gradient.html",
+      "target": "compositions/mesh-gradient.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "lib/shaders.iife.js",
+      "target": "compositions/lib/shaders.iife.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "target": "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/mesh-gradient.mp4"
+  }
+}

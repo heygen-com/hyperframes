@@ -50,11 +50,14 @@ export function renderFrameElementId(media: Element): string | null {
 
 /**
  * The injected render-frame `<img>` for a media element, or null in preview
- * (where the producer never creates one).
+ * (where the producer never creates one). Siblings first: a staged scene copy repeats the id.
  */
 export function findInjectedRenderFrame(media: Element): HTMLImageElement | null {
   const frameId = renderFrameElementId(media);
-  if (!frameId) return null;
-  const frame = document.getElementById(frameId);
+  const byId = frameId ? document.getElementById(frameId) : null;
+  if (!byId) return null;
+  let frame: Element | null = media.nextElementSibling;
+  while (frame && frame.id !== frameId) frame = frame.nextElementSibling;
+  frame ??= byId;
   return isImageElement(frame) ? frame : null;
 }

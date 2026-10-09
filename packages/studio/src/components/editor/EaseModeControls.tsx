@@ -59,7 +59,7 @@ export const EasePresetGrid = function EasePresetGrid({
             <MiniCurveSvg ease={preset.ease} active={isActive} />
             <span
               className={`text-center text-[8px] leading-none ${
-                isActive ? "text-panel-accent" : "text-neutral-500"
+                isActive ? "text-accent-ink" : "text-neutral-500"
               }`}
             >
               {preset.label}
@@ -80,7 +80,7 @@ export function EaseModeToggle({
 }) {
   return (
     <div
-      className="mb-2 grid grid-cols-3 rounded-md bg-black/20 p-0.5"
+      className="mb-2 grid grid-cols-3 rounded-md bg-press p-0.5"
       role="radiogroup"
       aria-label="Ease editor mode"
     >

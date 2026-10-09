@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  isAudibleVideoTag,
   parseHtmlStructure,
+  readAttr,
+  readDecodedAttr,
   stripCssComments,
   stripJsComments,
   stripJsStringLiterals,
@@ -8,6 +11,42 @@ import {
 
 const scan = (src: string) => stripJsStringLiterals(stripJsComments(src));
 const findsRaf = (src: string) => /requestAnimationFrame\s*\(/.test(scan(src));
+
+describe("HTML attribute values", () => {
+  it.each([
+    { source: `<div title='id="ghost"' id="real">`, name: "id", expected: "real" },
+    {
+      source: `<div title='data-composition-src="ghost.html"'>`,
+      name: "data-composition-src",
+      expected: null,
+    },
+    { source: `<img title='src="ghost.png"' src="real.png">`, name: "src", expected: "real.png" },
+    { source: `<div title='class="ghost"' class="clip">`, name: "class", expected: "clip" },
+    { source: `<div id="scene's-title">`, name: "id", expected: "scene's-title" },
+    { source: `<div title='scene "title"'>`, name: "title", expected: 'scene "title"' },
+    { source: "<div DATA-START = 0>", name: "data-start", expected: "0" },
+    { source: '<div id="" id="ghost">', name: "id", expected: null },
+    { source: '<video data-hf-id="ghost">', name: "id", expected: null },
+    { source: '<video src="clip.mp4?id=7">', name: "id", expected: null },
+  ])("reads only the real $name from $source", ({ source, name, expected }) => {
+    expect(readAttr(source, name)).toBe(expected);
+  });
+
+  it("preserves raw entity text while the decoded reader resolves character references", () => {
+    const tag = '<img src="image.png?x=1&amp;y=2" title="Say &quot;hello&quot;">';
+    expect(readAttr(tag, "src")).toBe("image.png?x=1&amp;y=2");
+    expect(readDecodedAttr(tag, "src")).toBe("image.png?x=1&y=2");
+    expect(readAttr(tag, "title")).toBe("Say &quot;hello&quot;");
+    expect(readDecodedAttr(tag, "title")).toBe('Say "hello"');
+  });
+
+  it("preserves the empty-value contract for raw and decoded reads", () => {
+    expect(readAttr('<video muted="">', "muted")).toBeNull();
+    expect(readDecodedAttr('<video muted="">', "muted")).toBe("");
+    expect(readAttr("<video muted>", "muted")).toBeNull();
+    expect(readDecodedAttr("<video muted>", "muted")).toBe("");
+  });
+});
 
 describe("parseHtmlStructure source ranges", () => {
   it("does not include ignored markup inside a preceding malformed closing tag", () => {
@@ -230,5 +269,18 @@ describe("stripCssComments", () => {
       expect(out).not.toContain("/*");
       expect(out).toContain("#a{color:red}");
     }
+  });
+});
+
+describe("isAudibleVideoTag", () => {
+  it("treats an absent marker and the exact value true as audible", () => {
+    expect(isAudibleVideoTag('<video src="a.mp4">')).toBe(true);
+    expect(isAudibleVideoTag('<video data-has-audio="true">')).toBe(true);
+  });
+  it("treats muted, false, empty and non-exact values as silent", () => {
+    expect(isAudibleVideoTag('<video muted data-has-audio="true">')).toBe(false);
+    expect(isAudibleVideoTag('<video data-has-audio="false">')).toBe(false);
+    expect(isAudibleVideoTag('<video data-has-audio="">')).toBe(false);
+    expect(isAudibleVideoTag('<video data-has-audio="TRUE">')).toBe(false);
   });
 });

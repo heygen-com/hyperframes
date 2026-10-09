@@ -45,3 +45,12 @@ export function readInlineStyleSpread(range: Range, property: string): string[] 
   }
   return spread;
 }
+
+export function readFirstPaintedElement(range: Range, property: string): Element | null {
+  const covered = readCoveredInlineStyleChars(range);
+  if (!covered) return null;
+  const painted = covered.filter(({ char }) => char.trim());
+  const owner =
+    painted.find(({ style }) => style[property] !== undefined) ?? painted[0] ?? covered[0];
+  return owner?.painter ?? null;
+}

@@ -6,9 +6,13 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
-import { PROPERTY_DEFAULTS } from "./gsapShared";
+import { keyframeEases, PROPERTY_DEFAULTS } from "./gsapShared";
 import { synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
-import { materializeIfDynamic, type GsapDragCommitCallbacks } from "./gsapDragCommit";
+import {
+  materializeIfDynamic,
+  refuseStepListRewrite,
+  type GsapDragCommitCallbacks,
+} from "./gsapDragCommit";
 
 /**
  * Generic sibling of commitWholePathOffset for property groups other than
@@ -32,13 +36,13 @@ export async function commitWholePropertyOffset(
   // fallow-ignore-next-line code-duplication
   let effectiveAnim = anim;
   if (anim.keyframes) {
+    refuseStepListRewrite(anim);
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
     if (newId) effectiveAnim = { ...anim, id: newId };
   }
 
   const ts = resolveTweenStart(effectiveAnim);
   const td = resolveTweenDuration(effectiveAnim);
-  const ease = effectiveAnim.keyframes?.easeEach ?? effectiveAnim.ease;
   const keys = Object.keys(newValues);
   const at = (props: Record<string, number | string>, key: string) =>
     typeof props[key] === "number" ? (props[key] as number) : (PROPERTY_DEFAULTS[key] ?? 0);
@@ -79,7 +83,7 @@ export async function commitWholePropertyOffset(
       position: roundTo3(ts ?? 0),
       duration: roundTo3(td || 1),
       keyframes: shifted,
-      ease,
+      ...keyframeEases(effectiveAnim),
     },
     { label, softReload: true },
   );

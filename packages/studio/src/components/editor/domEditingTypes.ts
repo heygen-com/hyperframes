@@ -61,6 +61,7 @@ export interface DomEditCapabilities {
   canApplyManualSize: boolean;
   canApplyManualRotation: boolean;
   reasonIfDisabled?: string;
+  commitCheckPending?: boolean;
 }
 
 export interface DomEditTextField {
@@ -91,6 +92,7 @@ export interface DomEditSelection extends PatchTarget {
   computedStyles: Record<string, string>;
   textFields: DomEditTextField[];
   capabilities: DomEditCapabilities;
+  existsInSource?: boolean;
   gsapAnimations?: GsapAnimation[];
 }
 

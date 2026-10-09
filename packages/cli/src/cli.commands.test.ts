@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import type { CommandDef } from "citty";
+import {
+  ACCEPTS_EXTRA_POSITIONALS,
+  JOINS_EXTRA_POSITIONALS,
+} from "./utils/reject-extra-positionals.js";
 
 const cliSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "cli.ts"), "utf8");
 const helpSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "help.ts"), "utf8");
@@ -12,7 +17,32 @@ function commandLoaderBlock(): string {
   return match![1]!;
 }
 
+// Vite cannot resolve a template-string import, so each listed top-level command is named here.
+const LIST_COMMANDS: Record<string, () => Promise<{ default: unknown }>> = {
+  catalog: () => import("./commands/catalog.js"),
+  compare: () => import("./commands/compare.js"),
+  figma: () => import("./commands/figma.js"),
+  skills: () => import("./commands/skills.js"),
+  timeline: () => import("./commands/timeline.js"),
+  tts: () => import("./commands/tts.js"),
+};
+
 describe("CLI command registration", () => {
+  it.each([...ACCEPTS_EXTRA_POSITIONALS, ...JOINS_EXTRA_POSITIONALS])(
+    "names a real command in the extra-positional lists: %s",
+    async (path) => {
+      const [top, ...subs] = path.split(" ");
+      expect(commandLoaderBlock()).toMatch(new RegExp(`\\b${top}:\\s*\\(\\)\\s*=>`));
+      let cmd = (await LIST_COMMANDS[top!]!()).default as CommandDef;
+      expect(cmd.meta).toMatchObject({ name: top });
+      for (const sub of subs) {
+        const entry = (cmd.subCommands as Record<string, unknown>)[sub!];
+        cmd = (typeof entry === "function" ? await entry() : entry) as CommandDef;
+        expect(cmd, `${path} resolves to a subcommand`).toBeTruthy();
+      }
+    },
+  );
+
   it("registers keyframes as the only keyframe inspection command", () => {
     const loaders = commandLoaderBlock();
 

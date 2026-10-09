@@ -14,6 +14,7 @@
  * Kept pure (no React/store/GSAP) so the trickiest math is unit-testable. The
  * caller supplies the resolved tween window + the drop's absolute time.
  */
+import { progressAtTime, timeAtProgress } from "../../utils/gsapKeyframeEases";
 
 export interface RetimeKeyframe {
   /** Tween-relative percentage (the writer/runtime key on this). */
@@ -92,6 +93,7 @@ function resolveFlatTweenBoundaryRetime(opts: {
  * - `draggedTweenPct`: identifies which keyframe is being dragged (closest match).
  * - `tweenStart` / `tweenDuration`: the tween's resolved absolute window.
  * - `dropAbsTime`: the drop's absolute time (handler converts clip-% → seconds).
+ * - `runEase`: the tween's run ease, which decides when each keyframe plays.
  */
 export function resolveKeyframeRetime(opts: {
   keyframes: ReadonlyArray<RetimeKeyframe>;
@@ -99,8 +101,9 @@ export function resolveKeyframeRetime(opts: {
   tweenStart: number;
   tweenDuration: number;
   dropAbsTime: number;
+  runEase?: string;
 }): KeyframeRetimeResult {
-  const { keyframes, draggedTweenPct, tweenStart, tweenDuration, dropAbsTime } = opts;
+  const { keyframes, draggedTweenPct, tweenStart, tweenDuration, dropAbsTime, runEase } = opts;
   if (tweenDuration <= 0) return { kind: "noop" };
   const tweenEnd = tweenStart + tweenDuration;
 
@@ -124,7 +127,8 @@ export function resolveKeyframeRetime(opts: {
     // Round here, not at the return: the no-op test below and the value written
     // to source must be the same number. The resize branch already rounds, so
     // this keeps both write paths at the authored 3dp precision.
-    const toTweenPct = round3(clamp(((dropAbsTime - tweenStart) / tweenDuration) * 100, 0, 100));
+    const dropTimePct = clamp(((dropAbsTime - tweenStart) / tweenDuration) * 100, 0, 100);
+    const toTweenPct = round3(progressAtTime(runEase, dropTimePct));
     if (Math.abs(toTweenPct - draggedTweenPct) < NOOP_EPSILON_PCT) return { kind: "noop" };
     return { kind: "move", toTweenPct };
   }
@@ -154,8 +158,11 @@ export function resolveKeyframeRetime(opts: {
   // survive verbatim (no rebuilt keyframes array).
   const pctRemap: KeyframePctRemap[] = keyframes.map((kf, i) => {
     const absTime =
-      i === draggedIdx ? dropAbsTime : tweenStart + (kf.percentage / 100) * tweenDuration;
-    return { from: kf.percentage, to: round3(((absTime - newStart) / newDuration) * 100) };
+      i === draggedIdx
+        ? dropAbsTime
+        : tweenStart + (timeAtProgress(runEase, kf.percentage) / 100) * tweenDuration;
+    const newTimePct = ((absTime - newStart) / newDuration) * 100;
+    return { from: kf.percentage, to: round3(progressAtTime(runEase, newTimePct)) };
   });
 
   return {

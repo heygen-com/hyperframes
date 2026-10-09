@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { createTimelineElementFromManifestClip } from "../lib/timelineDOM";
-import { buildExpandedElements } from "../hooks/useExpandedTimelineElements";
 import { normalizeToZones } from "./timelineZones";
 import { commitDraggedClipMove, type TimelineMoveEdit } from "./timelineClipDragCommit";
 import type { DraggedClipState } from "./useTimelineClipDrag";
@@ -112,57 +111,5 @@ describe("track persist pipeline (manifest → factory → lanes → drag commit
     // And the reverse: the div (lane 1) onto the video's lane (display 0, authored 3).
     const up = commitLaneChange(byId.get("g")!, 0, elements, [0, 1, 2]);
     expect(up[0].updates.track).toBe(3); // authored, NOT display lane 0
-  });
-
-  it("an expanded sub-comp child's lane change persists the sibling's authored track from ITS file", () => {
-    // Host timeline: the sub-comp host plus a root clip, discovered through the
-    // factory and lane-normalized like the store does.
-    const hostManifest = [
-      manifestClip({
-        id: "scene",
-        kind: "composition",
-        tagName: "div",
-        track: 0,
-        start: 0,
-        duration: 10,
-        compositionId: "scene",
-        compositionSrc: "scene.html",
-      }),
-      manifestClip({ id: "root-clip", kind: "video", tagName: "video", track: 1, start: 0 }),
-    ];
-    // scene.html has SPARSE authored tracks 3 and 7.
-    const childClips = [
-      manifestClip({ id: "c3", track: 3, start: 1, duration: 2, parentCompositionId: "scene" }),
-      manifestClip({ id: "c7", track: 7, start: 4, duration: 2, parentCompositionId: "scene" }),
-    ];
-    const storeElements = normalizeToZones(fromManifest(hostManifest));
-    const parentMap = new Map([
-      ["c3", "scene"],
-      ["c7", "scene"],
-    ]);
-    const expanded = buildExpandedElements(
-      storeElements,
-      [...hostManifest, ...childClips],
-      parentMap,
-      "scene",
-      "scene",
-    );
-
-    // The children replaced the host row: synthetic display lanes, but the
-    // authored track (in scene.html's coordinate space) survived the expansion.
-    const c3 = expanded.find((e) => e.domId === "c3")!;
-    const c7 = expanded.find((e) => e.domId === "c7")!;
-    expect(c3).toMatchObject({ authoredTrack: 3, sourceFile: "scene.html" });
-    expect(c7).toMatchObject({ authoredTrack: 7, sourceFile: "scene.html" });
-    expect(c3.stackingContextId).toBe("root");
-    expect(c3.track).not.toBe(3); // display row is synthetic
-
-    // Drag c3 onto c7's display lane: the persist target is c3's OWN file, so
-    // the written track must be c7's authored 7 — not the display-lane integer.
-    const trackOrder = [...new Set(expanded.map((e) => e.track))].sort((a, b) => a - b);
-    const edits = commitLaneChange(c3, c7.track, expanded, trackOrder);
-    expect(edits).toHaveLength(1);
-    expect(edits[0].updates.track).toBe(7);
-    expect(edits[0].updates.track).not.toBe(c7.track);
   });
 });

@@ -1,13 +1,89 @@
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { fileContentVersion } from "@hyperframes/studio-server";
+import {
+  createProjectSignature,
+  fileContentVersion,
+  HistoryBusyError,
+  HistoryClosedError,
+} from "@hyperframes/studio-server";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+
+// Forces loadStudioProducer() down its production import branch (real
+// isDevMode() is true for a .ts test file, which instead throws a
+// "requires bun" error before ever reaching executeRenderJob — see
+// studioServer.ts's loadStudioProducer). Only startRender reads this.
+vi.mock("../utils/env.js", () => ({ isDevMode: () => false }));
+
+const producerState = vi.hoisted(() => ({
+  // Set per-test to control when the render "finishes" so a shutdown that
+  // races an in-flight render is observable instead of vacuous.
+  executeRenderJob: (
+    _job: unknown,
+    _dir: string,
+    _outputPath: string,
+    _onProgress: unknown,
+    _signal: AbortSignal,
+  ): Promise<void> => Promise.resolve(),
+}));
+vi.mock("@hyperframes/producer", () => ({
+  createRenderJob: (opts: Record<string, unknown>) => ({ ...opts, perfSummary: undefined }),
+  executeRenderJob: (...args: Parameters<typeof producerState.executeRenderJob>) =>
+    producerState.executeRenderJob(...args),
+}));
+const engineState = vi.hoisted(() => ({
+  acquireBrowser: async (..._args: unknown[]): Promise<unknown> => {
+    throw new Error("acquireBrowser called without a test double");
+  },
+  closeBrowserPool: async (): Promise<void> => {},
+}));
+vi.mock("@hyperframes/engine", () => ({
+  acquireBrowser: (...args: unknown[]) => engineState.acquireBrowser(...args),
+  buildChromeArgs: () => [],
+  killTrackedProcesses: () => {},
+  closeBrowserPool: () => engineState.closeBrowserPool(),
+  getSystemTotalMb: () => 0,
+}));
+vi.mock("../browser/gpuPolicy.js", () => ({
+  resolveCaptureBrowserGpuMode: async () => "software",
+  resolveLocalBrowserGpuMode: () => "software",
+  compositionRequiresWebGpu: () => false,
+  assertWebGpuAdapterAvailable: async () => {},
+}));
+vi.mock("../browser/preflight.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../browser/preflight.js")>()),
+  resolveRenderBrowser: async () => ({ executablePath: "/fake/chrome", source: "system" }),
+}));
+vi.mock("../browser/manager.js", () => ({
+  ensureBrowser: async () => ({ executablePath: undefined, source: "system" }),
+}));
+
+// Lets one test hold the project history in its opening; every other test opens the real one.
+const historyState = vi.hoisted(() => ({
+  open: null as null | ((...args: unknown[]) => Promise<unknown>),
+}));
+vi.mock("@hyperframes/studio-server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@hyperframes/studio-server")>();
+  return {
+    ...original,
+    createProjectSignature: vi.fn(original.createProjectSignature),
+    openProjectHistory: (...args: Parameters<typeof original.openProjectHistory>) =>
+      historyState.open ? historyState.open(...args) : original.openProjectHistory(...args),
+  };
+});
 
 // Only `fs.watch` is replaced, so the SSE describe below can fire a file-change
 // on demand; every other server test keeps reading and writing real files.
@@ -60,8 +136,122 @@ describe("Studio thumbnail GPU capture plumbing", () => {
     const source = readFileSync(new URL("./studioServer.ts", import.meta.url), "utf8");
     expect(source).toContain("resolveCaptureBrowserGpuMode");
     expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
-    expect(source).toContain("assertWebGpuRequirement");
+    expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu)");
     expect(source).toContain("await seekCompositionTimeline(page, opts.seekTime");
+  });
+});
+
+describe("createStudioServer project history (D-491)", () => {
+  it("serves the project's history, and a change the watcher sees becomes an entry", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    const list = async () =>
+      (await (await server!.app.request(historyUrl)).json()) as {
+        entries: Array<{ who: { kind: string } }>;
+        back: { label: string } | null;
+      };
+    expect(await list()).toMatchObject({ entries: [], back: null });
+
+    writeFileSync(join(projectDir, "index.html"), "<html>agent</html>");
+    mockWatcher.emit("change", "change", "index.html");
+
+    // Writes with no window open group until 2 s of quiet.
+    await vi.waitFor(async () => expect((await list()).entries).toHaveLength(1), {
+      timeout: 5_000,
+      interval: 200,
+    });
+    expect((await list()).entries[0]!.who.kind).toBe("outside");
+    await server.shutdown();
+  });
+
+  it.each([
+    ["another process was holding", new HistoryBusyError(1)],
+    ["whose folder changed while it opened", new HistoryClosedError("now another project")],
+  ])(
+    "tries a history %s again on the next request, instead of turning it off",
+    async (_, refusal) => {
+      historyState.open = async () => {
+        historyState.open = null;
+        throw refusal;
+      };
+      const projectDir = tmpProject();
+      server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+      const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+      expect((await server.app.request(historyUrl)).status).toBe(404);
+      expect((await server.app.request(historyUrl)).status).toBe(200);
+      await server.shutdown();
+    },
+  );
+
+  it("never makes a request wait on another process's history lock again once it was busy", async () => {
+    const waits: unknown[] = [];
+    historyState.open = async (options) => {
+      waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);
+      throw new HistoryBusyError(1);
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    await server.app.request(historyUrl);
+    await server.app.request(historyUrl);
+    historyState.open = null;
+    expect(waits).toEqual([undefined, 0]);
+    await server.shutdown();
+  });
+
+  it("waits for the history lock again once a history opened after a busy one", async () => {
+    const waits: unknown[] = [];
+    const reopenable = { replacedAtPath: () => true, close: async () => {} };
+    let opens = 0;
+    historyState.open = async (options) => {
+      waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);
+      opens += 1;
+      if (opens === 1) throw new HistoryBusyError(1);
+      if (opens === 2) return reopenable;
+      historyState.open = null;
+      throw new HistoryBusyError(1);
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    await server.app.request(historyUrl);
+    await server.app.request(historyUrl);
+    historyState.open = null;
+    expect(waits).toEqual([undefined, 0, undefined]);
+    await server.shutdown();
+  });
+
+  it("opens a new project's own history once it takes the folder's path", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    expect((await server.app.request(historyUrl)).status).toBe(200);
+    renameSync(projectDir, `${projectDir}-moved`);
+    dirs.push(`${projectDir}-moved`);
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, "index.html"), "<html>new</html>");
+
+    expect((await server.app.request(historyUrl)).status).toBe(200);
+    expect(existsSync(join(projectDir, ".hyperframes", "history-id"))).toBe(true);
+    await server.shutdown();
+  });
+
+  it("shutdown returns within preview's exit watchdog while the history is still opening", async () => {
+    historyState.open = () => new Promise(() => {});
+    try {
+      const projectDir = tmpProject();
+      server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+      void server.app.request(`/api/projects/${encodeURIComponent(basename(projectDir))}/history`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const started = Date.now();
+      await server.shutdown();
+      expect(Date.now() - started).toBeLessThan(2_900);
+    } finally {
+      historyState.open = null;
+    }
   });
 });
 
@@ -103,6 +293,329 @@ describe("createStudioServer autoProxy plumbing", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ browserGpuMode: "software" });
+  });
+});
+
+// A render that never reaches the executor (browser check refused, import failed) must fail with
+// its reason, not hang until the suite timeout.
+async function untilStarted(started: Promise<void>, state: { status: string; error?: string }) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const never = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `render never reached executeRenderJob: status=${state.status} error=${state.error}`,
+          ),
+        ),
+      5_000,
+    );
+  });
+  try {
+    await Promise.race([started, never]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+describe("createStudioServer shutdown", () => {
+  function startRenderOpts(jobId: string, outputPath: string) {
+    return {
+      project: { id: "demo", dir: tmpProject(), title: "demo" },
+      outputPath,
+      format: "mp4" as const,
+      fps: { num: 30, den: 1 },
+      quality: "draft",
+      jobId,
+    };
+  }
+
+  it("hands the limiter's audioLoweredDb to the job state and the render sidecar", async () => {
+    producerState.executeRenderJob = async (job) => {
+      if (typeof job === "object" && job !== null) Reflect.set(job, "audioLoweredDb", 1.44);
+    };
+    const outputPath = join(mkdtempSync(join(tmpdir(), "hf-lowered-")), "out.mp4");
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender(startRenderOpts("job-lowered", outputPath));
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), { timeout: 5_000 });
+    expect(state.audioLoweredDb).toBe(1.44);
+    const meta = JSON.parse(readFileSync(outputPath.replace(/\.mp4$/, ".meta.json"), "utf8"));
+    expect(meta.audioLoweredDb).toBe(1.44);
+  });
+
+  it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {
+    const events: string[] = [];
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = (_job, _dir, _outputPath, _onProgress, signal) => {
+      started();
+      return new Promise((_resolve, reject) => {
+        const onAbort = () =>
+          setTimeout(() => {
+            events.push("render-settled");
+            reject(Object.assign(new Error("cancelled"), { name: "AbortError" }));
+          }, 20);
+        // A signal aborted before this executor ran would never fire a later
+        // "abort" listener (edge-triggered, not level-triggered) — check the
+        // already-aborted case too, same as real capture code must.
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort);
+      });
+    };
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    const outputPath = join(tmpdir(), "shutdown-render.mp4");
+    const state = server.adapter.startRender(startRenderOpts("job-1", outputPath));
+    expect(state.status).toBe("rendering");
+
+    // Wait until the render has actually reached executeRenderJob (several
+    // microtask hops through loadStudioProducer/ensureBrowser) before racing
+    // it against shutdown, or shutdown could abort a signal nothing is
+    // listening on yet — a race in this test, not in the fix under test.
+    await untilStarted(startedPromise, state);
+
+    await server.shutdown();
+    events.push("drain-and-shutdown-returned");
+
+    expect(events).toEqual(["render-settled", "drain-and-shutdown-returned"]);
+  });
+
+  it("refuses a render started after shutdown has begun instead of launching a fresh browser", async () => {
+    let releaseFirstRender: () => void = () => {};
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = () => {
+      started();
+      return new Promise<void>((resolve) => {
+        releaseFirstRender = resolve;
+      });
+    };
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    const first = server.adapter.startRender(startRenderOpts("job-1", join(tmpdir(), "a.mp4")));
+    await untilStarted(startedPromise, first);
+
+    const shutdownPromise = server.shutdown();
+    // shuttingDown is set synchronously as shutdown()'s first statement, so a
+    // render request arriving anywhere after that call has been made (even
+    // before it resolves) must already see it.
+    const late = server.adapter.startRender(startRenderOpts("job-2", join(tmpdir(), "b.mp4")));
+
+    expect(late.status).toBe("failed");
+    expect(late.error).toMatch(/shutting down/i);
+
+    releaseFirstRender();
+    await shutdownPromise;
+  });
+
+  const thumbnailOpts = () => ({
+    project: { id: "demo", dir: tmpProject(), title: "demo" },
+    compPath: "index.html",
+    seekTime: 0.5,
+    width: 640,
+    height: 360,
+    outputWidth: 640,
+    outputHeight: 360,
+    previewUrl: "http://localhost/preview",
+    signal: new AbortController().signal,
+  });
+
+  it("does not launch a browser for a thumbnail request after shutdown has begun", async () => {
+    const acquire = vi.fn();
+    engineState.acquireBrowser = acquire;
+    server = createStudioServer({ projectDir: tmpProject() });
+    await server.shutdown();
+
+    await expect(server.adapter.generateThumbnail?.(thumbnailOpts())).resolves.toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("releases a thumbnail browser that finished launching after shutdown began", async () => {
+    const release = vi.fn(async () => {});
+    let launched!: () => void;
+    const launchedPromise = new Promise<void>((resolve) => (launched = resolve));
+    let finishLaunch: () => void = () => {};
+    engineState.acquireBrowser = async () => {
+      launched();
+      await new Promise<void>((resolve) => (finishLaunch = resolve));
+      return { browser: new EventEmitter(), release };
+    };
+    let reachedBrowserClose!: () => void;
+    const reachedBrowserClosePromise = new Promise<void>(
+      (resolve) => (reachedBrowserClose = resolve),
+    );
+    engineState.closeBrowserPool = async () => reachedBrowserClose();
+    server = createStudioServer({ projectDir: tmpProject() });
+    const thumbnail = server.adapter.generateThumbnail?.(thumbnailOpts());
+    await launchedPromise;
+
+    const shutdown = server.shutdown();
+    // shutdown() starts the pool close alongside the thumbnail-browser close,
+    // before it waits on renders: closing is the signal the close has begun
+    // while the launch is still pending, without racing a fixed sleep.
+    await reachedBrowserClosePromise;
+    finishLaunch();
+    await shutdown;
+
+    await expect(thumbnail).resolves.toBeNull();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes browsers within a bounded timeout even when a render's done promise never settles", async () => {
+    const closeBrowserPool = vi.fn(async () => {});
+    engineState.closeBrowserPool = closeBrowserPool;
+    const release = vi.fn(async () => {});
+    let launched!: () => void;
+    const launchedPromise = new Promise<void>((resolve) => (launched = resolve));
+    let finishLaunch: () => void = () => {};
+    engineState.acquireBrowser = async () => {
+      launched();
+      await new Promise<void>((resolve) => (finishLaunch = resolve));
+      return { browser: new EventEmitter(), release };
+    };
+
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = () => {
+      started();
+      // Never settles, even once aborted -- the pathological case the CLI's
+      // 3s exit watchdog exists to survive.
+      return new Promise<void>(() => {});
+    };
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender(startRenderOpts("job-1", join(tmpdir(), "hang.mp4")));
+    await untilStarted(startedPromise, state);
+
+    const thumbnail = server.adapter.generateThumbnail?.(thumbnailOpts());
+    await launchedPromise;
+    finishLaunch();
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const never = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("shutdown() did not resolve within its bound")),
+        3_000,
+      );
+    });
+    try {
+      await Promise.race([server.shutdown(), never]);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(closeBrowserPool).toHaveBeenCalledTimes(1);
+    await expect(thumbnail).resolves.toBeNull();
+  });
+
+  it("does not hand an already-leased browser to a new caller once shutdown has begun", async () => {
+    const release = vi.fn(async () => {});
+    const newPage = vi.fn(async () => {
+      throw new Error("no real page in this test double");
+    });
+    engineState.acquireBrowser = async () => ({
+      browser: { connected: true, newPage, on: () => {} },
+      release,
+    });
+
+    server = createStudioServer({ projectDir: tmpProject() });
+    await server.adapter.generateThumbnail?.(thumbnailOpts());
+    expect(newPage).toHaveBeenCalledTimes(1);
+
+    const shutdownPromise = server.shutdown();
+    // shuttingDown flips true synchronously as shutdown()'s first statement,
+    // before its closeThumbnailBrowser() call runs -- this request lands in
+    // that window and must not reuse the still-connected lease.
+    const late = server.adapter.generateThumbnail?.(thumbnailOpts());
+
+    await expect(late).resolves.toBeNull();
+    expect(newPage).toHaveBeenCalledTimes(1);
+    await shutdownPromise;
+  });
+});
+
+describe("Studio thumbnail capture", () => {
+  // The thumbnail browser lease is module-wide; without a shutdown the next test inherits this one's fake.
+  afterEach(async () => {
+    await server?.shutdown();
+  });
+  function fakePageBrowser(onEvaluate = () => {}) {
+    const screenshot = vi.fn(async () => Buffer.from("jpeg"));
+    const evaluate = vi.fn(async () => onEvaluate());
+    const page = new Proxy(
+      { screenshot, evaluate },
+      {
+        get: (target, key) =>
+          key === "then"
+            ? undefined
+            : key in target
+              ? target[key as keyof typeof target]
+              : async () => {},
+      },
+    );
+    engineState.acquireBrowser = async () => ({
+      browser: { connected: true, newPage: async () => page, on: () => {} },
+      release: async () => {},
+    });
+    return { screenshot, evaluate };
+  }
+  const opts = (dir: string, signal = new AbortController().signal) => ({
+    project: { id: "demo", dir, title: "demo" },
+    compPath: "index.html",
+    seekTime: 0.5,
+    width: 640,
+    height: 360,
+    outputWidth: 640,
+    outputHeight: 360,
+    previewUrl: "http://localhost/preview",
+    signal,
+  });
+
+  it("stops a thumbnail whose request is aborted before its screenshot", async () => {
+    let abortOnEvaluate: AbortController | undefined;
+    const { screenshot } = fakePageBrowser(() => abortOnEvaluate?.abort());
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await expect(server.adapter.generateThumbnail?.(opts(dir))).resolves.toBeInstanceOf(Buffer);
+    expect(screenshot).toHaveBeenCalledTimes(1);
+
+    const aborting = new AbortController();
+    abortOnEvaluate = aborting;
+    await expect(
+      server.adapter.generateThumbnail?.(opts(dir, aborting.signal)),
+    ).resolves.toBeNull();
+    expect(screenshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("undoes a row's isolation after its screenshot, since the page is reused", async () => {
+    const { screenshot, evaluate } = fakePageBrowser();
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await server.adapter.generateThumbnail?.({ ...opts(dir), selector: "#title" });
+    const clears = evaluate.mock.calls.flatMap((call, i) =>
+      ((call as unknown[])[0] as { name?: string }).name === "clearElementScreenshotIsolation"
+        ? [evaluate.mock.invocationCallOrder[i]!]
+        : [],
+    );
+    expect(clears).toHaveLength(1);
+    expect(clears[0]).toBeGreaterThan(screenshot.mock.invocationCallOrder[0]!);
+  });
+
+  it("reuses the cached project signature instead of walking the project per thumbnail", async () => {
+    fakePageBrowser();
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await server.adapter.generateThumbnail?.(opts(dir));
+    const walks = vi.mocked(createProjectSignature).mock.calls.length;
+    for (let i = 0; i < 3; i++) await server.adapter.generateThumbnail?.(opts(dir));
+    expect(vi.mocked(createProjectSignature).mock.calls.length).toBe(walks);
   });
 });
 
@@ -228,6 +741,98 @@ describe("Studio file-change SSE", () => {
   const encodedVersion = (content: string): string =>
     fileContentVersion(content).replaceAll('"', '\\"');
 
+  /** A project whose preview has been loaded once, as an open Studio tab does on its first render. */
+  async function previewedProject(): Promise<{ projectDir: string; projectUrl: string }> {
+    const projectDir = tmpProject();
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(join(projectDir, "assets", "logo.png"), "logo-v1");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><body><div data-composition-id="root"><img src="assets/logo.png"></div></body></html>',
+    );
+    server = createStudioServer({ projectDir });
+    const projectUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}`;
+    expect((await server.app.request(`${projectUrl}/preview`)).status).toBe(200);
+    expect((await server.app.request(`${projectUrl}/preview/assets/logo.png`)).status).toBe(200);
+    return { projectDir, projectUrl };
+  }
+
+  it("marks a notes write as not affecting the preview, so the tab does not reload", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "notes.md"), "review notes");
+    mockWatcher.emit("change", "rename", "notes.md");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"notes.md"');
+    expect(payload).toContain('"affectsPreview":false');
+    expect(payload).toContain('"affectedCompositions":[]');
+  });
+
+  it("marks a write to an asset the preview loaded as affecting it", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "assets", "logo.png"), "logo-v2");
+    mockWatcher.emit("change", "change", "assets/logo.png");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
+
+  it("reloads when a folder holding an asset the preview missed is moved in", async () => {
+    const { projectDir, projectUrl } = await previewedProject();
+    expect((await server!.app.request(`${projectUrl}/preview/media/clip.png`)).status).toBe(404);
+    const [stream] = await subscribe(1);
+
+    mkdirSync(join(projectDir, "media"));
+    writeFileSync(join(projectDir, "media", "clip.png"), "clip");
+    mockWatcher.emit("change", "rename", "media");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"media"');
+    expect(payload).toContain('"affectsPreview":true');
+  });
+
+  it("reloads when a folder holding an asset the preview loaded is moved out", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    renameSync(join(projectDir, "assets"), join(tmpProject(), "assets"));
+    mockWatcher.emit("change", "rename", "assets");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
+
+  it("still delivers a new file in a folder an old watchIgnore listed, for the file tree", async () => {
+    const { projectDir } = await previewedProject();
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ preview: { watchIgnore: ["docs"] } }),
+    );
+    const [stream] = await subscribe(1);
+
+    mkdirSync(join(projectDir, "docs"));
+    writeFileSync(join(projectDir, "docs", "report.json"), "{}");
+    mockWatcher.emit("change", "rename", "docs/report.json");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"docs/report.json"');
+    expect(payload).toContain('"affectsPreview":false');
+  });
+
+  it("counts every write as affecting the preview until the preview has loaded anything", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html></html>");
+    server = createStudioServer({ projectDir });
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "notes.md"), "notes");
+    mockWatcher.emit("change", "rename", "notes.md");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
+
   it("labels a Studio write for every open subscriber, not just the first", async () => {
     const projectDir = tmpProject();
     writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
@@ -268,5 +873,48 @@ describe("Studio file-change SSE", () => {
       expect(payload).not.toContain("writeToken");
       expect(payload).toContain(encodedVersion("<html>agent</html>"));
     }
+  });
+
+  it("labels the deletion an undo from Studio makes with Studio's write token", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+    const history = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+    const post = (path: string, body: object, headers: Record<string, string> = {}) =>
+      server!.app.request(`${history}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+    await server.app.request(history); // opens the history, as Studio's first load does
+    writeFileSync(join(projectDir, "extra.html"), "<html>added</html>");
+    await post("/claim", { label: "Added a section", paths: ["extra.html"] });
+    const streams = await subscribe(1);
+
+    await post("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-undo-1" });
+    expect(existsSync(join(projectDir, "extra.html"))).toBe(false);
+    mockWatcher.emit("change", "rename", "extra.html");
+
+    const [payload] = await Promise.all(streams.map(nextEvent));
+    expect(payload).toContain("studio-undo-1");
+  });
+
+  // `/api/events` is one connection per SERVER, not per project: a tab left
+  // open from a `preview` run whose port was later reused by a DIFFERENT
+  // project shares this exact stream. Without `projectId` on the wire, that
+  // stale tab cannot tell "my project changed" from "the other project this
+  // server now serves changed" — see useExternalFileChangeCoordinator's
+  // cross-project filter, which reads this field.
+  it("labels every file-change with this server's project id", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir, projectName: "demo-project" });
+    const streams = await subscribe(1);
+
+    writeFileSync(join(projectDir, "index.html"), "<html>agent</html>");
+    mockWatcher.emit("change", "change", "index.html");
+
+    const [payload] = await Promise.all(streams.map(nextEvent));
+    expect(payload).toContain('"projectId":"demo-project"');
   });
 });

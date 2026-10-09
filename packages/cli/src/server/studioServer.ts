@@ -7,8 +7,12 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
-import { resolve, join, basename } from "node:path";
+import { realpath } from "@hyperframes/core";
+import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { resolve, join, basename, relative, sep } from "node:path";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -28,29 +32,50 @@ import {
   resolveCliTelemetryDistinctId,
 } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
+import { mountDesktopRoutes } from "./desktopRoutes.js";
 import { isDevMode } from "../utils/env.js";
+import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import type { ProjectLintResult } from "@hyperframes/lint";
+import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
   createProjectSignature,
   createBackgroundRemovalJob,
   identifyFileWrite,
+  DELETED_VERSION,
   fileContentVersion,
   getMimeType,
   affectsProjectSignature,
+  compositionsAffectedBy,
+  affectsPreview,
   type PreviewApiAdapter,
+  PREVIEW_BUNDLE_OPTIONS,
+  createPreviewDocumentStore,
   thumbnailDeviceScaleFactor,
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
+  stampProjectHfIds,
+  DEFAULT_HISTORY_ROOT,
+  openProjectHistory,
+  HistoryBusyError,
+  HistoryClosedError,
+  historyCache,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
-import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
+import {
+  clearElementScreenshotIsolation,
+  getElementScreenshotClip,
+} from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
+import { createThumbnailPages } from "./thumbnailPages.js";
 import {
-  assertWebGpuRequirement,
+  assertWebGpuAdapterAvailable,
+  compositionRequiresWebGpu,
   resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
   type BrowserGpuMode,
@@ -58,6 +83,10 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+
+// Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
+// before that watchdog can fire and skip this file's browser cleanup.
+const RENDER_SHUTDOWN_WAIT_MS = 2_000;
 
 // Vite emits only content-hashed files under dist/assets; hand-authored
 // public/ files land at the dist root. The route is the signal because the
@@ -207,6 +236,7 @@ async function downloadRemoteGifImageSources(
 // share a single Chrome process instead of running two independent ones.
 
 let _thumbnailBrowserLease: import("@hyperframes/engine").BrowserLease | null = null;
+const thumbnailPages = createThumbnailPages();
 let _thumbnailBrowserInitializing: Promise<ThumbnailBrowserSession | null> | null = null;
 let _thumbnailBrowserModes: {
   requested: BrowserGpuMode;
@@ -221,7 +251,9 @@ interface ThumbnailBrowserSession {
 
 async function getThumbnailBrowser(
   requestedGpuMode: BrowserGpuMode,
+  isShuttingDown: () => boolean,
 ): Promise<ThumbnailBrowserSession | null> {
+  if (isShuttingDown()) return null;
   if (
     _thumbnailBrowserLease?.browser.connected &&
     _thumbnailBrowserModes?.requested === requestedGpuMode
@@ -240,6 +272,7 @@ async function getThumbnailBrowser(
 
   _thumbnailBrowserInitializing = (async () => {
     try {
+      if (isShuttingDown()) return null;
       const { ensureBrowser } = await import("../browser/manager.js");
       const { acquireBrowser, buildChromeArgs } = await import("@hyperframes/engine");
       let executablePath: string | undefined;
@@ -284,7 +317,12 @@ async function getThumbnailBrowser(
   return _thumbnailBrowserInitializing;
 }
 
-export async function closeThumbnailBrowser(): Promise<void> {
+async function closeThumbnailBrowser(): Promise<void> {
+  thumbnailPages.closeAll();
+  // A launch kicked off just before this call isn't in _thumbnailBrowserLease
+  // yet; awaiting it here closes a browser that was mid-launch when the stop
+  // signal arrived, instead of leaving it running, unreferenced, after exit.
+  if (_thumbnailBrowserInitializing) await _thumbnailBrowserInitializing.catch(() => {});
   if (!_thumbnailBrowserLease) return;
   const lease = _thumbnailBrowserLease;
   _thumbnailBrowserLease = null;
@@ -308,11 +346,15 @@ export interface StudioServerOptions {
   autoProxy?: boolean | undefined;
   /** GPU policy used by Studio thumbnails and frame capture. */
   browserGpuMode?: BrowserGpuMode;
+  /** Where project histories are kept; defaults to ~/.cache/hyperframes/history. */
+  historyRoot?: string;
 }
 
 export interface StudioServer {
   app: Hono;
   watcher: ProjectWatcher;
+  /** Cancels in-flight renders, then closes every browser this server owns. */
+  shutdown(): Promise<void>;
   /** Exposed for tests: the adapter handed to the shared studio API (carries
    * the resolved `autoProxy` flag the preview routes read). */
   adapter: PreviewApiAdapter;
@@ -365,7 +407,7 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
         return match;
       },
     );
-    writeFileSync(absPath, content, "utf-8");
+    replaceFileAtomically(absPath, content, statSync(absPath).mode);
   }
 }
 
@@ -375,6 +417,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const browserGpuMode = options.browserGpuMode ?? resolveLocalBrowserGpuMode();
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
+  stampProjectHfIds(projectDir);
   const watcher = createProjectWatcher(projectDir);
 
   // ── CLI adapter for the shared studio API ──────────────────────────────
@@ -382,12 +425,50 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const project: ResolvedProject = { id: projectId, dir: projectDir, title: projectId };
   let cachedProjectSignature: string | null = null;
   watcher.addListener((changedPath) => {
-    if (affectsProjectSignature(projectDir, join(projectDir, changedPath))) {
+    if (changedPath === "." || affectsProjectSignature(projectDir, join(projectDir, changedPath))) {
       cachedProjectSignature = null;
     }
   });
+  const projectSignature = (dir: string): string => {
+    if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
+    cachedProjectSignature ??= createProjectSignature(projectDir);
+    return cachedProjectSignature;
+  };
+
+  // Opened on first use, so a server that never serves Studio's history never writes one. A failed open stays off
+  // for this run; one another process was holding is tried again on the next request, which no write waits for.
+  let ownerWaitMs: number | undefined;
+  const histories = historyCache(() =>
+    openProjectHistory({
+      projectDir,
+      historyRoot: options.historyRoot ?? DEFAULT_HISTORY_ROOT,
+      ownerWaitMs,
+    })
+      .then((history) => {
+        ownerWaitMs = undefined;
+        return history;
+      })
+      .catch((error: unknown) => {
+        console.warn(`[studio] Project history is off: ${String(error)}`);
+        if (error instanceof HistoryBusyError) ownerWaitMs = 0;
+        if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
+          histories.forget(projectDir);
+        return null;
+      }),
+  );
+  const projectHistory = () => histories.get(projectDir);
+  watcher.addListener((changedPath) => {
+    void histories.peek(projectDir)?.then((opened) => opened?.noteChange(changedPath));
+  });
+
+  const inFlightRenders = new Map<AbortController, Promise<void>>();
+  // Set synchronously by shutdown() before any await, so a render or
+  // thumbnail request already queued behind it sees the flag instead of
+  // launching a browser shutdown() has no way to know about and close.
+  let shuttingDown = false;
 
   const adapter: PreviewApiAdapter = {
+    history: () => projectHistory(),
     // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
     // otherwise honor the project's hyperframes.json media.autoProxy so every
     // createStudioServer caller (e.g. the background preview child) gets the
@@ -396,19 +477,24 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     listProjects: () => [project],
 
+    // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
+    previewDocuments: createPreviewDocumentStore(
+      projectDir,
+      createHash("sha256")
+        .update(readFileSync(fileURLToPath(import.meta.url)))
+        .digest("hex"),
+    ),
+
     resolveProject: (id: string) => (id === projectId ? project : null),
 
-    async bundle(dir: string): Promise<string | null> {
+    async bundle(dir, options): Promise<string | null> {
       try {
         const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
         // Studio dev server: ask the bundler for an empty `src=""` placeholder so
         // we can point it at our hot-reloadable local runtime endpoint. Inlining
         // ~150 KB of runtime body on every preview render would defeat browser
         // caching across composition edits.
-        let html = await bundleToSingleHtml(dir, {
-          runtime: "placeholder",
-          inlineColorGradingLuts: false,
-        });
+        let html = await bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options });
         html = html.replace(
           'data-hyperframes-preview-runtime="1" src=""',
           'data-hyperframes-preview-runtime="1" src="/api/runtime.js"',
@@ -421,8 +507,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async transformPreviewHtml({ html, project }) {
-      const { injectDeterministicFontFaces } =
-        await import("../../../producer/src/services/deterministicFonts.js");
+      const { injectDeterministicFontFaces } = await import("@hyperframes/core/fonts/embed");
       const { prepareAnimatedGifInputs } =
         await import("../../../producer/src/services/animatedGifPrep.js");
       const { downloadToTemp, writeUrlDownloadTelemetry } =
@@ -444,27 +529,39 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return injectDeterministicFontFaces(prepared.html);
     },
 
-    getProjectSignature(dir: string): string {
-      if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
-      cachedProjectSignature ??= createProjectSignature(projectDir);
-      return cachedProjectSignature;
+    getProjectSignature: projectSignature,
+    invalidateProjectSignature: (dir: string) => {
+      if (resolve(dir) === resolve(projectDir)) cachedProjectSignature = null;
     },
 
-    async lint(html: string, opts?: { filePath?: string }) {
+    async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
-      return await lintHyperframeHtml(html, opts);
+      return await lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
 
-    async lintProject(dir: string) {
-      const { lintProject } = await import("@hyperframes/lint");
-      return await lintProject(dir);
-    },
+    // Out of process: linting a large composition is seconds of synchronous parsing, and on
+    // this event loop it stalls every other Studio request, the preview included.
+    lintProject: (dir: string) =>
+      runRenderSetupWorker<ProjectLintResult>(
+        "lint",
+        { projectDir: dir, host: "studio" },
+        { maxBufferBytes: 8 * 1024 * 1024 },
+      ),
 
     runtimeUrl: "/api/runtime.js",
 
     rendersDir: () => join(projectDir, "renders"),
 
     startRender(opts): RenderJobState {
+      if (shuttingDown) {
+        return {
+          id: opts.jobId,
+          status: "failed",
+          progress: 0,
+          outputPath: opts.outputPath,
+          error: "Studio server is shutting down",
+        };
+      }
       // The render POST is a request boundary like any other. Without this an
       // already-open Studio tab keeps rendering under the posture cached when
       // the server booted.
@@ -480,7 +577,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
       // Run render asynchronously, mutating the state object
       const startTime = Date.now();
-      (async () => {
+      const run = (async () => {
         let renderJob: RenderJob | undefined;
         const removeCancelledOutput = () => {
           // User-initiated cancel: not a failure. Remove any output so the
@@ -499,15 +596,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         };
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
-          const { ensureBrowser } = await import("../browser/manager.js");
-
-          try {
-            const browser = await ensureBrowser({ preferManagedChrome: true });
-            if (browser.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-              process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
-            }
-          } catch {
-            // Continue without — acquireBrowser will try its own resolution
+          const browser = await resolveRenderBrowser(abortController.signal);
+          if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+            process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
           const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
@@ -541,12 +632,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             removeCancelledOutput();
             return;
           }
+          if (job.audioLoweredDb !== undefined) state.audioLoweredDb = job.audioLoweredDb;
           state.status = "complete";
           state.progress = 100;
           const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
           writeFileSync(
             metaPath,
-            JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+            JSON.stringify({
+              status: "complete",
+              durationMs: Date.now() - startTime,
+              ...(job.audioLoweredDb !== undefined ? { audioLoweredDb: job.audioLoweredDb } : {}),
+            }),
           );
           // Refreshed HERE, not just at render start: a render can run for
           // minutes, and `hyperframes telemetry disable` during one must be
@@ -573,6 +669,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           }
         }
       })();
+      inFlightRenders.set(abortController, run);
+      const forget = () => void inFlightRenders.delete(abortController);
+      run.then(forget, forget);
 
       return state;
     },
@@ -588,78 +687,81 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const session = await getThumbnailBrowser(browserGpuMode);
+      const session = await getThumbnailBrowser(browserGpuMode, () => shuttingDown);
       if (!session) {
-        console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
+        if (!shuttingDown) {
+          console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
+        }
         return null;
       }
       const sourcePath = join(opts.project.dir, opts.compPath);
-      if (existsSync(sourcePath)) {
-        assertWebGpuRequirement(
-          readFileSync(sourcePath, "utf-8"),
-          session.requestedGpuMode,
-          session.resolvedGpuMode,
-        );
-      }
-      let page: import("puppeteer-core").Page | null = null;
-      const closePage = () => void page?.close().catch(() => {});
-      opts.signal.addEventListener("abort", closePage, { once: true });
+      // The shared browser launches once, before any composition is known,
+      // so it can't gain a WebGPU flag it didn't start with. Checked live
+      // below, against this page, after navigation — see assertWebGpuAdapterAvailable.
+      const requiresWebGpu = existsSync(sourcePath)
+        ? compositionRequiresWebGpu(readFileSync(sourcePath, "utf-8"))
+        : false;
+      if (opts.signal.aborted) return null;
+      const width = opts.width || 1920;
+      const height = opts.height || 1080;
+      const viewport = { width, height, deviceScaleFactor: thumbnailDeviceScaleFactor(opts) };
       try {
-        page = await session.browser.newPage();
-        if (opts.signal.aborted) return null;
-        const width = opts.width || 1920;
-        const height = opts.height || 1080;
-        await page.setViewport({
-          width,
-          height,
-          deviceScaleFactor: thumbnailDeviceScaleFactor(opts),
-        });
-        await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-        await page
-          .waitForFunction(
-            () => {
-              const w = window as Window & {
-                __timelines?: Record<string, unknown>;
-              };
-              return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
-            },
-            { timeout: 5000 },
-          )
-          .catch(() => {});
-        await seekCompositionTimeline(page, opts.seekTime, {
-          fallbackToBridgeAndTimelines: true,
-          waitForPreferredSeekTargetMs: 500,
-          animationFrameSettle: "double",
-          waitForFontsMs: 500,
-        });
-        const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
-        await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
-        await page.evaluate(() => {
-          void document.fonts?.ready;
-          const body = document.body;
-          if (body && getComputedStyle(body).backgroundColor === "rgba(0, 0, 0, 0)") {
-            body.style.backgroundColor = "#1c2028";
-          }
-        });
-        await new Promise((r) => setTimeout(r, 200));
-        await reapplyStudioManualEditsToThumbnailPage(page);
-        let clip: ScreenshotClip | undefined;
-        if (opts.selector) {
-          clip = await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex);
-        }
-        const screenshot = (await page.screenshot(
-          opts.format === "png"
-            ? {
-                type: "png",
-                ...(clip ? { clip } : {}),
+        return await thumbnailPages.withPage(
+          session.browser,
+          opts.previewUrl,
+          projectSignature(opts.project.dir),
+          opts.seekTime,
+          async (page) => {
+            await page.setViewport(viewport);
+            await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+            await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+            await page
+              .waitForFunction(
+                () => {
+                  const w = window as Window & {
+                    __timelines?: Record<string, unknown>;
+                  };
+                  return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
+                },
+                { timeout: 5000 },
+              )
+              .catch(() => {});
+          },
+          async (page) => {
+            if (opts.signal.aborted) return null;
+            await page.setViewport(viewport);
+            await seekCompositionTimeline(page, opts.seekTime, {
+              fallbackToBridgeAndTimelines: true,
+              waitForPreferredSeekTargetMs: 500,
+              animationFrameSettle: "double",
+              waitForFontsMs: 500,
+            });
+            const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
+            await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
+            await page.evaluate(() => {
+              void document.fonts?.ready;
+              const body = document.body;
+              if (body && getComputedStyle(body).backgroundColor === "rgba(0, 0, 0, 0)") {
+                body.style.backgroundColor = "#1c2028";
               }
-            : {
-                type: "jpeg",
-                quality: 80,
-                ...(clip ? { clip } : {}),
-              },
-        )) as Buffer;
-        return screenshot;
+            });
+            await new Promise((r) => setTimeout(r, 200));
+            await reapplyStudioManualEditsToThumbnailPage(page);
+            if (opts.signal.aborted) return null;
+            try {
+              const clip: ScreenshotClip | undefined = opts.selector
+                ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex)
+                : undefined;
+              return (await page.screenshot(
+                opts.format === "png"
+                  ? { type: "png", ...(clip ? { clip } : {}) }
+                  : { type: "jpeg", quality: 80, ...(clip ? { clip } : {}) },
+              )) as Buffer;
+            } finally {
+              if (opts.selector) await page.evaluate(clearElementScreenshotIsolation);
+            }
+          },
+        );
       } catch (err) {
         if (!opts.signal.aborted) {
           console.warn(
@@ -668,48 +770,50 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           );
         }
         return null;
-      } finally {
-        opts.signal.removeEventListener("abort", closePage);
-        await page?.close().catch(() => {});
       }
     },
 
     async listRegistryCatalog() {
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
-      const entries = await listRegistryItems();
+      const { loadProjectConfig } = await import("../utils/projectConfig.js");
+      // The same registry `add` installs from, so the panel lists what can be installed.
+      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
       );
-      return loadAllItems(blockAndComponentEntries);
+      return loadAllItems(blockAndComponentEntries, registry);
     },
 
     async installRegistryBlock(opts) {
-      const { resolveItemWithDependencies } = await import("../registry/resolver.js");
-      const { installItem } = await import("../registry/installer.js");
-      const { gateRegistryItemsCompatibility } = await import("../registry/compatibility.js");
-      // Resolve transitive registryDependencies and install them first so a
-      // block that depends on other registry items installs completely.
-      const items = await resolveItemWithDependencies(opts.blockName);
-      // Compatibility-gate the whole set before writing anything (same gate as
-      // `hyperframes add`), so an incompatible block or dep aborts cleanly.
-      const warnings = gateRegistryItemsCompatibility(items);
-      for (const warning of warnings) {
+      const { addToProject, primaryInstalledTarget } = await import("../commands/add.js");
+      const { recordRewrittenInstall } = await import("../registry/installer.js");
+      const { registryTargetPath } = await import("../registry/publication.js");
+      const { result, item } = await addToProject({
+        name: opts.blockName,
+        projectDir: opts.project.dir,
+        skipClipboard: true,
+        source: "studio",
+      });
+      for (const warning of result.warnings) {
         process.stderr.write(`hyperframes:registry ${warning}\n`);
       }
-      const written: string[] = [];
-      for (const dep of items) {
-        const result = await installItem(dep, { destDir: opts.project.dir });
-        written.push(...result.written);
-      }
-      const item = items[items.length - 1]!;
+      const written = result.written;
 
       rewriteWrittenToHostViewport(opts.project.dir, written);
+      recordRewrittenInstall(opts.project.dir, written);
 
-      const relativePaths = written.map((abs) => {
-        const rel = abs.startsWith(opts.project.dir) ? abs.slice(opts.project.dir.length + 1) : abs;
-        return rel;
-      });
-      return { written: relativePaths, block: item };
+      // The item's own file first, as add recorded it, since Studio mounts the first .html it gets.
+      const root = realpath(opts.project.dir);
+      const primary = primaryInstalledTarget(item);
+      const primaryPath = registryTargetPath(root, primary);
+      const others = written
+        .filter((abs) => abs !== primaryPath)
+        .map((abs) => relative(root, abs).split(sep).join("/"));
+      return {
+        written: written.includes(primaryPath) ? [primary, ...others] : others,
+        block: item,
+      };
     },
   };
 
@@ -791,9 +895,30 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // `version` ships even when no receipt matches: it is the client's only
         // identity for an unlabelled change, and without it every duplicate
         // delivery of one watcher event drains and reloads again.
-        const receipt = version ? identifyFileWrite(absPath, version) : null;
+        const receipt = identifyFileWrite(absPath, version ?? DELETED_VERSION);
+        const reloads = affectsPreview(projectDir, path);
+        // `projectId` so a stale tab — one still pointed at a project this
+        // server no longer serves, because `hyperframes preview` reused this
+        // port for a different folder (see ProjectUnreachableBanner's doc
+        // comment) — can tell "my project changed" from "some OTHER project,
+        // now served on this same connection, changed". Every subscriber on
+        // this port shares one `/api/events` stream regardless of which
+        // project their tab was opened for; without this field a stale tab
+        // reloads its preview and re-reads its composition on every save the
+        // CURRENT project makes, 404ing each time.
         stream
-          .writeSSE({ event: "file-change", data: JSON.stringify({ path, version, ...receipt }) })
+          .writeSSE({
+            event: "file-change",
+            data: JSON.stringify({
+              path,
+              version,
+              projectId: project.id,
+              affectsPreview: reloads,
+              // Which thumbnails this write can change; null means all of them.
+              affectedCompositions: reloads ? compositionsAffectedBy(projectDir, path) : [],
+              ...receipt,
+            }),
+          })
           .catch(() => {});
       };
       // Re-applied here because the watcher now also emits the signature
@@ -849,6 +974,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     });
   });
 
+  mountDesktopRoutes(app, projectDir);
+
   // ── Pre-flight checks for render ────────────────────────────────────────
   // Intercept render requests before they reach the shared API so we can
   // fail fast with an actionable hint instead of burning through the entire
@@ -885,6 +1012,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Studio SPA static files
   const serveStudioStaticFile = (cacheControl: string) => (c: Context) => {
     const filePath = resolve(studioDir, c.req.path.slice(1));
+    // Percent escapes can decode into separators and dot segments before this
+    // resolve, so a hostile request can name files above the bundle
+    // directory. Containment stays lexical on purpose: bundle assets may sit
+    // behind symlinked directories (same tradeoff as the preview asset
+    // route), but dot segments must never collapse outside the bundle root.
+    if (!isWithinProjectRoot(studioDir, filePath)) return c.text("not found", 404);
     const content = readBundleFile(filePath);
     if (content === null) return c.text("not found", 404);
     return new Response(content, {
@@ -995,5 +1128,27 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return c.html(html, 200, { "Cache-Control": "no-cache" });
   });
 
-  return { app, watcher, adapter };
+  const shutdown = async (): Promise<void> => {
+    shuttingDown = true;
+    // Commits any open edit window; bounded with the renders below, so a history still opening cannot hold exit.
+    const closeHistory = histories.closeAll().catch(() => {});
+    const renders = [...inFlightRenders];
+    for (const [abortController] of renders) abortController.abort();
+    const { killTrackedProcesses, closeBrowserPool } = await import("@hyperframes/engine");
+    killTrackedProcesses();
+    // Browser close must not wait on renders: a render can outlast preview.ts's
+    // 3s watchdog, which exits without running this cleanup. closeBrowserPool
+    // (not drainBrowserPool) also refuses a still-unwinding render's acquire().
+    const closeBrowsers = Promise.allSettled([
+      closeThumbnailBrowser().catch(() => {}),
+      closeBrowserPool().catch(() => {}),
+    ]);
+    await Promise.race([
+      Promise.allSettled([...renders.map(([, done]) => done), closeHistory]),
+      new Promise<void>((resolve) => setTimeout(resolve, RENDER_SHUTDOWN_WAIT_MS).unref()),
+    ]);
+    await closeBrowsers;
+  };
+
+  return { app, watcher, adapter, shutdown };
 }

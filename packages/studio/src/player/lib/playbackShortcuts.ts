@@ -6,7 +6,7 @@
  * is active and the user is navigating caption segments).
  */
 
-import { isTypingTarget } from "../../utils/typingTarget";
+import { ownsPlainKeys } from "../../utils/typingTarget";
 
 const PLAYBACK_FRAME_STEP_CODES = new Set(["ArrowLeft", "ArrowRight"]);
 
@@ -15,19 +15,17 @@ const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
   "a[href]",
   "[role='button']",
   "[role='checkbox']",
-  "[role='combobox']",
   "[role='menuitem']",
+  // Base UI's menu radio item is a `<div>`, so `button` above no longer catches it.
+  "[role='menuitemradio']",
   "[role='radio']",
-  "[role='slider']",
   "[role='spinbutton']",
-  "[role='switch']",
-  "[role='textbox']",
 ].join(",");
 
 export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): boolean {
   // Anything the user is typing into owns its keys outright, editable elements
-  // included: a letter claimed here never reaches the text.
-  if (isTypingTarget(target)) return true;
+  // included: a letter claimed here never reaches the text. So does a native player.
+  if (ownsPlainKeys(target)) return true;
   if (!target || typeof target !== "object") return false;
   const candidate = target as { closest?: unknown };
   if (typeof candidate.closest !== "function") return false;
@@ -36,6 +34,23 @@ export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): 
       target,
       PLAYBACK_SHORTCUT_IGNORED_SELECTOR,
     ) !== null
+  );
+}
+
+const MODAL_DIALOG_SELECTOR = "[role=dialog][aria-modal=true]";
+
+// An open modal owns the keyboard wherever focus sits, preview iframe included. It counts only
+// when shown: visible, not inert, and not behind a fullscreen element that leaves it out.
+function isModalDialogOpen(): boolean {
+  const doc = globalThis.document;
+  if (!doc) return false;
+  const fullscreen = doc.fullscreenElement;
+  return Array.from(doc.querySelectorAll(MODAL_DIALOG_SELECTOR)).some(
+    (dialog) =>
+      (!fullscreen || fullscreen.contains(dialog)) &&
+      !dialog.closest("[inert]") &&
+      (typeof dialog.checkVisibility !== "function" ||
+        dialog.checkVisibility({ visibilityProperty: true })),
   );
 }
 
@@ -58,6 +73,7 @@ export function shouldIgnorePlaybackShortcutEvent(
 ): boolean {
   if (event.metaKey || event.ctrlKey || event.altKey) return true;
   if (shouldIgnorePlaybackShortcutTarget(event.target)) return true;
+  if (isModalDialogOpen()) return true;
   return (
     PLAYBACK_FRAME_STEP_CODES.has(event.code) &&
     captionState.isCaptionEditMode &&

@@ -92,10 +92,17 @@ export function browserTelemetryAllowed(): boolean {
   }
 }
 
+declare global {
+  interface Window {
+    __HF_CLI_TELEMETRY_DISABLED?: boolean;
+  }
+}
+
 function allowed(): boolean {
   return (
     isApiKeyConfigured() &&
     !isBuildTimeOptOut() &&
+    !(typeof window !== "undefined" && window.__HF_CLI_TELEMETRY_DISABLED === true) &&
     !isViteDevMode() &&
     !isOptedOut() &&
     !isLegacyOptedOut() &&

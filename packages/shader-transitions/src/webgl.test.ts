@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createProgram } from "./webgl.js";
 
-/** Model WebGL's rule that shader handles belong to the context that created them. */
+const FRAGMENT_SRC = "precision mediump float;void main(){gl_FragColor=vec4(1.0);}";
+
+/** Model WebGL's rule that shader handles belong to the context that created
+ * them, and that a delete actually removes the handle from that ownership set. */
 function createMockContext() {
   const shaders = new Set<WebGLShader>();
   const gl = {
@@ -23,6 +26,7 @@ function createMockContext() {
     }),
     linkProgram: vi.fn(),
     getProgramParameter: vi.fn(() => true),
+    deleteShader: vi.fn((shader: WebGLShader) => shaders.delete(shader)),
   };
   return gl;
 }
@@ -31,14 +35,24 @@ describe("createProgram", () => {
   it("uses context-owned shaders across multiple contexts and repeated calls", () => {
     const first = createMockContext();
     const second = createMockContext();
-    const fragment = "precision mediump float;void main(){gl_FragColor=vec4(1.0);}";
 
     for (const gl of [first, second, first, second]) {
       // The test double implements only the WebGL methods used to create a program.
-      expect(() => createProgram(gl as unknown as WebGLRenderingContext, fragment)).not.toThrow();
+      expect(() =>
+        createProgram(gl as unknown as WebGLRenderingContext, FRAGMENT_SRC),
+      ).not.toThrow();
     }
 
     expect(first.linkProgram).toHaveBeenCalledTimes(2);
     expect(second.linkProgram).toHaveBeenCalledTimes(2);
+  });
+
+  it("deletes both shader objects once they're linked into the program", () => {
+    const gl = createMockContext();
+
+    createProgram(gl as unknown as WebGLRenderingContext, FRAGMENT_SRC);
+
+    // Vertex shader (createProgramWithVertex) + fragment shader (linkProgram).
+    expect(gl.deleteShader).toHaveBeenCalledTimes(2);
   });
 });

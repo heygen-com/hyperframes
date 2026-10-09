@@ -1,4 +1,25 @@
 import type { TimelineElement } from "../store/playerStore";
+import { sameTimelineText } from "../lib/timelineText";
+
+const RENDERED_FIELDS: readonly (keyof TimelineElement)[] = [
+  "id",
+  "start",
+  "duration",
+  "track",
+  "sourceDuration",
+  "muted",
+  "hasAudio",
+  "volume",
+  "playbackRate",
+  "hidden",
+  "audioGroup",
+  "audioGroupVolume",
+  "audioGroupHidden",
+  "fadeIn",
+  "fadeOut",
+  "src",
+  "link",
+];
 
 /** Whether a derived timeline changes any field that affects rendering. */
 export function timelineElementsChanged(
@@ -10,11 +31,8 @@ export function timelineElementsChanged(
     const prior = previous[index];
     return (
       !prior ||
-      element.id !== prior.id ||
-      element.start !== prior.start ||
-      element.duration !== prior.duration ||
-      element.track !== prior.track ||
-      element.sourceDuration !== prior.sourceDuration
+      RENDERED_FIELDS.some((key) => element[key] !== prior[key]) ||
+      !sameTimelineText(element.text, prior.text)
     );
   });
 }

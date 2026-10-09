@@ -1,5 +1,5 @@
 /**
- * Types and type-guards for the two playback adapter paths the player supports:
+ * Types and type-guards for the playback adapter paths the player supports:
  *
  *  - `RuntimeDurationAdapter` — the HyperFrames runtime exposes `window.__player`
  *    with a `getDuration()` method. This is the standard path for compositions
@@ -31,6 +31,7 @@ export interface DirectTimelineAdapter {
 }
 
 export type PlaybackDurationAdapter =
+  | { kind: "document"; getDuration: () => number }
   | { kind: "runtime"; getDuration: () => number }
   | { kind: "direct-timeline"; timeline: DirectTimelineAdapter; getDuration: () => number };
 

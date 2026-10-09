@@ -3,6 +3,8 @@ name: hyperframes-registry
 description: Search, install, and wire registry blocks and components into HyperFrames compositions. Use BEFORE hand-building any named visual — whenever a brief, a user, or a storyboard names a look, effect, treatment, or transition such as CRT scanlines, glitch, chromatic aberration, film grain, a shimmer sweep, a chart, a code or terminal window, a map, or a confetti burst — because roughly 400 hosted items already cover many of them and the search ranks all of them with nothing installed, no project, and no account. Also use when running hyperframes add or hyperframes catalog, installing one item or every block matching a tag, wiring an installed item into index.html, or working with hyperframes.json. Covers discovery, install locations, block sub-composition wiring, component snippet merging, and authoring a new block or component to contribute upstream (idea → scaffold → validate → PR).
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Registry
 
 The registry provides reusable blocks and components installable via `hyperframes add <name>`.
@@ -67,7 +69,7 @@ Key attributes:
 - `data-start` — when the block appears in the host timeline (seconds)
 - `data-duration` — how long the block plays
 - `data-width` / `data-height` — block canvas dimensions
-- `data-track-index` — layer ordering (higher = in front)
+- `data-track-index` — Studio timeline row; display only. Use CSS `z-index` for layering
 
 See [wiring-blocks.md](./references/wiring-blocks.md) for full details.
 
@@ -117,7 +119,7 @@ The normal table and `--json` modes only list matches; install a selected name w
 When the search comes back and nothing in it does the job, say so before you hand-author the move:
 
 ```bash
-npx hyperframes feedback --search-miss "<the query you ran>" --wanted "<the move you needed>" --tier on-device
+npx hyperframes feedback --search-miss "<the query you ran>" --wanted "<the move you needed>" --tier <the tier that answered>
 ```
 
 `catalog --query` prints this line for you, pre-filled, and `--json` carries it as `report_gap` — so it is already in hand at the moment you decide nothing fits.

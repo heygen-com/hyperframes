@@ -100,6 +100,7 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
     ></hyperframes-player>
     <script>
       window.__playerReady = false;
+      window.__playerAssetsReady = false;
       window.__playerReadyAt = null;
       window.__playerNavStart = performance.timeOrigin + performance.now();
       window.__sandboxProbeResults = [];
@@ -113,6 +114,9 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
         window.__playerReady = true;
         window.__playerReadyAt = performance.timeOrigin + performance.now();
         window.__playerDuration = (event.detail && event.detail.duration) || 0;
+      });
+      player.addEventListener("assetsready", function () {
+        window.__playerAssetsReady = true;
       });
       player.addEventListener("error", function (event) {
         window.__playerError = (event.detail && event.detail.message) || "unknown";

@@ -1,0 +1,124 @@
+<!doctype html>
+<!--
+  Magnetic Cursor, standalone demo: a document editor with the toolbar docked above the
+  selection. The pointer visits Bold, then presses Link (about 1.91s), which turns the
+  selected phrase into a link.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Magnetic Cursor, Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .page {
+        position: absolute;
+        inset: 96px;
+        padding: 80px 96px;
+        border-radius: 20px;
+        background: #ffffff;
+        box-shadow:
+          0 0 0 1px rgba(20, 26, 45, 0.05),
+          0 2px 4px rgba(20, 26, 45, 0.04),
+          0 24px 60px rgba(20, 26, 45, 0.08);
+        color: #1f2330;
+      }
+      .page h1 {
+        margin: 0 0 36px;
+        font-size: 72px;
+        letter-spacing: -0.02em;
+      }
+      .page p {
+        margin: 0 0 36px;
+        font-size: 48px;
+        line-height: 1.5;
+        color: #3b4152;
+      }
+      .sel {
+        position: relative;
+        border-radius: 4px;
+        background: rgba(59, 130, 246, 0.2);
+      }
+      .sel-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 2px;
+        height: 3px;
+        border-radius: 2px;
+        background: #3b82f6;
+        transform: scaleX(0);
+        transform-origin: 0 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="magnetic-cursor-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.6"
+    >
+      <div class="page clip" id="page" data-start="0" data-duration="3.6" data-track-index="0">
+        <h1>Launch notes, week 38</h1>
+        <p>
+          The new onboarding flow ships to everyone on Thursday, and the old setup wizard stays
+          behind a flag for one more week. Before your first support shift, please read the
+          <span class="sel" id="sel"
+            >rollout checklist<span class="sel-line" id="sel-line"></span
+          ></span>
+          and flag anything that still reads unclear.
+        </p>
+        <p>Open questions go in the team thread, not in comments here.</p>
+      </div>
+
+      <div
+        class="clip"
+        id="magnetic-cursor"
+        data-composition-id="magnetic-cursor"
+        data-composition-src="./magnetic-cursor.html"
+        data-variable-values='{"tone":"light","accent":"#3b82f6","visits":"0,3","press":2}'
+        data-start="0"
+        data-duration="3.6"
+        data-track-index="1"
+        data-width="1440"
+        data-height="749"
+        style="position: absolute; left: 545px; top: 0; width: 1440px; height: 749px"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      tl.to(
+        "#sel",
+        { color: "#2563eb", backgroundColor: "rgba(59,130,246,0.1)", duration: 0.2 },
+        1.93,
+      );
+      tl.to("#sel-line", { scaleX: 1, duration: 0.3, ease: "power3.out" }, 1.95);
+      window.__timelines["magnetic-cursor-demo"] = tl;
+    </script>
+  </body>
+</html>

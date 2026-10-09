@@ -1,28 +1,18 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
+import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
-import { buildMotionPathGeometry, type MotionPathGeometry } from "./motionPathGeometry";
+import {
+  buildMotionPathGeometry,
+  type MotionPathGeometry,
+  type MotionPathHome,
+} from "./motionPathGeometry";
+import { elementHome } from "./motionPathHome";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 type Rect = { left: number; top: number; width: number; height: number };
-
-// The translate (e/f) components of an element's computed transform, in comp px.
-// A group wrapper dragged via GSAP carries its offset here, not in offsetLeft/Top.
-function transformTranslate(el: HTMLElement): { x: number; y: number } {
-  const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
-  if (!t || t === "none") return { x: 0, y: 0 };
-  const m3 = t.match(/matrix3d\(([^)]+)\)/);
-  if (m3) {
-    const v = m3[1].split(",").map(Number);
-    return { x: v[12] || 0, y: v[13] || 0 };
-  }
-  const m = t.match(/matrix\(([^)]+)\)/);
-  if (m) {
-    const v = m[1].split(",").map(Number);
-    return { x: v[4] || 0, y: v[5] || 0 };
-  }
-  return { x: 0, y: 0 };
-}
 
 // Perspective foreshortening of the element's OWN transform (matrix3d m44). A
 // depth element (translateZ toward the viewer) renders 1/m44× larger, so its
@@ -36,43 +26,6 @@ export function transformWDivisor(el: HTMLElement): number {
   const v = t.slice("matrix3d(".length, -1).split(",");
   const w = Number.parseFloat(v[15] ?? "");
   return Number.isFinite(w) && w > 0 ? w : 1;
-}
-
-export function elementHome(el: HTMLElement): { x: number; y: number } {
-  let left = 0;
-  let top = 0;
-  let node: HTMLElement | null = el;
-  while (node) {
-    left += node.offsetLeft;
-    top += node.offsetTop;
-    // Ancestor transforms (e.g. a group wrapper moved via GSAP) shift where the
-    // element actually renders, so the path must anchor on top of them. The element's
-    // OWN transform is excluded — that's the animated offset the path itself draws.
-    if (node !== el) {
-      const t = transformTranslate(node);
-      left += t.x;
-      top += t.y;
-    }
-    const parent = node.offsetParent as HTMLElement | null;
-    if (!parent || parent.hasAttribute("data-composition-id")) break;
-    node = parent;
-  }
-  let x = left + el.offsetWidth / 2;
-  let y = top + el.offsetHeight / 2;
-  if ((el.style.translate ?? "").includes("var(")) {
-    x += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-x")) || 0;
-    y += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
-  }
-  return { x, y };
-}
-
-export function isPreviewHtmlElement(
-  node: Element | null | undefined,
-  iframe: HTMLIFrameElement | null,
-): node is HTMLElement {
-  const Ctor = (iframe?.contentWindow as unknown as { HTMLElement?: typeof HTMLElement } | null)
-    ?.HTMLElement;
-  return Boolean(node && Ctor && node instanceof Ctor);
 }
 
 function rectsClose(a: Rect, b: Rect): boolean {
@@ -102,7 +55,7 @@ export function useMotionPathData(
   geometry: MotionPathGeometry | null;
   geometryResolved: boolean;
   visibleInPreview: boolean;
-  home: { x: number; y: number } | null;
+  home: MotionPathHome | null;
   pScale: number;
 } {
   const [rect, setRect] = useState<Rect | null>(null);
@@ -110,10 +63,12 @@ export function useMotionPathData(
   const resolvedForRef = useRef<string | null>(null);
   const geometryResolved = resolvedForRef.current === selector;
   const [visibleInPreview, setVisibleInPreview] = useState(true);
-  const [home, setHome] = useState<{ x: number; y: number } | null>(null);
+  const [home, setHome] = useState<MotionPathHome | null>(null);
   // Perspective magnification (1/m44) of the selected element — applied to the
   // path's offset points so depth (translateZ) elements' paths track on screen.
   const [pScale, setPScale] = useState(1);
+  const armed = usePlayerStore((s) => s.motionPathArmed);
+  const drawn = geometry !== null || armed;
 
   useEffect(() => {
     if (!selector) {
@@ -122,6 +77,7 @@ export function useMotionPathData(
       return;
     }
     setHome(null);
+    if (!drawn) return;
     const tick = () => {
       const el = iframeRef.current;
       if (el) {
@@ -141,13 +97,21 @@ export function useMotionPathData(
         } catch {
           /* cross-origin guard */
         }
-        const live = isPreviewHtmlElement(target, el) ? target : null;
+        const live = isHtmlElement(target) ? target : null;
         const vis = live ? isElementVisibleForOverlay(live) : true;
         setVisibleInPreview((prev) => (prev === vis ? prev : vis));
         if (live) {
           const h = elementHome(live);
           setHome((prev) =>
-            prev && Math.abs(prev.x - h.x) < 0.5 && Math.abs(prev.y - h.y) < 0.5 ? prev : h,
+            prev &&
+            Math.abs(prev.x - h.x) < 0.5 &&
+            Math.abs(prev.y - h.y) < 0.5 &&
+            prev.w === h.w &&
+            prev.h === h.h &&
+            prev.ax === h.ax &&
+            prev.ay === h.ay
+              ? prev
+              : h,
           );
           const ps = 1 / transformWDivisor(live);
           setPScale((p) => (Math.abs(p - ps) < 0.001 ? p : ps));
@@ -155,7 +119,7 @@ export function useMotionPathData(
       }
     };
     return subscribeOverlayFrame(tick);
-  }, [selector, iframeRef]);
+  }, [selector, iframeRef, drawn]);
 
   useEffect(() => {
     if (!selector) {
@@ -165,9 +129,13 @@ export function useMotionPathData(
     const recompute = () => {
       // Position-only: never let a co-located size/scale tween shadow the path.
       const read = readRuntimeKeyframes(iframeRef.current, selector, undefined, ["x", "y"]);
-      const next = buildMotionPathGeometry(read);
+      const base = read ? readGsapPositionFromIframe(iframeRef.current, selector) : null;
+      const next = buildMotionPathGeometry(read, base ?? undefined);
       setGeometry((prev) =>
-        prev?.points === next?.points && prev?.kind === next?.kind ? prev : next,
+        prev?.kind === next?.kind &&
+        JSON.stringify([prev?.nodes, prev?.start]) === JSON.stringify([next?.nodes, next?.start])
+          ? prev
+          : next,
       );
       resolvedForRef.current = selector;
     };

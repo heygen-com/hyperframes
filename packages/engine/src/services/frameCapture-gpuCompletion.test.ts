@@ -33,7 +33,9 @@ describe("WebGPU frame completion", () => {
 
   it("runs the completion wait after video injection and before screenshot capture", () => {
     const source = readFileSync(new URL("./frameCapture.ts", import.meta.url), "utf8");
-    const injection = source.indexOf("await session.onBeforeCapture(page, quantizedTime)");
+    const injection = source.indexOf(
+      "await session.onBeforeCapture(page, quantizedTime, heldVideoTime)",
+    );
     const completion = source.indexOf("await waitForPendingSeekCompletion(page)");
     const screenshot = source.indexOf("async function captureFrameCore");
     expect(injection).toBeGreaterThan(-1);

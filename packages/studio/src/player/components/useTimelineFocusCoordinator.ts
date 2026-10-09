@@ -11,6 +11,7 @@ import {
   type TimelineLogicalTarget,
 } from "./timelineKeyboardNavigation";
 import { computeRevealScroll } from "./timelineRevealScroll";
+import { recordRetryAttempt, type RetryBudgetState } from "../../utils/retryBudget";
 
 interface TimelineFocusCoordinatorInput {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -24,6 +25,7 @@ interface TimelineFocusCoordinatorInput {
   projectId: string | null;
   sessionEpoch: number;
   syncScrollViewport: (element: HTMLDivElement) => void;
+  lastScrollLeftRef: RefObject<number>;
 }
 
 export interface TimelineFocusCoordinatorState {
@@ -77,6 +79,7 @@ function scrollToTarget(
   pixelsPerSecond: number,
   contentOrigin: number,
   allowHorizontal: boolean,
+  lastScrollLeftRef: RefObject<number>,
 ): boolean {
   const rowIndex = rowGeometry.getRowIndex(resolution.row.physicalTrackKey);
   if (rowIndex < 0) return false;
@@ -103,10 +106,25 @@ function scrollToTarget(
     stickyTop: RULER_H,
     allowHorizontal: allowHorizontal && left !== null,
   });
-  if (target.left !== null) container.scrollLeft = target.left;
+  if (target.left !== null) {
+    container.scrollLeft = target.left;
+    // Keep the geometry effect's "restore scroll after an edit re-derives the
+    // elements" in sync, or it reads the pre-reveal position on the next tick
+    // and scrolls the freshly-revealed clip back out of view.
+    lastScrollLeftRef.current = target.left;
+  }
   if (target.top !== null) container.scrollTop = target.top;
   return target.left !== null || target.top !== null;
 }
+
+// A request racing a fresh element's own creation (drop/paste) resolves within
+// a render or two; past this many misses on the same nonce it truly never will.
+const MAX_UNRESOLVED_FOCUS_RETRIES = 5;
+
+// Backstop for a request whose target never appears and nothing else ever
+// re-renders: the retry budget above can't advance without a rerun, so this
+// bounds it by wall time instead, independent of re-renders.
+const UNRESOLVED_FOCUS_TIMEOUT_MS = 4000;
 
 /** Model-first focus actor; mounting is a consequence of its returned pins. */
 // Resolution, fallback, reveal, and focus form one ordered state machine.
@@ -123,11 +141,13 @@ export function useTimelineFocusCoordinator({
   projectId,
   sessionEpoch,
   syncScrollViewport,
+  lastScrollLeftRef,
 }: TimelineFocusCoordinatorInput): TimelineFocusCoordinatorState {
   const request = usePlayerStore((state) => state.timelineFocus);
   const previousRowsRef = useRef(logicalRows);
   const resolvedRef = useRef<{ nonce: number; id: string } | null>(null);
   const appliedRef = useRef<{ nonce: number; id: string } | null>(null);
+  const unresolvedFocusAttemptsRef = useRef<RetryBudgetState<number>>({ id: -1, count: 0 });
   const resolution = useMemo<ResolvedFocus | null>(() => {
     if (isCurrentRequest(request, projectId, sessionEpoch)) {
       if (resolvedRef.current?.nonce !== request.nonce) {
@@ -163,8 +183,26 @@ export function useTimelineFocusCoordinator({
   useEffect(() => {
     if (!isCurrentRequest(request, projectId, sessionEpoch)) return;
     if (!resolution) {
-      usePlayerStore.getState().clearTimelineFocus(request.nonce);
-      return;
+      // A request issued the same tick as its element (a fresh drop/paste) can
+      // outrun logicalRows by a render or two; only give up once it clearly
+      // never resolves, so the reveal isn't lost to that ordinary race.
+      const withinBudget = recordRetryAttempt(
+        unresolvedFocusAttemptsRef,
+        request.nonce,
+        MAX_UNRESOLVED_FOCUS_RETRIES,
+      );
+      if (!withinBudget) {
+        usePlayerStore.getState().clearTimelineFocus(request.nonce);
+        return;
+      }
+      const nonce = request.nonce;
+      const timeout = setTimeout(() => {
+        usePlayerStore.getState().clearTimelineFocus(nonce);
+      }, UNRESOLVED_FOCUS_TIMEOUT_MS);
+      return () => clearTimeout(timeout);
+    }
+    if (unresolvedFocusAttemptsRef.current.count !== 0) {
+      unresolvedFocusAttemptsRef.current = { id: -1, count: 0 };
     }
     if (resolution.target.id !== request.id) {
       usePlayerStore.getState().requestTimelineFocus(resolution.target.id);
@@ -187,6 +225,7 @@ export function useTimelineFocusCoordinator({
         pixelsPerSecond,
         contentOrigin,
         allowHorizontal,
+        lastScrollLeftRef,
       )
     ) {
       syncScrollViewport(container);
@@ -197,6 +236,7 @@ export function useTimelineFocusCoordinator({
     allowHorizontal,
     contentOrigin,
     elements,
+    lastScrollLeftRef,
     pixelsPerSecond,
     projectId,
     request,

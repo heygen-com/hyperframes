@@ -13,49 +13,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseGsapScript } from "@hyperframes/core/gsap-parser";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { buildStableSelector, getSelectorIndex } from "../components/editor/domEditingDom";
+import { mountGroupSiblings, stableSelectionFor } from "./domSelectionTestHarness";
 import { resolveSelectorElementIds } from "./gsapShared";
 import { ensureElementAddressable } from "./gsapScriptCommitHelpers";
 import {
   commitStaticGsapPosition,
   commitStaticGsapRotation,
   commitStaticGsapSize,
-  commitKeyframedSizeFromResize,
   commitWholePathOffset,
   findExistingPositionWrite,
 } from "./gsapDragCommit";
 import { promoteSetToKeyframes } from "./useEnableKeyframes";
+import { commitValueAtPlayhead } from "./gsapValueAtPlayhead";
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
-
-function selectionFor(el: HTMLElement): DomEditSelection {
-  const selector = buildStableSelector(el);
-  return {
-    element: el,
-    id: el.id || undefined,
-    hfId: el.getAttribute("data-hf-id") || undefined,
-    selector,
-    selectorIndex: getSelectorIndex(document, el, selector, "index.html", null),
-    sourceFile: "index.html",
-    dataAttributes: { start: "0", duration: "2" },
-  } as unknown as DomEditSelection;
-}
-
-/** Five class-only siblings, each with an id so attribution is nameable. */
-function mountGroupSiblings(): HTMLElement[] {
-  document.body.innerHTML = `
-    <div id="scene" class="clip" data-start="0" data-duration="2">
-      <div class="group" id="group-0"></div>
-      <div class="group" id="group-1"></div>
-      <div class="group" id="group-2"></div>
-      <div class="group" id="group-3"></div>
-      <div class="group" id="group-4"></div>
-    </div>
-  `;
-  return Array.from(document.querySelectorAll<HTMLElement>(".group"));
-}
 
 /**
  * The selection production hands these writers: the element HAS an id in the
@@ -63,7 +36,7 @@ function mountGroupSiblings(): HTMLElement[] {
  * which is the id-less shape buildStableSelector answers with a bare class.
  */
 function classOnlySelection(el: HTMLElement): DomEditSelection {
-  return { ...selectionFor(el), id: undefined, selector: ".group" } as DomEditSelection;
+  return { ...stableSelectionFor(el), id: undefined, selector: ".group" } as DomEditSelection;
 }
 
 /** The elements a written targetSelector actually attributes the tween to. */
@@ -94,12 +67,15 @@ describe("ensureElementAddressable — add-animation button", () => {
       </div>
     `;
     const el = document.querySelectorAll<HTMLElement>(".group")[1]!;
-    const selection = selectionFor(el);
+    const selection = stableSelectionFor(el);
     expect(selection.selector).toBe(".group");
 
     const { selector, autoId } = ensureElementAddressable(selection);
 
     expect(autoId).toBeTruthy();
+    expect(el.hasAttribute("id")).toBe(false);
+    // addGsapAnimation sets the id the server confirms; the proposal is free in the preview.
+    el.setAttribute("id", autoId!);
     expect(document.querySelectorAll(selector)).toHaveLength(1);
     expect(document.querySelector(selector)).toBe(el);
     expect(attributedTo(selector)).toEqual([autoId]);
@@ -109,20 +85,20 @@ describe("ensureElementAddressable — add-animation button", () => {
     document.body.innerHTML = `<div id="box" class="card"></div>`;
     const el = document.querySelector<HTMLElement>("#box")!;
 
-    expect(ensureElementAddressable(selectionFor(el)).selector).toBe("#box");
+    expect(ensureElementAddressable(stableSelectionFor(el)).selector).toBe("#box");
   });
 
   it("keeps an already-unique class selector as authored", () => {
     document.body.innerHTML = `<div id="scene"><div class="header"></div></div>`;
     const el = document.querySelector<HTMLElement>(".header")!;
 
-    expect(ensureElementAddressable(selectionFor(el)).selector).toBe(".header");
+    expect(ensureElementAddressable(stableSelectionFor(el)).selector).toBe(".header");
   });
 
   it("still mints an id when there is no live element to disambiguate against", () => {
     document.body.innerHTML = `<div id="scene"><div></div></div>`;
     const el = document.querySelector<HTMLElement>("#scene > div")!;
-    const selection = { ...selectionFor(el), selector: undefined } as DomEditSelection;
+    const selection = { ...stableSelectionFor(el), selector: undefined } as DomEditSelection;
 
     const { selector, autoId } = ensureElementAddressable(selection);
 
@@ -131,25 +107,28 @@ describe("ensureElementAddressable — add-animation button", () => {
   });
 });
 
+/** Moves the middle of five class-only siblings with no position yet; returns the selector written. */
+async function positionMiddleSibling(): Promise<string> {
+  const groups = mountGroupSiblings(5, true);
+  const { mutations, callbacks } = recorder();
+  await commitStaticGsapPosition(
+    classOnlySelection(groups[2]!),
+    { x: 10, y: 10 },
+    { x: 0, y: 0 },
+    ".group",
+    null,
+    callbacks,
+  );
+  return writtenTargets(mutations)[0]!;
+}
+
 describe("gsapDragCommit — new-tween targets", () => {
   it("commitStaticGsapPosition authors the new set against one element", async () => {
-    const groups = mountGroupSiblings();
-    const { mutations, callbacks } = recorder();
-
-    await commitStaticGsapPosition(
-      classOnlySelection(groups[2]!),
-      { x: 10, y: 10 },
-      { x: 0, y: 0 },
-      ".group",
-      null,
-      callbacks,
-    );
-
-    expect(attributedTo(writtenTargets(mutations)[0]!)).toEqual(["group-2"]);
+    expect(attributedTo(await positionMiddleSibling())).toEqual(["group-2"]);
   });
 
   it("commitStaticGsapRotation authors the new set against one element", async () => {
-    const groups = mountGroupSiblings();
+    const groups = mountGroupSiblings(5, true);
     const { mutations, callbacks } = recorder();
 
     await commitStaticGsapRotation(classOnlySelection(groups[1]!), 42, ".group", null, callbacks);
@@ -158,7 +137,7 @@ describe("gsapDragCommit — new-tween targets", () => {
   });
 
   it("commitStaticGsapSize authors the new set against one element", async () => {
-    const groups = mountGroupSiblings();
+    const groups = mountGroupSiblings(5, true);
     const { mutations, callbacks } = recorder();
 
     await commitStaticGsapSize(
@@ -172,34 +151,34 @@ describe("gsapDragCommit — new-tween targets", () => {
     expect(attributedTo(writtenTargets(mutations)[0]!)).toEqual(["group-4"]);
   });
 
-  it("commitKeyframedSizeFromResize authors the new keyframe tween against one element", async () => {
-    const groups = mountGroupSiblings();
+  it("a keyframe edit refuses a tween its siblings share instead of moving them all", async () => {
+    const groups = mountGroupSiblings(5, true);
     const { mutations, callbacks } = recorder();
-    const animatedTween = {
+    const sharedTween = {
       id: "t1",
       targetSelector: ".group",
       method: "to",
-      properties: {},
+      properties: { width: 120 },
       resolvedStart: 0,
       duration: 2,
-      keyframes: { keyframes: [{ percentage: 0, properties: { x: 0 } }] },
+      ease: "none",
     } as unknown as GsapAnimation;
 
-    const handled = await commitKeyframedSizeFromResize(
+    const outcome = await commitValueAtPlayhead(
       classOnlySelection(groups[3]!),
-      { width: 80, height: 40 },
-      ".group",
+      sharedTween,
+      { width: 80 },
       null,
-      animatedTween,
       callbacks,
+      { label: "Resize" },
     );
 
-    expect(handled).toBe(true);
-    expect(attributedTo(writtenTargets(mutations)[0]!)).toEqual(["group-3"]);
+    expect(outcome).toMatchObject({ status: "blocked", detail: "shared-tween" });
+    expect(mutations).toEqual([]);
   });
 
   it("commitStaticGsapPosition replaces a corrupt keyframed hold against one element", async () => {
-    const groups = mountGroupSiblings();
+    const groups = mountGroupSiblings(5, true);
     const { mutations, callbacks } = recorder();
     const corruptHold = {
       id: "hold-1",
@@ -225,7 +204,7 @@ describe("gsapDragCommit — new-tween targets", () => {
 
 describe("gsapDragCommit — retargeting an existing tween is left alone", () => {
   it("commitWholePathOffset keeps the tween's own group target", async () => {
-    const groups = mountGroupSiblings();
+    const groups = mountGroupSiblings(5, true);
     const { mutations, callbacks } = recorder();
     const groupTween = {
       id: "t-group",
@@ -261,7 +240,7 @@ describe("gsapDragCommit — retargeting an existing tween is left alone", () =>
  */
 describe("a re-nudge updates its own previous write instead of stacking a second one", () => {
   it("finds the write the first nudge authored", async () => {
-    const groups = mountGroupSiblings();
+    const groups = mountGroupSiblings(5, true);
     const selection = classOnlySelection(groups[2]!);
     const first = recorder();
 
@@ -309,7 +288,7 @@ gsap.set(${JSON.stringify(written)}, { x: 10, y: 10 });
  */
 describe("useEnableKeyframes — rewriting an existing tween keeps its group target", () => {
   it("promoteSetToKeyframes leaves a group-authored set aimed at the group", async () => {
-    const groups = mountGroupSiblings();
+    const groups = mountGroupSiblings(5, true);
     const mutations: Array<Record<string, unknown>> = [];
     const setAnim = {
       id: "set-group",
@@ -339,18 +318,7 @@ describe("useEnableKeyframes — rewriting an existing tween keeps its group tar
 
 describe("the written selector survives the real writer and parser", () => {
   it("re-parses to a tween attributed to the one element it targeted", async () => {
-    const groups = mountGroupSiblings();
-    const { mutations, callbacks } = recorder();
-
-    await commitStaticGsapPosition(
-      classOnlySelection(groups[2]!),
-      { x: 10, y: 10 },
-      { x: 0, y: 0 },
-      ".group",
-      null,
-      callbacks,
-    );
-    const written = writtenTargets(mutations)[0]!;
+    const written = await positionMiddleSibling();
 
     const script = `
 const tl = gsap.timeline({ paused: true });

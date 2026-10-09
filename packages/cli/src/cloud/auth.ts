@@ -39,7 +39,7 @@ export function resolveCloudBaseUrl(): string {
 }
 
 // fallow-ignore-next-line complexity
-async function refreshIfNeeded(credential: ResolvedCredential): Promise<ResolvedCredential> {
+export async function refreshIfNeeded(credential: ResolvedCredential): Promise<ResolvedCredential> {
   if (credential.type !== "oauth") return credential;
   if (!credential.refreshable || !credential.refresh_token) return credential;
   const fresh = await refreshTokens(credential.refresh_token);

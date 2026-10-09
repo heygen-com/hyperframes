@@ -1,0 +1,563 @@
+<!--
+  Extended Keyframe — the "never fully lands" arrival. An element covers most of its distance in the first
+  fifth of the move and creeps the rest to the final frame (After Effects' extended-last-keyframe technique),
+  exits along the vector it arrived on, and carries shutter motion blur — slides via a filter smear, scale
+  beats via a velocity-driven blur. Direction and property agnostic: from left / right / above / below, scale
+  up or down.
+
+  Usage: paste this snippet into your composition AFTER GSAP, then, after your other tweens and before
+  registering the timeline:
+
+    var a = attachExtendedArrival("#word-1", tl, { at: 0.3, from: { x: -1400 } });
+    attachExtendedArrival("#word-2", tl, { at: a.end, from: { scale: 0.35 } });   // next arrival when the exit clears
+    window.__timelines["your-comp"] = tl;
+
+  Or use the ease alone on any tween:  gsap.fromTo(el, { y: 700 }, { y: 0, duration: 2.5, ease: EK.ease() })
+
+  Options:
+    at        seconds on the host timeline the arrival starts (0)
+    from      the start state, one or more of x / y (px) / scale; the rest state is x 0, y 0, scale 1
+    duration  arrival length, s (2.5). Under 1.5 s the creep has no room to read
+    exit      true (default) leaves along the arrival vector at EK.next(duration) = 60% of the arrival,
+              fast ease-in over `exitDuration` (0.5); false = stay
+    exitTo    override the exit state; default mirrors `from` (x -1400 -> +1400; scale 0.35 -> 2, 2 -> 0.4)
+    fadeIn    opacity ramp at arrival, s (0.25)
+    blur      true (default): slides get attachMotionBlurFilter (240° shutter, 32 samples); scale beats get a
+              per-frame blur radius = |Δscale across the shutter| × half the element width
+    ease      overrides for the profile: { reach: 0.87, at: 0.20, ramp: 0.04, slow: 0.10, tau2: 0.29 }
+  Returns { end, exitAt, easeFn } — `end` is when the exit has cleared, the earliest the next arrival may start.
+
+  Sequencing rule: the next arrival starts when the previous exit has cleared, never before, and the exit
+  ignites while the element is still creeping. That is what keeps the film moving without two elements ever
+  sharing the frame.
+
+  Requirements:
+  - Elements move via GSAP transforms (x / y / scale). Never pair a CSS transform with a GSAP tween on the
+    same property.
+  - One element per call. Elements inside timed clips are fine (the filter blur is clip-safe; the DOM-clone
+    `motion-blur` component is not, which is why the filter variant is bundled here).
+  - GSAP must be loaded before this snippet. Deterministic: no Math.random, no clocks.
+
+  Bundled: window.EK (ease / next / gate) and window.attachMotionBlurFilter (the house feOffset shutter blur;
+  coexists with the registry `motion-blur` component, which owns window.attachMotionBlur).
+-->
+
+<script>
+  // Extended ease helpers for deterministic, direction-agnostic GSAP motion.
+  window.EK =
+    window.EK ||
+    (() => {
+      const DEFAULTS = {
+        reach: 0.87, // fraction of the distance covered by time `at` (AE frame-10 insertion gives 0.74; 0.87 reads tighter)
+        at: 0.2, // fraction of the duration the fast phase takes (15 f of 75)
+        ramp: 0.04, // fraction of the duration for velocity to rise from zero (3 f of 75)
+        slow: 0.1, // share of the distance carried by the slow component (the creep)
+        tau2: 0.29, // slow component's time constant, fraction of the duration (22 f of 75)
+        samples: 512,
+      };
+      function table(o, tau) {
+        const N = o.samples,
+          v = new Float64Array(N + 1),
+          pr = new Float64Array(N + 1);
+        const c = (o.slow / (1 - o.slow)) * (tau / o.tau2);
+        for (let i = 0; i <= N; i++) {
+          const t = i / N;
+          v[i] = (1 - Math.exp(-t / o.ramp)) * (Math.exp(-t / tau) + c * Math.exp(-t / o.tau2));
+        }
+        for (let i = 1; i <= N; i++) pr[i] = pr[i - 1] + (v[i - 1] + v[i]) / 2;
+        const T = pr[N];
+        for (let i = 0; i <= N; i++) pr[i] /= T;
+        return pr;
+      }
+      function build(opts) {
+        const o = Object.assign({}, DEFAULTS, opts || {});
+        let lo = 0.005,
+          hi = 5; // bisect tau so that progress(at) = reach
+        const k = Math.round(o.at * o.samples);
+        for (let i = 0; i < 60; i++) {
+          const mid = (lo + hi) / 2;
+          if (table(o, mid)[k] > o.reach) lo = mid;
+          else hi = mid;
+        }
+        return { table: table(o, (lo + hi) / 2), tau: (lo + hi) / 2, opts: o };
+      }
+      function ease(opts) {
+        const { table: T, opts: o } = build(opts),
+          N = o.samples;
+        return (p) => {
+          if (p <= 0) return 0;
+          if (p >= 1) return 1;
+          const f = p * N,
+            i = Math.floor(f),
+            u = f - i;
+          return T[i] + (T[i + 1] - T[i]) * u;
+        };
+      }
+      // when the FOLLOWING move may start: inside the tail, at 60% of this move's duration (tail is still moving)
+      function next(duration) {
+        return duration * 0.6;
+      }
+      // numeric gate: velocity per frame must rise, peak once, and decay with no step; returns { ok, report }
+      function gate(fn, frames) {
+        const v = [];
+        for (let f = 1; f <= frames; f++) v.push(fn(f / frames) - fn((f - 1) / frames));
+        const peak = Math.max(...v),
+          pi = v.indexOf(peak);
+        let maxDrop = 0,
+          rises = 0;
+        for (let i = pi + 1; i < v.length; i++) {
+          const r = v[i] / v[i - 1];
+          if (r > 1.001) rises++;
+          maxDrop = Math.max(maxDrop, 1 - r);
+        }
+        const mean = 1 / frames,
+          minTail = Math.min(...v.slice(pi));
+        const ok = rises === 0 && maxDrop < 0.5 && minTail > 0;
+        return {
+          ok,
+          peakOverMean: peak / mean,
+          peakFrame: pi + 1,
+          maxFrameToFrameDrop: maxDrop,
+          risesAfterPeak: rises,
+          minTailVelocity: minTail,
+          report: `peak ${(peak / mean).toFixed(1)}x mean at f${pi + 1}; max step drop ${(maxDrop * 100).toFixed(0)}%; rises after peak ${rises}; tail min ${(minTail * frames).toFixed(4)} of distance/frame`,
+        };
+      }
+      return { ease, build, next, gate, DEFAULTS };
+    })();
+
+  // ===== arrival choreography =====
+  (function () {
+    var D = {
+      at: 0,
+      duration: 2.5,
+      exit: true,
+      exitDuration: 0.5,
+      fadeIn: 0.25,
+      blur: true,
+      ease: null,
+    };
+    var FPS = 30,
+      SHUTTER = 240 / 360 / FPS;
+    function mirror(from) {
+      var out = {};
+      if ("x" in from) out.x = -from.x;
+      if ("y" in from) out.y = -from.y;
+      if ("scale" in from) out.scale = from.scale < 1 ? 2 : 0.4;
+      return out;
+    }
+    function scaleAt(el, t) {
+      var tw = gsap.getTweensOf(el).filter(function (x) {
+        return x.vars && ("scale" in x.vars || (x.vars.css && "scale" in x.vars.css));
+      });
+      var v = 1;
+      for (var i = 0; i < tw.length; i++) {
+        var st = tw[i].startTime();
+        if (t >= st) {
+          tw[i].render(Math.min(t - st, tw[i].duration()), true, true);
+          v = gsap.getProperty(el, "scale");
+        }
+      }
+      return v;
+    }
+    window.attachExtendedArrival = function (target, tl, opts) {
+      var el = typeof target === "string" ? document.querySelector(target) : target;
+      if (!el) {
+        console.warn("[extended-keyframe] no element for", target);
+        return null;
+      }
+      var o = Object.assign({}, D, opts || {});
+      var from = Object.assign({}, o.from || { x: -1400 });
+      var easeFn = EK.ease(o.ease || undefined);
+      var rest = { x: 0, y: 0, scale: 1 };
+      var start = Object.assign({ x: 0, y: 0, scale: 1 }, from);
+      tl.fromTo(
+        el,
+        Object.assign({ opacity: 0 }, start),
+        Object.assign({ duration: o.duration, ease: easeFn }, rest),
+        o.at,
+      );
+      tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: o.fadeIn, ease: "none" }, o.at);
+      var exitAt = o.at + EK.next(o.duration),
+        end = o.exit ? exitAt + o.exitDuration : o.at + o.duration;
+      if (o.exit) {
+        var to = o.exitTo || mirror(from);
+        tl.to(el, Object.assign({ duration: o.exitDuration, ease: "power2.in" }, to), exitAt);
+        tl.to(
+          el,
+          { opacity: 0, duration: o.exitDuration * 0.8, ease: "power1.in" },
+          exitAt + o.exitDuration * 0.2,
+        );
+      }
+      if (o.blur) {
+        if ("x" in from || "y" in from)
+          attachMotionBlurFilter(el, tl, { shutterAngle: 240, samplesPerFrame: 32 });
+        if ("scale" in from) {
+          var halfW = el.getBoundingClientRect().width / 2 || 400,
+            clock = { t: 0 };
+          tl.to(
+            clock,
+            {
+              t: end - o.at,
+              duration: end - o.at,
+              ease: "none",
+              onUpdate: function () {
+                var t = tl.time();
+                var s0 = scaleAt(el, t - SHUTTER / 2),
+                  s1 = scaleAt(el, t + SHUTTER / 2);
+                scaleAt(el, t);
+                var px = Math.abs(s1 - s0) * halfW * 0.5;
+                gsap.set(el, { filter: px >= 0.5 ? "blur(" + px.toFixed(2) + "px)" : "none" });
+              },
+            },
+            o.at,
+          );
+        }
+      }
+      return { end: end, exitAt: exitAt, easeFn: easeFn };
+    };
+  })();
+</script>
+
+<script>
+  // ===== bundled house shutter blur (feOffset filter; translation) → window.attachMotionBlurFilter =====
+
+  (function () {
+    var nextUid = 0;
+
+    // The renderer injects its frame rate into the page before any composition
+    // script runs. The HTML compiler treats inline scripts that spell out that
+    // config's name as runtime bootstrap code and strips them, so the key is
+    // assembled here instead of written literally.
+    var RENDER_CONFIG_KEY = ["__HF_EXPORT", "RENDER_SEEK_CONFIG"].join("_");
+
+    function resolveFps(optionFps) {
+      var explicit = Number(optionFps);
+      if (explicit > 0) return explicit;
+
+      var cfg = window[RENDER_CONFIG_KEY];
+      var renderFps = cfg ? Number(cfg.fps) : 0;
+      if (renderFps > 0) return renderFps;
+
+      var root = document.querySelector("[data-composition-id][data-fps]");
+      var rootFps = root ? Number(root.getAttribute("data-fps")) : 0;
+      if (rootFps > 0) return rootFps;
+
+      return 30;
+    }
+
+    function numOption(value, fallback) {
+      return value !== undefined ? Number(value) : fallback;
+    }
+
+    // objectBoundingBox percentage for a px offset plus padding.
+    function regionPercent(offset, size, padPercent) {
+      return ((offset / size) * 100 + padPercent).toFixed(2) + "%";
+    }
+
+    window.attachMotionBlurFilter = function (selector, tl, opts) {
+      opts = opts || {};
+      var shutterAngle = numOption(opts.shutterAngle, 180);
+      var shutterPhase = numOption(opts.shutterPhase, -90);
+      var requestedSamples = numOption(opts.samplesPerFrame, 16);
+      // Rounded to a power of two (2..64): the averaging tree below pairs inputs level by level.
+      var samples = Number.isFinite(requestedSamples)
+        ? Math.pow(2, Math.round(Math.log2(Math.max(2, Math.min(64, requestedSamples)))))
+        : 16;
+      var axis = opts.axis || "both";
+      var fps = resolveFps(opts.fps);
+      var useX = axis !== "y";
+      var useY = axis !== "x";
+
+      // Untransformed box size; SVG elements have no offsetWidth, so use the
+      // same bbox GSAP uses to resolve their percent transforms.
+      function boxSize(el, horizontal) {
+        var box = typeof el.offsetWidth === "number" ? el : el.getBBox ? el.getBBox() : null;
+        var size = box
+          ? horizontal
+            ? box.offsetWidth || box.width
+            : box.offsetHeight || box.height
+          : 0;
+        return size || el.getBoundingClientRect()[horizontal ? "width" : "height"] || 1;
+      }
+
+      // GSAP x/y may carry a % unit and xPercent/yPercent is a separate term;
+      // resolve both against the element's own box so samples are in px.
+      function readAxis(el, prop, percentProp, size) {
+        var px = parseFloat(gsap.getProperty(el, prop, "px")) || 0;
+        var percent = parseFloat(gsap.getProperty(el, percentProp)) || 0;
+        return px + (percent * size) / 100;
+      }
+
+      function readPosition(el) {
+        return {
+          x: useX ? readAxis(el, "x", "xPercent", boxSize(el, true)) : 0,
+          y: useY ? readAxis(el, "y", "yPercent", boxSize(el, false)) : 0,
+        };
+      }
+
+      // CSS filters run in the element's pre-transform space while GSAP x/y are
+      // post-transform, so a displacement is mapped through the inverse of the
+      // element's own scale/rotation. Ancestor transforms are not compensated.
+      function toFilterSpace(el, dx, dy) {
+        var sx = parseFloat(gsap.getProperty(el, "scaleX")) || 1;
+        var sy = parseFloat(gsap.getProperty(el, "scaleY")) || 1;
+        var theta = ((parseFloat(gsap.getProperty(el, "rotation")) || 0) * Math.PI) / 180;
+        var cos = Math.cos(theta);
+        var sin = Math.sin(theta);
+        return { dx: (dx * cos + dy * sin) / sx, dy: (-dx * sin + dy * cos) / sy };
+      }
+
+      var items = Array.isArray(selector) ? selector : [selector];
+      var targets = items.reduce(function (acc, s) {
+        if (typeof s === "string") {
+          document.querySelectorAll(s).forEach(function (el) {
+            acc.push(el);
+          });
+        } else if (s instanceof Element) {
+          acc.push(s);
+        }
+        return acc;
+      }, []);
+
+      // Read motion from the source element so a fixed-size container owns the bounded filter region.
+      var srcEl = opts.motionSource
+        ? typeof opts.motionSource === "string"
+          ? document.querySelector(opts.motionSource)
+          : opts.motionSource
+        : null;
+
+      var ns = "http://www.w3.org/2000/svg";
+
+      // One SVG filter per target: N offset copies of SourceGraphic averaged
+      // with equal weight. Averaging in sRGB matches AE's default (non-linear)
+      // 8-bpc working space.
+      var state = targets.map(function (el) {
+        var uid = "hf-mbf-" + ++nextUid;
+        var svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
+
+        var filter = document.createElementNS(ns, "filter");
+        filter.id = uid;
+        filter.setAttribute("color-interpolation-filters", "sRGB");
+
+        var offsets = [];
+        for (var k = 0; k < samples; k++) {
+          var feOff = document.createElementNS(ns, "feOffset");
+          feOff.setAttribute("in", "SourceGraphic");
+          feOff.setAttribute("dx", "0");
+          feOff.setAttribute("dy", "0");
+          feOff.setAttribute("result", "s" + k);
+          filter.appendChild(feOff);
+          offsets.push(feOff);
+        }
+
+        // Build a balanced averaging tree so each level rounds once before the final filter output.
+        var level = offsets.map(function (_, i) {
+          return "s" + i;
+        });
+        var depth = 0;
+        while (level.length > 1) {
+          var next = [];
+          for (var pi = 0; pi < level.length; pi += 2) {
+            var feComp = document.createElementNS(ns, "feComposite");
+            feComp.setAttribute("operator", "arithmetic");
+            feComp.setAttribute("in", level[pi]);
+            feComp.setAttribute("in2", level[pi + 1]);
+            feComp.setAttribute("k1", "0");
+            feComp.setAttribute("k2", "0.5");
+            feComp.setAttribute("k3", "0.5");
+            feComp.setAttribute("k4", "0");
+            if (level.length > 2) {
+              var name = "l" + depth + "_" + pi / 2;
+              feComp.setAttribute("result", name);
+              next.push(name);
+            }
+            filter.appendChild(feComp);
+          }
+          level = next;
+          depth++;
+        }
+
+        svg.appendChild(filter);
+        document.body.appendChild(svg);
+
+        return {
+          el: el,
+          src: srcEl || el,
+          offsets: offsets,
+          filter: filter,
+          filterId: uid,
+          svg: svg,
+          xs: [],
+          ys: [],
+        };
+      });
+
+      // The element may carry its own inline filter (authored or tweened by
+      // GSAP); the blur is appended to that chain and removed from it, never
+      // written over it.
+      var OWN_FILTER = /\s*url\(["\']?#hf-mbf-\d+["\']?\)/g;
+
+      function baseFilter(el) {
+        return el.style.filter.replace(OWN_FILTER, "").trim();
+      }
+
+      function clearBlur(s) {
+        s.el.style.filter = baseFilter(s.el);
+      }
+
+      var scheduled = false;
+      var disposed = false;
+
+      function cleanup() {
+        disposed = true;
+        state.forEach(function (s) {
+          clearBlur(s);
+          s.svg.remove();
+        });
+      }
+
+      function applyShutter() {
+        if (disposed) return;
+        var shutterTime = shutterAngle / 360 / fps;
+        if (!(shutterTime > 0)) {
+          state.forEach(clearBlur);
+          return;
+        }
+
+        var t0 = tl.time();
+        var duration = tl.duration();
+        var windowStart = t0 + shutterPhase / 360 / fps;
+
+        // Sample target tweens directly instead of seeking the full timeline, preserving video hooks.
+        var toLocal = function (anim, tlTime) {
+          var chain = [];
+          for (var a = anim; a && a !== tl; a = a.parent) chain.unshift(a);
+          var t = tlTime;
+          for (var i = 0; i < chain.length; i++)
+            t = (t - chain[i].startTime()) * chain[i].timeScale();
+          return t;
+        };
+        // EVERY tween of the source element is replayed, not just the x/y ones: a multi-property tween
+        // ({ y, scale }) re-rendered alone would leave `scale` at ITS value while a later scale-only tween
+        // (never replayed) owned the real one — the c2v outro mark landed at 0.9 instead of 0.52 that way.
+        var isReplayable = function (tw) {
+          return !tw._mbTracker;
+        };
+        state.forEach(function (s) {
+          if (!s.tweens || s.tweenStamp !== duration) {
+            s.tweens = gsap.getTweensOf(s.src).filter(isReplayable);
+            s.tweens.sort(function (p, q) {
+              return p.globalTime(0) - q.globalTime(0);
+            });
+            s.tweenStamp = duration;
+          }
+        });
+        // Render, in start order, every tween that has STARTED by tlTime (finished ones at their
+        // end). A tween that has not started yet is skipped: rendering it at 0 would snap the
+        // element to that tween's recorded start value and erase the active tween's motion.
+        var renderAt = function (tlTime) {
+          state.forEach(function (s) {
+            for (var i = 0; i < s.tweens.length; i++) {
+              var tw = s.tweens[i];
+              var lt = toLocal(tw, tlTime);
+              if (lt < 0) continue;
+              tw.render(Math.min(tw.totalDuration(), lt), true, true);
+            }
+          });
+        };
+        var sampleAt = function (k, slot) {
+          var tk = windowStart + ((k + 0.5) / samples) * shutterTime;
+          renderAt(Math.min(duration, Math.max(0, tk)));
+          state.forEach(function (s) {
+            var pos = readPosition(s.src);
+            s.xs[slot] = pos.x;
+            s.ys[slot] = pos.y;
+          });
+        };
+        var moving = false;
+        try {
+          sampleAt(0, 0);
+          sampleAt(samples - 1, samples - 1);
+          for (var m = 0; m < state.length && !moving; m++) {
+            var sm = state[m];
+            if (
+              Math.abs(sm.xs[samples - 1] - sm.xs[0]) >= 0.5 ||
+              Math.abs(sm.ys[samples - 1] - sm.ys[0]) >= 0.5
+            )
+              moving = true;
+          }
+          if (moving) {
+            for (var k = 1; k < samples - 1; k++) sampleAt(k, k);
+          }
+        } finally {
+          renderAt(t0); // put every sampled tween back exactly where the frame left it
+        }
+        if (!moving) {
+          state.forEach(clearBlur);
+          return;
+        }
+        state.forEach(function (s) {
+          var current = readPosition(s.src);
+          var minDx = Infinity;
+          var maxDx = -Infinity;
+          var minDy = Infinity;
+          var maxDy = -Infinity;
+          for (var i = 0; i < samples; i++) {
+            var d = toFilterSpace(s.el, s.xs[i] - current.x, s.ys[i] - current.y);
+            var dx = d.dx;
+            var dy = d.dy;
+            s.offsets[i].setAttribute("dx", dx.toFixed(3));
+            s.offsets[i].setAttribute("dy", dy.toFixed(3));
+            if (dx < minDx) minDx = dx;
+            if (dx > maxDx) maxDx = dx;
+            if (dy < minDy) minDy = dy;
+            if (dy > maxDy) maxDy = dy;
+          }
+
+          // Below half a pixel of smear the average is indistinguishable from
+          // the source — render sharp instead of paying for the filter.
+          if (maxDx - minDx < 0.5 && maxDy - minDy < 0.5) {
+            clearBlur(s);
+            return;
+          }
+
+          // Grow the filter region to cover every copy (objectBoundingBox
+          // units, 10% padding so anti-aliased edges are not clipped).
+          var w = boxSize(s.el, true);
+          var h = boxSize(s.el, false);
+          s.filter.setAttribute("x", regionPercent(minDx, w, -10));
+          s.filter.setAttribute("width", regionPercent(maxDx - minDx, w, 120));
+          s.filter.setAttribute("y", regionPercent(minDy, h, -10));
+          s.filter.setAttribute("height", regionPercent(maxDy - minDy, h, 120));
+          var base = baseFilter(s.el);
+          s.el.style.filter = (base ? base + " " : "") + "url(#" + s.filterId + ")";
+        });
+      }
+
+      // tl.eventCallback("onUpdate") is unavailable under the HyperFrames runtime proxy, so a
+      // tracker tween's onUpdate fires on every seek. Sampling is deferred to a microtask:
+      // seeking GSAP from inside its own render reads stale tween state, while the microtask
+      // runs after the seek returns and before the frame is captured or painted.
+      var _proxy = { t: 0 };
+      // gsap.to() returns the TWEEN (tl.to() would return the timeline), so the tracker can be tagged and added at 0.
+      var _tracker = gsap.to(_proxy, {
+        t: 1,
+        duration: Math.max(tl.duration(), 0.1),
+        ease: "none",
+        onUpdate: function () {
+          if (scheduled) return;
+          scheduled = true;
+          Promise.resolve().then(function () {
+            scheduled = false;
+            applyShutter();
+          });
+        },
+        onInterrupt: cleanup,
+      });
+      _tracker._mbTracker = true;
+      tl.add(_tracker, 0);
+    };
+  })();
+</script>

@@ -96,7 +96,16 @@ function countHfIdInSource(source: string, id: string): number {
   );
 }
 
-function resolveSnapshot(session: Composition, id: string): FlatEl | null {
+/**
+ * Resolvability the SDK DISPATCH path actually has (mirrors `resolveScoped`):
+ * exact scoped-path match, then canonical bare match, then first bare match.
+ *
+ * Exported so the cutover path can distinguish its two `target_not_found` cases:
+ * `Composition.getElement` is narrower (canonical-only for a bare id) than what
+ * `dispatch` resolves, so an element can be genuinely dispatchable yet still
+ * fail `getElement` — a resolver disagreement worth fixing, not a missing node.
+ */
+export function resolveSnapshot(session: Composition, id: string): FlatEl | null {
   const els = session.getElements();
   const exact = els.find((el) => el.scopedId === id);
   if (exact) return exact;

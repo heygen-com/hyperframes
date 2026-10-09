@@ -818,6 +818,36 @@ describe("color grading", () => {
     expect(serialized).toContain('"secondaries"');
   });
 
+  it("writes only the hue curves that were authored, so lint accepts a single hue curve", async () => {
+    const grading = normalizeHfColorGrading({
+      hueCurves: {
+        hueVsHue: [
+          [0, 0],
+          [120, 20],
+          [240, 0],
+        ],
+      },
+    });
+    const serialized = serializeHfColorGrading(grading);
+    expect(JSON.parse(serialized).hueCurves).toEqual({
+      hueVsHue: [
+        [0, 0],
+        [120, 20],
+        [240, 0],
+      ],
+    });
+
+    const lint = await lintHyperframeHtml(`
+      <html><body>
+        <div id="root" data-composition-id="c1" data-start="0" data-width="1920" data-height="1080" data-duration="1">
+          <img class="clip" data-start="0" data-duration="1" src="media.jpg" data-color-grading='${serialized}'>
+        </div>
+        <script>window.__timelines = {};</script>
+      </body></html>
+    `);
+    expect(lint.findings.filter((finding) => finding.severity === "error")).toEqual([]);
+  });
+
   it("round-trips advanced grading byte-identically", () => {
     const grading = normalizeHfColorGrading({
       wheels: { shadows: { hue: 205, amount: 0.08 } },

@@ -1,6 +1,6 @@
 # Visual design — product-launch per-frame shot method
 
-> The method behind **Step 4 (Frame visual design)**. You (the orchestrator) read it to **enrich `STORYBOARD.md` frames in place** — story-design wrote the skeleton (each frame's `scene`, `voiceover`, `transition_in`, the narrative fields, its `asset_candidates`, and optionally a candidate blueprint id); you add how each frame **looks and moves**. The unit you write per frame is a **time-coded shot sequence** — a shot directed across its whole duration, not a static slide. You write **no HTML** (that's the frame workers), you **never read `capture/`** (story already chose the assets), and you do **not** select assets or name transitions (story owns both). `frame.md` is your palette/type truth by role. Layout is a compact vocabulary in this file (the **Layout** section below), stated inline per Scene; motion vocabulary + the motion doctrine + the seek-safe core → `motion-language.md`; the proven shapes → `../hyperframes-animation/blueprints-index.md` + `blueprints/<id>.md`; concrete rules resolve in Step 5 from this skill's local `../hyperframes-animation/rules/`. Adding palette theory or a generic font rule here? Wrong home — `frame.md` + `hyperframes-creative`.
+> The method behind **Step 4 (Frame visual design)**. You (the orchestrator) read it to **enrich `STORYBOARD.md` frames in place** — story-design wrote the skeleton (each frame's `scene`, `voiceover`, `transition_in`, the narrative fields, its `asset_candidates`, and optionally a candidate blueprint id); you add how each frame **looks and moves**. The unit you write per frame is a **time-coded shot sequence** — a shot directed across its whole duration, not a static slide. You write **no HTML** (that's the frame workers), you **never read `capture/`** (story already chose the assets), and you do **not** select assets or name transitions (story owns both). `frame.md` is your palette/type truth by role. Layout is a compact vocabulary in this file (the **Layout** section below), stated inline per Scene; motion vocabulary + the motion doctrine + the seek-safe core → `motion-language.md`; the proven shapes → `../../hyperframes-animation/blueprints-index.md` + `blueprints/<id>.md`; concrete rules resolve in Step 5 from this skill's local `../../hyperframes-animation/rules/`. Adding palette theory or a generic font rule here? Wrong home — `frame.md` + `hyperframes-creative`.
 
 ## The unit is a time-coded shot sequence
 
@@ -24,7 +24,7 @@ Scene N (…–end):   content has resolved; hold the read (stillness; subtle ji
 
 Don't invent each shot from scratch. The frame's **role** (its `type` / `beat`) points to a proven shape:
 
-1. **Match the role to a blueprint.** Open `../hyperframes-animation/blueprints-index.md`, find the frame's role in the **role→blueprint menu**, and pick the blueprint whose intent fits this beat (story may already have named a candidate id — confirm or override it). Read that `blueprints/<id>.md`: it is a short, product-agnostic, **time-coded shot template with `[slots]`** and a named **signature move** (the thing that makes the shape itself — the SVG ring, the push-THROUGH, the in-place token swap).
+1. **Match the role to a blueprint.** Open `../../hyperframes-animation/blueprints-index.md`, find the frame's role in the **role→blueprint menu**, and pick the blueprint whose intent fits this beat (story may already have named a candidate id — confirm or override it). Read that `blueprints/<id>.md`: it is a short, product-agnostic, **time-coded shot template with `[slots]`** and a named **signature move** (the thing that makes the shape itself — the SVG ring, the push-THROUGH, the in-place token swap).
 
 2. **Instantiate its `[slots]` with THIS product's content** — three postures:
    - **Reproduce** — the blueprint fits the beat and your content maps onto its slots cleanly. Fill every `[slot]` with this product's word / asset / stat and follow its Scene timing. Write the resulting Scene lines.
@@ -67,7 +67,7 @@ The lightweight tags:
 
 **Layout is stated INLINE in each Scene line** — name the template, density, depth, and hierarchy as part of "where it sits" (`Centered, ~50% of frame`, `asymmetric 60/40, 3 depth layers`), drawing on the **Layout** vocabulary below; never write px / scale / shadow recipes (the worker writes those).
 
-**Motion is named INLINE in each Scene line** — name the move from `motion-language.md`'s vocabulary (`ring sweeps`, `pushes THROUGH`, `count-up`, `glow blooms`) and let it settle on a long-tail curve (`power3` default — smooth beats bouncy; see `motion-language.md`). Never write ease curves / ms / stagger (those resolve in Step 5 from this skill's local `../hyperframes-animation/rules/`).
+**Motion is named INLINE in each Scene line** — name the move from `motion-language.md`'s vocabulary (`ring sweeps`, `pushes THROUGH`, `count-up`, `glow blooms`) and let it settle on a long-tail curve (`power3` default — smooth beats bouncy; see `motion-language.md`). Never write ease curves / ms / stagger (those resolve in Step 5 from this skill's local `../../hyperframes-animation/rules/`).
 
 ## Layout — named inline per Scene
 
@@ -103,10 +103,10 @@ The bottom ~17% of the canvas is reserved for the caption pill. Plan every frame
 
 | For…                                                                      | Read                                                                                         |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| the proven shapes + role→blueprint menu + how to pick                     | `../hyperframes-animation/blueprints-index.md` → `blueprints/<id>.md` (local)                |
+| the proven shapes + role→blueprint menu + how to pick                     | `../../hyperframes-animation/blueprints-index.md` → `blueprints/<id>.md` (local)             |
 | motion — shot model, vocabulary, holds, idle budget, stillness, seek-safe | `motion-language.md` (local)                                                                 |
 | layout — templates, density, depth, hierarchy, caption band               | the **Layout** vocabulary in this file                                                       |
-| concrete eases / ms / stagger + rule recipe bodies (Step 5)               | local `../hyperframes-animation/rules/` (the frame worker reads it; you don't)               |
+| concrete eases / ms / stagger + rule recipe bodies (Step 5)               | local `../../hyperframes-animation/rules/` (the frame worker reads it; you don't)            |
 | palette + type tokens                                                     | the project's `frame.md`; basics → `hyperframes-creative` `house-style.md` / `typography.md` |
 | "produced, not generated" foreground density                              | `hyperframes-creative/references/video-composition.md`                                       |
 | within-frame cuts / seams (zoom-through · cut-the-curve · waterfall)      | `cut-catalog.md` (the worker builds them inside the composition)                             |

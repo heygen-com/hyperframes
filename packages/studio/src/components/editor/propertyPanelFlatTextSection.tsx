@@ -1,3 +1,4 @@
+import type { PropertyPanelProps } from "./propertyPanelTypes";
 import { useEffect, useState } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { Plus, X } from "../../icons/SystemIcons";
@@ -121,7 +122,7 @@ function FlatTextFieldEditor({
               track("select", "Weight");
               onSetTextFieldStyle(field.key, "font-weight", e.target.value);
             }}
-            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-none ${
+            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-hidden ${
               VALUE_TIER_VALUE_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
             }`}
           >
@@ -138,7 +139,7 @@ function FlatTextFieldEditor({
             height="10"
             viewBox="0 0 10 10"
             fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
+            className="shrink-0 text-panel-text-5"
           >
             <path d="M2 3l3 4 3-4z" />
           </svg>
@@ -246,13 +247,15 @@ export function FlatTextSection({
   element: DomEditSelection;
   styles: Record<string, string>;
   fontAssets: ImportedFontAsset[];
-  onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
-  onSetText: (value: string, fieldKey?: string) => void;
-  onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
-  onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;
-  onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
-  onRemoveTextField: (fieldKey: string) => void;
-}) {
+} & Pick<
+  PropertyPanelProps,
+  | "onImportFonts"
+  | "onSetText"
+  | "onSetTextFieldStyle"
+  | "onPreviewTextFieldStyle"
+  | "onAddTextField"
+  | "onRemoveTextField"
+>) {
   const track = useTrackDesignInput();
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
@@ -387,13 +390,13 @@ export function FlatTextLayerList({
               }`}
             >
               <span
-                className="h-3 w-3 flex-shrink-0 rounded-sm"
+                className="h-3 w-3 shrink-0 rounded-xs"
                 style={{ backgroundColor: getTextFieldColor(field, styles) }}
               />
               <span className="min-w-0 flex-1 truncate text-[11px] text-panel-text-1">
                 {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
               </span>
-              <span className="flex-shrink-0 font-mono text-[9px] text-panel-text-4">
+              <span className="shrink-0 font-mono text-[9px] text-panel-text-4">
                 {field.tagName}
               </span>
               {fields.length > 1 && (
@@ -406,7 +409,7 @@ export function FlatTextLayerList({
                     track("button", "Remove text field");
                     onRemove(field.key);
                   }}
-                  className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
+                  className="shrink-0 text-panel-text-4 hover:text-panel-text-1"
                 >
                   <X size={10} />
                 </button>

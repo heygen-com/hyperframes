@@ -555,6 +555,24 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(fileServerCloseCallCount).toBe(1);
   });
 
+  it.each([1, 2])(
+    "closes probe-owned resources when cancellation lands at the browser's check %i",
+    async (check) => {
+      resetRetryMocks();
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      let checks = 0;
+      input.assertNotAborted = () => {
+        if (++checks === check) throw new Error("render cancelled");
+      };
+
+      await expect(runProbeStage(input)).rejects.toThrow("render cancelled");
+
+      expect(fileServerCloseCallCount).toBe(1);
+      expect(closeCaptureSessionCallCount).toBe(check === 1 ? 0 : 1);
+    },
+  );
+
   it("launches a probe when a static-duration composition inserts video at runtime", async () => {
     capturedCfgs.length = 0;
     const { runProbeStage } = await import("./probeStage.js");

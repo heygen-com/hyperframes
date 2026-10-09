@@ -11,8 +11,7 @@ describe("saveProjectFilesWithHistory", () => {
     await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Move layer",
-      kind: "manual",
-      files: { "index.html": "after" },
+      files: { "index.html": () => "after" },
       readFile: async (path) => reads[path],
       writeFile: async (path, content) => {
         writes[path] = content;
@@ -23,7 +22,6 @@ describe("saveProjectFilesWithHistory", () => {
     expect(writes).toEqual({ "index.html": "after" });
     expect(recordEdit).toHaveBeenCalledWith({
       label: "Move layer",
-      kind: "manual",
       coalesceKey: undefined,
       files: { "index.html": { before: "before", after: "after" } },
     });
@@ -42,8 +40,7 @@ describe("saveProjectFilesWithHistory", () => {
     await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Delete timeline clip",
-      kind: "timeline",
-      files: { "index.html": "removed+shrunk" },
+      files: { "index.html": () => "removed+shrunk" },
       readFile: async () => "original",
       diskContent: { "index.html": "removed" },
       writeFile: async (path, _content, expectedContent) => {
@@ -67,8 +64,7 @@ describe("saveProjectFilesWithHistory", () => {
     await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Move layer",
-      kind: "manual",
-      files: { "index.html": "after" },
+      files: { "index.html": () => "after" },
       readFile: async () => "before",
       writeFile: async (path, _content, expectedContent) => {
         expectations[path] = expectedContent;
@@ -85,8 +81,7 @@ describe("saveProjectFilesWithHistory", () => {
     const changedPaths = await saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Edit layer",
-      kind: "manual",
-      files: { "index.html": "same" },
+      files: { "index.html": () => "same" },
       readFile: async () => "same",
       writeFile,
       recordEdit,
@@ -109,10 +104,9 @@ describe("saveProjectFilesWithHistory", () => {
       saveProjectFilesWithHistory({
         projectId: "project-1",
         label: "Move layer",
-        kind: "manual",
         files: {
-          "index.html": "index-after",
-          "scene.html": "scene-after",
+          "index.html": () => "index-after",
+          "scene.html": () => "scene-after",
         },
         readFile: async (path) => reads[path],
         writeFile: async (path, content) => {
@@ -144,10 +138,9 @@ describe("saveProjectFilesWithHistory", () => {
       saveProjectFilesWithHistory({
         projectId: "project-1",
         label: "Move layer",
-        kind: "manual",
         files: {
-          "index.html": "index-after",
-          "scene.html": "scene-after",
+          "index.html": () => "index-after",
+          "scene.html": () => "scene-after",
         },
         readFile: async (path) => reads[path],
         writeFile: async (path, content) => {
@@ -178,10 +171,9 @@ describe("saveProjectFilesWithHistory", () => {
       saveProjectFilesWithHistory({
         projectId: "project-1",
         label: "Move layer",
-        kind: "manual",
         files: {
-          "index.html": "index-after",
-          "scene.html": "scene-after",
+          "index.html": () => "index-after",
+          "scene.html": () => "scene-after",
         },
         readFile: async (path) => reads[path],
         writeFile: async (path, content) => {
@@ -204,7 +196,7 @@ describe("saveProjectFilesWithHistory", () => {
     ]);
   });
 
-  it("reads and writes after an earlier same-file mutation completes", async () => {
+  it("builds from what the file holds after an earlier same-file mutation completes", async () => {
     let disk = "before";
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => {
@@ -223,8 +215,7 @@ describe("saveProjectFilesWithHistory", () => {
     const save = saveProjectFilesWithHistory({
       projectId: "project-1",
       label: "Edit source",
-      kind: "source",
-      files: { "index.html": "editor-after" },
+      files: { "index.html": (current) => `${current}+editor` },
       readFile,
       writeFile,
       recordEdit,
@@ -236,10 +227,10 @@ describe("saveProjectFilesWithHistory", () => {
     await priorMutation;
     await save;
 
-    expect(disk).toBe("editor-after");
+    expect(disk).toBe("sdk-after+editor");
     expect(recordEdit).toHaveBeenCalledWith(
       expect.objectContaining({
-        files: { "index.html": { before: "sdk-after", after: "editor-after" } },
+        files: { "index.html": { before: "sdk-after", after: "sdk-after+editor" } },
       }),
     );
   });

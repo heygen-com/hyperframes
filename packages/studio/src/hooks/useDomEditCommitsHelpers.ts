@@ -1,17 +1,25 @@
-import { StudioSaveHttpError, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
+import {
+  createStudioSaveHttpError,
+  StudioSaveHttpError,
+  trackStudioSaveFailure,
+} from "../utils/studioSaveDiagnostics";
+import { buildProjectApiPath } from "../utils/projectRouting";
 import type { DomEditPatchBatch } from "./domEditCommitTypes";
 import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { studioApiFetch } from "../utils/studioApiFetch";
+import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 export function formatUnsafeFieldList(fields: Array<{ path: string }>): string {
   return fields.map((field) => field.path).join(", ");
 }
 
-export function getErrorDetail(error: unknown): string {
+function getErrorDetail(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function readErrorResponseBody(
+async function readErrorResponseBody(
   response: Response,
 ): Promise<{ error?: string; fields?: string[] } | null> {
   const contentType = response.headers.get("content-type") ?? "";
@@ -19,9 +27,7 @@ export async function readErrorResponseBody(
   return (await response.json().catch(() => null)) as { error?: string; fields?: string[] } | null;
 }
 
-export function formatPatchRejectionMessage(
-  body: { error?: string; fields?: string[] } | null,
-): string {
+function formatPatchRejectionMessage(body: { error?: string; fields?: string[] } | null): string {
   if (!body?.error) return "Couldn't save edit";
   return `Couldn't save edit: ${body.error}${formatFieldsSuffix(body.fields)}`;
 }
@@ -96,7 +102,7 @@ function isAtomicElementPatchFile(value: unknown): value is AtomicElementPatchFi
 export async function patchElementBatches(projectId: string, batches: DomEditPatchBatch[]) {
   const body = JSON.stringify({ batches });
   try {
-    const response = await fetch(
+    const response = await studioApiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/file-mutations/patch-element-batches`,
       {
         method: "POST",
@@ -156,4 +162,104 @@ export function batchesAreInlineStyleOnly(batches: DomEditPatchBatch[]): boolean
   return batches.every((batch) =>
     batch.patches.every((patch) => patch.operations.every((op) => op.type === "inline-style")),
   );
+}
+
+export interface PatchElementResponse {
+  ok?: boolean;
+  changed?: boolean;
+  matched?: boolean;
+  content?: string;
+  path?: string;
+  version?: string;
+  /** The patched element's id after the patch; absent when the target was not found. */
+  elementId?: string | null;
+}
+
+type ShowToast = (message: string, tone?: "error" | "info") => void;
+
+export async function postPatchElement(
+  projectId: string,
+  targetPath: string,
+  body: unknown,
+  showToast: ShowToast,
+): Promise<PatchElementResponse> {
+  const response = await studioApiFetch(
+    buildProjectApiPath(
+      projectId,
+      `/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
+    ),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    showToast(formatPatchRejectionMessage(await readErrorResponseBody(response)), "error");
+    throw await createStudioSaveHttpError(response, `Failed to patch ${targetPath}`, {
+      alreadyToasted: true,
+    });
+  }
+  return (await response.json()) as PatchElementResponse;
+}
+
+interface AssignAutoIdParams {
+  projectId: string;
+  targetPath: string;
+  selection: DomEditSelection;
+  autoId: string;
+  showToast: ShowToast;
+}
+
+/** The id the file holds for the element after proposing `autoId` (the server keeps or dedupes it); null if none. */
+export async function assignGsapTargetAutoIdIfNeeded({
+  projectId,
+  targetPath,
+  selection,
+  autoId,
+  showToast,
+}: AssignAutoIdParams): Promise<string | null> {
+  const patchBody = {
+    target: {
+      id: selection.id,
+      hfId: selection.hfId,
+      selector: selection.selector,
+      selectorIndex: selection.selectorIndex,
+    },
+    operations: [{ type: "ensure-id", property: "id", value: autoId }],
+  };
+  if (findUnsafeDomPatchValues(patchBody).length > 0) {
+    showToast("Couldn't assign element id because the patch contains invalid values", "error");
+    return null;
+  }
+  try {
+    const { elementId } = await postPatchElement(projectId, targetPath, patchBody, showToast);
+    if (elementId) return elementId;
+    showToast(`Couldn't assign element id: element not found in ${targetPath}`, "error");
+    return null;
+  } catch (error) {
+    if (error instanceof StudioSaveHttpError && error.alreadyToasted) return null;
+    throw error;
+  }
+}
+
+export async function writePreparedContent(
+  targetPath: string,
+  patchedContent: string,
+  prepare: (html: string, sourceFile: string) => string,
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
+  showToast: ShowToast,
+): Promise<{ content: string; failed: boolean }> {
+  const preparedContent = prepare(patchedContent, targetPath);
+  if (preparedContent === patchedContent) return { content: patchedContent, failed: false };
+  try {
+    await writeProjectFile(targetPath, preparedContent, patchedContent);
+    return { content: preparedContent, failed: false };
+  } catch (error) {
+    showToast(
+      `Saved, but couldn't finish updating ${targetPath}: ${getErrorDetail(error)}`,
+      "error",
+    );
+    return { content: patchedContent, failed: true };
+  }
 }

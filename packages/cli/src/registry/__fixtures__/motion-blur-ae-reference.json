@@ -1,0 +1,17 @@
+{
+  "source": "After Effects export, 1920x1080, 30 fps, bold text translating along x, no other transforms",
+  "howMeasured": "Frame 5 of the export. The frame-time instance renders sharp at full opacity, so the ink > 0.97 bounding box tracks the word exactly; the duplicates show up as a staircase of plateaus across a vertical stroke. Rows 470 / 540 / 600 agree.",
+  "frame": 5,
+  "trailingDisplacementPx": 125.8,
+  "leadingDisplacementPx": 184.9,
+  "comment:displacements": "Core-centre travel from frame 4 to 5 and from 5 to 6. Measured ghost reach past the core is 128 px trailing and 189 px leading (both include the anti-aliased edge), i.e. the window ends land on the neighbouring frames' positions.",
+  "trailingCopyEdgesPx": [531, 546, 562, 578, 594, 609, 625, 640],
+  "sharpEdgePx": 656,
+  "comment:edges": "Rising edges of the leading stroke's duplicates on the trailing tail, row 470, outermost first; the sharp instance's edge closes the run. Mean spacing 15.6 px against a 125.8 px frame displacement = 1/8 frame per duplicate.",
+  "subIntervalsPerWindow": 16,
+  "windowFramesBefore": 1,
+  "windowFramesAfter": 1,
+  "copyOpacity": 0.0625,
+  "measuredPlateauIncrements": [0.063, 0.065, 0.063, 0.063, 0.063],
+  "comment:opacity": "Plateau heights across the trailing staircase, as a fraction of the sharp text intensity: 0.07 0.13 0.20 0.26 0.32 0.38. Flat, not tapered toward the window edge, and no duplicate approaches full opacity."
+}

@@ -2,6 +2,50 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
+  it("reports a missing real media id even when the title mentions one", async () => {
+    const html = `<html><body>
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <video title='id="ghost"' src="clip.mp4" data-start="0" data-duration="1" muted></video>
+      </div>
+    </body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.map((finding) => finding.code)).toContain("media_missing_id");
+  });
+
+  it.each([
+    'title="an unmuted muted crossorigin clip"',
+    "title='an unmuted muted crossorigin clip'",
+  ])("does not treat words in %s as media attributes", async (tooltip) => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" ${tooltip} src="a.mp4" data-start="0" data-duration="3"></video>
+    <audio id="a1" src="a.mp4" data-start="0" data-duration="3"></audio>
+  </div>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const codes = result.findings.map((finding) => finding.code);
+
+    expect(codes).toContain("video_missing_muted");
+    expect(codes).toContain("video_audio_double_source");
+    expect(codes).not.toContain("media_crossorigin_breaks_preview");
+  });
+
+  it.each(["muted", 'muted=""', 'muted="false"', "MUTED"])(
+    "keeps %s as a present Boolean attribute",
+    async (mutedAttr) => {
+      const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" ${mutedAttr} src="a.mp4" data-start="0" data-duration="3"></video>
+  </div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+
+      expect(result.findings.some((finding) => finding.code === "video_missing_muted")).toBe(false);
+    },
+  );
+
   it("reports error for duplicate media ids", async () => {
     const html = `
 <html><body>
@@ -293,6 +337,93 @@ describe("media rules", () => {
     expect(finding?.elementId).toBe("demo-video");
   });
 
+  it("video_missing_muted recommends data-has-audio first", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v" data-start="0" data-duration="5" src="clip.mp4" playsinline></video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "video_missing_muted");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("declares neither muted nor data-has-audio");
+    expect(finding?.message).not.toContain("separate <audio>");
+    expect(finding?.fixHint?.indexOf("data-has-audio")).toBeLessThan(
+      finding?.fixHint?.indexOf("muted") ?? -1,
+    );
+  });
+
+  it("video_audio_double_source suggests removing the <audio> first", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v" data-start="0" data-duration="5" data-has-audio="true" src="clip.mp4" playsinline></video>
+    <audio id="a" data-start="0" data-duration="5" src="clip.mp4"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "video_audio_double_source");
+    expect(finding?.fixHint?.startsWith("Remove the <audio>")).toBe(true);
+  });
+
+  const wrap = (body: string) => `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    ${body}
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  const codes = async (html: string) =>
+    (await lintHyperframeHtml(html)).findings.map((f) => f.code);
+
+  it.each(['data-has-audio="false"', 'data-has-audio=""', "data-has-audio"])(
+    "video_missing_muted stays quiet when the video declares its audio state (%s)",
+    async (attr) => {
+      const found = await codes(
+        wrap(`<video id="v" data-start="0" data-duration="5" ${attr} src="clip.mp4"></video>`),
+      );
+      expect(found).not.toContain("video_missing_muted");
+    },
+  );
+
+  it.each(['data-has-audio="false"', 'data-has-audio=""', "muted"])(
+    "video_audio_double_source ignores an explicitly silent video (%s)",
+    async (attr) => {
+      const found = await codes(
+        wrap(`<video id="v" data-start="0" data-duration="5" ${attr} src="clip.mp4"></video>
+    <audio id="a" data-start="0" data-duration="5" src="clip.mp4"></audio>`),
+      );
+      expect(found).not.toContain("video_audio_double_source");
+    },
+  );
+
+  it("video_audio_double_source ignores same-src clips that do not overlap in time", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="4" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="4" data-duration="4" src="clip.mp4"></audio>`),
+    );
+    expect(found).not.toContain("video_audio_double_source");
+  });
+
+  it("video_audio_double_source flags same-src clips that overlap in time", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="4" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="3" data-duration="4" src="clip.mp4"></audio>`),
+    );
+    expect(found).toContain("video_audio_double_source");
+  });
+
+  it("video_audio_double_source keeps flagging when a duration is not numeric", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="9" data-duration="4" src="clip.mp4"></audio>`),
+    );
+    expect(found).toContain("video_audio_double_source");
+  });
+
   it("does NOT flag <video> as nested in a void element with data-start (regression)", async () => {
     // Regression: void elements like <img> have no closing tag, so the previous
     // implementation kept them on the parent stack indefinitely and flagged any
@@ -326,6 +457,55 @@ describe("media rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("demo-video");
+  });
+
+  function optionalMediaScene(script: string): string {
+    return `<html><body>
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <video id="demo-video" class="demo-video" src="clip.mp4" muted data-start="0" data-duration="1"></video>
+        <div id="panel"></div>
+      </div>
+      <script>${script}</script>
+    </body></html>`;
+  }
+
+  it.each([
+    'const video = document.getElementById("demo-video"); video?.play();',
+    'const video = document.getElementById("demo-video"); video.play?.();',
+    'const video = document.getElementById("demo-video"); video?.play?.();',
+    'const video = document.querySelector("#demo-video"); video?.pause();',
+    'const video = document.querySelector(".demo-video"); video.pause?.();',
+    'document.getElementById("demo-video")?.play();',
+    'document.getElementById("demo-video").pause?.();',
+    'document.querySelector("#demo-video")?.play?.();',
+    'window.document.querySelector("video")?.pause();',
+    'const video = document.getElementById("demo-video"); const label = `playing ${video?.play()}`;',
+  ])("reports an executed optional media call: %s", async (script) => {
+    const result = await lintHyperframeHtml(optionalMediaScene(script));
+    expect(
+      result.findings.find((finding) => finding.code === "imperative_media_control"),
+    ).toMatchObject({
+      severity: "error",
+    });
+  });
+
+  it.each([
+    'const video = document.getElementById("demo-video"); const example = "video.play()";',
+    'const video = document.getElementById("demo-video"); // video.play()\n',
+    'const video = document.getElementById("demo-video"); const example = `video.play()`;',
+    'const video = document.getElementById("demo-video"); const example = /video.play()/;',
+    'const video = document.getElementById("demo-video"); const example = "video?.play?.()";',
+    'const video = document.getElementById("demo-video"); /* video?.play() */',
+    'const video = document.getElementById("demo-video"); const example = `video.pause?.()`;',
+    `const example = 'document.getElementById("demo-video").play()';`,
+    `const example = 'document.querySelector("video")?.play()';`,
+    'const panel = document.getElementById("panel"); panel?.play?.();',
+    'document.querySelector("#panel")?.pause();',
+  ])("does not report a quoted example or non-media optional call: %s", async (script) => {
+    const result = await lintHyperframeHtml(optionalMediaScene(script));
+    expect(result.findings.map((finding) => finding.code)).not.toContain(
+      "imperative_media_control",
+    );
   });
 
   it("reports imperative currentTime writes on query-selected managed media", async () => {
@@ -721,9 +901,21 @@ describe("audio_group_no_members", () => {
     expect(finding?.message).not.toContain('"music"');
   });
 
-  it("does not count video as group membership", async () => {
+  it("counts an audible video as group membership", async () => {
     const res = await lintHyperframeHtml(
-      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" data-audio-group="voiceover"></video>
+      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" data-has-audio="true" data-audio-group="voiceover"></video>
+        <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
+    );
+    expect(
+      res.findings.some(
+        (finding) => finding.code === "audio_group_no_members" && finding.elementId === "voiceover",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not count a muted video as group membership", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" muted data-audio-group="voiceover"></video>
         <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
     );
     expect(
@@ -1009,5 +1201,23 @@ describe("media_src_kind_mismatch", () => {
 </body></html>`;
     const result = await lintHyperframeHtml(html);
     expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
+  });
+});
+
+describe("speed_ramp_on_non_media", () => {
+  const RATE = `data-automation='{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":3}]}]}'`;
+  const page = (tag: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">${tag}</div>
+  </body></html>`;
+
+  it("warns on a rate lane outside video and audio, and stays quiet on a clip", async () => {
+    const bad = await lintHyperframeHtml(
+      page(`<img id="pic" src="a.png" data-start="0" data-duration="4" ${RATE}>`),
+    );
+    const good = await lintHyperframeHtml(
+      page(`<video id="v" src="a.mp4" data-start="0" data-duration="4" ${RATE}></video>`),
+    );
+    expect(bad.findings.find((f) => f.code === "speed_ramp_on_non_media")?.elementId).toBe("pic");
+    expect(good.findings.some((f) => f.code === "speed_ramp_on_non_media")).toBe(false);
   });
 });

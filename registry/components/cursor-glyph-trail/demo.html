@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
-  cursor-glyph-trail demo. FULL-BLEED light mount: the primitive fills the
-  whole 1920x1080 frame on a light token block. Non-default path, density,
-  fade, and accent values prove the variable path.
+  cursor-glyph-trail demo. Mounts the component full-frame over a flat light
+  ground; the component draws its own settings window. --brand carries the
+  trail color through the default "green" accent.
 -->
 <html lang="en">
   <head>
@@ -21,7 +21,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #eef0f3);
+        background: #f4f4f5;
       }
 
       #root {
@@ -30,7 +30,7 @@
         --muted: #5b6472;
         --surface: #ffffff;
         --border: #d3d8e0;
-        --brand: #3f3f46;
+        --brand: #0a84ff;
         --accent: #3f3f46;
         --accent-2: #3f3f46;
         --font-display: "Inter", system-ui, sans-serif;
@@ -39,7 +39,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: radial-gradient(ellipse at 50% 42%, #f7f8fa 0%, var(--bg, #eef0f3) 72%);
+        background: #f4f4f5;
       }
 
       .mount-bleed {
@@ -59,7 +59,7 @@
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="4"
+      data-duration="3.5"
       data-fps="30"
     >
       <div
@@ -67,9 +67,9 @@
         class="mount-bleed clip"
         data-composition-id="cursor-glyph-trail"
         data-composition-src="./cursor-glyph-trail.html"
-        data-variable-values='{"path":"zigzag","density":"high","fade":1.0,"accent":"blue"}'
+        data-variable-values='{"path":"sweep","density":"med","accent":"green"}'
         data-start="0"
-        data-duration="4"
+        data-duration="3.5"
         data-track-index="0"
         data-width="1920"
         data-height="1080"

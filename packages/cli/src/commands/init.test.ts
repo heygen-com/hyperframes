@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyResolutionPreset,
   injectTailwindBrowserScript,
+  nameTooLongMessage,
   resolveVideoDurationSeconds,
 } from "./init.js";
 
@@ -220,9 +221,58 @@ describe("hyperframes init flag rename", () => {
       const res = runInit([target, "--non-interactive", "--skip-transcribe", "--video", clip]);
       expect(res.status).toBe(0);
       const html = readFileSync(join(target, "index.html"), "utf-8");
-      expect(html).toContain('id="a-roll"');
-      expect(html).toContain('src="clip.mp4"');
+      const video = html.match(/<video\b[^>]*>/)?.[0] ?? "";
+      expect(video).toContain('id="a-roll"');
+      expect(video).toContain('src="clip.mp4"');
+      expect(video).toContain('data-has-audio="true"');
+      expect(video).not.toMatch(/\bmuted\b/);
+      expect(html).not.toMatch(/<audio\b/);
       expect(existsSync(join(target, "clip.mp4"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("scaffolds a silent --video as a muted clip with no audio element", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-silent-"));
+    const target = join(dir, "proj");
+    const clip = join(dir, "silent.mp4");
+    copyFileSync(resolve(fileURLToPath(import.meta.url), "../__fixtures__/silent.mp4"), clip);
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--video", clip]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      const video = html.match(/<video\b[^>]*>/)?.[0] ?? "";
+      expect(video).toMatch(/\bmuted\b/);
+      expect(video).not.toContain("data-has-audio");
+      expect(html).not.toMatch(/<audio\b/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("wires --audio into the composition without creating a video clip", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-audio-test-"));
+    const target = join(dir, "proj");
+    const audio = join(dir, "track.wav");
+    copyFileSync(
+      resolve(
+        fileURLToPath(import.meta.url),
+        "../../../../producer/tests/audio-mux-parity/src/assets/tone.wav",
+      ),
+      audio,
+    );
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--audio", audio]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toMatch(/<audio\b[^>]*src="track\.wav"/);
+      expect(html).not.toMatch(/<video\b/);
+      // tone.wav is 3 s; the root and the <audio> both carry the probed length, not the 10 s default.
+      expect(html).toMatch(/<audio\b[^>]*data-duration="3"/);
+      expect(html).toMatch(/<div[^>]*id="root"[^>]*data-duration="3"/);
+      expect(html).not.toContain("__VIDEO_SRC__");
+      expect(html).not.toContain("__AUDIO_SRC__");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -311,6 +361,69 @@ describe("hyperframes init flag rename", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("a name longer than a folder name can be fails in one plain sentence, before any folder is made", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "a".repeat(256));
+    const unit = process.platform === "linux" ? "bytes" : "characters";
+    try {
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain(
+        `That name is 256 ${unit} long; a folder name can be at most 255 ${unit}.`,
+      );
+      expect(res.stderr).not.toContain("ENAMETOOLONG");
+      expect(res.stderr).not.toContain(dir);
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a name exactly as long as a folder name can be scaffolds", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "a".repeat(255));
+    try {
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(0);
+      expect(existsSync(join(target, "index.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("measures a name as the disk does: UTF-8 bytes on Linux, UTF-16 units on macOS and Windows", () => {
+    const accented = "é".repeat(128); // 128 characters, 256 bytes
+    expect(nameTooLongMessage(accented, "linux")).toBe(
+      "That name is 256 bytes long; a folder name can be at most 255 bytes.",
+    );
+    expect(nameTooLongMessage(accented, "darwin")).toBeNull();
+    expect(nameTooLongMessage("é".repeat(127), "linux")).toBeNull();
+    expect(nameTooLongMessage("a".repeat(256), "darwin")).toBe(
+      "That name is 256 characters long; a folder name can be at most 255 characters.",
+    );
+    expect(nameTooLongMessage("a".repeat(255), "win32")).toBeNull();
+    // Each folder in a nested name is held to the limit, not the whole path.
+    expect(nameTooLongMessage(`parent/${"a".repeat(255)}`, "linux")).toBeNull();
+    expect(nameTooLongMessage(`parent/${"a".repeat(256)}`, "linux")).toContain("256 bytes");
+  });
+
+  it("validates the resolved destination after parent segments remove a long folder", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = `${dir}/${"a".repeat(256)}/../project`;
+    try {
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(0);
+      expect(existsSync(join(dir, "project", "index.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("measures Windows backslash-separated folders individually", () => {
+    expect(nameTooLongMessage(`parent\\${"a".repeat(255)}`, "win32")).toBeNull();
+    expect(nameTooLongMessage(`parent\\${"a".repeat(256)}`, "win32")).toContain("256 characters");
   });
 
   it("-V prints a migration error instead of version fast-path", () => {
