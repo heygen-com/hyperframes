@@ -654,7 +654,8 @@ export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
       }
     }
     for (const animation of document.getAnimations?.() ?? []) {
-      const time = Number(animation.currentTime ?? 0);
+      if (typeof animation.currentTime !== "number") continue;
+      const time = animation.currentTime;
       const end = Number(animation.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY);
       const atEnd = animation.playbackRate < 0 ? time <= 0 : time >= end;
       clocks.push({ id: idOf(animation), time, done: animation.playState === "finished" || atEnd });

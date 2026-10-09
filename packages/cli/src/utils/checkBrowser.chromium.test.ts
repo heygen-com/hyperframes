@@ -9,8 +9,12 @@ const PAGE = `<body>
 <style>
   @keyframes slide { to { transform: translateX(100px) } }
   #forever { animation: slide 1s linear infinite paused }
+  #scrolled { animation: slide linear both; animation-timeline: scroll(root) }
+  #viewed { animation: slide linear both; animation-timeline: view() }
 </style>
 <div id="forever"></div>
+<div id="scrolled"></div>
+<div id="viewed"></div>
 <div id="reverse"></div>
 <div id="held"></div>
 <div id="parked"></div>
