@@ -96,6 +96,15 @@ export function unseenTurns(dir: string, since: number, now = Date.now()): AppTu
   );
 }
 
+function isChangedFile(path: string, since: number): boolean {
+  try {
+    const stats = lstatSync(path);
+    return stats.isFile() && stats.mtimeMs > since;
+  } catch {
+    return false;
+  }
+}
+
 /** Project files changed after `since`, by the app or by hand; hidden folders and outputs are not the video. */
 export function filesChangedSince(dir: string, since: number): string[] {
   const changed: string[] = [];
@@ -112,7 +121,7 @@ export function filesChangedSince(dir: string, since: number): string[] {
       if (entry.name.startsWith(".") || SKIPPED_DIRS.has(entry.name)) continue;
       const path = join(folder, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.isFile() && lstatSync(path).mtimeMs > since)
+      else if (entry.isFile() && isChangedFile(path, since))
         changed.push(relative(dir, path).split(sep).join("/"));
     }
   };
