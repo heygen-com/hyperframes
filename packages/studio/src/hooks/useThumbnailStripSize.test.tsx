@@ -83,6 +83,56 @@ it("cancels a pending resize frame when the last strip unmounts", () => {
   }
 });
 
+it("drops a pending size when its strip unmounts, so a strip remounted on that box keeps its own", () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const runFrames = nextFrames();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  function Strip() {
+    const [size, ref] = useThumbnailStripSize();
+    return <div ref={ref}>{`${size.width}x${size.height}`}</div>;
+  }
+  function Box({ id }: { id: string }) {
+    const box = (element: HTMLDivElement | null) => {
+      if (!element) return;
+      Object.defineProperty(element, "clientWidth", { configurable: true, value: 300 });
+      Object.defineProperty(element, "clientHeight", { configurable: true, value: 40 });
+    };
+    return (
+      <div ref={box} data-testid="box">
+        <Strip key={id} />
+      </div>
+    );
+  }
+  // The other strip keeps the shared observer alive across the remount.
+  const render = (id: string) =>
+    act(() =>
+      root.render(
+        <>
+          <div>
+            <Strip />
+          </div>
+          <Box id={id} />
+        </>,
+      ),
+    );
+  try {
+    render("a");
+    reportResize(320, 40);
+    render("b");
+    runFrames();
+    expect(host.querySelector('[data-testid="box"]')?.textContent).toBe("300x40");
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
+});
+
 it("does not re-render the strip when the observer reports the size it already holds", () => {
   const originalResizeObserver = globalThis.ResizeObserver;
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;

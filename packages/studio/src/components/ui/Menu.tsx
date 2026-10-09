@@ -23,13 +23,15 @@ export type PopupPreviewState = "open";
 /** Where the portal puts the popup. `null` keeps it inline, next to its trigger. */
 export type PortalContainer = ComponentPropsWithoutRef<typeof BaseMenu.Portal>["container"];
 
+const CONTENTS = { display: "contents" } as const;
+
 /** Base UI reads a `null` container as "not resolved yet" and renders nothing, so give `null` a host by the trigger. */
 export function useInlinePortal(container: PortalContainer) {
   const host = useRef<HTMLSpanElement>(null);
   if (container !== null) return { host: null, portal: { container } };
   return {
-    host: <span ref={host} className="contents" />,
-    portal: { container: host, className: "contents" },
+    host: <span ref={host} style={CONTENTS} />,
+    portal: { container: host, style: CONTENTS },
   };
 }
 

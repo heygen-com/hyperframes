@@ -244,6 +244,7 @@ export function useThumbnailStripSize() {
       resize.unobserve(target);
       presence?.unobserve(target);
       strips.delete(target);
+      pendingSizes.delete(target);
       release();
     };
   }, []);

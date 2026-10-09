@@ -23,6 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   thumbnailScheduler.invalidateProject("p");
   vi.clearAllMocks();
 });
@@ -243,8 +244,10 @@ describe("VideoThumbnail", () => {
     });
     await render(0, 0);
 
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+    act(() => reportResize(500, 40));
     await act(async () => {
-      reportResize(500, 40);
+      vi.advanceTimersToNextFrame();
       await Promise.resolve();
     });
 
