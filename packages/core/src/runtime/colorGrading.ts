@@ -2623,7 +2623,7 @@ function visibleLayoutBoxes(
   const size = layoutBoxes(entry.element, computed);
   if (!size) return null;
   const borderOnly = size.cssWidth <= 0 || size.cssHeight <= 0;
-  return borderOnly && !entry.hasDrawn ? null : size;
+  return borderOnly && !entry.sourceHidden ? null : size;
 }
 
 function resolvedLayoutSize(primary: number, fallback: number): number {

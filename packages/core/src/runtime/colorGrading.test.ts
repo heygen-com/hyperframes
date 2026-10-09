@@ -267,7 +267,7 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.width).toBe("32px");
   });
 
-  it("hides a border-only canvas until the source has drawn once", () => {
+  it("hides a border-only canvas while the source itself is showing", () => {
     const video = makeDrawableVideo();
     bordered32(video);
     expect(startRuntimeWithVideo(video).canvas.style.display).toBe("none");
