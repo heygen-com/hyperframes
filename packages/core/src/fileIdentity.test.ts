@@ -72,10 +72,10 @@ describe("file identity", () => {
       .filter((name) => existsSync(join(packages, name, "src")))
       .flatMap((name) =>
         readdirSync(join(packages, name, "src"), { recursive: true, encoding: "utf8" }).map(
-          (path) => `${name}/src/${path}`,
+          (path) => `${name}/src/${path.replaceAll("\\", "/")}`,
         ),
       );
-    expect(sources).toContain("core/src/fileIdentity.ts");
+    for (const path of allowed) expect(sources).toContain(path);
     const offenders = sources
       .filter((path) => /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) && !allowed.has(path))
       .filter((path) =>
