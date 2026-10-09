@@ -1530,7 +1530,7 @@ describe("check pipeline", () => {
             finding.code === "sweep_static" &&
             finding.severity === "error" &&
             finding.message.includes("did not advance") &&
-            finding.fixHint?.includes("data-no-timeline"),
+            finding.fixHint?.includes("window.__timelines"),
         ),
       ).toBe(true);
     });
@@ -1554,6 +1554,16 @@ describe("check pipeline", () => {
       ["whose timeline follows the seek", (sample: number) => [{ id: 1, time: sample, end: 4 }]],
       ["with nothing that could move", () => []],
       ["whose only animation already holds at its end", () => [{ id: 1, time: 4, end: 4 }]],
+      [
+        "whose timeline is seen, listed twice, at only one sample",
+        (sample: number) =>
+          sample === 2
+            ? [
+                { id: 1, time: 0, end: 4 },
+                { id: 1, time: 0, end: 4 },
+              ]
+            : [],
+      ],
     ])("warns, without failing, on a still card %s", async (_case, clocks) => {
       const { report } = await runScenario(stillCard(clocks));
 

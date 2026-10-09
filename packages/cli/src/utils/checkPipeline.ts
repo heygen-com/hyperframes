@@ -511,9 +511,13 @@ function detectSweepStatic(
 function anAnimationIsStuck(samples: { clock: SeekClock[] }[]): boolean {
   const timesById = new Map<number, number[]>();
   const endById = new Map<number, number>();
-  for (const { id, time, end } of samples.flatMap((sample) => sample.clock)) {
-    timesById.set(id, [...(timesById.get(id) ?? []), time]);
-    endById.set(id, end);
+  for (const sample of samples) {
+    for (const { id, time, end } of new Map(
+      sample.clock.map((clock) => [clock.id, clock]),
+    ).values()) {
+      timesById.set(id, [...(timesById.get(id) ?? []), time]);
+      endById.set(id, end);
+    }
   }
   return [...timesById].some(
     ([id, times]) => times.length > 1 && allSame(times) && times[0]! < endById.get(id)!,
@@ -530,6 +534,9 @@ function seenPart(signature: string): string {
 function allSame(values: readonly unknown[]): boolean {
   return values.every((value) => value === values[0]);
 }
+
+const STILL_FIX_HINT =
+  "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.";
 
 const SWEEP_STATIC_MESSAGES = {
   error: "Timeline did not advance under seek; every green verdict on this run is unreliable.",
@@ -549,7 +556,9 @@ function sweepStaticIssue(kind: keyof typeof SWEEP_STATIC_MESSAGES): AnchoredLay
     rect: ZERO_LAYOUT_RECT,
     message: SWEEP_STATIC_MESSAGES[kind],
     fixHint:
-      "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
+      kind === "error"
+        ? "An animation on the page never moved under seek. Build it on the paused GSAP timeline registered in `window.__timelines[compositionId]`, or as a CSS animation, so the seek drives it."
+        : STILL_FIX_HINT,
   };
 }
 
