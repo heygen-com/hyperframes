@@ -132,8 +132,6 @@ test("--plan on a fixture transcript prints the exact segment JSON", () => {
       process.execPath,
       [
         SCRIPT,
-        "--input",
-        "ignored.mp4",
         "--transcript",
         transcriptPath,
         "--remove",

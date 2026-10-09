@@ -42,7 +42,7 @@ Options:
   --cut-silence       Remove inter-word gaps longer than this many seconds
   --keep              Inverse mode: direct kept ranges, mutually exclusive with removal
   --copy              Use stream copy for faster, keyframe-snapped cuts
-  --plan              Print kept segment JSON and exit without ffmpeg
+  --plan              Print kept segment JSON; uses source duration when --input is supplied
   --out               Output file
   --json              Output JSON status
   --help, -h          Show this help`);
@@ -66,8 +66,12 @@ try {
 
 function run() {
   if (!args.transcript) throw new Error("--transcript is required");
+  const inputPath = args.input ? resolve(args.input) : null;
+  // A last word at 4s must not drop a 6s source's outro when removing a filler.
+  const totalSeconds = inputPath ? probeDuration(inputPath) : null;
   const transcript = JSON.parse(readFileSync(resolve(args.transcript), "utf8"));
   const segments = compileCutList(transcript, {
+    duration: totalSeconds,
     remove: args.remove,
     removeWords: args["remove-words"],
     removeFillers: args["remove-fillers"],
@@ -80,16 +84,14 @@ function run() {
     return;
   }
 
-  if (!args.input || !args.out)
+  if (!inputPath || !args.out)
     throw new Error("--input and --out are required unless --plan is set");
   if (segments.length === 0) throw new Error("cut list has no kept segments");
 
-  const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
   mkdirSync(dirname(outPath), { recursive: true });
   const tmpDir = mkdtempSync(join(tmpdir(), "media-use-cut-"));
   const keptSeconds = sumDurations(segments);
-  const totalSeconds = probeDuration(inputPath);
 
   try {
     const parts = segments.map((segment, index) => {

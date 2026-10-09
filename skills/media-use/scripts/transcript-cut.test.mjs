@@ -28,6 +28,20 @@ function run(args) {
   return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
 }
 
+function writeTone(source) {
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=440:duration=6:sample_rate=${SAMPLE_RATE}`,
+    source,
+  ]);
+}
+
 function readPcm(filePath) {
   const raw = execFileSync("ffmpeg", [
     "-hide_banner",
@@ -47,6 +61,64 @@ function readPcm(filePath) {
   return samples;
 }
 
+for (const { name, edits, segments, duration } of [
+  {
+    name: "preserves the source tail when removing a filler",
+    edits: ["--remove-fillers", "um"],
+    segments: [
+      { start: 0, end: 1 },
+      { start: 1.5, end: 6 },
+    ],
+    duration: 5.5,
+  },
+  {
+    name: "keeps an explicit range after the last spoken word",
+    edits: ["--keep", "4-6"],
+    segments: [{ start: 4, end: 6 }],
+    duration: 2,
+  },
+]) {
+  test(name, { skip: !HAS_FFMPEG }, (t) => {
+    const { dir, cleanup } = fixture();
+    t.after(cleanup);
+    const source = join(dir, "tone.wav");
+    writeTone(source);
+    const transcriptPath = join(dir, "transcript.json");
+    writeFileSync(
+      transcriptPath,
+      JSON.stringify({
+        words: [
+          { text: "hello", start: 0, end: 1 },
+          { text: "um", start: 1, end: 1.5 },
+          { text: "goodbye", start: 1.5, end: 4 },
+        ],
+      }),
+    );
+    const output = join(dir, "out.wav");
+    const result = run([
+      "--input",
+      source,
+      "--transcript",
+      transcriptPath,
+      ...edits,
+      "--out",
+      output,
+      "--json",
+    ]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const status = JSON.parse(result.stdout);
+    assert.deepEqual(status.segments, segments);
+    assert.equal(status.kept_s, duration);
+    assert.equal(status.total_s, 6);
+    const plan = run(["--input", source, "--transcript", transcriptPath, ...edits, "--plan"]);
+    assert.equal(plan.status, 0, plan.stderr || plan.stdout);
+    assert.deepEqual(JSON.parse(plan.stdout), segments);
+    const samples = readPcm(output);
+    assert.equal(samples.length, duration * SAMPLE_RATE);
+    assert.ok(samples.slice(-SAMPLE_RATE).some((sample) => Math.abs(sample) > 1000));
+  });
+}
+
 test(
   "keeps a spliced tone continuous at every cut, with no raw phase jump or silence gap",
   { skip: !HAS_FFMPEG },
@@ -55,17 +127,7 @@ test(
     t.after(cleanup);
 
     const source = join(dir, "tone.wav");
-    execFileSync("ffmpeg", [
-      "-y",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      `sine=frequency=440:duration=6:sample_rate=${SAMPLE_RATE}`,
-      source,
-    ]);
+    writeTone(source);
 
     const transcriptPath = join(dir, "transcript.json");
     writeFileSync(transcriptPath, JSON.stringify({ words: [{ text: "tone", start: 0, end: 6 }] }));

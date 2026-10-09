@@ -143,7 +143,7 @@ node <SKILL_DIR>/scripts/transcript-cut.mjs \
 resolve --from talk.cut.mp4 --type video
 ```
 
-Use `--plan` first when you want to inspect the kept segment JSON before encoding.
+Use `--plan` with `--input` first when you want to inspect the kept segment JSON before encoding. The source's measured duration bounds the edits, including footage after the last word. A transcript-only `--plan` needs no media tools and uses the last word's end as its duration.
 
 ## Ducking (declare in-composition / bake for export)
 
