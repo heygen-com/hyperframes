@@ -138,6 +138,19 @@ export function formatFfmpegError(
     : `FFmpeg exited with code ${exitCode}`;
 }
 
+/** formatFfmpegError, led by the timeout when this process was killed at its deadline. */
+export function describeFfmpegFailure(
+  result: Pick<RunFfmpegResult, "exitCode" | "stderr" | "terminationReason">,
+  timeoutMs: number,
+): string {
+  const error = formatFfmpegError(result.exitCode, result.stderr);
+  if (result.terminationReason !== "deadline") return error;
+  return (
+    `FFmpeg timed out after ${timeoutMs} ms (ffmpegProcessTimeout; long renders can raise ` +
+    `FFMPEG_PROCESS_TIMEOUT_MS). ${error}`
+  );
+}
+
 function spawnFfmpeg(args: string[]): ChildProcess {
   // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
   // this Node opens a visible console window per spawn on Windows. A render

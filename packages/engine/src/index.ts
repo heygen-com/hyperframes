@@ -343,6 +343,7 @@ export {
 export {
   runFfmpeg,
   formatFfmpegError,
+  describeFfmpegFailure,
   isExternalFfmpegInterruption,
   type RunFfmpegOptions,
   type RunFfmpegResult,

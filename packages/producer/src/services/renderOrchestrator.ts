@@ -5146,6 +5146,7 @@ async function executeRenderPipeline(input: {
             hasAudio,
             format: outputFormat,
             hlsSegmentSeconds,
+            ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
             abortSignal: executionSignal,
             assertNotAborted,
             onProgress,
