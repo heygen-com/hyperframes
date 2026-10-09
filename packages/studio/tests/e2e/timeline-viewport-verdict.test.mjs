@@ -127,7 +127,9 @@ describe("judgeAgainstBase", () => {
       const step = (index) => run * 63 + index;
       return {
         interactions: Array.from({ length: 63 }, (_, i) => (step(i) < late ? 66.7 : 33.3)),
-        frameIntervals: Array.from({ length: 63 }, (_, i) => (step(i) < droppedFrames ? 33.3 : 16.7)),
+        frameIntervals: Array.from({ length: 63 }, (_, i) =>
+          step(i) < droppedFrames ? 33.3 : 16.7,
+        ),
       };
     });
 
