@@ -271,6 +271,21 @@ describe("resolveDefaultFpsArg", () => {
     }
   });
 
+  it("uses an uppercase HTML data-fps declaration when --fps is omitted", () => {
+    const project = makeProject();
+    try {
+      writeFileSync(
+        project.indexPath,
+        '<!DOCTYPE html><html><body><div data-composition-id="root" DATA-FPS="24">x</div></body></html>',
+      );
+
+      expect(resolveDefaultFpsArg(undefined, project.dir, project.indexPath, undefined)).toBe("24");
+      expect(resolveDefaultFpsArg("60", project.dir, project.indexPath, undefined)).toBe("60");
+    } finally {
+      project.cleanup();
+    }
+  });
+
   it("keeps an explicit --fps value ahead of any composition default", () => {
     const project = makeProject();
     try {

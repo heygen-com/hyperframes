@@ -2,6 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 
+function getHtmlAttribute(element: Element, name: string): string | null {
+  // linkedom preserves attribute spelling; HTML names are case-insensitive and
+  // browsers keep the first occurrence when duplicate attributes are present.
+  return (
+    Array.from(element.attributes).find((attribute) => attribute.name.toLowerCase() === name)
+      ?.value ?? null
+  );
+}
+
 /**
  * Read a composition's declared frame rate from its root element's `data-fps`
  * attribute — the same attribute the runtime honors (core/runtime/init.ts) — so
@@ -22,15 +31,14 @@ export function readCompositionFps(html: string): string | null {
     return null;
   }
 
-  const explicitRoot = doc.querySelector('[data-composition-id][data-root="true"]');
+  const compositions = Array.from(doc.querySelectorAll("*")).filter(
+    (element) => getHtmlAttribute(element, "data-composition-id") !== null,
+  );
   const root =
-    explicitRoot ??
-    Array.from(doc.querySelectorAll("[data-composition-id]")).find(
-      (el) => !el.parentElement?.closest("[data-composition-id]"),
-    ) ??
-    null;
+    compositions.find((element) => getHtmlAttribute(element, "data-root") === "true") ??
+    compositions[0];
 
-  const raw = root?.getAttribute("data-fps")?.trim();
+  const raw = root ? getHtmlAttribute(root, "data-fps")?.trim() : undefined;
   return raw ? raw : null;
 }
 
