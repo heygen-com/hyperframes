@@ -1659,7 +1659,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_timeline_registered_before_async_build — registering window.__timelines[id]
-  // BEFORE the timeline is built inside document.fonts.ready (or any async callback)
+  // BEFORE the timeline is built inside a font-ready callback
   // leaves an EMPTY timeline registered. The runtime's sub-composition readiness gate
   // treats "key present" as "ready" and nests the child ONCE, while still empty — so the
   // animation never renders when this composition is mounted as a sub-composition.
@@ -1668,14 +1668,16 @@ export const gsapRules: LintRule<LintContext>[] = [
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
       const content = stripJsComments(script.content);
-      const regIdx = content.search(/window\s*\.\s*__timelines\s*\[/);
+      const regIdx = content.search(
+        /window\s*\.\s*__timelines\s*(?:\[[^\]]+\]|\.\s*[A-Za-z_$][\w$]*)\s*=\s*(?!=)/,
+      );
       if (regIdx < 0) continue;
-      const fontsReadyIdx = content.search(/document\s*\.\s*fonts\s*\.\s*ready/);
+      const fontsReadyIdx = content.search(/document\s*\.\s*fonts\s*\.\s*(?:ready\b|load\s*\()/);
       if (fontsReadyIdx < 0) continue;
       // Registering after the async boundary is the correct pattern — skip it.
       if (regIdx >= fontsReadyIdx) continue;
       // Confirm the build is actually deferred past the boundary (a tween/build call
-      // appears after document.fonts.ready), i.e. the registered timeline starts empty.
+      // appears after the font wait), i.e. the registered timeline starts empty.
       const tail = content.slice(fontsReadyIdx);
       if (!/\.(?:to|from|fromTo)\s*\(|buildEffect\s*\(/.test(tail)) continue;
       findings.push({
@@ -1683,12 +1685,12 @@ export const gsapRules: LintRule<LintContext>[] = [
         severity: "error",
         message:
           "window.__timelines is assigned BEFORE the timeline is built inside " +
-          "document.fonts.ready. An empty timeline registered early gets nested empty " +
+          "document.fonts.ready or document.fonts.load(). An empty timeline registered early gets nested empty " +
           "when this composition is used as a sub-composition (the readiness gate treats " +
           '"key present" as "ready" and never re-nests), so the animation renders blank.',
         fixHint:
           "Move the `window.__timelines[id] = tl;` assignment to the END of the " +
-          "document.fonts.ready callback, after the tweens are added. Optionally call " +
+          "font-ready callback, after the tweens are added. Optionally call " +
           "window.__hfForceTimelineRebind() right after, to re-nest the populated timeline.",
       });
     }

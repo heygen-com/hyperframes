@@ -138,6 +138,79 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it.each([
+    ["bracket / load", 'window.__timelines["c1"]', 'document.fonts.load("16px Inter")'],
+    ["dot / ready", "window.__timelines.c1", "document.fonts.ready"],
+    ["dot / load", "window.__timelines.c1", 'document.fonts.load("16px Inter")'],
+    ["spaced dot / load", "window . __timelines . c1", 'document . fonts . load("16px Inter")'],
+  ])("flags early registration with %s", async (_label, registry, fontWait) => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><h1 id="title">Text</h1></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    ${registry} = tl;
+    ${fontWait}.then(() => {
+      tl.to("#title", { x: 20, duration: 1 });
+    });
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    expect(
+      result.findings.filter(
+        (finding) => finding.code === "gsap_timeline_registered_before_async_build",
+      ),
+    ).toEqual([expect.objectContaining({ severity: "error" })]);
+  });
+
+  it.each([
+    ['window.__timelines["c1"]', "document.fonts.ready"],
+    ['window.__timelines["c1"]', 'document.fonts.load("16px Inter")'],
+    ["window.__timelines.c1", "document.fonts.ready"],
+    ["window.__timelines.c1", 'document.fonts.load("16px Inter")'],
+  ])("accepts %s registered after %s builds the timeline", async (registry, fontWait) => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><h1 id="title">Text</h1></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const existing = ${registry};
+    ${fontWait}.then(() => {
+      tl.to("#title", { x: 20, duration: 1 });
+      ${registry} = tl;
+    });
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    expect(
+      result.findings.find(
+        (finding) => finding.code === "gsap_timeline_registered_before_async_build",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("accepts a fonts.load callback that adds no deferred animation", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><h1 id="title">Text</h1></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#title", { x: 20, duration: 1 });
+    window.__timelines.c1 = tl;
+    document.fonts.load("16px Inter").then(() => console.log("fonts loaded"));
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    expect(
+      result.findings.find(
+        (finding) => finding.code === "gsap_timeline_registered_before_async_build",
+      ),
+    ).toBeUndefined();
+  });
+
   it("does NOT error when GSAP animates opacity on a clip element (by id)", async () => {
     const html = `
 <html><body>
