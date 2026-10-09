@@ -698,6 +698,12 @@ Render video. Built for agents.
       (dir: string) => join(dir, "narration.wav", "out.srt"),
       "Output folder not found",
     ],
+    ["the input media", (dir: string) => join(dir, "narration.wav"), "--output would overwrite"],
+    [
+      "the transcript it writes",
+      (dir: string) => join(dir, "transcript.json"),
+      "--output would overwrite",
+    ],
   ])("fails --output naming %s before transcribing", async (_name, output, error) => {
     const { dir, input } = dummyAudio();
     dirs.push(dir);
@@ -710,6 +716,30 @@ Render video. Built for agents.
 
     expect(transcribeMock).not.toHaveBeenCalled();
     expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+  });
+
+  it("says the transcript was saved when the caption file cannot be written", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const output = join(dir, "captions.srt");
+    transcribeMock.mockImplementation(async (_input, outputDir) => {
+      // A folder at the caption path makes the write fail on any OS, even as root.
+      mkdirSync(output);
+      return fakeTranscript(outputDir, "whisper");
+    });
+
+    await transcribeCmd.run!({
+      args: { input, json: true, engine: "whisper", to: "srt", output },
+    } as never);
+
+    expect(consumeCommandResult().exitCode).toBe(1);
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        `Transcript saved to ${join(dir, "transcript.json")}, but the caption file ${output} could not be written: `,
+      ),
+    });
+    expect(existsSync(join(dir, "transcript.json"))).toBe(true);
   });
 
   it("groups transcribed CJK words into captions instead of one cue per word", async () => {

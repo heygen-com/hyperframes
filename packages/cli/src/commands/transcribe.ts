@@ -13,7 +13,7 @@ import {
 } from "../whisper/parakeet.js";
 
 type CaptionExportFormat = "srt" | "vtt";
-type CaptionSidecar = { to: CaptionExportFormat; output?: string; preserveCues: boolean };
+type CaptionSidecar = { to: CaptionExportFormat; outPath: string; preserveCues: boolean };
 
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
@@ -140,10 +140,10 @@ export default defineCommand({
 
     // ── Import mode: convert existing transcript ──────────────────────────
     const isImport = ext === ".json" || ext === ".srt" || ext === ".vtt";
-    const sidecar = parseSidecar(args);
+    const sidecar = parseSidecar(args, inputPath, dir);
 
     if (sidecar && isImport) {
-      return exportTranscript(inputPath, dir, sidecar, args.json);
+      return exportTranscript(inputPath, sidecar, args.json);
     }
 
     if (isImport) {
@@ -209,28 +209,37 @@ function parseExportFormat(
   failWith(`Unsupported caption export format: ${value}. Use srt or vtt.`, json);
 }
 
-function parseSidecar(args: {
-  to?: string;
-  output?: string;
-  "preserve-cues": boolean;
-  json: boolean;
-}): CaptionSidecar | undefined {
+function parseSidecar(
+  args: { to?: string; output?: string; "preserve-cues": boolean; json: boolean },
+  inputPath: string,
+  dir: string,
+): CaptionSidecar | undefined {
   const to = parseExportFormat(args.to, args.json);
   if (!to) return undefined;
-  if (args.output) {
-    const outPath = resolve(args.output);
-    const folder = dirname(outPath);
-    if (!existsSync(folder) || !statSync(folder).isDirectory()) {
-      failWith(`Output folder not found: ${folder}`, args.json);
-    }
-    if (/[\\/]$/.test(args.output) || (existsSync(outPath) && statSync(outPath).isDirectory())) {
-      failWith(
-        `--output is a folder; give a file path such as ${join(outPath, `transcript.${to}`)}`,
-        args.json,
-      );
-    }
+  const outPath = resolve(args.output ?? join(dir, `transcript.${to}`));
+  const keep = [inputPath, join(dir, "transcript.json")];
+  const problem = args.output && outputProblem(args.output, outPath, to, keep);
+  if (problem) failWith(problem, args.json);
+  return { to, outPath, preserveCues: args["preserve-cues"] };
+}
+
+/** Why an explicit --output cannot be used, checked before any transcription work. */
+function outputProblem(
+  output: string,
+  outPath: string,
+  to: CaptionExportFormat,
+  keep: string[],
+): string | undefined {
+  const folder = dirname(outPath);
+  if (!existsSync(folder) || !statSync(folder).isDirectory()) {
+    return `Output folder not found: ${folder}`;
   }
-  return { to, output: args.output, preserveCues: args["preserve-cues"] };
+  if (/[\\/]$/.test(output) || (existsSync(outPath) && statSync(outPath).isDirectory())) {
+    return `--output is a folder; give a file path such as ${join(outPath, `transcript.${to}`)}`;
+  }
+  // ponytail: path compare only; a case-insensitive disk or a symlink can still alias.
+  if (keep.includes(outPath)) return `--output would overwrite ${outPath}; choose another file`;
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,21 +277,18 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
 
 async function writeCaptionSidecar(
   words: Word[],
-  dir: string,
-  { to, output, preserveCues }: CaptionSidecar,
+  { to, outPath, preserveCues }: CaptionSidecar,
   phraseLevelSource: boolean | undefined,
-): Promise<string> {
+): Promise<void> {
   const { formatSrt, formatVtt } = await import("../whisper/normalize.js");
   // A .srt/.vtt source is already phrase-level; keep its cue boundaries 1:1.
   // --preserve-cues forces the same for an already-cued transcript.json whose
   // entries have no internal whitespace (single-word or CJK captions), which
   // the automatic whitespace heuristic in wordsToCues can't detect.
   const preGrouped = preserveCues || phraseLevelSource;
-  const outPath = resolve(output ?? join(dir, `transcript.${to}`));
   const content =
     to === "srt" ? formatSrt(words, { preGrouped }) : formatVtt(words, { preGrouped });
   writeFileSync(outPath, content);
-  return outPath;
 }
 
 function reportSidecar(to: CaptionExportFormat, wordCount: number, outPath: string): void {
@@ -293,7 +299,6 @@ function reportSidecar(to: CaptionExportFormat, wordCount: number, outPath: stri
 
 async function exportTranscript(
   inputPath: string,
-  dir: string,
   sidecar: CaptionSidecar,
   json: boolean,
 ): Promise<void> {
@@ -302,12 +307,8 @@ async function exportTranscript(
 
   if (words.length === 0) exitNoWords(json);
 
-  const outPath = await writeCaptionSidecar(
-    words,
-    dir,
-    sidecar,
-    format === "srt" || format === "vtt" || undefined,
-  );
+  await writeCaptionSidecar(words, sidecar, format === "srt" || format === "vtt" || undefined);
+  const { outPath } = sidecar;
 
   if (json) {
     console.log(
@@ -462,10 +463,19 @@ async function transcribeAudio(
 
     writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
     patchCaptionHtml(dir, words);
-    const exported = opts.sidecar && {
-      format: opts.sidecar.to,
-      outputPath: await writeCaptionSidecar(words, dir, opts.sidecar, false),
-    };
+    const { sidecar } = opts;
+    if (sidecar) {
+      try {
+        await writeCaptionSidecar(words, sidecar, false);
+      } catch (err) {
+        const message = `Transcript saved to ${result.transcriptPath}, but the caption file ${sidecar.outPath} could not be written: ${normalizeErrorMessage(err)}`;
+        if (opts.json) console.log(JSON.stringify({ ok: false, error: message }));
+        else spin?.stop(c.error(message));
+        setCommandExitCode(1);
+        return;
+      }
+    }
+    const exported = sidecar && { format: sidecar.to, outputPath: sidecar.outPath };
 
     if (opts.json) {
       console.log(
