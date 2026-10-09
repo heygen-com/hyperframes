@@ -202,6 +202,8 @@ describe("callbacks after the player is already mounted", () => {
     const iframe = (player as TestHyperframesPlayer).iframeElement;
     let page = {};
     Object.defineProperty(iframe, "contentDocument", { get: () => page });
+    const announced = vi.fn();
+    iframe.addEventListener("hf-preview-document-loaded", announced);
 
     act(() => void player.dispatchEvent(new Event("ready")));
     expect(onLoad).toHaveBeenCalledTimes(1);
@@ -213,6 +215,7 @@ describe("callbacks after the player is already mounted", () => {
     page = {};
     act(() => void player.dispatchEvent(new Event("ready")));
     expect(onLoad).toHaveBeenCalledTimes(2);
+    expect(announced).toHaveBeenCalledTimes(2);
   });
 
   it("reports the preview error cause", async () => {

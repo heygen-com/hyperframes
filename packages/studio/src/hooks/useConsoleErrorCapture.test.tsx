@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
+import { announcePreviewDocumentLoaded } from "../player/sceneSwap";
 import { useConsoleErrorCapture } from "./useConsoleErrorCapture";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -36,7 +37,7 @@ it("shows the errors a preview raised before its load, once each", async () => {
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(React.createElement(Harness, { iframe })));
   Object.assign(previewWindow, { [STUDIO_PREVIEW_ERRORS]: [raisedBeforeLoad] });
-  await act(async () => iframe.dispatchEvent(new Event("load")));
+  await act(async () => announcePreviewDocumentLoaded(iframe));
 
   expect(shown()).toEqual([raisedBeforeLoad]);
 });
@@ -79,17 +80,15 @@ it("clears a document's errors when its load replaces it, and when the preview g
     previewWindow.dispatchEvent(new ErrorEvent("error", { message: "Uncaught Error: old" })),
   );
   Object.assign(previewWindow, { [STUDIO_PREVIEW_ERRORS]: ["Uncaught Error: new"] });
-  await act(async () => iframe.dispatchEvent(new Event("load")));
+  await act(async () => announcePreviewDocumentLoaded(iframe));
   expect(shown()).toEqual(["Uncaught Error: new"]);
 
   await act(async () => root?.render(React.createElement(NullableHarness, { frame: null })));
   expect(capture.consoleErrors).toBeNull();
 });
 
-it("keeps a page's errors through that page's own late load, and clears them for a new page", async () => {
+it("keeps a page's errors through its own late load, and clears them for the next announced page", async () => {
   const { iframe, previewWindow } = previewFrame();
-  let page = {};
-  Object.defineProperty(iframe, "contentDocument", { get: () => page });
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(React.createElement(Harness, { iframe })));
   await act(async () =>
@@ -99,8 +98,7 @@ it("keeps a page's errors through that page's own late load, and clears them for
   await act(async () => iframe.dispatchEvent(new Event("load")));
   expect(shown()).toEqual(["Uncaught Error: kept"]);
 
-  page = {};
   Object.assign(previewWindow, { [STUDIO_PREVIEW_ERRORS]: ["Uncaught Error: new page"] });
-  await act(async () => iframe.dispatchEvent(new Event("load")));
+  await act(async () => announcePreviewDocumentLoaded(iframe));
   expect(shown()).toEqual(["Uncaught Error: new page"]);
 });

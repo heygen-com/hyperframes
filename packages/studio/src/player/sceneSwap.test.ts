@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SCENE_SWAP_MS, onPreviewContentReplaced, sceneSwapFor } from "./sceneSwap";
+import {
+  SCENE_SWAP_MS,
+  announcePreviewDocumentLoaded,
+  onPreviewContentReplaced,
+  sceneSwapFor,
+} from "./sceneSwap";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -95,22 +100,22 @@ describe("sceneSwapFor", () => {
 });
 
 describe("onPreviewContentReplaced", () => {
-  it("ignores the late load of the page already in use, and reports a new page or a scene swap", () => {
+  it("reports Player's document-loaded announcement and a scene swap, never a raw load", () => {
     const iframe = document.createElement("iframe");
-    let page = {};
-    Object.defineProperty(iframe, "contentDocument", { get: () => page });
     const replaced = vi.fn();
     const stop = onPreviewContentReplaced(iframe, replaced);
 
     iframe.dispatchEvent(new Event("load"));
     expect(replaced).not.toHaveBeenCalled();
 
-    page = {};
-    iframe.dispatchEvent(new Event("load"));
+    announcePreviewDocumentLoaded(iframe);
     expect(replaced).toHaveBeenCalledTimes(1);
 
     iframe.dispatchEvent(new Event("hf-scenes-swapped"));
     expect(replaced).toHaveBeenCalledTimes(2);
+
     stop();
+    announcePreviewDocumentLoaded(iframe);
+    expect(replaced).toHaveBeenCalledTimes(2);
   });
 });

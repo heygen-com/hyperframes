@@ -6,22 +6,28 @@ type SwapWindow = Window & {
 const SCENES_SWAPPED = "hf-scenes-swapped";
 export const SCENE_SWAP_MS = 5000;
 
+const PREVIEW_DOCUMENT_LOADED = "hf-preview-document-loaded";
+
+export function announcePreviewDocumentLoaded(iframe: HTMLIFrameElement): void {
+  iframe.dispatchEvent(new Event(PREVIEW_DOCUMENT_LOADED));
+}
+
+export function onPreviewDocumentLoaded(
+  iframe: HTMLIFrameElement,
+  onLoaded: () => void,
+): () => void {
+  iframe.addEventListener(PREVIEW_DOCUMENT_LOADED, onLoaded);
+  return () => iframe.removeEventListener(PREVIEW_DOCUMENT_LOADED, onLoaded);
+}
+
 export function onPreviewContentReplaced(
   iframe: HTMLIFrameElement,
   onReplaced: () => void,
 ): () => void {
-  // A page can be in use before its load event (a stalled font holds it back); that late load replaced nothing.
-  let current = iframe.contentDocument;
-  const onLoad = () => {
-    const loaded = iframe.contentDocument;
-    if (loaded && loaded === current) return;
-    current = loaded;
-    onReplaced();
-  };
-  iframe.addEventListener("load", onLoad);
+  const stopLoaded = onPreviewDocumentLoaded(iframe, onReplaced);
   iframe.addEventListener(SCENES_SWAPPED, onReplaced);
   return () => {
-    iframe.removeEventListener("load", onLoad);
+    stopLoaded();
     iframe.removeEventListener(SCENES_SWAPPED, onReplaced);
   };
 }

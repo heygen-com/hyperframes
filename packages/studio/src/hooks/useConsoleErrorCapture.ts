@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
+import { onPreviewDocumentLoaded } from "../player/sceneSwap";
 import type { LintFinding } from "../components/LintModal";
 
 /**
@@ -40,12 +41,7 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
       errorHandler = null;
     };
 
-    let capturedDocument: Document | null = null;
     const attachErrorCapture = () => {
-      // The page's own late load event (after a stalled font or asset) must not wipe its errors.
-      const doc = previewIframe.contentDocument;
-      if (doc && doc === capturedDocument) return;
-      capturedDocument = doc;
       detachErrorCapture();
       resetErrors();
       try {
@@ -78,9 +74,9 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
     };
 
     attachErrorCapture();
-    previewIframe.addEventListener("load", attachErrorCapture);
+    const stopLoaded = onPreviewDocumentLoaded(previewIframe, attachErrorCapture);
     return () => {
-      previewIframe.removeEventListener("load", attachErrorCapture);
+      stopLoaded();
       detachErrorCapture();
     };
   }, [previewIframe, resetErrors]);
