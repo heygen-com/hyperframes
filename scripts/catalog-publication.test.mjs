@@ -106,6 +106,11 @@ function publicationFixture(t, changed, apiEnv = {}) {
     "fixture",
   );
   const base = git("rev-parse", "HEAD");
+  const origin = mkdtempSync(join(tmpdir(), "catalog-publication-origin-"));
+  t.after(() => rmSync(origin, { recursive: true, force: true }));
+  git("init", "-q", "--bare", origin);
+  git("remote", "add", "origin", origin);
+  git("push", "-q", "origin", "HEAD:refs/heads/bot/catalog-publish");
   if (changed) writeFileSync(join(root, "registry/registry.json"), "new publication");
   const executable = join(root, "gh");
   writeFileSync(
@@ -133,7 +138,7 @@ else if (endpoint.includes("/pulls?")) console.log("42");
     { mode: 0o755 },
   );
   const calls = join(root, "calls.jsonl");
-  const run = () =>
+  const run = (env = {}) =>
     execFileSync(
       process.execPath,
       [
@@ -160,6 +165,7 @@ catch (error) {
           GITHUB_RUN_ID: "123",
           GITHUB_RUN_ATTEMPT: "1",
           ...apiEnv,
+          ...env,
         },
         stdio: ["pipe", "pipe", "pipe"],
       },
@@ -167,6 +173,7 @@ catch (error) {
   return {
     root,
     base,
+    git,
     run,
     calls: () =>
       readFileSync(calls, "utf8")
@@ -327,4 +334,85 @@ test("regression code changes require every shard to succeed", () => {
 test("regression accepts completed shards after successful change detection", () => {
   const result = runSummary("success", "true", "success");
   assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+function commitPaths(fixture, message, paths) {
+  fixture.git("add", "-A", "--", ...paths);
+  fixture.git(
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-qm",
+    message,
+  );
+  return fixture.git("rev-parse", "HEAD");
+}
+
+const vectors = (rows) => Buffer.from(new Float32Array(rows.flat()).buffer);
+
+// Publishes the working tree's generated files, then moves main by a file the catalog does not read.
+function publishThenMoveMain(fixture, regenerate) {
+  fixture.git("checkout", "-q", "-b", "published");
+  commitPaths(fixture, "publication", GENERATED_CATALOG_PATHS);
+  fixture.git("push", "-q", "-f", "origin", "published:bot/catalog-publish");
+  fixture.git("checkout", "-q", "-");
+  writeFileSync(join(fixture.root, "notes.txt"), "unrelated");
+  const main = commitPaths(fixture, "unrelated main push", ["notes.txt"]);
+  regenerate();
+  return main;
+}
+
+function rewrites(fixture) {
+  return fixture
+    .calls()
+    .some(
+      (call) =>
+        call.method !== "GET" &&
+        (call.endpoint === "graphql" || call.endpoint.includes("/refs/heads/bot/")),
+    );
+}
+
+test("an unrelated main push leaves the approved publication alone", (t) => {
+  const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1" });
+  const main = publishThenMoveMain(fixture, () =>
+    writeFileSync(join(fixture.root, "registry/registry.json"), "new publication"),
+  );
+  fixture.run({ BASE: main });
+  assert.equal(rewrites(fixture), false);
+});
+
+test("regenerated vectors replace the publication only when they point elsewhere", (t) => {
+  const meta = "registry/catalog-artifact/local-vectors.json";
+  const bin = "registry/catalog-artifact/local-vectors.bin";
+  const published = [
+    [1, 0],
+    [0, 1],
+  ];
+  const nudged = [
+    [1, 0.001],
+    [0.001, 1],
+  ];
+  const turned = [
+    [1, 0],
+    [1, 0],
+  ];
+  for (const [regenerated, rewritten] of [
+    [nudged, false],
+    [turned, true],
+  ]) {
+    const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1" });
+    writeFileSync(join(fixture.root, meta), JSON.stringify({ dimensions: 2 }));
+    writeFileSync(join(fixture.root, bin), vectors(published));
+    const main = publishThenMoveMain(fixture, () => {
+      writeFileSync(join(fixture.root, "registry/registry.json"), "new publication");
+      writeFileSync(join(fixture.root, meta), JSON.stringify({ dimensions: 2 }));
+      writeFileSync(join(fixture.root, bin), vectors(regenerated));
+    });
+    fixture.run({ BASE: main });
+    assert.equal(rewrites(fixture), rewritten);
+  }
 });

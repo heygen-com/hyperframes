@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
+import { VECTORS, vectorsAgree } from "./catalog-vectors.mjs";
 
 const BRANCH = "bot/catalog-publish";
 const TITLE = "chore(catalog): publish generated catalog";
@@ -249,13 +250,41 @@ function clearObsoletePublication(repository, base, exists) {
   console.log("No unpublished catalog changes; obsolete publication cleared.");
 }
 
-function snapshotMatches(root, endpoint, exists) {
+// Only generated files count: rewriting the branch for an unrelated main push would dismiss its approval.
+function snapshotMatches(root, exists) {
   if (!exists) return false;
-  const previous = commitOid(
-    api(`${endpoint}/ref/heads/${BRANCH}`, "GET", undefined, ".object.sha"),
-  );
-  const tree = commitOid(api(`${endpoint}/commits/${previous}`, "GET", undefined, ".tree.sha"));
-  return tree === catalogTree(root);
+  git(root, ["fetch", "-q", "--no-tags", "origin", BRANCH]);
+  const published = git(root, ["rev-parse", "FETCH_HEAD"]);
+  const generated = catalogTree(root);
+  const changes = git(root, [
+    "diff",
+    "--name-status",
+    "--no-renames",
+    "-z",
+    published,
+    generated,
+    "--",
+    ...GENERATED_CATALOG_PATHS,
+  ])
+    .split("\0")
+    .filter(Boolean);
+  for (let i = 0; i < changes.length; i += 2) {
+    const [status, path] = [changes[i], changes[i + 1]];
+    if (status !== "M" || !VECTORS.test(path)) return false;
+    if (!sameVectors(root, published, generated, path)) return false;
+  }
+  return true;
+}
+
+function sameVectors(root, published, generated, path) {
+  const blob = (tree, file) =>
+    execFileSync("git", ["cat-file", "blob", `${tree}:${file}`], {
+      cwd: root,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  const meta = path.replace(/\.bin$/, ".json");
+  const { dimensions } = JSON.parse(blob(generated, meta).toString("utf8"));
+  return vectorsAgree(blob(published, path), blob(generated, path), dimensions);
 }
 
 function cleanStagingBranch(endpoint, staging, errors) {
@@ -303,7 +332,7 @@ export function publish(root) {
   );
   const exists = refs.includes(`refs/heads/${BRANCH}`);
   if (batches.length === 0) return clearObsoletePublication(repository, base, exists);
-  if (snapshotMatches(root, endpoint, exists)) {
+  if (snapshotMatches(root, exists)) {
     openPublishPr(repository, base);
     dispatchPublishChecks(repository);
     console.log("Standing catalog PR already contains this snapshot.");
