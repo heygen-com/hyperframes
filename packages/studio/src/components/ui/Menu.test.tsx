@@ -257,6 +257,53 @@ describe("ContextMenu", () => {
   });
 });
 
+describe("container={null}", () => {
+  /** Rendered inline means inside the trigger's own parent, not a portal on the body. */
+  function expectInlineBeside(menu: HTMLElement | null): void {
+    expect(menu).not.toBeNull();
+    expect(trigger().parentElement?.contains(menu)).toBe(true);
+  }
+
+  it("opens a Menu inline, next to its trigger, and closes on Escape", async () => {
+    render(
+      <div>
+        <Menu container={null} trigger={<button data-testid="trigger">Actions</button>}>
+          <MenuItem>Bring to front</MenuItem>
+        </Menu>
+      </div>,
+    );
+    clickWithMouse(trigger());
+    await settle();
+    expectInlineBeside(popup());
+
+    key("Escape");
+    await settle();
+    expect(popup()).toBeNull();
+  });
+
+  it("opens a ContextMenu inline, next to its area", async () => {
+    render(
+      <div>
+        <ContextMenu container={null} trigger={<div data-testid="trigger">clip</div>}>
+          <MenuItem>Split</MenuItem>
+        </ContextMenu>
+      </div>,
+    );
+    act(() => {
+      trigger().dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true }),
+      );
+    });
+    await settle();
+    expectInlineBeside(popup());
+  });
+
+  it("still portals to the body when no container is passed", async () => {
+    await openActionMenu();
+    expect(trigger().parentElement?.contains(popup())).toBe(false);
+  });
+});
+
 describe("Popover", () => {
   it("leaves the keys of a text field inside it alone", async () => {
     // The Menu owns ArrowDown and typeahead; a Popover must not, or the rename

@@ -5,6 +5,7 @@
 
 import { ContextMenu as BaseContextMenu } from "@base-ui/react/context-menu";
 import { Menu as BaseMenu } from "@base-ui/react/menu";
+import { useRef } from "react";
 import type { ComponentPropsWithoutRef, ElementType, ReactElement, ReactNode } from "react";
 import { cn } from "./cn";
 
@@ -21,6 +22,16 @@ export type PopupPreviewState = "open";
 
 /** Where the portal puts the popup. `null` keeps it inline, next to its trigger. */
 type PortalContainer = ComponentPropsWithoutRef<typeof BaseMenu.Portal>["container"];
+
+/** Base UI reads a `null` container as "not resolved yet" and renders nothing, so give `null` a host by the trigger. */
+function useInlinePortal(container: PortalContainer) {
+  const host = useRef<HTMLSpanElement>(null);
+  if (container !== null) return { host: null, portal: { container } };
+  return {
+    host: <span ref={host} className="contents" />,
+    portal: { container: host, className: "contents" },
+  };
+}
 
 /** Matches Tooltip's gap from its trigger, and its viewport margin. */
 const SIDE_OFFSET = 6;
@@ -109,10 +120,12 @@ export function Menu({
   "data-preview-state": previewState,
   ...root
 }: MenuProps) {
+  const inline = useInlinePortal(container);
   return (
     <BaseMenu.Root {...root}>
       <BaseMenu.Trigger render={trigger} />
-      <BaseMenu.Portal container={container}>
+      {inline.host}
+      <BaseMenu.Portal {...inline.portal}>
         <BaseMenu.Positioner
           side={side}
           align={align}
@@ -153,10 +166,12 @@ export function ContextMenu({
   "data-preview-state": previewState,
   ...root
 }: Omit<ContextMenuProps, "side" | "align" | "sideOffset">) {
+  const inline = useInlinePortal(container);
   return (
     <BaseContextMenu.Root {...root}>
       <BaseContextMenu.Trigger render={trigger} />
-      <BaseContextMenu.Portal container={container}>
+      {inline.host}
+      <BaseContextMenu.Portal {...inline.portal}>
         <BaseContextMenu.Positioner collisionPadding={VIEWPORT_MARGIN} className={POPUP_LAYER}>
           <BaseContextMenu.Popup
             aria-label={ariaLabel}
