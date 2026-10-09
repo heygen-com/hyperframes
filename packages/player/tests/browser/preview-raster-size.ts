@@ -187,6 +187,16 @@ try {
     return [await steadyShot("glass"), await steadyShot("tilt-wrap")];
   };
   const swappedShots = await shots();
+  // The player resends its own scale on every resize tick; hold those off while the test drives it.
+  await frame.evaluate(() => {
+    const hold = (event: MessageEvent) => {
+      if (event.source === window.parent && event.data?.action === "set-display-scale") {
+        event.stopImmediatePropagation();
+      }
+    };
+    (window as Window & { __holdScale?: typeof hold }).__holdScale = hold;
+    window.addEventListener("message", hold, true);
+  });
   await sendDisplayScale(1);
   await until("the swap turns off", hinted);
   let unswapped = 0;
@@ -223,6 +233,10 @@ try {
     () => getComputedStyle(document.getElementById("tilt-wrap")!).willChange === "transform",
   );
 
+  await frame.evaluate(() => {
+    const { __holdScale: hold } = window as Window & { __holdScale?: EventListener };
+    window.removeEventListener("message", hold!, true);
+  });
   await resize(1920, 1080);
   await until("full size restores the hints", hinted);
   assert.equal(

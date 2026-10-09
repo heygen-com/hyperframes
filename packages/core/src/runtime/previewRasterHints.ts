@@ -47,14 +47,19 @@ function inlineFit(element: Element, style: CSSStyleDeclaration): string {
 
 // A marked element reads `auto` through our rule. Lifting the mark to read its own hints repaints
 // the layer, so that only happens when the element itself changed.
-function check(element: Element, readOwnHints: boolean): void {
-  if (element === sheet) return;
+function fits(element: Element, readOwnHints: boolean): boolean {
+  if (element === sheet) return false;
   const marked = element.hasAttribute(PREVIEW_RASTER_ATTR);
   if (marked && readOwnHints) element.removeAttribute(PREVIEW_RASTER_ATTR);
   const style = getComputedStyle(element);
   const hintsFit = (marked && !readOwnHints) || onlyTransformHints(style);
   const drop = hintsFit && canDropHint(element, style);
   if (drop) markedWith.set(element, inlineFit(element, style));
+  return drop;
+}
+
+function check(element: Element, readOwnHints: boolean): void {
+  const drop = fits(element, readOwnHints);
   if (drop !== element.hasAttribute(PREVIEW_RASTER_ATTR)) {
     element.toggleAttribute(PREVIEW_RASTER_ATTR, drop);
   }
@@ -94,10 +99,11 @@ function clearMarks(): void {
   }
 }
 
-// Marks are cleared together so the page restyles once, not once per layer.
+// Every mark is decided before any is written, so the page restyles twice, not once per layer.
 function markLayers(): void {
   clearMarks();
-  for (const element of document.querySelectorAll("*")) check(element, true);
+  const layers = [...document.querySelectorAll("*")].filter((element) => fits(element, true));
+  for (const layer of layers) layer.setAttribute(PREVIEW_RASTER_ATTR, "");
 }
 
 function followAttribute(record: MutationRecord): void {
