@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sampleProcessRss } from "../utils/processRss.js";
 import {
   createChromeMemorySampler,
   mergeSample,
@@ -168,6 +169,31 @@ describe("createChromeMemorySampler", () => {
     await sampler.sampleOnce();
     expect(onSample).not.toHaveBeenCalled();
     expect(sampler.stats()).toEqual(empty);
+  });
+
+  it("reports Windows browser and GPU memory when the renderer query fails", async () => {
+    const exec = async (_file: string, args: readonly string[]) => {
+      const pid = Number(args[4]?.slice("PID eq ".length));
+      if (pid === 2) throw new Error("tasklist timed out");
+      return { stdout: `"chrome.exe","${pid}","Console","1","${pid * 10240} K"\r\n` };
+    };
+    const onSample = vi.fn();
+    const sampler = createChromeMemorySampler({
+      getPids: async () => ({ browser: 1, renderers: [2], gpu: [3] }),
+      sampleRss: (pids) => sampleProcessRss(pids, exec, "win32"),
+      intervalMs: 100,
+      onSample,
+    });
+
+    await sampler.sampleOnce();
+    expect(sampler.stats()).toEqual({
+      browserRssPeakMb: 10,
+      rendererRssPeakMb: undefined,
+      rssLastMb: 40,
+      gpuProcessSeenLastSample: true,
+      samples: 1,
+    });
+    expect(onSample).toHaveBeenCalledWith(sampler.stats());
   });
 
   it("unrefs the interval so a forgotten stop() cannot hold the process open", () => {
