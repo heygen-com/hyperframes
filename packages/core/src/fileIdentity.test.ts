@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sameFile } from "./fileIdentity.js";
+import { sameFile, sameIdentity } from "./fileIdentity.js";
 
 const dirs: string[] = [];
 function dir(): string {
@@ -30,6 +30,10 @@ describe("file identity", () => {
     writeFileSync(join(root, "a"), "a");
     writeFileSync(join(root, "b"), "b");
     expect(sameFile(join(root, "a"), join(root, "b"))).toBe(false);
+  });
+
+  it("compares file ids beyond 2^53 exactly", () => {
+    expect(sameIdentity({ dev: 1n, ino: 2n ** 60n }, { dev: 1n, ino: 2n ** 60n + 1n })).toBe(false);
   });
 
   it("knows a hard link is the same file", () => {
