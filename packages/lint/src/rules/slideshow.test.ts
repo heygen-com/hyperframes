@@ -51,6 +51,22 @@ describe("slideshow lint rule", () => {
     expect(findings[0]!.code).toBe("slideshow_invalid");
   });
 
+  it.each([null, {}, { id: "h1", label: 42, target: "deep" }])(
+    "reports malformed hotspot %j as a structure finding without crashing lint",
+    async (hotspot) => {
+      const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
+        <div data-composition-id="a" data-start="0" data-duration="5"></div>
+        <script type="application/hyperframes-slideshow+json">${JSON.stringify({
+          slides: [{ sceneId: "a", hotspots: [hotspot] }],
+          slideSequences: [{ id: "deep", label: "Deep", slides: [{ sceneId: "a" }] }],
+        })}</script>
+      </div>`;
+      expect(await findSlideshow(html)).toEqual([
+        expect.objectContaining({ code: "slideshow_invalid", severity: "error" }),
+      ]);
+    },
+  );
+
   it("passes when sceneId resolves to a data-composition-id element (no .clip[id])", async () => {
     const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
       <div data-composition-id="scene-a" data-start="0" data-duration="5"></div>

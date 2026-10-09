@@ -48,6 +48,56 @@ describe("parseSlideshowManifest", () => {
     </script>`;
     expect(() => parseSlideshowManifest(html)).toThrow();
   });
+
+  it.each([
+    null,
+    42,
+    "branch",
+    [],
+    {},
+    { id: 1, label: "Go", target: "deep" },
+    { id: "h1", label: null, target: "deep" },
+    { id: "h1", label: "Go", target: [] },
+    { id: "h1", label: "Go", target: "deep", region: null },
+    { id: "h1", label: "Go", target: "deep", region: { x: 10, y: 20 } },
+    { id: "h1", label: "Go", target: "deep", region: { x: "10", y: 20, w: 30, h: 40 } },
+  ])("rejects malformed hotspot %j in main-line and branch slides", (hotspot) => {
+    for (const manifest of [
+      { slides: [{ sceneId: "a", hotspots: [hotspot] }] },
+      {
+        slides: [{ sceneId: "a" }],
+        slideSequences: [
+          { id: "deep", label: "Deep", slides: [{ sceneId: "c", hotspots: [hotspot] }] },
+        ],
+      },
+    ]) {
+      const html = `<script type="application/hyperframes-slideshow+json">${JSON.stringify(manifest)}</script>`;
+      expect(() => parseSlideshowManifest(html)).toThrow("not a valid SlideshowManifest");
+    }
+  });
+
+  it("preserves valid hotspot regions and optional hotspot arrays", () => {
+    const manifest = {
+      slides: [
+        {
+          sceneId: "a",
+          hotspots: [
+            { id: "h1", label: "Go", target: "deep", region: { x: 0, y: 12.5, w: 100, h: 20 } },
+          ],
+        },
+      ],
+      slideSequences: [{ id: "deep", label: "Deep", slides: [{ sceneId: "c", hotspots: [] }] }],
+    };
+    const html = `<script type="application/hyperframes-slideshow+json">${JSON.stringify(manifest)}</script>`;
+    expect(parseSlideshowManifest(html)).toEqual(manifest);
+  });
+
+  it("rejects a hotspot region whose JSON number overflows to infinity", () => {
+    const html = `<script type="application/hyperframes-slideshow+json">
+      {"slides":[{"sceneId":"a","hotspots":[{"id":"h1","label":"Go","target":"deep","region":{"x":1e400,"y":0,"w":30,"h":20}}]}]}
+    </script>`;
+    expect(() => parseSlideshowManifest(html)).toThrow("not a valid SlideshowManifest");
+  });
 });
 
 describe("resolveSlideshow", () => {

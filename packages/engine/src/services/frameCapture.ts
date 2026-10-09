@@ -4686,10 +4686,8 @@ export async function discardWarmupCapture(
   time: number = 0,
   innerCapture: DiscardWarmupInnerCapture = captureFrameCore,
 ): Promise<void> {
-  // Snapshot the side-effect counters captureFrameCore mutates. We use a
-  // shallow `{...}` for capturePerf because all five fields are primitive
-  // numbers — no nested state to deep-copy.
-  const perfBefore = { ...session.capturePerf };
+  // The discarded capture mutates frameMs, so preserve its samples by value.
+  const perfBefore = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
   const hasDamageBefore = session.beginFrameHasDamageCount;
   const noDamageBefore = session.beginFrameNoDamageCount;
   const dedupCountBefore = session.staticDedupCount;

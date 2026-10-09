@@ -26,4 +26,68 @@ describe("findMusicAudioSrc", () => {
     const html = `<audio id="music" src="first.mp3"></audio><video id="bgm" src="v.mp4" data-has-audio="true">`;
     expect(findMusicAudioSrc(html)).toBe("first.mp3");
   });
+
+  it.each([
+    ['<audio id="music" src="assets/don\'t-stop.wav">', "assets/don't-stop.wav"],
+    ["<audio id='music' src='assets/say\"yes.wav'>", 'assets/say"yes.wav'],
+    ['<audio id="music" src="assets/a>b.wav">', "assets/a>b.wav"],
+    ['<audio id="music" src="assets/a&amp;b.wav">', "assets/a&b.wav"],
+    ['<audio id="music" src="assets/don&#39;t-stop.wav">', "assets/don't-stop.wav"],
+    ["<AUDIO ID=music SRC=assets/bed.wav>", "assets/bed.wav"],
+  ])("reads the authored music source in %s", (html, src) => {
+    expect(findMusicAudioSrc(html)).toBe(src);
+  });
+
+  it.each([
+    '<audio data-id="music" src="wrong.wav">',
+    '<audio id="music" data-src="wrong.wav">',
+    '<audio title="id=\'music\'" src="wrong.wav">',
+    '<!-- <audio id="music" src="wrong.wav"> -->',
+    '<script>const markup = `<audio id="music" src="wrong.wav">`;</script>',
+    '<style>.example::after { content: \'<audio id="music" src="wrong.wav">\'; }</style>',
+  ])("skips non-music markup in %s", (prefix) => {
+    expect(findMusicAudioSrc(`${prefix}<audio id="music" src="right.wav">`)).toBe("right.wav");
+  });
+
+  it("recognizes decoded music roles and sounding-video attributes", () => {
+    expect(
+      findMusicAudioSrc(
+        '<video src="bed.mp4" data-has-audio="tr&#117;e" data-timeline-role="mus&#105;c">',
+      ),
+    ).toBe("bed.mp4");
+  });
+
+  it.each(['muted="false"', "MUTED", "muted=''"])(
+    "skips a music video with the boolean attribute %s",
+    (muted) => {
+      expect(
+        findMusicAudioSrc(
+          `<video id="music" src="muted.mp4" data-has-audio="true" ${muted}><audio id="bgm" src="right.wav">`,
+        ),
+      ).toBe("right.wav");
+    },
+  );
+
+  it("does not treat text inside a quoted attribute as muted", () => {
+    expect(
+      findMusicAudioSrc(
+        '<video id="music" src="bed.mp4" data-has-audio="true" title="muted > example">',
+      ),
+    ).toBe("bed.mp4");
+  });
+
+  it("keeps the first duplicate attribute, like the browser", () => {
+    const prefix = '<audio id="speech" id="music" src="wrong.wav">';
+    expect(findMusicAudioSrc(`${prefix}<audio id="music" src="right.wav" src="wrong.wav">`)).toBe(
+      "right.wav",
+    );
+  });
+
+  it("keeps an explicit non-music role ahead of an id fallback", () => {
+    expect(
+      findMusicAudioSrc(
+        '<audio id="music" data-timeline-role="voiceover" src="speech.wav"><audio id="bgm" src="right.wav">',
+      ),
+    ).toBe("right.wav");
+  });
 });

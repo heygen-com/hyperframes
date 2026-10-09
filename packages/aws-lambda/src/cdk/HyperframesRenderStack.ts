@@ -440,7 +440,7 @@ export class HyperframesRenderStack extends Construct {
         "PlanV2ArtifactS3Prefix.$": "$.Plan.PlanV2ArtifactS3Prefix",
         "PlanHash.$": "$.Plan.PlanHash",
         "ChunkS3Uris.$": "$.Chunks[*].ChunkS3Uri",
-        AudioS3Uri: null,
+        AudioS3Uri: sfn.JsonPath.stringToJson("null"),
         "OutputS3Uri.$": "$.OutputS3Uri",
         "Format.$": "$.Plan.Format",
       }),

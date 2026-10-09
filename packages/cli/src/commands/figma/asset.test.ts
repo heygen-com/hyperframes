@@ -9,7 +9,7 @@ import {
   runAssetImportMany,
   type AssetImportDeps,
 } from "./asset.js";
-import { FigmaClientError, type FigmaClient } from "@hyperframes/core/figma";
+import { FigmaClientError, readManifest, type FigmaClient } from "@hyperframes/core/figma";
 
 const dirs: string[] = [];
 function scratch(): string {
@@ -177,6 +177,104 @@ describe("runAssetImport", () => {
     expect(batchSize).toBe(3);
     // distinct frozen files, all recorded
     expect(new Set(results.map((r) => r.record.id)).size).toBe(3);
+  });
+
+  it.each([
+    ["KEY:1-2", "KEY:1-2", "KEY:3-4", "KEY:1-2"],
+    ["KEY:1-2", "https://www.figma.com/design/KEY/F?node-id=1-2", "KEY:3-4", "KEY:1:2"],
+  ])("imports each normalized node once for %j", async (...refs) => {
+    const dir = scratch();
+    const requests: string[][] = [];
+    let downloads = 0;
+    const importDeps = deps(dir, {
+      client: fakeClient({
+        renderNodes: (_fileKey, nodeIds, opts) => {
+          requests.push([...nodeIds]);
+          return Promise.resolve(
+            nodeIds.map((nodeId) => ({ nodeId, url: `https://cdn/${nodeId}`, ext: opts.format })),
+          );
+        },
+      }),
+      download: async () => {
+        downloads += 1;
+        return PNG_BYTES;
+      },
+    });
+    const results = await runAssetImportMany(refs, { format: "png" }, importDeps);
+    expect(requests).toEqual([["1:2", "3:4"]]);
+    expect(downloads).toBe(2);
+    expect(results.map((r) => r.record.id)).toEqual([
+      "image_001",
+      "image_001",
+      "image_002",
+      "image_001",
+    ]);
+    expect(results.map((r) => r.reused)).toEqual([false, true, false, true]);
+    expect(readManifest(dir)).toHaveLength(2);
+    const repeated = await runAssetImportMany(refs, { format: "png" }, importDeps);
+    expect(repeated.every((r) => r.reused)).toBe(true);
+    expect(requests).toHaveLength(1);
+    expect(downloads).toBe(2);
+  });
+
+  it("imports one missing node among duplicated cached and missing references", async () => {
+    const dir = scratch();
+    const cached = await runAssetImport("KEY:1-2", { format: "png" }, deps(dir));
+    const requests: string[][] = [];
+    const results = await runAssetImportMany(
+      ["KEY:1-2", "KEY:3-4", "KEY:1:2", "KEY:3:4"],
+      { format: "png", description: "Updated" },
+      deps(dir, {
+        client: fakeClient({
+          renderNodes: (_fileKey, nodeIds) => {
+            requests.push([...nodeIds]);
+            return Promise.resolve(
+              nodeIds.map((nodeId) => ({ nodeId, url: `https://cdn/${nodeId}`, ext: "png" })),
+            );
+          },
+        }),
+      }),
+    );
+    expect(requests).toEqual([["3:4"]]);
+    expect(results.map((r) => r.record.id)).toEqual([
+      cached.record.id,
+      "image_002",
+      cached.record.id,
+      "image_002",
+    ]);
+    expect(results.map((r) => r.reused)).toEqual([true, false, true, true]);
+    expect(results.every((r) => r.record.description === "Updated")).toBe(true);
+    expect(readManifest(dir)).toHaveLength(2);
+  });
+
+  it("records one completed duplicate node when a later batch node fails", async () => {
+    const dir = scratch();
+    let downloads = 0;
+    await expect(
+      runAssetImportMany(
+        ["KEY:1-2", "KEY:1:2", "KEY:3-4"],
+        { format: "png" },
+        deps(dir, {
+          client: fakeClient({
+            renderNodes: (_fileKey, nodeIds) =>
+              Promise.resolve(
+                nodeIds.map((nodeId) => ({
+                  nodeId,
+                  url: nodeId === "1:2" ? "https://cdn/1" : null,
+                  ext: "png",
+                })),
+              ),
+          }),
+          download: async () => {
+            downloads += 1;
+            return PNG_BYTES;
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "RENDER_FAILED", endpoint: "images" });
+    expect(downloads).toBe(1);
+    expect(readManifest(dir)).toHaveLength(1);
+    expect(readFileSync(join(dir, ".media", "index.md"), "utf8")).toContain("1 asset");
   });
 
   it("labels a batch-miss RENDER_FAILED with the images endpoint (telemetry parity with client.ts)", async () => {

@@ -945,6 +945,139 @@ describe("layout-audit.browser invisible text", () => {
       flagged(invisibleTextScene(style({ webkitTextFillColor: "rgba(0, 0, 0, 0)" }), "")),
     ).toBe(false);
   });
+
+  function ancestorGradientScene(
+    ancestorStyle: Partial<CSSStyleDeclaration> = {},
+    headlineStyle: Partial<CSSStyleDeclaration> = {},
+    chromiumVersion = 152,
+    outsideBackground = false,
+    viewportTop?: number,
+  ): AuditIssue[] {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      `Mozilla/5.0 HeadlessChrome/${chromiumVersion}.0.0.0 Safari/537.36`,
+    );
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="gradient"><div id="wrapper"><span id="headline">Headline copy</span></div></div>
+      </div>
+    `;
+    const gradient = document.getElementById("gradient");
+    const headline = document.getElementById("headline");
+    if (!gradient || !headline) throw new Error("Missing gradient text fixture");
+    Object.defineProperties(gradient, {
+      offsetLeft: { configurable: true, value: 40 },
+      offsetTop: { configurable: true, value: 140 },
+      offsetWidth: { configurable: true, value: 400 },
+      offsetHeight: { configurable: true, value: 80 },
+    });
+    Object.defineProperties(headline, {
+      offsetParent: { configurable: true, value: gradient },
+      offsetLeft: { configurable: true, value: 0 },
+      offsetTop: { configurable: true, value: outsideBackground ? 110 : 10 },
+      offsetWidth: { configurable: true, value: 300 },
+      offsetHeight: { configurable: true, value: 56 },
+    });
+    const textRect = rect({
+      left: 40,
+      top: viewportTop ?? (outsideBackground ? 250 : 150),
+      width: 300,
+      height: 56,
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        gradient: rect({ left: 40, top: 140, width: 400, height: 80 }),
+        wrapper: textRect,
+        headline: textRect,
+        text: textRect,
+      },
+      {
+        gradient: {
+          backgroundClip: "text",
+          backgroundImage: "linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255))",
+          ...ancestorStyle,
+        },
+        headline: { webkitTextFillColor: "rgba(0, 0, 0, 0)", ...headlineStyle },
+      },
+    );
+    installAuditScript();
+    return runAudit();
+  }
+
+  it.each([
+    { name: "plain nested text", css: {} },
+    { name: "transformed text", css: { transform: "matrix(1, 0, 0, 1, 0, 0)" } },
+    { name: "positioned text", css: { position: "relative" } },
+    { name: "faded text", css: { opacity: "0.9" } },
+    { name: "filtered text", css: { filter: "blur(0px)" } },
+    { name: "text with its own empty mask", css: { backgroundClip: "text" } },
+  ])("accepts $name painted by an ancestor gradient", ({ css }) => {
+    expect(flagged(ancestorGradientScene({}, css))).toBe(false);
+  });
+
+  it("accepts text painted by an ancestor's solid clipped background", () => {
+    expect(
+      flagged(
+        ancestorGradientScene({ backgroundImage: "none", backgroundColor: "rgb(255, 0, 0)" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("matches a text clip to the background layer that paints it", () => {
+    expect(
+      flagged(
+        ancestorGradientScene({
+          backgroundClip: "border-box, text",
+          backgroundImage: "none, linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    { name: "absent background", css: { backgroundImage: "none" } },
+    {
+      name: "transparent gradient",
+      css: { backgroundImage: "linear-gradient(transparent, rgba(0, 0, 0, 0))" },
+    },
+    { name: "unclipped background", css: { backgroundClip: "border-box" } },
+    { name: "image with unknown transparency", css: { backgroundImage: 'url("missing.png")' } },
+    {
+      name: "gradient on a different background layer",
+      css: {
+        backgroundClip: "border-box, text",
+        backgroundImage: "linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255)), none",
+      },
+    },
+    {
+      name: "unclipped solid background",
+      css: {
+        backgroundClip: "text, border-box",
+        backgroundImage: "none, none",
+        backgroundColor: "rgb(255, 0, 0)",
+      },
+    },
+  ])("keeps reporting invisible text beneath an $name", ({ css }) => {
+    expect(flagged(ancestorGradientScene(css))).toBe(true);
+  });
+
+  it("keeps reporting text outside the ancestor's background box", () => {
+    expect(flagged(ancestorGradientScene({}, {}, 152, true))).toBe(true);
+  });
+
+  it("keeps reporting independently painted descendants on Chrome 148", () => {
+    expect(flagged(ancestorGradientScene({}, { transform: "matrix(1, 0, 0, 1, 0, 0)" }, 148))).toBe(
+      true,
+    );
+  });
+
+  it("uses the untransformed layout position for a translated child", () => {
+    expect(
+      flagged(
+        ancestorGradientScene({}, { transform: "matrix(1, 0, 0, 1, 0, 150)" }, 152, false, 300),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("layout-audit.browser coordinate-frame findings", () => {

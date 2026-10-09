@@ -146,6 +146,36 @@ describe("serveStaticProjectHtml range support", () => {
     expect(await res.text()).toBe("abcdef");
   });
 
+  it.each([undefined, "invalid", "items=0-1"])(
+    "serves an empty asset with Range %j and keeps serving the project",
+    async (range) => {
+      const { url } = await serveWith(Buffer.alloc(0));
+      const res = await fetch(`${url}tone.wav`, {
+        headers: range === undefined ? {} : { Range: range },
+        signal: AbortSignal.timeout(1500),
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-length")).toBe("0");
+      expect(res.headers.get("accept-ranges")).toBe("bytes");
+      expect(res.headers.get("content-range")).toBeNull();
+      expect(await res.text()).toBe("");
+      const project = await fetch(url);
+      expect(project.status).toBe(200);
+      expect(await project.text()).toContain("<html></html>");
+    },
+  );
+
+  it.each(["bytes=0-", "bytes=0-0", "bytes=-1"])(
+    "rejects the unsatisfiable range %s on an empty asset",
+    async (range) => {
+      const { url } = await serveWith(Buffer.alloc(0));
+      const res = await fetch(`${url}tone.wav`, { headers: { Range: range } });
+      expect(res.status).toBe(416);
+      expect(res.headers.get("content-range")).toBe("bytes */0");
+      expect(await res.text()).toBe("");
+    },
+  );
+
   it("streams a small slice out of a large file without buffering the whole thing", async () => {
     // 8MB file, ask for 4 bytes deep inside it. The handler must createReadStream
     // the [start,end] window only, not readFileSync the whole 8MB and slice.
