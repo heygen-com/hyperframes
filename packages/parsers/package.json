@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.8.141",
+  "version": "0.8.143",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -236,6 +236,7 @@
     "@babel/parser": "^7.27.0",
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
+    "entities": "^7.0.1",
     "linkedom": "^0.18.12",
     "magic-string": "^0.30.21",
     "recast": "^0.23.11"

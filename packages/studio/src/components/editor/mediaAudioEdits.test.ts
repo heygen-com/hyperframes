@@ -239,6 +239,18 @@ describe("buildKeepSoundCutoutEdit", () => {
     expect(doc.getElementById("clip")?.getAttribute("src")).toBe("assets/cut.webm");
   });
 
+  it("preserves an apostrophe in the authored source of the linked audio", () => {
+    const authored = source.replace('src="assets/talk.mp4"', `src="assets/it's.mp4"`);
+    const edit = buildKeepSoundCutoutEdit({
+      video: liveVideo(),
+      videoId: "clip",
+      target: { id: "clip" },
+      cutoutSrc: "assets/cut.webm",
+    });
+    const doc = parse(applyEdit(authored, edit));
+    expect(doc.getElementById("clip-audio")?.getAttribute("src")).toBe("assets/it's.mp4");
+  });
+
   it("takes the first <source> child when the video has no src attribute", () => {
     const withSource = source.replace(
       /<video id="clip"([^>]*?) src="assets\/talk.mp4"([^>]*)><\/video>/,

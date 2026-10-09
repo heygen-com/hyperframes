@@ -104,6 +104,14 @@ unbounded animation, and timeline-free compositions need an explicit duration.
 front-to-back layering. Two clips on the same track may overlap in time; the
 lane is a Studio display row, not a scheduling constraint.
 
+Negative `z-index` values are valid CSS, but an opaque ancestor background can
+cover the clip if its parent does not create a stacking context. Add
+`isolation: isolate` to that parent to keep the negative layer above the
+parent's background and below its foreground siblings. See the
+[before/after example](/concepts/data-attributes#keep-negative-layers-inside-their-parent).
+The `negative_z_index` lint warning also fires on isolated layers because it
+checks CSS text rather than computed stacking contexts.
+
 Video visibility is managed as media and does not require `class="clip"`.
 Audio has no visual lifecycle.
 

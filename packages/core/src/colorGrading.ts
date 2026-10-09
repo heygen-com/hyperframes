@@ -1504,6 +1504,15 @@ export function hasHfColorGradingSecondaryValues(
   );
 }
 
+function authoredHueCurves(curves: NormalizedHfColorGradingHueCurves): HfColorGradingHueCurves {
+  return Object.fromEntries(
+    HF_COLOR_GRADING_HUE_CURVE_KEYS.filter((key) => curves[key].length > 0).map((key) => [
+      key,
+      curves[key],
+    ]),
+  );
+}
+
 export function serializeHfColorGrading(
   grading: NormalizedHfColorGrading | HfColorGrading | null,
 ): string {
@@ -1522,7 +1531,9 @@ export function serializeHfColorGrading(
     ...serializable,
     ...(hasWheelGrade(wheels) ? { wheels } : {}),
     ...(hasHfColorGradingRgbCurveValues(curves) ? { curves } : {}),
-    ...(hasHfColorGradingHueCurveValues(hueCurves) ? { hueCurves } : {}),
+    ...(hasHfColorGradingHueCurveValues(hueCurves)
+      ? { hueCurves: authoredHueCurves(hueCurves) }
+      : {}),
     // Preserve a keyed secondary even before it changes pixels so Studio and
     // CLI can author its qualifier and correction in separate transactions.
     ...(secondaries.length > 0 ? { secondaries } : {}),

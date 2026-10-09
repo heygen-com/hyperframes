@@ -89,6 +89,18 @@ describe("media probe registry", () => {
     expect(getDurationFromMetadata).toHaveBeenCalledTimes(2);
   });
 
+  it("probes a dropped clip's URL-spelled src at its own file", async () => {
+    await probeMissingSourceDurations(
+      [{ id: "clip", tag: "video", src: "assets/My%20clip%20%231.mp4" }],
+      "project-a",
+      vi.fn(),
+    );
+
+    expect(requestedSources).toEqual([
+      `${window.location.origin}/api/projects/project-a/preview/assets/My%20clip%20%231.mp4`,
+    ]);
+  });
+
   it("probes same-origin rooted media through the active project preview", async () => {
     const apply = vi.fn();
     await probeMissingSourceDurations(

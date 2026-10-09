@@ -3,6 +3,7 @@ import { extname } from "node:path";
 import { ffprobeBinary } from "./ff-binaries.mjs";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico"]);
+const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
 
 export function probe(filePath) {
   const ext = extname(filePath).toLowerCase();
@@ -18,7 +19,11 @@ export function probe(filePath) {
       { encoding: "utf8", timeout: 5000 },
     );
     const info = JSON.parse(raw);
-    const stream = info.streams?.[0];
+    const streams = info.streams ?? [];
+    const wantedType = AUDIO_EXT.has(ext) ? "audio" : "video";
+    const stream =
+      streams.find((s) => s.codec_type === wantedType && s.disposition?.attached_pic !== 1) ??
+      streams[0];
     const format = info.format;
 
     const isImage = IMAGE_EXT.has(ext);

@@ -2,6 +2,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { getMimeType } from "@hyperframes/core/studio-api";
+import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
 import {
@@ -67,6 +68,12 @@ function serveFileWithRange(
     headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
   }
   headers["Content-Length"] = String(end - start + 1);
+
+  if (size === 0) {
+    res.writeHead(status, headers);
+    res.end();
+    return;
+  }
 
   // Stream only the requested window instead of buffering the whole file: a
   // 1KB Range of a 50MB asset must not allocate 50MB. createReadStream reads
@@ -186,7 +193,7 @@ export async function serveStaticProjectHtml(
     const proxyRequest =
       proxyParam !== null && isProxyVariantRequest(proxyParam) ? proxyParam : null;
 
-    const requestPath = decodeURIComponent(pathOnly).replace(/^\//, "");
+    const requestPath = decodeWellFormedEscapes(pathOnly).replace(/^\//, "");
     for (const root of roots) {
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);

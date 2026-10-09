@@ -27,6 +27,7 @@ export function extractedFrameIndex(file: string, format: ExtractedFrameFormat):
 export function framePathsFromDirectory(
   outputDir: string,
   format: ExtractedFrameFormat,
+  allowGaps = false,
 ): Map<number, string> {
   const suffix = `.${format}`;
   const indexed = new Map<number, string>();
@@ -40,6 +41,7 @@ export function framePathsFromDirectory(
     }
     indexed.set(index, join(outputDir, file));
   }
+  if (allowGaps) return new Map([...indexed].sort(([a], [b]) => a - b));
 
   const ordered = new Map<number, string>();
   for (let index = 0; index < indexed.size; index += 1) {

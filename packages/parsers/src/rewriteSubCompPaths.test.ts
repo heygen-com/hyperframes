@@ -6,6 +6,26 @@ import {
 } from "./rewriteSubCompPaths.js";
 
 describe("rewriteAssetPath", () => {
+  it("probes a raw filename and emits URL spelling with its suffix preserved", () => {
+    const probed: string[] = [];
+    const output = rewriteAssetPath(
+      "scenes%20?/scene.html",
+      "clip%3F%2520%23.png?v=2#frame",
+      (path) => {
+        probed.push(path);
+        return true;
+      },
+    );
+    expect(probed).toEqual(["scenes%20?/clip?%20#.png"]);
+    expect(output).toBe("scenes%2520%3F/clip%3F%2520%23.png?v=2#frame");
+  });
+
+  it("decodes traversal before rebasing and preserves URL suffixes", () => {
+    expect(rewriteAssetPath("scenes%20?/scene.html", "%2e%2e/clip%3F%2520%23.png?v=2#frame")).toBe(
+      "clip%3F%2520%23.png?v=2#frame",
+    );
+  });
+
   it("rewrites `../` against the sub-composition dir", () => {
     expect(rewriteAssetPath("compositions/scene.html", "../icon.svg")).toBe("icon.svg");
   });

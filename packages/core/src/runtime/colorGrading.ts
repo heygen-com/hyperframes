@@ -2966,7 +2966,7 @@ const ANIMATED_GRADING_PROPERTIES = [
 ];
 
 function readAnimatedValue(element: HTMLElement, property: AnimatedProperty): number | null {
-  const raw = element.style.getPropertyValue(property.name);
+  const raw = getComputedStyle(element).getPropertyValue(property.name).trim();
   if (!raw) return null;
   const value = Number(raw);
   return Number.isFinite(value) ? Math.min(property.max, Math.max(property.min, value)) : null;

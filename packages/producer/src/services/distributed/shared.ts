@@ -97,7 +97,16 @@ export interface PlanVideosJson {
     fps: number;
     totalFrames: number;
     metadata: VideoMetadata;
+    /** Present when chunks extract their own frames from `sourcePath` (relative to the planDir). */
+    deferredRange?: PlanDeferredFrameRange;
   }>;
+}
+
+export interface PlanDeferredFrameRange {
+  sourcePath: string;
+  startTime: number;
+  durationSeconds: number;
+  format: "jpg" | "png";
 }
 
 export const INVALID_VIDEO_METADATA = "INVALID_VIDEO_METADATA" as const;
@@ -171,6 +180,25 @@ function readNonNegativeInteger(value: unknown, field: string): number {
     metadataError(field, "must be a non-negative integer");
   }
   return value;
+}
+
+function readDeferredFrameRange(value: unknown, field: string): PlanDeferredFrameRange {
+  const range = readRecord(value, field);
+  const sourcePath = readNonEmptyString(range.sourcePath, `${field}.sourcePath`);
+  if (sourcePath.startsWith("/") || sourcePath.split(/[\\/]/).some((part) => part === "..")) {
+    metadataError(`${field}.sourcePath`, "must stay inside the plan directory");
+  }
+  const durationSeconds = readFiniteNumber(range.durationSeconds, `${field}.durationSeconds`);
+  if (durationSeconds <= 0) metadataError(`${field}.durationSeconds`, "must be positive");
+  if (range.format !== "jpg" && range.format !== "png") {
+    metadataError(`${field}.format`, 'must be "jpg" or "png"');
+  }
+  return {
+    sourcePath,
+    startTime: readFiniteNumber(range.startTime, `${field}.startTime`),
+    durationSeconds,
+    format: range.format,
+  };
 }
 
 function readRateSpec(value: unknown, field: string): RateSpec | undefined {
@@ -260,6 +288,9 @@ export function parsePlanVideosJson(value: unknown): PlanVideosJson {
       fps: readFiniteNumber(entry.fps, `${field}.fps`),
       totalFrames: readNonNegativeInteger(entry.totalFrames, `${field}.totalFrames`),
       metadata: readVideoMetadata(entry.metadata, `${field}.metadata`),
+      ...(entry.deferredRange === undefined
+        ? {}
+        : { deferredRange: readDeferredFrameRange(entry.deferredRange, `${field}.deferredRange`) }),
     };
   });
 

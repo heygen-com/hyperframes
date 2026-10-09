@@ -49,6 +49,7 @@ afterEach(() => {
 });
 
 let unregisterViewport = () => {};
+const publishScroll = vi.fn();
 
 /** A 1080px timeline viewport with 32px of track headers, holding one scaled row. */
 function viewport(scrollLeft = 0, scrollWidth = 20_000) {
@@ -60,7 +61,7 @@ function viewport(scrollLeft = 0, scrollWidth = 20_000) {
   });
   const row = scroll.appendChild(document.createElement("div"));
   row.setAttribute("data-timeline-zoom-scale", "");
-  unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
+  unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll });
   return { scroll, row };
 }
 
@@ -120,7 +121,7 @@ describe("requestTimelineZoom", () => {
   it("lays a zoom-out about the left edge out at once, before it shows unmounted time", () => {
     usePlayerStore.setState({ duration: 1000 });
     viewport();
-    // Mounted to (1080 - 32 + 540) / 10 = 158.8 s; at 5 px/s the view reaches 209.6 s.
+    // Mounted to (1080 - 32 + 270) / 10 = 131.8 s; at 5 px/s the view reaches 209.6 s.
     requestTimelineZoom(50, { time: 0, x: 32 });
     vi.advanceTimersToNextFrame();
     expect(usePlayerStore.getState().timelinePps).toBe(5);
@@ -134,14 +135,14 @@ describe("requestTimelineZoom", () => {
       timelinePps: 100,
     });
     viewport(5000);
-    // Mounted 44.28..65.88 s; at 60 px/s about 55.24 s the view shows 46.5..63.97 s.
-    requestTimelineZoom(600, { time: 55.24, x: 556 });
+    // Mounted 46.98..63.18 s; at 70 px/s about 55.24 s the view shows 47.75..62.73 s.
+    requestTimelineZoom(700, { time: 55.24, x: 556 });
     vi.advanceTimersToNextFrame();
     expect(usePlayerStore.getState().timelinePps).toBe(100);
   });
 
   it("lays out a zoom-out before it shows past the window ruler ticks are drawn in", () => {
-    // 50 s of clips in content 1996 s wide: ticks are drawn to 157 s, a view and a half in.
+    // 50 s of clips in content 1996 s wide: ticks are drawn to 131.8 s, a view and a quarter in.
     usePlayerStore.setState({ duration: 50 });
     viewport();
     requestTimelineZoom(60, { time: 0, x: 32 });
@@ -230,7 +231,7 @@ describe("requestTimelineZoom", () => {
     const { scroll } = viewport();
     requestTimelineZoom(150);
     unregisterViewport();
-    unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
+    unregisterViewport = registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll });
     await Promise.resolve();
     vi.advanceTimersByTime(200);
     expect(usePlayerStore.getState().timelinePps).toBe(15);
@@ -240,6 +241,7 @@ describe("requestTimelineZoom", () => {
     const unregisterOlder = registerTimelineZoomViewport({
       scroll: document.createElement("div"),
       contentOrigin: 32,
+      publishScroll,
     });
     viewport();
     unregisterOlder();
@@ -258,6 +260,25 @@ describe("requestTimelineZoom", () => {
 });
 
 describe("zoomTimelineToRange", () => {
+  it("tells the timeline where a pan at the laid-out scale scrolled to", () => {
+    usePlayerStore.setState({
+      duration: 1000,
+      zoomMode: "manual",
+      manualZoomPercent: 1000,
+      timelineFitPps: 10,
+      timelinePps: 100,
+    });
+    const { scroll } = viewport(0);
+    const published: number[] = [];
+    publishScroll.mockImplementation((el: HTMLDivElement) => published.push(el.scrollLeft));
+    void zoomTimelineToRange(60, 70);
+    for (let i = 0; i < 40; i++) vi.advanceTimersToNextFrame();
+    publishScroll.mockReset();
+    expect(usePlayerStore.getState().timelinePps).toBe(100);
+    expect(scroll.scrollLeft).toBeGreaterThan(5000);
+    expect(published.at(-1)).toBe(scroll.scrollLeft);
+  });
+
   it("fills the width with the range and puts its start at the left margin", () => {
     viewport();
     void zoomTimelineToRange(40, 90, { smooth: false });

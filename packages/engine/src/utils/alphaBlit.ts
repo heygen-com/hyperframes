@@ -724,8 +724,8 @@ export function blitRgb48leAffine(
 export type ObjectFit = "fill" | "cover" | "contain" | "none" | "scale-down";
 
 /**
- * Parse a single axis of a CSS `object-position` string into a fraction in
- * `[0, 1]` (proportion of the slack space along that axis).
+ * Parse a single axis of a CSS `object-position` string into a fraction of
+ * the slack space along that axis. Percentages may lie outside `[0, 1]`.
  *
  * Defaults to 0.5 (centered) for unrecognized inputs to match CSS, which
  * resolves invalid `object-position` values to the initial value (`50% 50%`).
@@ -737,7 +737,7 @@ function parseObjectPositionAxis(value: string, axis: "x" | "y"): number {
   if (lower === "center" || lower === "") return 0.5;
   if (lower.endsWith("%")) {
     const pct = parseFloat(lower) / 100;
-    return Number.isFinite(pct) ? Math.max(0, Math.min(1, pct)) : 0.5;
+    return Number.isFinite(pct) ? pct : 0.5;
   }
   // Pixel values (e.g. "10px") aren't fractional; without the slack-space
   // numerator we can't honor them precisely. Fall back to center — this is
@@ -748,7 +748,7 @@ function parseObjectPositionAxis(value: string, axis: "x" | "y"): number {
 
 /**
  * Parse a CSS `object-position` string like `"50% 50%"`, `"center top"`, or
- * `"25% 75%"` into normalized `[0, 1]` fractions for X and Y.
+ * `"25% 75%"` into fractions for X and Y, preserving percentages outside `[0, 1]`.
  *
  * The fractions express how the slack space (the portion of the layout box
  * not covered by the rendered content) should be distributed between the
