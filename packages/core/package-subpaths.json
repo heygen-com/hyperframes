@@ -302,6 +302,12 @@
       "types": "./dist/runtime/domRealm.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/variable-scope": {
+      "source": "./src/runtime/variableScope.ts",
+      "runtime": "./dist/runtime/variableScope.js",
+      "types": "./dist/runtime/variableScope.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/custom-ease": {
       "source": "./src/runtime/customEase.ts",
       "runtime": "./dist/runtime/customEase.js",

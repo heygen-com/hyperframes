@@ -3,6 +3,7 @@ import {
   STUDIO_PREVIEW_LAZY_ATTR,
   STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
+import { VARIABLE_HOST_ATTR } from "@hyperframes/core/runtime/variable-scope";
 
 // Stamped as the preview stamps the files it serves, so a live element's hf-id finds its source.
 export function parseSavedSource(html: string): Document {
@@ -98,7 +99,7 @@ export function authoredMarkup(authored: Element, live: Element, sourceFile: str
 export function liveMarkupWithoutPreviewMarks(live: Element): string {
   const copy = live.cloneNode(true) as Element;
   for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
-    el.removeAttribute("data-hf-variable-host");
+    el.removeAttribute(VARIABLE_HOST_ATTR);
     el.removeAttribute(STUDIO_PREVIEW_UPCOMING_ATTR);
     if (!el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) continue;
     el.removeAttribute("loading");

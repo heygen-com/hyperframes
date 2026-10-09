@@ -311,6 +311,12 @@
       "import": "./src/runtime/domRealm.ts",
       "types": "./src/runtime/domRealm.ts"
     },
+    "./runtime/variable-scope": {
+      "bun": "./src/runtime/variableScope.ts",
+      "node": "./dist/runtime/variableScope.js",
+      "import": "./src/runtime/variableScope.ts",
+      "types": "./src/runtime/variableScope.ts"
+    },
     "./runtime/custom-ease": {
       "bun": "./src/runtime/customEase.ts",
       "node": "./dist/runtime/customEase.js",
@@ -720,6 +726,10 @@
       "./runtime/dom-realm": {
         "import": "./dist/runtime/domRealm.js",
         "types": "./dist/runtime/domRealm.d.ts"
+      },
+      "./runtime/variable-scope": {
+        "import": "./dist/runtime/variableScope.js",
+        "types": "./dist/runtime/variableScope.d.ts"
       },
       "./runtime/custom-ease": {
         "import": "./dist/runtime/customEase.js",
