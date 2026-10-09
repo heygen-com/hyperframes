@@ -267,6 +267,17 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.width).toBe("32px");
   });
 
+  it("hides a border-only canvas after a context loss shows the source again", () => {
+    const video = makeDrawableVideo();
+    video.style.border = "16px solid rgb(255, 0, 0)";
+    const { canvas } = startRuntimeWithVideo(video);
+    bordered32(video);
+    canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    expect(video.hasAttribute("data-hf-color-grading-source-hidden")).toBe(false);
+    expect(canvas.style.display).toBe("none");
+  });
+
   it("hides a border-only canvas while the source itself is showing", () => {
     const video = makeDrawableVideo();
     bordered32(video);
