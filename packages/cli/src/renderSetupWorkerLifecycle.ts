@@ -1,7 +1,7 @@
 import { normalizeErrorMessage } from "./utils/errorMessage.js";
 
 const RENDER_SETUP_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
-const RESULT_PREFIX = "HYPERFRAMES_RENDER_SETUP_RESULT:";
+export const RENDER_SETUP_RESULT_PREFIX = "HYPERFRAMES_RENDER_SETUP_RESULT:";
 
 type RenderSetupSignal = (typeof RENDER_SETUP_SIGNALS)[number];
 
@@ -45,7 +45,7 @@ export async function runRenderSetupStep(
   output: SetupOutput,
 ): Promise<number> {
   try {
-    output.stdout.write(RESULT_PREFIX + JSON.stringify(await step()) + "\n");
+    output.stdout.write(RENDER_SETUP_RESULT_PREFIX + JSON.stringify(await step()) + "\n");
     return 0;
   } catch (error) {
     output.stderr.write(normalizeErrorMessage(error) + "\n");

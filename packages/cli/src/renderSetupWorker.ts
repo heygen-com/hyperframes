@@ -36,10 +36,7 @@ async function runMode(): Promise<unknown> {
   throw new Error(`Unknown render setup mode: ${mode}`);
 }
 
-process.exitCode = await runRenderSetupStep(async () => {
-  try {
-    return await runMode();
-  } finally {
-    disposeSignalHandlers();
-  }
-}, process);
+process.exitCode = await runRenderSetupStep(
+  () => runMode().finally(disposeSignalHandlers),
+  process,
+);

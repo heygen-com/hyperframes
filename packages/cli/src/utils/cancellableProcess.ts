@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { terminateProcessTree } from "./processTree.js";
+import { RENDER_SETUP_RESULT_PREFIX } from "../renderSetupWorkerLifecycle.js";
 
 export interface CancellableProcessResult {
   stdout: string;
@@ -187,8 +188,6 @@ export function runCancellableProcess(
   });
 }
 
-const SETUP_RESULT_PREFIX = "HYPERFRAMES_RENDER_SETUP_RESULT:";
-
 export async function runRenderSetupWorker<T>(
   mode: "browser" | "lint" | "orphan-cleanup",
   input: unknown,
@@ -224,8 +223,8 @@ export async function runRenderSetupWorker<T>(
   if (result.stderr) process.stderr.write(result.stderr);
   const encoded = result.stdout
     .split(/\r?\n/)
-    .find((line) => line.startsWith(SETUP_RESULT_PREFIX))
-    ?.slice(SETUP_RESULT_PREFIX.length);
+    .find((line) => line.startsWith(RENDER_SETUP_RESULT_PREFIX))
+    ?.slice(RENDER_SETUP_RESULT_PREFIX.length);
   if (!encoded) throw new Error(`${mode} setup process exited without a result`);
   return JSON.parse(encoded) as T;
 }

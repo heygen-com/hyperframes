@@ -82,7 +82,7 @@ describe("render setup worker result", () => {
       cause: new Error("tar.exe extraction failed"),
     });
 
-    await expect(runRenderSetupStep(async () => Promise.reject(failure), output)).resolves.toBe(1);
+    await expect(runRenderSetupStep(() => Promise.reject(failure), output)).resolves.toBe(1);
 
     expect(written.stderr).toBe("chrome-headless-shell is missing after unzipping\n");
     expect(written.stdout).toBe("");

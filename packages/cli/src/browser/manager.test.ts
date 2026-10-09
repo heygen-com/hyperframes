@@ -435,7 +435,7 @@ describe("findBrowser — cache resolution", () => {
       "chrome-headless-shell-linux64",
       "redownloaded-chrome-headless-shell",
     );
-    const staleInstallDir = join(HF_CACHE, "chrome-headless-shell", "linux-131.0.6778.85");
+    const staleInstallDir = stagedVersionDir(HF_CACHE, "131.0.6778.85");
     // The stale install DIR is present (extraction got partway through, e.g. an
     // ABOUT/LICENSE-only extract) even though the exe itself is missing —
     // exercises the purge-before-redownload fix, not just the redownload path.
@@ -471,7 +471,7 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("ensureBrowser({force: true}) re-downloads without purging the cache, bypassing any cache/system shortcut", async () => {
-    const staleInstallDir = join(HF_CACHE, "chrome-headless-shell", "linux-131.0.6778.85");
+    const staleInstallDir = stagedVersionDir(HF_CACHE, "131.0.6778.85");
     const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "force-downloaded");
     // A HEALTHY cached binary AND system Chrome are both present — force must
     // ignore both shortcuts and always re-download, which is the whole point
@@ -516,7 +516,7 @@ describe("findBrowser — cache resolution", () => {
     });
     try {
       const { ensureBrowser, CACHE_DIR } = await import("./manager.js");
-      const otherVersion = join(CACHE_DIR, "chrome-headless-shell", "linux-1.0.0", "marker");
+      const otherVersion = join(stagedVersionDir(CACHE_DIR, "1.0.0"), "marker");
       mkdirSync(dirname(otherVersion), { recursive: true });
       writeFileSync(otherVersion, "other");
 
