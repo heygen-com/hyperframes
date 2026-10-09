@@ -250,17 +250,27 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.height).toBe(328);
   });
 
-  it("still shows a bordered source's border when its content box is empty", () => {
-    const video = makeDrawableVideo();
+  function bordered32(video: HTMLVideoElement): void {
     video.style.border = "16px solid rgb(255, 0, 0)";
     Object.defineProperty(video, "offsetWidth", { value: 32, configurable: true });
     Object.defineProperty(video, "offsetHeight", { value: 32, configurable: true });
     video.getBoundingClientRect = () => ({ width: 32, height: 32 }) as DOMRect;
+  }
 
+  it("keeps a drawn source's border when its content box empties", () => {
+    const video = makeDrawableVideo();
+    video.style.border = "16px solid rgb(255, 0, 0)";
     const { canvas } = startRuntimeWithVideo(video);
-
+    bordered32(video);
+    runtime!.refresh();
     expect(canvas.style.display).toBe("block");
     expect(canvas.style.width).toBe("32px");
+  });
+
+  it("hides a border-only canvas until the source has drawn once", () => {
+    const video = makeDrawableVideo();
+    bordered32(video);
+    expect(startRuntimeWithVideo(video).canvas.style.display).toBe("none");
   });
 
   it("says an element is graded only while it draws through a grading canvas", () => {

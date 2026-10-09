@@ -2616,6 +2616,16 @@ function layoutBoxes(
   };
 }
 
+function visibleLayoutBoxes(
+  entry: ColorGradingEntry,
+  computed: CSSStyleDeclaration,
+): { cssWidth: number; cssHeight: number } | null {
+  const size = layoutBoxes(entry.element, computed);
+  if (!size) return null;
+  const borderOnly = size.cssWidth <= 0 || size.cssHeight <= 0;
+  return borderOnly && !entry.hasDrawn ? null : size;
+}
+
 function resolvedLayoutSize(primary: number, fallback: number): number {
   return Math.max(0, Math.round(primary > 0 ? primary : fallback));
 }
@@ -2644,7 +2654,7 @@ function updateCanvasLayout(
   canvas.style.opacity = entry.sourceOpacityForCanvas;
   canvas.style.visibility = entry.sourceVisibleForCanvas ? "visible" : "hidden";
 
-  const size = layoutBoxes(element, computed);
+  const size = visibleLayoutBoxes(entry, computed);
   if (!size) {
     canvas.style.display = "none";
     return null;
