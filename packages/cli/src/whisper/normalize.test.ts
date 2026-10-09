@@ -319,7 +319,6 @@ describe("subtitle line endings", () => {
       { text: "Second phrase", start: 3, end: 4, id: "w1" },
     ]);
   });
-
 });
 
 describe("caption formatting", () => {
