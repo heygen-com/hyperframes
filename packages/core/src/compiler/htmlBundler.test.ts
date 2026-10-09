@@ -2939,13 +2939,13 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
     expect(timelinesThatRun(document)).toEqual(["main", "intro", "scene"]);
   });
 
-  // A host whose own compile is lazy (Bun 1.3's vm.Script) accepts all of these; the check must not.
+  // Bun 1.3's vm.Script accepts all of these; CI runs Node, so this pins the rules, not the engine.
   it.each([
     ["window.broken = {:", false],
     ["window.broken = 1; return;", false],
     ["export const broken = 1;", false],
     ["window.ok = 1;", true],
-  ])("parsesAsScript(%j) is %s on any host engine", (source, parses) => {
+  ])("parsesAsScript(%j) is %s", (source, parses) => {
     expect(parsesAsScript(source)).toBe(parses);
   });
 
