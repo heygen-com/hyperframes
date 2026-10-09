@@ -59,6 +59,8 @@ let anchorForCommit: TimelineZoomAnchor | null = null;
 let animation = 0;
 let easingTo: number | null = null;
 let resolveEase: ((result: TimelineZoomResult) => void) | null = null;
+/** Lays the easing zoom out at its target now. */
+let landEase: (() => void) | null = null;
 const previewListeners = new Set<() => void>();
 
 export function currentTimelineZoomPercent(): number {
@@ -273,7 +275,13 @@ export function requestTimelineZoom(percent: number, anchor: TimelineZoomAnchor 
 
 /** Lays out a pending zoom now, so a press meets the real layout. */
 export function settleTimelineZoom(): void {
+  landTimelineZoomEase();
   if (preview) commitPreview();
+}
+
+/** Lands a zoom that is easing at its target now: each eased frame would undo a scroll made meanwhile. */
+export function landTimelineZoomEase(): void {
+  landEase?.();
 }
 
 /** After a scroll: scales what it mounted, or lays the zoom out if it shows past what is drawn. */
@@ -299,6 +307,7 @@ function stopEase(result: TimelineZoomResult = "cancelled") {
   cancelAnimationFrame(animation);
   animation = 0;
   easingTo = null;
+  landEase = null;
   const done = resolveEase;
   resolveEase = null;
   done?.(result);
@@ -377,6 +386,10 @@ function easeToRange(
   const finish = () => {
     commitPreview();
     stopEase("done");
+  };
+  landEase = () => {
+    request(toPercent, { time: start, x }, byPerson);
+    finish();
   };
   if (!smooth || reducedMotion()) {
     request(toPercent, { time: start, x }, byPerson);

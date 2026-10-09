@@ -6,6 +6,7 @@ import {
   currentTimelineZoomPercent,
   requestTimelineZoom,
   registerTimelineZoomViewport,
+  landTimelineZoomEase,
   redrawTimelineZoomPreview,
   settleTimelineZoom,
   subscribeTimelineZoomPreview,
@@ -256,7 +257,11 @@ export function useTimelinePlayhead({
   // Trackpad pinch arrives as ctrl+wheel; Cmd+wheel zooms too, as Mac editors do.
   const handlePinchWheel = useCallback(
     (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (!e.ctrlKey && !e.metaKey) {
+        // A scroll moves the zoom it lands on; one made mid-glide would be undone.
+        landTimelineZoomEase();
+        return;
+      }
       const scroll = scrollRef.current;
       if (!scroll || durationRef.current <= 0 || fitPpsRef.current <= 0 || ppsRef.current <= 0)
         return;
