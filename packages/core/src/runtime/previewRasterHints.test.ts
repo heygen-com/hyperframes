@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
 import { setPreviewRasterScale } from "./previewRasterHints";
 
@@ -121,5 +121,52 @@ describe("setPreviewRasterScale", () => {
     await Promise.resolve();
     expect(marked(byAttribute)).toBe(false);
     sheet.remove();
+  });
+
+  it("leaves marked layers alone when only something around them changes", async () => {
+    const scene = layer("");
+    const words = [layer(POSITIONED, scene), layer(POSITIONED, scene)];
+    setPreviewRasterScale(0.5);
+    const markChanges: MutationRecord[] = [];
+    const watch = new MutationObserver((records) => markChanges.push(...records));
+    watch.observe(document.body, { subtree: true, attributeFilter: [PREVIEW_RASTER_ATTR] });
+    scene.dataset.upcoming = "";
+    await Promise.resolve();
+    await Promise.resolve();
+    watch.disconnect();
+    expect(words.map(marked)).toEqual([true, true]);
+    expect(markChanges).toEqual([]);
+  });
+
+  it("does not react to its own marks", async () => {
+    const words = layer(POSITIONED);
+    setPreviewRasterScale(0.5);
+    words.dataset.scene = "intro";
+    await Promise.resolve();
+    await Promise.resolve();
+    const reads = vi.spyOn(window, "getComputedStyle");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reads).not.toHaveBeenCalled();
+    reads.mockRestore();
+    expect(marked(words)).toBe(true);
+  });
+
+  it("re-checks the page when a linked stylesheet loads", async () => {
+    const sheet = document.createElement("style");
+    document.head.append(sheet);
+    const words = layer(POSITIONED);
+    layer("", words).className = "loaded-pinned";
+    setPreviewRasterScale(0.5);
+    const link = document.createElement("link");
+    document.head.append(link);
+    await Promise.resolve();
+    expect(marked(words)).toBe(true);
+    // Stands in for the linked rules arriving: stylesheet object edits are not observed.
+    sheet.sheet!.insertRule(".loaded-pinned { position: fixed }");
+    link.dispatchEvent(new Event("load"));
+    expect(marked(words)).toBe(false);
+    sheet.remove();
+    link.remove();
   });
 });

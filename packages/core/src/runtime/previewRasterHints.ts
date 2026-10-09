@@ -45,14 +45,19 @@ function inlineFit(element: Element, style: CSSStyleDeclaration): string {
   return `${style.zIndex}|${(element as HTMLElement).style?.willChange ?? ""}`;
 }
 
-function check(element: Element): void {
+// A marked element reads `auto` through our rule. Lifting the mark to read its own hints repaints
+// the layer, so that only happens when the element itself changed.
+function check(element: Element, readOwnHints: boolean): void {
   if (element === sheet) return;
-  // A marked element reads `auto` through our rule, so the mark is lifted to read its own hints.
-  element.removeAttribute(PREVIEW_RASTER_ATTR);
+  const marked = element.hasAttribute(PREVIEW_RASTER_ATTR);
+  if (marked && readOwnHints) element.removeAttribute(PREVIEW_RASTER_ATTR);
   const style = getComputedStyle(element);
-  if (!onlyTransformHints(style) || !canDropHint(element, style)) return;
-  markedWith.set(element, inlineFit(element, style));
-  element.setAttribute(PREVIEW_RASTER_ATTR, "");
+  const hintsFit = (marked && !readOwnHints) || onlyTransformHints(style);
+  const drop = hintsFit && canDropHint(element, style);
+  if (drop) markedWith.set(element, inlineFit(element, style));
+  if (drop !== element.hasAttribute(PREVIEW_RASTER_ATTR)) {
+    element.toggleAttribute(PREVIEW_RASTER_ATTR, drop);
+  }
 }
 
 function unmarkHolders(element: Element): void {
@@ -67,7 +72,7 @@ function unmarkHolders(element: Element): void {
 
 function followTree(root: Element): void {
   for (const element of [root, ...root.querySelectorAll("*")]) {
-    check(element);
+    check(element, element === root);
     unmarkHolders(element);
   }
 }
@@ -77,14 +82,22 @@ function followStyle(element: Element): void {
   if (element.hasAttribute(PREVIEW_RASTER_ATTR)) {
     const style = getComputedStyle(element);
     if (style.position === "static" || inlineFit(element, style) !== markedWith.get(element)) {
-      check(element);
+      check(element, true);
     }
   }
   unmarkHolders(element);
 }
 
+function clearMarks(): void {
+  for (const element of document.querySelectorAll(MARKED)) {
+    element.removeAttribute(PREVIEW_RASTER_ATTR);
+  }
+}
+
+// Marks are cleared together so the page restyles once, not once per layer.
 function markLayers(): void {
-  for (const element of document.querySelectorAll("*")) check(element);
+  clearMarks();
+  for (const element of document.querySelectorAll("*")) check(element, true);
 }
 
 function followAttribute(record: MutationRecord): void {
@@ -119,9 +132,7 @@ function restore(): void {
   observer = null;
   sheet?.remove();
   sheet = null;
-  for (const element of document.querySelectorAll(MARKED)) {
-    element.removeAttribute(PREVIEW_RASTER_ATTR);
-  }
+  clearMarks();
 }
 
 /** The host reports how large it shows this document; below 1x, transform hints stop forcing full-size rasters. */
