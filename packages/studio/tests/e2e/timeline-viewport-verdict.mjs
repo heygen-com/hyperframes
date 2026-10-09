@@ -67,8 +67,8 @@ function overBudgetExcess(headValues, baseValues, limitMs) {
 }
 
 /**
- * Head against its base measured in alternating blocks on the same machine. The budget holds whenever the
- * head meets it; when it does not, the head fails only if it misses the budget on more steps than its base does.
+ * For a head that missed the budget twice: measured against its base in alternating blocks on the same machine,
+ * it fails if it misses the budget on more steps than the base does, beyond chance.
  */
 export function judgeAgainstBase(headRuns, baseRuns, limits) {
   const head = judgeResponsiveness(headRuns, limits);
@@ -89,7 +89,7 @@ export function judgeAgainstBase(headRuns, baseRuns, limits) {
     base,
     interactions,
     frameIntervals,
-    passed: head.passed || (!interactions.slower && !frameIntervals.slower),
+    passed: !interactions.slower && !frameIntervals.slower,
   };
 }
 

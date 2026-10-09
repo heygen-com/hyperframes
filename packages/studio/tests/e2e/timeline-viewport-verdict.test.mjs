@@ -133,8 +133,10 @@ describe("judgeAgainstBase", () => {
       };
     });
 
-  it("passes a head that meets the budget whatever its base measured", () => {
-    expect(judgeAgainstBase(measured(31), measured(0), limits).passed).toBe(true);
+  it("fails a head slower than its base even where this comparison puts it under the budget", () => {
+    const verdict = judgeAgainstBase(measured(31), measured(0), limits);
+    expect(verdict.head.passed).toBe(true);
+    expect(verdict.passed).toBe(false);
   });
 
   it("passes a head over budget when its base misses it as often on the same machine", () => {
