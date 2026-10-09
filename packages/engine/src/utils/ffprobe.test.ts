@@ -11,7 +11,6 @@ import {
   parseFrameRate,
   pixelFormatHasAlpha,
 } from "./ffprobe.js";
-import { getFfprobeBinary } from "./ffmpegBinaries.js";
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
@@ -1800,7 +1799,7 @@ describe("audio duration decode probe never fails the call and needs no profile 
 
 // honest.mp4 is FLAC-in-MP4; lying.mp4 is the same bytes with the mvhd/tkhd/mdhd
 // durations halved, every audio frame intact.
-const HAS_FFPROBE = spawnSync(getFfprobeBinary(), ["-version"]).status === 0;
+const HAS_FFPROBE = spawnSync("ffprobe", ["-version"]).status === 0;
 
 describe.skipIf(!HAS_FFPROBE)(
   "extractAudioMetadata recovers a real lying container's true duration",
