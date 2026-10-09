@@ -250,11 +250,19 @@ function clearObsoletePublication(repository, base, exists) {
   console.log("No unpublished catalog changes; obsolete publication cleared.");
 }
 
-// Only generated files count: rewriting the branch for an unrelated main push would dismiss its approval.
-function snapshotMatches(root, exists) {
-  if (!exists) return false;
+// The base of the published snapshot while it still matches what main generates: rewriting the branch for an
+// unrelated main push would dismiss its approval. Main editing generated files, or the branch carrying anything
+// else, needs a fresh snapshot.
+function keptSnapshotBase(root, exists) {
+  if (!exists) return undefined;
   git(root, ["fetch", "-q", "--no-tags", "origin", BRANCH]);
   const published = git(root, ["rev-parse", "FETCH_HEAD"]);
+  const forkPoint = git(root, ["merge-base", published, "HEAD"]);
+  const elsewhere = GENERATED_CATALOG_PATHS.map((path) => `:(exclude)${path}`);
+  if (git(root, ["diff", "--name-only", forkPoint, "HEAD", "--", ...GENERATED_CATALOG_PATHS]))
+    return undefined;
+  if (git(root, ["diff", "--name-only", forkPoint, published, "--", ".", ...elsewhere]))
+    return undefined;
   const generated = catalogTree(root);
   const changes = git(root, [
     "diff",
@@ -269,11 +277,11 @@ function snapshotMatches(root, exists) {
     .split("\0")
     .filter(Boolean);
   for (let i = 0; i < changes.length; i += 2) {
-    const [status, path] = [changes[i], changes[i + 1]];
-    if (status !== "M" || !VECTORS.test(path)) return false;
-    if (!sameVectors(root, published, generated, path)) return false;
+    const [status, path] = changes.slice(i, i + 2);
+    if (status !== "M" || !VECTORS.test(path) || !sameVectors(root, published, generated, path))
+      return undefined;
   }
-  return true;
+  return forkPoint;
 }
 
 function sameVectors(root, published, generated, path) {
@@ -332,8 +340,9 @@ export function publish(root) {
   );
   const exists = refs.includes(`refs/heads/${BRANCH}`);
   if (batches.length === 0) return clearObsoletePublication(repository, base, exists);
-  if (snapshotMatches(root, exists)) {
-    openPublishPr(repository, base);
+  const kept = keptSnapshotBase(root, exists);
+  if (kept) {
+    openPublishPr(repository, kept);
     dispatchPublishChecks(repository);
     console.log("Standing catalog PR already contains this snapshot.");
     return;
