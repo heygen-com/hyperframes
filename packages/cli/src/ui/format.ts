@@ -94,7 +94,7 @@ export function formatRenderPipelineDetail(input: {
 }
 
 /**
- * Why a Linux auto render stayed on screenshot after BeginFrame was requested.
+ * Why a Linux render stayed on screenshot after automatic or hardware GPU selection.
  * Silent when software was requested (--docker, --no-browser-gpu) or off Linux.
  */
 export function formatScreenshotFallbackHint(input: {
@@ -103,8 +103,21 @@ export function formatScreenshotFallbackHint(input: {
   requestedGpuMode?: BrowserGpuMode;
   platform: NodeJS.Platform;
 }): string | undefined {
-  if (input.platform !== "linux" || input.requestedGpuMode !== "auto") return undefined;
-  if (input.captureMode !== "screenshot" || input.browserGpuMode !== "software") return undefined;
+  if (
+    input.platform !== "linux" ||
+    (input.requestedGpuMode !== "auto" && input.requestedGpuMode !== "hardware")
+  ) {
+    return undefined;
+  }
+  if (input.captureMode !== "screenshot") return undefined;
+  if (input.browserGpuMode === "hardware") {
+    return (
+      "Screenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no " +
+      "--resolution upscale. A BeginFrame probe timeout can occur when browsers start together " +
+      "on one GPU; fewer --workers may help."
+    );
+  }
+  if (input.browserGpuMode !== "software" || input.requestedGpuMode !== "auto") return undefined;
   return (
     "Screenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no " +
     "--resolution upscale. Heavy compositions can stall on software GL."

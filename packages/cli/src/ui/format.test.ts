@@ -64,16 +64,58 @@ describe("formatScreenshotFallbackHint", () => {
     platform: "linux" as const,
   };
 
-  it("explains the slow path only for linux + auto-probed software gpu + screenshot", () => {
+  it("explains Linux software screenshot capture after automatic GPU selection", () => {
     expect(formatScreenshotFallbackHint(slow)).toContain("BeginFrame did not run");
     expect(formatScreenshotFallbackHint({ ...slow, platform: "darwin" })).toBeUndefined();
-    expect(formatScreenshotFallbackHint({ ...slow, browserGpuMode: "hardware" })).toBeUndefined();
     expect(formatScreenshotFallbackHint({ ...slow, captureMode: "beginframe" })).toBeUndefined();
+  });
+
+  it.each(["auto", "hardware"] as const)(
+    "explains hardware screenshot capture when GPU mode %s was requested",
+    (requestedGpuMode) => {
+      const hint = formatScreenshotFallbackHint({
+        ...slow,
+        browserGpuMode: "hardware",
+        requestedGpuMode,
+      });
+
+      expect(hint).toContain("BeginFrame did not run");
+      expect(hint).toContain("probe");
+      expect(hint).toContain("fewer --workers");
+      expect(hint).not.toContain("software GL");
+    },
+  );
+
+  it.each(["beginframe", "drawelement", "beginframe|screenshot", undefined])(
+    "does not claim BeginFrame was absent for capture mode %s",
+    (captureMode) => {
+      expect(
+        formatScreenshotFallbackHint({ ...slow, captureMode, browserGpuMode: "hardware" }),
+      ).toBeUndefined();
+    },
+  );
+
+  it.each(["darwin", "win32"] as const)("stays silent on %s", (platform) => {
+    expect(
+      formatScreenshotFallbackHint({ ...slow, platform, browserGpuMode: "hardware" }),
+    ).toBeUndefined();
   });
 
   it("stays silent when software gpu was requested, as --docker and --no-browser-gpu do", () => {
     expect(formatScreenshotFallbackHint({ ...slow, requestedGpuMode: "software" })).toBeUndefined();
     expect(formatScreenshotFallbackHint({ ...slow, requestedGpuMode: undefined })).toBeUndefined();
+    expect(
+      formatScreenshotFallbackHint({
+        ...slow,
+        browserGpuMode: "hardware",
+        requestedGpuMode: "software",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("stays silent when the observed GPU mode is unavailable", () => {
+    expect(formatScreenshotFallbackHint({ ...slow, browserGpuMode: undefined })).toBeUndefined();
+    expect(formatScreenshotFallbackHint({ ...slow, browserGpuMode: "unknown" })).toBeUndefined();
   });
 });
 

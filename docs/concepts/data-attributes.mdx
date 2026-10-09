@@ -47,6 +47,43 @@ keep an intentional overlap, such as a crossfade, readable in Studio:
 </section>
 ```
 
+### Keep negative layers inside their parent
+
+A negative `z-index` is valid CSS, but it can put a clip behind an opaque
+ancestor background when its parent does not create a stacking context. For
+example, this backdrop can be covered by the root's background:
+
+```css
+#root {
+  position: relative;
+  background: #0a0a0a;
+}
+#backdrop {
+  position: absolute;
+  inset: 0;
+  background: #f5e6c8;
+  z-index: -1;
+}
+```
+
+Add one property to keep the backdrop above its parent's background and below
+foreground siblings:
+
+```css
+#root {
+  isolation: isolate;
+}
+```
+
+`isolation: isolate` creates a local stacking context. The backdrop becomes
+visible in the browser, `snapshot`, and `render`; siblings at `z-index: 0` or
+above can still cover it. You can also use an earlier background sibling and
+raise foreground elements with non-negative `z-index` values.
+
+`hyperframes lint` reports `negative_z_index` as a warning based on CSS text.
+It can still warn when an ancestor already creates a stacking context, so
+verify the visible result rather than treating every negative value as invalid.
+
 ## Start relative to another clip
 
 A numeric `data-start` is an absolute time in seconds. A clip ID means “start

@@ -18,6 +18,31 @@ function idOf(html: string, selector: string): string | null {
 
 const doc = (body: string) => `<!doctype html><html><body>${body}</body></html>`;
 
+describe("ensureHfIds fragment detection", () => {
+  it.each([
+    `<!-- Example: <html lang="en"> --><div id="stage"><p id="title">Hello</p></div>`,
+    `<!-- Example: <!doctype html> --><div id="stage"><p id="title">Hello</p></div>`,
+    `<div id="stage" title="<html>"><p id="title">Hello</p></div>`,
+    `<script>const example = "<!doctype html>";</script><div id="stage"><p id="title">Hello</p></div>`,
+  ])("stamps fragments containing document markers in inert text: %s", (html) => {
+    const out = ensureHfIds(html);
+    expect(ids(out)).toHaveLength(2);
+    expect(idOf(out, "#title")).toBe(
+      idOf(ensureHfIds(`<div id="stage"><p id="title">Hello</p></div>`), "#title"),
+    );
+    expect(out).not.toContain("<head>");
+    expect(out).not.toContain("<body>");
+    expect(ensureHfIds(out)).toBe(out);
+  });
+
+  it("preserves a full document following leading comments", () => {
+    const out = ensureHfIds(`<!-- note --><html><body><p id="title">Hello</p></body></html>`);
+    expect(out).toContain("<html>");
+    expect(idOf(out, "#title")).toMatch(/^hf-[a-z0-9]{4}$/);
+    expect(ensureHfIds(out)).toBe(out);
+  });
+});
+
 describe("ensureHfIds", () => {
   it("ignores HTML attribute case and editor state while retaining pinned IDs", () => {
     const lower = doc(`<div id="x" data-start="2" data-hf-state="a">hello</div>`);

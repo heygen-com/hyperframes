@@ -25,6 +25,7 @@ import {
   type StreamingEncoderOptions,
 } from "./streamingEncoder.js";
 import { DEFAULT_HDR10_MASTERING } from "../utils/hdr.js";
+import { type GpuEncoder } from "../utils/gpuEncoder.js";
 import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
 
 const baseHdrPq: StreamingEncoderOptions = {
@@ -70,6 +71,68 @@ function getX265ParamsValue(args: string[]): string | undefined {
 }
 
 describe("buildStreamingArgs", () => {
+  describe("H.265 sample-entry tagging", () => {
+    const encoders: [GpuEncoder, string][] = [
+      [null, "libx265"],
+      ["nvenc", "hevc_nvenc"],
+      ["videotoolbox", "hevc_videotoolbox"],
+      ["vaapi", "hevc_vaapi"],
+      ["qsv", "hevc_qsv"],
+      ["amf", "hevc_amf"],
+    ];
+
+    function expectSingleHvc1Tag(args: string[]): void {
+      const tagIndex = args.indexOf("-tag:v");
+      expect(args.filter((arg) => arg === "-tag:v")).toHaveLength(1);
+      expect(args[tagIndex + 1]).toBe("hvc1");
+      expect(tagIndex).toBeGreaterThan(args.indexOf("-i") + 1);
+      expect(tagIndex + 1).toBeLessThan(args.length - 1);
+    }
+
+    it.each(encoders)("tags H.265 output exactly once with encoder %s", (encoder, encoderName) => {
+      const args = buildStreamingArgs(
+        { ...baseSdr, codec: "h265", useGpu: true },
+        "/tmp/out.mp4",
+        encoder,
+      );
+
+      expect(args[args.indexOf("-c:v") + 1]).toBe(encoderName);
+      expectSingleHvc1Tag(args);
+    });
+
+    it("keeps the software tag when a detected GPU is disabled", () => {
+      const args = buildStreamingArgs({ ...baseSdr, codec: "h265" }, "/tmp/out.mp4", "nvenc");
+
+      expect(args[args.indexOf("-c:v") + 1]).toBe("libx265");
+      expectSingleHvc1Tag(args);
+    });
+
+    it.each([baseHdrPq, baseHdrHlg])("tags HDR $hdr.transfer VideoToolbox output", (options) => {
+      const args = buildStreamingArgs({ ...options, useGpu: true }, "/tmp/hdr.mp4", "videotoolbox");
+
+      expect(args[args.indexOf("-c:v") + 1]).toBe("hevc_videotoolbox");
+      expect(args[args.indexOf("-color_trc:v") + 1]).toBe(
+        options.hdr?.transfer === "pq" ? "smpte2084" : "arib-std-b67",
+      );
+      expectSingleHvc1Tag(args);
+    });
+
+    it.each(encoders)("does not tag H.264 output with encoder %s", (encoder) => {
+      const args = buildStreamingArgs({ ...baseSdr, useGpu: true }, "/tmp/out.mp4", encoder);
+
+      expect(args).not.toContain("-tag:v");
+      expect(args).not.toContain("hvc1");
+    });
+
+    it("does not tag VP9 output when a GPU is requested", () => {
+      const args = buildStreamingArgs({ ...baseVp9, useGpu: true }, "/tmp/out.webm", "nvenc");
+
+      expect(args[args.indexOf("-c:v") + 1]).toBe("libvpx-vp9");
+      expect(args).not.toContain("-tag:v");
+      expect(args).not.toContain("hvc1");
+    });
+  });
+
   describe("HDR PQ (libx265)", () => {
     it("emits master-display and max-cll in -x265-params", () => {
       const args = buildStreamingArgs(baseHdrPq, "/tmp/out.mp4");

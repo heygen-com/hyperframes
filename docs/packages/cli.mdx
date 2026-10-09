@@ -236,7 +236,7 @@ thin with counts on it was cut short.
 | `--capture-budget`  | Budget in ms for everything after the page loads (default 120000). Cooperative — it stops new work, but cannot interrupt work already running.     |
 | `--skip-assets`     | Do not download images and SVGs                                                                                                                   |
 | `--skip-vision`     | Do not run AI image captioning                                                                                                                    |
-| `--max-screenshots` | Accepted, but has no effect — capture picks its own scroll positions.                                                                              |
+| `--max-screenshots` | Maximum page-capture files, including the full-page plate; derived contact sheets are excluded. Positive integer; default 21. A value of 1 captures only the top viewport.                                                                              |
 | `--json`            | Structured output for programmatic use                                                                                                             |
 | `--video <folder>`  | Switch to video-download mode against a captured folder's manifest. Pair with `--list`, `--index`, or `--video-url`.                               |
 
@@ -309,13 +309,20 @@ cues with no internal spaces — single-word or CJK captions.
 
 ### `models`
 
-Download an on-device model. Only asked-for installs happen; nothing downloads
+List or download on-device models. Only asked-for installs happen; nothing downloads
 on first use.
 
 ```bash
+npx hyperframes models list                      # Parakeet and any downloaded whisper models
+npx hyperframes models list --json               # { ok, models: [{ engine, model, installed, runner, path }] }
 npx hyperframes models install parakeet          # progress on stderr
 npx hyperframes models install parakeet --json   # one JSON result
 ```
+
+`list` reports Parakeet as installed only when `transcribe` would use it, through
+the CLI's own runtime or `parakeet-mlx` (`runner`), and gives the reason when this
+machine cannot run it. Whisper models appear once
+`transcribe` has downloaded them.
 
 `parakeet` installs the sherpa-onnx runtime from npm and NVIDIA's Parakeet TDT
 0.6B v3 speech model (int8, about 640 MB, CC-BY-4.0) into
@@ -435,7 +442,7 @@ npx hyperframes media-treatment --selector '#hero' --analyze --json
 npx hyperframes media-treatment --selector '#hero' \
   --grading '{"preset":"skin-soft","intensity":0.6}' --apply
 npx hyperframes media-treatment --file compositions/scene.html --selector 'video' \
-  --grading '{"preset":"warm-daylight"}' --apply --dry-run --json
+  --grading '{"preset":"warm-daylight"}' --dry-run --json
 npx hyperframes media-treatment --selector '#hero' --clear
 ```
 
@@ -454,6 +461,8 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--clear`              | Remove colour grading from the target                                 |
 | `--dry-run`            | Validate and report without writing                                   |
 | `--json`               | Agent-readable JSON                                                   |
+
+`--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML.
 
 The command writes `data-color-grading` — the same contract Studio, preview, and
 render all read, so the two can never disagree. It does not recognise subjects
@@ -1383,7 +1392,8 @@ First match wins:
 
 1. `HEYGEN_API_KEY`
 2. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
-3. `~/.heygen/credentials`
+3. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
+4. `~/.heygen/credentials`
 
 ### `auth login`
 
@@ -1441,6 +1451,7 @@ hyperframes auth logout --yes            # no prompt
 | --------------------- | ------------------------------------------------ |
 | `HEYGEN_API_KEY`      | Override the stored credential.                  |
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
+| `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; never refreshed.    |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
 | `HEYGEN_CONFIG_DIR`   | Credentials directory (default `~/.heygen`).     |
 

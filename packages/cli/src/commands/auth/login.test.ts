@@ -52,20 +52,33 @@ const deviceAuth = vi.hoisted(() => ({
   revoke: vi.fn(async () => {}),
 }));
 
+const usersByToken = vi.hoisted((): Record<string, Record<string, unknown>> => ({}));
+
+const browserAuth = vi.hoisted(() => ({
+  start: vi.fn(async () => {
+    const tokens = { access_token: "browser-at", token_type: "Bearer" };
+    const { writeStore: write } = await import("../../auth/store.js");
+    await write({ oauth: { access_token: tokens.access_token } });
+    return { tokens };
+  }),
+}));
+
 vi.mock("../../auth/index.js", async (orig) => {
   const actual = await orig<typeof import("../../auth/index.js")>();
   class MockAuthClient {
-    async getCurrentUser(): Promise<Record<string, unknown>> {
+    async getCurrentUser(credential: { access_token?: string }): Promise<Record<string, unknown>> {
       if (verifyState.reject) {
         const { ErrUnauthenticated: rej } = await import("../../auth/errors.js");
         throw rej("invalid token");
       }
-      return verifyState.user;
+      return (credential.access_token && usersByToken[credential.access_token]) || verifyState.user;
     }
   }
   return {
     ...actual,
     AuthClient: MockAuthClient,
+    assertOAuthConfiguredOrExit: () => {},
+    startAuthorizationCodeFlow: browserAuth.start,
     startDeviceAuthorizationFlow: deviceAuth.start,
     persistVerifiedOAuthSession: deviceAuth.persist,
     revokeTokens: deviceAuth.revoke,
@@ -111,6 +124,7 @@ describe("auth login", () => {
     verifyState.reject = false;
     verifyState.user = { email: "alice@example.com" };
     deviceChallenge.verificationUriComplete = undefined;
+    for (const token of Object.keys(usersByToken)) delete usersByToken[token];
     for (const fn of Object.values(telemetry)) fn.mockClear();
     for (const fn of Object.values(deviceAuth)) fn.mockClear();
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -337,6 +351,18 @@ describe("auth login", () => {
       expect.objectContaining({ token_type_hint: "refresh_token" }),
     );
     expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("device", "rejected");
+  });
+
+  it("reports the account a browser login just signed in, not a host token in the environment", async () => {
+    process.env["HEYGEN_ACCESS_TOKEN"] = "env-at";
+    usersByToken["env-at"] = { email: "a@example.com" };
+    usersByToken["browser-at"] = { email: "b@example.com" };
+    await runCommand({});
+
+    const { credentials } = await readStore();
+    expect(credentials.oauth?.access_token).toBe("browser-at");
+    expect(credentials.user?.email).toBe("b@example.com");
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("oauth", "b@example.com");
   });
 
   it("refuses device authorization in CI", async () => {

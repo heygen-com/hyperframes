@@ -1006,8 +1006,10 @@ export default defineCommand({
             sheets.length === 1 ? "contact-sheet.jpg" : `contact-sheet-1..${sheets.length}.jpg`;
           console.log(`   ${c.dim(label)} (grid view for AI review)`);
         }
-      } catch {
-        /* non-critical */
+      } catch (err) {
+        console.warn(
+          `   ${c.warn("⚠")} Contact sheet skipped: ${normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
+        );
       }
 
       // Gemini vision descriptions. Runs by default — see describeArg

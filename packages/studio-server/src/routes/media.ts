@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { existsSync } from "node:fs";
 import { basename, dirname, extname, join, posix } from "node:path";
 import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
+import { requestedProjectPath } from "../helpers/requestSubPath.js";
 import { mkdirWithinProject, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
 
@@ -43,13 +44,6 @@ function isVideoPath(path: string): boolean {
 
 function isImagePath(path: string): boolean {
   return IMAGE_EXTENSIONS.has(extname(path).toLowerCase());
-}
-
-function normalizeProjectAssetPath(path: string): string {
-  return path
-    .trim()
-    .replace(/^[.]\//, "")
-    .replace(/[?#].*$/, "");
 }
 
 function containsNullByte(path: string): boolean {
@@ -149,7 +143,7 @@ export function registerMediaRoutes(
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
-    const assetPath = normalizeProjectAssetPath(c.req.query("path") ?? "");
+    const assetPath = requestedProjectPath(project.dir, c.req.query("path") ?? "");
     if (!assetPath) return c.json({ error: "path required" }, 400);
     if (containsNullByte(assetPath)) return c.json({ error: "forbidden" }, 403);
     if (/^(?:https?:|data:|blob:)/i.test(assetPath)) {
@@ -177,7 +171,9 @@ export function registerMediaRoutes(
       if (!project) return c.json({ error: "not found" }, 404);
 
       const body = (await c.req.json().catch(() => ({}))) as BackgroundRemovalBody;
-      const inputAssetPath = body.inputPath ? normalizeProjectAssetPath(body.inputPath) : "";
+      const inputAssetPath = body.inputPath
+        ? requestedProjectPath(project.dir, body.inputPath)
+        : "";
       if (!inputAssetPath) return c.json({ error: "inputPath required" }, 400);
       if (containsNullByte(inputAssetPath)) return c.json({ error: "forbidden" }, 403);
       if (/^(?:https?:|data:|blob:)/i.test(inputAssetPath)) {
@@ -195,7 +191,7 @@ export function registerMediaRoutes(
       }
 
       const requestedOutput = body.outputPath
-        ? posix.normalize(normalizeProjectAssetPath(body.outputPath))
+        ? posix.normalize(requestedProjectPath(project.dir, body.outputPath))
         : "";
       if (requestedOutput && containsNullByte(requestedOutput)) {
         return c.json({ error: "forbidden" }, 403);

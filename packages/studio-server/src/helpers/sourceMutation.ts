@@ -1,3 +1,4 @@
+import { replacementTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
 import { parseHTML } from "linkedom";
 import { removeElementWithGsapCascade } from "@hyperframes/parsers";
 import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
@@ -288,6 +289,9 @@ export function patchElementInHtml(
         if (!isAllowedHtmlAttribute(op.property)) break;
         if (op.value != null) {
           if (!isSafeAttributeValue(op.property, op.value)) break;
+          const replacementId =
+            op.property === "src" ? replacementTimelineAssetId(document, opTarget, op.value) : null;
+          if (replacementId !== null) opTarget.setAttribute("id", replacementId);
           opTarget.setAttribute(op.property, op.value);
         } else {
           opTarget.removeAttribute(op.property);
