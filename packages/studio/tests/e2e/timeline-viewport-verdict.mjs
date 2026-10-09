@@ -56,6 +56,43 @@ export function judgeResponsiveness(
   };
 }
 
+/** Excess over-budget steps beyond this many standard deviations of the difference of two counts is not chance. */
+const SLOWER_THAN_BASE_SIGMAS = 3;
+
+function overBudgetExcess(headValues, baseValues, limitMs) {
+  const head = headValues.filter((value) => value > limitMs).length;
+  const base = baseValues.filter((value) => value > limitMs).length;
+  const allowedExcess = SLOWER_THAN_BASE_SIGMAS * Math.sqrt(head + base);
+  return { head, base, allowedExcess, slower: head - base > allowedExcess };
+}
+
+/**
+ * Head against its base measured in alternating blocks on the same machine. The budget holds whenever the
+ * head meets it; when it does not, the head fails only if it misses the budget on more steps than its base does.
+ */
+export function judgeAgainstBase(headRuns, baseRuns, limits) {
+  const head = judgeResponsiveness(headRuns, limits);
+  const base = judgeResponsiveness(baseRuns, limits);
+  const values = (runs, key) => runs.flatMap((run) => run[key]);
+  const interactions = overBudgetExcess(
+    values(headRuns, "interactions"),
+    values(baseRuns, "interactions"),
+    limits.interactionLimitMs,
+  );
+  const frameIntervals = overBudgetExcess(
+    values(headRuns, "frameIntervals"),
+    values(baseRuns, "frameIntervals"),
+    limits.frameIntervalLimitMs,
+  );
+  return {
+    head,
+    base,
+    interactions,
+    frameIntervals,
+    passed: head.passed || (!interactions.slower && !frameIntervals.slower),
+  };
+}
+
 /** A failed timing attempt is measured once more, so one bad stretch of a shared runner cannot fail the gate alone. */
 export const TIMING_ATTEMPTS = 2;
 
@@ -63,7 +100,14 @@ export function attemptPassed({ responsivenessPassed, passingRuns, requiredPassi
   return responsivenessPassed && passingRuns >= requiredPassingRuns;
 }
 
-export function gatePassed({ directScrollApproved, attempts, memoryReturned }) {
-  const timingPassed = attempts.slice(0, TIMING_ATTEMPTS).some((attempt) => attempt.passed);
-  return directScrollApproved && timingPassed && memoryReturned;
+/** Timing holds when an attempt passes or, once both fail, the same-machine base comparison does. */
+export function timingPassed(attempts, againstBase) {
+  return (
+    attempts.slice(0, TIMING_ATTEMPTS).some((attempt) => attempt.passed) ||
+    againstBase?.passed === true
+  );
+}
+
+export function gatePassed({ directScrollApproved, attempts, againstBase, memoryReturned }) {
+  return directScrollApproved && timingPassed(attempts, againstBase) && memoryReturned;
 }

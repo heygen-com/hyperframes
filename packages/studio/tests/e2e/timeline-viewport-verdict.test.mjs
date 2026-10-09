@@ -3,6 +3,7 @@ import { TIMELINE_VIEWPORT_BUDGETS } from "../../src/player/lib/timelineViewport
 import {
   attemptPassed,
   gatePassed,
+  judgeAgainstBase,
   judgeResponsiveness,
   percentile,
   responsivenessLimits,
@@ -118,6 +119,45 @@ describe("the CI virtualized arm's limits", () => {
   });
 });
 
+describe("judgeAgainstBase", () => {
+  const limits = { samplesPerRun: 63, interactionLimitMs: 58.3, frameIntervalLimitMs: 25 };
+  // Ten runs of 63 steps, two alternating blocks of five; the first `late` steps take four frames.
+  const measured = (late, droppedFrames = 0) =>
+    Array.from({ length: 10 }, (_, run) => {
+      const step = (index) => run * 63 + index;
+      return {
+        interactions: Array.from({ length: 63 }, (_, i) => (step(i) < late ? 66.7 : 33.3)),
+        frameIntervals: Array.from({ length: 63 }, (_, i) => (step(i) < droppedFrames ? 33.3 : 16.7)),
+      };
+    });
+
+  it("passes a head that meets the budget whatever its base measured", () => {
+    expect(judgeAgainstBase(measured(31), measured(0), limits).passed).toBe(true);
+  });
+
+  it("passes a head over budget when its base misses it as often on the same machine", () => {
+    const verdict = judgeAgainstBase(measured(40), measured(40), limits);
+    expect(verdict.head.passed).toBe(false);
+    expect(verdict.passed).toBe(true);
+  });
+
+  it("passes identical builds that land either side of the budget by chance", () => {
+    expect(judgeAgainstBase(measured(36), measured(27), limits).passed).toBe(true);
+  });
+
+  it("fails a head that misses the budget on more steps than its base", () => {
+    expect(judgeAgainstBase(measured(40), measured(2), limits)).toMatchObject({
+      passed: false,
+      interactions: { head: 40, base: 2, slower: true },
+    });
+    expect(judgeAgainstBase(measured(90), measured(40), limits).passed).toBe(false);
+  });
+
+  it("fails on dropped frames alone", () => {
+    expect(judgeAgainstBase(measured(0, 60), measured(0, 5), limits).passed).toBe(false);
+  });
+});
+
 describe("attemptPassed", () => {
   const passing = { responsivenessPassed: true, passingRuns: 5, requiredPassingRuns: 4 };
 
@@ -144,5 +184,11 @@ describe("gatePassed", () => {
     expect(gatePassed({ ...passing, attempts: [fail, fail] })).toBe(false);
     expect(gatePassed({ ...passing, attempts: [fail, fail, pass] })).toBe(false);
     expect(gatePassed({ ...passing, attempts: [] })).toBe(false);
+  });
+
+  it("lets the same-machine base comparison decide timing once both attempts fail", () => {
+    expect(gatePassed({ ...passing, attempts: [fail, fail], againstBase: pass })).toBe(true);
+    expect(gatePassed({ ...passing, attempts: [fail, fail], againstBase: fail })).toBe(false);
+    expect(gatePassed({ ...passing, memoryReturned: false, againstBase: pass })).toBe(false);
   });
 });
