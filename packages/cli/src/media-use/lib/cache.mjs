@@ -1,4 +1,11 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  copyFileSync,
+  statSync,
+} from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { readManifest, appendRecord, normalizePrompt } from "./manifest.mjs";
@@ -45,9 +52,10 @@ export function findGlobalBySha(shaPrefix) {
     .toLowerCase()
     .trim();
   if (!p) return null;
-  const matches = readGlobalManifest().filter(
+  const matchingRecords = readGlobalManifest().filter(
     (r) => r.reusable && typeof r.sha === "string" && r.sha.startsWith(p),
   );
+  const matches = Array.from(new Map(matchingRecords.map((r) => [r.sha, r])).values());
   if (matches.length === 0) return null;
   if (matches.length > 1) {
     const exact = matches.find((r) => r.sha === p);
@@ -58,27 +66,36 @@ export function findGlobalBySha(shaPrefix) {
 }
 
 function validateCacheHit(match) {
-  if (!match?.sha) return null;
-  return isComplete(cacheEntryDir(globalMediaDir(), match.sha)) ? match : null;
+  if (!match?.sha || !match.cached_path) return null;
+  if (!isComplete(cacheEntryDir(globalMediaDir(), match.sha))) return null;
+  try {
+    const file = statSync(match.cached_path);
+    return file.isFile() && file.size > 0 ? match : null;
+  } catch {
+    return null;
+  }
 }
 
 export function cacheGet(prompt, type) {
   const key = normalizePrompt(prompt);
   if (!key) return null;
-  return validateCacheHit(
+  return (
     readGlobalManifest().find(
       (r) =>
         r.reusable &&
         normalizePrompt(r.provenance?.prompt) === key &&
-        (type == null || r.type === type),
-    ),
+        (type == null || r.type === type) &&
+        validateCacheHit(r),
+    ) ?? null
   );
 }
 
 export function cacheGetByEntity(entity) {
   const lower = entity.toLowerCase();
-  return validateCacheHit(
-    readGlobalManifest().find((r) => r.reusable && r.entity && r.entity.toLowerCase() === lower),
+  return (
+    readGlobalManifest().find(
+      (r) => r.reusable && r.entity && r.entity.toLowerCase() === lower && validateCacheHit(r),
+    ) ?? null
   );
 }
 
@@ -86,7 +103,7 @@ export function cachePut(filePath, record) {
   const sha = contentHash(filePath);
   // Idempotent: same content already promoted -> don't duplicate the global
   // record. ponytail: skips usage_count bump; add it when the metric is needed.
-  const existing = readGlobalManifest().find((r) => r.sha === sha);
+  const existing = readGlobalManifest().findLast((r) => r.sha === sha && validateCacheHit(r));
   if (existing) return { sha, cached_path: existing.cached_path, deduped: true };
 
   const dir = globalMediaDir();
@@ -108,12 +125,9 @@ export function cachePut(filePath, record) {
 }
 
 export function importFromCache(cacheRecord, projectDir, localId, localPath) {
+  if (!validateCacheHit(cacheRecord)) return null;
   const sha = cacheRecord.sha;
-  const entryDir = cacheEntryDir(globalMediaDir(), sha);
-  if (!isComplete(entryDir)) return null;
-
   const cachedFile = cacheRecord.cached_path;
-  if (!cachedFile || !existsSync(cachedFile)) return null;
 
   mkdirSync(join(projectDir, ".media"), { recursive: true });
   const fullDest = join(projectDir, localPath);

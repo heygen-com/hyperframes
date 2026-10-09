@@ -103,6 +103,7 @@ export function parseAnimatedGifMetadata(
 
   let frameCount = 0;
   let controlPackedOffset: number | null = null;
+  let delayCentiseconds = 0;
   const delaysCentiseconds: number[] = [];
   let loopCount: number | null = null;
 
@@ -123,7 +124,7 @@ export function parseAnimatedGifMetadata(
         if (blockSize !== 4 || pos + 6 > bytes.length) return null;
         const delay = readU16LE(bytes, pos + 2);
         if (delay == null) return null;
-        delaysCentiseconds.push(normalizeDelayCentiseconds(delay));
+        delayCentiseconds = delay;
         controlPackedOffset = pos + 1;
         pos += 1 + blockSize;
         if (bytes[pos] !== 0) return null;
@@ -139,7 +140,10 @@ export function parseAnimatedGifMetadata(
         continue;
       }
 
-      if (label === PLAIN_TEXT_LABEL) controlPackedOffset = null;
+      if (label === PLAIN_TEXT_LABEL) {
+        controlPackedOffset = null;
+        delayCentiseconds = 0;
+      }
       const next = skipSubBlocks(bytes, pos);
       if (next == null) return null;
       pos = next;
@@ -161,6 +165,8 @@ export function parseAnimatedGifMetadata(
       const next = skipSubBlocks(bytes, pos);
       if (next == null) return null;
       pos = next;
+      delaysCentiseconds.push(normalizeDelayCentiseconds(delayCentiseconds));
+      delayCentiseconds = 0;
       frameCount += 1;
       continue;
     }

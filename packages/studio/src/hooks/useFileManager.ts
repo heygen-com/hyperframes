@@ -9,6 +9,7 @@ import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
 import { useProjectFileWriter } from "./useProjectFileWriter";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { encodeUrlPath } from "@hyperframes/parsers";
 
 // ── Types ──
 
@@ -386,7 +387,7 @@ export function useFileManager({
         .map((asset) => ({
           family: fontFamilyFromAssetPath(asset),
           path: asset,
-          url: `/api/projects/${encodeURIComponent(pid)}/preview/${asset}`,
+          url: `/api/projects/${encodeURIComponent(pid)}/preview/${encodeUrlPath(asset)}`,
         }));
       importedFontAssetsRef.current = [
         ...imported,

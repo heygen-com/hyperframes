@@ -83,8 +83,10 @@ on that same real media element with its registered paused GSAP timeline:
 | `--hf-color-grading-ascii`         | 0 to 1  |
 | `--hf-color-grading-dither`        | 0 to 1  |
 
-Author the initial value directly in the media element's inline `style`, then
-use finite `tl.to()` keyframes. Do not use a frame-zero `tl.set()`, CSS
+Once set (inline, in a stylesheet or on a parent), a property overrides the
+payload's value for that control, so set it only on media you animate: put the
+tween's first value in the element's inline `style`, then use finite `tl.to()`
+keyframes. Leave it unset for a static grade. Do not use a frame-zero `tl.set()`, CSS
 animation clocks, timers, random values, or `onUpdate` callbacks. The static
 `data-color-grading` payload remains the fallback and source of the other
 controls.

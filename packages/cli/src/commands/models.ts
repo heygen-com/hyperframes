@@ -5,13 +5,12 @@ import { c } from "../ui/colors.js";
 import { formatBytes } from "../ui/format.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
-import { PARAKEET_MODEL_LABEL } from "../whisper/parakeet.js";
+import { PARAKEET_INSTALL_COMMAND, PARAKEET_MODEL_LABEL } from "../whisper/parakeet.js";
+import type { ParakeetRunner } from "../whisper/parakeetRunner.js";
 
 export const examples: Example[] = [
-  [
-    "Download the Parakeet speech model that transcribe uses",
-    "hyperframes models install parakeet",
-  ],
+  ["List the speech models transcribe can use", "hyperframes models list --json"],
+  ["Download the Parakeet speech model that transcribe uses", PARAKEET_INSTALL_COMMAND],
 ];
 
 function fail(message: string, json: boolean): never {
@@ -95,17 +94,73 @@ async function installParakeet(json: boolean): Promise<void> {
   }
 }
 
+type ModelRow = {
+  engine: "parakeet" | "whisper";
+  model: string;
+  installed: boolean;
+  runner?: ParakeetRunner;
+  path?: string;
+  unsupported?: string;
+};
+
+function parakeetRow(
+  runner: ParakeetRunner | null,
+  unsupported: string | null,
+  modelDir: string,
+): ModelRow {
+  const row: ModelRow = { engine: "parakeet", model: PARAKEET_MODEL_LABEL, installed: !!runner };
+  if (runner) row.runner = runner;
+  // parakeet-mlx keeps its model in its own cache; this is where models install puts ours.
+  if (runner !== "parakeet-mlx") row.path = modelDir;
+  if (!runner && unsupported) row.unsupported = unsupported;
+  return row;
+}
+
+function describeState(m: ModelRow): string {
+  if (!m.installed) return c.dim(m.unsupported ?? `not installed: ${PARAKEET_INSTALL_COMMAND}`);
+  return c.success(m.runner === "parakeet-mlx" ? "installed (parakeet-mlx)" : "installed");
+}
+
+async function listModels(json: boolean): Promise<void> {
+  const [sherpa, { parakeetRunner }, { listWhisperModels }] = await Promise.all([
+    import("../whisper/sherpa.js"),
+    import("../whisper/parakeetRunner.js"),
+    import("../whisper/manager.js"),
+  ]);
+  const unsupported = sherpa.sherpaUnsupportedReason();
+  const models: ModelRow[] = [
+    parakeetRow(parakeetRunner({ unsupported }), unsupported, sherpa.PARAKEET_MODEL_DIR),
+    ...listWhisperModels().map(({ model, path }) => ({
+      engine: "whisper" as const,
+      model,
+      installed: true,
+      path,
+    })),
+  ];
+  if (json) {
+    console.log(JSON.stringify({ ok: true, models }));
+    return;
+  }
+  for (const m of models) {
+    console.log(`${m.engine.padEnd(9)}${m.model.padEnd(22)}${describeState(m)}`);
+  }
+}
+
 export default defineCommand({
-  meta: { name: "models", description: "Download on-device models (models install parakeet)" },
+  meta: {
+    name: "models",
+    description: "List or download on-device models (models list, models install parakeet)",
+  },
   args: {
-    action: { type: "positional", description: "install", required: true },
-    name: { type: "positional", description: "Model to install: parakeet", required: true },
+    action: { type: "positional", description: "list or install", required: true },
+    name: { type: "positional", description: "Model to install: parakeet", required: false },
     json: { type: "boolean", description: "Print one JSON result, no progress", default: false },
   },
   async run({ args }) {
+    if (args.action === "list") return listModels(args.json);
     if (args.action !== "install" || args.name !== "parakeet") {
       fail(
-        `Unknown: models ${args.action} ${args.name}. Try: hyperframes models install parakeet`,
+        `Unknown: models ${[args.action, args.name].filter(Boolean).join(" ")}. Try: hyperframes models list, or ${PARAKEET_INSTALL_COMMAND}`,
         args.json,
       );
     }

@@ -6,6 +6,7 @@ import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
   resolveAssetHasAudio,
+  resolveDroppedAssetDuration,
   resolveDroppedAssetDimensions,
   resolveElementTrack,
   resolveTimelineIdForSelection,
@@ -207,6 +208,28 @@ describe("resolveDroppedAssetDimensions", () => {
     await expect(result).resolves.toBeNull();
     expect(video.getAttribute("src")).toBe("");
     expect(load).toHaveBeenCalledOnce();
+  });
+});
+
+describe("dropped asset probes", () => {
+  const NAME = "assets/50% off #1?'s take.mp4";
+  const URL = "/api/projects/demo/preview/assets/50%25%20off%20%231%3F%27s%20take.mp4";
+
+  it("probe a dropped file's length and size at its own URL", async () => {
+    vi.useFakeTimers();
+    const probes: HTMLVideoElement[] = [];
+    const createElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tagName, options) => {
+      const el = createElement(tagName, options);
+      if (tagName === "video") probes.push(el as HTMLVideoElement);
+      return el;
+    });
+
+    const duration = resolveDroppedAssetDuration("demo", NAME, "video");
+    const size = resolveDroppedAssetDimensions("demo", NAME, "video");
+    expect(probes.map((probe) => probe.getAttribute("src"))).toEqual([URL, URL]);
+    await vi.advanceTimersByTimeAsync(3000);
+    await Promise.all([duration, size]);
   });
 });
 

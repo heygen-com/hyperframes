@@ -35,6 +35,7 @@ vi.mock("./inference.js", () => ({
 }));
 vi.mock("@hyperframes/engine", () => ({
   DEFAULT_VP9_CPU_USED: 4,
+  SDR_RGB_TO_BT709_FILTER: "scale=out_color_matrix=bt709:out_range=tv:flags=neighbor",
   renderProvenanceArgs: () => [],
   extractMediaMetadata: async () => ({ width: 1, height: 1, fps: 1, durationSeconds: 1 }),
 }));

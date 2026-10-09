@@ -22,6 +22,13 @@ import {
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
+const SCRIPT_SYNTAX_EXEMPT_TYPES = new Set([
+  "application/json",
+  "application/hyperframes-slideshow+json",
+  "importmap",
+  "module",
+]);
+
 function repeatedDescendantId(selector: string): string | null {
   let repeated: string | null = null;
 
@@ -791,13 +798,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
-      const attrs = script.attrs || "";
-      if (
-        /\bsrc\s*=/.test(attrs) ||
-        /\btype\s*=\s*["'](?:application\/json|application\/hyperframes-slideshow\+json|importmap|module)["']/.test(
-          attrs,
-        )
-      )
+      const type = readDecodedAttr(script.raw, "type")?.trim().toLowerCase() ?? "";
+      if (readDecodedAttr(script.raw, "src") !== null || SCRIPT_SYNTAX_EXEMPT_TYPES.has(type))
         continue;
       const syntaxError = getInlineScriptSyntaxError(script.content);
       if (!syntaxError) continue;

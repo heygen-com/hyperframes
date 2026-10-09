@@ -67,7 +67,7 @@ describe("studio preview document", () => {
     expect(html).toContain('<base href="/api/projects/film/preview/">');
     expect(await fetchAsset("assets/pic.png")).toEqual(PIC);
     const nested = html.match(/<img [^>]*id="nested" src="([^"]+)"/)?.[1];
-    expect(nested).toBe("assets/pic@2x.png");
+    expect(nested).toBe("assets/pic%402x.png");
     expect(await fetchAsset(nested ?? "")).toEqual(PIC_2X);
   });
 

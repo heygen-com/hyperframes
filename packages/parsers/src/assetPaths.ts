@@ -43,3 +43,11 @@ export function isPathInside(childPath: string, parentPath: string): boolean {
   const rel = relative(absParent, absChild);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }
+
+export {
+  decodeCssEscapes,
+  decodeWellFormedEscapes,
+  decodedUrlPath,
+  splitUrlSuffix,
+  encodeUrlPath,
+} from "./utils/urlPath.js";

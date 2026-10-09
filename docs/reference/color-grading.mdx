@@ -50,8 +50,10 @@ can tween directly:
 --hf-color-grading-lut-intensity
 ```
 
-Start the value at identity in both the payload and inline style, then animate
-it on the registered timeline:
+Once set, a property overrides the payload's value for that control, whether it
+comes from the element's inline style, a stylesheet or a parent. Set it only on
+media you animate, starting at the value the tween begins from; leave it unset
+for a static grade. Then animate it on the registered timeline:
 
 ```js
 tl.to(

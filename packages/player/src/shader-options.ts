@@ -158,7 +158,7 @@ export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
   );
 }
 
-function runtimeSrcFromElement(el: Element): string {
+export function runtimeSrcFromElement(el: Element): string {
   const configured = el.getAttribute(RUNTIME_SRC_ATTR)?.trim();
   if (!configured) return RUNTIME_CDN_URL;
   try {

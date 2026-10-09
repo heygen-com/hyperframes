@@ -10,7 +10,6 @@ import {
   formatTimingValue,
   parseNumericValue,
   readClipInPoint,
-  stripQueryAndHash,
 } from "./propertyPanelHelpers";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
@@ -37,6 +36,7 @@ import {
 import { parseGainInput, parseRateInput, parseSecondsInput } from "./audioInspectorInput";
 import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
 import { commitCutout, commitHasAudioToggle, commitMutedToggle } from "./mediaAudioEdits";
+import { authoredSrcPath } from "../../player/components/thumbnailUtils";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
@@ -126,12 +126,11 @@ export function FlatMediaSection({
   const [createPlate, setCreatePlate] = useState(false);
   const [quality, setQuality] = useState<"fast" | "balanced" | "best">("balanced");
 
-  const absoluteSrc =
-    projectDir && srcAttr && !srcAttr.startsWith("http") ? `${projectDir}/${srcAttr}` : srcAttr;
   const projectSrc =
     srcAttr && !/^(?:https?:|data:|blob:)/i.test(srcAttr)
-      ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
+      ? authoredSrcPath(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
       : "";
+  const absoluteSrc = projectDir && projectSrc ? `${projectDir}/${projectSrc}` : srcAttr;
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
 
   useEffect(() => {

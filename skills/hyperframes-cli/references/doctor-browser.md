@@ -28,7 +28,7 @@ Run `doctor` first when:
 
 Common issues:
 
-- **Missing FFmpeg** — install via `brew install ffmpeg` (macOS) or your package manager.
+- **Missing FFmpeg** — install via `brew install ffmpeg` (macOS) or your package manager, or [configure existing binaries](#configure-ffmpeg-without-a-package-manager).
 - **Missing bundled Chrome** — run `npx hyperframes browser ensure`.
 - **Low memory** — close other Chromes, reduce `--workers`, or use `--quality draft`.
 - **Chrome exits instantly inside an agent sandbox (macOS)** — seatbelt-style sandboxes
@@ -43,6 +43,29 @@ Common issues:
   handed to `--docker`, cloud, or the user. Write your final summary the moment the
   blocker is identified, BEFORE any optional fallback work: a later session failure must
   not erase the report of work already done.
+
+### Configure FFmpeg without a package manager
+
+Get FFmpeg and FFprobe binaries for your operating system and architecture from the [FFmpeg download page](https://ffmpeg.org/download.html). Both must be executable. You can use them without Homebrew or a system-wide installation:
+
+```bash
+export HYPERFRAMES_FFMPEG_PATH="/absolute/path/to/ffmpeg"
+export HYPERFRAMES_FFPROBE_PATH="/absolute/path/to/ffprobe"
+npx hyperframes doctor --json
+```
+
+Set both variables in the environment that launches HyperFrames. On Windows, point them at `ffmpeg.exe` and `ffprobe.exe` using your shell's environment-variable syntax. A configured path takes precedence over automatic discovery; a missing configured file is reported as missing.
+
+Alternatively, put the binaries in `.hyperframes/bin/ffmpeg` and `.hyperframes/bin/ffprobe` (`.exe` on Windows), then run HyperFrames from that project's directory. Discovery checks `PATH` before this project-local directory, so use the environment variables when you need a particular build.
+
+Verify the **FFmpeg** and **FFprobe** entries in `doctor --json` report `ok: true` and the expected paths. To gate only these encoding dependencies with `jq`:
+
+```bash
+npx hyperframes doctor --json | jq -e \
+  '[.checks[] | select(.name == "FFmpeg" or .name == "FFprobe")] | length == 2 and all(.ok)'
+```
+
+The report's top-level `ok` also includes optional tools such as Docker and local voice providers; those failures do not require installing them for a local video render. Check Chrome separately with the browser commands below.
 
 ## browser
 
