@@ -14,23 +14,19 @@ afterEach(() => {
 });
 
 describe("setPreviewRasterScale", () => {
-  it("swaps a transform hint for an identity filter while the preview is shown small", () => {
+  it("swaps a transform hint for a far perspective while the preview is shown small", () => {
     const plain = layer("will-change: transform");
     const mixed = layer("will-change: opacity, transform");
     setPreviewRasterScale(0.275);
-    expect(plain.style.willChange).toBe("auto");
-    expect(plain.style.filter).toBe("opacity(1)");
+    expect(plain.style.cssText).toBe("will-change: auto; perspective: 1000000000px;");
     expect(mixed.style.willChange).toBe("opacity");
   });
 
-  it("leaves 3D containers, authored filters and unhinted layers as they are", () => {
-    const card = layer("will-change: transform; transform-style: preserve-3d");
-    const blurred = layer("will-change: transform; filter: blur(2px)");
+  it("keeps an authored perspective and leaves unhinted layers alone", () => {
+    const deep = layer("will-change: transform; perspective: 600px");
     const plain = layer("will-change: opacity");
     setPreviewRasterScale(0.5);
-    expect(card.style.willChange).toBe("transform");
-    expect(blurred.style.willChange).toBe("auto");
-    expect(blurred.style.filter).toBe("blur(2px)");
+    expect(deep.style.cssText).toBe("will-change: auto; perspective: 600px;");
     expect(plain.style.cssText).toBe("will-change: opacity;");
   });
 
@@ -39,11 +35,11 @@ describe("setPreviewRasterScale", () => {
     const animated = layer("will-change: transform");
     const before = restored.style.cssText;
     setPreviewRasterScale(0.5);
-    animated.style.filter = "blur(4px)";
+    animated.style.perspective = "800px";
     setPreviewRasterScale(1);
     expect(restored.style.cssText).toBe(before);
     expect(animated.style.willChange).toBe("transform");
-    expect(animated.style.filter).toBe("blur(4px)");
+    expect(animated.style.perspective).toBe("800px");
   });
 
   it("swaps layers added while the preview is small", async () => {
@@ -51,5 +47,19 @@ describe("setPreviewRasterScale", () => {
     const late = layer("will-change: transform");
     await Promise.resolve();
     expect(late.style.willChange).toBe("auto");
+  });
+
+  it("follows a class change on a swapped layer", async () => {
+    const sheet = document.createElement("style");
+    sheet.textContent = ".hinted { will-change: transform }";
+    document.head.append(sheet);
+    const toggled = layer("");
+    toggled.className = "hinted";
+    setPreviewRasterScale(0.5);
+    expect(toggled.style.willChange).toBe("auto");
+    toggled.className = "";
+    await Promise.resolve();
+    expect(toggled.style.cssText).toBe("");
+    sheet.remove();
   });
 });

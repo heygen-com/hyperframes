@@ -92,6 +92,41 @@
         filter: blur(2px);
         background: #0f0;
       }
+      #stripes {
+        position: absolute;
+        left: 1660px;
+        top: 570px;
+        width: 240px;
+        height: 120px;
+        background: repeating-linear-gradient(90deg, #fff 0 12px, #000 12px 24px);
+      }
+      #glass-wrap {
+        position: absolute;
+        left: 1680px;
+        top: 590px;
+        width: 200px;
+        height: 80px;
+        will-change: transform;
+      }
+      #glass {
+        position: absolute;
+        inset: 0;
+        backdrop-filter: blur(8px);
+      }
+      #tilt-wrap {
+        position: absolute;
+        left: 640px;
+        top: 930px;
+        width: 200px;
+        height: 120px;
+        will-change: transform;
+      }
+      #tilted {
+        width: 200px;
+        height: 120px;
+        transform: rotateY(50deg);
+        background: repeating-linear-gradient(0deg, #ff0 0 10px, #00f 10px 20px);
+      }
     </style>
     <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
     <script src="/vendor/gsap.min.js"></script>
@@ -112,6 +147,9 @@
         <div id="card"><div id="front"></div></div>
       </div>
       <div id="blurred"></div>
+      <div id="stripes"></div>
+      <div id="glass-wrap"><div id="glass"></div></div>
+      <div id="tilt-wrap"><div id="tilted"></div></div>
       <div style="display: none"><h2 class="lyric">Hidden</h2></div>
     </div>
     <script>
