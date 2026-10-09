@@ -618,7 +618,12 @@ export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
   // Serialized into the page; each optional GSAP read is one branch of one function.
   // fallow-ignore-next-line complexity
   return page.evaluate(() => {
-    type Clock = { duration?: () => unknown; time?: () => unknown } | null;
+    type Clock = {
+      totalDuration?: () => unknown;
+      totalTime?: () => unknown;
+      totalProgress?: () => unknown;
+      reversed?: () => unknown;
+    } | null;
     const known: { ids: WeakMap<object, number>; next: number } = Reflect.get(
       window,
       "__hfSeekClocks",
@@ -637,14 +642,21 @@ export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
     const gsapRoot = Reflect.get(Reflect.get(window, "gsap") ?? {}, "globalTimeline");
     const unregistered: unknown = gsapRoot?.getChildren?.(false, true, true) ?? [];
     for (const timeline of [...registered, ...(unregistered as unknown[])] as Clock[]) {
-      const end = timeline?.duration?.();
-      if (timeline && typeof end === "number" && end > 0) {
-        clocks.push({ id: idOf(timeline), time: Number(timeline.time?.()), end });
+      const total = timeline?.totalDuration?.();
+      if (timeline && typeof total === "number" && total > 0) {
+        const progress = Number(timeline.totalProgress?.());
+        const done = timeline.reversed?.() === true ? progress <= 0 : progress >= 1;
+        clocks.push({ id: idOf(timeline), time: Number(timeline.totalTime?.()), done });
       }
     }
     for (const animation of document.getAnimations?.() ?? []) {
+      const time = Number(animation.currentTime ?? 0);
       const end = Number(animation.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY);
-      clocks.push({ id: idOf(animation), time: Number(animation.currentTime), end });
+      clocks.push({
+        id: idOf(animation),
+        time,
+        done: animation.playState === "finished" || time >= end,
+      });
     }
     return clocks;
   });

@@ -489,7 +489,7 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
  * short (<3s) compositions, single-sample runs (nothing to compare), and
  * runs where a `motion_frozen` finding already reported the same underlying
  * symptom (no double-reporting the one thing that's wrong). A frame that never
- * changes is an error only when an animation it can see is stuck before its end.
+ * changes is an error only when an animation it can see is stuck and never finished.
  */
 function detectSweepStatic(
   duration: number,
@@ -509,18 +509,17 @@ function detectSweepStatic(
 }
 
 function anAnimationIsStuck(samples: { clock: SeekClock[] }[]): boolean {
-  const timesById = new Map<number, number[]>();
-  const endById = new Map<number, number>();
+  const seenById = new Map<number, SeekClock[]>();
   for (const sample of samples) {
-    for (const { id, time, end } of new Map(
-      sample.clock.map((clock) => [clock.id, clock]),
-    ).values()) {
-      timesById.set(id, [...(timesById.get(id) ?? []), time]);
-      endById.set(id, end);
+    for (const clock of new Map(sample.clock.map((clock) => [clock.id, clock])).values()) {
+      seenById.set(clock.id, [...(seenById.get(clock.id) ?? []), clock]);
     }
   }
-  return [...timesById].some(
-    ([id, times]) => times.length > 1 && allSame(times) && times[0]! < endById.get(id)!,
+  return [...seenById.values()].some(
+    (seen) =>
+      seen.length > 1 &&
+      allSame(seen.map((clock) => clock.time)) &&
+      seen.every((clock) => !clock.done),
   );
 }
 

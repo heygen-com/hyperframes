@@ -4,16 +4,37 @@ import { collectSeekClock } from "./checkBrowser.js";
 
 const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
 
-// Objects with GSAP's duration()/time()/getChildren() shape; GSAP itself is not a repo dependency.
+// Objects with GSAP's total*() and reversed() shape; GSAP itself is not a repo dependency.
 const PAGE = `<body>
-<div id="box" style="width:10px;height:10px;animation:slide 4s linear paused"></div>
-<style>@keyframes slide { to { transform: translateX(100px) } }</style>
+<style>
+  @keyframes slide { to { transform: translateX(100px) } }
+  #forever { animation: slide 1s linear infinite paused }
+</style>
+<div id="forever"></div>
+<div id="reverse"></div>
 <script>
-  const clock = (end) => { let now = 0; return { duration: () => end, time: () => now, seek: (t) => (now = t) }; };
-  window.registered = clock(4);
-  window.orphan = clock(4);
-  window.__timelines = { main: window.registered, empty: clock(0) };
-  window.gsap = { globalTimeline: { getChildren: () => [window.orphan] } };
+  const clock = (total, at, reversed = false) => {
+    let now = at;
+    return {
+      totalDuration: () => total,
+      totalTime: () => now,
+      totalProgress: () => now / total,
+      reversed: () => reversed,
+      seek: (t) => (now = t),
+    };
+  };
+  window.registered = clock(4, 0);
+  window.__timelines = { main: window.registered, empty: clock(0, 0) };
+  // A yoyo that finished: its one-iteration time() is back at 0, its totalTime() is at the end.
+  const finishedYoyo = clock(0.2, 0.2);
+  const finishedReversed = clock(4, 0, true);
+  window.gsap = { globalTimeline: { getChildren: () => [finishedYoyo, finishedReversed] } };
+  const reverse = document.getElementById("reverse").animate(
+    [{ opacity: 0 }, { opacity: 1 }],
+    { duration: 9000, fill: "both" },
+  );
+  reverse.playbackRate = -1;
+  reverse.finish();
 </script>
 </body>`;
 
@@ -30,31 +51,34 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
   async function seekTo(time: number) {
     await page.evaluate((t) => {
       Reflect.get(window, "registered").seek(t);
-      for (const animation of document.getAnimations()) animation.currentTime = t * 1000;
+      const forever = document.getElementById("forever")?.getAnimations()[0];
+      if (forever) forever.currentTime = t * 1000;
     }, time);
     return collectSeekClock(page);
   }
 
-  it("keeps one id per animation across samples and skips empty timelines", async () => {
+  it("marks finished clocks done, an infinite one never, and keeps ids across samples", async () => {
     page = await browser.newPage();
     await page.setContent(PAGE);
 
     const first = await seekTo(1);
     await page.evaluate(() => {
-      const late = { duration: () => 2, time: () => 0 };
+      const late = { totalDuration: () => 2, totalTime: () => 0, totalProgress: () => 0 };
       Reflect.set(window, "__timelines", { late, ...Reflect.get(window, "__timelines") });
     });
     const second = await seekTo(2);
 
-    expect(first.map(({ time, end }) => [time, end])).toEqual([
-      [1, 4],
-      [0, 4],
-      [1000, 4000],
+    expect(first.map(({ time, done }) => [time, done])).toEqual([
+      [1, false],
+      [0.2, true],
+      [0, true],
+      [1000, false],
+      [0, true],
     ]);
     const [late, ...rest] = second;
     expect(rest.map(({ id }) => id)).toEqual(first.map(({ id }) => id));
     expect(first.map(({ id }) => id)).not.toContain(late?.id);
-    expect(second.map(({ time }) => time)).toEqual([0, 2, 0, 2000]);
+    expect(second.map(({ time }) => time)).toEqual([0, 2, 0.2, 0, 2000, 0]);
     await page.close();
   });
 

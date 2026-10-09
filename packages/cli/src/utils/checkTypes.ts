@@ -53,7 +53,7 @@ export type CheckSeverity = "error" | "warning" | "info";
 export interface SeekClock {
   id: number;
   time: number;
-  end: number;
+  done: boolean;
 }
 
 export interface CheckBbox {

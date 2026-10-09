@@ -156,7 +156,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     collectLayout: vi.fn(async (_time: number, _tolerance: number) => []),
     collectOverlap: vi.fn(async (_time: number) => []),
     collectLayoutGeometry: vi.fn(async () => `geometry-${geometryCallCount++}`),
-    collectSeekClock: vi.fn(async () => [{ id: 1, time: 0, end: 9 }]),
+    collectSeekClock: vi.fn(async () => [{ id: 1, time: 0, done: false }]),
     collectRotationSample: vi.fn(async (_time: number) => []),
     collectOffPivotRotationSample: vi.fn(async (time: number) => ({ time, samples: [] })),
     collectGeometryCandidates: vi.fn(async () => []),
@@ -1551,16 +1551,19 @@ describe("check pipeline", () => {
     }
 
     it.each([
-      ["whose timeline follows the seek", (sample: number) => [{ id: 1, time: sample, end: 4 }]],
+      [
+        "whose timeline follows the seek",
+        (sample: number) => [{ id: 1, time: sample, done: false }],
+      ],
       ["with nothing that could move", () => []],
-      ["whose only animation already holds at its end", () => [{ id: 1, time: 4, end: 4 }]],
+      ["whose only animation already holds at its end", () => [{ id: 1, time: 4, done: true }]],
       [
         "whose timeline is seen, listed twice, at only one sample",
         (sample: number) =>
           sample === 2
             ? [
-                { id: 1, time: 0, end: 4 },
-                { id: 1, time: 0, end: 4 },
+                { id: 1, time: 0, done: false },
+                { id: 1, time: 0, done: false },
               ]
             : [],
       ],
@@ -1575,15 +1578,15 @@ describe("check pipeline", () => {
       [
         "one animation is stuck while another follows the seek",
         (sample: number) => [
-          { id: 1, time: 0, end: 4 },
-          { id: 2, time: sample, end: 4 },
+          { id: 1, time: 0, done: false },
+          { id: 2, time: sample, done: false },
         ],
       ],
       [
         "a tween created mid-run is stuck",
         (sample: number) => [
-          { id: 1, time: sample, end: 9 },
-          ...(sample >= 2 ? [{ id: 2, time: 0, end: 2 }] : []),
+          { id: 1, time: sample, done: false },
+          ...(sample >= 2 ? [{ id: 2, time: 0, done: false }] : []),
         ],
       ],
     ])("fails when %s", async (_case, clocks) => {
