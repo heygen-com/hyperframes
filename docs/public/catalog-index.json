@@ -1,5 +1,39 @@
 [
   {
+    "name": "agent-cursor",
+    "type": "component",
+    "title": "Agent Cursor",
+    "description": "An AI agent operating a UI: a cursor with an accent name label that types out each step, clicks each target with a small ring, and ends on a check.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "agent",
+      "ai",
+      "status",
+      "click"
+    ],
+    "href": "/catalog/components/agent-cursor",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/agent-cursor.png"
+  },
+  {
+    "name": "ai-answer-rank",
+    "type": "block",
+    "title": "AI Answer Rank",
+    "description": "Is your brand in the AI answer? A question types into a chat card, the assistant answers with a ranked list of three picks, then re-ranks: the promoted brand slides into its slot, the picks below step down, and the brand row lands with the one accent highlight and a check. For answer-engine and AI-visibility marketing",
+    "tags": [
+      "mock-ui",
+      "ai",
+      "chat",
+      "ranking",
+      "list",
+      "marketing",
+      "ad-template",
+      "square"
+    ],
+    "href": "/catalog/blocks/ai-answer-rank",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ai-answer-rank.png"
+  },
+  {
     "name": "ai-chat-reveal",
     "type": "block",
     "title": "AI Chat Reveal",
@@ -13,7 +47,7 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/ai-chat-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ai-chat-reveal.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/ai-chat-reveal/poster.jpg"
   },
   {
     "name": "animated-bar-chart",
@@ -98,6 +132,21 @@
     ],
     "href": "/catalog/components/ascii-trail-reveal",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ascii-trail-reveal.png"
+  },
+  {
+    "name": "aurora",
+    "type": "block",
+    "title": "Aurora",
+    "description": "Green and violet aurora curtains ripple across a night sky. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "light",
+      "aurora",
+      "sky"
+    ],
+    "href": "/catalog/blocks/aurora"
   },
   {
     "name": "aurora-drift",
@@ -245,6 +294,8 @@
       "prop",
       "ui-props",
       "compare",
+      "comparison",
+      "split-screen",
       "holdable",
       "before-after",
       "wipe",
@@ -252,6 +303,21 @@
     ],
     "href": "/catalog/components/before-after-wipe",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/before-after-wipe.png"
+  },
+  {
+    "name": "blob",
+    "type": "block",
+    "title": "Blob",
+    "description": "A soft coral and pink blob with a warm highlight slowly changes shape on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "abstract",
+      "organic",
+      "gradient"
+    ],
+    "href": "/catalog/blocks/blob"
   },
   {
     "name": "blue-sweater-intro-video",
@@ -420,7 +486,7 @@
     "name": "caption-blend-difference",
     "type": "component",
     "title": "Blend Difference",
-    "description": "Auto-inverting text using mix-blend-mode: difference \u2014 flips between white and black per-pixel against the background",
+    "description": "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background",
     "tags": [
       "text",
       "text-effect",
@@ -644,7 +710,7 @@
     "name": "caption-texture",
     "type": "component",
     "title": "Texture",
-    "description": "Flowing texture mask over large uppercase text \u2014 ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
+    "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
     "tags": [
       "captions",
       "caption-style",
@@ -682,6 +748,22 @@
     ],
     "href": "/catalog/components/card-resize",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card-resize.png"
+  },
+  {
+    "name": "caret-swap",
+    "type": "component",
+    "title": "Caret Swap",
+    "description": "A gradient caret expands over one phrase, collapses to the left, then types its replacement with a blinking caret.",
+    "tags": [
+      "motion-primitive",
+      "text-effects",
+      "typography",
+      "swap",
+      "typewriter",
+      "remocn-port"
+    ],
+    "href": "/catalog/components/caret-swap",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caret-swap.png"
   },
   {
     "name": "carousel-circle-1",
@@ -917,7 +999,7 @@
     "name": "carousel-text-circle-1",
     "type": "block",
     "title": "Text + Circle Carousel 1",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 1).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 1).",
     "tags": [
       "carousel",
       "title-card",
@@ -933,7 +1015,7 @@
     "name": "carousel-text-circle-2",
     "type": "block",
     "title": "Text + Circle Carousel 2",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 2).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 2).",
     "tags": [
       "carousel",
       "title-card",
@@ -949,7 +1031,7 @@
     "name": "carousel-text-circle-3",
     "type": "block",
     "title": "Text + Circle Carousel 3",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 3).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 3).",
     "tags": [
       "carousel",
       "title-card",
@@ -965,7 +1047,7 @@
     "name": "carousel-text-circle-4",
     "type": "block",
     "title": "Text + Circle Carousel 4",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 4).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 4).",
     "tags": [
       "carousel",
       "title-card",
@@ -981,7 +1063,7 @@
     "name": "carousel-text-circle-5",
     "type": "block",
     "title": "Text + Circle Carousel 5",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 5).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 5).",
     "tags": [
       "carousel",
       "title-card",
@@ -1151,7 +1233,7 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/chatgpt-exchange",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chatgpt-exchange.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/chatgpt-exchange/poster.jpg"
   },
   {
     "name": "chromatic-aberration-wipe",
@@ -1176,6 +1258,36 @@
     ],
     "href": "/catalog/blocks/chromatic-radial-split",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chromatic-radial-split.png"
+  },
+  {
+    "name": "chrome-orb",
+    "type": "block",
+    "title": "Chrome Orb",
+    "description": "A mirror-chrome orb reflects a bright studio light, on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "chrome",
+      "metal",
+      "material"
+    ],
+    "href": "/catalog/blocks/chrome-orb"
+  },
+  {
+    "name": "cinemagraph",
+    "type": "block",
+    "title": "Cinemagraph",
+    "description": "A still photograph with one living region: the frame is frozen while a single feathered window keeps moving - here, steam rising over a cup - drawn from the seek time alone with a period that divides the duration, so the render loops seamlessly. Swap the placeholder scene for a freeze-frame still masked over a looping video to cinemagraph real footage.",
+    "tags": [
+      "effect",
+      "cinemagraph",
+      "photo",
+      "loop",
+      "freeze-frame"
+    ],
+    "href": "/catalog/blocks/cinemagraph",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cinemagraph.png"
   },
   {
     "name": "cinematic-zoom",
@@ -1203,13 +1315,13 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/claude-exchange",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/claude-exchange.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/claude-exchange/poster.jpg"
   },
   {
     "name": "code-3d-extrude",
     "type": "block",
     "title": "Code 3D Extrude",
-    "description": "Syntax-highlighted code on a lit, beveled 3D slab that rotates through real space and settles to a readable rest \u2014 true WebGL depth and lighting, not a 2D transform.",
+    "description": "Syntax-highlighted code on a lit, beveled 3D slab that rotates through real space and settles to a readable rest — true WebGL depth and lighting, not a 2D transform.",
     "tags": [
       "code",
       "code-animation",
@@ -1224,7 +1336,7 @@
     "name": "code-diff",
     "type": "block",
     "title": "Code Diff",
-    "description": "An edit shown as a colored diff \u2014 removed lines collapse in red, added lines expand in green.",
+    "description": "An edit shown as a colored diff — removed lines collapse in red, added lines expand in green.",
     "tags": [
       "code",
       "code-animation",
@@ -1238,7 +1350,7 @@
     "name": "code-highlight",
     "type": "block",
     "title": "Code Highlight Sweep",
-    "description": "A highlight band sweeps across a target line while the surrounding context dims \u2014 draws the eye to one line.",
+    "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line.",
     "tags": [
       "code",
       "code-animation",
@@ -1252,7 +1364,7 @@
     "name": "code-morph",
     "type": "block",
     "title": "Code Morph",
-    "description": "One snippet transforms into another \u2014 tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
+    "description": "One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
     "tags": [
       "code",
       "code-animation",
@@ -1267,7 +1379,7 @@
     "name": "code-particle-assemble",
     "type": "block",
     "title": "Code Particle Assemble",
-    "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text \u2014 a particle system, not a token tween.",
+    "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text — a particle system, not a token tween.",
     "tags": [
       "code",
       "code-animation",
@@ -1283,7 +1395,7 @@
     "name": "code-scroll",
     "type": "block",
     "title": "Code Scroll To Line",
-    "description": "The camera scrolls a long file to bring a target line to center and spotlights it \u2014 for walking through real modules.",
+    "description": "The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules.",
     "tags": [
       "code",
       "code-animation",
@@ -1389,7 +1501,7 @@
     "name": "code-typing",
     "type": "block",
     "title": "Code Typing",
-    "description": "Token-streamed typing reveal with a caret that tracks the frontier \u2014 deterministic, no CSS animation.",
+    "description": "Token-streamed typing reveal with a caret that tracks the frontier — deterministic, no CSS animation.",
     "tags": [
       "code",
       "code-animation",
@@ -1398,6 +1510,21 @@
     ],
     "href": "/catalog/blocks/code-typing",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-typing.png"
+  },
+  {
+    "name": "color-wheel",
+    "type": "block",
+    "title": "Color Wheel",
+    "description": "A wide gradient slides slowly through the colours of the rainbow. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "gradient",
+      "rainbow",
+      "color"
+    ],
+    "href": "/catalog/blocks/color-wheel"
   },
   {
     "name": "colorama-wipe",
@@ -1495,13 +1622,14 @@
     "name": "count-up",
     "type": "component",
     "title": "Count Up",
-    "description": "A token-native stat counter that eases between values and lands with a restrained scale pulse.",
+    "description": "A token-native stat counter that eases between values, counting up or down, and lands with a restrained scale pulse.",
     "tags": [
       "motion-primitive",
       "proof",
       "stats",
       "counter",
       "number",
+      "countdown",
       "deterministic"
     ],
     "href": "/catalog/components/count-up",
@@ -1569,20 +1697,131 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cuboid-carousel.png"
   },
   {
+    "name": "cursor-annotate",
+    "type": "component",
+    "title": "Annotate Cursor",
+    "description": "A marker pen glides onto the frame and hand-draws a loose loop, an underline, or an arrow around a region, the ink laid exactly under its nib, then lifts and leaves.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "pen",
+      "annotation",
+      "draw-on",
+      "highlight"
+    ],
+    "href": "/catalog/components/cursor-annotate",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-annotate.png"
+  },
+  {
+    "name": "cursor-context-menu",
+    "type": "component",
+    "title": "Context Menu Cursor",
+    "description": "A cursor right-clicks a file, a context menu blooms from its tip, the hover highlight tracks the item under it, and the chosen action plays out: duplicate, rename, move to trash, or a confirmation toast.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "menu",
+      "right-click",
+      "desktop",
+      "files"
+    ],
+    "href": "/catalog/components/cursor-context-menu",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-context-menu.png"
+  },
+  {
+    "name": "cursor-drag-drop",
+    "type": "component",
+    "title": "Drag and Drop Cursor",
+    "description": "A cursor grabs a task card, lifts and tilts it into its motion, carries it in lockstep to an empty column, drops it with a small settle, and the list closes the gap behind it.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "drag",
+      "drop",
+      "kanban",
+      "product-demo"
+    ],
+    "href": "/catalog/components/cursor-drag-drop",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-drag-drop.png"
+  },
+  {
     "name": "cursor-glyph-trail",
     "type": "component",
     "title": "Cursor Glyph Trail",
-    "description": "An actor travels an authored path depositing small dithered glyphs at its past positions, each popping in and decaying in place, stamp rate scaling with the actor's velocity.",
+    "description": "A tutorial cursor path: on a settings screen the arrow clicks through three steps, leaving a dotted trail spaced evenly by distance and a numbered marker at each click; each step's trail fades as the next move begins.",
     "tags": [
+      "cursor",
       "motion-primitive",
       "demonstrate",
       "trail",
-      "cursor",
-      "glyphs",
+      "tutorial",
+      "steps",
       "deterministic"
     ],
     "href": "/catalog/components/cursor-glyph-trail",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-glyph-trail.png"
+  },
+  {
+    "name": "cursor-marquee-select",
+    "type": "component",
+    "title": "Marquee Select Cursor",
+    "description": "A cursor drags a selection rectangle across a photo grid; each tile rings and pops a check the frame the rectangle touches it, while a pill counts the selection up.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "select",
+      "marquee",
+      "grid",
+      "product-demo"
+    ],
+    "href": "/catalog/components/cursor-marquee-select",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-marquee-select.png"
+  },
+  {
+    "name": "cursor-text-select",
+    "type": "component",
+    "title": "Text Select Cursor",
+    "description": "An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "text",
+      "selection",
+      "editor",
+      "toolbar"
+    ],
+    "href": "/catalog/components/cursor-text-select",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-text-select.png"
+  },
+  {
+    "name": "cursor-zoom-follow",
+    "type": "component",
+    "title": "Zoom Follow Cursor",
+    "description": "Screen-recording auto-zoom: the camera pushes in toward each upcoming click, trails the cursor on a smooth spring, marks every click with a press and a ring, then eases back out to the full screen as the cursor leaves.",
+    "tags": [
+      "cursor",
+      "camera",
+      "zoom",
+      "screen-recording",
+      "click",
+      "product-demo"
+    ],
+    "href": "/catalog/components/cursor-zoom-follow",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-zoom-follow.png"
+  },
+  {
+    "name": "curtain-reveal",
+    "type": "component",
+    "title": "Curtain Reveal",
+    "description": "Two pleated stage curtains gather outward from center, the way real velvet bunches at the tieback, revealing the stage underneath. A static pelmet frames the top; a soft spotlight can bloom in as they part.",
+    "tags": [
+      "curtain",
+      "stage reveal",
+      "transition",
+      "motion-primitive"
+    ],
+    "href": "/catalog/components/curtain-reveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/curtain-reveal.png"
   },
   {
     "name": "cut-the-curve",
@@ -1599,6 +1838,22 @@
     ],
     "href": "/catalog/components/cut-the-curve",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cut-the-curve.png"
+  },
+  {
+    "name": "dart-cursor",
+    "type": "component",
+    "title": "Dart Cursor",
+    "description": "A bold outlined arrowhead that dives in from camera depth, flies nose-first with motion blur along its path, squashes on two clicks, and whips out of frame.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "pointer",
+      "click",
+      "motion-blur",
+      "depth"
+    ],
+    "href": "/catalog/components/dart-cursor",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dart-cursor.png"
   },
   {
     "name": "data-chart",
@@ -1733,6 +1988,24 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.png"
   },
   {
+    "name": "exploded-stack",
+    "type": "block",
+    "title": "Exploded Stack",
+    "description": "Isometric layer plates explode apart with a label beside each layer, hold, then collapse back into one stack. Built for architecture and system diagrams.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "isometric",
+      "exploded-view",
+      "layers",
+      "diagram",
+      "architecture"
+    ],
+    "href": "/catalog/blocks/exploded-stack",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/exploded-stack.png"
+  },
+  {
     "name": "extended-keyframe",
     "type": "component",
     "title": "Extended Keyframe",
@@ -1750,6 +2023,23 @@
     ],
     "href": "/catalog/components/extended-keyframe",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/extended-keyframe.png"
+  },
+  {
+    "name": "extruded-logo",
+    "type": "block",
+    "title": "Extruded Logo",
+    "description": "Beveled 3D letters flip up one by one, the word swings so light runs across the bevels, then settles for a readable hold. Chrome, gold or matte.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "logo",
+      "text",
+      "extruded",
+      "title-card"
+    ],
+    "href": "/catalog/blocks/extruded-logo",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/extruded-logo.png"
   },
   {
     "name": "facet-morph",
@@ -1776,10 +2066,27 @@
       "motion-primitive",
       "transition",
       "fade",
+      "crossfade",
       "scene"
     ],
     "href": "/catalog/components/fade-through",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/fade-through.png"
+  },
+  {
+    "name": "falling-lines",
+    "type": "block",
+    "title": "Falling Lines",
+    "description": "White lines fall down the frame at varied speeds, each fading into a trail. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "texture",
+      "lines",
+      "rain",
+      "monochrome"
+    ],
+    "href": "/catalog/blocks/falling-lines"
   },
   {
     "name": "flash-through-white",
@@ -1881,6 +2188,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/focus-swap.png"
   },
   {
+    "name": "fractal-noise",
+    "type": "block",
+    "title": "Fractal Noise",
+    "description": "Soft grey fractal noise drifts across the frame like slow clouds. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "noise",
+      "texture",
+      "clouds"
+    ],
+    "href": "/catalog/blocks/fractal-noise"
+  },
+  {
     "name": "freeze-frame-dressing",
     "type": "block",
     "title": "Freeze-Frame Dressing",
@@ -1896,6 +2218,21 @@
     ],
     "href": "/catalog/blocks/freeze-frame-dressing",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png"
+  },
+  {
+    "name": "frost",
+    "type": "block",
+    "title": "Frost",
+    "description": "A frozen blue orb with frost creeping in from its edge, on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "orb",
+      "ice",
+      "frost",
+      "material"
+    ],
+    "href": "/catalog/blocks/frost"
   },
   {
     "name": "frost-sequence-camera-orbit",
@@ -1914,6 +2251,21 @@
     ],
     "href": "/catalog/blocks/frost-sequence-camera-orbit",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/frost-sequence-camera-orbit.png"
+  },
+  {
+    "name": "gabor-noise",
+    "type": "block",
+    "title": "Gabor Noise",
+    "description": "Grey streaky noise drifts across the frame like a moving fingerprint. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "texture",
+      "noise",
+      "monochrome"
+    ],
+    "href": "/catalog/blocks/gabor-noise"
   },
   {
     "name": "gallery-tunnel",
@@ -1945,6 +2297,23 @@
     ],
     "href": "/catalog/components/gesture-tap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gesture-tap.png"
+  },
+  {
+    "name": "glass-hero",
+    "type": "block",
+    "title": "Glass Hero",
+    "description": "A solid glass object rises in front of a giant headline and keeps turning, so the type bends and splits into colour through it.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "glass",
+      "refraction",
+      "hero",
+      "title-card"
+    ],
+    "href": "/catalog/blocks/glass-hero",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glass-hero.png"
   },
   {
     "name": "glass-shard-title",
@@ -2006,6 +2375,38 @@
     "href": "/catalog/blocks/godrays"
   },
   {
+    "name": "goo",
+    "type": "block",
+    "title": "Goo",
+    "description": "A glossy green liquid ball whose surface bulges and ripples like wet goo, centred on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "liquid",
+      "3d",
+      "organic",
+      "orb"
+    ],
+    "href": "/catalog/blocks/goo"
+  },
+  {
+    "name": "gooey-split",
+    "type": "block",
+    "title": "Gooey Split",
+    "description": "A dot splits into a three-dot menu with a gooey metaball neck, spins into a swirl mark under directional shutter motion blur, then breaks back into three dots and merges into one. The goo is an SVG blur-and-threshold filter on the dots; the blur integrates each part along its real trajectory, so the smear follows the direction and speed of the spin.",
+    "tags": [
+      "effect",
+      "gooey",
+      "metaball",
+      "motion-blur",
+      "morph",
+      "logo",
+      "icon"
+    ],
+    "href": "/catalog/blocks/gooey-split",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gooey-split.png"
+  },
+  {
     "name": "grade-split-reveal",
     "type": "component",
     "title": "Grade Split Reveal",
@@ -2042,7 +2443,7 @@
     "name": "grain-overlay",
     "type": "component",
     "title": "Grain Overlay",
-    "description": "Animated film grain texture overlay using CSS keyframes \u2014 adds warmth and analog character to any composition",
+    "description": "Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition",
     "tags": [
       "texture",
       "grain",
@@ -2085,7 +2486,7 @@
     "name": "grid-pixelate-wipe",
     "type": "component",
     "title": "Grid Pixelate Wipe",
-    "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing \u2014 use between scenes",
+    "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing — use between scenes",
     "tags": [
       "transition",
       "wipe",
@@ -2142,6 +2543,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/headline-slam.png"
   },
   {
+    "name": "heatmap",
+    "type": "block",
+    "title": "Heatmap",
+    "description": "Thermal colours flow through a glowing orb, on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "heat",
+      "thermal",
+      "glow"
+    ],
+    "href": "/catalog/blocks/heatmap"
+  },
+  {
     "name": "heygen-avatar-promo-card",
     "type": "block",
     "title": "HeyGen Avatar Promo Card",
@@ -2154,6 +2570,36 @@
     ],
     "href": "/catalog/blocks/heygen-avatar-promo-card",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/heygen-avatar-promo-card.png"
+  },
+  {
+    "name": "hologram",
+    "type": "block",
+    "title": "Hologram",
+    "description": "A pale blue holographic orb with scan rings and flicker, on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "hologram",
+      "sci-fi",
+      "blue"
+    ],
+    "href": "/catalog/blocks/hologram"
+  },
+  {
+    "name": "holographic",
+    "type": "block",
+    "title": "Holographic",
+    "description": "An iridescent foil orb with a shifting rainbow sheen, centred on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "holographic",
+      "iridescent",
+      "rainbow",
+      "orb"
+    ],
+    "href": "/catalog/blocks/holographic"
   },
   {
     "name": "hw-arrow",
@@ -2173,7 +2619,7 @@
     "name": "hw-boil",
     "type": "component",
     "title": "Hand-Drawn Boil",
-    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher, a wobbled-ellipse path generator, the boil pose control (off/calm/lively over the family-locked frameDrop), a curvature-adaptive pen-velocity ease, and the completed stroke matrix (plain/soft/sharp/spray \u2014 spray is index-seeded deterministic dots, no turbulence) with texture-safe draw-on",
+    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher, a wobbled-ellipse path generator, the boil pose control (off/calm/lively over the family-locked frameDrop), a curvature-adaptive pen-velocity ease, and the completed stroke matrix (plain/soft/sharp/spray — spray is index-seeded deterministic dots, no turbulence) with texture-safe draw-on",
     "tags": [
       "handwritten",
       "effect",
@@ -2186,7 +2632,7 @@
     "name": "hw-box-label",
     "type": "component",
     "title": "Hand-Drawn Box Label",
-    "description": "Wobbled rounded rectangle draws on \u2014 across the authored stroke matrix (plain/soft/sharp/spray) \u2014 or drops in and lands with a volume-true contact squash and bouncy spring recovery, with a handwritten label above or centered; boils",
+    "description": "Wobbled rounded rectangle draws on — across the authored stroke matrix (plain/soft/sharp/spray) — or drops in and lands with a volume-true contact squash and bouncy spring recovery, with a handwritten label above or centered; boils",
     "tags": [
       "handwritten",
       "annotation",
@@ -2485,6 +2931,37 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-type-swap.png"
   },
   {
+    "name": "lens-flare",
+    "type": "block",
+    "title": "Lens Flare",
+    "description": "A camera lens flare: a bright star burst and a faint rainbow halo that slowly shimmer on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "light",
+      "flare",
+      "glow"
+    ],
+    "href": "/catalog/blocks/lens-flare"
+  },
+  {
+    "name": "light-edge",
+    "type": "block",
+    "title": "Light Edge",
+    "description": "Purple and cyan light races around the edge of an orb on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "light",
+      "glow",
+      "neon",
+      "edge"
+    ],
+    "href": "/catalog/blocks/light-edge"
+  },
+  {
     "name": "light-leak",
     "type": "block",
     "title": "Light Leak",
@@ -2679,7 +3156,7 @@
   {
     "name": "lower-third-bild",
     "type": "block",
-    "title": "Lower Third \u2014 BILD Style",
+    "title": "Lower Third — BILD Style",
     "description": "News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow.",
     "tags": [
       "broadcast",
@@ -2693,7 +3170,7 @@
   {
     "name": "lt-accent-underline",
     "type": "block",
-    "title": "Lower Third \u2014 Accent Underline",
+    "title": "Lower Third — Accent Underline",
     "description": "Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility",
     "tags": [
       "lower-third",
@@ -2708,7 +3185,7 @@
   {
     "name": "lt-bold-block",
     "type": "block",
-    "title": "Lower Third \u2014 Bold Block",
+    "title": "Lower Third — Bold Block",
     "description": "High-energy podcast lower third: solid dark block wipes in, uppercase name slams up, accent tag pops",
     "tags": [
       "lower-third",
@@ -2723,7 +3200,7 @@
   {
     "name": "lt-clean-bar",
     "type": "block",
-    "title": "Lower Third \u2014 Clean Bar",
+    "title": "Lower Third — Clean Bar",
     "description": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance",
     "tags": [
       "lower-third",
@@ -2737,7 +3214,7 @@
   {
     "name": "lt-color-block",
     "type": "block",
-    "title": "Lower Third \u2014 Color Block",
+    "title": "Lower Third — Color Block",
     "description": "High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role",
     "tags": [
       "lower-third",
@@ -2752,7 +3229,7 @@
   {
     "name": "lt-dark-card",
     "type": "block",
-    "title": "Lower Third \u2014 Dark Card",
+    "title": "Lower Third — Dark Card",
     "description": "Charcoal card lower third for bright footage: name, drawn accent underline, role; slide-up entrance",
     "tags": [
       "lower-third",
@@ -2767,7 +3244,7 @@
   {
     "name": "lt-kicker-name",
     "type": "block",
-    "title": "Lower Third \u2014 Kicker Name",
+    "title": "Lower Third — Kicker Name",
     "description": "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage",
     "tags": [
       "lower-third",
@@ -2782,7 +3259,7 @@
   {
     "name": "lt-mask-reveal",
     "type": "block",
-    "title": "Lower Third \u2014 Mask Reveal",
+    "title": "Lower Third — Mask Reveal",
     "description": "Cardless lower third: an accent sweep crosses and clip-path-reveals a heavy name, role fades up; for footage",
     "tags": [
       "lower-third",
@@ -2811,7 +3288,7 @@
   {
     "name": "lt-side-rule",
     "type": "block",
-    "title": "Lower Third \u2014 Side Rule",
+    "title": "Lower Third — Side Rule",
     "description": "Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage",
     "tags": [
       "lower-third",
@@ -2826,7 +3303,7 @@
   {
     "name": "lt-soft-pill",
     "type": "block",
-    "title": "Lower Third \u2014 Soft Pill",
+    "title": "Lower Third — Soft Pill",
     "description": "Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance",
     "tags": [
       "lower-third",
@@ -2841,7 +3318,7 @@
   {
     "name": "lt-stack-bars",
     "type": "block",
-    "title": "Lower Third \u2014 Stack Bars",
+    "title": "Lower Third — Stack Bars",
     "description": "Two stacked bars: a dark name bar wipes from the left, an accent role bar wipes from the right",
     "tags": [
       "lower-third",
@@ -2880,6 +3357,22 @@
     ],
     "href": "/catalog/blocks/macos-tahoe-liquid-glass",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
+  },
+  {
+    "name": "magnetic-cursor",
+    "type": "component",
+    "title": "Magnetic Cursor",
+    "description": "A soft dot pointer glides across an editor toolbar, is pulled into each button and morphs into its rounded hover plate while the icon leans toward it, presses one, and leaves as a dot.",
+    "tags": [
+      "cursor",
+      "motion-primitive",
+      "pointer",
+      "hover",
+      "morph",
+      "toolbar"
+    ],
+    "href": "/catalog/components/magnetic-cursor",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/magnetic-cursor.png"
   },
   {
     "name": "marble",
@@ -3005,7 +3498,7 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/message-thread-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/message-thread-reveal.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/message-thread-reveal/poster.jpg"
   },
   {
     "name": "micro-transitions",
@@ -3042,7 +3535,7 @@
     "name": "mk-callout-highlight",
     "type": "block",
     "title": "Word-Sweep Highlight",
-    "description": "A sentence whose word-by-word emphasis is driven by a single scalar \u2014 tween it to sync the highlight with a voiceover",
+    "description": "A sentence whose word-by-word emphasis is driven by a single scalar — tween it to sync the highlight with a voiceover",
     "tags": [
       "typography",
       "karaoke",
@@ -3056,7 +3549,7 @@
     "name": "mk-clone-wall-transition",
     "type": "block",
     "title": "Text Clone Wall Transition",
-    "description": "Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears \u2014 hard-cut the content beneath while covered",
+    "description": "Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears — hard-cut the content beneath while covered",
     "tags": [
       "transition",
       "typography",
@@ -3069,7 +3562,7 @@
     "name": "mk-emphasis-type",
     "type": "component",
     "title": "Background Emphasis Type",
-    "description": "Oversized low-contrast background word drifting slowly behind the subject \u2014 typography as texture",
+    "description": "Oversized low-contrast background word drifting slowly behind the subject — typography as texture",
     "tags": [
       "typography",
       "text-treatment",
@@ -3184,7 +3677,7 @@
     "name": "morph-text",
     "type": "component",
     "title": "Morph Text",
-    "description": "Gooey text morph \u2014 cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect",
+    "description": "Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect",
     "tags": [
       "text",
       "text-effect",
@@ -3200,7 +3693,7 @@
     "name": "motion-blur",
     "type": "component",
     "title": "Motion Blur",
-    "description": "After Effects-style motion blur \u2014 integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
+    "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
     "tags": [
       "effect",
       "motion-blur",
@@ -3318,7 +3811,7 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/notes-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/notes-reveal.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/notes-reveal/poster.jpg"
   },
   {
     "name": "notes-typing",
@@ -3348,7 +3841,7 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/notification-cascade",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/notification-cascade.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/notification-cascade/poster.jpg"
   },
   {
     "name": "notification-pileup",
@@ -3426,6 +3919,21 @@
     ],
     "href": "/catalog/blocks/nyc-paris-flight",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/nyc-paris-flight.png"
+  },
+  {
+    "name": "obsidian",
+    "type": "block",
+    "title": "Obsidian",
+    "description": "A dark glass orb catches pink and cyan iridescent light on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "glass",
+      "iridescent",
+      "dark"
+    ],
+    "href": "/catalog/blocks/obsidian"
   },
   {
     "name": "offset-path-traveler",
@@ -3538,11 +4046,11 @@
     "name": "oversized-cursor",
     "type": "component",
     "title": "Oversized Cursor",
-    "description": "A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits",
+    "description": "The look-here pointer for a video: the macOS arrow at 3.5x its normal size lands its tip on one control, clicks it on, settles just below it so the result stays in view, then exits off-screen",
     "tags": [
+      "cursor",
       "motion-primitive",
       "actor",
-      "cursor",
       "pointer",
       "interaction"
     ],
@@ -3611,6 +4119,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/panel-reveal.png"
   },
   {
+    "name": "paper-collage-reveal",
+    "type": "component",
+    "title": "Paper Collage Reveal",
+    "description": "A scrapbook patchwork of torn paper scraps, each with its own texture and tilt, flutters away in a staggered scatter to reveal the content underneath.",
+    "tags": [
+      "collage",
+      "scrapbook",
+      "torn paper",
+      "reveal",
+      "transition",
+      "motion-primitive"
+    ],
+    "href": "/catalog/components/paper-collage-reveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/paper-collage-reveal.png"
+  },
+  {
     "name": "parallax-device-dive",
     "type": "component",
     "title": "Parallax Device Dive",
@@ -3630,7 +4154,7 @@
     "name": "parallax-unzoom",
     "type": "component",
     "title": "Parallax Unzoom",
-    "description": "Reveal transition \u2014 focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
+    "description": "Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
     "tags": [
       "transition",
       "reveal",
@@ -3646,7 +4170,7 @@
     "name": "parallax-zoom",
     "type": "component",
     "title": "Parallax Zoom",
-    "description": "Center card scales up to fill the frame while siblings parallax outward \u2014 inspired by the eBay Playbook hero transition",
+    "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
     "tags": [
       "transition",
       "zoom",
@@ -3688,6 +4212,21 @@
     ],
     "href": "/catalog/components/particle-text-dissolve",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/particle-text-dissolve.png"
+  },
+  {
+    "name": "pendulum-swing",
+    "type": "component",
+    "title": "Pendulum Swing",
+    "description": "Content hangs from a fixed pivot and swings into rest with gravity-damped oscillation, like a hanging sign settling on its hook.",
+    "tags": [
+      "motion-primitive",
+      "physics",
+      "swing",
+      "settle",
+      "reveal"
+    ],
+    "href": "/catalog/components/pendulum-swing",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pendulum-swing.png"
   },
   {
     "name": "per-word-crossfade",
@@ -3745,20 +4284,82 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/physical-exit.png"
   },
   {
+    "name": "plasma",
+    "type": "block",
+    "title": "Plasma",
+    "description": "Deep violet plasma folds and churns across the whole frame. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "texture",
+      "plasma",
+      "purple"
+    ],
+    "href": "/catalog/blocks/plasma"
+  },
+  {
+    "name": "plastic",
+    "type": "block",
+    "title": "Plastic",
+    "description": "A glossy white plastic orb with soft studio reflections, on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "plastic",
+      "material",
+      "white"
+    ],
+    "href": "/catalog/blocks/plastic"
+  },
+  {
     "name": "press-ripple",
     "type": "component",
     "title": "Press Ripple",
-    "description": "A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, then exits off-stage while the pressed state holds.",
+    "description": "A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with two small click rings while the label swaps to a check, then exits off-stage while the confirmed state holds.",
     "tags": [
+      "cursor",
       "motion-primitive",
       "product-demo",
-      "cursor",
       "press",
       "ripple",
       "payoff"
     ],
     "href": "/catalog/components/press-ripple",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/press-ripple.png"
+  },
+  {
+    "name": "prism",
+    "type": "block",
+    "title": "Prism",
+    "description": "A white beam of light splits into a slowly turning rainbow. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "light",
+      "prism",
+      "rainbow"
+    ],
+    "href": "/catalog/blocks/prism"
+  },
+  {
+    "name": "product-turntable",
+    "type": "block",
+    "title": "Product Turntable",
+    "description": "A product turns a full revolution on a studio plinth in a seamless loop. Drop in a GLB or glTF model, or keep the built-in drink can with your own label.",
+    "tags": [
+      "3d-object",
+      "three-js",
+      "webgl",
+      "product",
+      "turntable",
+      "glb",
+      "loop"
+    ],
+    "href": "/catalog/blocks/product-turntable",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/product-turntable.png"
   },
   {
     "name": "pull-back-reveal",
@@ -3888,6 +4489,22 @@
     ],
     "href": "/catalog/blocks/ripple-waves",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ripple-waves.png"
+  },
+  {
+    "name": "ripples",
+    "type": "block",
+    "title": "Ripples",
+    "description": "Concentric rings ripple outward from the centre, white on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "texture",
+      "rings",
+      "waves",
+      "monochrome"
+    ],
+    "href": "/catalog/blocks/ripples"
   },
   {
     "name": "rubber-band-bumper",
@@ -4052,7 +4669,7 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/share-sheet-carousel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/share-sheet-carousel.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/share-sheet-carousel/poster.jpg"
   },
   {
     "name": "shared-axis-y",
@@ -4097,7 +4714,7 @@
     "name": "shimmer-sweep",
     "type": "component",
     "title": "Shimmer Sweep",
-    "description": "Animated light sweep across text or elements using a CSS gradient mask \u2014 ideal for AI accents and premium reveals",
+    "description": "Animated light sweep across text or elements using a CSS gradient mask — ideal for AI accents and premium reveals",
     "tags": [
       "text",
       "shimmer",
@@ -4111,7 +4728,7 @@
     "name": "shutter-slam",
     "type": "component",
     "title": "Shutter Slam",
-    "description": "One word thrown through six single-property beats under integrated shutter blur \u2014 two translate slams, a scale punch, then a full turn about each axis \u2014 on the measured easing of the After Effects export the shutter model was fitted to",
+    "description": "One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to",
     "tags": [
       "effect",
       "motion-blur",
@@ -4137,19 +4754,19 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/signup-flow.png"
   },
   {
-    "name": "simulated-cursor",
-    "type": "component",
-    "title": "Simulated Cursor",
-    "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
+    "name": "sine-wave",
+    "type": "block",
+    "title": "Sine Wave",
+    "description": "A glowing white sine wave travels across a black frame. A WebGPU shader from the Shaders library (shaders.com, MIT).",
     "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "cursor",
-      "ui",
-      "walkthrough"
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "wave",
+      "line",
+      "glow"
     ],
-    "href": "/catalog/components/simulated-cursor",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/simulated-cursor.png"
+    "href": "/catalog/blocks/sine-wave"
   },
   {
     "name": "skeleton-reveal",
@@ -4179,7 +4796,7 @@
       "ad-template"
     ],
     "href": "/catalog/blocks/slack-notification-ad",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/slack-notification-ad.png"
+    "preview": "https://static.heygen.ai/hyperframes/templates/promoted/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590/slack-notification-ad/poster.jpg"
   },
   {
     "name": "slit-scan-reveal",
@@ -4209,6 +4826,25 @@
     ],
     "href": "/catalog/components/slot-machine-roll",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slot-machine-roll.png"
+  },
+  {
+    "name": "snow",
+    "type": "block",
+    "title": "Snow",
+    "description": "Seek-safe falling-snow overlay: sparse or dense flakes drift down with size, speed and opacity correlated per flake for depth, radial-masked so the frame center stays clear",
+    "tags": [
+      "snow",
+      "snowfall",
+      "winter",
+      "weather",
+      "overlay",
+      "ambient",
+      "particles",
+      "media-treatment-overlay",
+      "loopable"
+    ],
+    "href": "/catalog/blocks/snow",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/snow.png"
   },
   {
     "name": "social-proof-card",
@@ -4259,7 +4895,7 @@
     "name": "spain-map",
     "type": "block",
     "title": "Spain Map",
-    "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend \u2014 D3 conic conformal projection",
+    "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection",
     "tags": [
       "data",
       "map",
@@ -4270,6 +4906,21 @@
     ],
     "href": "/catalog/blocks/spain-map",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spain-map.png"
+  },
+  {
+    "name": "spiral",
+    "type": "block",
+    "title": "Spiral",
+    "description": "A bold black and white spiral turns in the frame. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "pattern",
+      "spiral",
+      "monochrome"
+    ],
+    "href": "/catalog/blocks/spiral"
   },
   {
     "name": "spiral-galaxy",
@@ -4433,6 +5084,27 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/star-rating-fill.png"
   },
   {
+    "name": "starfield",
+    "type": "block",
+    "title": "Starfield",
+    "description": "Seek-safe night-sky overlay: sparse or dense stars in three size tiers that twinkle and drift in two parallax layers, radial-masked to keep the frame center clear",
+    "tags": [
+      "starfield",
+      "night-sky",
+      "stars",
+      "twinkle",
+      "sky",
+      "weather",
+      "overlay",
+      "ambient",
+      "particles",
+      "media-treatment-overlay",
+      "loopable"
+    ],
+    "href": "/catalog/blocks/starfield",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/starfield.png"
+  },
+  {
     "name": "state-chip-rail",
     "type": "component",
     "title": "State Chip Rail",
@@ -4514,6 +5186,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/store-badge-lockup.png"
   },
   {
+    "name": "strands",
+    "type": "block",
+    "title": "Strands",
+    "description": "Thin ribbons of pink and blue light weave across a black field. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "light",
+      "lines",
+      "ribbons"
+    ],
+    "href": "/catalog/blocks/strands"
+  },
+  {
     "name": "streaming-text",
     "type": "component",
     "title": "Streaming Text",
@@ -4540,6 +5227,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/strikethrough-replace.png"
   },
   {
+    "name": "stripes",
+    "type": "block",
+    "title": "Stripes",
+    "description": "Bold black and white diagonal stripes slide across the frame. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "pattern",
+      "stripes",
+      "monochrome"
+    ],
+    "href": "/catalog/blocks/stripes"
+  },
+  {
     "name": "success-check",
     "type": "component",
     "title": "Success Check",
@@ -4553,6 +5255,21 @@
     ],
     "href": "/catalog/components/success-check",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/success-check.png"
+  },
+  {
+    "name": "sun-burst",
+    "type": "block",
+    "title": "Sun Burst",
+    "description": "Cream and black rays fan out from the centre and slowly turn. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "light",
+      "rays",
+      "radial"
+    ],
+    "href": "/catalog/blocks/sun-burst"
   },
   {
     "name": "svg-line-draw-loader",
@@ -4615,6 +5332,21 @@
     ],
     "href": "/catalog/components/swipe-rail",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/swipe-rail.png"
+  },
+  {
+    "name": "swirl",
+    "type": "block",
+    "title": "Swirl",
+    "description": "Orange and blue color fields swirl and flow into each other across the whole frame. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "gradient",
+      "flow",
+      "abstract"
+    ],
+    "href": "/catalog/blocks/swirl"
   },
   {
     "name": "swirl-vortex",
@@ -4789,6 +5521,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thermal-distortion.png"
   },
   {
+    "name": "thin-film",
+    "type": "block",
+    "title": "Thin Film",
+    "description": "An orb's rim shimmers with soap-bubble iridescence on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "object",
+      "iridescent",
+      "bubble",
+      "rainbow"
+    ],
+    "href": "/catalog/blocks/thin-film"
+  },
+  {
     "name": "thread-message-stack",
     "type": "block",
     "title": "Thread Message Stack",
@@ -4920,11 +5667,28 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/top-down-letters.png"
   },
   {
+    "name": "torn-paper-rip",
+    "type": "component",
+    "title": "Torn Paper Rip",
+    "description": "A fibrous paper tear runs across the frame: the torn sheet shows its white paper core along the edge and lifts away on a soft shadow, leaving the next scene standing.",
+    "tags": [
+      "torn paper",
+      "paper rip",
+      "paper tear",
+      "transition",
+      "texture",
+      "motion-primitive"
+    ],
+    "href": "/catalog/components/torn-paper-rip",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/torn-paper-rip.png"
+  },
+  {
     "name": "touch-indicator",
     "type": "component",
     "title": "Touch Indicator",
-    "description": "A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass, causes a same-frame response, and lifts. Tap or swipe, picked by variable.",
+    "description": "A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass on the frame the host target responds, then lifts. Tap or swipe, picked by variable.",
     "tags": [
+      "cursor",
       "motion-primitive",
       "mobile",
       "gesture",
@@ -5019,7 +5783,8 @@
     "description": "Showcase of dissolve and fade transitions",
     "tags": [
       "transition",
-      "showcase"
+      "showcase",
+      "crossfade"
     ],
     "href": "/catalog/blocks/transitions-dissolve",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-dissolve.png"
@@ -5226,7 +5991,7 @@
     "name": "us-map",
     "type": "block",
     "title": "US Map",
-    "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend \u2014 pure inline SVG with GSAP",
+    "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
     "tags": [
       "data",
       "map",
@@ -5241,7 +6006,7 @@
     "name": "us-map-bubble",
     "type": "block",
     "title": "US Bubble Map",
-    "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines \u2014 composable with us-map",
+    "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map",
     "tags": [
       "data",
       "map",
@@ -5257,7 +6022,7 @@
     "name": "us-map-flow",
     "type": "block",
     "title": "US Flow Map",
-    "description": "Animated connection arcs between US cities over a base map \u2014 composable origin-destination flow visualization",
+    "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
     "tags": [
       "data",
       "map",
@@ -5274,7 +6039,7 @@
     "name": "us-map-hex",
     "type": "block",
     "title": "US Hex Grid Map",
-    "description": "Animated hexagonal tile grid map \u2014 each state as an equal-weight hex with data fill and abbreviation label",
+    "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
     "tags": [
       "data",
       "map",
@@ -5370,7 +6135,7 @@
     "name": "vfx-iphone-device",
     "type": "block",
     "title": "iPhone & MacBook 3D Showcase",
-    "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360\u00b0 turntable.",
+    "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.",
     "tags": [
       "html-in-canvas",
       "3d",
@@ -5464,7 +6229,7 @@
     "name": "vignette",
     "type": "component",
     "title": "Vignette",
-    "description": "Cinematic radial vignette overlay using a pure-CSS gradient \u2014 darkens the edges to pull focus toward the center",
+    "description": "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center",
     "tags": [
       "vignette",
       "overlay",
@@ -5473,6 +6238,21 @@
     ],
     "href": "/catalog/components/vignette",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vignette.png"
+  },
+  {
+    "name": "voronoi",
+    "type": "block",
+    "title": "Voronoi",
+    "description": "Magenta cells with glowing blue centres shift and reshape across the frame. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "pattern",
+      "cells",
+      "voronoi"
+    ],
+    "href": "/catalog/blocks/voronoi"
   },
   {
     "name": "vox-annotate",
@@ -5502,6 +6282,36 @@
     ],
     "href": "/catalog/blocks/vpn-youtube-spot",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
+  },
+  {
+    "name": "water",
+    "type": "block",
+    "title": "Water",
+    "description": "A sphere of wind-rippled water reflecting a blue sky, on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "orb",
+      "water",
+      "material",
+      "blue"
+    ],
+    "href": "/catalog/blocks/water"
+  },
+  {
+    "name": "waveform",
+    "type": "block",
+    "title": "Waveform",
+    "description": "Equalizer bars in a blue to pink gradient pulse across the middle of the frame, like an audio visualizer. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "audio",
+      "music",
+      "visualizer",
+      "bars"
+    ],
+    "href": "/catalog/blocks/waveform"
   },
   {
     "name": "week-in-merges",
@@ -5615,7 +6425,7 @@
     "name": "world-map",
     "type": "block",
     "title": "World Map",
-    "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset \u2014 D3 Natural Earth projection",
+    "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
     "tags": [
       "data",
       "map",
@@ -5625,6 +6435,22 @@
     ],
     "href": "/catalog/blocks/world-map",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/world-map.png"
+  },
+  {
+    "name": "worley-noise",
+    "type": "block",
+    "title": "Worley Noise",
+    "description": "A field of drifting cells, light at their centres and dark at their edges. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+    "tags": [
+      "webgpu",
+      "webgpu-shader",
+      "background",
+      "texture",
+      "noise",
+      "cells",
+      "monochrome"
+    ],
+    "href": "/catalog/blocks/worley-noise"
   },
   {
     "name": "x-follow-card",
