@@ -1,0 +1,14 @@
+{
+  "name": "Gradient text inside a transformed child",
+  "description": "Both direct text and a child with its own paint layer must contribute glyphs to a background-clip: text gradient mask.",
+  "tags": ["regression", "css", "text"],
+  "minPsnr": 40,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 24,
+    "workers": 1,
+    "captureMode": "beginframe"
+  }
+}

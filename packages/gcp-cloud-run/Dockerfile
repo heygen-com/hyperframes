@@ -58,7 +58,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Pinned deliberately. The build-stage contract probe below launches this
 # exact executable and requires a renderer-ready warm-up plus a PNG-returning
 # HeadlessExperimental.beginFrame before the image can build.
-RUN npx --yes @puppeteer/browsers install chrome-headless-shell@148.0.7778.167 \
+RUN npx --yes @puppeteer/browsers install chrome-headless-shell@152.0.7977.30 \
       --path /opt/puppeteer \
     && CHS="$(find /opt/puppeteer/chrome-headless-shell -name chrome-headless-shell -type f | head -n1)" \
     && mkdir -p /opt/chrome \
