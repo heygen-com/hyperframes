@@ -446,6 +446,30 @@ describe("resolveBrowserGpuMode", () => {
     expect(warning).not.toContain("--gpus all");
   });
 
+  it("falls back to 'software' within the probe budget when the probe page never answers", async () => {
+    vi.useFakeTimers();
+    try {
+      const kill = vi.fn();
+      const launch = vi.fn().mockResolvedValue({
+        newPage: vi.fn().mockResolvedValue({ evaluate: () => new Promise(() => {}) }),
+        close: () => new Promise(() => {}),
+        process: () => ({ kill }),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      });
+      _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const mode = resolveBrowserGpuMode("auto", { browserTimeout: 120_000 });
+      await vi.advanceTimersByTimeAsync(15_000 + 250);
+
+      await expect(mode).resolves.toBe("software");
+      expect(launch).toHaveBeenCalledWith(expect.objectContaining({ timeout: 15_000 }));
+      expect(kill).toHaveBeenCalledWith("SIGKILL");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("falls back to 'software' when the probe browser cannot launch", async () => {
     // No chromePath, env unset, and (in the test env) no system Chrome to find
     // → puppeteer.launch will throw → caller catches → software fallback.
