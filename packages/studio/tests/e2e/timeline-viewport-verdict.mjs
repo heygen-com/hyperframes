@@ -59,11 +59,22 @@ export function judgeResponsiveness(
 /** Excess over-budget steps beyond this many standard deviations of the difference of two counts is not chance. */
 const SLOWER_THAN_BASE_SIGMAS = 3;
 
-function overBudgetExcess(headValues, baseValues, limitMs) {
-  const head = headValues.filter((value) => value > limitMs).length;
-  const base = baseValues.filter((value) => value > limitMs).length;
+const ONE_FRAME_MS = 1000 / 60;
+
+function countExcess(head, base) {
   const allowedExcess = SLOWER_THAN_BASE_SIGMAS * Math.sqrt(head + base);
   return { head, base, allowedExcess, slower: head - base > allowedExcess };
+}
+
+/** Counted at the budget and a frame past it, so making already-late steps later also counts as slower. */
+function overBudgetExcess(headValues, baseValues, limitMs) {
+  const over = (values, ms) => values.filter((value) => value > ms).length;
+  const atBudget = countExcess(over(headValues, limitMs), over(baseValues, limitMs));
+  const frameLater = countExcess(
+    over(headValues, limitMs + ONE_FRAME_MS),
+    over(baseValues, limitMs + ONE_FRAME_MS),
+  );
+  return { ...atBudget, frameLater, slower: atBudget.slower || frameLater.slower };
 }
 
 /**
@@ -100,11 +111,19 @@ export function attemptPassed({ responsivenessPassed, passingRuns, requiredPassi
   return responsivenessPassed && passingRuns >= requiredPassingRuns;
 }
 
+/** Only timing may be settled against the base: every attempt's runs must have passed their other checks. */
+const runChecksHeld = (attempts) =>
+  attempts.length > 0 && attempts.every((attempt) => attempt.runChecksPassed);
+
+export function shouldCompareWithBase(attempts) {
+  return !attempts.some((attempt) => attempt.passed) && runChecksHeld(attempts);
+}
+
 /** Timing holds when an attempt passes or, once both fail, the same-machine base comparison does. */
 export function timingPassed(attempts, againstBase) {
   return (
     attempts.slice(0, TIMING_ATTEMPTS).some((attempt) => attempt.passed) ||
-    againstBase?.passed === true
+    (againstBase?.passed === true && runChecksHeld(attempts))
   );
 }
 

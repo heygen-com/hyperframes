@@ -32,6 +32,7 @@ import {
   judgeAgainstBase,
   judgeResponsiveness,
   responsivenessLimits,
+  shouldCompareWithBase,
   TIMING_ATTEMPTS,
   timingPassed,
 } from "./timeline-viewport-verdict.mjs";
@@ -306,6 +307,7 @@ try {
       frameIntervalP95Ms: responsiveness.frameIntervalP95Ms,
       responsivenessPassed: responsiveness.passed,
       passingRuns,
+      runChecksPassed: passingRuns >= budgets.requiredPassingRuns,
       passed: attemptPassed({
         responsivenessPassed: responsiveness.passed,
         passingRuns,
@@ -335,9 +337,7 @@ try {
   // Closed first, so the comparison's pages are the only ones the runner renders.
   await page.close();
   const againstBase =
-    BASE_STUDIO_URL &&
-    !attempts.some((attempt) => attempt.passed) &&
-    attempts.every((attempt) => attempt.passingRuns >= budgets.requiredPassingRuns)
+    BASE_STUDIO_URL && shouldCompareWithBase(attempts)
       ? await measureAgainstBase(budgets, limits)
       : null;
 
@@ -449,6 +449,8 @@ function logAgainstBase(verdict) {
       `${verdict.head.interactionP95Ms.toFixed(1)} vs ${verdict.base.interactionP95Ms.toFixed(1)} ms, ` +
       `steps over budget ${verdict.interactions.head} vs ${verdict.interactions.base} ` +
       `(allowed excess ${verdict.interactions.allowedExcess.toFixed(1)}), ` +
+      `a frame later ${verdict.interactions.frameLater.head} vs ${verdict.interactions.frameLater.base}, ` +
+      `dropped frames ${verdict.frameIntervals.head} vs ${verdict.frameIntervals.base}, ` +
       `${verdict.passed ? "PASS" : "FAIL"}`,
   );
 }

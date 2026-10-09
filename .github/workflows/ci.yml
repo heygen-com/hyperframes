@@ -906,10 +906,9 @@ jobs:
           }
           trap stop_servers EXIT
 
-          # One arm at a time, so the measured browser never competes with another arm's Vite
-          # module graph. Each arm serves head and base; the base is loaded only if the head
-          # misses a budget. The development server supplies the fixture API; production React
-          # matches shipped rendering behavior, and the gate asserts that runtime before timing.
+          # One arm at a time, so no other arm's Vite module graph competes with the measured browser.
+          # The base page loads only if the head misses a budget; production React matches shipped
+          # rendering, and the gate asserts that runtime before timing.
           run_arm() {
             local arm="$1" port="$2" virtualization="$3" count="$4" enabled="$5"
             NODE_ENV=production VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED="$enabled" \

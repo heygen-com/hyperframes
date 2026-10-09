@@ -6,6 +6,7 @@ import {
   judgeAgainstBase,
   judgeResponsiveness,
   percentile,
+  shouldCompareWithBase,
   responsivenessLimits,
 } from "./timeline-viewport-verdict.mjs";
 
@@ -157,6 +158,17 @@ describe("judgeAgainstBase", () => {
     expect(judgeAgainstBase(measured(90), measured(40), limits).passed).toBe(false);
   });
 
+  it("fails a head that makes the base's late steps a frame later, with the same count over budget", () => {
+    const later = measured(40).map((run) => ({
+      ...run,
+      interactions: run.interactions.map((value) => (value > 58.3 ? 200 : value)),
+    }));
+    expect(judgeAgainstBase(later, measured(40), limits)).toMatchObject({
+      passed: false,
+      interactions: { head: 40, base: 40, frameLater: { head: 40, base: 0, slower: true } },
+    });
+  });
+
   it("fails on dropped frames alone", () => {
     expect(judgeAgainstBase(measured(0, 60), measured(0, 5), limits).passed).toBe(false);
   });
@@ -191,8 +203,19 @@ describe("gatePassed", () => {
   });
 
   it("lets the same-machine base comparison decide timing once both attempts fail", () => {
-    expect(gatePassed({ ...passing, attempts: [fail, fail], againstBase: pass })).toBe(true);
-    expect(gatePassed({ ...passing, attempts: [fail, fail], againstBase: fail })).toBe(false);
+    const slow = { passed: false, runChecksPassed: true };
+    expect(gatePassed({ ...passing, attempts: [slow, slow], againstBase: pass })).toBe(true);
+    expect(gatePassed({ ...passing, attempts: [slow, slow], againstBase: fail })).toBe(false);
     expect(gatePassed({ ...passing, memoryReturned: false, againstBase: pass })).toBe(false);
+  });
+
+  it("never lets the base comparison pass runs that failed long-task or DOM checks", () => {
+    const broken = { passed: false, runChecksPassed: false };
+    const slow = { passed: false, runChecksPassed: true };
+    expect(shouldCompareWithBase([slow, broken])).toBe(false);
+    expect(shouldCompareWithBase([slow, slow])).toBe(true);
+    expect(shouldCompareWithBase([])).toBe(false);
+    expect(gatePassed({ ...passing, attempts: [slow, broken], againstBase: pass })).toBe(false);
+    expect(gatePassed({ ...passing, attempts: [], againstBase: pass })).toBe(false);
   });
 });
