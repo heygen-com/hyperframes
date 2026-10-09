@@ -1,3 +1,4 @@
+import { runCommand } from "citty";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliRuntimeError, consumeCommandResult } from "../utils/commandResult.js";
 
@@ -9,9 +10,12 @@ const sherpa = {
   sherpaUnsupportedReason: vi.fn(),
   installSherpaRuntime: vi.fn(),
   ensureParakeetModel: vi.fn(),
+  sherpaParakeetInstalled: vi.fn(),
   DecodeCancelled: class extends Error {},
 };
 vi.mock("../whisper/sherpa.js", () => sherpa);
+const manager = { listWhisperModels: vi.fn() };
+vi.mock("../whisper/manager.js", () => manager);
 
 // The command's Ctrl-C scope, driven by the test instead of a real signal.
 let cancel = new AbortController();
@@ -127,5 +131,53 @@ describe("models install parakeet --json", () => {
     expect(threw).toBe(false);
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/) });
     expect(sherpa.installSherpaRuntime).toHaveBeenCalledWith({ signal: cancel.signal });
+  });
+});
+
+describe("models list", () => {
+  const smallEn = { model: "small.en", path: "/cache/whisper/models/ggml-small.en.bin" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    consumeCommandResult();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    sherpa.sherpaUnsupportedReason.mockReturnValue(null);
+    sherpa.sherpaParakeetInstalled.mockReturnValue(true);
+    manager.listWhisperModels.mockReturnValue([smallEn]);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const listJson = async () => {
+    await runCommand(modelsCmd, { rawArgs: ["list", "--json"] });
+    expect(consumeCommandResult().exitCode).toBe(0);
+    return JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]));
+  };
+
+  it("parses `models list --json` without a model name and prints the inventory", async () => {
+    expect(await listJson()).toEqual({
+      ok: true,
+      models: [
+        {
+          engine: "parakeet",
+          model: "parakeet-tdt-0.6b-v3",
+          installed: true,
+          path: sherpa.PARAKEET_MODEL_DIR,
+        },
+        { engine: "whisper", model: "small.en", installed: true, path: smallEn.path },
+      ],
+    });
+  });
+
+  it("reports Parakeet as not installed, with the reason, where this system cannot run it", async () => {
+    sherpa.sherpaUnsupportedReason.mockReturnValue("Parakeet needs glibc 2.32 or newer.");
+    manager.listWhisperModels.mockReturnValue([]);
+    expect((await listJson()).models).toEqual([
+      expect.objectContaining({
+        engine: "parakeet",
+        installed: false,
+        unsupported: "Parakeet needs glibc 2.32 or newer.",
+      }),
+    ]);
+    expect(sherpa.sherpaParakeetInstalled).not.toHaveBeenCalled();
   });
 });

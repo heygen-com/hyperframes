@@ -8,6 +8,7 @@ import { createRenderCancellationScope } from "../utils/renderCancellation.js";
 import { PARAKEET_MODEL_LABEL } from "../whisper/parakeet.js";
 
 export const examples: Example[] = [
+  ["List the speech models transcribe can use", "hyperframes models list --json"],
   [
     "Download the Parakeet speech model that transcribe uses",
     "hyperframes models install parakeet",
@@ -95,17 +96,61 @@ async function installParakeet(json: boolean): Promise<void> {
   }
 }
 
+type ModelRow = {
+  engine: string;
+  model: string;
+  installed: boolean;
+  path: string;
+  unsupported?: string;
+};
+
+/** Parakeet as transcribe judges it, then every downloaded whisper model. */
+async function listModels(json: boolean): Promise<void> {
+  const sherpa = await import("../whisper/sherpa.js");
+  const { listWhisperModels } = await import("../whisper/manager.js");
+  const unsupported = sherpa.sherpaUnsupportedReason();
+  const models: ModelRow[] = [
+    {
+      engine: "parakeet",
+      model: PARAKEET_MODEL_LABEL,
+      installed: !unsupported && sherpa.sherpaParakeetInstalled(),
+      path: sherpa.PARAKEET_MODEL_DIR,
+      ...(unsupported ? { unsupported } : {}),
+    },
+    ...listWhisperModels().map(({ model, path }) => ({
+      engine: "whisper",
+      model,
+      installed: true,
+      path,
+    })),
+  ];
+  if (json) {
+    console.log(JSON.stringify({ ok: true, models }));
+    return;
+  }
+  for (const m of models) {
+    const state = m.installed
+      ? c.success("installed")
+      : c.dim(m.unsupported ?? "not installed: hyperframes models install parakeet");
+    console.log(`${m.engine.padEnd(9)}${m.model.padEnd(22)}${state}`);
+  }
+}
+
 export default defineCommand({
-  meta: { name: "models", description: "Download on-device models (models install parakeet)" },
+  meta: {
+    name: "models",
+    description: "List or download on-device models (models list, models install parakeet)",
+  },
   args: {
-    action: { type: "positional", description: "install", required: true },
-    name: { type: "positional", description: "Model to install: parakeet", required: true },
+    action: { type: "positional", description: "list or install", required: true },
+    name: { type: "positional", description: "Model to install: parakeet", required: false },
     json: { type: "boolean", description: "Print one JSON result, no progress", default: false },
   },
   async run({ args }) {
+    if (args.action === "list") return listModels(args.json);
     if (args.action !== "install" || args.name !== "parakeet") {
       fail(
-        `Unknown: models ${args.action} ${args.name}. Try: hyperframes models install parakeet`,
+        `Unknown: models ${[args.action, args.name].filter(Boolean).join(" ")}. Try: hyperframes models list, or hyperframes models install parakeet`,
         args.json,
       );
     }

@@ -309,13 +309,19 @@ cues with no internal spaces — single-word or CJK captions.
 
 ### `models`
 
-Download an on-device model. Only asked-for installs happen; nothing downloads
+List or download on-device models. Only asked-for installs happen; nothing downloads
 on first use.
 
 ```bash
+npx hyperframes models list                      # Parakeet and any downloaded whisper models
+npx hyperframes models list --json               # { ok, models: [{ engine, model, installed, path }] }
 npx hyperframes models install parakeet          # progress on stderr
 npx hyperframes models install parakeet --json   # one JSON result
 ```
+
+`list` reports Parakeet as installed only when `transcribe` would use it, and
+gives the reason when this machine cannot run it. Whisper models appear once
+`transcribe` has downloaded them.
 
 `parakeet` installs the sherpa-onnx runtime from npm and NVIDIA's Parakeet TDT
 0.6B v3 speech model (int8, about 640 MB, CC-BY-4.0) into

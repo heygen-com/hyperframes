@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
@@ -148,6 +148,16 @@ function buildFromSource(onProgress?: (msg: string) => void): WhisperResult {
 
 export function findWhisper(): WhisperResult | undefined {
   return findFromEnv() ?? findFromSystem() ?? findBuiltBinary();
+}
+
+/** Whisper models already downloaded, as ensureModel names them (`small.en` for ggml-small.en.bin). */
+export function listWhisperModels(): { model: string; path: string }[] {
+  if (!existsSync(MODELS_DIR)) return [];
+  return readdirSync(MODELS_DIR)
+    .map((file) => /^ggml-(.+)\.bin$/.exec(file))
+    .filter((match) => match !== null)
+    .map(([file, model]) => ({ model: model!, path: join(MODELS_DIR, file) }))
+    .sort((a, b) => a.model.localeCompare(b.model));
 }
 
 export function getInstallInstructions(): string {
