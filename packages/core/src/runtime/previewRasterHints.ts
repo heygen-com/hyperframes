@@ -10,7 +10,7 @@ const DROP_HINTS = `${MARKED} { will-change: auto !important; }`;
 
 let sheet: HTMLStyleElement | null = null;
 let observer: MutationObserver | null = null;
-const zIndexWhenMarked = new WeakMap<Element, string>();
+const markedWith = new WeakMap<Element, string>();
 
 // Other hints (opacity, filter) make boundaries of their own, so only a pure transform hint goes.
 function onlyTransformHints(style: CSSStyleDeclaration): boolean {
@@ -40,14 +40,19 @@ function canDropHint(element: Element, style: CSSStyleDeclaration): boolean {
   return true;
 }
 
+// What a script can change inline on a marked layer that decides whether it stays marked.
+function inlineFit(element: Element, style: CSSStyleDeclaration): string {
+  return `${style.zIndex}|${(element as HTMLElement).style?.willChange ?? ""}`;
+}
+
 function check(element: Element): void {
   if (element === sheet) return;
+  // A marked element reads `auto` through our rule, so the mark is lifted to read its own hints.
+  element.removeAttribute(PREVIEW_RASTER_ATTR);
   const style = getComputedStyle(element);
-  const marked = element.hasAttribute(PREVIEW_RASTER_ATTR);
-  // A marked element reads `auto` through our rule, so only its fit is re-checked.
-  const drop = (marked || onlyTransformHints(style)) && canDropHint(element, style);
-  if (drop) zIndexWhenMarked.set(element, style.zIndex);
-  if (drop !== marked) element.toggleAttribute(PREVIEW_RASTER_ATTR, drop);
+  if (!onlyTransformHints(style) || !canDropHint(element, style)) return;
+  markedWith.set(element, inlineFit(element, style));
+  element.setAttribute(PREVIEW_RASTER_ATTR, "");
 }
 
 function unmarkHolders(element: Element): void {
@@ -71,7 +76,7 @@ function followTree(root: Element): void {
 function followStyle(element: Element): void {
   if (element.hasAttribute(PREVIEW_RASTER_ATTR)) {
     const style = getComputedStyle(element);
-    if (style.position === "static" || style.zIndex !== zIndexWhenMarked.get(element)) {
+    if (style.position === "static" || inlineFit(element, style) !== markedWith.get(element)) {
       check(element);
     }
   }
@@ -83,20 +88,26 @@ function markLayers(): void {
 }
 
 function followAttribute(record: MutationRecord): void {
-  if (!isElementNode(record.target)) return;
-  if (record.attributeName === "class") followTree(record.target);
-  else followStyle(record.target);
+  if (!isElementNode(record.target) || record.attributeName === PREVIEW_RASTER_ATTR) return;
+  // Any attribute can match a selector; inline style is the per-frame case, so it is cheaper.
+  if (record.attributeName === "style") followStyle(record.target);
+  else followTree(record.target);
 }
 
-// New rules can restyle anything.
-function addsRules(record: MutationRecord): boolean {
-  return [...record.addedNodes].some(
-    (node) => isElementNode(node) && (node.localName === "style" || node.localName === "link"),
+// New rules can restyle anything, and a linked sheet only applies once it loads.
+function addedRules(record: MutationRecord): Element[] {
+  return [...record.addedNodes].filter(
+    (node): node is Element =>
+      isElementNode(node) && (node.localName === "style" || node.localName === "link"),
   );
 }
 
 function follow(records: MutationRecord[]): void {
-  if (records.some(addsRules)) return markLayers();
+  const rules = records.flatMap(addedRules);
+  for (const rule of rules) {
+    rule.addEventListener("load", () => observer && markLayers(), { once: true });
+  }
+  if (rules.length) return markLayers();
   for (const record of records) {
     if (record.type === "attributes") followAttribute(record);
     else for (const node of record.addedNodes) if (isElementNode(node)) followTree(node);
@@ -127,6 +138,5 @@ export function setPreviewRasterScale(scale: number): void {
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ["class", "style"],
   });
 }

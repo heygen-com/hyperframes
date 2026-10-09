@@ -84,4 +84,42 @@ describe("setPreviewRasterScale", () => {
     await Promise.resolve();
     expect(marked(words)).toBe(false);
   });
+
+  it("re-reads a marked layer's own hints and position when they change", async () => {
+    const sheet = document.createElement("style");
+    sheet.textContent =
+      ".hinted { will-change: transform } .hinted.fading { will-change: transform, opacity }";
+    document.head.append(sheet);
+    const classed = layer("position: absolute");
+    classed.className = "hinted";
+    const inline = layer(POSITIONED);
+    const inlineHint = layer(POSITIONED);
+    setPreviewRasterScale(0.5);
+    expect([classed, inline, inlineHint].map(marked)).toEqual([true, true, true]);
+    classed.className = "hinted fading";
+    inline.style.position = "static";
+    inlineHint.style.willChange = "transform, opacity";
+    await Promise.resolve();
+    expect([classed, inline, inlineHint].map(marked)).toEqual([false, false, false]);
+    sheet.remove();
+  });
+
+  it("follows stylesheets and attribute selectors added while the preview is small", async () => {
+    const byStylesheet = layer(POSITIONED);
+    layer("", byStylesheet).className = "late-pinned";
+    const byAttribute = layer(POSITIONED);
+    const scene = layer("", byAttribute);
+    setPreviewRasterScale(0.5);
+    expect([byStylesheet, byAttribute].map(marked)).toEqual([true, true]);
+    const sheet = document.createElement("style");
+    sheet.textContent = '.late-pinned, [data-scene="pinned"] { position: fixed }';
+    document.head.append(sheet);
+    await Promise.resolve();
+    expect(marked(byStylesheet)).toBe(false);
+    expect(marked(byAttribute)).toBe(true);
+    scene.dataset.scene = "pinned";
+    await Promise.resolve();
+    expect(marked(byAttribute)).toBe(false);
+    sheet.remove();
+  });
 });
