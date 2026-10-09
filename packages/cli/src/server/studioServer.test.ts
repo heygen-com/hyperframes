@@ -62,6 +62,10 @@ vi.mock("../browser/gpuPolicy.js", () => ({
   resolveLocalBrowserGpuMode: () => "software",
   compositionRequiresWebGpu: () => false,
   assertWebGpuAdapterAvailable: async () => {},
+  resolveLocalWebGpu: (browserGpuMode: string) => ({
+    gpuConfig: { browserGpuMode, allowSoftwareWebGpu: false },
+    softwareWebGpu: false,
+  }),
 }));
 vi.mock("../browser/preflight.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../browser/preflight.js")>()),
