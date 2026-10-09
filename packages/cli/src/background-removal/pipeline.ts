@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import { renameSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { createSession, type Session } from "./inference.js";
 import { type Device, type ModelId } from "./manager.js";
 import {
@@ -115,6 +116,60 @@ interface EngineMetadata {
   durationSeconds: number;
 }
 
+async function decoderTransposesDimensions(inputPath: string): Promise<boolean> {
+  const ffprobePath = findFFprobe();
+  if (!ffprobePath) throw new Error(`ffprobe is required. Install: ${getFFmpegInstallHint()}`);
+  const { stdout } = await runCancellableProcess(
+    ffprobePath,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_streams",
+      "-print_format",
+      "json",
+      "--",
+      inputPath,
+    ],
+    { timeoutMs: 30_000, maxBufferBytes: 256 * 1024 },
+  );
+  const probe: unknown = JSON.parse(stdout);
+  if (
+    typeof probe !== "object" ||
+    probe === null ||
+    !("streams" in probe) ||
+    !Array.isArray(probe.streams)
+  )
+    return false;
+  const stream: unknown = probe.streams[0];
+  if (typeof stream !== "object" || stream === null) return false;
+  const sideData =
+    "side_data_list" in stream && Array.isArray(stream.side_data_list) ? stream.side_data_list : [];
+  const matrix: unknown = sideData.find(
+    (entry: unknown) =>
+      typeof entry === "object" &&
+      entry !== null &&
+      "side_data_type" in entry &&
+      entry.side_data_type === "Display Matrix",
+  );
+  let rotation: unknown =
+    typeof matrix === "object" && matrix !== null && "rotation" in matrix
+      ? matrix.rotation
+      : undefined;
+  if (
+    rotation === undefined &&
+    "tags" in stream &&
+    typeof stream.tags === "object" &&
+    stream.tags !== null &&
+    "rotate" in stream.tags
+  )
+    rotation = Number(stream.tags.rotate);
+  if (typeof rotation !== "number" || !Number.isFinite(rotation)) return false;
+  const angle = ((rotation % 360) + 360) % 360;
+  return Math.abs(angle - 90) < 1 || Math.abs(angle - 270) < 1;
+}
+
 async function probeMedia(inputPath: string): Promise<MediaInfo> {
   const isImage = inferInputKind(inputPath) === "image";
   const engine = (await import("@hyperframes/engine")) as {
@@ -128,7 +183,14 @@ async function probeMedia(inputPath: string): Promise<MediaInfo> {
 
   const fps = meta.fps || 30;
   const frameCount = meta.durationSeconds ? Math.round(meta.durationSeconds * fps) : 0;
-  return { width: meta.width, height: meta.height, fps, frameCount };
+  // Phone-video display matrices transpose FFmpeg's decoded rows; raw frame sizing must follow them.
+  const transposed = await decoderTransposesDimensions(inputPath);
+  return {
+    width: transposed ? meta.height : meta.width,
+    height: transposed ? meta.width : meta.height,
+    fps,
+    frameCount,
+  };
 }
 
 export function buildEncoderArgs(
