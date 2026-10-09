@@ -475,8 +475,12 @@ function rewriteStyleBlocks(
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
-  const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, (val, dir) =>
-    tryResolveExternal(ctx, val, dir),
+  const attrsChanged = rewriteHtmlAttributes(
+    document,
+    referrerAbsDir,
+    entryPath,
+    (val, dir) => tryResolveExternal(ctx, val, dir),
+    { attrs: ["src", "href", "poster"] },
   );
   const stylesChanged = rewriteStyleBlocks(ctx, document, referrerAbsDir, entryPath);
   if (attrsChanged || stylesChanged) {

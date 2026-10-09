@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
 import AdmZip from "adm-zip";
 
 const authMocks = vi.hoisted(() => ({
@@ -214,6 +214,69 @@ async function runAuthenticatedPublish(
 }
 
 describe("createPublishArchive", () => {
+  it.each(["index.html", "compositions/scene.html"])(
+    "includes external video posters referenced from %s",
+    (entryPath) => {
+      const projectDir = makeProjectDir();
+      const extDir = mkdtempSync(join(tmpdir(), "hf-ext-"));
+      try {
+        const htmlDir = join(projectDir, dirname(entryPath));
+        mkdirSync(htmlDir, { recursive: true });
+        if (entryPath !== "index.html") {
+          writeFileSync(join(projectDir, "index.html"), "<html></html>");
+        }
+        const posterPath = stageExternalAsset(extDir, htmlDir, "poster.png", "PNG_DATA");
+        const videoPath = posix.relative(posix.dirname(entryPath), "clip.mp4");
+        const html = `<html><body><video src="${videoPath}" poster="${posterPath}"></video></body></html>`;
+        writeFileSync(join(projectDir, entryPath), html);
+        writeFileSync(join(projectDir, "clip.mp4"), "MP4_DATA");
+
+        const archive = createPublishArchive(projectDir);
+        const zip = new AdmZip(archive.buffer);
+        const posterEntries = zip
+          .getEntries()
+          .filter((entry) => entry.entryName.startsWith("_ext/") && entry.name === "poster.png");
+
+        expect(posterEntries).toHaveLength(1);
+        const archivedPoster = posterEntries[0]!;
+        expect(archivedPoster.getData()).toEqual(Buffer.from("PNG_DATA"));
+        expect(zip.readAsText(entryPath)).toContain(
+          `poster="${posix.relative(posix.dirname(entryPath), archivedPoster.entryName)}"`,
+        );
+        expect(zip.readAsText(entryPath)).toContain(`src="${videoPath}"`);
+        expect(archive.fileCount).toBe(entryPath === "index.html" ? 3 : 4);
+        expect(readFileSync(join(projectDir, entryPath), "utf-8")).toBe(html);
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+        rmSync(extDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("preserves internal, remote, and inline video posters", () => {
+    const projectDir = makeProjectDir();
+    try {
+      const posters = [
+        "poster.png",
+        "https://cdn.example.com/poster.png",
+        "data:image/png;base64,AA==",
+      ];
+      const html = `<html><body>${posters.map((poster) => `<video src="clip.mp4" poster="${poster}"></video>`).join("")}</body></html>`;
+      writeFileSync(join(projectDir, "index.html"), html);
+      writeFileSync(join(projectDir, "poster.png"), "PNG_DATA");
+      writeFileSync(join(projectDir, "clip.mp4"), "MP4_DATA");
+
+      const archive = createPublishArchive(projectDir);
+      const zip = new AdmZip(archive.buffer);
+
+      expect(archive.fileCount).toBe(3);
+      expect(zip.readAsText("index.html")).toBe(html);
+      expect(zip.getEntries().some((entry) => entry.entryName.startsWith("_ext/"))).toBe(false);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("packages the project and skips hidden files and node_modules", () => {
     const dir = makeProjectDir();
     try {
