@@ -18,6 +18,12 @@ afterEach(() => {
 });
 
 describe("setPreviewRasterScale", () => {
+  it("touches nothing until the host reports a scale", () => {
+    const words = layer(POSITIONED);
+    expect(document.querySelectorAll(`style, [${PREVIEW_RASTER_ATTR}]`)).toHaveLength(0);
+    expect(getComputedStyle(words).willChange).toBe("transform");
+  });
+
   it("drops a positioned layer's transform hint while the preview is shown small", () => {
     const words = layer(POSITIONED);
     const word = layer("position: absolute", words);

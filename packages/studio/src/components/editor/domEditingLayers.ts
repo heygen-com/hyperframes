@@ -1,3 +1,4 @@
+import { STUDIO_PREVIEW_ATTRS } from "@hyperframes/core/studio-preview-mark";
 import { knownSourceAnswer, probeSourceElement, type ProbeTarget } from "./probeSourceElement";
 import { isAudibleVideoNode } from "../../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../../utils/sourcePatcher";
@@ -55,6 +56,9 @@ function getTextFieldLabel(
   return `Text ${index + 1}`;
 }
 
+// Inline style is rebuilt from the field; preview marks must never reach the source.
+const NOT_COPIED_ATTRS = new Set<string>(["style", ...STUDIO_PREVIEW_ATTRS]);
+
 function buildTextField(
   el: HTMLElement,
   index: number,
@@ -70,7 +74,7 @@ function buildTextField(
     value: el.textContent ?? "",
     tagName,
     attributes: Array.from(el.attributes)
-      .filter((attribute) => attribute.name !== "style")
+      .filter((attribute) => !NOT_COPIED_ATTRS.has(attribute.name))
       .map((attribute) => ({
         name: attribute.name,
         value: attribute.value,

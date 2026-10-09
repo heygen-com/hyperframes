@@ -1,3 +1,5 @@
+import { PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
+
 export const ROOT_CSS_STACKING_CONTEXT_ID = "css:root";
 
 const NON_NONE_STACKING_CONTEXT_PROPERTIES = [
@@ -67,6 +69,8 @@ function createsWillChangeStackingContext(style: CSSStyleDeclaration): boolean {
 }
 
 function createsCssStackingContext(element: HTMLElement, style: CSSStyleDeclaration): boolean {
+  // The preview's raster mark only ever stands in for a dropped transform hint.
+  if (element.hasAttribute(PREVIEW_RASTER_ATTR)) return true;
   if (createsPositionedStackingContext(style)) return true;
   if (createsZIndexedStackingContext(element, style)) return true;
   if (createsVisualEffectStackingContext(style)) return true;
