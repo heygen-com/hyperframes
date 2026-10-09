@@ -7,7 +7,11 @@ import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps 
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
 import { revealTimedClipsAfterFirstPass, SKIPPED_CLIP, skipsHiddenImages } from "./timedClipHide";
-import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studioPreviewMark";
+import {
+  PREVIEW_ONLY_ATTRS,
+  STUDIO_PREVIEW_LAZY_ATTR,
+  STUDIO_PREVIEW_UPCOMING_ATTR,
+} from "../studioPreviewMark";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
@@ -281,13 +285,14 @@ const authoredShape = (el: Element): string =>
   ]);
 
 // What the runtime writes on a video or audio: style (reset on a kept one), preload, the opacity stamp, a moved
-// element's original translate and its own __hf- classes. A proxied src is compared as written; a bound one is not.
+// element's original translate, preview marks and its own __hf- classes. A proxied src is compared as written.
 const RUNTIME_MEDIA_ATTRS = new Set([
   "style",
   "preload",
   "src",
   COLOR_GRADING_AUTHORED_OPACITY_ATTR,
   EDIT_ORIGINAL_TRANSLATE_ATTR,
+  ...PREVIEW_ONLY_ATTRS,
 ]);
 const ownClasses = (value: string) =>
   value

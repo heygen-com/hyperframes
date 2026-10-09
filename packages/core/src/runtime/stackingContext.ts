@@ -69,7 +69,6 @@ function createsWillChangeStackingContext(style: CSSStyleDeclaration): boolean {
 }
 
 function createsCssStackingContext(element: HTMLElement, style: CSSStyleDeclaration): boolean {
-  // The preview's raster mark only ever stands in for a dropped transform hint.
   if (element.hasAttribute(PREVIEW_RASTER_ATTR)) return true;
   if (createsPositionedStackingContext(style)) return true;
   if (createsZIndexedStackingContext(element, style)) return true;
