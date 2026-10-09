@@ -258,8 +258,9 @@ function overwriteProblem(outPath: string, keep: string[]): string | undefined {
 function sameFile(out: string, file: string): boolean {
   if (existsSync(out) && existsSync(file)) {
     const [a, b] = [statSync(out, { bigint: true }), statSync(file, { bigint: true })];
-    // Some network shares report inode 0 for every file, which proves nothing; compare names then.
     if (a.ino !== 0n && b.ino !== 0n) return a.dev === b.dev && a.ino === b.ino;
+    // Some network shares report inode 0, which proves nothing; let the OS resolve the paths.
+    return realpathSync.native(out) === realpathSync.native(file);
   }
   // Letter case is ignored so a case-insensitive disk cannot alias.
   const realDir = (p: string) =>

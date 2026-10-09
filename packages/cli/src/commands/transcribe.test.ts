@@ -836,28 +836,61 @@ Render video. Built for agents.
     expect(lastJson().error).toMatch(/ENOTDIR|ENOENT/);
   });
 
-  it("compares names, not inodes, when the disk reports inode 0", async () => {
+  async function runWithInodeZero(zero: (path: string) => boolean, args: object): Promise<void> {
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    vi.mocked(statSync).mockImplementation(((path: string, options?: object) => {
+      const stats = fs.statSync(path, options);
+      return zero(String(path)) ? Object.assign(stats, { ino: 0n }) : stats;
+    }) as unknown as typeof statSync);
+    transcribeMock.mockImplementation(async (_input, outputDir) =>
+      fakeTranscript(outputDir, "whisper"),
+    );
+    try {
+      await transcribeCmd.run!({ args } as never);
+    } catch (err) {
+      if (!(err instanceof CliRuntimeError)) throw err;
+    } finally {
+      vi.mocked(statSync).mockImplementation(fs.statSync);
+    }
+  }
+
+  it("does not call two different files the same when the disk reports inode 0", async () => {
     const { dir, input } = dummyAudio();
     dirs.push(dir);
     const output = join(dir, "captions.srt");
     writeFileSync(output, "old captions");
-    const fs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    vi.mocked(statSync).mockImplementation(((path: string, options?: object) =>
-      Object.assign(fs.statSync(path, options), { ino: 0n })) as unknown as typeof statSync);
-    transcribeMock.mockImplementation(async (_input, outputDir) =>
-      fakeTranscript(outputDir, "whisper"),
-    );
 
-    try {
-      await transcribeCmd.run!({
-        args: { input, json: true, engine: "whisper", to: "srt", output },
-      } as never);
-    } finally {
-      vi.mocked(statSync).mockImplementation(fs.statSync);
-    }
+    await runWithInodeZero(() => true, { input, json: true, engine: "whisper", to: "srt", output });
 
     expect(lastJson()).toMatchObject({ ok: true, outputPath: output });
     expect(readFileSync(output, "utf8")).toContain("-->");
+  });
+
+  it.each([
+    ["the media", "every path", "would overwrite"],
+    ["the media", "the caption path only", "would overwrite"],
+    ["the media", "the media only", "would overwrite"],
+    ["the transcript", "every path", "it is the same file as"],
+    ["the transcript", "the caption path only", "it is the same file as"],
+    ["the transcript", "the transcript only", "it is the same file as"],
+  ])("refuses a link to %s when %s reports inode 0", async (target, zeroed, error) => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const kept = target === "the media" ? input : join(dir, "transcript.json");
+    const output = join(dir, "link.srt");
+    symlinkSync(kept, output);
+    const zeroPath = zeroed === "the caption path only" ? output : kept;
+
+    await runWithInodeZero((path) => zeroed === "every path" || path === zeroPath, {
+      input,
+      json: true,
+      engine: "whisper",
+      to: "srt",
+      output,
+    });
+
+    expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+    expect(readFileSync(kept, "utf8")).not.toContain("-->");
   });
 
   it("fails a trailing -o with no path before transcribing", async () => {
