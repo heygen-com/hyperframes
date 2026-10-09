@@ -23,6 +23,7 @@ import { type Device, type ModelId } from "./manager.js";
 import {
   DEFAULT_VP9_CPU_USED,
   SDR_RGB_TO_BT709_FILTER,
+  SDR_RGB_TO_TAGGED_BT709_FILTER,
   renderProvenanceArgs,
 } from "@hyperframes/engine";
 
@@ -192,6 +193,8 @@ export function buildEncoderArgs(
   if (format === "mov") {
     return [
       ...base,
+      "-vf",
+      SDR_RGB_TO_TAGGED_BT709_FILTER,
       "-c:v",
       "prores_ks",
       "-profile:v",

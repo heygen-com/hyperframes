@@ -39,7 +39,11 @@ import {
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
-import { SDR_CAPTURE_TO_BT709_FILTER, SDR_RGB_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
+import {
+  SDR_CAPTURE_TO_BT709_FILTER,
+  SDR_RGB_TO_BT709_FILTER,
+  SDR_RGB_TO_TAGGED_BT709_FILTER,
+} from "../utils/sdrCaptureColor.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, fpsToNumber, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
@@ -385,6 +389,7 @@ export function buildStreamingArgs(
     }
   } else if (codec === "prores") {
     args.push("-c:v", "prores_ks", "-profile:v", preset, "-vendor", "apl0");
+    args.push("-vf", SDR_RGB_TO_TAGGED_BT709_FILTER);
     args.push("-pix_fmt", pixelFormat);
     appendRenderProvenanceArgs(args, outputPath);
     return [...args, "-y", outputPath];

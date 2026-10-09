@@ -26,7 +26,10 @@ import {
 } from "./streamingEncoder.js";
 import { DEFAULT_HDR10_MASTERING } from "../utils/hdr.js";
 import { type GpuEncoder } from "../utils/gpuEncoder.js";
-import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
+import {
+  SDR_CAPTURE_TO_BT709_FILTER,
+  SDR_RGB_TO_TAGGED_BT709_FILTER,
+} from "../utils/sdrCaptureColor.js";
 
 const baseHdrPq: StreamingEncoderOptions = {
   fps: { num: 30, den: 1 },
@@ -240,6 +243,15 @@ describe("buildStreamingArgs", () => {
       expect(args[args.indexOf("-vf") + 1]).toBe(
         `${SDR_CAPTURE_TO_BT709_FILTER},pad=ceil(iw/2)*2:ceil(ih/2)*2`,
       );
+    });
+
+    it("converts ProRes to the BT.709 it is tagged with and keeps the alpha format", () => {
+      const args = buildStreamingArgs(
+        { ...baseVp9, codec: "prores", preset: "4444", pixelFormat: "yuva444p10le" },
+        "/tmp/out.mov",
+      );
+      expect(args[args.indexOf("-vf") + 1]).toBe(SDR_RGB_TO_TAGGED_BT709_FILTER);
+      expect(args[args.indexOf("-pix_fmt") + 1]).toBe("yuva444p10le");
     });
   });
 
