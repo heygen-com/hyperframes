@@ -1,8 +1,8 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { runCancellableProcess } from "./cancellableProcess.js";
+import { describe, expect, it, vi } from "vitest";
+import { runCancellableProcess, runRenderSetupWorker } from "./cancellableProcess.js";
 import { testProcessIsAlive, waitForTestCondition } from "./processTestUtils.js";
 
 const IS_POSIX = process.platform !== "win32";
@@ -78,4 +78,17 @@ describe.skipIf(!IS_POSIX)("cancellable process tree teardown", () => {
       rmSync(testDir, { recursive: true, force: true });
     }
   }, 5_000);
+});
+
+describe("render setup worker failure", () => {
+  it("rejects with only the worker's reason, not its crash output", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const failure = runRenderSetupWorker("bogus" as "lint", {}, {});
+
+      await expect(failure).rejects.toThrow(/^Unknown render setup mode: bogus$/);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
 });

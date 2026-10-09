@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { debuglog } from "node:util";
 import { basename, dirname, join, relative } from "node:path";
 import { chromeMajorCeiling, exceedsChromeCeiling } from "@hyperframes/engine/chrome-host-ceiling";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -782,7 +783,7 @@ function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
   const original = normalizeErrorMessage(cause);
   const example = browserPathHintForPlatform();
   const message =
-    `Failed to download chrome-headless-shell ${managedChromeVersion()}: ${original}\n\n` +
+    `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}\n\n` +
     `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
     `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
     `Then re-run your command. Any Chrome build works for the screenshot ` +
@@ -809,14 +810,28 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
   // Same filesystem as CACHE_DIR so the final rename is atomic.
   const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
   const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
-  const runInstall = () =>
-    install({
+  // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
+  let unzipLog: string[] = [];
+  const runInstall = () => {
+    unzipLog = [];
+    return install({
       cacheDir: stagingDir,
       browser: Browser.CHROMEHEADLESSSHELL,
       buildId: managedChromeVersion(),
       platform,
       downloadProgressCallback: options?.onProgress,
+      logger: (prefix) => {
+        const debug = debuglog(prefix);
+        const isUnzip = prefix === "puppeteer:browsers:fileUtil";
+        if (!isUnzip && !debug.enabled) return undefined;
+        return (...args) => {
+          const line = args.join(" ");
+          if (isUnzip) unzipLog.push(line);
+          if (debug.enabled) debug(line);
+        };
+      },
     });
+  };
 
   try {
     const staged = await installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
@@ -824,12 +839,28 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
         `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
       ),
     );
+    assertExecutableUnpacked(stagingDir, staged.executablePath, unzipLog);
     return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
   } catch (err) {
     throw wrapDownloadFailureWithBrowserPathHint(err);
   } finally {
     clearStaging();
   }
+}
+
+// install() returns without checking that the unzip produced the executable.
+function assertExecutableUnpacked(
+  stagingDir: string,
+  executablePath: string,
+  unzipLog: readonly string[],
+): void {
+  const size = statSync(executablePath, { throwIfNoEntry: false })?.size;
+  if (size) return;
+  const state = size === 0 ? "is empty" : "is missing";
+  const log = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
+  throw new Error(
+    `the archive downloaded, but ${relative(stagingDir, executablePath)} ${state} after unzipping.${log}`,
+  );
 }
 
 // Swap one staged version dir into CACHE_DIR by rename, never deleting the cache under live users:

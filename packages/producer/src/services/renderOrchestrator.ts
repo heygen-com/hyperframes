@@ -69,6 +69,7 @@ import {
   closeCaptureSession,
   type CaptureOptions,
   type CaptureVideoMetadataHint,
+  type SubTimelineWaitMemo,
   type CaptureSession,
   type BeforeCaptureHook,
   createVideoFrameInjector,
@@ -3266,6 +3267,7 @@ async function executeRenderPipeline(input: {
       updateCaptureObservability({ protocolTimeoutMs: scaledProtocolTimeout });
     }
 
+    const subTimelineWaitMemo: SubTimelineWaitMemo = {};
     const probeResult = await observeRenderStage(
       observability,
       "browser_probe",
@@ -3286,6 +3288,7 @@ async function executeRenderPipeline(input: {
           height,
           needsAlpha,
           deviceScaleFactor,
+          subTimelineWaitMemo,
         }),
       // Browser probe is pre-capture; report `browser calibrating` so a
       // slow probe (~64s SwiftShader warm-up on Windows was the reported
@@ -3589,6 +3592,7 @@ async function executeRenderPipeline(input: {
       ...captureOptions,
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
+      subTimelineWaitMemo,
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,

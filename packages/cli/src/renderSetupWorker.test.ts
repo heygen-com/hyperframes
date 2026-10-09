@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { installRenderSetupSignalHandlers } from "./renderSetupWorkerLifecycle.js";
+import {
+  installRenderSetupSignalHandlers,
+  renderSetupFailureFrom,
+  renderSetupErrorLine,
+  renderSetupResultFrom,
+  renderSetupResultLine,
+} from "./renderSetupWorkerLifecycle.js";
 
 describe("render setup worker signal lifecycle", () => {
   function collectHandlers(handleHangup = true) {
@@ -52,4 +58,37 @@ describe("render setup worker signal lifecycle", () => {
       expect(calls.slice(0, 3)).toEqual(["release-lock", `off:${signal}`, `forward:${signal}`]);
     },
   );
+});
+
+describe("render setup worker failure line", () => {
+  it("carries the whole reason past the crash output around it", () => {
+    const reason =
+      "Failed to install chrome-headless-shell: missing.\n\n  export HYPERFRAMES_BROWSER_PATH=x";
+    const failure = new Error(reason, { cause: new Error("tar.exe extraction failed") });
+    const stderr = [
+      "warning before",
+      renderSetupErrorLine(failure).trimEnd(),
+      "/worker.ts:20",
+      "    throw error;",
+      "Error: Failed to install chrome-headless-shell: missing.",
+      "    at downloadBrowser (manager.ts:845:11)",
+    ].join("\n");
+
+    expect(renderSetupFailureFrom(stderr)).toEqual({ reason, earlierOutput: "warning before" });
+  });
+
+  it.each([
+    ["a worker that crashed without one", "Error: boom\n    at x (y.ts:1:1)"],
+    ["a cut-off line", 'HYPERFRAMES_RENDER_SETUP_ERROR:"Failed to ins'],
+    ["an empty message", renderSetupErrorLine(new Error(""))],
+  ])("finds no reason in %s, so the parent shows the raw output", (_label, stderr) => {
+    expect(renderSetupFailureFrom(stderr)).toBeUndefined();
+  });
+
+  it("reads back the result line the worker writes", () => {
+    const result = { executablePath: "/chrome", source: "cache" };
+
+    expect(renderSetupResultFrom(`noise\n${renderSetupResultLine(result)}`)).toEqual(result);
+    expect(renderSetupResultFrom("noise only")).toBeUndefined();
+  });
 });

@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      [data-composition-id="falling-lines"] canvas[data-shader] {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="falling-lines"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+      data-requires-webgpu
+      data-no-timeline
+      style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #000"
+    >
+      <canvas data-shader="FallingLines" width="1920" height="1080"></canvas>
+    </div>
+    <script src="lib/shaders.iife.js"></script>
+  </body>
+</html>
