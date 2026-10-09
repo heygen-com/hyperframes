@@ -189,6 +189,12 @@ function installFsMocks({
   return paths;
 }
 
+interface InstallMockOptions {
+  buildId: string;
+  cacheDir: string;
+  logger?: (prefix: string) => ((...args: unknown[]) => void) | undefined;
+}
+
 function installPuppeteerBrowsersMock(
   opts: {
     installedInHfCache?: Array<{
@@ -201,21 +207,15 @@ function installPuppeteerBrowsersMock(
     browserPlatform?: string;
     installedInHfCacheError?: Error;
     installResult?: { executablePath: string; path?: string };
-    installImpl?: (options: {
-      buildId: string;
-      cacheDir: string;
-      logger?: (prefix: string) => ((...args: unknown[]) => void) | undefined;
-    }) => Promise<{ executablePath: string; path?: string }>;
+    installImpl?: (
+      options: InstallMockOptions,
+    ) => Promise<{ executablePath: string; path?: string }>;
   } = {},
 ) {
   const impl =
     opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY });
   // Fixtures name the binary where it lands in HF_CACHE; install() really writes it under its own cacheDir.
-  const stagedInstall = async (options: {
-    buildId: string;
-    cacheDir: string;
-    logger?: (prefix: string) => ((...args: unknown[]) => void) | undefined;
-  }) => {
+  const stagedInstall = async (options: InstallMockOptions) => {
     const result = await impl(options);
     if (result.path || !result.executablePath.startsWith(HF_CACHE + sep)) return result;
     const rel = relative(HF_CACHE, result.executablePath);

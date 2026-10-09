@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { debuglog } from "node:util";
 import { basename, dirname, join, relative } from "node:path";
 import { chromeMajorCeiling, exceedsChromeCeiling } from "@hyperframes/engine/chrome-host-ceiling";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -810,19 +811,27 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
   const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
   const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
-  const unzipLog: string[] = [];
-  const runInstall = () =>
-    install({
+  let unzipLog: string[] = [];
+  const runInstall = () => {
+    unzipLog = [];
+    return install({
       cacheDir: stagingDir,
       browser: Browser.CHROMEHEADLESSSHELL,
       buildId: managedChromeVersion(),
       platform,
       downloadProgressCallback: options?.onProgress,
-      logger: (prefix) =>
-        prefix === "puppeteer:browsers:fileUtil"
-          ? (...args) => unzipLog.push(args.join(" "))
-          : undefined,
+      logger: (prefix) => {
+        const debug = debuglog(prefix);
+        const isUnzip = prefix === "puppeteer:browsers:fileUtil";
+        if (!isUnzip && !debug.enabled) return undefined;
+        return (...args) => {
+          const line = args.join(" ");
+          if (isUnzip) unzipLog.push(line);
+          if (debug.enabled) debug(line);
+        };
+      },
     });
+  };
 
   try {
     const staged = await installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
@@ -845,7 +854,7 @@ function assertExecutableUnpacked(
   executablePath: string,
   unzipLog: readonly string[],
 ): void {
-  const size = existsSync(executablePath) ? statSync(executablePath).size : undefined;
+  const size = statSync(executablePath, { throwIfNoEntry: false })?.size;
   if (size) return;
   const state = size === 0 ? "is empty" : "is missing";
   const log = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
