@@ -1,0 +1,34 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "fractal-noise",
+  "type": "hyperframes:block",
+  "title": "Fractal Noise",
+  "description": "Soft grey fractal noise drifts across the frame like slow clouds. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "tags": ["webgpu", "webgpu-shader", "background", "noise", "texture", "clouds"],
+  "license": "Apache-2.0 AND MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 2,
+  "files": [
+    {
+      "path": "fractal-noise.html",
+      "target": "compositions/fractal-noise.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "lib/shaders.iife.js",
+      "target": "compositions/lib/shaders.iife.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "target": "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/fractal-noise.mp4"
+  }
+}

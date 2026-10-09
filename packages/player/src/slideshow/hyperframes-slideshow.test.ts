@@ -1750,6 +1750,14 @@ describe("slideshow parts (pure)", () => {
     expect(parts.player).toBe(root.querySelector("hyperframes-player"));
     expect(parts.manifest.slides.map((s) => s.sceneId)).toEqual(["intro"]);
   });
+
+  it("classifies a malformed hotspot as a malformed island before slideshow initialization", () => {
+    const root = subtree(`<hyperframes-player></hyperframes-player>
+      <script type="application/hyperframes-slideshow+json">${JSON.stringify({
+        slides: [{ sceneId: "intro", startTime: 0, endTime: 1, hotspots: [null] }],
+      })}</script>`);
+    expect(locateSlideshowParts(root)).toEqual({ kind: "incomplete", reason: "malformed-island" });
+  });
 });
 
 // ---------------------------------------------------------------------------

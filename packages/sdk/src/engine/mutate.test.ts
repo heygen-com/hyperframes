@@ -914,6 +914,52 @@ describe("setElementStyles key normalization", () => {
   });
 });
 
+describe("setElementStyles unquoted CSS escapes", () => {
+  it.each([
+    [
+      "semicolon",
+      String.raw`--label: alpha\;beta; width: 120px; color: red`,
+      String.raw`alpha\;beta`,
+    ],
+    [
+      "opening parenthesis",
+      String.raw`--label: alpha\(beta; width: 120px; color: red`,
+      String.raw`alpha\(beta`,
+    ],
+    [
+      "double quote",
+      String.raw`--label: alpha\"beta; width: 120px; color: red`,
+      String.raw`alpha\"beta`,
+    ],
+    [
+      "single quote",
+      String.raw`--label: alpha\'beta; width: 120px; color: red`,
+      String.raw`alpha\'beta`,
+    ],
+  ])("preserves an escaped %s and the following declarations", (_name, style, label) => {
+    const parsed = parseMutable('<div data-hf-id="hf-x" data-hf-root></div>');
+    const el = parsed.document.querySelector('[data-hf-id="hf-x"]');
+    if (!el) throw new Error("missing fixture element");
+    el.setAttribute("style", style);
+    expect(getElementStyles(el)).toMatchObject({ "--label": label, width: "120px", color: "red" });
+    setElementStyles(el, { color: "blue" });
+    expect(getElementStyles(el)).toMatchObject({ "--label": label, width: "120px", color: "blue" });
+  });
+
+  it("treats the semicolon after an escaped backslash as a declaration boundary", () => {
+    const parsed = parseMutable('<div data-hf-id="hf-x" data-hf-root></div>');
+    const el = parsed.document.querySelector('[data-hf-id="hf-x"]');
+    if (!el) throw new Error("missing fixture element");
+    el.setAttribute("style", String.raw`--label: alpha\\; width: 120px; color: red`);
+    setElementStyles(el, { color: "blue" });
+    expect(getElementStyles(el)).toMatchObject({
+      "--label": String.raw`alpha\\`,
+      width: "120px",
+      color: "blue",
+    });
+  });
+});
+
 // ─── setVariableValue ─────────────────────────────────────────────────────────
 
 describe("setVariableValue", () => {

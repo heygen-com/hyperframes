@@ -168,6 +168,9 @@ export function applyPatchesToDocument(
   for (const patch of patches) {
     const p = parsePath(patch.path);
     if (!p) continue;
+    if (p.id && patch.path.startsWith("/elements/")) {
+      p.id = p.id.replace(/~1/g, "/").replace(/~0/g, "~");
+    }
     applyOne(parsed, patch, p);
   }
 }

@@ -194,7 +194,13 @@ export async function runAssetImportMany(
   const slots: (AssetImportResult | null)[] = refs.map((r) =>
     reuseExisting(fileKey, r.nodeId, opts, version, deps, description, entity),
   );
-  const missIndexes = slots.flatMap((s, i) => (s === null ? [i] : []));
+  const nodeIndexes = new Map<string, number>();
+  const missIndexes: number[] = [];
+  for (const [i, ref] of refs.entries()) {
+    if (nodeIndexes.has(ref.nodeId)) continue;
+    nodeIndexes.set(ref.nodeId, i);
+    if (slots[i] === null) missIndexes.push(i);
+  }
   try {
     if (missIndexes.length > 0) {
       const missNodeIds = missIndexes.map((i) => refs[i]!.nodeId);
@@ -231,9 +237,11 @@ export async function runAssetImportMany(
     // next import.
     safeRegenerateIndex(deps.projectDir);
   }
-  return slots.map((s, i) => {
-    if (!s) throw new Error(`figma asset import produced no result for "${refInputs[i]}"`);
-    return s;
+  return refs.map((ref, i) => {
+    const firstIndex = nodeIndexes.get(ref.nodeId) ?? i;
+    const result = slots[firstIndex];
+    if (!result) throw new Error(`figma asset import produced no result for "${refInputs[i]}"`);
+    return firstIndex === i ? result : { ...result, reused: true };
   });
 }
 
