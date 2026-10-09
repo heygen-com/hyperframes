@@ -17,6 +17,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
+import { TRANSCRIPT_FILE } from "./transcriptFile.js";
 import type { Word } from "./normalize.js";
 import type { TranscribeProgress, TranscribeResult } from "./transcribe.js";
 
@@ -330,7 +331,7 @@ export function transcribeWithParakeet(
 
 export function writeParakeetTranscript(dir: string, words: Word[]): TranscribeResult {
   mkdirSync(dir, { recursive: true });
-  const transcriptPath = join(dir, "transcript.json");
+  const transcriptPath = join(dir, TRANSCRIPT_FILE);
   writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
   const durationSeconds = words.length > 0 ? words[words.length - 1]!.end : 0;
   return {

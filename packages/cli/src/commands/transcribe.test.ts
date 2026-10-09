@@ -7,7 +7,10 @@ import {
   writeFileSync,
   readFileSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
+  statSync,
+  symlinkSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -698,11 +701,38 @@ Render video. Built for agents.
       (dir: string) => join(dir, "narration.wav", "out.srt"),
       "Output folder not found",
     ],
-    ["the input media", (dir: string) => join(dir, "narration.wav"), "--output would overwrite"],
+    ["the input media", (dir: string) => join(dir, "narration.wav"), "would overwrite"],
+    ["the transcript it writes", (dir: string) => join(dir, "transcript.json"), "would overwrite"],
     [
-      "the transcript it writes",
-      (dir: string) => join(dir, "transcript.json"),
-      "--output would overwrite",
+      "a link to the input media",
+      (dir: string) => {
+        symlinkSync(join(dir, "narration.wav"), join(dir, "link.wav"));
+        return join(dir, "link.wav");
+      },
+      "would overwrite",
+    ],
+    [
+      "the transcript through a linked folder",
+      (dir: string) => {
+        symlinkSync(dir, join(dir, "alias"), "dir");
+        return join(dir, "alias", "transcript.json");
+      },
+      "would overwrite",
+    ],
+    [
+      "the input media by its real path",
+      (dir: string) => join(realpathSync(dir), "narration.wav"),
+      "would overwrite",
+    ],
+    [
+      "the transcript by its real path",
+      (dir: string) => join(realpathSync(dir), "transcript.json"),
+      "would overwrite",
+    ],
+    [
+      "the transcript in other letter case",
+      (dir: string) => join(dir, "Transcript.json"),
+      "would overwrite",
     ],
   ])("fails --output naming %s before transcribing", async (_name, output, error) => {
     const { dir, input } = dummyAudio();
@@ -716,6 +746,58 @@ Render video. Built for agents.
 
     expect(transcribeMock).not.toHaveBeenCalled();
     expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+  });
+
+  it("refuses --output naming the input media in other letter case on any disk", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const output = join(dir, "NARRATION.WAV");
+    // Case-insensitive disks alias the name to the media (same inode); case-sensitive ones do not.
+    if (existsSync(output)) expect(statSync(output).ino).toBe(statSync(input).ino);
+    else expect(existsSync(output)).toBe(false);
+
+    await expect(
+      transcribeCmd.run!({
+        args: { input, json: true, engine: "whisper", to: "srt", output },
+      } as never),
+    ).rejects.toThrow(CliRuntimeError);
+
+    expect(transcribeMock).not.toHaveBeenCalled();
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("would overwrite"),
+    });
+    expect(readFileSync(input, "utf8")).toBe("not-real-audio");
+  });
+
+  it("refuses an export whose default caption path is its own input", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    const input = join(dir, "transcript.srt");
+    const srt = "1\n00:00:00,000 --> 00:00:01,000\n<i>Hello</i>\n";
+    writeFileSync(input, srt);
+
+    await expect(
+      transcribeCmd.run!({ args: { input, json: true, to: "srt" } } as never),
+    ).rejects.toThrow(CliRuntimeError);
+
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("would overwrite"),
+    });
+    expect(readFileSync(input, "utf8")).toBe(srt);
+  });
+
+  it("fails a trailing -o with no path before transcribing", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+
+    await expect(
+      runCommand(transcribeCmd, { rawArgs: [input, "--to", "srt", "--json", "-o"] }),
+    ).rejects.toThrow(CliRuntimeError);
+
+    expect(transcribeMock).not.toHaveBeenCalled();
+    expect(lastJson()).toEqual({ ok: false, error: "--output needs a file path" });
   });
 
   it("says the transcript was saved when the caption file cannot be written", async () => {

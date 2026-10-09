@@ -4,7 +4,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import {
   PARAKEET_INSTALL_COMMAND,
   PARAKEET_LANGUAGES,
@@ -29,10 +29,11 @@ export const examples: Example[] = [
     "hyperframes transcribe transcript.json --to vtt --preserve-cues",
   ],
 ];
-import { resolve, join, extname, dirname } from "node:path";
+import { resolve, join, extname, dirname, basename } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
+import { TRANSCRIPT_FILE } from "../whisper/transcriptFile.js";
 import type { Word } from "../whisper/normalize.js";
 import type { ParakeetRunner } from "../whisper/parakeetRunner.js";
 
@@ -217,8 +218,9 @@ function parseSidecar(
   const to = parseExportFormat(args.to, args.json);
   if (!to) return undefined;
   const outPath = resolve(args.output ?? join(dir, `transcript.${to}`));
-  const keep = [inputPath, join(dir, "transcript.json")];
-  const problem = args.output && outputProblem(args.output, outPath, to, keep);
+  const problem =
+    (args.output !== undefined && outputProblem(args.output, outPath, to)) ||
+    overwriteProblem(outPath, [inputPath, join(dir, TRANSCRIPT_FILE)]);
   if (problem) failWith(problem, args.json);
   return { to, outPath, preserveCues: args["preserve-cues"] };
 }
@@ -228,8 +230,8 @@ function outputProblem(
   output: string,
   outPath: string,
   to: CaptionExportFormat,
-  keep: string[],
 ): string | undefined {
+  if (!output) return "--output needs a file path";
   const folder = dirname(outPath);
   if (!existsSync(folder) || !statSync(folder).isDirectory()) {
     return `Output folder not found: ${folder}`;
@@ -237,9 +239,26 @@ function outputProblem(
   if (/[\\/]$/.test(output) || (existsSync(outPath) && statSync(outPath).isDirectory())) {
     return `--output is a folder; give a file path such as ${join(outPath, `transcript.${to}`)}`;
   }
-  // ponytail: path compare only; a case-insensitive disk or a symlink can still alias.
-  if (keep.includes(outPath)) return `--output would overwrite ${outPath}; choose another file`;
   return undefined;
+}
+
+function overwriteProblem(outPath: string, keep: string[]): string | undefined {
+  const hit = keep.find((file) => sameFile(outPath, file));
+  return hit && `The caption file would overwrite ${hit}; choose another file with --output`;
+}
+
+/** Whether writing `out` replaces `file`, through links, folder aliases or letter case. */
+function sameFile(out: string, file: string): boolean {
+  if (existsSync(out) && existsSync(file)) {
+    const [a, b] = [statSync(out, { bigint: true }), statSync(file, { bigint: true })];
+    return a.dev === b.dev && a.ino === b.ino;
+  }
+  // Either may not exist yet; letter case is ignored so a case-insensitive disk cannot alias.
+  const realDir = (p: string) =>
+    existsSync(dirname(p)) ? realpathSync.native(dirname(p)) : dirname(p);
+  return (
+    realDir(out) === realDir(file) && basename(out).toLowerCase() === basename(file).toLowerCase()
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -256,7 +275,7 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
 
   if (words.length === 0) exitNoWords(json);
 
-  const outPath = join(dir, "transcript.json");
+  const outPath = join(dir, TRANSCRIPT_FILE);
   writeFileSync(outPath, JSON.stringify(words, null, 2));
   patchCaptionHtml(dir, words);
 
