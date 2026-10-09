@@ -2602,6 +2602,20 @@ function borderPx(value: string): number {
   return Number.parseFloat(value) || 0;
 }
 
+function layoutBoxes(
+  element: HTMLElement,
+  computed: CSSStyleDeclaration,
+): { cssWidth: number; cssHeight: number } | null {
+  const rect = element.getBoundingClientRect();
+  const boxWidth = resolvedLayoutSize(element.offsetWidth, rect.width);
+  const boxHeight = resolvedLayoutSize(element.offsetHeight, rect.height);
+  if (boxWidth <= 0 || boxHeight <= 0) return null;
+  return {
+    cssWidth: boxWidth - borderPx(computed.borderLeftWidth) - borderPx(computed.borderRightWidth),
+    cssHeight: boxHeight - borderPx(computed.borderTopWidth) - borderPx(computed.borderBottomWidth),
+  };
+}
+
 function resolvedLayoutSize(primary: number, fallback: number): number {
   return Math.max(0, Math.round(primary > 0 ? primary : fallback));
 }
@@ -2630,19 +2644,13 @@ function updateCanvasLayout(
   canvas.style.opacity = entry.sourceOpacityForCanvas;
   canvas.style.visibility = entry.sourceVisibleForCanvas ? "visible" : "hidden";
 
-  const rect = element.getBoundingClientRect();
-  const cssWidth =
-    resolvedLayoutSize(element.offsetWidth, rect.width) -
-    borderPx(computed.borderLeftWidth) -
-    borderPx(computed.borderRightWidth);
-  const cssHeight =
-    resolvedLayoutSize(element.offsetHeight, rect.height) -
-    borderPx(computed.borderTopWidth) -
-    borderPx(computed.borderBottomWidth);
-  if (cssWidth <= 0 || cssHeight <= 0) {
+  const size = layoutBoxes(element, computed);
+  if (!size) {
     canvas.style.display = "none";
     return null;
   }
+  const { cssWidth, cssHeight } = size;
+  if (cssWidth <= 0 || cssHeight <= 0) return null;
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
   const width = Math.round(cssWidth * pixelRatio);
   const height = Math.round(cssHeight * pixelRatio);
