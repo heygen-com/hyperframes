@@ -533,12 +533,44 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  it("installs again instead of reusing an empty cached executable", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId }) => writeStagedInstall(cacheDir, buildId, "fresh"),
+    });
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+      const cached = await ensureBrowser({ force: true });
+      writeFileSync(cached.executablePath, "");
+      const { getInstalledBrowsers } = await import("@puppeteer/browsers");
+      vi.mocked(getInstalledBrowsers).mockResolvedValue([
+        {
+          browser: "chrome-headless-shell",
+          buildId: CHROME_VERSION,
+          platform: "linux",
+          executablePath: cached.executablePath,
+        } as never,
+      ]);
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const again = await ensureBrowser({ preferManagedChrome: true });
+
+      expect(again.source).toBe("download");
+      expect(readFileSync(again.executablePath, "utf8")).toBe("fresh");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("restores the previous version when the staged install cannot be moved in", async () => {
     const home = useRealCacheHome();
     let stageNothing = false;
     installPuppeteerBrowsersMock({
-      installImpl: async ({ cacheDir, buildId }) => {
+      installImpl: async ({ cacheDir, buildId, logger }) => {
         if (!stageNothing) return writeStagedInstall(cacheDir, buildId, "old");
+        logger?.("puppeteer:browsers:fileUtil")?.(
+          "tar.exe extraction failed: before PowerShell worked",
+        );
         // A real executable passes the unzip check, but its version dir is gone, so only the move fails.
         const elsewhere = writeStagedInstall(join(cacheDir, "elsewhere"), buildId, "new");
         return {
@@ -552,7 +584,9 @@ describe("findBrowser — cache resolution", () => {
       const liveBinary = (await ensureBrowser({ force: true })).executablePath;
       stageNothing = true;
 
-      await expect(ensureBrowser({ force: true })).rejects.toThrow("HYPERFRAMES_BROWSER_PATH");
+      const failure = await ensureBrowser({ force: true }).catch((err: unknown) => String(err));
+      expect(failure).toContain("HYPERFRAMES_BROWSER_PATH");
+      expect(failure).not.toContain("Unzip errors");
       expect(readFileSync(liveBinary, "utf8")).toBe("old");
     } finally {
       rmSync(home, { recursive: true, force: true });

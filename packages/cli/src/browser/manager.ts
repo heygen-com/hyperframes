@@ -378,7 +378,7 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
       b.buildId === managedChromeVersion() &&
       b.platform === hostPlatform,
   );
-  if (match && existsSync(match.executablePath)) {
+  if (match && isUsableExecutable(match.executablePath)) {
     return { result: { executablePath: match.executablePath, source: "cache" } };
   }
   if (match) {
@@ -499,7 +499,7 @@ function findFromPuppeteerCache(): BrowserResult | undefined {
     // keep them aligned. If puppeteer ever changes the on-disk layout the two
     // need to move together.
     const binary = join(PUPPETEER_CACHE_DIR, version, ...executable);
-    if (existsSync(binary)) {
+    if (isUsableExecutable(binary)) {
       return { executablePath: binary, source: "cache" };
     }
   }
@@ -781,7 +781,7 @@ function browserPathHintForPlatform(): string {
 
 function wrapDownloadFailureWithBrowserPathHint(
   cause: unknown,
-  unzipLog: readonly string[] = [],
+  unzipLog: readonly string[],
 ): Error {
   const original = normalizeErrorMessage(cause);
   const unzipErrors = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
@@ -844,6 +844,7 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
       ),
     );
     assertExecutableUnpacked(stagingDir, staged.executablePath);
+    unzipLog = [];
     return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
   } catch (err) {
     throw wrapDownloadFailureWithBrowserPathHint(err, unzipLog);
@@ -853,10 +854,24 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
 }
 
 // install() returns without checking that the unzip produced the executable.
+function executableState(path: string): "usable" | "is missing" | "is empty" | "is not a file" {
+  const stat = statSync(path, { throwIfNoEntry: false });
+  if (!stat) return "is missing";
+  if (!stat.isFile()) return "is not a file";
+  return stat.size > 0 ? "usable" : "is empty";
+}
+
+function isUsableExecutable(path: string): boolean {
+  try {
+    return executableState(path) === "usable";
+  } catch {
+    return false;
+  }
+}
+
 function assertExecutableUnpacked(stagingDir: string, executablePath: string): void {
-  const stat = statSync(executablePath, { throwIfNoEntry: false });
-  if (stat?.isFile() && stat.size > 0) return;
-  const state = !stat ? "is missing" : stat.isFile() ? "is empty" : "is not a file";
+  const state = executableState(executablePath);
+  if (state === "usable") return;
   throw new Error(
     `the archive downloaded, but ${relative(stagingDir, executablePath)} ${state} after unzipping.`,
   );
