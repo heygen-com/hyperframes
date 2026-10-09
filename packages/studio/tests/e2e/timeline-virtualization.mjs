@@ -326,7 +326,7 @@ try {
     BASE_STUDIO_URL &&
     !attempts.some((attempt) => attempt.passed) &&
     attempts.every((attempt) => attempt.passingRuns >= budgets.requiredPassingRuns)
-      ? await measureAgainstBase({ page, client }, budgets, limits)
+      ? await measureAgainstBase(budgets, limits)
       : null;
 
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
@@ -415,14 +415,14 @@ async function collectMeasuredRuns(page, warmupRuns, measuredRuns) {
   return runs;
 }
 
-/** Head and base in alternating blocks, each in its own Chrome, so runner load in one stretch hits both. */
-async function measureAgainstBase(head, budgets, limits) {
-  const { browser: baseBrowser } = await launchStudioChrome();
+/** Head and base each freshly opened in its own Chrome, then measured in alternating blocks on this machine. */
+async function measureAgainstBase(budgets, limits) {
+  const head = await openWarmStudio(STUDIO_URL, budgets);
+  const base = await openWarmStudio(BASE_STUDIO_URL, budgets).catch(async (error) => {
+    await head.browser.close();
+    throw error;
+  });
   try {
-    const base = await openStudio(baseBrowser, BASE_STUDIO_URL);
-    await loadFixtureAndWait(base.page, ELEMENT_COUNT, PROFILE);
-    await assertRowVirtualization(base.page, budgets);
-    await collectMeasuredRuns(base.page, budgets.warmupRuns, 0);
     const pages = { head: head.page, base: base.page };
     const runs = { head: [], base: [] };
     for (let round = 0; round < BASE_COMPARISON_ROUNDS; round += 1) {
@@ -434,7 +434,21 @@ async function measureAgainstBase(head, budgets, limits) {
     logAgainstBase(verdict);
     return { rounds: BASE_COMPARISON_ROUNDS, ...verdict, runs };
   } finally {
-    await baseBrowser.close();
+    await Promise.all([head.browser.close(), base.browser.close()]);
+  }
+}
+
+async function openWarmStudio(url, budgets) {
+  const { browser } = await launchStudioChrome();
+  try {
+    const { page } = await openStudio(browser, url);
+    await loadFixtureAndWait(page, ELEMENT_COUNT, PROFILE);
+    await assertRowVirtualization(page, budgets);
+    await collectMeasuredRuns(page, budgets.warmupRuns, 0);
+    return { browser, page };
+  } catch (error) {
+    await browser.close();
+    throw error;
   }
 }
 
