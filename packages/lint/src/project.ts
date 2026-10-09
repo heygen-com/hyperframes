@@ -193,6 +193,7 @@ export async function lintProject(
   const rootResult = await lintHyperframeHtml(rootHtml, {
     ...hostOptions,
     filePath: indexPath,
+    compSrcPath: rootFile,
     externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
   });
   results.push({ file: rootFile, result: rootResult, contentHash: contentDigest(rootHtml) });
@@ -234,6 +235,7 @@ export async function lintProject(
         ...hostOptions,
         filePath,
         isSubComposition: true,
+        compSrcPath,
         externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
       });
       results.push({

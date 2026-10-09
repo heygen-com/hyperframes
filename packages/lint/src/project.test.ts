@@ -902,3 +902,38 @@ describe("audio-aware project rules", () => {
     });
   });
 });
+
+describe("sub-composition files", () => {
+  const codesIn = async (project: string, file: string) =>
+    (await lintProject(project)).results
+      .find((result) => result.file === file)
+      ?.result.findings.map((finding) => finding.code) ?? [];
+
+  it("resolves a scene's ../assets/ path from its own folder, as preview and render do", async () => {
+    const project = makeProject(validHtml(), {
+      "scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <img src="../assets/logo.png" alt=""><img src="../../outside.png" alt="">
+  </div>
+</template>`,
+    });
+    mkdirSync(join(project, "assets"));
+    writeFileSync(join(project, "assets", "logo.png"), "");
+    const finding = (await lintProject(project)).results
+      .find((result) => result.file === "compositions/scene.html")
+      ?.result.findings.find((f) => f.code === "invalid_parent_traversal_in_asset_path");
+    expect(finding?.message).toContain("1 asset path(s)");
+    expect(finding?.message).toContain("../../");
+  });
+
+  it("does not stop the check over a scene without its own size", async () => {
+    const project = makeProject(validHtml(), {
+      "scene.html": `<template id="scene-template">
+  <div data-composition-id="scene"><p>Hi</p></div>
+</template>`,
+    });
+    expect(await codesIn(project, "compositions/scene.html")).not.toContain(
+      "root_missing_dimensions",
+    );
+  });
+});

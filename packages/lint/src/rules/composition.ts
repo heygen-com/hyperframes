@@ -14,6 +14,7 @@ import {
 import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
+import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import {
   readAuthoredDurationSeconds,
   resolveMediaDuration,
@@ -635,31 +636,21 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
-  // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
-  // href, inline-style url(), and <style> url() asset references on
-  // compositions. Sub-compositions live under compositions/ but are served
-  // with the project root as their base URL, so any `../`-traversing path
-  // climbs above the project root and 404s in Studio preview. Renders
-  // tolerate it because the server-side bundler rewrites `../foo` against
-  // each sub-composition's source path; the runtime now mirrors that fallback
-  // (see rewriteSubCompositionAssetPaths in runtime/compositionLoader.ts), but
-  // the authoring-time signal is still wrong — flag it at lint time so the
-  // baked path is plain root-relative and matches what the bundler emits.
-  //
-  // Mirrors the runtime fallback's surface: `[src]` / `[href]` attribute
-  // values, `[style]` inline url(), and `<style>` block url() references.
-  // Skips absolute URLs (http(s)://, //, data:, /-prefixed root-relative),
-  // hash anchors, and plain relative paths (`assets/x.mp4`) — only `../`
-  // traversal is flagged. Subsumes the older `../capture/`-specific rule.
+  // invalid_parent_traversal_in_asset_path — a `../` path in src, href or a CSS url() that leaves
+  // the project once resolved from the file's own folder, as the bundler, producer and runtime
+  // resolve it. "../assets/x" from compositions/ stays inside and passes.
   // fallow-ignore-next-line complexity
   ({ tags, styles, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 
     const offenders: string[] = [];
+    const fileDir = (options.compSrcPath ?? "index.html").split("/").slice(0, -1).join("/");
     const collect = (value: string | null) => {
       if (!value) return;
       const trimmed = value.trim();
       if (!trimmed.startsWith("../") && trimmed !== "..") return;
+      const path = trimmed.split(/[?#]/, 1)[0] ?? "";
+      if (isPathInside(`/project/${fileDir}/${path}`, "/project")) return;
       offenders.push(trimmed);
     };
 
@@ -697,9 +688,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         severity: "error",
         message:
           `Found ${offenders.length} asset path(s) traversing above the project root with "../" ` +
-          `(${prefixSummary}). Renders rewrite this against each sub-composition's source path, but Studio preview and other live consumers resolve against the project root and 404.`,
+          `(${prefixSummary}), resolved from this file's folder. Nothing outside the project is served, so they 404 in preview and render.`,
         fixHint:
-          'Use plain root-relative paths (e.g. "assets/...", "capture/...", "fonts/...") — compositions are served with the project root as their base URL, so paths must be root-relative, not relative to the compositions/ directory.',
+          'Point the path at a file inside the project: from compositions/scene.html, "../assets/x.png" and "assets/x.png" both reach the project\'s assets folder.',
       },
     ];
   },

@@ -1347,65 +1347,51 @@ describe("composition rules", () => {
   describe("invalid_parent_traversal_in_asset_path", () => {
     const RULE_CODE = "invalid_parent_traversal_in_asset_path";
 
-    it("errors when an <img> src uses ../capture/", async () => {
-      const html = `<html><body>
-        <div data-composition-id="x">
-          <img src="../capture/assets/logo.svg" alt="logo">
-        </div>
-      </body></html>`;
-      const result = await lintHyperframeHtml(html, {
-        filePath: "/project/compositions/scene.html",
-      });
-      const finding = result.findings.find((f) => f.code === RULE_CODE);
-      expect(finding).toBeDefined();
+    const lintAt = (compSrcPath: string, body: string) =>
+      lintHyperframeHtml(`<html><body><div data-composition-id="x">${body}</div></body></html>`, {
+        compSrcPath,
+      }).then((result) => result.findings.find((f) => f.code === RULE_CODE));
+
+    it("errors when the root file's <img> src climbs out of the project with ../capture/", async () => {
+      const finding = await lintAt("index.html", `<img src="../capture/assets/logo.svg" alt="">`);
       expect(finding?.severity).toBe("error");
       expect(finding?.message).toContain("../capture/");
     });
 
-    it("errors when a <video> src uses ../assets/ (HF#1698 shape)", async () => {
-      const html = `<html><body>
-        <div data-composition-id="x">
-          <video src="../assets/clip.mp4" muted></video>
-        </div>
-      </body></html>`;
-      const result = await lintHyperframeHtml(html, {
-        filePath: "/project/compositions/scene.html",
-      });
-      const finding = result.findings.find((f) => f.code === RULE_CODE);
-      expect(finding).toBeDefined();
-      expect(finding?.severity).toBe("error");
-      expect(finding?.message).toContain("../assets/");
+    it("accepts ../assets/ from compositions/scene.html: it resolves to the project's assets/", async () => {
+      expect(
+        await lintAt("compositions/scene.html", `<video src="../assets/clip.mp4" muted></video>`),
+      ).toBeUndefined();
     });
 
-    it("errors when a <video> src uses ../../assets/ from a nested compositions/frames/ file", async () => {
-      const html = `<html><body>
-        <div data-composition-id="x">
-          <video src="../../assets/clip.mp4" muted></video>
-        </div>
-      </body></html>`;
-      const result = await lintHyperframeHtml(html, {
-        filePath: "/project/compositions/frames/scene.html",
-      });
-      const finding = result.findings.find((f) => f.code === RULE_CODE);
-      expect(finding).toBeDefined();
+    it("errors when ../../assets/ from compositions/scene.html climbs out of the project", async () => {
+      const finding = await lintAt(
+        "compositions/scene.html",
+        `<video src="../../assets/clip.mp4" muted></video>`,
+      );
       expect(finding?.message).toContain("../../assets/");
     });
 
-    it("errors when a <link> href uses ../fonts/", async () => {
+    it("resolves from a nested compositions/frames/ file's own folder", async () => {
+      const nested = "compositions/frames/scene.html";
+      expect(
+        await lintAt(nested, `<video src="../../assets/clip.mp4" muted></video>`),
+      ).toBeUndefined();
+      expect(await lintAt(nested, `<img src="../../../x.png" alt="">`)).toBeDefined();
+    });
+
+    it("errors when a <link> href climbs out of the project with ../fonts/", async () => {
       const html = `<html><head>
         <link rel="stylesheet" href="../fonts/brand.css">
       </head><body>
         <div data-composition-id="x"></div>
       </body></html>`;
-      const result = await lintHyperframeHtml(html, {
-        filePath: "/project/compositions/scene.html",
-      });
+      const result = await lintHyperframeHtml(html, { compSrcPath: "index.html" });
       const finding = result.findings.find((f) => f.code === RULE_CODE);
-      expect(finding).toBeDefined();
       expect(finding?.message).toContain("../fonts/");
     });
 
-    it("errors when a CSS url() uses ../assets/ in a <style> block (counts all occurrences)", async () => {
+    it("errors when CSS url()s in a <style> block climb out of the project (counts all occurrences)", async () => {
       const html = `<html><body>
         <style>
           @font-face { font-family: 'Brand'; src: url('../fonts/Brand.woff2'); }
@@ -1413,25 +1399,16 @@ describe("composition rules", () => {
         </style>
         <div data-composition-id="x"></div>
       </body></html>`;
-      const result = await lintHyperframeHtml(html, {
-        filePath: "/project/compositions/scene.html",
-      });
+      const result = await lintHyperframeHtml(html, { compSrcPath: "index.html" });
       const finding = result.findings.find((f) => f.code === RULE_CODE);
-      expect(finding).toBeDefined();
       expect(finding?.message).toContain("2 asset path(s)");
     });
 
-    it("errors when an inline style url() uses ../assets/", async () => {
-      const html = `<html><body>
-        <div data-composition-id="x">
-          <div style="background-image: url('../assets/hero.png');"></div>
-        </div>
-      </body></html>`;
-      const result = await lintHyperframeHtml(html, {
-        filePath: "/project/compositions/scene.html",
-      });
-      const finding = result.findings.find((f) => f.code === RULE_CODE);
-      expect(finding).toBeDefined();
+    it("errors when an inline style url() climbs out of the project", async () => {
+      const finding = await lintAt(
+        "index.html",
+        `<div style="background-image: url('../assets/hero.png');"></div>`,
+      );
       expect(finding?.message).toContain("../assets/");
     });
 
