@@ -1,6 +1,6 @@
 ---
 title: "Count Up"
-description: "A token-native stat counter that eases between values and lands with a restrained scale pulse."
+description: "A token-native stat counter that eases between values, counting up or down, and lands with a restrained scale pulse."
 mode: "frame"
 ---
 
@@ -12,10 +12,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionId="count-up"
   compositionSrc="compositions/components/count-up.html"
   title="Count Up"
-  description="A token-native stat counter that eases between values and lands with a restrained scale pulse."
+  description="A token-native stat counter that eases between values, counting up or down, and lands with a restrained scale pulse."
   variables={[{"id":"start","type":"number","role":"content","label":"Start value","description":"First value shown by the count.","default":0,"step":1},{"id":"end","type":"number","role":"content","label":"End value","description":"Final value where the count lands.","default":100,"step":1},{"id":"prefix","type":"string","role":"content","label":"Prefix","description":"Optional text shown before the value.","default":""},{"id":"suffix","type":"string","role":"content","label":"Suffix","description":"Optional text shown after the value.","default":"%"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the count.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"glow","type":"boolean","role":"style","label":"Glow","description":"Optional soft accent glow under the count. Off by default.","default":false},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the landed value holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":297}}
-  attribution={{"path":"registry/components/count-up","tags":["motion-primitive","proof","stats","counter","number","deterministic"]}}
+  attribution={{"path":"registry/components/count-up","tags":["motion-primitive","proof","stats","counter","number","countdown","deterministic"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/count-up/count-up.html"
 >
@@ -369,7 +369,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `proof` `stats` `counter` `number` `deterministic`.
+Tagged `motion-primitive` `proof` `stats` `counter` `number` `countdown` `deterministic`.
 
 ## Related topics
 

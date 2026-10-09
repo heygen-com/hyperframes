@@ -1,0 +1,104 @@
+---
+title: "Gabor Noise"
+description: "Grey streaky noise drifts across the frame like a moving fingerprint. A WebGPU shader from the Shaders library (shaders.com, MIT)."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/gabor-noise.json"
+  compositionId="gabor-noise"
+  compositionSrc="compositions/gabor-noise.html"
+  title="Gabor Noise"
+  description="Grey streaky noise drifts across the frame like a moving fingerprint. A WebGPU shader from the Shaders library (shaders.com, MIT)."
+  variables={[]}
+  meta={{"duration":2,"width":1920,"height":1080,"category":"Texture","badge":"Stable","codeLines":31}}
+  attribution={{"path":"registry/blocks/gabor-noise","tags":["webgpu","webgpu-shader","background","texture","noise","monochrome"]}}
+  video="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gabor-noise.mp4"
+  webgpu
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/gabor-noise/gabor-noise.html"
+>
+
+<CatalogSlot slot="code">
+
+```html gabor-noise.html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      [data-composition-id="gabor-noise"] canvas[data-shader] {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="gabor-noise"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+      data-requires-webgpu
+      data-no-timeline
+      style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #000"
+    >
+      <canvas data-shader="GaborNoise" width="1920" height="1080"></canvas>
+    </div>
+    <script src="lib/shaders.iife.js"></script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add gabor-noise" item="gabor-noise" />
+
+That writes `compositions/gabor-noise.html`, plus 2 supporting files under `compositions/lib/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 2 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="gabor-noise"
+  data-composition-src="compositions/gabor-noise.html"
+  data-start="0"
+  data-duration="2"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `webgpu` `webgpu-shader` `background` `texture` `noise` `monochrome`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

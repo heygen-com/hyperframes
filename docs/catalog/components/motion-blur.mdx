@@ -14,7 +14,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   title="Motion Blur"
   description="After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear"
   variables={[]}
-  meta={{"category":"Effects","badge":"Stable","codeLines":406}}
+  meta={{"category":"Effects","badge":"Stable","codeLines":767}}
   attribution={{"path":"registry/components/motion-blur","tags":["effect","motion-blur","shutter","after-effects","velocity","animation"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/motion-blur/motion-blur.html"
@@ -58,7 +58,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
        No single copy ever exceeds 1/N, so a moving edge resolves as a
        staircase of ghosts behind a solid frame-time instance. The group
        carries the element's own opacity, so a beat that moves and fades at
-       once fades its smear with it.
+       once fades its smear with it. With `sharp: 0` the element is hidden
+       while it moves instead, leaving only the shutter average.
     4. When every sampled transform collapses to the current one (element at
        rest), the group is hidden so the element renders sharp.
 
@@ -136,8 +137,14 @@ import { InstallCommand } from "/snippets/install-command.jsx";
                        target's own composition root, else 30). Pass it
                        explicitly when rendering with an fps override
                        (`hyperframes render --fps`).
+    sharp            — 1 (default) paints the element itself, crisp, over its
+                       smear; 0 hides it while it moves, leaving only the
+                       shutter average: a soft blur with no frame-time edge.
+                       It hides through a marker attribute, never the
+                       element's own visibility, so autoAlpha still works
+                       (an inline visibility !important on it wins).
 
-  A key that is none of the four, or a value that is not a finite number, is
+  A key that is none of the five, or a value that is not a finite number, is
   refused by name rather than read as defaults. Both halves matter: a
   non-numeric angle hides the smear, and a non-numeric phase seeks every copy
   to NaN, which parks them at the timeline's start.
@@ -161,11 +168,23 @@ import { InstallCommand } from "/snippets/install-command.jsx";
     var POLL_MS = 32;
     var POLL_TICKS = 250;
     var SWEEP_SELECTOR = "[" + SWEEP_ATTR + "]";
-    var OPTION_KEYS = ["shutterAngle", "shutterPhase", "samplesPerFrame", "fps"];
+    var OPTION_KEYS = ["shutterAngle", "shutterPhase", "samplesPerFrame", "fps", "sharp"];
 
     // A copy is a deep clone, so the attribute rides along on the root AND on every marked
     // descendant. Any one left behind is swept as a target of its own, which clones again.
     var COPY_STRIP = [SWEEP_ATTR, "data-composition-id", "data-fps"];
+
+    // sharp 0 hides a moving target through this marker rather than its own visibility,
+    // which the author's timeline (autoAlpha) may be writing too.
+    var HIDE_ATTR = "data-hf-motion-blur-hiding";
+
+    function installHideRule() {
+      if (document.getElementById("hf-mb-hide")) return;
+      var rule = document.createElement("style");
+      rule.id = "hf-mb-hide";
+      rule.textContent = "[" + HIDE_ATTR + "]{visibility:hidden!important}";
+      (document.head || document.documentElement).appendChild(rule);
+    }
 
     function stripAttrs(el) {
       for (var a = 0; a < COPY_STRIP.length; a++) el.removeAttribute(COPY_STRIP[a]);
@@ -253,6 +272,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       var shutterAngle = numOption(opts.shutterAngle, 720);
       var shutterPhase = numOption(opts.shutterPhase, -360);
       var requestedSamples = numOption(opts.samplesPerFrame, 16);
+      var sharp = opts.sharp !== 0;
+      if (!sharp) installHideRule();
       var samples = Number.isFinite(requestedSamples)
         ? Math.max(2, Math.min(64, Math.round(requestedSamples)))
         : 16;
@@ -275,21 +296,23 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       var copies = samples + 1;
       var alpha = String(1 / samples);
 
-      // A copy is styled by nothing that selected the original: dropping the id also
-      // drops every `#id` rule that gave it size, colour and font. So each copy carries
-      // its own resolved style inline. Chrome returns "" for a computed style's cssText,
-      // so the declarations are enumerated rather than taken wholesale.
-      function resolvedStyles(source, out) {
+      // A copy loses the `#id` rules that styled the original, so it carries its resolved style inline
+      // (enumerated: Chrome returns "" for a computed cssText). Visibility is not frozen: the root
+      // follows the group each frame, so a target hidden at attach still smears.
+      function resolvedStyles(source, out, parentVisibility) {
         var cs = getComputedStyle(source);
         var text = "";
         for (var i = 0; i < cs.length; i++) {
-          text += cs[i] + ":" + cs.getPropertyValue(cs[i]) + ";";
+          var value = cs.getPropertyValue(cs[i]);
+          var inherited = parentVisibility === undefined || value === parentVisibility;
+          if (cs[i] === "visibility" && inherited) continue;
+          text += cs[i] + ":" + value + ";";
         }
         // A copy is a still of one instant. Left live, an inherited transition or
         // keyframe animation would carry it somewhere the timeline never sampled.
         out.push(text + "transition:none;animation:none;");
         for (var c = 0; c < source.children.length; c++) {
-          resolvedStyles(source.children[c], out);
+          resolvedStyles(source.children[c], out, cs.getPropertyValue("visibility"));
         }
         return out;
       }
@@ -338,7 +361,18 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         // that would walk the whole subtree once per copy; on resize it costs nothing
         // on a fixed-size render and keeps a live preview honest.
         function snapshot() {
-          var styles = resolvedStyles(el, []);
+          // Read a target hidden right now (an autoAlpha entrance) as shown, so a descendant
+          // hidden by its own rule still differs from it; the inline value goes back exactly.
+          var hidden = getComputedStyle(el).visibility !== "visible";
+          var inline = el.style.getPropertyValue("visibility");
+          var priority = el.style.getPropertyPriority("visibility");
+          if (hidden) el.style.setProperty("visibility", "visible", "important");
+          var styles;
+          try {
+            styles = resolvedStyles(el, []);
+          } finally {
+            if (hidden) el.style.setProperty("visibility", inline, priority);
+          }
           s.perspective = parentPerspective(el);
           for (var c = 0; c < clones.length; c++) {
             paintResolvedStyles(clones[c], styles, { i: 0 });
@@ -402,6 +436,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           css: cs.transform,
           origin: cs.transformOrigin,
           opacity: cs.opacity,
+          visibility: cs.visibility,
           parsed: parseTransform(cs.transform),
         };
       }
@@ -437,6 +472,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         }
 
         state.forEach(function (s) {
+          // Read the element as the timeline left it: the marker is this snippet's own.
+          if (!sharp) s.el.removeAttribute(HIDE_ATTR);
           var current = readTransform(s.el);
           var moved = false;
           for (var i = 0; i < copies; i++) {
@@ -467,12 +504,17 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             clone.style.transform =
               s.perspective + (s.samples[j].css === "none" ? "" : s.samples[j].css);
           }
-          // The copies are the element's own ink, so they have to carry its opacity too:
+          // The copies are the element's own ink, so they carry its opacity and visibility:
           // a beat that moves and fades at once would otherwise leave a full-strength
           // smear behind a vanishing element. It rides the group, not the copies, whose
           // own opacity is the 1/N shutter weight.
           s.group.style.opacity = current.opacity;
+          // Set only where the element differs from its parent: an explicit value would
+          // outlive an ancestor that hides later, like a clip that has ended.
+          var shared = getComputedStyle(s.el.parentNode).visibility;
+          s.group.style.visibility = current.visibility === shared ? "" : current.visibility;
           s.group.style.display = "";
+          if (!sharp) s.el.setAttribute(HIDE_ATTR, "");
         });
       }
 
@@ -526,6 +568,9 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       if (bad !== null) return refuse(el, "names no such option: " + bad);
       var wrong = nonNumber(parsed);
       if (wrong !== null) return refuse(el, "needs a number for " + wrong);
+      if (parsed.sharp !== undefined && parsed.sharp !== 0 && parsed.sharp !== 1) {
+        return refuse(el, "needs 0 or 1 for sharp");
+      }
       return parsed;
     }
 
