@@ -202,3 +202,10 @@ describe("resizeRemainderShift on a skewed box", () => {
     expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
   });
 });
+
+it("shifts nothing for a box that renders with no area", () => {
+  const p = { x: 400, y: 300 };
+  const corners = { nw: p, ne: p, sw: p, se: p };
+  const sizes = { wanted: { width: 300.6, height: 150.3 }, written: { width: 301, height: 150 } };
+  expect(resizeRemainderShift(corners, { x: 1, y: 1 }, sizes)).toEqual({ x: 0, y: 0 });
+});

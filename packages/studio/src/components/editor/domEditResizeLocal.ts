@@ -128,6 +128,7 @@ export function resizeRemainderShift(
   const v = { x: corners.sw.x - corners.nw.x, y: corners.sw.y - corners.nw.y };
   // `grab` in edge coordinates: which side of each edge the grabbed corner is, even on a skewed box.
   const det = u.x * v.y - u.y * v.x;
+  if (!det) return { x: 0, y: 0 };
   const su = Math.sign((grab.x * v.y - grab.y * v.x) / det);
   const sv = Math.sign((u.x * grab.y - u.y * grab.x) / det);
   const kw = (su * (wanted.width - written.width)) / (2 * written.width);
