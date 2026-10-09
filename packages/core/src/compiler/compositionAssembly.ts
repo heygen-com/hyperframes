@@ -207,11 +207,25 @@ export function planCompositionAssembly<TElement extends AssemblyAttributed>(
 
 export type NestedHostSkipReason = "circular composition reference" | "nesting depth exceeded";
 
+/** One file, however its src is spelled: resolved from the project root, without query or hash. */
+function compositionSourceKey(src: string): string {
+  try {
+    const url = new URL(src, "https://project.invalid/");
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return src;
+  }
+}
+
 export function nestedCompositionRefusal(
   src: string,
   ancestry: readonly string[],
 ): NestedHostSkipReason | null {
-  if (ancestry.includes(src)) return "circular composition reference";
+  const key = compositionSourceKey(src);
+  if (ancestry.some((entry) => compositionSourceKey(entry) === key))
+    return "circular composition reference";
   if (ancestry.length >= MAX_SUB_COMPOSITION_DEPTH) return "nesting depth exceeded";
   return null;
 }

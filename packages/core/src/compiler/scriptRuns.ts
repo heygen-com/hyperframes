@@ -155,11 +155,15 @@ function linkDedupeKey(el: Element): string {
   ]);
 }
 
-export function hasSameLink(scope: ParentNode, link: Element): boolean {
+export function findSameLink(scope: ParentNode, link: Element): Element | undefined {
   const key = linkDedupeKey(link);
-  return [...scope.querySelectorAll("link[href]")].some(
+  return [...scope.querySelectorAll("link[href]")].find(
     (other) => !other.closest("noscript") && linkDedupeKey(other) === key,
   );
+}
+
+export function hasSameLink(scope: ParentNode, link: Element): boolean {
+  return findSameLink(scope, link) !== undefined;
 }
 
 /** Groups head styles into runs of adjacent styles with one merge key, so merging a run never reorders rules. */

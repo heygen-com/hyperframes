@@ -136,6 +136,38 @@ describe("loadCompositions external hosts", () => {
     expect(document.querySelectorAll("[data-composition-src] p")).toHaveLength(5);
   });
 
+  it.each(["order-a", "order-b"])(
+    "gives a stylesheet two hosts link to the first host's slot when %s finishes last",
+    async (slow) => {
+      appendExternalHost("https://example.com/order-a.html", "order-a");
+      appendExternalHost("https://example.com/order-b.html", "order-b");
+      const page = (name: string) =>
+        new Response(
+          `<html><head><link rel="stylesheet" href="./shared.css"><style>.${name}{color:red}</style></head><body><p>${name}</p></body></html>`,
+          { status: 200 },
+        );
+      vi.useFakeTimers();
+      try {
+        vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+          const name = String(input).endsWith("order-a.html") ? "order-a" : "order-b";
+          if (name === slow) await new Promise((resolve) => setTimeout(resolve, 10));
+          return page(name);
+        });
+        const loading = loadFixture();
+        await vi.runAllTimersAsync();
+        await loading;
+      } finally {
+        vi.useRealTimers();
+      }
+      const head = Array.from(document.head.querySelectorAll('link[href$="shared.css"], style'))
+        .map((el) =>
+          el.tagName === "LINK" ? "shared" : (el.textContent?.match(/order-[ab]/)?.[0] ?? ""),
+        )
+        .filter(Boolean);
+      expect(head).toEqual(["shared", "order-a", "order-b"]);
+    },
+  );
+
   it("adds stylesheets in document order even when an earlier host's fetch finishes last", async () => {
     appendExternalHost("https://example.com/order-a.html", "order-a");
     appendExternalHost("https://example.com/order-b.html", "order-b");
@@ -594,21 +626,20 @@ describe("loadCompositions external hosts", () => {
     );
   });
 
-  it("uses local template when available", async () => {
+  it("fetches an external host's file even when the page has a same-named template", async () => {
     const template = document.createElement("template");
     template.id = "local-comp-template";
     template.innerHTML = "<p>From template</p>";
     document.body.appendChild(template);
-
     const host = appendExternalHost("https://example.com/comp.html", "local-comp");
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("<html><body><p>From file</p></body></html>"));
 
     await loadFixture();
 
-    // Should use local template and not fetch
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(host.querySelector("p")?.textContent).toBe("From template");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(host.querySelector("p")?.textContent).toBe("From file");
   });
 
   it("skips hosts without data-composition-src value", async () => {
@@ -1586,28 +1617,6 @@ describe("loadCompositions inline templates", () => {
     // Original content should remain
     expect(host.querySelector("span")?.textContent).toBe("Existing content");
     expect(host.querySelector("p")).toBeNull();
-  });
-
-  it("uses the cached matching template for an external host", async () => {
-    const template = document.createElement("template");
-    template.id = "external-template";
-    template.innerHTML = `
-      <div data-composition-id="external" data-width="800" data-height="600">
-        <p>Cached content</p>
-      </div>
-    `;
-    document.body.appendChild(template);
-
-    const host = document.createElement("div");
-    host.setAttribute("data-composition-id", "external");
-    host.setAttribute("data-composition-src", "https://example.com/comp.html");
-    document.body.appendChild(host);
-
-    const fetch = vi.spyOn(globalThis, "fetch");
-    await loadFixture();
-
-    expect(host.querySelector("p")?.textContent).toBe("Cached content");
-    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("processes multiple inline templates", async () => {

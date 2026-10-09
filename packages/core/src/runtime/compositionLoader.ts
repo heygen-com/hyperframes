@@ -20,7 +20,7 @@ import {
   wrapScopedCompositionScript,
 } from "../compiler/compositionScoping";
 import { parseImportMap } from "../compiler/importMaps";
-import { hasSameLink } from "../compiler/scriptRuns";
+import { findSameLink } from "../compiler/scriptRuns";
 import {
   namespaceCollidingSvgIds,
   rewriteSvgIdReferencesInCss,
@@ -195,13 +195,17 @@ const headNodeHost = new WeakMap<Element, Element>();
 function insertIntoHeadInHostOrder(node: Element, host: Element): void {
   const next = Array.from(document.head.children).find((element) => {
     const owner = headNodeHost.get(element);
-    return (
-      owner?.isConnected === true &&
-      (host.compareDocumentPosition(owner) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-    );
+    return element !== node && !!owner && isLaterHost(owner, host);
   });
   headNodeHost.set(node, host);
   document.head.insertBefore(node, next ?? null);
+}
+
+function isLaterHost(owner: Element, host: Element): boolean {
+  return (
+    owner.isConnected &&
+    (host.compareDocumentPosition(owner) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+  );
 }
 
 const waitForExternalScriptLoad = (
@@ -434,7 +438,12 @@ async function mountCompositionContent(params: {
     const clonedLink = link.cloneNode(true);
     if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
-    if (hasSameLink(document.head, clonedLink)) continue;
+    const existing = findSameLink(document.head, clonedLink);
+    const existingOwner = existing && headNodeHost.get(existing);
+    // A later host's copy moves up to this host's slot, so the first host in the document owns it.
+    if (existing && existingOwner && isLaterHost(existingOwner, params.host))
+      insertIntoHeadInHostOrder(existing, params.host);
+    if (existing) continue;
     insertIntoHeadInHostOrder(clonedLink, params.host);
     params.injectedLinks.push(clonedLink);
   }
@@ -716,29 +725,6 @@ async function mountExternalCompositions(
       return composition;
     };
     try {
-      const localTemplate =
-        authoredCompositionId != null
-          ? document.querySelector<HTMLTemplateElement>(
-              `template#${CSS.escape(authoredCompositionId)}-template`,
-            )
-          : null;
-      if (localTemplate) {
-        return await mount({
-          host,
-          authoredCompositionId,
-          runtimeCompositionId,
-          hostCompositionSrc: src,
-          sourceNode: localTemplate.content,
-          hasTemplate: true,
-          fallbackBodyInnerHtml: "",
-          compositionUrl,
-          injectedStyles: params.injectedStyles,
-          injectedScripts: params.injectedScripts,
-          injectedLinks: params.injectedLinks,
-          parseDimensionPx: params.parseDimensionPx,
-          onDiagnostic: params.onDiagnostic,
-        });
-      }
       const response = await fetch(resolvedSrc);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

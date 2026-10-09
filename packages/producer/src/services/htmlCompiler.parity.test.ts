@@ -87,7 +87,11 @@ type ParityContract = ReturnType<typeof extractCompiledHtmlParityContract>;
  * composition losing every `<style>` authored beside its root) stayed invisible
  * to a green suite.
  */
-async function mountContract(dir: string, indexHtml: string): Promise<ParityContract> {
+async function mountContract(
+  dir: string,
+  indexHtml: string,
+  expectedRefusal?: string,
+): Promise<ParityContract> {
   const parsed = new DOMParser().parseFromString(indexHtml, "text/html");
   document.head.innerHTML = parsed.head.innerHTML;
   document.body.innerHTML = parsed.body.innerHTML;
@@ -104,6 +108,7 @@ async function mountContract(dir: string, indexHtml: string): Promise<ParityCont
       // A mount that fails is not a parity result. Surface it instead of
       // comparing the contract of an empty host against a compiled one.
       onDiagnostic: ({ code, details }) => {
+        if (expectedRefusal && details?.errorMessage === expectedRefusal) return;
         throw new Error(`mount diagnostic ${code}: ${JSON.stringify(details)}`);
       },
     });
@@ -114,7 +119,7 @@ async function mountContract(dir: string, indexHtml: string): Promise<ParityCont
   return extractCompiledHtmlParityContract(`<!doctype html>${document.documentElement.outerHTML}`);
 }
 
-async function contracts(files: Record<string, string>) {
+async function contracts(files: Record<string, string>, expectedRefusal?: string) {
   const dir = project(files);
   const preview = await bundleToSingleHtml(dir);
   const render = await compileForRender(dir, join(dir, "index.html"), join(dir, ".downloads"), {
@@ -129,7 +134,7 @@ async function contracts(files: Record<string, string>) {
   return {
     preview: extractCompiledHtmlParityContract(preview),
     render: extractCompiledHtmlParityContract(servedRender),
-    mount: await mountContract(dir, files["index.html"]!),
+    mount: await mountContract(dir, files["index.html"]!, expectedRefusal),
   };
 }
 
@@ -512,6 +517,31 @@ describe("mount/compile assembly parity", () => {
       ids: ["card__hf1"],
     },
     {
+      name: "a scene that includes itself through a ./ path",
+      files: {
+        ...nested(""),
+        "compositions/scene.html": comp(
+          "scene",
+          CARD_HOST +
+            '<div data-composition-id="scene" data-composition-src="./compositions/scene.html"></div>',
+        ),
+      },
+      ids: ["card"],
+      refusal: "circular composition reference",
+    },
+    {
+      name: "a late card whose id also names a root template",
+      files: nested(
+        '<template id="card-template"><div data-composition-id="card"><p>Template card</p></div></template>',
+        1,
+        {
+          "compositions/cards/card.html": `<html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"DEF"}]'><body><div data-composition-id="card"><p data-proof>Project-root card</p></div></body></html>`,
+        },
+      ),
+      ids: ["card"],
+      variables: { card: { title: "DEF" } },
+    },
+    {
       name: "a root template host before a late card",
       files: nested(
         '<div data-composition-id="card"></div><template id="card-template"><div data-composition-id="card"><p data-proof>Project-root card</p></div></template>',
@@ -520,8 +550,8 @@ describe("mount/compile assembly parity", () => {
     },
   ])(
     "mounts nested project-root paths with $name identically on all three paths",
-    async ({ files, ids }) => {
-      const result = await contracts(files);
+    async ({ files, ids, refusal, variables }) => {
+      const result = await contracts(files, refusal);
       expect(result.render).toEqual(result.preview);
       expect(assembledContract(result.mount)).toEqual(assembledContract(result.preview));
       const cards = [...document.querySelectorAll("[data-proof]")];
@@ -530,6 +560,10 @@ describe("mount/compile assembly parity", () => {
         card.closest(`[${VARIABLE_HOST_ATTR}]`)?.getAttribute("data-composition-id"),
       );
       expect(hostIds).toEqual(ids);
+      if (variables) {
+        const byComp = (window as Window & { __hfVariablesByComp?: unknown }).__hfVariablesByComp;
+        expect(byComp).toMatchObject(variables);
+      }
     },
   );
 
