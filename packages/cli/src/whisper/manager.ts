@@ -150,14 +150,12 @@ export function findWhisper(): WhisperResult | undefined {
   return findFromEnv() ?? findFromSystem() ?? findBuiltBinary();
 }
 
-/** Whisper models already downloaded, as ensureModel names them (`small.en` for ggml-small.en.bin). */
 export function listWhisperModels(): { model: string; path: string }[] {
   if (!existsSync(MODELS_DIR)) return [];
   return readdirSync(MODELS_DIR)
     .flatMap((file) => {
       const model = /^ggml-(.+)\.bin$/.exec(file)?.[1];
       const path = join(MODELS_DIR, file);
-      // ensureModel's own test: a dangling link is downloaded again, so it is not installed.
       return model && existsSync(path) ? [{ model, path }] : [];
     })
     .sort((a, b) => a.model.localeCompare(b.model));

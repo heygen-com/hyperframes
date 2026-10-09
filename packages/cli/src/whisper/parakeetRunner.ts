@@ -3,8 +3,7 @@ import { sherpaParakeetInstalled, sherpaUnsupportedReason } from "./sherpa.js";
 
 export type ParakeetRunner = "sherpa" | "parakeet-mlx";
 
-/** The runner transcribe uses for Parakeet here, sherpa-onnx first; null when neither can run.
- *  `skipSherpa`: sherpa already failed this run. */
+/** Transcribe's Parakeet runner here, sherpa-onnx first; `skipSherpa` once sherpa failed. */
 export function parakeetRunner({
   unsupported = sherpaUnsupportedReason(),
   skipSherpa = false,

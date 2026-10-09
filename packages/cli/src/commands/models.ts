@@ -121,7 +121,6 @@ function describeState(m: ModelRow): string {
   return c.success(m.runner === "parakeet-mlx" ? "installed (parakeet-mlx)" : "installed");
 }
 
-/** Parakeet as transcribe picks it, then every downloaded whisper model. */
 async function listModels(json: boolean): Promise<void> {
   const [sherpa, { parakeetRunner }, { listWhisperModels }] = await Promise.all([
     import("../whisper/sherpa.js"),

@@ -26,8 +26,11 @@ it("lists each downloaded ggml model by the name ensureModel takes, and nothing 
   ]);
 });
 
-it("skips a dangling link that ensureModel would download again", () => {
-  mkdirSync(modelsDir, { recursive: true });
-  symlinkSync(join(home, "gone.bin"), join(modelsDir, "ggml-tiny.bin"));
-  expect(listWhisperModels()).toEqual([]);
-});
+it.skipIf(process.platform === "win32")(
+  "skips a dangling link that ensureModel would download again",
+  () => {
+    mkdirSync(modelsDir, { recursive: true });
+    symlinkSync(join(home, "gone.bin"), join(modelsDir, "ggml-tiny.bin"));
+    expect(listWhisperModels()).toEqual([]);
+  },
+);
