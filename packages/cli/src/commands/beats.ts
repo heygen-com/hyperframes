@@ -3,6 +3,8 @@ import { defineCommand } from "citty";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { findMusicAudioSrc, audioRelPathForSrc, serializeBeats } from "@hyperframes/core/beats";
+import { parseHTMLContent } from "@hyperframes/core/compiler";
+import { walkCompositionDescendants } from "@hyperframes/parsers";
 import type { Example } from "./_examples.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { analyzeBeatsHeadless, type HeadlessBeatResult } from "../beats/headlessAnalyzer.js";
@@ -18,9 +20,30 @@ function fail(message: string): never {
   failCommand();
 }
 
+function mediaSrc(element: Element): string | null {
+  return (
+    Array.from(element.attributes).find((attribute) => attribute.name.toLowerCase() === "src")
+      ?.value ?? null
+  );
+}
+
+function findMusicSrc(html: string): string | null {
+  const document = parseHTMLContent(html);
+  walkCompositionDescendants(document, (element) => {
+    const tag = element.tagName.toLowerCase();
+    if ((tag !== "audio" && tag !== "video") || mediaSrc(element)) return;
+    const sources = Array.from(element.querySelectorAll("source"))
+      .map(mediaSrc)
+      .filter((src): src is string => Boolean(src));
+    const src = sources.find((value) => !/^https?:\/\//i.test(value)) ?? sources[0];
+    if (src) element.setAttribute("src", src);
+  });
+  return findMusicAudioSrc(document.toString());
+}
+
 /** Locate the music track + its on-disk audio, or fail with a clear message. */
 function resolveMusicTarget(project: ProjectDir): { rel: string; audioPath: string } {
-  const src = findMusicAudioSrc(readFileSync(project.indexPath, "utf-8"));
+  const src = findMusicSrc(readFileSync(project.indexPath, "utf-8"));
   if (!src) {
     fail(
       'No music track found. Add data-timeline-role="music" to the <audio> element, or to a ' +
