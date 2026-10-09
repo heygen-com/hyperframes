@@ -7,9 +7,13 @@ import { isMediaElement } from "./domRealm";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createRuntimeState } from "./state";
-import { LOOP_INFLATED_TIMELINE_SECONDS } from "./timeline";
 
 export { findRootCompositionElement };
+
+/** A root timeline this long is an endless loop, not a film: GSAP reports 1e10 s for `repeat: -1`.
+ *  Studio's sanitizeDurationSeconds rejects the same length. Animations that simply end past the
+ *  voiceover are real duration, and the runtime player already plays them. */
+export const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
 
 /** One frame at 60 fps: a timeline, floor or fallback this short or shorter is no length at all. */
 export const MIN_VALID_TIMELINE_DURATION_SECONDS = 1 / 60;
@@ -130,14 +134,15 @@ export function resolveCompositionLengthSeconds(input: CompositionLengthInputs):
     Number.isFinite(input.fallback) && input.fallback > MIN_VALID_TIMELINE_DURATION_SECONDS
       ? input.fallback
       : 0;
+  const floorOrFallback = Math.max(floor, fallback);
   const loopInflated =
     rawTimeline !== null &&
     rawTimeline >= LOOP_INFLATED_TIMELINE_SECONDS &&
-    aboveOneFrame(Math.max(floor, fallback)) !== null;
+    aboveOneFrame(floorOrFallback) !== null;
   const timeline = loopInflated ? null : rawTimeline;
   let seconds: number;
-  if (timeline !== null) seconds = Math.max(timeline, floor, fallback);
-  else if (aboveOneFrame(floor) !== null) seconds = Math.max(floor, fallback);
+  if (timeline !== null) seconds = Math.max(timeline, floorOrFallback);
+  else if (aboveOneFrame(floor) !== null) seconds = floorOrFallback;
   else if (fallback > 0) seconds = fallback;
   else seconds = input.derived();
   return seconds > 0 ? seconds : 0;
