@@ -952,6 +952,7 @@ describe("layout-audit.browser invisible text", () => {
     chromiumVersion = 152,
     outsideBackground = false,
     viewportTop?: number,
+    wrapperStyle: Partial<CSSStyleDeclaration> = {},
   ): AuditIssue[] {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       `Mozilla/5.0 HeadlessChrome/${chromiumVersion}.0.0.0 Safari/537.36`,
@@ -997,6 +998,7 @@ describe("layout-audit.browser invisible text", () => {
           backgroundImage: "linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255))",
           ...ancestorStyle,
         },
+        wrapper: wrapperStyle,
         headline: { webkitTextFillColor: "rgba(0, 0, 0, 0)", ...headlineStyle },
       },
     );
@@ -1069,6 +1071,24 @@ describe("layout-audit.browser invisible text", () => {
     expect(flagged(ancestorGradientScene({}, { transform: "matrix(1, 0, 0, 1, 0, 0)" }, 148))).toBe(
       true,
     );
+  });
+
+  it("accepts ordinary nested text painted by an ancestor gradient on Chrome 148", () => {
+    expect(flagged(ancestorGradientScene({}, {}, 148))).toBe(false);
+  });
+
+  it("keeps reporting a plain child inside an independently painted wrapper on Chrome 148", () => {
+    expect(
+      flagged(
+        ancestorGradientScene({}, {}, 148, false, undefined, {
+          transform: "matrix(1, 0, 0, 1, 0, 0)",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps reporting ancestor masks on an unknown browser", () => {
+    expect(flagged(ancestorGradientScene({}, {}, 0))).toBe(true);
   });
 
   it("uses the untransformed layout position for a translated child", () => {

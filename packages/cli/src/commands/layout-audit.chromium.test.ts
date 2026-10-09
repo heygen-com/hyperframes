@@ -66,6 +66,41 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     { name: "inline child", content: "<span>Gradient text</span>", layered: false },
     { name: "nested child", content: "<div><span>Gradient text</span></div>", layered: false },
     {
+      name: "inline-block child",
+      content: '<span style="display:inline-block">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "flex child",
+      content: '<div style="display:flex">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "clipped child",
+      content: '<div style="overflow:hidden">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "scroll hint",
+      content: '<div style="will-change:scroll-position">Gradient text</div>',
+      layered: false,
+    },
+    {
+      name: "inline transform",
+      content: '<span style="transform:translateY(0)">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "inline transform hint",
+      content: '<span style="will-change:transform">Gradient text</span>',
+      layered: false,
+    },
+    {
+      name: "inline containment",
+      content: '<span style="contain:paint">Gradient text</span>',
+      layered: false,
+    },
+    {
       name: "transformed child",
       content: '<div style="transform:translateY(0)">Gradient text</div>',
       layered: true,
@@ -86,6 +121,31 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       layered: true,
     },
     { name: "faded child", content: '<div style="opacity:.9">Gradient text</div>', layered: true },
+    {
+      name: "layered wrapper",
+      content: '<div style="transform:translateY(0)"><span>Gradient text</span></div>',
+      layered: true,
+    },
+    {
+      name: "isolated child",
+      content: '<div style="isolation:isolate">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "paint-contained child",
+      content: '<div style="contain:paint">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "transform hint",
+      content: '<div style="will-change:transform">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "separately painted flex item",
+      content: '<div style="display:flex"><div style="z-index:1">Gradient text</div></div>',
+      layered: true,
+    },
   ])("recognizes ancestor gradient paint for a $name", async ({ content, layered }) => {
     const direct = await gradientFrame(gradientHeading("Gradient text"));
     const descendant = await gradientFrame(gradientHeading(content));
@@ -95,9 +155,13 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       expect(descendant.image).toEqual(direct.image);
       expect(descendant.codes).not.toContain("text_not_painted");
     } else {
-      if (layered) expect(descendant.image).not.toEqual(direct.image);
-      else expect(descendant.image).toEqual(direct.image);
-      expect(descendant.codes).toContain("text_not_painted");
+      if (layered) {
+        expect(descendant.image).not.toEqual(direct.image);
+        expect(descendant.codes).toContain("text_not_painted");
+      } else {
+        expect(descendant.image).toEqual(direct.image);
+        expect(descendant.codes).not.toContain("text_not_painted");
+      }
     }
   });
 

@@ -1181,7 +1181,8 @@
     // Chromium 150+ includes independently painted descendants in text masks;
     // older builds drop their glyphs: https://github.com/heygen-com/hyperframes/issues/5117.
     const chromium = window.navigator.userAgent.match(/(?:HeadlessChrome|Chrome)\/(\d+)/);
-    if (!chromium || Number(chromium[1]) < 150 || !(element instanceof HTMLElement)) return false;
+    const chromiumVersion = chromium ? Number(chromium[1]) : 0;
+    if (!chromiumVersion || !(element instanceof HTMLElement)) return false;
 
     for (
       let ancestor = element.parentElement;
@@ -1193,6 +1194,7 @@
         style.webkitBackgroundClip || style.backgroundClip || "border-box",
       ).map((clip) => clip.trim());
       if (!clips.includes("text")) continue;
+      if (chromiumVersion < 150 && hasIndependentTextPaint(element, ancestor)) continue;
       // Chromium builds the mask before descendant transforms, so moving the
       // child must not move its glyphs out of the mask for this check.
       const offset = layoutOffset(element);
@@ -1226,6 +1228,62 @@
         clips[(images.length - 1) % clips.length] === "text" &&
         colorAlpha(style.backgroundColor || "rgba(0, 0, 0, 0)") > 0.05;
       if (imagePaints || colorPaints) return true;
+    }
+    return false;
+  }
+
+  // Plain descendants share a text mask on older Chromium; independently
+  // painted descendants do not. Check the whole path to the mask, including
+  // wrappers: https://github.com/chromium/chromium/blob/148.0.7778.97/third_party/blink/renderer/core/layout/layout_inline.cc.
+  function hasIndependentTextPaint(element, background) {
+    for (let current = element; current !== background; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      if (style.position && style.position !== "static") return true;
+      if (Number.parseFloat(style.opacity || "1") < 1) return true;
+      const isInline = style.display === "inline";
+      if (
+        [
+          style.filter,
+          style.backdropFilter,
+          style.webkitBackdropFilter,
+          style.maskImage,
+          style.webkitMaskImage,
+        ].some((value) => value && value !== "none")
+      )
+        return true;
+      if (
+        !isInline &&
+        [style.transform, style.translate, style.rotate, style.scale, style.perspective].some(
+          (value) => value && value !== "none",
+        )
+      )
+        return true;
+      if (style.isolation === "isolate") return true;
+      if (style.mixBlendMode && style.mixBlendMode !== "normal") return true;
+      if (
+        !isInline &&
+        (style.backfaceVisibility === "hidden" || style.transformStyle === "preserve-3d")
+      )
+        return true;
+      if (!isInline && /\b(?:paint|layout|content|strict)\b/.test(style.contain || "")) return true;
+      if (style.contentVisibility && style.contentVisibility !== "visible") return true;
+      if (
+        (style.willChange || "")
+          .split(",")
+          .some(
+            (property) =>
+              /^(?:opacity|filter|backdrop-filter|position|isolation|mix-blend-mode|mask|mask-image)$/.test(
+                property.trim(),
+              ) ||
+              (!isInline &&
+                /^(?:transform|translate|rotate|scale|perspective)$/.test(property.trim())),
+          )
+      )
+        return true;
+      if (style.zIndex && style.zIndex !== "auto" && current.parentElement) {
+        const display = getComputedStyle(current.parentElement).display;
+        if (/^(?:inline-)?(?:flex|grid)$/.test(display)) return true;
+      }
     }
     return false;
   }
