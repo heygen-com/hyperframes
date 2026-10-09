@@ -20,6 +20,7 @@ import {
   isLinuxArm,
 } from "../browser/manager.js";
 import { trackBrowserInstall } from "../telemetry/events.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 async function runEnsure(options?: { force?: boolean }): Promise<void> {
   clack.intro(c.bold("hyperframes browser ensure"));
@@ -61,15 +62,20 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
     return;
   }
 
+  // Every exit path stops the spinner: a running one keeps the process alive after a failure.
   const s = clack.spinner();
-  if (!options?.force) {
-    // Resolve with `preferManagedChrome` so this reports what `render`
-    // actually uses — a system Chrome without our pinned HF cache still
-    // downloads on the next render, so it shouldn't be reported as "found".
-    s.start("Looking for an existing browser...");
-
-    let lastPct = -1;
-    const existing = await ensureBrowser({
+  s.start(
+    options?.force
+      ? `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())}...`
+      : "Looking for an existing browser...",
+  );
+  let lastPct = -1;
+  let result: Awaited<ReturnType<typeof ensureBrowser>>;
+  try {
+    // `preferManagedChrome` reports what `render` actually uses: a system Chrome
+    // without our pinned build still downloads on the next render.
+    result = await ensureBrowser({
+      force: options?.force,
       preferManagedChrome: true,
       onProgress: (downloaded, total) => {
         if (total <= 0) return;
@@ -82,47 +88,18 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
         }
       },
     });
-
-    if (existing.source === "download") trackBrowserInstall();
-    s.stop(c.success(existing.source === "download" ? "Download complete" : "Browser found"));
-    console.log();
-    console.log(`   ${c.dim("Source:")}  ${c.bold(existing.source)}`);
-    console.log(`   ${c.dim("Path:")}    ${c.bold(existing.executablePath)}`);
-    console.log();
-    clack.outro(c.success("Ready to render."));
-    return;
+  } catch (err) {
+    s.stop(c.error("Browser not available"));
+    clack.log.error(normalizeErrorMessage(err));
+    failCommand(1, err);
   }
 
-  s.start("Re-downloading the managed browser...");
-
-  const downloadSpinner = clack.spinner();
-  downloadSpinner.start(
-    `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())}...`,
-  );
-
-  let lastPct = -1;
-  const result = await ensureBrowser({
-    force: options?.force,
-    onProgress: (downloaded, total) => {
-      if (total <= 0) return;
-      const pct = Math.floor((downloaded / total) * 100);
-      if (pct > lastPct) {
-        lastPct = pct;
-        downloadSpinner.message(
-          `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())} — ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
-        );
-      }
-    },
-  });
-
-  downloadSpinner.stop(c.success("Download complete"));
-  trackBrowserInstall();
-
+  if (result.source === "download") trackBrowserInstall();
+  s.stop(c.success(result.source === "download" ? "Download complete" : "Browser found"));
   console.log();
   console.log(`   ${c.dim("Source:")}  ${c.bold(result.source)}`);
   console.log(`   ${c.dim("Path:")}    ${c.bold(result.executablePath)}`);
   console.log();
-
   clack.outro(c.success("Ready to render."));
 }
 
