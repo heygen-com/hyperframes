@@ -19,13 +19,9 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  * project routes (U3/U4) to serve a `?hf-proxy=` request; never used on
  * the render path (render always sees the original file).
  *
- * IMPORTANT — request-lifecycle detachment: a started ffmpeg child is never
- * killed on a caller's behalf. Every concurrent caller for the same cache key
- * shares one copy (in-flight dedupe below); killing it on one client's abort
- * (page reload, HMR) would fail every other caller and restart a transcode
- * that may have been minutes into a long asset. A caller's `signal` only
- * detaches that caller, and drops the copy while it is still queued and no
- * caller is left waiting for it.
+ * A started ffmpeg child is never killed for one caller: every caller of a cache
+ * key shares it (in-flight dedupe below). A caller's `signal` only detaches that
+ * caller, and drops the copy while it is still queued with no caller left.
  */
 
 export const PROXY_PARAMS_VERSION = "v5";
