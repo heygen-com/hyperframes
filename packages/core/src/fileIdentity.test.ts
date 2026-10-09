@@ -16,12 +16,11 @@ import { join } from "node:path";
 // Number-mode stats report one identity for every path, as Windows file ids above 2^53 can.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  const collide = <T extends (...args: never[]) => unknown>(real: T) =>
-    ((target: never, options?: { bigint?: boolean }) =>
-      options?.bigint
-        ? real(target, options as never)
-        : { ...(real(target) as object), dev: 1, ino: 2 ** 53 }) as unknown as T;
-  return { ...actual, statSync: collide(actual.statSync) };
+  const statSync = ((path: string, options?: { bigint?: boolean }) => {
+    const stats = actual.statSync(path, options as never);
+    return options?.bigint || !stats ? stats : { ...stats, dev: 1, ino: 2 ** 53 };
+  }) as typeof actual.statSync;
+  return { ...actual, statSync };
 });
 
 import { sameFile } from "./fileIdentity.js";
@@ -80,7 +79,9 @@ describe("file identity", () => {
     const offenders = sources
       .filter((path) => /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) && !allowed.has(path))
       .filter((path) =>
-        /\.ino\s*[!=]==|[!=]==\s*[\w.?]+\.ino\b/.test(readFileSync(join(packages, path), "utf8")),
+        /\.ino\b\s*[!=]==?|[!=]==?\s*[\w.?]+\.ino\b/.test(
+          readFileSync(join(packages, path), "utf8"),
+        ),
       );
     expect(offenders).toEqual([]);
   });
