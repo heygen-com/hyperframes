@@ -580,7 +580,7 @@ export async function downloadAndRewriteFonts(
   });
 
   const usedFontNames = new Set<string>();
-  let rewritten = css;
+  const localFontPaths = new Map<string, string>();
   let count = 0;
 
   for (const [index, fontUrl] of sortedUrls.entries()) {
@@ -615,7 +615,7 @@ export async function downloadAndRewriteFonts(
         const localPath = join(assetsDir, filename);
         const relativePath = `assets/fonts/${filename}`;
         writeCaptureFileSync(localPath, buffer);
-        rewritten = rewritten.split(fontUrl).join(relativePath);
+        localFontPaths.set(fontUrl, relativePath);
       } else {
         drops.unavailable++;
       }
@@ -624,6 +624,10 @@ export async function downloadAndRewriteFonts(
     }
   }
 
+  const rewritten = css.replace(fontUrlRegex, (match: string, url: string) => {
+    const localPath = localFontPaths.get(url);
+    return localPath ? match.replace(url, localPath) : match;
+  });
   return { css: rewritten, drops };
 }
 
