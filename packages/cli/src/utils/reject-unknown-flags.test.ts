@@ -71,6 +71,14 @@ describe("guardSwallowedFlagValues", () => {
     expect(guard(["--output", "--help"])).toThrow(/Missing value for --output/);
   });
 
+  it("tells a value-taking flag to pass a value, not to move it to the end", () => {
+    expect(guard(["--output", "--json"])).toThrow(/pass one: --output <value> or --output=<value>/);
+  });
+
+  it("does not reject a --no-<flag> negation, which citty never swallows", () => {
+    expect(guard(["--output", "--no-docker"])).not.toThrow();
+  });
+
   it("accepts the equals form even when the inline value looks like a flag", () => {
     expect(guard(["--output=--json"])).not.toThrow();
     expect(guardSwallowedFlagValues(cmd, "render", ["--output=--json"])).toEqual({

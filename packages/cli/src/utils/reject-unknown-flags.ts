@@ -108,8 +108,7 @@ const SWALLOW_IGNORE_FLAGS: Readonly<Record<string, ReadonlySet<string>>> = {
   upgrade: new Set(["project"]),
 };
 
-function swallowedValueMessage(flagName: string, next: string): string {
-  const hint = `use --${flagName}= or move --${flagName} to the end`;
+function swallowedValueMessage(flagName: string, next: string, hint: string): string {
   if (next === "--")
     return `Missing value for --${flagName}: "--" ends option parsing here; ${hint}`;
   return `Missing value for --${flagName}: value "${next}" appears to have swallowed the next option; ${hint}`;
@@ -117,12 +116,14 @@ function swallowedValueMessage(flagName: string, next: string): string {
 
 /** For a caller whose own try/catch prints the error (check.ts's run()). */
 export function swallowedFlagUsageError(flagName: string, next: string): CliUsageError {
-  return new CliUsageError(swallowedValueMessage(flagName, next));
+  const hint = `use --${flagName}= or move --${flagName} to the end`;
+  return new CliUsageError(swallowedValueMessage(flagName, next, hint));
 }
 
 // Prints and marks `presented`: otherwise executeCli dumps usage to stdout, breaking `--json`.
 function throwSwallowedFlagError(flagName: string, next: string): never {
-  const message = swallowedValueMessage(flagName, next);
+  const hint = `pass one: --${flagName} <value> or --${flagName}=<value>`;
+  const message = swallowedValueMessage(flagName, next, hint);
   console.error(c.error(message));
   throw new CliUsageError(message, { presented: true });
 }
@@ -132,9 +133,9 @@ export interface SwallowGuardResult {
   rewritten: boolean;
 }
 
-// End of argv and a bare `-` (stdin) are never a swallow; `--` or a known flag spelling is.
+// End of argv, a bare `-` (stdin) and `--no-x` (citty never swallows it) are not a swallow.
 function looksLikeSwallowedFlag(next: string | undefined, known: Set<string>): boolean {
-  if (next === undefined || next === "-") return false;
+  if (next === undefined || next === "-" || next.startsWith("--no-")) return false;
   return next === "--" || (next.startsWith("-") && unknownFlagIn(next, known) === null);
 }
 
