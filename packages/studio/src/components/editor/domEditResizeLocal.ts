@@ -121,15 +121,12 @@ export type ResizeDraftSizes = { wanted: Size; written: Size };
  *  written size is whole px, so half the remainder moves along the element's own rendered edges. */
 export function resizeRemainderShift(
   corners: Record<FixedCorner, { x: number; y: number }>,
-  handle: ResizeHandle,
-  rotationDeg: number,
+  grab: { x: number; y: number },
   { wanted, written }: ResizeDraftSizes,
 ): { x: number; y: number } {
-  const angle = ((CORNER_BASE_ANGLE_DEG[handle] + rotationDeg) * Math.PI) / 180;
-  const grab = { x: Math.sin(angle), y: -Math.cos(angle) };
   const u = { x: corners.ne.x - corners.nw.x, y: corners.ne.y - corners.nw.y };
   const v = { x: corners.sw.x - corners.nw.x, y: corners.sw.y - corners.nw.y };
-  // The grabbed corner's side of each local edge, from geometry: a mirrored layer swaps the handle's corner.
+  // `grab` points from the centre to the grabbed corner on screen, so a mirror or a turned parent picks its side.
   const kw =
     (Math.sign(grab.x * u.x + grab.y * u.y) * (wanted.width - written.width)) / (2 * written.width);
   const kh =

@@ -30,7 +30,9 @@ function resolveResizeAnchor(
 ): { dx: number; dy: number } {
   const fixedStart = g.resizeFixedCenterStart;
   if (corners && fixedStart) {
-    const shift = resizeRemainderShift(corners, g.resizeHandle ?? "se", g.actualRotation, sizes);
+    const press = g.resizePressFromCorner ?? { x: 0, y: 0 };
+    const grab = { x: g.startX - press.x - g.centerX, y: g.startY - press.y - g.centerY };
+    const shift = resizeRemainderShift(corners, grab, sizes);
     const target = { x: fixedStart.x + shift.x, y: fixedStart.y + shift.y };
     return computeNextResizeAnchor(g.lastResizeAnchor, target, overlayCornersCentroid(corners));
   }

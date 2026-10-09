@@ -155,24 +155,24 @@ describe("resizeRemainderShift", () => {
     return { at, corners: { nw: at(-w, -h), ne: at(w, -h), sw: at(-w, h), se: at(w, h) } };
   };
 
-  // The chrome draws a mirrored layer unrotated, so its se handle sits on the layer's local sw corner.
+  // A rotated parent composes into the same map, and a mirror moves each handle onto another local corner.
   it.each([
-    ["nw", 30, 1, -1, -1],
-    ["ne", 30, 1, 1, -1],
-    ["sw", 30, 1, -1, 1],
-    ["se", 30, 1, 1, 1],
-    ["se", 0, -1, -1, 1],
-    ["sw", 0, -1, 1, 1],
-    ["ne", 0, -1, -1, -1],
-  ] as const)(
-    "%s handle at %i deg, mirror %i, lands local corner (%i, %i)",
-    (handle, deg, mirror, su, sv) => {
-      const { at, corners } = box((deg * Math.PI) / 180, mirror);
-      const grabbed = at((su * written.width) / 2, (sv * written.height) / 2);
-      const shift = resizeRemainderShift(corners, handle, deg, { wanted, written });
-      const target = at((su * wanted.width) / 2, (sv * wanted.height) / 2);
-      expect(grabbed.x + shift.x).toBeCloseTo(target.x, 9);
-      expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
-    },
-  );
+    [30, 1, -1, -1],
+    [30, 1, 1, -1],
+    [30, 1, -1, 1],
+    [30, 1, 1, 1],
+    [-120, 1, 1, 1],
+    [90, 1, 1, -1],
+    [0, -1, -1, 1],
+    [150, -1, 1, 1],
+    [180, -1, -1, -1],
+  ] as const)("at %i deg, mirror %i, lands local corner (%i, %i)", (deg, mirror, su, sv) => {
+    const { at, corners } = box((deg * Math.PI) / 180, mirror);
+    const grabbed = at((su * written.width) / 2, (sv * written.height) / 2);
+    const grab = { x: grabbed.x - centre.x, y: grabbed.y - centre.y };
+    const shift = resizeRemainderShift(corners, grab, { wanted, written });
+    const target = at((su * wanted.width) / 2, (sv * wanted.height) / 2);
+    expect(grabbed.x + shift.x).toBeCloseTo(target.x, 9);
+    expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
+  });
 });

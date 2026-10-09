@@ -261,13 +261,15 @@ describe("anchored corner resize — the release commit feeds the center-pin off
 
   it("puts the grabbed corner on the pointer when the size rounds to whole px", () => {
     const { handlers, commits } = buildHarness();
-    handlers.startGesture("resize", evt(ORIGIN_CENTER.x + 100, ORIGIN_CENTER.y), {
+    const grabbed = { x: ORIGIN_CENTER.x + 100, y: ORIGIN_CENTER.y + 50 };
+    handlers.startGesture("resize", evt(grabbed.x, grabbed.y), {
       resizeHandle: "se",
+      resizeCorner: grabbed,
     });
     // Radial scale 1.503: the pointer asks for 300.6 x 150.3, Studio writes 301 x 150.
     for (let i = 0; i < 5; i++)
-      handlers.onPointerMove(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y));
-    handlers.onPointerUp(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y));
+      handlers.onPointerMove(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y + 75.15));
+    handlers.onPointerUp(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y + 75.15));
 
     const { size, offset } = commits[0]!;
     expect(size).toEqual({ width: 301, height: 150 });
