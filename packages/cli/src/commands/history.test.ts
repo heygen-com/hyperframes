@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { spawn } from "node:child_process";
+import { spawn, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -34,6 +34,33 @@ const clock = { at: 0 };
 const advance = (ms: number) => void (clock.at += ms);
 
 const tracked = vi.hoisted(() => [] as Array<{ action: string; via: string }>);
+const outputRace = vi.hoisted(() => ({ enabled: false, replacements: 0 }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  const { renameSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  return {
+    ...original,
+    spawnSync(
+      command: string,
+      args: readonly string[],
+      options: SpawnSyncOptionsWithStringEncoding,
+    ) {
+      const result = original.spawnSync(command, args, options);
+      if (
+        outputRace.enabled &&
+        command === "git" &&
+        args[0] === "diff" &&
+        typeof options.cwd === "string"
+      ) {
+        renameSync(join(options.cwd, "diff"), join(options.cwd, "written-diff"));
+        writeFileSync(join(options.cwd, "diff"), "replacement-file-content");
+        outputRace.replacements++;
+      }
+      return result;
+    },
+  };
+});
 vi.mock("../telemetry/events.js", () => ({
   trackHistoryAction: (props: { action: string; via: string }) => tracked.push(props),
 }));
@@ -251,6 +278,23 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(result.code, result.err).toBe(0);
     const diff = json ? JSON.parse(result.out).diff : result.out;
     expect(diff).toContain(`-${before}+${after.trimEnd()}`);
+  });
+
+  it("reads the written diff when its pathname is replaced after Git exits", async () => {
+    const { hf, turn } = await setup();
+    const entry = await turn("claude", "Retitle", "index.html", "A2");
+    outputRace.enabled = true;
+    outputRace.replacements = 0;
+    try {
+      const result = await hf("show", entry.id, "--diff", "--json");
+
+      expect(outputRace.replacements).toBe(1);
+      expect(result.code, result.err).toBe(0);
+      expect(JSON.parse(result.out).diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
+      expect(result.out).not.toContain("replacement-file-content");
+    } finally {
+      outputRace.enabled = false;
+    }
   });
 
   it("peek reads a file as it was without writing, and restore puts every file back", async () => {
