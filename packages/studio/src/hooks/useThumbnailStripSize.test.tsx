@@ -180,6 +180,7 @@ it("does not re-render the strip when the observer reports the size it already h
 it("measures a strip once a zoom preview ends, not while the preview scales it", () => {
   const originalResizeObserver = globalThis.ResizeObserver;
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+  const runFrames = nextFrames();
   const host = document.createElement("div");
   document.body.append(host);
   let width = 300;
@@ -195,6 +196,7 @@ it("measures a strip once a zoom preview ends, not while the preview scales it",
     zoom.previewing = true;
     width = 600;
     act(() => reportResize(600, 40));
+    runFrames();
     expect(host.textContent).toBe("300x40");
     zoom.previewing = false;
     act(() => zoom.listeners.forEach((listener) => listener()));
@@ -203,6 +205,7 @@ it("measures a strip once a zoom preview ends, not while the preview scales it",
     zoom.previewing = false;
     act(() => root.unmount());
     host.remove();
+    vi.useRealTimers();
     globalThis.ResizeObserver = originalResizeObserver;
   }
 });
