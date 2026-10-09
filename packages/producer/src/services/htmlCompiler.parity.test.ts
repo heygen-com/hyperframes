@@ -13,6 +13,7 @@ import {
 // engine/src/services/videoFrameExtractor.test.ts reaching into core's runtime.
 import { nestedCompositionPathFixture } from "../../../core/src/compiler/nestedCompositionPath.testFixture.js";
 import { loadCompositions } from "../../../core/src/runtime/compositionLoader.js";
+import { VARIABLE_HOST_ATTR } from "../../../core/src/runtime/variableScope.js";
 import { compileForRender } from "./htmlCompiler.js";
 import { createFileServer } from "@hyperframes/engine";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
@@ -460,45 +461,73 @@ function assembledContract(contract: ParityContract) {
   return assembled;
 }
 
+const CARD_HOST =
+  '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div>';
+const comp = (id: string, inner = "") =>
+  `<html><body><div data-composition-id="${id}">${inner}</div></body></html>`;
+/** The nested fixture (index > scene > card) with extra index hosts and scene copies. */
+const nested = (extraHosts: string, sceneCopies = 1, extraFiles: Record<string, string> = {}) => ({
+  ...nestedCompositionPathFixture,
+  "index.html": nestedCompositionPathFixture["index.html"]!.replace(
+    '<div data-composition-id="scene"',
+    `${extraHosts}<div data-composition-id="scene"`,
+  ),
+  "compositions/scene.html": comp("scene", CARD_HOST.repeat(sceneCopies)),
+  ...extraFiles,
+});
+
 describe("mount/compile assembly parity", () => {
   it.each([
-    { name: "a free authored id", extraHosts: "", ids: ["card"] },
-    {
-      name: "an authored id collision",
-      extraHosts:
-        '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div>',
-      ids: ["card", "card__hf1"],
-    },
+    { name: "a free authored id", files: nested(""), ids: ["card"] },
+    { name: "an authored id collision", files: nested(CARD_HOST), ids: ["card", "card__hf1"] },
     {
       name: "a reserved suffix collision",
-      extraHosts:
-        '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div><div data-composition-id="card__hf1" data-composition-src="compositions/cards/card.html"></div>',
+      files: nested(CARD_HOST + CARD_HOST.replace('"card"', '"card__hf1"')),
       ids: ["card", "card__hf1", "card__hf2"],
     },
-    { name: "two copies inside one scene", sceneCopies: 2, ids: ["card__hf1", "card__hf2"] },
+    { name: "two copies inside one scene", files: nested("", 2), ids: ["card__hf1", "card__hf2"] },
+    {
+      name: "one card reused at two depths",
+      files: nested(
+        '<div data-composition-id="outer" data-composition-src="compositions/outer.html"></div>',
+        1,
+        {
+          "compositions/outer.html": comp(
+            "outer",
+            '<div data-composition-id="sub" data-composition-src="compositions/sub.html"></div>',
+          ),
+          "compositions/sub.html": comp("sub", CARD_HOST),
+        },
+      ),
+      ids: ["card__hf1", "card"],
+    },
+    {
+      name: "an anonymous host before a late card",
+      files: nested('<div data-composition-src="compositions/cards/card.html"></div>'),
+      ids: [null, "card__hf1"],
+    },
+    {
+      name: "an inline non-host element using the id",
+      files: nested('<div data-composition-id="card"></div>'),
+      ids: ["card__hf1"],
+    },
+    {
+      name: "a root template host before a late card",
+      files: nested(
+        '<div data-composition-id="card"></div><template id="card-template"><div data-composition-id="card"><p data-proof>Project-root card</p></div></template>',
+      ),
+      ids: ["card", "card__hf1"],
+    },
   ])(
     "mounts nested project-root paths with $name identically on all three paths",
-    async ({ extraHosts = "", sceneCopies = 1, ids }) => {
-      const cardHost =
-        '<div data-composition-id="card" data-composition-src="compositions/cards/card.html"></div>';
-      const result = await contracts({
-        ...nestedCompositionPathFixture,
-        "index.html": nestedCompositionPathFixture["index.html"]!.replace(
-          '<div data-composition-id="scene"',
-          `${extraHosts}<div data-composition-id="scene"`,
-        ),
-        "compositions/scene.html": nestedCompositionPathFixture["compositions/scene.html"]!.replace(
-          cardHost,
-          cardHost.repeat(sceneCopies),
-        ),
-      });
+    async ({ files, ids }) => {
+      const result = await contracts(files);
       expect(result.render).toEqual(result.preview);
       expect(assembledContract(result.mount)).toEqual(assembledContract(result.preview));
-      expect(result.preview.compositions.map((c) => c.id)).toEqual(expect.arrayContaining(ids));
       const cards = [...document.querySelectorAll("[data-proof]")];
       expect(cards.map((card) => card.textContent)).toEqual(ids.map(() => "Project-root card"));
       const hostIds = cards.map((card) =>
-        card.closest("[data-composition-src]")?.getAttribute("data-composition-id"),
+        card.closest(`[${VARIABLE_HOST_ATTR}]`)?.getAttribute("data-composition-id"),
       );
       expect(hostIds).toEqual(ids);
     },

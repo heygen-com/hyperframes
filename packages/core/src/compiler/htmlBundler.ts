@@ -1,5 +1,10 @@
 import { VARIABLE_HOST_ATTR } from "../runtime/variableScope";
 import {
+  assignCompositionHostIds,
+  hostCompositionIdentity,
+  type HostCompositionIdentity,
+} from "../runtime/compositionHostIds";
+import {
   compositionStyle,
   cssStyleMergeKey,
   deferScriptsUntilFonts,
@@ -500,25 +505,7 @@ function cssAttributeSelector(attr: string, value: string): string {
   return `[${attr}="${escaped}"]`;
 }
 
-function uniqueCompositionId(baseId: string, index: number): string {
-  return `${baseId}__hf${index}`;
-}
-
-export type BundledHostCompositionIdentity = {
-  authoredCompositionId: string | null;
-  runtimeCompositionId: string | null;
-};
-
-function getBundledHostCompositionIdentity(host: Element): BundledHostCompositionIdentity {
-  const currentCompositionId = (host.getAttribute("data-composition-id") || "").trim() || null;
-  const authoredCompositionId =
-    (host.getAttribute("data-hf-original-composition-id") || currentCompositionId || "").trim() ||
-    null;
-  return {
-    authoredCompositionId,
-    runtimeCompositionId: currentCompositionId,
-  };
-}
+export type BundledHostCompositionIdentity = HostCompositionIdentity;
 
 function getBundledTrackedCompositionHosts(document: Document): Element[] {
   const hosts = Array.from(
@@ -526,114 +513,48 @@ function getBundledTrackedCompositionHosts(document: Document): Element[] {
   );
   return hosts.filter((host) => {
     if (host.hasAttribute("data-composition-src")) return true;
-    const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
+    const authoredCompositionId = hostCompositionIdentity(host).authoredCompositionId;
     if (!authoredCompositionId) return false;
     return !!document.getElementById(`${authoredCompositionId}-template`);
   });
 }
 
-function shouldAssignBundledRuntimeCompositionId(host: Element, document: Document): boolean {
+function shouldAssignBundledRuntimeCompositionId(host: Element): boolean {
   if (host.hasAttribute("data-composition-src")) return true;
-  const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
+  const authoredCompositionId = hostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  if (!document.getElementById(`${authoredCompositionId}-template`)) return false;
+  if (!host.ownerDocument.getElementById(`${authoredCompositionId}-template`)) return false;
   return host.children.length === 0;
 }
 
-function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const host of hosts) {
-    const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
-    if (!authoredCompositionId) continue;
-    counts.set(authoredCompositionId, (counts.get(authoredCompositionId) || 0) + 1);
-  }
-  return counts;
-}
-
-const MOUNTED_HOST =
-  "[data-composition-src], [data-composition-file], [data-hf-original-composition-id]";
-
-/** Assigns hosts the inliner discovers after the initial pass, on first lookup: a repeated
- * composition is suffixed on every late instance, a single one keeps its authored id when free. */
+/** On a miss, assigns every host the document holds and the map lacks: the inliner's queue is
+ * breadth-first, so that is the whole next discovery level, as the runtime loader sees it. */
 class BundledHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
   override get(host: Element): BundledHostCompositionIdentity | undefined {
-    const existing = super.get(host);
-    if (existing) return existing;
-
-    const identity = getBundledHostCompositionIdentity(host);
-    const authoredId = identity.authoredCompositionId;
-    if (!authoredId || !shouldAssignBundledRuntimeCompositionId(host, host.ownerDocument)) {
-      this.set(host, identity);
-      return identity;
-    }
-
-    const others = Array.from(host.ownerDocument.querySelectorAll("[data-composition-id]")).filter(
-      (element) => element !== host,
-    );
-    const taken = new Set(others.map((element) => element.getAttribute("data-composition-id")));
-    const repeated = others.some(
-      (element) =>
-        element.matches(MOUNTED_HOST) &&
-        getBundledHostCompositionIdentity(element).authoredCompositionId === authoredId,
-    );
-    let instanceIndex = repeated ? 1 : 0;
-    const idAt = (index: number) =>
-      index === 0 ? authoredId : uniqueCompositionId(authoredId, index);
-    while (taken.has(idAt(instanceIndex))) instanceIndex += 1;
-    const runtimeId = idAt(instanceIndex);
-    if (instanceIndex > 0) host.setAttribute("data-hf-original-composition-id", authoredId);
-    else host.removeAttribute("data-hf-original-composition-id");
-    host.setAttribute("data-composition-id", runtimeId);
-    const assigned = { authoredCompositionId: authoredId, runtimeCompositionId: runtimeId };
-    this.set(host, assigned);
-    return assigned;
+    if (!this.has(host))
+      assignBundledLevel(getBundledTrackedCompositionHosts(host.ownerDocument), this);
+    if (!this.has(host)) this.set(host, hostCompositionIdentity(host));
+    return super.get(host);
   }
 }
 
-// fallow-ignore-next-line complexity
+function assignBundledLevel(
+  hosts: readonly Element[],
+  identities: Map<Element, BundledHostCompositionIdentity>,
+): void {
+  const pending = hosts.filter(
+    (host) => !identities.has(host) && shouldAssignBundledRuntimeCompositionId(host),
+  );
+  assignCompositionHostIds(pending, identities);
+  for (const host of hosts)
+    if (!identities.has(host)) identities.set(host, hostCompositionIdentity(host));
+}
+
 export function assignBundledRuntimeCompositionIds(
-  hosts: Element[],
-  counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),
+  document: Document,
 ): Map<Element, BundledHostCompositionIdentity> {
-  const instanceByCompositionId = new Map<string, number>();
   const identities = new BundledHostIdentityMap();
-
-  for (const host of hosts) {
-    const { authoredCompositionId, runtimeCompositionId: previousRuntimeCompositionId } =
-      getBundledHostCompositionIdentity(host);
-    const shouldAssign = shouldAssignBundledRuntimeCompositionId(host, host.ownerDocument);
-    if (!authoredCompositionId) {
-      identities.set(host, {
-        authoredCompositionId: null,
-        runtimeCompositionId: previousRuntimeCompositionId,
-      });
-      continue;
-    }
-
-    const duplicateInstance = (counts.get(authoredCompositionId) || 0) > 1;
-    let runtimeCompositionId = previousRuntimeCompositionId || authoredCompositionId;
-    if (shouldAssign) {
-      const instanceIndex = duplicateInstance
-        ? (instanceByCompositionId.get(authoredCompositionId) || 0) + 1
-        : 0;
-      if (duplicateInstance) {
-        instanceByCompositionId.set(authoredCompositionId, instanceIndex);
-        host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
-      } else {
-        host.removeAttribute("data-hf-original-composition-id");
-      }
-
-      runtimeCompositionId = duplicateInstance
-        ? uniqueCompositionId(authoredCompositionId, instanceIndex)
-        : authoredCompositionId;
-      host.setAttribute("data-composition-id", runtimeCompositionId);
-    }
-    identities.set(host, {
-      authoredCompositionId,
-      runtimeCompositionId,
-    });
-  }
-
+  assignBundledLevel(getBundledTrackedCompositionHosts(document), identities);
   return identities;
 }
 
@@ -1076,7 +997,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
 
   // Inline sub-compositions (via shared function)
   const trackedCompositionHosts = getBundledTrackedCompositionHosts(document);
-  const hostIdentityByElement = assignBundledRuntimeCompositionIds(trackedCompositionHosts);
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(document);
   const subCompositionHosts = trackedCompositionHosts.filter((host) =>
     host.hasAttribute("data-composition-src"),
   );

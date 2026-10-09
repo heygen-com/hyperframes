@@ -1,5 +1,10 @@
 import { VARIABLE_HOST_ATTR } from "./variableScope";
 import {
+  assignCompositionHostIds,
+  hostCompositionIdentity,
+  type HostCompositionIdentity,
+} from "./compositionHostIds";
+import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
   refreshSvgSelectorAliases,
@@ -184,10 +189,6 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
   }
 }
 
-function uniqueCompositionId(baseId: string, index: number): string {
-  return `${baseId}__hf${index}`;
-}
-
 const headNodeHost = new WeakMap<Element, Element>();
 
 /** Mounts finish in any order; `<head>` keeps their links and styles in host document order. */
@@ -294,34 +295,8 @@ function isSameDocumentUrl(candidate: string | URL, compositionUrl: URL): boolea
   }
 }
 
-type HostCompositionIdentity = {
-  authoredCompositionId: string | null;
-  runtimeCompositionId: string | null;
-};
-
-function getHostCompositionIdentity(host: Element): HostCompositionIdentity {
-  const currentCompositionId = (host.getAttribute("data-composition-id") || "").trim() || null;
-  const authoredCompositionId =
-    (host.getAttribute("data-hf-original-composition-id") || currentCompositionId || "").trim() ||
-    null;
-  return {
-    authoredCompositionId,
-    runtimeCompositionId: currentCompositionId,
-  };
-}
-
-function countAuthoredCompositionIds(hosts: Element[]): Map<string, number> {
-  const hostCountsByCompositionId = new Map<string, number>();
-  for (const host of hosts) {
-    const compId = getHostCompositionIdentity(host).authoredCompositionId || "";
-    if (!compId) continue;
-    hostCountsByCompositionId.set(compId, (hostCountsByCompositionId.get(compId) || 0) + 1);
-  }
-  return hostCountsByCompositionId;
-}
-
 function hasMatchingInlineTemplate(host: Element): boolean {
-  const authoredCompositionId = getHostCompositionIdentity(host).authoredCompositionId;
+  const authoredCompositionId = hostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
   return !!document.querySelector(`template#${CSS.escape(authoredCompositionId)}-template`);
 }
@@ -354,7 +329,7 @@ function cleanupDetachedScopedVariables() {
 
   const activeRuntimeCompositionIds = new Set(
     getTrackedCompositionHosts()
-      .map((host) => getHostCompositionIdentity(host).runtimeCompositionId)
+      .map((host) => hostCompositionIdentity(host).runtimeCompositionId)
       .filter((compositionId): compositionId is string => !!compositionId),
   );
 
@@ -368,67 +343,17 @@ function cleanupDetachedScopedVariables() {
 function assignRuntimeCompositionIds(
   hosts: Element[],
   mountedHosts: ReadonlySet<Element>,
+  assigned: Map<Element, HostCompositionIdentity>,
 ): Map<Element, HostCompositionIdentity> {
-  const hostCountsByCompositionId = countAuthoredCompositionIds(hosts);
-  const reserved = new Set(
-    hosts.flatMap((host) => {
-      const identity = getHostCompositionIdentity(host);
-      const ids = identity.authoredCompositionId ? [identity.authoredCompositionId] : [];
-      if (
-        (mountedHosts.has(host) || !shouldAssignRuntimeCompositionId(host)) &&
-        identity.runtimeCompositionId
-      )
-        ids.push(identity.runtimeCompositionId);
-      return ids;
-    }),
+  assignCompositionHostIds(
+    hosts.filter(
+      (host) =>
+        !assigned.has(host) && !mountedHosts.has(host) && shouldAssignRuntimeCompositionId(host),
+    ),
+    assigned,
   );
-  const hostInstanceByCompositionId = new Map<string, number>();
-  const hostIdentityByElement = new Map<Element, HostCompositionIdentity>();
-
-  for (const host of hosts) {
-    const { authoredCompositionId, runtimeCompositionId: previousRuntimeCompositionId } =
-      getHostCompositionIdentity(host);
-    const shouldAssign = !mountedHosts.has(host) && shouldAssignRuntimeCompositionId(host);
-    if (!authoredCompositionId) {
-      hostIdentityByElement.set(host, {
-        authoredCompositionId: null,
-        runtimeCompositionId: previousRuntimeCompositionId,
-      });
-      continue;
-    }
-
-    const duplicateInstance = (hostCountsByCompositionId.get(authoredCompositionId) || 0) > 1;
-    let runtimeCompositionId = previousRuntimeCompositionId || authoredCompositionId;
-    if (shouldAssign) {
-      let instanceIndex = duplicateInstance
-        ? (hostInstanceByCompositionId.get(authoredCompositionId) || 0) + 1
-        : 0;
-      if (duplicateInstance) {
-        while (reserved.has(uniqueCompositionId(authoredCompositionId, instanceIndex)))
-          instanceIndex += 1;
-        hostInstanceByCompositionId.set(authoredCompositionId, instanceIndex);
-      }
-      runtimeCompositionId = duplicateInstance
-        ? uniqueCompositionId(authoredCompositionId, instanceIndex)
-        : authoredCompositionId;
-      reserved.add(runtimeCompositionId);
-
-      if (duplicateInstance) {
-        host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
-      } else {
-        host.removeAttribute("data-hf-original-composition-id");
-      }
-      host.setAttribute("data-composition-id", runtimeCompositionId);
-    }
-
-    hostIdentityByElement.set(host, {
-      authoredCompositionId,
-      runtimeCompositionId,
-    });
-  }
-
   cleanupDetachedScopedVariables();
-  return hostIdentityByElement;
+  return new Map(hosts.map((host) => [host, assigned.get(host) ?? hostCompositionIdentity(host)]));
 }
 
 async function mountCompositionContent(params: {
@@ -681,11 +606,12 @@ async function mountCompositionContent(params: {
 async function mountInlineTemplateCompositions(
   params: LoadCompositionsParams,
   mountedHosts: ReadonlySet<Element>,
+  assigned: Map<Element, HostCompositionIdentity>,
 ): Promise<MountedComposition[]> {
   const trackedHosts = getTrackedCompositionHosts();
   cleanupDetachedScopedVariables();
   if (trackedHosts.length === 0) return [];
-  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, mountedHosts);
+  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, mountedHosts, assigned);
   const hosts = trackedHosts.filter((host) => {
     if (mountedHosts.has(host)) return false;
     if (host.hasAttribute("data-composition-src")) return false;
@@ -729,11 +655,12 @@ async function mountExternalCompositions(
   params: LoadCompositionsParams,
   attemptedPaths: Map<Element, readonly string[]>,
   mountedHosts: ReadonlySet<Element>,
+  assigned: Map<Element, HostCompositionIdentity>,
 ): Promise<MountedComposition[]> {
   const trackedHosts = getTrackedCompositionHosts();
   cleanupDetachedScopedVariables();
   if (trackedHosts.length === 0) return [];
-  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, mountedHosts);
+  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, mountedHosts, assigned);
   const hosts = trackedHosts.filter((host) => {
     if (!host.hasAttribute("data-composition-src") || attemptedPaths.has(host)) return false;
     const parent = host.parentElement?.closest("[data-composition-src]");
@@ -888,17 +815,23 @@ export async function loadCompositions(params: LoadCompositionsParams): Promise<
   const external: MountedComposition[] = [];
   const attemptedPaths = new Map<Element, readonly string[]>();
   const mountedHosts = new Set<Element>();
+  const assignedHosts = new Map<Element, HostCompositionIdentity>();
   async function discoverExternalCompositions(): Promise<MountedComposition[]> {
     const discovered: MountedComposition[] = [];
     while (true) {
-      const next = await mountExternalCompositions(params, attemptedPaths, mountedHosts);
+      const next = await mountExternalCompositions(
+        params,
+        attemptedPaths,
+        mountedHosts,
+        assignedHosts,
+      );
       discovered.push(...next);
       for (const { host } of next) mountedHosts.add(host);
       if (next.length === 0) return discovered;
     }
   }
   external.push(...(await discoverExternalCompositions()));
-  const inline = await mountInlineTemplateCompositions(params, mountedHosts);
+  const inline = await mountInlineTemplateCompositions(params, mountedHosts, assignedHosts);
   for (const { host } of inline) mountedHosts.add(host);
   external.push(...(await discoverExternalCompositions()));
   const initial = [...external, ...inline];
@@ -915,6 +848,7 @@ export async function loadCompositions(params: LoadCompositionsParams): Promise<
   const discovered = await mountInlineTemplateCompositions(
     params,
     new Set(live.map(({ host }) => host)),
+    assignedHosts,
   );
   for (const { host } of discovered) mountedHosts.add(host);
   const discoveredExternal = await discoverExternalCompositions();

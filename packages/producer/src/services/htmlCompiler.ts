@@ -940,7 +940,7 @@ function inlineSubCompositions(
 
   // Assign per-instance runtime composition ids before each host is inlined,
   // mirroring the preview bundler. Initial hosts are assigned as one pre-pass;
-  // hosts discovered by the shared inliner's queue are assigned lazily by the
+  // hosts discovered by the shared inliner's queue are assigned a level at a time by the
   // same identity map. When the same sub-composition (same authored
   // data-composition-id) is mounted more than once — the reusable-template
   // pattern from issue #2064 — each host is rewritten to a unique runtime id
@@ -949,7 +949,7 @@ function inlineSubCompositions(
   // data-variable-values clobbers the earlier ones and all-but-one instance
   // renders blank. #2066 fixed the single-instance case but left this
   // divergence (snapshot/preview correct, render wrong).
-  const hostIdentityByElement = assignBundledRuntimeCompositionIds(hosts as unknown as Element[]);
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(document as unknown as Document);
 
   const result = inlineSubCompositionsShared(
     document as unknown as Document,
