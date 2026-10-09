@@ -267,7 +267,9 @@ describe("VideoThumbnail", () => {
 
 describe("VideoThumbnail during a zoom", () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
     vi.mocked(decodeVideoThumbnail).mockResolvedValue({
       value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
       weight: 256,
@@ -311,6 +313,7 @@ describe("VideoThumbnail during a zoom", () => {
     vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
     await act(async () => {
       reportResize(880, 40);
+      vi.advanceTimersToNextFrame();
       await Promise.resolve();
     });
     await rest();
@@ -329,6 +332,7 @@ describe("VideoThumbnail during a zoom", () => {
     vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
     await act(async () => {
       reportResize(880, 40);
+      vi.advanceTimersToNextFrame();
       root.render(clip(undefined, "overscan"));
       await Promise.resolve();
     });
@@ -374,6 +378,7 @@ describe("VideoThumbnail during a zoom", () => {
     vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
     await act(async () => {
       reportResize(880, 40);
+      vi.advanceTimersToNextFrame();
       await Promise.resolve();
     });
     await rest();
@@ -414,6 +419,7 @@ describe("VideoThumbnail during a zoom", () => {
     await render(440);
     await act(async () => {
       reportResize(50, 40);
+      vi.advanceTimersToNextFrame();
       await Promise.resolve();
     });
     await rest();
@@ -422,6 +428,7 @@ describe("VideoThumbnail during a zoom", () => {
     vi.mocked(decodeVideoThumbnail).mockImplementation(() => new Promise(() => {}));
     await act(async () => {
       reportResize(880, 40);
+      vi.advanceTimersToNextFrame();
       await Promise.resolve();
     });
     await rest();
@@ -434,6 +441,7 @@ describe("VideoThumbnail during a zoom", () => {
     await act(async () => {
       markTimelineMotion();
       reportResize(880, 40);
+      vi.advanceTimersToNextFrame();
       await Promise.resolve();
     });
     expect(decodeVideoThumbnail).not.toHaveBeenCalled();
