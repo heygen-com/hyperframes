@@ -58,7 +58,7 @@ ENV CONTAINER=true
 # baselines in packages/producer/tests/*/output/output.mp4 stay reproducible.
 # Each Chrome stable bump shifts pixel output enough to fail PSNR. Bump this
 # version together with regenerating baselines via `docker:test:update`.
-RUN npx --yes @puppeteer/browsers install chrome-headless-shell@148.0.7778.167 \
+RUN npx --yes @puppeteer/browsers install chrome-headless-shell@152.0.7977.30 \
       --path /root/.cache/puppeteer \
     && find /root/.cache/puppeteer/chrome-headless-shell -name "chrome-headless-shell" -type f \
     && echo "chrome-headless-shell installed"
