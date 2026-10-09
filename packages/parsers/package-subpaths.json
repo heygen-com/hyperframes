@@ -122,6 +122,12 @@
       "types": "./dist/assetResolution.d.ts",
       "environments": ["bun", "node"]
     },
+    "./html-attribute-spans": {
+      "source": "./src/htmlAttributeSpans.ts",
+      "runtime": "./dist/htmlAttributeSpans.js",
+      "types": "./dist/htmlAttributeSpans.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./composition-duration": {
       "source": "./src/compositionDuration.ts",
       "runtime": "./dist/compositionDuration.js",
