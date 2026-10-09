@@ -69,7 +69,8 @@ export function terminateWindowsProcessTree(
     });
     killer.once("error", reject);
     killer.once("close", (status) => {
-      if (status === 0) resolve();
+      const processNotFound = status === 128;
+      if (status === 0 || processNotFound) resolve();
       else reject(new Error(`taskkill exited with status ${status ?? "unknown"}`));
     });
   });
