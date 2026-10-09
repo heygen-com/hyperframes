@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { preloadMedia, releaseMedia } from "./preloadMedia";
+import { preloadMedia, prepareUpcomingMedia, releaseMedia } from "./preloadMedia";
 
 function media(tagName = "VIDEO", networkState = 2, readyState = 0) {
   return { tagName, networkState, readyState, preload: "metadata", load: vi.fn() };
@@ -57,5 +57,78 @@ describe("releasing a clip's download", () => {
     releaseMedia(video);
     expect(video.load).not.toHaveBeenCalled();
     expect(video.innerHTML).toBe(markup);
+  });
+});
+
+describe("preparing upcoming video playback", () => {
+  function video() {
+    const element = document.createElement("video");
+    element.setAttribute("data-media-start", "6");
+    element.load = vi.fn();
+    document.body.appendChild(element);
+    return element;
+  }
+
+  it("does not overwrite an in-flight seek", () => {
+    const element = video();
+    Object.defineProperty(element, "readyState", { value: 1 });
+    Object.defineProperty(element, "seeking", { value: true });
+    element.currentTime = 7;
+
+    prepareUpcomingMedia(element, () => true);
+    expect(element.currentTime).toBe(7);
+    element.remove();
+  });
+
+  it("prepares a clip again after its resource was released and reloaded", () => {
+    const element = video();
+    prepareUpcomingMedia(element, () => true);
+    element.dispatchEvent(new Event("loadedmetadata"));
+    expect(element.currentTime).toBe(6);
+    element.currentTime = 0;
+    releaseMedia(element);
+
+    prepareUpcomingMedia(element, () => true);
+    element.dispatchEvent(new Event("loadedmetadata"));
+    expect(element.currentTime).toBe(6);
+    element.remove();
+  });
+
+  it("cancels preparation when the clip leaves the preload window", () => {
+    const element = video();
+    prepareUpcomingMedia(element, () => true);
+    releaseMedia(element);
+    element.dispatchEvent(new Event("loadedmetadata"));
+    expect(element.currentTime).toBe(0);
+    element.remove();
+  });
+
+  it("reads the current offset after metadata instead of an offset from an earlier edit", () => {
+    const element = video();
+    prepareUpcomingMedia(element, () => true);
+    element.setAttribute("data-media-start", "8");
+    element.dispatchEvent(new Event("loadedmetadata"));
+    expect(element.currentTime).toBe(8);
+    element.remove();
+  });
+
+  it("does not seek a detached clip when its metadata arrives", () => {
+    const element = video();
+    prepareUpcomingMedia(element, () => true);
+    element.remove();
+    element.dispatchEvent(new Event("loadedmetadata"));
+    expect(element.currentTime).toBe(0);
+  });
+
+  it("does not prepare an audio clip's source offset", () => {
+    const element = document.createElement("audio");
+    element.setAttribute("data-media-start", "6");
+    element.load = vi.fn();
+    document.body.appendChild(element);
+
+    prepareUpcomingMedia(element, () => true);
+    element.dispatchEvent(new Event("loadedmetadata"));
+    expect(element.currentTime).toBe(0);
+    element.remove();
   });
 });
