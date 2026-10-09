@@ -189,7 +189,7 @@ describe("models list", () => {
   });
 
   it("counts Parakeet as installed through parakeet-mlx, as transcribe would run it", async () => {
-    sherpa.sherpaParakeetInstalled.mockReturnValue(false);
+    sherpa.sherpaUnsupportedReason.mockReturnValue("Parakeet needs glibc 2.32 or newer.");
     findParakeet.mockReturnValue("/venv/bin/parakeet-mlx");
     expect((await listJson()).models[0]).toEqual({
       engine: "parakeet",

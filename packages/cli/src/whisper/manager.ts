@@ -156,7 +156,9 @@ export function listWhisperModels(): { model: string; path: string }[] {
   return readdirSync(MODELS_DIR)
     .flatMap((file) => {
       const model = /^ggml-(.+)\.bin$/.exec(file)?.[1];
-      return model ? [{ model, path: join(MODELS_DIR, file) }] : [];
+      const path = join(MODELS_DIR, file);
+      // ensureModel's own test: a dangling link is downloaded again, so it is not installed.
+      return model && existsSync(path) ? [{ model, path }] : [];
     })
     .sort((a, b) => a.model.localeCompare(b.model));
 }
