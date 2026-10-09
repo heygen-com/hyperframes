@@ -1386,6 +1386,28 @@ describe("composition rules", () => {
       expect(await lintAt(scene, `<img src="../..\\x.png" alt="">`)).toBeDefined();
     });
 
+    it("errors on a climb from the root file however its first segment is written", async () => {
+      for (const src of ["%2e%2e/x.png", "..\\x.png", "assets/../../x.png", "&#46;&#46;/x.png"]) {
+        expect(await lintAt("index.html", `<img src="${src}" alt="">`)).toBeDefined();
+      }
+    });
+
+    it("counts an absolute or ..-containing file path's folder as the project root", async () => {
+      for (const file of [
+        "/srv/project/index.html",
+        "C:\\project\\index.html",
+        "sub/../index.html",
+      ]) {
+        expect(await lintAt(file, `<img src="../x.png" alt="">`)).toBeDefined();
+      }
+    });
+
+    it("ignores URLs with a scheme, absolute paths and fragments", async () => {
+      for (const src of ["https://cdn.example.com/../../x.png", "/../x.png", "#../x"]) {
+        expect(await lintAt("index.html", `<img src="${src}" alt="">`)).toBeUndefined();
+      }
+    });
+
     it("ignores a path's query and hash", async () => {
       expect(
         await lintAt("compositions/scene.html", `<img src="../assets/x.png#/../../../../" alt="">`),

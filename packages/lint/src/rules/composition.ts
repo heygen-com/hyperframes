@@ -133,6 +133,16 @@ function extractCssUrlReferences(css: string): string[] {
   return out;
 }
 
+function folderDepth(filePath: string): number {
+  if (/^(?:[a-z]:)?[\\/]/i.test(filePath)) return 0;
+  let depth = 0;
+  for (const segment of filePath.split(/[\\/]/).slice(0, -1)) {
+    if (segment === "..") depth = Math.max(0, depth - 1);
+    else if (segment && segment !== ".") depth += 1;
+  }
+  return depth;
+}
+
 function climbsAboveRoot(fileDepth: number, path: string): boolean {
   let depth = fileDepth;
   for (const segment of path.split("/")) {
@@ -653,20 +663,17 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 
     const offenders: string[] = [];
-    const depthOf = (filePath: string) =>
-      filePath.split(/[\\/]/).filter((s) => s && s !== ".").length - 1;
-    const fileDepth = depthOf(options.compSrcPath ?? "index.html");
+    const fileDepth = folderDepth(options.compSrcPath ?? "index.html");
     const collect = (value: string | null, depth = fileDepth) => {
-      if (!value) return;
-      const trimmed = value.trim();
-      if (!trimmed.startsWith("../") && trimmed !== "..") return;
+      const trimmed = value?.trim() ?? "";
+      if (/^(?:[a-z][a-z0-9+.-]*:|[\\/#])/i.test(trimmed)) return;
       const path = (trimmed.split(/[?#]/, 1)[0] ?? "").replace(/\\/g, "/").replace(/%2e/gi, ".");
       if (climbsAboveRoot(depth, path)) offenders.push(trimmed);
     };
 
     for (const tag of tags) {
-      collect(readAttr(tag.raw, "src"));
-      collect(readAttr(tag.raw, "href"));
+      collect(readDecodedAttr(tag.raw, "src"));
+      collect(readDecodedAttr(tag.raw, "href"));
       // Use readJsonAttr for `style` — inline url('...') values contain the
       // opposite quote, which readAttr's [^"']+ class would truncate.
       const styleAttr = readJsonAttr(tag.raw, "style");
@@ -675,7 +682,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       }
     }
     for (const style of styles) {
-      const depth = style.rootRelativePath ? depthOf(style.rootRelativePath) : fileDepth;
+      const depth = style.rootRelativePath ? folderDepth(style.rootRelativePath) : fileDepth;
       for (const url of extractCssUrlReferences(style.content)) collect(url, depth);
     }
 
@@ -699,7 +706,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         severity: "error",
         message:
           `Found ${offenders.length} asset path(s) traversing above the project root with "../" ` +
-          `(${prefixSummary}), resolved from the folder of the file that holds them. Render clamps them to the project root and preview resolves them outside it, so they load a different file than written, or none.`,
+          `(${prefixSummary}), resolved from the folder of the file that holds them. Render and preview clamp them to the project root or resolve them outside it, so they load a different file than written, or none.`,
         fixHint:
           'Point the path at a file inside the project: from compositions/scene.html, "../assets/x.png" and "assets/x.png" both reach the project\'s assets folder.',
       },
