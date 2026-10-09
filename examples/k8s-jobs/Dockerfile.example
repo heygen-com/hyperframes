@@ -102,7 +102,11 @@ COPY package.json bun.lock ./
 COPY packages/aws-lambda/package.json packages/aws-lambda/
 COPY packages/core/package.json packages/core/
 COPY packages/engine/package.json packages/engine/
+COPY packages/lint/package.json packages/lint/
+COPY packages/parsers/package.json packages/parsers/
+COPY packages/player/package.json packages/player/
 COPY packages/producer/package.json packages/producer/
+COPY packages/studio-server/package.json packages/studio-server/
 
 RUN npm install --global bun && \
     bun install --frozen-lockfile && \
@@ -114,7 +118,10 @@ RUN npm install --global bun && \
 # `bun run --cwd packages/producer build` against this image.
 COPY packages/core ./packages/core
 COPY packages/engine ./packages/engine
+COPY packages/lint ./packages/lint
+COPY packages/parsers ./packages/parsers
 COPY packages/producer ./packages/producer
+COPY packages/studio-server ./packages/studio-server
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 ENTRYPOINT ["/usr/bin/tini", "--"]
