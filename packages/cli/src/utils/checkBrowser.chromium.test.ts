@@ -54,6 +54,8 @@ const PAGE = `<body>
   // A registered timeline with only the one-iteration methods, which the runtime accepts.
   window.__timelines.partial = { duration: () => 4, time: () => 1 };
   window.__timelines.partialEnded = { duration: () => 4, time: () => 4 };
+  // Seekable but with no way to read its time: not evidence either way.
+  window.__timelines.seekOnly = { duration: () => 4, seek: () => {} };
 </script>
 </body>`;
 
