@@ -133,9 +133,9 @@ export interface SwallowGuardResult {
   rewritten: boolean;
 }
 
-// End of argv, a bare `-` (stdin) and `--no-x` (citty never swallows it) are not a swallow.
+// End of argv and a bare `-` (stdin) are never a swallow; `--` or a known flag spelling is.
 function looksLikeSwallowedFlag(next: string | undefined, known: Set<string>): boolean {
-  if (next === undefined || next === "-" || next.startsWith("--no-")) return false;
+  if (next === undefined || next === "-") return false;
   return next === "--" || (next.startsWith("-") && unknownFlagIn(next, known) === null);
 }
 
@@ -149,6 +149,19 @@ function swallowingArgName(
   const spelling = ownableFlagSpelling(tok);
   const ownerArgName = spelling ? owners.get(spelling) : undefined;
   return ownerArgName && looksLikeSwallowedFlag(next, known) ? ownerArgName : undefined;
+}
+
+// A rewrite flag directly followed by `--no-x` is bare too (check's `--frame-check --no-browser-gpu`).
+function rewriteArgName(
+  tok: string,
+  after: string | undefined,
+  owners: Map<string, string>,
+  rewriteFlags: ReadonlySet<string> | undefined,
+): string | undefined {
+  if (!after?.startsWith("--no-")) return undefined;
+  const spelling = ownableFlagSpelling(tok);
+  const name = spelling ? owners.get(spelling) : undefined;
+  return name && rewriteFlags?.has(name) ? name : undefined;
 }
 
 // Reject a string/enum flag whose value citty swallowed from the next flag (`catalog --query --json`).
@@ -169,10 +182,12 @@ export function guardSwallowedFlagValues(
   let out: string[] | undefined;
   for (const [i, tok] of rawArgs.entries()) {
     if (tok === "--") break;
-    const next = rawArgs[i + 1];
+    // citty drops every `--no-x` before parsing, so the token after them is what gets swallowed.
+    const next = rawArgs.slice(i + 1).find((t) => !t.startsWith("--no-"));
     const ownerArgName = swallowingArgName(tok, next, owners, known);
-    if (!ownerArgName) continue;
-    if (!rewriteFlags?.has(ownerArgName)) throwSwallowedFlagError(ownerArgName, next as string);
+    const rewrite = rewriteArgName(tok, rawArgs[i + 1], owners, rewriteFlags) ?? ownerArgName;
+    if (!rewrite) continue;
+    if (!rewriteFlags?.has(rewrite)) throwSwallowedFlagError(rewrite, next as string);
     out ??= rawArgs.slice();
     out[i] = `${tok}=`;
   }

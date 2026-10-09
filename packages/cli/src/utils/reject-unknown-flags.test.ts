@@ -75,8 +75,19 @@ describe("guardSwallowedFlagValues", () => {
     expect(guard(["--output", "--json"])).toThrow(/pass one: --output <value> or --output=<value>/);
   });
 
-  it("does not reject a --no-<flag> negation, which citty never swallows", () => {
+  it("does not reject a trailing --no-<flag> negation, which citty never swallows", () => {
     expect(guard(["--output", "--no-docker"])).not.toThrow();
+  });
+
+  it("looks past --no-<flag> negations, which citty drops before parsing", () => {
+    expect(guard(["--output", "--no-docker", "--json"])).toThrow(/value "--json"/);
+  });
+
+  it("rewrites a bare opted-in flag followed by a --no-<flag> negation", () => {
+    const checkCmd = { args: { "frame-check": { type: "string" }, json: { type: "boolean" } } };
+    const raw = ["--frame-check", "--no-json", "dir"];
+    const result = guardSwallowedFlagValues(checkCmd as never, "check", raw);
+    expect(result).toEqual({ rawArgs: ["--frame-check=", "--no-json", "dir"], rewritten: true });
   });
 
   it("accepts the equals form even when the inline value looks like a flag", () => {
