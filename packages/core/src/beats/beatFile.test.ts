@@ -1,5 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { findMusicAudioSrc } from "./beatFile";
+import { audioRelPathForSrc, beatFilePathForSrc, findMusicAudioSrc } from "./beatFile";
+
+describe("beat file source paths", () => {
+  it.each([
+    ["assets/100% beat.wav?v=1#listen", "assets/100% beat.wav"],
+    ["assets/100%20beat%.wav?v=1#listen", "assets/100 beat%.wav"],
+    ["https://example.test/assets/100%20beat%.wav?v=1", "assets/100 beat%.wav"],
+    ["/api/projects/demo/preview/assets/100%20beat%.wav?v=1", "assets/100 beat%.wav"],
+    ["/api/projects/demo/preview/comp/assets/100%20beat%.wav#listen", "assets/100 beat%.wav"],
+  ])("resolves filename punctuation in %s", (src, path) => {
+    expect(audioRelPathForSrc(src)).toBe(path);
+    expect(beatFilePathForSrc(src)).toBe(`beats/${path}.json`);
+  });
+
+  it.each([
+    ["assets/bed.wav?cache=1", "assets/bed.wav"],
+    ["audio/bed.wav", "audio/bed.wav"],
+    ["assets/a%2520%3F%23.wav?cache=1#listen", "assets/a%20?#.wav"],
+    ["/api/projects/demo/preview/comp/assets/a%2520%3F%23.wav?cache=1", "assets/a%20?#.wav"],
+    ["assets/100% beat.wav", "assets/100% beat.wav"],
+  ])("preserves the source identity of %s", (src, path) => {
+    expect(audioRelPathForSrc(src)).toBe(path);
+    expect(beatFilePathForSrc(src)).toBe(`beats/${path}.json`);
+  });
+
+  it.each([null, undefined, "", "blob:temporary", "data:audio/wav;base64,AAAA"])(
+    "does not persist a beat path for %s",
+    (src) => {
+      expect(audioRelPathForSrc(src)).toBeNull();
+      expect(beatFilePathForSrc(src)).toBeNull();
+    },
+  );
+});
 
 describe("findMusicAudioSrc", () => {
   it("finds a video with sound tagged as music", () => {
