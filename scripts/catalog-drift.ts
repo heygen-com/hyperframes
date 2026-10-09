@@ -51,20 +51,23 @@ function sameContent(generatedRoot: string, committedRoot: string, file: string)
 export function vectorsAgree(a: Buffer, b: Buffer, dimensions: number): boolean {
   const rowBytes = 4 * dimensions;
   if (a.length !== b.length || a.length % rowBytes !== 0) return false;
-  for (let row = 0; row < a.length; row += rowBytes) {
-    let dot = 0;
-    let normA = 0;
-    let normB = 0;
-    for (let i = row; i < row + rowBytes; i += 4) {
-      const x = a.readFloatLE(i);
-      const y = b.readFloatLE(i);
-      dot += x * y;
-      normA += x * x;
-      normB += y * y;
-    }
-    if (!(dot / Math.sqrt(normA * normB) >= MIN_ROW_COSINE)) return false;
+  return Array.from({ length: a.length / rowBytes }, (_, row) =>
+    rowCosine(a, b, row * rowBytes, (row + 1) * rowBytes),
+  ).every((cosine) => cosine >= MIN_ROW_COSINE);
+}
+
+function rowCosine(a: Buffer, b: Buffer, start: number, end: number): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = start; i < end; i += 4) {
+    const x = a.readFloatLE(i);
+    const y = b.readFloatLE(i);
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
   }
-  return true;
+  return dot / Math.sqrt(normA * normB);
 }
 
 async function main(): Promise<void> {
