@@ -539,14 +539,14 @@ async function transcodeToCache(
   }
 }
 
-let settledProxyCount = 0;
+let proxyActivity = 0;
 
-/** Null while a copy for this project is being made; otherwise a mark that moves when any copy finishes. */
+/** Null while this project has a copy in progress; otherwise a mark that moves when any copy finishes or is refused. */
 export function proxyActivityMark(projectDir: string): string | null {
-  if (!existsSync(projectDir)) return String(settledProxyCount);
+  if (!existsSync(projectDir)) return String(proxyActivity);
   const cacheDir = join(realpath(projectDir), CACHE_DIR_NAME) + sep;
   for (const cachePath of inFlight.keys()) if (cachePath.startsWith(cacheDir)) return null;
-  return String(settledProxyCount);
+  return String(proxyActivity);
 }
 
 /**
@@ -585,7 +585,10 @@ export async function resolveProxy(
 
   let entry = inFlight.get(cachePath);
   if (!entry) {
-    if (!options.priority && queueIsFull()) throw new ProxyCapacityError();
+    if (!options.priority && queueIsFull()) {
+      proxyActivity += 1;
+      throw new ProxyCapacityError();
+    }
     const job: ProxyJob = {
       cachePath,
       priority: options.priority === true,
@@ -605,7 +608,7 @@ export async function resolveProxy(
       })
       .finally(() => {
         forget(job);
-        settledProxyCount += 1;
+        proxyActivity += 1;
       });
     entry = { promise, job };
     inFlight.set(cachePath, entry);

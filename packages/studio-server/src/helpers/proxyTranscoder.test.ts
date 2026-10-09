@@ -563,6 +563,26 @@ describe("resolveProxy", () => {
       return { ...spy, ...(await loadModule(spy.spawn, FFMPEG_PATH)), projectDir: tmpProject() };
     }
 
+    it("moves another project's activity mark when its ask is refused, and copies it once there is room", async () => {
+      const { calls, resolveProxy, ProxyCapacityError, proxyActivityMark, projectDir } =
+        await oneSlot(0);
+      const busyProject = tmpProject();
+      const running = resolveProxy(busyProject, clips(busyProject, ["running"]).running!);
+      const target = clips(projectDir, ["target"]).target!;
+      const before = proxyActivityMark(projectDir);
+
+      await expect(resolveProxy(projectDir, target)).rejects.toBeInstanceOf(ProxyCapacityError);
+      expect(proxyActivityMark(projectDir)).not.toBe(before);
+
+      succeed(calls[0]!);
+      await running;
+      const retry = resolveProxy(projectDir, target);
+      await flush();
+      expect(calls.map(clipOf)).toEqual(["running", "target"]);
+      succeed(calls[1]!);
+      await retry;
+    });
+
     it("starts a priority copy before queued thumbnails, even when the queue is full", async () => {
       const { calls, resolveProxy, ProxyCapacityError, projectDir } = await oneSlot(1);
       const clip = clips(projectDir, ["running", "thumb", "late", "preview"]);
