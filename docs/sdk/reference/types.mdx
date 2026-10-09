@@ -268,7 +268,7 @@ interface GsapTweenSpec {
 </ResponseField>
 
 <ResponseField name="fromProperties" type="Record<string, unknown>">
-  Start-state property map — used by `"from"` and `"fromTo"` methods.
+  Start-state property map for `"fromTo"` tweens.
 </ResponseField>
 
 <ResponseField name="toProperties" type="Record<string, unknown>">
@@ -276,7 +276,8 @@ interface GsapTweenSpec {
 </ResponseField>
 
 <ResponseField name="properties" type="Record<string, unknown>">
-  Animated property map — used by `"to"` method.
+  Starting values for `"from"`, target values for `"to"`, or immediate values for `"set"`.
+  Also supplies the destination of `"fromTo"` when `toProperties` is omitted.
 </ResponseField>
 
 <ResponseField name="repeat" type="number">

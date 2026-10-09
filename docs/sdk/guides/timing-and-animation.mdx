@@ -113,7 +113,7 @@ const animId = comp.addGsapTween("hf-title", {
   position: 0.5,
   duration: 0.6,
   ease: "power3.out",
-  fromProperties: { opacity: 0, y: 40 },
+  properties: { opacity: 0, y: 40 },
 });
 // animId is the newly-assigned animation ID — store it for subsequent edits
 ```
@@ -137,13 +137,14 @@ const animId = comp.addGsapTween("hf-title", {
   GSAP ease string, e.g. `"power2.inOut"`.
 </ParamField>
 <ParamField path="fromProperties" type="Record<string, unknown>">
-  Starting properties — used with `"from"` and `"fromTo"`.
+  Starting properties for `"fromTo"` tweens.
 </ParamField>
 <ParamField path="toProperties" type="Record<string, unknown>">
   Ending properties — used with `"fromTo"`.
 </ParamField>
 <ParamField path="properties" type="Record<string, unknown>">
-  Animation target properties — used with `"to"` tweens.
+  Starting values for `"from"`, target values for `"to"`, or immediate values for `"set"`.
+  Also supplies the destination of `"fromTo"` when `toProperties` is omitted.
 </ParamField>
 <ParamField path="repeat" type="number">
   Number of repeats (`-1` = infinite). Maps to GSAP's `repeat` option.
