@@ -61,7 +61,10 @@ export function isJavaScriptType(el: AssemblyAttributed): boolean {
   return JAVASCRIPT_TYPES.has(scriptType(el));
 }
 
-/** A data block (application/json, text/template, ...) or a classic nomodule script never runs, so it is mounted as authored. */
+/**
+ * A data block (application/json, text/template, ...) or a classic nomodule script never runs,
+ * so it is mounted as authored.
+ */
 function isExecutableScript(el: AssemblyAttributed): boolean {
   const type = scriptType(el);
   if (type === "module" || type === "importmap") return true;
