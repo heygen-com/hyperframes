@@ -108,12 +108,8 @@ describe("video border/border-radius/clip-path on the replacement render frame",
     await browser?.close();
   });
 
-  // The border must reach the replacement <img>, not just the (now hidden)
-  // <video> — this is the reported bug: border-width/style/color were absent
-  // from injectVideoFramesBatch's copy allow-list, so the video's pixels filled
-  // straight through where the border should be. border-radius and clip-path
-  // were already on that allow-list and clip a replaced element's content
-  // without needing `overflow: hidden`; both tests confirm that still holds.
+  // The border must reach the replacement <img>, not just the hidden <video>;
+  // without border-width/style/color on the copy list the frame paints through it.
   it("paints a static border and clips to border-radius/clip-path on an untimed <video class=clip>", async () => {
     const screenshot = await captureStyledVideoFrame(page, "");
 
@@ -130,15 +126,8 @@ describe("video border/border-radius/clip-path on the replacement render frame",
     expectWhitePageBackground(await readPixel(page, screenshot, CLIPPED_CORNER));
   });
 
-  // Regression case: border-width on the copy allow-list changes the
-  // replacement <img>'s LAYOUT, not just its paint. A freshly created (or
-  // re-styled) <img> sibling is briefly an in-flow flex item, and once it
-  // carries a border it competes for space in the flex row and shrinks the
-  // video's own box — so measuring the video after styling the <img> bakes in
-  // the wrong, shrunk geometry. This layout shape (flex row, centered, video
-  // width:100%, global border-box reset) is what a real fixture (style-9-prod)
-  // hit in CI; the pixel-probe tests above use position:absolute layouts that
-  // were never exposed to the bug, so they can't catch a regression here.
+  // A bordered <img> sibling still in flow shrinks a flex row's video, so the
+  // video must be measured before the <img> is styled (the style-9-prod layout).
   it("keeps the replacement <img>'s box identical to the video's own box in a flex-centered layout", async () => {
     const FLEX_ROW_WIDTH = 500;
     const FLEX_ROW_HEIGHT = 300;
@@ -182,10 +171,7 @@ describe("video border/border-radius/clip-path on the replacement render frame",
     }, VIDEO_ID);
 
     expect(imgBox).toEqual(videoBox);
-    // The <img>'s geometry is frozen while it is still an in-flow flex sibling,
-    // whereas the video's box is read afterwards (sibling back out of flow) and
-    // so is unaffected either way — this only confirms the fixture really did
-    // give the flex row room to shrink into.
+    // Confirms the fixture gave the flex row room to shrink into.
     expect(videoBox.width).toBe(FLEX_ROW_WIDTH);
   });
 });

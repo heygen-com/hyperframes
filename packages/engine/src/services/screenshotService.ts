@@ -735,12 +735,8 @@ export async function injectVideoFramesBatch(
             ? 1
             : opacityParsed;
 
-        // Measure the video's used box BEFORE its replacement <img> sibling is
-        // created, inserted and styled. A fresh sibling is briefly in flow (it
-        // only becomes position:absolute below) and the copy loop hands it the
-        // video's border-width — in a flex layout that bordered in-flow sibling
-        // shrinks the video's own flex box, so measuring afterwards reads a box
-        // the replacement itself perturbed instead of the authored one.
+        // Measure before the <img> exists: until it turns absolute below, a
+        // bordered in-flow sibling can shrink the video's flex box.
         const videoRect = video.getBoundingClientRect();
         const videoBox = {
           left: Number.isFinite(video.offsetLeft) ? video.offsetLeft : 0,
@@ -784,9 +780,6 @@ export async function injectVideoFramesBatch(
         // instead of flowing below it. With position:relative, both elements
         // stack vertically — the <img> lands below the video and gets clipped
         // by any overflow:hidden ancestor (e.g., border-radius wrappers).
-        //
-        // Geometry comes from `videoBox`, measured above before this <img>
-        // could perturb the video's own layout.
         img.style.position = "absolute";
         img.style.inset = "auto";
         img.style.left = `${videoBox.left}px`;
@@ -795,10 +788,7 @@ export async function injectVideoFramesBatch(
         img.style.bottom = "auto";
         img.style.width = `${videoBox.width}px`;
         img.style.height = `${videoBox.height}px`;
-        // `videoBox` is always a border-box, so the <img> must read its own
-        // width/height the same way — overriding the box-sizing the copy loop
-        // took from the video (possibly content-box), which would otherwise
-        // push the <img>'s content area past the measured box by its border.
+        // `videoBox` is a border-box even when the video is content-box.
         img.style.boxSizing = "border-box";
         img.style.objectFit = computedStyle.objectFit;
         img.style.objectPosition = computedStyle.objectPosition;
