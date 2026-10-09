@@ -832,7 +832,7 @@ Render video. Built for agents.
       ok: false,
       error: expect.stringContaining(`The caption file ${output} could not be written: `),
     });
-    // A path through a file is ENOTDIR on POSIX and ENOENT on Windows.
+    // Windows and Unix report a path through a file with different error codes.
     expect(lastJson().error).toMatch(/ENOTDIR|ENOENT/);
   });
 
