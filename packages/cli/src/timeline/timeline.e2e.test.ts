@@ -570,3 +570,83 @@ describe("timeline edit command", () => {
     }
   });
 });
+
+describe("timeline move preserves clip length", () => {
+  const cases = [
+    {
+      name: "end-authored clip moving forward",
+      clip: '<div id="clip" data-hf-id="clip" data-start="1" data-end="3" data-track-index="0"></div>',
+      start: 2,
+      duration: 2,
+    },
+    {
+      name: "end-authored clip moving backward",
+      clip: '<div id="clip" data-hf-id="clip" data-start="4" data-end="6" data-track-index="0"></div>',
+      start: 1,
+      duration: 2,
+    },
+    {
+      name: "duration-authored clip",
+      clip: '<div id="clip" data-hf-id="clip" data-start="1" data-duration="2" data-track-index="0"></div>',
+      start: 2,
+      duration: 2,
+    },
+    {
+      name: "image with its default duration",
+      clip: '<img id="clip" data-hf-id="clip" data-start="1" data-track-index="0">',
+      start: 2,
+      duration: 3,
+    },
+  ];
+  for (const planned of [false, true]) {
+    it.each(cases)(
+      `moves $name without changing its length (plan=${planned})`,
+      ({ clip, start, duration }) => {
+        const dir = mkdtempSync(join(tmpdir(), "hf-timeline-move-length-"));
+        const indexPath = join(dir, "index.html");
+        const source = `<div data-composition-id="main" data-duration="12">${clip}</div>`;
+        writeFileSync(indexPath, source);
+        try {
+          const result = run(dir, "move", "#clip", String(start), ...(planned ? ["--plan"] : []));
+          expect(result.status, result.stderr).toBe(0);
+          const output: unknown = JSON.parse(result.stdout);
+          expect(output).toMatchObject({
+            planned,
+            before: expect.arrayContaining([expect.objectContaining({ ref: "#clip", duration })]),
+            after: expect.arrayContaining([
+              expect.objectContaining({ ref: "#clip", start, duration, end: start + duration }),
+            ]),
+          });
+          if (planned) expect(readFileSync(indexPath, "utf8")).toBe(source);
+          else {
+            const inspected = spawnSync("bun", ["run", cliEntry, "timeline", dir, "--json"], {
+              cwd: dir,
+              encoding: "utf8",
+              timeout: 30_000,
+              env: { ...process.env, HYPERFRAMES_SKIP_UPDATE_CHECK: "1" },
+            });
+            expect(inspected.status, inspected.stderr).toBe(0);
+            expect(JSON.parse(inspected.stdout)).toMatchObject({
+              timeline: {
+                tracks: expect.arrayContaining([
+                  expect.objectContaining({
+                    rows: expect.arrayContaining([
+                      expect.objectContaining({
+                        ref: "#clip",
+                        start,
+                        duration,
+                        end: start + duration,
+                      }),
+                    ]),
+                  }),
+                ]),
+              },
+            });
+          }
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    );
+  }
+});
