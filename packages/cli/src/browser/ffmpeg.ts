@@ -104,6 +104,9 @@ export function getFFmpegInstallHint(): string {
   if (command && process.platform === "win32") {
     return `${command}, or download the 64-bit build from ${FFMPEG_DOWNLOAD_URL}#build-windows and add its bin/ directory to PATH.`;
   }
+  if (command && process.platform === "darwin") {
+    return `${command}, or download FFmpeg and FFprobe from ${FFMPEG_DOWNLOAD_URL}, then set HYPERFRAMES_FFMPEG_PATH and HYPERFRAMES_FFPROBE_PATH to the executable paths or place both binaries in .hyperframes/bin/ in your project.`;
+  }
   if (command) return command;
   if (process.platform === "linux") return ffmpegInstallCommand("unknown");
   return FFMPEG_DOWNLOAD_URL;
