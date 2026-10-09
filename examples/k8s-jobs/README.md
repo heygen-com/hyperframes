@@ -1,6 +1,6 @@
 # K8s / Cloud Run / ECS reference Dockerfile
 
-This directory ships a reference `Dockerfile.example` for adopters who want to run HyperFrames distributed renders **outside AWS Lambda**. The image bakes Node 22 + `chrome-headless-shell` + `ffmpeg` + the producer source, and works on Kubernetes Jobs, Argo Workflows, Cloud Run Jobs, ECS Fargate, or plain `docker run`.
+This directory ships a reference `Dockerfile.example` for adopters who want to run HyperFrames distributed renders **outside AWS Lambda**. The image bakes Node 22 + bun + `chrome-headless-shell` + `ffmpeg` + the producer source, and works on Kubernetes Jobs, Argo Workflows, Cloud Run Jobs, ECS Fargate, or plain `docker run`.
 
 We do **not** publish this image to a registry — the OSS contract is that adopters build it themselves so Chrome / ffmpeg / producer versions stay pinned to the source checkout they audited, not a floating tag we'd have to keep in sync with every release.
 

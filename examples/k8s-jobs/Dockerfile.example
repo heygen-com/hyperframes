@@ -1,6 +1,6 @@
 # HyperFrames distributed renderer — reference Dockerfile for non-Lambda runtimes.
 #
-# This image bakes Node 22, chrome-headless-shell, ffmpeg-static, and the
+# This image bakes Node 22, bun, chrome-headless-shell, ffmpeg, and the
 # `@hyperframes/producer/distributed` primitives. One image runs the
 # Plan / RenderChunk / Assemble activities for any non-Lambda orchestrator:
 #
@@ -22,7 +22,6 @@
 # Run a chunk worker (an orchestrator script wraps this entry point):
 #
 #   docker run --rm \
-#     -e PRODUCER_HEADLESS_SHELL_PATH=/opt/chrome/chrome-headless-shell \
 #     -v /tmp/hyperframes:/tmp/hyperframes \
 #     -w /app/packages/aws-lambda \
 #     hyperframes-chunk-runner:local \
@@ -39,7 +38,8 @@ FROM node:22-bookworm-slim AS base
 
 # ── System deps ──────────────────────────────────────────────────────────────
 # - ffmpeg: the producer's encode + audio mix
-# - libfontconfig / libfreetype / fonts-liberation: Chrome text shaping
+# - libfontconfig / libfreetype / fonts-*: Chrome text shaping, the font set
+#   packages/gcp-cloud-run/Dockerfile uses (CJK and emoji included)
 # - chromium-style ABI deps (the minimum set chrome-headless-shell needs):
 #   libnss3, libatk-bridge2.0, libdrm2, libgbm1, libxshmfence1, libxkbcommon0,
 #   libxcomposite1, libxdamage1, libxfixes3, libxrandr2, libasound2,
@@ -49,7 +49,14 @@ FROM node:22-bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
       ca-certificates \
+      fonts-dejavu-core \
+      fonts-freefont-ttf \
       fonts-liberation \
+      fonts-noto-cjk \
+      fonts-noto-color-emoji \
+      fonts-noto-core \
+      fonts-noto-extra \
+      fonts-noto-ui-core \
       libasound2 \
       libatk-bridge2.0-0 \
       libatk1.0-0 \
@@ -79,10 +86,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Chrome ───────────────────────────────────────────────────────────────────
-# Use `@puppeteer/browsers` to fetch the same chrome-headless-shell version
-# the producer pins. Keep the bun + chrome install in the build context so
-# the runtime image is reproducible.
-ENV CHROME_HEADLESS_SHELL_VERSION=131.0.6778.139
+# Use `@puppeteer/browsers` to fetch the chrome-headless-shell version
+# packages/gcp-cloud-run/Dockerfile pins.
+ENV CHROME_HEADLESS_SHELL_VERSION=148.0.7778.167
 ENV CHROME_DIR=/opt/chrome
 
 RUN mkdir -p "$CHROME_DIR" && \
@@ -95,10 +101,9 @@ RUN mkdir -p "$CHROME_DIR" && \
 ENV PRODUCER_HEADLESS_SHELL_PATH=${CHROME_DIR}/chrome-headless-shell/linux-${CHROME_HEADLESS_SHELL_VERSION}/chrome-headless-shell-linux64/chrome-headless-shell
 
 # ── HyperFrames ──────────────────────────────────────────────────────────────
-# Copy the workspace bun-locked package set. Producer code runs under bun, as in
-# packages/gcp-cloud-run/Dockerfile: in a workspace checkout its exports point
-# at TypeScript source, which bare `node` cannot load. Run it from a workspace
-# that depends on it (e.g. packages/aws-lambda): the root package does not.
+# Producer code runs under bun, as in packages/gcp-cloud-run/Dockerfile: its
+# workspace exports point at TypeScript source. Run it from a workspace that
+# depends on it (e.g. packages/aws-lambda); the root package does not.
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/aws-lambda/package.json packages/aws-lambda/
@@ -110,7 +115,7 @@ COPY packages/player/package.json packages/player/
 COPY packages/producer/package.json packages/producer/
 COPY packages/studio-server/package.json packages/studio-server/
 
-RUN npm install --global bun && \
+RUN npm install --global bun@1.4.2 && \
     bun install --frozen-lockfile
 
 # Bring in the source. Core's build generates files its source imports
