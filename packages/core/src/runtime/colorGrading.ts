@@ -2598,6 +2598,10 @@ function ensureParentPosition(entry: ColorGradingEntry, parent: HTMLElement): vo
   parent.style.position = "relative";
 }
 
+function borderPx(value: string): number {
+  return Number.parseFloat(value) || 0;
+}
+
 function resolvedLayoutSize(primary: number, fallback: number): number {
   return Math.max(0, Math.round(primary > 0 ? primary : fallback));
 }
@@ -2619,6 +2623,7 @@ function updateCanvasLayout(
   canvas.style.top = `${element.offsetTop}px`;
   canvas.style.right = "auto";
   canvas.style.bottom = "auto";
+  canvas.style.boxSizing = "border-box";
   canvas.style.width = `${element.offsetWidth}px`;
   canvas.style.height = `${element.offsetHeight}px`;
   canvas.style.display = "block";
@@ -2626,8 +2631,14 @@ function updateCanvasLayout(
   canvas.style.visibility = entry.sourceVisibleForCanvas ? "visible" : "hidden";
 
   const rect = element.getBoundingClientRect();
-  const cssWidth = resolvedLayoutSize(element.offsetWidth, rect.width);
-  const cssHeight = resolvedLayoutSize(element.offsetHeight, rect.height);
+  const cssWidth =
+    resolvedLayoutSize(element.offsetWidth, rect.width) -
+    borderPx(computed.borderLeftWidth) -
+    borderPx(computed.borderRightWidth);
+  const cssHeight =
+    resolvedLayoutSize(element.offsetHeight, rect.height) -
+    borderPx(computed.borderTopWidth) -
+    borderPx(computed.borderBottomWidth);
   if (cssWidth <= 0 || cssHeight <= 0) {
     canvas.style.display = "none";
     return null;

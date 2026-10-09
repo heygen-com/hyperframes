@@ -236,6 +236,20 @@ describe("createColorGradingRuntime", () => {
     },
   );
 
+  it("keeps a bordered source's canvas inside its border box and draws in the content box", () => {
+    vi.stubGlobal("devicePixelRatio", 1);
+    const video = makeDrawableVideo();
+    video.style.border = "16px solid rgb(255, 0, 0)";
+
+    const { canvas } = startRuntimeWithVideo(video);
+
+    expect(canvas.style.boxSizing).toBe("border-box");
+    expect(canvas.style.width).toBe("640px");
+    expect(canvas.style.height).toBe("360px");
+    expect(canvas.width).toBe(608);
+    expect(canvas.height).toBe(328);
+  });
+
   it("says an element is graded only while it draws through a grading canvas", () => {
     const { video } = startRuntimeWithVideo();
     const plain = document.createElement("video");
