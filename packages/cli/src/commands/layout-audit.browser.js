@@ -1221,8 +1221,8 @@
       const imagePaints = images.some(
         (image, index) =>
           clips[index % clips.length] === "text" &&
-          /(?:linear|radial|conic)-gradient\(/i.test(image) &&
-          gradientMaxAlpha(image) > 0.05,
+          (/^\s*url\(/i.test(image) ||
+            (/(?:linear|radial|conic)-gradient\(/i.test(image) && gradientMaxAlpha(image) > 0.05)),
       );
       const colorPaints =
         clips[(images.length - 1) % clips.length] === "text" &&

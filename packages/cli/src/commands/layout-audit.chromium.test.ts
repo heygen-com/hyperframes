@@ -17,6 +17,8 @@ const WORDS_08 =
   '<h1 style="position:absolute;left:120px;top:200px;width:900px;margin:0;font:700 140px/0.8 Arial"><span style="display:inline-block;margin-right:.25em">Launch</span><span style="display:inline-block;margin-right:.25em">faster</span><span style="display:inline-block;margin-right:.25em">ship</span><span style="display:inline-block;margin-right:.25em">sooner</span></h1>';
 const WORDS_04 =
   '<h1 style="position:absolute;left:120px;top:200px;width:900px;margin:0;font:700 140px/0.4 Arial"><span style="display:inline-block;margin-right:.25em">Launch</span><span style="display:inline-block;margin-right:.25em">faster</span><span style="display:inline-block;margin-right:.25em">ship</span><span style="display:inline-block;margin-right:.25em">sooner</span></h1>';
+const OPAQUE_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP48uULAAW8At0b1v2OAAAAAElFTkSuQmCC";
 
 describe.runIf(executablePath)("layout audit in Chromium", () => {
   let browser: Browser;
@@ -163,6 +165,63 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
         expect(descendant.codes).not.toContain("text_not_painted");
       }
     }
+  });
+
+  it.each([
+    { name: "inline child", content: "<span>Gradient text</span>", layered: false },
+    { name: "nested child", content: "<div><span>Gradient text</span></div>", layered: false },
+    {
+      name: "transformed child",
+      content: '<div style="transform:translateY(0)">Gradient text</div>',
+      layered: true,
+    },
+    {
+      name: "image on a second clipped layer",
+      content: "<span>Gradient text</span>",
+      backgroundStyle: "background-clip:border-box,text;background-image:none,",
+      layered: false,
+    },
+  ])(
+    "recognizes ancestor image paint for a $name",
+    async ({ content, backgroundStyle, layered }) => {
+      const background = backgroundStyle
+        ? `${backgroundStyle}url('${OPAQUE_IMAGE}')`
+        : `background-image:url('${OPAQUE_IMAGE}')`;
+      const direct = await gradientFrame(gradientHeading("Gradient text", background));
+      const descendant = await gradientFrame(gradientHeading(content, background));
+      const empty = await gradientFrame(gradientHeading("", background));
+      expect(direct.image).not.toEqual(empty.image);
+      expect(direct.codes).not.toContain("text_not_painted");
+      const version = await browser.version();
+      const chromiumVersion = Number(version.split("/")[1]?.split(".")[0]);
+      const dropsChild = chromiumVersion < 150 && layered;
+      expect(descendant.image).toEqual(dropsChild ? empty.image : direct.image);
+      expect(descendant.codes.includes("text_not_painted")).toBe(dropsChild);
+    },
+  );
+
+  it.each([
+    { name: "unclipped image", backgroundStyle: "background-clip:border-box" },
+    {
+      name: "image on a different background layer",
+      backgroundStyle: "background-image:url('IMAGE'),none;background-clip:border-box,text",
+    },
+  ])("reports invisible glyphs beneath an $name", async ({ backgroundStyle }) => {
+    const background = `background-image:url('${OPAQUE_IMAGE}');${backgroundStyle.replace("IMAGE", OPAQUE_IMAGE)}`;
+    expect(await auditCodes(gradientHeading("<span>Gradient text</span>", background))).toContain(
+      "text_not_painted",
+    );
+  });
+
+  it("reports text positioned outside an ancestor image background", async () => {
+    expect(
+      await auditCodes(
+        gradientHeading(
+          '<span style="position:relative;top:150px">Gradient text</span>',
+          `background-image:url('${OPAQUE_IMAGE}')`,
+        ),
+      ),
+    ).toContain("text_not_painted");
   });
 
   it.each([
