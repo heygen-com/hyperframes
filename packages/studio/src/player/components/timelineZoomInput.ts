@@ -59,7 +59,6 @@ let anchorForCommit: TimelineZoomAnchor | null = null;
 let animation = 0;
 let easingTo: number | null = null;
 let resolveEase: ((result: TimelineZoomResult) => void) | null = null;
-/** Lays the easing zoom out at its target now. */
 let landEase: (() => void) | null = null;
 const previewListeners = new Set<() => void>();
 

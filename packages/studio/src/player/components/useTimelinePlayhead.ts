@@ -258,7 +258,6 @@ export function useTimelinePlayhead({
   const handlePinchWheel = useCallback(
     (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) {
-        // A scroll moves the zoom it lands on; one made mid-glide would be undone.
         landTimelineZoomEase();
         return;
       }
