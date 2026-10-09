@@ -71,6 +71,7 @@ jobs:
               - "packages/producer/**"
               - "packages/engine/**"
               - "Dockerfile*"
+              - ".github/workflows/regression.yml"
       # Bin-pack the shard matrix from recorded per-fixture timings rather than
       # a hand-written list. Fails if any fixture on disk is neither scheduled
       # nor explicitly excluded, so a new fixture cannot silently never run.
