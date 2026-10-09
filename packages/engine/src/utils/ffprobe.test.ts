@@ -553,6 +553,9 @@ type SpawnOutcome =
       stdoutChunks?: Buffer[];
     };
 
+const NO_DECODED_FRAMES: SpawnOutcome = { kind: "exit", code: 0, stdout: "" };
+const metadataProbes = (calls: SpawnCall[]) => calls.filter((c) => c.args.includes("-show_format"));
+
 function createSpawnSpy(outcomes: SpawnOutcome[]): {
   spawn: (command: string, args: readonly string[]) => FakeProc;
   calls: SpawnCall[];
@@ -657,6 +660,8 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "1" },
         }),
       },
+      NO_DECODED_FRAMES,
+      NO_DECODED_FRAMES,
       {
         kind: "exit",
         code: 0,
@@ -667,6 +672,7 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "2" },
         }),
       },
+      NO_DECODED_FRAMES,
     ]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -681,7 +687,7 @@ describe("media metadata cache invalidation", () => {
       const refreshed = await extractAudioMetadata(file);
       expect(refreshed).toMatchObject({ durationSeconds: 2, sampleRate: 44100, channels: 2 });
       expect(await extractAudioMetadata(file)).toBe(refreshed);
-      expect(calls).toHaveLength(2);
+      expect(metadataProbes(calls)).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -754,6 +760,8 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "1" },
         }),
       },
+      NO_DECODED_FRAMES,
+      NO_DECODED_FRAMES,
       {
         kind: "exit",
         code: 0,
@@ -762,6 +770,7 @@ describe("media metadata cache invalidation", () => {
           format: { duration: "2" },
         }),
       },
+      NO_DECODED_FRAMES,
     ]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -769,7 +778,7 @@ describe("media metadata cache invalidation", () => {
     try {
       expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 1 });
       expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 2 });
-      expect(calls).toHaveLength(2);
+      expect(metadataProbes(calls)).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
