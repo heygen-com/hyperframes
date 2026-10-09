@@ -80,6 +80,7 @@ function serveFileWithRange(
   // just `[start, end]` and closes its own fd on end/error. writeHead is
   // deferred to `open` so a failed open can still answer 500.
   const stream = createReadStream(filePath, { start, end });
+  res.once("close", () => stream.destroy());
   stream.on("open", () => {
     res.writeHead(status, headers);
     stream.pipe(res);
