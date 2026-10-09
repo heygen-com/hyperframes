@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +30,78 @@ function run(dir: string, ...args: string[]) {
   );
 }
 
+describe("timeline project inspection", () => {
+  it.each([
+    { name: "absolute", directory: "absolute", json: true, flagFirst: false },
+    { name: "relative", directory: "relative", json: true, flagFirst: false },
+    { name: "JSON before directory", directory: "absolute", json: true, flagFirst: true },
+    { name: "text", directory: "relative", json: false, flagFirst: false },
+    { name: "subcommand-named directory", directory: "move", json: true, flagFirst: false },
+    { name: "literal subcommand name", directory: "literalMove", json: true, flagFirst: false },
+  ])("inspects a $name project from another directory", ({ directory, json, flagFirst }) => {
+    const parent = mkdtempSync(join(tmpdir(), "hf-timeline-inspect-"));
+    try {
+      const name =
+        directory === "move" || directory === "literalMove" ? "move" : "project with spaces";
+      const target = join(parent, name);
+      mkdirSync(target);
+      const source =
+        '<div data-composition-id="main" data-duration="7"><div id="chosen-project" data-start="1" data-duration="2"></div></div>';
+      writeFileSync(join(target, "index.html"), source);
+      const argument = directory === "absolute" ? target : `./${name}`;
+      const args =
+        directory === "literalMove"
+          ? ["--json", "--", "move"]
+          : json
+            ? flagFirst
+              ? ["--json", argument]
+              : [argument, "--json"]
+            : [argument];
+      const result = spawnSync("bun", ["run", cliEntry, "timeline", ...args], {
+        cwd: parent,
+        encoding: "utf8",
+        timeout: 30_000,
+        env: { ...process.env, HYPERFRAMES_SKIP_UPDATE_CHECK: "1" },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      if (json) {
+        const output: unknown = JSON.parse(result.stdout);
+        expect(output).toMatchObject({
+          timeline: { duration: 7, tracks: [{ rows: [{ id: "chosen-project" }] }] },
+        });
+      } else {
+        expect(result.stdout).toContain("timeline 7s");
+        expect(result.stdout).toContain("#chosen-project chosen-project 1-3s");
+      }
+      expect(readFileSync(join(target, "index.html"), "utf8")).toBe(source);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { args: ["--json", "--unknown-option"], diagnostic: "Unknown flag: --unknown-option" },
+    { args: ["--json", "extra-project"], diagnostic: "Unexpected extra argument" },
+    { args: ["--", "extra-project"], diagnostic: "Unexpected extra argument" },
+  ])("keeps inspection argument validation for $diagnostic", ({ args, diagnostic }) => {
+    const dir = project();
+    const source = readFileSync(join(dir, "index.html"), "utf8");
+    try {
+      const result = spawnSync("bun", ["run", cliEntry, "timeline", dir, ...args], {
+        cwd: dir,
+        encoding: "utf8",
+        timeout: 30_000,
+        env: { ...process.env, HYPERFRAMES_SKIP_UPDATE_CHECK: "1" },
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr + result.stdout).toContain(diagnostic);
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(source);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("timeline edit command", () => {
   it.each([
     ["move", ["#clip", "+1"], 'data-start="2"'],
@@ -58,6 +130,23 @@ describe("timeline edit command", () => {
       const html = readFileSync(join(dir, "index.html"), "utf8");
       if (verb === "delete") expect(html).not.toContain('id="clip"');
       else expect(html).toContain(marker);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs an edit subcommand whose clip reference follows an argument separator", () => {
+    const dir = project();
+    try {
+      const result = run(dir, "move", "--plan", "--", "#clip", "+1");
+      expect(result.status, result.stderr).toBe(0);
+      const output: unknown = JSON.parse(result.stdout);
+      expect(output).toMatchObject({
+        ok: true,
+        planned: true,
+        after: expect.arrayContaining([expect.objectContaining({ ref: "#clip", start: 2 })]),
+      });
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toContain('data-start="1"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

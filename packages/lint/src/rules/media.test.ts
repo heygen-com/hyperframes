@@ -2,6 +2,16 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
+  it("reports a missing real media id even when the title mentions one", async () => {
+    const html = `<html><body>
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <video title='id="ghost"' src="clip.mp4" data-start="0" data-duration="1" muted></video>
+      </div>
+    </body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.map((finding) => finding.code)).toContain("media_missing_id");
+  });
+
   it.each([
     'title="an unmuted muted crossorigin clip"',
     "title='an unmuted muted crossorigin clip'",
@@ -447,6 +457,55 @@ describe("media rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("demo-video");
+  });
+
+  function optionalMediaScene(script: string): string {
+    return `<html><body>
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <video id="demo-video" class="demo-video" src="clip.mp4" muted data-start="0" data-duration="1"></video>
+        <div id="panel"></div>
+      </div>
+      <script>${script}</script>
+    </body></html>`;
+  }
+
+  it.each([
+    'const video = document.getElementById("demo-video"); video?.play();',
+    'const video = document.getElementById("demo-video"); video.play?.();',
+    'const video = document.getElementById("demo-video"); video?.play?.();',
+    'const video = document.querySelector("#demo-video"); video?.pause();',
+    'const video = document.querySelector(".demo-video"); video.pause?.();',
+    'document.getElementById("demo-video")?.play();',
+    'document.getElementById("demo-video").pause?.();',
+    'document.querySelector("#demo-video")?.play?.();',
+    'window.document.querySelector("video")?.pause();',
+    'const video = document.getElementById("demo-video"); const label = `playing ${video?.play()}`;',
+  ])("reports an executed optional media call: %s", async (script) => {
+    const result = await lintHyperframeHtml(optionalMediaScene(script));
+    expect(
+      result.findings.find((finding) => finding.code === "imperative_media_control"),
+    ).toMatchObject({
+      severity: "error",
+    });
+  });
+
+  it.each([
+    'const video = document.getElementById("demo-video"); const example = "video.play()";',
+    'const video = document.getElementById("demo-video"); // video.play()\n',
+    'const video = document.getElementById("demo-video"); const example = `video.play()`;',
+    'const video = document.getElementById("demo-video"); const example = /video.play()/;',
+    'const video = document.getElementById("demo-video"); const example = "video?.play?.()";',
+    'const video = document.getElementById("demo-video"); /* video?.play() */',
+    'const video = document.getElementById("demo-video"); const example = `video.pause?.()`;',
+    `const example = 'document.getElementById("demo-video").play()';`,
+    `const example = 'document.querySelector("video")?.play()';`,
+    'const panel = document.getElementById("panel"); panel?.play?.();',
+    'document.querySelector("#panel")?.pause();',
+  ])("does not report a quoted example or non-media optional call: %s", async (script) => {
+    const result = await lintHyperframeHtml(optionalMediaScene(script));
+    expect(result.findings.map((finding) => finding.code)).not.toContain(
+      "imperative_media_control",
+    );
   });
 
   it("reports imperative currentTime writes on query-selected managed media", async () => {

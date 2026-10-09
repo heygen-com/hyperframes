@@ -40,6 +40,7 @@ ${c.bold("SUBCOMMANDS:")}
 ${c.bold("ENV VARS:")}
   ${c.accent("HEYGEN_API_KEY")}              Override the stored credential.
   ${c.accent("HYPERFRAMES_API_KEY")}         Alias for HEYGEN_API_KEY.
+  ${c.accent("HEYGEN_ACCESS_TOKEN")}         OAuth token from a host app; used after the API keys, never refreshed or saved.
   ${c.accent("HEYGEN_API_URL")}              Override the API base URL (default https://api.heygen.com).
   ${c.accent("HEYGEN_CONFIG_DIR")}           Override the credentials directory (default ~/.heygen).
   ${c.accent("HYPERFRAMES_OAUTH_CLIENT_ID")} Override the OAuth client_id (for dev/test).

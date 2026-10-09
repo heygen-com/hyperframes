@@ -132,6 +132,77 @@ describe("lottie adapter", () => {
       expect(player.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
     });
 
+    it("seeks current dotlottie players using duration instead of a missing frameRate", () => {
+      const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames: 48, duration: 2 };
+      lottieWindow.__hfLottie = [player];
+      createLottieAdapter().seek({ time: 0.5 });
+      expect(player.setFrame).toHaveBeenCalledWith(12);
+    });
+
+    it("wraps a current dotlottie player at its cycle and fractional-frame rate", () => {
+      const player = {
+        pause: vi.fn(),
+        setFrame: vi.fn(),
+        totalFrames: 24,
+        duration: 24 / 23.976,
+        loop: true,
+      };
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: player.duration * 1.5 });
+      adapter.seek({ time: player.duration * 85 });
+      expect(player.setFrame.mock.calls).toHaveLength(2);
+      expect(player.setFrame.mock.calls[0]?.[0]).toBeCloseTo(12);
+      expect(player.setFrame.mock.calls[1]?.[0]).toBeCloseTo(0, 10);
+    });
+
+    it("holds a current one-shot dotlottie player on its last frame", () => {
+      const player = {
+        pause: vi.fn(),
+        setFrame: vi.fn(),
+        totalFrames: 48,
+        duration: 2,
+        loop: false,
+      };
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: -1 });
+      adapter.seek({ time: 3 });
+      expect(player.setFrame.mock.calls).toEqual([[0], [47]]);
+    });
+
+    it("seeks a current dotlottie player from its mounted composition start", () => {
+      const { adapter, player: canvas } = mountedAt("3");
+      const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames: 48, duration: 2, canvas };
+      lottieWindow.__hfLottie = [player];
+      adapter.seek({ time: 3.5 });
+      expect(player.setFrame).toHaveBeenCalledWith(12);
+    });
+
+    it.each([0, -1, NaN, Infinity, undefined])(
+      "waits for current dotlottie duration %s to become valid before seeking",
+      (duration) => {
+        const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames: 48, duration };
+        lottieWindow.__hfLottie = [player];
+        const adapter = createLottieAdapter();
+        adapter.seek({ time: 0.5 });
+        expect(player.setFrame).not.toHaveBeenCalled();
+        player.duration = 2;
+        adapter.seek({ time: 0.5 });
+        expect(player.setFrame).toHaveBeenCalledWith(12);
+      },
+    );
+
+    it.each([0, -1, NaN, Infinity, undefined])(
+      "does not seek a current dotlottie player with frame count %s",
+      (totalFrames) => {
+        const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames, duration: 2 };
+        lottieWindow.__hfLottie = [player];
+        createLottieAdapter().seek({ time: 0.5 });
+        expect(player.setFrame).not.toHaveBeenCalled();
+      },
+    );
+
     it("clamps frame to totalFrames - 1", () => {
       const player = createDotLottiePlayer({ totalFrames: 60, frameRate: 30 });
       lottieWindow.__hfLottie = [player];

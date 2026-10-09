@@ -5,7 +5,7 @@ export function speechSpans(meta, { mergeGap = 0.6, offsets, sequential = false,
   const merge = Number(mergeGap);
   const lists = wordListsFromMediaMeta(meta);
   const voices = Array.isArray(meta?.voices) ? meta.voices : [];
-  if (lists.length > 1 && !offsets && !sequential) {
+  if (lists.filter((words) => words.length > 0).length > 1 && !offsets && !sequential) {
     throw new Error(
       "audio_meta has multiple voice lines with file-relative times; pass --sequential or --offsets so spans land at composition time",
     );
@@ -16,6 +16,7 @@ export function speechSpans(meta, { mergeGap = 0.6, offsets, sequential = false,
     const voice = voices[i];
     let offset = 0;
     if (offsets) {
+      if (lists[i].length === 0) continue;
       const id = voice?.id ?? String(i);
       if (!(id in offsets)) throw new Error(`--offsets is missing voice "${id}"`);
       offset = Number(offsets[id]) || 0;

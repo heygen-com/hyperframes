@@ -36,7 +36,7 @@ const { captureWebsiteMock } = vi.hoisted(() => ({
       screenshots: [],
       tokens: { sections: [], fonts: [] },
       assets: [],
-      warnings: [],
+      warnings: [] as string[],
     };
   }),
 }));
@@ -168,6 +168,71 @@ describe("capture command — vision control", () => {
       expect(captureWebsiteMock).not.toHaveBeenCalled();
     },
   );
+
+  it.each(["0", "-1", "1.5", "3junk", "", "Infinity"])(
+    "rejects invalid --max-screenshots %s before capture starts",
+    async (value) => {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      await expect(
+        captureCommand.run!({
+          args: {
+            url: "https://example.com",
+            output: "/tmp/hf-invalid-count",
+            "max-screenshots": value,
+            json: true,
+          },
+        } as never),
+      ).rejects.toBeInstanceOf(CliRuntimeError);
+      expect(error).toHaveBeenCalledWith("--max-screenshots must be a positive integer.");
+      expect(captureWebsiteMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("passes a validated screenshot limit into capture", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await captureCommand.run!({
+      args: {
+        url: "https://example.com",
+        output: "/tmp/hf-count",
+        "max-screenshots": "3",
+        json: true,
+      },
+    } as never);
+    expect(captureWebsiteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ maxScreenshots: 3 }),
+      undefined,
+    );
+  });
+
+  it("returns a nonzero command result after presenting failed capture JSON once", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    captureWebsiteMock.mockResolvedValueOnce({
+      ok: false,
+      projectDir: "/tmp/capture",
+      url: "https://example.com",
+      title: "Example",
+      extracted: {},
+      screenshots: [],
+      tokens: { sections: [], fonts: [] },
+      assets: [],
+      warnings: [
+        "0/3 requested screenshot files captured: --capture-budget exhausted during lazy scrolling",
+      ],
+    });
+    await expect(
+      captureCommand.run!({
+        args: {
+          url: "https://example.com",
+          output: "/tmp/hf-failed-capture",
+          json: true,
+        },
+      } as never),
+    ).rejects.toMatchObject({ result: { exitCode: 1 } });
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ ok: false, screenshots: 0 });
+  });
 
   it("emits a versioned phase record without the captured URL", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});

@@ -1,3 +1,9 @@
+import {
+  scanHtmlOpeningTags,
+  decodeAuthoredAttribute,
+  HTML_ATTRIBUTE_ENTITIES,
+} from "@hyperframes/parsers";
+
 /**
  * Source Patcher — Maps visual property edits back to source HTML files.
  * Handles inline style updates, attribute changes, and text content.
@@ -7,26 +13,44 @@ export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function tagAttribute(tag: string, name: string) {
+  return scanHtmlOpeningTags(tag)[0]?.attributes.find((attr) => attr.name === name.toLowerCase());
+}
+
+type AttributeEdit = { kind: "remove" } | { kind: "boolean" } | { kind: "value"; value: string };
+
+function patchTagAttribute(tag: string, name: string, edit: AttributeEdit): string {
+  if (edit.kind === "remove") {
+    const attributes =
+      scanHtmlOpeningTags(tag)[0]?.attributes.filter((attr) => attr.name === name.toLowerCase()) ??
+      [];
+    const parts: string[] = [];
+    let cursor = 0;
+    for (const attribute of attributes) {
+      let start = attribute.start;
+      while (start > cursor && /[\t\n\f\r ]/.test(tag[start - 1]!)) start--;
+      parts.push(tag.slice(cursor, start));
+      cursor = attribute.end;
+    }
+    parts.push(tag.slice(cursor));
+    return parts.join("");
+  }
+  const attr = tagAttribute(tag, name);
+  const replacement =
+    edit.kind === "boolean" ? name : `${name}="${escapeHtmlAttribute(edit.value)}"`;
+  if (attr) return tag.slice(0, attr.start) + replacement + tag.slice(attr.end);
+  return tag.endsWith("/")
+    ? `${tag.slice(0, -1).trimEnd()} ${replacement} /`
+    : `${tag} ${replacement}`;
+}
+
 function escapeStyleAttributeValue(value: string, quote: string): string {
   return quote === '"' ? value.replace(/"/g, "&quot;") : value.replace(/'/g, "&#39;");
 }
 
 /** Escape a string for safe use inside a double-quoted HTML attribute. */
 export function escapeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/** Reverse escapeHtmlAttribute so callers get the original value. */
-export function unescapeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
+  return value.replace(/[&"<>]/g, (char) => HTML_ATTRIBUTE_ENTITIES[char]![0]!);
 }
 
 function splitInlineStyleDeclarations(style: string): string[] {
@@ -98,8 +122,6 @@ export interface PatchOperation {
   childIndex?: number;
 }
 
-// Runtime validation for hfId lives in findTagByTarget → execDataAttrPattern (CSS attr-value
-// escape). This type is documentation only; the server's MutationTarget mirrors this shape.
 export interface PatchTarget {
   id?: string | null;
   hfId?: string;
@@ -120,7 +142,7 @@ export function resolveSourceFile(
   // Strategy 1: Search by id attribute
   if (elementId) {
     for (const [path, content] of Object.entries(files)) {
-      if (content.includes(`id="${elementId}"`) || content.includes(`id='${elementId}'`)) {
+      if (findTagByAttribute(content, "id", elementId)) {
         return path;
       }
     }
@@ -131,7 +153,7 @@ export function resolveSourceFile(
   if (compIdMatch) {
     const compId = compIdMatch[1];
     for (const [path, content] of Object.entries(files)) {
-      if (content.includes(`data-composition-id="${compId}"`)) {
+      if (findTagByAttribute(content, "data-composition-id", compId!)) {
         return path;
       }
     }
@@ -142,11 +164,7 @@ export function resolveSourceFile(
   if (classMatch) {
     const cls = classMatch[1];
     for (const [path, content] of Object.entries(files)) {
-      if (
-        content.includes(`class="${cls}"`) ||
-        content.includes(`class="${cls} `) ||
-        content.includes(` ${cls}"`)
-      ) {
+      if (findTagByClass(content, { selector: `.${cls}` })) {
         return path;
       }
     }
@@ -166,28 +184,17 @@ function patchInlineStyle(
   prop: string,
   value: string | null,
 ): string {
-  // Find the element tag with this id
-  const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*)>`, "i");
-  const match = idPattern.exec(html);
-  if (!match) return html;
-
-  const tag = match[1];
-  return patchInlineStyleInTag(html, tag, prop, value);
+  return patchInlineStyleByTarget(html, { id: elementId }, prop, value);
 }
 
-function patchInlineStyleInTag(
-  html: string,
-  tag: string,
-  prop: string,
-  value: string | null,
-): string {
-  if (!tag) return html;
+function patchInlineStyleInTag(tag: string, prop: string, value: string | null): string {
+  if (!tag) return tag;
 
   // Check if there's an existing style attribute
-  const styleMatch = /\bstyle=(")([^"]*)"|\bstyle=(')([^']*)'/.exec(tag);
-  if (styleMatch) {
-    const existingStyle = styleMatch[2] ?? styleMatch[4];
-    const quote = styleMatch[1] ?? styleMatch[3];
+  const styleMatch = tagAttribute(tag, "style");
+  if (styleMatch?.kind === "value") {
+    const existingStyle = styleMatch.value;
+    const quote = styleMatch.quote || '"';
     // Parse existing properties
     const props = new Map<string, string>();
     for (const part of splitInlineStyleDeclarations(existingStyle)) {
@@ -207,15 +214,18 @@ function patchInlineStyleInTag(
     const newStyle = Array.from(props.entries())
       .map(([k, v]) => `${k}: ${escapeStyleAttributeValue(v, quote)}`)
       .join("; ");
-    const newTag = tag.replace(styleMatch[0], `style=${quote}${newStyle}${quote}`);
-    return html.replace(tag, newTag);
+    const newTag =
+      tag.slice(0, styleMatch.start) +
+      `style=${quote}${newStyle}${quote}` +
+      tag.slice(styleMatch.end);
+    return newTag;
   } else {
     // No existing style attribute
-    if (value === null) return html; // nothing to remove
+    if (value === null) return tag; // nothing to remove
     const selfClosing = tag.endsWith("/");
     const base = selfClosing ? tag.slice(0, -1).trimEnd() : tag;
     const newTag = `${base} style="${prop}: ${escapeStyleAttributeValue(value, '"')}"${selfClosing ? " /" : ""}`;
-    return html.replace(tag, newTag);
+    return newTag;
   }
 }
 
@@ -227,7 +237,7 @@ function patchInlineStyleByTarget(
 ): string {
   const match = findTagByTarget(html, target);
   if (!match) return html;
-  const newTag = patchInlineStyleInTag(match.tag, match.tag, prop, value);
+  const newTag = patchInlineStyleInTag(match.tag, prop, value);
   return replaceTagAtMatch(html, match, newTag);
 }
 
@@ -241,45 +251,40 @@ function replaceTagAtMatch(html: string, match: TagMatch, newTag: string): strin
   return `${html.slice(0, match.start)}${newTag}${html.slice(match.end)}`;
 }
 
-function execDataAttrPattern(html: string, attr: string, value: string): TagMatch | null {
-  const pattern = new RegExp(`(<[^>]*\\b${attr}=(["'])${escapeRegex(value)}\\2[^>]*)>`, "i");
-  const match = pattern.exec(html);
-  if (match?.index == null) return null;
-  return { tag: match[1], start: match.index, end: match.index + match[1].length };
+function findTagByAttribute(html: string, name: string, value: string): TagMatch | null {
+  const found = scanHtmlOpeningTags(html).find((tag) => {
+    const attr = tag.attributes.find((attr) => attr.name === name);
+    return tag.closed && attr?.kind === "value" && decodeAuthoredAttribute(attr.value) === value;
+  });
+  return found
+    ? { tag: html.slice(found.start, found.bodyEnd), start: found.start, end: found.bodyEnd }
+    : null;
 }
 
 function findTagByClass(html: string, target: PatchTarget): TagMatch | null {
   const classMatch = target.selector?.match(/^\.([a-zA-Z0-9_-]+)$/);
   if (!classMatch) return null;
-  const cls = classMatch[1];
-  const pattern = new RegExp(
-    `(<[^>]*\\bclass=(["'])[^"']*\\b${escapeRegex(cls)}\\b[^"']*\\2[^>]*)>`,
-    "gi",
-  );
-  const selectorIndex = target.selectorIndex ?? 0;
-  let match: RegExpExecArray | null;
-  let currentIndex = 0;
-  while ((match = pattern.exec(html)) !== null) {
-    if (currentIndex === selectorIndex && match.index != null) {
-      return {
-        tag: match[1],
-        start: match.index,
-        end: match.index + match[1].length,
-      };
-    }
-    currentIndex += 1;
-  }
-  return null;
+  const found = scanHtmlOpeningTags(html).filter((tag) => {
+    const attr = tag.attributes.find((attr) => attr.name === "class");
+    return (
+      tag.closed &&
+      attr?.kind === "value" &&
+      decodeAuthoredAttribute(attr.value).split(/\s+/).includes(classMatch[1]!)
+    );
+  })[target.selectorIndex ?? 0];
+  return found
+    ? { tag: html.slice(found.start, found.bodyEnd), start: found.start, end: found.bodyEnd }
+    : null;
 }
 
 export function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
   if (target.hfId) {
-    const result = execDataAttrPattern(html, "data-hf-id", target.hfId);
+    const result = findTagByAttribute(html, "data-hf-id", target.hfId);
     if (result) return result;
   }
 
   if (target.id) {
-    const result = execDataAttrPattern(html, "id", target.id);
+    const result = findTagByAttribute(html, "id", target.id);
     if (result) return result;
   }
 
@@ -287,7 +292,7 @@ export function findTagByTarget(html: string, target: PatchTarget): TagMatch | n
 
   const compositionIdMatch = target.selector.match(/^\[data-composition-id="([^"]+)"\]$/);
   if (compositionIdMatch) {
-    const result = execDataAttrPattern(html, "data-composition-id", compositionIdMatch[1]);
+    const result = findTagByAttribute(html, "data-composition-id", compositionIdMatch[1]);
     if (result) return result;
   }
 
@@ -302,9 +307,12 @@ export function readAttributeByTarget(
   const match = findTagByTarget(html, target);
   if (!match) return undefined;
 
-  const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const valueMatch = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`).exec(match.tag);
-  return valueMatch?.[2] != null ? unescapeHtmlAttribute(valueMatch[2]) : undefined;
+  return readTagAttribute(match.tag, attr.startsWith("data-") ? attr : `data-${attr}`);
+}
+
+export function readTagAttribute(tag: string, attr: string): string | undefined {
+  const value = tagAttribute(tag, attr);
+  return value?.kind === "value" ? decodeAuthoredAttribute(value.value) : undefined;
 }
 
 export function readTagSnippetByTarget(html: string, target: PatchTarget): string | undefined {
@@ -320,85 +328,25 @@ function patchAttributeByTarget(
 ): string {
   const match = findTagByTarget(html, target);
   if (!match) return html;
-
-  const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([^"']*)\\1`);
-  const tag = match.tag;
-
-  if (value === null) {
-    // Remove the attribute if present
-    const boolAttrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    if (!boolAttrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    const newTag = tag.replace(removePattern, "");
-    return replaceTagAtMatch(html, match, newTag);
-  }
-
-  const escaped = escapeHtmlAttribute(value);
-  if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
-    return replaceTagAtMatch(html, match, newTag);
-  }
-
-  const newTag = tag + ` ${fullAttr}="${escaped}"`;
-  return replaceTagAtMatch(html, match, newTag);
+  const name = attr.startsWith("data-") ? attr : `data-${attr}`;
+  const edit: AttributeEdit = value === null ? { kind: "remove" } : { kind: "value", value };
+  return replaceTagAtMatch(html, match, patchTagAttribute(match.tag, name, edit));
 }
 
-/**
- * Apply an attribute change to an element in the HTML source.
- */
 function patchAttribute(
   html: string,
   elementId: string,
   attr: string,
   value: string | null,
 ): string {
-  const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*)>`, "i");
-  const match = idPattern.exec(html);
-  if (!match) return html;
-
-  const tag = match[1];
-  const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([^"']*)\\1`);
-
-  if (value === null) {
-    const boolAttrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    if (!boolAttrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    const newTag = tag.replace(removePattern, "");
-    return html.replace(tag, newTag);
-  }
-
-  const escaped = escapeHtmlAttribute(value);
-  if (attrPattern.test(tag)) {
-    // Update existing attribute
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
-    return html.replace(tag, newTag);
-  } else {
-    // Add new attribute
-    const newTag = tag + ` ${fullAttr}="${escaped}"`;
-    return html.replace(tag, newTag);
-  }
+  return patchAttributeByTarget(html, { id: elementId }, attr, value);
 }
 
 /**
  * Apply a text content change to an element.
  */
 function patchTextContent(html: string, elementId: string, value: string): string {
-  const openTagPattern = new RegExp(
-    `(<([a-z0-9-]+)[^>]*\\bid=(["'])${escapeRegex(elementId)}\\3[^>]*>)`,
-    "i",
-  );
-  const match = openTagPattern.exec(html);
-  if (!match || match.index == null) return html;
-
-  const openingTag = match[1];
-  const tagName = match[2];
-  const contentStart = match.index + openingTag.length;
-  const closingIndex = findMatchingClosingTagIndex(html, tagName, contentStart);
-  if (closingIndex < 0) return html;
-
-  return `${html.slice(0, contentStart)}${value}${html.slice(closingIndex)}`;
+  return patchTextContentByTarget(html, { id: elementId }, value);
 }
 
 function findMatchingClosingTagIndex(html: string, tagName: string, contentStart: number): number {
@@ -438,47 +386,18 @@ export const HTML_BOOLEAN_ATTRIBUTES = new Set([
   "selected",
 ]);
 
-function patchHtmlAttributeInTag(
-  html: string,
-  tag: string,
-  attr: string,
-  value: string | null,
-): string {
-  if (!tag) return html;
-
-  const isBoolean = HTML_BOOLEAN_ATTRIBUTES.has(attr);
-
-  if (isBoolean) {
-    const escapedAttr = escapeRegex(attr);
-    const hasBoolAttr = new RegExp(`(?:^|\\s)${escapedAttr}(?:\\s|=|$)`).test(tag);
-
-    if (value === null || value === "" || value === "false") {
-      if (!hasBoolAttr) return html;
-      const removePattern = new RegExp(`\\s+${escapedAttr}(?:=(["'])[^"']*\\1)?`);
-      const newTag = tag.replace(removePattern, "");
-      return html.replace(tag, newTag);
+function patchHtmlAttributeInTag(tag: string, attr: string, value: string | null): string {
+  if (!tag) return tag;
+  let edit: AttributeEdit;
+  if (HTML_BOOLEAN_ATTRIBUTES.has(attr)) {
+    if (value === null || value === "" || value === "false") edit = { kind: "remove" };
+    else {
+      if (tagAttribute(tag, attr)) return tag;
+      edit = { kind: "boolean" };
     }
-    if (hasBoolAttr) return html;
-    const newTag = tag + ` ${attr}`;
-    return html.replace(tag, newTag);
-  }
-
-  const attrPattern = new RegExp(`\\b${escapeRegex(attr)}=(["'])([^"']*)\\1`);
-  if (value === null) {
-    if (!attrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(attr)}=(["'])[^"']*\\1`);
-    const newTag = tag.replace(removePattern, "");
-    return html.replace(tag, newTag);
-  }
-
-  const escaped = escapeHtmlAttribute(value);
-  if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, `${attr}="${escaped}"`);
-    return html.replace(tag, newTag);
-  }
-
-  const newTag = tag + ` ${attr}="${escaped}"`;
-  return html.replace(tag, newTag);
+  } else edit = value === null ? { kind: "remove" } : { kind: "value", value };
+  const newTag = patchTagAttribute(tag, attr, edit);
+  return newTag;
 }
 
 function patchHtmlAttribute(
@@ -487,10 +406,7 @@ function patchHtmlAttribute(
   attr: string,
   value: string | null,
 ): string {
-  const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*)>`, "i");
-  const match = idPattern.exec(html);
-  if (!match) return html;
-  return patchHtmlAttributeInTag(html, match[1], attr, value);
+  return patchHtmlAttributeByTarget(html, { id: elementId }, attr, value);
 }
 
 function patchHtmlAttributeByTarget(
@@ -501,7 +417,7 @@ function patchHtmlAttributeByTarget(
 ): string {
   const match = findTagByTarget(html, target);
   if (!match) return html;
-  const newTag = patchHtmlAttributeInTag(match.tag, match.tag, attr, value);
+  const newTag = patchHtmlAttributeInTag(match.tag, attr, value);
   return replaceTagAtMatch(html, match, newTag);
 }
 

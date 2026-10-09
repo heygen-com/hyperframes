@@ -4,6 +4,79 @@ import { chmodSync, mkdtempSync, writeFileSync, existsSync, rmSync } from "node:
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { probe } from "./probe.mjs";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+
+function mockProbe(t, streams, format = { duration: "2" }) {
+  t.mock.method(childProcess, "execFileSync", () => JSON.stringify({ streams, format }));
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+}
+
+const AUDIO_STREAM = { codec_type: "audio", codec_name: "aac", duration: "3" };
+const VIDEO_STREAM = {
+  codec_type: "video",
+  codec_name: "h264",
+  width: 64,
+  height: 48,
+  duration: "4",
+};
+const COVER_STREAM = {
+  codec_type: "video",
+  codec_name: "mjpeg",
+  width: 100,
+  height: 100,
+  disposition: { attached_pic: 1 },
+};
+
+for (const [name, streams] of [
+  ["audio before video", [AUDIO_STREAM, VIDEO_STREAM]],
+  ["video before audio", [VIDEO_STREAM, AUDIO_STREAM]],
+  ["cover art before video", [COVER_STREAM, AUDIO_STREAM, VIDEO_STREAM]],
+]) {
+  test(`probe selects the video stream with ${name}`, (t) => {
+    mockProbe(t, streams);
+    assert.deepEqual(probe("clip.mp4"), {
+      duration: 2,
+      width: 64,
+      height: 48,
+      codec: "h264",
+    });
+  });
+}
+
+test("probe selects audio metadata for an audio file with cover art", (t) => {
+  mockProbe(t, [COVER_STREAM, AUDIO_STREAM]);
+  assert.deepEqual(probe("song.m4a"), { duration: 2, width: null, height: null, codec: "aac" });
+});
+
+test("probe uses the selected video's duration when the container has none", (t) => {
+  mockProbe(t, [AUDIO_STREAM, VIDEO_STREAM], {});
+  assert.equal(probe("clip.mp4").duration, 4);
+});
+
+test("probe selects image dimensions without reporting an image duration", (t) => {
+  mockProbe(t, [AUDIO_STREAM, VIDEO_STREAM]);
+  assert.deepEqual(probe("frame.png"), {
+    duration: null,
+    width: 64,
+    height: 48,
+    codec: "h264",
+  });
+});
+
+test("probe retains audio-only metadata and the empty-stream fallback", (t) => {
+  mockProbe(t, [AUDIO_STREAM]);
+  assert.deepEqual(probe("clip.mp4"), { duration: 2, width: null, height: null, codec: "aac" });
+});
+
+test("probe retains the container duration when no streams are reported", (t) => {
+  mockProbe(t, []);
+  assert.deepEqual(probe("clip.mp4"), { duration: 2, width: null, height: null, codec: null });
+});
 
 // Regression for the shell-injection fix: probe() must pass the path as a literal
 // argv entry, never through a shell. A filename containing shell metacharacters

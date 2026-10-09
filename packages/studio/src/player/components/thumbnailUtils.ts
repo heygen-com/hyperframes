@@ -1,3 +1,4 @@
+import { decodedUrlPath } from "@hyperframes/parsers";
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 
@@ -92,6 +93,10 @@ export function computeThumbnailStrip(
   const measured = containerWidth > 0 && clipHeight > 0;
   const frameCount = measured ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
   return { frameW, frameCount };
+}
+
+export function authoredSrcPath(src: string): string {
+  return /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(src) ? src : decodedUrlPath(src);
 }
 
 /**
