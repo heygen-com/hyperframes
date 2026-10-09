@@ -73,6 +73,37 @@ The registry key must match `data-composition-id`.
 
 The normal timeline methods are `to()`, `from()`, `fromTo()`, and `set()`. GSAP supports many CSS properties, but the [HyperFrames animation skill](https://github.com/heygen-com/hyperframes/tree/main/skills/hyperframes-animation) contains the render-safe patterns used by agents.
 
+## Load fonts before measuring text
+
+An underline or a position calculated from text width needs the final font metrics. HyperFrames waits for fonts used by existing markup before starting composition scripts, but a face used only by script-created text may still be unloaded.
+
+Request that face with `document.fonts.load()` before measuring. Match the text's font family, weight, and size, and pass the text so the browser can load the required character ranges. `document.fonts.ready` waits for fonts already requested; it does not request an unused face.
+
+This example uses the `intro` composition, an inline-block `#title` styled with `font: 700 64px "LocalFace"` from a local `@font-face`, and a block-level `#underline`:
+
+```js
+const title = document.getElementById("title");
+const underline = document.getElementById("underline");
+title.textContent = "Build with HyperFrames";
+
+document.fonts.load('700 64px "LocalFace"', title.textContent).then(() => {
+  underline.style.width = `${title.getBoundingClientRect().width}px`;
+
+  const timeline = gsap.timeline({ paused: true });
+  timeline.fromTo(
+    ["#title", "#underline"],
+    { opacity: 0, y: 32 },
+    { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+    0,
+  );
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines.intro = timeline;
+});
+```
+
+The underline now matches the loaded text width. Build all tweens before registering the timeline at the end of the callback. Registering an empty timeline before the asynchronous build finishes can make a nested composition appear ready before its animation exists.
+
 ## Duration
 
 An explicit root `data-duration` is the composition's render length:

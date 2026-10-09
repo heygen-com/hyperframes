@@ -13,6 +13,7 @@ import { createTimelineDomNodeResolver, findClipElementById } from "../lib/timel
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
+import { LOOP_INFLATED_TIMELINE_SECONDS } from "@hyperframes/core/runtime/composition-length";
 import type { ClipTree } from "@hyperframes/core/runtime/clipTree";
 import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import { groupInfoFor } from "../lib/timelineGroupInfo";
@@ -31,7 +32,7 @@ import { inspectStudioRuntimeMessage } from "../lib/runtimeProtocol";
 
 /** Reject non-finite, non-positive, and absurdly large (loop-inflated) values. */
 export function sanitizeDurationSeconds(value: number): number {
-  return Number.isFinite(value) && value > 0 && value < 7200 ? value : 0;
+  return Number.isFinite(value) && value > 0 && value < LOOP_INFLATED_TIMELINE_SECONDS ? value : 0;
 }
 
 /**

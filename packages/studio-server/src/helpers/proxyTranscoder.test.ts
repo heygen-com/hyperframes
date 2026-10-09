@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { hdrToSdrToneMapFilter } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -531,6 +531,242 @@ describe("resolveProxy", () => {
     expect(calls).toHaveLength(accepted.length + 1);
     succeed(calls.at(-1)!);
     await expect(retry).resolves.toBeTruthy();
+  });
+
+  describe("queue order and callers that leave", () => {
+    function clipOf(call: SpawnCall): string {
+      return basename(call.args[call.args.indexOf("-i") + 1]!, ".mov");
+    }
+
+    function clips(projectDir: string, names: string[]): Record<string, string> {
+      return Object.fromEntries(
+        names.map((name) => {
+          const path = join(projectDir, `${name}.mov`);
+          writeFileSync(path, name);
+          return [name, path];
+        }),
+      );
+    }
+
+    async function askThenLeave(ask: (signal: AbortSignal) => Promise<string>): Promise<void> {
+      const leaving = new AbortController();
+      const left = ask(leaving.signal);
+      await flush();
+      leaving.abort();
+      await expect(left).rejects.toBe(leaving.signal.reason);
+    }
+
+    async function oneSlot(queue = 8, slots = 1) {
+      process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY = String(slots);
+      process.env.HYPERFRAMES_PROXY_MAX_QUEUE = String(queue);
+      const spy = createSpawnSpy();
+      return { ...spy, ...(await loadModule(spy.spawn, FFMPEG_PATH)), projectDir: tmpProject() };
+    }
+
+    it("moves another project's activity mark when its ask is refused, and copies it once there is room", async () => {
+      const { calls, resolveProxy, ProxyCapacityError, proxyActivityMark, projectDir } =
+        await oneSlot(0);
+      const busyProject = tmpProject();
+      const running = resolveProxy(busyProject, clips(busyProject, ["running"]).running!);
+      const target = clips(projectDir, ["target"]).target!;
+      const before = proxyActivityMark(projectDir);
+
+      await expect(resolveProxy(projectDir, target)).rejects.toBeInstanceOf(ProxyCapacityError);
+      expect(proxyActivityMark(projectDir)).not.toBe(before);
+
+      succeed(calls[0]!);
+      await running;
+      const retry = resolveProxy(projectDir, target);
+      await flush();
+      expect(calls.map(clipOf)).toEqual(["running", "target"]);
+      succeed(calls[1]!);
+      await retry;
+    });
+
+    it("starts a priority copy before queued thumbnails, even when the queue is full", async () => {
+      const { calls, resolveProxy, ProxyCapacityError, projectDir } = await oneSlot(1);
+      const clip = clips(projectDir, ["running", "thumb", "late", "preview"]);
+
+      const running = resolveProxy(projectDir, clip.running!);
+      const thumb = resolveProxy(projectDir, clip.thumb!);
+      await expect(resolveProxy(projectDir, clip.late!)).rejects.toBeInstanceOf(ProxyCapacityError);
+      const preview = resolveProxy(projectDir, clip.preview!, "h264", undefined, {
+        priority: true,
+      });
+      await flush();
+
+      succeed(calls[0]!);
+      await running;
+      await flush();
+      expect(clipOf(calls[1]!)).toBe("preview");
+      succeed(calls[1]!);
+      await preview;
+      await flush();
+      expect(clipOf(calls[2]!)).toBe("thumb");
+      succeed(calls[2]!);
+      await thumb;
+    });
+
+    it("moves an already queued copy forward when the preview asks for it", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running", "first", "second"]);
+
+      const asks = [
+        resolveProxy(projectDir, clip.running!),
+        resolveProxy(projectDir, clip.first!),
+        resolveProxy(projectDir, clip.second!),
+        resolveProxy(projectDir, clip.second!, "h264", undefined, { priority: true }),
+      ];
+      await flush();
+      succeed(calls[0]!);
+      await flush(12);
+
+      expect(clipOf(calls[1]!)).toBe("second");
+      succeed(calls[1]!);
+      await flush(12);
+      succeed(calls[2]!);
+      await Promise.all(asks);
+      expect(calls).toHaveLength(3);
+    });
+
+    it("drops a queued copy once its only caller leaves, without remembering a failure", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running", "thumb"]);
+      const scrolledOff = new AbortController();
+
+      const running = resolveProxy(projectDir, clip.running!);
+      const thumb = resolveProxy(projectDir, clip.thumb!, "h264", undefined, {
+        signal: scrolledOff.signal,
+      });
+      await flush();
+      scrolledOff.abort();
+      await expect(thumb).rejects.toBe(scrolledOff.signal.reason);
+
+      succeed(calls[0]!);
+      await running;
+      await flush(12);
+      expect(calls).toHaveLength(1);
+
+      const again = resolveProxy(projectDir, clip.thumb!);
+      await flush();
+      expect(calls).toHaveLength(2);
+      succeed(calls[1]!);
+      await expect(again).resolves.toBeTruthy();
+    });
+
+    it.each([
+      ["another caller with a signal", true],
+      ["a caller without a signal", false],
+    ])("keeps a shared queued copy while %s still waits", async (_label, withSignal) => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running", "shared"]);
+
+      const running = resolveProxy(projectDir, clip.running!);
+      const staying = resolveProxy(
+        projectDir,
+        clip.shared!,
+        "h264",
+        undefined,
+        withSignal ? { signal: new AbortController().signal } : {},
+      );
+      await askThenLeave((signal) =>
+        resolveProxy(projectDir, clip.shared!, "h264", undefined, { signal }),
+      );
+
+      succeed(calls[0]!);
+      await running;
+      await flush(12);
+      expect(clipOf(calls[1]!)).toBe("shared");
+      succeed(calls[1]!);
+      await expect(staying).resolves.toBeTruthy();
+    });
+
+    it("makes the copy when the preview asks in the same moment the last thumbnail leaves", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running", "handoff"]);
+      const leaving = new AbortController();
+
+      const running = resolveProxy(projectDir, clip.running!);
+      const thumb = resolveProxy(projectDir, clip.handoff!, "h264", undefined, {
+        signal: leaving.signal,
+      });
+      await flush();
+      leaving.abort();
+      const preview = resolveProxy(projectDir, clip.handoff!, "h264", undefined, {
+        priority: true,
+      });
+      await expect(thumb).rejects.toBe(leaving.signal.reason);
+
+      succeed(calls[0]!);
+      await running;
+      await flush(12);
+      expect(clipOf(calls[1]!)).toBe("handoff");
+      succeed(calls[1]!);
+      await expect(preview).resolves.toBeTruthy();
+    });
+
+    it("keeps one copy per clip when a dropped copy settles after its replacement started", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot(8, 2);
+      const clip = clips(projectDir, ["first", "second", "handoff"]);
+      const leaving = new AbortController();
+
+      const running = [
+        resolveProxy(projectDir, clip.first!),
+        resolveProxy(projectDir, clip.second!),
+      ];
+      const thumb = resolveProxy(projectDir, clip.handoff!, "h264", undefined, {
+        signal: leaving.signal,
+      });
+      await flush();
+      leaving.abort();
+      const preview = resolveProxy(projectDir, clip.handoff!);
+      await expect(thumb).rejects.toBe(leaving.signal.reason);
+      await flush(12);
+      const later = resolveProxy(projectDir, clip.handoff!);
+
+      succeed(calls[0]!);
+      succeed(calls[1]!);
+      await Promise.all(running);
+      await flush(12);
+      expect(calls.map(clipOf).filter((name) => name === "handoff")).toHaveLength(1);
+      succeed(calls[2]!);
+      await expect(Promise.all([preview, later])).resolves.toHaveLength(2);
+    });
+
+    it("accepts a priority ask in the same moment a normal ask for that clip was refused", async () => {
+      const { calls, resolveProxy, ProxyCapacityError, projectDir } = await oneSlot(1);
+      const clip = clips(projectDir, ["running", "thumb", "late"]);
+
+      const running = resolveProxy(projectDir, clip.running!);
+      const thumb = resolveProxy(projectDir, clip.thumb!);
+      const refused = resolveProxy(projectDir, clip.late!);
+      const preview = resolveProxy(projectDir, clip.late!, "h264", undefined, { priority: true });
+      await expect(refused).rejects.toBeInstanceOf(ProxyCapacityError);
+
+      succeed(calls[0]!);
+      await running;
+      await flush(12);
+      expect(clipOf(calls[1]!)).toBe("late");
+      succeed(calls[1]!);
+      await expect(preview).resolves.toBeTruthy();
+      await flush(12);
+      succeed(calls[2]!);
+      await thumb;
+    });
+
+    it("lets a caller leave a started copy without stopping it", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running"]);
+
+      await askThenLeave((signal) =>
+        resolveProxy(projectDir, clip.running!, "h264", undefined, { signal }),
+      );
+
+      succeed(calls[0]!);
+      await flush(12);
+      await expect(resolveProxy(projectDir, clip.running!)).resolves.toBeTruthy();
+      expect(calls).toHaveLength(1);
+    });
   });
 
   it("honors bounded concurrency and queue environment overrides", async () => {

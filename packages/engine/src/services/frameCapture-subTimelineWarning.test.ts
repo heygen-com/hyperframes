@@ -167,14 +167,11 @@ describe("pollSubCompositionTimelines pending-id reporting", () => {
   it("reports the still-unregistered ids to onPending", async () => {
     const seen: string[][] = [];
     const probe = pageReturning(["scene-2", "scene-5"]);
-    const outcome = await pollSubCompositionTimelines(
-      probe.page,
-      60,
-      10,
-      () => [],
-      undefined,
-      (ids) => seen.push([...ids]),
-    );
+    const outcome = await pollSubCompositionTimelines(probe.page, 60, {
+      intervalMs: 10,
+      getScriptLoadFailures: () => [],
+      onPending: (ids) => seen.push([...ids]),
+    });
 
     expect(outcome).toBe("timeout");
     expect(seen).toEqual([["scene-2", "scene-5"]]);
@@ -187,14 +184,11 @@ describe("pollSubCompositionTimelines pending-id reporting", () => {
   it("degrades to no ids instead of throwing when the page returns a non-array", async () => {
     const seen: string[][] = [];
     const probe = pageReturning(false);
-    const outcome = await pollSubCompositionTimelines(
-      probe.page,
-      60,
-      10,
-      () => [],
-      undefined,
-      (ids) => seen.push([...ids]),
-    );
+    const outcome = await pollSubCompositionTimelines(probe.page, 60, {
+      intervalMs: 10,
+      getScriptLoadFailures: () => [],
+      onPending: (ids) => seen.push([...ids]),
+    });
 
     expect(outcome).toBe("timeout");
     expect(seen).toEqual([[]]);

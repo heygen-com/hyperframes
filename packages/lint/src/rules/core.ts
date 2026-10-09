@@ -490,7 +490,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
   // root_missing_composition_id + root_missing_dimensions
   // fallow-ignore-next-line complexity
-  ({ rootTag }) => {
+  ({ rootTag, options }) => {
     const findings: HyperframeLintFinding[] = [];
     if (!rootTag || !readDecodedAttr(rootTag.raw, "data-composition-id")) {
       findings.push({
@@ -502,7 +502,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         snippet: truncateSnippet(rootTag?.raw || ""),
       });
     }
-    if (!rootTag || !readAttr(rootTag.raw, "data-width") || !readAttr(rootTag.raw, "data-height")) {
+    if (
+      !options.isSubComposition &&
+      (!rootTag || !readAttr(rootTag.raw, "data-width") || !readAttr(rootTag.raw, "data-height"))
+    ) {
       findings.push({
         code: "root_missing_dimensions",
         severity: "error",

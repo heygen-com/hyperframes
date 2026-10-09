@@ -133,6 +133,26 @@ function extractCssUrlReferences(css: string): string[] {
   return out;
 }
 
+function folderDepth(filePath: string): number {
+  if (/^(?:[a-z]:)?[\\/]/i.test(filePath)) return 0;
+  let depth = 0;
+  for (const segment of filePath.split(/[\\/]/).slice(0, -1)) {
+    if (segment === "..") depth = Math.max(0, depth - 1);
+    else if (segment && segment !== ".") depth += 1;
+  }
+  return depth;
+}
+
+function climbsAboveRoot(fileDepth: number, path: string): boolean {
+  let depth = fileDepth;
+  for (const segment of path.split("/")) {
+    if (segment === "..") depth -= 1;
+    else if (segment && segment !== ".") depth += 1;
+    if (depth < 0) return true;
+  }
+  return false;
+}
+
 // Top-level CSS selectors (comma-split) in a stylesheet, skipping at-rule headers
 // (@media/@keyframes/...) and keyframe stops. Heuristic — the lint layer has no
 // full CSS parser, and rules elsewhere in this file scan CSS the same way.
@@ -635,37 +655,27 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
-  // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
-  // href, inline-style url(), and <style> url() asset references on
-  // compositions. Sub-compositions live under compositions/ but are served
-  // with the project root as their base URL, so any `../`-traversing path
-  // climbs above the project root and 404s in Studio preview. Renders
-  // tolerate it because the server-side bundler rewrites `../foo` against
-  // each sub-composition's source path; the runtime now mirrors that fallback
-  // (see rewriteSubCompositionAssetPaths in runtime/compositionLoader.ts), but
-  // the authoring-time signal is still wrong — flag it at lint time so the
-  // baked path is plain root-relative and matches what the bundler emits.
-  //
-  // Mirrors the runtime fallback's surface: `[src]` / `[href]` attribute
-  // values, `[style]` inline url(), and `<style>` block url() references.
-  // Skips absolute URLs (http(s)://, //, data:, /-prefixed root-relative),
-  // hash anchors, and plain relative paths (`assets/x.mp4`) — only `../`
-  // traversal is flagged. Subsumes the older `../capture/`-specific rule.
+  // invalid_parent_traversal_in_asset_path — a `../` path in src, href or a CSS url() that leaves
+  // the project once resolved from the file's own folder, as the bundler, producer and runtime
+  // resolve it. "../assets/x" from compositions/ stays inside and passes.
   // fallow-ignore-next-line complexity
   ({ tags, styles, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 
     const offenders: string[] = [];
-    const collect = (value: string | null) => {
-      if (!value) return;
-      const trimmed = value.trim();
-      if (!trimmed.startsWith("../") && trimmed !== "..") return;
-      offenders.push(trimmed);
+    const fileDepth = folderDepth(options.compSrcPath ?? "index.html");
+    const collect = (value: string | null, depth = fileDepth) => {
+      const trimmed = value?.trim() ?? "";
+      if (/^(?:[a-z][a-z0-9+.-]*:|[\\/#])/i.test(trimmed)) return;
+      const path = (trimmed.split(/[?#]/, 1)[0] ?? "")
+        .replace(/\\|%2f/gi, "/")
+        .replace(/%2e/gi, ".");
+      if (climbsAboveRoot(depth, path)) offenders.push(trimmed);
     };
 
     for (const tag of tags) {
-      collect(readAttr(tag.raw, "src"));
-      collect(readAttr(tag.raw, "href"));
+      collect(readDecodedAttr(tag.raw, "src"));
+      collect(readDecodedAttr(tag.raw, "href"));
       // Use readJsonAttr for `style` — inline url('...') values contain the
       // opposite quote, which readAttr's [^"']+ class would truncate.
       const styleAttr = readJsonAttr(tag.raw, "style");
@@ -674,7 +684,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       }
     }
     for (const style of styles) {
-      for (const url of extractCssUrlReferences(style.content)) collect(url);
+      const depth = style.rootRelativePath ? folderDepth(style.rootRelativePath) : fileDepth;
+      for (const url of extractCssUrlReferences(style.content)) collect(url, depth);
     }
 
     if (offenders.length === 0) return [];
@@ -697,9 +708,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         severity: "error",
         message:
           `Found ${offenders.length} asset path(s) traversing above the project root with "../" ` +
-          `(${prefixSummary}). Renders rewrite this against each sub-composition's source path, but Studio preview and other live consumers resolve against the project root and 404.`,
+          `(${prefixSummary}), resolved from the folder of the file that holds them. Render and preview clamp them to the project root or resolve them outside it, so they load a different file than written, or none.`,
         fixHint:
-          'Use plain root-relative paths (e.g. "assets/...", "capture/...", "fonts/...") — compositions are served with the project root as their base URL, so paths must be root-relative, not relative to the compositions/ directory.',
+          'Point the path at a file inside the project: from compositions/scene.html, "../assets/x.png" and "assets/x.png" both reach the project\'s assets folder.',
       },
     ];
   },

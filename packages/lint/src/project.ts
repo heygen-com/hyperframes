@@ -116,15 +116,15 @@ function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
-): Array<{ href: string; content: string; file?: string }> {
-  const styles: Array<{ href: string; content: string; file?: string }> = [];
+): NonNullable<HyperframeLinterOptions["externalStyles"]> {
+  const styles: NonNullable<HyperframeLinterOptions["externalStyles"]> = [];
   const { document } = parseHTML(html);
   for (const { href, content, rootRelativePath } of collectLocalStylesheets(
     projectDir,
     document,
     compSrcPath,
   )) {
-    styles.push({ href, content, file: join(projectDir, rootRelativePath) });
+    styles.push({ href, content, file: join(projectDir, rootRelativePath), rootRelativePath });
   }
   return styles;
 }
@@ -193,6 +193,7 @@ export async function lintProject(
   const rootResult = await lintHyperframeHtml(rootHtml, {
     ...hostOptions,
     filePath: indexPath,
+    compSrcPath: rootFile,
     externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
   });
   results.push({ file: rootFile, result: rootResult, contentHash: contentDigest(rootHtml) });
@@ -234,6 +235,7 @@ export async function lintProject(
         ...hostOptions,
         filePath,
         isSubComposition: true,
+        compSrcPath,
         externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
       });
       results.push({

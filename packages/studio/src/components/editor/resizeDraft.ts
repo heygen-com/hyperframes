@@ -6,14 +6,15 @@ import {
   elementCornerOverlayPoints,
   overlayCornersCentroid,
 } from "./domEditOverlayGeometry";
-import { computeNextResizeAnchor } from "./domEditResizeLocal";
+import { computeNextResizeAnchor, resizeRemainderShift } from "./domEditResizeLocal";
+import type { ResizeDraftSizes } from "./domEditResizeLocal";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
 
 type Corners = ReturnType<typeof elementCornerOverlayPoints>;
 
 /**
  * The residual center-pin offset for this frame. With measurable corners and a
- * fixed-center start, accumulate `fixedStart - centerNow` onto the previous
+ * fixed-center start, accumulate `fixedStart + shift - centerNow` onto the previous
  * anchor so it CONVERGES rather than oscillating: `applyManualOffsetDragDraft`
  * treats its argument as the absolute offset, and `centerNow` (measured on the
  * live element) already carries the previous frame's offset, so the difference
@@ -25,10 +26,15 @@ function resolveResizeAnchor(
   g: GestureState,
   corners: Corners | null,
   measureOrientedRect: () => OverlayRect | null,
+  sizes: ResizeDraftSizes,
 ): { dx: number; dy: number } {
   const fixedStart = g.resizeFixedCenterStart;
   if (corners && fixedStart) {
-    return computeNextResizeAnchor(g.lastResizeAnchor, fixedStart, overlayCornersCentroid(corners));
+    const press = g.resizePressFromCorner ?? { x: 0, y: 0 };
+    const grab = { x: g.startX - press.x - g.centerX, y: g.startY - press.y - g.centerY };
+    const shift = resizeRemainderShift(corners, grab, sizes);
+    const target = { x: fixedStart.x + shift.x, y: fixedStart.y + shift.y };
+    return computeNextResizeAnchor(g.lastResizeAnchor, target, overlayCornersCentroid(corners));
   }
   const fallbackRect = measureOrientedRect();
   return resolveResizeCenterAnchorOffset({
@@ -52,11 +58,12 @@ function resolveAnchoredResizeDraft(
   overlayEl: HTMLDivElement | null,
   iframe: HTMLIFrameElement | null,
   measureOrientedRect: () => OverlayRect | null,
+  sizes: ResizeDraftSizes,
 ): OverlayRect {
   // Measure real corners ONCE — reused for the anchor and the fallback size.
   const corners =
     overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, element) : null;
-  const anchor = resolveResizeAnchor(g, corners, measureOrientedRect);
+  const anchor = resolveResizeAnchor(g, corners, measureOrientedRect, sizes);
   g.lastResizeAnchor = anchor;
   applyManualOffsetDragDraft(member, anchor.dx, anchor.dy);
   // Re-measure AFTER the anchor translate so it hugs the element every frame.
@@ -80,6 +87,7 @@ export function resolveResizeDraftRect(
   overlayEl: HTMLDivElement | null,
   iframe: HTMLIFrameElement | null,
   measureOrientedRect: () => OverlayRect | null,
+  sizes: ResizeDraftSizes,
 ): OverlayRect {
   if (g.pathOffsetMember) {
     return resolveAnchoredResizeDraft(
@@ -89,6 +97,7 @@ export function resolveResizeDraftRect(
       overlayEl,
       iframe,
       measureOrientedRect,
+      sizes,
     );
   }
   // Re-measure the element's oriented box AFTER the size write. The size draft

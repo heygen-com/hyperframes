@@ -147,6 +147,7 @@ export function startGesture(
     selection?: DomEditSelection;
     rect?: OverlayRect | null;
     resizeHandle?: ResizeHandle;
+    resizeCorner?: { x: number; y: number };
     at?: EditMoment;
   },
 ): boolean {
@@ -304,6 +305,10 @@ export function startGesture(
       manualEditDragToken,
       snapContext,
       resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
+      resizePressFromCorner:
+        kind === "resize" && options?.resizeCorner
+          ? { x: e.clientX - options.resizeCorner.x, y: e.clientY - options.resizeCorner.y }
+          : undefined,
       resizeFixedCenterStart,
     };
     if (kind === "resize") {

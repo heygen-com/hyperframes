@@ -36,7 +36,7 @@ import {
 } from "./manualEditsTypes";
 import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
-import { roundTo3, roundToLayoutPx } from "../../utils/rounding";
+import { roundTo3, roundToLayoutSize } from "../../utils/rounding";
 import { BOX_SIZE_STYLE_PROPS } from "./manualEditsDomPatches";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
@@ -402,7 +402,7 @@ function readParentFlexBasisPixels(
   if (display !== "flex" && display !== "inline-flex") return null;
 
   const direction = readStyleOrComputed(parent, "flex-direction").trim();
-  return roundToLayoutPx(Math.max(1, direction.startsWith("column") ? size.height : size.width));
+  return direction.startsWith("column") ? size.height : size.width;
 }
 
 function restoreStaleStudioScaleResize(element: HTMLElement): void {
@@ -477,22 +477,21 @@ function writeStudioBoxSizeVars(
   }
 
   element.setAttribute(STUDIO_BOX_SIZE_ATTR, "true");
-  element.style.setProperty(STUDIO_WIDTH_PROP, `${roundToLayoutPx(Math.max(1, size.width))}px`);
-  element.style.setProperty(STUDIO_HEIGHT_PROP, `${roundToLayoutPx(Math.max(1, size.height))}px`);
+  element.style.setProperty(STUDIO_WIDTH_PROP, `${size.width}px`);
+  element.style.setProperty(STUDIO_HEIGHT_PROP, `${size.height}px`);
 }
 
 function applyStudioBoxSizeDimensions(
   element: HTMLElement,
-  size: { width: number; height: number },
-): void {
+  wantedSize: { width: number; height: number },
+): { width: number; height: number } {
+  const size = roundToLayoutSize(wantedSize);
   writeStudioBoxSizeVars(element, size);
   restoreStaleStudioScaleResize(element);
 
-  const width = roundToLayoutPx(Math.max(1, size.width));
-  const height = roundToLayoutPx(Math.max(1, size.height));
   element.style.setProperty("box-sizing", "border-box");
-  element.style.setProperty("width", `${width}px`);
-  element.style.setProperty("height", `${height}px`);
+  element.style.setProperty("width", `${size.width}px`);
+  element.style.setProperty("height", `${size.height}px`);
   element.style.setProperty("min-width", "0px");
   element.style.setProperty("min-height", "0px");
   element.style.setProperty("max-width", "none");
@@ -507,6 +506,7 @@ function applyStudioBoxSizeDimensions(
   if (computedDisplay === "inline") {
     element.style.setProperty("display", "inline-block");
   }
+  return size;
 }
 
 export function applyStudioBoxSize(
@@ -533,12 +533,12 @@ export function forgetStudioBoxSizeDraftBase(element: HTMLElement): void {
 export function applyStudioBoxSizeDraft(
   element: HTMLElement,
   size: { width: number; height: number },
-): void {
+): { width: number; height: number } {
   if (!boxSizeDraftBases.has(element)) {
     boxSizeDraftBases.set(element, { width: element.offsetWidth, height: element.offsetHeight });
   }
   promoteInlineForTransform(element);
-  applyStudioBoxSizeDimensions(element, size);
+  return applyStudioBoxSizeDimensions(element, size);
 }
 
 /* ── Rotation apply ───────────────────────────────────────────────── */

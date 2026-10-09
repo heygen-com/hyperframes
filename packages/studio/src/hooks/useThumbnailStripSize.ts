@@ -152,13 +152,20 @@ const measure = (entries: { target: Element; size?: { width: number; height: num
 const onPresence = (entries: IntersectionObserverEntry[]) =>
   measure(entries.filter((entry) => entry.isIntersecting));
 
-const onResize = (entries: ResizeObserverEntry[]) =>
-  measure(
-    entries.map(({ target, contentRect: { width, height } }) => ({
-      target,
-      size: { width, height },
-    })),
-  );
+const pendingSizes = new Map<Element, { width: number; height: number }>();
+let pendingSizesFrame = 0;
+const applyPendingSizes = () => {
+  pendingSizesFrame = 0;
+  const entries = [...pendingSizes].map(([target, size]) => ({ target, size }));
+  pendingSizes.clear();
+  measure(entries);
+};
+
+const applyResizesNextFrame = (entries: ResizeObserverEntry[]) => {
+  for (const { target, contentRect } of entries)
+    pendingSizes.set(target, { width: contentRect.width, height: contentRect.height });
+  pendingSizesFrame ||= requestAnimationFrame(applyPendingSizes);
+};
 
 const observeIntersections = (callback: IntersectionObserverCallback) =>
   typeof IntersectionObserver === "undefined"
@@ -168,7 +175,7 @@ const observeIntersections = (callback: IntersectionObserverCallback) =>
 function acquire() {
   if (users++ === 0) {
     shared = {
-      resize: new ResizeObserver(onResize),
+      resize: new ResizeObserver(applyResizesNextFrame),
       presence: observeIntersections(onPresence),
       gaps: observeIntersections(
         (entries) => entries.some((entry) => entry.isIntersecting) && scheduleRefresh(),
@@ -190,6 +197,9 @@ function release() {
   window.removeEventListener("scroll", scheduleRefresh, { capture: true });
   cancelAnimationFrame(frame);
   frame = 0;
+  cancelAnimationFrame(pendingSizesFrame);
+  pendingSizesFrame = 0;
+  pendingSizes.clear();
 }
 
 const watchGap = (gap: HTMLDivElement | null) => {
@@ -234,6 +244,7 @@ export function useThumbnailStripSize() {
       resize.unobserve(target);
       presence?.unobserve(target);
       strips.delete(target);
+      pendingSizes.delete(target);
       release();
     };
   }, []);

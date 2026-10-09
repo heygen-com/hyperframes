@@ -19,6 +19,15 @@ function loadRegistryManifest(itemDir: string): RegistryManifest {
   return JSON.parse(readFileSync(join(itemDir, "registry-item.json"), "utf8")) as RegistryManifest;
 }
 
+function loadBlocks(): Array<{ name: string; itemDir: string; manifest: RegistryManifest }> {
+  return readdirSync(blocksDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const itemDir = join(blocksDir, entry.name);
+      return { name: entry.name, itemDir, manifest: loadRegistryManifest(itemDir) };
+    });
+}
+
 function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): string[] {
   const manifestPaths = new Set(manifest.files.map((file) => file.path));
   const missing: string[] = [];
@@ -107,6 +116,43 @@ describe("registry blocks", () => {
       }
     }
 
+    expect(missing).toEqual([]);
+  });
+
+  // Blocks installing the same shared library overwrite each other's copy, so a stale one downgrades the rest.
+  it("ships the same bytes from every block that installs a shared library", () => {
+    // target -> bytes -> blocks installing those bytes there
+    const installs = new Map<string, Map<string, string[]>>();
+    for (const { name, itemDir, manifest } of loadBlocks()) {
+      for (const file of manifest.files) {
+        if (!file.target.startsWith("compositions/lib/")) continue;
+        const content = readFileSync(join(itemDir, file.path), "latin1");
+        const byContent = installs.get(file.target) ?? new Map<string, string[]>();
+        byContent.set(content, [...(byContent.get(content) ?? []), name]);
+        installs.set(file.target, byContent);
+      }
+    }
+
+    expect(installs.has("compositions/lib/shaders.iife.js")).toBe(true);
+    const diverged = [...installs]
+      .filter(([, byContent]) => byContent.size > 1)
+      .map(([target, byContent]) => `${target}: ${[...byContent.values()].join(" vs ")}`);
+    expect(diverged).toEqual([]);
+  });
+
+  it("names a shader the shared bundle holds, and installs its licences, in every shader block", () => {
+    const missing: string[] = [];
+    for (const { name, itemDir, manifest } of loadBlocks()) {
+      const bundle = manifest.files.find((f) => f.target === "compositions/lib/shaders.iife.js");
+      const composition = manifest.files.find((f) => f.type === "hyperframes:composition");
+      if (!bundle || !composition) continue;
+      const html = readFileSync(join(itemDir, composition.path), "utf8");
+      const shader = html.match(/data-shader="([^"]+)"/)?.[1];
+      const code = readFileSync(join(itemDir, bundle.path), "utf8");
+      if (!shader || !code.includes(`name:"${shader}",role:`)) missing.push(`${name}: ${shader}`);
+      const licences = "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt";
+      if (!manifest.files.some((f) => f.target === licences)) missing.push(`${name}: no licences`);
+    }
     expect(missing).toEqual([]);
   });
 

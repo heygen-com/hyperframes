@@ -426,6 +426,26 @@ describe("core rules", () => {
     expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
   });
 
+  it("does not ask a sub-composition for its own size: a mounted one fills its host", async () => {
+    const html = `<template id="scene-template">
+  <div id="scene" data-composition-id="scene"><p>Hi</p></div>
+</template>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeUndefined();
+  });
+
+  it("finds a sub-composition's root inside <template> when <html> carries its variables", async () => {
+    const html = `<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Hi"}]'>
+<template id="scene-template">
+  <div id="scene" data-composition-id="scene" data-width="1280" data-height="720"></div>
+</template>
+</html>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+  });
+
   it("still treats an <svg> as the root when it carries composition markers itself", async () => {
     const html = `
 <html><body>

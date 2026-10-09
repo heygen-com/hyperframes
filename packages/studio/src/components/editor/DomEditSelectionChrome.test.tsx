@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
+import { RESIZE_HANDLE_HIT_PX } from "./domEditOverlayGeometry";
 import { SELECTION_CHROME } from "./motionPathLayerNode";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -283,9 +284,12 @@ describe("DomEditSelectionChrome with body drag off", () => {
   it("keeps the resize and rotate handles working", () => {
     const { host, gestures, cleanup } = renderChrome(false);
     const corner = host.querySelector<HTMLElement>('[style*="nwse-resize"]')!;
+    corner.querySelector("[data-resize-corner]")!.getBoundingClientRect = () =>
+      ({ left: 7, top: 9 }) as DOMRect;
     press(corner);
     expect(gestures.startGesture).toHaveBeenCalledWith("resize", expect.anything(), {
       resizeHandle: "nw",
+      resizeCorner: { x: 7, y: 9 },
     });
     press(host.querySelector('[aria-label="Rotate selection"]')!);
     expect(gestures.startGesture).toHaveBeenCalledWith("rotate", expect.anything());
@@ -325,5 +329,104 @@ describe("DomEditSelectionChrome with body drag off", () => {
     expect(event.defaultPrevented).toBe(false);
     expect(gestures.startGroupDrag).not.toHaveBeenCalled();
     act(() => root.unmount());
+  });
+});
+
+describe("DomEditSelectionChrome corner handles", () => {
+  type Inset = { top: number; right: number; bottom: number; left: number };
+  function cornerHits(
+    rect: { left: number; top: number; width: number; height: number },
+    cropOutlineInsetPx?: Inset,
+  ) {
+    const { selection, host, root } = selectionFixture(document.createElement("div"), "#t", true);
+    (selection.capabilities as { canCrop: boolean }).canCrop = false;
+    act(() => {
+      root.render(
+        <DomEditSelectionChrome
+          selection={selection}
+          overlayRect={{ ...rect, editScaleX: 1, editScaleY: 1 }}
+          allowCanvasMovement
+          allowBodyDrag
+          cropOutlineInsetPx={cropOutlineInsetPx}
+          boxRef={createRef()}
+          boxChromeClass=""
+          boxClipPath={undefined}
+          selectionKey="t"
+          groupSelectionCount={0}
+          gestures={{ startGesture: vi.fn() } as never}
+          onStyleCommit={vi.fn()}
+          onBoxClick={vi.fn()}
+        />,
+      );
+    });
+    const hits = [
+      ...host.querySelectorAll<HTMLElement>('[style*="nwse-resize"], [style*="nesw-resize"]'),
+    ].map((handle) => {
+      const corner = handle.querySelector<HTMLElement>("[data-resize-corner]")!;
+      const left = parseFloat(handle.style.left);
+      const top = parseFloat(handle.style.top);
+      return {
+        left,
+        top,
+        corner: [left + parseFloat(corner.style.left), top + parseFloat(corner.style.top)],
+      };
+    });
+    act(() => root.unmount());
+    host.remove();
+    return hits;
+  }
+
+  const NO_INSET: Inset = { top: 0, right: 0, bottom: 0, left: 0 };
+  it.each([
+    ["14x8", 14, 8, NO_INSET],
+    ["4x4", 4, 4, NO_INSET],
+    ["24x24", 24, 24, NO_INSET],
+    ["cropped 40x40 showing 16x16", 40, 40, { top: 12, right: 12, bottom: 12, left: 12 }],
+  ])(
+    "reach at most a quarter of each side into a small %s pick, so its middle moves",
+    (_name, width, height, inset) => {
+      const rect = { left: 100, top: 100, width, height };
+      const pick = {
+        left: rect.left + inset.left,
+        top: rect.top + inset.top,
+        right: rect.left + width - inset.right,
+        bottom: rect.top + height - inset.bottom,
+      };
+      const quarterX = (pick.right - pick.left) / 4;
+      const quarterY = (pick.bottom - pick.top) / 4;
+      const hits = cornerHits(rect, inset === NO_INSET ? undefined : inset);
+      expect(hits.map((hit) => hit.corner)).toEqual(
+        expect.arrayContaining([
+          [pick.left, pick.top],
+          [pick.right, pick.top],
+          [pick.left, pick.bottom],
+          [pick.right, pick.bottom],
+        ]),
+      );
+      expect(hits).toHaveLength(4);
+      for (const hit of hits) {
+        const reachX =
+          hit.left < (pick.left + pick.right) / 2
+            ? hit.left + RESIZE_HANDLE_HIT_PX - pick.left
+            : pick.right - hit.left;
+        const reachY =
+          hit.top < (pick.top + pick.bottom) / 2
+            ? hit.top + RESIZE_HANDLE_HIT_PX - pick.top
+            : pick.bottom - hit.top;
+        expect(reachX, JSON.stringify(hit)).toBeLessThanOrEqual(quarterX);
+        expect(reachY, JSON.stringify(hit)).toBeLessThanOrEqual(quarterY);
+      }
+    },
+  );
+
+  it("stay centred on the corners of a pick large enough to hold them", () => {
+    expect(cornerHits({ left: 100, top: 100, width: 32, height: 40 })).toEqual(
+      expect.arrayContaining([
+        { left: 92, top: 92, corner: [100, 100] },
+        { left: 124, top: 92, corner: [132, 100] },
+        { left: 92, top: 132, corner: [100, 140] },
+        { left: 124, top: 132, corner: [132, 140] },
+      ]),
+    );
   });
 });
