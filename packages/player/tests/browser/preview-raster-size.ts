@@ -186,16 +186,18 @@ try {
     await seek(0);
     return [await steadyShot("glass"), await steadyShot("tilt-wrap")];
   };
-  const swappedShots = await shots();
-  // The player resends its own scale on every resize tick; hold those off while the test drives it.
+  // Only the swap may differ between the two halves; layers that keep their hint on purpose go.
   await frame.evaluate(() => {
-    const hold = (event: MessageEvent) => {
-      if (event.source === window.parent && event.data?.action === "set-display-scale") {
-        event.stopImmediatePropagation();
-      }
-    };
-    (window as Window & { __holdScale?: typeof hold }).__holdScale = hold;
-    window.addEventListener("message", hold, true);
+    for (const id of ["wrap", "stack", "stage3d", "glow", "mixed"]) {
+      document.getElementById(id)!.remove();
+    }
+  });
+  const swappedShots = await shots();
+  // Toggling the swap restyles the page and the player answers with its real scale, so its own
+  // sends are held while the test decides the scale.
+  await page.evaluate(() => {
+    const player = document.getElementById("player") as HTMLElement & { _sendDisplayScale(): void };
+    player._sendDisplayScale = () => {};
   });
   await sendDisplayScale(1);
   await until("the swap turns off", hinted);
@@ -205,6 +207,15 @@ try {
   }
   assert.ok(unswapped > 1.5, `without the swap the trace shows ${unswapped}x, not oversized`);
   const nativeShots = await shots();
+  assert.deepEqual(
+    await frame.evaluate(() =>
+      ["glass-wrap", "tilt-wrap"].map(
+        (id) => getComputedStyle(document.getElementById(id)!).willChange,
+      ),
+    ),
+    ["transform", "transform"],
+    "the native shots are taken with the swap off",
+  );
   const glass = await changedShare(swappedShots[0]!, nativeShots[0]!);
   assert.ok(glass <= 0.1, `frosted glass changed in ${(glass * 100).toFixed(0)}% of its pixels`);
   const tilt = await changedShare(swappedShots[1]!, nativeShots[1]!);
@@ -212,12 +223,6 @@ try {
 
   await sendDisplayScale(528 / 1920);
   await until("the swap turns back on", swapped);
-  // Layers that keep their hint on purpose still raster large; everything else must not.
-  await frame.evaluate(() => {
-    for (const id of ["wrap", "stack", "stage3d", "glow", "mixed"]) {
-      document.getElementById(id)!.remove();
-    }
-  });
   for (let clean = 0, attempt = 0; clean < 3; attempt++) {
     const oversize = await maxOversize(attempt);
     clean = oversize <= 1.5 ? clean + 1 : 0;
@@ -233,9 +238,9 @@ try {
     () => getComputedStyle(document.getElementById("tilt-wrap")!).willChange === "transform",
   );
 
-  await frame.evaluate(() => {
-    const { __holdScale: hold } = window as Window & { __holdScale?: EventListener };
-    window.removeEventListener("message", hold!, true);
+  await page.evaluate(() => {
+    delete (document.getElementById("player") as HTMLElement & { _sendDisplayScale?: unknown })
+      ._sendDisplayScale;
   });
   await resize(1920, 1080);
   await until("full size restores the hints", hinted);
