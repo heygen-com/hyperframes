@@ -322,13 +322,6 @@ try {
     );
   }
 
-  const againstBase =
-    BASE_STUDIO_URL &&
-    !attempts.some((attempt) => attempt.passed) &&
-    attempts.every((attempt) => attempt.passingRuns >= budgets.requiredPassingRuns)
-      ? await measureAgainstBase(budgets, limits)
-      : null;
-
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
   await page.waitForFunction(
     () => document.querySelector('[aria-label="Timeline track view"]') === null,
@@ -339,6 +332,15 @@ try {
   const returnedHeapBytes = await collectHeapBytes(client);
   const memoryReturned =
     returnedHeapBytes <= baselineHeapBytes * (1 + budgets.memoryReturnToleranceRatio);
+  // Closed first, so the comparison's pages are the only ones the runner renders.
+  await page.close();
+  const againstBase =
+    BASE_STUDIO_URL &&
+    !attempts.some((attempt) => attempt.passed) &&
+    attempts.every((attempt) => attempt.passingRuns >= budgets.requiredPassingRuns)
+      ? await measureAgainstBase(budgets, limits)
+      : null;
+
   const maxTimelineContentWidthPx = Math.max(
     0,
     ...attempts.flatMap((attempt) => attempt.runs.map((run) => run.scrollWidth)),
@@ -415,40 +417,29 @@ async function collectMeasuredRuns(page, warmupRuns, measuredRuns) {
   return runs;
 }
 
-/** Head and base each freshly opened in its own Chrome, then measured in alternating blocks on this machine. */
+/** Head and base in alternating blocks on this machine, each block alone in a freshly opened Chrome. */
 async function measureAgainstBase(budgets, limits) {
-  const head = await openWarmStudio(STUDIO_URL, budgets);
-  const base = await openWarmStudio(BASE_STUDIO_URL, budgets).catch(async (error) => {
-    await head.browser.close();
-    throw error;
-  });
-  try {
-    const pages = { head: head.page, base: base.page };
-    const runs = { head: [], base: [] };
-    for (let round = 0; round < BASE_COMPARISON_ROUNDS; round += 1) {
-      for (const side of round % 2 === 0 ? ["head", "base"] : ["base", "head"]) {
-        runs[side].push(...(await collectMeasuredRuns(pages[side], 1, budgets.measuredRuns)));
-      }
+  const urls = { head: STUDIO_URL, base: BASE_STUDIO_URL };
+  const runs = { head: [], base: [] };
+  for (let round = 0; round < BASE_COMPARISON_ROUNDS; round += 1) {
+    for (const side of round % 2 === 0 ? ["head", "base"] : ["base", "head"]) {
+      runs[side].push(...(await measureFreshStudio(urls[side], budgets)));
     }
-    const verdict = judgeAgainstBase(runs.head, runs.base, limits);
-    logAgainstBase(verdict);
-    return { rounds: BASE_COMPARISON_ROUNDS, ...verdict, runs };
-  } finally {
-    await Promise.all([head.browser.close(), base.browser.close()]);
   }
+  const verdict = judgeAgainstBase(runs.head, runs.base, limits);
+  logAgainstBase(verdict);
+  return { rounds: BASE_COMPARISON_ROUNDS, ...verdict, runs };
 }
 
-async function openWarmStudio(url, budgets) {
+async function measureFreshStudio(url, budgets) {
   const { browser } = await launchStudioChrome();
   try {
     const { page } = await openStudio(browser, url);
     await loadFixtureAndWait(page, ELEMENT_COUNT, PROFILE);
     await assertRowVirtualization(page, budgets);
-    await collectMeasuredRuns(page, budgets.warmupRuns, 0);
-    return { browser, page };
-  } catch (error) {
+    return await collectMeasuredRuns(page, budgets.warmupRuns, budgets.measuredRuns);
+  } finally {
     await browser.close();
-    throw error;
   }
 }
 
