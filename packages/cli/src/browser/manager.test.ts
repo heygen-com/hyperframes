@@ -155,7 +155,7 @@ function installFsMocks({
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
       }
-      return { mtimeMs: mtimes.get(p) ?? 0 };
+      return { mtimeMs: mtimes.get(p) ?? 0, size: 1 };
     },
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
@@ -204,13 +204,18 @@ function installPuppeteerBrowsersMock(
     installImpl?: (options: {
       buildId: string;
       cacheDir: string;
+      logger?: (prefix: string) => ((...args: unknown[]) => void) | undefined;
     }) => Promise<{ executablePath: string; path?: string }>;
   } = {},
 ) {
   const impl =
     opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY });
   // Fixtures name the binary where it lands in HF_CACHE; install() really writes it under its own cacheDir.
-  const stagedInstall = async (options: { buildId: string; cacheDir: string }) => {
+  const stagedInstall = async (options: {
+    buildId: string;
+    cacheDir: string;
+    logger?: (prefix: string) => ((...args: unknown[]) => void) | undefined;
+  }) => {
     const result = await impl(options);
     if (result.path || !result.executablePath.startsWith(HF_CACHE + sep)) return result;
     const rel = relative(HF_CACHE, result.executablePath);
@@ -540,6 +545,33 @@ describe("findBrowser — cache resolution", () => {
 
       await expect(ensureBrowser({ force: true })).rejects.toThrow("HYPERFRAMES_BROWSER_PATH");
       expect(readFileSync(liveBinary, "utf8")).toBe("old");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { label: "missing", unpacked: undefined, state: "is missing" },
+    { label: "empty", unpacked: "", state: "is empty" },
+  ])("fails instead of reporting a browser the unzip left $label", async ({ unpacked, state }) => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId, logger }) => {
+        const staged = writeStagedInstall(cacheDir, buildId, "");
+        rmSync(staged.executablePath);
+        if (unpacked !== undefined) writeFileSync(staged.executablePath, unpacked);
+        logger?.("puppeteer:browsers:fileUtil")?.("tar.exe extraction failed: Error: boom");
+        return staged;
+      },
+    });
+    try {
+      const { ensureBrowser, CACHE_DIR } = await import("./manager.js");
+
+      const ensured = ensureBrowser({ preferManagedChrome: true });
+
+      await expect(ensured).rejects.toThrow(`chrome-headless-shell ${state} after unzipping`);
+      await expect(ensured).rejects.toThrow("tar.exe extraction failed: Error: boom");
+      expect(existsSync(CACHE_DIR)).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

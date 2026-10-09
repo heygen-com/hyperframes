@@ -809,6 +809,8 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
   // Same filesystem as CACHE_DIR so the final rename is atomic.
   const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
   const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
+  // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
+  const unzipLog: string[] = [];
   const runInstall = () =>
     install({
       cacheDir: stagingDir,
@@ -816,6 +818,10 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
       buildId: managedChromeVersion(),
       platform,
       downloadProgressCallback: options?.onProgress,
+      logger: (prefix) =>
+        prefix === "puppeteer:browsers:fileUtil"
+          ? (...args) => unzipLog.push(args.join(" "))
+          : undefined,
     });
 
   try {
@@ -824,12 +830,28 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
         `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
       ),
     );
+    assertExecutableUnpacked(stagingDir, staged.executablePath, unzipLog);
     return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
   } catch (err) {
     throw wrapDownloadFailureWithBrowserPathHint(err);
   } finally {
     clearStaging();
   }
+}
+
+// install() returns without checking that the unzip produced the executable.
+function assertExecutableUnpacked(
+  stagingDir: string,
+  executablePath: string,
+  unzipLog: readonly string[],
+): void {
+  const size = existsSync(executablePath) ? statSync(executablePath).size : undefined;
+  if (size) return;
+  const state = size === 0 ? "is empty" : "is missing";
+  const log = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
+  throw new Error(
+    `the archive downloaded, but ${relative(stagingDir, executablePath)} ${state} after unzipping.${log}`,
+  );
 }
 
 // Swap one staged version dir into CACHE_DIR by rename, never deleting the cache under live users:
