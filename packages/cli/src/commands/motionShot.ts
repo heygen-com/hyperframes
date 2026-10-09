@@ -43,8 +43,8 @@ function pathsReferToSameFile(firstPath: string, secondPath: string): boolean {
   const second = resolve(secondPath);
   if (first === second) return true;
   try {
-    const firstStat = statSync(first);
-    const secondStat = statSync(second);
+    const firstStat = statSync(first, { bigint: true });
+    const secondStat = statSync(second, { bigint: true });
     return firstStat.dev === secondStat.dev && firstStat.ino === secondStat.ino;
   } catch {
     return false;

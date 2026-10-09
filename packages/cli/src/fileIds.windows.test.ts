@@ -13,14 +13,15 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, statSync };
 });
 
-const { mirrorGlobalSkills } = await import("./skillsMirror.js");
+const { mirrorGlobalSkills } = await import("./utils/skillsMirror.js");
+const { ensureShotOutputDir } = await import("./commands/motionShot.js");
 
 const homes: string[] = [];
 afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
 
-describe("mirrorGlobalSkills on colliding number inodes", () => {
+describe("same-file checks on colliding number inodes", () => {
   it("still mirrors an agent whose dir only collides with the store in number precision", () => {
     const home = mkdtempSync(join(tmpdir(), "mirror-ino-"));
     homes.push(home);
@@ -36,5 +37,15 @@ describe("mirrorGlobalSkills on colliding number inodes", () => {
     });
     expect(skipped).toEqual([]);
     expect(mirrored.map((m) => m.agent)).toContain("goose");
+  });
+
+  it("lets a rerun overwrite its previous shot next to the composition", () => {
+    const home = mkdtempSync(join(tmpdir(), "shot-ino-"));
+    homes.push(home);
+    writeFileSync(join(home, "index.html"), "<html></html>");
+    writeFileSync(join(home, "shot.png"), "png");
+    expect(() =>
+      ensureShotOutputDir(join(home, "shot.png"), join(home, "index.html")),
+    ).not.toThrow();
   });
 });
