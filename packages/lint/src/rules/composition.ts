@@ -133,9 +133,6 @@ function extractCssUrlReferences(css: string): string[] {
   return out;
 }
 
-// Top-level CSS selectors (comma-split) in a stylesheet, skipping at-rule headers
-// (@media/@keyframes/...) and keyframe stops. Heuristic — the lint layer has no
-// full CSS parser, and rules elsewhere in this file scan CSS the same way.
 function climbsAboveRoot(fileDepth: number, path: string): boolean {
   let depth = fileDepth;
   for (const segment of path.split("/")) {
@@ -146,6 +143,9 @@ function climbsAboveRoot(fileDepth: number, path: string): boolean {
   return false;
 }
 
+// Top-level CSS selectors (comma-split) in a stylesheet, skipping at-rule headers
+// (@media/@keyframes/...) and keyframe stops. Heuristic — the lint layer has no
+// full CSS parser, and rules elsewhere in this file scan CSS the same way.
 function extractCssSelectors(css: string): string[] {
   const out: string[] = [];
   const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");

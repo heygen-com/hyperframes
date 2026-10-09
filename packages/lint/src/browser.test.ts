@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -36,7 +37,8 @@ describe("@hyperframes/lint/browser", () => {
       const source = readFileSync(file, "utf8");
       for (const [, from, bare] of source.matchAll(IMPORT_SPECIFIER)) {
         const spec = from ?? bare ?? "";
-        if (spec.startsWith("node:")) nodeImports.push(`${file}: ${spec}`);
+        if (spec.startsWith("node:") || builtinModules.includes(spec))
+          nodeImports.push(`${file}: ${spec}`);
         else if (spec.startsWith(".")) visit(resolveSource(resolve(dirname(file), spec)));
         else if (spec.startsWith("@hyperframes/parsers"))
           visit(resolve(parsersDir, parsersExports[spec.replace("@hyperframes/parsers", ".")].bun));

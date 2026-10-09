@@ -170,6 +170,7 @@ export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): Op
   for (const tag of bodyTags) {
     if (tag.index < skipBefore) continue;
     if (["script", "style", "meta", "link", "title"].includes(tag.name)) continue;
+    if ((tag.name === "html" || tag.name === "head") && !hasCompositionMarker(tag)) continue;
     // A leading <svg> block (icon/gradient/filter <defs>, referenced by url(#id)
     // from elsewhere in the document) is shared visual plumbing, not the
     // composition root — two independent reports of this being mistaken for
@@ -178,7 +179,6 @@ export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): Op
     // the composition markers itself, so an intentionally SVG-rooted composition
     // (data-composition-id/data-width/data-height directly on the <svg>) is
     // still eligible as the root.
-    if ((tag.name === "html" || tag.name === "head") && !hasCompositionMarker(tag)) continue;
     if (tag.name === "svg" && !hasCompositionMarker(tag)) {
       // No closing tag found (malformed HTML) — skip everything rather than
       // risk returning one of the svg's own children as the root.

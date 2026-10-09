@@ -904,10 +904,9 @@ describe("audio-aware project rules", () => {
 });
 
 describe("sub-composition files", () => {
-  const codesIn = async (project: string, file: string) =>
-    (await lintProject(project)).results
-      .find((result) => result.file === file)
-      ?.result.findings.map((finding) => finding.code) ?? [];
+  const sceneFindings = async (project: string) =>
+    (await lintProject(project)).results.find((result) => result.file === "compositions/scene.html")
+      ?.result.findings ?? [];
 
   it("resolves a scene's ../assets/ path from its own folder, as preview and render do", async () => {
     const project = makeProject(validHtml(), {
@@ -919,9 +918,9 @@ describe("sub-composition files", () => {
     });
     mkdirSync(join(project, "assets"));
     writeFileSync(join(project, "assets", "logo.png"), "");
-    const finding = (await lintProject(project)).results
-      .find((result) => result.file === "compositions/scene.html")
-      ?.result.findings.find((f) => f.code === "invalid_parent_traversal_in_asset_path");
+    const finding = (await sceneFindings(project)).find(
+      (f) => f.code === "invalid_parent_traversal_in_asset_path",
+    );
     expect(finding?.message).toContain("1 asset path(s)");
     expect(finding?.message).toContain("../../");
   });
@@ -932,7 +931,7 @@ describe("sub-composition files", () => {
   <div data-composition-id="scene"><p>Hi</p></div>
 </template>`,
     });
-    expect(await codesIn(project, "compositions/scene.html")).not.toContain(
+    expect((await sceneFindings(project)).map((f) => f.code)).not.toContain(
       "root_missing_dimensions",
     );
   });

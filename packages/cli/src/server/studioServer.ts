@@ -534,10 +534,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       if (resolve(dir) === resolve(projectDir)) cachedProjectSignature = null;
     },
 
-    async lint(
-      html: string,
-      opts?: { filePath?: string; isSubComposition?: boolean; compSrcPath?: string },
-    ) {
+    async lint(html, opts) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
       return await lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
