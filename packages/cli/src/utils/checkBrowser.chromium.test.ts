@@ -52,7 +52,7 @@ const PAGE = `<body>
   backwards("parked", 3000);
   backwards("rewound", 0);
   // A registered timeline with only the one-iteration methods, which the runtime accepts.
-  window.__timelines.partial = { duration: () => 4, time: () => 1 };
+  window.__timelines.partial = { duration: () => 4, time: () => 4 };
 </script>
 </body>`;
 
@@ -88,7 +88,7 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
 
     expect(first.map(({ time, done }) => [time, done])).toEqual([
       [1, false],
-      [1, false],
+      [4, true],
       [0.2, true],
       [0, true],
       [1000, false],
@@ -100,7 +100,7 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
     const [late, ...rest] = second;
     expect(rest.map(({ id }) => id)).toEqual(first.map(({ id }) => id));
     expect(first.map(({ id }) => id)).not.toContain(late?.id);
-    expect(second.map(({ time }) => time)).toEqual([0, 2, 1, 0.2, 0, 2000, 0, 3000, 3000, 0]);
+    expect(second.map(({ time }) => time)).toEqual([0, 2, 4, 0.2, 0, 2000, 0, 3000, 3000, 0]);
     await page.close();
   });
 
