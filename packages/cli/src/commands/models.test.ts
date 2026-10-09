@@ -16,6 +16,11 @@ const sherpa = {
 vi.mock("../whisper/sherpa.js", () => sherpa);
 const manager = { listWhisperModels: vi.fn() };
 vi.mock("../whisper/manager.js", () => manager);
+const findParakeet = vi.hoisted(() => vi.fn());
+vi.mock("../whisper/parakeet.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../whisper/parakeet.js")>()),
+  findParakeet,
+}));
 
 // The command's Ctrl-C scope, driven by the test instead of a real signal.
 let cancel = new AbortController();
@@ -143,6 +148,7 @@ describe("models list", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     sherpa.sherpaUnsupportedReason.mockReturnValue(null);
     sherpa.sherpaParakeetInstalled.mockReturnValue(true);
+    findParakeet.mockReturnValue(undefined);
     manager.listWhisperModels.mockReturnValue([smallEn]);
   });
   afterEach(() => vi.restoreAllMocks());
@@ -161,6 +167,7 @@ describe("models list", () => {
           engine: "parakeet",
           model: "parakeet-tdt-0.6b-v3",
           installed: true,
+          runner: "sherpa",
           path: sherpa.PARAKEET_MODEL_DIR,
         },
         { engine: "whisper", model: "small.en", installed: true, path: smallEn.path },
@@ -179,5 +186,16 @@ describe("models list", () => {
       }),
     ]);
     expect(sherpa.sherpaParakeetInstalled).not.toHaveBeenCalled();
+  });
+
+  it("counts Parakeet as installed through parakeet-mlx, as transcribe would run it", async () => {
+    sherpa.sherpaParakeetInstalled.mockReturnValue(false);
+    findParakeet.mockReturnValue("/venv/bin/parakeet-mlx");
+    expect((await listJson()).models[0]).toEqual({
+      engine: "parakeet",
+      model: "parakeet-tdt-0.6b-v3",
+      installed: true,
+      runner: "parakeet-mlx",
+    });
   });
 });

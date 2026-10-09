@@ -154,9 +154,10 @@ export function findWhisper(): WhisperResult | undefined {
 export function listWhisperModels(): { model: string; path: string }[] {
   if (!existsSync(MODELS_DIR)) return [];
   return readdirSync(MODELS_DIR)
-    .map((file) => /^ggml-(.+)\.bin$/.exec(file))
-    .filter((match) => match !== null)
-    .map(([file, model]) => ({ model: model!, path: join(MODELS_DIR, file) }))
+    .flatMap((file) => {
+      const model = /^ggml-(.+)\.bin$/.exec(file)?.[1];
+      return model ? [{ model, path: join(MODELS_DIR, file) }] : [];
+    })
     .sort((a, b) => a.model.localeCompare(b.model));
 }
 

@@ -22,6 +22,7 @@ import type { TranscribeProgress, TranscribeResult } from "./transcribe.js";
 
 /** The model name `transcribe --json` reports for every Parakeet runner. */
 export const PARAKEET_MODEL_LABEL = "parakeet-tdt-0.6b-v3";
+export const PARAKEET_INSTALL_COMMAND = "hyperframes models install parakeet";
 /** Stdout/stderr line prefixes of the sherpa-onnx decode worker. */
 export const SHERPA_RESULT_PREFIX = "HYPERFRAMES_PARAKEET_RESULT:";
 export const SHERPA_ERROR_PREFIX = "HYPERFRAMES_PARAKEET_ERROR:";
