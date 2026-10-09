@@ -667,7 +667,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const collect = (value: string | null, depth = fileDepth) => {
       const trimmed = value?.trim() ?? "";
       if (/^(?:[a-z][a-z0-9+.-]*:|[\\/#])/i.test(trimmed)) return;
-      const path = (trimmed.split(/[?#]/, 1)[0] ?? "").replace(/\\/g, "/").replace(/%2e/gi, ".");
+      const path = (trimmed.split(/[?#]/, 1)[0] ?? "")
+        .replace(/\\|%2f/gi, "/")
+        .replace(/%2e/gi, ".");
       if (climbsAboveRoot(depth, path)) offenders.push(trimmed);
     };
 

@@ -1402,6 +1402,16 @@ describe("composition rules", () => {
       }
     });
 
+    it("reads an encoded %2f as a separator, as render decodes it", async () => {
+      expect(
+        await lintAt("compositions/scene.html", `<img src="..%2f..%2fx.png" alt="">`),
+      ).toBeDefined();
+    });
+
+    it("never counts a file path's leading .. below the project root", async () => {
+      expect(await lintAt("../x/scene.html", `<img src="../y.png" alt="">`)).toBeUndefined();
+    });
+
     it("ignores URLs with a scheme, absolute paths and fragments", async () => {
       for (const src of ["https://cdn.example.com/../../x.png", "/../x.png", "#../x"]) {
         expect(await lintAt("index.html", `<img src="${src}" alt="">`)).toBeUndefined();
