@@ -228,9 +228,14 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           const loading = getShaderTransitionLoading(event);
           if (loading !== null) setShaderTransitionLoading(loading);
         };
+        // The document handleLoad last ran for: a load event after the runtime's ready is the same document.
+        let loadedDocument: Document | null = null;
         const handleReady = () => {
           setPreviewError(null);
           setCompositionLoading(false);
+          // A stalled font or asset can hold the window's load event forever; the runtime's ready is enough.
+          const doc = iframe.contentDocument;
+          if (doc && doc !== loadedDocument) handleLoad();
         };
         const handlePainted = () => {
           setPainted(true);
@@ -243,6 +248,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setCompositionLoading(false);
         };
         const handleLoad = () => {
+          const doc = iframe.contentDocument;
+          if (doc && doc === loadedDocument) return;
+          loadedDocument = doc;
           loadCountRef.current++;
           setLoaded(true);
           setPreviewError(null);

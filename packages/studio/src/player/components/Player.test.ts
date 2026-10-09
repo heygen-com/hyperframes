@@ -196,6 +196,20 @@ describe("callbacks after the player is already mounted", () => {
     expect(first).not.toHaveBeenCalled();
   });
 
+  it("loads the preview on the runtime's ready while a stalled font holds the window's load", async () => {
+    const onLoad = vi.fn();
+    const { player } = await mountPlayer({ onLoad });
+    const iframe = (player as TestHyperframesPlayer).iframeElement;
+    document.body.append(iframe);
+
+    act(() => void player.dispatchEvent(new Event("ready")));
+    expect(onLoad).toHaveBeenCalledTimes(1);
+
+    act(() => void iframe.dispatchEvent(new Event("load")));
+    act(() => void player.dispatchEvent(new Event("ready")));
+    expect(onLoad).toHaveBeenCalledTimes(1);
+  });
+
   it("reports the preview error cause", async () => {
     const onPreviewError = vi.fn();
     const { player } = await mountPlayer({ onPreviewError });
