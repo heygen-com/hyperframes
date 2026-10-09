@@ -787,7 +787,7 @@ describe("resolveHeadlessShellPath", () => {
     }
   });
 
-  it("skips an empty cached shell and uses the next older build", () => {
+  it("skips a cached shell that is a folder or empty and uses the next older build", () => {
     const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-empty-"));
     try {
       const shell = (version: string) =>
@@ -801,6 +801,7 @@ describe("resolveHeadlessShellPath", () => {
           "chrome-headless-shell-linux64",
           "chrome-headless-shell",
         );
+      mkdirSync(shell("153.0.7990.1"), { recursive: true });
       for (const [version, content] of [
         ["152.0.7977.30", ""],
         ["150.0.7871.124", "shell"],
