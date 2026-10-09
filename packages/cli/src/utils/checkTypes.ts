@@ -199,6 +199,8 @@ export interface CheckAuditDriver {
   /** Frozen-sweep guard (#U10): an opaque fingerprint of the seeked visual state, from
    * motion-signature.browser.js (shared with motion-sample's liveness). Legacy name kept. */
   collectLayoutGeometry(): Promise<string>;
+  /** Current time of every GSAP timeline, tween and page animation that could move, in a stable order. */
+  collectSeekClock(): Promise<number[]>;
   /** rotation_pivot_drift: every rotatable element's bbox center/size/angle at
    * the current seeked state. Accumulated across the grid — see checkPipeline. */
   collectRotationSample(time: number): Promise<RotationSample[]>;

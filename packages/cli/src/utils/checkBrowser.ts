@@ -461,6 +461,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
     collectOverlap: (time) => collectOverlap(page, time),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
+    collectSeekClock: () => collectSeekClock(page),
     collectRotationSample: (time) => collectRotationSample(page, time),
     collectOffPivotRotationSample: (time) => collectOffPivotRotationSample(page, time),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
@@ -609,6 +610,26 @@ async function collectLayoutGeometry(page: Page): Promise<string> {
     if (typeof geometry !== "function") return "";
     const result = Reflect.apply(geometry, window, []);
     return typeof result === "string" ? result : "";
+  });
+}
+
+async function collectSeekClock(page: Page): Promise<number[]> {
+  // Serialized into the page; each optional GSAP read is one branch of one function.
+  // fallow-ignore-next-line complexity
+  return page.evaluate(() => {
+    type Clock = { duration?: () => unknown; time?: () => unknown } | null;
+    const times: number[] = [];
+    const timelines: unknown = Reflect.get(window, "__timelines");
+    const registered = typeof timelines === "object" && timelines ? Object.values(timelines) : [];
+    const gsapRoot = Reflect.get(Reflect.get(window, "gsap") ?? {}, "globalTimeline");
+    const unregistered: unknown = gsapRoot?.getChildren?.(false, true, true) ?? [];
+    for (const timeline of [...registered, ...(unregistered as unknown[])] as Clock[]) {
+      const duration = timeline?.duration?.();
+      if (typeof duration === "number" && duration > 0) times.push(Number(timeline?.time?.()));
+    }
+    for (const animation of document.getAnimations?.() ?? [])
+      times.push(Number(animation.currentTime));
+    return times;
   });
 }
 

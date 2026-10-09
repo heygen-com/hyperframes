@@ -155,6 +155,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     collectLayout: vi.fn(async (_time: number, _tolerance: number) => []),
     collectOverlap: vi.fn(async (_time: number) => []),
     collectLayoutGeometry: vi.fn(async () => `geometry-${geometryCallCount++}`),
+    collectSeekClock: vi.fn(async () => [0]),
     collectRotationSample: vi.fn(async (_time: number) => []),
     collectOffPivotRotationSample: vi.fn(async (time: number) => ({ time, samples: [] })),
     collectGeometryCandidates: vi.fn(async () => []),
@@ -1531,6 +1532,43 @@ describe("check pipeline", () => {
             finding.fixHint?.includes("data-no-timeline"),
         ),
       ).toBe(true);
+    });
+
+    it("passes a still title card whose registered timeline follows the seek", async () => {
+      let tick = 0;
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 4),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+        collectSeekClock: vi.fn(async () => [tick++]),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+      expect(report.ok).toBe(true);
+    });
+
+    it("fails when one animation's clock ignores the seek while another follows it", async () => {
+      let tick = 0;
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 4),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+        collectSeekClock: vi.fn(async () => [0, tick++]),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(true);
+    });
+
+    it("passes a still title card with nothing on the page that could move", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 4),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+        collectSeekClock: vi.fn(async () => []),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+      expect(report.ok).toBe(true);
     });
 
     it("warns, without failing, when only the audio advanced and nothing on screen moved", async () => {

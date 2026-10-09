@@ -712,11 +712,12 @@ background colours, the measured ratio against the required one, and a
 compliant colour you could use instead.
 
 Severity is persistence-aware: a finding at a single sample demotes to info, a
-finding that persists gates the exit code, and a timeline that never moves on a
-composition of 3s or more fails with `sweep_static`. When only audio advanced
-and nothing on screen moved, `sweep_static` is a warning instead (`--strict`
-fails the run on it); add `data-no-timeline` to a composition that is meant to
-be still.
+finding that persists gates the exit code, and a composition of 3s or more
+fails with `sweep_static` when its frame never changes because an animation on
+the page ignored the seek. A still title card passes as long as its timeline
+follows the seek. When only audio advanced and nothing on screen moved,
+`sweep_static` is a warning instead (`--strict` fails the run on it); a
+composition that is meant to be still can also declare `data-no-timeline`.
 
 {/* VISUAL: a `check --snapshots` overview frame beside one finding crop, with the labelled finding box visible on both */}
 

@@ -217,8 +217,8 @@ interface GridSamples {
   contrastEntries: ContrastAuditEntry[];
   screenshots: CheckScreenshot[];
   contrastMs: number;
-  /** One visible-state fingerprint per layout sample (#U10 frozen-sweep guard). */
-  layoutStateSignatures: { time: number; signature: string }[];
+  /** One visible-state fingerprint and seek clock per layout sample (#U10 frozen-sweep guard). */
+  layoutStateSignatures: { time: number; signature: string; clock: number[] }[];
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
@@ -404,6 +404,7 @@ async function collectGridSamples(
       collected.layoutStateSignatures.push({
         time,
         signature: await driver.collectLayoutGeometry(),
+        clock: await driver.collectSeekClock(),
       });
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
@@ -486,21 +487,31 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
  * verdict from this run is meaningless, not just a missed defect. Skips
  * short (<3s) compositions, single-sample runs (nothing to compare), and
  * runs where a `motion_frozen` finding already reported the same underlying
- * symptom (no double-reporting the one thing that's wrong).
+ * symptom (no double-reporting the one thing that's wrong). A frame that never
+ * changes is only an error when some animation's clock also never moved.
  */
 function detectSweepStatic(
   duration: number,
-  layoutStateSignatures: string[],
+  samples: { signature: string; clock: number[] }[],
   motionIssues: AnchoredLayoutIssue[],
   hasNoTimelineDeclaration: boolean,
 ): AnchoredLayoutIssue[] {
   if (hasNoTimelineDeclaration) return [];
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
-  if (layoutStateSignatures.length < 2) return [];
+  if (samples.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
-  if (allSame(layoutStateSignatures)) return [sweepStaticIssue("error")];
-  if (allSame(layoutStateSignatures.map(seenPart))) return [sweepStaticIssue("warning")];
+  const signatures = samples.map((sample) => sample.signature);
+  if (allSame(signatures))
+    return anAnimationIgnoredTheSeek(samples) ? [sweepStaticIssue("error")] : [];
+  if (allSame(signatures.map(seenPart))) return [sweepStaticIssue("warning")];
   return [];
+}
+
+function anAnimationIgnoredTheSeek(samples: { clock: number[] }[]): boolean {
+  const first = samples[0]?.clock ?? [];
+  return first.some((time, index) =>
+    samples.every(({ clock }) => clock.length === first.length && clock[index] === time),
+  );
 }
 
 // motion-signature.browser.js appends audio time after this; a signature without it is all "seen".
@@ -1087,9 +1098,7 @@ export async function runAuditGrid(
   const userPicked = new Set(grid.userPickedSamples);
   const sweepFindings = detectSweepStatic(
     grid.duration,
-    collected.layoutStateSignatures
-      .filter((sample) => !userPicked.has(sample.time))
-      .map((sample) => sample.signature),
+    collected.layoutStateSignatures.filter((sample) => !userPicked.has(sample.time)),
     motionIssues,
     await driver.hasNoTimelineDeclaration(),
   );
