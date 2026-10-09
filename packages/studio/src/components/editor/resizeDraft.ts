@@ -7,16 +7,14 @@ import {
   overlayCornersCentroid,
 } from "./domEditOverlayGeometry";
 import { computeNextResizeAnchor, resizeRemainderShift } from "./domEditResizeLocal";
+import type { ResizeDraftSizes } from "./domEditResizeLocal";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
 
 type Corners = ReturnType<typeof elementCornerOverlayPoints>;
-type Size = { width: number; height: number };
-/** The size the pointer asks for and the whole-px size written for it. */
-type ResizeDraftSizes = { wanted: Size; written: Size };
 
 /**
  * The residual center-pin offset for this frame. With measurable corners and a
- * fixed-center start, accumulate `fixedStart - centerNow` onto the previous
+ * fixed-center start, accumulate `fixedStart + shift - centerNow` onto the previous
  * anchor so it CONVERGES rather than oscillating: `applyManualOffsetDragDraft`
  * treats its argument as the absolute offset, and `centerNow` (measured on the
  * live element) already carries the previous frame's offset, so the difference
@@ -32,12 +30,7 @@ function resolveResizeAnchor(
 ): { dx: number; dy: number } {
   const fixedStart = g.resizeFixedCenterStart;
   if (corners && fixedStart) {
-    const shift = resizeRemainderShift(
-      corners,
-      g.resizeHandle ?? "se",
-      sizes.wanted,
-      sizes.written,
-    );
+    const shift = resizeRemainderShift(corners, g.resizeHandle ?? "se", g.actualRotation, sizes);
     const target = { x: fixedStart.x + shift.x, y: fixedStart.y + shift.y };
     return computeNextResizeAnchor(g.lastResizeAnchor, target, overlayCornersCentroid(corners));
   }

@@ -396,8 +396,8 @@ export async function tryGsapResizeIntercept(
   // position (a `tl.set` hold or none) — a keyframed position path has no
   // single anchor to preserve, so it keeps the plain center-scale behavior.
   // The size route hands its draft to GSAP itself (handOverDraftSize).
-  // ponytail: for a 3D-rotated element the rects are AABBs, so the anchor is
-  // approximate rather than corner-exact.
+  // ponytail: the centre of an AABB is exact for any 2D transform; under
+  // perspective it is approximate.
   // fallow-ignore-next-line complexity
   const finalizeScaleResizeCommit = async (): Promise<boolean> => {
     // Only the scale route captures the element, so a null draft means this
@@ -455,11 +455,11 @@ export async function tryGsapResizeIntercept(
       // Correct the live box in the same task as the measurement, so no frame shows it off the drop
       // point while the position write is in flight.
       setElementGsapPosition(draftEl, corrected.x, corrected.y);
-      return { base, corrected };
+      return { base, corrected, residual };
     });
     if (measured === null) return false;
     if (measured === "settled") return true;
-    const { base, corrected } = measured;
+    const { base, corrected, residual } = measured;
     // Re-fetch: the scale commit above just rewrote the script, so the caller's
     // animation list (and its ids) may be stale for the position lookup.
     const currentAnimations = fetchFallbackAnimations
@@ -482,6 +482,11 @@ export async function tryGsapResizeIntercept(
       moment.time,
     );
     if (positionTween) {
+      // A sub-pixel correction is not worth a keyframe in an authored tween.
+      if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
+        draw(() => setElementGsapPosition(draftEl, base.x, base.y));
+        return true;
+      }
       logResize("scale-finalize", { route: "position-keyframe", tweenId: positionTween.id });
       assertGsapEditPersisted(
         await commitGsapPositionFromDrag(selection, positionTween, delta, base, iframe, {
