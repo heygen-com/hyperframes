@@ -1,5 +1,6 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import {
+  PREVIEW_RASTER_ATTR,
   STUDIO_PREVIEW_LAZY_ATTR,
   STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
@@ -99,6 +100,7 @@ export function liveMarkupWithoutPreviewMarks(live: Element): string {
   const copy = live.cloneNode(true) as Element;
   for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
     el.removeAttribute(STUDIO_PREVIEW_UPCOMING_ATTR);
+    el.removeAttribute(PREVIEW_RASTER_ATTR);
     if (!el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) continue;
     el.removeAttribute("loading");
     el.removeAttribute(STUDIO_PREVIEW_LAZY_ATTR);

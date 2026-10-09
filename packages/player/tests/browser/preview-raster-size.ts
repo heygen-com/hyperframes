@@ -65,7 +65,7 @@ try {
   // Every box, what paints at the stacking and 3D probes, every inline style and computed filter.
   const snapshot = () =>
     frame.evaluate(() => {
-      const elements = [...document.querySelectorAll("*")];
+      const elements = [...document.body.querySelectorAll("*")];
       return {
         boxes: elements.map((element) => {
           const box = element.getBoundingClientRect();
@@ -149,6 +149,16 @@ try {
   assert.equal(small.stacking, "cover", "paint order is unchanged");
   assert.equal(small.flipped, "card", "a preserve-3d container is not flattened");
   assert.deepEqual(small.filters, full.filters, "no computed filter changes");
+  assert.deepEqual(small.styles, full.styles, "no inline style is written");
+  assert.deepEqual(
+    await frame.evaluate(() =>
+      ["wrap", "stack", "card", "glass-wrap", "tilt-wrap"].map(
+        (id) => getComputedStyle(document.getElementById(id)!).willChange,
+      ),
+    ),
+    ["transform", "transform", "transform", "auto", "auto"],
+    "only layers nothing depends on lose the hint",
+  );
   await frame.evaluate(() => {
     const late = document.createElement("div");
     late.className = "lyric";
@@ -192,6 +202,10 @@ try {
 
   await sendDisplayScale(528 / 1920);
   await until("the swap turns back on", swapped);
+  // Layers that keep their hint on purpose still raster large; everything else must not.
+  await frame.evaluate(() => {
+    for (const id of ["wrap", "stack", "stage3d"]) document.getElementById(id)!.remove();
+  });
   for (let clean = 0, attempt = 0; clean < 3; attempt++) {
     const oversize = await maxOversize(attempt);
     clean = oversize <= 1.5 ? clean + 1 : 0;
@@ -200,8 +214,11 @@ try {
 
   await resize(1920, 1080);
   await until("full size restores the hints", hinted);
-  await seek(0);
-  assert.deepEqual((await snapshot()).styles, full.styles, "full size restores every inline style");
+  assert.equal(
+    await frame.evaluate(() => document.querySelectorAll("[data-hf-preview-raster]").length),
+    0,
+    "full size removes every mark",
+  );
   console.log("preview rasters at its shown size with layout and pixels unchanged: PASS");
 } finally {
   await browser.close();

@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { PREVIEW_RASTER_ATTR } from "../studioPreviewMark";
 import { setPreviewRasterScale } from "./previewRasterHints";
 
-function layer(style: string): HTMLElement {
+function layer(style: string, parent: Element = document.body): HTMLElement {
   const element = document.createElement("div");
   element.setAttribute("style", style);
-  document.body.append(element);
+  parent.append(element);
   return element;
 }
+
+const POSITIONED = "position: absolute; will-change: transform";
+const marked = (element: Element) => element.hasAttribute(PREVIEW_RASTER_ATTR);
 
 afterEach(() => {
   setPreviewRasterScale(1);
@@ -14,52 +18,60 @@ afterEach(() => {
 });
 
 describe("setPreviewRasterScale", () => {
-  it("swaps a transform hint for a far perspective while the preview is shown small", () => {
-    const plain = layer("will-change: transform");
-    const mixed = layer("will-change: opacity, transform");
+  it("drops a positioned layer's transform hint while the preview is shown small", () => {
+    const words = layer(POSITIONED);
+    const word = layer("position: absolute", words);
+    const mixed = layer("position: relative; will-change: opacity, transform");
     setPreviewRasterScale(0.275);
-    expect(plain.style.cssText).toBe("will-change: auto; perspective: 1000000000px;");
-    expect(mixed.style.willChange).toBe("opacity");
+    expect(marked(words)).toBe(true);
+    expect(marked(word)).toBe(false);
+    expect(marked(mixed)).toBe(true);
+    expect(getComputedStyle(words).willChange).toBe("auto");
+    expect(words.getAttribute("style")).toBe(POSITIONED);
   });
 
-  it("keeps an authored perspective and leaves unhinted layers alone", () => {
-    const deep = layer("will-change: transform; perspective: 600px");
-    const plain = layer("will-change: opacity");
+  it("keeps the hint where the stacking context or containing block matters", () => {
+    const unpositioned = layer("will-change: transform");
+    const holdsFixed = layer(POSITIONED);
+    layer("position: fixed", holdsFixed);
+    const holdsZIndex = layer(POSITIONED);
+    layer("position: relative; z-index: 2", holdsZIndex);
+    const holdsBlend = layer(POSITIONED);
+    layer("mix-blend-mode: multiply", holdsBlend);
+    const stacked = layer(`${POSITIONED}; z-index: 1`);
+    layer("position: relative; z-index: 2", stacked);
     setPreviewRasterScale(0.5);
-    expect(deep.style.cssText).toBe("will-change: auto; perspective: 600px;");
-    expect(plain.style.cssText).toBe("will-change: opacity;");
+    expect([unpositioned, holdsFixed, holdsZIndex, holdsBlend].map(marked)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(marked(stacked)).toBe(true);
   });
 
-  it("restores the authored styles once shown at full size, keeping values written since", () => {
-    const restored = layer("will-change: transform; color: red");
-    const animated = layer("will-change: transform");
-    const before = restored.style.cssText;
+  it("restores the document once shown at full size", () => {
+    const words = layer(POSITIONED);
+    const before = document.documentElement.outerHTML;
     setPreviewRasterScale(0.5);
-    animated.style.perspective = "800px";
+    expect(document.documentElement.outerHTML).not.toBe(before);
     setPreviewRasterScale(1);
-    expect(restored.style.cssText).toBe(before);
-    expect(animated.style.willChange).toBe("transform");
-    expect(animated.style.perspective).toBe("800px");
+    expect(document.documentElement.outerHTML).toBe(before);
+    expect(getComputedStyle(words).willChange).toBe("transform");
   });
 
-  it("swaps layers added while the preview is small", async () => {
-    setPreviewRasterScale(0.5);
-    const late = layer("will-change: transform");
-    await Promise.resolve();
-    expect(late.style.willChange).toBe("auto");
-  });
-
-  it("follows a class change on a swapped layer", async () => {
+  it("follows layers added and classes changed while the preview is small", async () => {
     const sheet = document.createElement("style");
-    sheet.textContent = ".hinted { will-change: transform }";
+    sheet.textContent = ".pinned { position: fixed }";
     document.head.append(sheet);
-    const toggled = layer("");
-    toggled.className = "hinted";
     setPreviewRasterScale(0.5);
-    expect(toggled.style.willChange).toBe("auto");
-    toggled.className = "";
+    const late = layer(POSITIONED);
+    const child = layer("", late);
     await Promise.resolve();
-    expect(toggled.style.cssText).toBe("");
+    expect(marked(late)).toBe(true);
+    child.className = "pinned";
+    await Promise.resolve();
+    expect(marked(late)).toBe(false);
     sheet.remove();
   });
 });
