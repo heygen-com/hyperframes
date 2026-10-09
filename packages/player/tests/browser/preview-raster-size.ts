@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { launchBrowser } from "../perf/runner.js";
 import { startServer } from "../perf/server.js";
 
-// A small player must raster its composition's will-change layers near the size it shows them,
-// not at full size (which runs heavy compositions out of tile memory and drops layers).
-const server = startServer();
-const browser = await launchBrowser({ width: 528, height: 297 });
+// A small preview must raster its composition's will-change layers near the size it shows them, not at
+// full size (which runs heavy compositions out of tile memory), without moving or restacking anything.
+const server = startServer({ noCache: true });
+const browser = await launchBrowser({ width: 1920, height: 1080 });
 
 type Layer = {
   compositing_reason_ids?: string[];
@@ -17,146 +17,117 @@ type Layer = {
 try {
   const page = await browser.newPage();
   await page.evaluateOnNewDocument(() => {
-    if (window !== window.top) return;
-    const createElement = Document.prototype.createElement;
-    const state = {
-      frames: 0,
-      sourceAssignments: 0,
-      probe: null as null | {
-        width: number;
-        height: number;
-        density: number;
-        beforeSource: boolean;
-      },
-    };
-    Object.assign(window, { __iframeScalingWitness: state });
-    Document.prototype.createElement = function (...args) {
-      if (args[0].toLowerCase() === "iframe") state.frames++;
-      return createElement.apply(this, args);
-    };
-    for (const key of ["src", "srcdoc"]) {
-      const source = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, key)!;
-      Object.defineProperty(HTMLIFrameElement.prototype, key, {
-        ...source,
-        set(value) {
-          state.sourceAssignments++;
-          source.set!.call(this, value);
-        },
-      });
-    }
-    const contentWindow = Object.getOwnPropertyDescriptor(
-      HTMLIFrameElement.prototype,
-      "contentWindow",
-    )!;
-    Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
-      ...contentWindow,
-      get() {
-        const win = contentWindow.get!.call(this) as Window | null;
-        if (win && !this.hasAttribute("src") && !this.hasAttribute("srcdoc")) {
-          const width = Object.getOwnPropertyDescriptor(win, "innerWidth")!;
-          Object.defineProperty(win, "innerWidth", {
-            ...width,
-            get: () => {
-              const value = width.get!.call(win);
-              if (this.style.zoom === "0.3646")
-                state.probe = {
-                  width: value,
-                  height: win.innerHeight,
-                  density: win.devicePixelRatio,
-                  beforeSource: state.sourceAssignments === 0,
-                };
-              return value;
-            },
-          });
-        }
-        return win;
-      },
-    });
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync("hyperframes-player { display: block; width: 1920px; height: 1080px }");
+    document.adoptedStyleSheets = [sheet];
   });
-  await page.setRequestInterception(true);
-  page.on("request", async (request) => {
-    if (request.url() === `${server.origin}/host.html?fixture=gsap-heavy`) {
-      const html = await (await fetch(request.url())).text();
-      await request.respond({
-        status: 200,
-        contentType: "text/html",
-        body: html.replace(
-          "<hyperframes-player",
-          '<hyperframes-player shader-capture-scale="1" shader-loading="none" runtime-src="/vendor/hyperframe.runtime.iife.js"',
-        ),
-      });
-    } else await request.continue();
-  });
-  let sourceNavigations = 0;
-  page.on("framenavigated", (frame) => {
-    if (frame.url().includes("/fixtures/gsap-heavy/")) sourceNavigations++;
-  });
-  await page.goto(`${server.origin}/host.html?fixture=gsap-heavy`, {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(`${server.origin}/host.html?fixture=preview-raster`);
   await page.waitForFunction(() => window.__playerReady === true);
-  const witness = await page.evaluate(
-    () =>
-      (
-        window as Window & {
-          __iframeScalingWitness: {
-            frames: number;
-            sourceAssignments: number;
-            probe: { width: number; height: number; density: number; beforeSource: boolean } | null;
-          };
-        }
-      ).__iframeScalingWitness,
-  );
-  assert.equal(witness.frames, 1, "scaling must reuse the composition iframe");
-  assert.equal(witness.sourceAssignments, 1, "initial attributes must navigate only once");
-  assert.equal(sourceNavigations, 1, "the composition must commit one source navigation");
-  assert.ok(witness.probe, "scaling must measure the initial blank frame at the probe zoom");
+  const frame = page.frames().find((candidate) => candidate.url().includes("/fixtures/"));
+  assert(frame, "composition frame loaded");
+  const resize = (width: number, height: number) =>
+    page.evaluate(
+      (w, h) =>
+        Object.assign(document.getElementById("player")!.style, {
+          width: `${w}px`,
+          height: `${h}px`,
+        }),
+      width,
+      height,
+    );
+  const willChange = (id: string) =>
+    frame.evaluate((target) => getComputedStyle(document.querySelector(target)!).willChange, id);
+  // Every box, what paints at the stacking and 3D probes, and every inline style.
+  const snapshot = () =>
+    frame.evaluate(() => {
+      const elements = [...document.querySelectorAll("*")];
+      return {
+        boxes: elements.map((element) => {
+          const box = element.getBoundingClientRect();
+          return [box.x, box.y, box.width, box.height];
+        }),
+        stacking: document.elementFromPoint(1000, 800)?.id,
+        flipped: document.elementFromPoint(1500, 800)?.id,
+        styles: elements.map((element) => (element as HTMLElement).style?.cssText ?? ""),
+      };
+    });
+
+  const full = await snapshot();
+  assert.equal(await willChange(".lyric"), "transform", "shown at full size, the hints stay");
   assert.equal(
-    witness.probe.beforeSource,
-    true,
-    "the scaling probe must precede source assignment",
+    full.stacking,
+    "cover",
+    "the hinted stack keeps its z-index child under a later sibling",
   );
-  assert.ok(Math.abs(witness.probe.width - 1920) < 3 && Math.abs(witness.probe.height - 1080) < 3);
-  const hostDensity = await page.evaluate(() => window.devicePixelRatio);
-  assert.ok(Math.abs(witness.probe.density - hostDensity * 0.3646) < 0.01);
-  await page.evaluate(() => {
-    document.getElementById("player")!.style.height = "100vh";
+  assert.equal(full.flipped, "card", "the flipped card hides its front");
+
+  await resize(528, 297);
+  await frame.waitForFunction(
+    () => getComputedStyle(document.querySelector(".lyric")!).willChange === "auto",
+  );
+  const small = await snapshot();
+  small.boxes.forEach((box, index) =>
+    assert(
+      box.every((value, edge) => Math.abs(value - full.boxes[index]![edge]!) < 0.01),
+      `element ${index} moved from ${full.boxes[index]} to ${box}`,
+    ),
+  );
+  assert.equal(small.stacking, "cover", "paint order is unchanged");
+  assert.equal(small.flipped, "card", "a preserve-3d container is not flattened");
+  assert.equal(await willChange("#card"), "transform", "a preserve-3d container keeps its hint");
+  assert.equal(
+    await frame.evaluate(() => getComputedStyle(document.getElementById("blurred")!).filter),
+    "blur(2px)",
+    "an authored filter is kept",
+  );
+  await frame.evaluate(() => {
+    const late = document.createElement("div");
+    late.className = "lyric";
+    late.id = "late";
+    document.getElementById("lyrics")!.append(late);
   });
-  await page.waitForFunction(() => {
-    const frame = document.getElementById("player")?.shadowRoot?.querySelector("iframe");
-    return frame?.getBoundingClientRect().width === 528;
-  });
-  await page.evaluate(() =>
-    (document.getElementById("player") as HTMLElement & { play(): void }).play(),
+  await frame.waitForFunction(
+    () => getComputedStyle(document.getElementById("late")!).willChange === "auto",
   );
 
-  // A snapshot is only written on a compositor draw, so trace frames until one carries the tiles.
-  let tiles: Layer[] = [];
-  for (let attempt = 0; attempt < 20 && tiles.length === 0; attempt++) {
+  await resize(1920, 1080);
+  await frame.waitForFunction(
+    () => getComputedStyle(document.querySelector(".lyric")!).willChange === "transform",
+  );
+  await frame.evaluate(() => document.getElementById("late")!.remove());
+  assert.deepEqual((await snapshot()).styles, full.styles, "full size restores every inline style");
+
+  // Without the 3D card (which keeps its hint), nothing rasters above the size shown.
+  await resize(528, 297);
+  await frame.waitForFunction(
+    () => getComputedStyle(document.querySelector(".lyric")!).willChange === "auto",
+  );
+  await frame.evaluate(() => document.getElementById("stage3d")!.remove());
+  // A snapshot is only written on a compositor draw, so trace frames until one carries the layers.
+  let layers: Layer[] = [];
+  for (let attempt = 0; attempt < 20 && layers.length === 0; attempt++) {
     await page.tracing.start({ categories: ["disabled-by-default-cc.debug"] });
+    await page.evaluate(
+      (time) =>
+        (document.getElementById("player") as HTMLElement & { seek(t: number): void }).seek(time),
+      attempt % 6,
+    );
     await page.evaluate(
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
     );
     const trace = JSON.parse(new TextDecoder().decode(await page.tracing.stop())) as {
       traceEvents: { args?: { snapshot?: { active_tree?: { layers?: Layer[] } } } }[];
     };
-    tiles = trace.traceEvents
+    layers = trace.traceEvents
       .flatMap((event) => event.args?.snapshot?.active_tree?.layers ?? [])
-      .filter(
-        (layer) =>
-          layer.compositing_reason_ids?.includes("WillChangeTransform") &&
-          layer.raster_scales?.contents_scale &&
-          layer.ideal_contents_scale,
-      );
+      .filter((layer) => layer.raster_scales?.contents_scale && layer.ideal_contents_scale);
   }
-  assert.ok(tiles.length > 0, "the trace should show the fixture's will-change tiles");
-  for (const layer of tiles) {
+  assert.ok(layers.length > 0, "the trace should show the preview's layers");
+  for (const layer of layers) {
     const oversize = layer.raster_scales!.contents_scale![0] / layer.ideal_contents_scale!;
-    assert.ok(
-      oversize <= 1.5,
-      `a will-change layer is rastered at ${oversize.toFixed(2)}x the size shown`,
-    );
+    assert.ok(oversize <= 1.5, `a layer is rastered at ${oversize.toFixed(2)}x the size shown`);
   }
+  console.log("preview rasters at its shown size with layout, paint order and 3D unchanged: PASS");
 } finally {
   await browser.close();
   await server.stop();

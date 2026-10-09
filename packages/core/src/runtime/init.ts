@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { setPreviewRasterScale } from "./previewRasterHints";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import { preloadMedia, releaseMedia, lengthIsAuthored, stopMediaDownload } from "./preloadMedia";
@@ -5024,7 +5025,10 @@ export function initSandboxRuntimeModular(): void {
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
-    onSetDisplayScale: setProxyDisplayScale,
+    onSetDisplayScale: (scale) => {
+      setProxyDisplayScale(scale);
+      setPreviewRasterScale(scale);
+    },
     onSetIdleHeartbeat: (slow) => {
       slowIdleHeartbeat = slow;
       wakeTransport();
