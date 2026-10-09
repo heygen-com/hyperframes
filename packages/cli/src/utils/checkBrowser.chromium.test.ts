@@ -13,6 +13,8 @@ const PAGE = `<body>
 <div id="forever"></div>
 <div id="reverse"></div>
 <div id="held"></div>
+<div id="parked"></div>
+<div id="rewound"></div>
 <script>
   const clock = (total, at, reversed = false) => {
     let now = at;
@@ -40,6 +42,17 @@ const PAGE = `<body>
   const held = document.getElementById("held").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 3000, fill: "forwards" });
   held.pause();
   held.currentTime = 3000;
+  // Reversed and paused: at its end it has not started, at 0 it is complete.
+  const backwards = (id, at) => {
+    const animation = document.getElementById(id).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 3000, fill: "both" });
+    animation.playbackRate = -1;
+    animation.pause();
+    animation.currentTime = at;
+  };
+  backwards("parked", 3000);
+  backwards("rewound", 0);
+  // A registered timeline with only the one-iteration methods, which the runtime accepts.
+  window.__timelines.partial = { duration: () => 4, time: () => 1 };
 </script>
 </body>`;
 
@@ -75,16 +88,19 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
 
     expect(first.map(({ time, done }) => [time, done])).toEqual([
       [1, false],
+      [1, false],
       [0.2, true],
       [0, true],
       [1000, false],
       [0, true],
       [3000, true],
+      [3000, false],
+      [0, true],
     ]);
     const [late, ...rest] = second;
     expect(rest.map(({ id }) => id)).toEqual(first.map(({ id }) => id));
     expect(first.map(({ id }) => id)).not.toContain(late?.id);
-    expect(second.map(({ time }) => time)).toEqual([0, 2, 0.2, 0, 2000, 0, 3000]);
+    expect(second.map(({ time }) => time)).toEqual([0, 2, 1, 0.2, 0, 2000, 0, 3000, 3000, 0]);
     await page.close();
   });
 

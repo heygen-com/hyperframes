@@ -713,8 +713,9 @@ compliant colour you could use instead.
 
 Severity is persistence-aware: a finding at a single sample demotes to info, a
 finding that persists gates the exit code, and a composition of 3s or more
-fails with `sweep_static` when its frame never changes and a GSAP or CSS
-animation on the page stayed stuck before its end, so the seek never drove it.
+fails with `sweep_static` when its frame never changes and a GSAP timeline or
+tween, or a CSS or Web animation, on the page held the same time without ever
+finishing, so the seek never drove it.
 Any other frame that never changes, such as a still title card, is a
 `sweep_static` warning ("Nothing on screen moved under seek"), and so is an
 audio-only advance; `--strict` fails the run on either. A composition that is
