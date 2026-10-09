@@ -21,10 +21,9 @@ export function createConcurrencyLimit(
       signal?.addEventListener("abort", aborted, { once: true });
     });
   return async (task, signal) => {
-    let holdsSlot = !signal?.aborted;
-    if (holdsSlot && active >= limit) holdsSlot = await waitForSlot(signal);
-    else if (holdsSlot) active++;
-    if (!holdsSlot) return task();
+    if (signal?.aborted) return task();
+    if (active < limit) active++;
+    else if (!(await waitForSlot(signal))) return task();
     try {
       return await task();
     } finally {

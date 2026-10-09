@@ -17,6 +17,7 @@ const { extractAllVideoFrames } = await import("./videoFrameExtractor.js");
 describe("extractAllVideoFrames ffmpeg concurrency", () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-extract-concurrency-"));
   const previousFfmpeg = process.env[FFMPEG_PATH_ENV];
+  const shim = join(dir, "ffmpeg-shim.sh");
 
   async function synth(name: string, lavfi: string, extra: string[] = []): Promise<string> {
     const clip = join(dir, `${name}.mp4`);
@@ -30,18 +31,24 @@ describe("extractAllVideoFrames ffmpeg concurrency", () => {
 
   // Extracts `clips` through a shim ffmpeg and returns how many ffmpegs were alive as each started.
   async function aliveCounts(run: string, clips: string[], end: number, fps: number) {
-    const markers = join(dir, run, "running");
-    mkdirSync(markers, { recursive: true });
-    process.env.HF_TEST_SHIM_DIR = join(dir, run);
+    mkdirSync(join(dir, run, "running"), { recursive: true });
     const videos: VideoElement[] = clips.map((src, i) => ({
       ...{ id: `${run}-${i}`, src, start: 0, end, mediaStart: 0 },
       ...{ loop: false, hasAudio: false },
     }));
-    const result = await extractAllVideoFrames(videos, dir, {
-      fps,
-      outputDir: join(dir, run, "out"),
-    });
-    expect(result.errors).toEqual([]);
+    process.env.HF_TEST_SHIM_DIR = join(dir, run);
+    process.env[FFMPEG_PATH_ENV] = shim;
+    try {
+      const result = await extractAllVideoFrames(videos, dir, {
+        fps,
+        outputDir: join(dir, run, "out"),
+      });
+      expect(result.errors).toEqual([]);
+    } finally {
+      if (previousFfmpeg === undefined) delete process.env[FFMPEG_PATH_ENV];
+      else process.env[FFMPEG_PATH_ENV] = previousFfmpeg;
+      delete process.env.HF_TEST_SHIM_DIR;
+    }
     return readFileSync(join(dir, run, "alive"), "utf8")
       .trim()
       .split(/\s+/)
@@ -49,7 +56,6 @@ describe("extractAllVideoFrames ffmpeg concurrency", () => {
   }
 
   beforeAll(() => {
-    const shim = join(dir, "ffmpeg-shim.sh");
     writeFileSync(
       shim,
       [
@@ -63,45 +69,24 @@ describe("extractAllVideoFrames ffmpeg concurrency", () => {
     chmodSync(shim, 0o755);
   });
 
-  afterAll(() => {
-    if (previousFfmpeg === undefined) delete process.env[FFMPEG_PATH_ENV];
-    else process.env[FFMPEG_PATH_ENV] = previousFfmpeg;
-    delete process.env.HF_TEST_SHIM_DIR;
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  const useShim = () => (process.env[FFMPEG_PATH_ENV] = join(dir, "ffmpeg-shim.sh"));
-  const useRealFfmpeg = () => {
-    if (previousFfmpeg === undefined) delete process.env[FFMPEG_PATH_ENV];
-    else process.env[FFMPEG_PATH_ENV] = previousFfmpeg;
-  };
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   it("runs one clip's ffmpeg at a time when only one slot is free", async () => {
     const clips = await Promise.all(
       [0, 1, 2, 3].map((i) => synth(`short-${i}`, `testsrc=s=32x32:d=1:r=10,hue=h=${i * 60}`)),
     );
-    useShim();
-    try {
-      const alive = await aliveCounts("short", clips, 1, 10);
-      expect(alive).toHaveLength(4);
-      expect(Math.max(...alive)).toBe(1);
-    } finally {
-      useRealFfmpeg();
-    }
+    const alive = await aliveCounts("short", clips, 1, 10);
+    expect(alive).toHaveLength(4);
+    expect(Math.max(...alive)).toBe(1);
   }, 60_000);
 
   it("shares the slot with the segments of long clips", async () => {
     const clips = await Promise.all(
       [0, 1].map((i) => synth(`long-${i}`, `testsrc=s=32x32:d=125:r=1,hue=h=${i * 90}`)),
     );
-    useShim();
-    try {
-      const alive = await aliveCounts("long", clips, 125, 1);
-      expect(alive.length).toBeGreaterThanOrEqual(4);
-      expect(Math.max(...alive)).toBe(1);
-    } finally {
-      useRealFfmpeg();
-    }
+    const alive = await aliveCounts("long", clips, 125, 1);
+    expect(alive.length).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...alive)).toBe(1);
   }, 120_000);
 
   it("gives a variable-frame-rate clip's two-process pipeline one slot", async () => {
@@ -112,13 +97,8 @@ describe("extractAllVideoFrames ffmpeg concurrency", () => {
         ]),
       ),
     );
-    useShim();
-    try {
-      const alive = await aliveCounts("vfr", clips, 1, 30);
-      expect(alive).toHaveLength(4);
-      expect(Math.max(...alive)).toBeLessThanOrEqual(2);
-    } finally {
-      useRealFfmpeg();
-    }
+    const alive = await aliveCounts("vfr", clips, 1, 30);
+    expect(alive).toHaveLength(4);
+    expect(Math.max(...alive)).toBeLessThanOrEqual(2);
   }, 60_000);
 });
