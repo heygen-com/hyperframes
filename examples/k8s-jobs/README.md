@@ -16,7 +16,7 @@ The build pulls `chrome-headless-shell` via `@puppeteer/browsers` and installs D
 
 ## Use
 
-The producer's distributed primitives are pure functions over local paths. Wire them into your orchestrator however you like:
+The producer's distributed primitives are pure functions over local paths. Wire them into your orchestrator however you like. In the image, run them with `bun` from `/app/packages/aws-lambda` (the Dockerfile header shows the `docker run` line):
 
 ```ts
 import { plan, renderChunk, assemble } from "@hyperframes/producer/distributed";
