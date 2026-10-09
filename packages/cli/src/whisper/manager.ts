@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
@@ -148,6 +148,17 @@ function buildFromSource(onProgress?: (msg: string) => void): WhisperResult {
 
 export function findWhisper(): WhisperResult | undefined {
   return findFromEnv() ?? findFromSystem() ?? findBuiltBinary();
+}
+
+export function listWhisperModels(): { model: string; path: string }[] {
+  if (!existsSync(MODELS_DIR)) return [];
+  return readdirSync(MODELS_DIR)
+    .flatMap((file) => {
+      const model = /^ggml-(.+)\.bin$/.exec(file)?.[1];
+      const path = join(MODELS_DIR, file);
+      return model && existsSync(path) ? [{ model, path }] : [];
+    })
+    .sort((a, b) => a.model.localeCompare(b.model));
 }
 
 export function getInstallInstructions(): string {

@@ -586,6 +586,23 @@ describe("createColorGradingRuntime", () => {
     expect(lastUniform1f).toHaveBeenCalledWith("u_exposure", 0.35);
   });
 
+  it("reads a grading property set in a stylesheet, not only inline", () => {
+    const style = document.createElement("style");
+    style.textContent = "#plate { --hf-color-grading-blur: 0.6; }";
+    document.head.appendChild(style);
+    const video = makeDrawableVideo();
+    video.id = "plate";
+    video.setAttribute(
+      HF_COLOR_GRADING_ATTR,
+      serializeHfColorGrading({ adjust: { saturation: -0.5 } }),
+    );
+    stubCubeLutFetch();
+    startRuntimeWithVideo(video);
+
+    if (!lastUniform1f) throw new Error("Expected WebGL uniform calls");
+    expect(lastUniform1f).toHaveBeenCalledWith("u_blur", 0.6);
+  });
+
   it("samples seek-derived grading values from inline CSS properties on every redraw", () => {
     const video = makeDrawableVideo();
     video.setAttribute(

@@ -1,3 +1,4 @@
+import type { ScreenshotInterruption } from "./screenshotCapture.js";
 import type { Browser, Page } from "puppeteer-core";
 import type { LottieDiscovery } from "./lottieDiscovery.js";
 import type { DiscoveredLottie } from "./mediaCapture.js";
@@ -37,6 +38,7 @@ export interface CoreExtractionInput {
   warnings: string[];
   progress: (stage: string, detail?: string) => void;
   remainingMs: () => number;
+  maxScreenshots: number;
   pageContentCheck: {
     textLength: number;
     title: string;
@@ -70,6 +72,12 @@ export interface CoreExtractionResult {
   tokens: DesignTokens;
   extracted: ExtractedHtml;
   screenshots: string[];
+  screenshotOutcome:
+    | { kind: "complete" }
+    | {
+        kind: "partial" | "failed";
+        reason: ScreenshotInterruption["reason"] | "deadline";
+      };
 }
 
 export async function runCoreExtraction(input: CoreExtractionInput): Promise<CoreExtractionResult> {
@@ -100,6 +108,16 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     downloadByteBudget,
     canWrite,
   } = input;
+  const { maxScreenshots } = input;
+  let exhaustedPhase: string | undefined = remainingMs() <= 0 ? "navigation checks" : undefined;
+  const recordBudget = (phase: string): void => {
+    if (exhaustedPhase === undefined && remainingMs() <= 0) exhaustedPhase = phase;
+  };
+  const animationWarning = (): string =>
+    remainingMs() > 0
+      ? "animation catalog evaluate timed out; continuing without animation catalog"
+      : "--capture-budget spent before the animation catalog finished; continuing without animation catalog";
+  let screenshotOutcome: CoreExtractionResult["screenshotOutcome"] = { kind: "complete" };
   const runLazyAndLottie = async (): Promise<void> => {
     if (!contentCheckTimedOut && pageContentCheck.textLength < 100) {
       const reason =
@@ -125,6 +143,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     await new Promise((r) => setTimeout(r, 300));
   };
   await runLazyAndLottie();
+  recordBudget("lazy scrolling");
 
   const runAnimationDiscovery = async (): Promise<void> => {
     const scanDomLotties = async (): Promise<void> => {
@@ -193,6 +212,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     await saveDiscoveredLotties();
   };
   await runAnimationDiscovery();
+  recordBudget("animation discovery");
 
   // Save captured WebGL shaders (useful context for shader transitions + library detection)
   const runShaderCapture = async (): Promise<void> => {
@@ -220,6 +240,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     }
   };
   await runShaderCapture();
+  recordBudget("shader capture");
 
   const runTokenExtraction = async (): Promise<void> => {
     // Extract DOM data before extractHtml mutates image URLs and removes scripts.
@@ -261,6 +282,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     }
   };
   await runTokenExtraction();
+  recordBudget("design token extraction");
 
   const runAnimationCapture = async (): Promise<void> => {
     progress("animations", "Cataloging animations...");
@@ -271,8 +293,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       });
       animationCatalog = animationOutcome.catalog;
       if (animationOutcome.timedOut) {
-        const message =
-          "animation catalog evaluate timed out; continuing without animation catalog";
+        const message = animationWarning();
         warnings.push(message);
         progress("warn", message);
       }
@@ -280,7 +301,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       if (!isDegradableEvaluateTimeoutError(err)) {
         throw err;
       }
-      const message = "animation catalog evaluate timed out; continuing without animation catalog";
+      const message = animationWarning();
       warnings.push(message);
       progress("warn", message);
       try {
@@ -290,24 +311,48 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       }
     }
 
-    progress("screenshots", "Capturing scroll screenshots...");
-    const { captureScrollScreenshots } = await import("./screenshotCapture.js");
-    try {
-      if (!canWrite()) return;
-      screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
-      state.screenshots = screenshots;
-      progress("screenshots", `${screenshots.length} scroll screenshots captured`);
-    } catch (err) {
-      if (!isDegradableEvaluateTimeoutError(err)) {
-        throw err;
-      }
-      const message = "scroll screenshots timed out; continuing without screenshots";
-      warnings.push(message);
-      progress("warn", message);
-    }
+    recordBudget("animation catalog");
   };
   await runAnimationCapture();
 
+  const runScreenshotCapture = async (): Promise<void> => {
+    progress("screenshots", "Capturing scroll screenshots...");
+    const { captureScrollScreenshots } = await import("./screenshotCapture.js");
+    if (!canWrite()) {
+      screenshotOutcome = {
+        kind: "failed",
+        reason: "deadline",
+      };
+      return;
+    }
+    screenshots = [];
+    state.screenshots = screenshots;
+    const capture = await captureScrollScreenshots(page1, outputDir, {
+      remainingMs,
+      maxScreenshots,
+      files: screenshots,
+    });
+    if (capture.interruption || screenshots.length === 0) {
+      recordBudget("screenshots");
+      const { reason, message: detail }: ScreenshotInterruption = capture.interruption ?? {
+        reason: "internal-error",
+        message: "screenshot capture produced no files",
+      };
+      const cause =
+        reason === "budget-exhausted"
+          ? `--capture-budget exhausted during ${exhaustedPhase}`
+          : detail;
+      const message = `${screenshots.length}/${maxScreenshots} requested screenshot files captured: ${cause}`;
+      screenshotOutcome = {
+        kind: screenshots.length === 0 ? "failed" : "partial",
+        reason,
+      };
+      warnings.push(message);
+      progress("warn", message);
+    }
+    progress("screenshots", `${screenshots.length} scroll screenshots captured`);
+  };
+  await runScreenshotCapture();
   const runHtmlExtraction = async (): Promise<void> => {
     // Catalog all assets (must run before extractHtml which converts img src to data URLs)
     progress("design", "Cataloging assets...");
@@ -385,6 +430,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
   await runHtmlExtraction();
 
   return {
+    screenshotOutcome,
     animationCatalog,
     capturedShaders,
     catalogedAssets,

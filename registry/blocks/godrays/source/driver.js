@@ -5,14 +5,7 @@ import {
   rootPassthrough,
   resolveBoundingBox,
 } from "shaders/core";
-import { componentDefinition as FlowingGradient } from "shaders/core/FlowingGradient";
-import { componentDefinition as Godrays } from "shaders/core/Godrays";
-import { componentDefinition as LiquidMetal } from "shaders/core/LiquidMetal";
-import { componentDefinition as Marble } from "shaders/core/Marble";
-import { componentDefinition as MeshGradient } from "shaders/core/MeshGradient";
-import { componentDefinition as Nebula } from "shaders/core/Nebula";
-
-const SHADERS = { FlowingGradient, Godrays, LiquidMetal, Marble, MeshGradient, Nebula };
+import SHADERS from "shader-defs";
 
 const canvas = document.querySelector("canvas[data-shader]");
 const def = SHADERS[canvas.dataset.shader];

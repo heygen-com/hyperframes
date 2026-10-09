@@ -1,4 +1,4 @@
-import { resolveMediaPreviewUrl } from "../components/thumbnailUtils";
+import { authoredSrcPath, resolveMediaPreviewUrl } from "../components/thumbnailUtils";
 import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
 
 export interface MediaProbeResult {
@@ -87,7 +87,9 @@ function getCachedProbe(url: string): MediaProbeResult | undefined {
 }
 
 function resolveProbeSource(src: string, projectId: string | null): string {
-  return projectId ? resolveMediaPreviewUrl(src, projectId, window.location.origin) : src;
+  return projectId
+    ? resolveMediaPreviewUrl(authoredSrcPath(src), projectId, window.location.origin)
+    : src;
 }
 
 function evictMetadataOverflow(): void {

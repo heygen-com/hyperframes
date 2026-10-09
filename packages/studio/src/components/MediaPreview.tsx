@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState } from "react";
 import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "../utils/mediaTypes";
+import { encodeUrlPath } from "@hyperframes/parsers";
 
 function MediaErrorPanel({ name, filePath }: { name: string; filePath: string }) {
   return (
@@ -29,7 +30,7 @@ function MediaErrorPanel({ name, filePath }: { name: string; filePath: string })
 }
 
 export function MediaPreview({ projectId, filePath }: { projectId: string; filePath: string }) {
-  const serveUrl = buildProjectApiPath(projectId, `/preview/${filePath}`);
+  const serveUrl = buildProjectApiPath(projectId, `/preview/${encodeUrlPath(filePath)}`);
   const name = filePath.split("/").pop() ?? filePath;
   // Keyed by path so switching to another file clears a previous failure.
   const [failedPath, setFailedPath] = useState<string | null>(null);

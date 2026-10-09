@@ -1,3 +1,4 @@
+import { formatFindingTimes } from "../utils/checkFindings.js";
 import { defineCommand, parseArgs } from "citty";
 import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
@@ -467,7 +468,7 @@ function printContrastSection(report: CheckReport): void {
   }
   for (const finding of section.findings) {
     console.log(
-      `  ${c.error("✗")} ${finding.selector} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, t=${finding.time}s)`,
+      `  ${c.error("✗")} ${finding.selector} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
     );
     console.log(`    ${c.dim(`Try ${finding.suggestedColor}; source ${finding.sourceFile}`)}`);
   }
@@ -492,7 +493,7 @@ function printSnapshotSection(report: CheckReport): void {
 }
 
 function printFinding(finding: CheckFinding): void {
-  const where = `${finding.sourceFile} ${finding.selector} t=${finding.time}s`;
+  const where = `${finding.sourceFile} ${finding.selector} ${formatFindingTimes(finding)}`;
   console.log(`  ${findingIcon(finding)} ${finding.code}: ${finding.message}`);
   console.log(`    ${c.dim(where)}`);
   if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${finding.fixHint}`)}`);

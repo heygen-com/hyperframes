@@ -1,3 +1,5 @@
+import { encodeUrlPath } from "@hyperframes/parsers";
+export { buildTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
@@ -14,21 +16,6 @@ export function getTimelineAssetKind(assetPath: string): TimelineAssetKind | nul
   if (VIDEO_EXT.test(assetPath)) return "video";
   if (AUDIO_EXT.test(assetPath)) return "audio";
   return null;
-}
-
-export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<string>): string {
-  const baseName = assetPath.split("/").pop() ?? "asset";
-  const normalized = baseName
-    .replace(/\.[^.]+$/, "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toLowerCase();
-  const baseId = normalized || "asset";
-  const ids = new Set(existingIds);
-  if (!ids.has(baseId)) return baseId;
-  let suffix = 2;
-  while (ids.has(`${baseId}_${suffix}`)) suffix += 1;
-  return `${baseId}_${suffix}`;
 }
 
 export function resolveTimelineAssetSrc(targetPath: string, assetPath: string): string {
@@ -119,7 +106,7 @@ export function buildTimelineAssetInsertHtml(input: {
   /** Video only: true inserts `data-has-audio="true"` with no `muted`. Unknown or false stays muted. */
   hasAudio?: boolean;
 }): string {
-  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${encodeUrlPath(input.assetPath)}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
   const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain; z-index: ${input.zIndex}`;
 

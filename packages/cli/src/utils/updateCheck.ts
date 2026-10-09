@@ -108,7 +108,7 @@ export function cachedUpdateCheck(): UpdateCheckResult {
 function fallbackResult(cachedLatest?: string): UpdateCheckResult {
   // Only surface a cached version we can prove is safe — a pre-existing
   // poisoned cache must not leak through the fallback path either.
-  const safeCached = cachedLatest && isSafeVersion(cachedLatest) ? cachedLatest : undefined;
+  const safeCached = safeCachedVersion(cachedLatest);
   return {
     current: VERSION,
     latest: safeCached ?? VERSION,
@@ -116,16 +116,20 @@ function fallbackResult(cachedLatest?: string): UpdateCheckResult {
   };
 }
 
+function safeCachedVersion(value: unknown): string | undefined {
+  return typeof value === "string" && isSafeVersion(value) ? value : undefined;
+}
+
 /**
  * Synchronous read from cache — for _meta envelope on --json commands.
  * Never fetches. Returns what the last background check found.
  */
 export function getUpdateMeta(): UpdateMeta {
-  const config = readConfig();
+  const latestVersion = safeCachedVersion(readConfig().latestVersion);
   return {
     version: VERSION,
-    latestVersion: config.latestVersion,
-    updateAvailable: config.latestVersion ? isNewerSemver(config.latestVersion, VERSION) : false,
+    latestVersion,
+    updateAvailable: latestVersion ? isNewerSemver(latestVersion, VERSION) : false,
   };
 }
 

@@ -68,6 +68,22 @@ describe("isUnresolvedAssetPlaceholder", () => {
 });
 
 describe("collectSubCompositionSrcs", () => {
+  it("does not retry every unmatched raw text opener or truncate quoted tag delimiters", () => {
+    expect(
+      collectSubCompositionSrcs(
+        "<script>".repeat(10000) + '<div data-composition-src="fake.html">',
+      ),
+    ).toEqual([]);
+    expect(collectSubCompositionSrcs('<div title=">" data-composition-src="real.html">')).toEqual([
+      "real.html",
+    ]);
+  });
+
+  it("reads the actual composition attribute and preserves its raw filename identity", () => {
+    const html = `<div title="data-composition-src='fake.html'" data-composition-src="scenes/it's&amp;%20?#.html"></div>`;
+    expect(collectSubCompositionSrcs(html)).toEqual(["scenes/it's&%20?#.html"]);
+  });
+
   it("finds mounts inside a template, which a DOM query cannot see", () => {
     const html =
       '<!doctype html><html><body><div data-composition-src="compositions/a.html"></div>' +

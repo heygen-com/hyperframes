@@ -5,6 +5,9 @@
  * tsx/esbuild __name injection (see esbuild issue #1031).
  */
 
+import { DEFAULT_MAX_SCREENSHOTS } from "./types.js";
+import { CaptureDirRefusedError } from "./captureErrors.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { Page } from "puppeteer-core";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
 import { join } from "node:path";
@@ -16,7 +19,7 @@ import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
  * Scrolls down the page in viewport-sized steps (with slight overlap),
  * taking a 1920x1080 screenshot at each position. The number of screenshots
  * depends on the page height — short pages get fewer, long pages get more.
- * Capped at 20 to avoid excessive output on extremely long pages.
+ * The limit includes the full-page plate.
  *
  * Unlike the old section-tiling approach, this does NOT disable sticky/fixed
  * elements — screenshots show the page in its natural browsing state with
@@ -27,6 +30,20 @@ import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
  * capture comes back clipped or fails outright. Long marketing pages do reach this.
  */
 export const MAX_PLATE_HEIGHT_PX = 16384;
+
+export type PlateCaptureResult =
+  | { kind: "captured"; file: string }
+  | { kind: "omitted"; reason: "height-limit" | "budget-exhausted" };
+
+export interface ScreenshotInterruption {
+  reason: "budget-exhausted" | "request-timeout" | "internal-error";
+  message: string;
+}
+
+export interface ScreenshotCaptureResult {
+  files: string[];
+  interruption: ScreenshotInterruption | null;
+}
 
 /**
  * Pixel height Chrome actually produced, read from the PNG's IHDR chunk: 8-byte signature,
@@ -55,13 +72,13 @@ export function pngHeight(buf: Uint8Array): number | null {
  *    one position, so a nav ends up frozen across the middle of the plate. The viewport
  *    shots keep sticky on purpose (natural browsing state); the plate cannot.
  *
- * Returns the relative path, or null when the page is too tall to capture in one piece.
+ * Returns the captured path or the cause for omitting the plate.
  */
 export async function captureFullPagePlate(
   page: Page,
   screenshotsDir: string,
-  budget: { remainingMs?: () => number } = {},
-): Promise<string | null> {
+  budget: { remainingMs?: () => number; files?: string[] } = {},
+): Promise<PlateCaptureResult> {
   // Record the inline value before overwriting so the page is handed back unchanged — the
   // caller keeps using it (asset extraction, DOM reads) after this returns.
   await page.evaluate(
@@ -82,8 +99,8 @@ export async function captureFullPagePlate(
     const docHeight = (await page.evaluate(
       `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
     )) as number;
-    if (docHeight > MAX_PLATE_HEIGHT_PX) return null;
-    if ((budget.remainingMs?.() ?? 1) <= 0) return null;
+    if (docHeight > MAX_PLATE_HEIGHT_PX) return { kind: "omitted", reason: "height-limit" };
+    if ((budget.remainingMs?.() ?? 1) <= 0) return { kind: "omitted", reason: "budget-exhausted" };
 
     const buffer = await page.screenshot({ type: "png", fullPage: true });
     // Confirm what Chrome produced instead of trusting the measurement: the capture itself can
@@ -91,9 +108,11 @@ export async function captureFullPagePlate(
     // skill only teaches the tile fallback when the file is *absent* — so emit nothing rather
     // than something silently wrong.
     const produced = pngHeight(buffer);
-    if (produced != null && produced > MAX_PLATE_HEIGHT_PX) return null;
+    if (produced != null && produced > MAX_PLATE_HEIGHT_PX)
+      return { kind: "omitted", reason: "height-limit" };
     writeCaptureFileSync(join(screenshotsDir, "full-page.png"), buffer);
-    return "screenshots/full-page.png";
+    budget.files?.push("screenshots/full-page.png");
+    return { kind: "captured", file: "screenshots/full-page.png" };
   } finally {
     // A page that broke mid-capture will fail this too; letting that escape would replace the
     // real error with a cleanup one. Nothing to restore if the page is already gone.
@@ -114,15 +133,32 @@ export async function captureFullPagePlate(
 export async function captureScrollScreenshots(
   page: Page,
   outputDir: string,
-  budget: { remainingMs?: () => number } = {},
-): Promise<string[]> {
+  budget: {
+    remainingMs?: () => number;
+    maxScreenshots?: number;
+    /** Shared output preserves written paths when a watchdog ends the pending capture. */
+    files?: string[];
+  } = {},
+): Promise<ScreenshotCaptureResult> {
   const screenshotsDir = join(outputDir, "screenshots");
   ensureCaptureDirSync(outputDir, screenshotsDir);
 
-  const MAX_SCREENSHOTS = 20;
-  const filePaths: string[] = [];
+  const maxScreenshots = budget.maxScreenshots ?? DEFAULT_MAX_SCREENSHOTS;
+  const viewportLimit = Math.max(1, maxScreenshots - 1);
+  const filePaths: string[] = budget.files ?? [];
+  filePaths.length = 0;
+  const filenames = new Set<string>();
 
-  if ((budget.remainingMs?.() ?? 1) <= 0) return filePaths;
+  const result: ScreenshotCaptureResult = { files: filePaths, interruption: null };
+  const budgetSpent = (): boolean => {
+    if ((budget.remainingMs?.() ?? 1) > 0) return false;
+    result.interruption = {
+      reason: "budget-exhausted",
+      message: "post-navigation budget exhausted during screenshots",
+    };
+    return true;
+  };
+  if (budgetSpent()) return result;
 
   try {
     // Dismiss marketing banners, cookie consents, and popups before scrolling.
@@ -210,40 +246,30 @@ export async function captureScrollScreenshots(
     )) as number;
     const viewportHeight = (await page.evaluate(`window.innerHeight`)) as number;
 
-    // Calculate scroll positions: step by 70% of viewport (30% overlap between shots)
-    const step = Math.floor(viewportHeight * 0.7);
-    const positions: number[] = [0];
-    for (let y = step; y < scrollHeight - viewportHeight; y += step) {
-      positions.push(y);
-    }
-    // Always include the bottom of the page
+    const step = Math.max(1, Math.floor(viewportHeight * 0.7));
     const lastPos = Math.max(0, scrollHeight - viewportHeight);
-    if (positions[positions.length - 1] !== lastPos) {
-      positions.push(lastPos);
-    }
-
-    // Downsample if too many positions
-    let finalPositions = positions;
-    if (positions.length > MAX_SCREENSHOTS) {
-      finalPositions = [positions[0]!];
-      const stride = (positions.length - 1) / (MAX_SCREENSHOTS - 1);
-      for (let i = 1; i < MAX_SCREENSHOTS - 1; i++) {
-        finalPositions.push(positions[Math.round(i * stride)]!);
-      }
-      finalPositions.push(positions[positions.length - 1]!);
+    const positionCount = Math.ceil(lastPos / step) + 1;
+    const count = Math.min(viewportLimit, positionCount);
+    const finalPositions: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const positionIndex = count === 1 ? 0 : Math.round((i * (positionCount - 1)) / (count - 1));
+      finalPositions.push(Math.min(positionIndex * step, lastPos));
     }
 
     for (let i = 0; i < finalPositions.length; i++) {
-      if ((budget.remainingMs?.() ?? 1) <= 0) break;
+      if (budgetSpent()) break;
       await page.evaluate(`window.scrollTo(0, ${finalPositions[i]})`);
       await new Promise((r) => setTimeout(r, 400));
 
       const pct = Math.round(
         (finalPositions[i]! / Math.max(1, scrollHeight - viewportHeight)) * 100,
       );
-      const filename = `scroll-${String(Math.min(pct, 100)).padStart(3, "0")}.png`;
+      const stem = `scroll-${String(Math.min(pct, 100)).padStart(3, "0")}`;
+      let filename = `${stem}.png`;
+      if (filenames.has(filename)) filename = `${stem}-${i}.png`;
+      filenames.add(filename);
       const filePath = join(screenshotsDir, filename);
-      if ((budget.remainingMs?.() ?? 1) <= 0) break;
+      if (budgetSpent()) break;
       const buffer = await page.screenshot({ type: "png" });
       writeCaptureFileSync(filePath, buffer);
       filePaths.push(`screenshots/${filename}`);
@@ -258,16 +284,20 @@ export async function captureScrollScreenshots(
     // dropped because 1/8 agents read it and the contact sheet covered the same ground — that
     // was about it as a *comprehension* artifact. The scroll shot is a different consumer: it
     // needs one continuous plate, which no set of viewport tiles can substitute for.)
-    if ((budget.remainingMs?.() ?? 1) > 0) {
-      const plate = await captureFullPagePlate(page, screenshotsDir, budget);
-      if (plate) filePaths.push(plate);
+    if (filePaths.length < maxScreenshots && !budgetSpent()) {
+      const plate = await captureFullPagePlate(page, screenshotsDir, {
+        ...budget,
+        files: filePaths,
+      });
+      if (plate.kind === "omitted" && plate.reason === "budget-exhausted") budgetSpent();
     }
   } catch (err) {
-    if (isDegradableEvaluateTimeoutError(err)) {
-      throw err;
-    }
-    /* scroll screenshots are non-critical */
+    if (err instanceof CaptureDirRefusedError) throw err;
+    result.interruption = {
+      reason: isDegradableEvaluateTimeoutError(err) ? "request-timeout" : "internal-error",
+      message: normalizeErrorMessage(err),
+    };
   }
 
-  return filePaths;
+  return result;
 }

@@ -1,13 +1,13 @@
-import { existsSync, statSync } from "node:fs";
+import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "@hyperframes/parsers";
+import { statSync } from "node:fs";
 import { realpath } from "./safePath.js";
-import { relative, resolve, sep } from "node:path";
+import { sep } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
   isUnresolvedAssetPlaceholder,
-  maskNonScannableRanges,
-  resolveLocalAssetCandidates,
+  resolveExistingLocalAsset as resolveAsset,
 } from "@hyperframes/parsers/asset-resolution";
 import { pixelFormatHasAlpha, probeMediaMetadata, type FfprobeRunner } from "./mediaMetadata.js";
 
@@ -281,11 +281,6 @@ export interface HtmlSourceLike {
   compSrcPath?: string;
 }
 
-// --- <video src> collection: shared primitives live in
-// @hyperframes/parsers/asset-resolution; the <video>-specific regex and the
-// pinned key derivation stay here.
-const VIDEO_SRC_RE = /<video\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
-
 /**
  * Resolve a `<video src>` reference to an existing local file.
  *
@@ -301,13 +296,12 @@ function resolveExistingLocalAsset(
   projectDir: string,
   url: string,
 ): { resolvedPath: string; rootRelativePathname: string } | null {
-  const projectRoot = resolve(projectDir);
-  const resolvedPath = resolveLocalAssetCandidates(projectRoot, url).find((candidate) =>
-    existsSync(candidate),
-  );
-  if (!resolvedPath) return null;
-  const rootRelative = relative(projectRoot, resolvedPath).split(sep).join("/");
-  return { resolvedPath, rootRelativePathname: `/${rootRelative}` };
+  const asset = resolveAsset(projectDir, url);
+  if (!asset) return null;
+  return {
+    resolvedPath: asset.resolved,
+    rootRelativePathname: `/${asset.rootRelativePath.split(sep).join("/")}`,
+  };
 }
 
 /**
@@ -322,11 +316,11 @@ function collectLocalVideoAssets(
   const candidates = new Map<string, string>();
 
   for (const { html, compSrcPath } of htmlSources) {
-    const scannable = maskNonScannableRanges(html);
-    const re = new RegExp(VIDEO_SRC_RE.source, VIDEO_SRC_RE.flags);
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(scannable)) !== null) {
-      const rawSrc = match[1] ?? "";
+    for (const tag of scanHtmlOpeningTags(html)) {
+      if (tag.name !== "video" || !tag.closed) continue;
+      const attribute = tag.attributes.find((attr) => attr.name === "src");
+      if (attribute?.kind !== "value") continue;
+      const rawSrc = decodeAuthoredAttribute(attribute.value);
       // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
       if (isUnresolvedAssetPlaceholder(rawSrc)) continue;
       const src = cleanAssetUrl(rawSrc);

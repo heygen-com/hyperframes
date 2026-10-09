@@ -7,7 +7,7 @@ import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 import { buildAuthHeaders } from "../auth/client.js";
 import { tryResolveCredential } from "../auth/index.js";
 import { isAuthError } from "../auth/errors.js";
-import { isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
+import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
 import { refreshIfNeeded } from "../cloud/auth.js";
 import { writeProjectLink } from "./projectLink.js";
 
@@ -167,16 +167,9 @@ async function metadataRequestError(response: Response, fallback: string): Promi
 
 const LOGIN_EXPIRED = "Your login expired. Run hyperframes auth login, then publish again.";
 const LOGIN_CHANGED = "Your login changed during publish. Run publish again.";
-export const API_KEY_ENV_VAR = { env: "HEYGEN_API_KEY", env_alias: "HYPERFRAMES_API_KEY" } as const;
-
 function rejectedCredentialMessage(credential: ResolvedCredential): string {
-  if (
-    credential.type === "api_key" &&
-    (credential.source === "env" || credential.source === "env_alias")
-  ) {
-    return `${API_KEY_ENV_VAR[credential.source]} was rejected. Fix or unset it, then publish again.`;
-  }
-  return LOGIN_EXPIRED;
+  const envVar = envCredentialVar(credential.source);
+  return envVar ? `${envVar} was rejected. Fix or unset it, then publish again.` : LOGIN_EXPIRED;
 }
 
 /** Resolves the credential, or refreshes `checked` (a credential already resolved) without re-resolving. */

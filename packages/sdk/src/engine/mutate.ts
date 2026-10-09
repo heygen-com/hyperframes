@@ -1,3 +1,4 @@
+import { replacementTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
 /**
  * Op handlers for Phase 3a (non-parser ops).
  *
@@ -545,6 +546,14 @@ function handleSetAttribute(
     const oldValue = el.getAttribute(name);
     const path = attrPath(id, name);
     if (value !== null) {
+      const replacementId =
+        name === "src" ? replacementTimelineAssetId(parsed.document, el, value) : null;
+      if (replacementId !== null) {
+        const idPatch = scalarChange(attrPath(id, "id"), el.getAttribute("id"), replacementId);
+        el.setAttribute("id", replacementId);
+        result.forward.push(idPatch.forward);
+        result.inverse.push(idPatch.inverse);
+      }
       el.setAttribute(name, value);
       const p = scalarChange(path, oldValue, value);
       result.forward.push(p.forward);

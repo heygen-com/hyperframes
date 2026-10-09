@@ -20,6 +20,7 @@ import {
   getShaderModeFromElement,
   prepareSrcForElement,
   prepareSrcdocForElement,
+  runtimeSrcFromElement,
 } from "./shader-options.js";
 import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
@@ -204,6 +205,7 @@ class HyperframesPlayer extends HTMLElement {
     });
 
     this.probe = new CompositionProbe(this.iframe, {
+      resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
     });

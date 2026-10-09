@@ -14,7 +14,7 @@ import {
   findTagByTarget,
   applyPatchByTarget,
   readAttributeByTarget,
-  unescapeHtmlAttribute,
+  readTagAttribute,
   type PatchOperation,
   type PatchTarget,
 } from "../../utils/sourcePatcher";
@@ -147,10 +147,10 @@ export function formatAttrs(attrs: Array<[string, string]>): string {
 export function readAuthoredSrc(source: string, target: PatchTarget): string {
   const tag = findTagByTarget(source, target);
   if (!tag) return "";
-  const own = /\bsrc=(["'])([^"']*)\1/.exec(tag.tag);
-  if (own?.[2]) return unescapeHtmlAttribute(own[2]);
-  const firstSource = /^\s*<source\b[^>]*?\bsrc=(["'])([^"']*)\1/i.exec(source.slice(tag.end + 1));
-  return firstSource?.[2] ? unescapeHtmlAttribute(firstSource[2]) : "";
+  const own = readTagAttribute(tag.tag, "src");
+  if (own) return own;
+  const firstSource = /^\s*<source\b[^>]*>/i.exec(source.slice(tag.end + 1));
+  return (firstSource && readTagAttribute(firstSource[0], "src")) || "";
 }
 
 export function insertBeforeTarget(source: string, target: PatchTarget, markup: string): string {
