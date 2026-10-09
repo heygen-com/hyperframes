@@ -1795,6 +1795,55 @@ describe("audio duration decode probe never fails the call and needs no profile 
       expect(calls).toHaveLength(2);
     },
   );
+
+  const audioProbe = (stream: object, format: object) =>
+    JSON.stringify({
+      streams: [{ codec_type: "audio", codec_name: "aac", sample_rate: "44100", ...stream }],
+      format: { duration: "600", ...format },
+    });
+  const readInterval = (calls: SpawnCall[]) =>
+    calls[1]?.args[calls[1].args.indexOf("-read_intervals") + 1];
+
+  it.each([
+    ["the stream", { start_time: "1.4" }, {}],
+    ["the format, when the stream has none", {}, { start_time: "1.4" }],
+  ])("measures the decoded end from the start time of %s", async (_, stream, format) => {
+    const { meta, calls } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: audioProbe(stream, format) },
+        { kind: "exit", code: 0, stdout: "601.3,4410\n" },
+      ],
+      `/tmp/start-offset-${Object.keys(format).length}.ts`,
+    );
+    expect(meta.durationSeconds).toBe(600); // 601.3 + 0.1 - 1.4 is within the margin
+    expect(readInterval(calls)).toBe("600.4%");
+  });
+
+  it.each([
+    ["trusts a shorter decode for raw ADTS", "aac", 10],
+    ["keeps the container for an MP4, whose edit list may trim", "mov,mp4,m4a,3gp,3g2,mj2", 600],
+  ])("%s", async (_, formatName, expected) => {
+    const { meta } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: audioProbe({}, { format_name: formatName }) },
+        { kind: "exit", code: 0, stdout: "9.9,4410\n" },
+      ],
+      `/tmp/shorter-decode-${formatName.length}.aac`,
+    );
+    expect(meta.durationSeconds).toBeCloseTo(expected, 5);
+  });
+
+  it("reads the last frame of a decode listing longer than the stdout cap", async () => {
+    const rows = Array.from({ length: 10000 }, (_, i) => `${(i / 100).toFixed(2)},4410`);
+    const { meta } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: aacStream() },
+        { kind: "exit", code: 0, stdout: `${rows.join("\n")}\n603.9,4410\n` },
+      ],
+      "/tmp/long-decode-listing.m4a",
+    );
+    expect(meta.durationSeconds).toBeCloseTo(604, 5);
+  });
 });
 
 // honest.mp4 is FLAC-in-MP4; lying.mp4 is the same bytes with the mvhd/tkhd/mdhd
@@ -1817,6 +1866,20 @@ describe.skipIf(!HAS_FFPROBE)(
 
       // Recovers the real duration — not the halved container summary.
       expect(lyingMeta.durationSeconds).toBeCloseTo(trueMeta.durationSeconds, 1);
+    });
+
+    // 2 s of AAC in MPEG-TS starting at 1.4 s: last frame 3.448 + 1024/16000 - 1.4.
+    it("does not add an MPEG-TS start time to the duration", async () => {
+      const { extractAudioMetadata } = await import("./ffprobe.js");
+      const path = resolve(__dirname, "__fixtures__/lying-container/start-offset.mpegts");
+      expect((await extractAudioMetadata(path)).durationSeconds).toBeCloseTo(2.112, 3);
+    });
+
+    // 2 s silence + 1 s noise as raw ADTS; ffprobe 8.1 estimates about 9.1 s from the quiet opening.
+    it("corrects a raw ADTS duration that the container overclaims", async () => {
+      const { extractAudioMetadata } = await import("./ffprobe.js");
+      const path = resolve(__dirname, "__fixtures__/lying-container/overclaim.aac");
+      expect((await extractAudioMetadata(path)).durationSeconds).toBeCloseTo(3.072, 3);
     });
   },
 );

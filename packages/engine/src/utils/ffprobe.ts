@@ -242,6 +242,7 @@ interface FFProbeStream {
 
 interface FFProbeFormat {
   duration?: string;
+  start_time?: string;
   bit_rate?: string;
   format_name?: string;
 }
@@ -971,11 +972,12 @@ export async function extractAudioMetadata(
       const decoded = await probeDecodedAudioDuration(
         filePath,
         sampleRate,
+        audioStartSeconds(audioStream, output.format),
         durationSeconds,
         options?.signal,
       );
-      if (decoded !== null && decoded > durationSeconds + AUDIO_DURATION_PROBE_MARGIN_SECONDS) {
-        durationSeconds = decoded;
+      if (decoded !== null) {
+        durationSeconds = reconcileAudioDuration(durationSeconds, decoded, output.format);
       }
     }
 
@@ -994,13 +996,33 @@ export async function extractAudioMetadata(
   return probePromise;
 }
 
+function audioStartSeconds(stream: FFProbeStream, format: FFProbeFormat): number {
+  const start = parseFloat(stream.start_time ?? format.start_time ?? "");
+  return Number.isFinite(start) ? start : 0;
+}
+
+// Raw ADTS durations are bitrate estimates that overclaim after a quiet opening, so a shorter
+// decode wins there. Elsewhere a shorter decode can be an edit-list trim, so only longer wins.
+function reconcileAudioDuration(
+  containerSeconds: number,
+  decodedSeconds: number,
+  format: FFProbeFormat,
+): number {
+  const difference = decodedSeconds - containerSeconds;
+  const trustShorter = format.format_name === "aac";
+  if (difference > AUDIO_DURATION_PROBE_MARGIN_SECONDS) return decodedSeconds;
+  if (trustShorter && difference < -AUDIO_DURATION_PROBE_MARGIN_SECONDS) return decodedSeconds;
+  return containerSeconds;
+}
+
 /**
- * True audio duration from the last decoded frame (timestamp + nb_samples): tail first, then
- * the whole file if a bad seek finds nothing. Null, never a throw, except on the caller's abort.
+ * True audio duration from the last decoded frame (timestamp + nb_samples - stream start): tail
+ * first, then the whole file if a bad seek finds nothing. Null, never a throw, except on abort.
  */
 async function probeDecodedAudioDuration(
   filePath: string,
   sampleRate: number,
+  startSeconds: number,
   containerDurationSeconds: number,
   signal?: AbortSignal,
 ): Promise<number | null> {
@@ -1042,10 +1064,13 @@ async function probeDecodedAudioDuration(
     }
   };
 
-  const tailStart = Math.max(0, containerDurationSeconds - AUDIO_DURATION_PROBE_TAIL_SECONDS);
+  const tailStart = Math.max(
+    startSeconds,
+    startSeconds + containerDurationSeconds - AUDIO_DURATION_PROBE_TAIL_SECONDS,
+  );
   const lastFrame = (await probe(`${tailStart}%`)) ?? (await probe());
   if (!lastFrame) return null;
-  return lastFrame.timestamp + lastFrame.nbSamples / sampleRate;
+  return lastFrame.timestamp + lastFrame.nbSamples / sampleRate - startSeconds;
 }
 
 export interface KeyframeAnalysis {
