@@ -63,12 +63,9 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
   }
 
   // Every exit path stops the spinner: a running one keeps the process alive after a failure.
+  const downloading = `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())}`;
   const s = clack.spinner();
-  s.start(
-    options?.force
-      ? `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())}...`
-      : "Looking for an existing browser...",
-  );
+  s.start(options?.force ? `${downloading}...` : "Looking for an existing browser...");
   let lastPct = -1;
   let result: Awaited<ReturnType<typeof ensureBrowser>>;
   try {
@@ -83,7 +80,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
         if (pct > lastPct) {
           lastPct = pct;
           s.message(
-            `Downloading Chrome Headless Shell ${c.dim("v" + managedChromeVersion())} — ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
+            `${downloading} — ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
           );
         }
       },

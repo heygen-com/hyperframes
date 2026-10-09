@@ -71,8 +71,12 @@ function useRealCacheHome(): string {
   return home;
 }
 
+function stagedVersionDir(cacheDir: string, buildId: string): string {
+  return join(cacheDir, "chrome-headless-shell", `linux-${buildId}`);
+}
+
 function writeStagedInstall(cacheDir: string, buildId: string, content: string) {
-  const path = join(cacheDir, "chrome-headless-shell", `linux-${buildId}`);
+  const path = stagedVersionDir(cacheDir, buildId);
   const executablePath = join(path, "chrome-headless-shell-linux64", "chrome-headless-shell");
   mkdirSync(dirname(executablePath), { recursive: true });
   writeFileSync(executablePath, content);
@@ -539,7 +543,7 @@ describe("findBrowser — cache resolution", () => {
         const elsewhere = writeStagedInstall(join(cacheDir, "elsewhere"), buildId, "new");
         return {
           executablePath: elsewhere.executablePath,
-          path: join(cacheDir, "chrome-headless-shell", `linux-${buildId}`),
+          path: stagedVersionDir(cacheDir, buildId),
         };
       },
     });
