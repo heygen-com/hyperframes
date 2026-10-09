@@ -3,7 +3,7 @@
   "name": "thin-film",
   "type": "hyperframes:block",
   "title": "Thin Film",
-  "description": "A shape's rim shimmers with soap-bubble iridescence on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "description": "An orb's rim shimmers with soap-bubble iridescence on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
   "tags": ["webgpu", "webgpu-shader", "object", "iridescent", "bubble", "rainbow"],
   "license": "Apache-2.0 AND MIT",
   "dimensions": {

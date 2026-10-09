@@ -3,7 +3,7 @@
   "name": "obsidian",
   "type": "hyperframes:block",
   "title": "Obsidian",
-  "description": "A dark glass shape catches pink and cyan iridescent light on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "description": "A dark glass orb catches pink and cyan iridescent light on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
   "tags": ["webgpu", "webgpu-shader", "object", "glass", "iridescent", "dark"],
   "license": "Apache-2.0 AND MIT",
   "dimensions": {

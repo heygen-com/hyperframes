@@ -3,7 +3,7 @@
   "name": "light-edge",
   "type": "hyperframes:block",
   "title": "Light Edge",
-  "description": "Purple and cyan light races around the edge of a shape on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "description": "Purple and cyan light races around the edge of an orb on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
   "tags": ["webgpu", "webgpu-shader", "object", "light", "glow", "neon", "edge"],
   "license": "Apache-2.0 AND MIT",
   "dimensions": {
