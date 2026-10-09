@@ -876,9 +876,8 @@ jobs:
           bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
           bun run --cwd packages/core build
           bun run --cwd packages/core build:hyperframes-runtime
-          mkdir -p packages/studio/data/projects
-          cp -R packages/studio/tests/e2e/fixtures/timeline-virtualization \
-            packages/studio/data/projects/timeline-virtualization
+          # The same projects as the head's server, so neither side serves more than the other.
+          cp -R "$GITHUB_WORKSPACE/packages/studio/data" packages/studio/data
       - name: Read the base branch's work-count ceilings
         # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
         if: github.event_name == 'pull_request'

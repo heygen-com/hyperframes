@@ -61,8 +61,8 @@ const SLOWER_THAN_BASE_SIGMAS = 3;
 
 const ONE_FRAME_MS = 1000 / 60;
 
-/** One stall on a shared runner delays several steps in a row, so an excess must also be 2% of the steps. */
-const MIN_EXCESS_SHARE = 0.02;
+/** A slow stretch of a shared runner makes a run of steps late together, so an excess must also be 1% of steps. */
+const MIN_EXCESS_SHARE = 0.01;
 
 function countExcess(head, base, steps) {
   const allowedExcess = SLOWER_THAN_BASE_SIGMAS * Math.sqrt(head + base) + MIN_EXCESS_SHARE * steps;

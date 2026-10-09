@@ -178,9 +178,9 @@ describe("judgeAgainstBase", () => {
 
   it("describes the counts behind a verdict, including the frame-later ones", () => {
     expect(describeAgainstBase(judgeAgainstBase(lateStepsAt200(), measured(40), limits))).toBe(
-      "interaction p95 200.0 vs 66.7 ms, steps over budget 40 vs 40 (allowed excess 39.4), " +
-        "a frame later 40 vs 0 (allowed excess 31.6), frame gaps over budget 0 vs 0 (allowed excess 12.6), " +
-        "a frame past that 0 vs 0 (allowed excess 12.6), fail",
+      "interaction p95 200.0 vs 66.7 ms, steps over budget 40 vs 40 (allowed excess 33.1), " +
+        "a frame later 40 vs 0 (allowed excess 25.3), frame gaps over budget 0 vs 0 (allowed excess 6.3), " +
+        "a frame past that 0 vs 0 (allowed excess 6.3), fail",
     );
   });
 
