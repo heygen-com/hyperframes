@@ -463,7 +463,9 @@ describe("resolveBrowserGpuMode", () => {
       await vi.advanceTimersByTimeAsync(15_000 + 250);
 
       await expect(mode).resolves.toBe("software");
-      expect(launch).toHaveBeenCalledWith(expect.objectContaining({ timeout: 120_000 }));
+      expect(launch).toHaveBeenCalledWith(
+        expect.objectContaining({ timeout: 120_000, waitForInitialPage: false }),
+      );
       expect(kill).toHaveBeenCalledWith("SIGKILL");
     } finally {
       vi.useRealTimers();

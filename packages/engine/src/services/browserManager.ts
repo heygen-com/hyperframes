@@ -92,6 +92,7 @@ async function probeHardwareWebGlInfo(
       defaultViewport: { width: 64, height: 64 },
       executablePath: options.executablePath,
       timeout: options.browserTimeout,
+      waitForInitialPage: false,
     });
     return await rejectAfter(
       readWebGlInfo(probeBrowser),
