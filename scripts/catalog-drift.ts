@@ -10,6 +10,9 @@ import { runAsCommand } from "./entrypoint.ts";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MAX_LISTED = 40;
+// The embedding model's float output differs slightly between CPUs, so vectors are compared by direction, not bytes.
+const VECTORS = /-vectors\.bin$/;
+const MIN_ROW_COSINE = 0.99;
 
 function filesUnder(root: string): string[] {
   return readdirSync(root, { recursive: true, withFileTypes: true })
@@ -25,15 +28,43 @@ export function treeDifferences(generatedRoot: string, committedRoot: string): s
   const missing = [...generated].filter((file) => !committed.has(file));
   const extra = [...committed].filter((file) => !generated.has(file));
   const changed = [...generated].filter(
-    (file) =>
-      committed.has(file) &&
-      !readFileSync(join(generatedRoot, file)).equals(readFileSync(join(committedRoot, file))),
+    (file) => committed.has(file) && !sameContent(generatedRoot, committedRoot, file),
   );
   return [
     ...missing.map((file) => `not committed: ${file}`),
     ...extra.map((file) => `no longer generated: ${file}`),
     ...changed.map((file) => `stale: ${file}`),
   ];
+}
+
+function sameContent(generatedRoot: string, committedRoot: string, file: string): boolean {
+  const generated = readFileSync(join(generatedRoot, file));
+  const committed = readFileSync(join(committedRoot, file));
+  if (generated.equals(committed)) return true;
+  if (!VECTORS.test(file)) return false;
+  const meta = join(generatedRoot, file.replace(/\.bin$/, ".json"));
+  const { dimensions } = JSON.parse(readFileSync(meta, "utf8")) as { dimensions: number };
+  return vectorsAgree(generated, committed, dimensions);
+}
+
+/** Same row count, and every row of Float32 vectors points the same way within MIN_ROW_COSINE. */
+export function vectorsAgree(a: Buffer, b: Buffer, dimensions: number): boolean {
+  const rowBytes = 4 * dimensions;
+  if (a.length !== b.length || a.length % rowBytes !== 0) return false;
+  for (let row = 0; row < a.length; row += rowBytes) {
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = row; i < row + rowBytes; i += 4) {
+      const x = a.readFloatLE(i);
+      const y = b.readFloatLE(i);
+      dot += x * y;
+      normA += x * x;
+      normB += y * y;
+    }
+    if (!(dot / Math.sqrt(normA * normB) >= MIN_ROW_COSINE)) return false;
+  }
+  return true;
 }
 
 async function main(): Promise<void> {
