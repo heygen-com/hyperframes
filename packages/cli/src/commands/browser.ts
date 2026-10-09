@@ -38,7 +38,14 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
   if (isLinuxArm()) {
     const s = clack.spinner();
     s.start("Linux ARM64 detected — looking for system Chromium...");
-    const existing = await findBrowser();
+    let existing: BrowserResult | undefined;
+    try {
+      existing = await findBrowser();
+    } catch (err) {
+      s.stop(c.error("Browser lookup failed"));
+      clack.log.error(normalizeErrorMessage(err));
+      failCommand(1, err);
+    }
     if (existing) {
       s.stop(c.success("System Chromium found"));
       printBrowser(existing);

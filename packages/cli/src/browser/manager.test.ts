@@ -160,7 +160,7 @@ function installFsMocks({
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
       }
-      return { mtimeMs: mtimes.get(p) ?? 0, size: 1 };
+      return { mtimeMs: mtimes.get(p) ?? 0, size: 1, isFile: () => true };
     },
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
@@ -560,15 +560,18 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it.each([
-    { label: "missing", unpacked: undefined, state: "is missing" },
-    { label: "empty", unpacked: "", state: "is empty" },
+    { label: "missing", unpacked: "none", state: "is missing" },
+    { label: "empty", unpacked: "file", state: "is empty" },
+    { label: "a folder", unpacked: "folder", state: "is not a file" },
   ])("fails instead of reporting a browser the unzip left $label", async ({ unpacked, state }) => {
     const home = useRealCacheHome();
     installPuppeteerBrowsersMock({
       installImpl: async ({ cacheDir, buildId, logger }) => {
         const staged = writeStagedInstall(cacheDir, buildId, "");
         rmSync(staged.executablePath);
-        if (unpacked !== undefined) writeFileSync(staged.executablePath, unpacked);
+        if (unpacked === "file") writeFileSync(staged.executablePath, "");
+        if (unpacked === "folder")
+          mkdirSync(join(staged.executablePath, "inside"), { recursive: true });
         logger?.("puppeteer:browsers:fileUtil")?.("tar.exe extraction failed: Error: boom");
         return staged;
       },
@@ -581,6 +584,30 @@ describe("findBrowser — cache resolution", () => {
       await expect(ensured).rejects.toThrow(`chrome-headless-shell ${state} after unzipping`);
       await expect(ensured).rejects.toThrow("tar.exe extraction failed: Error: boom");
       expect(existsSync(CACHE_DIR)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("names the unzip errors when every unzip tool failed", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ logger }) => {
+        logger?.("puppeteer:browsers:fileUtil")?.("tar.exe extraction failed: Error: tar boom");
+        logger?.("puppeteer:browsers:fileUtil")?.(
+          "powershell.exe extraction failed: Error: ps boom",
+        );
+        throw new Error("Extraction failed: no zip archiver is available.");
+      },
+    });
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+
+      const ensured = ensureBrowser({ force: true });
+
+      await expect(ensured).rejects.toThrow(
+        "no zip archiver is available. Unzip errors: tar.exe extraction failed: Error: tar boom; powershell.exe extraction failed: Error: ps boom",
+      );
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

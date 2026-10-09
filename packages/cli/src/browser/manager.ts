@@ -779,11 +779,15 @@ function browserPathHintForPlatform(): string {
   return "/usr/bin/google-chrome";
 }
 
-function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
+function wrapDownloadFailureWithBrowserPathHint(
+  cause: unknown,
+  unzipLog: readonly string[] = [],
+): Error {
   const original = normalizeErrorMessage(cause);
+  const unzipErrors = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
   const example = browserPathHintForPlatform();
   const message =
-    `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}\n\n` +
+    `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
     `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
     `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
     `Then re-run your command. Any Chrome build works for the screenshot ` +
@@ -839,27 +843,22 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
         `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
       ),
     );
-    assertExecutableUnpacked(stagingDir, staged.executablePath, unzipLog);
+    assertExecutableUnpacked(stagingDir, staged.executablePath);
     return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
   } catch (err) {
-    throw wrapDownloadFailureWithBrowserPathHint(err);
+    throw wrapDownloadFailureWithBrowserPathHint(err, unzipLog);
   } finally {
     clearStaging();
   }
 }
 
 // install() returns without checking that the unzip produced the executable.
-function assertExecutableUnpacked(
-  stagingDir: string,
-  executablePath: string,
-  unzipLog: readonly string[],
-): void {
-  const size = statSync(executablePath, { throwIfNoEntry: false })?.size;
-  if (size) return;
-  const state = size === 0 ? "is empty" : "is missing";
-  const log = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
+function assertExecutableUnpacked(stagingDir: string, executablePath: string): void {
+  const stat = statSync(executablePath, { throwIfNoEntry: false });
+  if (stat?.isFile() && stat.size > 0) return;
+  const state = !stat ? "is missing" : stat.isFile() ? "is empty" : "is not a file";
   throw new Error(
-    `the archive downloaded, but ${relative(stagingDir, executablePath)} ${state} after unzipping.${log}`,
+    `the archive downloaded, but ${relative(stagingDir, executablePath)} ${state} after unzipping.`,
   );
 }
 
