@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { duckKeyframes, duckLane, speechSpans } from "./duck.mjs";
+import { sampleAutomationLane } from "@hyperframes/core/audio-automation";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Keep the skill-owned wrapper path under test until the compatibility layer
@@ -167,6 +168,45 @@ test("duckLane turns composition-time keyframes into clip-local ramps", () => {
       },
     ],
   });
+});
+
+for (const [name, clipStart] of [
+  ["before the attack", 0.5],
+  ["during the attack", 1.075],
+  ["during speech", 2],
+  ["at the release", 3],
+  ["during the release", 3.2],
+  ["after narration", 4],
+]) {
+  test(`duckLane preserves composition-time gain when music starts ${name}`, () => {
+    const keyframes = duckKeyframes([{ start: 1, end: 3 }], { baseVolume: 0.6 });
+    const full = duckLane(keyframes, { baseVolume: 0.6 }).lanes[0];
+    const local = duckLane(keyframes, { clipStart, baseVolume: 0.6 }).lanes[0];
+
+    for (const time of [0, 0.025, 0.075, 0.1, 0.2, 0.5, 1, 2]) {
+      const expected = sampleAutomationLane(full, time + clipStart);
+      const actual = sampleAutomationLane(local, time);
+      assert.ok(
+        Math.abs(actual - expected) < 1e-9,
+        `gain at ${time}s: expected ${expected}, received ${actual}`,
+      );
+    }
+  });
+}
+
+test("duckLane discards earlier narration and retains the next speech span", () => {
+  const keyframes = duckKeyframes([
+    { start: 1, end: 2 },
+    { start: 5, end: 6 },
+  ]);
+
+  assert.deepEqual(duckLane(keyframes, { clipStart: 3 }).lanes[0].points, [
+    { t: 0, v: 1 },
+    { t: 2, v: 1 },
+    { t: 2.15, v: 0.25 },
+    { t: 3, v: 0.25 },
+    { t: 3.4, v: 1 },
+  ]);
 });
 
 test("--json spans match --merge-gap semantics exactly", () => {
