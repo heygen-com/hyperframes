@@ -37,6 +37,7 @@ export interface ProbeCallbacks {
   onError: (message: string) => void;
   /** Called when runtime is successfully injected (informational). */
   onRuntimeInjected?: () => void;
+  resolveRuntimeUrl?: () => string;
 }
 
 /**
@@ -83,6 +84,7 @@ function firstAuthorError(errors: unknown): string | null {
 export class CompositionProbe {
   private _interval: ReturnType<typeof setInterval> | null = null;
   private _runtimeInjected = false;
+  private _runtimeScript: HTMLScriptElement | null = null;
   private _failure: { document: Document | null } | null = null;
 
   get failed(): boolean {
@@ -179,6 +181,10 @@ export class CompositionProbe {
   }
 
   stop(): void {
+    if (this._runtimeScript) {
+      this._runtimeScript.onerror = null;
+      this._runtimeScript = null;
+    }
     if (!this.failed) this._failure = null;
     if (this._interval !== null) {
       clearInterval(this._interval);
@@ -204,7 +210,7 @@ export class CompositionProbe {
   }
 
   hasRuntimeBridge(win: Window): boolean {
-    return Reflect.get(win, "__hf") !== undefined || isObjectRecord(Reflect.get(win, "__player"));
+    return isObjectRecord(Reflect.get(win, "__player"));
   }
 
   // ── Private ──────────────────────────────────────────────────────────────
@@ -215,7 +221,14 @@ export class CompositionProbe {
       const doc = this._iframe.contentDocument;
       if (!doc) return;
       const script = doc.createElement("script");
-      script.src = RUNTIME_CDN_URL;
+      script.src = this._callbacks.resolveRuntimeUrl?.() ?? RUNTIME_CDN_URL;
+      this._runtimeScript = script;
+      script.onerror = () => {
+        if (this._runtimeScript !== script || this._iframe.contentDocument !== doc) return;
+        this.stop();
+        this._failure = { document: doc };
+        this._callbacks.onError("HyperFrames runtime failed to load from " + script.src);
+      };
       (doc.head || doc.documentElement).appendChild(script);
       this._callbacks.onRuntimeInjected?.();
     } catch {

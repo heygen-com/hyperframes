@@ -19,16 +19,18 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CaptureOptions } from "@hyperframes/engine";
+import { type CaptureOptions, extractVideoFramesRange } from "@hyperframes/engine";
 import { HOST_CHROME_FAILURE_PATTERNS } from "./__test_utils__/hostChromeFailures.js";
 import { RenderQualityError } from "../renderOrchestrator.js";
 import { plan } from "./plan.js";
 import {
   CHUNK_INDEX_OUT_OF_RANGE,
   distributedCaptureSessionDependencies,
+  extractDeferredVideoFramesForChunk,
   MISSING_PLAN_ARTIFACT,
   MISSING_RUNTIME_ENV_SNAPSHOT,
   PLAN_HASH_MISMATCH,
@@ -577,5 +579,142 @@ describe("resolveLockedVp9CpuUsed", () => {
 
   it("returns undefined for non-VP9 planDirs", () => {
     expect(resolveLockedVp9CpuUsed({ encoder: "libx264-software" })).toBeUndefined();
+  });
+});
+
+describe("extractDeferredVideoFramesForChunk", () => {
+  const root = mkdtempSync(join(tmpdir(), "hf-deferred-chunk-"));
+  const planDir = join(root, "plan");
+  const range = {
+    sourcePath: "video-sources/0.mp4",
+    startTime: 1.5,
+    durationSeconds: 2.5,
+    format: "jpg" as const,
+  };
+  const metadata = {
+    durationSeconds: 4,
+    videoStreamDurationSeconds: 4,
+    videoStreamStartSeconds: 0,
+    width: 64,
+    height: 36,
+    fps: 30,
+    videoCodec: "h264",
+    hasAudio: false,
+    isVFR: false,
+    hasAlpha: false,
+    colorSpace: null,
+  };
+  const planVideos = (loop: boolean) => ({
+    videos: [
+      { id: "clip", src: "clip.mp4", start: 0, end: 4, mediaStart: 1.5, loop, hasAudio: false },
+    ],
+    extracted: [
+      {
+        videoId: "clip",
+        srcPath: "/planner/clip.mp4",
+        framePattern: "frame_%05d.jpg",
+        fps: 30,
+        totalFrames: 75,
+        metadata,
+        deferredRange: range,
+      },
+    ],
+  });
+
+  beforeAll(() => {
+    mkdirSync(join(planDir, "video-sources"), { recursive: true });
+    const synth = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=64x36:r=30:d=4",
+      "-c:v",
+      "libx264",
+      "-g",
+      "60",
+      "-pix_fmt",
+      "yuv420p",
+      join(planDir, range.sourcePath),
+    ]);
+    if (synth.status !== 0) throw new Error(synth.stderr.toString());
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("extracts exactly the frames the chunk shows, identical to the planner's", async () => {
+    const full = await extractVideoFramesRange(
+      join(planDir, range.sourcePath),
+      "clip",
+      range.startTime,
+      range.durationSeconds,
+      { fps: 30, outputDir: join(root, "full"), format: "jpg" },
+    );
+    const [chunk] = await extractDeferredVideoFramesForChunk({
+      planDir,
+      planVideos: planVideos(false),
+      slice: { index: 1, startFrame: 30, endFrame: 45 },
+      fps: { num: 30, den: 1 },
+      outputRoot: join(root, "chunk-1"),
+      cfg: {},
+    });
+
+    expect([...chunk!.framePaths.keys()]).toEqual(Array.from({ length: 15 }, (_, i) => 30 + i));
+    for (const [index, path] of chunk!.framePaths) {
+      expect(readFileSync(path).equals(readFileSync(full.framePaths.get(index)!))).toBe(true);
+    }
+  });
+
+  it("extracts nothing for a chunk past the clip, and holds no frames", async () => {
+    const [chunk] = await extractDeferredVideoFramesForChunk({
+      planDir,
+      planVideos: { ...planVideos(false), videos: [{ ...planVideos(false).videos[0]!, end: 1 }] },
+      slice: { index: 2, startFrame: 60, endFrame: 90 },
+      fps: { num: 30, den: 1 },
+      outputRoot: join(root, "chunk-2"),
+      cfg: {},
+    });
+    expect(chunk!.framePaths.size).toBe(0);
+  });
+
+  it("wraps a looping clip back to its first frames", async () => {
+    const [chunk] = await extractDeferredVideoFramesForChunk({
+      planDir,
+      planVideos: planVideos(true),
+      slice: { index: 3, startFrame: 70, endFrame: 80 },
+      fps: { num: 30, den: 1 },
+      outputRoot: join(root, "chunk-3"),
+      cfg: {},
+    });
+    expect([...chunk!.framePaths.keys()].sort((a, b) => a - b)).toEqual([
+      0, 1, 2, 3, 4, 70, 71, 72, 73, 74,
+    ]);
+    expect(readdirSync(join(root, "chunk-3", "clip"))).toHaveLength(10);
+  });
+
+  it("fails closed when the plan lacks the source", async () => {
+    const missing = { ...planVideos(false) };
+    missing.extracted = [
+      { ...missing.extracted[0]!, deferredRange: { ...range, sourcePath: "video-sources/9.mp4" } },
+    ];
+    let caught: unknown;
+    try {
+      await extractDeferredVideoFramesForChunk({
+        planDir,
+        planVideos: missing,
+        slice: { index: 0, startFrame: 0, endFrame: 5 },
+        fps: { num: 30, den: 1 },
+        outputRoot: join(root, "chunk-missing"),
+        cfg: {},
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(RenderChunkValidationError);
+    expect((caught as RenderChunkValidationError).code).toBe(MISSING_PLAN_ARTIFACT);
   });
 });

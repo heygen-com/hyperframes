@@ -113,10 +113,22 @@ export function createLottieAdapter(params?: {
               anim.goToAndStop(time * 1000, false);
             }
           } else if (isDotLottiePlayer(anim)) {
-            // @lottiefiles/dotlottie-web: DotLottie
-            // .seek(frame) — frame is 0-100 percentage OR frame number depending on version
-            // Newer versions use setFrame(frame) or seek(percentage)
-            if (typeof anim.setCurrentRawFrameValue === "function") {
+            if (typeof anim.setFrame === "function") {
+              const totalFrames = anim.totalFrames ?? 0;
+              const duration = anim.duration ?? 0;
+              if (
+                !Number.isFinite(totalFrames) ||
+                totalFrames <= 0 ||
+                !Number.isFinite(duration) ||
+                duration <= 0
+              ) {
+                continue;
+              }
+              const frame = (time * totalFrames) / duration;
+              anim.setFrame(
+                Math.min(loops ? wrapFrame(frame, totalFrames) : frame, totalFrames - 1),
+              );
+            } else if (typeof anim.setCurrentRawFrameValue === "function") {
               // dotlottie-web v2+: direct frame setter
               const totalFrames = anim.totalFrames ?? 0;
               const fps = anim.frameRate ?? 30;
@@ -288,6 +300,7 @@ interface LottieWebGlobal {
 interface DotLottiePlayer {
   play: () => void;
   pause: () => void;
+  setFrame?: (frame: number) => void;
   seek?: (percentage: number) => void;
   setCurrentRawFrameValue?: (frame: number) => void;
   totalFrames?: number;

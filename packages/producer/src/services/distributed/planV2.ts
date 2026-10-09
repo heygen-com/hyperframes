@@ -103,7 +103,7 @@ export interface PlanV2Manifest {
 }
 
 export interface PlanV2Limitations {
-  readonly videoDependencyMode: "exact-rendered-frames" | "full-source-pack";
+  readonly videoDependencyMode: "exact-rendered-frames" | "full-source-pack" | "source-extract";
 }
 
 export interface PlanV2Result {
@@ -288,6 +288,8 @@ function artifactTargets(
   if (path === "plan.json" || path === "meta/chunks.json" || path === "meta/encoder.json") {
     return { chunks: "all", assembler: true };
   }
+  // Each chunk's page loads every <video> src at init (a missing one fails the
+  // chunk), so deferred sources under compiled/ still go to every chunk.
   if (
     path === "meta/composition.json" ||
     path === "meta/videos.json" ||
@@ -295,7 +297,7 @@ function artifactTargets(
   ) {
     return { chunks: "all", assembler: false };
   }
-  if (path.startsWith("video-frames/")) {
+  if (path.startsWith("video-frames/") || path.startsWith("video-sources/")) {
     return {
       chunks: videoDependencies === null ? "all" : (videoDependencies.get(path) ?? []),
       assembler: false,
@@ -309,6 +311,13 @@ function artifactTargets(
 function listVideoFramePaths(executionPlanDir: string, videos: PlanVideosJson): ExtractedFrames[] {
   return videos.extracted.map((video) => {
     const outputDir = resolveExtractedVideoOutputDir(executionPlanDir, video.videoId);
+    if (video.deferredRange) {
+      const framePaths = new Map<number, string>();
+      for (let index = 0; index < video.totalFrames; index++) {
+        framePaths.set(index, join(outputDir, String(index)));
+      }
+      return { ...video, outputDir, framePaths, ownedByLookup: false };
+    }
     const frameNames = readdirSync(outputDir).sort();
     const framePaths = new Map<number, string>();
     for (const frameName of frameNames) {
@@ -391,7 +400,7 @@ function buildVideoChunkDependencies(
   executionPlanDir: string,
   dimensions: Record<string, unknown>,
 ): {
-  mode: "exact-rendered-frames" | "full-source-pack";
+  mode: PlanV2Limitations["videoDependencyMode"];
   dependencies: ReadonlyMap<string, readonly number[]> | null;
 } {
   const videoRoot = join(executionPlanDir, "video-frames");
@@ -415,13 +424,41 @@ function buildVideoChunkDependencies(
     extracted,
     resolveRenderFpsConfig({ num: fpsNum, den: fpsDen }).value,
   );
-  const mutable = new Map<string, Set<number>>();
+  const deferredSources = new Map(
+    parsedVideos.extracted.flatMap((video) =>
+      video.deferredRange ? [[video.videoId, video.deferredRange.sourcePath] as const] : [],
+    ),
+  );
+  const dependencies = collectChunkVideoDependencies({
+    executionPlanDir,
+    table,
+    chunks: parsedChunks,
+    fpsNum,
+    fpsDen,
+    deferredSources,
+  });
+  return {
+    mode: deferredSources.size > 0 ? "source-extract" : "exact-rendered-frames",
+    dependencies,
+  };
+}
 
-  for (const chunk of parsedChunks) {
+function collectChunkVideoDependencies(input: {
+  executionPlanDir: string;
+  table: ReturnType<typeof createFrameLookupTable>;
+  chunks: readonly ChunkSliceJson[];
+  fpsNum: number;
+  fpsDen: number;
+  deferredSources: ReadonlyMap<string, string>;
+}): ReadonlyMap<string, readonly number[]> {
+  const mutable = new Map<string, Set<number>>();
+  for (const chunk of input.chunks) {
     for (let frame = chunk.startFrame; frame < chunk.endFrame; frame++) {
-      const globalTime = (frame * fpsDen) / fpsNum;
-      for (const payload of table.getActiveFramePayloads(globalTime).values()) {
-        const path = relative(resolve(executionPlanDir), payload.framePath).split(sep).join("/");
+      const globalTime = (frame * input.fpsDen) / input.fpsNum;
+      for (const [videoId, payload] of input.table.getActiveFramePayloads(globalTime)) {
+        const path =
+          input.deferredSources.get(videoId) ??
+          relative(resolve(input.executionPlanDir), payload.framePath).split(sep).join("/");
         assertSafeRelativePath(path);
         const indexes = mutable.get(path) ?? new Set<number>();
         indexes.add(chunk.index);
@@ -429,12 +466,7 @@ function buildVideoChunkDependencies(
       }
     }
   }
-  return {
-    mode: "exact-rendered-frames",
-    dependencies: new Map(
-      [...mutable].map(([path, indexes]) => [path, [...indexes].sort((a, b) => a - b)]),
-    ),
-  };
+  return new Map([...mutable].map(([path, indexes]) => [path, [...indexes].sort((a, b) => a - b)]));
 }
 
 function manifestPayload(
@@ -504,7 +536,7 @@ function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
     if (isExtractionCacheCompleteSentinelPath(file.path)) continue;
     const targets = artifactTargets(file.path, videoDependencyPlan.dependencies);
     if (
-      file.path.startsWith("video-frames/") &&
+      (file.path.startsWith("video-frames/") || file.path.startsWith("video-sources/")) &&
       targets.chunks !== "all" &&
       targets.chunks.length === 0 &&
       !targets.assembler
@@ -593,14 +625,21 @@ export async function publishPlanV2FromExecutionPlan(
 ): Promise<PlanV2Manifest> {
   try {
     const publication = buildPlanV2Publication(executionPlanDir);
-    const concurrency = 16;
-    for (let offset = 0; offset < publication.blobs.length; offset += concurrency) {
-      const batch = publication.blobs.slice(offset, offset + concurrency);
-      const results = await Promise.allSettled(batch.map((blob) => publisher.putBlob(blob)));
-      for (const result of results) {
-        if (result.status === "rejected") throw result.reason;
+    const uploadSlots = 32;
+    let next = 0;
+    let failure: { reason: unknown } | undefined;
+    const upload = async () => {
+      while (!failure && next < publication.blobs.length) {
+        const blob = publication.blobs[next++]!;
+        try {
+          await publisher.putBlob(blob);
+        } catch (reason) {
+          failure ??= { reason };
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: uploadSlots }, upload));
+    if (failure) throw failure.reason;
     await publisher.commitManifest(canonicalJsonStringify(publication.manifest));
     return publication.manifest;
   } catch (error) {
@@ -641,6 +680,7 @@ export async function planV2WithPublisher(
   try {
     await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
       executionPlanSizeLimitBytes: Number.MAX_SAFE_INTEGER,
+      deferVideoExtraction: true,
     });
     return await publishPlanV2FromExecutionPlan(stagingRoot, publisher);
   } catch (error) {
@@ -807,7 +847,8 @@ function parsePlanV2Manifest(value: unknown): Readonly<PlanV2Manifest> {
   if (
     !isRecord(value.limitations) ||
     (value.limitations.videoDependencyMode !== "exact-rendered-frames" &&
-      value.limitations.videoDependencyMode !== "full-source-pack")
+      value.limitations.videoDependencyMode !== "full-source-pack" &&
+      value.limitations.videoDependencyMode !== "source-extract")
   ) {
     throw new PlanV2IntegrityError("unsupported video dependency mode");
   }

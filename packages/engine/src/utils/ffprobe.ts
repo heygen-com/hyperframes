@@ -142,16 +142,16 @@ function parseProbeJson(stdout: string): FFProbeOutput {
   }
 }
 
-const videoMetadataCache = new Map<string, Promise<VideoMetadata>>();
-const finalVideoFrameTimestampCache = new Map<string, Promise<number>>();
+const videoMetadataCache = new Map<string, MediaProbeCacheEntry<VideoMetadata>>();
+const finalVideoFrameTimestampCache = new Map<string, MediaProbeCacheEntry<number>>();
 const finalVideoFrameTimestampSignalCaches = new WeakMap<
   AbortSignal,
-  Map<string, Promise<number>>
+  Map<string, MediaProbeCacheEntry<number>>
 >();
-const audioMetadataCache = new Map<string, Promise<AudioMetadata>>();
-interface MediaProbeCacheEntry {
-  identity: string;
-  promise: Promise<FFProbeOutput>;
+const audioMetadataCache = new Map<string, MediaProbeCacheEntry<AudioMetadata>>();
+interface MediaProbeCacheEntry<T = FFProbeOutput> {
+  identity: string | null;
+  promise: Promise<T>;
 }
 
 const mediaProbeOutputCache = new Map<string, MediaProbeCacheEntry>();
@@ -327,6 +327,34 @@ function mediaFileIdentity(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+function readMetadataCache<T>(
+  cache: Map<string, MediaProbeCacheEntry<T>>,
+  key: string,
+  identity: string | null,
+): Promise<T> | undefined {
+  const cached = cache.get(key);
+  return cached?.identity === identity ? cached.promise : undefined;
+}
+
+function writeMetadataCache<T>(
+  cache: Map<string, MediaProbeCacheEntry<T>>,
+  key: string,
+  identity: string | null,
+  promise: Promise<T>,
+): void {
+  const entry = { identity, promise };
+  cache.set(key, entry);
+  void promise.then(
+    () => {
+      // Without a file identity, share only the in-flight probe, never its result.
+      if (identity === null && cache.get(key) === entry) cache.delete(key);
+    },
+    () => {
+      if (cache.get(key) === entry) cache.delete(key);
+    },
+  );
 }
 
 async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise<FFProbeOutput> {
@@ -667,7 +695,8 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
  * can be used uniformly for any visual asset the HDR pipeline encounters.
  */
 export async function extractMediaMetadata(filePath: string): Promise<VideoMetadata> {
-  const cached = videoMetadataCache.get(filePath);
+  const identity = mediaFileIdentity(filePath);
+  const cached = readMetadataCache(videoMetadataCache, filePath, identity);
   if (cached) return cached;
 
   const probePromise = (async (): Promise<VideoMetadata> => {
@@ -797,12 +826,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     };
   })();
 
-  videoMetadataCache.set(filePath, probePromise);
-  probePromise.catch(() => {
-    if (videoMetadataCache.get(filePath) === probePromise) {
-      videoMetadataCache.delete(filePath);
-    }
-  });
+  writeMetadataCache(videoMetadataCache, filePath, identity, probePromise);
   return probePromise;
 }
 
@@ -845,6 +869,7 @@ export async function extractFinalVideoFrameTimestamp(
     videoStreamDurationSeconds: videoDurationSeconds,
     cacheKey,
   } = resolveStreamWindow(filePath, metadata);
+  const identity = mediaFileIdentity(filePath);
   // A caller-owned abort signal cannot safely own a globally shared process
   // promise: aborting one render would fail unrelated consumers. Calls in the
   // SAME cancellation scope should still share the expensive interval +
@@ -857,7 +882,7 @@ export async function extractFinalVideoFrameTimestamp(
     probeCache = finalVideoFrameTimestampSignalCaches.get(signal) ?? new Map();
     finalVideoFrameTimestampSignalCaches.set(signal, probeCache);
   }
-  const cached = probeCache.get(cacheKey);
+  const cached = readMetadataCache(probeCache, cacheKey, identity);
   if (cached) return cached;
 
   const probePromise = (async () => {
@@ -900,12 +925,7 @@ export async function extractFinalVideoFrameTimestamp(
     return Math.min(Math.max(timestamp - videoStreamStartSeconds, 0), videoDurationSeconds);
   })();
 
-  probeCache.set(cacheKey, probePromise);
-  probePromise.catch(() => {
-    if (probeCache.get(cacheKey) === probePromise) {
-      probeCache.delete(cacheKey);
-    }
-  });
+  writeMetadataCache(probeCache, cacheKey, identity, probePromise);
   return probePromise;
 }
 
@@ -924,7 +944,10 @@ export async function extractAudioMetadata(
   // A caller-owned abort signal cannot safely share a cached in-flight probe:
   // cancelling one consumer would also cancel unrelated consumers. Signal-bound
   // probes therefore bypass the process-promise cache.
-  const cached = options?.signal ? undefined : audioMetadataCache.get(filePath);
+  const identity = mediaFileIdentity(filePath);
+  const cached = options?.signal
+    ? undefined
+    : readMetadataCache(audioMetadataCache, filePath, identity);
   if (cached) return cached;
 
   const probePromise = (async (): Promise<AudioMetadata> => {
@@ -1003,12 +1026,7 @@ export async function extractAudioMetadata(
   })();
 
   if (options?.signal) return probePromise;
-  audioMetadataCache.set(filePath, probePromise);
-  probePromise.catch(() => {
-    if (audioMetadataCache.get(filePath) === probePromise) {
-      audioMetadataCache.delete(filePath);
-    }
-  });
+  writeMetadataCache(audioMetadataCache, filePath, identity, probePromise);
   return probePromise;
 }
 

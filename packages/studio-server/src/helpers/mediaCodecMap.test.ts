@@ -334,6 +334,17 @@ describe("resolveProxyVariantRequest", () => {
 });
 
 describe("scanProjectMediaCodecMap", () => {
+  it("probes the actual quoted source with mixed literal and escaped percent spelling", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "it's 100%.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+    const html = `<video title="src='fake.mp4'" data-src="lazy.mp4" src="it&#39;s%20100%.mp4"></video>`;
+    const map = await scanProjectMediaCodecMap(project, [{ html }], {
+      runner: makeRunner({ [videoPath]: "hevc" }),
+    });
+    expect(Object.keys(map)).toEqual(["/it's 100%.mp4"]);
+  });
+
   it("omits an asset from the map (no throw) when ffprobe is unresolvable", async () => {
     const project = tmpProject();
     writeFileSync(join(project, "clip.mp4"), "fake video bytes");

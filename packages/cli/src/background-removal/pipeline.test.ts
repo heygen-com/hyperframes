@@ -67,6 +67,23 @@ describe("background-removal/pipeline — buildEncoderArgs", () => {
     expect(args[rangeIdx + 1]).toBe("tv");
   });
 
+  it.each(["fast", "balanced", "best"] as const)(
+    "converts raw RGBA to the tagged BT.709 matrix at %s quality",
+    (quality) => {
+      const args = buildEncoderArgs("webm", 64, 64, 30, "/tmp/cutout.webm", quality);
+      const filter = args[args.indexOf("-vf") + 1];
+      expect(filter).toContain("out_color_matrix=bt709");
+      expect(filter).toContain("out_range=tv");
+      expect(args[args.indexOf("-pix_fmt") + 1]).toBe("rgba");
+      expect(args).toContain("yuva420p");
+    },
+  );
+
+  it.each(["mov", "png"] as const)("keeps the %s output color path", (format) => {
+    const args = buildEncoderArgs(format, 64, 64, 30, `/tmp/cutout.${format}`);
+    expect(args).not.toContain("-vf");
+  });
+
   it("webm quality presets map to crf 30/18/12", () => {
     const fast = buildEncoderArgs("webm", 1920, 1080, 30, "/tmp/o.webm", "fast");
     const balanced = buildEncoderArgs("webm", 1920, 1080, 30, "/tmp/o.webm", "balanced");

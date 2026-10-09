@@ -2,6 +2,7 @@
 import type {
   SlideshowManifest,
   SlideRef,
+  SlideHotspot,
   ResolvedSlide,
   ResolvedSlideshow,
   ResolvedSlideSequence,
@@ -52,12 +53,39 @@ function isOptionalBoolean(v: unknown): v is boolean | undefined {
   return v === undefined || typeof v === "boolean";
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isHotspotRegion(v: unknown): boolean {
+  return (
+    isRecord(v) &&
+    [v["x"], v["y"], v["w"], v["h"]].every(
+      (coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate),
+    )
+  );
+}
+
+function isSlideHotspot(v: unknown): v is SlideHotspot {
+  return (
+    isRecord(v) &&
+    typeof v["id"] === "string" &&
+    typeof v["label"] === "string" &&
+    typeof v["target"] === "string" &&
+    (v["region"] === undefined || isHotspotRegion(v["region"]))
+  );
+}
+
 function isSlideRef(v: unknown): v is SlideRef {
-  if (typeof v !== "object" || v === null) return false;
-  const r = v as Record<string, unknown>;
+  if (!isRecord(v)) return false;
+  const r = v;
   if (typeof r["sceneId"] !== "string") return false;
   if (!isOptionalNumberArray(r["fragments"])) return false;
-  if (r["hotspots"] !== undefined && !Array.isArray(r["hotspots"])) return false;
+  if (
+    r["hotspots"] !== undefined &&
+    (!Array.isArray(r["hotspots"]) || !r["hotspots"].every(isSlideHotspot))
+  )
+    return false;
   if (!isOptionalBoolean(r["autoplay"])) return false;
   return true;
 }
