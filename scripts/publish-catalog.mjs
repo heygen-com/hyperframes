@@ -251,18 +251,26 @@ function clearObsoletePublication(repository, base, exists) {
 }
 
 // The base of the published snapshot while it still matches what main generates: rewriting the branch for an
-// unrelated main push would dismiss its approval. Main editing generated files, or the branch carrying anything
-// else, needs a fresh snapshot.
+// unrelated main push would dismiss its approval.
 function keptSnapshotBase(root, exists) {
   if (!exists) return undefined;
   git(root, ["fetch", "-q", "--no-tags", "origin", BRANCH]);
   const published = git(root, ["rev-parse", "FETCH_HEAD"]);
   const forkPoint = git(root, ["merge-base", published, "HEAD"]);
+  const current = onlyGeneratedSince(root, forkPoint, published) && sameGenerated(root, published);
+  return current ? forkPoint : undefined;
+}
+
+// Main edited no generated file since the fork, and the branch carries nothing else.
+function onlyGeneratedSince(root, forkPoint, published) {
   const elsewhere = GENERATED_CATALOG_PATHS.map((path) => `:(exclude)${path}`);
-  if (git(root, ["diff", "--name-only", forkPoint, "HEAD", "--", ...GENERATED_CATALOG_PATHS]))
-    return undefined;
-  if (git(root, ["diff", "--name-only", forkPoint, published, "--", ".", ...elsewhere]))
-    return undefined;
+  return (
+    !git(root, ["diff", "--name-only", forkPoint, "HEAD", "--", ...GENERATED_CATALOG_PATHS]) &&
+    !git(root, ["diff", "--name-only", forkPoint, published, "--", ".", ...elsewhere])
+  );
+}
+
+function sameGenerated(root, published) {
   const generated = catalogTree(root);
   const changes = git(root, [
     "diff",
@@ -276,12 +284,13 @@ function keptSnapshotBase(root, exists) {
   ])
     .split("\0")
     .filter(Boolean);
-  for (let i = 0; i < changes.length; i += 2) {
-    const [status, path] = changes.slice(i, i + 2);
-    if (status !== "M" || !VECTORS.test(path) || !sameVectors(root, published, generated, path))
-      return undefined;
-  }
-  return forkPoint;
+  const pairs = Array.from({ length: changes.length / 2 }, (_, i) =>
+    changes.slice(2 * i, 2 * i + 2),
+  );
+  return pairs.every(
+    ([status, path]) =>
+      status === "M" && VECTORS.test(path) && sameVectors(root, published, generated, path),
+  );
 }
 
 function sameVectors(root, published, generated, path) {
