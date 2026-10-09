@@ -965,18 +965,8 @@ export async function extractAudioMetadata(
     const streamDuration = audioStream.duration ? parseFloat(audioStream.duration) : undefined;
     const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100;
     const audioCodec = audioStream.codec_name || "unknown";
-    // Container-summary durations (mvhd/tkhd/mdhd, or the equivalent field in
-    // other containers) can undercount the real audio length — a stale
-    // pre-flush estimate, or an outright wrong muxer — while the audio frames
-    // themselves are intact, so decoding the last one recovers the truth.
-    //
-    // That correction must never fail the call: durationSeconds is ALREADY
-    // correct from format.duration at this point, and a full decode against
-    // runFfprobe's fixed 30s deadline can time out on a long file on slow or
-    // network storage. The caller in htmlCompiler catches a throw from here
-    // under "Source file has no audio stream", returns duration 0, and drops
-    // the audio element — shipping a silent render. Hence the probe below
-    // reports "no correction available" as null instead of throwing.
+    // Container summaries can undercount intact audio, so the decoded last frame wins.
+    // The probe returns null instead of throwing: a throw here drops the audio element.
     if (sampleRate > 0) {
       const decoded = await probeDecodedAudioDuration(
         filePath,
@@ -1005,36 +995,8 @@ export async function extractAudioMetadata(
 }
 
 /**
- * Derive a file's true audio duration from its final decoded frame — that
- * frame's own timestamp plus its real sample count — independent of both the
- * container's summary duration and any fixed samples-per-frame assumption, so
- * it holds for every codec and profile. `-show_frames` decodes rather than
- * just demuxing, so `nb_samples` is the frame's actual length; a packet/demux
- * scan cannot tell a short closing frame from a full one and overshoots
- * whenever a stream does not end on an exact frame boundary.
- *
- * `-read_intervals` first tries decoding only the tail — from
- * `AUDIO_DURATION_PROBE_TAIL_SECONDS` before the container's claimed end —
- * instead of the whole stream, because every `extractAudioMetadata` caller
- * pays this cost (htmlCompiler alone runs it per audio element) and a full
- * decode of a multi-hour file can itself approach `runFfprobe`'s 30s deadline
- * while holding a probe slot throughout. That seek is a time-based estimate,
- * not a guaranteed-accurate one: an index-less or non-seekably-sourced file
- * (e.g. the MediaRecorder-produced WebM class handled separately elsewhere in
- * this file) can seek short of the true final frame, finding nothing in the
- * tail window even though real frames exist beyond it — exactly the silent
- * under-count this function exists to fix, just via a different cause. So a
- * tail read that finds no frames falls back to a full decode from the start,
- * mirroring `extractFinalVideoFrameTimestamp` above. An honest or
- * over-claiming container is unaffected either way: its seek lands at or past
- * the real end, so the tail read decodes nothing extra and the container
- * value stands without ever reaching the fallback. Verified against a real
- * lying container: the seeked read and a full decode agree on the same final
- * frame.
- *
- * Returns null — never throws, except on the caller's own AbortSignal — when
- * the file has no readable audio frames. Callers must treat that as "no
- * correction available", not as evidence the container duration is wrong.
+ * True audio duration from the last decoded frame (timestamp + nb_samples): tail first, then
+ * the whole file if a bad seek finds nothing. Null, never a throw, except on the caller's abort.
  */
 async function probeDecodedAudioDuration(
   filePath: string,
@@ -1059,12 +1021,7 @@ async function probeDecodedAudioDuration(
         filePath,
         args,
         signal,
-        // CSV, not JSON: each line stands alone, so retaining just the tail
-        // under the size cap still yields a complete, parseable last line even
-        // for hours of audio — a JSON array truncated from the front isn't
-        // valid JSON, which silently discarded this correction on any file
-        // whose full frame listing exceeded runFfprobe's stdout cap (~30 min
-        // of audio, well within normal podcast/audiobook length).
+        // CSV, not JSON: a tail truncated under the size cap still parses.
         { retainTail: true, maxChars: 64 * 1024 },
       );
       return stdout

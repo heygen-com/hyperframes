@@ -906,13 +906,8 @@ describe("ffprobe missing-binary fallback", () => {
     }
   });
 
-  // PRINFRA-380: a container's own summary duration can undercount the real
-  // audio length while the frames underneath it are intact, so the decoded
-  // final frame gets the last word. The container always reports 1.25s here;
-  // each case varies what the decode probe finds. The decode probe outcome is
-  // always queued, so `spawns` alone says whether it was consulted — except
-  // the no-frames row, where an empty tail read also triggers the full-scan
-  // fallback (a second decode-probe spawn, reusing the same empty outcome).
+  // The container always reports 1.25s; each case varies what the decode probe finds.
+  // `spawns` says whether the probe ran (no-frames also runs the full-scan fallback).
   it.each([
     {
       name: "non-AAC codec, decoded duration well beyond the container summary",
@@ -984,12 +979,7 @@ describe("ffprobe missing-binary fallback", () => {
     },
   );
 
-  // An index-less or non-seekably-sourced file can make the tail-seeked read
-  // land short of the true final frame, finding nothing even though real
-  // frames exist further along — the exact silent under-count this whole
-  // mechanism exists to fix, just via a bad seek instead of a bad container.
-  // A tail read that comes back empty must fall back to a full decode from
-  // the start rather than giving up, mirroring the sibling video-frame probe.
+  // A bad seek index can make the tail read find nothing past a real final frame.
   it("falls back to a full decode when the tail-seeked read finds no frames", async () => {
     const { spawn, calls } = createSpawnSpy([
       {
