@@ -67,8 +67,13 @@ try {
   assert.equal((await read("explicit")).cache.xPercent, 25);
   assert.equal((await read("explicit")).cache.yPercent, -25);
   assert.equal((await read("pixels")).cache.yPercent, 0, "pixel translation stays pixels");
-  assert.equal((await read("combined")).cache.xPercent, -70);
-  assert.equal((await read("combined")).cache.yPercent, -60);
+  const slide = await read("slide");
+  assert.equal(slide.cache.xPercent, 0, "a non-centering percentage stays GSAP's pixels");
+  assert(Math.abs(slide.center[0]! - 1130) < 0.1, `slide x: 0 slides in, ${slide.center}`);
+  for (const id of ["hidden-set", "hidden-tween"]) {
+    const { cache } = await read(id);
+    assert(Number.isFinite(cache.x) && Number.isFinite(cache.y), `${id} ${JSON.stringify(cache)}`);
+  }
   assert.equal(
     (await read("mover")).cache.x,
     250,
@@ -85,10 +90,19 @@ try {
     window.gsap!.set(target, { x: 40, y: 20 });
   });
   await centered("target");
+  await frame.evaluate(() => {
+    document.getElementById("hidden")!.style.display = "block";
+  });
+  const percentSized = (await read("hidden-percent")).center;
+  assert(
+    Math.abs(percentSized[0]! - 960) < 0.5 && Math.abs(percentSized[1]! - 540) < 0.5,
+    `a percent-sized layer parsed while hidden lands centered, ${percentSized}`,
+  );
   assert.deepEqual(errors, [], "no composition errors");
   console.log(
-    "GSAP percentage centering under zoom: translate, stylesheet transform, origin first, " +
-      "read first, quick setter, lazy tween, hidden layers, explicit, pixels and reparse: PASS",
+    "GSAP centering under zoom (translate, stylesheet transform, origin first, read first, " +
+      "quick setter, lazy tween, padding, hidden layers, reparse) and GSAP's own pixels for " +
+      "other percentages: PASS",
   );
 } finally {
   await browser.close();

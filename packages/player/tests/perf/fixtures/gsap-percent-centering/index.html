@@ -48,16 +48,17 @@
       <div id="target" class="centered"></div>
       <div id="lazy" class="centered"></div>
       <div id="explicit" class="centered"></div>
-      <div id="combined" class="centered" style="transform: translate(-20%, -10%)"></div>
+      <div id="slide" class="centered" style="translate: none; transform: translateX(-100%)"></div>
       <div id="opacity" class="centered"></div>
       <div id="sheet" class="centered sheet"></div>
       <div id="origin" class="centered"></div>
       <div id="read" class="centered"></div>
       <div id="quick" class="centered"></div>
       <div id="boxed" class="centered" style="padding: 10px"></div>
-      <div style="display: none">
+      <div id="hidden" style="display: none">
         <h1 id="hidden-set" class="auto">Hidden title</h1>
         <h1 id="hidden-tween" class="auto">Hidden title</h1>
+        <div id="hidden-percent" class="auto" style="width: 40%; height: 20%"></div>
       </div>
       <div id="mover"></div>
       <div
@@ -74,13 +75,14 @@
       gsap.set("#target", { x: 40, y: 20 });
       gsap.set("#explicit", { x: 40, y: 20, xPercent: 25, yPercent: -25 });
       gsap.set("#pixels", { x: 40, y: 20 });
-      gsap.set("#combined", { x: 40, y: 20 });
+      gsap.set("#slide", { x: 0 });
       gsap.set("#opacity", { autoAlpha: 0.5 });
       gsap.set("#sheet", { x: 40, y: 20 });
       gsap.set("#origin", { transformOrigin: "50% 50%" });
       gsap.set("#origin", { x: 40, y: 20 });
       gsap.set("#boxed", { scale: 1 });
       gsap.set("#hidden-set", { scale: 1 });
+      gsap.set("#hidden-percent", { scale: 1 });
       window.__timelines = {
         main: gsap
           .timeline({ paused: true })

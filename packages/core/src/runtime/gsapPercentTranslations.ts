@@ -59,6 +59,8 @@ function authoredPercents(target: HTMLElement, style: CSSStyleDeclaration): [num
 
 /** The border box, which Chrome resolves translate percentages against in the matrix. */
 function borderBoxSize(style: CSSStyleDeclaration, dimension: "width" | "height"): number {
+  // Without a box (display:none) the computed size can stay "auto" or "40%": no usable size.
+  if (!style[dimension].endsWith("px")) return Number.NaN;
   const size = Number.parseFloat(style[dimension]);
   if (style.boxSizing === "border-box") return size;
   const sides = dimension === "width" ? ["left", "right"] : ["top", "bottom"];
@@ -70,8 +72,8 @@ function borderBoxSize(style: CSSStyleDeclaration, dimension: "width" | "height"
   return size + edges;
 }
 
-/** Move GSAP's inferred percentage back to the authored one, keeping the rendered position. */
-function restoreAxis(
+/** Give back the -50% GSAP would infer without zoom snapping, keeping the rendered position. */
+function restoreCentering(
   cache: TransformCache,
   position: "x" | "y",
   authored: number,
@@ -80,13 +82,13 @@ function restoreAxis(
 ): void {
   const percent = position === "x" ? "xPercent" : "yPercent";
   const inferred = cache[percent];
-  // An unreadable authored value or no layout box (display:none, inline) leaves GSAP's parse.
-  if (inferred === authored || !Number.isFinite(authored) || !Number.isFinite(size)) return;
+  // GSAP folds every other percentage into pixels, so only centering is restored.
+  if (authored !== -50 || inferred === -50 || !Number.isFinite(size)) return;
   const pixels = Number.parseFloat(cache[position] ?? "");
   if (!Number.isFinite(pixels) || !Number.isFinite(inferred))
     throw new Error("GSAP CSS transform cache no longer matches the percentage adapter");
-  cache[position] = `${pixels + (offsetSize * inferred! - size * authored) / 100}px`;
-  cache[percent] = authored;
+  cache[position] = `${pixels + (offsetSize * inferred! + size * 50) / 100}px`;
+  cache[percent] = -50;
 }
 
 /** Preserve CSS centering before GSAP infers percentages from a zoom-snapped pixel matrix. */
@@ -107,18 +109,21 @@ export function installGsapPercentTranslations(gsap: GsapTransformInternals): vo
     if (!view) return;
     const style = view.getComputedStyle(target);
     const [x, y] = authoredPercents(target, style);
-    if (x === 0 && y === 0) return;
+    if (x !== -50 && y !== -50) return;
     get.call(css, target, "x");
-    restoreAxis(cache, "x", x, borderBoxSize(style, "width"), target.offsetWidth);
-    restoreAxis(cache, "y", y, borderBoxSize(style, "height"), target.offsetHeight);
+    restoreCentering(cache, "x", x, borderBoxSize(style, "width"), target.offsetWidth);
+    restoreCentering(cache, "y", y, borderBoxSize(style, "height"), target.offsetHeight);
   };
   const wrap = (call: PluginCall, properties: (args: unknown[]) => string[]): PluginCall =>
     function (target, ...args) {
       if (properties(args).some((property) => transformProperties.has(property))) preserve(target);
       return call.call(this, target, ...args);
     };
-  css.get = wrap(get, ([property]) => [String(property)]);
-  css.getSetter = wrap(css.getSetter, ([property]) => [String(property)]);
+  // Only where GSAP itself parses: `get` skips "transform", `getSetter` skips "transformOrigin".
+  css.get = wrap(get, ([property]) => (property === "transform" ? [] : [String(property)]));
+  css.getSetter = wrap(css.getSetter, ([property]) =>
+    property === "transformOrigin" ? [] : [String(property)],
+  );
   css.prototype.init = wrap(css.prototype.init, ([vars]) => Object.keys(vars as object));
   installed.add(css);
 }
