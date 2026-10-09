@@ -3187,8 +3187,9 @@ describe("bundleToSingleHtml sceneParts", () => {
 
   it("tags each top-level scene's host, styles and scripts, with nested scenes in their parent's parts", async () => {
     const doc = parseHTML(await bundleToSingleHtml(film(), { sceneParts: true })).document;
-    // The nested scene is reached after b, so a's parts come in two runs around b's.
-    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "script", "style", "style"]);
+    // Styles follow host document order, so a's and its nested scene's merge into one run; scripts
+    // keep inlining order, where the nested scene is reached after b, so a's come in two runs.
+    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "script", "style"]);
     expect(partsOf(doc, "b").sort()).toEqual(["div", "script", "style"]);
     expect(partsOf(doc, "n")).toEqual([]);
     const textOf = (selector: string) =>

@@ -132,6 +132,7 @@ async function contracts(files: Record<string, string>, expectedRefusal?: string
     true,
   );
   return {
+    html: { preview, render: servedRender },
     preview: extractCompiledHtmlParityContract(preview),
     render: extractCompiledHtmlParityContract(servedRender),
     mount: await mountContract(dir, files["index.html"]!, expectedRefusal),
@@ -566,6 +567,33 @@ describe("mount/compile assembly parity", () => {
       }
     },
   );
+
+  it("orders nested composition styles by host document order on all three paths", async () => {
+    // Same-named @keyframes are page-wide, so the last one in the head wins.
+    const comp = (id: string, inner: string, opacity: string) =>
+      `<html><body><div data-composition-id="${id}"><style>@keyframes pop { to { opacity: ${opacity}; } }</style>${inner}</div></body></html>`;
+    const host = (id: string) =>
+      `<div data-composition-id="${id}" data-composition-src="compositions/${id}.html"></div>`;
+    const result = await contracts({
+      "index.html": shell(
+        `<main data-composition-id="main" data-width="320" data-height="180">${host("s1")}${host("s2")}</main>`,
+      ),
+      "compositions/s1.html": comp("s1", host("card"), "0.1"),
+      "compositions/card.html": comp("card", "", "0.2"),
+      "compositions/s2.html": comp("s2", "", "0.3"),
+    });
+    const keyframes = (root: ParentNode) =>
+      [...root.querySelectorAll("style")].flatMap((style) =>
+        [
+          ...(style.textContent ?? "").matchAll(/@keyframes\s+pop\s*\{[^}]*opacity:\s*([\d.]+)/g),
+        ].map((match) => match[1]),
+      );
+    const parsed = (html: string) => new DOMParser().parseFromString(html, "text/html");
+    const order = ["0.1", "0.2", "0.3"];
+    expect(keyframes(parsed(result.html.preview))).toEqual(order);
+    expect(keyframes(parsed(result.html.render))).toEqual(order);
+    expect(keyframes(document)).toEqual(order);
+  });
 
   it("keeps a fixture set that still covers the shape the mount path used to drop", () => {
     expect(MOUNT_PARITY_FIXTURES.length).toBeGreaterThan(0);

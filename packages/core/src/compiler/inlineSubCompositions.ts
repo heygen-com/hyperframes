@@ -336,6 +336,7 @@ export function inlineSubCompositions(
 
   const rootStyles = [...document.querySelectorAll("style")];
   const styles: CompositionStyle[] = [];
+  const styleHosts: Element[] = [];
   const styleScenes: string[] = [];
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
@@ -499,6 +500,7 @@ export function inlineSubCompositions(
     for (const styleEl of plan.styleSources) {
       if (cssStyleMergeKey(styleEl) === undefined) continue;
       styles.push(compositionStyle(styleEl, scopeSubStyle(styleEl.textContent || "")));
+      styleHosts.push(hostEl);
       if (scene) styleScenes.push(scene);
       styleEl.remove();
     }
@@ -718,9 +720,22 @@ export function inlineSubCompositions(
     );
   }
 
+  // The queue is breadth-first; styles follow host document order, as the runtime mounts them.
+  // Indexed, not compareDocumentPosition: linkedom's answer is wrong across nesting levels.
+  const hostPosition = new Map(Array.from(document.querySelectorAll("*"), (el, i) => [el, i]));
+  const styleOrder = styles
+    .map((_, index) => index)
+    .sort(
+      (a, b) =>
+        (hostPosition.get(styleHosts[a]!) ?? -1) - (hostPosition.get(styleHosts[b]!) ?? -1) ||
+        a - b,
+    );
   return {
-    styles,
-    styleScenes,
+    styles: styleOrder.map((index) => styles[index]!),
+    styleScenes:
+      styleScenes.length === styles.length
+        ? styleOrder.map((index) => styleScenes[index]!)
+        : styleScenes,
     scripts,
     externalScriptSrcs,
     scriptItems,
