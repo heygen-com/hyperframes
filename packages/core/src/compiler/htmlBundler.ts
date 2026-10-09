@@ -471,18 +471,15 @@ function rewriteCssUrlsWithInlinedAssets(
   inlineAssets: boolean,
 ): string {
   if (!cssText) return cssText;
-  return cssText.replace(
-    /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g,
-    (_full, quote: string, rawUrl: string) => {
-      const maybeInlined = maybeInlineRelativeAssetUrl(
-        (rawUrl || "").trim(),
-        projectDir,
-        inlineAssets,
-      );
-      if (!maybeInlined) return _full;
-      return `url(${quote || ""}${maybeInlined}${quote || ""})`;
-    },
-  );
+  return cssText.replace(CSS_URL_RE, (_full, quote: string, rawUrl: string) => {
+    const maybeInlined = maybeInlineRelativeAssetUrl(
+      (rawUrl || "").trim(),
+      projectDir,
+      inlineAssets,
+    );
+    if (!maybeInlined) return _full;
+    return `url(${quote || ""}${maybeInlined}${quote || ""})`;
+  });
 }
 
 /**
