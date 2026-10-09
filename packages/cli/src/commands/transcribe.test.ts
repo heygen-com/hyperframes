@@ -12,7 +12,7 @@ import {
   statSync,
   symlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { WhisperUnavailableError } from "../whisper/manager.js";
@@ -720,6 +720,14 @@ Render video. Built for agents.
       "would overwrite",
     ],
     [
+      "a dangling link to the transcript it is about to write",
+      (dir: string) => {
+        symlinkSync(join(dir, "transcript.json"), join(dir, "dangling.srt"));
+        return join(dir, "dangling.srt");
+      },
+      "would overwrite",
+    ],
+    [
       "the input media by its real path",
       (dir: string) => join(realpathSync(dir), "narration.wav"),
       "would overwrite",
@@ -754,7 +762,6 @@ Render video. Built for agents.
     const output = join(dir, "NARRATION.WAV");
     // Case-insensitive disks alias the name to the media (same inode); case-sensitive ones do not.
     if (existsSync(output)) expect(statSync(output).ino).toBe(statSync(input).ino);
-    else expect(existsSync(output)).toBe(false);
 
     await expect(
       transcribeCmd.run!({
@@ -768,6 +775,30 @@ Render video. Built for agents.
       error: expect.stringContaining("would overwrite"),
     });
     expect(readFileSync(input, "utf8")).toBe("not-real-audio");
+  });
+
+  it("refuses the transcript under an upper-cased folder spelling on a first run", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const upper = join(dirname(dir), basename(dir).toUpperCase());
+    const caseInsensitive = existsSync(upper);
+
+    await expect(
+      transcribeCmd.run!({
+        args: {
+          input,
+          json: true,
+          engine: "whisper",
+          to: "srt",
+          output: join(upper, "transcript.json"),
+        },
+      } as never),
+    ).rejects.toThrow(CliRuntimeError);
+
+    expect(transcribeMock).not.toHaveBeenCalled();
+    // Only a case-insensitive disk has the upper-cased folder; elsewhere it is simply missing.
+    const error = caseInsensitive ? "would overwrite" : "Output folder not found";
+    expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
   });
 
   it("refuses an export whose default caption path is its own input", async () => {

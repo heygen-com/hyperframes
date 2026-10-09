@@ -4,7 +4,15 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import {
   PARAKEET_INSTALL_COMMAND,
   PARAKEET_LANGUAGES,
@@ -243,8 +251,21 @@ function outputProblem(
 }
 
 function overwriteProblem(outPath: string, keep: string[]): string | undefined {
-  const hit = keep.find((file) => sameFile(outPath, file));
+  const target = followLinks(outPath);
+  const hit = keep.find((file) => sameFile(target, file));
   return hit && `The caption file would overwrite ${hit}; choose another file with --output`;
+}
+
+/** Where a write to `p` lands, even through a link whose target does not exist yet. */
+function followLinks(p: string): string {
+  for (
+    let hops = 0;
+    hops < 40 && lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink();
+    hops++
+  ) {
+    p = resolve(dirname(p), readlinkSync(p));
+  }
+  return p;
 }
 
 /** Whether writing `out` replaces `file`, through links, folder aliases or letter case. */
