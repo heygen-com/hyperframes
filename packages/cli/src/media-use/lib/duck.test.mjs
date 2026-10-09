@@ -169,6 +169,85 @@ test("duckLane turns composition-time keyframes into clip-local ramps", () => {
   });
 });
 
+for (const [name, clipStart, expected] of [
+  [
+    "before the attack",
+    0.5,
+    [
+      { t: 0, v: 0.6 },
+      { t: 0.5, v: 0.6 },
+      { t: 0.65, v: 0.15 },
+      { t: 2.5, v: 0.15 },
+      { t: 2.9, v: 0.6 },
+    ],
+  ],
+  [
+    "during the attack",
+    1.075,
+    [
+      { t: 0, v: 0.375 },
+      { t: 0.075, v: 0.15 },
+      { t: 1.925, v: 0.15 },
+      { t: 2.325, v: 0.6 },
+    ],
+  ],
+  [
+    "during speech",
+    2,
+    [
+      { t: 0, v: 0.15 },
+      { t: 1, v: 0.15 },
+      { t: 1.4, v: 0.6 },
+    ],
+  ],
+  [
+    "at the release",
+    3,
+    [
+      { t: 0, v: 0.15 },
+      { t: 0.4, v: 0.6 },
+    ],
+  ],
+  [
+    "during the release",
+    3.2,
+    [
+      { t: 0, v: 0.375 },
+      { t: 0.2, v: 0.6 },
+    ],
+  ],
+  ["after narration", 4, [{ t: 0, v: 0.6 }]],
+]) {
+  test(`duckLane preserves composition-time gain when music starts ${name}`, () => {
+    const keyframes = duckKeyframes([{ start: 1, end: 3 }], { baseVolume: 0.6 });
+    const points = duckLane(keyframes, { clipStart, baseVolume: 0.6 }).lanes[0].points;
+
+    assert.equal(points.length, expected.length);
+    for (let i = 0; i < points.length; i++) {
+      assert.equal(points[i].t, expected[i].t);
+      assert.ok(
+        Math.abs(points[i].v - expected[i].v) < 1e-9,
+        `gain at ${points[i].t}s: expected ${expected[i].v}, received ${points[i].v}`,
+      );
+    }
+  });
+}
+
+test("duckLane discards earlier narration and retains the next speech span", () => {
+  const keyframes = duckKeyframes([
+    { start: 1, end: 2 },
+    { start: 5, end: 6 },
+  ]);
+
+  assert.deepEqual(duckLane(keyframes, { clipStart: 3 }).lanes[0].points, [
+    { t: 0, v: 1 },
+    { t: 2, v: 1 },
+    { t: 2.15, v: 0.25 },
+    { t: 3, v: 0.25 },
+    { t: 3.4, v: 1 },
+  ]);
+});
+
 test("--json spans match --merge-gap semantics exactly", () => {
   const dir = mkdtempSync(join(tmpdir(), "media-use-duck-"));
   try {
