@@ -810,7 +810,7 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.opacity).toBe("0.75");
   });
 
-  it("drops the injected render frame's border once grading draws over it", () => {
+  it("drops the injected render frame's border while grading draws over it", () => {
     const video = makeDrawableVideo();
     Object.defineProperty(video, "readyState", {
       value: HTMLMediaElement.HAVE_METADATA,
@@ -837,6 +837,10 @@ describe("createColorGradingRuntime", () => {
 
     expect(canvas.style.display).toBe("block");
     expect(frame.style.borderStyle).toBe("none");
+
+    video.removeAttribute(HF_COLOR_GRADING_ATTR);
+    runtime.refresh();
+    expect(frame.style.borderStyle).toBe("solid");
   });
 
   it("keeps a staged scene copy's canvas on its own render frame (#3994)", async () => {
