@@ -298,7 +298,7 @@ export interface GsapTweenSpec {
   ease?: string;
   fromProperties?: Record<string, unknown>;
   toProperties?: Record<string, unknown>;
-  /** For 'to' tweens — the properties to animate toward */
+  /** Tween values for 'from', 'to', and 'set'; destination values for 'fromTo'. */
   properties?: Record<string, unknown>;
   repeat?: number;
   yoyo?: boolean;

@@ -102,8 +102,7 @@ export function applyOpFromJson(comp: Composition, opJson: unknown): void {
 
 // ── GSAP operations ───────────────────────────────────────────────────────────
 
-// NOTE (Phase 3b): GSAP ops require the parser-backed engine and throw
-// UnsupportedOpError until it lands. Feature-detect with can() first.
+// Compositions without an editable GSAP timeline must remain usable.
 
 export function addFadeIn(comp: Composition, targetId: string, delay = 0): string | null {
   const tween: GsapTweenSpec = {
@@ -111,9 +110,9 @@ export function addFadeIn(comp: Composition, targetId: string, delay = 0): strin
     position: delay,
     duration: 0.4,
     ease: "power2.out",
-    fromProperties: { opacity: 0 },
+    properties: { opacity: 0 },
   };
-  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  if (!comp.can({ type: "addGsapTween", target: targetId, tween }).ok) return null;
   return comp.addGsapTween(targetId, tween);
 }
 
@@ -127,10 +126,10 @@ export function addBounce(
     position: 0,
     duration: 0.6,
     ease: "bounce.out",
-    fromProperties: { y: 60, opacity: 0 },
+    properties: { y: 60, opacity: 0 },
     ...overrides,
   };
-  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  if (!comp.can({ type: "addGsapTween", target: targetId, tween }).ok) return null;
   return comp.addGsapTween(targetId, tween);
 }
 
