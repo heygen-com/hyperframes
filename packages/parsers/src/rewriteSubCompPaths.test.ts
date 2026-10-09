@@ -30,6 +30,10 @@ describe("rewriteAssetPath", () => {
     expect(rewriteAssetPath("compositions/scene.html", "../icon.svg")).toBe("icon.svg");
   });
 
+  it("rewrites a backslash-separated `..\\` path like its slash form", () => {
+    expect(rewriteAssetPath("compositions/scene.html", "..\\assets\\x.png")).toBe("assets/x.png");
+  });
+
   it("leaves plain relative paths untouched", () => {
     expect(rewriteAssetPath("compositions/scene.html", "assets/logo.png")).toBe("assets/logo.png");
   });

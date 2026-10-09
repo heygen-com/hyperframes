@@ -79,7 +79,7 @@ export function rewriteAssetPath(
   if (!compDir || compDir === ".") return relativePath;
   const { basePath, suffix } = splitUrlSuffix(relativePath);
   if (!basePath) return relativePath;
-  const filePath = decodeWellFormedEscapes(basePath);
+  const filePath = decodeWellFormedEscapes(basePath).replace(/\\/g, "/");
   const sibling = resolve("/", join(compDir, filePath)).slice(1);
   if (!needsRewrite(filePath) && (!assetExists || !assetExists(sibling))) return relativePath;
   return encodeUrlPath(sibling) + suffix;
