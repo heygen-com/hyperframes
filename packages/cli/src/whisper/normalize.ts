@@ -227,7 +227,7 @@ function decodeVttText(text: string): string {
 }
 
 function parseVtt(content: string): Word[] {
-  const body = content.replace(/^WEBVTT[^\n]*\n/, "");
+  const body = content.replace(/\r\n?/g, "\n").replace(/^WEBVTT[^\n]*\n/, "");
   // VTT is structurally similar to SRT (without numeric indices)
   const blocks = body.trim().split(/\n\n+/);
   const words: Word[] = [];
@@ -508,7 +508,7 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
     return { words, format: "srt" };
   }
   if (ext === ".vtt") {
-    const words = parseVtt(content.replace(/\r\n?/g, "\n")).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
+    const words = parseVtt(content).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
     return { words, format: "vtt" };
   }
 
