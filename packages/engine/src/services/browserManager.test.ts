@@ -252,6 +252,16 @@ describe("compositionRequiresWebGpu", () => {
     expect(compositionRequiresWebGpu('<div data-composition-id="dom"></div>')).toBe(false);
   });
 
+  it("finds the root after an inlined script whose code holds '<' and the marker name", () => {
+    const runtime = `<script>if(n<32)q="[data-composition-id]";if(a>b)go()</script>`;
+    expect(
+      compositionRequiresWebGpu(`${runtime}<div data-composition-id="main" data-requires-webgpu>`),
+    ).toBe(true);
+    expect(
+      compositionRequiresWebGpu(`<div title="data-composition-id" data-requires-webgpu>`),
+    ).toBe(false);
+  });
+
   it("reads only the composition root tag and stays linear on repeated '<'", () => {
     expect(
       compositionRequiresWebGpu('<p data-requires-webgpu></p><div data-composition-id="a"></div>'),

@@ -6,6 +6,7 @@
  * launch args, pooled browser acquisition/release.
  */
 
+import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
@@ -1004,9 +1005,9 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
 
 /** Does the composition's root element declare `data-requires-webgpu`? */
 export function compositionRequiresWebGpu(html: string): boolean {
-  // Quoted values are consumed whole, so '<' or '>' inside one stays in the tag; no nested quantifier overlaps.
-  for (const [tag] of html.matchAll(/<(?:[^<>"']|"[^"]*"|'[^']*')*>/g)) {
-    if (/\bdata-composition-id\b/i.test(tag)) return /\bdata-requires-webgpu(?:\s|=|>)/i.test(tag);
+  for (const tag of scanHtmlOpeningTags(html)) {
+    const names = tag.attributes.map((attribute) => attribute.name.toLowerCase());
+    if (names.includes("data-composition-id")) return names.includes("data-requires-webgpu");
   }
   return false;
 }
