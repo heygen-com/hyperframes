@@ -149,8 +149,9 @@ function installFsMocks({
         paths.add(to + p.slice(from.length));
       }
     },
-    statSync: (p: string) => {
+    statSync: (p: string, opts?: { throwIfNoEntry?: boolean }) => {
       if (!paths.has(p)) {
+        if (opts?.throwIfNoEntry === false) return undefined;
         const err = new Error(`ENOENT: no such file or directory, stat '${p}'`);
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
@@ -533,9 +534,13 @@ describe("findBrowser — cache resolution", () => {
     let stageNothing = false;
     installPuppeteerBrowsersMock({
       installImpl: async ({ cacheDir, buildId }) => {
-        const staged = writeStagedInstall(cacheDir, buildId, "old");
-        if (stageNothing) rmSync(staged.path, { recursive: true, force: true });
-        return staged;
+        if (!stageNothing) return writeStagedInstall(cacheDir, buildId, "old");
+        // A real executable passes the unzip check, but its version dir is gone, so only the move fails.
+        const elsewhere = writeStagedInstall(join(cacheDir, "elsewhere"), buildId, "new");
+        return {
+          executablePath: elsewhere.executablePath,
+          path: join(cacheDir, "chrome-headless-shell", `linux-${buildId}`),
+        };
       },
     });
     try {
@@ -572,6 +577,32 @@ describe("findBrowser — cache resolution", () => {
       await expect(ensured).rejects.toThrow(`chrome-headless-shell ${state} after unzipping`);
       await expect(ensured).rejects.toThrow("tar.exe extraction failed: Error: boom");
       expect(existsSync(CACHE_DIR)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("reports only the last attempt's unzip errors after a corrupt-archive retry", async () => {
+    const home = useRealCacheHome();
+    let attempt = 0;
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId, logger }) => {
+        attempt += 1;
+        logger?.("puppeteer:browsers:fileUtil")?.(`tar.exe extraction failed: attempt ${attempt}`);
+        if (attempt === 1) throw new Error("invalid end of central directory");
+        const staged = writeStagedInstall(cacheDir, buildId, "");
+        rmSync(staged.executablePath);
+        return staged;
+      },
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+
+      const error = await ensureBrowser({ force: true }).catch((err: unknown) => err);
+
+      expect(String(error)).toContain("tar.exe extraction failed: attempt 2");
+      expect(String(error)).not.toContain("attempt 1");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

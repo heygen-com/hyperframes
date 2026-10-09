@@ -783,7 +783,7 @@ function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
   const original = normalizeErrorMessage(cause);
   const example = browserPathHintForPlatform();
   const message =
-    `Failed to download chrome-headless-shell ${managedChromeVersion()}: ${original}\n\n` +
+    `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}\n\n` +
     `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
     `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
     `Then re-run your command. Any Chrome build works for the screenshot ` +

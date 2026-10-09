@@ -12,6 +12,7 @@ import {
 } from "./linuxDeps.js";
 import { getFreeDiskMb } from "../telemetry/system.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 export type EnvironmentCheckLevel = "ok" | "warn" | "error";
 
@@ -314,13 +315,15 @@ async function checkChrome(
   // failure as "Chrome not found" rather than letting it crash the caller
   // (notably `doctor`, which is documented to exit 0 even when checks fail).
   let info: Awaited<ReturnType<typeof findBrowser>>;
+  let failure: string | undefined;
   try {
     info = signal
       ? await ensureBrowser({ preferManagedChrome: true, signal })
       : await findBrowser();
-  } catch {
+  } catch (error) {
     if (signal?.aborted) signal.throwIfAborted();
     info = undefined;
+    failure = normalizeErrorMessage(error);
   }
   if (info) {
     return chromeLaunchOutcome(
@@ -341,7 +344,7 @@ async function checkChrome(
     ok: false,
     level: "error",
     title: "Chrome not found",
-    detail: "Chrome Headless Shell is required for local rendering.",
+    detail: failure ?? "Chrome Headless Shell is required for local rendering.",
     hint: "Run: npx hyperframes browser ensure",
   };
 }
