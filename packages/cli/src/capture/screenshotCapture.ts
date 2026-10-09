@@ -75,18 +75,18 @@ export function pngHeight(buf: Uint8Array): number | null {
  * Returns the captured path or the cause for omitting the plate.
  */
 export async function captureFullPagePlate(
-  page: Page,
+  page: Pick<Page, "evaluate" | "screenshot">,
   screenshotsDir: string,
   budget: { remainingMs?: () => number; files?: string[] } = {},
 ): Promise<PlateCaptureResult> {
-  // Record the inline value before overwriting so the page is handed back unchanged — the
-  // caller keeps using it (asset extraction, DOM reads) after this returns.
+  // Preserve the inline value and priority: asset and DOM extraction reuse this page afterward.
   await page.evaluate(
     `document.querySelectorAll('*').forEach((el) => {
       const p = getComputedStyle(el).position;
       if (p === 'fixed' || p === 'sticky') {
         el.setAttribute('data-hf-plate-position', el.style.position || '');
-        el.style.position = 'static';
+        el.setAttribute('data-hf-plate-position-priority', el.style.getPropertyPriority('position'));
+        el.style.setProperty('position', 'static', 'important');
       }
     })`,
   );
@@ -119,8 +119,10 @@ export async function captureFullPagePlate(
     try {
       await page.evaluate(
         `document.querySelectorAll('[data-hf-plate-position]').forEach((el) => {
-          el.style.position = el.getAttribute('data-hf-plate-position');
+          el.style.setProperty('position', el.getAttribute('data-hf-plate-position') || '',
+            el.getAttribute('data-hf-plate-position-priority') || '');
           el.removeAttribute('data-hf-plate-position');
+          el.removeAttribute('data-hf-plate-position-priority');
         })`,
       );
     } catch {
