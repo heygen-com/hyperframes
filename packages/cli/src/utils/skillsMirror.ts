@@ -106,8 +106,9 @@ function pathsOverlap(left: string, right: string): boolean {
 
 function sameExistingNode(left: string, right: string): boolean {
   try {
-    const leftStat = statSync(left);
-    const rightStat = statSync(right);
+    // Windows file ids exceed 2^53, so number inodes of nearby dirs can collide; bigint keeps them exact.
+    const leftStat = statSync(left, { bigint: true });
+    const rightStat = statSync(right, { bigint: true });
     return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
   } catch {
     return false;
