@@ -18,9 +18,17 @@ import {
   managedChromeVersion,
   CACHE_DIR,
   isLinuxArm,
+  type BrowserResult,
 } from "../browser/manager.js";
 import { trackBrowserInstall } from "../telemetry/events.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+
+function printBrowser(browser: BrowserResult): void {
+  console.log();
+  console.log(`   ${c.dim("Source:")}  ${c.bold(browser.source)}`);
+  console.log(`   ${c.dim("Path:")}    ${c.bold(browser.executablePath)}`);
+  console.log();
+}
 
 async function runEnsure(options?: { force?: boolean }): Promise<void> {
   clack.intro(c.bold("hyperframes browser ensure"));
@@ -33,10 +41,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
     const existing = await findBrowser();
     if (existing) {
       s.stop(c.success("System Chromium found"));
-      console.log();
-      console.log(`   ${c.dim("Source:")}  ${c.bold(existing.source)}`);
-      console.log(`   ${c.dim("Path:")}    ${c.bold(existing.executablePath)}`);
-      console.log();
+      printBrowser(existing);
       clack.outro(c.success("Ready to render."));
       return;
     }
@@ -47,10 +52,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
     // Delegate to ensureBrowser which handles the full ARM64 install flow.
     try {
       const result = await ensureBrowser();
-      console.log();
-      console.log(`   ${c.dim("Source:")}  ${c.bold(result.source)}`);
-      console.log(`   ${c.dim("Path:")}    ${c.bold(result.executablePath)}`);
-      console.log();
+      printBrowser(result);
       clack.outro(c.success("Chromium ready. You can now render on ARM64."));
     } catch (err) {
       // The ARM64 auto-install failed: the browser is NOT ready, so this is a
@@ -67,7 +69,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
   const s = clack.spinner();
   s.start(options?.force ? `${downloading}...` : "Looking for an existing browser...");
   let lastPct = -1;
-  let result: Awaited<ReturnType<typeof ensureBrowser>>;
+  let result: BrowserResult;
   try {
     // `preferManagedChrome` reports what `render` actually uses: a system Chrome
     // without our pinned build still downloads on the next render.
@@ -93,10 +95,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
 
   if (result.source === "download") trackBrowserInstall();
   s.stop(c.success(result.source === "download" ? "Download complete" : "Browser found"));
-  console.log();
-  console.log(`   ${c.dim("Source:")}  ${c.bold(result.source)}`);
-  console.log(`   ${c.dim("Path:")}    ${c.bold(result.executablePath)}`);
-  console.log();
+  printBrowser(result);
   clack.outro(c.success("Ready to render."));
 }
 

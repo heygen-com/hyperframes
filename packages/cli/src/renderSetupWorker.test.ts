@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   installRenderSetupSignalHandlers,
-  renderSetupErrorFrom,
+  renderSetupFailureFrom,
   renderSetupErrorLine,
+  renderSetupResultFrom,
+  renderSetupResultLine,
 } from "./renderSetupWorkerLifecycle.js";
 
 describe("render setup worker signal lifecycle", () => {
@@ -72,10 +74,21 @@ describe("render setup worker failure line", () => {
       "    at downloadBrowser (manager.ts:845:11)",
     ].join("\n");
 
-    expect(renderSetupErrorFrom(stderr)).toBe(reason);
+    expect(renderSetupFailureFrom(stderr)).toEqual({ reason, earlierOutput: "warning before" });
   });
 
-  it("finds no reason in a worker that crashed without one", () => {
-    expect(renderSetupErrorFrom("Error: boom\n    at x (y.ts:1:1)")).toBeUndefined();
+  it.each([
+    ["a worker that crashed without one", "Error: boom\n    at x (y.ts:1:1)"],
+    ["a cut-off line", 'HYPERFRAMES_RENDER_SETUP_ERROR:"Failed to ins'],
+    ["an empty message", renderSetupErrorLine(new Error(""))],
+  ])("finds no reason in %s, so the parent shows the raw output", (_label, stderr) => {
+    expect(renderSetupFailureFrom(stderr)).toBeUndefined();
+  });
+
+  it("reads back the result line the worker writes", () => {
+    const result = { executablePath: "/chrome", source: "cache" };
+
+    expect(renderSetupResultFrom(`noise\n${renderSetupResultLine(result)}`)).toEqual(result);
+    expect(renderSetupResultFrom("noise only")).toBeUndefined();
   });
 });

@@ -3,9 +3,9 @@ import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager
 import { lintProject } from "./utils/lintProject.js";
 import { killOrphanedProcesses } from "./utils/orphanCleanup.js";
 import {
-  RENDER_SETUP_RESULT_PREFIX,
   installRenderSetupSignalHandlers,
   renderSetupErrorLine,
+  renderSetupResultLine,
 } from "./renderSetupWorkerLifecycle.js";
 
 const mode = process.argv[2];
@@ -39,7 +39,7 @@ async function runMode(): Promise<unknown> {
 
 try {
   const result = await runMode().finally(disposeSignalHandlers);
-  process.stdout.write(RENDER_SETUP_RESULT_PREFIX + JSON.stringify(result) + "\n");
+  process.stdout.write(renderSetupResultLine(result));
 } catch (error) {
   process.stderr.write(renderSetupErrorLine(error), () => {
     throw error;
