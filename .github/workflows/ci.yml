@@ -950,7 +950,7 @@ jobs:
                   console.log(`- ${process.argv[2]} attempt ${a.attempt}: interaction p95 ${a.interactionP95Ms.toFixed(1)}/${b.interactionP95Ms} ms, frame p95 ${a.frameIntervalP95Ms.toFixed(1)}/${b.frameIntervalP95Ms} ms, ${a.passingRuns}/${a.runs.length} runs, ${a.passed ? "pass" : "fail"}`);
                 const c = e.againstBase;
                 if (c)
-                  console.log(`- ${process.argv[2]} against base on this runner: interaction p95 ${c.head.interactionP95Ms.toFixed(1)} vs ${c.base.interactionP95Ms.toFixed(1)} ms, steps over budget ${c.interactions.head} vs ${c.interactions.base} (allowed excess ${c.interactions.allowedExcess.toFixed(1)}), ${c.passed ? "pass" : "fail"}`);
+                  console.log(`- ${process.argv[2]} against base on this runner: ${c.summary}`);
               ' "/tmp/timeline-gate-${arm}.json" "$arm" || echo "- ${arm}: no evidence"
             done
           } >> "$GITHUB_STEP_SUMMARY"

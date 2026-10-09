@@ -28,6 +28,7 @@ import { platform, arch } from "node:os";
 import { launchStudioChrome } from "./chrome-executable.mjs";
 import {
   attemptPassed,
+  describeAgainstBase,
   gatePassed,
   judgeAgainstBase,
   judgeResponsiveness,
@@ -427,8 +428,9 @@ async function measureAgainstBase(budgets, limits) {
     }
   }
   const verdict = judgeAgainstBase(runs.head, runs.base, limits);
-  logAgainstBase(verdict);
-  return { rounds: BASE_COMPARISON_ROUNDS, ...verdict, runs };
+  const summary = describeAgainstBase(verdict);
+  console.error(`timeline gate ${ROW_VIRTUALIZATION} against base: ${summary}`);
+  return { rounds: BASE_COMPARISON_ROUNDS, ...verdict, summary, runs };
 }
 
 async function measureFreshStudio(url, budgets) {
@@ -441,18 +443,6 @@ async function measureFreshStudio(url, budgets) {
   } finally {
     await browser.close();
   }
-}
-
-function logAgainstBase(verdict) {
-  console.error(
-    `timeline gate ${ROW_VIRTUALIZATION} against base: interaction p95 ` +
-      `${verdict.head.interactionP95Ms.toFixed(1)} vs ${verdict.base.interactionP95Ms.toFixed(1)} ms, ` +
-      `steps over budget ${verdict.interactions.head} vs ${verdict.interactions.base} ` +
-      `(allowed excess ${verdict.interactions.allowedExcess.toFixed(1)}), ` +
-      `a frame later ${verdict.interactions.frameLater.head} vs ${verdict.interactions.frameLater.base}, ` +
-      `dropped frames ${verdict.frameIntervals.head} vs ${verdict.frameIntervals.base}, ` +
-      `${verdict.passed ? "PASS" : "FAIL"}`,
-  );
 }
 
 async function openStudio(browser, url) {

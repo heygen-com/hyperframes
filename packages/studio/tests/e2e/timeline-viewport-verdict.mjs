@@ -74,7 +74,7 @@ function overBudgetExcess(headValues, baseValues, limitMs) {
     over(headValues, limitMs + ONE_FRAME_MS),
     over(baseValues, limitMs + ONE_FRAME_MS),
   );
-  return { ...atBudget, frameLater, slower: atBudget.slower || frameLater.slower };
+  return { atBudget, frameLater, slower: atBudget.slower || frameLater.slower };
 }
 
 /**
@@ -102,6 +102,20 @@ export function judgeAgainstBase(headRuns, baseRuns, limits) {
     frameIntervals,
     passed: !interactions.slower && !frameIntervals.slower,
   };
+}
+
+/** One line for the log and the CI step summary: head vs base, the counts behind the verdict, and the verdict. */
+export function describeAgainstBase({ head, base, interactions, frameIntervals, passed }) {
+  const pair = (count, name) =>
+    `${name} ${count.head} vs ${count.base} (allowed excess ${count.allowedExcess.toFixed(1)})`;
+  return [
+    `interaction p95 ${head.interactionP95Ms.toFixed(1)} vs ${base.interactionP95Ms.toFixed(1)} ms`,
+    pair(interactions.atBudget, "steps over budget"),
+    pair(interactions.frameLater, "a frame later"),
+    pair(frameIntervals.atBudget, "dropped frames"),
+    pair(frameIntervals.frameLater, "two dropped"),
+    passed ? "pass" : "fail",
+  ].join(", ");
 }
 
 /** A failed timing attempt is measured once more, so one bad stretch of a shared runner cannot fail the gate alone. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../../src/player/lib/timelineViewportBudgets";
 import {
   attemptPassed,
+  describeAgainstBase,
   gatePassed,
   judgeAgainstBase,
   judgeResponsiveness,
@@ -134,6 +135,13 @@ describe("judgeAgainstBase", () => {
       };
     });
 
+  // The base's 40 late steps, each made 200 ms on the head.
+  const lateStepsAt200 = () =>
+    measured(40).map((run) => ({
+      ...run,
+      interactions: run.interactions.map((value) => (value > 58.3 ? 200 : value)),
+    }));
+
   it("fails a head slower than its base even where this comparison puts it under the budget", () => {
     const verdict = judgeAgainstBase(measured(31), measured(0), limits);
     expect(verdict.head.passed).toBe(true);
@@ -153,20 +161,27 @@ describe("judgeAgainstBase", () => {
   it("fails a head that misses the budget on more steps than its base", () => {
     expect(judgeAgainstBase(measured(40), measured(2), limits)).toMatchObject({
       passed: false,
-      interactions: { head: 40, base: 2, slower: true },
+      interactions: { atBudget: { head: 40, base: 2 }, slower: true },
     });
     expect(judgeAgainstBase(measured(90), measured(40), limits).passed).toBe(false);
   });
 
   it("fails a head that makes the base's late steps a frame later, with the same count over budget", () => {
-    const later = measured(40).map((run) => ({
-      ...run,
-      interactions: run.interactions.map((value) => (value > 58.3 ? 200 : value)),
-    }));
-    expect(judgeAgainstBase(later, measured(40), limits)).toMatchObject({
+    expect(judgeAgainstBase(lateStepsAt200(), measured(40), limits)).toMatchObject({
       passed: false,
-      interactions: { head: 40, base: 40, frameLater: { head: 40, base: 0, slower: true } },
+      interactions: {
+        atBudget: { head: 40, base: 40, slower: false },
+        frameLater: { head: 40, base: 0, slower: true },
+      },
     });
+  });
+
+  it("describes the counts behind a verdict, including the frame-later ones", () => {
+    expect(describeAgainstBase(judgeAgainstBase(lateStepsAt200(), measured(40), limits))).toBe(
+      "interaction p95 200.0 vs 66.7 ms, steps over budget 40 vs 40 (allowed excess 26.8), " +
+        "a frame later 40 vs 0 (allowed excess 19.0), dropped frames 0 vs 0 (allowed excess 0.0), " +
+        "two dropped 0 vs 0 (allowed excess 0.0), fail",
+    );
   });
 
   it("fails on dropped frames alone", () => {
