@@ -1,12 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
+import { cpus, totalmem } from "os";
+import { getHeapStatistics } from "v8";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   calculateOptimalWorkers,
   computeWorkerSizing,
+  createPoolFailureHandler,
   distributeFrames,
   expectedFramesForTask,
   flagSilentWorkerExits,
   formatWorkerFailure,
   isFfmpegInfrastructureFailure,
+  isPoolFatalWorkerFailure,
   selectVerifySampleIndicesForTask,
   selectWorkerDiagnostics,
   shouldDisableBrowserPoolForParallelWorker,
@@ -17,6 +21,7 @@ import {
   type WorkerResult,
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
+import { CaptureFailure } from "./captureFailure.js";
 
 describe("parallel worker phase deadline", () => {
   it("fails a wedged operation with phase and browser diagnostics before the aggregate watchdog", async () => {
@@ -125,7 +130,43 @@ describe("calculateOptimalWorkers", () => {
   });
 });
 
+vi.mock("os", async (importOriginal) => {
+  const os = await importOriginal<typeof import("os")>();
+  return { ...os, default: os, cpus: vi.fn(os.cpus), totalmem: vi.fn(os.totalmem) };
+});
+vi.mock("v8", async (importOriginal) => {
+  const v8 = await importOriginal<typeof import("v8")>();
+  return { ...v8, default: v8, getHeapStatistics: vi.fn(v8.getHeapStatistics) };
+});
+
 describe("computeWorkerSizing", () => {
+  afterEach(() => {
+    vi.mocked(cpus).mockRestore();
+    vi.mocked(totalmem).mockRestore();
+    vi.mocked(getHeapStatistics).mockRestore();
+  });
+
+  // The field case: a 24GB 14-core Mac, Node's default ~4GB heap, a long 1080x1920 project.
+  it("never auto-picks more workers than the V8 heap can feed", () => {
+    vi.mocked(cpus).mockReturnValue(
+      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
+    );
+    vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
+    vi.mocked(getHeapStatistics).mockReturnValue({
+      heap_size_limit: 4192 * 1024 ** 2,
+    } as ReturnType<typeof getHeapStatistics>);
+    const sizing = computeWorkerSizing(1300, undefined, { concurrency: "auto" });
+    expect(sizing.heapBasedWorkers).toBe(4);
+    expect(sizing.workers).toBe(4);
+    expect(sizing.boundBy).toBe("heap");
+    expect(sizing.exceedsHeapAdvisory).toBe(false);
+    expect(computeWorkerSizing(1300, 6, { concurrency: "auto" }).workers).toBe(6);
+    vi.mocked(getHeapStatistics).mockReturnValue({
+      heap_size_limit: 8192 * 1024 ** 2,
+    } as ReturnType<typeof getHeapStatistics>);
+    expect(computeWorkerSizing(1300, undefined, { concurrency: "auto" }).workers).toBe(5);
+  });
+
   it("matches calculateOptimalWorkers and reports every constraint", () => {
     const config = { concurrency: "auto" as const };
     const sizing = computeWorkerSizing(900, undefined, config);
@@ -510,5 +551,99 @@ describe("isFfmpegInfrastructureFailure", () => {
     expect(isFfmpegInfrastructureFailure(undefined)).toBe(false);
     expect(isFfmpegInfrastructureFailure("psnr broken")).toBe(false);
     expect(isFfmpegInfrastructureFailure(42)).toBe(false);
+  });
+});
+
+describe("isPoolFatalWorkerFailure", () => {
+  const failure = (kind: CaptureFailure["kind"]) => new CaptureFailure({ kind, message: kind });
+
+  it("keeps the disk path's tolerance: transient deaths are retried per worker, not pool-fatal", () => {
+    expect(isPoolFatalWorkerFailure(failure("transient_browser"), false)).toBe(false);
+    expect(isPoolFatalWorkerFailure(failure("protocol_timeout"), false)).toBe(false);
+    expect(isPoolFatalWorkerFailure(failure("cancelled"), false)).toBe(false);
+    expect(isPoolFatalWorkerFailure(failure("authoring"), false)).toBe(true);
+    expect(isPoolFatalWorkerFailure(failure("io"), false)).toBe(true);
+  });
+
+  it("makes every non-cancelled failure pool-fatal on the streaming path", () => {
+    // No per-worker retry exists there; the dead worker's frames are gone and
+    // its peers would otherwise park until the watchdog relabels the death.
+    expect(isPoolFatalWorkerFailure(failure("transient_browser"), true)).toBe(true);
+    expect(isPoolFatalWorkerFailure(failure("protocol_timeout"), true)).toBe(true);
+    expect(isPoolFatalWorkerFailure(failure("authoring"), true)).toBe(true);
+    // Cancelled means the pool is already aborting: nothing to propagate.
+    expect(isPoolFatalWorkerFailure(failure("cancelled"), true)).toBe(false);
+  });
+});
+
+describe("createPoolFailureHandler", () => {
+  const fatal = () => new CaptureFailure({ kind: "transient_browser", message: "Target closed" });
+
+  it("delivers the original failure to the hook before the peers are aborted", () => {
+    const peerController = new AbortController();
+    const seen: Array<{ failure: CaptureFailure; abortedYet: boolean }> = [];
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: {
+        onWorkerFailure: (failure) =>
+          seen.push({ failure, abortedYet: peerController.signal.aborted }),
+      },
+    });
+    const failure = fatal();
+    handler.onFailure(failure);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.failure).toBe(failure);
+    expect(seen[0]?.abortedYet).toBe(false);
+    expect(peerController.signal.aborted).toBe(true);
+    expect(peerController.signal.reason).toBe(failure);
+    expect(handler.firstFatalFailure()).toBe(failure);
+  });
+
+  it("still aborts the peers when the hook throws, and keeps the classified failure", () => {
+    const peerController = new AbortController();
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: {
+        onWorkerFailure: () => {
+          throw new Error("hook exploded");
+        },
+      },
+    });
+    const failure = fatal();
+    expect(() => handler.onFailure(failure)).not.toThrow();
+    expect(peerController.signal.aborted).toBe(true);
+    expect(peerController.signal.reason).toBe(failure);
+    expect(handler.firstFatalFailure()).toBe(failure);
+  });
+
+  it("ignores every failure after the first, which owns the abort reason", () => {
+    const peerController = new AbortController();
+    const hook = vi.fn();
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: { onWorkerFailure: hook },
+    });
+    const first = fatal();
+    handler.onFailure(first);
+    handler.onFailure(fatal());
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(peerController.signal.reason).toBe(first);
+  });
+
+  it("leaves the peers running for a cancellation on the streaming path", () => {
+    const peerController = new AbortController();
+    const hook = vi.fn();
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: { onWorkerFailure: hook },
+    });
+    handler.onFailure(new CaptureFailure({ kind: "cancelled", message: "aborted" }));
+    expect(hook).not.toHaveBeenCalled();
+    expect(peerController.signal.aborted).toBe(false);
+    expect(handler.firstFatalFailure()).toBeUndefined();
   });
 });

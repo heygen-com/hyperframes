@@ -51,7 +51,7 @@
  */
 
 import type { Browser, Frame, Page } from "puppeteer-core";
-import { loadHostPage } from "../runner.ts";
+import { loadHostPage, waitForPlayerAssetsReady } from "../runner.ts";
 import type { Metric } from "../perf-gate.ts";
 
 export type FpsScenarioOpts = {
@@ -120,6 +120,7 @@ async function runOnce(
   try {
     const page = await ctx.newPage();
     const { duration } = await loadHostPage(page, opts.origin, { fixture });
+    await waitForPlayerAssetsReady(page);
     const frame = await getFixtureFrame(page, fixture);
 
     // Install the wall-clock sampler in the iframe context. We use setInterval

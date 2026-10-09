@@ -61,6 +61,24 @@ const FIGMA_ROW = {
 const JUNK_ROW = { note: "not a media record" };
 const ALL_ROWS = [MEDIA_USE_ROW, IMAGE_ROW, ICON_ROW, FIGMA_ROW, JUNK_ROW];
 
+// The media-use generator itself, resolved from THIS file (cwd varies per test runner) and
+// handed over as a file:// URL so the specifier is valid on windows too.
+const genUrl = pathToFileURL(
+  join(
+    fileURLToPath(new URL(".", import.meta.url)),
+    "..",
+    "..",
+    "..",
+    "..",
+    "packages",
+    "cli",
+    "src",
+    "media-use",
+    "lib",
+    "index-gen.mjs",
+  ),
+).href;
+
 describe("regenerateIndex", () => {
   it("renders every writer's rows (media-use + figma) into one table", () => {
     const p = project();
@@ -77,23 +95,6 @@ describe("regenerateIndex", () => {
     // Covers duration, width×height, icon+transparent, no-dims, and junk-row
     // selection — the full set of branches both generators format.
     const ours = generateIndexContent(ALL_ROWS as Record<string, unknown>[]);
-    // Run the actual media-use generator on identical input. Resolve the
-    // script relative to THIS file (cwd varies per test runner) and hand it
-    // over as a file:// URL so the specifier is valid on windows too.
-    const genUrl = pathToFileURL(
-      join(
-        fileURLToPath(new URL(".", import.meta.url)),
-        "..",
-        "..",
-        "..",
-        "..",
-        "skills",
-        "media-use",
-        "scripts",
-        "lib",
-        "index-gen.mjs",
-      ),
-    ).href;
     const script = `
       import { generateIndexContent } from ${JSON.stringify(genUrl)};
       const rows = ${JSON.stringify(ALL_ROWS)};
@@ -102,6 +103,25 @@ describe("regenerateIndex", () => {
     const theirs = execFileSync("node", ["--input-type=module", "-e", script], {
       encoding: "utf8",
     });
+    expect(ours).toBe(theirs);
+  });
+
+  it("lists only a path's newest record, the same rows media-use's writer picks", () => {
+    const p = project();
+    const regenerated = { ...MEDIA_USE_ROW, description: "calm underscore" };
+    for (const row of [MEDIA_USE_ROW, FIGMA_ROW, regenerated]) {
+      appendFileSync(manifestPath(p), JSON.stringify(row) + "\n");
+    }
+    const ours = regenerateIndex(p);
+    const script = `
+      import { regenerateIndex } from ${JSON.stringify(genUrl)};
+      process.stdout.write(regenerateIndex(${JSON.stringify(p)}));
+    `;
+    const theirs = execFileSync("node", ["--input-type=module", "-e", script], {
+      encoding: "utf8",
+    });
+    expect(ours).toContain("calm underscore");
+    expect(ours).not.toContain("upbeat tech launch");
     expect(ours).toBe(theirs);
   });
 });

@@ -14,6 +14,14 @@ import {
   seekCompositionTimeline,
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
+import {
+  isClipVisibleAt,
+  isInClipWindow,
+  readElementRateSpec,
+  sourceTimeAt,
+  timeAtSourceTime,
+  type RateSpec,
+} from "@hyperframes/core";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -24,9 +32,11 @@ import { formatLintFindings } from "../utils/lintFormat.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
-import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { runCancellableProcess } from "../utils/cancellableProcess.js";
+import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
+import { loadOptionalPackage } from "../utils/optionalPackages.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
@@ -73,28 +83,24 @@ export function formatSnapshotTimestamp(time: number): string {
   return `${Number(time.toFixed(3))}s`;
 }
 
-/** Keep an exact clip-end snapshot aligned with the renderer's inclusive media
- * window. This intentionally differs from the live player's exclusive-end
- * visibility so an explicit end-boundary review does not become blank. FFmpeg
- * cannot decode at a source's exclusive duration, so sample one nominal 30fps
- * frame inside the source. This also clamps clips whose configured media window
- * extends beyond the source. An infinite clip duration intentionally never
- * enters the end-boundary branch. */
+/** Shows media by the runtime's visibility rule. A clip held at the composition end, or past the end of a source
+ * shorter than its slot, samples one nominal 30fps frame inside the source; FFmpeg has no frame at or past its end. */
 export function resolveSnapshotVideoFrameTime(input: {
   globalTime: number;
   clipStart: number;
   clipDuration: number;
   relativeTime: number;
   sourceDuration: number;
+  compositionDuration: number;
 }): number | null {
-  const { globalTime, clipStart, clipDuration, relativeTime, sourceDuration } = input;
+  const { globalTime, clipStart, clipDuration, sourceDuration, compositionDuration } = input;
   const clipEnd = clipStart + clipDuration;
-  const clipEndTolerance = 1e-9;
-  if (globalTime < clipStart || globalTime > clipEnd + clipEndTolerance || relativeTime < 0)
-    return null;
-
-  const atClipEnd = Math.abs(globalTime - clipEnd) <= clipEndTolerance;
-  if (!atClipEnd) return relativeTime;
+  if (!isClipVisibleAt(globalTime, clipStart, clipEnd, compositionDuration)) return null;
+  const relativeTime =
+    globalTime < clipStart ? Math.max(0, input.relativeTime) : input.relativeTime;
+  if (relativeTime < 0) return null;
+  const pastSource = sourceDuration > 0 && relativeTime >= sourceDuration;
+  if (isInClipWindow(globalTime, clipStart, clipEnd) && !pastSource) return relativeTime;
 
   const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
@@ -109,16 +115,22 @@ export function resolveSnapshotVideoClipStart(input: {
   return input.runtimeResolvedStart ?? input.authoredStart;
 }
 
-/** Match runtime/render timing: authored data-playback-rate wins over the
- * browser default, then the effective rate is clamped to the supported range. */
-export function resolveSnapshotVideoPlaybackRate(input: {
+/** Match runtime/render timing: a `rate` lane in data-automation wins, then the authored
+ * data-playback-rate, then the browser default, all through the runtime's own reader. */
+export function resolveSnapshotVideoRateSpec(input: {
   authoredRate: string | undefined;
+  authoredAutomation?: string | undefined;
   defaultRate: number;
-}): number {
+}): RateSpec {
   const authoredRate = Number.parseFloat(input.authoredRate ?? "");
-  const rawRate =
-    Number.isFinite(authoredRate) && authoredRate > 0 ? authoredRate : input.defaultRate;
-  return Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+  const attrs: Record<string, string | undefined> = {
+    "data-playback-rate":
+      Number.isFinite(authoredRate) && authoredRate > 0
+        ? input.authoredRate
+        : String(input.defaultRate),
+    "data-automation": input.authoredAutomation,
+  };
+  return readElementRateSpec({ getAttribute: (name) => attrs[name] ?? null });
 }
 
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
@@ -128,39 +140,203 @@ export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   );
 }
 
-/**
- * Extract a single frame from a video file at `timeSeconds` via FFmpeg.
- * Used to work around Chrome-headless's inability to reliably seek
- * <video> elements during snapshot capture.
- */
-async function extractVideoFrameToBuffer(
+interface SnapshotCompositePage {
+  evaluate<T>(callback: () => T): Promise<Awaited<T>>;
+  screenshot(options: {
+    type: "jpeg";
+    quality: number;
+    clip: { x: number; y: number; width: number; height: number };
+  }): Promise<Uint8Array>;
+}
+
+/** Recapture canvas composites once the decoded video overlays have been injected. */
+export async function recaptureSnapshotComposite(page: SnapshotCompositePage): Promise<void> {
+  const hasPageComposite = await page.evaluate(async () => {
+    const runtimeWindow = window as Window & {
+      __hf_page_composite_prepare?: () => Promise<boolean>;
+      __hf_page_composite_resolve?: () => boolean;
+    };
+    if (typeof runtimeWindow.__hf_page_composite_resolve !== "function") return false;
+    await runtimeWindow.__hf_page_composite_prepare?.();
+    return true;
+  });
+  if (hasPageComposite) {
+    // The 1×1 screenshot forces Chrome to publish updated subtree paint records
+    // after injection, so resolve can consume them without a fixed delay.
+    await page.screenshot({
+      type: "jpeg",
+      quality: 1,
+      clip: { x: 0, y: 0, width: 1, height: 1 },
+    });
+    await page.evaluate(() => {
+      const runtimeWindow = window as Window & {
+        __hf_page_composite_resolve?: () => boolean;
+      };
+      runtimeWindow.__hf_page_composite_resolve?.();
+    });
+  }
+}
+
+export function containingSourceFrameIndex(timestamps: readonly number[], time: number): number {
+  if (!Number.isFinite(time)) return -1;
+  const tolerance = 16 * Number.EPSILON * Math.max(1, Math.abs(time));
+  let index = -1;
+  for (const [i, timestamp] of timestamps.entries()) {
+    if (timestamp > time + tolerance) break;
+    index = i;
+  }
+  return index;
+}
+
+/** Keyframe seek plus the decoded-time threshold that selects the frame containing `time`, or null. */
+async function probeContainingSourceFrameSeek(
+  videoPath: string,
+  time: number,
+  holdLastFrame: boolean,
+): Promise<{ seek?: number; select?: number } | null> {
+  const ffprobe = findFFprobe();
+  // Without ffprobe, fall back to a plain seek: the first frame at or after `time`.
+  if (!ffprobe) return { seek: time };
+  // Packet timestamps need no decode, so a late sample costs a demux, not a decode from the start.
+  const probe = async (
+    readIntervals: string,
+    entries: string,
+  ): Promise<Record<string, unknown> | null> => {
+    try {
+      const { stdout } = await runCancellableProcess(
+        ffprobe,
+        [
+          ...["-v", "error", "-select_streams", "v:0", "-read_intervals", readIntervals],
+          ...["-show_entries", entries, "-of", "json", "--", videoPath],
+        ],
+        { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
+      );
+      const parsed: unknown = JSON.parse(stdout);
+      return typeof parsed === "object" && parsed !== null
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      // An unreadable source blanks this one video, as a failed ffmpeg extraction does.
+      return null;
+    }
+  };
+  const data = await probe("%+#1", "stream=time_base,start_pts:format=start_time,duration");
+  if (data === null || !Array.isArray(data.streams)) return null;
+  const stream: unknown = data.streams[0];
+  if (
+    typeof stream !== "object" ||
+    stream === null ||
+    !("time_base" in stream) ||
+    typeof stream.time_base !== "string"
+  )
+    return null;
+  const [numerator, denominator] = stream.time_base.split("/");
+  const timeBase = Number(numerator) / Number(denominator);
+  if (!Number.isFinite(timeBase) || timeBase <= 0) return null;
+  const format = "format" in data ? data.format : null;
+  const start =
+    typeof format === "object" && format !== null && "start_time" in format
+      ? Number(format.start_time)
+      : 0;
+  const duration =
+    typeof format === "object" && format !== null && "duration" in format
+      ? Number(format.duration)
+      : NaN;
+  if (!holdLastFrame && Number.isFinite(duration) && time >= duration) return null;
+  const formatStart = Number.isFinite(start) ? start : 0;
+  // format.start_time is rounded to microseconds; when the video sets it, use its exact start_pts.
+  const startPts =
+    "start_pts" in stream && typeof stream.start_pts === "number" ? stream.start_pts : NaN;
+  const startTicks =
+    Math.abs(startPts * timeBase - formatStart) <= 1e-6 ? startPts : formatStart / timeBase;
+  // An absolute end: edit-list preroll packets start before the video, so a relative window can stop short.
+  const packetData = await probe(`%${startTicks * timeBase + time + 1}`, "packet=pts,dts,flags");
+  if (packetData === null || !Array.isArray(packetData.packets)) return null;
+  const packets: { pts: number; dts: number; key: boolean }[] = [];
+  for (const packet of packetData.packets) {
+    if (typeof packet !== "object" || packet === null) return null;
+    const pts = "pts" in packet ? packet.pts : "dts" in packet ? packet.dts : undefined;
+    if (typeof pts !== "number") return null;
+    const dts = "dts" in packet && typeof packet.dts === "number" ? packet.dts : pts;
+    const key = "flags" in packet && typeof packet.flags === "string" && packet.flags.includes("K");
+    packets.push({ pts: (pts - startTicks) * timeBase, dts: (dts - startTicks) * timeBase, key });
+  }
+  // Packets arrive in decode order; B-frames make that differ from presentation order.
+  const timestamps = packets.map((packet) => packet.pts).sort((a, b) => a - b);
+  // Before the video's first frame (audio leads it), hold that frame, as the engine does.
+  const index = Math.max(0, containingSourceFrameIndex(timestamps, time));
+  if (timestamps.length === 0 || !Number.isFinite(time)) return null;
+  const frame = timestamps[index]!;
+  const previous = timestamps[index - 1] ?? frame - 0.001;
+  const mid = (previous + frame) / 2;
+  // Demuxers land on a keyframe of their choosing (MPEG-TS often a later one), so observe where a
+  // seek lands; a seek to exactly that keyframe trims its leading frames, so it is `start_t`.
+  const ffmpeg = findFFmpeg();
+  const landing = async (seek: number) => {
+    const raw = ffmpeg ? await probeSeekLanding(ffmpeg, videoPath, seek) : null;
+    return raw === null ? null : raw - startTicks * timeBase;
+  };
+  const candidates = packets.filter(
+    (packet) => packet.key && packet.pts > 0 && packet.pts <= frame,
+  );
+  for (const candidate of candidates.reverse().slice(0, 3)) {
+    const landed = await landing(candidate.pts);
+    if (landed === null) break;
+    if (landed <= 0 || landed > frame) continue;
+    const again = Math.abs(landed - candidate.pts) < 1e-6 ? landed : await landing(landed);
+    if (again !== null && Math.abs(again - landed) < 1e-6)
+      return { seek: landed, select: mid - landed };
+  }
+  // No seek: the first frame FFmpeg emits is the first one at or after the file start.
+  return { select: mid - (timestamps.find((t) => t >= 0) ?? frame) };
+}
+
+/** Raw stream time of the packet an input seek to `seek` lands on, read without decoding. */
+async function probeSeekLanding(
+  ffmpeg: string,
+  videoPath: string,
+  seek: number,
+): Promise<number | null> {
+  try {
+    const { stdout } = await runCancellableProcess(
+      ffmpeg,
+      [
+        ...["-v", "error", "-copyts", "-noaccurate_seek", "-ss", String(seek), "-i", videoPath],
+        ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
+      ],
+      { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 1024 * 1024 },
+    );
+    const base = /^#tb 0: (\d+)\/(\d+)/m.exec(stdout);
+    const row = /^0,\s*-?\d+,\s*(-?\d+),/m.exec(stdout);
+    if (!base || !row) return null;
+    return (Number(row[1]) * Number(base[1])) / Number(base[2]);
+  } catch {
+    return null;
+  }
+}
+
+export async function extractVideoFrameToBuffer(
   videoPath: string,
   timeSeconds: number,
   useVp9AlphaDecoder = false,
-  accurateSeek = false,
+  holdLastFrame = false,
 ): Promise<Buffer | null> {
   const tmp = mkdtempSync(join(tmpdir(), "hf-snapshot-frame-"));
   const outPath = join(tmp, "frame.png");
   try {
     const ffmpegPath = requireSnapshotFfmpeg(findFFmpeg());
-    // `-ss` before `-i` performs a fast keyframe seek; adequate for snapshot accuracy
-    // (±1 frame) and orders of magnitude faster than the decode-and-scan alternative.
-    // `accurateSeek` puts `-ss` after `-i` (decode from the start) for frame-exact
-    // reference pairs, where ±1 frame would read as a real mismatch.
-    const args = ["-hide_banner", "-loglevel", "error"];
-    if (useVp9AlphaDecoder) {
-      args.push("-c:v", "libvpx-vp9");
-    }
-    const seek = ["-ss", String(Math.max(0, timeSeconds))];
-    args.push(
-      ...(accurateSeek ? ["-i", videoPath, ...seek] : [...seek, "-i", videoPath]),
-      "-frames:v",
-      "1",
-      "-q:v",
-      "2",
-      "-y",
-      outPath,
+    const seek = await probeContainingSourceFrameSeek(
+      videoPath,
+      Math.max(0, timeSeconds),
+      holdLastFrame,
     );
+    if (seek === null) return null;
+    const args = ["-hide_banner", "-loglevel", "error"];
+    if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
+    if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
+    args.push("-i", videoPath, "-map", "0:v:0");
+    if (seek.select !== undefined) args.push("-vf", `select=gte(t-start_t\\,${seek.select})`);
+    args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
     const result = await runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
     if (result.code !== 0 || result.timedOut || !existsSync(outPath)) return null;
     return readFileSync(outPath);
@@ -431,7 +607,7 @@ async function captureSnapshots(
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
 
-        await seekCompositionTimeline(page, time);
+        await seekCompositionTimeline(page, time, { exactTime: true });
 
         if (cameraExpr) await page.evaluate(cameraExpr);
 
@@ -453,6 +629,7 @@ async function captureSnapshots(
                 src: v.currentSrc || v.src,
                 authoredStart,
                 authoredRate: v.dataset.playbackRate,
+                authoredAutomation: v.dataset.automation,
                 defaultRate: v.defaultPlaybackRate,
                 runtimeResolvedStart:
                   runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
@@ -466,15 +643,19 @@ async function captureSnapshots(
               };
             });
           });
+          const compositionDuration = duration;
           const active = candidates.flatMap((candidate) => {
             const start = resolveSnapshotVideoClipStart(candidate);
-            const playbackRate = resolveSnapshotVideoPlaybackRate(candidate);
+            const playbackRate = resolveSnapshotVideoRateSpec(candidate);
             const duration =
               candidate.authoredDuration ??
               (candidate.srcDuration > 0
-                ? Math.max(0, (candidate.srcDuration - candidate.mediaStart) / playbackRate)
+                ? Math.max(
+                    0,
+                    timeAtSourceTime(playbackRate, candidate.srcDuration - candidate.mediaStart),
+                  )
                 : Number.POSITIVE_INFINITY);
-            let relTime = (time - start) * playbackRate + candidate.mediaStart;
+            let relTime = sourceTimeAt(playbackRate, time - start) + candidate.mediaStart;
             if (
               candidate.loop &&
               candidate.srcDuration > candidate.mediaStart &&
@@ -491,6 +672,7 @@ async function captureSnapshots(
               clipDuration: duration,
               relativeTime: relTime,
               sourceDuration: candidate.srcDuration,
+              compositionDuration,
             });
             return frameTime === null
               ? []
@@ -534,6 +716,7 @@ async function captureSnapshots(
               ffmpegInput,
               Math.max(0, v.relTime),
               useVp9AlphaDecoder,
+              v.srcDuration > 0 && v.relTime >= v.srcDuration - 1,
             );
             if (!png) continue;
             updates.push({
@@ -564,6 +747,8 @@ async function captureSnapshots(
             );
           }
         }
+
+        await recaptureSnapshotComposite(page);
 
         const timeLabel = formatSnapshotTimestamp(time);
         const index = String(i).padStart(2, "0");
@@ -596,7 +781,7 @@ async function captureSnapshots(
         if (opts.against) {
           // Frame-exact reference frame beside the render, so a rebuild can be
           // checked against its footage without hand-rolled ffmpeg + montage.
-          const refPng = await extractVideoFrameToBuffer(opts.against, time, false, true);
+          const refPng = await extractVideoFrameToBuffer(opts.against, time);
           if (!refPng) {
             console.error(
               `   ${c.warn("⚠")} --against has no frame at ${timeLabel} — reference pair skipped`,
@@ -654,7 +839,8 @@ export default defineCommand({
     },
     at: {
       type: "string",
-      description: "Comma-separated timestamps in seconds (e.g., --at 3.0,10.5,18.0)",
+      description:
+        "Comma-separated timestamps in seconds (e.g., --at 3.0,10.5,18.0). Each is captured at that exact instant, not snapped to a frame.",
     },
     timeout: {
       type: "string",
@@ -820,8 +1006,10 @@ export default defineCommand({
             sheets.length === 1 ? "contact-sheet.jpg" : `contact-sheet-1..${sheets.length}.jpg`;
           console.log(`   ${c.dim(label)} (grid view for AI review)`);
         }
-      } catch {
-        /* non-critical */
+      } catch (err) {
+        console.warn(
+          `   ${c.warn("⚠")} Contact sheet skipped: ${normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
+        );
       }
 
       // Gemini vision descriptions. Runs by default — see describeArg
@@ -834,7 +1022,7 @@ export default defineCommand({
             console.log(`   ${c.dim("--describe: GEMINI_API_KEY not set, skipping")}`);
           } else if (paths.length > 0) {
             console.log(`   ${c.dim("Describing frames with Gemini vision...")}`);
-            const { GoogleGenAI } = await import("@google/genai");
+            const { GoogleGenAI } = await loadOptionalPackage("@google/genai", "--describe");
             const ai = new GoogleGenAI({ apiKey: geminiKey });
             const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
             const customQuestion =
@@ -915,7 +1103,7 @@ export default defineCommand({
           }
         } catch (descErr) {
           const msg = normalizeErrorMessage(descErr);
-          console.log(`   ${c.dim(`--describe failed: ${msg.slice(0, 80)}`)}`);
+          console.log(`   ${c.dim(`--describe failed: ${msg}`)}`);
         }
       }
     } catch (err) {

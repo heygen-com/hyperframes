@@ -31,17 +31,32 @@ describe("inert region scanning", () => {
     `<!-- <script>${media} -->`,
     `<script><!-- ${media}</script>`,
     `<style><script>${media}</style>`,
-  ])("preserves the existing complete-region boundaries in %j", (region) => {
-    const result = compileTimingAttrs(region + media);
-    expect(result).toEqual({ html: region + compileTimingAttrs(media).html, unresolved: [] });
-    expect(extractResolvedMedia(region + media)).toEqual(extractResolvedMedia(media));
+  ])("matches browser-visible media boundaries in %j", (region) => {
+    const html = region + media;
+    const dom = new JSDOM(html);
+    const visible = [...dom.window.document.querySelectorAll("video")].map((el) => el.id);
+    dom.window.close();
+    expect(extractResolvedMedia(html).map((el) => el.id)).toEqual(visible);
+    const compiled = new JSDOM(compileTimingAttrs(html).html);
+    expect(
+      [...compiled.window.document.querySelectorAll("video")].map((el) =>
+        el.getAttribute("data-end"),
+      ),
+    ).toEqual(visible.map(() => "3"));
+    compiled.window.close();
   });
 
   it.each(["<!--", "<script>", "<style>", "<scripture>", "<stylesheet>"])(
-    "keeps media outside a complete inert region after %j visible",
+    "matches browser-visible media after an unclosed %j prefix",
     (prefix) => {
-      expect(compileTimingAttrs(prefix + media).html).toBe(prefix + compileTimingAttrs(media).html);
-      expect(extractResolvedMedia(prefix + media)).toEqual(extractResolvedMedia(media));
+      const html = prefix + media;
+      const dom = new JSDOM(html);
+      const visible = [...dom.window.document.querySelectorAll("video")].map((el) => el.id);
+      dom.window.close();
+      expect(extractResolvedMedia(html).map((el) => el.id)).toEqual(visible);
+      expect(compileTimingAttrs(html).html).toBe(
+        visible.length ? prefix + compileTimingAttrs(media).html : html,
+      );
     },
   );
 
@@ -78,10 +93,12 @@ describe("inert region scanning", () => {
       const unclosed = prefix.repeat(100_000);
       const hidden = prefix === "<!--" ? `<style>${media}</style>` : `<!--${media}-->`;
       expect(compileTimingAttrs(unclosed + hidden + media)).toEqual({
-        html: unclosed + hidden + compileTimingAttrs(media).html,
+        html: unclosed + hidden + (prefix === "<!--" ? media : compileTimingAttrs(media).html),
         unresolved: [],
       });
-      expect(extractResolvedMedia(unclosed + hidden + media)).toEqual(extractResolvedMedia(media));
+      expect(extractResolvedMedia(unclosed + hidden + media)).toEqual(
+        prefix === "<!--" ? [] : extractResolvedMedia(media),
+      );
     },
   );
 
@@ -105,14 +122,17 @@ describe("opening tag scanning", () => {
   );
 
   it.each(["target", "a>b", "a<b", "a.b[0]"])(
-    "preserves substring-ID matches and delimiter characters for %j",
+    "matches only the actual ID while retaining delimiter characters for %j",
     (id) => {
-      const html = `<video data-id="${id}" data-start="1" data-duration="bad" data-end="4">`;
+      const prefixed = `<video data-id="${id}" data-start="1" data-duration="bad" data-end="4">`;
+      expect(injectDurations(prefixed, [{ id, duration: 3 }])).toBe(prefixed);
+      expect(clampDurations(prefixed, [{ id, duration: 3 }])).toBe(prefixed);
+      const html = `<video id="${id}" data-start="1" data-duration="bad" data-end="4">`;
       expect(injectDurations(html, [{ id, duration: 3 }])).toBe(
-        `<video data-id="${id}" data-start="1" data-duration="3" data-end="4">`,
+        `<video id="${id}" data-start="1" data-duration="3" data-end="4">`,
       );
       expect(clampDurations(html, [{ id, duration: 3 }])).toBe(
-        `<video data-id="${id}" data-start="1" data-duration="3" data-end="4">`,
+        `<video id="${id}" data-start="1" data-duration="3" data-end="4">`,
       );
     },
   );
@@ -166,14 +186,16 @@ describe("opening tag scanning", () => {
     ]);
   });
 
-  it("retains the existing first-greater-than boundary even inside a quoted value", () => {
+  it("preserves a quoted greater-than delimiter while compiling the complete tag", () => {
     const html = '<video title="a>b" data-duration="2">';
     const result = compileTimingAttrs(html);
     expect(result.html).toBe(
-      '<video title="a id="hf-video-0" data-start="0" data-hf-auto-start="" data-has-audio="true">b" data-duration="2">',
+      '<video title="a>b" data-duration="2" id="hf-video-0" data-start="0" data-hf-auto-start="" data-end="2" data-has-audio="true">',
     );
-    expect(result.unresolved.map((el) => el.id)).toEqual(["hf-video-0"]);
-    expect(extractResolvedMedia(html)).toEqual([]);
+    expect(result.unresolved).toEqual([]);
+    expect(extractResolvedMedia(result.html).map((el) => [el.id, el.duration])).toEqual([
+      ["hf-video-0", 2],
+    ]);
   });
 });
 
@@ -466,5 +488,31 @@ describe("shouldClampResolvedMediaDuration", () => {
   it("preserves an explicit video slot but keeps audio source-bounded", () => {
     expect(shouldClampResolvedMediaDuration("video", 5, 1)).toBe(false);
     expect(shouldClampResolvedMediaDuration("audio", 5, 1)).toBe(true);
+  });
+});
+
+describe("rate lane in compiled media", () => {
+  const lane = {
+    version: 1,
+    lanes: [
+      {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 3 },
+        ],
+      },
+    ],
+  };
+  const encodings = [
+    ["single-quoted JSON", `data-automation='${JSON.stringify(lane)}'`],
+    ["entity-encoded JSON", `data-automation="${JSON.stringify(lane).replace(/"/g, "&quot;")}"`],
+  ];
+
+  it.each(encodings)("hands a %s rate lane to the unresolved element", (_name, attr) => {
+    const { unresolved } = compileTimingAttrs(
+      `<video id="v" src="a.mp4" data-start="0" ${attr}></video>`,
+    );
+    expect(unresolved[0]?.playbackRate).toMatchObject({ target: "rate" });
   });
 });

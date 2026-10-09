@@ -15,7 +15,7 @@ const GUIDE_COLOR = "rgba(255, 68, 204, 0.85)";
 const SPACING_COLOR = "rgba(255, 68, 204, 0.6)";
 const SPACING_BG = "rgba(255, 68, 204, 0.15)";
 
-interface SnapGuideOverlayProps {
+export interface SnapGuideOverlayProps {
   snapGuidesRef: RefObject<SnapGuidesState | null>;
   /** Composition rect in overlay space — guide lines span exactly this rect. */
   compositionLeft: number;

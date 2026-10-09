@@ -8,6 +8,7 @@ import {
 import { VOLUME_RANGE } from "../audioAutomation.js";
 import { audioGroupOf, readAudioGroupVolume, resolveGroupElement } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
+import { createLevelTap, type LevelTap, type StereoLevel } from "./levelTap.js";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
 import { readElementPlaybackRate } from "./media.js";
@@ -133,6 +134,9 @@ function isBufferSource(
   return source.sourceKind === "buffer";
 }
 
+// A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
+const IDLE_SUSPEND_MS = 10000;
+
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
@@ -140,6 +144,8 @@ export class WebAudioTransport {
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
+  /** Preview volume and mute. Downstream of `_masterGain`; meters tap the program. */
+  private _monitorGain: GainNode | null = null;
   private _masterVolume = 1;
   private _masterMuted = false;
   // One shared bus per group id, lazily built the first time a member of that
@@ -150,6 +156,10 @@ export class WebAudioTransport {
     string,
     {
       input: GainNode;
+      /** Where the bus meets master; the level meter taps here. */
+      output: GainNode;
+      /** False once the group's element is gone from the document. */
+      isPresent(): boolean;
       /** Post-FX fader: `data-volume` plus the volume lane. */
       fader: GainNode;
       muteGain: GainNode;
@@ -162,6 +172,10 @@ export class WebAudioTransport {
       dispose(): void;
     }
   >();
+  // Level taps exist only between `startMetering()` and `stopMetering()`.
+  private _metering = false;
+  private _masterTap: LevelTap | null = null;
+  private _groupTaps = new Map<string, LevelTap>();
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
   // `_rate` composition-seconds per wallclock-second since.
@@ -170,17 +184,54 @@ export class WebAudioTransport {
   private _rate = 1;
   private _paused = true;
   private _playGeneration = 0;
+  // A running context renders silence nonstop, so a paused transport keeps it
+  // suspended unless a captured track is sounding on the idle route (scrub).
+  private _playingCaptured = new Set<HTMLMediaElement>();
+  private _suspendPending = false;
+  private _restTimer: ReturnType<typeof setTimeout> | null = null;
 
   async init(): Promise<boolean> {
     try {
       this._ctx = new AudioContext();
+      this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
-      this._masterGain.connect(this._ctx.destination);
+      this._monitorGain = this._ctx.createGain();
+      this._masterGain.connect(this._monitorGain);
+      this._monitorGain.connect(this._ctx.destination);
       this.applyMasterGain();
+      if (this._metering) this.attachMasterTap();
       return true;
     } catch {
       return false;
     }
+  }
+
+  private async wake(): Promise<void> {
+    if (!this._ctx || (this._ctx.state === "running" && !this._suspendPending)) return;
+    this._suspendPending = false;
+    await this._ctx.resume();
+  }
+
+  private rest(): void {
+    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    this._restTimer = null;
+    if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
+    this._restTimer = setTimeout(() => {
+      this._restTimer = null;
+      this.suspendIfIdle();
+    }, IDLE_SUSPEND_MS);
+  }
+
+  private suspendIfIdle(): void {
+    // `paused` is the truth; the load algorithm clears it without a "pause" event.
+    for (const el of this._playingCaptured) if (el.paused) this._playingCaptured.delete(el);
+    if (!this._ctx || !this._paused || this._suspendPending || this._playingCaptured.size > 0)
+      return;
+    this._suspendPending = true;
+    this._ctx.suspend().catch((err) => {
+      this._suspendPending = false;
+      swallow("webAudioTransport.suspend", err);
+    });
   }
 
   get context(): AudioContext | null {
@@ -304,6 +355,17 @@ export class WebAudioTransport {
     }
     const sourceNode = this._ctx.createMediaElementSource(el);
     this._mediaElementSources.set(el, sourceNode);
+    if (!el.paused) this._playingCaptured.add(el);
+    el.addEventListener("play", () => {
+      this._playingCaptured.add(el);
+      void this.wake();
+    });
+    const stopped = () => {
+      this._playingCaptured.delete(el);
+      this.rest();
+    };
+    el.addEventListener("pause", stopped);
+    el.addEventListener("emptied", stopped);
     return sourceNode;
   }
 
@@ -326,11 +388,12 @@ export class WebAudioTransport {
     if (generation !== this._playGeneration) return null;
 
     try {
-      if (this._ctx.state === "suspended") await this._ctx.resume();
+      await this.wake();
       if (generation !== this._playGeneration) return null;
 
       const sourceNode = this.acquireMediaElementSource(el);
       if (!sourceNode) return null;
+      sourceNode.disconnect();
 
       const safeRate = normalizeRate(rate);
       const gainNode = this._ctx.createGain();
@@ -454,6 +517,8 @@ export class WebAudioTransport {
 
     this._groups.set(groupId, {
       input,
+      output,
+      isPresent: () => resolveEl() !== null,
       fader,
       muteGain,
       fx,
@@ -485,7 +550,42 @@ export class WebAudioTransport {
         }
       },
     });
+    this.attachGroupTap(groupId, output);
     return input;
+  }
+
+  startMetering(): void {
+    this._metering = true;
+    this.attachMasterTap();
+    for (const [id, group] of this._groups) this.attachGroupTap(id, group.output);
+  }
+
+  stopMetering(): void {
+    this._metering = false;
+    this._masterTap?.dispose();
+    this._masterTap = null;
+    for (const tap of this._groupTaps.values()) tap.dispose();
+    this._groupTaps.clear();
+  }
+
+  readLevels(): { master: StereoLevel; groups: Record<string, StereoLevel> } {
+    const groups: Record<string, StereoLevel> = {};
+    for (const [id, tap] of this._groupTaps) {
+      if (this._groups.get(id)?.isPresent()) groups[id] = tap.read();
+    }
+    return { master: this._masterTap?.read() ?? { l: 0, r: 0 }, groups };
+  }
+
+  private attachMasterTap(): void {
+    if (this._ctx && this._masterGain && !this._masterTap) {
+      this._masterTap = createLevelTap(this._ctx, this._masterGain);
+    }
+  }
+
+  private attachGroupTap(id: string, output: GainNode): void {
+    if (this._metering && this._ctx && !this._groupTaps.has(id)) {
+      this._groupTaps.set(id, createLevelTap(this._ctx, output));
+    }
   }
 
   /**
@@ -562,7 +662,7 @@ export class WebAudioTransport {
     buffer: AudioBuffer,
     compositionStart: number,
     mediaStart: number,
-    compositionTime: number,
+    readCompositionTime: () => number,
     volume: number,
     generation: number,
     rate = 1,
@@ -572,10 +672,10 @@ export class WebAudioTransport {
     if (generation !== this._playGeneration) return null;
 
     try {
-      if (this._ctx.state === "suspended") {
-        await this._ctx.resume();
-      }
+      await this.wake();
       if (generation !== this._playGeneration) return null;
+      // Read after the wake: the clock kept running while the context resumed.
+      const compositionTime = readCompositionTime();
 
       const safeRate = normalizeRate(rate);
       const mediaRate = readElementPlaybackRate(el);
@@ -719,10 +819,16 @@ export class WebAudioTransport {
         // already stopped
       }
       if (isBufferSource(source)) source.el.muted = source.priorMuted;
-      else source.el.volume = source.priorVolume;
+      else {
+        source.el.volume = source.priorVolume;
+        // Captured, it has no native output; outside a play it sounds through the destination.
+        if (this._ctx) source.sourceNode.connect(this._ctx.destination);
+      }
     }
     this._activeSources = [];
     this._paused = true;
+    this._playGeneration += 1;
+    this.rest();
   }
 
   setVolume(volume: number): void {
@@ -760,11 +866,12 @@ export class WebAudioTransport {
   }
 
   private applyMasterGain(): void {
-    if (this._masterGain) this._masterGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
+    if (this._monitorGain)
+      this._monitorGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
   }
 
-  isActive(): boolean {
-    return this._activeSources.length > 0 && !this._paused;
+  ownsClock(): boolean {
+    return !this._paused && this._activeSources.some(isBufferSource);
   }
 
   /** Whether the transport currently plays THIS element (the runtime mutes it to
@@ -780,11 +887,16 @@ export class WebAudioTransport {
 
   destroy(): void {
     this.stopAll();
+    this.stopMetering();
     for (const group of this._groups.values()) group.dispose();
     this._groups.clear();
     this._bufferCache.clear();
     this._failedSrcs.clear();
     this._mediaElementSources = new WeakMap();
+    this._playingCaptured.clear();
+    this._suspendPending = false;
+    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    this._restTimer = null;
     if (this._ctx) {
       try {
         void this._ctx.close();
@@ -794,6 +906,7 @@ export class WebAudioTransport {
     }
     this._ctx = null;
     this._masterGain = null;
+    this._monitorGain = null;
     this._masterVolume = 1;
     this._masterMuted = false;
   }

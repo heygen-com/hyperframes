@@ -38,10 +38,12 @@ export {
 export { isStudioHoldSet } from "./gsapParser.js";
 export type { PropertyGroupName } from "./gsapConstants.js";
 export {
+  GSAP_DEFAULT_DURATION,
   PROPERTY_GROUPS,
   classifyPropertyGroup,
   classifyTweenPropertyGroup,
 } from "./gsapConstants.js";
+export { getObjectArrayKeyframeTiming } from "./gsapObjectArrayTiming.js";
 export { generateSpringEaseData, SPRING_PRESETS } from "./springEase.js";
 export type { SpringPreset } from "./springEase.js";
 export { parseGsapScriptAcorn as parseGsapScript } from "./gsapParserAcorn.js";

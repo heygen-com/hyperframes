@@ -68,16 +68,17 @@ const GSAP_WRITER_MIGRATION = Object.freeze({
   owner: "studio-foundations",
   deadline: "2026-09-30",
   graduationCriteria:
-    "Every operation has differential parity, the Acorn path imports no Recast runtime, and canary divergence is zero for the agreed soak window.",
+    "Acorn is the default writer. Recast is retained one watch window as HYPERFRAMES_GSAP_WRITER=recast, then deleted (spec 2026-09-17 §5).",
 });
 
 export function resolveGsapWriter(env: { HYPERFRAMES_GSAP_WRITER?: string }): "recast" | "acorn" {
-  const configured = env.HYPERFRAMES_GSAP_WRITER ?? "recast";
+  const configured = env.HYPERFRAMES_GSAP_WRITER ?? "acorn";
   if (configured === "recast" || configured === "acorn") return configured;
   throw new Error(`Invalid ${GSAP_WRITER_MIGRATION.flag}=${configured}; expected recast or acorn`);
 }
 
-export function acornDefaultBlockers(): GsapMutationType[] {
+/** Ops whose acorn/recast parity rests on behavioral tests, not a byte-diff oracle. */
+export function behavioralParityOps(): GsapMutationType[] {
   return (
     Object.entries(GSAP_MUTATION_CAPABILITIES) as Array<[GsapMutationType, GsapMutationCapability]>
   )
@@ -97,13 +98,13 @@ export function renderGsapMutationCapabilityReport(): string {
     "",
     `Owner: ${GSAP_WRITER_MIGRATION.owner}`,
     `Deadline: ${GSAP_WRITER_MIGRATION.deadline}`,
-    `Flag: \`${GSAP_WRITER_MIGRATION.flag}=recast|acorn\``,
+    `Flag: \`${GSAP_WRITER_MIGRATION.flag}=recast|acorn\` (default: acorn)`,
     "",
     "| Operation | Family | Acorn | Recast | Parity evidence |",
     "| --- | --- | --- | --- | --- |",
     ...rows,
     "",
-    `Default blockers: ${acornDefaultBlockers().join(", ") || "none"}`,
+    `Behavioral-only parity (no byte-diff oracle): ${behavioralParityOps().join(", ") || "none"}`,
     "",
   ].join("\n");
 }

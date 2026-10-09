@@ -20,7 +20,7 @@ import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 const execFileAsync = promisify(execFile);
 
 /** Max ports to scan before giving up. */
-const MAX_PORT_SCAN = 100;
+export const MAX_PORT_SCAN = 100;
 
 /** Localhost HTTP probe timeout — HyperFrames responds in <1ms, so 300ms is generous. */
 const PROBE_TIMEOUT_MS = 300;

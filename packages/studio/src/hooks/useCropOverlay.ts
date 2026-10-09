@@ -1,6 +1,9 @@
 import type { OverlayRect } from "../components/editor/domEditOverlayGeometry";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import { readElementCropInsets } from "../components/editor/domEditOverlayCrop";
+import {
+  isElementCropLifted,
+  readElementCropInsets,
+} from "../components/editor/domEditOverlayCrop";
 
 /** Selection-box crop hug: the outline that makes the selection box hug the
  *  element's committed inset crop. Crop is always-on (no mode) — the draggable
@@ -13,7 +16,10 @@ export function useCropOverlay(params: {
 }) {
   const { selection, overlayRect } = params;
 
-  const cropInsets = selection ? readElementCropInsets(selection.element) : null;
+  const cropInsets =
+    selection && !isElementCropLifted(selection.element)
+      ? readElementCropInsets(selection.element)
+      : null;
   const hasCropInsets = Boolean(
     cropInsets &&
     (cropInsets.top > 0 || cropInsets.right > 0 || cropInsets.bottom > 0 || cropInsets.left > 0),

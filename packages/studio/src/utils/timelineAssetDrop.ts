@@ -1,3 +1,5 @@
+import { encodeUrlPath } from "@hyperframes/parsers";
+export { buildTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
@@ -14,21 +16,6 @@ export function getTimelineAssetKind(assetPath: string): TimelineAssetKind | nul
   if (VIDEO_EXT.test(assetPath)) return "video";
   if (AUDIO_EXT.test(assetPath)) return "audio";
   return null;
-}
-
-export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<string>): string {
-  const baseName = assetPath.split("/").pop() ?? "asset";
-  const normalized = baseName
-    .replace(/\.[^.]+$/, "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toLowerCase();
-  const baseId = normalized || "asset";
-  const ids = new Set(existingIds);
-  if (!ids.has(baseId)) return baseId;
-  let suffix = 2;
-  while (ids.has(`${baseId}_${suffix}`)) suffix += 1;
-  return `${baseId}_${suffix}`;
 }
 
 export function resolveTimelineAssetSrc(targetPath: string, assetPath: string): string {
@@ -116,8 +103,10 @@ export function buildTimelineAssetInsertHtml(input: {
   track: number;
   zIndex: number;
   geometry?: { left: number; top: number; width: number; height: number };
+  /** Video only: true inserts `data-has-audio="true"` with no `muted`. Unknown or false stays muted. */
+  hasAudio?: boolean;
 }): string {
-  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${encodeUrlPath(input.assetPath)}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
   const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain; z-index: ${input.zIndex}`;
 
@@ -126,7 +115,10 @@ export function buildTimelineAssetInsertHtml(input: {
   }
 
   if (input.kind === "video") {
-    return `<video ${sharedAttrs} muted playsinline style="${visualStyles}"></video>`;
+    // `muted` and `data-has-audio="true"` are mutually exclusive by the lint
+    // contract (video_has_audio_but_muted): an audible drop takes the latter.
+    const audio = input.hasAudio ? 'data-has-audio="true"' : "muted";
+    return `<video ${sharedAttrs} ${audio} playsinline style="${visualStyles}"></video>`;
   }
 
   return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;
@@ -150,9 +142,13 @@ export function extendCompositionDurationIfNeeded(source: string, requiredEnd: n
  * reduce the furthest clip end (delete/trim). No-op when `contentEnd` is not > 0, so
  * an empty timeline keeps its declared duration instead of collapsing to 0.
  */
-export function setCompositionDurationToContent(source: string, contentEnd: number): string {
+export function setCompositionDurationToContent(
+  source: string,
+  contentEnd: number,
+  rootDuration?: number | null,
+): string {
   if (!Number.isFinite(contentEnd) || contentEnd <= 0) return source;
-  const rootDur = readRootCompositionDuration(source);
+  const rootDur = rootDuration === undefined ? readRootCompositionDuration(source) : rootDuration;
   if (rootDur == null) return source;
   const next = roundToCenti(contentEnd);
   if (rootDur === next) return source;

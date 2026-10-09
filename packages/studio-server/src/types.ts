@@ -1,5 +1,7 @@
 import type { CanvasResolution } from "@hyperframes/parsers";
 import type { RegistryItem } from "@hyperframes/core";
+import type { BundleOptions } from "@hyperframes/core/compiler";
+import type { ProjectHistory } from "./history/projectHistory.js";
 
 /** Resolved info about a single project. */
 export interface ResolvedProject {
@@ -17,6 +19,7 @@ export interface RenderJobState {
   stage?: string;
   outputPath: string;
   error?: string;
+  audioLoweredDb?: number;
   /**
    * Optional abort hook set by the adapter. The cancel route calls this to
    * stop an in-flight render; adapters that can't abort may omit it (the
@@ -106,14 +109,27 @@ export interface StudioApiAdapter {
   /** Resolve a project ID (or session ID) to its directory. Returns null if not found. */
   resolveProject(id: string): Promise<ResolvedProject | null> | ResolvedProject | null;
 
-  /** Bundle a project directory into a single HTML string. Returns null if unavailable. */
-  bundle(projectDir: string): Promise<string | null>;
+  /**
+   * Optional: the project's current history. A history refuses every call once its folder is replaced (a
+   * deleted `.hyperframes`, a new project there), so keep them in `historyCache`, which reopens. Else routes 404.
+   */
+  history?: (project: ResolvedProject) => Promise<ProjectHistory | null> | ProjectHistory | null;
 
-  /** Optional: cached signature for project files that should invalidate preview frame caches. */
+  /** Bundle a project directory into a single HTML string, forwarding `options` over the host's own. */
+  bundle(
+    projectDir: string,
+    options?: Pick<BundleOptions, "stampHfIds" | "onRead">,
+  ): Promise<string | null>;
+
+  /** Optional: a cached `createProjectSignature(dir)`; preview caching checks builds against it. */
   getProjectSignature?: (projectDir: string) => string;
+  invalidateProjectSignature?: (projectDir: string) => void;
 
   /** Lint a single HTML string. */
-  lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
+  lint(
+    html: string,
+    opts?: { filePath?: string; isSubComposition?: boolean },
+  ): Promise<LintResult> | LintResult;
 
   /**
    * Lint the complete project, including relationships between files. Official

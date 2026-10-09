@@ -1,20 +1,18 @@
 import { useCallback, useRef } from "react";
 import { usePlayerStore } from "../../player";
-import { useExpandedTimelineElements } from "../../player/hooks/useExpandedTimelineElements";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
-  displayTrackOrder,
   resolveRepositionLaneMove,
   resolveZMirrorLaneMove,
   type ZMirrorAction,
   type ZMirrorLaneMove,
 } from "../../player/components/timelineZMirror";
 import type { TimelineElement } from "../../player/store/playerStore";
+import { timelineTrackOrder } from "../../player/components/timelineTrackDisplay";
 import { commitZMirrorLaneMove } from "../../player/components/timelineClipDragCommit";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 import { buildStableSelector, getSelectorIndex } from "../editor/domEditingDom";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
-import { forwardRebasedTimelineMoveElements } from "./TimelinePane";
 
 export interface MirrorZOrderInput {
   /** Timeline store key of the element the menu acted on (entry.key), if any. */
@@ -32,7 +30,7 @@ export interface MirrorZOrderInput {
 /**
  * Mirror a successful canvas z-order menu action into a timeline LANE move.
  *
- * The caller (PreviewOverlays) invokes the returned callback AFTER the z commit
+ * The caller (ConnectedDomEditOverlay) invokes the returned callback AFTER the z commit
  * resolved — serializing the two same-file writes, exactly like the lane-drag's
  * move→z ordering (see persistMoveEdits' doc) — and with the SAME coalesce key
  * the z persist recorded, so editHistory folds both records into one undo entry.
@@ -41,16 +39,13 @@ export interface MirrorZOrderInput {
  * commitZMirrorLaneMove) — the shared key is unique per gesture
  * (zReorderCoalesceKey's gesture seq), so the fold stays gesture-scoped.
  *
- * Element source: `useExpandedTimelineElements()` — the same expanded display
- * set the Timeline renders and the resolver expects (post-normalizeToZones
- * lanes, expanded sub-comp children on their synthetic rows). No new expansion
- * is built here.
+ * Element source: the store's timeline elements, the same set the Timeline
+ * renders and the resolver expects. No alternate row expansion is built here.
  *
  * The mirror persists through the SAME machinery as a timeline lane drag
- * (commitZMirrorLaneMove → persistMoveEdits → onMoveElements, with expanded
- * children rebased to local coords via forwardRebasedTimelineMoveElements) —
- * optimistic store update + rollback included, so the timeline reflects the
- * lane change without a reload. The deps below deliberately OMIT
+ * (commitZMirrorLaneMove → persistMoveEdits → onMoveElements) — optimistic
+ * store update + rollback included, so the timeline reflects the lane change
+ * without a reload. The deps below deliberately OMIT
  * `readZIndex`/`onStackingPatches`: the lane→z stacking sync
  * (syncStackingForEdit) must not fire and recompute the z values the user just
  * set — commitZMirrorLaneMove never calls it, and without these deps it would
@@ -141,7 +136,7 @@ function useMirrorLaneMoveCommit(): (
   coalesceKey: string,
   resolveMove: (element: TimelineElement, elements: TimelineElement[]) => ZMirrorLaneMove,
 ) => Promise<boolean> {
-  const elements = useExpandedTimelineElements();
+  const elements = usePlayerStore((state) => state.elements);
   const elementsRef = useRef(elements);
   elementsRef.current = elements;
   const { onMoveElements } = useTimelineEditContextOptional();
@@ -150,8 +145,8 @@ function useMirrorLaneMoveCommit(): (
     (selectionKey, coalesceKey, resolveMove) => {
       const els = elementsRef.current;
       const element = selectionKey ? els.find((e) => (e.key ?? e.id) === selectionKey) : undefined;
-      // Not a timeline clip (canvas-only decoration) → z-only action, unchanged.
-      if (!element) return Promise.resolve(false);
+      // Canvas-only decoration, or no handler to save a lane move (no TimelineEditProvider): z-only.
+      if (!element || !onMoveElements) return Promise.resolve(false);
 
       const move = resolveMove(element, els);
       if (!move) return Promise.resolve(false);
@@ -161,29 +156,13 @@ function useMirrorLaneMoveCommit(): (
         move,
         {
           elements: els,
-          trackOrder: displayTrackOrder(els),
+          trackOrder: timelineTrackOrder(els),
           updateElement: (key, updates) => usePlayerStore.getState().updateElement(key, updates),
-          onMoveElements: onMoveElements
-            ? (edits, coalesceKey2, operation, coalesceMs) =>
-                forwardRebasedTimelineMoveElements(
-                  edits,
-                  coalesceKey2,
-                  operation,
-                  onMoveElements,
-                  coalesceMs,
-                )
-            : undefined,
+          onMoveElements,
           // NO readZIndex / onStackingPatches: see the hook doc — the lane→z
           // stacking sync must not re-trigger and fight the just-set z values.
         },
         coalesceKey,
-        // Unbounded fold window: this record lands only AFTER the z persist's
-        // server round-trip resolved, so the gap between the gesture's two
-        // records exceeds editHistory's 300ms default under real latency and
-        // the fold would silently split into two undo entries. The shared key
-        // is unique per gesture (zReorderCoalesceKey's gesture seq), so the
-        // unbounded window can never merge two distinct user actions.
-        Number.POSITIVE_INFINITY,
       );
     },
     [onMoveElements],

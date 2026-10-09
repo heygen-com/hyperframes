@@ -11,8 +11,9 @@ Core attributes for controlling element timing and behavior.
 ## Media
 
 - `data-media-start="2"` — Media playback offset / trim point (seconds)
-- `data-volume="0.8"` — Audio/video gain. `1` is 0 dB, `0` is silence, and values above `1` boost up to `3.98` (+12 dB)
-- `data-has-audio="true"` — Indicates video has an audio track
+- `data-volume="0.8"` — Audio/video gain. `1` is 0 dB, `0` is silence, and values above `1` boost up to `3.98` (+12 dB). For ducking and shaped envelopes use the `data-automation` volume lane (`hyperframes-core` skill, `creator-editing-recipes.md`)
+- `data-fade-in="0.5"` / `data-fade-out="1"` — Clip-edge fades (seconds): linear gain ramps anchored to the clip's start and end, multiplied on top of `data-volume` and any volume lane
+- `data-has-audio="true"` — Keeps the file's sound on this clip (the default for footage with sound). Silent footage uses `muted` instead.
 
 ## Composition
 

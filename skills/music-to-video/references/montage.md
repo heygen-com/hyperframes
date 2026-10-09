@@ -15,7 +15,7 @@ realizes it inside the frame file (HOW). **Obey the frame's `pacing`.**
 The asset-driven analogue of a per-onset typographic group: cut to a new clip on each anchor
 (the frame's beats/onsets from the audiomap). Each clip is a `class="clip"` element
 (`<img>` for a photo, **muted** `<video>` for a motion clip) placed at its anchor with
-`data-start`/`data-duration`/`data-track-index` per the core clip contract. Between clips,
+`data-start`/`data-duration`/`data-track-index` per the core clip contract. (Muted on purpose: the music track drives the sound.) Between clips,
 crossfade the outgoing content to `opacity:0` ending **at** the next anchor.
 Cut on the **strong** anchors; land a hero clip on a `key_moment`/downbeat.
 
@@ -50,7 +50,6 @@ bed. Use when the user wants their footage present but the message must stay rea
 ## Deferred hook (not v1)
 
 A clip that should play **its own sound** (interview cut, lyric clip) needs a sibling
-`<audio>` mounted at the **root** by the assembler, with the BGM ducked under it (timeline
-volume automation: `tl.to("#el-bgm",{volume:0.15,…},clipStart)` … `tl.to(…,{volume:0.9,…},
-clipEnd)`). The frame-worker mounts no audio. Keep clips muted in v1; wire clip-audio +
+`<audio>` mounted at the **root** by the assembler, with the BGM ducked under it (a
+`data-automation` volume lane on the BGM, see `creator-editing-recipes.md` in `hyperframes-core`). The frame-worker mounts no audio. Keep clips muted in v1; wire clip-audio +
 ducking only when the user asks.

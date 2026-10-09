@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isVideoAudible } from "../../player/lib/timelineElementHelpers";
 import { Check, ClipboardList, Film, Music, Scissors } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import {
@@ -8,8 +9,8 @@ import {
   formatTimingValue,
   LABEL,
   parseNumericValue,
+  readClipInPoint,
   RESPONSIVE_GRID,
-  stripQueryAndHash,
 } from "./propertyPanelHelpers";
 import { Section, SegmentedControl, SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
@@ -21,23 +22,31 @@ import {
   audioGainToFaderPosition,
   audioGainToText,
 } from "@hyperframes/core/audio-gain";
+import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
+import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
+import { commitCutout, commitHasAudioToggle, commitMutedToggle } from "./mediaAudioEdits";
+import { authoredSrcPath } from "../../player/components/thumbnailUtils";
 
 // fallow-ignore-next-line complexity
 export function MediaSection({
+  projectId = null,
   projectDir,
   element,
   styles,
   onSetStyle,
   onSetAttribute,
   onSetHtmlAttribute,
+  onSetAttributeBatch,
   onRemoveBackground,
 }: {
+  projectId?: string | null;
   projectDir: string | null;
   element: DomEditSelection;
   styles: Record<string, string>;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
+  onSetAttributeBatch: CommitDomAttributeBatch;
   onRemoveBackground?: (
     inputPath: string,
     options: {
@@ -48,6 +57,10 @@ export function MediaSection({
   ) => Promise<BackgroundRemovalResult>;
 }) {
   const track = useTrackDesignInput();
+  const setRate = withLinkedPlaybackRate(
+    onSetAttribute,
+    useLinkedSpeedCommit(element, onSetAttributeBatch),
+  );
   const isVideo = element.tagName === "video";
   const isAudio = element.tagName === "audio";
   const isImage = element.tagName === "img";
@@ -57,14 +70,15 @@ export function MediaSection({
   const volume = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
   const volumeFaderPosition = audioGainToFaderPosition(volume);
 
-  const mediaStart =
-    Number.parseFloat(
-      element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
-    ) || 0;
+  const { mediaStart, mediaStartAttr } = readClipInPoint(element.dataAttributes);
 
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
-  const hasAudio = element.dataAttributes["has-audio"] === "true";
+  const hasAudio = isVideoAudible({
+    tag: el.tagName,
+    hasAudioAttr: element.dataAttributes["has-audio"],
+    muted: el.hasAttribute("muted"),
+  });
 
   const playbackRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
 
@@ -84,12 +98,11 @@ export function MediaSection({
   const [createPlate, setCreatePlate] = useState(false);
   const [quality, setQuality] = useState<"fast" | "balanced" | "best">("balanced");
 
-  const absoluteSrc =
-    projectDir && srcAttr && !srcAttr.startsWith("http") ? `${projectDir}/${srcAttr}` : srcAttr;
   const projectSrc =
     srcAttr && !/^(?:https?:|data:|blob:)/i.test(srcAttr)
-      ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
+      ? authoredSrcPath(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
       : "";
+  const absoluteSrc = projectDir && projectSrc ? `${projectDir}/${projectSrc}` : srcAttr;
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
   const panelTitle = isImage ? "Image" : isVideo ? "Video" : "Audio";
 
@@ -98,13 +111,7 @@ export function MediaSection({
     setCreatePlate(false);
   }, [srcAttr]);
 
-  const applyCutoutResult = async (result: BackgroundRemovalResult) => {
-    await onSetHtmlAttribute("src", result.outputPath);
-    if (isVideo) {
-      await onSetAttribute("has-audio", "");
-      await onSetHtmlAttribute("muted", "true");
-    }
-  };
+  const mediaEdit = { element, projectId, projectSrc, commit: onSetAttributeBatch };
 
   const runBackgroundRemoval = async () => {
     if (!onRemoveBackground || !projectSrc || removeBusy) return;
@@ -117,13 +124,8 @@ export function MediaSection({
         quality,
         onProgress: setRemoveProgress,
       });
-      await applyCutoutResult(result);
-      setRemoveProgress({
-        status: "complete",
-        progress: 100,
-        stage: "Applied cutout",
-        ...result,
-      });
+      const stage = await commitCutout(mediaEdit, result.outputPath, hasAudio);
+      setRemoveProgress({ status: "complete", progress: 100, stage, ...result });
     } catch (error) {
       setRemoveProgress({
         status: "failed",
@@ -182,7 +184,7 @@ export function MediaSection({
                   event.stopPropagation();
                   void runBackgroundRemoval();
                 }}
-                className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
                   canRemoveBackground
                     ? "Remove background and save a transparent asset"
@@ -233,7 +235,7 @@ export function MediaSection({
                 <div className="h-1 overflow-hidden rounded-full bg-panel-border">
                   <div
                     className={`h-full rounded-full ${
-                      removeProgress.status === "failed" ? "bg-red-400" : "bg-studio-accent"
+                      removeProgress.status === "failed" ? "bg-danger-ink" : "bg-studio-accent"
                     }`}
                     style={{ width: `${Math.max(0, Math.min(100, removeProgress.progress))}%` }}
                   />
@@ -281,7 +283,7 @@ export function MediaSection({
                 displayValue={`${formatNumericValue(playbackRate)}x`}
                 formatDisplayValue={(next) => `${formatNumericValue(next / 100)}x`}
                 onCommit={(next) => {
-                  void onSetAttribute("playback-rate", formatNumericValue(next / 100));
+                  void setRate("playback-rate", formatNumericValue(next / 100));
                 }}
               />
             </div>
@@ -297,7 +299,7 @@ export function MediaSection({
                 displayValue={formatTimingValue(mediaStart)}
                 formatDisplayValue={(next) => formatTimingValue(next / 100)}
                 onCommit={(next) => {
-                  void onSetAttribute("media-start", (next / 100).toFixed(2));
+                  void onSetAttribute(mediaStartAttr, (next / 100).toFixed(2));
                 }}
               />
             </div>
@@ -322,9 +324,7 @@ export function MediaSection({
                 <SegmentedControl
                   trackName="Muted"
                   value={hasMuted ? "on" : "off"}
-                  onChange={(next) => {
-                    void onSetHtmlAttribute("muted", next === "on" ? "true" : null);
-                  }}
+                  onChange={(next) => void commitMutedToggle(mediaEdit, next === "on")}
                   options={[
                     { label: "On", value: "on" },
                     { label: "Off", value: "off" },
@@ -339,15 +339,7 @@ export function MediaSection({
                 <SegmentedControl
                   trackName="Has audio track"
                   value={hasAudio ? "yes" : "no"}
-                  onChange={(next) => {
-                    if (next === "yes") {
-                      void onSetAttribute("has-audio", "true");
-                      void onSetHtmlAttribute("muted", null);
-                    } else {
-                      void onSetAttribute("has-audio", "");
-                      void onSetHtmlAttribute("muted", "true");
-                    }
-                  }}
+                  onChange={(next) => void commitHasAudioToggle(mediaEdit, next === "yes")}
                   options={[
                     { label: "Yes", value: "yes" },
                     { label: "No", value: "no" },

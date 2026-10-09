@@ -13,7 +13,7 @@
 
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { AutomationRange, HfAutomationLane } from "@hyperframes/core/audio-automation";
-import { curveForDrag, formatValue, GRAB_PX, POINT_MERGE_SEC } from "./automationLaneGeometry";
+import { curveForDrag, formatValue, GRAB_PX, mergeInsertPoint } from "./automationLaneGeometry";
 import { pointInSelection } from "./automationLaneSelection";
 import { capturePointer } from "./automationLanePointer";
 import { useAutomationEdgeStretch } from "./useAutomationEdgeStretch";
@@ -26,6 +26,7 @@ import {
   type ShiftAxis,
 } from "./automationLaneDragMath";
 import { useAutomationSegmentDrag } from "./useAutomationSegmentDrag";
+import { reportPressOnTravel, useTimelineReadOnlyPress } from "./timelineReadOnly";
 
 /** How far a press may travel and still count as a click rather than a drag. */
 const CLICK_SLOP_PX = 3;
@@ -46,7 +47,7 @@ export interface UseAutomationLaneGesturesInput {
   pointAt(clientX: number, clientY: number): { t: number; v: number };
   xOf(t: number): number;
   yOf(v: number): number;
-  commitPoints(points: HfAutomationLane["points"], persist: boolean): void;
+  commitPoints(points: HfAutomationLane["points"], persist: boolean, ended?: boolean): void;
   /** Clip-local times a dragged point snaps to, on top of its own neighbours. */
   snapTimes?: readonly number[] | undefined;
   readOnly?: boolean | undefined;
@@ -109,6 +110,7 @@ export function useAutomationLaneGestures({
   duration,
   rangeSelection,
 }: UseAutomationLaneGesturesInput): UseAutomationLaneGesturesResult {
+  const timelineReadOnlyPress = useTimelineReadOnlyPress();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [curveIndex, setCurveIndex] = useState<number | null>(null);
   const [hint, setHint] = useState<string | null>(null);
@@ -267,6 +269,13 @@ export function useAutomationLaneGestures({
     [hitIndex, segmentDrag, segmentIndex],
   );
 
+  const reportLaneEditPress = useCallback(
+    (e: ReactPointerEvent<SVGSVGElement>) => {
+      if (gestureAt(e)) reportPressOnTravel(e, timelineReadOnlyPress);
+    },
+    [gestureAt, timelineReadOnlyPress],
+  );
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
       if (e.button !== 0) return;
@@ -281,6 +290,7 @@ export function useAutomationLaneGestures({
       // so the field sat open until Enter however far away the next click landed.
       if (editing) commitEdit();
       if (readOnly) {
+        reportLaneEditPress(e);
         // The lane sits below the clip bar, so the timeline's selection handler
         // never sees this press; selecting here is the only way in. The press then
         // goes on to arm a range drag rather than being spent on the selection: a
@@ -323,6 +333,7 @@ export function useAutomationLaneGestures({
       gestureAt,
       lane,
       readOnly,
+      reportLaneEditPress,
       onSelect,
       rangeDrag,
       editing,
@@ -526,7 +537,7 @@ export function useAutomationLaneGestures({
 
   const onDoubleClick = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
-      if (readOnly) return;
+      if (readOnly) return timelineReadOnlyPress?.();
       e.stopPropagation();
       e.preventDefault();
       const onPoint = hitIndex(e.clientX, e.clientY);
@@ -548,17 +559,9 @@ export function useAutomationLaneGestures({
         return;
       }
       const { t, v } = pointAt(e.clientX, e.clientY);
-      const kept = lane.points.filter((p) => Math.abs(p.t - t) > POINT_MERGE_SEC);
-      // A lane's first point alone would be a constant, which is not what
-      // clicking an empty lane means: seed the far end at the same value so the
-      // envelope has somewhere to go.
-      const seeded = lane.points.length === 0 && t > POINT_MERGE_SEC ? [{ t: 0, v }] : [];
-      commitPoints(
-        [...seeded, ...kept, { t, v }].sort((a, b) => a.t - b.t),
-        true,
-      );
+      commitPoints(mergeInsertPoint(lane.points, t, v), true);
     },
-    [lane, pointAt, commitPoints, readOnly, hitIndex, segmentIndex],
+    [lane, pointAt, commitPoints, readOnly, timelineReadOnlyPress, hitIndex, segmentIndex],
   );
 
   return {

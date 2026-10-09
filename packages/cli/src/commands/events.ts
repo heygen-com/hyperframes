@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { trackEvent, flush } from "../telemetry/client.js";
+import { trackEvent, flushSync } from "../telemetry/client.js";
 import { SKILL_SLUG } from "../telemetry/skill.js";
 
 // Skill-usage telemetry endpoint. A skill reports its own invocation/outcome —
@@ -14,7 +14,7 @@ import { SKILL_SLUG } from "../telemetry/skill.js";
 //
 // Telemetry must NEVER break the calling skill: every arg is optional (a missing
 // or malformed value is a silent no-op, not a non-zero exit), the body is
-// guarded, and flush() carries its own hard timeout. This command always exits 0.
+// guarded, and the send runs in a detached child. This command always exits 0.
 
 const ALLOWED_EVENTS = ["skill_invoked", "skill_completed"];
 const ALLOWED_OUTCOMES = ["success", "error", "abort"];
@@ -53,7 +53,7 @@ export default defineCommand({
         props["outcome"] = args.outcome;
       }
       trackEvent(event, props);
-      await flush();
+      flushSync();
     } catch {
       // swallow — telemetry must never surface a non-zero exit to the caller
     }

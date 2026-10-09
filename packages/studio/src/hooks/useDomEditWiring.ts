@@ -16,7 +16,7 @@ import { useGsapAnimationFetchFallback } from "./useGsapAnimationFetchFallback";
 import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureTelemetry";
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 import type { PatchTarget } from "../utils/sourcePatcher";
-import type { SidebarTab } from "../components/sidebar/LeftSidebar";
+import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 
 export interface UseDomEditWiringParams {
   projectId: string | null;
@@ -43,8 +43,6 @@ export interface UseDomEditWiringParams {
   ) => void;
   buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
-  selectSidebarTab?: (tab: SidebarTab) => void;
-  getSidebarTab?: () => SidebarTab;
   // GSAP script commit ops (from useGsapScriptCommits)
   updateGsapProperty: (
     sel: DomEditSelection,
@@ -106,67 +104,67 @@ export interface UseDomEditWiringParams {
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
   ) => Promise<void>;
-  removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
-  handleDomManualEditsReset: (sel: DomEditSelection) => Promise<void>;
+  removeAllKeyframes: Parameters<typeof useGsapSelectionHandlers>[0]["removeAllKeyframes"];
+  handleDomManualEditsReset: (
+    sel: DomEditSelection,
+  ) => Promise<void | import("./domEditCommitTypes").DomEditPersistOutcome>;
 }
 
 // fallow-ignore-next-line complexity
-export function useDomEditWiring({
-  // fallow-ignore-next-line code-duplication
-  projectId,
-  activeCompPath,
-  domEditSelection,
-  domEditSelectionRef,
-  domEditGroupSelectionsRef,
-  refreshDomEditGroupSelectionsFromPreview,
-  previewIframeRef,
-  previewIframe,
-  captionEditMode,
-  refreshKey,
-  gsapCacheVersion,
-  bumpGsapCache,
-  showToast,
-  refreshPreviewDocumentVersion,
-  syncPreviewHotkeys,
-  applyStudioManualEditsToPreviewRef,
-  applyDomSelection,
-  buildDomSelectionFromTarget,
-  openSourceForSelection,
-  selectSidebarTab,
-  getSidebarTab,
-  updateGsapProperty,
-  updateGsapMeta,
-  deleteGsapAnimation,
-  deleteAllForSelector,
-  addGsapAnimation,
-  addGsapProperty,
-  removeGsapProperty,
-  updateGsapFromProperty,
-  addGsapFromProperty,
-  removeGsapFromProperty,
-  addKeyframe,
-  addKeyframeBatch,
-  removeKeyframe,
-  moveKeyframe,
-  resizeKeyframedTween,
-  convertToKeyframes,
-  removeAllKeyframes,
-  handleDomManualEditsReset,
-}: UseDomEditWiringParams) {
+export function useDomEditWiring(params: UseDomEditWiringParams) {
+  const {
+    projectId,
+    activeCompPath,
+    domEditSelection,
+    domEditSelectionRef,
+    domEditGroupSelectionsRef,
+    refreshDomEditGroupSelectionsFromPreview,
+    previewIframeRef,
+    previewIframe,
+    captionEditMode,
+    refreshKey,
+    gsapCacheVersion,
+    bumpGsapCache,
+    showToast,
+    refreshPreviewDocumentVersion,
+    syncPreviewHotkeys,
+    applyStudioManualEditsToPreviewRef,
+    applyDomSelection,
+    buildDomSelectionFromTarget,
+    openSourceForSelection,
+    updateGsapProperty,
+    updateGsapMeta,
+    deleteGsapAnimation,
+    deleteAllForSelector,
+    addGsapAnimation,
+    addGsapProperty,
+    removeGsapProperty,
+    updateGsapFromProperty,
+    addGsapFromProperty,
+    removeGsapFromProperty,
+    addKeyframe,
+    addKeyframeBatch,
+    removeKeyframe,
+    moveKeyframe,
+    resizeKeyframedTween,
+    convertToKeyframes,
+    removeAllKeyframes,
+    handleDomManualEditsReset,
+  } = params;
   // ── Click-to-source navigation ──
 
   const onClickToSource = useCallback(
     (selection: DomEditSelection) => {
-      if (!openSourceForSelection || !selectSidebarTab) return;
+      if (!openSourceForSelection) return;
       if (!selection.sourceFile) return;
-      selectSidebarTab("code");
+      useDockLayoutStore.getState().activatePanel("code");
       openSourceForSelection(selection.sourceFile, {
         id: selection.id,
         selector: selection.selector,
         selectorIndex: selection.selectorIndex,
       });
     },
-    [openSourceForSelection, selectSidebarTab],
+    [openSourceForSelection],
   );
 
   // ── DOM selection -> timeline element sync ──
@@ -211,9 +209,7 @@ export function useDomEditWiring({
   } = useGsapAnimationsForElement(
     projectId ?? null,
     gsapSourceFile,
-    domEditSelection
-      ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
-      : null,
+    domEditSelection,
     gsapCacheVersion,
     // Pass the preview iframe so class/selector tweens (e.g. `.dot`) resolve to
     // the live element and surface in the inspector — not just by #id match.
@@ -267,7 +263,6 @@ export function useDomEditWiring({
     syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
     openSourceForSelection,
-    getSidebarTab,
     gsapCacheVersion,
   });
 

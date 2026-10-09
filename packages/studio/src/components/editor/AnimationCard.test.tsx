@@ -149,6 +149,66 @@ function restoreScrollIntoView(descriptor: PropertyDescriptor | undefined): void
 }
 
 describe("AnimationCard", () => {
+  it("heads a keyframed card with the segment ease and names the run ease on its own line", () => {
+    const view = renderFocusCard(null, vi.fn(), true);
+    expect(view.host.querySelector("[data-card-ease]")?.textContent).toBe("power1.inOut");
+    expect(view.host.querySelector("[data-card-run-ease]")?.textContent).toBe(
+      "Run ease: power1.out",
+    );
+    act(() => view.root.unmount());
+  });
+
+  it("heads a keyframed card Mixed when its segments differ, with no run line for a linear run", () => {
+    const animation: GsapAnimation = {
+      ...ANIMATION,
+      ease: undefined,
+      keyframes: {
+        format: "percentage",
+        keyframes: [
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 50, properties: { x: 100 }, ease: "expo.in" },
+          { percentage: 100, properties: { x: 200 } },
+        ],
+      },
+    };
+    const view = renderFocusCard(null, vi.fn(), true, animation);
+    expect(view.host.querySelector("[data-card-ease]")?.textContent).toBe("Mixed");
+    expect(view.host.querySelector("[data-card-run-ease]")).toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("labels segments with rounded percentages, never float noise or exponents", () => {
+    const animation: GsapAnimation = {
+      ...ANIMATION,
+      keyframes: {
+        format: "percentage",
+        keyframes: [
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 1.2860082304526747e-7, properties: { x: 1 } },
+          { percentage: 0.13484773662551455, properties: { x: 2 } },
+          { percentage: 100, properties: { x: 200 } },
+        ],
+      },
+    };
+    const view = renderFocusCard(null, vi.fn(), true, animation);
+    const labels = [
+      ...view.host.querySelectorAll("[data-ease-segment-pct] button span:first-child"),
+    ];
+    expect(labels.map((label) => label.textContent)).toEqual([
+      "0% → <0.001%",
+      "<0.001% → 0.135%",
+      "0.135% → 100%",
+    ]);
+    act(() => view.root.unmount());
+  });
+
+  it("labels an unset segment with the ease GSAP plays, not the tween's run ease", () => {
+    const view = renderFocusCard(null, vi.fn(), true);
+    const labels = [...view.host.querySelectorAll("[data-ease-segment-pct] button span.ml-auto")];
+    expect(labels.map((label) => label.textContent)).toEqual(["power1.inOut", "power1.inOut"]);
+    act(() => view.root.unmount());
+  });
+
   it("scrolls a focused segment into view but not a manually toggled segment", () => {
     const originalScrollIntoView = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,

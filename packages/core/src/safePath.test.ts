@@ -1,8 +1,33 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { isSafePath, resolveWithinProject } from "./safePath.js";
+import { basename, dirname, join } from "node:path";
+import {
+  folderGone,
+  isProjectRootMissing,
+  isSafePath,
+  mkdirWithinProject,
+  resolveWithinProject,
+} from "./safePath.js";
+
+const recased = (path: string) => join(dirname(path), basename(path).toUpperCase());
+
+function caseInsensitive(): boolean {
+  const dir = mkdtempSync(join(tmpdir(), "safepath-probe-"));
+  try {
+    return existsSync(recased(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe("isSafePath", () => {
   const tmpDirs: string[] = [];
@@ -101,6 +126,14 @@ describe("isSafePath", () => {
     expect(isSafePath(baseLink, join(baseLink, "file.txt"))).toBe(true);
   });
 
+  it.skipIf(!caseInsensitive())("admits an in-base path typed in another letter case", () => {
+    const base = tmpDir("safepath-case-");
+    writeFileSync(join(base, "file.txt"), "x");
+    expect(isSafePath(base, join(recased(base), "file.txt"))).toBe(true);
+    expect(isSafePath(recased(base), join(base, "new.txt"))).toBe(true);
+    expect(isSafePath(recased(base), join(tmpdir(), "outside.txt"))).toBe(false);
+  });
+
   it("fails closed when the base directory does not exist", () => {
     const base = join(tmpdir(), "safepath-does-not-exist-zzz", "nope");
     expect(isSafePath(base, join(base, "file.txt"))).toBe(false);
@@ -154,4 +187,79 @@ describe("resolveWithinProject", () => {
     if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
     expect(resolveWithinProject(base, "link/secret.txt")).toBeNull();
   });
+});
+
+describe("mkdirWithinProject", () => {
+  const made: string[] = [];
+  afterEach(() => {
+    for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  const tempDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-mkdir-within-"));
+    made.push(dir);
+    return dir;
+  };
+
+  it("creates the missing folders below a project folder that exists", () => {
+    const root = tempDir();
+    mkdirWithinProject(root, join(root, ".hyperframes", "backup"));
+    expect(existsSync(join(root, ".hyperframes", "backup"))).toBe(true);
+  });
+
+  it("does not bring back a project folder that was renamed away", () => {
+    const parent = tempDir();
+    const root = join(parent, "film");
+    let thrown: unknown;
+    try {
+      mkdirWithinProject(root, join(root, "assets", "audio"));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(isProjectRootMissing(thrown)).toBe(true);
+    expect(existsSync(root)).toBe(false);
+  });
+
+  it("creates a folder outside the project as before", () => {
+    const parent = tempDir();
+    mkdirSync(join(parent, "film"));
+    mkdirWithinProject(join(parent, "film"), join(parent, "cache", "renders"));
+    expect(existsSync(join(parent, "cache", "renders"))).toBe(true);
+  });
+
+  it("creates no folder outside the project once the project folder is gone", () => {
+    const parent = tempDir();
+    expect(() => mkdirWithinProject(join(parent, "film"), join(parent, "renders"))).toThrow(
+      /Project folder not found/,
+    );
+    expect(existsSync(join(parent, "renders"))).toBe(false);
+  });
+});
+
+describe("folderGone", () => {
+  it("is true only when nothing is there", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-folder-gone-"));
+    writeFileSync(join(dir, "file"), "");
+    try {
+      expect(folderGone(dir)).toBe(false);
+      expect(folderGone(join(dir, "missing"))).toBe(true);
+      expect(folderGone(join(dir, "file", "below"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "is false for a folder that cannot be looked at",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-folder-gone-"));
+      mkdirSync(join(dir, "film"));
+      chmodSync(dir, 0o000);
+      try {
+        expect(folderGone(join(dir, "film"))).toBe(false);
+      } finally {
+        chmodSync(dir, 0o700);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

@@ -8,7 +8,7 @@ This repo ships AI agent skills via [vercel-labs/skills](https://github.com/verc
 
 ```bash
 npx hyperframes skills update           # default: installs/refreshes the core set — workflows install on demand
-npx hyperframes skills                  # all 20 published skills at once
+npx hyperframes skills                  # all 21 published skills at once
 npx skills add heygen-com/hyperframes   # interactive picker (terminal only; repo-internal skills are excluded by default)
 ```
 
@@ -26,6 +26,10 @@ npx skills add heygen-com/hyperframes   # interactive picker (terminal only; rep
 
 **Porting an existing composition?** `/remotion-to-hyperframes` translates a Remotion (React) video composition into HyperFrames HTML — a source migration, separate from the creation workflows above.
 
+## Issue and PR triage
+
+Read [TRIAGE.md](TRIAGE.md) before classifying issues, advertising contribution work, or triaging PRs. Check current source and overlapping PRs; keep difficulty, readiness, and ownership separate. Apply changes only within the task's authorization and verify the resulting GitHub state.
+
 ## Build & Test
 
 ```bash
@@ -33,6 +37,22 @@ bun install     # Install dependencies (NOT pnpm — do not create pnpm-lock.yam
 bun run build   # Build all packages
 bun run test    # Run all tests
 ```
+
+Packages load each other through their `exports`. Under Node, core, parsers,
+lint and studio-server resolve to `dist/`, and player always loads its built
+bundle. Run `bun run build` once in a fresh worktree, before any package's
+tests or typecheck. After editing a package that another package imports, run
+that package's `build` again before the dependent package's tests. Core's
+`src/generated/` is git-ignored build output: if you see
+`Cannot find module '../generated/runtime-inline'`, run
+`bun run build:hyperframes-runtime`.
+
+One file: `bun run --cwd packages/<pkg> test <path>`. Each package's `test`
+script picks its runner (vitest in most, `bun test` in aws-lambda and
+gcp-cloud-run). Producer is the exception: a file that imports `bun:test` runs
+with `bun test <file>`, any other with `bunx vitest run <file>`. Root `scripts/*.test.mjs` run through `bun run test:scripts`,
+which is an explicit list in `package.json`. CI's test-reachability check fails
+any test file that no runner reaches.
 
 ### Linting & Formatting
 

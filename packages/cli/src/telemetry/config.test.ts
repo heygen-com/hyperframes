@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,7 @@ import { join } from "node:path";
 // vitest worker.
 const fsState = vi.hoisted(() => ({
   files: new Map<string, string>(),
+  fds: new Map<number, string>(),
 }));
 
 vi.mock("node:fs", () => ({
@@ -17,7 +19,8 @@ vi.mock("node:fs", () => ({
   mkdirSync: vi.fn(() => undefined),
   readFileSync: vi.fn((path: string) => {
     const content = fsState.files.get(path);
-    if (content === undefined) throw new Error(`ENOENT: ${path}`);
+    if (content === undefined)
+      throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
     return content;
   }),
   writeFileSync: vi.fn((path: string, content: string) => {
@@ -34,6 +37,21 @@ vi.mock("node:fs", () => ({
   rmSync: vi.fn((path: string) => {
     fsState.files.delete(path);
   }),
+  // The settings lock: an exclusive create, then the owner's token written through the descriptor.
+  openSync: vi.fn((path: string, flag: string) => {
+    if (flag === "wx" && fsState.files.has(path))
+      throw Object.assign(new Error(`EEXIST: ${path}`), { code: "EEXIST" });
+    fsState.files.set(path, "");
+    fsState.fds.set(3, path);
+    return 3;
+  }),
+  writeSync: vi.fn((fd: number, data: string) => {
+    const path = fsState.fds.get(fd) ?? "";
+    fsState.files.set(path, (fsState.files.get(path) ?? "") + data);
+  }),
+  closeSync: vi.fn(),
+  linkSync: vi.fn(),
+  statSync: vi.fn(() => ({ mtimeMs: Date.now() })),
 }));
 
 // The backfill warning is suppressed under a telemetry runtime override (a
@@ -93,6 +111,17 @@ describe("config.ts — readConfig / readConfigFresh / writeConfig (real module,
     writeConfig(config);
     const reread = readConfig();
     expect(reread.deParallelRouterTrialRenderCount).toBe(5);
+  });
+
+  it("keeps the background checks' attempt stamps across a fresh read", () => {
+    const config = readConfig();
+    config.lastUpdateAttemptAt = "2026-09-27T10:00:00.000Z";
+    config.lastSkillsAttemptAt = "2026-09-27T11:00:00.000Z";
+    writeConfig(config);
+    expect(readConfigFresh()).toMatchObject({
+      lastUpdateAttemptAt: "2026-09-27T10:00:00.000Z",
+      lastSkillsAttemptAt: "2026-09-27T11:00:00.000Z",
+    });
   });
 
   it('treats a non-boolean deParallelRouterTrialFired (e.g. the JSON string "false") as unset, not truthy', () => {
@@ -826,5 +855,58 @@ describe("identity-persistence classification (sticky per anonymous id)", () => 
     readConfig();
     expect(getIdentityPersistence()).toBe("unknown");
     expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+});
+
+describe("updateLocalModelConsent fails closed to the answer on disk", () => {
+  let readConfig: typeof import("./config.js").readConfig;
+  let updateLocalModelConsent: typeof import("./config.js").updateLocalModelConsent;
+  let CONFIG_PATH: typeof import("./config.js").CONFIG_PATH;
+
+  beforeEach(async () => {
+    fsState.files.clear();
+    vi.resetModules();
+    ({ readConfig, updateLocalModelConsent, CONFIG_PATH } = await import("./config.js"));
+  });
+
+  const consentOnDisk = () =>
+    JSON.parse(fsState.files.get(CONFIG_PATH) ?? "{}").localEmbeddingEnabled;
+
+  it("returns the answer on disk, not the new one, when the write fails", async () => {
+    readConfig();
+    const fs = await import("node:fs");
+    vi.mocked(fs.renameSync).mockImplementationOnce(() => {
+      throw new Error("EACCES: permission denied");
+    });
+
+    expect(updateLocalModelConsent(() => true)).toBeUndefined();
+    expect(consentOnDisk()).toBeUndefined();
+  });
+
+  it("returns the no on disk and writes nothing when another process keeps the lock", () => {
+    fsState.files.set(
+      CONFIG_PATH,
+      JSON.stringify({ ...readConfig(), localEmbeddingEnabled: false }),
+    );
+    fsState.files.set(`${CONFIG_PATH}.lock`, "");
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => (now += 4_000));
+    try {
+      expect(updateLocalModelConsent(() => true)).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(consentOnDisk()).toBe(false);
+  });
+
+  it("does not wait on its own lock when the read inside it has to write", async () => {
+    const fs = await import("node:fs");
+    vi.mocked(fs.openSync).mockClear();
+
+    expect(updateLocalModelConsent(() => true)).toBe(true);
+    const lockTakes = vi
+      .mocked(fs.openSync)
+      .mock.calls.filter(([path, flag]) => flag === "wx" && path === `${CONFIG_PATH}.lock`);
+    expect(lockTakes).toHaveLength(1);
   });
 });

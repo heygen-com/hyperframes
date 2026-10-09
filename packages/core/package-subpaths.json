@@ -26,6 +26,12 @@
       "types": "./dist/canaryRegistry.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./telemetry-redaction": {
+      "source": "./src/telemetryRedaction.ts",
+      "runtime": "./dist/telemetryRedaction.js",
+      "types": "./dist/telemetryRedaction.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./beats": {
       "source": "./src/beats/index.ts",
       "runtime": "./dist/beats/index.js",
@@ -36,6 +42,30 @@
       "source": "./src/utils/htmlAttrSafety.ts",
       "runtime": "./dist/utils/htmlAttrSafety.js",
       "types": "./dist/utils/htmlAttrSafety.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./safe-path": {
+      "source": "./src/safePath.ts",
+      "runtime": "./dist/safePath.js",
+      "types": "./dist/safePath.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./atomic-file": {
+      "source": "./src/atomicFile.ts",
+      "runtime": "./dist/atomicFile.js",
+      "types": "./dist/atomicFile.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./asset-paths": {
+      "source": "./src/compiler/rewriteSubCompPaths.ts",
+      "runtime": "./dist/compiler/rewriteSubCompPaths.js",
+      "types": "./dist/compiler/rewriteSubCompPaths.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./runtime-script": {
+      "source": "./src/generated/runtime-inline.ts",
+      "runtime": "./dist/generated/runtime-inline.js",
+      "types": "./dist/generated/runtime-inline.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./rich-text-sanitize": {
@@ -50,10 +80,28 @@
       "types": "./dist/compositionContract.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./studio-preview-mark": {
+      "source": "./src/studioPreviewMark.ts",
+      "runtime": "./dist/studioPreviewMark.js",
+      "types": "./dist/studioPreviewMark.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-cdn": {
+      "source": "./src/gsapCdn.ts",
+      "runtime": "./dist/gsapCdn.js",
+      "types": "./dist/gsapCdn.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./media-timing": {
       "source": "./src/mediaTiming.ts",
       "runtime": "./dist/mediaTiming.js",
       "types": "./dist/mediaTiming.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./composition-readiness": {
+      "source": "./src/compositionReadiness.ts",
+      "runtime": "./dist/compositionReadiness.js",
+      "types": "./dist/compositionReadiness.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./editing": {
@@ -96,6 +144,12 @@
       "source": "./src/compiler/index.ts",
       "runtime": "./dist/compiler/index.js",
       "types": "./dist/compiler/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./projects": {
+      "source": "./src/projects.ts",
+      "runtime": "./dist/projects.js",
+      "types": "./dist/projects.d.ts",
       "environments": ["bun", "node"]
     },
     "./audio-fx": {
@@ -158,6 +212,12 @@
       "types": "./dist/audioCarve.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./media-link": {
+      "source": "./src/mediaLink.ts",
+      "runtime": "./dist/mediaLink.js",
+      "types": "./dist/mediaLink.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-groups": {
       "source": "./src/audioGroups.ts",
       "runtime": "./dist/audioGroups.js",
@@ -170,10 +230,34 @@
       "types": "./dist/audioAutomation.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./clip-facts": {
+      "source": "./src/clipFacts.ts",
+      "runtime": "./dist/clipFacts.js",
+      "types": "./dist/clipFacts.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audible-video": {
+      "source": "./src/audibleVideo.ts",
+      "runtime": "./dist/audibleVideo.js",
+      "types": "./dist/audibleVideo.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-gain": {
       "source": "./src/audioGain.ts",
       "runtime": "./dist/audioGain.js",
       "types": "./dist/audioGain.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fade": {
+      "source": "./src/audioFade.ts",
+      "runtime": "./dist/audioFade.js",
+      "types": "./dist/audioFade.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./speed-ramp": {
+      "source": "./src/speedRamp.ts",
+      "runtime": "./dist/speedRamp.js",
+      "types": "./dist/speedRamp.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./color-grading": {
@@ -212,6 +296,12 @@
       "types": "./dist/runtime/clipTree.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/dom-realm": {
+      "source": "./src/runtime/domRealm.ts",
+      "runtime": "./dist/runtime/domRealm.js",
+      "types": "./dist/runtime/domRealm.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/custom-ease": {
       "source": "./src/runtime/customEase.ts",
       "runtime": "./dist/runtime/customEase.js",
@@ -230,10 +320,22 @@
       "types": "./dist/runtime/startResolver.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/composition-length": {
+      "source": "./src/runtime/compositionLength.ts",
+      "runtime": "./dist/runtime/compositionLength.js",
+      "types": "./dist/runtime/compositionLength.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/protocol": {
       "source": "./src/runtime/protocol.ts",
       "runtime": "./dist/runtime/protocol.js",
       "types": "./dist/runtime/protocol.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/clip-window": {
+      "source": "./src/runtime/clipWindow.ts",
+      "runtime": "./dist/runtime/clipWindow.js",
+      "types": "./dist/runtime/clipWindow.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./runtime/stacking-context": {
@@ -246,6 +348,12 @@
       "source": "./src/runtime/webAudioRoute.ts",
       "runtime": "./dist/runtime/webAudioRoute.js",
       "types": "./dist/runtime/webAudioRoute.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/levelTap": {
+      "source": "./src/runtime/levelTap.ts",
+      "runtime": "./dist/runtime/levelTap.js",
+      "types": "./dist/runtime/levelTap.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./compiler/html-document": {
@@ -380,6 +488,18 @@
       "types": "./dist/fonts/systemFontLocator.d.ts",
       "environments": ["bun", "node"]
     },
+    "./fonts/embed": {
+      "source": "./src/fonts/deterministicFonts.ts",
+      "runtime": "./dist/fonts/deterministicFonts.js",
+      "types": "./dist/fonts/deterministicFonts.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./fonts/embedded-data": {
+      "source": "./src/fonts/fontData.generated.ts",
+      "runtime": "./dist/fonts/fontData.generated.js",
+      "types": "./dist/fonts/fontData.generated.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./figma": {
       "source": "./src/figma/index.ts",
       "runtime": "./dist/figma/index.js",
@@ -396,6 +516,12 @@
       "source": "./schemas/registry-item.json",
       "runtime": "./schemas/registry-item.json",
       "types": null,
+      "environments": ["browser", "bun", "node"]
+    },
+    "./timeline-asset-id": {
+      "source": "./src/timelineAssetId.ts",
+      "runtime": "./dist/timelineAssetId.js",
+      "types": "./dist/timelineAssetId.d.ts",
       "environments": ["browser", "bun", "node"]
     }
   }

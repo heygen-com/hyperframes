@@ -14,18 +14,18 @@ import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 function StatusPill({ status }: { status: RuntimeColorGradingStatus }) {
   const dotClass =
     status.state === "active"
-      ? "bg-emerald-400"
+      ? "bg-accent"
       : status.state === "pending"
-        ? "bg-amber-300"
+        ? "bg-warning-ink"
         : status.state === "unavailable"
-          ? "bg-red-400"
+          ? "bg-danger-ink"
           : "bg-panel-text-5";
   return (
     <div
-      className="flex min-w-0 items-center gap-1.5 rounded bg-panel-input px-2 py-1 text-[10px] font-medium text-panel-text-3"
+      className="flex min-w-0 items-center gap-1.5 rounded-sm bg-panel-input px-2 py-1 text-[10px] font-medium text-panel-text-3"
       title={status.message}
     >
-      <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${dotClass}`} />
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} />
       <span className="truncate">{status.message}</span>
     </div>
   );
@@ -44,18 +44,18 @@ function HdrMediaWarning({ metadata }: { metadata: MediaMetadata | null }) {
     .join(" · ");
 
   return (
-    <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-4 text-amber-100">
+    <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-4 text-warning-ink">
       <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
         <span className="font-semibold">{metadata.color.label} source</span>
-        <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
+        <span className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning-ink">
           SDR preview
         </span>
       </div>
-      <p className="text-amber-100/80">
+      <p className="text-text-2">
         These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
         is not true HDR color grading yet.
       </p>
-      {details && <p className="mt-1 truncate text-[10px] text-amber-100/55">{details}</p>}
+      {details && <p className="mt-1 truncate text-[10px] text-text-muted">{details}</p>}
     </div>
   );
 }
@@ -118,9 +118,9 @@ function HoldBeforeButton({
         event.preventDefault();
         onHoldChange(false);
       }}
-      className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors ${
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors ${
         active
-          ? "bg-studio-accent text-black"
+          ? "bg-studio-accent text-on-accent"
           : "text-panel-text-4 hover:bg-panel-hover hover:text-panel-text-1"
       } disabled:cursor-not-allowed disabled:opacity-40`}
       title="Hold to show original"
@@ -194,7 +194,7 @@ export function ColorGradingSection({
               track("button", "Reset color grading");
               resetGrading();
             }}
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1"
             title="Reset color grading"
           >
             <RotateCcw size={12} />
@@ -218,7 +218,7 @@ export function ColorGradingSection({
               setApplyScope(event.currentTarget.value as typeof applyScope);
             }}
             disabled={applyBusy}
-            className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full min-w-0 rounded-md bg-panel-input px-3 py-2 text-[11px] font-medium text-panel-text-1 outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
             title="Choose where to copy these color grading settings"
           >
             <option value="source-file">Current file media</option>

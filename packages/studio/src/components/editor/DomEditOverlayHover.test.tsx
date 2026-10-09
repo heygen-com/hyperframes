@@ -4,7 +4,9 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
+import "./domEditOverlayTestMocks";
 import { DomEditOverlay } from "./DomEditOverlay";
+import { DomEditOverlay as PackageDomEditOverlay } from "../../index";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -31,21 +33,6 @@ vi.mock("./useDomEditOverlayRects", () => ({
     setGroupOverlayItems: () => undefined,
     childRects: [],
   }),
-}));
-
-vi.mock("./useDomEditCompositionRect", () => ({
-  useDomEditCompositionRect: () => ({
-    left: 0,
-    top: 0,
-    width: 800,
-    height: 450,
-    scaleX: 1,
-    scaleY: 1,
-  }),
-}));
-
-vi.mock("./offCanvasIndicatorRefresh", () => ({
-  startOffCanvasIndicatorRefresh: () => () => undefined,
 }));
 
 function renderHover(angle: number): string {
@@ -87,4 +74,8 @@ it("rotates the hover box with the element", () => {
 
 it("leaves the hover box untransformed at angle zero", () => {
   expect(renderHover(0)).toBe("");
+});
+
+it("is exported from the package entry, so a host can mount it with its own commits", () => {
+  expect(PackageDomEditOverlay).toBe(DomEditOverlay);
 });

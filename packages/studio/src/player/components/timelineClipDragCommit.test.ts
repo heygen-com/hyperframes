@@ -8,14 +8,10 @@ import {
   type DragCommitDeps,
   type TimelineMoveEdit,
 } from "./timelineClipDragCommit";
-import {
-  buildEditHistoryEntry,
-  createEmptyEditHistory,
-  pushEditHistoryEntry,
-} from "../../utils/editHistory";
 import { normalizeToZones } from "./timelineZones";
 import { resolveZMirrorLaneMove } from "./timelineZMirror";
 import type { StackingPatch } from "./timelineStackingSync";
+import { isStudioEditSaving, revertNewestStudioPendingEdit } from "../../utils/studioPendingEdits";
 
 function el(
   id: string,
@@ -320,7 +316,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { updateElement, onMoveElement, onMoveElements } = runClipMove(
@@ -343,7 +338,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -365,7 +359,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -387,7 +380,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -411,7 +403,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -595,6 +586,28 @@ describe("commitDraggedClipMove", () => {
       await flushMicrotasks();
       // Only `a` (the edited clip) is patched, lifted above b(5) → 6.
       expectZLiftedToSix(onStackingPatches);
+    });
+
+    it("a multi-selection lane move restacks only the dragged clip", async () => {
+      // a moves up from row 2 to row 1 over c; the selected scene keeps its row, so it keeps its z.
+      const elements = [
+        el("scene", 0, 0, 10),
+        el("b", 1, 5, 5),
+        el("a", 2, 0, 4),
+        el("c", 3, 0, 4),
+      ];
+      const z: Record<string, number> = { scene: 0, b: 2, a: 1, c: 3 };
+      const onStackingPatches = vi.fn();
+      runClipMove(drag(elements[2], { previewStart: 0, previewTrack: 1 }), {
+        elements,
+        trackOrder: [0, 1, 2, 3],
+        selectedKeys: new Set(["a", "scene"]),
+        readZIndex: (e) => z[e.key ?? e.id] ?? 0,
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+      expect(onStackingPatches.mock.calls[0][0]).toEqual([{ key: "a", zIndex: 4 }]);
     });
 
     it("partial z-sync deps (no readZIndex) → move persists but no stacking call", async () => {
@@ -1151,48 +1164,21 @@ describe("commitDraggedClipMove", () => {
       return { onMoveElements, onStackingPatches };
     };
 
-    it("threads ONE shared coalesceKey to both the move persist and the z-sync, so the two records merge into a single undo entry", async () => {
+    it("threads ONE shared coalesceKey to both the move persist and the z-sync, so the server can fold them into a single undo entry", async () => {
       const { onMoveElements, onStackingPatches } = commitLaneChange(overlapping());
       await flushMicrotasks();
 
-      // Both sides receive the SAME non-empty gesture key (second arg).
+      // Both sides receive the SAME non-empty gesture key (second arg). That
+      // shared, non-empty coalesceKey is what lets the server
+      // (projectHistory.ts, "claim: a writer that records after writing")
+      // fold the "Move timeline clips" write and the "Reorder layers" z patch,
+      // both to the same file, into one undo entry — folding itself is the
+      // server's own tested behaviour, not re-proven here via a reducer.
       const moveKey = onMoveElements.mock.calls[0][1];
       const zKey = onStackingPatches.mock.calls[0][1];
       expect(typeof moveKey).toBe("string");
       expect(moveKey).not.toBe("");
       expect(zKey).toBe(moveKey);
-
-      // With that shared key, editHistory folds the two consecutive records (the
-      // "Move timeline clips" write + the "Reorder layers" z patch, same file,
-      // inside the coalesce window) into ONE undo entry spanning before→after.
-      const now = 1_000;
-      const moveEntry = buildEditHistoryEntry({
-        id: "m",
-        projectId: "p",
-        label: "Move timeline clips",
-        kind: "timeline",
-        coalesceKey: moveKey,
-        now,
-        files: { "index.html": { before: "<v0>", after: "<v1>" } },
-      });
-      const zEntry = buildEditHistoryEntry({
-        id: "z",
-        projectId: "p",
-        label: "Reorder layers",
-        kind: "timeline",
-        coalesceKey: zKey,
-        now: now + 50,
-        files: { "index.html": { before: "<v1>", after: "<v2>" } },
-      });
-      const state = pushEditHistoryEntry(
-        pushEditHistoryEntry(createEmptyEditHistory(), moveEntry),
-        zEntry,
-      );
-      expect(state.undo).toHaveLength(1);
-      expect(state.undo[0].files["index.html"]).toMatchObject({
-        before: "<v0>",
-        after: "<v2>",
-      });
     });
 
     it("distinct gestures get distinct keys (independent moves never cross-merge)", async () => {
@@ -1221,6 +1207,75 @@ describe("commitDraggedClipMove", () => {
       // the single "Move timeline clips" entry stands alone as before.
       expect(onMoveElements).toHaveBeenCalledTimes(1);
       expect(onStackingPatches).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a clip landing on an empty main track keeps its released start", () => {
+    it("a top-gutter insert that renumbers to literal track 0 commits at the released start", () => {
+      const elements = [el("v1", 1, 0, 5)];
+      const { onMoveElements } = runClipMove(
+        drag(elements[0], { previewStart: 8, previewTrack: 1, insertRow: 0 }),
+        { elements, trackOrder: [1] },
+      );
+      expect(editMap(onMoveElements.mock.calls[0][0]).v1).toEqual({ start: 8, track: 0 });
+    });
+
+    it("a plain lane change onto the empty main track commits at the released start", () => {
+      const elements = [el("v1", 1, 0, 5)];
+      const spies = runClipMove(drag(elements[0], { previewStart: 8, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0, 1],
+      });
+      expect(expectAtomicMoveMap(spies).v1).toEqual({ start: 8, track: 0 });
+    });
+
+    it("a top-gutter insert that pushes the old track-0 clip down keeps the released start", () => {
+      const oldMain = el("old", 0, 0, 3);
+      const dragged = el("v1", 2, 0, 5);
+      const { onMoveElements } = runClipMove(
+        drag(dragged, { previewStart: 8, previewTrack: 2, insertRow: 0 }),
+        { elements: [oldMain, dragged], trackOrder: [0, 2] },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.old.track).toBe(1);
+      expect(map.v1).toEqual({ start: 8, track: 0 });
+    });
+
+    it("an expanded child dragged with its host onto the main track keeps the host's start", () => {
+      for (const [hostStart, childStart] of [
+        [30, 32],
+        [20, 22],
+      ]) {
+        const host = el("host", 1, hostStart, 10);
+        const child: TimelineElement = {
+          ...el("child", 2, childStart, 4),
+          expandedHostKey: "host",
+        };
+        const { onMoveElements } = runClipMove(
+          drag(child, { previewStart: childStart, previewTrack: 0 }),
+          {
+            elements: [host, child],
+            trackOrder: [0, 1, 2],
+            selectedKeys: new Set(["host", "child"]),
+          },
+        );
+        expect(editMap(onMoveElements.mock.calls[0][0]).host).toEqual({
+          start: hostStart,
+          track: 0,
+        });
+      }
+    });
+
+    it("a multi-selection top-gutter insert keeps the grabbed clip's start", () => {
+      const dragged = el("v1", 1, 0, 5);
+      const sibling = el("v2", 1, 10, 5);
+      const elements = [dragged, sibling];
+      const { onMoveElements } = runClipMove(
+        drag(dragged, { previewStart: 8, previewTrack: 1, insertRow: 0 }),
+        { elements, trackOrder: [1], selectedKeys: new Set(["v1", "v2"]) },
+      );
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.v1.start).toBe(8);
     });
   });
 });
@@ -1317,12 +1372,10 @@ describe("commitZMirrorLaneMove", () => {
     const child1 = {
       ...el("child-1", 0.25, 0, 5),
       sourceFile: "scene.html",
-      expandedParentStart: 0,
     };
     const child2 = {
       ...el("child-2", 0.5, 0, 5),
       sourceFile: "scene.html",
-      expandedParentStart: 0,
     };
     const b = { ...el("b", 1, 0, 5), sourceFile: "index.html" };
     const t = { ...el("t", 2, 0, 5), sourceFile: "index.html" };
@@ -1434,7 +1487,106 @@ describe("commitZMirrorLaneMove", () => {
   });
 });
 
+describe("persistMoveEdits: a nested row dropped before its host", () => {
+  it("lands at the host's start in the store and in the persist", async () => {
+    const logo = { ...el("logo", 0, 5, 5, "div"), parentCompositionStart: 2 };
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn(async (_edits: TimelineMoveEdit[]) => {});
+    await persistMoveEdits([{ element: logo, updates: { start: 1, track: 0 } }], {
+      elements: [logo],
+      trackOrder: [0],
+      updateElement,
+      onMoveElements,
+    });
+    expect(updateElement).toHaveBeenCalledWith("logo", { start: 2, track: 0 });
+    expect(onMoveElements.mock.calls[0]?.[0]).toEqual([
+      { element: logo, updates: { start: 2, track: 0 } },
+    ]);
+  });
+});
+
 describe("persistMoveEdits convergence", () => {
+  it.each([
+    { successor: "timing", detach: false, expectedGroup: "G" },
+    { successor: "detach", detach: true, expectedGroup: undefined },
+  ])(
+    "preserves newer $successor while rolling back a refused detach",
+    async ({ detach, expectedGroup }) => {
+      let current: TimelineElement = { ...el("grouped", 0, 0, 4), audioGroup: "G" };
+      let rejectDetach!: (error: Error) => void;
+      let resolveSuccessor!: () => void;
+      const refused = new Promise<void>((_resolve, reject) => {
+        rejectDetach = reject;
+      });
+      const successor = new Promise<void>((resolve) => {
+        resolveSuccessor = resolve;
+      });
+      const updateElement = (_key: string, updates: Partial<TimelineElement>) => {
+        current = { ...current, ...updates };
+      };
+      const deps = { elements: [current], trackOrder: [0, 1], updateElement };
+      const first = persistMoveEdits(
+        [{ element: current, updates: { start: 0, track: 1, audioGroup: null } }],
+        { ...deps, onMoveElements: () => refused },
+        undefined,
+        "track-insert",
+      );
+      expect(current.audioGroup).toBeUndefined();
+      const second = persistMoveEdits(
+        [
+          {
+            element: current,
+            updates: { start: 5, track: 1, ...(detach ? { audioGroup: null } : {}) },
+          },
+        ],
+        { ...deps, onMoveElements: () => successor },
+      );
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        rejectDetach(new Error("save refused"));
+        await expect(first).resolves.toBe(false);
+        expect(current).toMatchObject({ start: 5, track: 1 });
+        expect(current.audioGroup).toBe(expectedGroup);
+        resolveSuccessor();
+        await expect(second).resolves.toBe(true);
+        expect(current).toMatchObject({ start: 5, track: 1 });
+        expect(current.audioGroup).toBe(expectedGroup);
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
+
+  it("registers a revert for the save in flight, and a reverted move is not reasserted", async () => {
+    let current = el("clip", 0, 1, 2);
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const updateElement = (_key: string, updates: Partial<TimelineElement>) => {
+      current = { ...current, ...updates };
+    };
+    const persisted = persistMoveEdits([{ element: current, updates: { start: 4, track: 0 } }], {
+      elements: [current],
+      trackOrder: [0],
+      updateElement,
+      onMoveElements: () => pendingSave,
+    });
+    expect(current.start).toBe(4);
+    expect(isStudioEditSaving()).toBe(true);
+
+    const reapply = revertNewestStudioPendingEdit();
+    expect(reapply).not.toBeNull();
+    expect(current.start).toBe(1);
+
+    releaseSave();
+    await expect(persisted).resolves.toBe(true);
+    expect(current.start).toBe(1);
+    expect(isStudioEditSaving()).toBe(false);
+    reapply?.();
+    expect(current.start).toBe(4);
+  });
+
   it("reasserts a saved lane after a stale runtime sync", async () => {
     const clip = { ...el("headline", 2, 0.5, 4.9), authoredTrack: 2 };
     let releaseSave: (() => void) | undefined;

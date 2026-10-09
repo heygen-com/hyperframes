@@ -1,4 +1,5 @@
 import { failCommand, failUsage } from "../../utils/commandResult.js";
+import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
  *
@@ -40,7 +41,6 @@ import {
   persistVerifiedOAuthSession,
   startAuthorizationCodeFlow,
   startDeviceAuthorizationFlow,
-  tryResolveCredential,
   userDisplayName,
   writeStore,
   type Credentials,
@@ -117,13 +117,8 @@ function isRemoteOrHeadless(): boolean {
   );
 }
 
-function envFlagEnabled(name: string): boolean {
-  const value = process.env[name]?.trim().toLowerCase();
-  return Boolean(value && value !== "0" && value !== "false" && value !== "no");
-}
-
 function assertAttendedDeviceFlow(): void {
-  if (envFlagEnabled("CI") || process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+  if (!isAttendedTerminal()) {
     console.error(
       c.error(
         "`--device` requires an attended terminal and is disabled in CI. Use an API key or workload credential for automation.",
@@ -156,16 +151,9 @@ async function runDeviceLogin(): Promise<void> {
     failCommand();
   }
 
-  const credential = {
-    type: "oauth" as const,
-    access_token: tokens.access_token,
-    ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
-    source: "file_json" as const,
-    refreshable: false,
-  };
   let user: UserInfo;
   try {
-    user = await new AuthClient().getCurrentUser(credential);
+    user = await new AuthClient().getCurrentUser(issuedCredential(tokens));
   } catch (err) {
     await revokeDeviceTokens(tokens);
     trackAuthLoginFailed("device", "rejected");
@@ -197,6 +185,17 @@ async function runDeviceLogin(): Promise<void> {
   console.log(c.success(`✓ Signed in as ${identity}.`));
 }
 
+// The tokens this login just issued, never a resolved credential: an env credential would outrank them.
+function issuedCredential(tokens: { access_token: string; refresh_token?: string }) {
+  return {
+    type: "oauth" as const,
+    access_token: tokens.access_token,
+    ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+    source: "file_json" as const,
+    refreshable: false,
+  };
+}
+
 async function revokeDeviceTokens(tokens: {
   access_token: string;
   refresh_token?: string;
@@ -216,8 +215,9 @@ async function runOAuthLogin(): Promise<void> {
   const { trackAuthLoginStarted, trackAuthLoginFailed } = await import("../../telemetry/index.js");
   trackAuthLoginStarted("oauth");
 
+  let tokens;
   try {
-    await startAuthorizationCodeFlow();
+    ({ tokens } = await startAuthorizationCodeFlow());
   } catch (err) {
     const message = (err as Error).message ?? "";
     // The loopback server rejects with "OAuth callback timed out after …" when
@@ -229,19 +229,11 @@ async function runOAuthLogin(): Promise<void> {
     failCommand();
   }
 
-  await reportIdentity();
+  await reportIdentity(issuedCredential(tokens));
 }
 
-// fallow-ignore-next-line complexity
-async function reportIdentity(): Promise<void> {
-  const { trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
-    await import("../../telemetry/index.js");
-  const credential = await tryResolveCredential();
-  if (!credential) {
-    trackAuthLoginFailed("oauth", "no_credential");
-    console.error(c.warn("Sign-in completed but no credential was persisted."));
-    failCommand();
-  }
+async function reportIdentity(credential: ReturnType<typeof issuedCredential>): Promise<void> {
+  const { trackAuthLoginCompleted, identifyUser } = await import("../../telemetry/index.js");
   // Wire the refresh hook here too — a freshly-minted token shouldn't
   // need it, but a fast IdP-side rotation (or a misconfigured short
   // TTL) shouldn't punish the user with a hard failure when the

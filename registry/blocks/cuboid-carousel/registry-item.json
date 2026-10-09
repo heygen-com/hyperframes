@@ -1,0 +1,77 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cuboid-carousel",
+  "type": "hyperframes:block",
+  "title": "Cuboid Carousel",
+  "description": "A chain of bevelled cuboids rides a travelling wave as a content carousel.",
+  "tags": [
+    "3d-motion",
+    "carousel",
+    "cards",
+    "travelling-wave",
+    "pbr",
+    "shadows",
+    "room-environment"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6.67,
+  "files": [
+    {
+      "path": "cuboid-carousel.html",
+      "target": "compositions/cuboid-carousel/cuboid-carousel.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/Three-LICENSE.txt",
+      "target": "compositions/cuboid-carousel/assets/Three-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/addons/environments/RoomEnvironment.js",
+      "target": "compositions/cuboid-carousel/assets/addons/environments/RoomEnvironment.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/addons/utils/BufferGeometryUtils.js",
+      "target": "compositions/cuboid-carousel/assets/addons/utils/BufferGeometryUtils.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/cuboid-motion.js",
+      "target": "compositions/cuboid-carousel/assets/cuboid-motion.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/gsap-3.14.2.min.js",
+      "target": "compositions/cuboid-carousel/assets/gsap-3.14.2.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/GSAP-NOTICE.txt",
+      "target": "compositions/cuboid-carousel/assets/GSAP-NOTICE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/three.core.min.js",
+      "target": "compositions/cuboid-carousel/assets/three.core.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/three.module.min.js",
+      "target": "compositions/cuboid-carousel/assets/three.module.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "SKILL.md",
+      "target": "compositions/cuboid-carousel/SKILL.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cuboid-carousel.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cuboid-carousel.png"
+  }
+}

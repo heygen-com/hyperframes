@@ -1,3 +1,4 @@
+import { formatFindingTimes } from "../utils/checkFindings.js";
 import { defineCommand, parseArgs } from "citty";
 import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
@@ -138,10 +139,7 @@ export function createCheckCommand(
     },
     args: CHECK_COMMAND_ARGS,
     async run({ rawArgs }) {
-      // A bare `--frame-check` (no explicit value) is rewritten to
-      // `--frame-check=` upstream by the shared swallow guard (see
-      // guardSwallowedFlagValues in reject-unknown-flags.ts) before this runs,
-      // so `rawArgs` here already reflects that correction.
+      // wrapCommand's swallow guard already rewrote a bare `--frame-check` to `--frame-check=`.
       const args = parseArgs(rawArgs, CHECK_COMMAND_ARGS);
       const asJson = args.json === true;
 
@@ -396,6 +394,12 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
 
 function printHumanReport(report: CheckReport): void {
   printSection("Lint", report.lint);
+  if (report.browserSkipped) {
+    console.log();
+    console.log(
+      `  ${c.warn("⚠")} Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.`,
+    );
+  }
   printSection("Runtime", report.runtime);
   printLayoutSection("Layout", report.layout);
   printSection("Motion", report.motion);
@@ -452,7 +456,7 @@ function printContrastSection(report: CheckReport): void {
   }
   for (const finding of section.findings) {
     console.log(
-      `  ${c.error("✗")} ${finding.selector} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, t=${finding.time}s)`,
+      `  ${c.error("✗")} ${finding.selector} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
     );
     console.log(`    ${c.dim(`Try ${finding.suggestedColor}; source ${finding.sourceFile}`)}`);
   }
@@ -477,7 +481,7 @@ function printSnapshotSection(report: CheckReport): void {
 }
 
 function printFinding(finding: CheckFinding): void {
-  const where = `${finding.sourceFile} ${finding.selector} t=${finding.time}s`;
+  const where = `${finding.sourceFile} ${finding.selector} ${formatFindingTimes(finding)}`;
   console.log(`  ${findingIcon(finding)} ${finding.code}: ${finding.message}`);
   console.log(`    ${c.dim(where)}`);
   if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${finding.fixHint}`)}`);

@@ -19,6 +19,15 @@ export class DomEditPersistUnsafeValueError extends Error {
   }
 }
 
+export class DomEditPersistPreparedWriteError extends Error {
+  readonly alreadyToasted = true;
+
+  constructor(targetPath: string) {
+    super(`The edit saved but its follow-up write to ${targetPath} did not`);
+    this.name = "DomEditPersistPreparedWriteError";
+  }
+}
+
 export type DomEditPersistFailureSelection = Pick<
   DomEditSelection,
   "label" | "hfId" | "id" | "selector" | "selectorIndex" | "sourceFile"
@@ -46,6 +55,15 @@ function getSelectionLabel(selection: DomEditPersistFailureSelection): string {
   return selection.label || selection.selector || selection.id || "this element";
 }
 
+export function wasAlreadyToasted(error: unknown): boolean {
+  return (
+    (error instanceof DomEditPersistUnsafeValueError ||
+      error instanceof DomEditPersistPreparedWriteError ||
+      error instanceof StudioSaveHttpError) &&
+    error.alreadyToasted
+  );
+}
+
 export function reportDomEditPersistFailure(
   selection: DomEditPersistFailureSelection,
   operations: PatchOperation[],
@@ -59,12 +77,7 @@ export function reportDomEditPersistFailure(
     error: detail,
   });
 
-  const wasAlreadyToasted =
-    (error instanceof DomEditPersistUnsafeValueError || error instanceof StudioSaveHttpError) &&
-    error.alreadyToasted;
-  if (wasAlreadyToasted) {
-    return;
-  }
+  if (wasAlreadyToasted(error)) return;
 
   showToast(`Couldn't save "${getSelectionLabel(selection)}": ${detail}`, "error");
 }

@@ -7,6 +7,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { applyDotEnv } from "../utils/dotEnv.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { CaptureResult, DesignTokens } from "./types.js";
@@ -21,19 +22,7 @@ export function loadEnvFile(startDir: string): void {
     for (let i = 0; i < 5; i++) {
       const envPath = resolve(dir, ".env");
       try {
-        const envContent = readFileSync(envPath, "utf-8");
-        for (const line of envContent.split("\n")) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith("#")) continue;
-          const eq = trimmed.indexOf("=");
-          if (eq === -1) continue;
-          const key = trimmed.slice(0, eq).trim();
-          const val = trimmed
-            .slice(eq + 1)
-            .trim()
-            .replace(/^["']|["']$/g, "");
-          if (!process.env[key]) process.env[key] = val;
-        }
+        applyDotEnv(readFileSync(envPath, "utf-8"), process.env);
         break;
       } catch {
         dir = resolve(dir, "..");

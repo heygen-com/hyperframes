@@ -1,4 +1,5 @@
 import type { PatchOperation } from "../../utils/sourcePatcher";
+import { gsapRendersTransform } from "./gsapAnimatesProperty";
 import {
   STUDIO_OFFSET_X_PROP,
   STUDIO_OFFSET_Y_PROP,
@@ -72,36 +73,6 @@ function appendTransformDisplayOps(element: HTMLElement, ops: PatchOperation[]):
 
 /* ── Path offset patches ─────────────────────────────────────────── */
 
-export function buildPathOffsetPatches(element: HTMLElement): PatchOperation[] {
-  const ops: PatchOperation[] = [];
-  collectInlineStyleOps(element, [STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP], ops);
-  // When GSAP owns the element's transform, the live inline translate is kept
-  // at "none" (the offset lives in GSAP's cache — see applyStudioPathOffset).
-  // Persist the var() expression in that case, so a reload re-folds the offset.
-  const inlineTranslate = element.style.getPropertyValue("translate");
-  const hasOffsetVars =
-    element.style.getPropertyValue(STUDIO_OFFSET_X_PROP) ||
-    element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
-  const translateValue =
-    inlineTranslate && inlineTranslate !== "none"
-      ? inlineTranslate
-      : hasOffsetVars
-        ? `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`
-        : null;
-  if (translateValue) {
-    ops.push({ type: "inline-style", property: "translate", value: translateValue });
-  }
-  ops.push({ type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: "true" });
-  collectAttributeOps(
-    element,
-    [STUDIO_ORIGINAL_TRANSLATE_ATTR, STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR],
-    ops,
-  );
-  collectInlineStyleOps(element, ["display"], ops);
-  collectAttributeOps(element, [STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR], ops);
-  return ops;
-}
-
 export function buildClearPathOffsetPatches(element: HTMLElement): PatchOperation[] {
   const originalInlineTranslate = element.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR);
   const ops: PatchOperation[] = [
@@ -118,7 +89,7 @@ export function buildClearPathOffsetPatches(element: HTMLElement): PatchOperatio
 
 /* ── Box size patches ────────────────────────────────────────────── */
 
-const BOX_SIZE_STYLE_PROPS = [
+export const BOX_SIZE_STYLE_PROPS = [
   "width",
   "height",
   "min-width",
@@ -157,7 +128,10 @@ const BOX_SIZE_ORIG_ATTRS: ReadonlyArray<[string, string]> = [
 export function buildBoxSizePatches(element: HTMLElement): PatchOperation[] {
   const ops: PatchOperation[] = [];
   collectInlineStyleOps(element, [STUDIO_WIDTH_PROP, STUDIO_HEIGHT_PROP], ops);
-  collectInlineStyleOps(element, BOX_SIZE_STYLE_PROPS, ops);
+  const withoutGsapScaleMask = gsapRendersTransform(element)
+    ? BOX_SIZE_STYLE_PROPS.filter((prop) => prop !== "scale")
+    : BOX_SIZE_STYLE_PROPS;
+  collectInlineStyleOps(element, withoutGsapScaleMask, ops);
   ops.push({ type: "attribute", property: STUDIO_BOX_SIZE_ATTR, value: "true" });
   collectAttributeOps(
     element,
@@ -184,28 +158,6 @@ export function buildClearBoxSizePatches(element: HTMLElement): PatchOperation[]
 }
 
 /* ── Rotation patches ────────────────────────────────────────────── */
-
-const ROTATION_STYLE_PROPS = [
-  STUDIO_ROTATION_PROP,
-  "rotate",
-  "transform-origin",
-  "display",
-] as const;
-
-const ROTATION_ORIG_ATTRS = [
-  STUDIO_ORIGINAL_ROTATE_ATTR,
-  STUDIO_ORIGINAL_INLINE_ROTATE_ATTR,
-  STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
-  STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
-] as const;
-
-export function buildRotationPatches(element: HTMLElement): PatchOperation[] {
-  const ops: PatchOperation[] = [];
-  collectInlineStyleOps(element, ROTATION_STYLE_PROPS, ops);
-  ops.push({ type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" });
-  collectAttributeOps(element, ROTATION_ORIG_ATTRS, ops);
-  return ops;
-}
 
 export function buildClearRotationPatches(element: HTMLElement): PatchOperation[] {
   const origInlineRotate = element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);

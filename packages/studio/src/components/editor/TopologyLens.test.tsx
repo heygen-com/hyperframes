@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { studioEditLifecycle, type StudioWriteResult } from "../../webmcp/writeCoordinator";
+import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { TopologyLens } from "./TopologyLens";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -290,5 +291,32 @@ describe("TopologyLens", () => {
     act(() => vi.advanceTimersByTime(0));
     expect(vi.getTimerCount()).toBe(0);
     expect(studioEditLifecycle.getSnapshot()).toEqual({ phase: "idle" });
+  });
+
+  it("dismisses on the promoted iframe's load, not the replaced one", () => {
+    const a = document.createElement("iframe");
+    const b = document.createElement("iframe");
+    document.body.append(a, b);
+    const ref = { current: a as HTMLIFrameElement | null };
+    usePreviewIframeStore.setState({ iframe: a });
+    window.matchMedia = matchMedia(false);
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    act(() => {
+      root?.render(<TopologyLens iframeRef={ref} activeCompositionPath="index.html" />);
+    });
+    begin();
+
+    act(() => {
+      ref.current = b;
+      usePreviewIframeStore.getState().setIframe(b);
+    });
+    act(() => a.dispatchEvent(new Event("load")));
+    expect(host.querySelector('[data-topology-lens="hidden"]')).toBeNull();
+
+    act(() => b.dispatchEvent(new Event("load")));
+    expect(host.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
+    usePreviewIframeStore.setState({ iframe: null });
   });
 });

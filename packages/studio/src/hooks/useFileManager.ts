@@ -1,24 +1,20 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { EditingFile } from "../utils/studioHelpers";
 import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
-import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
-import {
-  createStudioSaveHttpError,
-  retryStudioSave,
-  StudioFileConflictError,
-  StudioSaveNetworkError,
-} from "../utils/studioSaveDiagnostics";
-import { studioExpectedFileVersion, studioWriteHeaders } from "../utils/studioFileVersion";
+import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
+import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
 import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
+import { useProjectFileWriter } from "./useProjectFileWriter";
+import { studioApiFetch } from "../utils/studioApiFetch";
+import { encodeUrlPath } from "@hyperframes/parsers";
 
 // ── Types ──
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -50,24 +46,19 @@ export function useFileManager({
   projectIdRef.current = projectId;
 
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
-  const fileVersionScope = useMemo(
-    () => ({ projectId, versions: new Map<string, string | null>() }),
-    [projectId],
-  );
-  const fileVersions = fileVersionScope.versions;
-  const observeProjectFileVersion = useCallback(
-    (path: string, version: string | null) => {
-      fileVersions.set(path, version);
-    },
-    [fileVersions],
-  );
+  const {
+    fileVersions,
+    readProjectFile,
+    writeProjectFile: writeProjectFileRaw,
+    readOptionalProjectFile,
+    observeProjectFileVersion,
+  } = useProjectFileWriter({ projectId });
 
   // ── File tree ──
 
   const {
     projectDir,
     fileTree,
-    setFileTree,
     fileTreeLoaded,
     refreshFileTree,
     compositions,
@@ -75,117 +66,24 @@ export function useFileManager({
     fontAssets,
   } = useFileTree({ projectId, projectIdRef });
 
-  // ── Core file I/O ──
-
-  const readProjectFile = useCallback(
-    async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}`,
-      );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await response.json()) as { content?: string; version?: string };
-      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
-      fileVersions.set(path, data.version ?? response.headers.get("etag"));
-      return data.content;
-    },
-    [fileVersions, projectId],
-  );
-
-  const writeProjectFile = useCallback(
-    async (path: string, content: string, expectedContent?: string): Promise<void> => {
-      if (!projectId) throw new Error("No active project");
-      const writeProjectId = projectId;
-      let expectedVersion = await studioExpectedFileVersion(fileVersions, path, expectedContent);
-      if (expectedVersion === undefined) {
-        const preflight = await fetch(
-          `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
-        );
-        if (preflight.ok) {
-          const data = (await preflight.json()) as { content?: string; version?: string };
-          throw new StudioFileConflictError({
-            filePath: path,
-            currentVersion: data.version ?? preflight.headers.get("etag"),
-            currentContent: data.content ?? null,
-            attemptedContent: content,
-          });
-        } else if (preflight.status === 404) {
-          expectedVersion = null;
-        } else {
-          throw await createStudioSaveHttpError(preflight, `Failed to read ${path} before save`);
-        }
-      }
-      await retryStudioSave(async () => {
-        // Each request gets its own receipt identity. If a committed request loses its response,
-        // the retry can produce a second filesystem receipt that must be suppressed independently.
-        let response: Response;
-        try {
-          response = await fetch(
-            `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
-            {
-              method: "PUT",
-              headers: {
-                "Content-Type": "text/plain",
-                ...studioWriteHeaders(),
-                ...(expectedVersion ? { "If-Match": expectedVersion } : { "If-None-Match": "*" }),
-              },
-              body: content,
-            },
-          );
-        } catch (error) {
-          throw new StudioSaveNetworkError(`Failed to save ${path}: network error`, {
-            cause: error,
-          });
-        }
-        if (response.status === 409) {
-          const conflict = (await response.json().catch(() => null)) as {
-            currentVersion?: string | null;
-            currentContent?: string | null;
-          } | null;
-          const currentVersion = conflict?.currentVersion ?? null;
-          if (currentVersion && conflict?.currentContent === content) {
-            fileVersions.set(path, currentVersion);
-            return;
-          }
-          throw new StudioFileConflictError({
-            filePath: path,
-            currentVersion,
-            currentContent: conflict?.currentContent ?? null,
-            attemptedContent: content,
-          });
-        }
-        if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
-        const result = (await response.json()) as { version?: string };
-        const version = result.version ?? response.headers.get("etag");
-        if (!version)
-          throw new Error(`Save response for ${path} did not include a content version`);
-        fileVersions.set(path, version);
-      });
-      if (projectIdRef.current === writeProjectId && editingPathRef.current === path) {
-        setEditingFile({ path, content });
-      }
-    },
-    [fileVersions, projectId],
-  );
-
   const updateEditingFileContent = useCallback((path: string, content: string) => {
     if (editingPathRef.current === path) {
       setEditingFile({ path, content });
     }
   }, []);
 
-  const readOptionalProjectFile = useCallback(
-    async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
-      );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await response.json()) as { content?: string; version?: string };
-      fileVersions.set(path, data.version ?? response.headers.get("etag"));
-      return typeof data.content === "string" ? data.content : "";
+  // Studio's own editor tab mirrors whatever it just wrote, on top of the
+  // shared writer — a host mounting useProjectFileWriter directly has no
+  // editor tab and does not need this.
+  const writeProjectFile = useCallback(
+    async (path: string, content: string, expectedContent?: string): Promise<void> => {
+      const writeProjectId = projectIdRef.current;
+      await writeProjectFileRaw(path, content, expectedContent);
+      if (projectIdRef.current === writeProjectId && editingPathRef.current === path) {
+        setEditingFile({ path, content });
+      }
     },
-    [fileVersions, projectId],
+    [writeProjectFileRaw],
   );
 
   // ── Editor save (debounced content change) ──
@@ -203,16 +101,18 @@ export function useFileManager({
 
   const overwriteExternalConflict = useCallback(
     async (conflict: StudioFileConflictError) => {
-      if (conflict.currentContent != null) {
-        await writeProjectFile(
-          conflict.filePath,
-          conflict.attemptedContent,
-          conflict.currentContent,
-        );
-      } else {
-        fileVersions.set(conflict.filePath, conflict.currentVersion);
-        await writeProjectFile(conflict.filePath, conflict.attemptedContent);
-      }
+      await serializeStudioFileMutation(writeProjectFile, conflict.filePath, async () => {
+        if (conflict.currentContent != null) {
+          await writeProjectFile(
+            conflict.filePath,
+            conflict.attemptedContent,
+            conflict.currentContent,
+          );
+        } else {
+          fileVersions.set(conflict.filePath, conflict.currentVersion);
+          await writeProjectFile(conflict.filePath, conflict.attemptedContent);
+        }
+      });
       updateEditingFileContent(conflict.filePath, conflict.attemptedContent);
     },
     [fileVersions, updateEditingFileContent, writeProjectFile],
@@ -235,7 +135,7 @@ export function useFileManager({
         setEditingFile({ path, content: null });
         return;
       }
-      fetch(`/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`)
+      studioApiFetch(`/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`)
         .then((r) => {
           if (!r.ok) throw new Error(`Failed to load ${path} (${r.status})`);
           return r.json();
@@ -269,9 +169,12 @@ export function useFileManager({
       const requestId = ++revealRequestIdRef.current;
       const controller = new AbortController();
       revealAbortRef.current = controller;
-      fetch(`/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(sourceFile)}`, {
-        signal: controller.signal,
-      })
+      studioApiFetch(
+        `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(sourceFile)}`,
+        {
+          signal: controller.signal,
+        },
+      )
         .then((r) => r.json())
         .then((data: { content?: string; version?: string }) => {
           if (requestId !== revealRequestIdRef.current) return;
@@ -302,7 +205,7 @@ export function useFileManager({
 
       const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
       try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/upload${qs}`, {
+        const res = await studioApiFetch(`/api/projects/${encodeURIComponent(pid)}/upload${qs}`, {
           method: "POST",
           body: formData,
         });
@@ -312,8 +215,14 @@ export function useFileManager({
             showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
           }
           if (data.invalid?.length) {
-            const names = data.invalid.map((entry: { name: string }) => entry.name).join(", ");
-            showToast(`Unsupported media skipped: ${names}`);
+            const why = data.invalid
+              .map((entry: { name: string; reason: string }) => `${entry.name} (${entry.reason})`)
+              .join(", ");
+            showToast(`Not added: ${why}`);
+          }
+          if (data.unchecked?.length) {
+            const names = data.unchecked.map((entry: { name: string }) => entry.name).join(", ");
+            showToast(`Added ${names}, ${data.unchecked[0].reason}`, "info");
           }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);
@@ -342,7 +251,7 @@ export function useFileManager({
         content =
           '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n</head>\n<body>\n\n</body>\n</html>\n';
       }
-      const res = await fetch(
+      const res = await studioApiFetch(
         `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`,
         {
           method: "POST",
@@ -366,7 +275,7 @@ export function useFileManager({
     async (path: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(
+      const res = await studioApiFetch(
         `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path + "/.gitkeep")}`,
         {
           method: "POST",
@@ -389,7 +298,7 @@ export function useFileManager({
     async (path: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(
+      const res = await studioApiFetch(
         `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`,
         {
           method: "DELETE",
@@ -411,7 +320,7 @@ export function useFileManager({
     async (oldPath: string, newPath: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(
+      const res = await studioApiFetch(
         `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(oldPath)}`,
         {
           method: "PATCH",
@@ -438,7 +347,7 @@ export function useFileManager({
     async (path: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/duplicate-file`, {
+      const res = await studioApiFetch(`/api/projects/${encodeURIComponent(pid)}/duplicate-file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path }),
@@ -478,7 +387,7 @@ export function useFileManager({
         .map((asset) => ({
           family: fontFamilyFromAssetPath(asset),
           path: asset,
-          url: `/api/projects/${encodeURIComponent(pid)}/preview/${asset}`,
+          url: `/api/projects/${encodeURIComponent(pid)}/preview/${encodeUrlPath(asset)}`,
         }));
       importedFontAssetsRef.current = [
         ...imported,
@@ -501,7 +410,6 @@ export function useFileManager({
     projectDir,
     fileTree,
     fileTreeLoaded,
-    setFileTree,
 
     // Refs
     editingPathRef,

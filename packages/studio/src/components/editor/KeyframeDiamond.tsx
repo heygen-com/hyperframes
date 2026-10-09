@@ -19,8 +19,11 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
   isHold = false,
 }: KeyframeDiamondProps) {
   const isFilled = state === "active";
-  const opacity = state === "ghost" ? 0.25 : state === "inactive" ? 0.6 : 1;
-  const color = state === "active" ? "#3CE6AC" : "#a3a3a3";
+  const color = {
+    active: "text-accent",
+    inactive: "text-text-2 hover:text-text-0",
+    ghost: "text-text-off hover:text-text-0",
+  }[state];
 
   return (
     <button
@@ -29,8 +32,7 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
         e.stopPropagation();
         onClick();
       }}
-      className="relative flex-shrink-0 p-0.5 transition-opacity hover:opacity-100 before:absolute before:-inset-1.5 before:content-['']"
-      style={{ color, opacity }}
+      className={`relative shrink-0 p-0.5 transition-colors before:absolute before:-inset-1.5 before:content-[''] ${color}`}
       title={title}
       aria-label={title}
       aria-pressed={state === "active"}

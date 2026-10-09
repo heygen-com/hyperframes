@@ -23,57 +23,40 @@ import { classifyTweenPropertyGroup } from "@hyperframes/core/gsap-parser";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
+import { elTween, resetGsapEditState } from "./gsapParsedTween.test-helpers";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
-  document.body.innerHTML = "";
-});
+afterEach(resetGsapEditState);
 
 type Props = Record<string, number>;
-
-function tween(id: string, properties: Props, duration: number): GsapAnimation {
-  return {
-    id,
-    targetSelector: "#el",
-    propertyGroup: classifyTweenPropertyGroup(properties),
-    method: "to",
-    properties,
-    position: 0,
-    resolvedStart: 0,
-    duration,
-    ...(duration === 0 ? { extras: { immediateRender: "__raw:true" } } : {}),
-  } as unknown as GsapAnimation;
-}
 
 /** The dimensions an element's animations actually vary across. */
 const SCALE = {
   none: null,
-  "instant hold": () => tween("#el-scale", { scale: 1.2 }, 0),
-  tween: () => tween("#el-scale", { scale: 1.2 }, 2),
-  longhands: () => tween("#el-scale", { scaleX: 1.2, scaleY: 1.1 }, 2),
+  "instant hold": () => elTween("#el-scale", { scale: 1.2 }, 0),
+  tween: () => elTween("#el-scale", { scale: 1.2 }, 2),
+  longhands: () => elTween("#el-scale", { scaleX: 1.2, scaleY: 1.1 }, 2),
 } as const;
 const SIZE = {
   none: null,
-  "instant hold": () => tween("#el-size", { width: 300, height: 200 }, 0),
-  tween: () => tween("#el-size", { width: 300, height: 200 }, 2),
+  "instant hold": () => elTween("#el-size", { width: 300, height: 200 }, 0),
+  tween: () => elTween("#el-size", { width: 300, height: 200 }, 2),
 } as const;
 const POSITION = {
   none: null,
-  "static hold": () => tween("#el-position", { x: 40, y: 60 }, 0),
-  tween: () => tween("#el-position", { x: 40, y: 60 }, 2),
+  "static hold": () => elTween("#el-position", { x: 40, y: 60 }, 0),
+  tween: () => elTween("#el-position", { x: 40, y: 60 }, 2),
 } as const;
 const EXTRA = {
   none: null,
   // What a 3D card carries, and the shape that produced two same-group ids.
   "3d and rotation": () => [
-    tween("#el-other", { rotationY: -540, rotationX: 720, _auto: 0 }, 0),
-    tween("#el-rotation", { rotation: 720 }, 0),
-    tween("#el-other-2", { z: 50 }, 0),
+    elTween("#el-other", { rotationY: -540, rotationX: 720, _auto: 0 }, 0),
+    elTween("#el-rotation", { rotation: 720 }, 0),
+    elTween("#el-other-2", { z: 50 }, 0),
   ],
   // A tween that already spans two groups, which the resize has to split.
-  "a mixed tween": () => [tween("#el-mixed", { scale: 1.2, width: 300, height: 200 }, 0)],
+  "a mixed tween": () => [elTween("#el-mixed", { scale: 1.2, width: 300, height: 200 }, 0)],
 } as const;
 
 interface Recorded {
@@ -113,7 +96,7 @@ function fakeSource(initial: GsapAnimation[]) {
     current = [
       ...current.filter((animation) => animation.id !== id),
       ...[...byGroup].map(([group, properties]) =>
-        tween(`#el-split-${group}`, properties, target.duration ?? 0),
+        elTween(`#el-split-${group}`, properties, target.duration ?? 0),
       ),
     ];
   };
@@ -123,7 +106,7 @@ function fakeSource(initial: GsapAnimation[]) {
     if (mutation.type === "split-into-property-groups") return id && split(id);
     if (!id) {
       if (mutation.type === "add")
-        current = [...current, tween(`#el-added-${current.length}`, properties, 0)];
+        current = [...current, elTween(`#el-added-${current.length}`, properties, 0)];
       return;
     }
     mergeInto(id, properties);
@@ -224,7 +207,7 @@ it(`sweeps ${CASES.length} animated shapes without a stale id or a mixed tween`,
  */
 function scaleAt(id: string, position: number): GsapAnimation {
   return {
-    ...tween(id, { scale: 1 }, 2),
+    ...elTween(id, { scale: 1 }, 2),
     position,
     resolvedStart: position,
     keyframes: {

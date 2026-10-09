@@ -1,6 +1,5 @@
 /**
- * Tests for `discardWarmupCapture` — the helper distributed chunk workers
- * run before their first real capture to prime `lastFrameCache`.
+ * Tests for `discardWarmupCapture` — the exported helper for discarded captures.
  *
  * The helper is a thin wrapper around the inner `captureFrameCore`
  * machinery, so its testable contract is post-conditional rather than
@@ -23,12 +22,14 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { discardWarmupCapture, type CaptureSession } from "./frameCapture.js";
+import {
+  discardWarmupCapture,
+  getCapturePerfSummary,
+  type CaptureSession,
+} from "./frameCapture.js";
 
 function makeFakeSession(): CaptureSession {
-  // The discardWarmupCapture wrapper only reads `capturePerf`,
-  // `beginFrameHasDamageCount`, `beginFrameNoDamageCount`. Everything else
-  // is unused — leave it as bare-minimum stubs cast through `unknown`.
+  // Capture is injected; provide the state needed for restoration and perf summaries.
   return {
     browser: {} as unknown,
     page: {} as unknown,
@@ -38,12 +39,14 @@ function makeFakeSession(): CaptureSession {
     onBeforeCapture: null,
     isInitialized: true,
     browserConsoleBuffer: [],
+    warnings: [],
     capturePerf: {
       frames: 7,
       seekMs: 100,
       beforeCaptureMs: 50,
       screenshotMs: 200,
       totalMs: 350,
+      frameMs: [11, 13, 17, 19, 23, 29, 31],
     },
     captureMode: "beginframe",
     beginFrameTimeTicks: 0,
@@ -90,7 +93,8 @@ describe("discardWarmupCapture", () => {
 
   it("restores perf counters after the inner capture mutates them", async () => {
     const session = makeFakeSession();
-    const before = { ...session.capturePerf };
+    const before = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
+    const summaryBefore = getCapturePerfSummary(session);
     try {
       await discardWarmupCapture(session, 0, 0, async (s) => {
         s.capturePerf.frames += 1;
@@ -98,9 +102,11 @@ describe("discardWarmupCapture", () => {
         s.capturePerf.beforeCaptureMs += 5;
         s.capturePerf.screenshotMs += 33;
         s.capturePerf.totalMs += 50;
+        s.capturePerf.frameMs.push(50);
         return { buffer: Buffer.alloc(0), quantizedTime: 0, captureTimeMs: 50 };
       });
       expect(session.capturePerf).toEqual(before);
+      expect(getCapturePerfSummary(session)).toEqual(summaryBefore);
     } finally {
       rmSync(session.outputDir, { recursive: true, force: true });
     }
@@ -125,30 +131,53 @@ describe("discardWarmupCapture", () => {
 
   it("restores state even when the inner capture throws", async () => {
     const session = makeFakeSession();
-    const perfBefore = { ...session.capturePerf };
+    const perfBefore = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
+    const summaryBefore = getCapturePerfSummary(session);
     const hasBefore = session.beginFrameHasDamageCount;
     const noBefore = session.beginFrameNoDamageCount;
     try {
-      let thrown: unknown;
-      try {
-        await discardWarmupCapture(session, 0, 0, async (s) => {
+      const failure = new Error("simulated capture failure");
+      await expect(
+        discardWarmupCapture(session, 0, 0, async (s) => {
           s.capturePerf.frames += 5;
+          s.capturePerf.frameMs.push(50);
           s.beginFrameNoDamageCount += 2;
-          throw new Error("simulated capture failure");
-        });
-      } catch (err) {
-        thrown = err;
-      }
-      expect((thrown as Error).message).toBe("simulated capture failure");
+          throw failure;
+        }),
+      ).rejects.toBe(failure);
       // The whole point of `finally { restore }`: failure must not leak
       // inflated counters into the real capture summary.
       expect(session.capturePerf).toEqual(perfBefore);
+      expect(getCapturePerfSummary(session)).toEqual(summaryBefore);
       expect(session.beginFrameHasDamageCount).toBe(hasBefore);
       expect(session.beginFrameNoDamageCount).toBe(noBefore);
     } finally {
       rmSync(session.outputDir, { recursive: true, force: true });
     }
   });
+
+  it.each([false, true])(
+    "restores samples after their contents are replaced (throws=%s)",
+    async (throws) => {
+      const session = makeFakeSession();
+      const samplesBefore = [...session.capturePerf.frameMs];
+      const summaryBefore = getCapturePerfSummary(session);
+      const failure = new Error("discarded capture failed");
+      try {
+        const capture = discardWarmupCapture(session, 240, 8, async (s) => {
+          s.capturePerf.frameMs.splice(0, s.capturePerf.frameMs.length, 9000);
+          if (throws) throw failure;
+          return { buffer: Buffer.alloc(0), quantizedTime: 8, captureTimeMs: 0 };
+        });
+        if (throws) await expect(capture).rejects.toBe(failure);
+        else await capture;
+        expect(session.capturePerf.frameMs).toEqual(samplesBefore);
+        expect(getCapturePerfSummary(session)).toEqual(summaryBefore);
+      } finally {
+        rmSync(session.outputDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("writes no output file to the session's outputDir", async () => {
     const session = makeFakeSession();

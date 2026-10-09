@@ -1,6 +1,7 @@
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { EASE_LABELS } from "./gsapAnimationConstants";
 import { EaseCurveSection } from "./EaseCurveSection";
+import { roundTo3 } from "../../utils/rounding";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 // The full GSAP easing vocabulary offered by the "Set all…" bulk control —
@@ -41,6 +42,8 @@ const APPLY_ALL_EASES = [
   "bounce.inOut",
 ] as const;
 
+const percentLabel = (pct: number) => (pct > 0 && pct < 0.001 ? "<0.001" : String(roundTo3(pct)));
+
 export function KeyframeEaseList({
   keyframes,
   globalEase,
@@ -74,7 +77,7 @@ export function KeyframeEaseList({
               const next = e.target.value;
               if (next) onApplyAll(next);
             }}
-            className="ml-auto cursor-pointer rounded bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none hover:bg-neutral-700 focus:ring-1 focus:ring-panel-accent/40"
+            className="ml-auto cursor-pointer rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-hidden hover:bg-neutral-700 focus:ring-1 focus:ring-panel-accent/40"
           >
             <option value="" disabled>
               Set all…
@@ -91,7 +94,7 @@ export function KeyframeEaseList({
         if (i === 0) return null;
         const segEase = kf.ease ?? globalEase;
         const isExpanded = expandedPct === kf.percentage;
-        const label = `${keyframes[i - 1].percentage}% → ${kf.percentage}%`;
+        const label = `${percentLabel(keyframes[i - 1].percentage)}% → ${percentLabel(kf.percentage)}%`;
         const easeLabel = segEase.startsWith("custom(")
           ? "Custom"
           : (EASE_LABELS[segEase] ?? segEase);

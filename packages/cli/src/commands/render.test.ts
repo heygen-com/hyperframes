@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
   resolveConfigCalls: [] as Array<Record<string, unknown>>,
+  loggerLevels: [] as string[],
   // Overridable per-test hook so the DE-parallel-router-trial tests can
   // mutate the job (perfSummary/errorDetails) or throw, without perturbing
   // every other test in this file that expects a plain no-op resolve.
@@ -98,6 +99,10 @@ const browserManagerState = vi.hoisted(() => ({
 
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
+    createConsoleLogger: vi.fn((level: string) => {
+      producerState.loggerLevels.push(level);
+      return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    }),
     resolveConfig: vi.fn((overrides: Record<string, unknown>) => {
       producerState.resolveConfigCalls.push(overrides);
       return { ...overrides, resolved: true };
@@ -321,6 +326,113 @@ describe("renderLocal browser GPU config", () => {
     ).rejects.toMatchObject({ name: "CliRuntimeError" });
   });
 
+  it("prints the full finding on a default-entry-mismatch abort even without --lint-verbose", async () => {
+    const lintResult = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: false,
+            errorCount: 1,
+            warningCount: 0,
+            infoCount: 0,
+            findings: [
+              {
+                code: "blank_root_with_standalone_composition",
+                severity: "error" as const,
+                message: "The default index.html composition has no renderable content",
+                fixHint: "Move the authored composition into index.html",
+              },
+            ],
+          },
+        },
+      ],
+      totalErrors: 1,
+      totalWarnings: 0,
+      totalInfos: 0,
+    };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(
+      runRenderLint(
+        {
+          project: { dir: "/tmp/project" },
+          entryFile: undefined,
+          renderTarget: "/tmp/project/index.html",
+          strictErrors: false,
+          strictAll: false,
+          effectiveQuiet: false,
+          lintVerbose: false,
+        } as never,
+        async () => lintResult,
+      ),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+
+    const output = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(output).toContain("blank_root_with_standalone_composition");
+    expect(output).toContain("The default index.html composition has no renderable content");
+    logSpy.mockRestore();
+  });
+
+  it("prints a one-line summary by default, and full findings when lintVerbose is set", async () => {
+    const lintResult = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: true,
+            errorCount: 0,
+            warningCount: 1,
+            infoCount: 0,
+            findings: [
+              { code: "some_warning", severity: "warning" as const, message: "a warning" },
+            ],
+          },
+        },
+      ],
+      totalErrors: 0,
+      totalWarnings: 1,
+      totalInfos: 0,
+    };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runRenderLint(
+      {
+        project: { dir: "/tmp/project" },
+        entryFile: undefined,
+        renderTarget: "/tmp/project/index.html",
+        strictErrors: false,
+        strictAll: false,
+        effectiveQuiet: false,
+        lintVerbose: false,
+      } as never,
+      async () => lintResult,
+    );
+    const summaryOutput = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(summaryOutput).toContain("1 warning(s)");
+    expect(summaryOutput).not.toContain("some_warning");
+
+    logSpy.mockClear();
+    await runRenderLint(
+      {
+        project: { dir: "/tmp/project" },
+        entryFile: undefined,
+        renderTarget: "/tmp/project/index.html",
+        strictErrors: false,
+        strictAll: false,
+        effectiveQuiet: false,
+        lintVerbose: true,
+      } as never,
+      async () => lintResult,
+    );
+    const verboseOutput = logSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(verboseOutput).toContain("some_warning");
+
+    logSpy.mockRestore();
+  });
+
   function setEnv(key: string, value: string) {
     if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
     process.env[key] = value;
@@ -329,6 +441,7 @@ describe("renderLocal browser GPU config", () => {
   beforeEach(() => {
     producerState.createdJobs = [];
     producerState.resolveConfigCalls = [];
+    producerState.loggerLevels = [];
     producerState.executeImpl = async () => undefined;
     preflightState.onRun = undefined;
     configState.disk = { telemetryEnabled: true, deParallelRouterTrialFired: true };
@@ -502,6 +615,22 @@ describe("renderLocal browser GPU config", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("logs only warnings and errors from the producer under --quiet", async () => {
+    const options = {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+    } as const;
+    await renderLocal("/tmp/project", "/tmp/out.mp4", { ...options, quiet: true });
+    await renderLocal("/tmp/project", "/tmp/out.mp4", { ...options, quiet: false });
+    await renderLocal("/tmp/project", "/tmp/out.mp4", { ...options, quiet: true, debug: true });
+
+    expect(producerState.loggerLevels).toEqual(["warn", "info", "debug"]);
   });
 
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
@@ -820,6 +949,44 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.format).toBe("png-sequence");
+  });
+
+  it("forwards format: hls and hlsSegmentSeconds through to createRenderJob", async () => {
+    await renderLocal("/tmp/project", "/tmp/stream", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "hls",
+      hlsSegmentSeconds: 6,
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.format).toBe("hls");
+    expect(producerState.createdJobs[0]?.hlsSegmentSeconds).toBe(6);
+  });
+
+  // HLS refuses the VideoToolbox fallback MP4 takes: fixed-length segments need
+  // the software encoder's forced-keyframe lock.
+  it("fails an HLS render instead of falling back to GPU H.264", async () => {
+    ffmpegEncoderState.encoders = " V....D h264_videotoolbox H.264 (VideoToolbox)\n";
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(
+      renderLocal("/tmp/project", "/tmp/stream", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "hls",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+      }),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+
+    expect(producerState.createdJobs).toHaveLength(0);
+    expect(stderr.mock.calls.flat().join(" ")).toContain("libx264");
   });
 
   it("forwards format: gif and gifLoop through to createRenderJob", async () => {
@@ -1859,6 +2026,45 @@ describe("render command batch options", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe("normalizeStageCode", () => {
+  const { normalizeStageCode } = renderModule;
+
+  it("maps every known updateJobStatus stage string to its code", () => {
+    expect(normalizeStageCode("Queued")).toBe("queued");
+    expect(normalizeStageCode("Compiling composition")).toBe("compiling_composition");
+    expect(normalizeStageCode("Extracting video frames")).toBe("extracting_video_frames");
+    expect(normalizeStageCode("Processing audio tracks")).toBe("processing_audio_tracks");
+    expect(normalizeStageCode("Starting frame capture")).toBe("starting_frame_capture");
+    expect(normalizeStageCode("Render complete")).toBe("render_complete");
+    expect(normalizeStageCode("Render cancelled")).toBe("render_cancelled");
+    expect(normalizeStageCode("pipeline")).toBe("pipeline");
+  });
+
+  it("keeps one code for the producer's browser start-up counts", () => {
+    expect(normalizeStageCode("Starting browsers (0/6 ready)")).toBe("starting_browsers");
+    expect(normalizeStageCode("Starting browsers (5/6 ready)")).toBe("starting_browsers");
+  });
+
+  it("keeps one code per stage whatever its live frame counts", () => {
+    expect(normalizeStageCode("Encoding frame 600/600")).toBe("encoding_video");
+    expect(normalizeStageCode("Encoding frame 12/90")).toBe("encoding_video");
+    expect(normalizeStageCode("Capturing frame 120/600 (6 workers)")).toBe("capturing_frame");
+    expect(normalizeStageCode("Streaming frame 3/40 (segment 1/2, 2 workers)")).toBe(
+      "streaming_frame",
+    );
+    expect(normalizeStageCode("Assembling final video")).toBe("assembling_final_video");
+  });
+
+  it("slugifies an unrecognized stage string instead of bucketing it as unknown", () => {
+    expect(normalizeStageCode("Some New Stage!")).toBe("some_new_stage");
+  });
+
+  it("falls back to unknown only when slugifying produces nothing usable", () => {
+    expect(normalizeStageCode("")).toBe("unknown");
+    expect(normalizeStageCode("!!!")).toBe("unknown");
+  });
 });
 
 // Variables-helper tests live in `../utils/variables.test.ts`.

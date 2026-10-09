@@ -1,3 +1,4 @@
+import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 // Onion-skin motion screenshot: seek the LIVE timeline at N equal-time steps and
 // project the REAL element at each step, so an agent can SELF-VERIFY motion (the
 // rendered result — every channel: position, rotation, scale, opacity, colour),
@@ -14,9 +15,10 @@ import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { waitForRuntimeReady } from "../capture/captureCompositionFrame.js";
 import {
-  assertWebGpuRequirement,
-  resolveCaptureBrowserGpuMode,
+  assertWebGpuAdapterAvailable,
+  compositionRequiresWebGpu,
   resolveLocalBrowserGpuMode,
 } from "../browser/gpuPolicy.js";
 import {
@@ -399,13 +401,13 @@ async function openCompositionPage(
   const { buildChromeArgs } = await import("@hyperframes/engine");
   const size = resolveCompositionViewportFromHtml(html);
   const requestedGpuMode = resolveLocalBrowserGpuMode();
-  const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
-  assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
-  const browser = await puppeteer.default.launch({
+  const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, executablePath);
+  const requiresWebGpu = compositionRequiresWebGpu(html);
+  const browser = await launchManagedBrowser(puppeteer.default, {
     headless: true,
     executablePath,
     args: buildChromeArgs(
-      { ...size, captureMode: "screenshot" },
+      { ...size, captureMode: "screenshot", requiresWebGpu },
       { browserGpuMode: resolvedGpuMode },
     ),
   });
@@ -413,11 +415,8 @@ async function openCompositionPage(
   const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
   await page.setViewport(size);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
-  await page
-    .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {
-      timeout: 10000,
-    })
-    .catch(() => {});
+  await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+  await waitForRuntimeReady(page, 10000);
   await page
     .evaluate(async () => {
       const d = document as unknown as { fonts?: { ready?: Promise<unknown> } };

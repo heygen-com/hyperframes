@@ -11,6 +11,7 @@ import {
   type TimelineKeyframeRetimeHandle,
 } from "./useTimelineKeyframeHandlers";
 import { timelineKeyframeFocusId } from "./timelineNavigationIdentity";
+import { reportPressOnTravel, useTimelineReadOnlyPress } from "./timelineReadOnly";
 import {
   DIAMOND_RATIO,
   keyframeTimeLabel,
@@ -92,6 +93,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   // This lane only arms it and renders the preview it publishes.
   const rootRef = useRef<HTMLDivElement>(null);
   const retimeHandleRef = useRef<TimelineKeyframeRetimeHandle | null>(null);
+  const readOnlyPress = useTimelineReadOnlyPress();
   // Retime destinations already dispatched but not yet in the keyframe cache, so
   // a rapid second drag composes from where the first move left the keyframe
   // instead of the stale rendered value.
@@ -225,9 +227,9 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
     isSelected && halfFramePct > 0
       ? nearestKeyframeWithin(sorted, currentPercentage, halfFramePct)
       : null;
-  const baseColor = isSelected ? accentColor : "#a3a3a3";
+  const baseColor = isSelected ? accentColor : "var(--timeline-diamond-muted)";
   const baseOpacity = isSelected ? 0.4 : 0.25;
-  const canDrag = isSelected && !!onMoveKeyframe;
+  const canDrag = isSelected && !!onMoveKeyframe && !readOnlyPress;
 
   return (
     <div
@@ -280,12 +282,15 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = kf === playheadKeyframe;
         const isHighlighted = isKfSelected || atPlayhead;
-        const color = isKfSelected ? accentColor : "#a3a3a3";
+        const color = isKfSelected ? accentColor : "var(--timeline-diamond-muted)";
 
         const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
           if (e.button !== 0) return;
           e.stopPropagation();
-          if (!canDrag) return;
+          if (!canDrag) {
+            if (isSelected) reportPressOnTravel(e, readOnlyPress);
+            return;
+          }
           retimeHandleRef.current = beginTimelineKeyframeRetime({
             event: e,
             elementId,

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getElementScreenshotClip } from "./screenshotClip";
+import { clearElementScreenshotIsolation, getElementScreenshotClip } from "./screenshotClip";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  document.head.innerHTML = "";
 });
 
 describe("getElementScreenshotClip", () => {
@@ -50,5 +51,35 @@ describe("getElementScreenshotClip", () => {
     expect(clip).toBeDefined();
     expect(clip?.width).toBeGreaterThan(0);
     expect(clip?.height).toBeGreaterThan(0);
+  });
+
+  it("fades every sibling on the element's ancestor path and nothing else", () => {
+    document.body.innerHTML = `
+      <div id="stage">
+        <div id="title" style="opacity: 1 !important">Title</div>
+        <svg id="star"></svg>
+        <div id="waves"><div id="frame" style="visibility: visible">.:-=</div></div>
+      </div>
+      <div id="outside" style="--alpha: 1; opacity: var(--alpha, 0|1)"></div>`;
+    const outside = document.getElementById("outside")!.style.getPropertyValue("opacity");
+    const hidden = (id: string) => getComputedStyle(document.getElementById(id)!).opacity === "0";
+
+    getElementScreenshotClip("#waves");
+    expect(["title", "star", "outside"].every(hidden)).toBe(true);
+    expect(["stage", "waves", "frame"].some(hidden)).toBe(false);
+
+    clearElementScreenshotIsolation();
+    getElementScreenshotClip("#title");
+    expect(["waves", "star", "outside"].every(hidden)).toBe(true);
+    expect(["stage", "title"].some(hidden)).toBe(false);
+
+    clearElementScreenshotIsolation();
+    const title = document.getElementById("title")!.style;
+    expect([title.getPropertyValue("opacity"), title.getPropertyPriority("opacity")]).toEqual([
+      "1",
+      "important",
+    ]);
+    expect(document.getElementById("waves")!.style.getPropertyValue("opacity")).toBe("");
+    expect(document.getElementById("outside")!.style.getPropertyValue("opacity")).toBe(outside);
   });
 });

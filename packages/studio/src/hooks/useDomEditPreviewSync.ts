@@ -6,9 +6,11 @@
 import { useEffect, useRef } from "react";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
-import type { SidebarTab } from "../components/sidebar/LeftSidebar";
+import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import { logSelect } from "../utils/selectDebug";
+import { onPreviewContentReplaced } from "../player/sceneSwap";
+import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
 
 interface UseDomEditPreviewSyncParams {
   previewIframe: HTMLIFrameElement | null;
@@ -23,14 +25,16 @@ interface UseDomEditPreviewSyncParams {
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; preserveGroup?: boolean },
   ) => void;
-  buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
+  buildDomSelectionFromTarget: (
+    element: HTMLElement,
+    options?: Pick<ResolveDomSelectionOptions, "previous">,
+  ) => Promise<DomEditSelection | null>;
   refreshPreviewDocumentVersion: () => void;
   syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
-  getSidebarTab?: () => SidebarTab;
   gsapCacheVersion?: number;
 }
 
@@ -48,7 +52,6 @@ export function useDomEditPreviewSync({
   syncPreviewHotkeys,
   applyStudioManualEditsToPreviewRef,
   openSourceForSelection,
-  getSidebarTab,
   gsapCacheVersion,
 }: UseDomEditPreviewSyncParams): void {
   // Sync selection from preview document on load / refresh
@@ -97,7 +100,9 @@ export function useDomEditPreviewSync({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(nextElement);
+      const nextSelection = await buildDomSelectionFromTarget(nextElement, {
+        previous: currentSelection,
+      });
       if (nextSelection) {
         applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }
@@ -115,10 +120,7 @@ export function useDomEditPreviewSync({
       refreshPreviewDocumentVersion();
     };
 
-    previewIframe.addEventListener("load", handleLoad);
-    return () => {
-      previewIframe.removeEventListener("load", handleLoad);
-    };
+    return onPreviewContentReplaced(previewIframe, handleLoad);
   }, [
     activeCompPath,
     applyDomSelection,
@@ -142,15 +144,15 @@ export function useDomEditPreviewSync({
   useEffect(
     // fallow-ignore-next-line complexity
     () => {
-      if (!domEditSelection || !openSourceRef.current || !getSidebarTab) return;
+      if (!domEditSelection || !openSourceRef.current) return;
       if (!domEditSelection.sourceFile) return;
-      if (getSidebarTab() !== "code") return;
+      if (!useDockLayoutStore.getState().visiblePanels.has("code")) return;
       openSourceRef.current(domEditSelection.sourceFile, {
         id: domEditSelection.id,
         selector: domEditSelection.selector,
         selectorIndex: domEditSelection.selectorIndex,
       });
     },
-    [domEditSelection, getSidebarTab],
+    [domEditSelection],
   );
 }

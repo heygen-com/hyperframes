@@ -41,6 +41,10 @@ describe("SDK family gate mapping", () => {
         {} as never,
         deps,
       ),
-    ).resolves.toMatchObject({ status: "declined", reason: "ineligible_operation" });
+      // The dom family is off, so the gate declines on the FLAG, not on the op
+      // batch (which is a perfectly eligible inline-style edit). Before the
+      // reason split this reported `ineligible_operation`, which read as "the
+      // SDK cannot express this edit" when the truth was "this family is off".
+    ).resolves.toMatchObject({ status: "declined", reason: "feature_disabled" });
   });
 });

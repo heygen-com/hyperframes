@@ -2,11 +2,11 @@ import { describe, it, expect, afterEach } from "vitest";
 import { writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Window } from "happy-dom";
 import {
   loadTranscript,
   detectFormat,
   patchCaptionHtml,
-  stripBeforeOnset,
   formatSrt,
   formatVtt,
   wordsToCues,
@@ -84,6 +84,37 @@ describe("detectFormat", () => {
 });
 
 describe("loadTranscript", () => {
+  it.each([
+    ["00:00:01.000", "00:00:03.500", "align:start"],
+    ["00:01.000", "00:03.500", "align:start"],
+    ["00:00:01.000", "00:00:03.500", "line:90% position:50%,center size:80% align:center"],
+    ["00:01.000", "00:03.500", "\tvertical:rl\tline:0"],
+    ["00:00:01.000", "00:00:03.500", "region:captions"],
+  ])("retains VTT end time before cue settings: %s --> %s %s", (start, end, settings) => {
+    const source = `WEBVTT\n\nfirst\n${start} --> ${end} ${settings}\nFirst phrase\n\nsecond\n00:04.000 --> 00:06.000\nSecond phrase\n`;
+    const { words } = loadTranscript(tmpFile("settings.vtt", source));
+    expect(words).toEqual([
+      { text: "First phrase", start: 1, end: 3.5, id: "w0" },
+      { text: "Second phrase", start: 4, end: 6, id: "w1" },
+    ]);
+    expect(formatSrt(words, { preGrouped: true })).toBe(
+      "1\n00:00:01,000 --> 00:00:03,500\nFirst phrase\n\n2\n00:00:04,000 --> 00:00:06,000\nSecond phrase\n",
+    );
+  });
+
+  it("reads an empty word list as a transcript with no words", () => {
+    expect(loadTranscript(tmpFile("transcript.json", "[]"))).toEqual({
+      words: [],
+      format: "words-json",
+    });
+  });
+
+  it("still rejects a JSON array that is not a word list", () => {
+    expect(() => loadTranscript(tmpFile("transcript.json", '[{"foo":1}]'))).toThrow(
+      /Unrecognized JSON transcript format/,
+    );
+  });
+
   it("parses whisper-cpp JSON with punctuation merging", () => {
     const path = tmpFile(
       "transcript.json",
@@ -183,6 +214,24 @@ How are you
     ]);
   });
 
+  it.each([
+    ["ALICE: Hello there", "ALICE: Hello there"],
+    ["ALICE: Hello\nBOB: Welcome", "ALICE: Hello BOB: Welcome"],
+    ["Hello there\nALICE: Welcome", "Hello there ALICE: Welcome"],
+    ["ALICE: Hello\nWelcome back", "ALICE: Hello Welcome back"],
+    ["HOST-NAME: Welcome", "HOST-NAME: Welcome"],
+    ["Alice: Hello there", "Alice: Hello there"],
+  ])("preserves the VTT cue payload %j", (payload, text) => {
+    const vtt = `WEBVTT\nX-TIMESTAMP-MAP:LOCAL:00:00:00.000,MPEGTS:900000\n\n00:00:01.000 --> 00:00:03.500\n${payload}\n\n00:00:04.000 --> 00:00:06.000\nHow are you\n`;
+    const { words } = loadTranscript(tmpFile("speaker.vtt", vtt));
+    expect(words).toEqual([
+      { text, start: 1, end: 3.5, id: "w0" },
+      { text: "How are you", start: 4, end: 6, id: "w1" },
+    ]);
+    expect(loadTranscript(tmpFile("speaker-roundtrip.vtt", formatVtt(words))).words).toEqual(words);
+    expect(loadTranscript(tmpFile("speaker-roundtrip.srt", formatSrt(words))).words).toEqual(words);
+  });
+
   it("parses VTT with short timestamps (MM:SS.mmm)", () => {
     const vtt = `WEBVTT
 
@@ -232,6 +281,33 @@ Short format
 });
 
 describe("caption formatting", () => {
+  it.each([
+    ["R&D <config> next", "R&amp;D &lt;config&gt; next"],
+    ["Literal &lt; &amp; references", "Literal &amp;lt; &amp;amp; references"],
+    ["3 < 4 and 5 > 2", "3 &lt; 4 and 5 &gt; 2"],
+    ["R&D --> next", "R&amp;D --&gt; next"],
+  ])("preserves literal WebVTT text %j on export and reimport", (text, payload) => {
+    const words = [{ text, start: 1, end: 2, id: "w0" }];
+    const output = formatVtt(words);
+    expect(output).toBe(`WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n${payload}\n`);
+    expect(loadTranscript(tmpFile("literal.vtt", output)).words).toEqual(words);
+  });
+
+  it.each([
+    ["R&amp;D &lt;config&gt; next", "R&D <config> next"],
+    ["&quot;quoted&quot; &apos;text&apos;", "\"quoted\" 'text'"],
+    ["&#38; &#x3c; &#60;", "& < <"],
+    ["Literal &amp;lt; &amp;amp; references", "Literal &lt; &amp; references"],
+    ["<b>R&amp;D</b> &lt;config&gt;", "R&D <config>"],
+    ["A&nbsp;B&lrm;&rlm;", "A\u00a0B\u200e\u200f"],
+    ["Keep &unknown;", "Keep &unknown;"],
+  ])("decodes the WebVTT cue payload %j once", (payload, text) => {
+    const input = `WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n${payload}\n`;
+    expect(loadTranscript(tmpFile("entities.vtt", input)).words).toEqual([
+      { text, start: 1, end: 2, id: "w0" },
+    ]);
+  });
+
   it("round-trips SRT cues through normalized words", () => {
     const srt = `1
 00:00:01,000 --> 00:00:03,500
@@ -534,6 +610,36 @@ describe("whisper-cpp zero-duration interpolation", () => {
 });
 
 describe("patchCaptionHtml", () => {
+  it.each([
+    "</ScRiPt><span data-unexpected>caption</span>",
+    "</script\t><span data-unexpected>caption</span>",
+    "</script/><span data-unexpected>caption</span>",
+    "<!--<script>caption",
+    "$&",
+    "$`",
+    "$'",
+    "$$",
+    'quotes " and \\ and > & \u2028 \u2029 🎥',
+  ])("preserves literal caption text in the HTML script: %s", (text) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
+    dirs.push(dir);
+    const file = join(dir, "captions.html");
+    const html =
+      '<html><body><span id="caption"></span><script>const TRANSCRIPT = [];</script></body></html>';
+    writeFileSync(file, html);
+    const words = [{ id: `word-${text}`, text, start: 0, end: 1 }];
+
+    patchCaptionHtml(dir, words);
+
+    const template = new Window().document.createElement("template");
+    template.innerHTML = readFileSync(file, "utf-8");
+    expect(template.content.querySelectorAll("script")).toHaveLength(1);
+    expect(template.content.querySelector("[data-unexpected]")).toBeNull();
+    const source = template.content.querySelector("script")?.textContent ?? "";
+    const json = source.slice("const TRANSCRIPT = ".length, -1);
+    expect(JSON.parse(json)).toEqual(words);
+  });
+
   it("replaces const script = [] in HTML files", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
     dirs.push(dir);
@@ -656,46 +762,5 @@ describe("detectSpeechOnset", () => {
     const wavPath = makeSyntheticWav(16000, 10, (t) => (t < 1 ? 0.01 : 0.8));
     const onset = detectSpeechOnset(wavPath);
     expect(onset).toBeNull();
-  });
-});
-
-describe("stripBeforeOnset", () => {
-  it("removes words before onset time", () => {
-    const words = [
-      { text: "ghost", start: 0.5, end: 2.0 },
-      { text: "alone", start: 3.0, end: 5.0 },
-      { text: "Given", start: 19.0, end: 19.5 },
-      { text: "the", start: 19.5, end: 20.0 },
-    ];
-    const result = stripBeforeOnset(words, 18.5);
-    expect(result).toHaveLength(2);
-    expect(result[0]!.text).toBe("Given");
-  });
-
-  it("keeps words within 0.5s tolerance of onset", () => {
-    const words = [
-      { text: "hello", start: 18.2, end: 18.8 },
-      { text: "world", start: 19.0, end: 19.5 },
-    ];
-    const result = stripBeforeOnset(words, 18.5);
-    expect(result).toHaveLength(2);
-  });
-
-  it("keeps everything when onset is 0", () => {
-    const words = [
-      { text: "hello", start: 0.1, end: 0.5 },
-      { text: "world", start: 0.6, end: 1.0 },
-    ];
-    const result = stripBeforeOnset(words, 0);
-    expect(result).toHaveLength(2);
-  });
-
-  it("returns empty array when all words are before onset", () => {
-    const words = [
-      { text: "ghost", start: 0.5, end: 2.0 },
-      { text: "alone", start: 3.0, end: 5.0 },
-    ];
-    const result = stripBeforeOnset(words, 20.0);
-    expect(result).toHaveLength(0);
   });
 });

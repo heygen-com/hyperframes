@@ -4,22 +4,32 @@
  * Priority — first non-empty wins:
  *   1. `HEYGEN_API_KEY` env (matches heygen-cli)
  *   2. `HYPERFRAMES_API_KEY` env (alias for parity with other tools)
- *   3. `~/.heygen/credentials` (JSON) — unexpired OAuth, else api_key
+ *   3. `HEYGEN_ACCESS_TOKEN` env (host-managed OAuth)
+ *   4. `~/.heygen/credentials` (JSON) — unexpired OAuth, else api_key
  *
- * Absent sources fall through. A broken file (parse error, bad shape)
- * surfaces immediately as `ErrInvalidStore` — silently falling back
- * would mask user config bugs.
+ * Absent sources fall through. Broken files surface `ErrInvalidStore` immediately;
+ * silently falling back would mask user configuration errors.
  *
  * Expiry policy: an OAuth access_token whose `expires_at` is in the
  * past (60s skew) is considered expired. If a `refresh_token` is also
  * present, callers can still use it via `refreshable: true`. Otherwise
- * the api_key (if any) wins.
+ * the api_key (if any) wins, else `ErrLoginExpired`, not `ErrNotConfigured`.
  */
 
 import { isHeaderSafe, readStore } from "./store.js";
-import { ErrInvalidStore, ErrNotConfigured, isAuthError } from "./errors.js";
+import { ErrInvalidStore, ErrLoginExpired, ErrNotConfigured, isAuthError } from "./errors.js";
 
-type CredentialSource = "env" | "env_alias" | "file_json" | "file_legacy";
+type EnvSource = "env" | "env_alias" | "env_oauth";
+type CredentialSource = EnvSource | "file_json" | "file_legacy";
+
+export const ENV_CREDENTIAL_VAR: Record<EnvSource, string> = {
+  env: "HEYGEN_API_KEY",
+  env_alias: "HYPERFRAMES_API_KEY",
+  env_oauth: "HEYGEN_ACCESS_TOKEN",
+};
+
+export const envCredentialVar = (source: CredentialSource): string | undefined =>
+  source in ENV_CREDENTIAL_VAR ? ENV_CREDENTIAL_VAR[source as EnvSource] : undefined;
 
 interface ApiKeyCredential {
   type: "api_key";
@@ -49,20 +59,19 @@ export interface ResolveOptions {
 export async function resolveCredential(opts: ResolveOptions = {}): Promise<ResolvedCredential> {
   const now = (opts.now ?? (() => new Date()))();
 
-  const heygenEnv = process.env["HEYGEN_API_KEY"];
-  if (heygenEnv && heygenEnv.length > 0) {
-    if (!isHeaderSafe(heygenEnv)) {
-      throw ErrInvalidStore("HEYGEN_API_KEY contains control characters");
-    }
+  const heygenEnv = headerSafeEnv(ENV_CREDENTIAL_VAR.env);
+  if (heygenEnv) {
     return { type: "api_key", key: heygenEnv, source: "env" };
   }
 
-  const hfEnv = process.env["HYPERFRAMES_API_KEY"];
-  if (hfEnv && hfEnv.length > 0) {
-    if (!isHeaderSafe(hfEnv)) {
-      throw ErrInvalidStore("HYPERFRAMES_API_KEY contains control characters");
-    }
+  const hfEnv = headerSafeEnv(ENV_CREDENTIAL_VAR.env_alias);
+  if (hfEnv) {
     return { type: "api_key", key: hfEnv, source: "env_alias" };
+  }
+
+  const accessToken = headerSafeEnv(ENV_CREDENTIAL_VAR.env_oauth);
+  if (accessToken) {
+    return { type: "oauth", access_token: accessToken, source: "env_oauth", refreshable: false };
   }
 
   const { credentials, source } = await readStore();
@@ -70,14 +79,20 @@ export async function resolveCredential(opts: ResolveOptions = {}): Promise<Reso
 
   const fileSource: CredentialSource = source === "file_legacy" ? "file_legacy" : "file_json";
 
-  if (credentials.oauth) {
-    const oauth = pickOAuth(credentials.oauth, now, fileSource);
-    if (oauth) return oauth;
-  }
+  const oauth = credentials.oauth ? pickOAuth(credentials.oauth, now, fileSource) : null;
+  if (oauth) return oauth;
   if (credentials.api_key) {
     return { type: "api_key", key: credentials.api_key, source: fileSource };
   }
-  throw ErrNotConfigured();
+  throw credentials.oauth ? ErrLoginExpired() : ErrNotConfigured();
+}
+
+function headerSafeEnv(name: string): string | undefined {
+  const value = process.env[name];
+  if (value && !isHeaderSafe(value)) {
+    throw ErrInvalidStore(`${name} contains control characters`);
+  }
+  return value;
 }
 
 /** Like `resolveCredential` but returns `null` instead of throwing `NOT_CONFIGURED`. */
@@ -100,7 +115,7 @@ function pickOAuth(
   source: CredentialSource,
 ): OAuthCredential | null {
   const expiresAt = parseDate(tokens.expires_at);
-  const expired = expiresAt !== undefined && expiresAt.getTime() - EXPIRY_SKEW_MS < now.getTime();
+  const expired = isTokenExpired(expiresAt, now);
 
   if (expired && !tokens.refresh_token) return null;
 
@@ -114,6 +129,10 @@ function pickOAuth(
   if (expiresAt) out.expires_at = expiresAt;
   if (tokens.scope) out.scope = tokens.scope;
   return out;
+}
+
+export function isTokenExpired(expiresAt: Date | undefined, now: Date): boolean {
+  return expiresAt !== undefined && expiresAt.getTime() - EXPIRY_SKEW_MS < now.getTime();
 }
 
 function parseDate(s: string | undefined): Date | undefined {

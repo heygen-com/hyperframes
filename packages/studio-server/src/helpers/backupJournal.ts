@@ -1,7 +1,7 @@
-import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { join, relative } from "node:path";
-import { isSafePath } from "./safePath.js";
+import { isProjectRootMissing, isSafePath, mkdirWithinProject } from "./safePath.js";
 
 const DEFAULT_KEEP_PER_FILE = 10;
 
@@ -40,7 +40,7 @@ export function snapshotBeforeWrite(
 
     const relativePath = relative(projectDir, absPath);
     const backupDir = join(projectDir, ".hyperframes", "backup");
-    mkdirSync(backupDir, { recursive: true });
+    mkdirWithinProject(projectDir, backupDir);
 
     const backupKey = backupKeyForPath(relativePath);
     const backupPath = nextBackupPath(backupDir, backupKey);
@@ -48,6 +48,7 @@ export function snapshotBeforeWrite(
     pruneBackups(backupDir, backupKey, options.keepPerFile ?? DEFAULT_KEEP_PER_FILE);
     return { backupPath };
   } catch (error) {
+    if (isProjectRootMissing(error)) throw error;
     if (
       error &&
       typeof error === "object" &&

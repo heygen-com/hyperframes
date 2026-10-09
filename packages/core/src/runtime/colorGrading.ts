@@ -249,6 +249,7 @@ export interface RuntimeColorGradingApi {
     rawCompare: unknown,
   ) => boolean;
   setSourceVisibility: (target: Element, visible: boolean) => boolean;
+  isGraded: (target: Element) => boolean;
   getStatus: (
     target: HfColorGradingTarget | string | null | undefined,
   ) => RuntimeColorGradingStatus;
@@ -2965,7 +2966,7 @@ const ANIMATED_GRADING_PROPERTIES = [
 ];
 
 function readAnimatedValue(element: HTMLElement, property: AnimatedProperty): number | null {
-  const raw = element.style.getPropertyValue(property.name);
+  const raw = getComputedStyle(element).getPropertyValue(property.name).trim();
   if (!raw) return null;
   const value = Number(raw);
   return Number.isFinite(value) ? Math.min(property.max, Math.max(property.min, value)) : null;
@@ -3708,6 +3709,9 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     return true;
   };
 
+  const isGraded = (target: Element): boolean =>
+    isColorGradingMediaElement(target) && entries.has(target);
+
   // fallow-ignore-next-line complexity
   const getStatus = (
     target: HfColorGradingTarget | string | null | undefined,
@@ -3832,6 +3836,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     setGrading,
     setCompare,
     setSourceVisibility,
+    isGraded,
     getStatus,
     renderPreviews,
     startPreviewPlayback,

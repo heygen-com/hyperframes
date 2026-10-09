@@ -3,6 +3,7 @@ import type { ArcPathSegment, GsapAnimation } from "@hyperframes/parsers/gsap-pa
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
 
 export interface BackgroundRemovalProgress {
   status: "processing" | "complete" | "failed";
@@ -68,6 +69,7 @@ export interface PropertyPanelProps {
     value: string | null,
   ) => Promise<{ changedFiles: number; changedElements: number }>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
+  onSetAttributeBatch: CommitDomAttributeBatch;
   onRemoveBackground?: (
     inputPath: string,
     options: {
@@ -79,12 +81,16 @@ export interface PropertyPanelProps {
   onSetManualOffset: (
     element: DomEditSelection,
     next: { x: number; y: number },
-  ) => void | Promise<void>;
+    route?: { plainTranslate: boolean },
+  ) => void | Promise<void | import("../../utils/previewFeatureUsage").GeometryCommitResult>;
   onSetManualSize: (
     element: DomEditSelection,
     next: { width: number; height: number },
-  ) => void | Promise<void>;
-  onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void | Promise<void>;
+  ) => void | Promise<void | import("../../utils/previewFeatureUsage").GeometryCommitResult>;
+  onSetManualRotation: (
+    element: DomEditSelection,
+    next: { angle: number },
+  ) => void | Promise<void | import("../../utils/previewFeatureUsage").GeometryCommitResult>;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;

@@ -130,5 +130,5 @@ soft lines, but reserve slot 4 for the SINGLE climax.
 ## Don't fight the template
 
 If the user wants different typography, different blend, or different motion:
-**use Standard mode** (`../../standard/`). Don't try to override the locked CSS — the
+**use Standard mode** (`../../../standard/`). Don't try to override the locked CSS — the
 template's visual consistency is the whole point.

@@ -23,7 +23,7 @@ Animate a wrapper div for position/size. The video fills the wrapper. The wrappe
     data-duration="60"
     data-track-index="0"
     src="talking-head.mp4"
-    muted
+    data-has-audio="true"
     playsinline
   ></video>
 </div>
@@ -53,7 +53,7 @@ Three layers, plus one critical rule:
   data-media-start="0"
   data-track-index="0"
   src="presenter.mp4"
-  muted
+  data-has-audio="true"
   playsinline
 ></video>
 

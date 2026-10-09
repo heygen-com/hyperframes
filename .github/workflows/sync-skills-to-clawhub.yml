@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - "skills/**"
+      - "scripts/clawhub-sync.mjs"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -33,7 +34,7 @@ jobs:
     env:
       CLAWHUB_DISABLE_TELEMETRY: "1"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -50,17 +51,4 @@ jobs:
       - name: Sync skills
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run }}
-        run: |
-          FLAGS=(
-            --all
-            --owner heygen-com
-            --bump patch
-            --changelog "Synced from ${GITHUB_SHA:0:7} (${GITHUB_REF_NAME})"
-            --source-repo "$GITHUB_REPOSITORY"
-            --source-commit "$GITHUB_SHA"
-            --source-ref "$GITHUB_REF"
-          )
-          if [ "$DRY_RUN" = "true" ]; then
-            FLAGS+=(--dry-run)
-          fi
-          clawhub sync "${FLAGS[@]}"
+        run: node scripts/clawhub-sync.mjs

@@ -23,6 +23,21 @@ import { getAudioFxDef, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
 /** Points nearer than this in clip seconds are the same point, not two. */
 export const POINT_MERGE_SEC = 0.02;
 
+/** Insert or replace the point nearest `t` — the one merge/seed rule every
+ * hand-editing gesture on a lane uses (timeline double-click, panel control). */
+export function mergeInsertPoint(
+  points: readonly HfAutomationLane["points"][number][],
+  t: number,
+  v: number,
+): HfAutomationLane["points"] {
+  const kept = points.filter((p) => Math.abs(p.t - t) > POINT_MERGE_SEC);
+  // A lane's first point alone would be a constant, which is not what
+  // committing to an empty lane means: seed the far end at the same value so
+  // the envelope has somewhere to go.
+  const seeded = points.length === 0 && t > POINT_MERGE_SEC ? [{ t: 0, v }] : [];
+  return [...seeded, ...kept, { t, v }].sort((a, b) => a.t - b.t);
+}
+
 /**
  * Closest two breakpoints may sit in clip seconds while still being two points.
  *

@@ -11,7 +11,7 @@ import {
   GENERIC_FAMILIES,
   iterateFontFamilyDeclarations,
   resolveFontFamilyDeclarationFamilies,
-} from "../deterministicFonts.js";
+} from "@hyperframes/core/fonts/embed";
 
 /**
  * Re-export the BROWSER_GPU_NOT_SOFTWARE code so distributed adapters and
@@ -25,7 +25,7 @@ export { BROWSER_GPU_NOT_SOFTWARE } from "@hyperframes/engine";
  * @font-face injector consume the same surface, so the parser lives next to
  * the data.
  */
-export { parseFontFamilyValue } from "../deterministicFonts.js";
+export { parseFontFamilyValue } from "@hyperframes/core/fonts/embed";
 
 /**
  * Typed plan-validation error. Workflow adapters key retry policies off the
@@ -126,8 +126,8 @@ export function validateNoSystemFonts(compiledHtml: string): void {
     const families = resolveFontFamilyDeclarationFamilies(declaration, customProperties);
     if (families.length === 0) continue;
     const primaryRaw = families[0]!;
-    // Unresolved var() primaries are left to the browser; resolved custom
-    // properties are checked above so common `--font: system-ui` aliases fail.
+    // A var() primary is checked as its resolved value or, when undefined, its
+    // fallback, so `--font: system-ui` and `var(--font, system-ui)` both fail.
     if (!GENERIC_FAMILIES.has(primaryRaw.toLowerCase())) continue;
     throw new PlanValidationError(
       SYSTEM_FONT_USED,

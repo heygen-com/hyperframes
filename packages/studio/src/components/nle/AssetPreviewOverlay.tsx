@@ -42,7 +42,11 @@ function AssetPreviewMedia({
 }) {
   if (kind === "image") {
     return (
-      <img src={serveUrl} alt={name} className="max-w-full max-h-[40vh] rounded object-contain" />
+      <img
+        src={serveUrl}
+        alt={name}
+        className="max-w-full max-h-[40vh] rounded-sm object-contain"
+      />
     );
   }
   if (kind === "video") {
@@ -53,7 +57,7 @@ function AssetPreviewMedia({
         autoPlay
         muted
         playsInline
-        className="max-w-full max-h-[40vh] rounded"
+        className="max-w-full max-h-[40vh] rounded-sm"
       />
     );
   }
@@ -138,7 +142,7 @@ export function AssetPreviewOverlay() {
       >
         {/* Close button */}
         <button
-          className="absolute top-2 right-2 w-6 h-6 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white flex items-center justify-center transition-colors z-10"
+          className="absolute top-2 right-2 w-6 h-6 rounded-full bg-raised hover:bg-press text-text-2 hover:text-text-0 flex items-center justify-center transition-colors z-10"
           onClick={(e) => {
             e.stopPropagation();
             clearPreviewAsset();

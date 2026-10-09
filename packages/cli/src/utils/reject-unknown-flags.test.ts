@@ -7,10 +7,7 @@ import { resolve } from "node:path";
 import { assertKnownFlags, guardSwallowedFlagValues } from "./reject-unknown-flags.js";
 import { trackCommandFailures } from "./command-failure-tracking.js";
 
-// Same pattern as init.test.ts's `runInit`: spawn `bun` directly (the CLI
-// entry is a .ts file needing a TypeScript-aware runtime; vitest runs under
-// node) against the real built entry point, so this measures literal stdout
-// bytes rather than an internal mechanism.
+// Spawns the real CLI under bun (like init.test.ts's runInit) to measure literal stdout bytes.
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
 function runCli(args: string[]): { status: number; stdout: string; stderr: string } {
   const res = spawnSync("bun", ["run", cliEntry, ...args], { encoding: "utf-8", timeout: 30_000 });
@@ -67,7 +64,7 @@ describe("assertKnownFlags", () => {
 });
 
 describe("guardSwallowedFlagValues", () => {
-  const guard = (raw: string[]) => () => guardSwallowedFlagValues(cmd, raw);
+  const guard = (raw: string[]) => () => guardSwallowedFlagValues(cmd, "render", raw);
 
   it("rejects a string flag's value that is itself a known flag spelling (default: throw)", () => {
     expect(guard(["--output", "--json"])).toThrow(/Missing value for --output/);
@@ -76,7 +73,7 @@ describe("guardSwallowedFlagValues", () => {
 
   it("accepts the equals form even when the inline value looks like a flag", () => {
     expect(guard(["--output=--json"])).not.toThrow();
-    expect(guardSwallowedFlagValues(cmd, ["--output=--json"])).toEqual({
+    expect(guardSwallowedFlagValues(cmd, "render", ["--output=--json"])).toEqual({
       rawArgs: ["--output=--json"],
       rewritten: false,
     });
@@ -97,7 +94,7 @@ describe("guardSwallowedFlagValues", () => {
   it("rejects with corrected wording when '--' ends option parsing right after the flag", () => {
     const message = () => {
       try {
-        guardSwallowedFlagValues(cmd, ["--output", "--", "--json"]);
+        guardSwallowedFlagValues(cmd, "render", ["--output", "--", "--json"]);
         return undefined;
       } catch (error) {
         return (error as Error).message;
@@ -112,30 +109,28 @@ describe("guardSwallowedFlagValues", () => {
       meta: { name: "check" },
       args: { "frame-check": { type: "string" }, json: { type: "boolean" } },
     };
-    const result = guardSwallowedFlagValues(checkCmd, ["--frame-check", "--json"]);
+    const result = guardSwallowedFlagValues(checkCmd, "check", ["--frame-check", "--json"]);
     expect(result).toEqual({ rawArgs: ["--frame-check=", "--json"], rewritten: true });
   });
 
-  it("leaves a non-opted-in command's identically-shaped flag rejected", () => {
+  it("scopes the opt-in by command path, not the leaf's short name", () => {
     const otherCmd: CommandDef<any> = {
-      meta: { name: "not-check" },
+      meta: { name: "check" },
       args: { "frame-check": { type: "string" }, json: { type: "boolean" } },
     };
-    expect(() => guardSwallowedFlagValues(otherCmd, ["--frame-check", "--json"])).toThrow(
-      /Missing value for --frame-check/,
-    );
+    expect(() =>
+      guardSwallowedFlagValues(otherCmd, "skills check", ["--frame-check", "--json"]),
+    ).toThrow(/Missing value for --frame-check/);
   });
 
   it("ignores an opted-out command+flag entirely, leaving rawArgs untouched for its own recovery logic", async () => {
     const upgradeCommand = (await import("../commands/upgrade.js")).default as CommandDef<any>;
-    const result = guardSwallowedFlagValues(upgradeCommand, ["--project", "--check"]);
+    const result = guardSwallowedFlagValues(upgradeCommand, "upgrade", ["--project", "--check"]);
     expect(result).toEqual({ rawArgs: ["--project", "--check"], rewritten: false });
   });
 });
 
-// Real citty dispatch: wraps `cmd` exactly like cli.ts's own command
-// resolution does, so `wrapCommand`'s gate (assertKnownFlags,
-// guardSwallowedFlagValues) actually runs before `runCommand` invokes it.
+// Wraps `cmd` like cli.ts does, so wrapCommand's gate runs before citty's runCommand.
 const wrapTestCommand = (cmd: CommandDef<any>) =>
   trackCommandFailures(() => Promise.resolve(cmd))();
 
@@ -190,12 +185,21 @@ describe("guardSwallowedFlagValues end-to-end (via citty's real runCommand + the
     );
   });
 
+  it("passes a nested command's full path, so `skills check` does not inherit check's rewrite", async () => {
+    const leaf: CommandDef<any> = {
+      meta: { name: "check" },
+      args: { "frame-check": { type: "string" }, json: { type: "boolean" } },
+      run: () => {},
+    };
+    const group: CommandDef<any> = { meta: { name: "skills" }, subCommands: { check: leaf } };
+    const wrapped = await wrapTestCommand(group);
+    await expect(
+      runCommand(wrapped, { rawArgs: ["check", "--frame-check", "--json"] }),
+    ).rejects.toThrow(/Missing value for --frame-check/);
+  });
+
   it("throws with `presented: true` so cli.ts's executeCli does not ALSO dump full command usage to stdout", async () => {
-    // `result.presented` is the actual mechanism keeping stdout clean here, so
-    // that is what this asserts; capturing real stdout bytes would mean driving
-    // cli.ts's own top-level entry. Those bytes were verified by hand against
-    // the built CLI (`catalog --query --json`, `check --layout --json`): 0 on
-    // stdout.
+    // `presented` keeps executeCli from dumping usage to stdout; the spawn test below checks bytes.
     const catalogCommand = (await import("../commands/catalog.js")).default as CommandDef<any>;
     const wrapped = await wrapTestCommand(catalogCommand);
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});

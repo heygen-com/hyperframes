@@ -148,13 +148,13 @@ export function FlatMotionSection({
       {showEffects && (
         <>
           {multipleTimelines && (
-            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-warning-ink">
               This file has multiple GSAP timelines. Animation editing is disabled to prevent data
               loss — consolidate into a single timeline to enable editing.
             </p>
           )}
           {unsupportedTimelinePattern && (
-            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-warning-ink">
               This timeline uses a computed key the editor can&apos;t resolve statically.
             </p>
           )}

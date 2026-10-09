@@ -267,3 +267,56 @@ describe("usePreviewInteraction", () => {
     cleanup();
   });
 });
+
+describe("a refused move's toast", () => {
+  it("gives the refusal's own reason first, else the selection's", () => {
+    const showToast = vi.fn();
+    let blocked!: (selection: DomEditSelection, reason?: string) => void;
+    function Harness() {
+      blocked = usePreviewInteraction({
+        captionEditMode: false,
+        compositionLoading: false,
+        previewIframeRef: { current: null },
+        showToast,
+        applyDomSelection: vi.fn(),
+        resolveDomSelectionFromPreviewPoint: vi.fn(async () => null),
+        resolveAllDomSelectionsFromPreviewPoint: vi.fn(async () => []),
+        updateDomEditHoverSelection: vi.fn(),
+        setActiveGroupElement: vi.fn(),
+      }).handleBlockedDomMove;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(React.createElement(Harness)));
+    const selection = makeSelection("Box", document.createElement("div"));
+    selection.capabilities.reasonIfDisabled = "Locked layer.";
+    blocked(selection, "Studio can't read it.");
+    blocked(selection);
+    act(() => root.unmount());
+    expect(showToast.mock.calls).toEqual([
+      ["Studio can't read it.", "info"],
+      ["Locked layer.", "info"],
+    ]);
+  });
+});
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../utils/studioTelemetry";
+it("counts additive preview selection only after resolving a hit", async () => {
+  vi.mocked(trackStudioEvent).mockClear();
+  const selection = makeSelection("Card", document.createElement("div"));
+  const applyDomSelection = vi.fn();
+  const { canvas, cleanup } = renderHarness({
+    previewIframe: createPreviewIframe(vi.fn()),
+    resolveDomSelectionFromPreviewPoint: vi.fn(async () => selection),
+    applyDomSelection,
+  });
+  await dispatchMouseDown(canvas, { shiftKey: true });
+  expect(applyDomSelection).toHaveBeenCalledWith(selection, { additive: true });
+  expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+    feature: "multi_select",
+    surface: "preview",
+    method: "button",
+  });
+  cleanup();
+});

@@ -189,7 +189,7 @@ describe("TimelinePropertyLanes", () => {
   // host-absolute start while its tweens are parsed from its own file and are
   // local to it. clipTimingStart is what brings the two into one frame.
   it("keeps an expanded sub-comp child's lane percentages inside the clip", () => {
-    const child = { start: 16.5, duration: 2, expandedParentStart: 16 };
+    const child = { start: 16.5, duration: 2, parentCompositionStart: 16 };
     const local = animation("pill-tween", "position", [
       { percentage: 0, properties: { x: 0 } },
       { percentage: 100, properties: { x: 100 } },
@@ -386,7 +386,7 @@ describe("TimelinePropertyLanes", () => {
     const positionFill = laneDiamonds(host, "position")[0]?.querySelector("path:last-child");
     const visualFill = laneDiamonds(host, "visual")[0]?.querySelector("path:last-child");
     expect(positionFill?.getAttribute("fill")).toBe("#4ba3d2");
-    expect(visualFill?.getAttribute("fill")).toBe("#a3a3a3");
+    expect(visualFill?.getAttribute("fill")).toBe("var(--timeline-diamond-muted)");
     act(() => root.unmount());
   });
 
@@ -406,7 +406,7 @@ describe("TimelinePropertyLanes", () => {
     expect(laneDiamonds(host, "position")).toHaveLength(3);
     const buttons = laneEaseButtons(host, "position");
     expect(buttons).toHaveLength(2);
-    expect(buttons.every((button) => button.classList.contains("opacity-0"))).toBe(true);
+    expect(buttons.every((button) => button.classList.contains("opacity-40"))).toBe(true);
     expect(buttons.every((button) => button.classList.contains("group-hover:opacity-100"))).toBe(
       true,
     );

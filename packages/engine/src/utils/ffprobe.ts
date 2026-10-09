@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication complexity
 import { spawn } from "child_process";
 import { createReadStream, readFileSync, statSync } from "fs";
-import * as zlib from "node:zlib";
+import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { basename } from "path";
 import { redactTelemetryString } from "@hyperframes/core";
@@ -142,16 +142,16 @@ function parseProbeJson(stdout: string): FFProbeOutput {
   }
 }
 
-const videoMetadataCache = new Map<string, Promise<VideoMetadata>>();
-const finalVideoFrameTimestampCache = new Map<string, Promise<number>>();
+const videoMetadataCache = new Map<string, MediaProbeCacheEntry<VideoMetadata>>();
+const finalVideoFrameTimestampCache = new Map<string, MediaProbeCacheEntry<number>>();
 const finalVideoFrameTimestampSignalCaches = new WeakMap<
   AbortSignal,
-  Map<string, Promise<number>>
+  Map<string, MediaProbeCacheEntry<number>>
 >();
-const audioMetadataCache = new Map<string, Promise<AudioMetadata>>();
-interface MediaProbeCacheEntry {
-  identity: string;
-  promise: Promise<FFProbeOutput>;
+const audioMetadataCache = new Map<string, MediaProbeCacheEntry<AudioMetadata>>();
+interface MediaProbeCacheEntry<T = FFProbeOutput> {
+  identity: string | null;
+  promise: Promise<T>;
 }
 
 const mediaProbeOutputCache = new Map<string, MediaProbeCacheEntry>();
@@ -188,6 +188,8 @@ export interface VideoMetadata {
   hasAlpha: boolean;
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
+  colorRange?: string;
+  pixelFormat?: string;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -224,6 +226,7 @@ interface FFProbeStream {
   avg_frame_rate?: string;
   sample_rate?: string;
   channels?: number;
+  color_range?: string;
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
@@ -324,6 +327,34 @@ function mediaFileIdentity(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+function readMetadataCache<T>(
+  cache: Map<string, MediaProbeCacheEntry<T>>,
+  key: string,
+  identity: string | null,
+): Promise<T> | undefined {
+  const cached = cache.get(key);
+  return cached?.identity === identity ? cached.promise : undefined;
+}
+
+function writeMetadataCache<T>(
+  cache: Map<string, MediaProbeCacheEntry<T>>,
+  key: string,
+  identity: string | null,
+  promise: Promise<T>,
+): void {
+  const entry = { identity, promise };
+  cache.set(key, entry);
+  void promise.then(
+    () => {
+      // Without a file identity, share only the in-flight probe, never its result.
+      if (identity === null && cache.get(key) === entry) cache.delete(key);
+    },
+    () => {
+      if (cache.get(key) === entry) cache.delete(key);
+    },
+  );
 }
 
 async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise<FFProbeOutput> {
@@ -466,38 +497,6 @@ export async function probeMediaProfile(
     }
     throw error;
   }
-}
-
-// node:zlib's crc32 is native and takes a running seed, so the chunk type and
-// the chunk data can be CRC'd in sequence without concatenating them into a
-// throwaway buffer: ~210 ms -> ~1.3 ms on a 12 MiB PNG.
-//
-// It landed in Node 22.2.0, and this repo declares `"node": ">=22"` with a
-// major-only runtime gate, so 22.0 and 22.1 are still supported. A NAMED
-// import of a missing export throws at module evaluation — i.e. `ffprobe.ts`
-// would fail to load at all on those, long before any PNG is parsed — so the
-// namespace import plus this capability check is deliberate. Raising the
-// floor to 22.2.0 instead would be a user-facing support change, which does
-// not belong in a PNG bug fix.
-const nativeCrc32 = typeof zlib.crc32 === "function" ? zlib.crc32 : undefined;
-
-/** Bit-at-a-time fallback for Node 22.0/22.1. Correct, just slower. */
-function crc32Fallback(data: Buffer, seed: number): number {
-  let crc = seed ^ 0xffffffff;
-  for (let i = 0; i < data.length; i++) {
-    crc ^= data[i] ?? 0;
-    for (let bit = 0; bit < 8; bit++) {
-      const mask = -(crc & 1);
-      crc = (crc >>> 1) ^ (0xedb88320 & mask);
-    }
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function chunkCrc32(chunkType: string, chunkData: Buffer): number {
-  const typeBytes = Buffer.from(chunkType, "ascii");
-  if (nativeCrc32) return nativeCrc32(chunkData, nativeCrc32(typeBytes));
-  return crc32Fallback(chunkData, crc32Fallback(typeBytes, 0));
 }
 
 export function extractPngMetadataFromBuffer(buf: Buffer): StillImageMetadata | null {
@@ -696,7 +695,8 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
  * can be used uniformly for any visual asset the HDR pipeline encounters.
  */
 export async function extractMediaMetadata(filePath: string): Promise<VideoMetadata> {
-  const cached = videoMetadataCache.get(filePath);
+  const identity = mediaFileIdentity(filePath);
+  const cached = readMetadataCache(videoMetadataCache, filePath, identity);
   if (cached) return cached;
 
   const probePromise = (async (): Promise<VideoMetadata> => {
@@ -790,9 +790,27 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const frames =
       Number.isFinite(parsedNbFrames) && parsedNbFrames > 0 ? parsedNbFrames : undefined;
 
+    // When the video stream omits its own duration, the container duration
+    // (format.duration) includes the longest stream — often a longer audio
+    // track in stock/looping clips. Cross-check with nb_frames to bound the
+    // video-specific extent and avoid inflating the expected frame count.
+    let effectiveStreamDuration: number;
+    if (streamDuration > 0) {
+      effectiveStreamDuration = streamDuration;
+    } else if (frames !== undefined && fps > 0 && containerDuration > 0) {
+      const frameDerivedDuration = frames / fps;
+      // Only override when the frame-derived duration is meaningfully shorter
+      // (>10% gap). Within 10% the container value is close enough and may
+      // account for a trailing hold frame that nb_frames does not include.
+      effectiveStreamDuration =
+        frameDerivedDuration < containerDuration * 0.9 ? frameDerivedDuration : containerDuration;
+    } else {
+      effectiveStreamDuration = containerDuration;
+    }
+
     return {
       durationSeconds: containerDuration,
-      videoStreamDurationSeconds: streamDuration > 0 ? streamDuration : containerDuration,
+      videoStreamDurationSeconds: effectiveStreamDuration,
       videoStreamStartSeconds: streamStart,
       width: videoStream.width || stillImage()?.width || 0,
       height: videoStream.height || stillImage()?.height || 0,
@@ -802,17 +820,29 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       isVFR,
       hasAlpha,
       colorSpace,
+      colorRange: videoStream.color_range,
+      pixelFormat,
       frames,
     };
   })();
 
-  videoMetadataCache.set(filePath, probePromise);
-  probePromise.catch(() => {
-    if (videoMetadataCache.get(filePath) === probePromise) {
-      videoMetadataCache.delete(filePath);
-    }
-  });
+  writeMetadataCache(videoMetadataCache, filePath, identity, probePromise);
   return probePromise;
+}
+
+/**
+ * Normalized span of a video stream (not its container), plus its cache key.
+ * Computed here so callers cannot normalize or key differently.
+ */
+function resolveStreamWindow(
+  filePath: string,
+  metadata: Pick<VideoMetadata, "videoStreamDurationSeconds" | "videoStreamStartSeconds">,
+): { videoStreamStartSeconds: number; videoStreamDurationSeconds: number; cacheKey: string } {
+  const videoStreamDurationSeconds = metadata.videoStreamDurationSeconds;
+  const candidateStart = metadata.videoStreamStartSeconds ?? 0;
+  const videoStreamStartSeconds = Number.isFinite(candidateStart) ? candidateStart : 0;
+  const cacheKey = `${filePath}\0${String(videoStreamStartSeconds)}\0${String(videoStreamDurationSeconds)}`;
+  return { videoStreamStartSeconds, videoStreamDurationSeconds, cacheKey };
 }
 
 /**
@@ -834,10 +864,12 @@ export async function extractFinalVideoFrameTimestamp(
   metadata: Pick<VideoMetadata, "videoStreamDurationSeconds" | "videoStreamStartSeconds">,
   signal?: AbortSignal,
 ): Promise<number> {
-  const videoDurationSeconds = metadata.videoStreamDurationSeconds;
-  const candidateStreamStart = metadata.videoStreamStartSeconds ?? 0;
-  const videoStreamStartSeconds = Number.isFinite(candidateStreamStart) ? candidateStreamStart : 0;
-  const cacheKey = `${filePath}\0${String(videoStreamStartSeconds)}\0${String(videoDurationSeconds)}`;
+  const {
+    videoStreamStartSeconds,
+    videoStreamDurationSeconds: videoDurationSeconds,
+    cacheKey,
+  } = resolveStreamWindow(filePath, metadata);
+  const identity = mediaFileIdentity(filePath);
   // A caller-owned abort signal cannot safely own a globally shared process
   // promise: aborting one render would fail unrelated consumers. Calls in the
   // SAME cancellation scope should still share the expensive interval +
@@ -850,7 +882,7 @@ export async function extractFinalVideoFrameTimestamp(
     probeCache = finalVideoFrameTimestampSignalCaches.get(signal) ?? new Map();
     finalVideoFrameTimestampSignalCaches.set(signal, probeCache);
   }
-  const cached = probeCache.get(cacheKey);
+  const cached = readMetadataCache(probeCache, cacheKey, identity);
   if (cached) return cached;
 
   const probePromise = (async () => {
@@ -893,12 +925,7 @@ export async function extractFinalVideoFrameTimestamp(
     return Math.min(Math.max(timestamp - videoStreamStartSeconds, 0), videoDurationSeconds);
   })();
 
-  probeCache.set(cacheKey, probePromise);
-  probePromise.catch(() => {
-    if (probeCache.get(cacheKey) === probePromise) {
-      probeCache.delete(cacheKey);
-    }
-  });
+  writeMetadataCache(probeCache, cacheKey, identity, probePromise);
   return probePromise;
 }
 
@@ -917,7 +944,10 @@ export async function extractAudioMetadata(
   // A caller-owned abort signal cannot safely share a cached in-flight probe:
   // cancelling one consumer would also cancel unrelated consumers. Signal-bound
   // probes therefore bypass the process-promise cache.
-  const cached = options?.signal ? undefined : audioMetadataCache.get(filePath);
+  const identity = mediaFileIdentity(filePath);
+  const cached = options?.signal
+    ? undefined
+    : readMetadataCache(audioMetadataCache, filePath, identity);
   if (cached) return cached;
 
   const probePromise = (async (): Promise<AudioMetadata> => {
@@ -996,12 +1026,7 @@ export async function extractAudioMetadata(
   })();
 
   if (options?.signal) return probePromise;
-  audioMetadataCache.set(filePath, probePromise);
-  probePromise.catch(() => {
-    if (audioMetadataCache.get(filePath) === probePromise) {
-      audioMetadataCache.delete(filePath);
-    }
-  });
+  writeMetadataCache(audioMetadataCache, filePath, identity, probePromise);
   return probePromise;
 }
 
@@ -1014,26 +1039,44 @@ export interface KeyframeAnalysis {
 
 const keyframeCache = new Map<string, Promise<KeyframeAnalysis>>();
 
+/** Intervals beyond this cause seeking issues in the headless renderer and
+ *  audio/video desync — the sole threshold for `isProblematic` below. */
+const PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS = 2;
+
 /**
- * Check keyframe intervals in a video file. Intervals > 2s cause seeking
- * issues in the headless renderer and audio/video desync. Videos from
- * yt-dlp --download-sections or screen recordings often have sparse keyframes.
+ * Checks keyframe intervals in a video stream; intervals over the threshold below flag `isProblematic`.
+ * Pass the stream's own duration/start (not the container's), which can overstate a single-keyframe GOP.
  */
-export async function analyzeKeyframeIntervals(filePath: string): Promise<KeyframeAnalysis> {
-  const cached = keyframeCache.get(filePath);
+export async function analyzeKeyframeIntervals(
+  filePath: string,
+  metadata: Pick<VideoMetadata, "videoStreamDurationSeconds" | "videoStreamStartSeconds">,
+): Promise<KeyframeAnalysis> {
+  const { videoStreamStartSeconds, videoStreamDurationSeconds, cacheKey } = resolveStreamWindow(
+    filePath,
+    metadata,
+  );
+  const cached = keyframeCache.get(cacheKey);
   if (cached) return cached;
 
-  const promise = analyzeKeyframeIntervalsUncached(filePath);
-  keyframeCache.set(filePath, promise);
+  const promise = analyzeKeyframeIntervalsUncached(
+    filePath,
+    videoStreamStartSeconds,
+    videoStreamDurationSeconds,
+  );
+  keyframeCache.set(cacheKey, promise);
   promise.catch(() => {
-    if (keyframeCache.get(filePath) === promise) {
-      keyframeCache.delete(filePath);
+    if (keyframeCache.get(cacheKey) === promise) {
+      keyframeCache.delete(cacheKey);
     }
   });
   return promise;
 }
 
-async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<KeyframeAnalysis> {
+async function analyzeKeyframeIntervalsUncached(
+  filePath: string,
+  videoStreamStartSeconds: number,
+  videoStreamDurationSeconds: number,
+): Promise<KeyframeAnalysis> {
   const stdout = await runFfprobe(filePath, [
     "-select_streams",
     "v:0",
@@ -1050,12 +1093,30 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .map((line) => parseFloat(line.trim()))
     .filter((t) => Number.isFinite(t));
 
-  if (timestamps.length < 2) {
+  if (timestamps.length === 0) {
     return {
       avgIntervalSeconds: 0,
       maxIntervalSeconds: 0,
-      keyframeCount: timestamps.length,
+      keyframeCount: 0,
       isProblematic: false,
+    };
+  }
+
+  if (timestamps.length === 1) {
+    // A single keyframe means the whole stream is one GOP — the worst case, not the healthy one.
+    // `timestamps[0]` is an absolute pts, so compare it against the absolute stream end
+    // (start + duration), not against duration alone.
+    const streamEnd = videoStreamStartSeconds + videoStreamDurationSeconds;
+    // The fallback is unreachable (length === 1); it only satisfies
+    // noUncheckedIndexedAccess.
+    const rawInterval = streamEnd - (timestamps[0] ?? videoStreamStartSeconds);
+    const singleGopInterval = Number.isFinite(rawInterval) ? Math.max(rawInterval, 0) : 0;
+    const roundedInterval = Math.round(singleGopInterval * 100) / 100;
+    return {
+      avgIntervalSeconds: roundedInterval,
+      maxIntervalSeconds: roundedInterval,
+      keyframeCount: 1,
+      isProblematic: singleGopInterval > PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS,
     };
   }
 
@@ -1072,6 +1133,6 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     avgIntervalSeconds: Math.round(avgInterval * 100) / 100,
     maxIntervalSeconds: Math.round(maxInterval * 100) / 100,
     keyframeCount: timestamps.length,
-    isProblematic: maxInterval > 2,
+    isProblematic: maxInterval > PROBLEMATIC_KEYFRAME_INTERVAL_SECONDS,
   };
 }

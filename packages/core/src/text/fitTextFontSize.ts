@@ -35,13 +35,18 @@ export function fitTextFontSize(text: string, options?: Partial<FitTextOptions>)
   const opts = { ...DEFAULTS, ...options };
   const lineHeightRatio = 1.2;
 
-  for (let size = opts.baseFontSize; size >= opts.minFontSize; size -= opts.step) {
+  for (
+    let size = opts.baseFontSize;
+    size >= opts.minFontSize;
+    size = Math.max(opts.minFontSize, size - opts.step)
+  ) {
     const font = `${opts.fontWeight} ${size}px ${opts.fontFamily}`;
     const prepared = prepare(text, font);
     const { lineCount } = layout(prepared, opts.maxWidth, size * lineHeightRatio);
     if (lineCount <= 1) {
       return { fontSize: size, fits: true };
     }
+    if (size === opts.minFontSize) break;
   }
 
   return { fontSize: opts.minFontSize, fits: false };

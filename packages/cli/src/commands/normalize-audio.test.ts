@@ -175,3 +175,13 @@ describe("updateAudioVolume", () => {
     );
   });
 });
+
+describe("normalize-audio on video clips", () => {
+  it("finds a video with sound as a target and skips a muted one", () => {
+    const html = `<video id="a-roll" src="talk.mp4" data-has-audio="true"></video><video id="b-roll" src="b.mp4" muted></video><audio id="music" src="m.mp3"></audio>`;
+    expect(audioTags(html).map((tag) => tag.id)).toEqual(["a-roll", "music"]);
+    expect(updateAudioVolume(html, "a-roll", 0.5)).toContain(
+      `<video id="a-roll" src="talk.mp4" data-has-audio="true" data-volume="0.5"></video>`,
+    );
+  });
+});

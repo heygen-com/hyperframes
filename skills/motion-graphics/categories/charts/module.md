@@ -2,6 +2,8 @@
 
 Animated **data-viz** from data. Asset-free (the "input" is the data). "One chart, one message" for short durations.
 
+Read [data in motion](../../../hyperframes-creative/references/data-in-motion.md) before planning or building. Apply its guidance to default chart choices; preserve a chart type explicitly requested by the user.
+
 ## Plan (Director)
 
 `content`: `{ type: bar|line|pie|race|pct, data[], labels[], headline, axes: bool }`. For `race`, data must be cumulative/time-staged.
@@ -10,7 +12,7 @@ Animated **data-viz** from data. Asset-free (the "input" is the data). "One char
 
 - Block: **`data-chart`** (animated **bar + line**, staggered reveal, value labels — proven: borrowed + customized + rendered to MP4 in the prototype `charts-demo`).
 - Also in the registry: **`bar-chart-race`** — install it rather than hand-authoring a race.
-- Gaps (hand-author): **pie / donut, ring/%** — no registry block covers these. Search first (`npx hyperframes catalog --query "pie chart reveal" --json`), then use D3/visx for data→geometry + GSAP for motion.
+- Gaps (hand-author): **pie / donut, ring/%** — no registry block covers these. Search first (`npx hyperframes catalog --query "pie chart reveal" --json`), then use SVG/CSS for data→geometry + GSAP for motion.
 - Signature animations: bar stagger-grow · line `stroke-dashoffset` draw-on · pie radial sweep · ring fill · KPI count-up · race reorder.
 
 ## Build (reuse-first)

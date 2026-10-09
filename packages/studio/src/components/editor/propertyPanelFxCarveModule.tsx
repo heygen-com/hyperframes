@@ -1,3 +1,4 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /**
  * The voiceover carve, as one module in the FX rack.
  *
@@ -111,7 +112,7 @@ function FxCarveMember({
               {/* The lane is where an automated value comes from, and where it is
                   edited — saying so is the difference between a stale readout and
                   a pointer to the thing that owns it. */}
-              {automated ? <span className="text-[#3CE6AC]">A</span> : null}
+              {automated ? <span className="text-accent-ink">A</span> : null}
             </span>
           );
         })}
@@ -165,6 +166,7 @@ export function FxCarveModule({
   onCarvePreview(carve: HfCarveSettings): void;
 }) {
   const on = carve.enabled;
+  const trackInput = useTrackDesignInput();
   const soleVoice = soleCarveVoice(sourceOptions, carve.sources);
   const summary = carveSummary({ nodes, carve, analysing });
   // The carve's own colour, used three ways: the module's left edge, the title,
@@ -215,7 +217,10 @@ export function FxCarveModule({
           aria-pressed={on}
           title={on ? "Switch the carve off" : "Switch the carve on"}
           disabled={disabled}
-          onClick={() => onCarveChange({ ...carve, enabled: !on })}
+          onClick={() => {
+            onCarveChange({ ...carve, enabled: !on });
+            trackInput("toggle", "carve-enabled");
+          }}
         >
           {on ? "On" : "Off"}
         </button>
@@ -250,7 +255,10 @@ export function FxCarveModule({
               value={carve.strength}
               disabled={disabled || carve.sources.length === 0}
               onChange={(_k, v) => onCarvePreview({ ...carve, strength: Number(v) })}
-              onCommit={(_k, v) => onCarveChange({ ...carve, strength: Number(v) })}
+              onCommit={(_k, v) => {
+                onCarveChange({ ...carve, strength: Number(v) });
+                trackInput("slider", "carve-strength");
+              }}
             />
           </div>
           {/* What the analysis made of all that. Divided rather than boxed: these
@@ -334,11 +342,12 @@ function CarveSourceRow({
   disabled?: boolean;
   onCarveChange(carve: HfCarveSettings): void;
 }) {
+  const trackInput = useTrackDesignInput();
   return (
     <div className="hf-fx-row flex min-h-6 items-center gap-2">
       {/* Wraps like every other name in this column (see FxParamRow) — one
           truncating row beside wrapping ones reads as a rendering bug. */}
-      <span className="hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight text-panel-text-2">
+      <span className="hf-fx-label w-[86px] shrink-0 wrap-break-word text-[10px] leading-tight text-panel-text-2">
         Listen to
       </span>
       {soleVoice ? (
@@ -366,14 +375,15 @@ function CarveSourceRow({
                 data-carve-source={o.id}
                 checked={carve.sources.includes(o.id)}
                 disabled={disabled}
-                onChange={(e) =>
+                onChange={(e) => {
                   onCarveChange({
                     ...carve,
                     sources: e.target.checked
                       ? [...carve.sources, o.id]
                       : carve.sources.filter((id) => id !== o.id),
-                  })
-                }
+                  });
+                  trackInput("toggle", "carve-source");
+                }}
               />
               <span className="truncate">{o.label}</span>
             </label>

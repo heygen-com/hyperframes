@@ -1,24 +1,29 @@
 # Catalog artifact
 
-Two files ship from here, and only these two. The CLI fetches them over HTTP
-when a user opts into offline catalog search (`catalog --query ... --on-device`),
-so they are served from the registry rather than bundled in the package.
+The CLI fetches these files over HTTP when a user opts into on-device catalog
+search (`catalog --query ... --on-device`), so they are served from the registry
+rather than bundled in the package. How the search uses them is in
+[How catalog search works](https://hyperframes.heygen.com/developers/catalog-search).
 
-| File                 | What it is                                                              |
-| -------------------- | ----------------------------------------------------------------------- |
-| `local-vectors.json` | `{ model, dimensions, names }`. `names` is the row order of the binary. |
-| `local-vectors.bin`  | Float32, row-major, `names.length * dimensions` values, no header.      |
+| File                 | What it is                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| `local-vectors.json` | `{ model, modelRevision, dimensions, revision, names }`. `names` is the row order of the binary. |
+| `local-vectors.bin`  | Float32, row-major, `names.length * dimensions` values, no header.                               |
 
-Currently 168 rows at 384 dimensions: 258,048 bytes, one row per installable
-registry item.
+One row per installable registry item, at 384 dimensions.
+
+`media-vectors.*` are the same kind of index over the bundled sound effects in
+`skills/media-use/audio/assets/sfx/manifest.json`, built with `--manifest`.
+Everything below is about `local-vectors.*`.
 
 ## Provenance
 
-No digest, revision or build timestamp is recorded in either file, and the
-runtime only checks that `dimensions` matches the model it loaded. `model` is a
-label the build wrote, not a proof. So the only real provenance check is to
-rebuild the rows and compare them, which works because both inputs are in this
-repository:
+`revision` is a sha256 over the model, its revision, the dimensions, the batch
+size and every item's name and embedded text, and the build writes the same value
+to `registry.json` as `catalogArtifact.revision`. The CLI refetches its cached copy
+when the two differ. That names the inputs the build claims, not that the floats
+came from them, so the only real provenance check is to rebuild the rows and
+compare them, which works because both inputs are in this repository:
 
 - the text each row was embedded from is `itemRetrievalText(registry-item.json)`
   (title, description, tags, joined by newlines, name deliberately excluded),
@@ -40,10 +45,10 @@ bun scripts/catalog/build-local-vectors.ts
 
 It reads `registry/blocks/*` and `registry/components/*` directly, so the
 rebuild has no input outside this repository. You rarely need to run it by
-hand: a lefthook `catalog-index` pre-commit command regenerates and re-stages
-both files whenever a staged `registry-item.json` changes, and CI fails the
-"Catalog: search index covers the registry" job if the index is ever missing an
-item.
+hand: `bun run generate:catalog` runs it after downloading the pinned model, the
+catalog publication PR regenerates these files after source changes merge, and CI
+fails the "Catalog: search index covers the registry" job if the index is ever
+missing an item.
 
 `build-catalog-artifact.ts` does **not** produce these files. It builds the
 3072-dimension hosted artifact from an external shelf file, for the hosted search

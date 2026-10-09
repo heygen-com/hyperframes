@@ -30,6 +30,17 @@ describe("lintFeedbackComment", () => {
     expect(warnings[0]?.message).toContain("REPRO COMMAND:");
   });
 
+  it.each([
+    ["marker only", "REPRO COMMAND:"],
+    ["whitespace only", "REPRO COMMAND:   \n  \t"],
+    ["same-line next packet section", "REPRO COMMAND: EXPECTED / ACTUAL: completes / hangs"],
+    ["next packet section", ["REPRO COMMAND:", "EXPECTED / ACTUAL: completes / hangs"].join("\n")],
+  ])("warns when the repro command body is %s", (_case, comment) => {
+    const warnings = lintFeedbackComment({ rating: 8, comment });
+
+    expect(warnings.map((warning) => warning.code)).toContain("missing-repro-command");
+  });
+
   it("stays silent when the reporter already included a REPRO COMMAND: block", () => {
     const warnings = lintFeedbackComment({
       rating: 4,
@@ -39,6 +50,19 @@ describe("lintFeedbackComment", () => {
         "EXPECTED / ACTUAL: uploads / hangs at seek",
       ].join("\n"),
     });
+    expect(warnings).toEqual([]);
+  });
+
+  it("accepts a repro command body on the following line", () => {
+    const warnings = lintFeedbackComment({
+      rating: 8,
+      comment: [
+        "Repro command:",
+        "  cd project && npx hyperframes render",
+        "EXPECTED / ACTUAL: completes / hangs",
+      ].join("\n"),
+    });
+
     expect(warnings).toEqual([]);
   });
 

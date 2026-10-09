@@ -13,11 +13,7 @@ import { createCheckCommand } from "./check.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 import type { CommandDef } from "citty";
 
-// The bare/rewrite handling for a string flag with no explicit value (e.g.
-// `--frame-check` followed by another flag) lives in the shared wrapCommand
-// gate (see command-failure-tracking.ts), not in check.ts's own `run()` -- so
-// exercising it requires the same wrapping cli.ts applies in production, not
-// a raw `runCommand` against the unwrapped command.
+// Bare `--frame-check` is rewritten by the wrapCommand gate, so run through cli.ts's wrapping.
 async function runViaCli(
   command: CommandDef<any>,
   opts: Parameters<typeof runCommand>[1],
@@ -441,11 +437,7 @@ it("preserves --json after bare --frame-check", async () => {
 });
 
 it("prints a dash-prefixed --frame-check value's parse failure exactly once, not doubled", async () => {
-  // Regression: parseFrameCheck's dash-value error is always caught by this
-  // command's own run() try/catch (never escapes to cli.ts), which already
-  // prints and presents whatever it catches -- so this throw site must NOT
-  // also print (unlike guardSwallowedFlagValues's throw, which genuinely
-  // escapes to cli.ts and needs the printing variant).
+  // run()'s own try/catch prints parseFrameCheck's error, so the throw site must not print too.
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
   const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -781,7 +773,7 @@ it("checks media overflow at the default midpoint and applies warning severity",
   });
 });
 
-it("converts progress seeks to time, gates each collector, and keeps the first caption hit", async () => {
+it("converts progress seeks to time, gates each collector, and keeps distinct caption elements", async () => {
   const collectGeometryCandidates = vi.fn(gateCandidates);
   const { report } = await runScenario(
     fakeDriver({
@@ -817,6 +809,13 @@ it("converts progress seeks to time, gates each collector, and keeps the first c
       time: 2,
     }),
     expect.objectContaining({ code: "frame_out_of_frame", severity: "error", time: 4 }),
+    expect.objectContaining({
+      code: "caption_zone_collision",
+      severity: "error",
+      selector: "#later-heading",
+      time: 6,
+      times: [6],
+    }),
   ]);
   expect(report.ok).toBe(false);
 });
@@ -918,7 +917,7 @@ it("suppresses frame breaches below the per-canvas floor and reports those above
   ]);
 });
 
-it("keeps frame findings at distinct rounded positions across requested seeks", async () => {
+it("reports one moving element rule with both requested seek times", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
       kind: "media",
@@ -943,8 +942,16 @@ it("keeps frame findings at distinct rounded positions across requested seeks", 
   );
 
   expect(report.layout.findings).toEqual([
-    expect.objectContaining({ code: "frame_out_of_frame", time: 2 }),
-    expect.objectContaining({ code: "frame_out_of_frame", time: 6 }),
+    expect.objectContaining({
+      code: "frame_out_of_frame",
+      time: 2,
+      times: [2, 6],
+      firstSeen: 2,
+      lastSeen: 6,
+      occurrences: 2,
+      heldMs: 0,
+      bbox: { x: 1920, y: 100, width: 130, height: 100 },
+    }),
   ]);
 });
 
@@ -1006,6 +1013,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
   return {
     ok: true,
     strict: false,
+    browserSkipped: false,
     lint: { ...emptySection(), filesScanned: 0 },
     runtime: emptySection(),
     layout: {
@@ -1104,6 +1112,7 @@ describe("check pipeline", () => {
     const envelope = JSON.parse(output);
     expect(envelope).toMatchObject({
       ok: true,
+      browserSkipped: false,
       lint: { ok: true },
       runtime: { ok: true },
       layout: { ok: true },
@@ -1114,7 +1123,7 @@ describe("check pipeline", () => {
     });
   });
 
-  it("short-circuits on lint errors without launching a browser", async () => {
+  it("short-circuits on lint errors without launching a browser, and flags the skipped sections", async () => {
     const lint = lintWith(
       "error",
       "root_missing_composition_id",
@@ -1126,6 +1135,42 @@ describe("check pipeline", () => {
     expect(checkExitCode(report)).toBe(1);
     expect(report.lint.findings).toHaveLength(1);
     expect(browser).not.toHaveBeenCalled();
+    // The browser sections look clean either way; only browserSkipped tells them apart.
+    expect(report.browserSkipped).toBe(true);
+    expect(report.runtime).toMatchObject({ ok: true, errorCount: 0, findings: [] });
+    expect(report.layout).toMatchObject({ ok: true, errorCount: 0, findings: [], duration: 0 });
+    expect(report.motion).toMatchObject({ ok: true, errorCount: 0, findings: [] });
+    expect(report.contrast).toMatchObject({ ok: true, errorCount: 0, findings: [] });
+  });
+
+  it("marks browserSkipped true when the linter itself crashes", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.lintProject = vi.fn(async () => {
+      throw new Error("unreadable index.html");
+    });
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(report.ok).toBe(false);
+    expect(report.browserSkipped).toBe(true);
+    expect(report.runtime.findings[0]?.code).toBe("check_lint_failure");
+  });
+
+  it("marks browserSkipped false once a browser session actually runs", async () => {
+    const { report } = await runScenario(fakeDriver());
+    expect(report.browserSkipped).toBe(false);
+  });
+
+  it("marks browserSkipped true when the browser session throws before producing results", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = vi.fn(async () => {
+      throw new Error("Chrome launch failed");
+    });
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(report.ok).toBe(false);
+    expect(report.browserSkipped).toBe(true);
+    expect(report.runtime.findings).toHaveLength(1);
+    expect(report.layout).toMatchObject({ ok: true, errorCount: 0, findings: [] });
   });
 
   it("gates AA contrast failures and --no-contrast skips the pass", async () => {
@@ -1531,9 +1576,60 @@ describe("check pipeline", () => {
           (finding) =>
             finding.code === "sweep_static" &&
             finding.severity === "error" &&
-            finding.message.includes("did not advance"),
+            finding.message.includes("did not advance") &&
+            finding.fixHint?.includes("data-no-timeline"),
         ),
       ).toBe(true);
+    });
+
+    it("warns, without failing, when only the audio advanced and nothing on screen moved", async () => {
+      let call = 0;
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        collectLayoutGeometry: vi.fn(async () => `still\u001f${call++}`),
+      });
+      const { report } = await runScenario(driver);
+
+      const sweep = report.layout.findings.filter((finding) => finding.code === "sweep_static");
+      expect(sweep.map((finding) => [finding.severity, finding.message])).toEqual([
+        ["warning", "Only the audio advanced under seek; nothing on screen moved."],
+      ]);
+      expect(sweep[0]?.fixHint).toContain("data-no-timeline");
+      expect(report.ok).toBe(true);
+    });
+
+    it("does not flag a sweep where something on screen moved", async () => {
+      let call = 0;
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        collectLayoutGeometry: vi.fn(async () => `frame${call++}\u001f0`),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+    });
+
+    it("does not flag --at times the user picked on a still end card", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 53.7),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+      const { report } = await runScenario(driver, { at: [51, 52.5] });
+
+      expect(report.layout.samples).toEqual([51, 52.5]);
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+    });
+
+    it("still judges the spread samples --at-transitions adds to an --at run", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 53.7),
+        getTransitionBoundaries: vi.fn(async () => [10, 20]),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+      const { report } = await runScenario(driver, { at: [51, 52.5], atTransitions: true });
+
+      expect(report.layout.samples).toEqual([10, 15, 20, 51, 52.5]);
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(true);
     });
 
     it("does not flag intentional static content declared with data-no-timeline", async () => {
@@ -1654,6 +1750,209 @@ describe("layout flag grammar", () => {
     expect(collectLayout).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), {
       proseCoverageFloor: 0.05,
     });
+  });
+});
+
+describe("sampled finding reporting", () => {
+  it("keeps the representative crop time paired with its geometry when dense observations arrive earlier", async () => {
+    const movingOverlap = (time: number): AnchoredLayoutIssue => {
+      const rect = fixtureRect(time * 1000, 20, 300, 80);
+      return {
+        ...layoutIssue("warning", { time, code: "content_overlap" }),
+        rect,
+        bbox: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      };
+    };
+    const captureFindingCrops = vi.fn(async () => []);
+    const { report } = await runScenario(
+      fakeDriver({
+        getDuration: vi.fn(async () => 1),
+        collectLayout: vi.fn(async (time: number) => (time === 0.5 ? [movingOverlap(time)] : [])),
+        collectOverlap: vi.fn(async (time: number) =>
+          time >= 0.125 && time <= 0.75 ? [movingOverlap(time)] : [],
+        ),
+      }),
+      { samples: 2, at: [0.5, 0.875], contrast: false, snapshots: true },
+      { captureFindingCrops },
+    );
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({
+        code: "content_overlap",
+        severity: "error",
+        time: 0.5,
+        firstSeen: 0.125,
+        times: [0.125, 0.25, 0.375, 0.5, 0.625, 0.75],
+        bbox: { x: 500, y: 20, width: 300, height: 80 },
+      }),
+    ]);
+    expect(captureFindingCrops).toHaveBeenCalledWith(
+      PROJECT,
+      expect.objectContaining({ snapshots: true }),
+      [
+        {
+          filename: "finding-00-content_overlap.png",
+          time: 0.5,
+          bbox: { x: 500, y: 20, width: 300, height: 80 },
+        },
+      ],
+    );
+  });
+
+  it("retains all sampled times for a stationary frame failure", async () => {
+    const { report } = await runScenario(
+      fakeDriver({
+        getDuration: vi.fn(async () => 8),
+        collectGeometryCandidates: vi.fn(async (time: number) => [
+          geometryCandidate({
+            kind: "media",
+            tag: "img",
+            text: "img",
+            selector: "#stationary",
+            rect: fixtureRect(1920, 100, 130, 100),
+            overflow: { right: 130 },
+            time,
+          }),
+        ]),
+      }),
+      { contrast: false, samples: 1, frameCheck: { seek: [0.25, 0.75] } },
+    );
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({
+        code: "frame_out_of_frame",
+        selector: "#stationary",
+        times: [2, 6],
+      }),
+    ]);
+  });
+
+  it("keeps different rules on one element as separate findings", async () => {
+    const { report } = await runScenario(
+      fakeDriver({
+        collectLayout: vi.fn(async (time: number) => [
+          layoutIssue("error", { time, code: "clipped_text" }),
+          layoutIssue("error", { time, code: "text_box_overflow" }),
+        ]),
+      }),
+      { contrast: false, samples: 2, at: [0.5, 1.5] },
+    );
+    expect(report.layout.findings.map(({ code, times }) => ({ code, times }))).toEqual([
+      { code: "clipped_text", times: [0.5, 1.5] },
+      { code: "text_box_overflow", times: [0.5, 1.5] },
+    ]);
+  });
+
+  it("retains per-sample layout observations when collapse is explicitly disabled", async () => {
+    const { report } = await runScenario(
+      fakeDriver({
+        collectLayout: vi.fn(async (time: number) => [layoutIssue("error", { time })]),
+      }),
+      { contrast: false, collapseStatic: false, samples: 2, at: [0.5, 1.5] },
+    );
+    expect(report.layout.findings.map(({ code, time }) => ({ code, time }))).toEqual([
+      { code: "clipped_text", time: 0.5 },
+      { code: "clipped_text", time: 1.5 },
+    ]);
+  });
+
+  it("reports held low contrast once with every occurrence time in JSON and terminal output", async () => {
+    const times = [0.111, 0.556, 1, 1.444, 1.889];
+    const { report } = await runScenario(
+      fakeDriver({
+        getDuration: vi.fn(async () => 2),
+        collectContrast: vi.fn(async (time: number) => ({
+          entries: [contrastEntry({ time, selector: "#low", ratio: time === 1 ? 1.2 : 2.5 })],
+          pngBase64: PNG_BASE64,
+        })),
+      }),
+      { samples: 5, at: times },
+    );
+    expect(report.contrast.findings).toEqual([
+      expect.objectContaining({
+        selector: "#low",
+        severity: "error",
+        times,
+        time: 1,
+        ratio: 1.2,
+      }),
+    ]);
+    expect(report.contrast.errorCount).toBe(1);
+    expect(report.contrast.checked).toBe(5);
+    expect(checkExitCode(report)).toBe(1);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      withMeta: (value) => value,
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(command, { rawArgs: [] });
+    const output = log.mock.calls.map(([line]) => String(line)).join("\n");
+    expect(output.match(/#low/g)).toHaveLength(1);
+    expect(output).toContain("t=0.111, 0.556, 1, 1.444, 1.889s");
+    log.mockClear();
+    await runCommand(command, { rawArgs: ["--json"] });
+    expect(JSON.parse(String(log.mock.calls[0]?.[0])).contrast.findings).toEqual(
+      report.contrast.findings,
+    );
+  });
+
+  it("keeps same-selector contrast failures in separate source files and grades each independently", async () => {
+    const { report } = await runScenario(
+      fakeDriver({
+        collectContrast: vi.fn(async (time: number) => ({
+          entries: [
+            contrastEntry({
+              time,
+              selector: "#low",
+              sourceFile: time < 1 ? "index.html" : "compositions/scene.html",
+            }),
+          ],
+          pngBase64: PNG_BASE64,
+        })),
+      }),
+      { samples: 2, at: [0.5, 1.5] },
+    );
+    expect(report.contrast.findings).toEqual([
+      expect.objectContaining({ sourceFile: "index.html", severity: "warning", times: [0.5] }),
+      expect.objectContaining({
+        sourceFile: "compositions/scene.html",
+        severity: "warning",
+        times: [1.5],
+      }),
+    ]);
+  });
+
+  it("keeps same-selector layout findings from separate source files", async () => {
+    const { report } = await runScenario(
+      fakeDriver({
+        collectLayout: vi.fn(async (time: number) => [
+          {
+            ...layoutIssue("error", { time }),
+            sourceFile: time < 1 ? "index.html" : "compositions/scene.html",
+          },
+        ]),
+      }),
+      { contrast: false, samples: 2, at: [0.5, 1.5] },
+    );
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({ sourceFile: "index.html", times: [0.5] }),
+      expect.objectContaining({ sourceFile: "compositions/scene.html", times: [1.5] }),
+    ]);
+  });
+
+  it("reports an element's repeated layout rule once even when its text changes", async () => {
+    const { report } = await runScenario(
+      fakeDriver({
+        collectLayout: vi.fn(async (time: number) => [
+          {
+            ...layoutIssue("error", { time }),
+            text: time < 1 ? "First" : "Changed",
+          },
+        ]),
+      }),
+      { contrast: false, samples: 2, at: [0.5, 1.5] },
+    );
+    expect(report.layout.findings).toHaveLength(1);
+    expect(report.layout.findings[0]).toMatchObject({ code: "clipped_text", times: [0.5, 1.5] });
   });
 });
 

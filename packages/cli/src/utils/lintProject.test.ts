@@ -37,6 +37,10 @@ function htmlWithPreloadNone(): string {
 
 let dirs: string[] = [];
 
+// Project-wide findings are filed under the composition they name, so look across every entry.
+const allFindings = (results: Array<{ result: { findings: HyperframeLintFinding[] } }>) =>
+  results.flatMap((entry) => entry.result.findings);
+
 function makeProject(indexHtml: string, subComps?: Record<string, string>): string {
   const dir = tmpProject("lint");
   dirs.push(dir);
@@ -403,9 +407,7 @@ describe("audio_src_not_found", () => {
     const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("song.mp3");
@@ -417,9 +419,7 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeUndefined();
   });
 
@@ -434,9 +434,7 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeUndefined();
   });
 
@@ -449,9 +447,7 @@ describe("audio_src_not_found", () => {
     const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeDefined();
   });
 
@@ -468,9 +464,7 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeUndefined();
   });
 
@@ -483,9 +477,7 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeUndefined();
   });
 
@@ -497,9 +489,7 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeUndefined();
   });
 
@@ -510,11 +500,11 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const finding = results[0]?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeDefined();
   });
 
-  it("deduplicates missing files across compositions", async () => {
+  it("reports a missing file once per composition that references it", async () => {
     const project = makeProject(validHtmlWithAudio(), {
       "captions.html": validHtmlWithAudio("captions"),
     });
@@ -522,13 +512,13 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
-    expect(finding).toBeDefined();
-    // Should mention song.mp3 only once despite two references
-    const occurrences = (finding?.message.match(/song\.mp3/g) ?? []).length;
-    expect(occurrences).toBe(1);
+    const findings = results
+      .flatMap((entry) => entry.result.findings)
+      .filter((f) => f.code === "audio_src_not_found");
+    expect(findings.map((f) => f.file).sort()).toEqual(
+      [join(project, "compositions", "captions.html"), join(project, "index.html")].sort(),
+    );
+    for (const finding of findings) expect(finding.message.match(/song\.mp3/g)).toHaveLength(1);
   });
 
   it("resolves sub-composition src relative to the sub-composition file (../assets/...)", async () => {
@@ -547,9 +537,7 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeUndefined();
   });
 
@@ -565,9 +553,7 @@ describe("audio_src_not_found", () => {
 
     const { results } = await lintProject(project);
 
-    const first = results[0];
-    expect(first).toBeDefined();
-    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const finding = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeDefined();
     // The original (un-rewritten) src is what surfaces in the message so the
     // author can grep for it in their HTML.
@@ -588,7 +574,7 @@ describe("missing_local_asset", () => {
     const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
+    const finding = allFindings(results).find((f) => f.code === "missing_local_asset");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("hero.png");
@@ -607,7 +593,7 @@ describe("missing_local_asset", () => {
     const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
+    const finding = allFindings(results).find((f) => f.code === "missing_local_asset");
     expect(finding).toBeDefined();
     expect(finding?.message).toContain("clip.mp4");
     expect(finding?.message).toContain("<video>");
@@ -625,7 +611,7 @@ describe("missing_local_asset", () => {
     const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
+    const finding = allFindings(results).find((f) => f.code === "missing_local_asset");
     expect(finding).toBeDefined();
     expect(finding?.message).toContain("clip.webm");
     expect(finding?.message).toContain("<source>");
@@ -642,8 +628,8 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const localAsset = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
-    const audio = results[0]?.result.findings.find((f) => f.code === "audio_src_not_found");
+    const localAsset = allFindings(results).find((f) => f.code === "missing_local_asset");
+    const audio = allFindings(results).find((f) => f.code === "audio_src_not_found");
     expect(localAsset).toBeUndefined();
     expect(audio).toBeDefined();
   });
@@ -661,7 +647,7 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
+    const finding = allFindings(results).find((f) => f.code === "missing_local_asset");
     expect(finding).toBeUndefined();
   });
 
@@ -676,7 +662,7 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
+    const finding = allFindings(results).find((f) => f.code === "missing_local_asset");
     expect(finding).toBeUndefined();
   });
 
@@ -694,7 +680,7 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
+    const finding = allFindings(results).find((f) => f.code === "missing_local_asset");
     expect(finding).toBeUndefined();
   });
 
@@ -711,11 +697,11 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
+    const finding = allFindings(results).find((f) => f.code === "missing_local_asset");
     expect(finding).toBeUndefined();
   });
 
-  it("deduplicates the same missing src across multiple compositions", async () => {
+  it("reports the same missing src once per composition that references it", async () => {
     const project = makeProject(
       `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
@@ -741,11 +727,17 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const finding = results[0]?.result.findings.find((f) => f.code === "missing_local_asset");
-    expect(finding).toBeDefined();
-    // x.png mentioned only once despite three references
-    const occurrences = (finding?.message.match(/x\.png/g) ?? []).length;
-    expect(occurrences).toBe(1);
+    const findings = results
+      .flatMap((entry) => entry.result.findings)
+      .filter((f) => f.code === "missing_local_asset");
+    expect(findings.map((f) => f.file).sort()).toEqual(
+      [
+        join(project, "compositions", "scene-a.html"),
+        join(project, "compositions", "scene-b.html"),
+        join(project, "index.html"),
+      ].sort(),
+    );
+    for (const finding of findings) expect(finding.message.match(/x\.png/g)).toHaveLength(1);
   });
 
   it("emits separate findings per tag type (img + video) for clear messaging", async () => {
@@ -760,7 +752,7 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const findings = results[0]?.result.findings.filter((f) => f.code === "missing_local_asset");
+    const findings = allFindings(results).filter((f) => f.code === "missing_local_asset");
     expect(findings).toHaveLength(2);
     expect(findings?.some((f) => f.message.includes("<img>"))).toBe(true);
     expect(findings?.some((f) => f.message.includes("<video>"))).toBe(true);
@@ -779,7 +771,7 @@ describe("missing_local_asset", () => {
 
     const { results } = await lintProject(project);
 
-    const findings = results[0]?.result.findings.filter((f) => f.code === "missing_local_asset");
+    const findings = allFindings(results).filter((f) => f.code === "missing_local_asset");
     expect(findings).toEqual([]);
   });
 });
@@ -801,7 +793,7 @@ describe("texture_mask_asset_not_found", () => {
     const project = makeProject(html);
 
     const { totalErrors, results } = await lintProject(project);
-    const finding = results[0]?.result.findings.find(
+    const finding = allFindings(results).find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
 
@@ -829,7 +821,7 @@ describe("texture_mask_asset_not_found", () => {
     writeFileSync(join(project, "masks", "lava.png"), "fake");
 
     const { results } = await lintProject(project);
-    const finding = results[0]?.result.findings.find(
+    const finding = allFindings(results).find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
 
@@ -853,7 +845,7 @@ describe("texture_mask_asset_not_found", () => {
     writeFileSync(join(project, "compositions", "masks", "lava.png"), "fake");
 
     const { results } = await lintProject(project);
-    const finding = results[0]?.result.findings.find(
+    const finding = allFindings(results).find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
 
@@ -876,7 +868,7 @@ describe("texture_mask_asset_not_found", () => {
     );
 
     const { results } = await lintProject(project);
-    const finding = results[0]?.result.findings.find(
+    const finding = allFindings(results).find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
 
@@ -904,7 +896,7 @@ describe("texture_mask_asset_not_found", () => {
     writeFileSync(join(project, "assets", "texture-mask-text", "masks", "lava.png"), "fake");
 
     const { results } = await lintProject(project);
-    const finding = results[0]?.result.findings.find(
+    const finding = allFindings(results).find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
 
@@ -918,7 +910,7 @@ describe("texture_mask_asset_not_found", () => {
     writeFileSync(join(project, "assets", decodeURIComponent(encodedFilename)), "fake");
 
     const { results } = await lintProject(project);
-    const finding = results[0]?.result.findings.find(
+    const finding = allFindings(results).find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
 
@@ -931,7 +923,7 @@ describe("texture_mask_asset_not_found", () => {
     );
 
     const { results } = await lintProject(project);
-    const finding = results[0]?.result.findings.find(
+    const finding = allFindings(results).find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
 

@@ -11,6 +11,7 @@ const cp = require("child_process");
 
 function hfResolve(pkg) {
   const roots = [
+    process.argv[2] && path.resolve(process.argv[2]), // project-owned helper dependencies
     process.env.HYPERFRAMES_ROOT,
     path.resolve(__dirname, "..", "..", ".."),
     path.join(os.homedir(), "Downloads", "hyperframes"),
@@ -29,7 +30,9 @@ function hfResolve(pkg) {
       } catch {}
     }
   }
-  console.error(`[v2] cannot find ${pkg} — set HYPERFRAMES_ROOT`);
+  console.error(
+    `[v2] cannot find ${pkg} — install project dependencies per embedded-captions SKILL.md Runtime prerequisites`,
+  );
   process.exit(3);
 }
 const sharp = hfResolve("sharp");

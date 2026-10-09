@@ -12,6 +12,7 @@ import {
   captureStudioBoxSize,
   restoreStudioBoxSize,
 } from "../components/editor/manualEdits";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 export function readLiveSelectionBox(
   doc: Document | null | undefined,
@@ -31,13 +32,13 @@ type ResizeCommit = (
   next: { width: number; height: number },
   offset?: { x: number; y: number },
   restore?: () => void,
-) => Promise<void>;
+) => Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult>;
 
 export function resizeSelectionFromAgent(
   selection: DomEditSelection,
   next: { width: number; height: number },
   commit: ResizeCommit,
-): Promise<void> {
+): Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult> {
   const previous = captureStudioBoxSize(selection.element);
   applyStudioBoxSizeDraft(selection.element, next);
   return commit(selection, next, undefined, () => {
@@ -141,7 +142,7 @@ export function StudioAgentTools() {
       // fetches the URL itself.
       probeFrame: async (url) => {
         try {
-          const response = await fetch(url, { method: "HEAD" });
+          const response = await studioApiFetch(url, { method: "HEAD" });
           return { ok: response.ok, status: response.status };
         } catch {
           return { ok: false, status: 0 };

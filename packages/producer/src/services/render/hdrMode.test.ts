@@ -123,7 +123,32 @@ describe("resolveEffectiveHdrMode", () => {
       expect(log.warn).toHaveBeenCalledWith(
         expect.stringContaining(`format is "${fmt}" — falling back to SDR`),
       );
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("HDR + alpha is not supported"),
+      );
     }
+  });
+
+  // hls is the one non-mp4 format downgraded for a reason other than alpha:
+  // HDR10 would need HEVC in fMP4 segments. `force-hdr` + `hls` is rejected
+  // before the render starts, so only auto-detect reaches this gate.
+  it("downgrades auto-detected HDR on hls with an SDR-only reason, not the alpha one", () => {
+    const log = makeLog();
+    const result = resolveEffectiveHdrMode({
+      hdrMode: "auto",
+      outputFormat: "hls",
+      extractionResult: extractionWith([HDR_PQ]),
+      imageColorSpaces: [],
+      log,
+    });
+    expect(result).toBeUndefined();
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('format is "hls" — falling back to SDR'),
+    );
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("HLS output is SDR-only (H.264 in MPEG-TS)"),
+    );
+    expect(log.warn).not.toHaveBeenCalledWith(expect.stringContaining("HDR + alpha"));
   });
 
   it("force-hdr without sources + non-mp4 format: still downgrades, two warns fire", () => {

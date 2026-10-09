@@ -37,6 +37,7 @@ import {
   executeRenderJob,
 } from "../packages/producer/src/index.js";
 import { openOpaqueCapture } from "./preview-capture.js";
+import { patchMediaPlaceholders } from "../packages/cli/src/commands/initMedia.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -64,13 +65,7 @@ function patchTemplateHtml(dir: string, durationSeconds: number): void {
 
   for (const entry of htmlEntries) {
     const file = join(entry.parentPath, entry.name);
-    let content = readFileSync(file, "utf-8");
-    content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/video>/g, "");
-    content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
-    content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/audio>/g, "");
-    content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
-    const dur = String(Math.round(durationSeconds * 100) / 100);
-    content = content.replaceAll("__VIDEO_DURATION__", dur);
+    const content = patchMediaPlaceholders(readFileSync(file, "utf-8"), { durationSeconds });
     writeFileSync(file, content, "utf-8");
   }
 }

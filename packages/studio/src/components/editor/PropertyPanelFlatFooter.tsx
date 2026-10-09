@@ -40,7 +40,7 @@ export function PropertyPanelFlatFooter({
           height="13"
           viewBox="0 0 16 16"
           fill="currentColor"
-          className="text-panel-accent"
+          className="text-accent-ink"
         >
           <path d="M8 1l1.4 4.6L14 7l-4.6 1.4L8 13l-1.4-4.6L2 7l4.6-1.4z" />
         </svg>
@@ -57,7 +57,7 @@ export function PropertyPanelFlatFooter({
             track("button", "Gesture recording");
             onToggleRecording();
           }}
-          className={recording ? "text-panel-danger animate-pulse" : "text-panel-danger"}
+          className={recording ? "text-danger-ink animate-pulse" : "text-danger-ink"}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
             {recording ? (

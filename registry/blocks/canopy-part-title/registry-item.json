@@ -1,0 +1,47 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "canopy-part-title",
+  "type": "hyperframes:block",
+  "title": "Canopy Part Title",
+  "description": "Leaves sweep through the frame and part to reveal the headline.",
+  "tags": [
+    "3d-motion",
+    "title-card",
+    "leaves",
+    "organic",
+    "depth-of-field",
+    "two-headlines",
+    "sweep"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 12,
+  "files": [
+    {
+      "path": "canopy-part-title.html",
+      "target": "compositions/canopy-part-title/canopy-part-title.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/leaf-surface-color.webp",
+      "target": "compositions/canopy-part-title/assets/leaf-surface-color.webp",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/leaf-surface-normal.webp",
+      "target": "compositions/canopy-part-title/assets/leaf-surface-normal.webp",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "SKILL.md",
+      "target": "compositions/canopy-part-title/SKILL.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/canopy-part-title.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/canopy-part-title.png"
+  }
+}

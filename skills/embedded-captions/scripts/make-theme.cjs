@@ -580,13 +580,11 @@ ${css}
 <body>
   <div id="root" data-composition-id="main" data-start="0" data-duration="${DUR}"
        data-width="${W}" data-height="${H}">
-    <video id="a-roll" src="source.mp4" muted playsinline
+    <video id="a-roll" src="source.mp4" playsinline data-has-audio="true"
            data-duration="${DUR}" data-track-index="0"></video>
     <div id="stage">
 ${stageHtml}
     </div>
-    <audio id="a-roll-audio" src="source.mp4" data-start="0" data-duration="${DUR}"
-           data-track-index="3" data-volume="1"></audio>
   </div>
 <script>
   window.__timelines = window.__timelines || {};

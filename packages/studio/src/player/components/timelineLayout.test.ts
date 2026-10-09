@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  CLIP_Y,
-  INSERT_BOUNDARY_BAND,
-  getTimelineInsertBoundaryBand,
   RULER_H,
   TRACK_H,
   LANE_H,
@@ -21,7 +18,12 @@ import {
   resolveTimelineAssetDrop,
   getTimelineBeatEntries,
 } from "./timelineLayout";
-import { generateTicks, getTimelineMajorTickInterval } from "./timelineRulerGeometry";
+import {
+  generateTicks,
+  getTimelineGridStep,
+  getTimelineMajorTickInterval,
+} from "./timelineRulerGeometry";
+import { resolveInsertRow } from "./timelineCollision";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 
 describe("horizontal timeline window", () => {
@@ -42,6 +44,25 @@ describe("horizontal timeline window", () => {
       ticks.major.every((time) => Math.abs(time / interval - Math.round(time / interval)) < 1e-6),
     ).toBe(true);
     expect(ticks.major.length + ticks.minor.length).toBeLessThan(100);
+  });
+
+  it("spaces the snap grid exactly like the ruler's drawn lines at each zoom", () => {
+    for (const [pps, fps] of [
+      [100, undefined],
+      [12, undefined],
+      [900, undefined],
+      [100, 30],
+      [3, 30],
+    ] as const) {
+      const { major, minor } = generateTicks(60, pps, fps);
+      const lines = [...major, ...minor].sort((a, b) => a - b);
+      expect(getTimelineGridStep(60, pps, fps)).toBeCloseTo(lines[1]! - lines[0]!, 6);
+    }
+  });
+
+  it("has no snap grid where the ruler draws no lines", () => {
+    expect(generateTicks(20_000, 100)).toEqual({ major: [], minor: [] });
+    expect(getTimelineGridStep(20_000, 100)).toBe(0);
   });
 
   it("slices beat records with original strength indexes and unions a pinned beat", () => {
@@ -127,27 +148,27 @@ describe("variable timeline row geometry", () => {
 
 describe("collapsed timeline row geometry characterization", () => {
   it.each([
-    [0, 74],
-    [1, 122],
-    [4, 266],
+    [0, 32],
+    [1, 80],
+    [4, 224],
   ])("keeps row %i at content y=%i", (row, expectedTop) => {
     expect(getTimelineRowTop(row)).toBe(expectedTop);
   });
 
   it.each([
-    [74, 0],
-    [86, 0.25],
-    [146, 1.5],
-    [290, 4.5],
+    [32, 0],
+    [44, 0.25],
+    [104, 1.5],
+    [248, 4.5],
   ])("maps content y=%i to fractional row %f", (contentY, expectedRow) => {
     expect(getTimelineRowFromY(contentY)).toBe(expectedRow);
   });
 
   it.each([
-    [0, 146],
-    [1, 194],
-    [3, 290],
-    [5, 386],
+    [0, 80],
+    [1, 128],
+    [3, 224],
+    [5, 320],
   ])("keeps the %i-track canvas height at %i", (trackCount, expectedHeight) => {
     expect(getTimelineCanvasHeight(baseRows(trackCount))).toBe(expectedHeight);
   });
@@ -217,7 +238,6 @@ describe("track-area breathing pad y-math", () => {
       scrollTop: 0,
       contentOrigin: GUTTER,
       pixelsPerSecond: 100,
-      duration: 60,
       rowHeights: baseRows(3),
       trackOrder: [0, 1, 2],
     };
@@ -248,6 +268,81 @@ describe("track-area breathing pad y-math", () => {
       const { track } = resolveTimelineAssetDrop({ ...base, rowHeights }, GUTTER, clientY);
       expect(track).toBe(0);
     });
+  });
+});
+
+describe("host track padding", () => {
+  const geometry = createTimelineRowGeometry([0, 1, 2], baseRows(3), { top: 0, bottom: TRACK_H });
+  // Row 1 with no top pad, but still row 0 if any reader keeps the default pad.
+  const yInRow1 = RULER_H + TRACK_H + 10;
+
+  it("moves the first row up and sizes the canvas from the host pads", () => {
+    expect(geometry.getRowTop(0)).toBe(RULER_H);
+    expect(getTimelineRowTop(1, geometry.rowHeights)).toBe(RULER_H + TRACK_H);
+    expect(getTimelineCanvasHeight(geometry.rowHeights)).toBe(RULER_H + 4 * TRACK_H);
+  });
+
+  it("maps a drag pointer y to the row under it", () => {
+    expect(Math.floor(geometry.getRowFromY(yInRow1))).toBe(1);
+    expect(Math.floor(getTimelineRowFromY(yInRow1, geometry.rowHeights))).toBe(1);
+  });
+
+  it("drops onto the row under the pointer, and a new track in the bottom pad", () => {
+    const drop = {
+      rectLeft: 0,
+      rectTop: 0,
+      scrollLeft: 0,
+      scrollTop: 0,
+      contentOrigin: GUTTER,
+      pixelsPerSecond: 100,
+      rowHeights: geometry.rowHeights,
+      trackOrder: [0, 1, 2],
+    };
+    expect(resolveTimelineAssetDrop(drop, GUTTER, yInRow1).track).toBe(1);
+    const inBottomPad = RULER_H + 3 * TRACK_H + TRACK_H / 2;
+    expect(resolveTimelineAssetDrop(drop, GUTTER, inBottomPad).track).toBe(3);
+  });
+
+  it("clamps a negative pad to 0 and replaces a non-finite one with the default", () => {
+    const odd = createTimelineRowGeometry([0], baseRows(1), { top: -20, bottom: Number.NaN });
+    expect(odd.padding).toEqual({ top: 0, bottom: TRACKS_BOTTOM_PAD });
+    expect(odd.getRowTop(0)).toBe(RULER_H);
+    expect(odd.canvasHeight).toBe(RULER_H + TRACK_H + TRACKS_BOTTOM_PAD);
+    const infinite = createTimelineRowGeometry([0], baseRows(1), { top: Infinity });
+    expect(infinite.padding.top).toBe(TRACKS_TOP_PAD);
+  });
+
+  it("keeps the default pads when a host passes none", () => {
+    const defaults = createTimelineRowGeometry([0], baseRows(1));
+    expect(defaults.padding).toEqual({ top: TRACKS_TOP_PAD, bottom: TRACKS_BOTTOM_PAD });
+  });
+});
+
+describe("default track pads", () => {
+  const rows = [TRACK_H, TRACK_H, TRACK_H];
+  const lastLaneBottom = RULER_H + 8 + 3 * TRACK_H;
+
+  it("sits the first row 8px under the ruler and leaves one track below the last", () => {
+    expect(getTimelineRowTop(0)).toBe(RULER_H + 8);
+    expect(getTimelineCanvasHeight(rows)).toBe(lastLaneBottom + TRACK_H);
+  });
+
+  it("opens a new track from anywhere in the bottom lane", () => {
+    const drop = {
+      rectLeft: 0,
+      rectTop: 0,
+      scrollLeft: 0,
+      scrollTop: 0,
+      contentOrigin: GUTTER,
+      pixelsPerSecond: 100,
+      rowHeights: rows,
+      trackOrder: [0, 1, 2],
+    };
+    for (const y of [lastLaneBottom, getTimelineCanvasHeight(rows) - 1]) {
+      expect(resolveTimelineAssetDrop(drop, GUTTER, y).track).toBe(3);
+      expect(resolveInsertRow(getTimelineRowFromY(y, rows), rows.length)).toBe(3);
+    }
+    expect(resolveTimelineAssetDrop(drop, GUTTER, lastLaneBottom - 1).track).toBe(2);
   });
 });
 
@@ -293,27 +388,5 @@ describe("getTimelineScrubTime", () => {
       }),
     ).toBe(0);
     expect(at(origin + 250, Number.NaN)).toBe(0);
-  });
-});
-
-// The only production hook keeping resolveInsertRow's band aligned with the
-// rendered clip inset once rows can be taller than TRACK_H. Pinned directly so a
-// change to CLIP_Y or the invalid-height fallback can't silently drift it.
-describe("getTimelineInsertBoundaryBand", () => {
-  it("matches the fixed band for a plain track row", () => {
-    expect(getTimelineInsertBoundaryBand(TRACK_H)).toBe(INSERT_BOUNDARY_BAND);
-    expect(getTimelineInsertBoundaryBand(TRACK_H)).toBe(CLIP_Y / TRACK_H);
-  });
-
-  it("shrinks as the row grows, so the band stays CLIP_Y pixels tall", () => {
-    const expanded = TRACK_H + 2 * LANE_H;
-    expect(getTimelineInsertBoundaryBand(expanded)).toBeCloseTo(CLIP_Y / expanded, 10);
-    expect(getTimelineInsertBoundaryBand(expanded)).toBeLessThan(INSERT_BOUNDARY_BAND);
-  });
-
-  it("falls back to the plain-track band for a height that is not usable", () => {
-    for (const height of [0, -10, Number.NaN]) {
-      expect(getTimelineInsertBoundaryBand(height)).toBe(INSERT_BOUNDARY_BAND);
-    }
   });
 });

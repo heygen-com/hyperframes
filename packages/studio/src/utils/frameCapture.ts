@@ -5,6 +5,7 @@ export interface FrameCaptureRequest {
   compositionPath: string | null;
   currentTime: number;
   origin?: string;
+  version?: number;
 }
 
 function normalizeCompositionPath(compositionPath: string | null): string {
@@ -16,6 +17,7 @@ export function buildFrameCaptureUrl({
   compositionPath,
   currentTime,
   origin = window.location.origin,
+  version = Date.now(),
 }: FrameCaptureRequest): string {
   const compPath = normalizeCompositionPath(compositionPath);
   const url = new URL(
@@ -25,7 +27,7 @@ export function buildFrameCaptureUrl({
   url.searchParams.set("t", Math.max(0, currentTime).toFixed(3));
   url.searchParams.set("format", "png");
   url.searchParams.set("output", "source");
-  url.searchParams.set("v", String(Date.now()));
+  url.searchParams.set("v", String(version));
   return url.toString();
 }
 

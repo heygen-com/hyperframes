@@ -8,6 +8,7 @@ import {
   renderShader,
   DEFAULT_WIDTH,
   DEFAULT_HEIGHT,
+  DEFAULT_ACCENT_COLORS,
   type AccentColors,
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
@@ -34,6 +35,10 @@ interface GsapTimeline {
     (value: number, suppressEvents?: boolean): GsapTimeline;
   };
   seek?: (position: number | string, suppressEvents?: boolean) => GsapTimeline;
+  totalTime?: {
+    (): number;
+    (value: number, suppressEvents?: boolean): GsapTimeline;
+  };
   call: (fn: () => void, args: null, position: number) => GsapTimeline;
   to: (
     target: Record<string, unknown>,
@@ -142,7 +147,6 @@ interface SnapshotCacheEntry {
 interface SceneStyleState {
   scene: HTMLElement | null;
   opacity: string;
-  visibility: string;
   pointerEvents: string;
 }
 
@@ -867,7 +871,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   const accentColors: AccentColors = config.accentColor
     ? deriveAccentColors(config.accentColor)
-    : { accent: [1, 0.6, 0.2], dark: [0.4, 0.15, 0], bright: [1, 0.85, 0.5] };
+    : DEFAULT_ACCENT_COLORS;
 
   const root = document.querySelector<HTMLElement>("[data-composition-id]");
   const compId = config.compositionId || root?.getAttribute("data-composition-id") || "main";
@@ -989,12 +993,16 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     }
   };
 
-  const setScenePlaybackState = (scene: HTMLElement, visible: boolean, opacity: string): void => {
+  const setSceneLayer = (scene: HTMLElement, shown: boolean, opacity: string): void => {
     rememberScenePointerEvents(scene);
     markRuntimeSceneMutation();
     scene.style.opacity = opacity;
+    scene.style.pointerEvents = shown ? (scenePointerEvents.get(scene) ?? "") : "none";
+  };
+
+  const setScenePlaybackState = (scene: HTMLElement, visible: boolean, opacity: string): void => {
+    setSceneLayer(scene, visible, opacity);
     scene.style.visibility = visible ? "visible" : "hidden";
-    scene.style.pointerEvents = visible ? (scenePointerEvents.get(scene) ?? "") : "none";
   };
 
   const paintScenePairState = (
@@ -1011,7 +1019,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       } else if (sceneId === toId) {
         setScenePlaybackState(scene, true, toOpacity);
       } else {
-        setScenePlaybackState(scene, false, "0");
+        setSceneLayer(scene, false, "0");
       }
     });
   };
@@ -1106,8 +1114,8 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     scenes.forEach((sceneId, index) => {
       const scene = document.getElementById(sceneId);
       if (!scene) return;
-      const visible = index === visibleIndex;
-      setScenePlaybackState(scene, visible, visible ? "1" : "0");
+      const settled = index === visibleIndex;
+      setSceneLayer(scene, settled, settled ? "1" : "0");
     });
   };
 
@@ -1215,13 +1223,36 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     tl = gsap.timeline({ paused: true, onUpdate: tickShader });
   }
 
-  const originalPlay = tl.play.bind(tl) as (...args: unknown[]) => GsapTimeline;
-  const originalPause = tl.pause.bind(tl) as (...args: unknown[]) => GsapTimeline;
-  const originalTime = tl.time.bind(tl) as (...args: unknown[]) => GsapTimeline | number;
+  let ownSeekDepth = 0;
+  const asOwnSeek =
+    <R>(fn: (...args: unknown[]) => R) =>
+    (...args: unknown[]): R => {
+      ownSeekDepth += 1;
+      try {
+        return fn(...args);
+      } finally {
+        ownSeekDepth -= 1;
+      }
+    };
+  const originalPlay = asOwnSeek(tl.play.bind(tl) as (...args: unknown[]) => GsapTimeline);
+  const originalPause = asOwnSeek(tl.pause.bind(tl) as (...args: unknown[]) => GsapTimeline);
+  const originalTime = asOwnSeek(tl.time.bind(tl) as (...args: unknown[]) => GsapTimeline | number);
   const originalSeek =
     typeof tl.seek === "function"
-      ? (tl.seek.bind(tl) as (...args: unknown[]) => GsapTimeline)
+      ? asOwnSeek(tl.seek.bind(tl) as (...args: unknown[]) => GsapTimeline)
       : null;
+  const originalTotalTime =
+    typeof tl.totalTime === "function"
+      ? (tl.totalTime.bind(tl) as (...args: unknown[]) => GsapTimeline | number)
+      : null;
+  // GSAP re-renders in place through totalTime from these; that is not a seek to record.
+  const reRendersInPlace = tl as unknown as Record<string, unknown>;
+  for (const method of ["timeScale", "paused", "reversed"]) {
+    const original = reRendersInPlace[method];
+    if (typeof original === "function") {
+      reRendersInPlace[method] = asOwnSeek(original.bind(tl) as (...args: unknown[]) => unknown);
+    }
+  }
   const readActualTimelineTime = (): number => {
     const value = originalTime();
     return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -1316,6 +1347,15 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     }) as NonNullable<GsapTimeline["seek"]>;
   }
 
+  if (originalTotalTime) {
+    tl.totalTime = ((...args: unknown[]) => {
+      if (ownSeekDepth > 0) return originalTotalTime(...args);
+      if (args.length === 0) return prewarming ? publicTimelineTime : originalTotalTime();
+      updatePublicTimelineTime(args[0]);
+      return originalTotalTime(...args);
+    }) as NonNullable<GsapTimeline["totalTime"]>;
+  }
+
   initCapture();
   glCanvas.style.display = "none";
 
@@ -1364,6 +1404,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
     tl.call(
       () => {
+        if (prewarming) return;
         suppressSceneMutationTracking(() => {
           const fromScene = document.getElementById(fromId);
           const toScene = document.getElementById(toId);
@@ -1379,7 +1420,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
             return;
           }
           canvasEl.style.display =
-            !prewarming && cache?.ready && !cache.dirty && cache.textureReady ? "block" : "none";
+            cache?.ready && !cache.dirty && cache.textureReady ? "block" : "none";
           paintScenePairState(fromId, toId, "1", "1");
         });
       },
@@ -1899,11 +1940,14 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     disposeCachedTransition(cache);
     let allPersisted = true;
     for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
-      const progress = sampleIndex / (sampleCount - 1);
+      const sampleTime = cache.time + (cache.duration * sampleIndex) / (sampleCount - 1);
       suppressSceneMutationTracking(() => {
-        originalTime(cache.time + cache.duration * progress, false);
+        originalTime(sampleTime, false);
       });
       await waitForPaint();
+      suppressSceneMutationTracking(() => {
+        originalTime(sampleTime, true);
+      });
 
       const fromScene = document.getElementById(cache.fromId);
       const toScene = document.getElementById(cache.toId);
@@ -2010,7 +2054,6 @@ export function init(config: HyperShaderConfig): GsapTimeline {
         return {
           scene,
           opacity: scene?.style.opacity ?? "",
-          visibility: scene?.style.visibility ?? "",
           pointerEvents: scene?.style.pointerEvents ?? "",
         };
       });
@@ -2156,18 +2199,21 @@ export function init(config: HyperShaderConfig): GsapTimeline {
         if (shouldResume && resumeTime !== hydratedTextureTime) {
           await ensurePlaybackTextureWindow(resumeTime);
         }
-        prewarming = false;
         state.active = false;
         state.transitionIndex = -1;
         canvasEl.style.display = "none";
-        suppressSceneMutationTracking(() => {
-          setActualTimelineTime(restoreTimelineTime, false);
-        });
+        try {
+          suppressSceneMutationTracking(() => {
+            setActualTimelineTime(restoreTimelineTime, false);
+          });
+        } catch (e) {
+          console.warn("[HyperShader] A timeline callback failed while restoring the playhead:", e);
+        }
+        prewarming = false;
         publicTimelineTime = restoreTimelineTime;
         for (const item of originalSceneStyles) {
           if (!item.scene) continue;
           item.scene.style.opacity = item.opacity;
-          item.scene.style.visibility = item.visibility;
           item.scene.style.pointerEvents = item.pointerEvents;
         }
         tickShader();
@@ -2319,7 +2365,7 @@ function initEngineMode(
     const bgColor = config.bgColor ?? "#000";
     const accentColors: AccentColors = config.accentColor
       ? deriveAccentColors(config.accentColor)
-      : { accent: [1, 0.6, 0.2], dark: [0.4, 0.15, 0], bright: [1, 0.85, 0.5] };
+      : DEFAULT_ACCENT_COLORS;
     const rawW = Number(root?.getAttribute("data-width"));
     const rawH = Number(root?.getAttribute("data-height"));
     const compWidth = Number.isFinite(rawW) && rawW > 0 ? rawW : 1920;

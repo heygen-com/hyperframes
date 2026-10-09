@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { runCommand } from "citty";
+import { parseHTML } from "linkedom";
 import { describe, expect, it, vi } from "vitest";
 import {
   HF_COLOR_GRADING_ACTIVE_EFFECT_KEYS,
@@ -114,6 +115,16 @@ describe("applyMediaTreatmentToHtml", () => {
     expect(getMediaTreatmentCapabilityDetail("scopes")).toMatchObject({
       command: expect.stringContaining("--analyze"),
     });
+  });
+
+  it("warns that an animated property overrides the payload, instead of asking for an inline start", () => {
+    const detail = getMediaTreatmentCapabilityDetail("blur");
+    expect(detail).toMatchObject({
+      animation: {
+        rules: expect.arrayContaining([expect.stringContaining("overrides the payload's value")]),
+      },
+    });
+    expect(JSON.stringify(detail)).not.toContain("Author the initial value inline");
   });
 
   it("rejects unknown capability lookups", () => {
@@ -294,6 +305,51 @@ describe("applyMediaTreatmentToHtml", () => {
     expect(repeated.after).toEqual(repeated.before);
   });
 
+  it("applies over a grading an earlier version wrote with empty hue curves, and writes it valid", () => {
+    const broken = JSON.stringify({
+      hueCurves: {
+        hueVsHue: [
+          [0, 0],
+          [120, 20],
+          [240, 0],
+        ],
+        hueVsSaturation: [],
+        hueVsLuma: [],
+      },
+    });
+    const html = VIDEO.replace('id="hero"', `id="hero" data-color-grading='${broken}'`);
+
+    const patched = applyMediaTreatmentToHtml(html, {
+      selector: "#hero",
+      grading: { adjust: { exposure: 0.1 } },
+    });
+
+    expect(patched.after).toMatchObject({
+      adjust: { exposure: 0.1 },
+      hueCurves: {
+        hueVsHue: [
+          [0, 0],
+          [120, 20],
+          [240, 0],
+        ],
+      },
+    });
+    expect(patched.after).not.toHaveProperty("hueCurves.hueVsSaturation");
+  });
+
+  it("rejects unknown empty hue curves instead of healing them", () => {
+    const html = VIDEO.replace(
+      'id="hero"',
+      `id="hero" data-color-grading='{"hueCurves":{"bogus":[]}}'`,
+    );
+    expect(() =>
+      applyMediaTreatmentToHtml(html, {
+        selector: "#hero",
+        grading: { adjust: { exposure: 0.1 } },
+      }),
+    ).toThrow(/hueCurves.*unsupported key.*bogus/);
+  });
+
   it("preserves unresolved variable references for runtime resolution", () => {
     const wholeGrade = applyMediaTreatmentToHtml(VIDEO, {
       selector: "#hero",
@@ -366,6 +422,38 @@ describe("applyMediaTreatmentToHtml", () => {
         grading: { effects: { dithering: 1 } },
       }),
     ).toThrow(/effects.*dithering/i);
+  });
+
+  it("previews the exact grading attribute and lint verdict without --apply or writes", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-dry-run-"));
+    const file = join(project, "index.html");
+    const grading = '{"preset":"warm-daylight","intensity":0.8}';
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeFileSync(file, VIDEO);
+    const args = ["--project", project, "--selector", "#hero", "--grading", grading, "--json"];
+    try {
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--dry-run"] });
+      const preview = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+      expect(preview).toMatchObject({
+        ok: true,
+        dryRun: true,
+        changed: true,
+        attribute: "data-color-grading",
+        lint: { ok: true, findings: [] },
+      });
+      expect(readFileSync(file, "utf8")).toBe(VIDEO);
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--apply"] });
+      const applied = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+      const written = parseHTML(readFileSync(file, "utf8"))
+        .document.querySelector("#hero")
+        ?.getAttribute("data-color-grading");
+      expect(preview.value).toBe(written);
+      expect(preview.value).toBe(applied.value);
+      expect(preview.lint).toEqual(applied.lint);
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
   it("requires --apply for --grading while keeping --clear explicit", async () => {

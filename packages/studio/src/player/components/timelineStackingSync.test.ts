@@ -3,6 +3,7 @@ import {
   computeStackingPatches,
   laneIsAbove,
   samePaintScope,
+  type StackingDirection,
   type StackingElement,
 } from "./timelineStackingSync";
 
@@ -18,9 +19,13 @@ function el(
   return { key, track, start, duration, zIndex, isAudio, domIndex };
 }
 
-function patchMap(elements: StackingElement[], edited: string[]): Record<string, number> {
+function patchMap(
+  elements: StackingElement[],
+  edited: string[],
+  direction: StackingDirection,
+): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const p of computeStackingPatches(elements, edited)) out[p.key] = p.zIndex;
+  for (const p of computeStackingPatches(elements, edited, direction)) out[p.key] = p.zIndex;
   return out;
 }
 
@@ -58,7 +63,7 @@ describe("stacking-context partitioning", () => {
       stackingContextId: null,
     };
 
-    expect(patchMap([root, scene], ["root"])).toEqual({});
+    expect(patchMap([root, scene], ["root"], "up")).toEqual({});
   });
 
   it("never compares or patches across stacking contexts", () => {
@@ -86,7 +91,7 @@ describe("stacking-context partitioning", () => {
     };
     // X edited: only same-context neighbours participate — none here, so X keeps
     // its z (nothing to fix WITHIN its context) and Y is never touched.
-    expect(patchMap([x, y], ["x"])).toEqual({});
+    expect(patchMap([x, y], ["x"], "up")).toEqual({});
   });
 
   it("still resolves within the edited clip's own context", () => {
@@ -115,7 +120,7 @@ describe("stacking-context partitioning", () => {
     // by flipping z so a MUST be lifted).
     const aWrong = { ...a, track: 0, zIndex: 1 };
     const bLow = { ...b, track: 1, zIndex: 5 };
-    const patches = patchMap([aWrong, bLow], ["a"]);
+    const patches = patchMap([aWrong, bLow], ["a"], "up");
     expect(patches.a).toBeGreaterThan(5);
   });
 });
@@ -132,214 +137,168 @@ describe("computeStackingPatches", () => {
   it("no overlapping clips → no patch", () => {
     // a (0..5 on track 0) and b (10..15 on track 1) never overlap in time.
     const elements = [el("a", 0, 0, 5, 10), el("b", 1, 10, 5, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({});
+    expect(patchMap(elements, ["a"], "up")).toEqual({});
   });
 
-  it("edited clip moved to a HIGHER lane (top) but z too low → raised above the below-neighbour", () => {
-    // a on top lane (0) overlaps b on lane 1; a.z=1 is below b.z=5 → wrong.
+  it("moved up with z too low → raised above the clip it now sits above", () => {
     const elements = [el("a", 0, 0, 10, 1), el("b", 1, 0, 10, 5)];
-    // Only a is edited → only a gets a patch, lifting it above b (5) → 6.
-    expect(patchMap(elements, ["a"])).toEqual({ a: 6 });
+    expect(patchMap(elements, ["a"], "up")).toEqual({ a: 6 });
   });
 
-  it("edited clip moved to a LOWER lane (bottom) but z too high → lowered below the above-neighbour", () => {
-    // a on lane 2 (bottom) overlaps b on lane 0 (top); a.z=9 above b.z=5 → wrong.
+  it("moved down with z too high → lowered below the clip now above it", () => {
     const elements = [el("a", 2, 0, 10, 9), el("b", 0, 0, 10, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({ a: 4 });
+    expect(patchMap(elements, ["a"], "down")).toEqual({ a: 4 });
   });
 
-  it("edited clip already correctly ordered → no patch (authored z preserved)", () => {
-    // a on top lane already has higher z than the lower-lane b it overlaps.
+  it("already in order → no patch (authored z preserved)", () => {
     const elements = [el("a", 0, 0, 10, 8), el("b", 1, 0, 10, 3)];
-    expect(patchMap(elements, ["a"])).toEqual({});
+    expect(patchMap(elements, ["a"], "up")).toEqual({});
   });
 
   it("untouched clips never get a patch even when they overlap the edit", () => {
-    // b is out of order relative to a, but a is the only edited clip.
     const elements = [el("a", 0, 0, 10, 1), el("b", 1, 0, 10, 5), el("c", 2, 0, 10, 9)];
-    const patches = computeStackingPatches(elements, ["a"]);
+    const patches = computeStackingPatches(elements, ["a"], "up");
     expect(patches.map((p) => p.key)).toEqual(["a"]);
   });
 
-  it("sits strictly between neighbours when there is integer room", () => {
-    // edited a on middle lane 1 between below-lane-2 (z=2) and above-lane-0 (z=10).
+  it("moved up rises one above the clips now below it and ignores the clips above it", () => {
     const elements = [el("a", 1, 0, 10, 0), el("below", 2, 0, 10, 2), el("above", 0, 0, 10, 10)];
-    // Between 2 and 10 → floor((2+10)/2)=6.
-    expect(patchMap(elements, ["a"])).toEqual({ a: 6 });
+    expect(patchMap(elements, ["a"], "up")).toEqual({ a: 3 });
   });
 
-  it("adjacent neighbours (no integer gap) → edited lands above lower, upper is bumped", () => {
-    // below z=4, above z=5 (adjacent). There is no integer strictly between 4 and
-    // 5, so the old single-patch a=5 left `a` TIED with `above` — and with no DOM
-    // order to break the tie, `above` no longer paints strictly above `a` (the
-    // under-patch bug). Tie-aware cascade: a→5 (above below's 4) AND above→6 so it
-    // stays strictly on top. Minimal: only the two overlapping neighbours move.
-    const elements = [el("a", 1, 0, 10, 0), el("below", 2, 0, 10, 4), el("above", 0, 0, 10, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({ a: 5, above: 6 });
+  it("moved down sinks one below the clips now above it and ignores the clips below it", () => {
+    const elements = [el("a", 1, 0, 10, 20), el("below", 2, 0, 10, 2), el("above", 0, 0, 10, 10)];
+    expect(patchMap(elements, ["a"], "down")).toEqual({ a: 9 });
   });
 
   it("audio clips are excluded — an audio edit yields no patch", () => {
     const elements = [el("music", 3, 0, 10, 0, true), el("v", 0, 0, 10, 5)];
-    expect(patchMap(elements, ["music"])).toEqual({});
+    expect(patchMap(elements, ["music"], "down")).toEqual({});
   });
 
   it("audio clips are excluded as neighbours — a visual edit ignores overlapping audio", () => {
-    // The only overlapping clip is audio → treated as no visual overlap → no patch.
     const elements = [el("v", 0, 0, 10, 3), el("music", 3, 0, 10, 99, true)];
-    expect(patchMap(elements, ["v"])).toEqual({});
+    expect(patchMap(elements, ["v"], "up")).toEqual({});
   });
 
-  it("only-below neighbours → maxBelow + 1", () => {
+  it("moved up over several clips → one above the highest of them", () => {
     const elements = [el("a", 0, 0, 10, 0), el("b", 1, 0, 10, 3), el("c", 2, 0, 10, 7)];
-    // a on top overlaps b(3) and c(7), both below → 7+1=8.
-    expect(patchMap(elements, ["a"])).toEqual({ a: 8 });
+    expect(patchMap(elements, ["a"], "up")).toEqual({ a: 8 });
   });
 
-  it("only-above neighbours → minAbove - 1 (clamped ≥ 0)", () => {
+  it("moved down under several clips → one below the lowest of them, never under 0", () => {
     const elements = [el("a", 2, 0, 10, 9), el("b", 0, 0, 10, 1), el("c", 1, 0, 10, 4)];
-    // a on bottom overlaps b(1) and c(4), both above → min(1)-1=0.
-    expect(patchMap(elements, ["a"])).toEqual({ a: 0 });
+    expect(patchMap(elements, ["a"], "down")).toEqual({ a: 0 });
   });
 
   it("partial time overlap still counts", () => {
-    // a: 0..6, b: 5..15 overlap in [5,6).
     const elements = [el("a", 0, 0, 6, 1), el("b", 1, 5, 10, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({ a: 6 });
+    expect(patchMap(elements, ["a"], "up")).toEqual({ a: 6 });
   });
 
   it("touching-but-not-overlapping intervals do NOT count", () => {
-    // a ends exactly where b starts (t=5) → half-open, no overlap.
     const elements = [el("a", 0, 0, 5, 1), el("b", 1, 5, 5, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({});
+    expect(patchMap(elements, ["a"], "up")).toEqual({});
   });
 
-  it("multi-clip edit: two dragged clips resolve consistently against the region", () => {
-    // Drag a (lane 0) and b (lane 1) onto a region already holding c (lane 2, z=5).
-    // Both overlap c. Lower-lane b resolves first (above c → 6), then a (above b → 7).
+  it("multi-clip move up: the bottom member resolves first, the top one rises above it", () => {
     const elements = [el("a", 0, 0, 10, 0), el("b", 1, 0, 10, 0), el("c", 2, 0, 10, 5)];
-    expect(patchMap(elements, ["a", "b"])).toEqual({ a: 7, b: 6 });
+    expect(patchMap(elements, ["a", "b"], "up")).toEqual({ a: 7, b: 6 });
   });
 
-  it("multi-clip edit skips a member that is already correctly ordered", () => {
+  it("multi-clip move down: the top member resolves first, the bottom one sinks below it", () => {
+    const elements = [el("a", 1, 0, 10, 9), el("b", 2, 0, 10, 9), el("c", 0, 0, 10, 5)];
+    expect(patchMap(elements, ["a", "b"], "down")).toEqual({ a: 4, b: 3 });
+  });
+
+  it("multi-clip move skips a member that is already in order", () => {
     const elements = [el("a", 0, 0, 10, 20), el("b", 1, 0, 10, 0), el("c", 2, 0, 10, 5)];
-    // a(20) already above everything → no patch. b (lane 1) sits between
-    // below-neighbour c(5) and above-neighbour a(20) → floor((5+20)/2)=12.
-    expect(patchMap(elements, ["a", "b"])).toEqual({ b: 12 });
+    expect(patchMap(elements, ["a", "b"], "up")).toEqual({ b: 6 });
   });
 
   it("empty edited set → no patches", () => {
     const elements = [el("a", 0, 0, 10, 1), el("b", 1, 0, 10, 5)];
-    expect(computeStackingPatches(elements, [])).toEqual([]);
+    expect(computeStackingPatches(elements, [], "up")).toEqual([]);
   });
 
-  it("item 13: an unresolved neighbour (non-finite z) is EXCLUDED, not treated as z=0", () => {
-    // `ghost` is an overlapping upper-lane clip whose live node could not be
-    // resolved, so its z came back NaN. If it were fabricated to 0 it would be a
-    // real above-neighbour at the z-floor and drag the edited clip's cascade down.
-    // Excluded, the only real overlap is below-neighbour b(3) → a rises to 4.
+  it("an unresolved neighbour (non-finite z) is excluded, not treated as z=0", () => {
     const elements = [
-      el("a", 1, 0, 10, 0),
-      el("b", 2, 0, 10, 3),
-      el("ghost", 0, 0, 10, Number.NaN),
+      el("a", 2, 0, 10, 9),
+      el("b", 0, 0, 10, 3),
+      el("ghost", 1, 0, 10, Number.NaN),
     ];
-    expect(patchMap(elements, ["a"])).toEqual({ a: 4 });
+    expect(patchMap(elements, ["a"], "down")).toEqual({ a: 2 });
   });
 
-  it("item 13: an edited clip whose own z is unresolved (non-finite) yields no patch", () => {
-    // The edited clip itself couldn't be resolved → it is dropped from the working
-    // set and produces nothing (no fabricated-0 self-patch).
+  it("an edited clip whose own z is unresolved (non-finite) yields no patch", () => {
     const elements = [el("a", 0, 0, 10, Number.NaN), el("b", 1, 0, 10, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({});
+    expect(patchMap(elements, ["a"], "up")).toEqual({});
   });
 });
 
-describe("computeStackingPatches — tie-aware cascade (lane move always realisable)", () => {
-  it("drag below an overlapping z=0 neighbour → cascade bumps the neighbour, edit→0", () => {
-    // edited `v` (z=2) dragged to the BOTTOM lane, overlapping `r` (z=0) which is
-    // now on the upper lane. No z ≥ 0 fits strictly below 0, so the old resolver
-    // clamped v to 0 (tied with r) and nothing changed on canvas — the reported
-    // bug. Tie-aware: v→0 AND r bumped to 1 so r paints strictly above v.
-    const elements = [el("v", 1, 0, 10, 2), el("r", 0, 0, 10, 0)];
-    expect(patchMap(elements, ["v"])).toEqual({ v: 0, r: 1 });
+describe("computeStackingPatches — only the moved clip changes", () => {
+  it("a full-frame scene on the top row stays behind a caption moved up a row under it", () => {
+    // Agent-made films often put the scene on track 0. The caption (z1, later in the
+    // file) moves from track 3 to 2, still under the scene's row: nothing is below
+    // it, so nothing changes. Lifting the scene over it would hide the caption.
+    const elements = [el("scene", 0, 0, 10, 0, false, 0), el("caption", 2, 0, 10, 1, false, 1)];
+    expect(patchMap(elements, ["caption"], "up")).toEqual({});
   });
 
-  it("equal-z + domIndex: dragging the LATER-in-DOM clip below is realised via a bump", () => {
-    // Two equal-z clips; `v` is later in DOM (domIndex 1) so it currently paints
-    // ON TOP of `r` (domIndex 0). User drags v to the lower lane (track 1). With
-    // domIndex the sync SEES that v is currently above r and must be lowered:
-    // v→0 (already 0, stays) then r bumped to 1 so r wins. Without domIndex the
-    // equal z would look already-correct and under-patch.
+  it("a caption moved to the top row comes in front of the full-frame scene", () => {
+    const elements = [el("scene", 0, 0, 10, 5, false, 0), el("caption", -0.5, 0, 10, 1, false, 1)];
+    expect(patchMap(elements, ["caption"], "up")).toEqual({ caption: 6 });
+  });
+
+  it("moved down under a z-0 clip earlier in the file: drops to 0 and the neighbour stays", () => {
+    // z never goes negative (it could paint behind the composition's background),
+    // and neighbours never move, so this order cannot be fully expressed.
+    const elements = [el("r", 0, 0, 10, 0, false, 0), el("v", 1, 0, 10, 2, false, 1)];
+    expect(patchMap(elements, ["v"], "down")).toEqual({ v: 0 });
+  });
+
+  it("moved down when it cannot go lower → no patch", () => {
     const elements = [el("r", 0, 0, 10, 0, false, 0), el("v", 1, 0, 10, 0, false, 1)];
-    expect(patchMap(elements, ["v"])).toEqual({ r: 1 });
+    expect(patchMap(elements, ["v"], "down")).toEqual({});
   });
 
-  it("equal-z without domIndex is ambiguous → conservatively bumps to guarantee order", () => {
-    // Same shape but NO domIndex: equal z is ambiguous, so the resolver cannot
-    // prove v is already below r and patches to make the order explicit (r above).
-    const elements = [el("r", 0, 0, 10, 0), el("v", 1, 0, 10, 0)];
-    const out = patchMap(elements, ["v"]);
-    // r must end up strictly above v (higher z) regardless of the exact numbers.
-    const vz = out.v ?? 0;
-    const rz = out.r ?? 0;
-    expect(rz).toBeGreaterThan(vz);
+  it("moved down never goes under a clip on a lower row it paints over now", () => {
+    // v cannot get under r (z0, earlier in the file); dropping it to 0 would hide it under w.
+    const elements = [
+      el("r", 0, 0, 10, 0, false, 0),
+      el("v", 1, 0, 10, 2, false, 1),
+      el("w", 2, 0, 10, 1, false, 2),
+    ];
+    expect(patchMap(elements, ["v"], "down")).toEqual({});
   });
 
-  it("#2198 (Abhai repro): a lift cascades transitively so an UNTOUCHED pair never inverts", () => {
-    // m (z1, lane0, dom0), n (z0, lane1, dom1), e (z2, lane2, dom2, edited).
-    // e overlaps n [5,10); n overlaps m [12,15); e does NOT overlap m.
-    // Dragging e to the bottom lane forces n up to paint above e. A naive lift sets
-    // n→1, which TIES m (z1) and — n being later in the DOM — paints n above m,
-    // inverting the untouched (m,n) pair (which the next normalize would reshuffle).
-    // The transitive cascade lifts m too (→2) so m stays strictly above n.
+  it("moved down sinks only as far as the clips on lower rows allow", () => {
+    const elements = [el("s", 0, 0, 10, 5), el("v", 1, 0, 10, 9), el("w", 2, 0, 10, 7)];
+    expect(patchMap(elements, ["v"], "down")).toEqual({ v: 8 });
+  });
+
+  it("moved down with equal z: the clip above, later in the file, already paints over it", () => {
+    const elements = [el("v", 1, 0, 10, 3, false, 0), el("r", 0, 0, 10, 3, false, 1)];
+    expect(patchMap(elements, ["v"], "down")).toEqual({});
+  });
+
+  it("#2198: an untouched pair keeps its order because neighbours never move", () => {
+    // e overlaps n [5,10); n overlaps m [12,15); e does not overlap m.
     const elements = [
       el("m", 0, 12, 8, 1, false, 0),
       el("n", 1, 5, 10, 0, false, 1),
       el("e", 2, 0, 10, 2, false, 2),
     ];
-    expect(patchMap(elements, ["e"])).toEqual({ e: 0, n: 1, m: 2 });
+    expect(patchMap(elements, ["e"], "down")).toEqual({ e: 0 });
   });
 
-  it("cascade patches as FEW clips as possible (only the blockers move)", () => {
-    // v dragged to bottom under r(z0) and s(z0) both on higher lanes; a distant
-    // non-overlapping clip x is never touched.
-    const elements = [
-      el("v", 2, 0, 10, 5),
-      el("r", 0, 0, 10, 0),
-      el("s", 1, 0, 10, 0),
-      el("x", 3, 50, 10, 0), // no time overlap → untouched
-    ];
-    const out = patchMap(elements, ["v"]);
-    expect("x" in out).toBe(false);
-    // v below both r and s.
-    expect(out.v).toBeLessThan(out.r ?? 0);
-    expect(out.v).toBeLessThan(out.s ?? 0);
-  });
-});
-
-describe("computeStackingPatches — DOM tie-break gates the cascade (item 12)", () => {
-  it("tie ACCEPTABLE: edited may sit AT minAbove when the above-neighbour is later in DOM → single patch, no neighbour bump", () => {
-    // below b (z3, lane2, dom0), edited e (lane1, dom1), above a (z4, lane0, dom2).
-    // e must paint above b and below a. There is no integer strictly between 3 and
-    // 4, but a is LATER in the DOM, so e=4 ties a and a still paints on top by DOM
-    // order — a valid SINGLE patch. The old gap<2 rule cascaded and needlessly
-    // bumped a's authored z (the over-patch). Only e changes here.
-    const elements = [
-      el("b", 2, 0, 10, 3, false, 0),
-      el("e", 1, 0, 10, 0, false, 1),
-      el("a", 0, 0, 10, 4, false, 2),
-    ];
-    expect(patchMap(elements, ["e"])).toEqual({ e: 4 });
+  it("equal z broken by file order: the clip later in the file already paints above", () => {
+    const elements = [el("b", 1, 0, 10, 3, false, 0), el("e", 0, 0, 10, 3, false, 1)];
+    expect(patchMap(elements, ["e"], "up")).toEqual({});
   });
 
-  it("tie INVERTING: edited tying minAbove would paint ABOVE it (earlier in DOM) → cascade bumps the neighbour", () => {
-    // Same z's, but a is EARLIER in the DOM than e (dom0 vs dom2). Now e=4 would
-    // tie a AND paint on top (e later in DOM), violating the lane order, so the
-    // tie-break can't save it: e→4 and a is bumped to 5.
-    const elements = [
-      el("a", 0, 0, 10, 4, false, 0),
-      el("b", 2, 0, 10, 3, false, 1),
-      el("e", 1, 0, 10, 0, false, 2),
-    ];
-    expect(patchMap(elements, ["e"])).toEqual({ e: 4, a: 5 });
+  it("equal z with no file order is ambiguous → the move still writes a z", () => {
+    const elements = [el("b", 1, 0, 10, 3), el("e", 0, 0, 10, 3)];
+    expect(patchMap(elements, ["e"], "up")).toEqual({ e: 4 });
   });
 });

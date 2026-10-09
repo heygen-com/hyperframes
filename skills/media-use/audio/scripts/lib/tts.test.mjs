@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  chmodSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -9,6 +17,7 @@ import {
   synthesizeOne,
   synthesizeHeygen,
   synthResult,
+  pickProvider,
 } from "./tts.mjs";
 
 test("parseFfmpegDurationBanner reads ffmpeg's stderr Duration line", () => {
@@ -154,4 +163,68 @@ test("synthResult names a non-zero subprocess exit", () => {
   const res = synthResult({ status: 2 }, "/tmp/none.wav", "kokoro (npx hyperframes tts)");
   assert.equal(res.ok, false);
   assert.match(res.error, /kokoro .* exited with status 2/);
+});
+
+// Kokoro shells out to `npx hyperframes tts`; a fake npx on PATH records the argv
+// synthesizeOne really builds, so a dropped flag fails here. Windows runs npx via
+// node directly, so the stub never resolves there.
+async function kokoroArgv(options) {
+  const dir = mkdtempSync(join(tmpdir(), "tts-kokoro-argv-"));
+  const argvLog = join(dir, "argv.txt");
+  writeFileSync(join(dir, "npx"), `#!/bin/sh\nprintf '%s\\n' "$@" > "${argvLog}"\n`);
+  chmodSync(join(dir, "npx"), 0o755);
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = dir;
+    await synthesizeOne({
+      provider: "kokoro",
+      text: "hi",
+      voiceId: "am_michael",
+      wavAbs: join(dir, "line-0.wav"),
+      hyperframesDir: dir,
+      ...options,
+    });
+    return readFileSync(argvLog, "utf8").trim().split("\n");
+  } finally {
+    process.env.PATH = originalPath;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test(
+  "synthesizeOne(kokoro) forwards a non-default speed to the CLI",
+  { skip: process.platform === "win32" },
+  async () => {
+    const argv = await kokoroArgv({ speed: 0.8, lang: "es" });
+    assert.deepEqual(argv.slice(-4), ["--lang", "es", "--speed", "0.8"]);
+  },
+);
+
+test(
+  "synthesizeOne(kokoro) leaves --speed off at the default",
+  { skip: process.platform === "win32" },
+  async () => {
+    assert.ok(!(await kokoroArgv({})).includes("--speed"));
+  },
+);
+
+test("pickProvider heygen with an unreadable credentials path says to fix that path", () => {
+  const saved = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_CONFIG_DIR"].map((k) => [
+    k,
+    process.env[k],
+  ]);
+  const dir = mkdtempSync(join(tmpdir(), "tts-cred-"));
+  try {
+    delete process.env.HEYGEN_API_KEY;
+    delete process.env.HYPERFRAMES_API_KEY;
+    process.env.HEYGEN_CONFIG_DIR = dir;
+    mkdirSync(join(dir, "credentials"));
+    assert.throws(() => pickProvider("heygen"), /fix or remove that path/);
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -4,8 +4,10 @@ export function shouldResumeForwardPlaybackAfterSeek(input: {
   storeWasPlaying: boolean;
   duration: number;
   nextTime: number;
+  playLocked: boolean;
 }): boolean {
   return (
+    !input.playLocked &&
     input.keepPlaying &&
     !input.wasReverseShuttle &&
     input.storeWasPlaying &&

@@ -1,6 +1,8 @@
+import { GSAP_DEFAULT_DURATION } from "./gsapConstants.js";
+
 export interface ObjectArrayKeyframeTiming {
   percentages: number[];
-  totalDuration?: number;
+  totalDuration: number;
 }
 
 const roundPercentage = (percentage: number): number => Math.round(percentage * 10) / 10;
@@ -8,40 +10,30 @@ const OBJECT_ARRAY_PERCENTAGE_TOLERANCE = 2;
 
 /**
  * Resolve GSAP object-array keyframe positions exactly once for parsers and writers.
- * Authored per-step durations place each keyframe at its cumulative end; arrays
- * without durations are distributed evenly. A partially-authored or invalid duration
- * sequence is unresolved: callers must preserve the source rather than silently
- * invent different timing.
+ * Each step's keyframe sits at its cumulative end; a step without a duration plays
+ * GSAP's default. A non-positive or unresolved duration leaves the timing unresolved:
+ * callers must preserve the source rather than silently invent different timing.
  */
 export function getObjectArrayKeyframeTiming(
   durations: ReadonlyArray<unknown>,
 ): ObjectArrayKeyframeTiming | null {
-  const hasAuthoredDuration = durations.some((duration) => duration !== undefined);
-  if (hasAuthoredDuration) {
-    if (
-      !durations.every(
-        (duration): duration is number =>
-          typeof duration === "number" && Number.isFinite(duration) && duration > 0,
-      )
-    ) {
-      return null;
-    }
-    const totalDuration = durations.reduce<number>((sum, duration) => sum + duration, 0);
-    let cumulative = 0;
-    return {
-      percentages: durations.map((duration) => {
-        cumulative += duration;
-        return roundPercentage((cumulative / totalDuration) * 100);
-      }),
-      totalDuration,
-    };
+  const steps = durations.map((duration) => duration ?? GSAP_DEFAULT_DURATION);
+  if (
+    !steps.every(
+      (duration): duration is number =>
+        typeof duration === "number" && Number.isFinite(duration) && duration > 0,
+    )
+  ) {
+    return null;
   }
-
-  const lastIndex = durations.length - 1;
+  const totalDuration = steps.reduce((sum, duration) => sum + duration, 0);
+  let cumulative = 0;
   return {
-    percentages: durations.map((_, index) =>
-      lastIndex > 0 ? roundPercentage((index / lastIndex) * 100) : 0,
-    ),
+    percentages: steps.map((duration) => {
+      cumulative += duration;
+      return roundPercentage((cumulative / totalDuration) * 100);
+    }),
+    totalDuration,
   };
 }
 
@@ -51,7 +43,8 @@ export function getCompatibleObjectArrayKeyframeTiming(
 ): ObjectArrayKeyframeTiming | null {
   const timing = getObjectArrayKeyframeTiming(durations);
   if (!timing) return null;
-  if (timing.totalDuration === undefined || outerDuration === undefined) return timing;
+  const stepsAuthorDuration = durations.some((duration) => duration !== undefined);
+  if (!stepsAuthorDuration || outerDuration === undefined) return timing;
   if (
     typeof outerDuration === "number" &&
     Math.abs(outerDuration - timing.totalDuration) <= Number.EPSILON

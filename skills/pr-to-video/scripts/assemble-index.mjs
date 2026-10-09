@@ -6,8 +6,7 @@
 //
 // index.html is a *standalone* composition (root <div id="root"> directly in
 // <body>, no <template> wrapper — template is for sub-comps). Structure is
-// modeled on the canonical fixture packages/studio/fixtures/storyboard-sample/
-// index.html and the authoritative head/audio template in
+// modeled on the canonical fixture project index.html and the authoritative head/audio template in
 // packages/core/docs/quickstart-template.html. Frame mount order = STORYBOARD
 // document order. Transitions are NOT written here — the transitions injector
 // mutates this file afterward (data-start/duration/track-index + GSAP).
@@ -59,7 +58,7 @@ import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
 import { parseColors, semanticColors } from "./lib/tokens.mjs";
 import { validateFrameHtml } from "./lib/frame-contract.mjs";
-import { bgmDefaultVolume } from "../../media-use/audio/scripts/lib/bgm.mjs";
+import { bgmDefaultVolume } from "./lib/bgm-volume.mjs";
 
 // ---------- argv ----------
 const argv = process.argv.slice(2);

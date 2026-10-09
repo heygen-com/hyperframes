@@ -52,9 +52,28 @@ export {
   injectScriptsAtHeadStart,
   injectTagsAtHeadStart,
   injectScriptsIntoHtml,
+  insertBeforeCloseTag,
+  insertRuntimeTag,
+  isRuntimeFileUrl,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
+
+export { addScenePartsManifest } from "./scenePartsManifest";
+
+// Script ordering shared by the bundler and the producer coalescers
+export {
+  AFTER_FONTS_SCRIPT_TYPE,
+  compositionStyle,
+  cssStyleMergeKey,
+  deferScriptsUntilFonts,
+  headStyleRuns,
+  inlineScriptRuns,
+  isJavaScriptType,
+  styleElementsFor,
+  type CompositionStyle,
+  type InlineScriptRun,
+} from "./scriptRuns";
 
 // Static guard
 export {
@@ -72,6 +91,7 @@ export {
 
 // Sub-composition inlining (shared between bundler and producer)
 export {
+  ensureExternalLinkTag,
   inlineSubCompositions,
   type InlineSubCompositionsOptions,
   type InlineSubCompositionsResult,
@@ -97,3 +117,4 @@ export {
 } from "./mediaRenderIds";
 
 export { ensureExternalScriptTag } from "./externalScripts";
+export { emitMountedModuleScripts } from "./importMaps";

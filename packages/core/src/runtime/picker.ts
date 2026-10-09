@@ -2,6 +2,7 @@ import type { RuntimeJson, RuntimeOutboundMessage, RuntimePickerElementInfo } fr
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { swallow } from "./diagnostics";
 import { isElementNode } from "./domRealm";
+import { createDrawnProbe } from "./pickerDrawn";
 
 type PickerModuleDeps = {
   postMessage: (payload: RuntimeOutboundMessage) => void;
@@ -20,6 +21,17 @@ const PICKER_BLOCK_SELECTOR = [
   "[data-hyper-shader-loading]",
 ].join(",");
 
+// A composition root's pointer-events:none (rescoped onto its inner root at mount) is about playback, not
+// editing, yet it inherits into the whole section. Inner roots and the page's outermost composition root
+// take pointer events while the picker looks. A host keeps its own none: that is the parent author making
+// an overlay click-through.
+const PICKABLE_ROOTS = "[data-hf-inner-root],[data-composition-id]:not([data-composition-id] *)";
+const PICKABLE_ROOTS_RULE = `${PICKABLE_ROOTS}{pointer-events:auto!important}`;
+// A layered !important outranks every normal rule and every unlayered !important, whatever its specificity
+// (a mounted section's rescoped `#root { pointer-events: none !important }`). Ceiling: an author !important
+// inside the author's own layer, or inline, still wins; an adopted sheet's layer always orders last.
+const PICKABLE_ROOTS_LAYERED = `@layer hf-picker{${PICKABLE_ROOTS_RULE}}`;
+
 export type PickerModule = {
   enablePickMode: () => void;
   disablePickMode: () => void;
@@ -32,6 +44,9 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   let pickModeStyleEl: HTMLStyleElement | null = null;
   let pickLastHoveredInfo: RuntimePickerElementInfo | null = null;
   let pickLastSelectedInfo: RuntimePickerElementInfo | null = null;
+  let pickableRootsSheetCache: CSSStyleSheet | null | undefined;
+  // Roots that were pointer-events:none before the override: their content is pickable, never they.
+  let passThroughRoots: ReadonlySet<Element> = new Set();
 
   function emitPickerRuntimeEvent(eventName: string, detail: RuntimeJson): void {
     try {
@@ -60,13 +75,66 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     });
   }
 
+  // An adopted sheet is not a DOM node: no MutationObserver hears it (the runtime's timing observer would
+  // wake a paused transport on every hover) and a saved documentElement.outerHTML never contains it.
+  function withPickableCompositionRoots<T>(run: () => T): T {
+    passThroughRoots = new Set(
+      Array.from(document.querySelectorAll(PICKABLE_ROOTS)).filter(
+        (root) => getComputedStyle(root).pointerEvents === "none",
+      ),
+    );
+    // Nothing to override, so no restyle: adopting the sheet restyles the whole document twice per hover.
+    if (passThroughRoots.size === 0) return run();
+    const sheet = pickableRootsSheet();
+    const release = sheet ? adoptSheet(sheet) : appendPickableRootsStyle();
+    try {
+      return run();
+    } finally {
+      release();
+      passThroughRoots = new Set();
+    }
+  }
+
+  function pickableRootsSheet(): CSSStyleSheet | null {
+    if (pickableRootsSheetCache !== undefined) return pickableRootsSheetCache;
+    pickableRootsSheetCache = null;
+    if (!Array.isArray(document.adoptedStyleSheets) || typeof CSSStyleSheet === "undefined")
+      return null;
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(PICKABLE_ROOTS_LAYERED);
+      pickableRootsSheetCache = sheet;
+    } catch (err) {
+      swallow("runtime.picker.site2", err);
+    }
+    return pickableRootsSheetCache;
+  }
+
+  function adoptSheet(sheet: CSSStyleSheet): () => void {
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    return () => {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
+    };
+  }
+
+  // No adoptedStyleSheets (older engines, and jsdom, whose layered !important order is reversed, so this
+  // rule stays unlayered): a style element for the hit test only. Adding it is a DOM mutation, so there a
+  // hover can wake the runtime's timing observer.
+  function appendPickableRootsStyle(): () => void {
+    const style = document.createElement("style");
+    style.textContent = PICKABLE_ROOTS_RULE;
+    (document.head ?? document.documentElement).appendChild(style);
+    return () => style.remove();
+  }
+
   function isEffectivelyHidden(el: HTMLElement): boolean {
     const win = el.ownerDocument.defaultView;
     if (!win) return false;
     let current: HTMLElement | null = el;
+    if (win.getComputedStyle(el).visibility === "hidden") return true;
     while (current && current !== document.body && current !== document.documentElement) {
       const computed = win.getComputedStyle(current);
-      if (computed.display === "none" || computed.visibility === "hidden") return true;
+      if (computed.display === "none") return true;
       if (computed.pointerEvents === "none") return true;
       const opacity = Number.parseFloat(computed.opacity);
       if (
@@ -84,7 +152,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (!el || el === document.body || el === document.documentElement) return false;
     const tag = el.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return false;
-    if (el.classList.contains("__hf-pick-highlight")) return false;
+    if (passThroughRoots.has(el)) return false;
     if (el.closest(PICKER_IGNORE_SELECTOR)) return false;
     if (isEffectivelyHidden(el as HTMLElement)) return false;
     return true;
@@ -94,7 +162,16 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     return Boolean(el?.closest(PICKER_BLOCK_SELECTOR));
   }
 
+  // The mount strips an inner root's id and composition id, so its own tag would match any div.
+  function innerRootSelector(el: Element): string | null {
+    const hostId = el.parentElement?.getAttribute("data-composition-id");
+    if (!el.hasAttribute("data-hf-inner-root") || !hostId) return null;
+    return `[data-composition-id="${CSS.escape(hostId)}"] > [data-hf-inner-root]`;
+  }
+
   function buildElementSelector(el: Element): string {
+    const innerRoot = innerRootSelector(el);
+    if (innerRoot) return innerRoot;
     const htmlEl = el as HTMLElement;
     // Escape the ID so digit-leading or otherwise CSS-illegal ids (e.g. `#0`,
     // `#1`) produce valid selectors — `document.querySelector("#0")` throws
@@ -120,11 +197,13 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   function buildElementLabel(el: Element): string {
     const tag = el.tagName.toLowerCase();
     const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
-    const trimLabel = (value: string, maxChars: number) =>
-      value.length > maxChars ? `${value.slice(0, maxChars - 1)}…` : value;
-    if (tag === "h1" || tag === "h2" || tag === "h3") return "Heading";
-    if (tag === "p" || tag === "span" || tag === "div")
-      return text.length > 0 ? trimLabel(text, 56) : "Text";
+    const trimLabel = (value: string, maxChars: number) => {
+      const chars = Array.from(value);
+      return chars.length > maxChars ? `${chars.slice(0, maxChars - 1).join("")}…` : value;
+    };
+    const heading = /^h[1-6]$/.test(tag);
+    if (heading || tag === "p" || tag === "span" || tag === "div")
+      return text.length > 0 ? trimLabel(text, 56) : heading ? "Heading" : "Text";
     if (tag === "img") return "Image";
     if (tag === "video") return "Video";
     if (tag === "audio") return "Audio";
@@ -146,15 +225,20 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (blocksPickerAtPoint(raw[0] ?? null)) return [];
     const dedupe: Record<string, true> = {};
     const candidates: Element[] = [];
+    const drawn: Element[] = [];
+    const drawsHere = createDrawnProbe(document, clientX, clientY);
     for (const [i, node] of raw.entries()) {
       if (!isPickableElement(node)) continue;
       const key = `${node.tagName}::${(node as HTMLElement).id || ""}::${i}`;
       if (dedupe[key]) continue;
       dedupe[key] = true;
       candidates.push(node);
-      if (candidates.length >= maxCandidates) break;
+      if (drawn.some((inner) => node.contains(inner)) || drawsHere(node)) {
+        drawn.push(node);
+        if (drawn.length >= maxCandidates) break;
+      }
     }
-    return candidates;
+    return drawn.length > 0 ? drawn : candidates.slice(0, maxCandidates);
   }
 
   function extractElementInfo(el: Element): RuntimePickerElementInfo {
@@ -183,14 +267,20 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     clientY: number,
     limit?: number,
   ): RuntimePickerElementInfo[] {
-    return getPickCandidatesFromPoint(clientX, clientY, limit).map(extractElementInfo);
+    return withPickableCompositionRoots(() =>
+      getPickCandidatesFromPoint(clientX, clientY, limit),
+    ).map(extractElementInfo);
   }
 
   function onPickMouseMove(event: MouseEvent): void {
     if (!pickModeActive) return;
-    const candidates = getPickCandidatesFromPoint(event.clientX, event.clientY, 1);
-    const target = candidates[0] ?? (isElementNode(event.target) ? event.target : null);
-    if (!isPickableElement(target)) return;
+    const target = withPickableCompositionRoots(() => {
+      const hit =
+        getPickCandidatesFromPoint(event.clientX, event.clientY, 1)[0] ??
+        (isElementNode(event.target) ? event.target : null);
+      return isPickableElement(hit) ? hit : null;
+    });
+    if (!target) return;
     if (pickModeHighlightEl === target) return;
     if (pickModeHighlightEl) {
       pickModeHighlightEl.classList.remove("__hf-pick-highlight");
@@ -282,6 +372,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
         disablePickMode();
         return selected;
       },
+      describe: (element) => (isElementNode(element) ? extractElementInfo(element) : null),
       pickManyAtPoint: (clientX, clientY, indexes) => {
         if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return [];
         const infos = getPickInfosFromPoint(clientX, clientY, 8);

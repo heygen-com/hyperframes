@@ -1,3 +1,4 @@
+import { DEFAULT_MAX_SCREENSHOTS } from "../capture/types.js";
 import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
@@ -5,6 +6,7 @@ import type { Example } from "./_examples.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
+import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
 
@@ -12,11 +14,15 @@ function emitCapturePhase(event: CapturePhaseProgress): void {
   diag.notice(`${CAPTURE_PHASE_PREFIX}${JSON.stringify(event)}`);
 }
 
-function parseCaptureBudget(raw: string | undefined): number | undefined {
+function parsePositiveInteger(
+  raw: string | undefined,
+  flag: string,
+  unit = "",
+): number | undefined {
   if (raw === undefined) return undefined;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    console.error("--capture-budget must be a positive integer in milliseconds.");
+    console.error(`${flag} must be a positive integer${unit}.`);
     failCommand();
   }
   return parsed;
@@ -64,7 +70,7 @@ export default defineCommand({
     },
     "max-screenshots": {
       type: "string",
-      description: "Maximum screenshots to capture (default: 24)",
+      description: `Maximum page-capture files including the full-page plate, excluding derived contact sheets (default: ${DEFAULT_MAX_SCREENSHOTS})`,
     },
     timeout: {
       type: "string",
@@ -127,7 +133,16 @@ export default defineCommand({
       failCommand();
     }
 
-    const captureBudgetMs = parseCaptureBudget(args["capture-budget"] as string | undefined);
+    const captureBudgetMs = parsePositiveInteger(
+      args["capture-budget"] as string | undefined,
+      "--capture-budget",
+      " in milliseconds",
+    );
+
+    const maxScreenshots = parsePositiveInteger(
+      args["max-screenshots"] as string | undefined,
+      "--max-screenshots",
+    );
 
     const isDefaultOutput = !args.output;
     let outputName = (args.output as string | undefined) ?? "capture";
@@ -163,6 +178,7 @@ export default defineCommand({
 
     const { captureWebsite } = await import("../capture/index.js");
 
+    let captureFailed = false;
     try {
       const result = await captureWebsite(
         {
@@ -170,11 +186,10 @@ export default defineCommand({
           outputDir,
           skipAssets: args["skip-assets"] as boolean,
           skipVision: args["skip-vision"] as boolean,
-          maxScreenshots: args["max-screenshots"]
-            ? parseInt(args["max-screenshots"] as string)
-            : undefined,
+          maxScreenshots,
           timeout: args.timeout ? parseInt(args.timeout as string) : undefined,
           postNavigationBudgetMs: captureBudgetMs,
+          captureDeadlineMs: parseCaptureDeadline(process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS),
           json: isJson,
           onPhase: emitCapturePhase,
         },
@@ -196,6 +211,7 @@ export default defineCommand({
             },
       );
 
+      captureFailed = !result.ok;
       if (isJson) {
         // Output structured JSON for Claude Code / programmatic use
         console.log(
@@ -225,7 +241,9 @@ export default defineCommand({
       } else {
         const { c } = await import("../ui/colors.js");
         console.log();
-        console.log(c.success("◇") + `  Captured ${c.bold(result.title)} → ${c.dim(outputDir)}`);
+        const icon = result.ok ? c.success("◇") : c.error("✗");
+        const status = result.ok ? "Captured" : "Capture failed";
+        console.log(icon + `  ${status} ${c.bold(result.title)} → ${c.dim(outputDir)}`);
         console.log();
         console.log(`  ${c.dim("Screenshots:")} ${result.screenshots.length}`);
         console.log(`  ${c.dim("Assets:")} ${result.assets.length}`);
@@ -267,11 +285,12 @@ export default defineCommand({
     } catch (err) {
       const errMsg = normalizeErrorMessage(err);
       try {
-        const { mkdirSync, writeFileSync } = await import("node:fs");
+        const { mkdirSync } = await import("node:fs");
         const { formatCaptureFailureReason } = await import("../capture/captureTimeout.js");
+        const { writeCaptureFileSync } = await import("../capture/captureFile.js");
         mkdirSync(outputDir, { recursive: true });
         const reason = formatCaptureFailureReason(errMsg);
-        writeFileSync(
+        writeCaptureFileSync(
           `${outputDir}/BLOCKED.md`,
           `# Capture Failed\n\n${reason}\n\nURL: ${url}\n\n## What to try\n\n- Re-run with a longer timeout: \`--timeout 60000\`\n- The site may block headless browsers (anti-bot protection)\n- Try capturing a different page on the same domain\n`,
           "utf-8",
@@ -286,5 +305,6 @@ export default defineCommand({
       }
       failCommand();
     }
+    if (captureFailed) failCommand();
   },
 });

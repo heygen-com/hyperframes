@@ -197,13 +197,13 @@ Vector animations that play inside a composition. Use for logos, character anima
 </script>
 ```
 
-`autoplay: false` + `loop: false` + `window.__hfLottie.push()` are mandatory — HyperFrames seeks each registered player to composition time, so anything left on `autoplay`/`loop` runs in wall-clock and renders non-deterministically. The adapter seeks absolute time (no modulo loop, no playback-rate scaling): bake repeating cycles or non-default speed into the Lottie asset or an explicit timeline, then verify the render. Full contract + `.lottie`/dotLottie variant: `adapters/lottie.md`.
+`autoplay: false` + `window.__hfLottie.push()` are mandatory — HyperFrames seeks each registered player to composition time, so a player left on `autoplay` runs in wall-clock and renders non-deterministically. `loop: true` is seek-safe: the adapter wraps composition time into the animation's own length, so a short cycle repeats for the whole scene. There is no playback-rate scaling: bake non-default speed into the Lottie asset. Characters (walk cycles, mascots, gestures) and the full `.lottie`/dotLottie contract: `adapters/lottie.md`.
 
 ---
 
 ## 6. Video Compositing
 
-Embed real video footage inside compositions. Videos must be `muted` with `playsinline`.
+Embed real video footage inside compositions. Videos are `playsinline`; add `muted` for silent footage or b-roll, or `data-has-audio="true"` when the clip's own sound should play.
 
 ```html
 <div class="video-frame" style="width:680px;height:840px;border-radius:16px;overflow:hidden;">
@@ -422,6 +422,36 @@ A fixed window that content slides through — text or images enter from one sid
 ```
 
 Variations: `clip-path: circle(0% at 50% 50%)` → `circle(100%)` for iris reveals. `clip-path: polygon(...)` for custom shapes.
+
+### Text masks need room for glyphs
+
+A line box is not the full painted extent of its text. With tight display typography (`line-height: 1` or less), an `overflow: hidden` line mask can cut descenders (`g`, `p`, `y`, `j`) and accents or umlauts even after the entrance has finished.
+
+Give the mask block padding and a compensating negative margin. Set the typography on the mask and inherit it on the line so the padding's `em` units use the text's font size:
+
+```html
+<div class="line-mask">
+  <div class="line">Betreuung</div>
+</div>
+<style>
+  .line-mask {
+    font-size: 200px;
+    line-height: 1;
+    overflow: hidden;
+    padding-block: 0.2em;
+    margin-block: -0.2em;
+  }
+  .line-mask > .line {
+    margin: 0;
+    font: inherit;
+    white-space: nowrap;
+  }
+</style>
+```
+
+Treat `0.2em` as a starting point: verify the actual font, weight, and text at a settled frame, including descenders and accented capitals. Keep the initial displaced line outside the enlarged mask so it remains hidden before the reveal. If the mask is no longer needed after the entrance, another option is to release its clipping properties (`overflow: visible` / `clip-path: none`) with `tl.set(...)` at the settle time.
+
+`data-layout-allow-overflow` suppresses overflow checks for the marked element and its descendants throughout the timeline, including the resting state. A passing `hyperframes check` does not establish that the glyphs are intact; inspect a settled snapshot of the mask before considering the reveal complete.
 
 ---
 

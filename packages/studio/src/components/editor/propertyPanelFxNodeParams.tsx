@@ -1,3 +1,4 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /**
  * An open effect's knobs, with whatever automation surface applies to them.
  *
@@ -69,6 +70,7 @@ export function FxNodeParams({
   index: number;
   disabled: boolean;
 }) {
+  const trackInput = useTrackDesignInput();
   const nodeId = node.id;
   // Lanes address a node by id; the controls know their own parameter keys. This
   // is the one place that translation belongs.
@@ -97,14 +99,25 @@ export function FxNodeParams({
           if (before[key] === value) continue;
           if (typeof value !== "number" && typeof value !== "string") continue;
           trackParamCommitted(node.type, key, value, "details", { trackKind });
+          trackInput(typeof value === "number" ? "slider" : "select", key);
         }
         onUpdate(index, { params: next });
       }}
       automatedKeys={automatedKeysOf(node, def.params, automatedTargets)}
-      onAutomate={nodeId && onAutomateParam ? (key) => onAutomateParam(nodeId, key) : undefined}
+      onAutomate={
+        nodeId && onAutomateParam
+          ? (key) => {
+              onAutomateParam(nodeId, key);
+              trackInput("button", "automate-param");
+            }
+          : undefined
+      }
       onRemoveAutomation={
         nodeId && onRemoveParamAutomation
-          ? (key) => onRemoveParamAutomation(nodeId, key)
+          ? (key) => {
+              onRemoveParamAutomation(nodeId, key);
+              trackInput("button", "remove-param-automation");
+            }
           : undefined
       }
     />

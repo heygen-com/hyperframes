@@ -8,8 +8,8 @@ import { usePlayerStore } from "../player/store/playerStore";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
-function HookHost() {
-  usePopulateKeyframeCacheForFile("demo", "index.html", 1);
+function HookHost({ sourceFile = "index.html", version = 1 }) {
+  usePopulateKeyframeCacheForFile("demo", sourceFile, version);
   return null;
 }
 
@@ -18,6 +18,8 @@ let container: HTMLElement | null = null;
 
 beforeEach(() => {
   usePlayerStore.setState({
+    timelineProjectId: "demo",
+    previewBooted: true,
     elements: [
       {
         id: "lab",
@@ -64,5 +66,79 @@ describe("usePopulateKeyframeCacheForFile", () => {
 
     expect(urls.some((u) => u.endsWith("/index.html"))).toBe(true);
     expect(urls.some((u) => u.includes("keyframe-lab.html"))).toBe(true);
+  });
+
+  it("keeps every covered file when the selection switches between them, and refetches all on new data", async () => {
+    // Every click on a clip from another file flips `sourceFile`; a flip must not
+    // re-read every composition file, or a multi-select pays files x clicks fetches.
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        urls.push(String(input));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ animations: [] }) });
+      }),
+    );
+    const render = async (props: { sourceFile: string; version: number }) => {
+      await act(async () => {
+        if (!root) {
+          container = document.createElement("div");
+          document.body.appendChild(container);
+          root = createRoot(container);
+        }
+        root.render(<HookHost {...props} />);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+    };
+
+    await render({ sourceFile: "index.html", version: 1 });
+    const loaded = urls.length;
+    await render({ sourceFile: "compositions/keyframe-lab.html", version: 1 });
+    expect(urls.length).toBe(loaded);
+    await render({ sourceFile: "index.html", version: 1 });
+    expect(urls.length).toBe(loaded);
+
+    await render({ sourceFile: "index.html", version: 2 });
+    expect(urls.length).toBe(loaded * 2);
+  });
+
+  it("asks again for a covered file whose first read failed", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        urls.push(url);
+        const failed =
+          url.includes("keyframe-lab.html") && urls.filter((u) => u === url).length === 1;
+        return Promise.resolve({
+          ok: !failed,
+          json: () => Promise.resolve({ animations: [] }),
+        });
+      }),
+    );
+    const render = async (sourceFile: string) => {
+      await act(async () => {
+        if (!root) {
+          container = document.createElement("div");
+          document.body.appendChild(container);
+          root = createRoot(container);
+        }
+        root.render(<HookHost sourceFile={sourceFile} />);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+    };
+
+    await render("index.html");
+    const labReads = () => urls.filter((u) => u.includes("keyframe-lab.html")).length;
+    expect(labReads()).toBe(1);
+    await render("compositions/keyframe-lab.html");
+    expect(labReads()).toBe(2);
+    await render("index.html");
+    expect(labReads()).toBe(2);
   });
 });

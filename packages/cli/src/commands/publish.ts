@@ -11,15 +11,17 @@ import {
   hasDefinitiveEntryMismatch,
   lintProject,
 } from "../utils/lintProject.js";
-import { formatLintFindings } from "../utils/lintFormat.js";
+import { formatLintStartupMessage } from "../utils/lintFormat.js";
+import { envCredentialVar } from "../auth/resolver.js";
 import {
   buildPublishFileMap,
   publishProjectArchive,
+  resolvePublishCredential,
   zipPublishFileMap,
 } from "../utils/publishProject.js";
 import { bakeMediaProxies } from "../utils/publishProxyBake.js";
+import type { ResolvedCredential } from "../auth/resolver.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
-import { tryResolveCredential } from "../auth/index.js";
 import {
   ensureProjectId,
   readProjectLink,
@@ -35,6 +37,7 @@ export const examples: Example[] = [
   ["Publish to a shared team space", "hyperframes publish --space <space-id>"],
   ["Skip the consent prompt (scripts)", "hyperframes publish --yes"],
   ["Skip baking H.264 proxies for browser-hostile video codecs", "hyperframes publish --no-proxy"],
+  ["Show full lint findings instead of the summary line", "hyperframes publish --lint-verbose"],
 ];
 
 /** Extract a project id from a published URL (with or without scheme, query, or hash) or accept a bare id. */
@@ -84,6 +87,11 @@ export default defineCommand({
       description:
         "Bake H.264 proxies for browser-hostile video codecs (e.g. HEVC) into the published archive. Default: on, unless disabled via hyperframes.json media.autoProxy. Pass --no-proxy to skip.",
     },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings before publishing (default: a one-line summary)",
+      default: false,
+    },
   },
   async run({ args }) {
     const rawArg = args.dir;
@@ -91,12 +99,18 @@ export default defineCommand({
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
       const lintResult = await lintProject(dir);
+      const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
-        for (const line of formatLintFindings(lintResult)) console.log(line);
+        const verbose = Boolean(args["lint-verbose"]) || definitiveEntryMismatch;
+        for (const line of formatLintStartupMessage(
+          lintResult,
+          verbose ? { kind: "verbose" } : { kind: "summary" },
+        ))
+          console.log(line);
         console.log();
       }
-      if (hasDefinitiveEntryMismatch(lintResult)) {
+      if (definitiveEntryMismatch) {
         const candidate = definitiveEntryMismatchComposition(lintResult);
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
         if (candidate && posix.basename(candidate) === "index.html") {
@@ -151,14 +165,34 @@ export default defineCommand({
     const spaceOverride =
       typeof args.space === "string" && args.space.trim() ? args.space.trim() : undefined;
 
-    // --update / --space only take effect for an authenticated owner. Fail loudly rather
-    // than silently minting a fresh URL — the exact failure mode this feature removes.
+    // Resolved once and passed to the upload: a second lookup after the bake could fall back
+    // from an expired login to a saved API key and silently drop --update / --space.
+    let credential: ResolvedCredential | null;
+    try {
+      credential = await resolvePublishCredential();
+    } catch (err: unknown) {
+      console.error();
+      console.error(`  ${(err as Error).message}`);
+      console.error();
+      setCommandExitCode(1);
+      return;
+    }
+
+    // --update / --space only take effect for a login (an API-key publish is never owned).
+    // Fail loudly rather than silently minting a fresh URL.
     if (updateTarget || spaceOverride) {
-      const credential = await tryResolveCredential();
-      if (!credential) {
+      if (credential?.type !== "oauth") {
+        const flag = updateTarget ? "--update" : "--space";
+        const envKey = credential && envCredentialVar(credential.source);
         console.log();
         console.log(
-          `  ${c.error(`${updateTarget ? "--update" : "--space"} requires authentication. Run 'hyperframes auth login' first.`)}`,
+          `  ${c.error(
+            !credential
+              ? `${flag} requires authentication. Run 'hyperframes auth login' first.`
+              : envKey
+                ? `${flag} requires a login; ${envKey} cannot own a project. Unset it and run 'hyperframes auth login'.`
+                : `${flag} requires a login; an API key cannot own a project. Run 'hyperframes auth login'.`,
+          )}`,
         );
         console.log();
         setCommandExitCode(1);
@@ -203,6 +237,7 @@ export default defineCommand({
         projectId: requestedProjectId,
         spaceId,
         archive,
+        credential,
       });
       publishSpinner.stop(c.success("Project published"));
 
@@ -277,27 +312,15 @@ export default defineCommand({
         console.log(`  ${c.dim("Claim URL")}  ${c.accent(claimUrl.toString())}`);
         console.log(`  ${c.dim("Access")}     ${c.accent("Sign in required to claim")}`);
         console.log();
-        if (updateTarget || spaceOverride) {
-          // The pre-publish gate saw a credential, but the server didn't accept it (expired
-          // or invalid) and fell back to anonymous — say so loudly instead of pretending the
-          // requested update happened.
-          console.log(
-            `  ${c.error(`Your login looks expired or invalid, so ${updateTarget ? "--update" : "--space"} was ignored and a NEW url was created above.`)}`,
-          );
-          console.log(
-            `  ${c.dim("Run 'hyperframes auth login' again, then re-publish to update in place.")}`,
-          );
-        } else {
-          console.log(
-            `  ${c.dim("Open the claim URL on hyperframes.dev, sign in, and claim the project to continue editing.")}`,
-          );
-          console.log();
-          const visibilityTip =
-            args.public === true
-              ? "--public applies to the claimed project; this claim URL still requires sign-in."
-              : "Run 'hyperframes auth login' first for a stable link you can re-publish to; add --public to allow signed-out viewing.";
-          console.log(`  ${c.dim(`Tip: ${visibilityTip}`)}`);
-        }
+        console.log(
+          `  ${c.dim("Open the claim URL on hyperframes.dev, sign in, and claim the project to continue editing.")}`,
+        );
+        console.log();
+        const visibilityTip =
+          args.public === true
+            ? "--public applies to the claimed project; this claim URL still requires sign-in."
+            : "Run 'hyperframes auth login' first for a stable link you can re-publish to; add --public to allow signed-out viewing.";
+        console.log(`  ${c.dim(`Tip: ${visibilityTip}`)}`);
         console.log();
       }
       return;

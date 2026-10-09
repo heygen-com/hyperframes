@@ -4,12 +4,13 @@ import { failCommand } from "../../utils/commandResult.js";
  * `--keep-api-key`, only the OAuth block is cleared (no-op for
  * API-key-only stores).
  *
- * Env-only credentials (`HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`) can't
- * be cleared by this command — we tell the user to unset them.
+ * Env-only credentials (`HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`,
+ * `HEYGEN_ACCESS_TOKEN`) can't be cleared by this command — we tell the user to unset them.
  */
 
 import { defineCommand } from "citty";
 import {
+  ENV_CREDENTIAL_VAR,
   clearOAuth,
   configDir,
   credentialPath,
@@ -57,11 +58,10 @@ export default defineCommand({
 });
 
 function warnIfEnvCredentialActive(): void {
-  if (process.env["HEYGEN_API_KEY"] || process.env["HYPERFRAMES_API_KEY"]) {
+  const active = Object.values(ENV_CREDENTIAL_VAR).filter((name) => process.env[name]);
+  if (active.length > 0) {
     console.log(
-      c.warn(
-        "An env-var credential is active. Unset HEYGEN_API_KEY / HYPERFRAMES_API_KEY to remove it.",
-      ),
+      c.warn(`An env-var credential is active. Unset ${active.join(" / ")} to remove it.`),
     );
   }
 }

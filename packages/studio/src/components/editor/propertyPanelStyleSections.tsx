@@ -45,6 +45,7 @@ export function StyleSections({
   styles,
   assets,
   onSetStyle,
+  onSetHtmlAttribute,
   onImportAssets,
   gsapBorderRadius,
   hideFlex = false,
@@ -54,6 +55,7 @@ export function StyleSections({
   styles: Record<string, string>;
   assets: string[];
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
+  onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
   // When true, the Flex `Section` is suppressed. The flat inspector renders
@@ -108,12 +110,12 @@ export function StyleSections({
   const backgroundImage = styles["background-image"] ?? "none";
   const hasTextControls = isTextEditableSelection(element);
 
-  const fillMode =
-    backgroundImage && backgroundImage !== "none"
-      ? backgroundImage.includes("gradient")
-        ? "Gradient"
-        : "Image"
-      : "Solid";
+  let fillMode = "Solid";
+  if (element.tagName === "img") {
+    fillMode = "Image";
+  } else if (backgroundImage && backgroundImage !== "none") {
+    fillMode = backgroundImage.includes("gradient") ? "Gradient" : "Image";
+  }
   const [preferredFillMode, setPreferredFillMode] = useState(fillMode);
   const imageUrl = extractBackgroundImageUrl(backgroundImage);
   // Remember the last authored gradient so an exploratory Solid↔Gradient
@@ -488,7 +490,8 @@ export function StyleSections({
           ) : (
             <ImageFillField
               projectId={projectId}
-              sourceFile={element.sourceFile}
+              element={element}
+              onSetHtmlAttribute={onSetHtmlAttribute}
               value={imageUrl}
               assets={assets}
               disabled={styleEditingDisabled}

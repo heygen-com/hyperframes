@@ -20,22 +20,22 @@
     {
       "path": "models/iphone.glb",
       "target": "models/iphone.glb",
-      "type": "asset"
+      "type": "hyperframes:asset"
     },
     {
       "path": "models/macbook.glb",
       "target": "models/macbook.glb",
-      "type": "asset"
+      "type": "hyperframes:asset"
     },
     {
       "path": "models/hyperframes-mobile.png",
       "target": "models/hyperframes-mobile.png",
-      "type": "asset"
+      "type": "hyperframes:asset"
     },
     {
       "path": "models/hyperframes-desktop.png",
       "target": "models/hyperframes-desktop.png",
-      "type": "asset"
+      "type": "hyperframes:asset"
     }
   ],
   "preview": {

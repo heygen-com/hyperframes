@@ -56,6 +56,14 @@ describe("liftElementToTop / restoreLiftedElement", () => {
     expect(el.style.zIndex).toBe("");
   });
 
+  it("keeps a position a move authored while the element was lifted", () => {
+    const el = makeEl();
+    const lift = liftElementToTop(el)!;
+    el.removeAttribute("data-hf-reveal-prior-pos");
+    restoreLiftedElement(el, lift);
+    expect(el.style.position).toBe("relative");
+  });
+
   it("a z-reorder commit consumes the lift: restore becomes a no-op", () => {
     const el = makeEl("3", "absolute");
     const lift = liftElementToTop(el)!;

@@ -5,7 +5,7 @@
  */
 import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
 import { isStudioHoldSet } from "@hyperframes/core/gsap-parser";
-import { usePlayerStore } from "../player/store/playerStore";
+import { isPreviewBooted, usePlayerStore, whenPreviewBooted } from "../player/store/playerStore";
 import { replaceKeyframeCacheForFile } from "./gsapKeyframeCacheHelpers";
 import { resolveClipTimingBasis, resolveSelectorElementIds, toClipKeyframes } from "./gsapShared";
 import {
@@ -14,6 +14,7 @@ import {
   synthesizeFlatTweenKeyframes,
   type MergeableKeyframe,
 } from "./gsapTweenSynth";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 export { resolveSelectorElementIds };
 
@@ -53,12 +54,15 @@ function hasAnimations(value: unknown): value is ParsedGsapAnimations {
  */
 const inFlightParses = new Map<string, Promise<ParsedGsapAnimations | null>>();
 
+export const parseCacheKey = (projectId: string, sourceFile: string) =>
+  `${projectId}|${sourceFile}`;
+
 export function fetchParsedAnimations(
   projectId: string,
   sourceFile: string,
   options: { fresh?: boolean } = {},
 ): Promise<ParsedGsapAnimations | null> {
-  const key = `${projectId}|${sourceFile}`;
+  const key = parseCacheKey(projectId, sourceFile);
   if (options.fresh) inFlightParses.delete(key);
   const inFlight = inFlightParses.get(key);
   if (inFlight) return inFlight;
@@ -74,12 +78,13 @@ async function requestParsedAnimations(
   projectId: string,
   sourceFile: string,
 ): Promise<ParsedGsapAnimations | null> {
+  if (!isPreviewBooted(projectId) && !(await whenPreviewBooted(projectId))) return null;
   try {
-    const res = await fetch(
+    const res = await studioApiFetch(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
-      // Always re-read the freshly-parsed source; no per-call timestamp (which
-      // would defeat caching forever and is a deterministic-render no-no).
-      { cache: "no-store" },
+      // Always revalidate; an unchanged file answers 304. No per-call timestamp
+      // (a deterministic-render no-no).
+      { cache: "no-cache" },
     );
     if (!res.ok) return null;
     const parsed: unknown = await res.json();
@@ -102,9 +107,9 @@ export async function populateKeyframeCacheFromAst(
   projectId: string,
   sf: string,
   doc: Document | null | undefined,
-): Promise<void> {
+): Promise<boolean> {
   const parsed = await fetchParsedAnimations(projectId, sf);
-  if (!parsed) return;
+  if (!parsed) return false;
   const { elements, domClipChildren } = usePlayerStore.getState();
   const mergedByElement = new Map<string, GsapKeyframesData<MergeableKeyframe>>();
   const sourceByElement = new Map<string, GsapAnimation[]>();
@@ -132,4 +137,5 @@ export async function populateKeyframeCacheFromAst(
     }
   }
   replaceKeyframeCacheForFile(sf, mergedByElement, sourceByElement);
+  return true;
 }

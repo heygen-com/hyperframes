@@ -9,6 +9,7 @@ import { browserTelemetryAllowed } from "./policy";
 import { getBrowserSystemMeta } from "./system";
 import { canaryEventProperties } from "./canary";
 import { recordBreadcrumb } from "./breadcrumbs";
+import { studioApiFetch } from "../utils/studioApiFetch";
 
 // Write-only PostHog project key, safe to embed in client code.
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -83,7 +84,7 @@ function send(url: string, payload: string): void {
   // Prefer fetch with keepalive (survives page navigation). sendBeacon is a
   // fallback for older runtimes where fetch isn't available.
   try {
-    void fetch(url, {
+    void studioApiFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: payload,

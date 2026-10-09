@@ -2,7 +2,7 @@
  * Timing Compiler
  *
  * Shared, pure HTML compilation that normalizes timing attributes.
- * Works in both Node.js and browser (regex-based, no DOM).
+ * Works in both Node.js and browser without a DOM.
  *
  * Guarantees every timed element gets:
  * - id on media elements when missing
@@ -18,12 +18,14 @@
  * `data-end` off so extract can resolve the id-ref later.
  */
 
+import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "@hyperframes/parsers";
 import { parseNumeric } from "@hyperframes/parsers/composition-contract";
 import {
   parseStrictFiniteTimingNumber,
-  readElementPlaybackRate,
+  readElementRateSpec,
   readMediaStart,
 } from "../runtime/playbackRate.js";
+import type { RateSpec } from "../speedRamp.js";
 // ── Types ────────────────────────────────────────────────────────────────
 
 export interface UnresolvedElement {
@@ -34,7 +36,7 @@ export interface UnresolvedElement {
   end?: number;
   duration?: number;
   mediaStart: number;
-  playbackRate: number;
+  playbackRate: RateSpec;
   compositionSrc?: string;
 }
 
@@ -50,7 +52,7 @@ export interface ResolvedMediaElement {
   start: number;
   duration: number;
   mediaStart: number;
-  playbackRate: number;
+  playbackRate: RateSpec;
   loop: boolean;
 }
 
@@ -84,96 +86,54 @@ export function shouldClampResolvedMediaDuration(
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function getAttr(tag: string, attr: string): string | null {
-  // `(?<![\w-])` anchors the attribute name to a fresh start. Without it,
-  // `getAttr(tag, "id")` matches the trailing `id="…"` inside `data-hf-id="…"`
-  // (and "src" inside `data-src`, etc.) and returns a phantom value. That bug
-  // made compileTag believe a Studio-stamped `data-hf-id`-only element already
-  // had an `id`, so it skipped its `hf-video-N` injection — leaving the element
-  // with no real `el.id`, which the render pipeline keys off of (blank wash).
-  const match = tag.match(new RegExp(`(?<![\\w-])${attr}=["']([^"']+)["']`));
-  return match ? (match[1] ?? null) : null;
+function sourceAttribute(tag: string, name: string) {
+  return scanHtmlOpeningTags(tag)[0]?.attributes.find((attr) => attr.name === name);
 }
 
-function hasAttr(tag: string, attr: string): boolean {
-  return new RegExp(`\\s${attr}(?:\\s|=|>|/)`).test(tag);
+function getAttr(tag: string, name: string): string | null {
+  return tagAttrReader(tag).getAttribute(name);
+}
+
+function tagAttrReader(tag: string): Pick<Element, "getAttribute"> {
+  const attributes = scanHtmlOpeningTags(tag)[0]?.attributes ?? [];
+  return {
+    getAttribute: (name) => {
+      const attr = attributes.find((attr) => attr.name === name);
+      return attr?.kind === "value" ? decodeAuthoredAttribute(attr.value) : null;
+    },
+  };
+}
+
+function hasAttr(tag: string, name: string): boolean {
+  return sourceAttribute(tag, name) !== undefined;
 }
 
 function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
 }
 
-function setAttr(tag: string, attr: string, value: string): string {
-  if (!hasAttr(tag, attr)) return injectAttr(tag, attr, value);
-  return tag.replace(new RegExp(`(${attr}=["'])[^"']*(["'])`), `$1${value}$2`);
+function setAttr(tag: string, name: string, value: string): string {
+  const attr = sourceAttribute(tag, name);
+  if (!attr) return injectAttr(tag, name, value);
+  return tag.slice(0, attr.start) + `${name}="${value}"` + tag.slice(attr.end);
 }
 
-// Real media/timing elements never live inside comments, <script>, or <style>.
-// The tag regexes below aren't comment-aware, so a comment that merely mentions
-// `<video>`/`<audio>` gets rewritten as if it were a real element (issue #1938).
-// Mask those inert regions with placeholders (no `<`, so the tag regexes skip
-// them) before scanning, then restore them verbatim.
-// The NUL delimiters must stay as \u0000 escapes: raw 0x00 bytes make this file
-// binary to git and are corrupted by Bun's transpiler when bundled (issue #2139).
-function maskInertRegions(html: string): { masked: string; restore: (s: string) => string } {
-  const stash: string[] = [];
-  const parts: string[] = [];
-  const opening = /<!--|<script\b|<style\b/gi;
-  const closings = new Map([
-    ["<!--", /--!?>/g],
-    ["<script", /<\/script\s*>/gi],
-    ["<style", /<\/style\s*>/gi],
-  ]);
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = opening.exec(html)) !== null) {
-    const kind = match[0].toLowerCase();
-    const closing = closings.get(kind);
-    if (!closing) continue;
-    closing.lastIndex = opening.lastIndex;
-    const end = closing.exec(html) ? closing.lastIndex : -1;
-    if (end < 0) {
-      // No later opener of this kind can close either. Search each unmatched
-      // suffix only once, while still allowing other kinds of inert regions.
-      closings.delete(kind);
-      continue;
+function* iterateOpeningTags(html: string, names: readonly string[]) {
+  for (const span of scanHtmlOpeningTags(html)) {
+    if (span.closed && names.includes(span.name)) {
+      yield { tag: html.slice(span.start, span.end), index: span.start, end: span.end };
     }
-    const token = `\u0000HFMASK${stash.length}\u0000`;
-    parts.push(html.slice(cursor, match.index), token);
-    stash.push(html.slice(match.index, end));
-    cursor = end;
-    opening.lastIndex = cursor;
-  }
-  parts.push(html.slice(cursor));
-  const masked = parts.join("");
-  const restore = (s: string): string =>
-    // oxlint-disable-next-line no-control-regex -- NUL cannot appear in HTML, which is what makes it a safe mask delimiter
-    s.replace(/\u0000HFMASK(\d+)\u0000/g, (_, i) => stash[Number(i)] ?? "");
-  return { masked, restore };
-}
-
-// ── Core compilation ─────────────────────────────────────────────────────
-
-function* iterateOpeningTags(html: string, prefix: RegExp) {
-  let match: RegExpExecArray | null;
-  while ((match = prefix.exec(html)) !== null) {
-    const closing = html.indexOf(">", prefix.lastIndex);
-    // Without a closer, no later prefix can form a complete tag either.
-    if (closing < 0) break;
-    const end = closing + 1;
-    yield { tag: html.slice(match.index, end), index: match.index, end };
-    prefix.lastIndex = end;
   }
 }
 
 function replaceOpeningTags(
   html: string,
-  prefix: RegExp,
+  names: readonly string[],
   replace: (tag: string) => string,
 ): string {
   const parts: string[] = [];
   let cursor = 0;
-  for (const { tag, index, end } of iterateOpeningTags(html, prefix)) {
+  for (const { tag, index, end } of iterateOpeningTags(html, names)) {
     parts.push(html.slice(cursor, index), replace(tag));
     cursor = end;
   }
@@ -182,43 +142,25 @@ function replaceOpeningTags(
 }
 
 function replaceIdTags(html: string, id: string, replace: (tag: string) => string): string {
-  const idPattern = new RegExp(`id=["']${escapeRegex(id)}["']`, "gi");
-  const lastClosing = html.lastIndexOf(">");
   const parts: string[] = [];
   let cursor = 0;
-  let candidate = idPattern.exec(html);
-  for (const { index, end } of iterateOpeningTags(html, /</g)) {
-    if (index < cursor) continue;
-    let targetEnd = -1;
-    while (candidate && candidate.index < end) {
-      const candidateEnd = candidate.index + candidate[0].length;
-      if (candidate.index > index && candidateEnd <= lastClosing) targetEnd = candidateEnd;
-      // Preserve the old greedy prefix's last matching ID, including overlaps.
-      idPattern.lastIndex = candidate.index + 1;
-      candidate = idPattern.exec(html);
-    }
-    if (targetEnd < 0) continue;
-    // An authored ID can itself contain '>', so its closer may follow the
-    // initial span. The lastClosing check guarantees a closing delimiter.
-    const closing = html.indexOf(">", targetEnd) + 1;
-    parts.push(html.slice(cursor, index), replace(html.slice(index, closing)));
-    cursor = closing;
+  for (const span of scanHtmlOpeningTags(html)) {
+    if (!span.closed) continue;
+    const tag = html.slice(span.start, span.end);
+    const attr = span.attributes.find((attr) => attr.name === "id");
+    if (attr?.kind !== "value" || decodeAuthoredAttribute(attr.value) !== id) continue;
+    parts.push(html.slice(cursor, span.start), replace(tag));
+    cursor = span.end;
   }
   parts.push(html.slice(cursor));
   return parts.join("");
 }
 
-function compileTag(
-  tag: string,
-  isVideo: boolean,
-  generateId: () => number,
-): { tag: string; unresolved: UnresolvedElement | null } {
+function withDefaultTimingAttrs(tag: string, tagName: string, generateId: () => number) {
   let result = tag;
-  let unresolved: UnresolvedElement | null = null;
-
   let id = getAttr(result, "id");
   if (!id) {
-    id = `${isVideo ? "hf-video" : "hf-audio"}-${generateId()}`;
+    id = `hf-${tagName}-${generateId()}`;
     result = injectAttr(result, "id", id);
   }
   let startStr = getAttr(result, "data-start");
@@ -227,10 +169,27 @@ function compileTag(
     result = injectAttr(result, "data-hf-auto-start", "");
     startStr = "0";
   }
-  const start = parseNumeric(startStr);
-  const attrReader = { getAttribute: (name: string) => getAttr(result, name) };
+  return { tag: result, id, start: parseNumeric(startStr) };
+}
+
+function withVideoAudioFlag(tag: string, isVideo: boolean): string {
+  if (!isVideo || hasAttr(tag, "data-has-audio")) return tag;
+  return injectAttr(tag, "data-has-audio", hasAttr(tag, "muted") ? "false" : "true");
+}
+
+function compileTag(
+  tag: string,
+  isVideo: boolean,
+  generateId: () => number,
+): { tag: string; unresolved: UnresolvedElement | null } {
+  const tagName = isVideo ? "video" : "audio";
+  const defaults = withDefaultTimingAttrs(tag, tagName, generateId);
+  let result = defaults.tag;
+  let unresolved: UnresolvedElement | null = null;
+  const { id, start } = defaults;
+  const attrReader = tagAttrReader(result);
   const mediaStart = readMediaStart(attrReader);
-  const playbackRate = readElementPlaybackRate(attrReader);
+  const playbackRate = readElementRateSpec(attrReader);
 
   // 1. Compute data-end from data-start + data-duration. Skip relative id-refs.
   if (!hasAttr(result, "data-end")) {
@@ -240,11 +199,11 @@ function compileTag(
       if (start != null) {
         result = injectAttr(result, "data-end", String(start + duration));
       }
-    } else if (id) {
+    } else {
       // No data-duration: mark as unresolved so caller can provide it
       unresolved = {
         id,
-        tagName: isVideo ? "video" : "audio",
+        tagName,
         src: getAttr(result, "src") ?? undefined,
         start: start ?? 0,
         mediaStart,
@@ -253,12 +212,7 @@ function compileTag(
     }
   }
 
-  // 2. Add data-has-audio to <video> elements. Muted videos are visual-only by
-  // contract; audible media should be represented by either an unmuted video
-  // with data-has-audio="true" or a separate <audio> element.
-  if (isVideo && !hasAttr(result, "data-has-audio")) {
-    result = injectAttr(result, "data-has-audio", hasAttr(result, "muted") ? "false" : "true");
-  }
+  result = withVideoAudioFlag(result, isVideo);
 
   return { tag: result, unresolved };
 }
@@ -278,18 +232,15 @@ export function compileTimingAttrs(html: string): CompilationResult {
   let nextVideoId = 0;
   let nextAudioId = 0;
 
-  const { masked, restore } = maskInertRegions(html);
-  html = masked;
-
   // Process <video ...> tags
-  html = replaceOpeningTags(html, /<video/gi, (match) => {
+  html = replaceOpeningTags(html, ["video"], (match) => {
     const { tag, unresolved: u } = compileTag(match, true, () => nextVideoId++);
     if (u) unresolved.push(u);
     return tag;
   });
 
   // Process <audio ...> tags
-  html = replaceOpeningTags(html, /<audio/gi, (match) => {
+  html = replaceOpeningTags(html, ["audio"], (match) => {
     const { tag, unresolved: u } = compileTag(match, false, () => nextAudioId++);
     if (u) unresolved.push(u);
     return tag;
@@ -297,7 +248,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
 
   // Identify unresolved timed elements (divs with data-start but no data-end/data-duration)
   // These are typically compositions whose duration depends on GSAP timelines
-  for (const { tag: match } of iterateOpeningTags(html, /<(?:div|section)/gi)) {
+  for (const { tag: match } of iterateOpeningTags(html, ["div", "section"])) {
     if (!hasAttr(match, "data-start")) continue;
     if (hasAttr(match, "data-end") || hasAttr(match, "data-duration")) continue;
 
@@ -316,7 +267,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
     }
   }
 
-  return { html: restore(html), unresolved };
+  return { html, unresolved };
 }
 
 /**
@@ -352,10 +303,6 @@ export function injectDurations(html: string, resolutions: ResolvedDuration[]): 
   return html;
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /**
  * Extract video/audio elements that already have data-duration set.
  * Used by callers to validate declared durations against actual source durations.
@@ -363,8 +310,7 @@ function escapeRegex(str: string): string {
 export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
   const resolved: ResolvedMediaElement[] = [];
 
-  html = maskInertRegions(html).masked;
-  for (const { tag } of iterateOpeningTags(html, /<(?:video|audio)/gi)) {
+  for (const { tag } of iterateOpeningTags(html, ["video", "audio"])) {
     const id = getAttr(tag, "id");
     const durationStr = getAttr(tag, "data-duration");
     if (!id || durationStr === null) continue;
@@ -374,7 +320,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
 
     const isVideo = /^<video/i.test(tag);
     const startStr = getAttr(tag, "data-start");
-    const attrReader = { getAttribute: (name: string) => getAttr(tag, name) };
+    const attrReader = tagAttrReader(tag);
 
     resolved.push({
       id,
@@ -383,7 +329,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
       start: parseNumeric(startStr) ?? 0,
       duration,
       mediaStart: readMediaStart(attrReader),
-      playbackRate: readElementPlaybackRate(attrReader),
+      playbackRate: readElementRateSpec(attrReader),
       loop: hasAttr(tag, "loop"),
     });
   }
@@ -400,11 +346,11 @@ export function clampDurations(html: string, clamps: ResolvedDuration[]): string
   for (const { id, duration } of clamps) {
     html = replaceIdTags(html, id, (tag) => {
       // Replace data-duration value
-      tag = tag.replace(/data-duration=["'][^"']*["']/, `data-duration="${duration}"`);
+      if (hasAttr(tag, "data-duration")) tag = setAttr(tag, "data-duration", String(duration));
 
       const start = parseNumeric(getAttr(tag, "data-start"));
-      if (start != null) {
-        tag = tag.replace(/data-end=["'][^"']*["']/, `data-end="${start + duration}"`);
+      if (start != null && hasAttr(tag, "data-end")) {
+        tag = setAttr(tag, "data-end", String(start + duration));
       }
 
       return tag;

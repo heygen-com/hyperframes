@@ -1,10 +1,11 @@
 import { cpus, freemem, platform, release } from "node:os";
 import { existsSync, readFileSync, statfsSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { getSystemTotalMb } from "@hyperframes/engine";
+import { getSystemTotalMb } from "@hyperframes/engine/system-memory";
 import {
   detectAgentRuntime,
   detectAgentHints,
+  detectExecutionHarnessHint,
   detectSandboxRuntime,
   type AgentRuntime,
   type SandboxRuntime,
@@ -50,6 +51,8 @@ export interface SystemMeta {
    * null when no agent is detected.
    */
   agent_runtime: AgentRuntime;
+  /** Observed harness context, independent of agent attribution; null if absent. */
+  execution_harness_hint: "harbor" | null;
   /**
    * New-agent discovery signals for the agent_runtime=null bucket, so an agent
    * we have no rule for surfaces on its own instead of vanishing into null.
@@ -60,9 +63,19 @@ export interface SystemMeta {
   agent_hint: string | null;
   term_program: string | null;
   agent_env_hints: string | null;
+  /** App that launched the CLI, from HYPERFRAMES_CLIENT (`<app>/<version>/<channel>`); null from a shell. */
+  client: string | null;
 }
 
 let cached: SystemMeta | null = null;
+
+// Short `<app>/<version>/<channel>`-shaped tags only: the value lands verbatim in the space-delimited feedback string.
+const CLIENT_TAG = /^[a-z0-9][a-z0-9._+-]{0,31}(\/[a-z0-9._+-]{1,32}){0,3}$/i;
+
+function readClientTag(): string | null {
+  const tag = process.env["HYPERFRAMES_CLIENT"]?.trim() ?? "";
+  return CLIENT_TAG.test(tag) ? tag : null;
+}
 
 /**
  * Collect system metadata. Cached after first call.
@@ -95,9 +108,11 @@ export function getSystemMeta(): SystemMeta {
     is_tty: Boolean(process.stdout?.isTTY),
     sandbox_runtime: detectSandboxRuntime(),
     agent_runtime,
+    execution_harness_hint: detectExecutionHarnessHint(),
     agent_hint: hints.agent_hint,
     term_program: hints.term_program,
     agent_env_hints: hints.agent_env_hints,
+    client: readClientTag(),
   };
   return cached;
 }

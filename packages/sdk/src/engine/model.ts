@@ -5,7 +5,9 @@
  * go here. serialize() walks the live DOM; no separate mutable tree to sync.
  */
 
-import { parseHTML } from "linkedom";
+import { isFullHtmlDocument, parseHTMLContent } from "@hyperframes/core/compiler/html-document";
+import { findTimelineScript } from "@hyperframes/core/gsap-parser-acorn";
+import { findVariableDeclaration } from "./variableModel.js";
 import {
   ensureHfIds,
   isCompositionTemplate,
@@ -22,12 +24,9 @@ export interface ParsedDocument {
 
 export function parseMutable(html: string): ParsedDocument {
   const stamped = ensureHfIds(html);
-  const hasShell = /<!doctype|<html[\s>]/i.test(stamped);
-  const wrapped = !hasShell;
-  const { document } = wrapped
-    ? parseHTML(`<!DOCTYPE html><html><head></head><body>${stamped}</body></html>`)
-    : parseHTML(stamped);
-  return { document: document as unknown as Document, wrapped, stamped };
+  const wrapped = !isFullHtmlDocument(stamped);
+  const document = parseHTMLContent(stamped);
+  return { document, wrapped, stamped };
 }
 
 // ─── Element lookup ───────────────────────────────────────────────────────────
@@ -169,15 +168,40 @@ export function isNewHostBoundary(el: Element): boolean {
 }
 
 /**
- * The element that carries composition-level declarations
- * (`data-composition-variables`). Full-document comps use `<html>`; a wrapped
- * template/fragment comp has a synthetic `<html>` that serialize() strips, so
- * its declarations must live on the composition root div (where values/metadata
- * already live) to survive save.
+ * The elements carrying `data-composition-variables`, in the runtime's merge
+ * order: `<html>`, then the composition root, whose entries win a shared id. A
+ * wrapped template/fragment comp has a synthetic `<html>` that serialize()
+ * strips, so only its root counts.
  */
-export function declarationElement(document: Document, wrapped: boolean): Element | null {
+export function declarationCarriers(document: Document, wrapped: boolean): Element[] {
+  const root = findRoot(document);
+  const html = wrapped
+    ? null
+    : (document as Document & { documentElement?: Element }).documentElement;
+  const carriers = [html, root].filter(
+    (el): el is Element => !!el?.hasAttribute("data-composition-variables"),
+  );
+  return [...new Set(carriers)];
+}
+
+/**
+ * Where a declaration op lands: the carrier that declares `id` (the root first,
+ * as it wins), else the root if it carries declarations, else `<html>` (the
+ * root div for wrapped comps).
+ */
+export function declarationElement(
+  document: Document,
+  wrapped: boolean,
+  id?: string,
+): Element | null {
+  const winnerFirst = declarationCarriers(document, wrapped).reverse();
+  const owner =
+    id === undefined ? undefined : winnerFirst.find((el) => findVariableDeclaration(el, id));
+  if (owner) return owner;
   if (wrapped) return findRoot(document);
-  return (document as Document & { documentElement?: Element }).documentElement ?? null;
+  return (
+    winnerFirst[0] ?? (document as Document & { documentElement?: Element }).documentElement ?? null
+  );
 }
 
 export function findRoot(document: Document): Element | null {
@@ -212,11 +236,11 @@ interface StyleDeclarationScan {
 }
 
 function advanceStyleDeclarationScan(scan: StyleDeclarationScan, ch: string, next: string): void {
+  if (ch === "\\" && next) {
+    scan.skip = true;
+    return;
+  }
   if (scan.quote) {
-    if (ch === "\\" && next) {
-      scan.skip = true;
-      return;
-    }
     if (ch === scan.quote) scan.quote = null;
     return;
   }
@@ -448,12 +472,13 @@ export function getGsapScripts(document: Document): string[] {
     .filter(isGsapScriptText);
 }
 
-function findGsapScriptElement(document: Document): Element | null {
-  for (const script of findScriptElementsDeep(document)) {
-    const text = script.textContent ?? "";
-    if (isGsapScriptText(text)) return script;
-  }
-  return null;
+export function findGsapScriptElement(document: Document): Element | null {
+  const scripts = findScriptElementsDeep(document);
+  return (
+    findTimelineScript(scripts) ??
+    scripts.find((s) => isGsapScriptText(s.textContent ?? "")) ??
+    null
+  );
 }
 
 export function getGsapScript(document: Document): string | null {

@@ -14,9 +14,11 @@ function createMockDeps() {
     onSetNativeMediaSyncDisabled: vi.fn(),
     onSetWebAudioMediaDisabled: vi.fn(),
     onSetPlaybackRate: vi.fn(),
+    onSetIdleHeartbeat: vi.fn(),
     onSetColorGrading: vi.fn(),
     onSetColorGradingCompare: vi.fn(),
     onSetRootDuration: vi.fn(),
+    onSetPlayRange: vi.fn(),
     onEnablePickMode: vi.fn(),
     onDisablePickMode: vi.fn(),
     onSetRuntimeData: vi.fn(),
@@ -255,6 +257,17 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("set-root-duration", { durationSeconds: "18.5" }));
     expect(deps.onSetRootDuration).toHaveBeenCalledWith(18.5);
+  });
+
+  it("dispatches set-play-range with numeric seconds, and null for an open end", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-play-range", { startSeconds: "2", endSeconds: 3.5 }));
+    handler(makeControlMessage("set-play-range", { startSeconds: null, endSeconds: null }));
+    expect(deps.onSetPlayRange.mock.calls).toEqual([
+      [2, 3.5],
+      [0, null],
+    ]);
   });
 
   it("dispatches set-color-grading command with target and grading payload", () => {

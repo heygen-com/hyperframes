@@ -45,20 +45,20 @@ variables: prefix (string, default "Ship"): fixed text before the slot. options 
 ### oversized-cursor
 
 group: Product demo.
-what: A deliberately oversized macOS-style pointer enters off-screen, glides to a target, clicks to visibly ignite it, then accelerates back off-screen.
+what: The look-here pointer: the macOS arrow at 3.5x its normal size enters from the frame edge, lands its tip on one control, clicks it on, settles just below it so the result stays in view, then exits off-screen.
 use_when: The scene needs a personified "someone clicks the thing and it works" beat with theatrical scale.
-avoid_when: The click target is your own slotted UI or the pressed state must persist; use press-ripple, which presses a slot and holds it.
+avoid_when: A normal-size cursor should press your own slotted button and confirm it; use press-ripple.
 pairs_with: browser-device-stage, cut-the-curve.
 variables: cursor_variant (enum light or dark, default light): pointer body tone. target_x (number percent, default 55) and target_y (number percent, default 55): tip landing point. click_label (string, default "Generate"): label on the clicked pill. exit (enum none, fade, up, default none): fade and up also depart the ignited target.
 
 ### press-ripple
 
 group: Product demo.
-what: A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, and holds the pressed state.
+what: A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with two small click rings at the tip while the label swaps to a check, then exits while the confirmed state holds.
 use_when: The payoff beat: the user presses the button and the film rests on that satisfied pressed state.
-avoid_when: The cursor itself is the star or must leave after the click; use oversized-cursor for the enter-click-exit arc.
+avoid_when: The pointer itself should be the look-here star at theatrical scale; use oversized-cursor.
 pairs_with: browser-device-stage, cta-close.
-variables: label (string, default "Get started"): text in the default pill; ignored when the target slot is replaced. target_x (number percent, default 50) and target_y (number percent, default 50): zone center. press_at (number seconds, default 1.4): press cue. cursor (enum light or dark, default light): pointer tone. accent (enum green, blue, violet, default green): ripple ink and pressed fill. exit (enum none, fade, up, default none).
+variables: label (string, default "Get started"): text in the default pill; ignored when the target slot is replaced. target_x (number percent, default 50) and target_y (number percent, default 50): zone center. done_label (string, default "Saved"): label after the press. press_at (number seconds, default 0.9): press cue. cursor (enum light or dark, default light): pointer tone. accent (enum green, blue, violet, default green): click rings and the confirmation check. exit (enum none, fade, up, default none).
 
 ### browser-device-stage
 

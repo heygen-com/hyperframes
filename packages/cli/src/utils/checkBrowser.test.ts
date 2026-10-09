@@ -11,6 +11,7 @@ import {
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
 import {
   captureOverviewShot,
+  keepBrokenImageAborts,
   preResolveHostileMediaProxies,
   runBrowserCheck,
 } from "./checkBrowser.js";
@@ -83,6 +84,7 @@ const PROJECT: ProjectDir = {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -526,6 +528,95 @@ it("elevates and deduplicates WebGPU validation warnings while preserving ordina
   );
 });
 
+describe("keepBrokenImageAborts", () => {
+  const draft = (url: string, abortedImage: boolean) => ({
+    code: "request_failed",
+    severity: "error" as const,
+    message: `Failed to load ${url}`,
+    time: 0,
+    url,
+    abortedImage,
+  });
+
+  it("keeps an aborted image only when it is still broken, and every other failure", () => {
+    const swappedPast = draft("http://h/seq/0004.png", true);
+    const stuck = draft("http://h/plate.png", true);
+    const missing = draft("http://h/gone.png", false);
+    const kept = keepBrokenImageAborts(
+      [swappedPast, stuck, missing],
+      new Set(["http://h/plate.png"]),
+    );
+    expect(kept).toEqual([stuck, missing]);
+  });
+
+  it("reports an aborted image a page still shows broken, not one swapped away or one that decodes", async () => {
+    const base = "http://127.0.0.1:3000/assets";
+    mountCanvasFixture(
+      `<img id="stuck" src="${base}/plate.png"><img id="fine" src="${base}/seq/0012.png">`,
+    );
+    const stuck = document.getElementById("stuck") as HTMLImageElement;
+    const fine = document.getElementById("fine") as HTMLImageElement;
+    stuck.decode = () => Promise.reject(new Error("broken"));
+    fine.decode = () => Promise.resolve();
+    const aborted = (url: string) => ({
+      url: () => url,
+      failure: () => ({ errorText: "net::ERR_ABORTED" }),
+      resourceType: () => "image",
+    });
+    const page = fakePage();
+    page.on = vi.fn((event: string, handler: (request: ReturnType<typeof aborted>) => void) => {
+      if (event !== "requestfailed") return;
+      for (const url of ["seq/0004.png", "seq/0012.png", "plate.png"])
+        handler(aborted(`${base}/${url}`));
+    });
+    installSessionMock(page);
+
+    const result = await runBrowserCheck(
+      PROJECT,
+      { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+      { kind: "none" },
+      runAuditGrid,
+    );
+
+    const failed = result.runtimeFindings.filter((finding) => finding.code === "request_failed");
+    expect(failed.map((finding) => finding.message)).toEqual([
+      "Failed to load assets/plate.png: net::ERR_ABORTED",
+    ]);
+  });
+
+  it("does not report an aborted image whose reload is still pending at the cap", async () => {
+    const url = "http://127.0.0.1:3000/assets/slow.png";
+    mountCanvasFixture(`<img id="slow" src="${url}">`);
+    (document.getElementById("slow") as HTMLImageElement).decode = () => new Promise(() => {});
+    const page = fakePage();
+    page.on = vi.fn((event: string, handler: (request: unknown) => void) => {
+      if (event !== "requestfailed") return;
+      handler({
+        url: () => url,
+        failure: () => ({ errorText: "net::ERR_ABORTED" }),
+        resourceType: () => "image",
+      });
+    });
+    installSessionMock(page);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const checked = runBrowserCheck(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+        { kind: "none" },
+        runAuditGrid,
+      );
+      await vi.runAllTimersAsync();
+      const result = await checked;
+      expect(result.runtimeFindings.filter((finding) => finding.code === "request_failed")).toEqual(
+        [],
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("preResolveHostileMediaProxies", () => {
   const dirs: string[] = [];
   const mkProjectDir = (): string => {
@@ -605,14 +696,63 @@ describe("preResolveHostileMediaProxies", () => {
       },
     });
     mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await expect(
       preResolveHostileMediaProxies(projectDir, "<html></html>"),
     ).resolves.toBeUndefined();
-    expect(infoSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
     );
+  });
+
+  // `check --json` stdout must stay pure JSON, so these lines belong on stderr.
+  it("writes the pre-resolve summary to stderr and leaves stdout untouched", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+    });
+    mocks.resolveProxy.mockResolvedValue("/cache/clip.mp4");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[hyperframes\] media proxy pre-resolve: 1\/1 ready, 0 failed \(\d+ms\)$/,
+      ),
+    );
+    expect(infoSpy).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+
+  it("writes a scan failure to stderr and leaves stdout untouched", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockRejectedValue(new Error("ffprobe not found"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await expect(
+      preResolveHostileMediaProxies(projectDir, "<html></html>"),
+    ).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[hyperframes] media proxy pre-resolve: scan failed (ffprobe not found)",
+    );
+    expect(infoSpy).not.toHaveBeenCalled();
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {

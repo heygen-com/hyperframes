@@ -6,17 +6,13 @@ import {
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
 } from "@hyperframes/core";
-import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
-
-/**
- * Detect whether `html` is a full document (has `<html>`, `<head>`, or
- * `<!doctype`), as opposed to a `<template>`-wrapped fragment.
- * Anchored to start-of-string (ignoring leading whitespace) so stray
- * occurrences inside script/template content don't false-positive.
- */
-function isFullHtmlDocument(html: string): boolean {
-  return /^\s*(?:<!doctype\s|<html[\s>])/i.test(html);
-}
+import {
+  deferScriptsUntilFonts,
+  RUNTIME_BOOTSTRAP_ATTR,
+  stripEmbeddedRuntimeScripts,
+} from "@hyperframes/core/compiler";
+import { isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 
 /**
  * Rewrite relative asset paths in a parsed DOM tree. Shared across all
@@ -245,6 +241,10 @@ function tagRootCompositionFile(bodyHtml: string, compPath: string): string {
   );
 }
 
+export function rootHeadContent(rootHtml: string): string {
+  return rootHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i)?.[1] ?? "";
+}
+
 /**
  * Build a standalone HTML page for a sub-composition.
  *
@@ -274,8 +274,8 @@ export function buildSubCompositionHtml(
   if (!existsSync(compFile)) return null;
 
   // rawOverride lets the preview route thread the hf-id-stamped content in
-  // directly, so the build uses pinned ids even when the persist-to-disk write
-  // was skipped (read-only fs, concurrent-save TOCTOU guard).
+  // directly, so the build uses ids minted from the raw file, which is never
+  // written by serving.
   const rawComp = rawOverride ?? readFileSync(compFile, "utf-8");
 
   let compHeadContent = "";
@@ -314,6 +314,11 @@ export function buildSubCompositionHtml(
   // double-loaded AND the baked inline copy can fail to parse inline (the
   // "Unexpected token '<'" SyntaxError seen on comps with a baked runtime).
   rewrittenContent = stripEmbeddedRuntimeScripts(rewrittenContent);
+  const { document: scriptsDoc } = parseHTML(
+    `<!DOCTYPE html><html><head></head><body>${rewrittenContent}</body></html>`,
+  );
+  deferScriptsUntilFonts(scriptsDoc as unknown as Document);
+  rewrittenContent = scriptsDoc.body.innerHTML;
 
   // The comp's root carries data-composition-id but (unlike inlined sub-comps,
   // which inlineSubCompositions tags) no data-composition-file. Without it the
@@ -327,14 +332,10 @@ export function buildSubCompositionHtml(
   const indexPath = join(projectDir, "index.html");
   let headContent = "";
 
-  if (existsSync(indexPath)) {
-    const indexHtml = readFileSync(indexPath, "utf-8");
-    const headMatch = indexHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-    headContent = headMatch?.[1] ?? "";
-  }
+  if (existsSync(indexPath)) headContent = rootHeadContent(readFileSync(indexPath, "utf-8"));
 
   // Inject <base> for relative asset resolution (before other tags)
-  if (baseHref && !headContent.includes("<base")) {
+  if (baseHref && !hasBaseElement(headContent)) {
     headContent = `<base href="${baseHref}">\n${headContent}`;
   }
 
@@ -348,17 +349,11 @@ export function buildSubCompositionHtml(
   // injected tag (added next) is never removed.
   headContent = stripEmbeddedRuntimeScripts(headContent);
 
-  // Ensure runtime is present (might differ from the one in index.html)
-  if (
-    !headContent.includes("hyperframe.runtime") &&
-    !headContent.includes("hyperframes-preview-runtime")
-  ) {
-    headContent += `\n<script data-hyperframes-preview-runtime="1" src="${runtimeUrl}"></script>`;
-  }
+  headContent += `\n<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
 
   // Fallback: if no index.html head was found, add minimal deps
   if (!headContent.includes("gsap")) {
-    headContent += `\n<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`;
+    headContent += `\n<script src="${gsapCdnDist()}gsap.min.js"></script>`;
   }
 
   const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : "<html>";
@@ -374,4 +369,9 @@ ${bodyOpen}
 ${rewrittenContent}
 </body>
 </html>`;
+}
+
+/** True for a real `<base>` element; the text "<base" inside a script or comment does not count. */
+export function hasBaseElement(html: string): boolean {
+  return parseHTML(html).document.querySelector("base") !== null;
 }

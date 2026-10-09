@@ -1,0 +1,71 @@
+---
+title: "Release agent plugins"
+description: "Build, verify, and publish HyperFrames plugin packages from one committed release."
+---
+
+`skills/` is the canonical published skill source. Claude, Agent Plugins 1.0,
+Cursor, Codex, and Gemini manifests share the CLI release version. Keep vendor
+manifests for existing clients while the portable format is adopted.
+
+## Build a committed release
+
+Use the normal reviewed [release process](/contributing/release-channels).
+`set-version` updates all five plugin manifests. Commit the release before
+packaging; package builders intentionally exclude uncommitted changes.
+
+```bash
+bun run package:agent-plugin
+bun run package:codex-plugin
+```
+
+The portable builder writes these files under `dist/`:
+
+- `hyperframes-agent-plugin.zip`: a `hyperframes/` root with manifests, skills,
+  the skill catalog, brand assets, and license.
+- `hyperframes-agent-plugin.json`: source commit, version, skill inventory,
+  archive size, and SHA-256.
+- `hyperframes-agent-plugin.sha256`: the archive checksum.
+
+The publish workflow attaches the portable files to the GitHub release after npm
+publication. The Codex ZIP remains a separate submission artifact. Building it
+does not update the OpenAI directory listing.
+
+## Verify before advertising support
+
+1. Run packaging tests, skill validation, skill manifest checks, and manifest
+   validation. Check that no contributor-only skills, LFS pointers needed at
+   runtime, or dependencies on unbundled repository files entered the payload.
+2. In isolated profiles, install the full bundle and check its skill inventory.
+   Exercise both Claude's namespaced router and each client's native discovery.
+3. Upgrade from release N to N+1 through the actual distribution source. Confirm
+   the new version after reload; verify a pinned installation stays on N.
+   A local-directory reload is not proof of marketplace auto-update.
+4. Run a local title-card workflow. Verify `init` does not refresh global skills,
+   the CLI version matches the plugin, and plugin files remain unchanged. Check
+   existing project dependencies without rewriting their lockfiles.
+5. Test migration from `core-skills` and duplicate standalone skills, then
+   uninstall. Preserve unrelated skills and user edits.
+6. Record tested client versions, operating systems, source commit, and results
+   in the PR/release notes. Mark unavailable clients as unverified.
+
+The Claude marketplace keeps the old `core-skills` install identity for migration;
+new users should install `hyperframes@hyperframes`. Do not remove the old entry
+without testing migration on supported Claude versions.
+
+## Distribution status and rollback
+
+Track self-hosted repository installation, release artifact publication, native
+client verification, and public marketplace approval separately. Cursor public
+updates require review. OpenAI directory submissions follow their own process.
+Never describe a successful manifest check as a verified native installation.
+
+For rollback, reinstall the prior tested release tag or archive and disable
+updates temporarily. Do not reuse a version number for changed plugin contents.
+If a public marketplace has a separate published revision, roll that back through
+its own process too.
+
+## Related topics
+
+- [Install agent plugins](/guides/plugins)
+- [Release channels](/contributing/release-channels)
+- [Test local changes](/contributing/testing-local-changes)
