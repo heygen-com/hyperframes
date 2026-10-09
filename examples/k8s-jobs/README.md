@@ -12,7 +12,7 @@ From the repo root:
 docker build -t hyperframes-chunk-runner:local -f examples/k8s-jobs/Dockerfile.example .
 ```
 
-The build pulls `chrome-headless-shell` via `@puppeteer/browsers` and installs Debian system packages for the Chromium ABI deps. Expect a ~1.2 GB compressed image; ~3 GB unpacked.
+The build pulls `chrome-headless-shell` via `@puppeteer/browsers` and installs Debian system packages for the Chromium ABI deps. Expect about 2.3 GB unpacked.
 
 ## Use
 

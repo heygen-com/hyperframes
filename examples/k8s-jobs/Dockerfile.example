@@ -24,6 +24,7 @@
 #   docker run --rm \
 #     -e PRODUCER_HEADLESS_SHELL_PATH=/opt/chrome/chrome-headless-shell \
 #     -v /tmp/hyperframes:/tmp/hyperframes \
+#     -w /app/packages/aws-lambda \
 #     hyperframes-chunk-runner:local \
 #     node -e 'import("@hyperframes/producer/distributed").then(({renderChunk})=>renderChunk(...))'
 #
@@ -96,7 +97,8 @@ ENV PRODUCER_HEADLESS_SHELL_PATH=${CHROME_DIR}/chrome-headless-shell/linux-${CHR
 # ── HyperFrames ──────────────────────────────────────────────────────────────
 # Copy the workspace bun-locked package set. We use bun in the build
 # (matches the rest of the repo) but the runtime is plain Node — no bun
-# is needed at run time.
+# is needed at run time. Run producer code from a workspace that depends on
+# it (e.g. packages/aws-lambda): the root package does not link it.
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/aws-lambda/package.json packages/aws-lambda/
@@ -109,19 +111,26 @@ COPY packages/producer/package.json packages/producer/
 COPY packages/studio-server/package.json packages/studio-server/
 
 RUN npm install --global bun && \
-    bun install --frozen-lockfile && \
-    npm uninstall --global bun
+    bun install --frozen-lockfile
 
-# Bring in the source. We're not building the producer's dist/ here — bun's
-# workspace + tsx + esm resolution can run the producer straight from
-# `packages/producer/src/**`. Adopters who want a built distribution can
-# `bun run --cwd packages/producer build` against this image.
+# Bring in the source and build it: Node resolves these packages through their
+# `dist/` exports, so they are built in dependency order, as in
+# packages/gcp-cloud-run/Dockerfile.
+COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
 COPY packages/core ./packages/core
 COPY packages/engine ./packages/engine
 COPY packages/lint ./packages/lint
 COPY packages/parsers ./packages/parsers
 COPY packages/producer ./packages/producer
 COPY packages/studio-server ./packages/studio-server
+RUN bun run --cwd packages/parsers build && \
+    bun run --cwd packages/lint build && \
+    bun run --cwd packages/studio-server build && \
+    bun run --cwd packages/core build && \
+    bun run --cwd packages/core build:hyperframes-runtime:modular && \
+    bun run --cwd packages/engine build && \
+    bun run --cwd packages/producer build && \
+    npm uninstall --global bun
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 ENTRYPOINT ["/usr/bin/tini", "--"]
