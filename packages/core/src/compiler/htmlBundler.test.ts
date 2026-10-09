@@ -3,9 +3,13 @@ import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
-import { Script } from "node:vm";
+import { parse as parseJs } from "acorn";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { bundleToSingleHtml, emitRootCompositionVariableStyles } from "./htmlBundler";
+import {
+  bundleToSingleHtml,
+  emitRootCompositionVariableStyles,
+  parsesAsScript,
+} from "./htmlBundler";
 import { ensureExternalScriptTag } from "./externalScripts";
 import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
@@ -2910,7 +2914,7 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
     );
   const parses = (el: Element) => {
     try {
-      new Script(el.textContent ?? "");
+      parseJs(el.textContent ?? "", { ecmaVersion: "latest", sourceType: "script" });
       return true;
     } catch {
       return false;
@@ -2933,6 +2937,16 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
     expect(runnable(document).every(parses)).toBe(true);
     expect(runnable(document).some((el) => el.textContent?.includes('"beats"'))).toBe(false);
     expect(timelinesThatRun(document)).toEqual(["main", "intro", "scene"]);
+  });
+
+  // A host whose own compile is lazy (Bun 1.3's vm.Script) accepts all of these; the check must not.
+  it.each([
+    ["window.broken = {:", false],
+    ["window.broken = 1; return;", false],
+    ["export const broken = 1;", false],
+    ["window.ok = 1;", true],
+  ])("parsesAsScript(%j) is %s on any host engine", (source, parses) => {
+    expect(parsesAsScript(source)).toBe(parses);
   });
 
   const BROKEN_INLINE = [`<script>window.broken = {:</script>`, {}] as const;

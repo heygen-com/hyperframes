@@ -28,7 +28,7 @@ import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { cssVariableName } from "../tokenSlug";
 import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync, existsSync, statSync } from "fs";
-import { Script } from "vm";
+import { parse as parseJs } from "acorn";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import {
   decodeCssEscapes,
@@ -808,10 +808,11 @@ function joinJsChunks(chunks: string[]): string {
     .join("\n");
 }
 
-// Compiled as a classic script, never run: esbuild accepts export, top-level await and return, which a <script> rejects.
+// acorn in script mode, not the host engine: Bun 1.3's vm.Script compiles lazily and accepts anything.
+// esbuild accepts export, top-level await and return, which a <script> rejects; acorn does not.
 export function parsesAsScript(source: string): boolean {
   try {
-    new Script(source);
+    parseJs(source, { ecmaVersion: "latest", sourceType: "script" });
     return true;
   } catch {
     return false;
