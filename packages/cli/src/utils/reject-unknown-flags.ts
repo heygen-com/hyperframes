@@ -76,11 +76,15 @@ export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[]): v
 }
 
 // Spellings of a command's own string/enum args (the types citty lets swallow the next
-// token), mapped to the canonical arg name.
-function stringValueFlagOwners(args: ArgsDef | undefined): Map<string, string> {
+// token), mapped to the canonical arg name. Args in `ignore` are left out.
+function stringValueFlagOwners(
+  args: ArgsDef | undefined,
+  ignore: ReadonlySet<string> | undefined,
+): Map<string, string> {
   const owners = new Map<string, string>();
   for (const [name, def] of Object.entries(args ?? {})) {
     if (def?.type !== "string" && def?.type !== "enum") continue;
+    if (ignore?.has(name)) continue;
     for (const s of spellingsOf(name, def)) owners.set(s, name);
   }
   return owners;
@@ -134,11 +138,20 @@ function looksLikeSwallowedFlag(next: string | undefined, known: Set<string>): b
   return next === "--" || (next.startsWith("-") && unknownFlagIn(next, known) === null);
 }
 
-/**
- * Reject a string/enum flag whose value is missing, so citty swallowed the next flag as its
- * value (`catalog --query --json` parses to `query: "--json"`). Scans rawArgs because the parsed
- * args cannot tell `--query --json` from the legitimate `--query=--json`.
- */
+// The arg `tok` spells when citty would swallow `next` as its value, else undefined.
+function swallowingArgName(
+  tok: string,
+  next: string | undefined,
+  owners: Map<string, string>,
+  known: Set<string>,
+): string | undefined {
+  const spelling = ownableFlagSpelling(tok);
+  const ownerArgName = spelling ? owners.get(spelling) : undefined;
+  return ownerArgName && looksLikeSwallowedFlag(next, known) ? ownerArgName : undefined;
+}
+
+// Reject a string/enum flag whose value citty swallowed from the next flag (`catalog --query --json`).
+// Scans rawArgs: parsed args cannot tell `--query --json` from the legitimate `--query=--json`.
 export function guardSwallowedFlagValues(
   // `CommandDef<any>`: citty's CommandContext is invariant in its args type.
   cmd: CommandDef<any> | undefined,
@@ -149,25 +162,18 @@ export function guardSwallowedFlagValues(
   const rawDef = cmd?.args;
   const argsDef = rawDef && typeof rawDef === "object" ? (rawDef as ArgsDef) : undefined;
   const known = knownFlags(argsDef);
-  const owners = stringValueFlagOwners(argsDef);
+  const owners = stringValueFlagOwners(argsDef, SWALLOW_IGNORE_FLAGS[path]);
   const rewriteFlags = SWALLOW_REWRITE_FLAGS[path];
-  const ignoreFlags = SWALLOW_IGNORE_FLAGS[path];
 
   let out: string[] | undefined;
   for (const [i, tok] of rawArgs.entries()) {
     if (tok === "--") break;
-    const spelling = ownableFlagSpelling(tok);
-    const ownerArgName = spelling ? owners.get(spelling) : undefined;
-    if (!ownerArgName || ignoreFlags?.has(ownerArgName)) continue;
     const next = rawArgs[i + 1];
-    if (!looksLikeSwallowedFlag(next, known)) continue;
-
-    if (rewriteFlags?.has(ownerArgName)) {
-      out ??= rawArgs.slice();
-      out[i] = `${tok}=`;
-      continue;
-    }
-    throwSwallowedFlagError(ownerArgName, next as string);
+    const ownerArgName = swallowingArgName(tok, next, owners, known);
+    if (!ownerArgName) continue;
+    if (!rewriteFlags?.has(ownerArgName)) throwSwallowedFlagError(ownerArgName, next as string);
+    out ??= rawArgs.slice();
+    out[i] = `${tok}=`;
   }
   return { rawArgs: out ?? rawArgs, rewritten: out !== undefined };
 }

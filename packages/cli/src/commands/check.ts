@@ -139,7 +139,6 @@ export function createCheckCommand(
     },
     args: CHECK_COMMAND_ARGS,
     async run({ rawArgs }) {
-      // wrapCommand's swallow guard already rewrote a bare `--frame-check` to `--frame-check=`.
       const args = parseArgs(rawArgs, CHECK_COMMAND_ARGS);
       const asJson = args.json === true;
 
