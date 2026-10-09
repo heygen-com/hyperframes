@@ -1058,6 +1058,7 @@ export async function buildLocalExecutionPlan(
     height,
     needsAlpha,
     deviceScaleFactor,
+    subTimelineWaitMemo: {},
   });
   compiled = probeResult.compiled;
   job.duration = probeResult.duration;

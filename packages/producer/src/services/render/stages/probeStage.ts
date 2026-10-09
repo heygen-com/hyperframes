@@ -34,6 +34,7 @@ import {
   type CaptureOptions,
   type CaptureSession,
   type EngineConfig,
+  type SubTimelineWaitMemo,
   closeCaptureSession,
   compositionRequiresWebGpu,
   createCaptureSession,
@@ -94,6 +95,7 @@ export interface ProbeStageInput {
   height: number;
   needsAlpha: boolean;
   deviceScaleFactor: number;
+  subTimelineWaitMemo: SubTimelineWaitMemo;
 }
 
 const FRAME_BOUNDARY_EPSILON = 1e-3;
@@ -279,6 +281,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     height,
     needsAlpha,
     deviceScaleFactor,
+    subTimelineWaitMemo,
   } = input;
   let { compiled } = input;
 
@@ -347,6 +350,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         deviceScaleFactor,
         motionBlur,
         requiresWebGpu: compositionRequiresWebGpu(compiled.html),
+        subTimelineWaitMemo,
       };
 
       const PROBE_MAX_ATTEMPTS = 2;

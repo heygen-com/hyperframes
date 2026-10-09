@@ -91,6 +91,14 @@ describe("runtime composition length and size", () => {
     expect(lengthOf(html, { main: createMockTimeline(2) })).toBe(6);
   });
 
+  it("stops at the sub-composition's end when a tween repeats forever", () => {
+    const html =
+      `<div data-composition-id="main" data-root="true">` +
+      `<div data-composition-id="scene" data-start="2" data-duration="4"></div></div>`;
+    // GSAP's length for a timeline holding a `repeat: -1` tween.
+    expect(lengthOf(html, { main: createMockTimeline(1e10 + 2) })).toBe(6);
+  });
+
   it("derives the length from the clips when nothing else gives one", () => {
     const html =
       `<div data-composition-id="main" data-root="true">` +
