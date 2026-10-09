@@ -23,6 +23,11 @@ import { CliRuntimeError, consumeCommandResult } from "../utils/commandResult.js
 const transcribeMock = vi.fn();
 const prepareWavMock = vi.fn((input: string) => input);
 let audioSeconds = 1;
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, statSync: vi.fn(fs.statSync) };
+});
+
 vi.mock("../whisper/transcribe.js", () => ({
   transcribe: transcribeMock,
   prepareWav: (input: string) => prepareWavMock(input),
@@ -825,8 +830,34 @@ Render video. Built for agents.
 
     expect(lastJson()).toMatchObject({
       ok: false,
-      error: expect.stringContaining(`The caption file ${output} could not be written: ENOTDIR`),
+      error: expect.stringContaining(`The caption file ${output} could not be written: `),
     });
+    // A path through a file is ENOTDIR on POSIX and ENOENT on Windows.
+    expect(lastJson().error).toMatch(/ENOTDIR|ENOENT/);
+  });
+
+  it("compares names, not inodes, when the disk reports inode 0", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const output = join(dir, "captions.srt");
+    writeFileSync(output, "old captions");
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    vi.mocked(statSync).mockImplementation(((path: string, options?: object) =>
+      Object.assign(fs.statSync(path, options), { ino: 0n })) as unknown as typeof statSync);
+    transcribeMock.mockImplementation(async (_input, outputDir) =>
+      fakeTranscript(outputDir, "whisper"),
+    );
+
+    try {
+      await transcribeCmd.run!({
+        args: { input, json: true, engine: "whisper", to: "srt", output },
+      } as never);
+    } finally {
+      vi.mocked(statSync).mockImplementation(fs.statSync);
+    }
+
+    expect(lastJson()).toMatchObject({ ok: true, outputPath: output });
+    expect(readFileSync(output, "utf8")).toContain("-->");
   });
 
   it("fails a trailing -o with no path before transcribing", async () => {
@@ -866,7 +897,7 @@ Render video. Built for agents.
         symlinkSync(join(dir, "narration.wav", "x.srt"), join(dir, "through-file.srt"));
         return join(dir, "through-file.srt");
       },
-      "ENOTDIR",
+      /ENOTDIR|ENOENT/,
     ],
   ])("keeps the transcript when --output is %s", async (_name, output, reason) => {
     const { dir, input } = dummyAudio();
@@ -888,7 +919,7 @@ Render video. Built for agents.
         `Transcript saved to ${transcript}, but the caption file ${caption} could not be written: `,
       ),
     });
-    expect(lastJson().error).toContain(reason);
+    expect(lastJson().error).toMatch(reason);
     expect(JSON.parse(readFileSync(transcript, "utf8"))).toMatchObject([{ text: "whisper" }]);
   });
 

@@ -249,21 +249,19 @@ function outputProblem(
   return undefined;
 }
 
-/** Early refusal before the engine runs; writeCaptionSidecar's same-inode check is the owner. */
+/** Early refusal before the engine runs; the same check at write time is the owner. */
 function overwriteProblem(outPath: string, keep: string[]): string | undefined {
   const hit = keep.find((file) => sameFile(outPath, file));
   return hit && `The caption file would overwrite ${hit}; choose another file with --output`;
 }
 
-function sameInode(a: string, b: string): boolean {
-  if (!existsSync(a) || !existsSync(b)) return false;
-  const [x, y] = [statSync(a, { bigint: true }), statSync(b, { bigint: true })];
-  return x.dev === y.dev && x.ino === y.ino;
-}
-
 function sameFile(out: string, file: string): boolean {
-  if (existsSync(out) && existsSync(file)) return sameInode(out, file);
-  // Either may not exist yet; letter case is ignored so a case-insensitive disk cannot alias.
+  if (existsSync(out) && existsSync(file)) {
+    const [a, b] = [statSync(out, { bigint: true }), statSync(file, { bigint: true })];
+    // Some network shares report inode 0 for every file, which proves nothing; compare names then.
+    if (a.ino !== 0n && b.ino !== 0n) return a.dev === b.dev && a.ino === b.ino;
+  }
+  // Letter case is ignored so a case-insensitive disk cannot alias.
   const realDir = (p: string) =>
     existsSync(dirname(p)) ? realpathSync.native(dirname(p)) : dirname(p);
   return (
@@ -310,7 +308,7 @@ async function writeCaptionSidecar(
   phraseLevelSource: boolean | undefined,
 ): Promise<void> {
   // Checked at write time, when the transcript exists, so the OS resolves every link and alias.
-  const hit = keep.find((file) => sameInode(outPath, file));
+  const hit = keep.find((file) => sameFile(outPath, file));
   if (hit) throw new Error(`it is the same file as ${hit}`);
   const { formatSrt, formatVtt } = await import("../whisper/normalize.js");
   // A .srt/.vtt source is already phrase-level; keep its cue boundaries 1:1.
