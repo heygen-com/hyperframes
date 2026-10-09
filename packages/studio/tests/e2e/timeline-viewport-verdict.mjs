@@ -61,18 +61,23 @@ const SLOWER_THAN_BASE_SIGMAS = 3;
 
 const ONE_FRAME_MS = 1000 / 60;
 
-function countExcess(head, base) {
-  const allowedExcess = SLOWER_THAN_BASE_SIGMAS * Math.sqrt(head + base);
+/** One stall on a shared runner delays several steps in a row, so an excess must also be 2% of the steps. */
+const MIN_EXCESS_SHARE = 0.02;
+
+function countExcess(head, base, steps) {
+  const allowedExcess = SLOWER_THAN_BASE_SIGMAS * Math.sqrt(head + base) + MIN_EXCESS_SHARE * steps;
   return { head, base, allowedExcess, slower: head - base > allowedExcess };
 }
 
 /** Counted at the budget and a frame past it, so making already-late steps later also counts as slower. */
 function overBudgetExcess(headValues, baseValues, limitMs) {
   const over = (values, ms) => values.filter((value) => value > ms).length;
-  const atBudget = countExcess(over(headValues, limitMs), over(baseValues, limitMs));
+  const steps = headValues.length;
+  const atBudget = countExcess(over(headValues, limitMs), over(baseValues, limitMs), steps);
   const frameLater = countExcess(
     over(headValues, limitMs + ONE_FRAME_MS),
     over(baseValues, limitMs + ONE_FRAME_MS),
+    steps,
   );
   return { atBudget, frameLater, slower: atBudget.slower || frameLater.slower };
 }
