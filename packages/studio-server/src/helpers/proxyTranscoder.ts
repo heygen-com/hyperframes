@@ -19,15 +19,13 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  * project routes (U3/U4) to serve a `?hf-proxy=` request; never used on
  * the render path (render always sees the original file).
  *
- * IMPORTANT — request-lifecycle detachment: nothing here accepts or wires an
- * AbortSignal. `resolveProxy` returns a promise shared by every concurrent
- * caller for the same cache key (in-flight dedupe below); if a route handler
- * killed the ffmpeg child on client abort (page reload, HMR), every other
- * caller waiting on that same promise would fail too, and the next request
- * would restart a transcode that may have been minutes into a long asset.
- * Callers MUST let the child run to completion regardless of request
- * cancellation and simply let the held response also abort — the cache
- * entry still lands for the next request.
+ * IMPORTANT — request-lifecycle detachment: a started ffmpeg child is never
+ * killed on a caller's behalf. Every concurrent caller for the same cache key
+ * shares one copy (in-flight dedupe below); killing it on one client's abort
+ * (page reload, HMR) would fail every other caller and restart a transcode
+ * that may have been minutes into a long asset. A caller's `signal` only
+ * detaches that caller, and drops the copy while it is still queued and no
+ * caller is left waiting for it.
  */
 
 export const PROXY_PARAMS_VERSION = "v5";
@@ -222,40 +220,88 @@ export function getProxyCachePath(
 }
 
 // --- global concurrency limiter -------------------------------------------
-// ponytail: a bare counter + FIFO wait queue is the whole semaphore; no
-// dependency pulled in for this. Both element-triggered and pre-warm calls
-// go through the same `resolveProxy` entry point, so both queue here.
+// ponytail: a counter + one wait queue is the whole semaphore. Priority copies
+// queue ahead of the rest and are never refused for a full queue, so a few
+// priority asks (the copy a viewer is waiting on) can exceed the cap.
+
+/** One copy per cache key, shared by every caller asking for it. */
+interface ProxyJob {
+  priority: boolean;
+  /** Callers with a signal who have not left yet. */
+  waiting: number;
+  /** A caller without a signal never leaves, so the copy is always made. */
+  kept: boolean;
+  /** Set while the job waits for a slot. */
+  queued?: { start: () => void; drop: () => void };
+}
+
+class ProxyDroppedError extends ProxyTranscodeError {
+  constructor() {
+    super("media proxy copy dropped: every caller left before it started", null, "");
+    this.name = "ProxyDroppedError";
+  }
+}
 
 let activeTranscodes = 0;
-const waitQueue: Array<() => void> = [];
+const waitQueue: ProxyJob[] = [];
 
-function acquireSlot(): Promise<void> {
+function enqueue(job: ProxyJob): void {
+  const firstNormal = job.priority ? waitQueue.findIndex((queued) => !queued.priority) : -1;
+  if (firstNormal === -1) waitQueue.push(job);
+  else waitQueue.splice(firstNormal, 0, job);
+}
+
+function dequeue(job: ProxyJob): void {
+  const index = waitQueue.indexOf(job);
+  if (index !== -1) waitQueue.splice(index, 1);
+}
+
+function acquireSlot(job: ProxyJob): Promise<void> {
+  if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
+    activeTranscodes++;
+    return Promise.resolve();
+  }
+  if (!job.priority && waitQueue.length >= MAX_QUEUED_TRANSCODES) {
+    return Promise.reject(new ProxyCapacityError());
+  }
   return new Promise((resolveSlot, reject) => {
-    const tryAcquire = (): void => {
-      if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
+    job.queued = {
+      start: () => {
+        job.queued = undefined;
         activeTranscodes++;
         resolveSlot();
-      } else {
-        if (waitQueue.length >= MAX_QUEUED_TRANSCODES) {
-          reject(new ProxyCapacityError());
-          return;
-        }
-        waitQueue.push(tryAcquire);
-      }
+      },
+      drop: () => {
+        job.queued = undefined;
+        dequeue(job);
+        reject(new ProxyDroppedError());
+      },
     };
-    tryAcquire();
+    enqueue(job);
   });
 }
 
 function releaseSlot(): void {
   activeTranscodes--;
-  const next = waitQueue.shift();
-  if (next) next();
+  waitQueue.shift()?.queued?.start();
+}
+
+function prioritize(job: ProxyJob): void {
+  if (job.priority) return;
+  job.priority = true;
+  if (!job.queued) return;
+  dequeue(job);
+  enqueue(job);
+}
+
+function leave(job: ProxyJob): void {
+  job.waiting--;
+  if (job.waiting === 0 && !job.kept) job.queued?.drop();
 }
 
 // --- per-key in-flight dedupe ----------------------------------------------
 
-const inFlight = new Map<string, Promise<string>>();
+const inFlight = new Map<string, { promise: Promise<string>; job: ProxyJob }>();
 
 function maintainProxyCache(cacheDir: string): void {
   try {
@@ -462,13 +508,14 @@ async function runFfmpeg(
 }
 
 async function transcodeToCache(
+  job: ProxyJob,
   projectDir: string,
   absoluteSourcePath: string,
   cachePath: string,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
 ): Promise<string> {
-  await acquireSlot();
+  await acquireSlot(job);
   try {
     // Another caller may have finished (or a pre-warm beat us) while queued.
     if (existsSync(cachePath)) return cachePath;
@@ -510,13 +557,17 @@ export function proxyActivityMark(projectDir: string): string | null {
  * nonzero exit) — callers (route handlers) decide how to surface that (502).
  * A `box` makes a smaller preview-only copy with its own cache entry; without
  * one the copy keeps the source size (CLI play, static servers, publish).
+ * `priority` moves the copy ahead of every normal queued copy; a `signal`
+ * lets this caller leave (see the detachment note at the top of this file).
  */
 export async function resolveProxy(
   projectDir: string,
   absoluteSourcePath: string,
   variant: ProxyVariant = "h264",
   box?: PreviewProxyBox,
+  options: ProxyAskOptions = {},
 ): Promise<string> {
+  options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const cachePath = getCanonicalProxyCachePath(source, variant, box);
   if (existsSync(cachePath)) {
@@ -531,18 +582,60 @@ export async function resolveProxy(
     failedTranscodes.delete(cachePath);
   }
 
-  const existing = inFlight.get(cachePath);
-  if (existing) return existing;
+  let entry = inFlight.get(cachePath);
+  if (!entry) {
+    const job: ProxyJob = { priority: options.priority === true, waiting: 0, kept: false };
+    const promise = transcodeToCache(
+      job,
+      source.projectDir,
+      source.sourcePath,
+      cachePath,
+      variant,
+      box,
+    )
+      .catch((err: unknown) => {
+        if (!(err instanceof ProxyCapacityError || err instanceof ProxyDroppedError)) {
+          rememberFailure(cachePath, err);
+        }
+        throw err;
+      })
+      .finally(() => {
+        inFlight.delete(cachePath);
+        settledProxyCount += 1;
+      });
+    entry = { promise, job };
+    inFlight.set(cachePath, entry);
+  }
+  if (options.priority) prioritize(entry.job);
+  return joinJob(entry.promise, entry.job, options.signal);
+}
 
-  const promise = transcodeToCache(source.projectDir, source.sourcePath, cachePath, variant, box)
-    .catch((err: unknown) => {
-      if (!(err instanceof ProxyCapacityError)) rememberFailure(cachePath, err);
-      throw err;
-    })
-    .finally(() => {
-      inFlight.delete(cachePath);
-      settledProxyCount += 1;
-    });
-  inFlight.set(cachePath, promise);
-  return promise;
+export interface ProxyAskOptions {
+  priority?: boolean;
+  signal?: AbortSignal;
+}
+
+function joinJob(promise: Promise<string>, job: ProxyJob, signal?: AbortSignal): Promise<string> {
+  if (!signal) {
+    job.kept = true;
+    return promise;
+  }
+  job.waiting++;
+  return new Promise((resolveJoin, rejectJoin) => {
+    const onAbort = (): void => {
+      leave(job);
+      rejectJoin(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (cachePath) => {
+        signal.removeEventListener("abort", onAbort);
+        resolveJoin(cachePath);
+      },
+      (err: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        rejectJoin(err);
+      },
+    );
+  });
 }
