@@ -21,11 +21,11 @@ describe("setPreviewRasterScale", () => {
   it("drops a positioned layer's transform hint while the preview is shown small", () => {
     const words = layer(POSITIONED);
     const word = layer("position: absolute", words);
-    const mixed = layer("position: relative; will-change: opacity, transform");
+    const mixed = layer("position: relative; will-change: transform, opacity");
     setPreviewRasterScale(0.275);
     expect(marked(words)).toBe(true);
     expect(marked(word)).toBe(false);
-    expect(marked(mixed)).toBe(true);
+    expect(marked(mixed)).toBe(false);
     expect(getComputedStyle(words).willChange).toBe("auto");
     expect(words.getAttribute("style")).toBe(POSITIONED);
   });
@@ -73,5 +73,15 @@ describe("setPreviewRasterScale", () => {
     await Promise.resolve();
     expect(marked(late)).toBe(false);
     sheet.remove();
+  });
+
+  it("gives the hint back when an inline style makes a child depend on it", async () => {
+    const words = layer(POSITIONED);
+    const word = layer("position: absolute", words);
+    setPreviewRasterScale(0.5);
+    expect(marked(words)).toBe(true);
+    word.style.zIndex = "5";
+    await Promise.resolve();
+    expect(marked(words)).toBe(false);
   });
 });

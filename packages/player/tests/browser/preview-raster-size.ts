@@ -152,11 +152,11 @@ try {
   assert.deepEqual(small.styles, full.styles, "no inline style is written");
   assert.deepEqual(
     await frame.evaluate(() =>
-      ["wrap", "stack", "card", "glass-wrap", "tilt-wrap"].map(
+      ["wrap", "stack", "card", "glow", "mixed", "glass-wrap", "tilt-wrap"].map(
         (id) => getComputedStyle(document.getElementById(id)!).willChange,
       ),
     ),
-    ["transform", "transform", "transform", "auto", "auto"],
+    ["transform", "transform", "transform", "transform", "transform, opacity", "auto", "auto"],
     "only layers nothing depends on lose the hint",
   );
   await frame.evaluate(() => {
@@ -204,13 +204,24 @@ try {
   await until("the swap turns back on", swapped);
   // Layers that keep their hint on purpose still raster large; everything else must not.
   await frame.evaluate(() => {
-    for (const id of ["wrap", "stack", "stage3d"]) document.getElementById(id)!.remove();
+    for (const id of ["wrap", "stack", "stage3d", "glow", "mixed"]) {
+      document.getElementById(id)!.remove();
+    }
   });
   for (let clean = 0, attempt = 0; clean < 3; attempt++) {
     const oversize = await maxOversize(attempt);
     clean = oversize <= 1.5 ? clean + 1 : 0;
     assert.ok(attempt < 20, `a layer is still rastered at ${oversize.toFixed(2)}x the size shown`);
   }
+
+  // Scripts restyle inline: a child given a z-index gives its layer the hint back.
+  await frame.evaluate(() => {
+    document.getElementById("tilted")!.style.zIndex = "5";
+  });
+  await until(
+    "an inline z-index gives the hint back",
+    () => getComputedStyle(document.getElementById("tilt-wrap")!).willChange === "transform",
+  );
 
   await resize(1920, 1080);
   await until("full size restores the hints", hinted);

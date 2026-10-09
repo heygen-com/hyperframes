@@ -127,6 +127,31 @@
         transform: rotateY(50deg);
         background: repeating-linear-gradient(0deg, #ff0 0 10px, #00f 10px 20px);
       }
+      #glow {
+        position: absolute;
+        left: 1300px;
+        top: 950px;
+        width: 120px;
+        height: 80px;
+        will-change: transform;
+        background: #333;
+      }
+      #glow::before {
+        content: "";
+        position: absolute;
+        inset: -10px;
+        z-index: -1;
+        background: #f0f;
+      }
+      #mixed {
+        position: absolute;
+        left: 1500px;
+        top: 950px;
+        width: 120px;
+        height: 80px;
+        will-change: transform, opacity;
+        background: #444;
+      }
     </style>
     <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
     <script src="/vendor/gsap.min.js"></script>
@@ -150,6 +175,8 @@
       <div id="stripes"></div>
       <div id="glass-wrap"><div id="glass"></div></div>
       <div id="tilt-wrap"><div id="tilted"></div></div>
+      <div id="glow"></div>
+      <div id="mixed"></div>
       <div style="display: none"><h2 class="lyric">Hidden</h2></div>
     </div>
     <script>
