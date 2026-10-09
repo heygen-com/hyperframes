@@ -1380,6 +1380,12 @@ describe("composition rules", () => {
       expect(await lintAt(nested, `<img src="../../../x.png" alt="">`)).toBeDefined();
     });
 
+    it("errors when a path dips out of the project midway or the file path starts with ./", async () => {
+      const scene = "compositions/scene.html";
+      expect(await lintAt(scene, `<img src="../assets/../../x.png" alt="">`)).toBeDefined();
+      expect(await lintAt(`./${scene}`, `<img src="../../x.png" alt="">`)).toBeDefined();
+    });
+
     it("errors when a <link> href climbs out of the project with ../fonts/", async () => {
       const html = `<html><head>
         <link rel="stylesheet" href="../fonts/brand.css">

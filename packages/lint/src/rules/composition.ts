@@ -14,7 +14,6 @@ import {
 import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
-import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import {
   readAuthoredDurationSeconds,
   resolveMediaDuration,
@@ -137,6 +136,16 @@ function extractCssUrlReferences(css: string): string[] {
 // Top-level CSS selectors (comma-split) in a stylesheet, skipping at-rule headers
 // (@media/@keyframes/...) and keyframe stops. Heuristic — the lint layer has no
 // full CSS parser, and rules elsewhere in this file scan CSS the same way.
+function climbsAboveRoot(fileDepth: number, path: string): boolean {
+  let depth = fileDepth;
+  for (const segment of path.split("/")) {
+    if (segment === "..") depth -= 1;
+    else if (segment && segment !== ".") depth += 1;
+    if (depth < 0) return true;
+  }
+  return false;
+}
+
 function extractCssSelectors(css: string): string[] {
   const out: string[] = [];
   const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -644,14 +653,13 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 
     const offenders: string[] = [];
-    const fileDir = (options.compSrcPath ?? "index.html").split("/").slice(0, -1).join("/");
+    const fileDepth =
+      (options.compSrcPath ?? "index.html").split("/").filter((s) => s && s !== ".").length - 1;
     const collect = (value: string | null) => {
       if (!value) return;
       const trimmed = value.trim();
       if (!trimmed.startsWith("../") && trimmed !== "..") return;
-      const path = trimmed.split(/[?#]/, 1)[0] ?? "";
-      if (isPathInside(`/project/${fileDir}/${path}`, "/project")) return;
-      offenders.push(trimmed);
+      if (climbsAboveRoot(fileDepth, trimmed.split(/[?#]/, 1)[0] ?? "")) offenders.push(trimmed);
     };
 
     for (const tag of tags) {
@@ -688,7 +696,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         severity: "error",
         message:
           `Found ${offenders.length} asset path(s) traversing above the project root with "../" ` +
-          `(${prefixSummary}), resolved from this file's folder. Nothing outside the project is served, so they 404 in preview and render.`,
+          `(${prefixSummary}), resolved from this file's folder. Preview and render clamp them to the project root, so they load a different file than written, or none.`,
         fixHint:
           'Point the path at a file inside the project: from compositions/scene.html, "../assets/x.png" and "assets/x.png" both reach the project\'s assets folder.',
       },
