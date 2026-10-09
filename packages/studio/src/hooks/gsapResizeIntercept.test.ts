@@ -466,13 +466,20 @@ it.each([
   {
     name: "puts a statically positioned element on a sub-pixel drop point",
     shift: { x: 0.3, y: -0.2 },
+    writes: true,
+  },
+  {
+    name: "leaves a static position alone when the drop is off by less than the file's precision",
+    shift: { x: 0.0003, y: 0 },
+    writes: false,
   },
   {
     name: "leaves an animated position alone for a sub-pixel drop point",
     shift: { x: 0.3, y: -0.2 },
     animated: true,
+    writes: false,
   },
-])("$name", async ({ shift, animated }) => {
+])("$name", async ({ shift, animated, writes }) => {
   document.body.innerHTML = "";
   const el = document.createElement("div");
   el.id = "clip";
@@ -557,8 +564,8 @@ it.each([
     .map((call) => call[1] as { properties?: Record<string, number> })
     .filter((mutation) => mutation.properties?.x != null || mutation.properties?.y != null);
   // No position write, or one that moves the hold by exactly the drop's sub-pixel offset.
-  if (animated) expect(positionWrites).toEqual([]);
-  else if (shift.x !== 0) expect(positionWrites.length).toBeGreaterThan(0);
+  if (writes === false) expect(positionWrites).toEqual([]);
+  if (writes) expect(positionWrites.length).toBeGreaterThan(0);
   for (const write of positionWrites) {
     expect(write.properties?.x).toBeCloseTo(432 + shift.x, 3);
     expect(write.properties?.y).toBeCloseTo(173 + shift.y, 3);

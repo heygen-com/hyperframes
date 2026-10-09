@@ -126,12 +126,12 @@ export function resizeRemainderShift(
 ): { x: number; y: number } {
   const u = { x: corners.ne.x - corners.nw.x, y: corners.ne.y - corners.nw.y };
   const v = { x: corners.sw.x - corners.nw.x, y: corners.sw.y - corners.nw.y };
-  // `grab` points from the centre to the grabbed corner on screen, so a mirror or a turned parent picks its side.
-  const kw =
-    (Math.sign(grab.x * u.x + grab.y * u.y) * (wanted.width - written.width)) / (2 * written.width);
-  const kh =
-    (Math.sign(grab.x * v.x + grab.y * v.y) * (wanted.height - written.height)) /
-    (2 * written.height);
+  // `grab` in edge coordinates: which side of each edge the grabbed corner is, even on a skewed box.
+  const det = u.x * v.y - u.y * v.x;
+  const su = Math.sign((grab.x * v.y - grab.y * v.x) / det);
+  const sv = Math.sign((u.x * grab.y - u.y * grab.x) / det);
+  const kw = (su * (wanted.width - written.width)) / (2 * written.width);
+  const kh = (sv * (wanted.height - written.height)) / (2 * written.height);
   return { x: u.x * kw + v.x * kh, y: u.y * kw + v.y * kh };
 }
 

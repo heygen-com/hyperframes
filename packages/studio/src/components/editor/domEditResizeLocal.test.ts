@@ -176,3 +176,29 @@ describe("resizeRemainderShift", () => {
     expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
   });
 });
+
+describe("resizeRemainderShift on a skewed box", () => {
+  // A 30 deg child of a parent scaled 2 x 1 renders as a parallelogram; a 10 x 200 bar flips a projected sign.
+  const angle = Math.PI / 6;
+  const at = (u: number, v: number) => ({
+    x: 400 + 2 * (u * Math.cos(angle) - v * Math.sin(angle)),
+    y: 300 + (u * Math.sin(angle) + v * Math.cos(angle)),
+  });
+  const written = { width: 10, height: 200 };
+  const wanted = { width: 10.4, height: 199.7 };
+  const corners = { nw: at(-5, -100), ne: at(5, -100), sw: at(-5, 100), se: at(5, 100) };
+
+  it.each([
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+  ] as const)("lands local corner (%i, %i) on the wanted size", (su, sv) => {
+    const grabbed = at((su * written.width) / 2, (sv * written.height) / 2);
+    const grab = { x: grabbed.x - 400, y: grabbed.y - 300 };
+    const shift = resizeRemainderShift(corners, grab, { wanted, written });
+    const target = at((su * wanted.width) / 2, (sv * wanted.height) / 2);
+    expect(grabbed.x + shift.x).toBeCloseTo(target.x, 9);
+    expect(grabbed.y + shift.y).toBeCloseTo(target.y, 9);
+  });
+});
