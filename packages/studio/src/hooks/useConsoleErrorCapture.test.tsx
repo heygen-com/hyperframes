@@ -85,6 +85,8 @@ it("clears a document's errors when its load replaces it, and when the preview g
 
   await act(async () => root?.render(React.createElement(NullableHarness, { frame: null })));
   expect(capture.consoleErrors).toBeNull();
+  await act(async () => announcePreviewDocumentLoaded(iframe));
+  expect(capture.consoleErrors).toBeNull();
 });
 
 it("keeps a page's errors through its own late load, and clears them for the next announced page", async () => {

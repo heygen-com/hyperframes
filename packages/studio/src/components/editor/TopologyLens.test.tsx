@@ -260,7 +260,7 @@ describe("TopologyLens", () => {
     mount();
     begin();
 
-    act(() => void (iframe && announcePreviewDocumentLoaded(iframe)));
+    act(() => announcePreviewDocumentLoaded(iframe!));
     expect(host?.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
 
     begin();

@@ -10,6 +10,7 @@ import {
   shouldShowCompositionLoadingOverlay,
 } from "./Player";
 import { usePlayerStore } from "../store/playerStore";
+import { onPreviewDocumentLoaded } from "../sceneSwap";
 
 vi.mock("@hyperframes/player", () => ({}));
 
@@ -203,7 +204,7 @@ describe("callbacks after the player is already mounted", () => {
     let page = {};
     Object.defineProperty(iframe, "contentDocument", { get: () => page });
     const announced = vi.fn();
-    iframe.addEventListener("hf-preview-document-loaded", announced);
+    onPreviewDocumentLoaded(iframe, announced);
 
     act(() => void player.dispatchEvent(new Event("ready")));
     expect(onLoad).toHaveBeenCalledTimes(1);
