@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -655,6 +663,55 @@ describe("timeline edit command", () => {
               : "timeline undo: undo receipt is missing file, version, or backupPath",
         });
         expect(sources()).toEqual(current);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    { format: "single", missing: "target", index: 1 },
+    { format: "single", missing: "backup", index: 1 },
+    { format: "batch", missing: "target", index: 1 },
+    { format: "batch", missing: "backup", index: 1 },
+    { format: "single", missing: "target", index: 0 },
+    { format: "batch", missing: "target", index: 0 },
+  ])(
+    "refuses a $format undo when its $missing at index $index is missing",
+    ({ format, missing, index }) => {
+      const { dir, files, planPath } = batchProject();
+      try {
+        const applied = run(dir, "apply", planPath);
+        expect(applied.status, applied.stderr).toBe(0);
+        const receipt: { file: string; backupPath: string } = JSON.parse(applied.stdout).receipt[
+          index
+        ];
+        const missingFile = missing === "target" ? receipt.file : receipt.backupPath;
+        const missingPath = join(dir, missingFile);
+        rmSync(missingPath);
+        const remainingFiles = files.filter((file) => join(dir, file) !== missingPath);
+        const sources = () => remainingFiles.map((file) => readFileSync(join(dir, file), "utf8"));
+        const current = sources();
+        const backupDir = join(dir, ".hyperframes", "backup");
+        const backups = () =>
+          readdirSync(backupDir)
+            .sort()
+            .map((file) => [file, readFileSync(join(backupDir, file), "utf8")]);
+        const currentBackups = backups();
+        const input = format === "single" ? JSON.stringify(receipt) : applied.stdout;
+
+        const undone = run(dir, "undo", input);
+
+        expect(undone.status, undone.stderr).toBe(2);
+        expect(undone.stdout).toBe("");
+        expect(JSON.parse(undone.stderr)).toEqual({
+          ok: false,
+          reason: `timeline undo: undo file is missing: ${missingFile}`,
+          fix: "restore the missing target or backup file before retrying undo",
+        });
+        expect(sources()).toEqual(current);
+        expect(backups()).toEqual(currentBackups);
+        expect(existsSync(missingPath)).toBe(false);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
