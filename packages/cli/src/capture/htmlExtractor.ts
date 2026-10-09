@@ -15,7 +15,7 @@ const DEFAULT_SETTLE_TIME = 3000;
 // Pre-existing capture pipeline size — surfaced by a one-line escape fix, not new logic.
 // fallow-ignore-next-line complexity
 export async function extractHtml(
-  page: Page,
+  page: Pick<Page, "evaluate" | "url">,
   opts: { settleTime?: number } = {},
 ): Promise<ExtractedHtml> {
   const settleTime = opts.settleTime ?? DEFAULT_SETTLE_TIME;
@@ -50,18 +50,22 @@ export async function extractHtml(
           return match;
         }
       });
-      // Add the CSS as a <style> tag in <head> via Puppeteer's addStyleTag
-      await page.addStyleTag({ content: css });
-      // Remove the original <link> tag (use parameterized evaluate to avoid injection)
-      await page.evaluate((targetHref: string) => {
-        const links = document.querySelectorAll('link[rel="stylesheet"]');
-        for (const link of links) {
-          if ((link as HTMLLinkElement).href === targetHref) {
-            link.remove();
-            break;
+      await page.evaluate(
+        (targetHref: string, content: string) => {
+          const links = document.querySelectorAll('link[rel="stylesheet"]');
+          for (const link of links) {
+            if (link instanceof HTMLLinkElement && link.href === targetHref) {
+              const style = document.createElement("style");
+              style.textContent = content;
+              style.media = link.media;
+              link.replaceWith(style);
+              break;
+            }
           }
-        }
-      }, href);
+        },
+        href,
+        css,
+      );
     } catch {
       /* network error — skip */
     }
