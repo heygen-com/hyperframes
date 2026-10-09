@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { isAudibleVideoElement } from "@hyperframes/core/audible-video";
 import { formatAudioGain, MAX_AUDIO_GAIN_DB } from "@hyperframes/core/audio-gain";
+import { decodeAuthoredAttribute } from "@hyperframes/parsers";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { requestedProjectPath } from "./requestSubPath.js";
@@ -101,7 +102,14 @@ function attributeFromMatch(
   const whole = match[0];
   const localValueStart = attributeValueStart(whole);
   const valueStart = absoluteOffset + match.index + localValueStart;
-  return [name, { value, valueStart, valueEnd: valueStart + value.length }];
+  return [
+    name,
+    {
+      value: decodeAuthoredAttribute(value),
+      valueStart,
+      valueEnd: valueStart + value.length,
+    },
+  ];
 }
 
 function matchedAttributeValue(match: RegExpMatchArray): string | undefined {
