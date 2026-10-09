@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -56,6 +56,44 @@ describe("compileForRender natural media duration parity", () => {
     });
     return { result, document: parseHTML(result.html).document };
   }
+
+  it("probes and clamps a nested entry media URL against its decoded physical filename", async () => {
+    const entryDir = join(projectDir, "nested");
+    mkdirSync(entryDir, { recursive: true });
+    copyFileSync(audioPath, join(entryDir, "ten seconds%#.wav"));
+    const htmlPath = join(entryDir, "index.html");
+    writeFileSync(
+      htmlPath,
+      `<html><body><main data-composition-id="root" data-duration="100" data-width="16" data-height="16"><audio id="inferred" src="ten%20seconds%25%23.wav"></audio><audio id="clamped" src="ten%20seconds%25%23.wav" data-duration="12"></audio></main></body></html>`,
+    );
+    const result = await compileForRender(projectDir, htmlPath, projectDir, {
+      allowSystemFontCapture: false,
+    });
+    const document = parseHTML(result.html).document;
+    expect(Number(document.getElementById("inferred")?.getAttribute("data-duration"))).toBeCloseTo(
+      10,
+      3,
+    );
+    expect(Number(document.getElementById("clamped")?.getAttribute("data-duration"))).toBeCloseTo(
+      10,
+      3,
+    );
+  });
+
+  it("probes entity-spelled root-entry audio before URL decoding", async () => {
+    copyFileSync(audioPath, join(projectDir, "it's&a.wav"));
+    const { document } = await compile(
+      `<audio id="inferred" src="it&#39;s&amp;a.wav"></audio><audio id="clamped" src="it&#39;s&amp;a.wav" data-duration="12"></audio>`,
+    );
+    expect(Number(document.getElementById("inferred")?.getAttribute("data-duration"))).toBeCloseTo(
+      10,
+      3,
+    );
+    expect(Number(document.getElementById("clamped")?.getAttribute("data-duration"))).toBeCloseTo(
+      10,
+      3,
+    );
+  });
 
   it("uses shared playback-rate parsing for duration-less video and audio", async () => {
     const cases = [

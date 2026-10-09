@@ -25,6 +25,9 @@ export default defineConfig({
   },
   test: {
     environment: "happy-dom",
+    environmentOptions: {
+      happyDOM: { settings: { handleDisabledFileLoadingAsSuccess: true } },
+    },
     setupFiles: ["./src/slideshow/test-setup.ts"],
   },
 });

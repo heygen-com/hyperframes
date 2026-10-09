@@ -14,5 +14,5 @@ export function normalizeWords(input) {
 export function wordListsFromMediaMeta(input) {
   if (Array.isArray(input) || Array.isArray(input?.words)) return [normalizeWords(input)];
   if (!Array.isArray(input?.voices)) return [];
-  return input.voices.map((voice) => normalizeWords(voice)).filter((words) => words.length > 0);
+  return input.voices.map((voice) => normalizeWords(voice));
 }

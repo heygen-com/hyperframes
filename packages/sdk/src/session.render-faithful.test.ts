@@ -185,3 +185,27 @@ describe("serialize() render-faithfulness (WS-F)", () => {
     expect(comp2.getElement("hf-body")?.text).toContain("Round-tripped body");
   });
 });
+
+describe("serialize() preserves unquoted CSS escapes", () => {
+  it.each([
+    String.raw`alpha\;beta`,
+    String.raw`alpha\(beta`,
+    String.raw`alpha\"beta`,
+    String.raw`alpha\'beta`,
+  ])("keeps %s through edit, undo, redo, and saved overrides", async (label) => {
+    const style = `--label: ${label}; width: 120px; color: red`.replace(/"/g, "&quot;");
+    const source = `<div data-hf-id="hf-box" data-hf-root style="${style}"></div>`;
+    const comp = await openComposition(source);
+    const expected = { "--label": label, width: "120px", color: "blue" };
+    comp.setStyle("hf-box", { color: "blue" });
+    expect(comp.getElement("hf-box")?.inlineStyles).toMatchObject(expected);
+    comp.undo();
+    expect(comp.getElement("hf-box")?.inlineStyles).toMatchObject({ ...expected, color: "red" });
+    comp.redo();
+    expect(comp.getElement("hf-box")?.inlineStyles).toMatchObject(expected);
+    const reopened = await openComposition(comp.serialize());
+    expect(reopened.getElement("hf-box")?.inlineStyles).toMatchObject(expected);
+    const overrides = await openComposition(source, { overrides: comp.getOverrides() });
+    expect(overrides.getElement("hf-box")?.inlineStyles).toMatchObject(expected);
+  });
+});

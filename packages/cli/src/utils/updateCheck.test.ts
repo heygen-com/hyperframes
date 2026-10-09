@@ -120,6 +120,10 @@ describe("printUpdateNotice — install-method-aware command", () => {
     });
     expect(out).toBe("");
   });
+
+  it("does not advertise an update from an invalid cached version", async () => {
+    expect(await noticeWith({ installerCommand: null, latestVersion: "not-a-version" })).toBe("");
+  });
 });
 
 /**
@@ -421,4 +425,33 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     expect(poisoned.updateAvailable).toBe(false);
     expect(poisoned.latest).not.toContain(";");
   });
+
+  it.each(["not-a-version", "999.0.0; invalid", 999, ["999.0.0"], {}, null, undefined])(
+    "omits invalid cached version %j from JSON metadata",
+    async (latestVersion) => {
+      const mod = await load({ latestVersion });
+      const wrapped = mod.withMeta({ ok: true });
+      expect(wrapped._meta).toEqual({
+        version: mod.cachedUpdateCheck().current,
+        latestVersion: undefined,
+        updateAvailable: false,
+      });
+      expect(JSON.parse(JSON.stringify(wrapped))).toEqual({
+        ok: true,
+        _meta: { version: wrapped._meta.version, updateAvailable: false },
+      });
+    },
+  );
+
+  it.each(["0.0.1", "999.0.0", "999.0.0-beta.1+build.5"])(
+    "preserves safe cached version %s and the update-check result in metadata",
+    async (latestVersion) => {
+      const mod = await load({ latestVersion });
+      expect(mod.getUpdateMeta()).toEqual({
+        version: mod.cachedUpdateCheck().current,
+        latestVersion,
+        updateAvailable: mod.cachedUpdateCheck().updateAvailable,
+      });
+    },
+  );
 });

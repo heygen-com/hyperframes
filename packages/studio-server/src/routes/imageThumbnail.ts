@@ -55,12 +55,7 @@ async function generateThumbnail(path: string, signal: AbortSignal): Promise<Buf
 async function resolveSource(adapter: StudioApiAdapter, id: string, url: string) {
   const project = await adapter.resolveProject(id);
   if (!project) throw new HTTPException(404);
-  let relative: string;
-  try {
-    relative = requestSubPath(url, "projects/:id/image-thumbnail");
-  } catch {
-    throw new HTTPException(400);
-  }
+  const relative = requestSubPath(url, "projects/:id/image-thumbnail");
   if (!/\.jpe?g$/i.test(relative)) throw new HTTPException(415);
   const path = pinWithinProject(project.dir, relative);
   if (!path) throw new HTTPException(404);

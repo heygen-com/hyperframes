@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HyperframesPlayer } from "./hyperframes-player.js";
+import { RUNTIME_CDN_URL } from "./runtime-url.js";
 
 function mountPlayer() {
   const player = document.createElement("hyperframes-player") as HyperframesPlayer;
@@ -101,5 +102,49 @@ describe("terminal probe readiness", () => {
     expect(onError.mock.calls[0][0].detail.message).toBe("Uncaught Error: author failed");
     sendTimeline(iframe);
     expectUnready(player, onReady);
+  });
+
+  it.each([
+    ["http://127.0.0.1:8900/custom-runtime.js", "http://127.0.0.1:8900/custom-runtime.js"],
+    ["/custom-runtime.js", "http://localhost:3000/custom-runtime.js"],
+    ["https://foreign.example/custom-runtime.js", null],
+    ['javascript:alert("no")', null],
+  ])("resolves runtime-src %s for a src embed", (configured, expected) => {
+    const { player, iframe } = mountPlayer();
+    player.setAttribute("runtime-src", configured);
+    player.setAttribute("src", "composition.html");
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("missing fixture document");
+    doc.body.innerHTML =
+      '<div data-composition-id="main"><div data-composition-src="child.html"></div></div>';
+    iframe.dispatchEvent(new Event("load"));
+    vi.advanceTimersByTime(200);
+    const script = iframe.contentDocument?.querySelector("script[src]");
+    if (!(script instanceof HTMLScriptElement)) throw new Error("missing injected runtime");
+    expect(script.src).toBe(expected ?? RUNTIME_CDN_URL);
+  });
+
+  it("rejects a late runtime handshake after a load failure", () => {
+    const { player, iframe, onError, onReady } = mountPlayer();
+    vi.advanceTimersByTime(200);
+    const script = iframe.contentDocument?.querySelector("script[src]");
+    if (!(script instanceof HTMLScriptElement)) throw new Error("missing injected runtime");
+    script.dispatchEvent(new Event("error"));
+    expect(onError).toHaveBeenCalledOnce();
+    sendTimeline(iframe);
+    expectUnready(player, onReady);
+  });
+
+  it("can recover from a load failure in the next document", () => {
+    const { player, iframe, onReady } = mountPlayer();
+    vi.advanceTimersByTime(200);
+    const script = iframe.contentDocument?.querySelector("script[src]");
+    if (!(script instanceof HTMLScriptElement)) throw new Error("missing injected runtime");
+    script.dispatchEvent(new Event("error"));
+    const replacement = document.implementation.createHTMLDocument("Replacement");
+    keepDocument(iframe, replacement);
+    iframe.dispatchEvent(new Event("load"));
+    sendTimeline(iframe);
+    expectTimelineReady(player, onReady);
   });
 });

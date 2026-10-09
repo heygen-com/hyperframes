@@ -721,3 +721,46 @@ describe("patchElementInHtml ensure-id", () => {
     expect(ensureId(cards(), "hf-missing").elementId).toBeUndefined();
   });
 });
+
+describe("media replacement naming", () => {
+  const replace = (html: string, id: string, src: string) =>
+    patchElementInHtml(html, { id }, [{ type: "html-attribute", property: "src", value: src }])
+      .html;
+
+  it("preserves an authored id", () => {
+    expect(
+      replace('<video id="hero-shot" src="harbor.mp4"></video>', "hero-shot", "library.mp4"),
+    ).toContain('id="hero-shot"');
+  });
+
+  it("updates a generated id across two replacements", () => {
+    const first = replace(
+      '<video id="harbor_2" src="harbor.mp4"></video>',
+      "harbor_2",
+      "library.mp4",
+    );
+    expect(first).toContain('id="library"');
+    expect(replace(first, "library", "sunset.mp4")).toContain('id="sunset"');
+  });
+
+  it("allows replacement with unrelated invalid authored escapes", () => {
+    const html = String.raw`<video id="harbor" src="harbor.mp4"></video><style>.other {content: "\ffffff"}</style><script>const unrelated = "\u{110000}";</script>`;
+    expect(replace(html, "harbor", "library.mp4")).toContain('id="library"');
+  });
+
+  it("replaces child media while preserving the parent target id", () => {
+    const result = patchElementInHtml(
+      '<div id="container"><video id="harbor" src="harbor.mp4"></video></div>',
+      { id: "container" },
+      [{ type: "html-attribute", property: "src", value: "library.mp4", childSelector: "video" }],
+    );
+    expect(result.html).toContain('id="library"');
+    expect(result.elementId).toBe("container");
+  });
+
+  it("preserves a referenced generated id", () => {
+    const source =
+      '<video id="harbor" src="harbor.mp4"></video><style>#harbor {opacity: .5}</style>';
+    expect(replace(source, "harbor", "library.mp4")).toContain('id="harbor"');
+  });
+});

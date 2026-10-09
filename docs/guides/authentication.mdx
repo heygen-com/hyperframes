@@ -47,14 +47,19 @@ The credential lives in `~/.heygen/credentials` (mode `0600`) — no per-repo `.
 
 ## How the HeyGen credential resolves
 
-Bundled media workflows use the HeyGen credential for hosted TTS and music /
+The bundled audio scripts use the HeyGen credential for hosted TTS and music /
 sound retrieval. It resolves first-match-wins:
 
-1. `HEYGEN_API_KEY` — environment variable
-2. `HYPERFRAMES_API_KEY` — alias, for parity with other tools
-3. `~/.heygen/credentials` — written by `hyperframes auth login` (or `heygen auth login`)
+1. `HEYGEN_API_BASE` with `HEYGEN_API_KEY` — a host app's own gateway, set by the app that started the workflow
+2. `HEYGEN_ACCESS_TOKEN` — an OAuth token a host app injects
+3. `HEYGEN_API_KEY` — environment variable
+4. `HYPERFRAMES_API_KEY` — alias, for parity with other tools
+5. `~/.heygen/credentials` — written by `hyperframes auth login` (or `heygen auth login`)
 
-Point at a different config directory with `HEYGEN_CONFIG_DIR`, or a different backend with `HEYGEN_API_URL`.
+A nearby project `.env` can supply the keys, but never `HEYGEN_API_BASE`. Point at a different config directory
+with `HEYGEN_CONFIG_DIR`. The `hyperframes` CLI's own commands check the API keys before `HEYGEN_ACCESS_TOKEN`; see
+the [CLI reference](/packages/cli). `media-use resolve` searches through the separate `heygen` CLI, which resolves its
+own credential.
 
 ## Providers used by agent workflows
 
@@ -135,9 +140,11 @@ to a shared space with `--space`.
 
 | Variable | Used for |
 |----------|----------|
-| `HEYGEN_API_KEY` | HeyGen credential — voice + music/SFX retrieval. Highest priority. |
+| `HEYGEN_API_KEY` | HeyGen credential — voice + music/SFX retrieval. |
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`. |
-| `HEYGEN_API_URL` | API base URL (default `https://api.heygen.com`). |
+| `HEYGEN_ACCESS_TOKEN` | OAuth token a host app injects; never refreshed or saved. |
+| `HEYGEN_API_BASE` | A host app's gateway for media workflows; never read from a project `.env`. |
+| `HEYGEN_API_URL` | API base URL for `hyperframes` CLI commands (default `https://api.heygen.com`). |
 | `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Explicit Gemini TTS selection and Lyria music generation; capture descriptions use `GEMINI_API_KEY`. |

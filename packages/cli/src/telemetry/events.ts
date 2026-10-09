@@ -828,7 +828,6 @@ export type AuthLoginMethod = "oauth" | "device" | "api_key";
 export type AuthLoginFailureReason =
   | "flow_error" // OAuth authorization/exchange threw a real error
   | "flow_timeout" // OAuth callback wait elapsed (user closed the tab / walked away)
-  | "no_credential" // flow reported success but nothing was persisted
   | "rejected" // backend rejected the supplied API key (401)
   | "invalid_input" // key was empty, header-unsafe, or too short
   | "aborted"; // prompt cancelled, or no key arrived on stdin before timeout

@@ -3,11 +3,43 @@ import {
   applyPatch,
   applyPatchByTarget,
   readAttributeByTarget,
+  readTagAttribute,
   readTagSnippetByTarget,
   type PatchOperation,
 } from "./sourcePatcher";
 
 describe("applyPatchByTarget", () => {
+  it("removes all duplicate boolean attributes so unmuting cannot reveal another", () => {
+    expect(
+      applyPatch(`<video id="clip" muted muted></video>`, "clip", {
+        type: "html-attribute",
+        property: "muted",
+        value: null,
+      }),
+    ).toBe(`<video id="clip"></video>`);
+  });
+
+  it("locates Unicode custom tags and respects the first duplicate attribute", () => {
+    const html = `<my-élement id="real" id="other" data-duration="1"></my-élement>`;
+    const op: PatchOperation = { type: "attribute", property: "duration", value: "2" };
+    expect(applyPatch(html, "real", op)).toContain('data-duration="2"');
+    expect(applyPatch(html, "other", op)).toBe(html);
+  });
+
+  it("reads and patches only the real source outside quoted attribute content", () => {
+    const html = `<video id="hero" title="example src='other.mp4'" data-src="lazy.mp4" src="assets/it's.mp4"></video>`;
+    expect(readTagAttribute(html, "src")).toBe("assets/it's.mp4");
+    const op: PatchOperation = { type: "html-attribute", property: "src", value: "new.mp4" };
+    const expected = `<video id="hero" title="example src='other.mp4'" data-src="lazy.mp4" src="new.mp4"></video>`;
+    expect(applyPatch(html, "hero", op)).toBe(expected);
+    expect(applyPatchByTarget(html, { id: "hero" }, op)).toBe(expected);
+  });
+
+  it("does not locate a target through a prefixed or quoted id", () => {
+    const html = `<video data-id="hero" title="id='hero'" src="other.mp4"></video><video id="hero" src="real.mp4"></video>`;
+    expect(readTagSnippetByTarget(html, { id: "hero" })).toContain('src="real.mp4"');
+  });
+
   it.each(['"', "'"])("patches long and multiline styles quoted with %s", (quote) => {
     const otherQuote = quote === '"' ? "'" : '"';
     const op: PatchOperation = { type: "inline-style", property: "opacity", value: "0.5" };
@@ -645,4 +677,107 @@ describe("T3 — hfId targeting (spec for R1)", () => {
     expect(bluePos).toBeLessThan(h1End);
     expect(result).toContain('<h2 class="b">B</h2>');
   });
+});
+
+describe("file names with special characters", () => {
+  const src = (value: string): PatchOperation => ({
+    type: "html-attribute",
+    property: "src",
+    value,
+  });
+
+  it("replaces a double-quoted value that holds an apostrophe instead of adding a second one", () => {
+    expect(applyPatch(`<img id="a" src="assets/it's.png">`, "a", src("assets/b.png"))).toBe(
+      `<img id="a" src="assets/b.png">`,
+    );
+    expect(applyPatch(`<img id="a" src='assets/say "hi".png'>`, "a", src("b.png"))).toBe(
+      `<img id="a" src="b.png">`,
+    );
+  });
+
+  it("writes $ sequences in a value literally", () => {
+    expect(applyPatch(`<img id="a" src="old.png">`, "a", src("assets/$100 bill.png"))).toBe(
+      `<img id="a" src="assets/$100 bill.png">`,
+    );
+    expect(applyPatch(`<img id="a">`, "a", src("$&$1.png"))).toBe(
+      `<img id="a" src="$&amp;$1.png">`,
+    );
+    expect(
+      applyPatch(`<div id="a" data-src="old">`, "a", {
+        type: "attribute",
+        property: "src",
+        value: "$' and $`",
+      }),
+    ).toBe(`<div id="a" data-src="$' and $\`">`);
+  });
+
+  it("reads a data attribute whose value holds the other quote kind", () => {
+    expect(readAttributeByTarget(`<div id="a" data-title="it's here">`, { id: "a" }, "title")).toBe(
+      "it's here",
+    );
+  });
+});
+
+describe("readTagAttribute", () => {
+  it("reads both quote kinds and decodes entities without losing the other quote", () => {
+    expect(readTagAttribute(`<video src="assets/it's&amp;ours.mp4">`, "src")).toBe(
+      "assets/it's&ours.mp4",
+    );
+    expect(readTagAttribute(`<video src='assets/say "hi".mp4'>`, "src")).toBe(
+      'assets/say "hi".mp4',
+    );
+  });
+
+  it("distinguishes an empty attribute from a missing attribute", () => {
+    expect(readTagAttribute('<video src="">', "src")).toBe("");
+    expect(readTagAttribute("<video>", "src")).toBeUndefined();
+  });
+});
+
+describe("whole attribute names", () => {
+  it.each(["data-src", "x-src", "xml:src", "srcset"])(
+    "reads and edits src without matching %s",
+    (other) => {
+      const tag = `<img id="a" ${other}="assets/other.png" src="assets/original.png">`;
+      expect(readTagAttribute(tag, "src")).toBe("assets/original.png");
+      for (const patch of [
+        (op: PatchOperation) => applyPatch(tag, "a", op),
+        (op: PatchOperation) => applyPatchByTarget(tag, { id: "a" }, op),
+      ]) {
+        expect(patch({ type: "html-attribute", property: "src", value: "assets/new.png" })).toBe(
+          `<img id="a" ${other}="assets/other.png" src="assets/new.png">`,
+        );
+        expect(patch({ type: "html-attribute", property: "src", value: null })).toBe(
+          `<img id="a" ${other}="assets/other.png">`,
+        );
+      }
+      expect(readTagAttribute(`<img ${other}="assets/other.png">`, "src")).toBeUndefined();
+    },
+  );
+
+  it("does not treat a longer data attribute as a boolean attribute to remove", () => {
+    const tag = '<div id="a" data-title-long="keep">';
+    expect(
+      applyPatchByTarget(tag, { id: "a" }, { type: "attribute", property: "title", value: null }),
+    ).toBe(tag);
+  });
+});
+
+it("removes a boolean attribute without truncating a longer attribute name", () => {
+  const tag = '<video id="a" muted-long="keep" muted>';
+  expect(
+    applyPatchByTarget(
+      tag,
+      { id: "a" },
+      { type: "html-attribute", property: "muted", value: null },
+    ),
+  ).toBe('<video id="a" muted-long="keep">');
+});
+
+it("decodes an authored apostrophe entity once", () => {
+  expect(readTagAttribute("<video src='assets/it&apos;s.mp4'>", "src")).toBe("assets/it's.mp4");
+  expect(readTagAttribute("<video src='assets/it&#39;s.mp4'>", "src")).toBe("assets/it's.mp4");
+  expect(readTagAttribute('<video src="assets/it&amp;apos;s.mp4">', "src")).toBe(
+    "assets/it&apos;s.mp4",
+  );
 });

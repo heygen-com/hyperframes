@@ -1174,6 +1174,25 @@ describe("publishProjectArchive with a credential the server rejects", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+  it("names a rejected host access token instead of asking for a login it would not use", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized());
+    const dir = makeProjectDir();
+    try {
+      authMocks.tryResolveCredential.mockResolvedValue({
+        type: "oauth",
+        access_token: "host-token",
+        source: "env_oauth",
+        refreshable: false,
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "HEYGEN_ACCESS_TOKEN was rejected. Fix or unset it, then publish again.",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("publishProjectArchive with an expired login it can refresh", () => {

@@ -517,6 +517,12 @@
       "runtime": "./schemas/registry-item.json",
       "types": null,
       "environments": ["browser", "bun", "node"]
+    },
+    "./timeline-asset-id": {
+      "source": "./src/timelineAssetId.ts",
+      "runtime": "./dist/timelineAssetId.js",
+      "types": "./dist/timelineAssetId.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }

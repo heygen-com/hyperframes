@@ -1,3 +1,4 @@
+import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpans.js";
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
@@ -50,60 +51,19 @@ export function isUnresolvedAssetPlaceholder(rawSrc: string): boolean {
   return /^__[A-Z_]+__$/.test(rawSrc.trim()) || hasUnresolvedTemplatingToken(rawSrc);
 }
 
-/** `data-composition-src="..."`, matched within a single already-delimited tag. */
-const COMPOSITION_SRC_ATTR = /\bdata-composition-src\s*=\s*["']([^"']+)["']/i;
-
 /**
- * Every `data-composition-src` reference in one composition file's raw text, in
- * document order, deduped. The single owner of "which sub-compositions does
- * this file mount", so lint, telemetry, and any future scanner cannot drift
- * apart on the answer.
- *
- * Text-scanning rather than DOM-walking, and that is the load-bearing choice.
- * Every sub-composition except the render entry is authored inside a
- * `<template>` (the root index.html is forbidden from using that wrapper;
- * everything else prefers it). Template content is inert: it lives under
- * `template.content`, not the live document, so `document.querySelectorAll`
- * on a raw sub-composition file finds nothing and every nested reference
- * disappears. The renderer only gets away with a DOM scan because it recurses
- * on COMPILED html, where the wrapper is already gone.
- *
- * Callers must resolve each value against the PROJECT ROOT, never the
- * referencing file's directory: `data-composition-src` is root-relative at
- * every nesting level (see `parseSubCompositions` in htmlCompiler.ts).
- *
- * Comments, `<style>`, and `<script>` bodies are masked first so a
- * commented-out mount is not counted as a real one. Build-time placeholders and
- * remote or inline URLs are dropped: neither names a file on disk, and every
- * caller resolves what comes back against the project root.
- *
- * The scan walks tag by tag with `indexOf` rather than running one regex with
- * two open-ended `[^>]*` spans across the whole file. That shape is quadratic:
- * on input full of `<` with no `>`, every `<` starts a scan to end-of-string
- * that then backtracks, measured at 41ms / 165ms / 660ms / 2640ms for 10k /
- * 20k / 40k / 80k characters. This function runs on every render (via the
- * render plan), so a truncated download or a blob full of stray `<` would hang
- * the plan step before any video is produced. Bounding each regex to one
- * already-delimited tag makes the whole scan linear.
+ * Collect active, local composition paths in document order, including template content.
+ * Paths are physical file names relative to the project root at every nesting level.
  */
 export function collectSubCompositionSrcs(html: string): string[] {
-  const scannable = maskNonScannableRanges(html);
   const srcs: string[] = [];
   const seen = new Set<string>();
 
-  let cursor = 0;
-  while (cursor < scannable.length) {
-    const open = scannable.indexOf("<", cursor);
-    if (open === -1) break;
-    const close = scannable.indexOf(">", open + 1);
-    // An unterminated final tag is not a tag. The previous whole-file regex
-    // also required a closing `>`, so this drops nothing it used to find.
-    if (close === -1) break;
-    cursor = close + 1;
-
-    const match = COMPOSITION_SRC_ATTR.exec(scannable.slice(open, cursor));
-    if (!match) continue;
-    const src = (match[1] ?? "").trim();
+  for (const tag of scanHtmlOpeningTags(html)) {
+    if (!tag.closed) continue;
+    const attribute = tag.attributes.find((attr) => attr.name === "data-composition-src");
+    if (attribute?.kind !== "value") continue;
+    const src = decodeAuthoredAttribute(attribute.value).trim();
     if (!src || seen.has(src)) continue;
     // __UPPER__ placeholder or late-bound templating token — not a real reference.
     if (isUnresolvedAssetPlaceholder(src)) continue;

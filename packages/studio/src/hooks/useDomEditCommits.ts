@@ -23,6 +23,7 @@ import {
 } from "./useDomEditCommitsHelpers";
 import type { CutoverResult } from "../utils/sdkCutover";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { encodeUrlPath } from "@hyperframes/parsers";
 
 export interface UseDomEditCommitsParams {
   activeCompPath: string | null;
@@ -112,7 +113,7 @@ export function useDomEditCommits({
       return {
         family: fontFamilyFromAssetPath(asset),
         path: asset,
-        url: buildProjectApiPath(projectId, `/preview/${asset}`),
+        url: buildProjectApiPath(projectId, `/preview/${encodeUrlPath(asset)}`),
       };
     },
     [fileTree, projectId, importedFontAssetsRef],

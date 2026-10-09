@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 import { EventEmitter } from "events";
 import { spawnSync } from "child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { basename, resolve } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -592,6 +592,258 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
   };
   return { spawn, calls };
 }
+
+describe("media metadata cache invalidation", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it("refreshes video metadata after an in-place file change", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-video-metadata-change-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "original file");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "video", width: 32, height: 24, avg_frame_rate: "10/1", duration: "1" },
+          ],
+          format: { duration: "1" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "video", width: 64, height: 48, avg_frame_rate: "24/1", duration: "2" },
+          ],
+          format: { duration: "2" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      expect(await extractMediaMetadata(file)).toMatchObject({ width: 32, durationSeconds: 1 });
+      writeFileSync(file, "updated file with different dimensions");
+      const refreshed = await extractMediaMetadata(file);
+      expect(refreshed).toMatchObject({ width: 64, height: 48, fps: 24, durationSeconds: 2 });
+      expect(await extractMediaMetadata(file)).toBe(refreshed);
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes audio metadata after an atomic same-size file replacement", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-audio-metadata-change-"));
+    const file = resolve(dir, "audio.wav");
+    const replacement = resolve(dir, "replacement.wav");
+    writeFileSync(file, "first");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "audio", codec_name: "pcm_s16le", sample_rate: "22050", channels: 1 },
+          ],
+          format: { duration: "1" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "audio", codec_name: "pcm_s16le", sample_rate: "44100", channels: 2 },
+          ],
+          format: { duration: "2" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    try {
+      expect(await extractAudioMetadata(file)).toMatchObject({
+        durationSeconds: 1,
+        sampleRate: 22050,
+      });
+      writeFileSync(replacement, "other");
+      renameSync(replacement, file);
+      const refreshed = await extractAudioMetadata(file);
+      expect(refreshed).toMatchObject({ durationSeconds: 2, sampleRate: 44100, channels: 2 });
+      expect(await extractAudioMetadata(file)).toBe(refreshed);
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([false, true])(
+    "refreshes final-frame timestamps in signal scope %s",
+    async (useSignal) => {
+      const dir = mkdtempSync(resolve(tmpdir(), "hf-final-frame-change-"));
+      const file = resolve(dir, "video.mp4");
+      writeFileSync(file, "original file");
+      const { spawn, calls } = createSpawnSpy([
+        { kind: "exit", code: 0, stdout: "1.900000\n" },
+        { kind: "exit", code: 0, stdout: "1.950000\n" },
+      ]);
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+      const { extractFinalVideoFrameTimestamp } = await import("./ffprobe.js");
+      const metadata = { videoStreamDurationSeconds: 2, videoStreamStartSeconds: 0 };
+      const signal = useSignal ? new AbortController().signal : undefined;
+      try {
+        expect(await extractFinalVideoFrameTimestamp(file, metadata, signal)).toBe(1.9);
+        writeFileSync(file, "updated file with a different frame rate");
+        expect(await extractFinalVideoFrameTimestamp(file, metadata, signal)).toBe(1.95);
+        expect(await extractFinalVideoFrameTimestamp(file, metadata, signal)).toBe(1.95);
+        expect(calls).toHaveLength(2);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not return successful cached metadata after the file disappears", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-removed-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "original file");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24 }],
+          format: { duration: "1" },
+        }),
+      },
+      { kind: "exit", code: 1, stderr: "input missing" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      await extractMediaMetadata(file);
+      rmSync(file);
+      await expect(extractMediaMetadata(file)).rejects.toThrow(/input missing/);
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not retain completed metadata when file identity is unavailable", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-no-identity-"));
+    const file = resolve(dir, "missing.wav");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "mp3" }],
+          format: { duration: "1" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "mp3" }],
+          format: { duration: "2" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    try {
+      expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 1 });
+      expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 2 });
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the replacement probe cached when an older probe fails", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-probe-race-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "original file");
+    const factory = createSpawnSpy([]);
+    const processes: FakeProc[] = [];
+    vi.resetModules();
+    vi.doMock("child_process", () => ({
+      spawn: (command: string, args: readonly string[]) => {
+        const proc = factory.spawn(command, args);
+        processes.push(proc);
+        return proc;
+      },
+    }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      const failed = expect(extractMediaMetadata(file)).rejects.toThrow(/code 1/);
+      writeFileSync(file, "updated file with different dimensions");
+      const replacement = extractMediaMetadata(file);
+      processes[0]?.emit("close", 1);
+      await failed;
+      const shared = extractMediaMetadata(file);
+      expect(factory.calls).toHaveLength(2);
+      processes[1]?.stdout.emit(
+        "data",
+        Buffer.from(
+          JSON.stringify({
+            streams: [{ codec_type: "video", width: 64, height: 48 }],
+            format: { duration: "2" },
+          }),
+        ),
+      );
+      processes[1]?.emit("close", 0);
+      const [first, second] = await Promise.all([replacement, shared]);
+      expect(second).toBe(first);
+      expect(first).toMatchObject({ width: 64, durationSeconds: 2 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still shares an unchanged file probe between concurrent callers", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-shared-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "unchanged file");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24 }],
+          format: { duration: "1" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      const [first, second] = await Promise.all([
+        extractMediaMetadata(file),
+        extractMediaMetadata(file),
+      ]);
+      expect(second).toBe(first);
+      expect(calls).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("ffprobe missing-binary fallback", () => {
   const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
