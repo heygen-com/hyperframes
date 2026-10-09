@@ -113,23 +113,15 @@ COPY packages/studio-server/package.json packages/studio-server/
 RUN npm install --global bun && \
     bun install --frozen-lockfile
 
-# Bring in the source and build it in dependency order, as in
-# packages/gcp-cloud-run/Dockerfile: the build generates files the source
-# imports (e.g. core's runtime-inline).
-COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
+# Bring in the source. Core's build generates files its source imports
+# (e.g. runtime-inline); the other packages run from source under bun.
 COPY packages/core ./packages/core
 COPY packages/engine ./packages/engine
 COPY packages/lint ./packages/lint
 COPY packages/parsers ./packages/parsers
 COPY packages/producer ./packages/producer
 COPY packages/studio-server ./packages/studio-server
-RUN bun run --cwd packages/parsers build && \
-    bun run --cwd packages/lint build && \
-    bun run --cwd packages/studio-server build && \
-    bun run --cwd packages/core build && \
-    bun run --cwd packages/core build:hyperframes-runtime:modular && \
-    bun run --cwd packages/engine build && \
-    bun run --cwd packages/producer build
+RUN bun run --cwd packages/core build
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 ENTRYPOINT ["/usr/bin/tini", "--"]
