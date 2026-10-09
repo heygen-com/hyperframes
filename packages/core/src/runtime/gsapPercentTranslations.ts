@@ -31,10 +31,11 @@ const TRANSFORM_SETTINGS = [
   "transformPerspective",
 ];
 
-/** Percent part of one computed translate length: "-50%" is -50, "12px" is 0, calc() is NaN. */
+/** Percent of one computed translate length: "-50%" is -50, "0px" is 0, any other offset is NaN. */
 function percentOf(length: string): number {
   if (length.endsWith("%")) return Number(length.slice(0, -1));
-  return length.endsWith("px") ? 0 : Number.NaN;
+  // GSAP infers -50% only when the whole offset is half the box, so a pixel part rules it out.
+  return length === "0px" ? 0 : Number.NaN;
 }
 
 /** Authored percentages of the CSS `translate` plus the leading translates of `transform`. */
@@ -59,8 +60,6 @@ function authoredPercents(target: HTMLElement, style: CSSStyleDeclaration): [num
 
 /** The border box, which Chrome resolves translate percentages against in the matrix. */
 function borderBoxSize(style: CSSStyleDeclaration, dimension: "width" | "height"): number {
-  // Without a box (display:none) the computed size can stay "auto" or "40%": no usable size.
-  if (!style[dimension].endsWith("px")) return Number.NaN;
   const size = Number.parseFloat(style[dimension]);
   if (style.boxSizing === "border-box") return size;
   const sides = dimension === "width" ? ["left", "right"] : ["top", "bottom"];
@@ -104,7 +103,8 @@ export function installGsapPercentTranslations(gsap: GsapTransformInternals): vo
   const preserve = (target: HTMLElement): void => {
     if (target.namespaceURI !== "http://www.w3.org/1999/xhtml") return;
     const cache = core.getCache(target) as TransformCache;
-    if (cache.x !== undefined && !cache.uncache) return;
+    // No layout box (display:none): computed sizes vary by Chrome build, so GSAP keeps its parse.
+    if ((cache.x !== undefined && !cache.uncache) || !target.getClientRects().length) return;
     const view = target.ownerDocument.defaultView;
     if (!view) return;
     const style = view.getComputedStyle(target);

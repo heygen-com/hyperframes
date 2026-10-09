@@ -8,15 +8,17 @@ try {
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(String(error)));
-  // The player must have a size before load, or the composition renders unzoomed.
+  // Size the player before it first measures, or the composition's scripts run at another zoom.
   await page.evaluateOnNewDocument(() => {
-    document.addEventListener("DOMContentLoaded", () => {
-      document.head.append(
-        Object.assign(document.createElement("style"), {
-          textContent: "hyperframes-player { height: 100vh }",
-        }),
-      );
-    });
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync("hyperframes-player { height: 100vh }");
+    document.adoptedStyleSheets = [sheet];
+  });
+  await page.evaluateOnNewDocument(() => {
+    if (window !== window.top)
+      addEventListener("DOMContentLoaded", () => {
+        Object.assign(window, { __parseDensity: devicePixelRatio });
+      });
   });
   await page.goto(`${server.origin}/host.html?fixture=gsap-percent-centering`);
   await page.waitForFunction(() => window.__playerReady === true);
@@ -26,6 +28,10 @@ try {
   assert(Number(zoom) > 0.3 && Number(zoom) < 0.33, `composition zoom ${zoom}`);
   const frame = page.frames().find((candidate) => candidate.url().includes("/fixtures/"));
   assert(frame, "composition frame loaded");
+  const parseDensity = await frame.evaluate(
+    () => (window as { __parseDensity?: number }).__parseDensity,
+  );
+  assert.equal(String(parseDensity?.toFixed(4)), Number(zoom).toFixed(4), "scripts run zoomed");
   const read = async (id: string) =>
     frame.evaluate((targetId) => {
       const element = document.getElementById(targetId)!;
@@ -70,9 +76,11 @@ try {
   const slide = await read("slide");
   assert.equal(slide.cache.xPercent, 0, "a non-centering percentage stays GSAP's pixels");
   assert(Math.abs(slide.center[0]! - 1130) < 0.1, `slide x: 0 slides in, ${slide.center}`);
-  for (const id of ["hidden-set", "hidden-tween"]) {
+  // Layers without a sized box are left to GSAP: no restored percentage, finite pixels.
+  for (const id of ["hidden-set", "hidden-tween", "hidden-percent", "inline"]) {
     const { cache } = await read(id);
     assert(Number.isFinite(cache.x) && Number.isFinite(cache.y), `${id} ${JSON.stringify(cache)}`);
+    assert(cache.xPercent === 0 && cache.yPercent === 0, `${id} ${JSON.stringify(cache)}`);
   }
   assert.equal(
     (await read("mover")).cache.x,
@@ -84,25 +92,23 @@ try {
     "",
     "opacity leaves independent translation untouched",
   );
+  assert.equal(
+    (await read("offset")).cache.yPercent,
+    0,
+    "a centered layer with a pixel offset is GSAP's",
+  );
+  // GSAP's reparse reads its own pixel output, which it never infers as centering; that stays GSAP's.
   await frame.evaluate(() => {
     const target = document.getElementById("target")!;
     window.gsap!.core.getCache(target).uncache = 1;
-    window.gsap!.set(target, { x: 40, y: 20 });
+    window.gsap!.getProperty(target, "x");
   });
-  await centered("target");
-  await frame.evaluate(() => {
-    document.getElementById("hidden")!.style.display = "block";
-  });
-  const percentSized = (await read("hidden-percent")).center;
-  assert(
-    Math.abs(percentSized[0]! - 960) < 0.5 && Math.abs(percentSized[1]! - 540) < 0.5,
-    `a percent-sized layer parsed while hidden lands centered, ${percentSized}`,
-  );
+  assert.equal((await read("target")).cache.yPercent, 0, "reparse is left to GSAP");
   assert.deepEqual(errors, [], "no composition errors");
   console.log(
     "GSAP centering under zoom (translate, stylesheet transform, origin first, read first, " +
-      "quick setter, lazy tween, padding, hidden layers, reparse) and GSAP's own pixels for " +
-      "other percentages: PASS",
+      "quick setter, lazy tween, padding, hidden layers) and GSAP's own parse for other " +
+      "percentages, pixel offsets and reparse: PASS",
   );
 } finally {
   await browser.close();

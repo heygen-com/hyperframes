@@ -55,6 +55,8 @@
       <div id="read" class="centered"></div>
       <div id="quick" class="centered"></div>
       <div id="boxed" class="centered" style="padding: 10px"></div>
+      <div id="offset" class="centered" style="transform: translateY(20px)"></div>
+      <span id="inline" style="translate: -50% -50%">Inline</span>
       <div id="hidden" style="display: none">
         <h1 id="hidden-set" class="auto">Hidden title</h1>
         <h1 id="hidden-tween" class="auto">Hidden title</h1>
@@ -81,6 +83,8 @@
       gsap.set("#origin", { transformOrigin: "50% 50%" });
       gsap.set("#origin", { x: 40, y: 20 });
       gsap.set("#boxed", { scale: 1 });
+      gsap.set("#offset", { scale: 1 });
+      gsap.set("#inline", { scale: 1 });
       gsap.set("#hidden-set", { scale: 1 });
       gsap.set("#hidden-percent", { scale: 1 });
       window.__timelines = {
