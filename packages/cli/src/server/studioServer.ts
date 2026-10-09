@@ -242,12 +242,14 @@ let _thumbnailBrowserInitializing: Promise<ThumbnailBrowserSession | null> | nul
 let _thumbnailBrowserModes: {
   requested: BrowserGpuMode;
   resolved: ResolvedBrowserGpuMode;
+  softwareWebGpu: boolean;
 } | null = null;
 
 interface ThumbnailBrowserSession {
   browser: import("puppeteer-core").Browser;
   requestedGpuMode: BrowserGpuMode;
   resolvedGpuMode: ResolvedBrowserGpuMode;
+  softwareWebGpu: boolean;
 }
 
 async function getThumbnailBrowser(
@@ -263,6 +265,7 @@ async function getThumbnailBrowser(
       browser: _thumbnailBrowserLease.browser,
       requestedGpuMode: _thumbnailBrowserModes.requested,
       resolvedGpuMode: _thumbnailBrowserModes.resolved,
+      softwareWebGpu: _thumbnailBrowserModes.softwareWebGpu,
     };
   }
   if (_thumbnailBrowserInitializing) {
@@ -289,28 +292,32 @@ async function getThumbnailBrowser(
       }
 
       const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
-      const { gpuConfig } = resolveLocalWebGpu(resolvedGpuMode, true);
+      const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, true);
       const acquired = await acquireBrowser(
         buildChromeArgs(
           {
             width: 1920,
             height: 1080,
             captureMode: "screenshot",
-            requiresWebGpu: gpuConfig.allowSoftwareWebGpu,
+            requiresWebGpu: softwareWebGpu,
           },
           gpuConfig,
         ),
         { forceScreenshot: true },
       );
       _thumbnailBrowserLease = acquired;
-      _thumbnailBrowserModes = { requested: requestedGpuMode, resolved: resolvedGpuMode };
+      _thumbnailBrowserModes = {
+        requested: requestedGpuMode,
+        resolved: resolvedGpuMode,
+        softwareWebGpu,
+      };
       acquired.browser.on("disconnected", () => {
         if (_thumbnailBrowserLease !== acquired) return;
         _thumbnailBrowserLease = null;
         _thumbnailBrowserModes = null;
         _thumbnailBrowserInitializing = null;
       });
-      return { browser: acquired.browser, requestedGpuMode, resolvedGpuMode };
+      return { browser: acquired.browser, requestedGpuMode, resolvedGpuMode, softwareWebGpu };
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
@@ -724,7 +731,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             await assertWebGpuAdapterAvailable(
               page,
               requiresWebGpu,
-              resolveLocalWebGpu(session.resolvedGpuMode, requiresWebGpu).softwareWebGpu,
+              requiresWebGpu && session.softwareWebGpu,
             );
             await page
               .waitForFunction(

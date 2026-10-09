@@ -91,9 +91,13 @@ async function probeHardwareWebGlInfo(
       args: options.args,
       defaultViewport: { width: 64, height: 64 },
       executablePath: options.executablePath,
-      timeout: Math.min(options.browserTimeout, GPU_PROBE_TIMEOUT_MS),
+      timeout: options.browserTimeout,
     });
-    return await rejectAfter(readWebGlInfo(probeBrowser), GPU_PROBE_TIMEOUT_MS, "GPU probe page");
+    return await rejectAfter(
+      readWebGlInfo(probeBrowser),
+      GPU_PROBE_TIMEOUT_MS,
+      `GPU probe page did not answer within ${GPU_PROBE_TIMEOUT_MS}ms`,
+    );
   } finally {
     if (probeBrowser) await closeBrowserAfterFailedProbe(probeBrowser);
   }
@@ -282,32 +286,20 @@ async function awaitBeforeDeadline<T>(
   if (remainingMs <= 0) {
     throw new Error(`beginFrame probe timeout before ${label}`);
   }
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error(`beginFrame probe timeout during ${label}`)),
-          remainingMs,
-        );
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
+  return rejectAfter(operation, remainingMs, `beginFrame probe timeout during ${label}`);
 }
 
-async function rejectAfter<T>(operation: Promise<T>, timeoutMs: number, what: string): Promise<T> {
+async function rejectAfter<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error(`${what} did not answer within ${timeoutMs}ms`)),
-          timeoutMs,
-        );
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
       }),
     ]);
   } finally {
@@ -1029,7 +1021,7 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
 /** Does the composition's root element declare `data-requires-webgpu`? */
 export function compositionRequiresWebGpu(html: string): boolean {
   for (const tag of scanHtmlOpeningTags(html)) {
-    const names = tag.attributes.map((attribute) => attribute.name.toLowerCase());
+    const names = tag.attributes.map((attribute) => attribute.name);
     if (names.includes("data-composition-id")) return names.includes("data-requires-webgpu");
   }
   return false;
