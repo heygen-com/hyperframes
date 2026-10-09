@@ -73,8 +73,7 @@ export function runtimeProtocolMetadata(fps: number): RuntimeProtocolV1 {
 export function frameDisplayScale(frame: HTMLElement): number | null {
   const layoutWidth = frame.offsetWidth;
   const shownWidth = frame.getBoundingClientRect().width;
-  const zoom = Number(frame.style.zoom) || 1;
-  return layoutWidth > 0 && shownWidth > 0 ? shownWidth / layoutWidth / zoom : null;
+  return layoutWidth > 0 && shownWidth > 0 ? shownWidth / layoutWidth : null;
 }
 
 function hasDeclaredCapabilities(value: unknown): boolean {

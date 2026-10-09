@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  frameDisplayScale,
   inspectRuntimeProtocol,
   runtimeProtocolFpsFromNumber,
   runtimeProtocolFpsToNumber,
@@ -47,22 +46,5 @@ describe("runtime protocol", () => {
     expect(
       inspectRuntimeProtocol({ protocolVersion: 1, fps: { numerator: 30, denominator: 1 } }),
     ).toMatchObject({ status: "unsupported", code: "invalid_protocol_metadata" });
-  });
-
-  describe("frameDisplayScale", () => {
-    const frame = (shown: number, zoom = "") =>
-      ({
-        offsetWidth: 1920,
-        getBoundingClientRect: () => ({ width: shown }),
-        style: { zoom },
-      }) as unknown as HTMLElement;
-
-    it("reports a transform's shrink, which the frame's own pixel ratio does not see", () => {
-      expect(frameDisplayScale(frame(528))).toBeCloseTo(0.275, 6);
-    });
-
-    it("reports no further shrink for a zoomed frame, whose pixel ratio already includes the zoom", () => {
-      expect(frameDisplayScale(frame(528, "0.275"))).toBeCloseTo(1, 6);
-    });
   });
 });

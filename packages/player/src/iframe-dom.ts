@@ -72,31 +72,6 @@ export function scaleIframeToFit(
   const scale = Math.min(w / compositionWidth, h / compositionHeight);
   iframe.style.width = `${compositionWidth}px`;
   iframe.style.height = `${compositionHeight}px`;
-  if (zoomsFramesWhole) {
-    iframe.style.zoom = String(scale);
-    iframe.style.transform = "translate(-50%, -50%)";
-  } else {
-    iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
-  }
+  iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
   return true;
-}
-
-let zoomsFramesWhole: boolean | undefined;
-
-export function initializeIframeScaling(iframe: HTMLIFrameElement): void {
-  if (zoomsFramesWhole !== undefined) return;
-  const win = iframe.contentWindow;
-  if (!win || iframe.contentDocument === null) return;
-  const cssText = iframe.style.cssText;
-  const zoom = 0.3646;
-  iframe.style.width = "1920px";
-  iframe.style.height = "1080px";
-  iframe.style.zoom = String(zoom);
-  const hostRatio = iframe.ownerDocument.defaultView?.devicePixelRatio ?? 1;
-  const devicePixel = 1 / (zoom * hostRatio);
-  zoomsFramesWhole =
-    Math.abs(win.innerWidth - 1920) <= devicePixel &&
-    Math.abs(win.innerHeight - 1080) <= devicePixel &&
-    Math.abs(win.devicePixelRatio - hostRatio * zoom) < 0.01;
-  iframe.style.cssText = cssText;
 }

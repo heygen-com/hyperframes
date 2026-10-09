@@ -4664,37 +4664,3 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 });
-
-describe("HyperframesPlayer first fit", () => {
-  beforeEach(async () => {
-    await import("./hyperframes-player.js");
-  });
-
-  afterEach(() => {
-    document.body.innerHTML = "";
-  });
-
-  it("fits the iframe before the composition source is assigned", () => {
-    const player = document.createElement("hyperframes-player") as HTMLElement & {
-      iframeElement: HTMLIFrameElement;
-    };
-    Object.defineProperty(player, "offsetWidth", { configurable: true, value: 528 });
-    Object.defineProperty(player, "offsetHeight", { configurable: true, value: 297 });
-    const iframe = player.iframeElement;
-    const source = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "src")!;
-    let styleAtSource = "";
-    Object.defineProperty(iframe, "src", {
-      configurable: true,
-      get: () => source.get!.call(iframe),
-      set(value: string) {
-        styleAtSource = iframe.style.cssText;
-        source.set!.call(iframe, value);
-      },
-    });
-    player.setAttribute("src", "/composition.html");
-    document.body.appendChild(player);
-
-    expect(styleAtSource).toContain("width: 1920px");
-    expect(styleAtSource).toMatch(/zoom: 0\.275|scale\(0\.275/);
-  });
-});

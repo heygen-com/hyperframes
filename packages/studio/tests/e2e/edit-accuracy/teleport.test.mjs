@@ -186,39 +186,13 @@ describe("quadOf", () => {
       offsetWidth: 120,
       offsetHeight: 80,
       getBoundingClientRect: () => ({ left: 100, top: 0, width: 120.375, height: 80 }),
-      style: { transform: "none", rotate: "none", scale: "none", zoom: "1", ...style },
+      style: { transform: "none", rotate: "none", scale: "none", ...style },
     };
   };
 
   it("puts the right edge at the fractional width", () => {
     const quad = quadOf(element({ boxSizing: "border-box", width: "120.375px", height: "80px" }));
     expect(quad[1][0]).toBeCloseTo(220.375, 6);
-  });
-
-  it("maps a child through a zoomed iframe into top-frame pixels", () => {
-    const host = element({
-      boxSizing: "border-box",
-      width: "400px",
-      height: "200px",
-      zoom: "0.5",
-      paddingLeft: "0",
-      paddingTop: "0",
-    });
-    host.getBoundingClientRect = () => ({ left: 100, top: 50, width: 200, height: 100 });
-    host.clientLeft = 0;
-    host.clientTop = 0;
-    const child = element({ boxSizing: "border-box", width: "100px", height: "60px" });
-    child.getBoundingClientRect = () => ({ left: 40, top: 20, width: 100, height: 60 });
-    const view = child.ownerDocument.defaultView;
-    view.top = host.ownerDocument.defaultView;
-    view.parent = view.top;
-    view.frameElement = host;
-    expect(quadOf(child)).toEqual([
-      [120, 60],
-      [170, 60],
-      [170, 90],
-      [120, 90],
-    ]);
   });
 
   it("adds padding and border to a content-box size", () => {
