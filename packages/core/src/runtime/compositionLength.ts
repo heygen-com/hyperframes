@@ -10,9 +10,6 @@ import { createRuntimeState } from "./state";
 
 export { findRootCompositionElement };
 
-/** A root timeline this long is an endless loop, not a film: GSAP reports 1e10 s for `repeat: -1`.
- *  Studio's sanitizeDurationSeconds rejects the same length. Animations that simply end past the
- *  voiceover are real duration, and the runtime player already plays them. */
 export const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
 
 /** One frame at 60 fps: a timeline, floor or fallback this short or shorter is no length at all. */
@@ -122,8 +119,7 @@ export type CompositionLengthInputs = {
 };
 
 /** A declared root length is the length (a longer timeline is cut off); else the timeline, the
- *  floors and the fallback, whichever is longest; else the length derived from the clips.
- *  A loop-inflated timeline (`repeat: -1`) yields to a floor or fallback when there is one. */
+ *  floors and the fallback, whichever is longest; else the length derived from the clips. */
 export function resolveCompositionLengthSeconds(input: CompositionLengthInputs): number {
   if (input.declared !== null && Number.isFinite(input.declared) && input.declared > 0) {
     return input.declared;
