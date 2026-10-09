@@ -759,6 +759,32 @@ describe("assemble()", () => {
     TIMEOUT_MS,
   );
 
+  it(
+    "stops ffmpeg at FFMPEG_PROCESS_TIMEOUT_MS and says it timed out",
+    async () => {
+      if (!hasFfmpeg) return;
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 5 },
+        { index: 1, startFrame: 5, endFrame: 10 },
+      ];
+      const planDir = buildPlanDir("mp4", chunks, 10, false);
+      const chunkPaths = [join(planDir, "chunk-0.mp4"), join(planDir, "chunk-1.mp4")];
+      for (const chunkPath of chunkPaths) makeMp4Chunk(chunkPath, 5);
+
+      const previous = process.env.FFMPEG_PROCESS_TIMEOUT_MS;
+      process.env.FFMPEG_PROCESS_TIMEOUT_MS = "1";
+      try {
+        await expect(
+          assemble(planDir, chunkPaths, null, join(planDir, "output.mp4")),
+        ).rejects.toThrow(/FFmpeg timed out after 1 ms/);
+      } finally {
+        if (previous === undefined) delete process.env.FFMPEG_PROCESS_TIMEOUT_MS;
+        else process.env.FFMPEG_PROCESS_TIMEOUT_MS = previous;
+      }
+    },
+    TIMEOUT_MS,
+  );
+
   it("rejects when chunkPaths.length does not match chunks.json length", async () => {
     const chunks: ChunkSliceJson[] = [
       { index: 0, startFrame: 0, endFrame: 5 },

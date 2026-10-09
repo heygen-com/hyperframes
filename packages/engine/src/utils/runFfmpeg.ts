@@ -181,7 +181,18 @@ function toResult(outcome: ManagedChildProcessOutcome, stderr = outcome.stderr):
   return result;
 }
 
+/** A run whose signal had already aborted starts no process. */
+const ABORTED_BEFORE_START: RunFfmpegResult = {
+  success: false,
+  exitCode: null,
+  signal: null,
+  stderr: "",
+  durationMs: 0,
+  terminationReason: "abort",
+};
+
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
+  if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
   const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
   const managed = new ManagedChildProcess(spawnFfmpeg(args), {
     signal: opts?.signal,
@@ -200,6 +211,7 @@ export async function runFfmpegPipeline(
   consumerArgs: string[],
   opts?: RunFfmpegOptions,
 ): Promise<RunFfmpegResult> {
+  if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
   const deadlineAtMs = Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT);
   const producer = spawnFfmpeg(producerArgs);
   const consumer = spawnFfmpeg(consumerArgs);

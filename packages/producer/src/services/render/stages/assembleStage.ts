@@ -46,7 +46,6 @@ export interface AssembleStageInput {
   format?: RenderOutputFormat;
   /** Segment length for `format: "hls"`. Defaults to {@link DEFAULT_HLS_SEGMENT_SECONDS}. */
   hlsSegmentSeconds?: number;
-  /** Deadline for each ffmpeg process this stage runs (the render's configured `ffmpegProcessTimeout`). */
   ffmpegProcessTimeout: number;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;

@@ -886,8 +886,9 @@ function restoreSourceColourFilter(metadata: VideoMetadata): string[] {
  */
 const EXTRACTION_SEGMENT_SECONDS = 120;
 
-// One ffmpeg per clip, all at once, starved a render with dozens of clips until processes hit their timeout.
-const inExtractionSlot = createConcurrencyLimit(Math.max(1, Math.floor(cpus().length / 2)));
+// Caps extraction ffmpeg runs across all clips; uncapped, dozens of clips starved each other into timeouts.
+const EXTRACTION_SLOTS = Math.max(1, Math.floor(cpus().length / 2));
+const inExtractionSlot = createConcurrencyLimit(EXTRACTION_SLOTS);
 
 interface SegmentedExtraction {
   decodeArgs: string[];
@@ -927,32 +928,34 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
     while (next < segmentCount && !signal.aborted) {
       const index = next++;
       const { firstFrame, frames } = segments[index]!;
-      const result = await inExtractionSlot(() =>
-        runFfmpeg(
-          [
-            ...decodeArgs,
-            "-noaccurate_seek",
-            "-ss",
-            String(startTime + firstFrame / fps),
-            "-i",
-            videoPath,
-            // Read one frame past the segment and keep exactly its own frames.
-            "-t",
-            String((frames + 1) / fps),
-            "-frames:v",
-            String(frames),
-            "-start_number",
-            String(firstFrame + 1),
-            ...filterAndEncodeArgs,
-          ],
-          { ...job.runOptions, signal },
-        ),
+      const result = await inExtractionSlot(
+        () =>
+          runFfmpeg(
+            [
+              ...decodeArgs,
+              "-noaccurate_seek",
+              "-ss",
+              String(startTime + firstFrame / fps),
+              "-i",
+              videoPath,
+              // Read one frame past the segment and keep exactly its own frames.
+              "-t",
+              String((frames + 1) / fps),
+              "-frames:v",
+              String(frames),
+              "-start_number",
+              String(firstFrame + 1),
+              ...filterAndEncodeArgs,
+            ],
+            { ...job.runOptions, signal },
+          ),
+        signal,
       );
       results[index] = result;
       if (!result.success) failed.abort();
     }
   };
-  const workers = Math.min(segmentCount, Math.max(1, Math.floor(cpus().length / 2)));
+  const workers = Math.min(segmentCount, EXTRACTION_SLOTS);
   await Promise.all(Array.from({ length: workers }, worker));
   const ran = results.filter(Boolean);
   // Report the segment that failed, not the ones stopped because of it.
@@ -1112,22 +1115,24 @@ export async function extractVideoFramesRange(
   ) {
     // ffmpeg <6.1 ignores frame durations in CFR resampling once any -vf is set,
     // cutting a trailing still short, so the SDR filters run in a second process.
-    processResult = await inExtractionSlot(() =>
-      runFfmpegPipeline(
-        [...args, "-an", "-sn", "-dn", "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
-        [
-          "-f",
-          "nut",
-          "-i",
-          "pipe:0",
-          "-vf",
-          [...restoreSourceColourFilter(metadata), ...vfFilters].join(","),
-          "-fps_mode",
-          "passthrough",
-          ...encodeArgs,
-        ],
-        runOptions,
-      ),
+    processResult = await inExtractionSlot(
+      () =>
+        runFfmpegPipeline(
+          [...args, "-an", "-sn", "-dn", "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
+          [
+            "-f",
+            "nut",
+            "-i",
+            "pipe:0",
+            "-vf",
+            [...restoreSourceColourFilter(metadata), ...vfFilters].join(","),
+            "-fps_mode",
+            "passthrough",
+            ...encodeArgs,
+          ],
+          runOptions,
+        ),
+      signal,
     );
   } else {
     const filterArgs = vfFilters.length > 0 ? ["-vf", vfFilters.join(",")] : [];
@@ -1147,8 +1152,9 @@ export async function extractVideoFramesRange(
             ),
             runOptions,
           })
-        : await inExtractionSlot(() =>
-            runFfmpeg([...args, ...filterArgs, ...encodeArgs], runOptions),
+        : await inExtractionSlot(
+            () => runFfmpeg([...args, ...filterArgs, ...encodeArgs], runOptions),
+            signal,
           );
   }
   if (processResult.failureReason === "external_interruption") {
