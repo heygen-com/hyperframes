@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -200,7 +208,7 @@ describe("applyFileMutations", () => {
         expect(readFileSync(second, "utf8")).toBe("second-before");
         expect(identifyFileWrite(first, fileContentVersion("first-after"))).toBeNull();
       } finally {
-        chmodSync(lockedDir, 0o755);
+        if (existsSync(lockedDir)) chmodSync(lockedDir, 0o755);
         resetFileWriteReceipts();
         rmSync(projectDir, { recursive: true, force: true });
       }
@@ -232,6 +240,7 @@ describe("applyFileMutations", () => {
       ).toThrow("File mutation failed and rollback did not complete");
       expect(readFileSync(join(projectDir, "first.html"), "utf8")).toBe("first-after");
     } finally {
+      resetFileWriteReceipts();
       rmSync(projectDir, { recursive: true, force: true });
     }
   });

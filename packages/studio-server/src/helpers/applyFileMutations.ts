@@ -31,7 +31,7 @@ export function applyFileMutations(
   projectDir: string,
   mutations: readonly FileMutationInput[],
   requestToken?: string,
-  writeFile: (path: string, content: string, encoding: "utf-8") => void = (path, content) =>
+  writeFile: WriteFile = (path, content) =>
     replaceFileAtomically(path, content, statSync(path).mode),
 ): AppliedFileMutation[] {
   const prepared = mutations.map((mutation) => ({
@@ -60,16 +60,14 @@ export function applyFileMutations(
 }
 
 type PreparedMutation = FileMutationInput & { before: string };
+type WriteFile = (path: string, content: string, encoding: "utf-8") => void;
 type AttemptedMutation = PreparedMutation & {
   version: string;
   writeToken: string;
   written: boolean;
 };
 
-function rollBack(
-  attempted: AttemptedMutation[],
-  writeFile: (path: string, content: string, encoding: "utf-8") => void,
-): unknown[] {
+function rollBack(attempted: AttemptedMutation[], writeFile: WriteFile): unknown[] {
   const errors: unknown[] = [];
   for (const mutation of attempted.reverse()) {
     try {
@@ -88,7 +86,7 @@ function applyOneMutation(
   projectDir: string,
   mutation: PreparedMutation,
   requestToken: string | undefined,
-  writeFile: (path: string, content: string, encoding: "utf-8") => void,
+  writeFile: WriteFile,
   attempted: AttemptedMutation[],
 ): AppliedFileMutation {
   const current = readFileSync(mutation.absPath, "utf-8");
