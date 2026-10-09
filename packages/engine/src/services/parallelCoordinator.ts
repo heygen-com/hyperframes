@@ -609,7 +609,7 @@ async function captureFrameRange(
       if (signal?.aborted) throw new Error("Parallel worker cancelled");
       const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
       if (dbg && i < task.startFrame + dbgWin) {
-        console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} start`);
+        console.error(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} start`);
       }
       const { encodeResult } = await runCaptureOperation("frame_capture", i, () =>
         captureFrameToBufferPipelined(session, i - outputOffset, time),
@@ -621,23 +621,25 @@ async function captureFrameRange(
       // and would otherwise surface as an unhandled rejection during teardown.
       encodeResult.catch(() => {});
       if (dbg && i < task.startFrame + dbgWin) {
-        console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} kicked`);
+        console.error(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} kicked`);
       }
       if (prev) {
         if (dbg && prev.idx < task.startFrame + dbgWin) {
-          console.log(
+          console.error(
             `[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} await-encode`,
           );
         }
         const buf = await awaitEncode(prev.idx, prev.encodeResult);
         if (dbg && prev.idx < task.startFrame + dbgWin) {
-          console.log(
+          console.error(
             `[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} encoded ${buf.length}B`,
           );
         }
         await onFrameBuffer(prev.idx, buf, session);
         if (dbg && prev.idx < task.startFrame + dbgWin) {
-          console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} written`);
+          console.error(
+            `[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} written`,
+          );
         }
         framesCaptured++;
         if (onFrameCaptured) onFrameCaptured(task.workerId, prev.idx);
@@ -710,7 +712,7 @@ export function selectVerifySampleIndicesForTask(
  */
 /** HF_DE_PAR_DEBUG=1 gated per-worker trace line (message built lazily). */
 function logParDebug(message: () => string): void {
-  if (process.env.HF_DE_PAR_DEBUG === "1") console.log(message());
+  if (process.env.HF_DE_PAR_DEBUG === "1") console.error(message());
 }
 
 /**
@@ -732,7 +734,7 @@ function assertDiskSampleAboveFloor(
       { kind: "psnr", frameIndex: idx, failedDb: db, verifyThresholdDb: verifyMinDb },
     );
   }
-  console.log(
+  console.error(
     `[Parallel] drawElement disk self-verify passed (worker ${workerId}, frame ${idx}, ` +
       `${db === Infinity ? "inf" : db.toFixed(1)}dB)`,
   );
