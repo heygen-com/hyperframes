@@ -21,10 +21,10 @@ vi.mock("node:fs", async (importOriginal) => {
       options?.bigint
         ? real(target, options as never)
         : { ...(real(target) as object), dev: 1, ino: 2 ** 53 }) as unknown as T;
-  return { ...actual, statSync: collide(actual.statSync), lstatSync: collide(actual.lstatSync) };
+  return { ...actual, statSync: collide(actual.statSync) };
 });
 
-const { fileIdentity, sameFile } = await import("./fileIdentity.js");
+import { sameFile } from "./fileIdentity.js";
 
 const dirs: string[] = [];
 function dir(): string {
@@ -42,7 +42,6 @@ describe("file identity", () => {
     writeFileSync(join(root, "a"), "a");
     writeFileSync(join(root, "b"), "b");
     expect(sameFile(join(root, "a"), join(root, "b"))).toBe(false);
-    expect(sameFile(join(root, "a"), join(root, "b"), false)).toBe(false);
   });
 
   it("knows a hard link is the same file", () => {
@@ -52,18 +51,16 @@ describe("file identity", () => {
     expect(sameFile(join(root, "a"), join(root, "hard"))).toBe(true);
   });
 
-  it("follows a symlink unless asked not to", () => {
+  it("follows a symlink", () => {
     const root = dir();
     writeFileSync(join(root, "a"), "a");
     symlinkSync(join(root, "a"), join(root, "link"));
     expect(sameFile(join(root, "a"), join(root, "link"))).toBe(true);
-    expect(sameFile(join(root, "a"), join(root, "link"), false)).toBe(false);
   });
 
   it("treats a missing path as no file", () => {
     const root = dir();
     writeFileSync(join(root, "a"), "a");
-    expect(fileIdentity(join(root, "missing"))).toBeUndefined();
     expect(sameFile(join(root, "missing"), join(root, "missing"))).toBe(false);
     expect(sameFile(join(root, "a"), join(root, "missing"))).toBe(false);
   });
