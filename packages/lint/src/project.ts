@@ -116,15 +116,15 @@ function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
-): Array<{ href: string; content: string; file?: string }> {
-  const styles: Array<{ href: string; content: string; file?: string }> = [];
+): NonNullable<HyperframeLinterOptions["externalStyles"]> {
+  const styles: NonNullable<HyperframeLinterOptions["externalStyles"]> = [];
   const { document } = parseHTML(html);
   for (const { href, content, rootRelativePath } of collectLocalStylesheets(
     projectDir,
     document,
     compSrcPath,
   )) {
-    styles.push({ href, content, file: join(projectDir, rootRelativePath) });
+    styles.push({ href, content, file: join(projectDir, rootRelativePath), rootRelativePath });
   }
   return styles;
 }

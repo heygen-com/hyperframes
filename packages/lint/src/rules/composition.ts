@@ -653,13 +653,15 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 
     const offenders: string[] = [];
-    const fileDepth =
-      (options.compSrcPath ?? "index.html").split("/").filter((s) => s && s !== ".").length - 1;
-    const collect = (value: string | null) => {
+    const depthOf = (filePath: string) =>
+      filePath.split(/[\\/]/).filter((s) => s && s !== ".").length - 1;
+    const fileDepth = depthOf(options.compSrcPath ?? "index.html");
+    const collect = (value: string | null, depth = fileDepth) => {
       if (!value) return;
       const trimmed = value.trim();
       if (!trimmed.startsWith("../") && trimmed !== "..") return;
-      if (climbsAboveRoot(fileDepth, trimmed.split(/[?#]/, 1)[0] ?? "")) offenders.push(trimmed);
+      const path = (trimmed.split(/[?#]/, 1)[0] ?? "").replace(/\\/g, "/").replace(/%2e/gi, ".");
+      if (climbsAboveRoot(depth, path)) offenders.push(trimmed);
     };
 
     for (const tag of tags) {
@@ -673,7 +675,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       }
     }
     for (const style of styles) {
-      for (const url of extractCssUrlReferences(style.content)) collect(url);
+      const depth = style.rootRelativePath ? depthOf(style.rootRelativePath) : fileDepth;
+      for (const url of extractCssUrlReferences(style.content)) collect(url, depth);
     }
 
     if (offenders.length === 0) return [];
@@ -696,7 +699,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         severity: "error",
         message:
           `Found ${offenders.length} asset path(s) traversing above the project root with "../" ` +
-          `(${prefixSummary}), resolved from this file's folder. Preview and render clamp them to the project root, so they load a different file than written, or none.`,
+          `(${prefixSummary}), resolved from the folder of the file that holds them. Render clamps them to the project root and preview resolves them outside it, so they load a different file than written, or none.`,
         fixHint:
           'Point the path at a file inside the project: from compositions/scene.html, "../assets/x.png" and "assets/x.png" both reach the project\'s assets folder.',
       },

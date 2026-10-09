@@ -1380,6 +1380,25 @@ describe("composition rules", () => {
       expect(await lintAt(nested, `<img src="../../../x.png" alt="">`)).toBeDefined();
     });
 
+    it("errors on an encoded or backslashed climb out of the project", async () => {
+      const scene = "compositions/scene.html";
+      expect(await lintAt(scene, `<img src="../%2E%2e/x.png" alt="">`)).toBeDefined();
+      expect(await lintAt(scene, `<img src="../..\\x.png" alt="">`)).toBeDefined();
+    });
+
+    it("ignores a path's query and hash", async () => {
+      expect(
+        await lintAt("compositions/scene.html", `<img src="../assets/x.png#/../../../../" alt="">`),
+      ).toBeUndefined();
+    });
+
+    it("treats a file linted without compSrcPath as the project root", async () => {
+      const { findings } = await lintHyperframeHtml(
+        `<html><body><div data-composition-id="x"><img src="../x.png" alt=""></div></body></html>`,
+      );
+      expect(findings.map((f) => f.code)).toContain(RULE_CODE);
+    });
+
     it("errors when a path dips out of the project midway or the file path starts with ./", async () => {
       const scene = "compositions/scene.html";
       expect(await lintAt(scene, `<img src="../assets/../../x.png" alt="">`)).toBeDefined();

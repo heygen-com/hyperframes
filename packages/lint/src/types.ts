@@ -41,7 +41,12 @@ export type HyperframeLinterOptions = {
   filePath?: string;
   isSubComposition?: boolean;
   compSrcPath?: string;
-  externalStyles?: Array<{ href: string; content: string; file?: string }>;
+  externalStyles?: Array<{
+    href: string;
+    content: string;
+    file?: string;
+    rootRelativePath?: string;
+  }>;
   /**
    * Set to `true` when linting compositions destined for distributed / Lambda
    * rendering, where system-font capture (`allowSystemFontCapture`) is

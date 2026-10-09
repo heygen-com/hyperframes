@@ -925,6 +925,37 @@ describe("sub-composition files", () => {
     expect(finding?.message).toContain("../../");
   });
 
+  it("resolves a linked stylesheet's url()s from the stylesheet's own folder", async () => {
+    const project = makeProject(
+      validHtml().replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="styles/main.css"></head><body>',
+      ),
+      {
+        "scene.html": `<template id="scene-template">
+  <link rel="stylesheet" href="../styles/escape.css">
+  <div data-composition-id="scene" data-width="1920" data-height="1080"></div>
+</template>`,
+      },
+    );
+    mkdirSync(join(project, "styles"));
+    writeFileSync(
+      join(project, "styles", "main.css"),
+      "@font-face { src: url('../fonts/B.woff2'); }",
+    );
+    writeFileSync(
+      join(project, "styles", "escape.css"),
+      ".a { background: url('../../outside.png'); }",
+    );
+    const { results } = await lintProject(project);
+    const traversal = (file: string) =>
+      results
+        .find((result) => result.file === file)
+        ?.result.findings.find((f) => f.code === "invalid_parent_traversal_in_asset_path");
+    expect(traversal("index.html")).toBeUndefined();
+    expect(traversal("compositions/scene.html")?.message).toContain("../../");
+  });
+
   it("does not stop the check over a scene without its own size", async () => {
     const project = makeProject(validHtml(), {
       "scene.html": `<template id="scene-template">

@@ -9,7 +9,9 @@ import { lintHyperframeHtml, shouldBlockRender } from "./browser.js";
 // (The platform:"browser" tsup build is the compile-time node-free guarantee;
 // this verifies the API actually runs.)
 const IMPORT_SPECIFIER =
-  /^(?:import|export)\s[^"';]*?\bfrom\s+["']([^"']+)["']|^import\s+["']([^"']+)["']/gm;
+  /^(?:import|export)\s[^"';]*?\bfrom\s+["']([^"']+)["']|^import\s+["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/gm;
+
+const isNodeBuiltin = (spec: string) => spec.startsWith("node:") || builtinModules.includes(spec);
 
 const resolveSource = (path: string): string => {
   const base = path.replace(/\.js$/, "");
@@ -31,17 +33,19 @@ describe("@hyperframes/lint/browser", () => {
     const parsersExports = JSON.parse(readFileSync(`${parsersDir}/package.json`, "utf8")).exports;
     const seen = new Set<string>();
     const nodeImports: string[] = [];
+    const importedFile = (file: string, spec: string): string | null => {
+      if (spec.startsWith(".")) return resolveSource(resolve(dirname(file), spec));
+      if (!spec.startsWith("@hyperframes/parsers")) return null;
+      return resolve(parsersDir, parsersExports[spec.replace("@hyperframes/parsers", ".")].bun);
+    };
     const visit = (file: string) => {
       if (seen.has(file)) return;
       seen.add(file);
-      const source = readFileSync(file, "utf8");
-      for (const [, from, bare] of source.matchAll(IMPORT_SPECIFIER)) {
-        const spec = from ?? bare ?? "";
-        if (spec.startsWith("node:") || builtinModules.includes(spec))
-          nodeImports.push(`${file}: ${spec}`);
-        else if (spec.startsWith(".")) visit(resolveSource(resolve(dirname(file), spec)));
-        else if (spec.startsWith("@hyperframes/parsers"))
-          visit(resolve(parsersDir, parsersExports[spec.replace("@hyperframes/parsers", ".")].bun));
+      for (const [, from, bare, dynamic] of readFileSync(file, "utf8").matchAll(IMPORT_SPECIFIER)) {
+        const spec = from ?? bare ?? dynamic ?? "";
+        if (isNodeBuiltin(spec)) nodeImports.push(`${file}: ${spec}`);
+        const next = importedFile(file, spec);
+        if (next) visit(next);
       }
     };
     visit(resolve(fileURLToPath(import.meta.url), "../browser.ts"));

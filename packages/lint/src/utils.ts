@@ -16,6 +16,7 @@ export type OpenTag = {
 export type ExtractedBlock = {
   contentStart?: number;
   file?: string;
+  rootRelativePath?: string;
   attrs: string;
   content: string;
   raw: string;

@@ -294,7 +294,10 @@ export function createViteAdapter(
       signatureCache.forget(projectDir);
     },
 
-    async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
+    async lint(
+      html: string,
+      opts?: { filePath?: string; isSubComposition?: boolean; compSrcPath?: string },
+    ) {
       const mod = await server.ssrLoadModule("@hyperframes/core/lint");
       return await mod.lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
