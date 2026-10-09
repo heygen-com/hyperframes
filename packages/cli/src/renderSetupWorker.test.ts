@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { installRenderSetupSignalHandlers } from "./renderSetupWorkerLifecycle.js";
+import {
+  installRenderSetupSignalHandlers,
+  runRenderSetupStep,
+} from "./renderSetupWorkerLifecycle.js";
 
 describe("render setup worker signal lifecycle", () => {
   function collectHandlers(handleHangup = true) {
@@ -52,4 +55,36 @@ describe("render setup worker signal lifecycle", () => {
       expect(calls.slice(0, 3)).toEqual(["release-lock", `off:${signal}`, `forward:${signal}`]);
     },
   );
+});
+
+describe("render setup worker result", () => {
+  function capture() {
+    const written = { stdout: "", stderr: "" };
+    const output = {
+      stdout: { write: (text: string) => (written.stdout += text) },
+      stderr: { write: (text: string) => (written.stderr += text) },
+    };
+    return { written, output };
+  }
+
+  it("writes the step's result for the parent to parse", async () => {
+    const { written, output } = capture();
+
+    await expect(runRenderSetupStep(async () => ({ source: "cache" }), output)).resolves.toBe(0);
+
+    expect(written.stdout).toBe('HYPERFRAMES_RENDER_SETUP_RESULT:{"source":"cache"}\n');
+    expect(written.stderr).toBe("");
+  });
+
+  it("fails with only the error's message, which the parent shows as the reason", async () => {
+    const { written, output } = capture();
+    const failure = new Error("chrome-headless-shell is missing after unzipping", {
+      cause: new Error("tar.exe extraction failed"),
+    });
+
+    await expect(runRenderSetupStep(async () => Promise.reject(failure), output)).resolves.toBe(1);
+
+    expect(written.stderr).toBe("chrome-headless-shell is missing after unzipping\n");
+    expect(written.stdout).toBe("");
+  });
 });
