@@ -7,6 +7,7 @@ import { isMediaElement } from "./domRealm";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createRuntimeState } from "./state";
+import { LOOP_INFLATED_TIMELINE_SECONDS } from "./timeline";
 
 export { findRootCompositionElement };
 
@@ -117,17 +118,23 @@ export type CompositionLengthInputs = {
 };
 
 /** A declared root length is the length (a longer timeline is cut off); else the timeline, the
- *  floors and the fallback, whichever is longest; else the length derived from the clips. */
+ *  floors and the fallback, whichever is longest; else the length derived from the clips.
+ *  A loop-inflated timeline (`repeat: -1`) yields to a floor or fallback when there is one. */
 export function resolveCompositionLengthSeconds(input: CompositionLengthInputs): number {
   if (input.declared !== null && Number.isFinite(input.declared) && input.declared > 0) {
     return input.declared;
   }
-  const timeline = aboveOneFrame(input.timeline());
+  const rawTimeline = aboveOneFrame(input.timeline());
   const floor = Math.max(0, ...input.floors().map((seconds) => seconds ?? 0));
   const fallback =
     Number.isFinite(input.fallback) && input.fallback > MIN_VALID_TIMELINE_DURATION_SECONDS
       ? input.fallback
       : 0;
+  const loopInflated =
+    rawTimeline !== null &&
+    rawTimeline >= LOOP_INFLATED_TIMELINE_SECONDS &&
+    aboveOneFrame(Math.max(floor, fallback)) !== null;
+  const timeline = loopInflated ? null : rawTimeline;
   let seconds: number;
   if (timeline !== null) seconds = Math.max(timeline, floor, fallback);
   else if (aboveOneFrame(floor) !== null) seconds = Math.max(floor, fallback);
