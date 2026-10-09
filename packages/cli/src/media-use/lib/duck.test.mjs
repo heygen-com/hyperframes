@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { duckKeyframes, duckLane, speechSpans } from "./duck.mjs";
-import { sampleAutomationLane } from "@hyperframes/core/audio-automation";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Keep the skill-owned wrapper path under test until the compatibility layer
@@ -170,25 +169,65 @@ test("duckLane turns composition-time keyframes into clip-local ramps", () => {
   });
 });
 
-for (const [name, clipStart] of [
-  ["before the attack", 0.5],
-  ["during the attack", 1.075],
-  ["during speech", 2],
-  ["at the release", 3],
-  ["during the release", 3.2],
-  ["after narration", 4],
+for (const [name, clipStart, expected] of [
+  [
+    "before the attack",
+    0.5,
+    [
+      { t: 0, v: 0.6 },
+      { t: 0.5, v: 0.6 },
+      { t: 0.65, v: 0.15 },
+      { t: 2.5, v: 0.15 },
+      { t: 2.9, v: 0.6 },
+    ],
+  ],
+  [
+    "during the attack",
+    1.075,
+    [
+      { t: 0, v: 0.375 },
+      { t: 0.075, v: 0.15 },
+      { t: 1.925, v: 0.15 },
+      { t: 2.325, v: 0.6 },
+    ],
+  ],
+  [
+    "during speech",
+    2,
+    [
+      { t: 0, v: 0.15 },
+      { t: 1, v: 0.15 },
+      { t: 1.4, v: 0.6 },
+    ],
+  ],
+  [
+    "at the release",
+    3,
+    [
+      { t: 0, v: 0.15 },
+      { t: 0.4, v: 0.6 },
+    ],
+  ],
+  [
+    "during the release",
+    3.2,
+    [
+      { t: 0, v: 0.375 },
+      { t: 0.2, v: 0.6 },
+    ],
+  ],
+  ["after narration", 4, [{ t: 0, v: 0.6 }]],
 ]) {
   test(`duckLane preserves composition-time gain when music starts ${name}`, () => {
     const keyframes = duckKeyframes([{ start: 1, end: 3 }], { baseVolume: 0.6 });
-    const full = duckLane(keyframes, { baseVolume: 0.6 }).lanes[0];
-    const local = duckLane(keyframes, { clipStart, baseVolume: 0.6 }).lanes[0];
+    const points = duckLane(keyframes, { clipStart, baseVolume: 0.6 }).lanes[0].points;
 
-    for (const time of [0, 0.025, 0.075, 0.1, 0.2, 0.5, 1, 2]) {
-      const expected = sampleAutomationLane(full, time + clipStart);
-      const actual = sampleAutomationLane(local, time);
+    assert.equal(points.length, expected.length);
+    for (let i = 0; i < points.length; i++) {
+      assert.equal(points[i].t, expected[i].t);
       assert.ok(
-        Math.abs(actual - expected) < 1e-9,
-        `gain at ${time}s: expected ${expected}, received ${actual}`,
+        Math.abs(points[i].v - expected[i].v) < 1e-9,
+        `gain at ${points[i].t}s: expected ${expected[i].v}, received ${points[i].v}`,
       );
     }
   });
