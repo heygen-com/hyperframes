@@ -228,6 +228,7 @@ class HyperframesPlayer extends HTMLElement {
 
   connectedCallback() {
     initializeIframeScaling(this.iframe);
+    this._rescale();
     this._connected = true;
     this._applySandboxOriginPolicy();
     this.resizeObserver.observe(this);
