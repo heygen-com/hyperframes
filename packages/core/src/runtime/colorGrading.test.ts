@@ -236,52 +236,16 @@ describe("createColorGradingRuntime", () => {
     },
   );
 
-  it("keeps a bordered source's canvas inside its border box and draws in the content box", () => {
+  it("draws a bordered source's grading canvas without a border over its whole box", () => {
     vi.stubGlobal("devicePixelRatio", 1);
     const video = makeDrawableVideo();
     video.style.border = "16px solid rgb(255, 0, 0)";
 
     const { canvas } = startRuntimeWithVideo(video);
 
-    expect(canvas.style.boxSizing).toBe("border-box");
-    expect(canvas.style.width).toBe("640px");
-    expect(canvas.style.height).toBe("360px");
-    expect(canvas.width).toBe(608);
-    expect(canvas.height).toBe(328);
-  });
-
-  function bordered32(video: HTMLVideoElement): void {
-    video.style.border = "16px solid rgb(255, 0, 0)";
-    Object.defineProperty(video, "offsetWidth", { value: 32, configurable: true });
-    Object.defineProperty(video, "offsetHeight", { value: 32, configurable: true });
-    video.getBoundingClientRect = () => ({ width: 32, height: 32 }) as DOMRect;
-  }
-
-  it("keeps a drawn source's border when its content box empties", () => {
-    const video = makeDrawableVideo();
-    video.style.border = "16px solid rgb(255, 0, 0)";
-    const { canvas } = startRuntimeWithVideo(video);
-    bordered32(video);
-    runtime!.refresh();
-    expect(canvas.style.display).toBe("block");
-    expect(canvas.style.width).toBe("32px");
-  });
-
-  it("hides a border-only canvas after a context loss shows the source again", () => {
-    const video = makeDrawableVideo();
-    video.style.border = "16px solid rgb(255, 0, 0)";
-    const { canvas } = startRuntimeWithVideo(video);
-    bordered32(video);
-    canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
-    canvas.dispatchEvent(new Event("webglcontextrestored"));
-    expect(video.hasAttribute("data-hf-color-grading-source-hidden")).toBe(false);
-    expect(canvas.style.display).toBe("none");
-  });
-
-  it("hides a border-only canvas while the source itself is showing", () => {
-    const video = makeDrawableVideo();
-    bordered32(video);
-    expect(startRuntimeWithVideo(video).canvas.style.display).toBe("none");
+    expect(canvas.style.borderStyle).toBe("none");
+    expect(canvas.width).toBe(640);
+    expect(canvas.height).toBe(360);
   });
 
   it("says an element is graded only while it draws through a grading canvas", () => {

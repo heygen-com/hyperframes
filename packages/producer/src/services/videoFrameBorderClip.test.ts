@@ -128,14 +128,16 @@ describe("video border/border-radius/clip-path on the replacement render frame",
 
   // A bordered <img> sibling still in flow shrinks a flex row's video, so the
   // video must be measured before the <img> is styled (the style-9-prod layout).
-  it("keeps the replacement <img>'s box identical to the video's own box in a flex-centered layout", async () => {
-    const FLEX_ROW_WIDTH = 500;
-    const FLEX_ROW_HEIGHT = 300;
+  it.each(["border-box", "content-box"])(
+    "keeps the replacement <img>'s box identical to a %s video's own box in a flex-centered layout",
+    async (boxSizing) => {
+      const FLEX_ROW_WIDTH = 500;
+      const FLEX_ROW_HEIGHT = 300;
 
-    await page.setViewport({ width: FLEX_ROW_WIDTH, height: FLEX_ROW_HEIGHT });
-    await page.setContent(`<!doctype html>
+      await page.setViewport({ width: FLEX_ROW_WIDTH, height: FLEX_ROW_HEIGHT });
+      await page.setContent(`<!doctype html>
       <style>
-        * { box-sizing: border-box; }
+        * { box-sizing: ${boxSizing}; }
         html, body { margin: 0; padding: 0; background: #ffffff; }
         #aroll-container {
           display: flex; justify-content: center; align-items: center;
@@ -152,26 +154,27 @@ describe("video border/border-radius/clip-path on the replacement render frame",
         ></video>
       </div>`);
 
-    await injectVideoFramesBatch(page, [{ videoId: VIDEO_ID, dataUri: BLUE_PIXEL_DATA_URI }]);
+      await injectVideoFramesBatch(page, [{ videoId: VIDEO_ID, dataUri: BLUE_PIXEL_DATA_URI }]);
 
-    const { videoBox, imgBox } = await page.evaluate((videoId) => {
-      const video = document.getElementById(videoId);
-      const img = video?.nextElementSibling;
-      if (!video || !img) throw new Error(`no replacement frame beside #${videoId}`);
-      const roundedRect = (rect: DOMRect) => ({
-        left: Math.round(rect.left),
-        top: Math.round(rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      });
-      return {
-        videoBox: roundedRect(video.getBoundingClientRect()),
-        imgBox: roundedRect(img.getBoundingClientRect()),
-      };
-    }, VIDEO_ID);
+      const { videoBox, imgBox } = await page.evaluate((videoId) => {
+        const video = document.getElementById(videoId);
+        const img = video?.nextElementSibling;
+        if (!video || !img) throw new Error(`no replacement frame beside #${videoId}`);
+        const roundedRect = (rect: DOMRect) => ({
+          left: Math.round(rect.left),
+          top: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        });
+        return {
+          videoBox: roundedRect(video.getBoundingClientRect()),
+          imgBox: roundedRect(img.getBoundingClientRect()),
+        };
+      }, VIDEO_ID);
 
-    expect(imgBox).toEqual(videoBox);
-    // Confirms the fixture gave the flex row room to shrink into.
-    expect(videoBox.width).toBe(FLEX_ROW_WIDTH);
-  });
+      expect(imgBox).toEqual(videoBox);
+      // Confirms the fixture gave the flex row room to shrink into.
+      if (boxSizing === "border-box") expect(videoBox.width).toBe(FLEX_ROW_WIDTH);
+    },
+  );
 });

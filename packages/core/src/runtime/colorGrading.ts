@@ -2598,34 +2598,6 @@ function ensureParentPosition(entry: ColorGradingEntry, parent: HTMLElement): vo
   parent.style.position = "relative";
 }
 
-function borderPx(value: string): number {
-  return Number.parseFloat(value) || 0;
-}
-
-function layoutBoxes(
-  element: HTMLElement,
-  computed: CSSStyleDeclaration,
-): { cssWidth: number; cssHeight: number } | null {
-  const rect = element.getBoundingClientRect();
-  const boxWidth = resolvedLayoutSize(element.offsetWidth, rect.width);
-  const boxHeight = resolvedLayoutSize(element.offsetHeight, rect.height);
-  if (boxWidth <= 0 || boxHeight <= 0) return null;
-  return {
-    cssWidth: boxWidth - borderPx(computed.borderLeftWidth) - borderPx(computed.borderRightWidth),
-    cssHeight: boxHeight - borderPx(computed.borderTopWidth) - borderPx(computed.borderBottomWidth),
-  };
-}
-
-function visibleLayoutBoxes(
-  entry: ColorGradingEntry,
-  computed: CSSStyleDeclaration,
-): { cssWidth: number; cssHeight: number } | null {
-  const size = layoutBoxes(entry.element, computed);
-  if (!size) return null;
-  const borderOnly = size.cssWidth <= 0 || size.cssHeight <= 0;
-  return borderOnly && !entry.sourceHidden ? null : size;
-}
-
 function resolvedLayoutSize(primary: number, fallback: number): number {
   return Math.max(0, Math.round(primary > 0 ? primary : fallback));
 }
@@ -2640,6 +2612,7 @@ function updateCanvasLayout(
 
   const computed = window.getComputedStyle(styleSource);
   copyMediaVisualStyles(canvas.style, computed);
+  canvas.style.borderStyle = "none";
   canvas.style.pointerEvents = "none";
   canvas.style.position = "absolute";
   canvas.style.inset = "auto";
@@ -2647,20 +2620,19 @@ function updateCanvasLayout(
   canvas.style.top = `${element.offsetTop}px`;
   canvas.style.right = "auto";
   canvas.style.bottom = "auto";
-  canvas.style.boxSizing = "border-box";
   canvas.style.width = `${element.offsetWidth}px`;
   canvas.style.height = `${element.offsetHeight}px`;
   canvas.style.display = "block";
   canvas.style.opacity = entry.sourceOpacityForCanvas;
   canvas.style.visibility = entry.sourceVisibleForCanvas ? "visible" : "hidden";
 
-  const size = visibleLayoutBoxes(entry, computed);
-  if (!size) {
+  const rect = element.getBoundingClientRect();
+  const cssWidth = resolvedLayoutSize(element.offsetWidth, rect.width);
+  const cssHeight = resolvedLayoutSize(element.offsetHeight, rect.height);
+  if (cssWidth <= 0 || cssHeight <= 0) {
     canvas.style.display = "none";
     return null;
   }
-  const { cssWidth, cssHeight } = size;
-  if (cssWidth <= 0 || cssHeight <= 0) return null;
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
   const width = Math.round(cssWidth * pixelRatio);
   const height = Math.round(cssHeight * pixelRatio);
