@@ -3148,6 +3148,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
     );
     drawFullscreenQuad(gl, program);
     hideSourceElement(entry);
+    if (injectedFrameSource) source.style.borderStyle = "none";
     entry.hasDrawn = true;
     entry.drawError = null;
     return true;
