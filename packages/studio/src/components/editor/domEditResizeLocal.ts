@@ -22,11 +22,11 @@ import type { ResizeHandle } from "./domEditOverlayGestures";
 const MIN_RESIZE_LOCAL_PX = 1;
 
 /**
- * Below this pointer-to-center distance (overlay px) the gesture started at (or
+ * Below this start-to-center distance (overlay px) the gesture started at (or
  * effectively at) the center, so the ratio is degenerate (division by ~0). Bail to
- * scale 1 rather than blow up.
+ * scale 1 rather than blow up. A handle starts from its corner, so a pick a few px across still resizes.
  */
-const DEGENERATE_START_DIST_PX = 3;
+const DEGENERATE_START_DIST_PX = 0.5;
 
 /**
  * The proportional scale factor for a center-anchored resize: the ratio of the

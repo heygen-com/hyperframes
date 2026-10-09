@@ -279,6 +279,20 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     expect(corner.y).toBeCloseTo(ORIGIN_CENTER.y + 150.3 / 2, 6);
   });
 
+  it("moves the grabbed corner with the cursor when the press lands beside it", () => {
+    const { handlers, commits } = buildHarness();
+    handlers.startGesture("resize", evt(ORIGIN_CENTER.x + 106, ORIGIN_CENTER.y), {
+      resizeHandle: "se",
+      resizeCorner: { x: ORIGIN_CENTER.x + 100, y: ORIGIN_CENTER.y },
+    });
+    handlers.onPointerMove(evt(ORIGIN_CENTER.x + 156, ORIGIN_CENTER.y));
+    handlers.onPointerUp(evt(ORIGIN_CENTER.x + 156, ORIGIN_CENTER.y));
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]!.size.width).toBeCloseTo(300, 1);
+    expect(commits[0]!.size.height).toBeCloseTo(150, 1);
+  });
+
   it("keeps the centre on the first frame when the authored translate is a percent", async () => {
     const { orientedOverlayRect } = await import("./domEditOverlayGeometry");
     authored.percent = 0.25;

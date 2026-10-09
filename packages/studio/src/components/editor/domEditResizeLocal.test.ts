@@ -34,10 +34,20 @@ describe("resolveCenterResizeScale — radial distance from the center", () => {
     expect(
       resolveCenterResizeScale({
         centerStart: { x: 100, y: 100 },
-        pointerStart: { x: 101, y: 100 },
+        pointerStart: { x: 100.2, y: 100 },
         pointer: { x: 400, y: 400 },
       }),
     ).toBe(1);
+  });
+
+  it("scales a 4x4 pick whose grabbed corner sits under 3px from its center", () => {
+    expect(
+      resolveCenterResizeScale({
+        centerStart: { x: 100, y: 100 },
+        pointerStart: { x: 102, y: 102 },
+        pointer: { x: 104, y: 104 },
+      }),
+    ).toBeCloseTo(2, 9);
   });
 });
 

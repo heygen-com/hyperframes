@@ -1,0 +1,34 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "blob",
+  "type": "hyperframes:block",
+  "title": "Blob",
+  "description": "A soft coral and pink blob with a warm highlight slowly changes shape on black. A WebGPU shader from the Shaders library (shaders.com, MIT).",
+  "tags": ["webgpu", "webgpu-shader", "background", "abstract", "organic", "gradient"],
+  "license": "Apache-2.0 AND MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 2,
+  "files": [
+    {
+      "path": "blob.html",
+      "target": "compositions/blob.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "lib/shaders.iife.js",
+      "target": "compositions/lib/shaders.iife.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "target": "compositions/lib/shaders.THIRD-PARTY-LICENSES.txt",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blob.mp4"
+  }
+}
