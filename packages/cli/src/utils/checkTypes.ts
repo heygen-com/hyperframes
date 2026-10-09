@@ -50,6 +50,12 @@ export interface LayoutOptions {
 
 export type CheckSeverity = "error" | "warning" | "info";
 
+export interface SeekClock {
+  id: number;
+  time: number;
+  end: number;
+}
+
 export interface CheckBbox {
   x: number;
   y: number;
@@ -199,8 +205,7 @@ export interface CheckAuditDriver {
   /** Frozen-sweep guard (#U10): an opaque fingerprint of the seeked visual state, from
    * motion-signature.browser.js (shared with motion-sample's liveness). Legacy name kept. */
   collectLayoutGeometry(): Promise<string>;
-  /** Current time of every GSAP timeline, tween and page animation that could move, in a stable order. */
-  collectSeekClock(): Promise<number[]>;
+  collectSeekClock(): Promise<SeekClock[]>;
   /** rotation_pivot_drift: every rotatable element's bbox center/size/angle at
    * the current seeked state. Accumulated across the grid — see checkPipeline. */
   collectRotationSample(time: number): Promise<RotationSample[]>;

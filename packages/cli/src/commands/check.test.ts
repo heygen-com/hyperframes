@@ -40,6 +40,7 @@ import type {
   LayoutOverflow,
   LayoutRect,
 } from "../utils/layoutAudit.js";
+import type { SeekClock } from "../utils/checkTypes.js";
 import type { ProjectDir } from "../utils/project.js";
 
 const PROJECT: ProjectDir = {
@@ -155,7 +156,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     collectLayout: vi.fn(async (_time: number, _tolerance: number) => []),
     collectOverlap: vi.fn(async (_time: number) => []),
     collectLayoutGeometry: vi.fn(async () => `geometry-${geometryCallCount++}`),
-    collectSeekClock: vi.fn(async () => [0]),
+    collectSeekClock: vi.fn(async () => [{ id: 1, time: 0, end: 9 }]),
     collectRotationSample: vi.fn(async (_time: number) => []),
     collectOffPivotRotationSample: vi.fn(async (time: number) => ({ time, samples: [] })),
     collectGeometryCandidates: vi.fn(async () => []),
@@ -1534,41 +1535,52 @@ describe("check pipeline", () => {
       ).toBe(true);
     });
 
-    it("passes a still title card whose registered timeline follows the seek", async () => {
-      let tick = 0;
-      const driver = fakeDriver({
+    function stillCard(clocks: (sample: number) => SeekClock[]) {
+      let sample = 0;
+      return fakeDriver({
         getDuration: vi.fn(async () => 4),
         collectLayoutGeometry: vi.fn(async () => "frozen"),
-        collectSeekClock: vi.fn(async () => [tick++]),
+        collectSeekClock: vi.fn(async () => clocks(sample++)),
       });
-      const { report } = await runScenario(driver);
+    }
 
-      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+    function sweepOf(report: CheckReport): [string, string][] {
+      return report.layout.findings
+        .filter((finding) => finding.code === "sweep_static")
+        .map((finding) => [finding.severity, finding.message]);
+    }
+
+    it.each([
+      ["whose timeline follows the seek", (sample: number) => [{ id: 1, time: sample, end: 4 }]],
+      ["with nothing that could move", () => []],
+      ["whose only animation already holds at its end", () => [{ id: 1, time: 4, end: 4 }]],
+    ])("warns, without failing, on a still card %s", async (_case, clocks) => {
+      const { report } = await runScenario(stillCard(clocks));
+
+      expect(sweepOf(report)).toEqual([["warning", "Nothing on screen moved under seek."]]);
       expect(report.ok).toBe(true);
     });
 
-    it("fails when one animation's clock ignores the seek while another follows it", async () => {
-      let tick = 0;
-      const driver = fakeDriver({
-        getDuration: vi.fn(async () => 4),
-        collectLayoutGeometry: vi.fn(async () => "frozen"),
-        collectSeekClock: vi.fn(async () => [0, tick++]),
-      });
-      const { report } = await runScenario(driver);
+    it.each([
+      [
+        "one animation is stuck while another follows the seek",
+        (sample: number) => [
+          { id: 1, time: 0, end: 4 },
+          { id: 2, time: sample, end: 4 },
+        ],
+      ],
+      [
+        "a tween created mid-run is stuck",
+        (sample: number) => [
+          { id: 1, time: sample, end: 9 },
+          ...(sample >= 2 ? [{ id: 2, time: 0, end: 2 }] : []),
+        ],
+      ],
+    ])("fails when %s", async (_case, clocks) => {
+      const { report } = await runScenario(stillCard(clocks));
 
-      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(true);
-    });
-
-    it("passes a still title card with nothing on the page that could move", async () => {
-      const driver = fakeDriver({
-        getDuration: vi.fn(async () => 4),
-        collectLayoutGeometry: vi.fn(async () => "frozen"),
-        collectSeekClock: vi.fn(async () => []),
-      });
-      const { report } = await runScenario(driver);
-
-      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
-      expect(report.ok).toBe(true);
+      expect(sweepOf(report).map(([severity]) => severity)).toEqual(["error"]);
+      expect(report.ok).toBe(false);
     });
 
     it("warns, without failing, when only the audio advanced and nothing on screen moved", async () => {

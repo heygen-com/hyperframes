@@ -56,6 +56,7 @@ import type {
   OffPivotFrame,
   OffPivotRotationSample,
   RotationSample,
+  SeekClock,
 } from "./checkTypes.js";
 
 export type {
@@ -218,7 +219,7 @@ interface GridSamples {
   screenshots: CheckScreenshot[];
   contrastMs: number;
   /** One visible-state fingerprint and seek clock per layout sample (#U10 frozen-sweep guard). */
-  layoutStateSignatures: { time: number; signature: string; clock: number[] }[];
+  layoutStateSignatures: { time: number; signature: string; clock: SeekClock[] }[];
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
@@ -488,11 +489,11 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
  * short (<3s) compositions, single-sample runs (nothing to compare), and
  * runs where a `motion_frozen` finding already reported the same underlying
  * symptom (no double-reporting the one thing that's wrong). A frame that never
- * changes is only an error when some animation's clock also never moved.
+ * changes is an error only when an animation it can see is stuck before its end.
  */
 function detectSweepStatic(
   duration: number,
-  samples: { signature: string; clock: number[] }[],
+  samples: { signature: string; clock: SeekClock[] }[],
   motionIssues: AnchoredLayoutIssue[],
   hasNoTimelineDeclaration: boolean,
 ): AnchoredLayoutIssue[] {
@@ -502,15 +503,20 @@ function detectSweepStatic(
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
   const signatures = samples.map((sample) => sample.signature);
   if (allSame(signatures))
-    return anAnimationIgnoredTheSeek(samples) ? [sweepStaticIssue("error")] : [];
-  if (allSame(signatures.map(seenPart))) return [sweepStaticIssue("warning")];
+    return [sweepStaticIssue(anAnimationIsStuck(samples) ? "error" : "still")];
+  if (allSame(signatures.map(seenPart))) return [sweepStaticIssue("audio")];
   return [];
 }
 
-function anAnimationIgnoredTheSeek(samples: { clock: number[] }[]): boolean {
-  const first = samples[0]?.clock ?? [];
-  return first.some((time, index) =>
-    samples.every(({ clock }) => clock.length === first.length && clock[index] === time),
+function anAnimationIsStuck(samples: { clock: SeekClock[] }[]): boolean {
+  const timesById = new Map<number, number[]>();
+  const endById = new Map<number, number>();
+  for (const { id, time, end } of samples.flatMap((sample) => sample.clock)) {
+    timesById.set(id, [...(timesById.get(id) ?? []), time]);
+    endById.set(id, end);
+  }
+  return [...timesById].some(
+    ([id, times]) => times.length > 1 && allSame(times) && times[0]! < endById.get(id)!,
   );
 }
 
@@ -521,24 +527,27 @@ function seenPart(signature: string): string {
   return signature.split(AUDIO_TIME_SEPARATOR)[0] ?? signature;
 }
 
-function allSame(values: string[]): boolean {
+function allSame(values: readonly unknown[]): boolean {
   return values.every((value) => value === values[0]);
 }
 
-function sweepStaticIssue(severity: "error" | "warning"): AnchoredLayoutIssue {
+const SWEEP_STATIC_MESSAGES = {
+  error: "Timeline did not advance under seek; every green verdict on this run is unreliable.",
+  still: "Nothing on screen moved under seek.",
+  audio: "Only the audio advanced under seek; nothing on screen moved.",
+};
+
+function sweepStaticIssue(kind: keyof typeof SWEEP_STATIC_MESSAGES): AnchoredLayoutIssue {
   return {
     code: "sweep_static",
-    severity,
+    severity: kind === "error" ? "error" : "warning",
     time: 0,
     selector: "[data-composition-id]",
     dataAttributes: {},
     sourceFile: "index.html",
     bbox: ZERO_BBOX,
     rect: ZERO_LAYOUT_RECT,
-    message:
-      severity === "error"
-        ? "Timeline did not advance under seek; every green verdict on this run is unreliable."
-        : "Only the audio advanced under seek; nothing on screen moved.",
+    message: SWEEP_STATIC_MESSAGES[kind],
     fixHint:
       "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
   };

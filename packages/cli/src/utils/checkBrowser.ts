@@ -52,6 +52,7 @@ import type {
   OffPivotRotationSample,
   RotationSample,
   RunAuditGrid,
+  SeekClock,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
 
@@ -613,23 +614,39 @@ async function collectLayoutGeometry(page: Page): Promise<string> {
   });
 }
 
-async function collectSeekClock(page: Page): Promise<number[]> {
+export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
   // Serialized into the page; each optional GSAP read is one branch of one function.
   // fallow-ignore-next-line complexity
   return page.evaluate(() => {
     type Clock = { duration?: () => unknown; time?: () => unknown } | null;
-    const times: number[] = [];
+    const known: { ids: WeakMap<object, number>; next: number } = Reflect.get(
+      window,
+      "__hfSeekClocks",
+    ) ?? {
+      ids: new WeakMap(),
+      next: 0,
+    };
+    Reflect.set(window, "__hfSeekClocks", known);
+    const idOf = (target: object): number => {
+      if (!known.ids.has(target)) known.ids.set(target, ++known.next);
+      return known.ids.get(target) ?? 0;
+    };
+    const clocks: SeekClock[] = [];
     const timelines: unknown = Reflect.get(window, "__timelines");
     const registered = typeof timelines === "object" && timelines ? Object.values(timelines) : [];
     const gsapRoot = Reflect.get(Reflect.get(window, "gsap") ?? {}, "globalTimeline");
     const unregistered: unknown = gsapRoot?.getChildren?.(false, true, true) ?? [];
     for (const timeline of [...registered, ...(unregistered as unknown[])] as Clock[]) {
-      const duration = timeline?.duration?.();
-      if (typeof duration === "number" && duration > 0) times.push(Number(timeline?.time?.()));
+      const end = timeline?.duration?.();
+      if (timeline && typeof end === "number" && end > 0) {
+        clocks.push({ id: idOf(timeline), time: Number(timeline.time?.()), end });
+      }
     }
-    for (const animation of document.getAnimations?.() ?? [])
-      times.push(Number(animation.currentTime));
-    return times;
+    for (const animation of document.getAnimations?.() ?? []) {
+      const end = Number(animation.effect?.getComputedTiming().endTime ?? Number.POSITIVE_INFINITY);
+      clocks.push({ id: idOf(animation), time: Number(animation.currentTime), end });
+    }
+    return clocks;
   });
 }
 

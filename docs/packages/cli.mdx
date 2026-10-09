@@ -713,11 +713,12 @@ compliant colour you could use instead.
 
 Severity is persistence-aware: a finding at a single sample demotes to info, a
 finding that persists gates the exit code, and a composition of 3s or more
-fails with `sweep_static` when its frame never changes because an animation on
-the page ignored the seek. A still title card passes as long as its timeline
-follows the seek. When only audio advanced and nothing on screen moved,
-`sweep_static` is a warning instead (`--strict` fails the run on it); a
-composition that is meant to be still can also declare `data-no-timeline`.
+fails with `sweep_static` when its frame never changes and a GSAP or CSS
+animation on the page stayed stuck before its end, so the seek never drove it.
+Any other frame that never changes, such as a still title card, is a
+`sweep_static` warning ("Nothing on screen moved under seek"), and so is an
+audio-only advance; `--strict` fails the run on either. A composition that is
+meant to be still can declare `data-no-timeline` to skip the guard.
 
 {/* VISUAL: a `check --snapshots` overview frame beside one finding crop, with the labelled finding box visible on both */}
 
@@ -771,7 +772,7 @@ borders and shadows, the pixels of visible canvas/video/img elements, and video
 playback time all count as motion — so a playing background video keeps a scope
 live on its own, even a color-graded one whose picture is drawn into a canvas.
 Audio playback time never counts here: it shows the timeline ran, but it is not
-a moving picture. The frozen-sweep guard turns an audio-only advance into a
+a moving picture. The frozen-sweep guard reports an audio-only advance as a
 warning rather than a failure. Elements under
 `data-layout-ignore` inside the scope never count; the opt-out does not apply to
 the scope element itself, since naming it in an assertion outranks it. Content
