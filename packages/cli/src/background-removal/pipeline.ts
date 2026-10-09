@@ -20,7 +20,11 @@ import { basename, dirname, extname, join } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { createSession, type Session } from "./inference.js";
 import { type Device, type ModelId } from "./manager.js";
-import { DEFAULT_VP9_CPU_USED, renderProvenanceArgs } from "@hyperframes/engine";
+import {
+  DEFAULT_VP9_CPU_USED,
+  SDR_RGB_TO_BT709_FILTER,
+  renderProvenanceArgs,
+} from "@hyperframes/engine";
 
 export type OutputFormat = "webm" | "mov" | "png";
 
@@ -152,6 +156,8 @@ export function buildEncoderArgs(
   if (format === "webm") {
     return [
       ...base,
+      "-vf",
+      SDR_RGB_TO_BT709_FILTER,
       "-c:v",
       "libvpx-vp9",
       "-b:v",
@@ -168,11 +174,6 @@ export function buildEncoderArgs(
       "0",
       "-pix_fmt",
       "yuva420p",
-      // Tag the output as BT.709 limited range so browsers use the same
-      // YUV→RGB matrix the source video was encoded with. Without these tags
-      // ffmpeg's default RGB→YUV conversion is BT.601, which causes a visible
-      // color shift (red/skin tones in particular) when the matted overlay is
-      // composited over the original mp4.
       "-colorspace",
       "bt709",
       "-color_primaries",

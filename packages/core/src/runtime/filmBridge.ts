@@ -118,6 +118,7 @@ export function createFilmBridge(options: {
       disposed = true;
       window.removeEventListener("message", receive);
       fail(new Error("Film bridge was disposed"));
+      iframe.srcdoc = "";
     },
   };
 }

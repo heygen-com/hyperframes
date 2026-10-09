@@ -336,6 +336,7 @@ export function useTimelineProviderState({
   const { seekFromX, autoScrollDuringDrag, dragScrollRaf } = useTimelinePlayhead({
     playheadRef,
     scrollRef,
+    syncScrollViewport,
     ppsRef,
     durationRef,
     isDragging,

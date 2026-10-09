@@ -84,6 +84,45 @@ describe("parseAnimatedGifMetadata", () => {
     expect(metadata?.durationSeconds).toBe(1);
   });
 
+  it("gives every image without a control block the browser's minimum delay", () => {
+    const metadata = parseAnimatedGifMetadata(gif([...frame(5).slice(8), ...frame(15).slice(8)]));
+    expect(metadata?.delaysCentiseconds).toEqual([10, 10]);
+    expect(metadata?.durationSeconds).toBe(0.2);
+  });
+
+  it("keeps delays aligned when an image has no control block", () => {
+    const metadata = parseAnimatedGifMetadata(
+      gif([...frame(5), ...frame(20).slice(8), ...frame(15)]),
+    );
+    expect(metadata?.delaysCentiseconds).toEqual([5, 10, 15]);
+    expect(metadata?.frameCount).toBe(3);
+    expect(metadata?.durationSeconds).toBe(0.3);
+  });
+
+  it("excludes a trailing control block without an image", () => {
+    const metadata = parseAnimatedGifMetadata(
+      gif([...frame(5), ...frame(15), ...frame(200).slice(0, 8)]),
+    );
+    expect(metadata?.delaysCentiseconds).toEqual([5, 15]);
+    expect(metadata?.durationSeconds).toBe(0.2);
+  });
+
+  it("consumes the plain-text control without assigning it to an image", () => {
+    const plainText = [0x21, 0x01, 12, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 65, 0];
+    const text = [...frame(200).slice(0, 8), ...plainText];
+    const metadata = parseAnimatedGifMetadata(gif([...text, ...frame(5).slice(8), ...frame(15)]));
+    expect(metadata?.delaysCentiseconds).toEqual([10, 15]);
+    expect(metadata?.durationSeconds).toBe(0.25);
+  });
+
+  it("keeps an image's control through comment extensions", () => {
+    const comment = [0x21, 0xfe, 1, 65, 0];
+    const image = [...frame(5).slice(0, 8), ...comment, ...frame(5).slice(8)];
+    const metadata = parseAnimatedGifMetadata(gif([...image, ...frame(15)]));
+    expect(metadata?.delaysCentiseconds).toEqual([5, 15]);
+    expect(metadata?.durationSeconds).toBe(0.2);
+  });
+
   it("reads Netscape loop metadata", () => {
     const metadata = parseAnimatedGifMetadata(gif([...frame(8), ...frame(8)], 0));
 

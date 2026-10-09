@@ -10,7 +10,7 @@ import {
   type HistoryResult,
   type HistoryWho,
   type UndoMode,
-} from "@hyperframes/studio-server";
+} from "@hyperframes/studio-server/history";
 
 import { resolveProject } from "./project.js";
 import { findPreviewServerForProject, studioApiUrl } from "./studioSelectionClient.js";

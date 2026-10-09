@@ -264,6 +264,12 @@ export {
   parseFirstFrameColour,
   type ToneMapSourceColour,
 } from "./hdrToneMap";
+export {
+  PREVIEW_PROXY_BOX_PARAM,
+  formatPreviewProxyBox,
+  parsePreviewProxyBox,
+  type PreviewProxyBox,
+} from "./previewProxyBox";
 
 // Inline scripts
 export {

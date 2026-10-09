@@ -189,6 +189,7 @@ describe("film runner bridge", () => {
     first.bridge.dispose();
     first.initialize();
     await expect(first.bridge.ready).rejects.toThrow("disposed");
+    expect(first.iframe.srcdoc).toBe("");
     expect(first.send).not.toHaveBeenCalled();
     const second = setup();
     second.initialize();

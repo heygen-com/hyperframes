@@ -9,6 +9,154 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.143"
+  description="Released - 2026-10-08"
+  tags={["Release", "Player", "Producer", "Sdk"]}
+>
+Distributed renders of long videos start much sooner. Each chunk now extracts only the video frames it shows, instead of the plan step extracting every frame up front. On AWS Lambda, a 26-minute clip now plans in about 20 seconds instead of over 6 minutes.
+
+This release also fixes WebVTT caption parsing, makes `hyperframes check` and lint more accurate, and fixes SDK save and patch edge cases.
+
+## Fixes
+
+- **Player:** Honor runtime discovery and source in embeds ([2dd708e0a](https://github.com/heygen-com/hyperframes/commit/2dd708e0a214fa4b8bffadc6a13c7ff55ef954a2), [#5244](https://github.com/heygen-com/hyperframes/pull/5244)).
+- **SDK:** Preserve unquoted escapes in inline styles ([2df897aa4](https://github.com/heygen-com/hyperframes/commit/2df897aa43bcafbdb2662b1f8d2ade6b379b44d0), [#5246](https://github.com/heygen-com/hyperframes/pull/5246)).
+- **CLI:** Normalize the audio passage the clip plays ([1449d0d2a](https://github.com/heygen-com/hyperframes/commit/1449d0d2a1e4026dc353ca5560d89fbb365e714b), [#5222](https://github.com/heygen-com/hyperframes/pull/5222)).
+- **CLI:** Preserve literal WebVTT cue text ([1fac5fb29](https://github.com/heygen-com/hyperframes/commit/1fac5fb29d1588aa2af4cc6f2307f110ac3218f0), [#5236](https://github.com/heygen-com/hyperframes/pull/5236)).
+- **CLI:** Bound timeline bars for negative media starts ([83b2f5608](https://github.com/heygen-com/hyperframes/commit/83b2f5608f55bc7312061c9164429bf570a7b531), [#5239](https://github.com/heygen-com/hyperframes/pull/5239)).
+- **CLI:** Audit text beneath transparent composition boxes ([b32ce10b7](https://github.com/heygen-com/hyperframes/commit/b32ce10b77ecd76a8a9157aaa12d66cc7b76d243), [#5202](https://github.com/heygen-com/hyperframes/pull/5202)).
+- **CLI:** Recognize ancestor gradient text masks ([f802aedb5](https://github.com/heygen-com/hyperframes/commit/f802aedb5b32e71bd3664cce55def95b54ca763b), [#5207](https://github.com/heygen-com/hyperframes/pull/5207)).
+- **CLI:** Route timeline project directories to inspection ([ee64ebe33](https://github.com/heygen-com/hyperframes/commit/ee64ebe33815e451f9539738f7118a3f1c54ac0c), [#5240](https://github.com/heygen-com/hyperframes/pull/5240)).
+- **CLI:** Honor authored durations when listing compositions ([1094b8ef0](https://github.com/heygen-com/hyperframes/commit/1094b8ef0e764c9f4806aff2e0017ed6f82d3719), [#5265](https://github.com/heygen-com/hyperframes/pull/5265)).
+- **CLI:** Preserve speaker labels in WebVTT cue text ([7faff8154](https://github.com/heygen-com/hyperframes/commit/7faff8154f86892509f9997a45ef389f572fd3e7), [#5233](https://github.com/heygen-com/hyperframes/pull/5233)).
+- **Lint:** Parse inline script type and source attributes ([9111d9f97](https://github.com/heygen-com/hyperframes/commit/9111d9f97e41a0275b5476dbf1681ed9fdb80354), [#5220](https://github.com/heygen-com/hyperframes/pull/5220)).
+- **Lint:** Read attribute values with the HTML parser ([b4c847aca](https://github.com/heygen-com/hyperframes/commit/b4c847aca2c12c6d516ddf90b8c966a54bb73b79), [#5209](https://github.com/heygen-com/hyperframes/pull/5209)).
+- **Lint:** Detect optional managed media calls ([c03aa9224](https://github.com/heygen-com/hyperframes/commit/c03aa9224d59353dcf5e473b943988971fc11c69), [#5210](https://github.com/heygen-com/hyperframes/pull/5210)).
+- **Core:** Seek current dotLottie players by frame ([c94d99218](https://github.com/heygen-com/hyperframes/commit/c94d9921888f8e5df64c9f028f9cce553941efab), [#5275](https://github.com/heygen-com/hyperframes/pull/5275)).
+- **Slideshow:** Validate nested hotspot entries ([00729a566](https://github.com/heygen-com/hyperframes/commit/00729a566dd88615eaa1a08a10d83e1e69f6d14e), [#5211](https://github.com/heygen-com/hyperframes/pull/5211)).
+- **Core:** Associate GIF delays with their image frames ([e57d8178c](https://github.com/heygen-com/hyperframes/commit/e57d8178c438a7667c4d68d70acc094acdd01157), [#5272](https://github.com/heygen-com/hyperframes/pull/5272)).
+- **CLI:** Validate the complete TTS speed argument ([5a7ada63b](https://github.com/heygen-com/hyperframes/commit/5a7ada63bfe9891168ea354d7a7c8b6c2db84ca4), [#5264](https://github.com/heygen-com/hyperframes/pull/5264)).
+- **CLI:** Preserve caption text inside script blocks ([c9c9f4d36](https://github.com/heygen-com/hyperframes/commit/c9c9f4d363237f5795f0f2114865cf7b476a928d), [#5226](https://github.com/heygen-com/hyperframes/pull/5226)).
+- **CLI:** Retain WebVTT timestamps before cue settings ([f5aeecdbf](https://github.com/heygen-com/hyperframes/commit/f5aeecdbf4b43f11cd084984a754e8a433d1dba8), [#5224](https://github.com/heygen-com/hyperframes/pull/5224)).
+- **CLI:** Encode background-removal WebM colors as BT.709 ([2295ed5ea](https://github.com/heygen-com/hyperframes/commit/2295ed5ea68b9fba716812658b64b6023d7dcb5c), [#5278](https://github.com/heygen-com/hyperframes/pull/5278)).
+- **CLI:** Reuse duplicate Figma nodes within asset batches ([072de48e0](https://github.com/heygen-com/hyperframes/commit/072de48e08f7060ed839f4518dd993f7b175283d), [#5276](https://github.com/heygen-com/hyperframes/pull/5276)).
+- **CLI:** Recover stale media cache entries ([b1aa71d7d](https://github.com/heygen-com/hyperframes/commit/b1aa71d7d5009bca82640f781e7c66159e6c18ee), [#5269](https://github.com/heygen-com/hyperframes/pull/5269)).
+- **CLI:** Preserve voice placement when ducking empty transcripts ([320de3973](https://github.com/heygen-com/hyperframes/commit/320de3973bd18893112e3074e842fbf2c9a5aa09), [#5271](https://github.com/heygen-com/hyperframes/pull/5271)).
+- **CLI:** Select media streams before reading adopted metadata ([e6e5f68eb](https://github.com/heygen-com/hyperframes/commit/e6e5f68eba1f2ba60b8b4bb7db57318b394784c2), [#5270](https://github.com/heygen-com/hyperframes/pull/5270)).
+- **CLI:** Report snapshot contact sheet failures ([c9ddbd2d4](https://github.com/heygen-com/hyperframes/commit/c9ddbd2d42e2dd81e1336c5da146df96118f8176), [#5196](https://github.com/heygen-com/hyperframes/pull/5196)).
+- **CLI:** Explain hardware GPU screenshot fallback ([85360f370](https://github.com/heygen-com/hyperframes/commit/85360f370ae0569aa6b34a13067d3ca771cf2183), [#5200](https://github.com/heygen-com/hyperframes/pull/5200)).
+- **CLI:** Close unused download responses before following redirects ([037f73128](https://github.com/heygen-com/hyperframes/commit/037f7312809eb220ab08614602e269a4d46f080b), [#5261](https://github.com/heygen-com/hyperframes/pull/5261)).
+- **Engine:** Invalidate cached media metadata after file changes ([730a33080](https://github.com/heygen-com/hyperframes/commit/730a3308008e7fd6fddb5860c9a364fc2ab1b7f2), [#5258](https://github.com/heygen-com/hyperframes/pull/5258)).
+- **CLI:** Serve empty project assets without a stream error ([58b7a4662](https://github.com/heygen-com/hyperframes/commit/58b7a4662dc441eb3e8a6e503310502fd8865652), [#5234](https://github.com/heygen-com/hyperframes/pull/5234)).
+- **CLI:** Validate cached versions in update metadata ([b407178f3](https://github.com/heygen-com/hyperframes/commit/b407178f3a33d6a0c79552c2159420e66b4930d8), [#5214](https://github.com/heygen-com/hyperframes/pull/5214)).
+- **SDK:** Decode scoped IDs when replaying patches ([548426fef](https://github.com/heygen-com/hyperframes/commit/548426fef477b3f4059aa2364933bc7822140072), [#5243](https://github.com/heygen-com/hyperframes/pull/5243)).
+- **Engine:** Preserve out-of-range HDR object positions ([95d5494ba](https://github.com/heygen-com/hyperframes/commit/95d5494baab990482bf6996a8f90c522c62e3e0d), [#5266](https://github.com/heygen-com/hyperframes/pull/5266)).
+- **Engine:** Restore discarded warmup timing samples ([971e1373b](https://github.com/heygen-com/hyperframes/commit/971e1373bdb8dc31180772d328e7f14bc7d853bf), [#5204](https://github.com/heygen-com/hyperframes/pull/5204)).
+- **SDK:** Preserve fragments with inert document markers ([ea033bcd5](https://github.com/heygen-com/hyperframes/commit/ea033bcd5a5884b9bffc0e8da6ce7e81cda4699e), [#5219](https://github.com/heygen-com/hyperframes/pull/5219)).
+- **SDK:** Drain pending saves and adapter storage on flush ([8efd9ca52](https://github.com/heygen-com/hyperframes/commit/8efd9ca52326444642d66b208924395eae2b4b05), [#5285](https://github.com/heygen-com/hyperframes/pull/5285)).
+- **Skills:** Preserve preset color roles in frame contrast checks ([29b901dc6](https://github.com/heygen-com/hyperframes/commit/29b901dc60c49a8b26125629ea4688af622093c6), [#5195](https://github.com/heygen-com/hyperframes/pull/5195)).
+- **Core:** Test the minimum font size when fitting text ([bb05bbe14](https://github.com/heygen-com/hyperframes/commit/bb05bbe14639a8822a2ea51fe3dbb2d1b88c916a), [#5283](https://github.com/heygen-com/hyperframes/pull/5283)).
+- **Core:** Read music sources through the shared HTML scanner ([f478fa6ff](https://github.com/heygen-com/hyperframes/commit/f478fa6ff57fd1e3c6598eed6b8300fd8e86aa3c), [#5281](https://github.com/heygen-com/hyperframes/pull/5281)).
+- **AWS Lambda:** Preserve null audio in CDK v2 assembly ([006f87d1f](https://github.com/heygen-com/hyperframes/commit/006f87d1f0d5ba88b225f249d6dd0e28644364db), [#5262](https://github.com/heygen-com/hyperframes/pull/5262)).
+- **Studio:** Stop file names with %, apostrophes or $ from breaking Studio ([621ddd469](https://github.com/heygen-com/hyperframes/commit/621ddd46934316fe81f1b6254e4ae57bc8ec5ada), [#5156](https://github.com/heygen-com/hyperframes/pull/5156)).
+
+## Performance
+
+- **Producer:** Distributed renders now extract each video's frames inside the chunks that show it, instead of all at once in the plan step ([04f2bcd67](https://github.com/heygen-com/hyperframes/commit/04f2bcd67a6faa9e9c2e1ed3ba6958f3db702717), [#5290](https://github.com/heygen-com/hyperframes/pull/5290)).
+- **Engine:** Long videos are extracted in segments, and plan uploads start while extraction is still running ([de1ef5a05](https://github.com/heygen-com/hyperframes/commit/de1ef5a05a9e9c08552fcac5e22145c019962d02), [#5280](https://github.com/heygen-com/hyperframes/pull/5280)).
+
+## Docs & Examples
+
+- **CLI:** Explain FFmpeg setup without a package manager ([fe38e8fe1](https://github.com/heygen-com/hyperframes/commit/fe38e8fe12f17b836955778f91b0e69d287f5caf), [#5237](https://github.com/heygen-com/hyperframes/pull/5237)).
+- **Contributing:** Explain signature and workflow approval requirements ([84bbeee4f](https://github.com/heygen-com/hyperframes/commit/84bbeee4f3231d630eb98db7162882c8b5092359), [#5197](https://github.com/heygen-com/hyperframes/pull/5197)).
+- **Skills:** Preserve glyphs in text reveal masks ([710b7f5bc](https://github.com/heygen-com/hyperframes/commit/710b7f5bccd99a4a24d477f694502cf888e24eaf), [#5241](https://github.com/heygen-com/hyperframes/pull/5241)).
+- Explain negative z-index stacking contexts ([e529fbb01](https://github.com/heygen-com/hyperframes/commit/e529fbb015ed075cde5ce5793bc8c80148ec3a8b), [#5201](https://github.com/heygen-com/hyperframes/pull/5201)).
+
+## Internal
+
+- **AWS Lambda:** Compare every CDK Lambda payload against the SAM template ([e07b64101](https://github.com/heygen-com/hyperframes/commit/e07b64101b10eae8e983f26c1c35c8e688c0ff6f), [#5282](https://github.com/heygen-com/hyperframes/pull/5282)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.142...v0.8.143).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.142"
+  description="Released - 2026-10-08"
+  tags={["Release", "CLI", "Studio"]}
+>
+The CLI now accepts a HeyGen access token handed over by a host app, so the app can sign it in without saving credentials. If your shell already exports `HEYGEN_ACCESS_TOKEN`, the CLI now uses it ahead of `~/.heygen/credentials`.
+
+## Features
+
+- **CLI:** Accept host-managed HeyGen access tokens ([cf1b04bb7](https://github.com/heygen-com/hyperframes/commit/cf1b04bb71662b20a236bb8d0e80499d541cae8f), [#5177](https://github.com/heygen-com/hyperframes/pull/5177)).
+
+## Fixes
+
+- **CLI:** Group sampled check findings by element and rule ([188475aaf](https://github.com/heygen-com/hyperframes/commit/188475aaf2cc94d05a5a641341cab3020c131f16), [#5174](https://github.com/heygen-com/hyperframes/pull/5174)).
+- **Studio:** Update unreferenced generated media names on replace ([de4b31a26](https://github.com/heygen-com/hyperframes/commit/de4b31a262b4f4599b4705996d2a906c6fac26e8), [#5169](https://github.com/heygen-com/hyperframes/pull/5169)).
+- **Studio:** Restore overscan and publish the zoom viewport ([042ec2ebd](https://github.com/heygen-com/hyperframes/commit/042ec2ebd07f296477f80658e391365b38749c22), [#5151](https://github.com/heygen-com/hyperframes/pull/5151)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.141...v0.8.142).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.141"
+  description="Released - 2026-10-08"
+  tags={["Release", "Fonts", "Studio", "Core"]}
+>
+Renders no longer fail when a page links a Google font with axis values the family lacks. Studio previews of hard-to-play videos decode at their on-screen size.
+
+## Changes
+
+- A font whose Google Fonts link returns no usable faces now falls back to the standard weight request, so renders keep the font instead of failing. ([#5186](https://github.com/heygen-com/hyperframes/pull/5186)).
+- Unresolved-font errors carry structured diagnostics about which resolver step failed, without font names, URLs or page text. ([#5189](https://github.com/heygen-com/hyperframes/pull/5189)).
+- The player loads compositions using the document's own duration and reports the first author error. ([#5176](https://github.com/heygen-com/hyperframes/pull/5176)).
+- Studio decodes HEVC and ProRes previews at the size they appear on screen, so back-to-back 4K clips no longer flash the background. ([#5184](https://github.com/heygen-com/hyperframes/pull/5184)).
+- media-use can reach HeyGen through a host app's gateway with `HEYGEN_API_BASE`. ([#5181](https://github.com/heygen-com/hyperframes/pull/5181)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.140...v0.8.141).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.140"
+  description="Released - 2026-10-07"
+  tags={["Release", "Engine", "CLI", "Check"]}
+>
+Motion blur now works over video, and rendering reports encoding and assembly progress. Studio previews, image replacement, and long-timeline zoom are more reliable.
+
+## Changes
+
+- Composition hosts can show the hover outline and set the stage’s starting size. ([#5116](https://github.com/heygen-com/hyperframes/pull/5116)).
+- Replacing an image fill now changes the displayed picture. ([#5170](https://github.com/heygen-com/hyperframes/pull/5170)).
+- Rebound root timelines keep advancing with the playback clock. ([#5165](https://github.com/heygen-com/hyperframes/pull/5165)).
+- Slow documents wait for their own frame cadence before capture. ([#5168](https://github.com/heygen-com/hyperframes/pull/5168)).
+- Fresh timeline updates from a host are preserved. ([#5159](https://github.com/heygen-com/hyperframes/pull/5159)).
+- Transcription keeps words spoken before the detected speech onset. ([#5164](https://github.com/heygen-com/hyperframes/pull/5164)).
+- Zooming long timelines does less image decoding and drawing. ([#5142](https://github.com/heygen-com/hyperframes/pull/5142)).
+- The preview catches up after missed file changes. ([#5126](https://github.com/heygen-com/hyperframes/pull/5126)).
+- Music requests use the host app’s music tools, with a clear error when the required CLI is missing. ([#5154](https://github.com/heygen-com/hyperframes/pull/5154)).
+- Feedback can report missing features and host-app friction without a rating. ([#5140](https://github.com/heygen-com/hyperframes/pull/5140)).
+- Automatic render worker counts respect the available memory budget. ([#5149](https://github.com/heygen-com/hyperframes/pull/5149)).
+- CLI startup loads reporting code without loading the full rendering engine, and history tests no longer race. ([#5153](https://github.com/heygen-com/hyperframes/pull/5153)).
+- Motion blur renders correctly over video by keeping the video frame steady across samples. ([#5150](https://github.com/heygen-com/hyperframes/pull/5150)).
+- Checks avoid false static-motion and text-overlap warnings on valid compositions. ([#5147](https://github.com/heygen-com/hyperframes/pull/5147)).
+- Imported scenes stay within their source time ranges. ([#5132](https://github.com/heygen-com/hyperframes/pull/5132)).
+- Rendering shows progress while encoding and assembling the output. ([#5137](https://github.com/heygen-com/hyperframes/pull/5137)).
+- Imported film HTML can use native capture while preserving its structure. ([#5131](https://github.com/heygen-com/hyperframes/pull/5131)).
+- Catalog previews run block scripts inline, and six shader blocks have dedicated documentation pages. ([#5139](https://github.com/heygen-com/hyperframes/pull/5139)).
+- The catalog adds six WebGPU shader backgrounds. ([#5138](https://github.com/heygen-com/hyperframes/pull/5138)).
+- Asynchronous frame sources can render repeatable frames. ([#5130](https://github.com/heygen-com/hyperframes/pull/5130)).
+- Skill publishing verifies that the latest creative guidance is available. ([#5081](https://github.com/heygen-com/hyperframes/pull/5081)).
+- WebGPU compositions can render with software graphics through an opt-in setting. ([#5133](https://github.com/heygen-com/hyperframes/pull/5133)).
+- Producer unit tests run without reaching the network. ([#5135](https://github.com/heygen-com/hyperframes/pull/5135)).
+- Timeline zoom stays smoother on long projects. ([#5109](https://github.com/heygen-com/hyperframes/pull/5109)).
+- Browser tests use a consistent launch path and a bounded time budget. ([#5134](https://github.com/heygen-com/hyperframes/pull/5134)).
+- The preview preloads upcoming scene images, and checks handle image swaps correctly. ([#5128](https://github.com/heygen-com/hyperframes/pull/5128)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.139...v0.8.140).
+</Update>
+
+<Update
   label="HyperFrames v0.8.139"
   description="Released - 2026-10-06"
   tags={["Release", "Studio", "CLI", "Core"]}

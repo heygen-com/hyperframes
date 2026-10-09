@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { buildTimelineAssetInsertHtml } from "../../utils/timelineAssetDrop";
 import {
+  authoredSrcPath,
   computeThumbnailStrip,
   encodePreviewPath,
   resolveMediaPreviewUrl,
   quantizeThumbnailFrameCount,
+  thumbnailFrameForTile,
 } from "./thumbnailUtils";
+import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 
 describe("computeThumbnailStrip", () => {
   it("sizes tiles by aspect ratio at the clip height", () => {
@@ -51,15 +55,27 @@ describe("computeThumbnailStrip", () => {
   });
 });
 
+describe("thumbnailFrameForTile", () => {
+  it("shows the clip's last frame in the last tile, and the slice under each other tile's centre", () => {
+    // 8 slices and the end frame.
+    expect([0, 1, 2].map((tile) => thumbnailFrameForTile(tile, 3, 9))).toEqual([1, 4, 8]);
+    // 2 slices and the end frame across 4 tiles.
+    expect([0, 1, 2, 3].map((tile) => thumbnailFrameForTile(tile, 4, 3))).toEqual([0, 0, 1, 2]);
+    expect(thumbnailFrameForTile(0, 1, 9)).toBe(4);
+  });
+});
+
 describe("quantizeThumbnailFrameCount", () => {
   it("uses doubling buckets and never exceeds the 4K geometry ceiling", () => {
     expect(quantizeThumbnailFrameCount(5)).toBe(8);
     expect(quantizeThumbnailFrameCount(32)).toBe(32);
-    expect(quantizeThumbnailFrameCount(34)).toBe(33);
   });
 
-  it("caps decode requests at the shared visible-frame budget", () => {
-    expect(quantizeThumbnailFrameCount(124)).toBe(33);
+  it("caps decode requests at the largest step within the visible-frame budget", () => {
+    // A step that is not a power of two would share no frames with the step below it.
+    expect(MAX_VISIBLE_THUMBNAIL_FRAMES).toBeGreaterThan(32);
+    expect(quantizeThumbnailFrameCount(34)).toBe(32);
+    expect(quantizeThumbnailFrameCount(124)).toBe(32);
   });
 });
 
@@ -171,5 +187,36 @@ describe("encodePreviewPath", () => {
 
   it("leaves a plain path unchanged", () => {
     expect(encodePreviewPath("assets/music.mp3")).toBe("assets/music.mp3");
+  });
+});
+
+describe("authoredSrcPath", () => {
+  const droppedSrc = (assetPath: string) =>
+    /src="([^"]*)"/.exec(
+      buildTimelineAssetInsertHtml({
+        id: "clip",
+        hfId: "hf-clip",
+        assetPath,
+        kind: "video",
+        start: 0,
+        duration: 2,
+        track: 1,
+        zIndex: 1,
+      }),
+    )![1]!;
+
+  it.each([
+    ["assets/My clip.mp4", "/api/projects/p/preview/assets/My%20clip.mp4"],
+    ["assets/café.mp4", "/api/projects/p/preview/assets/caf%C3%A9.mp4"],
+    ["assets/50% off #1?.mp4", "/api/projects/p/preview/assets/50%25%20off%20%231%3F.mp4"],
+  ])("previews a dropped %j at its own file", (assetPath, url) => {
+    expect(resolveMediaPreviewUrl(authoredSrcPath(droppedSrc(assetPath)), "p")).toBe(url);
+  });
+
+  it("drops the query and fragment, and leaves URLs with a scheme alone", () => {
+    expect(authoredSrcPath("assets/a%20b.mp4?v=2#t=1")).toBe("assets/a b.mp4");
+    expect(authoredSrcPath("assets/100%.png")).toBe("assets/100%.png");
+    expect(authoredSrcPath("https://cdn.example/a%20b.mp4")).toBe("https://cdn.example/a%20b.mp4");
+    expect(authoredSrcPath("//cdn.example/a%20b.mp4")).toBe("//cdn.example/a%20b.mp4");
   });
 });

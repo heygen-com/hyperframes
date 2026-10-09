@@ -36,6 +36,7 @@ const {
   trackCliError,
   trackFigmaImport,
   trackRenderFeedback,
+  trackFeedbackComment,
   trackRenderPreflightRejected,
   trackAuthLoginStarted,
   trackAuthLoginCompleted,
@@ -1066,6 +1067,17 @@ describe("render telemetry events", () => {
       expect.objectContaining({ capture_parallel_stream: "beginframe" }),
       undefined,
     );
+  });
+});
+
+describe("trackFeedbackComment", () => {
+  it("is its own event with no rating, so it never counts in the rating metric", () => {
+    trackEvent.mockClear();
+    trackFeedbackComment({ comment: "MISSING FEATURE: trim", feedbackId: "f1" });
+
+    const [name, props] = trackEvent.mock.calls[0] as [string, Record<string, unknown>];
+    expect(name).toBe("cli_feedback_comment");
+    expect(props).toEqual({ comment: "MISSING FEATURE: trim", feedback_id: "f1" });
   });
 });
 

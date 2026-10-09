@@ -271,7 +271,7 @@ describe("TimelineToolbar Fit", () => {
       timelineFitPps: 10,
       timelinePps: 10,
     });
-    return registerTimelineZoomViewport({ scroll, contentOrigin: 32 });
+    return registerTimelineZoomViewport({ scroll, contentOrigin: 32, publishScroll: () => {} });
   }
 
   it("moves the slider and its readout with a zoom while it is previewed", () => {

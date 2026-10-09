@@ -26,6 +26,13 @@ import { cssVariableName } from "../tokenSlug";
 import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync, existsSync, statSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
+import {
+  decodeCssEscapes,
+  decodeWellFormedEscapes,
+  encodeUrlPath,
+  decodedUrlPath,
+  splitUrlSuffix,
+} from "@hyperframes/parsers/asset-paths";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
@@ -134,26 +141,35 @@ function withCommentsStripped<T>(
   return { result, restore };
 }
 
+function resolveRelativeUrlPath(fromDir: string, basePath: string): string {
+  return resolve(fromDir, decodeWellFormedEscapes(basePath.replaceAll("\\", "/")));
+}
+
 function rebaseCssUrls(css: string, cssFileDir: string, projectDir: string): string {
   const resolvedRoot = resolve(projectDir);
   const resolvedDir = resolve(cssFileDir);
   if (resolvedDir === resolvedRoot) return css;
   return css.replace(CSS_URL_RE, (full, quote: string, urlValue: string) => {
-    if (!urlValue || !isRelativeUrl(urlValue)) return full;
-    const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
+    const decoded = decodeCssEscapes(urlValue);
+    if (!decoded || !isRelativeUrl(decoded)) return full;
+    const { basePath, suffix } = splitUrlSuffix(decoded);
     if (!basePath) return full;
-    const absolutePath = resolve(resolvedDir, basePath);
-    const rebased = relative(resolvedRoot, absolutePath).split(sep).join("/");
+    const absolutePath = resolveRelativeUrlPath(resolvedDir, basePath);
+    const rebased = encodeUrlPath(relative(resolvedRoot, absolutePath).split(sep).join("/"));
     if (rebased === basePath) return full;
-    return `url(${quote || ""}${rebased}${suffix}${quote || ""})`;
+    const escapedSuffix = suffix.replace(
+      /[\s\p{Cc}"'()\\<>]/gu,
+      (char) => `\\${char.codePointAt(0)!.toString(16).padStart(6, "0")}`,
+    );
+    return `url(${quote || ""}${rebased}${escapedSuffix}${quote || ""})`;
   });
 }
 
 function rebaseRelativePath(urlValue: string, fromDir: string, toDir: string): string {
   const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
   if (!basePath) return urlValue;
-  const absolutePath = resolve(fromDir, basePath);
-  const rebased = relative(resolve(toDir), absolutePath).split(sep).join("/");
+  const absolutePath = resolveRelativeUrlPath(fromDir, basePath);
+  const rebased = encodeUrlPath(relative(resolve(toDir), absolutePath).split(sep).join("/"));
   return appendSuffixToUrl(rebased, suffix);
 }
 
@@ -245,7 +261,7 @@ function inlineCssFile(
     (full, _q1, urlPath, _q2, barePath, mediaQuery) => {
       const importPath = urlPath ?? barePath;
       if (!importPath || !isRelativeUrl(importPath)) return full;
-      const resolved = resolve(cssFileDir, importPath);
+      const resolved = resolve(cssFileDir, decodedUrlPath(importPath));
       // @import is resolved relative to the CSS file, but must stay within the
       // project root; isSafePath also blocks symlink escapes (content is inlined).
       if (!isSafePath(projectDir, resolved)) return full;
@@ -277,14 +293,6 @@ function safeReadFileBuffer(filePath: string): Buffer | null {
   } catch {
     return null;
   }
-}
-
-function splitUrlSuffix(urlValue: string): { basePath: string; suffix: string } {
-  const queryIdx = urlValue.indexOf("?");
-  const hashIdx = urlValue.indexOf("#");
-  if (queryIdx < 0 && hashIdx < 0) return { basePath: urlValue, suffix: "" };
-  const cutIdx = queryIdx < 0 ? hashIdx : hashIdx < 0 ? queryIdx : Math.min(queryIdx, hashIdx);
-  return { basePath: urlValue.slice(0, cutIdx), suffix: urlValue.slice(cutIdx) };
 }
 
 function appendSuffixToUrl(baseUrl: string, suffix: string): string {
@@ -367,7 +375,7 @@ function maybeInlineRelativeAssetUrl(
   if (!urlValue || !isRelativeUrl(urlValue)) return null;
   const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
   if (!basePath) return null;
-  const filePath = resolveWithinProject(projectDir, basePath);
+  const filePath = resolveWithinProject(projectDir, decodeWellFormedEscapes(basePath));
   if (!filePath) return null;
   const ext = filePath.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
   const mimeType = INLINE_MIME[ext];
@@ -934,11 +942,13 @@ function hoistExternalScript(
   if (seenSrcs.has(src)) return;
   seenSrcs.add(src);
   if (!isNonRelativeUrl(src) && !isAbsolute(src) && attributes.type !== "module") {
-    const jsPath = resolveWithinProject(projectDir, src);
+    const jsPath = resolveWithinProject(projectDir, decodedUrlPath(src));
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js != null) {
       chunks.push(() =>
-        preserveLocalScriptIntegrity(doc, src, (value) => resolveWithinProject(projectDir, value))
+        preserveLocalScriptIntegrity(doc, src, (value) =>
+          resolveWithinProject(projectDir, decodedUrlPath(value)),
+        )
           ? ""
           : js,
       );
@@ -1010,6 +1020,8 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     return isSafePath(projectDir, resolved) ? resolved : null;
   };
 
+  const resolveEntryUrl = (url: string): string | null => resolveEntryPath(decodedUrlPath(url));
+
   const readSource = options?.stampHfIds ? ensureHfIds : (html: string) => html;
   noteRead(indexPath);
   const rawHtml = readSource(readFileSync(indexPath, "utf-8"));
@@ -1035,7 +1047,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const href = el.getAttribute("href");
     if (!href || !isRelativeUrl(href) || cssStyleMergeKey(el) === undefined) continue;
     if (el.hasAttribute("disabled")) continue;
-    const cssPath = resolveEntryPath(href);
+    const cssPath = resolveEntryUrl(href);
     if (!cssPath) continue;
     const css = safeReadFile(cssPath);
     if (css == null) continue;
@@ -1057,7 +1069,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
         ]),
       ].map((el) => {
         const src = el.getAttribute("src");
-        const path = src && isRelativeUrl(src) ? resolveEntryPath(src) : null;
+        const path = src && isRelativeUrl(src) ? resolveEntryUrl(src) : null;
         return src ? (path && safeReadFile(path)) || "" : el.textContent || "";
       })
     : [];
@@ -1125,11 +1137,11 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
     if (isRelativeUrl(extSrc) && scriptItem.type !== "module") {
-      const jsPath = resolveEntryPath(extSrc);
+      const jsPath = resolveEntryUrl(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
         const chunk = () =>
-          preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js;
+          preserveLocalScriptIntegrity(document, extSrc, resolveEntryUrl) ? "" : js;
         pushRun(scriptRuns, scriptItem.scene, chunk);
         continue;
       }
@@ -1261,12 +1273,12 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
-    if (preserveLocalScriptIntegrity(document, src, resolveEntryPath)) continue;
+    if (preserveLocalScriptIntegrity(document, src, resolveEntryUrl)) continue;
     // Module scripts can contain static imports whose resolution is relative
     // to the script URL. Folding their source into a classic inline script
     // both drops module semantics and changes the import base URL.
     if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
-    const jsPath = resolveEntryPath(src);
+    const jsPath = resolveEntryUrl(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
     el.setAttribute(INLINED_FILE_ATTR, src);

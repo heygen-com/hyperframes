@@ -1,3 +1,4 @@
+import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 // fallow-ignore-file code-duplication complexity
 /**
  * HTML Compiler for Producer
@@ -481,8 +482,9 @@ async function resolveMediaDuration(
       // The element will get duration 0 and be excluded from the render.
       return { duration: null, resolvedPath: src };
     }
-  } else if (!filePath.startsWith("/")) {
-    filePath = join(baseDir, filePath);
+  } else {
+    filePath = decodedUrlPath(src);
+    if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
   }
 
   if (!existsSync(filePath)) {

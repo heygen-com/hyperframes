@@ -1250,6 +1250,47 @@ function readRgb16(buf: Buffer, width: number, x: number, y: number): [number, n
 }
 
 describe("resampleRgb48leObjectFit", () => {
+  it.each(["-50% 50%", "150% 50%", "50% -50%", "50% 150%"])(
+    "allows %s to position none-fit content outside the box",
+    (position) => {
+      const src = makeHdrFrame(2, 2, 40000, 30000, 20000);
+      const out = resampleRgb48leObjectFit(src, 2, 2, 6, 6, "none", position);
+
+      expect(out).toEqual(Buffer.alloc(6 * 6 * 6));
+    },
+  );
+
+  it.each([
+    { position: "-25% 50%", x: 0, y: 2, count: 2 },
+    { position: "125% 50%", x: 5, y: 2, count: 2 },
+    { position: "50% -25%", x: 2, y: 0, count: 2 },
+    { position: "50% 125%", x: 2, y: 5, count: 2 },
+    { position: "-25% -25%", x: 0, y: 0, count: 1 },
+  ])("clips none-fit content placed at $position", ({ position, x, y, count }) => {
+    const src = makeHdrFrame(2, 2, 40000, 30000, 20000);
+    const out = resampleRgb48leObjectFit(src, 2, 2, 6, 6, "none", position);
+    let colored = 0;
+    for (let pixel = 0; pixel < 36; pixel++) {
+      if (out.readUInt16LE(pixel * 6) > 0) colored++;
+    }
+
+    expect(colored).toBe(count);
+    expect(readRgb16(out, 6, x, y)).toEqual([40000, 30000, 20000]);
+  });
+
+  it.each([
+    { position: "-50% 50%", blackX: 0, coloredX: 1 },
+    { position: "150% 50%", blackX: 1, coloredX: 0 },
+  ])("moves cover-fit content beyond the box at $position", ({ position, blackX, coloredX }) => {
+    const src = makeHdrFrame(4, 2, 40000, 30000, 20000);
+    const out = resampleRgb48leObjectFit(src, 4, 2, 2, 2, "cover", position);
+
+    for (const y of [0, 1]) {
+      expect(readRgb16(out, 2, blackX, y)).toEqual([0, 0, 0]);
+      expect(readRgb16(out, 2, coloredX, y)).toEqual([40000, 30000, 20000]);
+    }
+  });
+
   it("returns the same buffer unchanged for identity fill resample", () => {
     const src = makeHdrFrame(4, 4, 40000, 30000, 20000);
     const out = resampleRgb48leObjectFit(src, 4, 4, 4, 4, "fill");

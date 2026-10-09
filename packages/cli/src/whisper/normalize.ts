@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
+import { parseHTML } from "linkedom";
 
 export interface Word {
   /** Stable identifier for referencing this word in overrides and compositions.
@@ -217,9 +218,16 @@ function parseSrt(content: string): Word[] {
   return words;
 }
 
+function decodeVttText(text: string): string {
+  if (!text.includes("&")) return text;
+  const { document } = parseHTML("<html><body></body></html>");
+  const element = document.createElement("span");
+  element.innerHTML = text.replace(/</g, "&lt;");
+  return element.textContent ?? "";
+}
+
 function parseVtt(content: string): Word[] {
-  // Strip the WEBVTT header and any metadata blocks
-  const body = content.replace(/^WEBVTT[^\n]*\n/, "").replace(/^[A-Z-]+:.*\n/gm, "");
+  const body = content.replace(/^WEBVTT[^\n]*\n/, "");
   // VTT is structurally similar to SRT (without numeric indices)
   const blocks = body.trim().split(/\n\n+/);
   const words: Word[] = [];
@@ -240,7 +248,7 @@ function parseVtt(content: string): Word[] {
     if (!text) continue;
 
     words.push({
-      text,
+      text: decodeVttText(text),
       start: parseVttTimestamp(startStr),
       end: parseVttTimestamp(endStr),
     });
@@ -266,8 +274,9 @@ function parseSrtTimestamp(ts: string): number {
 
 /** Parse VTT timestamp: 00:01:23.456 or 01:23.456 → seconds */
 function parseVttTimestamp(ts: string): number {
-  const parts = ts.split(":");
-  if (parts.length === 3) return parseSrtTimestamp(ts);
+  const timestamp = ts.split(/[ \t]+/, 1)[0] ?? "";
+  const parts = timestamp.split(":");
+  if (parts.length === 3) return parseSrtTimestamp(timestamp);
   // MM:SS.mmm
   if (parts.length === 2) {
     const [min, secMs] = parts;
@@ -468,7 +477,8 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
     "WEBVTT\n\n" +
     cues
       .map(
-        (cue) => `${formatVttTimestamp(cue.start)} --> ${formatVttTimestamp(cue.end)}\n${cue.text}`,
+        (cue) =>
+          `${formatVttTimestamp(cue.start)} --> ${formatVttTimestamp(cue.end)}\n${cue.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}`,
       )
       .join("\n\n") +
     "\n"
@@ -525,21 +535,13 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   return { words, format };
 }
 
-/**
- * Remove words that fall before the detected speech onset.
- * Whisper can hallucinate words over non-speech sections at the start of audio.
- */
-export function stripBeforeOnset(words: Word[], onsetSeconds: number): Word[] {
-  // 0.5s tolerance: keep words whose timestamps straddle the onset boundary,
-  // since whisper may assign a slightly early start to the first spoken word.
-  return words.filter((w) => w.start >= onsetSeconds - 0.5);
-}
-
 export function patchCaptionHtml(dir: string, words: Word[]): void {
   if (words.length === 0) return;
 
   // Indent to 10 spaces to match typical composition script indentation
-  const wordsJson = JSON.stringify(words, null, 2).replace(/\n/g, "\n          ");
+  const wordsJson = JSON.stringify(words, null, 2)
+    .replace(/</g, "\\u003c")
+    .replace(/\n/g, "\n          ");
 
   let htmlFiles: string[];
   try {
@@ -562,7 +564,7 @@ export function patchCaptionHtml(dir: string, words: Word[]): void {
     const match = scriptMatch ?? transcriptMatch;
     if (match) {
       const varName = scriptMatch ? "script" : "TRANSCRIPT";
-      content = content.replace(match[0], `const ${varName} = ${wordsJson};`);
+      content = content.replace(match[0], () => `const ${varName} = ${wordsJson};`);
       writeFileSync(file, content, "utf-8");
     }
   }

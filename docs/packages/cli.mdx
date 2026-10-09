@@ -236,7 +236,7 @@ thin with counts on it was cut short.
 | `--capture-budget`  | Budget in ms for everything after the page loads (default 120000). Cooperative — it stops new work, but cannot interrupt work already running.     |
 | `--skip-assets`     | Do not download images and SVGs                                                                                                                   |
 | `--skip-vision`     | Do not run AI image captioning                                                                                                                    |
-| `--max-screenshots` | Accepted, but has no effect — capture picks its own scroll positions.                                                                              |
+| `--max-screenshots` | Maximum page-capture files, including the full-page plate; derived contact sheets are excluded. Positive integer; default 21. A value of 1 captures only the top viewport.                                                                              |
 | `--json`            | Structured output for programmatic use                                                                                                             |
 | `--video <folder>`  | Switch to video-download mode against a captured folder's manifest. Pair with `--list`, `--index`, or `--video-url`.                               |
 
@@ -309,13 +309,20 @@ cues with no internal spaces — single-word or CJK captions.
 
 ### `models`
 
-Download an on-device model. Only asked-for installs happen; nothing downloads
+List or download on-device models. Only asked-for installs happen; nothing downloads
 on first use.
 
 ```bash
+npx hyperframes models list                      # Parakeet and any downloaded whisper models
+npx hyperframes models list --json               # { ok, models: [{ engine, model, installed, runner, path }] }
 npx hyperframes models install parakeet          # progress on stderr
 npx hyperframes models install parakeet --json   # one JSON result
 ```
+
+`list` reports Parakeet as installed only when `transcribe` would use it, through
+the CLI's own runtime or `parakeet-mlx` (`runner`), and gives the reason when this
+machine cannot run it. Whisper models appear once
+`transcribe` has downloaded them.
 
 `parakeet` installs the sherpa-onnx runtime from npm and NVIDIA's Parakeet TDT
 0.6B v3 speech model (int8, about 640 MB, CC-BY-4.0) into
@@ -435,7 +442,7 @@ npx hyperframes media-treatment --selector '#hero' --analyze --json
 npx hyperframes media-treatment --selector '#hero' \
   --grading '{"preset":"skin-soft","intensity":0.6}' --apply
 npx hyperframes media-treatment --file compositions/scene.html --selector 'video' \
-  --grading '{"preset":"warm-daylight"}' --apply --dry-run --json
+  --grading '{"preset":"warm-daylight"}' --dry-run --json
 npx hyperframes media-treatment --selector '#hero' --clear
 ```
 
@@ -454,6 +461,8 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--clear`              | Remove colour grading from the target                                 |
 | `--dry-run`            | Validate and report without writing                                   |
 | `--json`               | Agent-readable JSON                                                   |
+
+`--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML.
 
 The command writes `data-color-grading` — the same contract Studio, preview, and
 render all read, so the two can never disagree. It does not recognise subjects
@@ -704,7 +713,10 @@ compliant colour you could use instead.
 
 Severity is persistence-aware: a finding at a single sample demotes to info, a
 finding that persists gates the exit code, and a timeline that never moves on a
-composition of 3s or more fails with `sweep_static`.
+composition of 3s or more fails with `sweep_static`. When only audio advanced
+and nothing on screen moved, `sweep_static` is a warning instead (`--strict`
+fails the run on it); add `data-no-timeline` to a composition that is meant to
+be still.
 
 {/* VISUAL: a `check --snapshots` overview frame beside one finding crop, with the labelled finding box visible on both */}
 
@@ -753,13 +765,19 @@ HTML. Without a sidecar, nothing changes.
 
 `keepsMoving` uses the same motion classifier as the frozen-sweep guard: box
 geometry, opacity, text and generated content, form-control state, painted CSS
-counters, clip-path, variable-font axes, and the pixels of visible
-canvas/video/img elements all count as motion — so a playing same-origin (or
-CORS-readable) background video keeps a scope live on its own. Elements under
+counters, clip-path, variable-font axes, filters, colors, backgrounds, drawn
+borders and shadows, the pixels of visible canvas/video/img elements, and video
+playback time all count as motion — so a playing background video keeps a scope
+live on its own, even a color-graded one whose picture is drawn into a canvas.
+Audio playback time never counts here: it shows the timeline ran, but it is not
+a moving picture. The frozen-sweep guard turns an audio-only advance into a
+warning rather than a failure. Elements under
 `data-layout-ignore` inside the scope never count; the opt-out does not apply to
 the scope element itself, since naming it in an assertion outranks it. Content
 the browser does not paint (`display: none` subtrees, `visibility: hidden`
-boxes, skipped `content-visibility` contents) never counts as motion either.
+boxes, skipped `content-visibility` contents) never counts as motion either,
+except a video's playback time, since the runtime may draw that video's
+picture elsewhere.
 
 `duration`, `keepsMoving.withinSelector`, and `keepsMoving.maxStaticSec` are
 optional. Findings use the same shape and envelope as layout findings and are
@@ -1239,10 +1257,11 @@ the CLI attaches your email (below).
 npx hyperframes feedback --rating 10
 npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timeline didn't animate"
 npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
+npx hyperframes feedback --comment "MISSING FEATURE: trim a clip from the timeline | WORKAROUND: none"
 ```
 
-`--rating` is required, 0–10. `--comment` adds free text. `--source person`
-or `--source agent` says who wrote a rating report (a `--search-miss` report
+`--rating` is 0–10. `--comment` adds free text; a `--comment` with no `--rating` is a report with no score (a missing feature, or friction in the app that launched the CLI), kept out of the rating metric. `--source person`
+or `--source agent` says who wrote a rating or comment report (a `--search-miss` report
 carries neither), so the team can tell a person's feedback from an agent's. `--file-issue`
 also opens a GitHub issue, `--dir` picks the project published as its repro
 (default: current directory), and `--yes, -y` skips the consent prompt for
@@ -1373,7 +1392,8 @@ First match wins:
 
 1. `HEYGEN_API_KEY`
 2. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
-3. `~/.heygen/credentials`
+3. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
+4. `~/.heygen/credentials`
 
 ### `auth login`
 
@@ -1431,6 +1451,7 @@ hyperframes auth logout --yes            # no prompt
 | --------------------- | ------------------------------------------------ |
 | `HEYGEN_API_KEY`      | Override the stored credential.                  |
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
+| `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; never refreshed.    |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
 | `HEYGEN_CONFIG_DIR`   | Credentials directory (default `~/.heygen`).     |
 

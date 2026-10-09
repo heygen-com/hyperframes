@@ -83,6 +83,7 @@ export interface ExtractVideosStageInput {
    * passes `true` so the planDir is self-contained.
    */
   materializeSymlinks?: boolean;
+  deferRangeExtraction?: boolean;
 }
 
 export interface ExtractVideosStageResult {
@@ -382,6 +383,7 @@ export async function runExtractVideosStage(
     abortSignal,
     assertNotAborted,
     materializeSymlinks,
+    deferRangeExtraction,
   } = input;
 
   const stage2Start = Date.now();
@@ -501,6 +503,7 @@ export async function runExtractVideosStage(
         timelineEnd: composition.duration,
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
+        deferRangeExtraction,
       },
       abortSignal,
       cfg,

@@ -196,3 +196,35 @@ describe("a sub-path that decodes to a parent directory", () => {
     expect(result.status).toBe(404);
   });
 });
+
+// A browser sends src="100%.png" with the % unescaped, since no two hex digits follow it.
+describe("a file name with a bare percent sign", () => {
+  async function servePreviewAsset(rawSubPath: string) {
+    const { dir, cleanup } = projectWithComposition();
+    writeFileSync(join(dir, "scenes", "100%.png"), "PNG BYTES");
+    writeFileSync(join(dir, "scenes", "50% off.png"), "SALE BYTES");
+    try {
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(dir));
+      const response = await app.request(`http://localhost/projects/film/preview/${rawSubPath}`);
+      return { status: response.status, text: await response.text() };
+    } finally {
+      cleanup();
+    }
+  }
+
+  it("serves the file when the % arrives unescaped", async () => {
+    expect(await servePreviewAsset("scenes/100%.png")).toEqual({ status: 200, text: "PNG BYTES" });
+  });
+
+  it("still decodes the escapes beside a bare %", async () => {
+    expect(await servePreviewAsset("scenes/50%%20off.png")).toEqual({
+      status: 200,
+      text: "SALE BYTES",
+    });
+    expect(await servePreviewAsset("scenes/100%25.png")).toEqual({
+      status: 200,
+      text: "PNG BYTES",
+    });
+  });
+});

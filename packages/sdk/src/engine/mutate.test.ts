@@ -323,6 +323,109 @@ describe("setText", () => {
 // ─── setAttribute ─────────────────────────────────────────────────────────────
 
 describe("setAttribute", () => {
+  it("keeps an authored media id", () => {
+    const parsed = parseMutable(
+      '<video data-hf-id="hf-media" id="hero-shot" src="harbor.mp4"></video>',
+    );
+    applyOp(parsed, {
+      type: "setAttribute",
+      target: "hf-media",
+      name: "src",
+      value: "library.mp4",
+    });
+    expect(parsed.document.querySelector("video")?.id).toBe("hero-shot");
+  });
+
+  it("re-mints a generated media id across two replacements and restores it on undo", () => {
+    const parsed = parseMutable(
+      '<video data-hf-id="hf-media" id="harbor_2" src="harbor.mp4"></video><img id="library" src="other.png">',
+    );
+    const before = serializeDocument(parsed);
+    const first = applyOp(parsed, {
+      type: "setAttribute",
+      target: "hf-media",
+      name: "src",
+      value: "library.mp4",
+    });
+    expect(parsed.document.querySelector("video")?.id).toBe("library_2");
+    const second = applyOp(parsed, {
+      type: "setAttribute",
+      target: "hf-media",
+      name: "src",
+      value: "sunset.mp4",
+    });
+    expect(parsed.document.querySelector("video")?.id).toBe("sunset");
+    applyPatchesToDocument(parsed, second.inverse);
+    applyPatchesToDocument(parsed, first.inverse);
+    expect(serializeDocument(parsed)).toBe(before);
+  });
+
+  it.each(["data-timeline-label", "data-label", "aria-label"])(
+    "keeps an explicitly labeled generated id: %s",
+    (name) => {
+      const parsed = parseMutable(
+        `<video data-hf-id="hf-media" id="harbor" src="harbor.mp4" ${name}="Opening Shot"></video>`,
+      );
+      applyOp(parsed, {
+        type: "setAttribute",
+        target: "hf-media",
+        name: "src",
+        value: "library.mp4",
+      });
+      expect(parsed.document.querySelector("video")?.id).toBe("harbor");
+      expect(parsed.document.querySelector("video")?.getAttribute(name)).toBe("Opening Shot");
+    },
+  );
+
+  it("does not treat another clip source as an id reference", () => {
+    const parsed = parseMutable(
+      '<video data-hf-id="hf-media" id="harbor" src="harbor.mp4"></video><video data-hf-id="hf-other" id="harbor_2" src="harbor.mp4"></video>',
+    );
+    applyOp(parsed, {
+      type: "setAttribute",
+      target: "hf-media",
+      name: "src",
+      value: "library.mp4",
+    });
+    expect(parsed.document.querySelector("video")?.id).toBe("library");
+  });
+
+  it("allows replacement with unrelated invalid escapes in authored code", () => {
+    const parsed = parseMutable(
+      String.raw`<video data-hf-id="hf-media" id="harbor" src="harbor.mp4"></video><style>.other { content: "\ffffff" }</style><script>const unrelated = "\u{110000}";</script>`,
+    );
+    applyOp(parsed, {
+      type: "setAttribute",
+      target: "hf-media",
+      name: "src",
+      value: "library.mp4",
+    });
+    expect(parsed.document.querySelector("video")?.id).toBe("library");
+  });
+
+  it.each([
+    '<script>gsap.to("#harbor", {x: 10})</script>',
+    "<style>#harbor {opacity: .5}</style>",
+    '<img src="asset.svg#harbor">',
+    '<img src="asset.svg#%68arbor">',
+    '<img src="#harbor">',
+    String.raw`<style>#\68 arbor {opacity: .5}</style>`,
+    String.raw`<script>document.getElementById("\x68arbor")</script>`,
+    '<div aria-labelledby="harbor"></div>',
+    '<template><div data-start="harbor + 2"></div></template>',
+  ])("keeps a referenced generated id: %s", (reference) => {
+    const parsed = parseMutable(
+      '<video data-hf-id="hf-media" id="harbor" src="harbor.mp4"></video>' + reference,
+    );
+    applyOp(parsed, {
+      type: "setAttribute",
+      target: "hf-media",
+      name: "src",
+      value: "library.mp4",
+    });
+    expect(parsed.document.querySelector("video")?.id).toBe("harbor");
+  });
+
   it("sets a new attribute and emits add patch", () => {
     const parsed = fresh();
     const result = applyOp(parsed, {
@@ -808,6 +911,52 @@ describe("setElementStyles key normalization", () => {
     setElementStyles(el, { color: "blue" });
     expect(getElementStyles(el).content).toBe('"a\\";b"');
     expect(getElementStyles(el).color).toBe("blue");
+  });
+});
+
+describe("setElementStyles unquoted CSS escapes", () => {
+  it.each([
+    [
+      "semicolon",
+      String.raw`--label: alpha\;beta; width: 120px; color: red`,
+      String.raw`alpha\;beta`,
+    ],
+    [
+      "opening parenthesis",
+      String.raw`--label: alpha\(beta; width: 120px; color: red`,
+      String.raw`alpha\(beta`,
+    ],
+    [
+      "double quote",
+      String.raw`--label: alpha\"beta; width: 120px; color: red`,
+      String.raw`alpha\"beta`,
+    ],
+    [
+      "single quote",
+      String.raw`--label: alpha\'beta; width: 120px; color: red`,
+      String.raw`alpha\'beta`,
+    ],
+  ])("preserves an escaped %s and the following declarations", (_name, style, label) => {
+    const parsed = parseMutable('<div data-hf-id="hf-x" data-hf-root></div>');
+    const el = parsed.document.querySelector('[data-hf-id="hf-x"]');
+    if (!el) throw new Error("missing fixture element");
+    el.setAttribute("style", style);
+    expect(getElementStyles(el)).toMatchObject({ "--label": label, width: "120px", color: "red" });
+    setElementStyles(el, { color: "blue" });
+    expect(getElementStyles(el)).toMatchObject({ "--label": label, width: "120px", color: "blue" });
+  });
+
+  it("treats the semicolon after an escaped backslash as a declaration boundary", () => {
+    const parsed = parseMutable('<div data-hf-id="hf-x" data-hf-root></div>');
+    const el = parsed.document.querySelector('[data-hf-id="hf-x"]');
+    if (!el) throw new Error("missing fixture element");
+    el.setAttribute("style", String.raw`--label: alpha\\; width: 120px; color: red`);
+    setElementStyles(el, { color: "blue" });
+    expect(getElementStyles(el)).toMatchObject({
+      "--label": String.raw`alpha\\`,
+      width: "120px",
+      color: "blue",
+    });
   });
 });
 

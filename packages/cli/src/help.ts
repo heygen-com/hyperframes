@@ -93,7 +93,7 @@ const GROUPS: Group[] = [
         "transcribe",
         "Transcribe audio/video to word-level timestamps, or import an existing transcript",
       ],
-      ["models", "Download on-device models (models install parakeet)"],
+      ["models", "List or download on-device models (models list, models install parakeet)"],
       ["tts", "Generate speech audio from text using a local AI model (Kokoro-82M)"],
       ["remove-background", "Remove background from a video or image to produce transparent media"],
     ],

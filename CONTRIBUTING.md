@@ -180,8 +180,13 @@ the item PR if you cannot upload its hosted image.
 ## Pull Requests
 
 - Use [conventional commit](https://www.conventionalcommits.org/) format for **all commits** (e.g., `feat: add timeline export`, `fix: resolve seek overflow`). Enforced by a git hook.
+- Every commit must have a verified signature. Configure GPG or SSH signing with [GitHub's commit-signing guide](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits), use `git commit -S`, and check that GitHub marks the commit **Verified**.
 - CI must pass before merge (build, typecheck, tests, semantic PR title)
-- PRs require at least 1 approval
+- PRs require at least one approving review from a maintainer with write access.
+
+For a single unsigned commit on your own PR branch, sign it with `git commit --amend --no-edit -S`, then update the branch with `git push --force-with-lease`. If the branch has multiple unsigned commits, each needs signing; amending only the last one leaves the others unsigned.
+
+Fork PRs may show **Workflows awaiting approval** before CI runs. A repository maintainer must [approve those workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/approve-runs-from-forks); pending checks at this stage do not indicate a test failure. An approving PR review is a separate requirement.
 
 ## Packages
 

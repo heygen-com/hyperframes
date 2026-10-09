@@ -6,7 +6,7 @@ import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import {
-  findParakeet,
+  PARAKEET_INSTALL_COMMAND,
   PARAKEET_LANGUAGES,
   parakeetSpeaks,
   transcribeWithParakeet,
@@ -31,6 +31,7 @@ import { resolve, join, extname, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
+import type { ParakeetRunner } from "../whisper/parakeetRunner.js";
 
 // Minimum accepted value for `--timeout` / `HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS`.
 // Kept out of `whisper/transcribe.ts` (avoids a top-level import into this
@@ -280,15 +281,16 @@ async function exportTranscript(
 // Transcribe audio/video with whisper
 // ---------------------------------------------------------------------------
 
-type Runner = "sherpa" | "parakeet-mlx" | "whisper";
-
-const PARAKEET_INSTALL_COMMAND = "hyperframes models install parakeet";
+type Runner = ParakeetRunner | "whisper";
 
 /** auto and parakeet prefer sherpa-onnx, then parakeet-mlx, then whisper, in Parakeet's languages. */
-function pickRunner(engine: string, sherpaUsable: () => boolean, language?: string): Runner {
+function pickRunner(
+  engine: string,
+  parakeet: () => ParakeetRunner | null,
+  language?: string,
+): Runner {
   if (engine === "whisper" || !parakeetSpeaks(language)) return "whisper";
-  if (sherpaUsable()) return "sherpa";
-  return findParakeet() ? "parakeet-mlx" : "whisper";
+  return parakeet() ?? "whisper";
 }
 
 /** When Parakeet fails, only auto falls back; an explicit --engine parakeet fails with the error. */
@@ -309,16 +311,11 @@ async function transcribeAudio(
   },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
-  const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
-    await import("../whisper/normalize.js");
+  const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
 
-  const {
-    DecodeCancelled,
-    prepareSherpaWav,
-    sherpaParakeetInstalled,
-    sherpaUnsupportedReason,
-    transcribeWithSherpa,
-  } = await import("../whisper/sherpa.js");
+  const { DecodeCancelled, prepareSherpaWav, sherpaUnsupportedReason, transcribeWithSherpa } =
+    await import("../whisper/sherpa.js");
+  const { parakeetRunner } = await import("../whisper/parakeetRunner.js");
   const { createRenderCancellationScope, stoppedByCancelSignal } =
     await import("../utils/renderCancellation.js");
 
@@ -327,8 +324,7 @@ async function transcribeAudio(
     failWith(`Unknown --engine: ${opts.engine}. Use auto, parakeet, or whisper.`, !!opts.json);
   }
   const unsupported = sherpaUnsupportedReason();
-  const sherpaUsable = () => !unsupported && sherpaParakeetInstalled();
-  let runner = pickRunner(engine, sherpaUsable, opts.language);
+  let runner = pickRunner(engine, () => parakeetRunner({ unsupported }), opts.language);
   if (engine === "parakeet" && runner === "whisper") {
     failWith(
       !parakeetSpeaks(opts.language)
@@ -395,7 +391,11 @@ async function transcribeAudio(
       const reason = normalizeErrorMessage(err).replace(/\.+$/, "");
       const parakeetError = `Parakeet failed: ${reason}. To repair it, run: ${PARAKEET_INSTALL_COMMAND}`;
       if (!parakeetFallsBack(engine)) throw new Error(parakeetError);
-      runner = pickRunner(engine, () => false, opts.language);
+      runner = pickRunner(
+        engine,
+        () => parakeetRunner({ unsupported, skipSherpa: true }),
+        opts.language,
+      );
       spin?.clear();
       console.error(c.warn(`${parakeetError}. Using ${runner} for this run.`));
       spin?.start(`Transcribing with ${label(runner)}...`);
@@ -411,18 +411,7 @@ async function transcribeAudio(
       }
     }
 
-    let { words } = loadTranscript(result.transcriptPath);
-
-    if (result.speechOnsetSeconds != null) {
-      const before = words.length;
-      words = stripBeforeOnset(words, result.speechOnsetSeconds);
-      const stripped = before - words.length;
-      if (stripped > 0 && !opts.json) {
-        spin?.message(
-          `Stripped ${stripped} words before speech onset at ${result.speechOnsetSeconds.toFixed(1)}s`,
-        );
-      }
-    }
+    const { words } = loadTranscript(result.transcriptPath);
 
     writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
     patchCaptionHtml(dir, words);

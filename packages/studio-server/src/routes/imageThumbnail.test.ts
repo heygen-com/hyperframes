@@ -115,7 +115,7 @@ describe("JPEG timeline thumbnail route", () => {
     expect((await app.request(url)).status).toBe(422);
   });
   it("rejects malformed paths, corrupt images and oversized sources", async () => {
-    expect((await app.request(url.replace("photo.jpg", "%FF.jpg"))).status).toBe(400);
+    expect((await app.request(url.replace("photo.jpg", "%FF.jpg"))).status).toBe(404);
     await writeFile(join(dir, "photo.jpg"), "not an image");
     expect((await app.request(url)).status).toBe(422);
     const file = await open(join(dir, "photo.jpg"), "w");

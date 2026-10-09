@@ -13,6 +13,39 @@ const track = (integratedLufs: number, truePeakDbfs: number, volume = 1) => ({
   truePeakDbfs,
 });
 
+describe("audioTags playback offsets", () => {
+  it.each([
+    ['data-playback-start="4"', 4],
+    ['data-playback-start="4" data-media-start="1"', 4],
+    ['data-playback-start="0" data-media-start="4"', 0],
+    ['data-playback-start="4" data-media-start="invalid"', 4],
+    ['data-playback-start="-1" data-media-start="3"', 3],
+    ['data-playback-start="1.5s" data-media-start="3"', 3],
+    ['data-playback-start="" data-media-start="3"', 3],
+    ['data-playback-start="invalid"', 0],
+    ['data-media-start="3"', 3],
+  ])("measures the selected in-point for %s", (attributes, expected) => {
+    const html = `<audio id="voice" src="voice.wav" data-duration="2" ${attributes}></audio>`;
+    expect(audioTags(html)[0]).toEqual(expect.objectContaining({ mediaStart: expected }));
+  });
+
+  it("measures a video from its playback in-point at its authored speed", () => {
+    const html = `<video id="talk" src="talk.mp4" data-playback-start="4" data-media-start="1" data-duration="2" data-playback-rate="2"></video>`;
+    const [tag] = audioTags(html);
+    expect(tag).toBeDefined();
+    if (!tag) throw new Error("missing video");
+    const args = loudnessMeasureArgs("talk.mp4", tag);
+    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual(["-ss", "4", "-t", "4"]);
+  });
+
+  it("preserves the selected in-point when writing the matched gain", () => {
+    const html = `<audio id="voice" src="voice.wav" data-playback-start="4" data-media-start="1" data-volume="1"></audio>`;
+    const changed = updateAudioVolume(html, "voice", 0.5);
+    expect(changed).toBe(html.replace('data-volume="1"', 'data-volume="0.5"'));
+    expect(audioTags(changed)[0]).toEqual(expect.objectContaining({ mediaStart: 4, volume: 0.5 }));
+  });
+});
+
 describe("audioTags with video", () => {
   it("includes a video with sound as a normalizable clip", () => {
     const html = `<video id="a-roll" src="talk.mp4" data-has-audio="true" data-duration="4"></video>`;

@@ -1879,6 +1879,159 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
     },
     30_000,
   );
+
+  // #5260: one ffmpeg process over a 26-minute clip hit ffmpegProcessTimeout.
+  it.each([
+    // 260 frames: one 240-frame segment, then 20 more.
+    { startTime: 0.5, duration: 130, frames: 260 },
+    // 200.3 - 80.3 is 120.00000000000001 s: exactly one segment, not a second near-empty one.
+    { startTime: 80.3, duration: 200.3 - 80.3, frames: 240 },
+  ])(
+    "extracts $duration s from $startTime s at 2 fps across segments without a gap or repeat",
+    async (c) => {
+      const source = join(FIXTURE_DIR, "index-2fps-long.mp4");
+      if (!existsSync(source)) {
+        const synth = await runFfmpeg([
+          "-y",
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          `nullsrc=s=${WIDTH}x${HEIGHT}:r=2:d=205,geq=lum='16+2*mod(N\\,100)':cb=128:cr=128`,
+          "-c:v",
+          "libx264",
+          "-qp",
+          "0",
+          "-pix_fmt",
+          "yuv420p",
+          source,
+        ]);
+        if (!synth.success) throw new Error(`long fixture synthesis failed: ${synth.stderr}`);
+      }
+      const extracted = await extractVideoFramesRange(
+        source,
+        `long-2fps-${c.startTime}`,
+        c.startTime,
+        c.duration,
+        { fps: 2, outputDir: FIXTURE_DIR, format: "png" },
+      );
+      const onScreen = Array.from(
+        { length: c.frames },
+        (_, i) => Math.floor((c.startTime + i / 2) * 2 + 1e-9) % 100,
+      );
+      expect(extracted.totalFrames).toBe(c.frames);
+      expect(sourceIndexes(extracted)).toEqual(onScreen);
+    },
+    60_000,
+  );
+
+  // A distributed chunk extracts only the frames it renders; they must be the full extraction's.
+  describe("partial extraction", () => {
+    const gopSource = join(FIXTURE_DIR, "gop-30fps.mp4");
+
+    beforeAll(async () => {
+      // Real motion and long GOPs, so range seeks land mid-GOP.
+      const synth = await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=s=64x36:r=30:d=20",
+        "-c:v",
+        "libx264",
+        "-g",
+        "250",
+        "-pix_fmt",
+        "yuv420p",
+        gopSource,
+      ]);
+      if (!synth.success) throw new Error(`gop fixture synthesis failed: ${synth.stderr}`);
+    }, 30_000);
+
+    function frameBytes(dir: string): Map<string, Buffer> {
+      return new Map(readdirSync(dir).map((name) => [name, readFileSync(join(dir, name))]));
+    }
+
+    it.each([
+      { fps: 24, startTime: 1.3, duration: 17 },
+      { fps: 60, startTime: 0, duration: 20 },
+    ])(
+      "frameRanges at $fps fps write the same files as a full extraction",
+      async (c) => {
+        const full = await extractVideoFramesRange(
+          gopSource,
+          `full-${c.fps}`,
+          c.startTime,
+          c.duration,
+          { fps: c.fps, outputDir: FIXTURE_DIR, format: "jpg" },
+        );
+        const last = full.totalFrames;
+        const ranges = [
+          { firstFrame: 0, frames: 5 },
+          { firstFrame: 97, frames: 40 },
+          { firstFrame: last - 3, frames: 3 },
+        ];
+        const partial = await extractVideoFramesRange(
+          gopSource,
+          `partial-${c.fps}`,
+          c.startTime,
+          c.duration,
+          { fps: c.fps, outputDir: FIXTURE_DIR, format: "jpg", frameRanges: ranges },
+        );
+        const fullFrames = frameBytes(full.outputDir);
+        const partialFrames = frameBytes(partial.outputDir);
+        expect(partialFrames.size).toBe(48);
+        for (const [name, bytes] of partialFrames) {
+          expect(fullFrames.get(name)?.equals(bytes), name).toBe(true);
+        }
+      },
+      60_000,
+    );
+
+    it.each([
+      { fps: 24, mediaStart: 3.3 },
+      { fps: 30, mediaStart: 0 },
+      { fps: 60, mediaStart: 7.77 },
+    ])(
+      "a deferred window to the source end at $fps fps reports the full frame count",
+      async (c) => {
+        const video = (): VideoElement => ({
+          id: `defer-${c.fps}`,
+          src: gopSource,
+          start: 0,
+          end: Infinity,
+          mediaStart: c.mediaStart,
+          loop: false,
+          hasAudio: false,
+        });
+        const full = await extractAllVideoFrames([video()], FIXTURE_DIR, {
+          fps: c.fps,
+          outputDir: join(FIXTURE_DIR, `defer-full-${c.fps}`),
+        });
+        const deferred = await extractAllVideoFrames([video()], FIXTURE_DIR, {
+          fps: c.fps,
+          outputDir: join(FIXTURE_DIR, `defer-${c.fps}`),
+          deferRangeExtraction: true,
+        });
+        expect(deferred.errors).toEqual([]);
+        const result = deferred.extracted[0]!;
+        expect(result.totalFrames).toBe(full.extracted[0]!.totalFrames);
+        expect(result.framePaths.size).toBe(0);
+        expect(readdirSync(result.outputDir)).toEqual([]);
+        expect(result.deferredRange).toEqual({
+          startTime: c.mediaStart,
+          durationSeconds: expect.any(Number),
+          format: "jpg",
+        });
+      },
+      60_000,
+    );
+  });
 });
 
 describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {

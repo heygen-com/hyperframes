@@ -351,6 +351,7 @@ export function PropertyPanelFlat({
           styles={styles}
           assets={assets}
           onSetStyle={onSetStyle}
+          onSetHtmlAttribute={forwardedProps.onSetHtmlAttribute}
           onPreviewStyle={onPreviewStyle}
           onImportAssets={onImportAssets}
           gsapBorderRadius={gsapBorderRadius}

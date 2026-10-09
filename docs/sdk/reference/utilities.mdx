@@ -162,7 +162,7 @@ interface PersistQueueModule {
 ```
 
 <ParamField path="flush" type="() => Promise<void>">
-  Cancels any pending debounced write and immediately writes the current serialized HTML to the adapter. Resolves when the write commits. Use before app close or page unload.
+  Immediately saves any pending edit, waits for in-flight saves, and flushes the adapter's storage before resolving. With no pending edit, it flushes storage without writing another version. Use before app close or page unload.
 </ParamField>
 
 <ParamField path="dispose" type="() => void">
@@ -183,7 +183,7 @@ interface PersistQueueOptions {
 </ParamField>
 
 <ParamField path="onError" type="(e: PersistErrorEvent) => void">
-  Called when `adapter.write()` rejects. Receives a `PersistErrorEvent` with `{ error: { message, cause? } }`. Use this to surface persistence failures in your UI or logging layer.
+  Called when `adapter.write()` or `adapter.flush()` rejects. Receives a `PersistErrorEvent` with `{ error: { message, cause? } }`. Use this to surface persistence failures in your UI or logging layer.
 </ParamField>
 
 ---
