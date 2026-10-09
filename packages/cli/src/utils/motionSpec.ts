@@ -112,7 +112,11 @@ export function parseMotionSpec(raw: unknown): MotionSpecParse {
  * different composition — the bundler and this resolver would diverge silently.
  * Returns null when none is present.
  */
-export function findMotionSpec(projectDir: string): string | null {
+export function findMotionSpec(projectDir: string, entryFile?: string): string | null {
+  if (entryFile) {
+    const sidecar = join(projectDir, `${entryFile.replace(/\.html?$/i, "")}.motion.json`);
+    return existsSync(sidecar) ? sidecar : null;
+  }
   if (!existsSync(projectDir)) return null;
   const entries = readdirSync(projectDir);
   const sidecars = entries.filter((name) => name.endsWith(".motion.json")).sort();

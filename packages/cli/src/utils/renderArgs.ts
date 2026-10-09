@@ -225,7 +225,7 @@ function compositionEntryErrorMessage(error: CompositionEntryParseError): {
       return {
         title: "Invalid composition path",
         message: `"${error.entryFile}" is a directory, not an .html file.`,
-        hint: "Pass a path to a .html file (e.g. compositions/intro.html), or omit --composition to render index.html.",
+        hint: "Pass a path to a .html file (e.g. compositions/intro.html), or omit --composition to use index.html.",
       };
   }
 }
@@ -246,6 +246,18 @@ export function resolveCompositionEntryArg(
     failUsage();
   }
   return result.value;
+}
+
+/** Same validation as `resolveCompositionEntryArg`, thrown as an Error so `check --json` keeps its envelope. */
+export function requireCompositionEntryArg(
+  raw: string | undefined,
+  projectDir: string,
+  stat: (path: string) => Stats,
+): string | undefined {
+  const result = parseCompositionEntryArg(raw, projectDir, stat);
+  if (result.ok) return result.value;
+  const { title, message, hint } = compositionEntryErrorMessage(result.error);
+  throw new Error([`${title}: ${message}`, hint].filter(Boolean).join(" "));
 }
 
 // ── default fps ────────────────────────────────────────────────────────

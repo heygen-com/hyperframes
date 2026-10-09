@@ -1,6 +1,8 @@
 import { runCommand } from "citty";
-import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const trackCheckReport = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
@@ -477,6 +479,99 @@ it("threads --no-proxy into the browser check options", async () => {
   await runCommand(command, { rawArgs: ["--json", "--no-proxy"] });
 
   expect(runPipeline).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ autoProxy: false }));
+});
+
+describe("check --composition", () => {
+  function projectWith(files: string[]): ProjectDir {
+    const dir = mkdtempSync(join(tmpdir(), "hf-check-composition-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    for (const file of files) writeFileSync(join(dir, file), "<html></html>");
+    return { dir, name: "project", indexPath: join(dir, "index.html") };
+  }
+
+  async function runCheck(project: ProjectDir, rawArgs: string[]) {
+    const { report } = await runScenario(fakeDriver());
+    const resolveProject = vi.fn((_dir: string | undefined, _options?: unknown) => project);
+    const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({ resolveProject, runPipeline, withMeta: (value) => value });
+    await runCommand(command, { rawArgs });
+    return { resolveProject, runPipeline, log };
+  }
+
+  it("hands the pipeline the composition file as the entry, without requiring index.html", async () => {
+    const project = projectWith(["index.9x16.html"]);
+
+    const { resolveProject, runPipeline } = await runCheck(project, [
+      "--json",
+      "-c",
+      "index.9x16.html",
+    ]);
+
+    expect(resolveProject).toHaveBeenCalledWith(undefined, { requireIndex: false });
+    expect(runPipeline).toHaveBeenCalledWith(
+      { ...project, entryFile: "index.9x16.html" },
+      expect.anything(),
+    );
+  });
+
+  it("keeps index.html as the entry when the flag is omitted or is `.`", async () => {
+    const project = projectWith(["index.html"]);
+
+    for (const rawArgs of [["--json"], ["--json", "--composition", "."]]) {
+      const { resolveProject, runPipeline } = await runCheck(project, rawArgs);
+      expect(resolveProject).toHaveBeenCalledWith(undefined, { requireIndex: true });
+      expect(runPipeline).toHaveBeenCalledWith(project, expect.anything());
+      expect(runPipeline.mock.calls[0]?.[0]).not.toHaveProperty("entryFile");
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("rejects a missing composition with render's message inside the JSON envelope", async () => {
+    const project = projectWith(["index.html"]);
+
+    const { runPipeline, log } = await runCheck(project, ["--json", "-c", "missing.html"]);
+
+    expect(runPipeline).not.toHaveBeenCalled();
+    expect(consumeCommandResult().exitCode).toBe(1);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toEqual({
+      ok: false,
+      error:
+        'Composition not found: "missing.html" does not exist in the project directory. Pass a path to a .html file relative to the project root (e.g. compositions/intro.html).',
+    });
+  });
+
+  it("lints, reads the sidecar of, and audits the entry, crediting root findings to it", async () => {
+    const project = { ...PROJECT, entryFile: "index.9x16.html" };
+    const rootFinding = { ...runtimeError(), sourceFile: "index.html" };
+    const { deps, runBrowserCheck } = dependencies(fakeDriver(), {
+      runtime: [rootFinding, runtimeError()],
+    });
+
+    const report = await runCheckPipeline(project, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(deps.lintProject).toHaveBeenCalledWith(
+      PROJECT.dir,
+      resolve(PROJECT.dir, "index.9x16.html"),
+    );
+    expect(deps.resolveMotionSpec).toHaveBeenCalledWith(PROJECT.dir, "index.9x16.html");
+    expect(runBrowserCheck).toHaveBeenCalledWith(project, expect.anything(), expect.anything());
+    expect(report.runtime.findings.map((finding) => finding.sourceFile)).toEqual([
+      "index.9x16.html",
+      "compositions/scene.html",
+    ]);
+  });
+
+  it("leaves the default run's entry and source files untouched", async () => {
+    const rootFinding = { ...runtimeError(), sourceFile: "index.html" };
+    const { deps } = dependencies(fakeDriver(), { runtime: [rootFinding] });
+
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(deps.lintProject).toHaveBeenCalledWith(PROJECT.dir, undefined);
+    expect(deps.resolveMotionSpec).toHaveBeenCalledWith(PROJECT.dir, undefined);
+    expect(report.runtime.findings[0]?.sourceFile).toBe("index.html");
+  });
 });
 
 it("rejects malformed caption-zone specs instead of silently disabling the gate", async () => {

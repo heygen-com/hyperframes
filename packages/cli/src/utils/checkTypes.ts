@@ -290,8 +290,8 @@ export interface CheckReport {
 }
 
 export interface CheckDependencies {
-  lintProject(projectDir: string): Promise<ProjectLintResult>;
-  resolveMotionSpec(projectDir: string): MotionSpecResolution;
+  lintProject(projectDir: string, entryPath?: string): Promise<ProjectLintResult>;
+  resolveMotionSpec(projectDir: string, entryFile?: string): MotionSpecResolution;
   runBrowserCheck(
     project: ProjectDir,
     options: CheckOptions,

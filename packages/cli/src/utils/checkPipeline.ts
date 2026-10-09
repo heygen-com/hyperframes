@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { trackCheckReport, trackCommandFailure } from "../telemetry/events.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
-import type { ProjectDir } from "./project.js";
+import { explicitEntryPath, type ProjectDir } from "./project.js";
 import { lintProject, shouldBlockRender, type ProjectLintResult } from "./lintProject.js";
 import {
   buildLayoutSampleTimes,
@@ -1131,7 +1131,7 @@ export async function runCheckPipeline(
   let lintResult: ProjectLintResult;
   const lintStartedAt = Date.now();
   try {
-    lintResult = await dependencies.lintProject(project.dir);
+    lintResult = await dependencies.lintProject(project.dir, explicitEntryPath(project));
   } catch (error) {
     // The linter itself crashed (unreadable file, internal error) — distinct
     // from lint findings; a runtime-failure code would send the agent hunting
@@ -1165,7 +1165,7 @@ export async function runCheckPipeline(
     );
   }
 
-  const motion = dependencies.resolveMotionSpec(project.dir);
+  const motion = dependencies.resolveMotionSpec(project.dir, project.entryFile);
   const specFindings =
     motion.kind === "invalid"
       ? [
@@ -1189,19 +1189,41 @@ export async function runCheckPipeline(
   const snapshotFiles = options.snapshots
     ? await writeContrastSnapshots(dependencies, project.dir, browser)
     : [];
-  const report = buildReport(
-    options,
-    lint,
-    browser,
-    motion,
-    specFindings,
-    snapshotFiles,
-    hdrPromotion,
-    hdrInspection,
+  const report = creditRootFindingsToEntry(
+    buildReport(
+      options,
+      lint,
+      browser,
+      motion,
+      specFindings,
+      snapshotFiles,
+      hdrPromotion,
+      hdrInspection,
+    ),
+    project.entryFile,
   );
   return options.snapshots
     ? await withFindingCrops(dependencies, project, options, report)
     : report;
+}
+
+/** Findings on the root document fall back to `index.html`; with `--composition` that document is the entry. */
+function creditRootFindingsToEntry(
+  report: CheckReport,
+  entryFile: string | undefined,
+): CheckReport {
+  if (!entryFile) return report;
+  const credit = <T extends CheckFinding>(findings: T[]): T[] =>
+    findings.map((finding) =>
+      finding.sourceFile === "index.html" ? { ...finding, sourceFile: entryFile } : finding,
+    );
+  return {
+    ...report,
+    runtime: { ...report.runtime, findings: credit(report.runtime.findings) },
+    layout: { ...report.layout, findings: credit(report.layout.findings) },
+    motion: { ...report.motion, findings: credit(report.motion.findings) },
+    contrast: { ...report.contrast, findings: credit(report.contrast.findings) },
+  };
 }
 
 /** Persists the contrast pass's already-captured overview PNGs (or the
@@ -1588,8 +1610,8 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   return Object.keys(value).every((key) => typeof Reflect.get(value, key) === "string");
 }
 
-function resolveMotionSpec(projectDir: string): MotionSpecResolution {
-  const path = findMotionSpec(projectDir);
+function resolveMotionSpec(projectDir: string, entryFile?: string): MotionSpecResolution {
+  const path = findMotionSpec(projectDir, entryFile);
   if (!path) return { kind: "none" };
   const result = readMotionSpec(path);
   return result.ok

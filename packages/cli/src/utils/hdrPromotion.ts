@@ -12,13 +12,13 @@ type MediaSource = { src: string };
 type RenderMedia = { videos: readonly MediaSource[]; images: readonly MediaSource[] };
 
 interface InspectHdrAutoPromotionDependencies {
-  bundleHtml(projectDir: string): Promise<string>;
+  bundleHtml(projectDir: string, entryFile?: string): Promise<string>;
   collectMedia(html: string): RenderMedia | Promise<RenderMedia>;
 }
 
-async function bundleProjectHtml(projectDir: string): Promise<string> {
+async function bundleProjectHtml(projectDir: string, entryFile?: string): Promise<string> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  return bundleToSingleHtml(projectDir);
+  return bundleToSingleHtml(projectDir, { entryFile });
 }
 
 async function collectBundledRenderMedia(html: string): Promise<RenderMedia> {
@@ -43,7 +43,9 @@ export async function inspectHdrAutoPromotion(
     asset: string;
     colorSpace: Awaited<ReturnType<typeof extractMediaMetadata>>["colorSpace"];
   }> = [];
-  const media = await dependencies.collectMedia(await dependencies.bundleHtml(project.dir));
+  const media = await dependencies.collectMedia(
+    await dependencies.bundleHtml(project.dir, project.entryFile),
+  );
   for (const { src } of [...media.videos, ...media.images]) {
     const path = /^https?:\/\//i.test(src)
       ? src

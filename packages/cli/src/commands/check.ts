@@ -1,4 +1,5 @@
 import { formatFindingTimes } from "../utils/checkFindings.js";
+import { statSync } from "node:fs";
 import { defineCommand, parseArgs } from "citty";
 import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
@@ -7,7 +8,8 @@ import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { formatLayoutIssue } from "../utils/layoutAudit.js";
-import { resolveProject, type ProjectDir } from "../utils/project.js";
+import { resolveProject, type ProjectDir, type ResolveProjectOptions } from "../utils/project.js";
+import { hasExplicitCompositionArg, requireCompositionEntryArg } from "../utils/renderArgs.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
   DEFAULT_CHECK_OPTIONS,
@@ -26,10 +28,11 @@ export const examples: Example[] = [
   ["Output one agent-readable envelope", "hyperframes check --json"],
   ["Persist the five audited contrast frames", "hyperframes check --snapshots"],
   ["Also fail on warnings", "hyperframes check --strict"],
+  ["Check another composition file, e.g. a 9:16 cut", "hyperframes check -c index.9x16.html"],
 ];
 
 export interface CheckCommandDependencies {
-  resolveProject(dir: string | undefined): ProjectDir;
+  resolveProject(dir: string | undefined, options?: ResolveProjectOptions): ProjectDir;
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<CheckReport>;
   withMeta(value: object): object;
 }
@@ -42,6 +45,13 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
+  composition: {
+    type: "string",
+    alias: "c",
+    description:
+      "Check a specific composition file instead of index.html (e.g. index.9x16.html), relative to the project directory. " +
+      "Pass `.` (or omit the flag) to check the project's index.html.",
+  },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
   samples: {
     type: "string",
@@ -142,10 +152,11 @@ export function createCheckCommand(
       const asJson = args.json === true;
 
       try {
-        const project = dependencies.resolveProject(args.dir);
+        const project = resolveCheckTarget(dependencies, args.dir, args.composition);
         const options = parseCheckOptions(args);
         if (!asJson) {
-          console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
+          const label = project.entryFile ? `${project.name}/${project.entryFile}` : project.name;
+          console.log(`${c.accent("◆")}  Checking ${c.accent(label)}`);
         }
         const report = await dependencies.runPipeline(project, options);
         if (asJson) {
@@ -167,6 +178,18 @@ export function createCheckCommand(
       }
     },
   });
+}
+
+function resolveCheckTarget(
+  dependencies: CheckCommandDependencies,
+  dir: string | undefined,
+  composition: string | undefined,
+): ProjectDir {
+  const project = dependencies.resolveProject(dir, {
+    requireIndex: !hasExplicitCompositionArg(composition),
+  });
+  const entryFile = requireCompositionEntryArg(composition, project.dir, statSync);
+  return entryFile ? { ...project, entryFile } : project;
 }
 
 function normalizeFrameCheckRawArgs(rawArgs: string[]): string[] {

@@ -39,7 +39,10 @@ npx hyperframes check --tolerance 4      # allowed overflow px before reporting 
 npx hyperframes check --timeout 30000    # initial render-ready + navigation minimum in ms (defaults: 3000 / 10000)
 npx hyperframes check --no-contrast      # skip the WCAG audit while iterating
 npx hyperframes check --strict           # exit non-zero on warnings too (default: only errors)
+npx hyperframes check -c index.9x16.html # check another composition file instead of index.html
 ```
+
+`-c/--composition <file>` takes a file inside the project, as `render -c` does. Run `check` once per composition when a project holds several (one file per aspect ratio, say): lint then covers that file instead of `index.html` plus `compositions/`, and only the sidecar named after it applies.
 
 One command, one Chrome boot. `check` runs the linter first and skips the browser entirely when lint reports errors. When the browser never ran (lint errors, a linter crash, or a browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast` sections are empty, not clean. Otherwise it loads the bundled composition once, wires runtime listeners before navigation, and sweeps one seek grid running every audit per sample:
 
@@ -75,7 +78,7 @@ npx hyperframes check --frame-check     # media (img/svg/video/canvas) out-of-fr
 
 `check` verifies **motion intent** against the same seeked timeline the renderer uses — the closest automated proxy for "render the MP4 and watch it". It catches render-vs-preview bugs layout sampling can't: an entrance reveal the seek lands past, a broken stagger order, an element drifting off-frame mid-tween, a frozen shot.
 
-Drop a `*.motion.json` sidecar next to the composition (matching the html basename when several compositions share a dir). `check` discovers it automatically — no flag, no authoring-framework changes. With no sidecar, `check` behaves exactly as before.
+Drop a `*.motion.json` sidecar next to the composition (matching the html basename when several compositions share a dir; under `check -c <file>` only that file's sidecar applies). `check` discovers it automatically — no flag, no authoring-framework changes. With no sidecar, `check` behaves exactly as before.
 
 ```json
 {
@@ -104,6 +107,7 @@ Drop a `*.motion.json` sidecar next to the composition (matching the html basena
 npx hyperframes snapshot                       # 5 key frames as PNG
 npx hyperframes snapshot ./my-project          # specific project
 npx hyperframes snapshot --frames 10           # evenly-spaced N frames
+npx hyperframes snapshot -c index.9x16.html -o snapshots/9x16   # another composition file, kept apart
 ```
 
 Captures still PNGs from the composition for visual diffing, thumbnails, or attaching to a PR. Faster than rendering a video when you only need a few hero frames. Output lands in the project's snapshots directory. Not deprecated: it remains the standalone capture utility, while `check --snapshots` covers the gate's needs (overview frames annotated with labeled finding boxes, plus `finding-NN-<code>.png` crops for every error finding with a bbox).
