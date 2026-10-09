@@ -1174,8 +1174,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
         hasTemplate: true,
         compositionId: compId,
       });
-      const innerRoot = plan.innerRoot;
-      const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
+      const { innerRoot, authoredRootId } = plan;
       const runtimeScope = runtimeCompId
         ? cssAttributeSelector("data-composition-id", runtimeCompId)
         : "";
