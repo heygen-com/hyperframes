@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
+import { Script } from "node:vm";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { bundleToSingleHtml, emitRootCompositionVariableStyles } from "./htmlBundler";
 import { ensureExternalScriptTag } from "./externalScripts";
@@ -2909,7 +2910,7 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
     );
   const parses = (el: Element) => {
     try {
-      new Function(el.textContent ?? "");
+      new Script(el.textContent ?? "");
       return true;
     } catch {
       return false;
@@ -2935,6 +2936,11 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
   });
 
   const BROKEN_INLINE = [`<script>window.broken = {:</script>`, {}] as const;
+  // An inline script is wrapped in a function, where return is legal; a local file is not.
+  const BROKEN_RETURN = [
+    `<script src="return.js"></script>`,
+    { "compositions/return.js": "window.broken = 1; return;" },
+  ] as const;
   const BROKEN_FILE = [
     `<script src="lib.js"></script>`,
     { "compositions/lib.js": "export const broken = 1;" },
@@ -2944,6 +2950,8 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
     [true, ...BROKEN_INLINE],
     [false, ...BROKEN_FILE],
     [true, ...BROKEN_FILE],
+    [false, ...BROKEN_RETURN],
+    [true, ...BROKEN_RETURN],
   ])(
     "keeps a sub-composition script that does not parse apart, so the others still run (sceneParts %s, %s)",
     async (sceneParts, extra, files) => {
@@ -3037,6 +3045,28 @@ describe("bundleToSingleHtml composition scripts that are not JavaScript", () =>
       expect(runnable(document).some((el) => el.textContent?.includes("__timelines.card ="))).toBe(
         true,
       );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("mounts a JSON data script authored beside the root of an inline template composition", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <template id="card-template">
+    <script type="application/json" id="beside">{"where": "template"}</script>
+    <div data-composition-id="card" data-width="320" data-height="180"></div>
+  </template>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    <div data-composition-id="card" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+    });
+    try {
+      const document = parseHTML(await bundleToSingleHtml(dir)).document;
+      const beside = document.querySelector('[data-composition-id="card"] #beside');
+      expect(JSON.parse(beside?.textContent ?? "")).toEqual({ where: "template" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

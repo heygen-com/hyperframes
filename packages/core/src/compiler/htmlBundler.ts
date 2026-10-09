@@ -9,7 +9,11 @@ import {
   styleElementsFor,
   type CompositionStyle,
 } from "./scriptRuns";
-import { executableScripts, isJavaScriptType } from "./compositionAssembly";
+import {
+  executableScripts,
+  isJavaScriptType,
+  planCompositionAssembly,
+} from "./compositionAssembly";
 import { SCENE_PART_ATTR } from "../sceneParts";
 import {
   ensureExternalScriptTag,
@@ -24,6 +28,7 @@ import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { cssVariableName } from "../tokenSlug";
 import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync, existsSync, statSync } from "fs";
+import { Script } from "vm";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import {
   decodeCssEscapes,
@@ -59,7 +64,6 @@ import {
   inlineSubCompositions,
   refuseSwapsReachedByRootScripts,
 } from "./inlineSubCompositions";
-import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
@@ -804,10 +808,10 @@ function joinJsChunks(chunks: string[]): string {
     .join("\n");
 }
 
-// Compiled, never called: esbuild accepts export, top-level await and import.meta, which a classic script rejects.
+// Compiled as a classic script, never run: esbuild accepts export, top-level await and return, which a <script> rejects.
 export function parsesAsScript(source: string): boolean {
   try {
-    new Function(source);
+    new Script(source);
     return true;
   } catch {
     return false;
@@ -1165,7 +1169,12 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       const hostIdentity = hostIdentityByElement.get(host);
       const runtimeCompId = hostIdentity?.runtimeCompositionId || compId;
       const innerDoc = parseHTMLContent(templateHtml);
-      const innerRoot = queryByAttr(innerDoc, "data-composition-id", compId);
+      const plan = planCompositionAssembly<Element>({
+        contentNode: innerDoc,
+        hasTemplate: true,
+        compositionId: compId,
+      });
+      const innerRoot = plan.innerRoot;
       const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
       const runtimeScope = runtimeCompId
         ? cssAttributeSelector("data-composition-id", runtimeCompId)
@@ -1258,6 +1267,8 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
 
         host.innerHTML = innerDoc.body.innerHTML || "";
       }
+      for (const el of plan.inertScriptsOutsideRoot)
+        host.insertAdjacentHTML("beforeend", el.outerHTML);
     }
 
     // Remove the template element from the document
