@@ -492,13 +492,8 @@ function rewriteCssUrlsWithInlinedAssets(
 }
 
 /**
- * Selectors built here are serialized inside a `<style>` element, which is a RAW
- * TEXT element: the tokenizer ends it at the first `</style` regardless of CSS
- * context, and the serializer does not escape its content. Backslash and quote
- * escaping keeps the selector's own string grammar valid; it does nothing about
- * element termination, so `<` needs the CSS hex escape too. `\3c ` is legal
- * wherever a string is, and matches the same attribute value, so selectors keep
- * matching. The trailing space terminates the escape.
+ * Selectors land in a raw-text `<style>`, which ends at the first `</style` whatever the CSS context,
+ * so `<` also takes the CSS hex escape `\3c ` (same value; the trailing space ends the escape).
  */
 function cssAttributeSelector(attr: string, value: string): string {
   const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
@@ -527,8 +522,7 @@ function shouldAssignBundledRuntimeCompositionId(host: Element): boolean {
   return host.children.length === 0;
 }
 
-/** On a miss, assigns every host the document holds and the map lacks: the inliner's queue is
- * breadth-first, so that is the whole next discovery level, as the runtime loader sees it. */
+/** A miss assigns every host the map lacks: the inliner's next breadth-first level, as the loader sees it. */
 class BundledHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
   override get(host: Element): BundledHostCompositionIdentity | undefined {
     if (!this.has(host))

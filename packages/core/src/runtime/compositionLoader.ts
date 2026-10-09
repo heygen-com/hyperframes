@@ -768,15 +768,10 @@ async function mountExternalCompositions(
         injectedScripts: params.injectedScripts,
         injectedLinks: params.injectedLinks,
         parseDimensionPx: params.parseDimensionPx,
-        // A non-templated composition's <head> carries critical CSS
-        // (backgrounds, positioning, fonts) and library scripts; every
-        // composition's <head> can carry a webfont <link>. The shared
-        // assembly module decides which of those apply.
+        // The shared assembly module decides which head CSS, scripts and webfont links apply.
         head: doc.head,
-        // TODO(template-var-carriers): reads `<html>` only. A template/fragment
-        // sub-comp that declares on its `[data-composition-id]` root div (the
-        // dual-carrier contract from #2081) loses its defaults on this lazy
-        // external-load path — see inlineSubCompositions for the fixed path.
+        // TODO(template-var-carriers): reads `<html>` only, so defaults declared on a template's
+        // root div (#2081) are lost on this path; inlineSubCompositions has the fixed path.
         declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
         variableDeclarer: doc.documentElement,
         onDiagnostic: params.onDiagnostic,
