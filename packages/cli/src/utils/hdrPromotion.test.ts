@@ -41,6 +41,14 @@ function bundledMedia(videos: string[], images: string[]) {
 }
 
 describe("inspectHdrAutoPromotion", () => {
+  it("bundles the project's explicit entry file", async () => {
+    const media = bundledMedia([], []);
+
+    await inspectHdrAutoPromotion({ ...PROJECT, entryFile: "index.9x16.html" }, vi.fn(), media);
+
+    expect(media.bundleHtml).toHaveBeenCalledWith(PROJECT.dir, "index.9x16.html");
+  });
+
   it("reports the local HDR asset that promotes automatic output", async () => {
     const assetPath = resolveProjectRelativeSrc("assets/source-hdr.mp4", PROJECT.dir, PROJECT.dir);
     const extractMetadata = vi.fn(async () => metadata(HDR));

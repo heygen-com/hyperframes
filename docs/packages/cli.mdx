@@ -668,6 +668,7 @@ npx hyperframes check [dir] --json         # {ok, browserSkipped, lint, runtime,
 npx hyperframes check [dir] --snapshots
 npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
+npx hyperframes check [dir] -c index.9x16.html  # another composition file, e.g. a 9:16 cut
 ```
 
 `check` runs the linter first and skips the browser entirely on a lint error.
@@ -682,6 +683,7 @@ sections are empty, not clean.
 
 | Flag                                         | Description                                                                                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `--composition, -c`                          | Check a different composition file inside the project (default `index.html`). The path is relative to the project directory, as with `render -c`. |
 | `--json`                                     | One aggregated envelope. Every finding carries a selector, `data-*` identity, source file, bbox, and sample time.           |
 | `--snapshots`                                | Save the five audited frames under `snapshots/`, plus a `finding-NN-<code>.png` crop per finding                             |
 | `--samples`                                  | Midpoint samples across the duration (default 9)                                                                            |
@@ -699,6 +701,15 @@ sections are empty, not clean.
 | `--layout`                                   | Layout knobs, currently `proseCoverageFloor=0.05` (0–1, default 0.15)                                                       |
 | `--browser-gpu` / `--no-browser-gpu`         | Hardware GPU capture, or deterministic SwiftShader (default: auto-detect)                                                   |
 | `--proxy` / `--no-proxy`                     | Auto-transcode browser-hostile codecs before checking (default: on)                                                        |
+
+With `--composition`, `check` lints that file in place of `index.html` and the
+`compositions/` folder, the same scope `render -c` lints, and reads only the
+`*.motion.json` sidecar named after it (`index.9x16.motion.json` for
+`index.9x16.html`). Run it once per composition when one project holds several,
+such as one file per aspect ratio. Several root-level files with
+`data-composition-id` fail the default run with `multiple_root_compositions`, so
+pass `-c` for each of them, `index.html` included. `--snapshots` writes to
+`snapshots/` either way, so a second run replaces the first run's frames.
 
 Contrast failures are errors, and each one reports the sampled foreground and
 background colours, the measured ratio against the required one, and a
@@ -786,6 +797,7 @@ npx hyperframes snapshot my-project --at 2.9,10.4,18.7
 npx hyperframes snapshot my-project --frames 10
 npx hyperframes snapshot my-project --zoom '#headline'
 npx hyperframes snapshot my-project --at 1.5,4.3 --against ref.mp4
+npx hyperframes snapshot my-project -c index.9x16.html -o snapshots/9x16
 ```
 
 ```
@@ -799,6 +811,7 @@ npx hyperframes snapshot my-project --at 1.5,4.3 --against ref.mp4
 
 | Flag                    | Description                                                                                                                                                        |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--composition, -c`     | Capture a different composition file inside the project (default `index.html`), relative to the project directory as with `render -c`. Pair it with `-o` so its frames do not replace another composition's. |
 | `--at`                  | Timestamps in seconds, comma-separated (`3.0,10.5,18.0`)                                                                                                           |
 | `--frames`              | Evenly spaced frames instead (default 5)                                                                                                                            |
 | `--output, -o`          | Where the PNGs go (default `<project>/snapshots`)                                                                                                                   |

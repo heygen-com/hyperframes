@@ -8,6 +8,7 @@ export interface ProjectDir {
   dir: string;
   name: string;
   indexPath: string;
+  entryFile?: string;
 }
 
 export interface ResolveProjectOptions {
@@ -57,6 +58,10 @@ export function resolveProjectOrThrow(
   }
 
   return { dir, name, indexPath };
+}
+
+export function explicitEntryPath(project: ProjectDir): string | undefined {
+  return project.entryFile ? resolve(project.dir, project.entryFile) : undefined;
 }
 
 export function resolveProject(

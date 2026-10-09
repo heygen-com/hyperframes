@@ -8,6 +8,7 @@ import {
   parseBrowserTimeoutMsArg,
   resolveDiagnosticNavigationTimeoutMs,
   parseCompositionEntryArg,
+  requireCompositionEntryArg,
   parseGifLoopArg,
   parseHlsSegmentSecondsArg,
   resolveDefaultFpsArg,
@@ -218,6 +219,22 @@ describe("parseCompositionEntryArg", () => {
       parseCompositionEntryArg("../proj-evil/x.html", PROJECT, siblingStat),
     );
     expect(err.kind).toBe("outside-project");
+  });
+
+  it("throws the render error text for commands that report errors themselves", () => {
+    expect(requireCompositionEntryArg(".", PROJECT, stat)).toBeUndefined();
+    expect(requireCompositionEntryArg("compositions/intro.html", PROJECT, stat)).toBe(
+      "compositions/intro.html",
+    );
+    expect(() => requireCompositionEntryArg("missing.html", PROJECT, stat)).toThrow(
+      'Composition not found: "missing.html" does not exist in the project directory.',
+    );
+    expect(() => requireCompositionEntryArg("compositions", PROJECT, stat)).toThrow(
+      'Invalid composition path: "compositions" is a directory, not an .html file.',
+    );
+    expect(() => requireCompositionEntryArg("../escape.html", PROJECT, stat)).toThrow(
+      "Entry file must stay inside the project directory: ../escape.html",
+    );
   });
 });
 

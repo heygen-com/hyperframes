@@ -133,6 +133,18 @@ describe("findMotionSpec", () => {
     writeFileSync(join(dir, "landing.html"), "<div></div>");
     expect(() => findMotionSpec(dir)).toThrow("ambiguous motion sidecars");
   });
+
+  it("takes only the sidecar named after an explicit entry", () => {
+    const dir = tempDir("motion-entry-");
+    writeFileSync(join(dir, "index.html"), "<div></div>");
+    writeFileSync(join(dir, "index.9x16.html"), "<div></div>");
+    writeFileSync(join(dir, "index.motion.json"), "{}");
+    writeFileSync(join(dir, "index.9x16.motion.json"), "{}");
+    expect(() => findMotionSpec(dir)).toThrow("ambiguous motion sidecars");
+    expect(findMotionSpec(dir, "index.9x16.html")).toBe(join(dir, "index.9x16.motion.json"));
+    expect(findMotionSpec(dir, "index.html")).toBe(join(dir, "index.motion.json"));
+    expect(findMotionSpec(dir, "landing.html")).toBeNull();
+  });
 });
 
 describe("readMotionSpec", () => {

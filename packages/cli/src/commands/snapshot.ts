@@ -1,7 +1,15 @@
 import { failCommand } from "../utils/commandResult.js";
 // fallow-ignore-file complexity
 import { defineCommand } from "citty";
-import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
@@ -22,7 +30,8 @@ import {
   timeAtSourceTime,
   type RateSpec,
 } from "@hyperframes/core";
-import { resolveProject } from "../utils/project.js";
+import { explicitEntryPath, resolveProject } from "../utils/project.js";
+import { hasExplicitCompositionArg, resolveCompositionEntryArg } from "../utils/renderArgs.js";
 import {
   definitiveEntryMismatchComposition,
   hasDefinitiveEntryMismatch,
@@ -362,6 +371,10 @@ export const examples: Example[] = [
     "Pair each frame with the reference footage at the same time",
     "snapshot --at 1.5,4.3,8.1 --against ref.mp4",
   ],
+  [
+    "Capture another composition file into its own folder",
+    "snapshot -c index.9x16.html -o snapshots/9x16",
+  ],
 ];
 
 /** `--zoom-scale`: the deviceScaleFactor used for zoomed crops. Defaults to 3;
@@ -447,6 +460,7 @@ async function captureSnapshots(
     browserGpuMode?: BrowserGpuMode;
     /** Reference video: save its frame at each captured time plus a render|reference pair. */
     against?: string;
+    entryFile?: string;
   },
 ): Promise<string[]> {
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
@@ -455,7 +469,7 @@ async function captureSnapshots(
 
   // Localize fonts (embed remote @font-face as data URIs, matching the render
   // path) so snapshots render the real font instead of a fallback sans.
-  const html = await bundleWithLocalizedFonts(projectDir);
+  const html = await bundleWithLocalizedFonts(projectDir, opts.entryFile);
   const server = await serveStaticProjectHtml(projectDir, html, undefined, [], opts.autoProxy);
 
   const savedPaths: string[] = [];
@@ -827,6 +841,13 @@ export default defineCommand({
       description: "Project directory",
       required: false,
     },
+    composition: {
+      type: "string",
+      alias: "c",
+      description:
+        "Capture a specific composition file instead of index.html (e.g. index.9x16.html), relative to the project directory. " +
+        "Pass `.` (or omit the flag) to capture the project's index.html.",
+    },
     output: {
       type: "string",
       alias: "o",
@@ -892,8 +913,12 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const project = resolveProject(args.dir);
-    const lintResult = await lintProject(project.dir);
+    const resolved = resolveProject(args.dir, {
+      requireIndex: !hasExplicitCompositionArg(args.composition),
+    });
+    const entryFile = resolveCompositionEntryArg(args.composition, resolved.dir, statSync);
+    const project = entryFile ? { ...resolved, entryFile } : resolved;
+    const lintResult = await lintProject(project.dir, explicitEntryPath(project));
     if (hasDefinitiveEntryMismatch(lintResult)) {
       const candidate = definitiveEntryMismatchComposition(lintResult);
       console.log("");
@@ -913,7 +938,7 @@ export default defineCommand({
       } else if (candidate) {
         console.log(
           c.dim(
-            `  Move or mount ${candidate} as a project index.html before snapshotting; snapshot accepts project directories, not individual HTML files.`,
+            `  Snapshot it directly with hyperframes snapshot --composition ${candidate}, or move or mount it as the project index.html.`,
           ),
         );
       }
@@ -955,7 +980,8 @@ export default defineCommand({
       camera && (camera.yaw !== 0 || camera.pitch !== 0)
         ? ` ${c.dim(`(angle yaw ${camera.yaw}° pitch ${camera.pitch}°)`)}`
         : "";
-    console.log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
+    const source = entryFile ? `${project.name}/${entryFile}` : project.name;
+    console.log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(source)}${angleLabel}`);
 
     try {
       const snapshotDir = args.output
@@ -973,6 +999,7 @@ export default defineCommand({
         autoProxy: args.proxy as boolean | undefined,
         browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
         against,
+        entryFile,
       });
 
       if (paths.length === 0) {

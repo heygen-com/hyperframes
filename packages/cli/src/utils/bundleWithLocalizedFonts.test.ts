@@ -28,14 +28,24 @@ afterEach(() => {
 describe("bundleWithLocalizedFonts (call-site integration)", () => {
   it("runs the injected font localizer over the plain bundle", async () => {
     const localize = vi.fn(async (html: string) => html.replace("bundled", "bundled+fonts"));
-    const html = await bundleWithLocalizedFonts("/project", localize);
+    const html = await bundleWithLocalizedFonts("/project", undefined, localize);
     expect(localize).toHaveBeenCalledOnce();
     expect(localize).toHaveBeenCalledWith("<html><body>bundled</body></html>");
     expect(html).toBe("<html><body>bundled+fonts</body></html>");
   });
 
+  it("bundles the requested entry file instead of index.html", async () => {
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    await bundleWithLocalizedFonts("/project", "index.9x16.html", async (html) => html);
+    expect(bundleToSingleHtml).toHaveBeenCalledWith("/project", { entryFile: "index.9x16.html" });
+  });
+
   it("returns the localizer output verbatim (localization is the last step)", async () => {
-    const html = await bundleWithLocalizedFonts("/project", async () => "<html>embedded</html>");
+    const html = await bundleWithLocalizedFonts(
+      "/project",
+      undefined,
+      async () => "<html>embedded</html>",
+    );
     expect(html).toBe("<html>embedded</html>");
   });
 });

@@ -155,7 +155,7 @@ export async function runBrowserCheck(
   runGrid: RunAuditGrid,
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
-  const html = await bundleWithLocalizedFonts(project.dir);
+  const html = await bundleWithLocalizedFonts(project.dir, project.entryFile);
   await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
   const server = await serveStaticProjectHtml(
     project.dir,
@@ -223,7 +223,7 @@ export async function captureFindingCrops(
 ): Promise<string[]> {
   if (requests.length === 0) return [];
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
-  const html = await bundleWithLocalizedFonts(project.dir);
+  const html = await bundleWithLocalizedFonts(project.dir, project.entryFile);
   const server = await serveStaticProjectHtml(
     project.dir,
     html,

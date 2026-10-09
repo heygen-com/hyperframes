@@ -141,7 +141,7 @@ describe("snapshot lint preflight", () => {
 
     expect(output).toContain("compositions/card.html");
     expect(output).not.toContain("hyperframes snapshot <project>/compositions");
-    expect(output).toContain("snapshot accepts project directories, not individual HTML files");
+    expect(output).toContain("hyperframes snapshot --composition compositions/card.html");
   });
 
   it("suggests the reported index.html directory with the re-rooting caveat", async () => {
@@ -149,6 +149,68 @@ describe("snapshot lint preflight", () => {
 
     expect(output).toContain("hyperframes snapshot <project>/compositions");
     expect(output).toContain("assets are self-contained under that directory");
+  });
+});
+
+describe("snapshot --composition", () => {
+  const root = (id: string) =>
+    `<html><body><div data-composition-id="${id}" data-width="1080" data-height="1920" data-start="0" data-duration="4"><div class="clip" data-start="0" data-duration="4">Visible</div></div></body></html>`;
+
+  async function captureHtml(files: Record<string, string>, args: Record<string, unknown>) {
+    const project = mkdtempSync(join(tmpdir(), "hf-snapshot-composition-"));
+    for (const [file, html] of Object.entries(files)) writeFileSync(join(project, file), html);
+    snapshotState.openSettledPage.mockClear();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const failure = await snapshotCommand
+        .run?.({ args: { dir: project, end: true, ...args } } as never)
+        .then(
+          () => undefined,
+          (err: unknown) => err,
+        );
+      const html = snapshotState.openSettledPage.mock.calls[0]?.[0];
+      return {
+        failure,
+        html: typeof html === "string" ? html : undefined,
+        stderr: error.mock.calls.map((parts) => parts.map(String).join(" ")).join("\n"),
+      };
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
+
+  it("bundles the composition file instead of index.html, which may be absent", async () => {
+    const { html } = await captureHtml(
+      { "index.9x16.html": root("portrait") },
+      { composition: "index.9x16.html" },
+    );
+
+    expect(html).toContain('data-composition-id="portrait"');
+  });
+
+  it("bundles index.html when the flag is omitted", async () => {
+    const { html } = await captureHtml(
+      { "index.html": root("main"), "index.9x16.html": root("portrait") },
+      {},
+    );
+
+    expect(html).toContain('data-composition-id="main"');
+    expect(html).not.toContain('data-composition-id="portrait"');
+  });
+
+  it("rejects a missing composition with render's usage error before opening a browser", async () => {
+    const { failure, html, stderr } = await captureHtml(
+      { "index.html": root("main") },
+      { composition: "missing.html" },
+    );
+
+    expect(failure).toMatchObject({ name: "CliUsageError" });
+    expect(html).toBeUndefined();
+    expect(stderr).toContain("Composition not found");
+    expect(stderr).toContain('"missing.html" does not exist in the project directory.');
   });
 });
 
