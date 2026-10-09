@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 /**
@@ -14,39 +15,37 @@ import { join, resolve } from "node:path";
  * exactly how the pin sat one minor line behind after a release, across 175
  * generated pages and three hand-written files nobody thought to grep.
  *
- * The reference lives in 178 places because each generated page carries a
- * self-contained `srcDoc` document, so this asserts on the whole tree rather
- * than on the four sources a reader would think to check.
+ * The reference lives in the two catalog snippets that build a preview
+ * `srcDoc`; this asserts on the whole tree rather than on the sources a reader
+ * would think to check.
  */
 const ROOT = resolve(import.meta.dirname, "..");
 const PLAYER_CDN = /cdn\.jsdelivr\.net\/npm\/@hyperframes\/player@([^/"'`\s]+)/g;
 const TEXT_FILE = /\.(mdx?|[jt]sx?|html|json)$/;
 
-// The generator interpolates the range, so its source reads as a template
-// rather than a literal version. Its value is asserted separately below.
-const TEMPLATE_REFERENCE = "${playerVersionRange}";
-
 /**
  * Tracked files only, via git rather than a directory walk: it is one call, and
  * it skips `node_modules` and build output for free because they are ignored.
  */
-function trackedTextFiles(): string[] {
+function trackedTextFiles(root = ROOT): string[] {
   const listing = execFileSync(
     "git",
     ["ls-files", "-z", "docs", "scripts", "packages", "registry"],
     {
-      cwd: ROOT,
+      cwd: root,
       encoding: "utf-8",
       maxBuffer: 64 * 1024 * 1024,
     },
   );
-  return listing.split("\0").filter((file) => TEXT_FILE.test(file));
+  // A tracked file can be gone from disk: catalog regeneration removes a deleted
+  // item's pages before the publish PR untracks them.
+  return listing.split("\0").filter((file) => TEXT_FILE.test(file) && existsSync(join(root, file)));
 }
 
-function pinnedReferences(): { file: string; version: string }[] {
+function pinnedReferences(root = ROOT): { file: string; version: string }[] {
   const found: { file: string; version: string }[] = [];
-  for (const file of trackedTextFiles()) {
-    const text = readFileSync(join(ROOT, file), "utf-8");
+  for (const file of trackedTextFiles(root)) {
+    const text = readFileSync(join(root, file), "utf-8");
     for (const match of text.matchAll(PLAYER_CDN)) {
       found.push({ file, version: match[1] as string });
     }
@@ -59,13 +58,11 @@ test("every player CDN reference asks for latest", () => {
 
   // A guard that passes because it matched nothing is worse than no guard.
   assert.ok(
-    references.length > 100,
-    `expected the catalog pages to reference the player CDN, found ${references.length}`,
+    references.length >= 2,
+    `expected the catalog snippets to reference the player CDN, found ${references.length}`,
   );
 
-  const pinned = references.filter(
-    (r) => r.version !== "latest" && r.version !== TEMPLATE_REFERENCE,
-  );
+  const pinned = references.filter((r) => r.version !== "latest");
   assert.deepEqual(
     pinned,
     [],
@@ -75,8 +72,16 @@ test("every player CDN reference asks for latest", () => {
   );
 });
 
-test("the generator emits latest, so regenerating cannot reintroduce a pin", () => {
-  const generator = readFileSync(join(ROOT, "scripts/generate-catalog-pages.ts"), "utf-8");
-  const range = generator.match(/const playerVersionRange = "([^"]+)"/)?.[1];
-  assert.equal(range, "latest");
+test("a tracked file missing from disk is skipped, not read", () => {
+  const dir = mkdtempSync(join(tmpdir(), "player-cdn-pin-"));
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: dir });
+    mkdirSync(join(dir, "docs"));
+    writeFileSync(join(dir, "docs", "gone.mdx"), "removed page");
+    execFileSync("git", ["add", "docs"], { cwd: dir });
+    rmSync(join(dir, "docs", "gone.mdx"));
+    assert.deepEqual(pinnedReferences(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

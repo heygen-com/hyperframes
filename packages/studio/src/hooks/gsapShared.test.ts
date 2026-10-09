@@ -1,30 +1,24 @@
 import { describe, it, expect } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
   idFromSelector,
   idSelector,
   isInstantHold,
+  keyframeEases,
   parsePercentageKeyframes,
   resolveClipTimingBasis,
-  resolveEditableTweenDuration,
+  playsNear,
   toClipKeyframes,
   toClipPercentage,
 } from "./gsapShared";
 
-// Fixtures carry only the fields the function under test reads; the double-cast
-// is the documented way to stand in for the full runtime shape (CONTRIBUTING.md).
-const tween = (duration: number | undefined) => ({ duration }) as unknown as GsapAnimation;
-
-describe("resolveEditableTweenDuration", () => {
-  const selection = { dataAttributes: { duration: "16.26" } } as unknown as DomEditSelection;
-
-  it("uses the owning clip duration when the tween omits an outer duration", () => {
-    expect(resolveEditableTweenDuration(tween(undefined), selection)).toBe(16.26);
-  });
-
-  it("keeps an explicitly-authored tween duration", () => {
-    expect(resolveEditableTweenDuration(tween(4), selection)).toBe(4);
+describe("keyframeEases", () => {
+  it("carries the keyframes' own ease into the tween ease, which GSAP plays the same", () => {
+    const anim = {
+      ease: "back.out",
+      keyframes: { keyframes: [], ease: "sine.inOut", easeEach: "power2.out" },
+    } as unknown as GsapAnimation;
+    expect(keyframeEases(anim)).toEqual({ ease: "sine.inOut", easeEach: "power2.out" });
   });
 });
 
@@ -54,44 +48,49 @@ describe("parsePercentageKeyframes", () => {
     ]);
   });
 
-  it("parses GSAP array-form keyframes as evenly-distributed steps", () => {
-    // Regression: a multi-point shuttle path authored as `keyframes: [...]` used to
-    // read as null (no `N%` keys) → no motion path. Steps map to i/(n-1)*100%.
+  it("parses GSAP array-form keyframes at each step's end, as the parser does", () => {
+    // A multi-point shuttle path authored as `keyframes: [...]` has no `N%` keys;
+    // step i of n ends at (i+1)/n.
     const out = parsePercentageKeyframes([
       { x: 0, y: 0 },
       { x: 520, y: 120 },
       { x: 1040, y: 0 },
       { x: 1480, y: 160 },
     ] as unknown as Record<string, unknown>);
-    expect(out?.keyframes.map((k) => k.percentage)).toEqual([0, 33.3, 66.7, 100]);
+    expect(out?.keyframes.map((k) => k.percentage)).toEqual([25, 50, 75, 100]);
+    expect(out?.keyframes.map((k) => k.step)).toEqual([0, 1, 2, 3]);
     expect(out?.keyframes[1]!.properties).toEqual({ x: 520, y: 120 });
+    const timed = parsePercentageKeyframes([
+      { x: 0, duration: 1 },
+      { x: 50, duration: 3 },
+    ] as unknown as Record<string, unknown>);
+    expect(timed?.keyframes.map((k) => k.percentage)).toEqual([25, 100]);
   });
 
-  it("strips a per-entry ease without shifting the even index-spacing of the others", () => {
+  it("strips a per-entry ease without shifting the step spacing of the others", () => {
     // GSAP positions array keyframes by array index, so a `{ ease }` carried on an
     // entry is a segment ease (skipped as a property) — it must not change where
-    // the surrounding keyframes land. 3 entries → 0 / 50 / 100, even though the
+    // the surrounding keyframes land. 3 entries → 33.3 / 66.7 / 100, even though the
     // middle entry also carries an ease.
     const out = parsePercentageKeyframes([
       { x: 0 },
       { x: 100, ease: "power2.in" },
       { x: 200 },
     ] as unknown as Record<string, unknown>);
-    expect(out?.keyframes.map((k) => k.percentage)).toEqual([0, 50, 100]);
+    expect(out?.keyframes.map((k) => k.percentage)).toEqual([33.3, 66.7, 100]);
     expect(out?.keyframes.map((k) => k.properties)).toEqual([{ x: 0 }, { x: 100 }, { x: 200 }]);
   });
 
-  it("keeps even spacing when an interior array slot has no animatable prop", () => {
+  it("keeps the step spacing when an interior array slot has no animatable prop", () => {
     // A degenerate `{ ease }`-only slot contributes no output keyframe, but it is
     // still an array slot GSAP allocates a position to — so the remaining entries
-    // keep their original i/(n-1) percentages (0 and 100 for a 3-slot array), not
-    // 0/100 collapsed onto a 2-entry spacing.
+    // keep their 3-slot percentages (33.3 and 100), not a 2-entry spacing.
     const out = parsePercentageKeyframes([
       { x: 0 },
       { ease: "power2.in" },
       { x: 200 },
     ] as unknown as Record<string, unknown>);
-    expect(out?.keyframes.map((k) => k.percentage)).toEqual([0, 100]);
+    expect(out?.keyframes.map((k) => k.percentage)).toEqual([33.3, 100]);
     expect(out?.keyframes.map((k) => k.properties)).toEqual([{ x: 0 }, { x: 200 }]);
   });
 
@@ -156,12 +155,38 @@ describe("toClipKeyframes", () => {
     resolvedStart: 0,
   } as unknown as GsapAnimation;
 
-  // A tween with no duration spans its clip everywhere else in Studio
-  // (resolveEditableTweenDuration), so the cache rows have to agree: a fixed 1s
-  // basis put the end keyframe at 25% of a 4s clip instead of 100%.
-  it("spans the clip when the tween has no duration", () => {
+  it("places a duration-less tween's keyframes where GSAP plays them, not across the clip", () => {
     const rows = toClipKeyframes([{ percentage: 0 }, { percentage: 100 }], durationless, 0, 4);
-    expect(rows.map((row) => row.percentage)).toEqual([0, 100]);
+    expect(rows.map((row) => row.percentage)).toEqual([0, 12.5]);
+  });
+
+  it("matches a keyframe by the time it plays, not its warped progress", () => {
+    const eased = {
+      ...durationless,
+      duration: 1,
+      ease: "power2.in",
+      keyframes: { format: "percentage", keyframes: [] },
+    } as unknown as GsapAnimation;
+    // At 20% of the time power2.in (cubic) shows 0.8% progress: close in progress, far in time.
+    expect(playsNear(eased, 0, 0.8)).toBe(false);
+    expect(playsNear(eased, 50, 50.5)).toBe(true);
+  });
+
+  it("places a keyframe where an outer ease makes GSAP reach it", () => {
+    const eased = {
+      ...durationless,
+      duration: 1,
+      ease: "power2.in",
+      keyframes: { format: "percentage", keyframes: [] },
+    } as unknown as GsapAnimation;
+    const rows = toClipKeyframes(
+      [{ percentage: 0 }, { percentage: 50 }, { percentage: 100 }],
+      eased,
+      0,
+      1,
+    );
+    // GSAP's power2 is cubic: it reaches 50% at the cube root of 0.5.
+    expect(rows.map((row) => row.percentage)).toEqual([0, 79.37, 100]);
   });
 
   it("keeps the tween percentage and the animation identity on every row", () => {
@@ -195,7 +220,7 @@ describe("resolveClipTimingBasis", () => {
   it("rebases an expanded sub-comp child by its host mount", () => {
     // Expanded children carry host-ABSOLUTE display starts; the tweens they own are
     // still composition-local, so the basis is the child's local start.
-    const pill = { id: "pill", domId: "pill", start: 8, duration: 4, expandedParentStart: 6 };
+    const pill = { id: "pill", domId: "pill", start: 8, duration: 4, parentCompositionStart: 6 };
     expect(resolveClipTimingBasis("pill", "scene.html", [pill], [])).toEqual({
       elStart: 2,
       elDuration: 4,
@@ -275,7 +300,7 @@ describe("sub-composition keyframe percentages", () => {
 
   it("puts a tween on the host's first frame at 0%, never below zero", () => {
     // A clip-relative percentage can never be negative; this one cached -12.
-    expect(percentages(inner(0))).toEqual([0, 100]);
+    expect(percentages(inner(0))).toEqual([0, 4]);
   });
 
   it("puts the last tween's end keyframe at 100%", () => {

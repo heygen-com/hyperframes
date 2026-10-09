@@ -98,6 +98,7 @@ function commitParams(
     buildDomSelectionFromTarget: vi.fn(async () => null),
     persistDomEditOperations: vi.fn().mockResolvedValue(undefined),
     resolveImportedFontAsset: () => null,
+    readOnlyPreview: false,
     ...overrides,
   };
 }
@@ -124,6 +125,113 @@ afterEach(() => {
 });
 
 describe("useDomEditTextCommits", () => {
+  function richTextProbe(
+    html = '<h1 id="t">Old</h1>',
+    overrides: (doc: Document) => Partial<UseDomEditTextCommitsParams> = () => ({}),
+  ) {
+    const { iframe, element } = previewElement(html, "t");
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const showToast = vi.fn();
+    const base = commitParams({
+      previewIframeRef: { current: iframe },
+      domEditSelection: selectionFor(element),
+      buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => selectionFor(target)),
+      persistDomEditOperations: persist,
+      showToast,
+      ...overrides(element.ownerDocument),
+    });
+    const captured: { hook: ReturnType<typeof useDomEditTextCommits> | null } = { hook: null };
+    function Probe({ readOnlyPreview }: { readOnlyPreview: boolean }) {
+      captured.hook = useDomEditTextCommits({ ...base, readOnlyPreview });
+      return null;
+    }
+    const root = mountReactHarness(<Probe readOnlyPreview={false} />);
+    cleanup = () => act(() => root.unmount());
+    const save = captured.hook!.handleDomRichTextCommit;
+    const commit = { element, html: "New", previousHtml: "Old" };
+    element.innerHTML = "New";
+    return {
+      root,
+      Probe,
+      persist,
+      showToast,
+      element,
+      save: () => act(async () => save(commit)),
+    };
+  }
+
+  it.each([true, false])(
+    "counts in-place text only after a changed write (%s)",
+    async (changed) => {
+      vi.mocked(trackStudioEvent).mockClear();
+      const { persist, save } = richTextProbe();
+      persist.mockResolvedValue({ changed, sourceFile: "private.html", version: "v2" });
+      await save();
+      expect(vi.mocked(trackStudioEvent).mock.calls).toEqual(
+        changed
+          ? [["feature_used", { feature: "text_edit", surface: "preview", method: "field" }]]
+          : [],
+      );
+    },
+  );
+
+  it("saves in-place text while the preview is editable, and refreshes the selection it edited", async () => {
+    const applyDomSelection = vi.fn();
+    const { persist, element, save } = richTextProbe(undefined, () => ({ applyDomSelection }));
+    await save();
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(applyDomSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ element }),
+      expect.objectContaining({ preserveGroup: true }),
+    );
+  });
+
+  it("refuses in-place text once the preview turns read-only, through an earlier handler, and puts the old text back", async () => {
+    const { root, Probe, persist, element, save } = richTextProbe();
+    act(() => root.render(<Probe readOnlyPreview />));
+    await save();
+    expect(persist).not.toHaveBeenCalled();
+    expect(element.innerHTML).toBe("Old");
+  });
+
+  it("saves the edited element, and leaves the selection alone, when the selection is another element or none", async () => {
+    for (const selected of ["card", null]) {
+      const applyDomSelection = vi.fn();
+      const { persist, element, save } = richTextProbe(
+        '<div id="card"><p id="t">Old</p></div>',
+        (doc) => ({
+          domEditSelection: selected ? selectionFor(doc.getElementById(selected)!) : null,
+          applyDomSelection,
+          buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => ({
+            ...selectionFor(target),
+            label: "Resolved from the edited element",
+          })),
+        }),
+      );
+      await save();
+      expect(persist).toHaveBeenCalledTimes(1);
+      expect(persist.mock.calls[0]![0]).toMatchObject({
+        element,
+        label: "Resolved from the edited element",
+      });
+      expect(applyDomSelection).not.toHaveBeenCalled();
+      cleanup?.();
+      cleanup = null;
+    }
+  });
+
+  it("says so and puts the old text back when the edited text cannot be saved", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { persist, showToast, element, save } = richTextProbe(undefined, () => ({
+      buildDomSelectionFromTarget: vi.fn(async () => null),
+    }));
+    await save();
+    expect(persist).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("Couldn't save"), "error");
+    expect(error).toHaveBeenCalled();
+    expect(element.innerHTML).toBe("Old");
+  });
+
   it("keeps concurrent text commit ownership isolated by target", async () => {
     const { iframe, element: firstElement } = previewElement(
       "<div id='first'>First</div><div id='second'>Second</div>",
@@ -240,6 +348,29 @@ describe("useDomEditTextCommits", () => {
     });
 
     expect(outcome).toEqual({ ok: true, persistence });
+  });
+
+  it("saves a style map on a selection as one patch, so it is one undo step", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
+    const persist = vi.fn().mockResolvedValue({ sourceFile: "index.html", changed: true });
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: null,
+        persistDomEditOperations: persist,
+      }),
+    );
+
+    await act(async () => {
+      await hook.handleDomStyleCommitForSelection(selectionFor(element), {
+        "border-width": "4px",
+        "border-style": "solid",
+      });
+    });
+
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(element.style.borderWidth).toBe("4px");
+    expect(element.style.borderStyle).toBe("solid");
   });
 
   it("declines a style commit with no selection, without reaching the writer", async () => {
@@ -371,3 +502,6 @@ describe("useDomEditTextCommits", () => {
     expect(agentElement.textContent).toBe("Edited");
   });
 });
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../utils/studioTelemetry";

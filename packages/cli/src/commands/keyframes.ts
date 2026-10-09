@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
 import { parseGsapScript, type GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { Example } from "./_examples.js";
@@ -573,7 +574,7 @@ function groupTraces(tweens: SurfacedTween[]): SurfacedTrace[] {
   return traces;
 }
 
-function collectCompositions(indexPath: string): SurfacedComposition[] {
+export function collectCompositions(indexPath: string): SurfacedComposition[] {
   const html = readFileSync(indexPath, "utf-8");
   const baseDir = dirname(indexPath);
   const out: SurfacedComposition[] = [
@@ -589,9 +590,10 @@ function collectCompositions(indexPath: string): SurfacedComposition[] {
     const src = div.getAttribute("data-composition-src");
     if (!src) continue;
     const subPath = resolve(baseDir, src);
-    if (!existsSync(subPath)) continue;
+    const sub = readProjectFile(subPath);
+    if (sub.kind !== "file") continue;
     const id = div.getAttribute("data-composition-id") ?? src;
-    out.push(surfaceComposition(readFileSync(subPath, "utf-8"), id, src));
+    out.push(surfaceComposition(sub.text, id, src));
   }
   return out;
 }
@@ -769,9 +771,10 @@ export function resolveScope(args: { target?: string; selector?: string }): {
   let projectName: string;
   let projectDir: string | undefined;
   let entryFile: string | undefined;
-  if (raw && raw.endsWith(".html") && existsSync(raw) && statSync(raw).isFile()) {
+  const entry = raw?.endsWith(".html") ? readProjectFile(raw) : undefined;
+  if (raw && entry?.kind === "file") {
     const entryPath = resolve(raw);
-    comps = [surfaceComposition(readFileSync(entryPath, "utf-8"), basename(entryPath), entryPath)];
+    comps = [surfaceComposition(entry.text, basename(entryPath), entryPath)];
     projectName = basename(entryPath);
     projectDir = findProjectRoot(entryPath);
     entryFile = relative(projectDir, entryPath).split(sep).join("/");

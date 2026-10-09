@@ -28,6 +28,7 @@ export function announceTimelineSelection(
   deps: TimelineMirrorDeps,
   group: DomEditSelection[],
   primary: DomEditSelection | null,
+  replaceSet = false,
 ): void {
   const {
     timelineElements,
@@ -72,10 +73,10 @@ export function announceTimelineSelection(
     }
     return;
   }
-  // A late async primary that already belongs to the live set must preserve the
-  // group. A fresh single click does not belong to it, so publish the singleton
-  // first; otherwise `preserveSet` clears the set and sync wipes the canvas.
-  if (group.length > 1 || !getTimelineSelectionSet().has(timelineAnchor)) {
+  // A late async primary inside the live set keeps the group. A click outside it, or a
+  // group the caller states in full (`replaceSet`: shift toggle, marquee, timeline sync), is published
+  // first; otherwise `preserveSet` clears or keeps a stale set and sync undoes the canvas.
+  if (replaceSet || group.length > 1 || !getTimelineSelectionSet().has(timelineAnchor)) {
     setTimelineSelectionSet(publishedMembers);
   }
   setSelectedTimelineElementId(timelineAnchor, { preserveSet: true });

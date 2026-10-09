@@ -40,7 +40,10 @@ export function getTimelineScrollTopForGeometryChange(
   previous: TimelineRowGeometry,
   next: TimelineRowGeometry,
   scrollTop: number,
+  dragAutoScrollOwnsScrollTop = false,
 ): number {
+  const atTopSoRowsAddedAboveStayShown = scrollTop <= 0;
+  if (dragAutoScrollOwnsScrollTop || atTopSoRowsAddedAboveStayShown) return scrollTop;
   const anchor = previous.getRowPositionFromY(scrollTop + RULER_H);
   if (anchor.row < 0 || anchor.row >= previous.rowKeys.length) return scrollTop;
   const anchorKey = previous.rowKeys[anchor.row];

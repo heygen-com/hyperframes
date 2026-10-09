@@ -36,6 +36,10 @@ Build the **hero-frame end-state** in CSS first (flex + padding; never absolute 
 
 Opacity-gate delayed elements (set hidden until their entrance). Clamp at tween bounds (no overshoot past a held value). Allowed eases: `power1–4`, `back`, `bounce`, `circ`, `elastic`, `expo`, `sine` (`.in/.out/.inOut`). One motif per scene. Run `hyperframes check` for overflow / collisions.
 
+## Motion quality
+
+Before writing the timeline, read and follow the shared [motion principles](../../hyperframes-creative/references/motion-principles.md). For `charts` and `stat`, also read [data in motion](../../hyperframes-creative/references/data-in-motion.md) before laying out or animating the data.
+
 ## Hand off for verification
 
 Self-check the authored file, then return it to the orchestrator. Step 5 runs `hyperframes lint`, `hyperframes check`, and proof snapshots on the assembled project. Do not render. When redispatched with a finding, fix the offending element and never change a fixed `data-duration` during repair. Remotion-source migrations use `/remotion-to-hyperframes` and its SSIM harness instead.

@@ -1,16 +1,12 @@
+import { mappedHtmlSource, sourcePosition, type SourceLocation } from "./sourceCoordinates";
 import type { HyperframeLintFinding, HyperframeLinterOptions } from "./types";
-import {
-  parseHtmlStructure,
-  findRootTag,
-  collectCompositionIds,
-  readDecodedAttr,
-  stripHtmlComments,
-} from "./utils";
+import { parseHtmlStructure, findRootTag, collectCompositionIds, readDecodedAttr } from "./utils";
 import type { OpenTag, ExtractedBlock } from "./utils";
 
 export type { OpenTag, ExtractedBlock };
 
 export type LintContext = {
+  locate: (block: ExtractedBlock, offset: number | undefined) => SourceLocation;
   source: string;
   rawSource: string;
   tags: OpenTag[];
@@ -30,7 +26,9 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
   // Strip HTML comments before scanning so a commented-out <template> or tag can't
   // hijack the boundary match below. Linear + fixpoint (see stripHtmlComments) to
   // stay ReDoS-free and catch markers that re-form when a comment is removed.
-  let source = stripHtmlComments(rawSource);
+  const mapped = mappedHtmlSource(rawSource);
+  let source = mapped.source;
+  let sourceStart = 0;
   const initialStructure = parseHtmlStructure(source);
   const templateTags = initialStructure.tags.filter(
     (tag) => tag.name === "template" && tag.closeIndex != null,
@@ -49,7 +47,8 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
   const template = templateTags[0];
   let structure = initialStructure;
   if (template && !findRootTag(sourceWithoutTemplates)) {
-    source = source.slice(template.index + template.raw.length, template.closeIndex);
+    sourceStart = template.index + template.raw.length;
+    source = source.slice(sourceStart, template.closeIndex);
     structure = parseHtmlStructure(source);
   }
 
@@ -61,6 +60,7 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
       content: style.content,
       raw: style.content,
       index: -1,
+      file: style.file ?? style.href,
     })),
   ];
   const scripts = structure.scripts;
@@ -68,7 +68,17 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
   const rootTag = findRootTag(source, tags);
   const rootCompositionId = readDecodedAttr(rootTag?.raw || "", "data-composition-id");
 
+  const locate = (block: ExtractedBlock, offset: number | undefined): SourceLocation => {
+    if (offset === undefined || offset < 0 || offset > block.content.length) return {};
+    if (block.index === -1) return sourcePosition(block.content, offset, block.file);
+    if (block.contentStart === undefined) return {};
+    const originalOffset = mapped.originalOffset(sourceStart + block.contentStart + offset);
+    return originalOffset === undefined
+      ? {}
+      : sourcePosition(rawSource, originalOffset, options.filePath);
+  };
   return {
+    locate,
     source,
     rawSource,
     tags,

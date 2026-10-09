@@ -1,3 +1,7 @@
+/** @deprecated Superseded by `src/styles/theme.css` (published as
+ * `@hyperframes/studio/theme.css`); kept one more major for Tailwind v3
+ * consumers, frozen at the colours before Graphite (theme.css is light-dark() and colour-mix
+ * now, which v3 cannot read). */
 const studioPreset = {
   theme: {
     extend: {

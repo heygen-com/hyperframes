@@ -141,7 +141,7 @@ describe("FxParamRow label tooltip", () => {
     // The whole name is present and allowed to wrap. No `title`: a tooltip
     // answers one row on hover, wrapping answers the column at rest.
     expect(label?.textContent).toBe("Gap between repeats");
-    expect(label?.className).toContain("break-words");
+    expect(label?.className).toContain("wrap-break-word");
     expect(label?.className).not.toContain("truncate");
     expect(label?.getAttribute("title")).toBeNull();
     // The hint stays where it was: the two are different questions, and the

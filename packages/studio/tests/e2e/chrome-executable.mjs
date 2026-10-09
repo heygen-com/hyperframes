@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import puppeteer from "puppeteer-core";
 
 /** Resolve the same Chrome binary for every local Studio browser acceptance test. */
 export function resolveChromeExecutable() {
@@ -21,4 +22,19 @@ export function resolveChromeExecutable() {
     "/usr/bin/chromium",
     ...installed,
   ].find((candidate) => candidate && existsSync(candidate));
+}
+
+/** Headless Chrome for a Studio browser gate; exits 2 when no Chrome is installed. */
+export async function launchStudioChrome() {
+  const executablePath = resolveChromeExecutable();
+  if (!executablePath) {
+    console.error("No Chrome executable found; set PUPPETEER_EXECUTABLE_PATH");
+    process.exit(2);
+  }
+  const browser = await puppeteer.launch({
+    executablePath,
+    headless: true,
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+  });
+  return { browser, executablePath };
 }

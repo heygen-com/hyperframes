@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildTimelineFileDropPlacements,
   buildTimelineAssetInsertHtml,
@@ -24,9 +24,18 @@ describe("setCompositionDurationToContent", () => {
     expect(setCompositionDurationToContent(src(5), 12)).toContain('data-duration="12"');
   });
 
-  it("is a no-op when content end is 0 (empty timeline keeps its declared length)", () => {
-    expect(setCompositionDurationToContent(src(12), 0)).toBe(src(12));
-  });
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "keeps the declared length without parsing when content end is %s",
+    (contentEnd) => {
+      const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
+      try {
+        expect(setCompositionDurationToContent(src(12), contentEnd)).toBe(src(12));
+        expect(parse).not.toHaveBeenCalled();
+      } finally {
+        parse.mockRestore();
+      }
+    },
+  );
 
   it("is a no-op when already equal", () => {
     expect(setCompositionDurationToContent(src(9), 9)).toBe(src(9));
@@ -198,6 +207,38 @@ describe("insertTimelineAssetIntoSource", () => {
   });
 });
 
+describe("buildTimelineAssetInsertHtml — video audio", () => {
+  const base = {
+    id: "clip_asset",
+    hfId: "hf-vid-1",
+    assetPath: "assets/clip.mp4",
+    kind: "video" as const,
+    start: 0,
+    duration: 8,
+    track: 1,
+    zIndex: 2,
+  };
+
+  it("inserts a video muted when nothing says it carries audio", () => {
+    const html = buildTimelineAssetInsertHtml(base);
+    expect(html).toContain(" muted ");
+    expect(html).not.toContain("data-has-audio");
+  });
+
+  it("inserts a video with an audio stream audible: data-has-audio and no muted", () => {
+    const html = buildTimelineAssetInsertHtml({ ...base, hasAudio: true });
+    expect(html).toContain('data-has-audio="true"');
+    expect(html).not.toContain("muted");
+    expect(html).toContain("playsinline");
+  });
+
+  it("keeps a video without an audio stream muted", () => {
+    const html = buildTimelineAssetInsertHtml({ ...base, hasAudio: false });
+    expect(html).toContain(" muted ");
+    expect(html).not.toContain("data-has-audio");
+  });
+});
+
 describe("buildTimelineAssetInsertHtml markup quality", () => {
   const base = {
     id: "clip_1",
@@ -250,4 +291,18 @@ describe("fitTimelineAssetGeometry", () => {
       height: 1080,
     });
   });
+});
+
+it("writes a dropped file's name as a URL, so %, #, ? and apostrophes load", () => {
+  const html = buildTimelineAssetInsertHtml({
+    id: "clip",
+    hfId: "hf-clip",
+    assetPath: "../assets/50% off #1?'s take.mp4",
+    kind: "video",
+    start: 0,
+    duration: 2,
+    track: 1,
+    zIndex: 1,
+  });
+  expect(html).toContain('src="../assets/50%25%20off%20%231%3F%27s%20take.mp4"');
 });

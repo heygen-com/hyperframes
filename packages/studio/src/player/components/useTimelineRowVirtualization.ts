@@ -103,6 +103,7 @@ export function useTimelineRowVirtualization({
   });
 
   const previousLayoutRef = useRef(rowGeometry);
+  const previousDraggedRowKeyRef = useRef(draggedRowKey);
   const previousSessionEpochRef = useRef(sessionEpoch);
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
@@ -120,6 +121,7 @@ export function useTimelineRowVirtualization({
         previousGeometry,
         rowGeometry,
         scroll.scrollTop,
+        draggedRowKey !== undefined || previousDraggedRowKeyRef.current !== undefined,
       );
       if (nextScrollTop !== scroll.scrollTop) {
         scroll.scrollTop = nextScrollTop;
@@ -127,7 +129,8 @@ export function useTimelineRowVirtualization({
       }
     }
     previousLayoutRef.current = rowGeometry;
-  }, [lastScrollLeftRef, rowGeometry, scrollRef, sessionEpoch, syncScrollViewport]);
+    previousDraggedRowKeyRef.current = draggedRowKey;
+  }, [draggedRowKey, lastScrollLeftRef, rowGeometry, scrollRef, sessionEpoch, syncScrollViewport]);
 
   return {
     enabled,

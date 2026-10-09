@@ -706,6 +706,31 @@ describe("GSAP rules", () => {
     expect(conflicts[0]?.message).toMatch(/x\/scale|scale\/x/);
   });
 
+  it("does not duplicate the CSS transform text when one declaration matches both translate and scale", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="scene-1" class="scene-1">hi</div>
+  </div>
+  <style>
+    .scene-1 { transform: scale(1.08) translate3d(1.5%, 0, 0); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".scene-1", { duration: 1, x: 100, scale: 1.2 });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const conflict = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(conflict).toBeDefined();
+    const doubled = "scale(1.08) translate3d(1.5%, 0, 0) scale(1.08) translate3d(1.5%, 0, 0)";
+    expect(conflict?.message).not.toContain(doubled);
+    expect(conflict?.fixHint).not.toContain(doubled);
+    expect(conflict?.message).toContain("transform: scale(1.08) translate3d(1.5%, 0, 0)");
+  });
+
   // --- Inline style transform detection tests ---
 
   it("warns when inline style transform: translateX conflicts with GSAP x", async () => {
@@ -3056,6 +3081,29 @@ describe("SVG draw-on rules", () => {
 
     expect(finding?.severity).toBe("warning");
     expect(finding?.selector).toBe("#ring");
+    expect(finding?.fixHint).toContain("every fromTo except the earliest-positioned one (at 5s)");
+    expect(finding?.fixHint).toContain("gsap_timeline_set_initial_hide");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: accepts the hinted shape when the later tween is authored first", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 1 }, { opacity: 0, duration: 0.5, immediateRender: false }, 10);
+    tl.fromTo("#ring", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 5);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding).toBeUndefined();
   });
 
   it("gsap_repeated_fromto_without_baseline: accepts explicit immediateRender false", async () => {

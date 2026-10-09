@@ -1,6 +1,6 @@
 # Motion language — the move vocabulary + the motion doctrine + the seek-safe core
 
-> The motion layer for **Step 4 (Visual design)**. When you write a frame's **time-coded shot sequence**, you name each scene's move **inline from the vocabulary below** — a named palette of the moves the golden corpus actually uses. Each move carries the **backing rule id** in this skill's local `../hyperframes-animation/rules/`; cite that id so the move resolves to a real recipe when a **frame worker** implements it in Step 5 (the worker reads the rule body in `../hyperframes-animation/rules/<id>.md` — it reproduces the move, it does not guess from the name). You name motion by **role / move name**, never by raw GSAP curve, ms, or stagger formula — the worker maps the curve. Between-frame **transitions are not yours**: story names `transition_in`, the harness injects it; that injected transition **is** the frame's exit. For cuts a worker builds INSIDE a frame (within-scene swaps, scene-to-scene seams), see the catalog in `cut-catalog.md`.
+> The motion layer for **Step 4 (Visual design)**. When you write a frame's **time-coded shot sequence**, you name each scene's move **inline from the vocabulary below** — a named palette of the moves the golden corpus actually uses. Each move carries the **backing rule id** in this skill's local `../../hyperframes-animation/rules/`; cite that id so the move resolves to a real recipe when a **frame worker** implements it in Step 5 (the worker reads the rule body in `../../hyperframes-animation/rules/<id>.md` — it reproduces the move, it does not guess from the name). You name motion by **role / move name**, never by raw GSAP curve, ms, or stagger formula — the worker maps the curve. Between-frame **transitions are not yours**: story names `transition_in`, the harness injects it; that injected transition **is** the frame's exit. For cuts a worker builds INSIDE a frame (within-scene swaps, scene-to-scene seams), see the catalog in `cut-catalog.md`.
 
 A good promo feels like one continuous film — one camera, one motion feel, **smooth and timed to the voiceover** — not a pile of slides that animate once and freeze. The doctrine in Part 2 is load-bearing: when in doubt, do what it says.
 
@@ -8,7 +8,7 @@ A good promo feels like one continuous film — one camera, one motion feel, **s
 
 # Part 1 — the move vocabulary
 
-Reach into this palette when naming a scene's motion. Pick the move that matches the beat, name it in the shot sequence, and cite the rule id after `→`. The blueprints (`../hyperframes-animation/blueprints/`) name these same moves in their `rule mapping`; you're drawing from one shared palette. Compose 2–4 across a shot's scenes (entrance → sequential reveal → settle), not all at once.
+Reach into this palette when naming a scene's motion. Pick the move that matches the beat, name it in the shot sequence, and cite the rule id after `→`. The blueprints (`../../hyperframes-animation/blueprints/`) name these same moves in their `rule mapping`; you're drawing from one shared palette. Compose 2–4 across a shot's scenes (entrance → sequential reveal → settle), not all at once.
 
 ## Kinetic type
 
@@ -60,7 +60,7 @@ Reach into this palette when naming a scene's motion. Pick the move that matches
 
 ## Seam cuts (worker-built, inside a frame)
 
-The velocity-matched cuts a worker authors between a frame's own Scenes. Name the seam in the shot sequence; the recipe is in the catalog, not a single `../hyperframes-animation/rules/` id.
+The velocity-matched cuts a worker authors between a frame's own Scenes. Name the seam in the shot sequence; the recipe is in the catalog, not a single `../../hyperframes-animation/rules/` id.
 
 - **zoom-through / inverse zoom-through** — a within-scene swap on the Z-axis; forward reads "progressing through", inverse reads "arriving at" (payoff). → `cut-catalog.md`
 - **cut-the-curve** — a scene-to-scene cut where both sides move the same direction at matched velocity. → `cut-catalog.md`
@@ -78,7 +78,7 @@ The velocity-matched cuts a worker authors between a frame's own Scenes. Name th
 
 ## The added moves — now backed by local rules
 
-Five moves the golden corpus needs were added to this skill's `../hyperframes-animation/rules/`, rounding out the vocabulary above:
+Five moves the golden corpus needs were added to this skill's `../../hyperframes-animation/rules/`, rounding out the vocabulary above:
 
 - **depth-of-field / selective-blur** — blur the off-focus subset to spotlight the focal element → `depth-of-field-blur`
 - **motion-blur streak** — directional velocity blur on a fast fly-in / camera push-through → `motion-blur-streak`
@@ -96,7 +96,7 @@ These four rules are the difference between a clip that reads as a serious launc
 
 Elements should use **long-tail decel curves that let them settle smoothly. `power3` is enough in most cases.** No bouncy, no overshoot, no `back.out` / `bounce.out` / `elastic.out` as a default.
 
-Bouncy is the **#1 instant turn-off** in user-made Remotion / HyperFrames videos, and the agent almost never gets it right — it thinks bouncy adds emphasis, but it buys that emphasis at the cost of cleanliness. The serious launch-video shops feel the same. **Smooth always wins.** Overshoot is demoted to a **rare, explicitly-playful exception** (a consumer/fun logo slam, a deliberate bell-hit) — never the house style. Name the intent as a long-tail settle; the worker maps `power3` (or `expo.out` on a fast arrival). See `../hyperframes-animation/rules/spring-pop-entrance.md` — it now leads with the smooth settle. (The exact form of that settle is a critically-damped spring; the worker has a baked, seek-safe `springEase` — ζ=1 — in `../hyperframes-animation/adapters/gsap-easing-and-stagger.md` → Spring Eases for when the settle is the hero. Real physics, same doctrine — not a license for bounce.)
+Bouncy is the **#1 instant turn-off** in user-made Remotion / HyperFrames videos, and the agent almost never gets it right — it thinks bouncy adds emphasis, but it buys that emphasis at the cost of cleanliness. The serious launch-video shops feel the same. **Smooth always wins.** Overshoot is demoted to a **rare, explicitly-playful exception** (a consumer/fun logo slam, a deliberate bell-hit) — never the house style. Name the intent as a long-tail settle; the worker maps `power3` (or `expo.out` on a fast arrival). See `../../hyperframes-animation/rules/spring-pop-entrance.md` — it now leads with the smooth settle. (The exact form of that settle is a critically-damped spring; the worker has a baked, seek-safe `springEase` — ζ=1 — in `../../hyperframes-animation/adapters/gsap-easing-and-stagger.md` → Spring Eases for when the settle is the hero. Real physics, same doctrine — not a license for bounce.)
 
 ## 2. Sequential reveal in the back ~50%, timed to the voiceover
 

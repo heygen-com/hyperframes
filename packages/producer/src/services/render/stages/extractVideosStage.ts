@@ -56,6 +56,7 @@ import {
   type RenderJob,
 } from "../../renderOrchestrator.js";
 import { materializeExtractedFramesForCompiledDir, type CompositionMetadata } from "../shared.js";
+import { resolveRenderFpsConfig } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import {
@@ -82,6 +83,7 @@ export interface ExtractVideosStageInput {
    * passes `true` so the planDir is self-contained.
    */
   materializeSymlinks?: boolean;
+  deferRangeExtraction?: boolean;
 }
 
 export interface ExtractVideosStageResult {
@@ -381,6 +383,7 @@ export async function runExtractVideosStage(
     abortSignal,
     assertNotAborted,
     materializeSymlinks,
+    deferRangeExtraction,
   } = input;
 
   const stage2Start = Date.now();
@@ -496,12 +499,14 @@ export async function runExtractVideosStage(
         fps: job.config.fps,
         outputDir: join(compiledDir, "__hyperframes_video_frames"),
         format: job.config.videoFrameFormat ?? "auto",
+        toneMapHdrToSdr: job.config.hdrMode === "force-sdr",
         timelineEnd: composition.duration,
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
+        deferRangeExtraction,
       },
       abortSignal,
-      { extractCacheDir: cfg.extractCacheDir, extractCacheMaxBytes: cfg.extractCacheMaxBytes },
+      cfg,
       compiledDir,
     );
     extractionResult.phaseBreakdown.transientRetries =
@@ -515,7 +520,11 @@ export async function runExtractVideosStage(
     });
 
     if (extractionResult.extracted.length > 0) {
-      frameLookup = createFrameLookupTable(composition.videos, extractionResult.extracted);
+      frameLookup = createFrameLookupTable(
+        composition.videos,
+        extractionResult.extracted,
+        resolveRenderFpsConfig(job.config.fps).value,
+      );
     }
     videoReadinessSkipIds = collectVideoReadinessSkipIds(
       nativeHdrVideoIds,
@@ -556,7 +565,7 @@ export function appendAutoDetectedVideoAudio(
   for (const ext of extracted) {
     if (!ext.metadata.hasAudio) continue;
     const video = composition.videos.find((v) => v.id === ext.videoId);
-    if (!video || !video.hasAudio || existingAudioSrcs.has(video.src)) continue;
+    if (!video || !video.hasAudio || video.hidden || existingAudioSrcs.has(video.src)) continue;
     composition.audios.push({
       id: `${video.id}-audio`,
       src: video.src,

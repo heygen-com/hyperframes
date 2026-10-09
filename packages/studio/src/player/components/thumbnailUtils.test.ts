@@ -1,45 +1,50 @@
 import { describe, expect, it } from "vitest";
+import { buildTimelineAssetInsertHtml } from "../../utils/timelineAssetDrop";
 import {
+  authoredSrcPath,
   computeThumbnailStrip,
   encodePreviewPath,
   resolveMediaPreviewUrl,
-  THUMBNAIL_CLIP_HEIGHT,
+  quantizeThumbnailFrameCount,
+  thumbnailFrameForTile,
 } from "./thumbnailUtils";
+import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 
 describe("computeThumbnailStrip", () => {
   it("sizes tiles by aspect ratio at the clip height", () => {
-    const { frameW } = computeThumbnailStrip(500, 16 / 9);
-    expect(frameW).toBe(Math.round(THUMBNAIL_CLIP_HEIGHT * (16 / 9)));
+    expect(computeThumbnailStrip(500, 16 / 9, 40).frameW).toBe(71);
+    expect(computeThumbnailStrip(500, 2.7, 40).frameW).toBe(108);
   });
 
   it("repeats tiles to cover the container width", () => {
-    const { frameW, frameCount } = computeThumbnailStrip(500, 1);
-    expect(frameW).toBe(THUMBNAIL_CLIP_HEIGHT);
-    expect(frameCount).toBe(Math.ceil(500 / THUMBNAIL_CLIP_HEIGHT));
+    const { frameW, frameCount } = computeThumbnailStrip(500, 1, 40);
+    expect(frameW).toBe(40);
+    expect(frameCount).toBe(13);
     expect(frameCount * frameW).toBeGreaterThanOrEqual(500);
   });
 
-  it("returns one tile when the container width is unknown", () => {
-    expect(computeThumbnailStrip(0, 16 / 9).frameCount).toBe(1);
-    expect(computeThumbnailStrip(-10, 16 / 9).frameCount).toBe(1);
+  it("paints tiles across the full clip past the shared visible-frame budget", () => {
+    expect(computeThumbnailStrip(14_400, 16 / 9, 40).frameCount).toBeGreaterThan(33);
+  });
+
+  it("returns one tile until the container is measured", () => {
+    expect(computeThumbnailStrip(0, 16 / 9, 40).frameCount).toBe(1);
+    expect(computeThumbnailStrip(-10, 16 / 9, 40).frameCount).toBe(1);
+    expect(computeThumbnailStrip(500, 16 / 9, 0).frameCount).toBe(1);
   });
 
   it("falls back to 16:9 for degenerate aspects", () => {
-    const expected = Math.round(THUMBNAIL_CLIP_HEIGHT * (16 / 9));
-    expect(computeThumbnailStrip(300, 0).frameW).toBe(expected);
-    expect(computeThumbnailStrip(300, -2).frameW).toBe(expected);
-    expect(computeThumbnailStrip(300, Number.NaN).frameW).toBe(expected);
-    expect(computeThumbnailStrip(300, Number.POSITIVE_INFINITY).frameW).toBe(expected);
+    const expected = Math.round(40 * (16 / 9));
+    expect(computeThumbnailStrip(300, 0, 40).frameW).toBe(expected);
+    expect(computeThumbnailStrip(300, -2, 40).frameW).toBe(expected);
+    expect(computeThumbnailStrip(300, Number.NaN, 40).frameW).toBe(expected);
+    expect(computeThumbnailStrip(300, Number.POSITIVE_INFINITY, 40).frameW).toBe(expected);
   });
 
   it("never returns a zero-width tile (avoids divide-by-zero repeat counts)", () => {
-    const { frameW, frameCount } = computeThumbnailStrip(300, 0.001);
+    const { frameW, frameCount } = computeThumbnailStrip(300, 0.001, 40);
     expect(frameW).toBeGreaterThanOrEqual(1);
     expect(Number.isFinite(frameCount)).toBe(true);
-  });
-
-  it("honors a custom clip height", () => {
-    expect(computeThumbnailStrip(300, 2, 40).frameW).toBe(80);
   });
 
   it("keeps narrow tiles above a caller-owned minimum", () => {
@@ -47,6 +52,30 @@ describe("computeThumbnailStrip", () => {
       frameW: 48,
       frameCount: 7,
     });
+  });
+});
+
+describe("thumbnailFrameForTile", () => {
+  it("shows the clip's last frame in the last tile, and the slice under each other tile's centre", () => {
+    // 8 slices and the end frame.
+    expect([0, 1, 2].map((tile) => thumbnailFrameForTile(tile, 3, 9))).toEqual([1, 4, 8]);
+    // 2 slices and the end frame across 4 tiles.
+    expect([0, 1, 2, 3].map((tile) => thumbnailFrameForTile(tile, 4, 3))).toEqual([0, 0, 1, 2]);
+    expect(thumbnailFrameForTile(0, 1, 9)).toBe(4);
+  });
+});
+
+describe("quantizeThumbnailFrameCount", () => {
+  it("uses doubling buckets and never exceeds the 4K geometry ceiling", () => {
+    expect(quantizeThumbnailFrameCount(5)).toBe(8);
+    expect(quantizeThumbnailFrameCount(32)).toBe(32);
+  });
+
+  it("caps decode requests at the largest step within the visible-frame budget", () => {
+    // A step that is not a power of two would share no frames with the step below it.
+    expect(MAX_VISIBLE_THUMBNAIL_FRAMES).toBeGreaterThan(32);
+    expect(quantizeThumbnailFrameCount(34)).toBe(32);
+    expect(quantizeThumbnailFrameCount(124)).toBe(32);
   });
 });
 
@@ -158,5 +187,36 @@ describe("encodePreviewPath", () => {
 
   it("leaves a plain path unchanged", () => {
     expect(encodePreviewPath("assets/music.mp3")).toBe("assets/music.mp3");
+  });
+});
+
+describe("authoredSrcPath", () => {
+  const droppedSrc = (assetPath: string) =>
+    /src="([^"]*)"/.exec(
+      buildTimelineAssetInsertHtml({
+        id: "clip",
+        hfId: "hf-clip",
+        assetPath,
+        kind: "video",
+        start: 0,
+        duration: 2,
+        track: 1,
+        zIndex: 1,
+      }),
+    )![1]!;
+
+  it.each([
+    ["assets/My clip.mp4", "/api/projects/p/preview/assets/My%20clip.mp4"],
+    ["assets/café.mp4", "/api/projects/p/preview/assets/caf%C3%A9.mp4"],
+    ["assets/50% off #1?.mp4", "/api/projects/p/preview/assets/50%25%20off%20%231%3F.mp4"],
+  ])("previews a dropped %j at its own file", (assetPath, url) => {
+    expect(resolveMediaPreviewUrl(authoredSrcPath(droppedSrc(assetPath)), "p")).toBe(url);
+  });
+
+  it("drops the query and fragment, and leaves URLs with a scheme alone", () => {
+    expect(authoredSrcPath("assets/a%20b.mp4?v=2#t=1")).toBe("assets/a b.mp4");
+    expect(authoredSrcPath("assets/100%.png")).toBe("assets/100%.png");
+    expect(authoredSrcPath("https://cdn.example/a%20b.mp4")).toBe("https://cdn.example/a%20b.mp4");
+    expect(authoredSrcPath("//cdn.example/a%20b.mp4")).toBe("//cdn.example/a%20b.mp4");
   });
 });

@@ -1,47 +1,28 @@
 ---
 title: "Freeze-Frame Dressing"
 description: "Timeline-driven paper, tape, and flash dressing for a freeze-frame or background-removed subject"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/freeze-frame-dressing.json"
+  compositionId="freeze-frame-dressing"
+  compositionSrc="compositions/freeze-frame-dressing.html"
+  title="Freeze-Frame Dressing"
+  description="Timeline-driven paper, tape, and flash dressing for a freeze-frame or background-removed subject"
+  variables={[]}
+  meta={{"duration":4,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":120}}
+  attribution={{"path":"registry/blocks/freeze-frame-dressing","tags":["freeze-frame","cutout","scrapbook","paper","social","overlay","media-treatment-overlay"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/freeze-frame-dressing/freeze-frame-dressing.html"
+>
 
-<InstallCommand command="npx hyperframes add freeze-frame-dressing" item="freeze-frame-dressing" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/freeze-frame-dressing.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="freeze-frame-dressing preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/freeze-frame-dressing.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 4 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="freeze-frame-dressing"
-  data-composition-src="compositions/freeze-frame-dressing.html"
-  data-start="0"
-  data-duration="4"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title={`freeze-frame-dressing.html`}>
-
-```html
+```html freeze-frame-dressing.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -164,7 +145,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add freeze-frame-dressing" item="freeze-frame-dressing" />
+
+That writes one file: `compositions/freeze-frame-dressing.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 4 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="freeze-frame-dressing"
+  data-composition-src="compositions/freeze-frame-dressing.html"
+  data-start="0"
+  data-duration="4"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -175,3 +185,7 @@ Tagged `freeze-frame` `cutout` `scrapbook` `paper` `social` `overlay` `media-tre
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

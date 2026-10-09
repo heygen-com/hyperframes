@@ -3,6 +3,11 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import type { SelectElementOptions, TimelineElement } from "../player";
 import type { RightPanelTab } from "../utils/studioHelpers";
 
+export interface DomSelectionResult {
+  changed: boolean;
+  count: number;
+}
+
 export interface ApplyDomSelectionOptions {
   revealPanel?: boolean;
   additive?: boolean;
@@ -18,12 +23,14 @@ export interface ResolveDomSelectionOptions {
   activeGroupElement?: HTMLElement | null;
   /** Resolve this node itself instead of applying human group-capture behavior. */
   exactTarget?: boolean;
+  previous?: DomEditSelection | null;
 }
 
-export interface UseDomSelectionParams {
+// Shared by every hook that needs the project/timeline/panel context a DOM
+// edit session is built around — useDomEditSession has its own superset.
+export interface DomEditTimelineParams {
   projectId: string | null;
   activeCompPath: string | null;
-  isMasterView: boolean;
   compIdToSrc: Map<string, string>;
   captionEditMode: boolean;
   previewIframeRef: MutableRefObject<HTMLIFrameElement | null>;
@@ -34,6 +41,10 @@ export interface UseDomSelectionParams {
   setTimelineSelectionSet: (ids: Set<string>) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
+}
+
+export interface UseDomSelectionParams extends DomEditTimelineParams {
+  isMasterView: boolean;
   previewIframe: HTMLIFrameElement | null;
   refreshKey: number;
   rightPanelTab: RightPanelTab;
@@ -80,5 +91,5 @@ export interface UseDomSelectionReturn {
   handleTimelineElementSelect: (element: TimelineElement | null) => Promise<void>;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => Promise<void>;
   refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
-  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => DomSelectionResult;
 }

@@ -9,7 +9,13 @@ export {
   type StudioPathOffsetSnapshot,
 } from "./manualEditsTypes";
 
-export { readFileChangeField, readStudioFileChangePath } from "./manualEditsParsing";
+export {
+  mergeFileChangePayloads,
+  readFileChangeAffectedCompositions,
+  readFileChangeAffectsPreview,
+  readFileChangeField,
+  readStudioFileChangePath,
+} from "./manualEditsParsing";
 
 export {
   beginStudioManualEditGesture,
@@ -24,9 +30,9 @@ export {
   applyStudioBoxSize,
   applyStudioBoxSizeDraft,
   applyStudioRotation,
-  applyStudioRotationDraft,
-  reapplyPositionEditsAfterSeek,
 } from "./manualEditsDom";
+
+export { reapplyPositionEditsAfterSeek } from "./manualEditsSeekReapply";
 
 export {
   captureStudioBoxSize,
@@ -73,6 +79,7 @@ function wrapSeekReapplyFunction(
   win: StudioManualEditSeekWindow,
   owner: Record<string, unknown> | undefined,
   key: string,
+  reapplyWhenHeldSeekLands = false,
 ): boolean {
   const fn = owner?.[key];
   if (!owner || typeof fn !== "function") return false;
@@ -82,6 +89,8 @@ function wrapSeekReapplyFunction(
   const wrappedSeek = function (this: unknown, ...args: unknown[]): unknown {
     const result = seek.apply(this, args);
     win.__hfStudioManualEditsApply?.();
+    const held = reapplyWhenHeldSeekLands ? (result as PromiseLike<void> | undefined) : undefined;
+    if (typeof held?.then === "function") void held.then(() => win.__hfStudioManualEditsApply?.());
     return result;
   };
   markWrapped(wrappedSeek);
@@ -116,6 +125,21 @@ function hasRemainingTimelineTime(owner: Record<string, unknown>): boolean {
   return time < duration;
 }
 
+function hasPausedAncestor(owner: Record<string, unknown>): boolean {
+  let ancestor = owner.parent;
+  for (let depth = 0; depth < 32 && ancestor && typeof ancestor === "object"; depth++) {
+    const node = ancestor as Record<string, unknown>;
+    const paused = node.paused;
+    try {
+      if (typeof paused === "function" && paused.call(node)) return true;
+    } catch {
+      return false;
+    }
+    ancestor = node.parent;
+  }
+  return false;
+}
+
 function isTimelinePlaying(owner: Record<string, unknown> | undefined): boolean {
   if (!owner) return false;
   const isPlaying = owner.isPlaying;
@@ -144,6 +168,8 @@ function isTimelinePlaying(owner: Record<string, unknown> | undefined): boolean 
       }
     }
 
+    // A GSAP child of a paused timeline reads unpaused with time left; only its ancestors know.
+    if (hasPausedAncestor(owner)) return false;
     return hasRemainingTimelineTime(owner);
   }
 
@@ -234,7 +260,7 @@ export function installStudioManualEditSeekReapply(win: Window, apply: () => voi
   studioWin[STUDIO_MANUAL_EDITS_APPLY_PROP] = apply;
 
   const wrappedHfSeek = wrapSeekReapplyFunction(studioWin, studioWin.__hf, "seek");
-  const wrappedPlayerSeek = wrapSeekReapplyFunction(studioWin, studioWin.__player, "seek");
+  const wrappedPlayerSeek = wrapSeekReapplyFunction(studioWin, studioWin.__player, "seek", true);
   const wrappedPlayerRenderSeek = wrapSeekReapplyFunction(
     studioWin,
     studioWin.__player,

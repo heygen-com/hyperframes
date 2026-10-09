@@ -12,7 +12,7 @@ import type { Composition, PersistErrorEvent } from "./types.js";
 import type { PersistAdapter } from "./adapters/types.js";
 
 export interface PersistQueueModule {
-  /** Force an immediate write (e.g. before app close). */
+  /** Drain pending writes and adapter storage before app close. */
   flush(): Promise<void>;
   dispose(): void;
 }
@@ -20,7 +20,7 @@ export interface PersistQueueModule {
 export interface PersistQueueOptions {
   /** Adapter path to write to. Default: "composition.html" */
   path?: string;
-  /** Called when adapter.write() rejects. */
+  /** Called when adapter.write() or adapter.flush() rejects. */
   onError?: (e: PersistErrorEvent) => void;
 }
 
@@ -63,12 +63,22 @@ export function createPersistQueue(
   });
 
   return {
-    async flush(): Promise<void> {
+    flush(): Promise<void> {
+      if (disposed) return writeChain;
       if (pendingWrite !== null) {
         clearTimeout(pendingWrite);
         pendingWrite = null;
+        void doWrite();
       }
-      await doWrite();
+      writeChain = writeChain.then(async () => {
+        try {
+          await adapter.flush();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          opts.onError?.({ error: { message, cause: err } });
+        }
+      });
+      return writeChain;
     },
 
     dispose(): void {

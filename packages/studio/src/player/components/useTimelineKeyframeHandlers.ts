@@ -4,6 +4,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { clipToTweenPercentage } from "../../components/editor/KeyframeNavigation";
+import { progressAtTime, runEaseOf, timeAtProgress } from "../../utils/gsapKeyframeEases";
 import {
   KEYFRAME_DRAG_THRESHOLD_PX,
   previewClipPct,
@@ -93,6 +94,7 @@ interface TimelineKeyframeRetimeCoordinator {
    * is a viewport-wide question, not a per-keyframe one.
    */
   latest: PendingTimelineKeyframeRetime | null;
+  cancelActive: () => void;
 }
 
 type TimelineRetimePointerEvent = Pick<
@@ -115,6 +117,7 @@ function getRetimeCoordinator(owner: EventTarget): TimelineKeyframeRetimeCoordin
     preview: null,
     previewListeners: new Set(),
     latest: null,
+    cancelActive: () => {},
   };
   keyframeRetimeCoordinators.set(owner, coordinator);
   return coordinator;
@@ -160,6 +163,15 @@ export function subscribeTimelineKeyframeRetimePreview(
   return () => coordinator.previewListeners.delete(listener);
 }
 
+function retimedRunEase(actor: TimelineKeyframeRetimeActor): string | undefined {
+  const id = actor.target.animationId;
+  if (id === undefined) return undefined;
+  const { gsapAnimations } = usePlayerStore.getState();
+  const animations = gsapAnimations.get(actor.elementId) ?? [...gsapAnimations.values()].flat();
+  const animation = animations.find((candidate) => candidate.id === id);
+  return animation ? runEaseOf(animation) : undefined;
+}
+
 function resolveRetimeTweenPercentage(
   actor: TimelineKeyframeRetimeActor,
   toClipPercentage: number,
@@ -171,7 +183,13 @@ function resolveRetimeTweenPercentage(
   const tweenPercentages = animationKeyframes
     .map((keyframe) => keyframe.tweenPercentage)
     .filter((value): value is number => typeof value === "number");
-  const mapped = clipToTweenPercentage(animationKeyframes, toClipPercentage);
+  const runEase = retimedRunEase(actor);
+  const timed = animationKeyframes.map((keyframe) =>
+    keyframe.tweenPercentage === undefined
+      ? keyframe
+      : { ...keyframe, tweenPercentage: timeAtProgress(runEase, keyframe.tweenPercentage) },
+  );
+  const mapped = progressAtTime(runEase, clipToTweenPercentage(timed, toClipPercentage));
   if (tweenPercentages.length === 0) return mapped;
   return Math.max(Math.min(...tweenPercentages), Math.min(Math.max(...tweenPercentages), mapped));
 }
@@ -186,6 +204,10 @@ export interface TimelineKeyframeRetimeHandle {
  * Starts a keyframe retime on the stable timeline viewport. The row/button is
  * only an entry point: window listeners own the gesture through virtualization.
  */
+export function cancelTimelineKeyframeRetime(viewport: HTMLElement | null): void {
+  if (viewport) keyframeRetimeCoordinators.get(viewport)?.cancelActive();
+}
+
 export function beginTimelineKeyframeRetime(
   input: TimelineKeyframeRetimeInput,
 ): TimelineKeyframeRetimeHandle {
@@ -256,6 +278,7 @@ export function beginTimelineKeyframeRetime(
     teardownListeners: null,
   };
   coordinator.actor = actor;
+  coordinator.cancelActive = () => cancel(actor);
 
   const matchesPointer = (event: TimelineRetimePointerEvent) =>
     actor.pointerId === null || event.pointerId === actor.pointerId;

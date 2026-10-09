@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchParsedAnimations } from "./keyframeCacheAstLoad";
+import { usePlayerStore } from "../player/store/playerStore";
 
 /**
  * Parsing a composition is a whole-file read + parse on the server, and a
@@ -9,8 +10,37 @@ import { fetchParsedAnimations } from "./keyframeCacheAstLoad";
  * pre-write answer.
  */
 describe("fetchParsedAnimations — in-flight sharing", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ timelineProjectId: "p", previewBooted: true });
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("does not ask the server to parse until the live preview has booted", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const fetchStub = stubFetch();
+
+    const parsed = fetchParsedAnimations("p", "boot.html");
+    await Promise.resolve();
+    expect(fetchStub.calls()).toBe(0);
+
+    usePlayerStore.getState().markPreviewBooted();
+    await vi.waitFor(() => expect(fetchStub.calls()).toBe(1));
+    fetchStub.settle();
+    expect((await parsed)?.animations).toHaveLength(1);
+  });
+
+  it("drops a parse for a project the user left before its preview booted", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const fetchStub = stubFetch();
+
+    const parsed = fetchParsedAnimations("p", "left.html");
+    usePlayerStore.getState().beginTimelineSession("q");
+    usePlayerStore.getState().markPreviewBooted();
+
+    expect(await parsed).toBeNull();
+    expect(fetchStub.calls()).toBe(0);
   });
 
   function stubFetch(): { calls: () => number; settle: () => void } {

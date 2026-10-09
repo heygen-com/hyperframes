@@ -4,8 +4,8 @@ import type { BlockedTimelineEditIntent } from "./timelineEditing";
 
 /* ── Shared clip-drag state types ───────────────────────────────── */
 export interface DraggedClipState {
-  /** Pointer captured by the stable viewport coordinator for this gesture. */
-  pointerId: number;
+  /** Pointer captured by the viewport coordinator; null for a keyboard pickup. */
+  pointerId: number | null;
   element: TimelineElement;
   originClientX: number;
   originClientY: number;
@@ -18,26 +18,22 @@ export interface DraggedClipState {
   previewStart: number;
   previewTrack: number;
   /**
-   * The lane the POINTER aims at (from the drag's vertical position), before
-   * collision resolution. `previewTrack` is where the clip actually LANDS —
-   * which may differ from `desiredTrack` when the aimed span is occupied and the
-   * collision rules bump the dragged clip to a free lane. The commit reads this
-   * to tell a deliberate VERTICAL lane change (pointer aimed at another lane →
-   * stacking sync allowed) from a plain HORIZONTAL drag whose clip merely got
-   * bumped sideways (never touches z). Optional: when absent the commit falls
-   * back to `previewTrack` (pre-existing behaviour).
+   * The lane the POINTER aims at, before the kind-zone clamp picks `previewTrack`.
+   * The commit reads it to tell a deliberate vertical lane change (stacking sync
+   * allowed) from a horizontal drag. Absent: the commit falls back to `previewTrack`.
    */
   desiredTrack?: number;
   /**
    * When non-null, the drop inserts a NEW track at this visual row boundary
    * (0 = above the top lane, trackOrder.length = below the bottom) instead of
-   * landing on previewTrack. Drives the insertion-line indicator.
+   * landing on previewTrack. Drives the opened preview lane.
    */
   insertRow: number | null;
   /** Snap target the clip will land on, for the guide highlight. */
   snapTime: number | null;
   snapType: TimelineSnapType | null;
   started: boolean;
+  altKey?: boolean;
 }
 
 export interface ResizingClipState {
@@ -57,6 +53,9 @@ export interface ResizingClipState {
   previewStart: number;
   previewDuration: number;
   previewPlaybackStart?: number;
+  /** Snap target the trimmed edge landed on, for the guide highlight. */
+  snapTime?: number | null;
+  snapType?: TimelineSnapType | null;
   /** Coordinator-owned group projection; canonical elements change only on commit. */
   groupPreview?: readonly {
     key: string;
@@ -65,6 +64,7 @@ export interface ResizingClipState {
     playbackStart?: number;
   }[];
   started: boolean;
+  altKey?: boolean;
 }
 
 export interface BlockedClipState {

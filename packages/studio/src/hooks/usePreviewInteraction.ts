@@ -1,3 +1,4 @@
+import { trackPreviewFeatureUsed } from "../utils/previewFeatureUsage";
 import { useCallback, useRef } from "react";
 import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
@@ -169,6 +170,7 @@ export function usePreviewInteraction({
         e.preventDefault();
         e.stopPropagation();
         applyDomSelection(nextSelection, { additive: true });
+        trackPreviewFeatureUsed("multi_select", "button");
         return;
       }
 
@@ -260,9 +262,10 @@ export function usePreviewInteraction({
   }, [updateDomEditHoverSelection]);
 
   const handleBlockedDomMove = useCallback(
-    (selection: DomEditSelection) => {
+    (selection: DomEditSelection, reason?: string) => {
       showToast(
-        selection.capabilities.reasonIfDisabled ??
+        reason ??
+          selection.capabilities.reasonIfDisabled ??
           "This element can't be adjusted directly from the preview.",
         "info",
       );

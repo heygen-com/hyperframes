@@ -18,6 +18,7 @@ import { resolveScoped, findById, isNewHostBoundary, bareId } from "./engine/mod
 import { parseMutable } from "./engine/model.js";
 import { buildRoots, flatElements } from "./document.js";
 import { openComposition } from "./session.js";
+import type { Composition, JsonPatchOp } from "./types.js";
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 
@@ -332,6 +333,81 @@ describe("dispatch — scoped target", () => {
     const ids = comp.find({ tag: "p" });
     expect(ids).toContain("hf-host/hf-leaf");
     expect(ids).toContain("hf-outer");
+  });
+});
+
+describe("patch replay — scoped target", () => {
+  const html = inlinedHtml(`
+    <div data-hf-id="hf-root" data-hf-root>
+      <div data-hf-id="hf-host" data-composition-file="sub.html">
+        <p data-hf-id="hf-leaf" data-start="0" data-duration="3">inside</p>
+      </div>
+      <p data-hf-id="hf-leaf" data-start="0" data-duration="3">outside</p>
+    </div>
+  `);
+  const target = "hf-host/hf-leaf";
+  const edits: Array<{ name: string; edit: (comp: Composition) => void }> = [
+    { name: "style", edit: (comp) => comp.setStyle(target, { color: "red" }) },
+    { name: "text", edit: (comp) => comp.setText(target, "edited") },
+    { name: "attribute", edit: (comp) => comp.setAttribute(target, "title", "edited") },
+    {
+      name: "timing",
+      edit: (comp) => comp.setTiming(target, { start: 1, duration: 2, trackIndex: 2 }),
+    },
+    { name: "hold", edit: (comp) => comp.setHold(target, { start: 0, end: 1, fill: "freeze" }) },
+    { name: "removal", edit: (comp) => comp.removeElement(target) },
+  ];
+
+  it.each(edits)(
+    "replays emitted $name patches against the same nested element",
+    async ({ edit }) => {
+      const edited = await openComposition(html);
+      const patches: JsonPatchOp[] = [];
+      edited.on("patch", (event) => patches.push(...event.patches));
+      edit(edited);
+      expect(patches.some((patch) => patch.path.includes("hf-host~1hf-leaf"))).toBe(true);
+      const replayed = await openComposition(html);
+      replayed.applyPatches(patches);
+
+      expect(replayed.serialize()).toBe(edited.serialize());
+      expect(replayed.getElement("hf-leaf")?.text).toBe("outside");
+    },
+  );
+
+  it.each(edits)("restores scoped $name overrides when reopening", async ({ edit }) => {
+    const edited = await openComposition(html);
+    edit(edited);
+    const reopened = await openComposition(html, { overrides: edited.getOverrides() });
+
+    expect(reopened.serialize()).toBe(edited.serialize());
+    expect(reopened.getElement("hf-leaf")?.text).toBe("outside");
+  });
+
+  it("restores scoped edits when a batch rolls back", async () => {
+    const comp = await openComposition(html);
+    const original = comp.serialize();
+
+    expect(() =>
+      comp.batch(() => {
+        comp.setText(target, "temporary");
+        comp.setStyle(target, { color: "red" });
+        throw new Error("cancel batch");
+      }),
+    ).toThrow("cancel batch");
+    expect(comp.serialize()).toBe(original);
+  });
+
+  it("decodes a literal ~1 only once", async () => {
+    const source = inlinedHtml('<p data-hf-id="hf-literal~1" title="original">text</p>');
+    const comp = await openComposition(source);
+    const patches: JsonPatchOp[] = [];
+    comp.on("patch", (event) => patches.push(...event.patches));
+    comp.setAttribute("hf-literal~1", "title", "changed");
+    expect(patches[0]?.path).toBe("/elements/hf-literal~01/attributes/title");
+    const replayed = await openComposition(source);
+    replayed.applyPatches(patches);
+
+    expect(replayed.serialize()).toBe(comp.serialize());
   });
 });
 

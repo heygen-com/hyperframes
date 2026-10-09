@@ -9,6 +9,8 @@ description: >
   general video planning.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Keyframes
 
 Keyframes are a pose contract: visible states, continuous subject identity, seek-safe runtime, verified pixels.
@@ -34,8 +36,8 @@ fades use `/hyperframes-audio`.
 | Crop and mask reframe                   | Interpolate `clip-path` or a mask on an inner visual wrapper to crop/reframe without changing source time. Polygon keyframes can form a polygon/mask transition.                                                            |
 | Directional wipe cut or iris/reveal cut | Animate a mask/clip boundary across overlapping visual clips; `/hyperframes-animation` owns the handoff choreography.                                                                                                       |
 | Split-screen handoff                    | Keep both visual clips placed by core, then keyframe their inner crop/mask wrappers and divider geometry.                                                                                                                   |
-| Constant source retime                  | `/hyperframes-core` owns normalized `data-playback-rate` (`0.1..5`) for render-safe picture and pitch-preserved sound. It is constant for the whole media element.                                                          |
-| Source speed ramps                      | Not supported: there is no time-varying playback-rate envelope. Preprocess a derived media asset, then place it through core.                                                                                               |
+| Constant source retime                  | `/hyperframes-core` owns normalized `data-playback-rate` (`0.1..10`) for render-safe picture and pitch-preserved sound. It is constant for the whole media element.                                                         |
+| Source speed ramps                      | A `rate` lane in `data-automation` on the `<video>`/`<audio>` (`t` in clip seconds, `v` 0.1..10, log interpolation); it wins over the constant rate.                                                                        |
 | Freeze / hold                           | A visual pose, final source frame, or finished sub-composition can hold. Arbitrary mid-source freeze is not supported; preprocess a still/derived segment, place it as its own clip, then resume with another source range. |
 
 When editing picture and sound together, load `/hyperframes-core`, this skill for
@@ -51,8 +53,8 @@ For copyable combined picture/sound recipes, use `/hyperframes-core` → `refere
 
 1. Identify the animated subject, visible states, final state, and runtime.
 2. Choose the smallest mechanism that proves the prompt. Read `references/keyframe-patterns.md` only if the mechanism is unclear.
-3. Author seek-safe keyframes in the declared runtime. Build synchronously and register the runtime instance.
-4. Verify with `hyperframes lint`, `hyperframes check`, `hyperframes keyframes`, one focused `--shot`, and snapshots at proof times.
+3. Author seek-safe keyframes in the declared runtime. Register the runtime instance only after the build completes; building inside `document.fonts.ready` is fine.
+4. Verify with `hyperframes check` (it runs lint), `hyperframes keyframes`, one focused `--shot`, and snapshots at proof times.
 5. If proof fails, fix the source keyframes and rerun the smallest failing diagnostic before rendering.
 
 ## Contract
@@ -72,7 +74,7 @@ For copyable combined picture/sound recipes, use `/hyperframes-core` → `refere
 
 GSAP:
 
-- build synchronously at page load
+- build at page load or inside `document.fonts.ready`, and register only after the build completes
 - use `gsap.timeline({ paused: true })`
 - register as `window.__timelines[compositionId]`
 - registry key must match `data-composition-id`
@@ -107,7 +109,7 @@ Never use for render-critical motion:
 - unseeded `Math.random()`
 - hover/scroll triggers
 - timers
-- async-created timelines
+- a timeline registered before its async build finishes
 - unregistered `requestAnimationFrame`
 - infinite loops
 
@@ -209,7 +211,6 @@ Keyframe camera position, camera target, object transform, material opacity, sha
 ## CLI Proof
 
 ```bash
-npx hyperframes lint
 npx hyperframes check
 npx hyperframes keyframes .
 npx hyperframes keyframes . --json
@@ -254,9 +255,9 @@ A helper-selector shot is not proof. An onion shot over a broken full frame is n
 | identity break     | keep one element alive, use shared source/final boxes, remove substitute crossfade |
 | fake 3D            | add z/camera travel, occlusion, angled proof                                       |
 | wrong final        | add final hold, snapshot final-minus-hold and exact final                          |
-| unseekable runtime | pause autoplay, register instance, remove timers, build synchronously              |
+| unseekable runtime | pause autoplay, remove timers, register the instance after the build completes     |
 | unreadable text    | preserve line boxes, reduce displacement, add final hold, snapshot text frames     |
 
 ## Done
 
-Run `hyperframes lint`, `hyperframes check`, `hyperframes keyframes`, one focused `--shot`, and snapshots. Confirm first frame, proof poses, final-minus-hold, exact final, subject-owned motion, and no debug overlays.
+Run `hyperframes check` (it runs lint), `hyperframes keyframes`, one focused `--shot`, and snapshots. Confirm first frame, proof poses, final-minus-hold, exact final, subject-owned motion, and no debug overlays.

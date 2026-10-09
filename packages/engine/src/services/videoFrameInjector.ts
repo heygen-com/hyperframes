@@ -9,7 +9,6 @@
 
 import { type Page } from "puppeteer-core";
 import { promises as fs } from "fs";
-import { dirname } from "node:path";
 import { type FrameLookupTable } from "./videoFrameExtractor.js";
 import { touchCacheDir } from "./extractionCache.js";
 import { injectVideoFramesBatch, syncVideoFrameVisibility } from "./screenshotService.js";
@@ -191,13 +190,12 @@ export function createVideoFrameInjector(
   const lastCacheTouchByDir = new Map<string, number>();
 
   /**
-   * Renew this render's lease on the extraction-cache entry `framePath` lives
-   * in. Called for every active video on every frame — including one whose
-   * frame index hasn't moved, since a long-held-static frame needs its entry
-   * kept alive just as much as a changing one — so it throttles per directory.
+   * Renew this render's lease on an extraction-cache entry it reads from. Called
+   * on every frame for every entry the render holds, including clips not on
+   * screen yet (one that first shows an hour in still needs its frames), so it
+   * throttles per directory.
    */
-  function renewCacheLease(framePath: string): void {
-    const cacheDir = dirname(framePath);
+  function renewCacheLease(cacheDir: string): void {
     const now = Date.now();
     const lastTouch = lastCacheTouchByDir.get(cacheDir);
     if (lastTouch !== undefined && now - lastTouch < CACHE_TOUCH_THROTTLE_MS) return;
@@ -206,8 +204,14 @@ export function createVideoFrameInjector(
   }
 
   // fallow-ignore-next-line complexity
-  return async (page: Page, time: number) => {
+  return async (page: Page, time: number, heldVideoTime?: number) => {
+    for (const cacheDir of frameLookup.frameDirs()) renewCacheLease(cacheDir);
     const activePayloads = frameLookup.getActiveFramePayloads(time);
+    if (heldVideoTime !== undefined) {
+      for (const [videoId, payload] of frameLookup.getActiveFramePayloads(heldVideoTime)) {
+        if (activePayloads.has(videoId)) activePayloads.set(videoId, payload);
+      }
+    }
 
     const updates: Array<{ videoId: string; dataUri: string; frameIndex: number }> = [];
     const activeIds = new Set<string>();
@@ -216,7 +220,6 @@ export function createVideoFrameInjector(
         [];
       for (const [videoId, payload] of activePayloads) {
         activeIds.add(videoId);
-        renewCacheLease(payload.framePath);
         const lastFrameIndex = lastInjectedFrameByVideo.get(videoId);
         if (lastFrameIndex === payload.frameIndex) continue;
         pendingReads.push(

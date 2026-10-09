@@ -3,6 +3,11 @@ export function roundTo3(val: number): number {
   return Math.round(val * 1000) / 1000;
 }
 
+/** Whole CSS px: GSAP parses a -50% translate against the integer offsetWidth/Height. */
+export function roundToLayoutPx(val: number): number {
+  return Math.round(val);
+}
+
 /** Round to 2 decimal places (centisecond precision for timeline values). */
 export function roundToCenti(val: number): number {
   return Math.round(val * 100) / 100;

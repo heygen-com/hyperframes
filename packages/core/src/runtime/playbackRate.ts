@@ -1,8 +1,17 @@
-import { isMediaElement } from "./domRealm";
+import {
+  clampPlaybackRate,
+  readAuthoredDurationSeconds,
+  readDataDurationSeconds,
+  readMediaOffsetSeconds,
+  readPlaybackRate,
+  resolveMediaDuration,
+  resolveNaturalDurationSeconds,
+} from "@hyperframes/parsers/media-duration";
+import { resolveRateSpec, timeAtSourceTime, type RateSpec } from "../speedRamp";
+import { isImageElement, isMediaElement } from "./domRealm";
+import { parseNumeric } from "./startExpression";
 
-export function normalizePlaybackRate(raw: number): number {
-  return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
-}
+export const normalizePlaybackRate = clampPlaybackRate;
 
 /** Parse a literal numeric timing attribute without accepting trailing units or garbage. */
 export function parseStrictFiniteTimingNumber(raw: string | null | undefined): number | null {
@@ -10,26 +19,26 @@ export function parseStrictFiniteTimingNumber(raw: string | null | undefined): n
 }
 
 export function readElementPlaybackRate(el: Pick<Element, "getAttribute">): number {
-  const authored = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
-  const raw =
-    Number.isFinite(authored) && authored > 0
-      ? authored
-      : isMediaElement(el)
-        ? el.defaultPlaybackRate
-        : 1;
-  return normalizePlaybackRate(raw);
+  return readPlaybackRate(
+    (name) => el.getAttribute(name),
+    isMediaElement(el) ? el.defaultPlaybackRate : 1,
+  );
+}
+
+/** A constant rate clamped to the shared range; a lane is already normalised by its parser. */
+export function normalizeRateSpec(spec: RateSpec | undefined): RateSpec {
+  return typeof spec === "object" ? spec : normalizePlaybackRate(spec ?? 1);
+}
+
+/** The clip's rate: its `rate` lane when present, otherwise the constant rate. */
+export function readElementRateSpec(el: Pick<Element, "getAttribute">): RateSpec {
+  return resolveRateSpec(el.getAttribute("data-automation"), readElementPlaybackRate(el));
 }
 
 export function readMediaStart(el: Pick<Element, "getAttribute">): number {
-  const parse = (raw: string | null): number | null => {
-    const value = parseStrictFiniteTimingNumber(raw);
-    if (value == null) return null;
-    return Number.isFinite(value) && value >= 0 ? value : null;
-  };
-  return (
-    parse(el.getAttribute("data-playback-start")) ?? parse(el.getAttribute("data-media-start")) ?? 0
-  );
+  return readMediaOffsetSeconds((name) => el.getAttribute(name));
 }
+
 export function resolveNaturalMediaTimelineDuration(
   el: Pick<Element, "getAttribute">,
   sourceDuration: number,
@@ -37,34 +46,57 @@ export function resolveNaturalMediaTimelineDuration(
   return resolveNaturalMediaTimelineDurationFromValues(
     sourceDuration,
     readMediaStart(el),
-    readElementPlaybackRate(el),
+    readElementRateSpec(el),
   );
 }
 
 /**
- * How long a media element occupies the timeline: an explicit `data-duration`
- * trim if authored, otherwise the natural source length adjusted for playback
- * start and rate. `null` when the source has not reported a duration yet.
- *
- * Single owner for the media-window scan run by BOTH the runtime's duration
- * floor and the clip manifest.
+ * How long a media element occupies the timeline: an authored `data-duration` trim, otherwise
+ * the source's natural length adjusted for playback start and rate (lane-aware). `null` while
+ * the source has not reported a duration yet. The authored/pending decision is the shared
+ * parsers resolver's; only a `rate` lane's arithmetic stays here, because lanes live in core.
  */
 export function resolveMediaElementDurationSeconds(
   el: Pick<Element, "getAttribute"> & { duration: number },
 ): number | null {
-  const declaredDuration = parseStrictFiniteTimingNumber(el.getAttribute("data-duration"));
-  if (declaredDuration != null && declaredDuration > 0) return declaredDuration;
-  if (Number.isFinite(el.duration)) return resolveNaturalMediaTimelineDuration(el, el.duration);
-  return null;
+  const resolved = resolveMediaDuration({
+    tag: "video", // video and audio resolve identically
+    authoredDurationSeconds: readDataDurationSeconds((name) => el.getAttribute(name)),
+    sourceDurationSeconds: Number.isFinite(el.duration) ? el.duration : null,
+    mediaStartSeconds: readMediaStart(el),
+    playbackRate: readElementPlaybackRate(el),
+  });
+  return resolved.source === "media"
+    ? resolveNaturalMediaTimelineDuration(el, el.duration)
+    : resolved.seconds;
 }
 
+/** A timed `<img>` (`data-start` or `data-track-index`) gets the dropped-image default unless
+ *  trimmed by `data-duration` or `data-end`; a bare `<img>` is a static layer. `null` otherwise. */
+export function resolveTimedImageDurationSeconds(el: Element, startSeconds = 0): number | null {
+  if (!isImageElement(el)) return null;
+  if (!el.hasAttribute("data-start") && !el.hasAttribute("data-track-index")) return null;
+  return resolveMediaDuration({
+    tag: "img",
+    authoredDurationSeconds: readAuthoredDurationSeconds(
+      (name) => el.getAttribute(name),
+      startSeconds,
+    ),
+    sourceDurationSeconds: null,
+    mediaStartSeconds: 0,
+    playbackRate: 1,
+  }).seconds;
+}
+
+/** A constant rate goes through the shared arithmetic; a `rate` lane integrates over its points. */
 export function resolveNaturalMediaTimelineDurationFromValues(
   sourceDuration: number,
   mediaStart: number,
-  playbackRate: number,
+  playbackRate: RateSpec,
 ): number | null {
+  if (typeof playbackRate === "number") {
+    return resolveNaturalDurationSeconds(sourceDuration, mediaStart, playbackRate);
+  }
   if (!Number.isFinite(sourceDuration)) return null;
-  const remaining = Math.max(0, sourceDuration - mediaStart);
-  return remaining / normalizePlaybackRate(playbackRate);
+  return timeAtSourceTime(playbackRate, Math.max(0, sourceDuration - mediaStart));
 }
-import { parseNumeric } from "./startExpression";

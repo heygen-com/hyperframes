@@ -1,6 +1,6 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { usePlayerStore, type TimelineElement, type ZoomMode } from "../store/playerStore";
-import { getTimelinePixelsPerSecond } from "./timelineZoom";
+import { computePinnedZoomPercent, getTimelinePixelsPerSecond } from "./timelineZoom";
 import {
   DRAG_EXTEND_MARGIN_PX,
   getTimelineDisplayContentWidth,
@@ -43,12 +43,9 @@ export function useTimelineGeometry({
   lastScrollLeftRef,
   contentOrigin,
 }: UseTimelineGeometryInput) {
-  // Fit pps maps at least MIN_TIMELINE_EXTENT_S onto the viewport, so short
-  // comps show a 60s ruler with usable empty space (see getTimelineFitPps).
   const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration, contentOrigin);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
-  const trackContentWidth = Math.max(0, effectiveDuration * pps);
   // Drag-to-extend: while a clip is dragged, keep the rendered extent a margin
   // past the ghost's end. Holding the pointer in the right edge zone then keeps
   // auto-scroll stepping (scrollWidth grows with the ghost), so the timeline
@@ -65,12 +62,12 @@ export function useTimelineGeometry({
   const resizeGhostEndPx = resizingClip?.started
     ? (resizingClip.previewStart + resizingClip.previewDuration) * pps + DRAG_EXTEND_MARGIN_PX
     : 0;
-  // The timeline canvas always fills at least the viewport width AND the
-  // MIN_TIMELINE_EXTENT_S floor: the ruler + empty track lanes keep going into
+  // The timeline canvas always fills at least the viewport width AND the fit
+  // span at this zoom: the ruler + empty track lanes keep going into
   // the space instead of leaving dead black — CapCut-style. Only the RENDERED
   // extent grows; clip positions/durations are untouched.
   const displayContentWidth = getTimelineDisplayContentWidth({
-    trackContentWidth,
+    effectiveDuration,
     viewportWidth,
     contentOrigin,
     pps,
@@ -80,8 +77,6 @@ export function useTimelineGeometry({
   const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
   const zoomModeRef = useRef(zoomMode);
   zoomModeRef.current = zoomMode;
-  const manualZoomPercentRef = useRef(manualZoomPercent);
-  manualZoomPercentRef.current = manualZoomPercent;
   fitPpsRef.current = fitPps;
 
   // Restore the horizontal scroll offset after an edit re-derives the elements
@@ -93,9 +88,14 @@ export function useTimelineGeometry({
   useEffect(() => {
     if (zoomMode !== "manual" || isDragging.current) return;
     const el = scrollRef.current;
-    const target = lastScrollLeftRef.current;
-    if (!el || target <= 0) return;
+    if (!el) return;
+    // Read the ref inside the frame, not here: a sibling effect in the same
+    // commit (a fresh reveal) can still update lastScrollLeftRef before this
+    // frame runs, and a value captured now would fight that reveal with a
+    // stale target.
     const raf = requestAnimationFrame(() => {
+      const target = lastScrollLeftRef.current;
+      if (target <= 0) return;
       const max = Math.max(0, el.scrollWidth - el.clientWidth);
       const next = Math.min(target, max);
       if (Math.abs(el.scrollLeft - next) > 0.5) el.scrollLeft = next;
@@ -103,8 +103,7 @@ export function useTimelineGeometry({
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedElements, zoomMode]);
-  // Publish the live scale so edit handlers OUTSIDE <Timeline> (the keyboard-delete
-  // path) can pin the zoom via pinTimelineZoomToCurrent without threading geometry.
+  // Publish the live scale for readers outside <Timeline> (the toolbar's zoom controls).
   // In a useEffect (not the render body) so React-18 concurrent replay — Suspense
   // retry, transitions, StrictMode double-invoke — can't double-publish. The write is
   // idempotent (same pps/fitPps → same fields), so this is behavior-preserving; the
@@ -112,6 +111,18 @@ export function useTimelineGeometry({
   useEffect(() => {
     usePlayerStore.getState().setTimelineScale(pps, fitPps);
   }, [pps, fitPps]);
+  // In manual zoom a length change keeps the on-screen scale instead of rescaling every
+  // clip, whichever edit caused it. A composition switch empties the clips first, so it refits.
+  const hasClips = expandedElements.length > 0;
+  const lastScale = useRef({ effectiveDuration, pps, hasClips });
+  useLayoutEffect(() => {
+    const last = lastScale.current;
+    lastScale.current = { effectiveDuration, pps, hasClips };
+    if (zoomMode !== "manual" || !last.hasClips || !hasClips) return;
+    if (last.effectiveDuration === effectiveDuration) return;
+    // Before paint; the percent is clamped against the new fit, not the store's last published one.
+    usePlayerStore.setState({ manualZoomPercent: computePinnedZoomPercent(last.pps, fitPps) });
+  });
 
   return {
     pps,
@@ -120,6 +131,5 @@ export function useTimelineGeometry({
     displayDuration,
     clipStateVersion: expandedElements,
     zoomModeRef,
-    manualZoomPercentRef,
   };
 }

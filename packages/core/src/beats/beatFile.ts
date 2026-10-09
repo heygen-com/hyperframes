@@ -2,6 +2,12 @@
 // audio's project-relative path. Lives under `beats/` in the project so it
 // survives the audio being removed and re-added.
 
+import {
+  decodeAuthoredAttribute,
+  scanHtmlOpeningTags,
+  type HtmlOpeningTagSpan,
+} from "@hyperframes/parsers";
+
 interface BeatFileData {
   version: 1;
   audio: string;
@@ -82,23 +88,33 @@ export function parseBeats(content: string): { times: number[]; strengths: numbe
 
 const MUSIC_ID_RE = /\b(music|bgm|soundtrack|background[-_]?music)\b/i;
 
-function attr(tag: string, name: string): string | null {
-  const m = tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i"));
-  return m ? m[1]! : null;
+function attr(tag: HtmlOpeningTagSpan, name: string): string | null {
+  const attribute = tag.attributes.find((value) => value.name === name);
+  return attribute?.kind === "value" ? decodeAuthoredAttribute(attribute.value) : null;
+}
+
+function isSoundingVideoTag(tag: HtmlOpeningTagSpan): boolean {
+  return (
+    attr(tag, "data-has-audio") === "true" &&
+    !tag.attributes.some((attribute) => attribute.name === "muted")
+  );
+}
+
+function isMusicSourceTag(tag: HtmlOpeningTagSpan): boolean {
+  return tag.closed && (tag.name === "audio" || (tag.name === "video" && isSoundingVideoTag(tag)));
 }
 
 /**
  * Find the music track's src in composition HTML, applying the SAME rules as the
- * Studio's `isMusicTrack` so the CLI and Studio agree on which `<audio>` is music:
- * the FIRST `<audio>` (in document order) where data-timeline-role="music", or —
+ * Studio's `isMusicTrack` so the CLI and Studio agree on which clip is music:
+ * the FIRST `<audio>`, or `<video data-has-audio="true">` without `muted` (in
+ * document order) where data-timeline-role="music", or —
  * when no role is set — whose id matches the music regex. An explicit non-music
- * role excludes the element. Returns the raw src attribute, or null.
+ * role excludes the element. Returns the decoded src attribute, or null.
  */
 export function findMusicAudioSrc(html: string): string | null {
-  // `[^>]*` spans newlines (it's a negated class, not `.`), so multi-line opening
-  // tags are handled. HyperFrames authors src as an attribute on <audio>.
-  const tags = html.match(/<audio\b[^>]*>/gi) ?? [];
-  for (const tag of tags) {
+  for (const tag of scanHtmlOpeningTags(html)) {
+    if (!isMusicSourceTag(tag)) continue;
     const src = attr(tag, "src");
     if (!src) continue;
     const role = attr(tag, "data-timeline-role");

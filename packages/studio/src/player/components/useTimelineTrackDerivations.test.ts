@@ -15,7 +15,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
+import { displayTrackOrder, useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -99,5 +99,18 @@ describe("useTimelineTrackDerivations", () => {
   it("falls back to the group id and unity volume when the bus carries neither", () => {
     const { groups } = derive([clip("sfx-1", 0, { audioGroup: "sfx" })]);
     expect(groups[0]).toMatchObject({ id: "sfx", label: "sfx", volume: 1, hidden: false });
+  });
+
+  it("gives hosts the drawn row order, members left out while their group is collapsed", () => {
+    const elements = [
+      clip("vo-1", 0, { audioGroup: "voiceover" }),
+      clip("music", 1),
+      clip("vo-2", 2, { audioGroup: "voiceover" }),
+    ];
+    expect(displayTrackOrder(elements, new Set())).toEqual(derive(elements).trackOrder);
+
+    usePlayerStore.setState({ collapsedGroupIds: new Set(["voiceover"]) });
+    expect(derive(elements).trackOrder).toEqual([-0.5, 1]);
+    expect(displayTrackOrder(elements, new Set(["voiceover"]))).toEqual([-0.5, 1]);
   });
 });

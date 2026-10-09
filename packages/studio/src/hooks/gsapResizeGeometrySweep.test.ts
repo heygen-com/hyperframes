@@ -23,17 +23,13 @@
  * the way through. A sweep across rotations is what tells us it is.
  */
 import { afterEach, expect, it, vi } from "vitest";
-import { classifyTweenPropertyGroup } from "@hyperframes/core/gsap-parser";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
+import { elTween, resetGsapEditState } from "./gsapParsedTween.test-helpers";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
-  document.body.innerHTML = "";
-});
+afterEach(resetGsapEditState);
 
 const LAYOUT = { left: 120, top: 520 };
 
@@ -56,20 +52,6 @@ function renderRect(pose: Pose, rotationDeg: number) {
 }
 
 type Props = Record<string, number>;
-
-function tween(id: string, properties: Props, duration: number): GsapAnimation {
-  return {
-    id,
-    targetSelector: "#el",
-    propertyGroup: classifyTweenPropertyGroup(properties),
-    method: "to",
-    properties,
-    position: 0,
-    resolvedStart: 0,
-    duration,
-    ...(duration === 0 ? { extras: { immediateRender: "__raw:true" } } : {}),
-  } as unknown as GsapAnimation;
-}
 
 interface Case {
   name: string;
@@ -99,18 +81,24 @@ const ROTATIONS = [0, -8, 45, -47, 90, 180];
  * the size routes here however it looks from the animation list.
  */
 const ROUTES = {
-  "scale tween": { animations: () => [tween("#el-scale", { scale: 1 }, 2)], settles: true },
-  "scale longhands": {
-    animations: () => [tween("#el-scale", { scaleX: 1, scaleY: 1 }, 2)],
+  "scale tween": {
+    animations: () => [elTween("#el-scale", { scale: 1 }, 2, "none")],
     settles: true,
   },
-  "scale instant hold": { animations: () => [tween("#el-scale", { scale: 1 }, 0)], settles: false },
+  "scale longhands": {
+    animations: () => [elTween("#el-scale", { scaleX: 1, scaleY: 1 }, 2, "none")],
+    settles: true,
+  },
+  "scale instant hold": {
+    animations: () => [elTween("#el-scale", { scale: 1 }, 0, "none")],
+    settles: false,
+  },
   "size tween": {
-    animations: () => [tween("#el-size", { width: 630, height: 408 }, 2)],
+    animations: () => [elTween("#el-size", { width: 630, height: 408 }, 2, "none")],
     settles: false,
   },
   "size instant hold": {
-    animations: () => [tween("#el-size", { width: 630, height: 408 }, 0)],
+    animations: () => [elTween("#el-size", { width: 630, height: 408 }, 0, "none")],
     settles: false,
   },
 } as const;
@@ -238,7 +226,9 @@ async function runCase(testCase: Case): Promise<string[]> {
     async () => animations,
   );
 
-  const { scale, size } = committed(commitMutation.mock.calls);
+  const { scale, size: written } = committed(commitMutation.mock.calls);
+  const size =
+    outcome.status === "element-size" ? { w: testCase.drop.w, h: testCase.drop.h } : written;
   const settled = renderRect(
     { box: size ?? testCase.box, pos: { ...live.pos }, scale: scale ?? testCase.liveScale },
     testCase.rotation,

@@ -62,6 +62,44 @@ describe("executeParallelCapture peer abort", () => {
     }
   });
 
+  it("closes a browser whose launch finishes after the cancel before the render rejects", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-late-launch-"));
+    const lateSession = {} as CaptureSession;
+    let finishLaunch: (session: CaptureSession) => void = () => {};
+    const closeCaptureSession = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("./frameCapture.js", () => ({
+      createCaptureSession: vi.fn(
+        () => new Promise<CaptureSession>((settle) => (finishLaunch = settle)),
+      ),
+      initializeSession: vi.fn(async () => {}),
+      captureFrame: vi.fn(),
+      captureFrameToBuffer: vi.fn(),
+      captureFrameToBufferPipelined: vi.fn(),
+      closeCaptureSession,
+      getCapturePerfSummary: vi.fn(() => ({ frames: 0 })),
+    }));
+
+    try {
+      const { executeParallelCapture } = await import("./parallelCoordinator.js");
+      const controller = new AbortController();
+      const result = executeParallelCapture(
+        "http://127.0.0.1",
+        root,
+        [{ workerId: 0, startFrame: 0, endFrame: 3, outputDir: join(root, "worker-0") }],
+        { width: 320, height: 180, fps: { num: 30, den: 1 } },
+        () => null,
+        controller.signal,
+      );
+      controller.abort();
+      setTimeout(() => finishLaunch(lateSession), 20);
+
+      await expect(result).rejects.toMatchObject({ name: "CaptureFailure" });
+      expect(closeCaptureSession).toHaveBeenCalledWith(lateSession);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // heygen-com/hyperframes#3441: a worker wedged INSIDE a native capture call
   // (WSL2 hangs the very first drawElement/BeginFrame call at frame 0 with no
   // error) must actually be unstuck once the caller's `signal` aborts — e.g.

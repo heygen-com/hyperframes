@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createLottieAdapter } from "./lottie";
+import { createRuntimeStartTimeResolver } from "../startResolver";
 
 const lottieWindow = window as Window & {
   lottie?: {
@@ -46,6 +47,7 @@ describe("lottie adapter", () => {
   afterEach(() => {
     delete lottieWindow.lottie;
     delete lottieWindow.__hfLottie;
+    document.body.innerHTML = "";
   });
 
   it("has correct name", () => {
@@ -83,7 +85,36 @@ describe("lottie adapter", () => {
     });
   });
 
+  function mountedAt(start: string) {
+    document.body.innerHTML = `<div data-composition-id="root"><div data-composition-id="host" data-start="${start}"><div data-composition-id="walk"><div id="player"></div></div></div></div>`;
+    const { resolveStartForElement } = createRuntimeStartTimeResolver({});
+    const adapter = createLottieAdapter({
+      resolveStartSeconds: (el) => resolveStartForElement(el, 0),
+    });
+    return { adapter, player: document.getElementById("player")! };
+  }
+
   describe("seek", () => {
+    it("seeks a player in a mounted composition to the time since that composition started", () => {
+      const { adapter, player } = mountedAt("3");
+      const anim = { ...createLottieWebAnim(), wrapper: player };
+      const dot = { ...createDotLottiePlayer({ totalFrames: 60, frameRate: 30 }), canvas: player };
+      lottieWindow.__hfLottie = [anim, dot];
+      adapter.seek({ time: 4 });
+      expect(anim.goToAndStop).toHaveBeenCalledWith(1000, false);
+      expect(dot.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
+      adapter.seek({ time: 1 });
+      expect(anim.goToAndStop).toHaveBeenLastCalledWith(0, false);
+    });
+
+    it("keeps page time for a player in a composition that starts at 0", () => {
+      const { adapter, player } = mountedAt("0");
+      const anim = { ...createLottieWebAnim(), wrapper: player };
+      lottieWindow.__hfLottie = [anim];
+      adapter.seek({ time: 2 });
+      expect(anim.goToAndStop).toHaveBeenCalledWith(2000, false);
+    });
+
     it("seeks lottie-web with goToAndStop in ms", () => {
       const anim = createLottieWebAnim();
       lottieWindow.__hfLottie = [anim];
@@ -100,6 +131,77 @@ describe("lottie adapter", () => {
       // frame = time * fps = 1 * 30 = 30
       expect(player.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
     });
+
+    it("seeks current dotlottie players using duration instead of a missing frameRate", () => {
+      const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames: 48, duration: 2 };
+      lottieWindow.__hfLottie = [player];
+      createLottieAdapter().seek({ time: 0.5 });
+      expect(player.setFrame).toHaveBeenCalledWith(12);
+    });
+
+    it("wraps a current dotlottie player at its cycle and fractional-frame rate", () => {
+      const player = {
+        pause: vi.fn(),
+        setFrame: vi.fn(),
+        totalFrames: 24,
+        duration: 24 / 23.976,
+        loop: true,
+      };
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: player.duration * 1.5 });
+      adapter.seek({ time: player.duration * 85 });
+      expect(player.setFrame.mock.calls).toHaveLength(2);
+      expect(player.setFrame.mock.calls[0]?.[0]).toBeCloseTo(12);
+      expect(player.setFrame.mock.calls[1]?.[0]).toBeCloseTo(0, 10);
+    });
+
+    it("holds a current one-shot dotlottie player on its last frame", () => {
+      const player = {
+        pause: vi.fn(),
+        setFrame: vi.fn(),
+        totalFrames: 48,
+        duration: 2,
+        loop: false,
+      };
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: -1 });
+      adapter.seek({ time: 3 });
+      expect(player.setFrame.mock.calls).toEqual([[0], [47]]);
+    });
+
+    it("seeks a current dotlottie player from its mounted composition start", () => {
+      const { adapter, player: canvas } = mountedAt("3");
+      const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames: 48, duration: 2, canvas };
+      lottieWindow.__hfLottie = [player];
+      adapter.seek({ time: 3.5 });
+      expect(player.setFrame).toHaveBeenCalledWith(12);
+    });
+
+    it.each([0, -1, NaN, Infinity, undefined])(
+      "waits for current dotlottie duration %s to become valid before seeking",
+      (duration) => {
+        const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames: 48, duration };
+        lottieWindow.__hfLottie = [player];
+        const adapter = createLottieAdapter();
+        adapter.seek({ time: 0.5 });
+        expect(player.setFrame).not.toHaveBeenCalled();
+        player.duration = 2;
+        adapter.seek({ time: 0.5 });
+        expect(player.setFrame).toHaveBeenCalledWith(12);
+      },
+    );
+
+    it.each([0, -1, NaN, Infinity, undefined])(
+      "does not seek a current dotlottie player with frame count %s",
+      (totalFrames) => {
+        const player = { pause: vi.fn(), setFrame: vi.fn(), totalFrames, duration: 2 };
+        lottieWindow.__hfLottie = [player];
+        createLottieAdapter().seek({ time: 0.5 });
+        expect(player.setFrame).not.toHaveBeenCalled();
+      },
+    );
 
     it("clamps frame to totalFrames - 1", () => {
       const player = createDotLottiePlayer({ totalFrames: 60, frameRate: 30 });
@@ -131,6 +233,65 @@ describe("lottie adapter", () => {
       adapter.seek({ time: -1 });
       adapter.seek({ time: 3 });
       expect(player.seek.mock.calls).toEqual([[50], [0], [100]]);
+    });
+
+    it("wraps a looping lottie-web animation into its own cycle and clamps a one-shot", () => {
+      const cycle = { ...createLottieWebAnim({ totalFrames: 120, frameRate: 30 }), loop: true };
+      const once = createLottieWebAnim({ totalFrames: 120, frameRate: 30 });
+      lottieWindow.__hfLottie = [cycle, once];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 5 });
+      adapter.seek({ time: 8 });
+      expect(cycle.goToAndStop.mock.calls).toEqual([
+        [30, true],
+        [0, true],
+      ]);
+      expect(once.goToAndStop.mock.calls).toEqual([
+        [119, true],
+        [119, true],
+      ]);
+    });
+
+    it("wraps a loop whose length is not a whole number of seconds without holding at the seam", () => {
+      const cycle = { ...createLottieWebAnim({ totalFrames: 901, frameRate: 30 }), loop: true };
+      lottieWindow.__hfLottie = [cycle];
+      createLottieAdapter().seek({ time: (9 * 901) / 30 });
+      expect(cycle.goToAndStop).toHaveBeenCalledWith(0, true);
+    });
+
+    it.each([
+      [24, 23.976, 85],
+      [30, 25, 17],
+    ])(
+      "starts cycle %s-frame @ %s fps number %s on frame 0 despite float error",
+      (frames, fps, k) => {
+        const cycle = {
+          ...createLottieWebAnim({ totalFrames: frames, frameRate: fps }),
+          loop: true,
+        };
+        lottieWindow.__hfLottie = [cycle];
+        createLottieAdapter().seek({ time: (k * frames) / fps });
+        expect(cycle.goToAndStop).toHaveBeenCalledWith(0, true);
+      },
+    );
+
+    it("holds a one-shot lottie-web animation on its last frame past its end", () => {
+      const anim = createLottieWebAnim({ totalFrames: 30, frameRate: 30 });
+      lottieWindow.__hfLottie = [anim];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 0.5 });
+      adapter.seek({ time: 2.5 });
+      expect(anim.goToAndStop.mock.calls).toEqual([
+        [500, false],
+        [29, true],
+      ]);
+    });
+
+    it("wraps a looping dotlottie player into its own cycle", () => {
+      const player = { ...createDotLottiePlayer({ totalFrames: 60, frameRate: 30 }), loop: true };
+      lottieWindow.__hfLottie = [player];
+      createLottieAdapter().seek({ time: 3 });
+      expect(player.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
     });
 
     it("does nothing with no instances", () => {
@@ -212,6 +373,43 @@ describe("lottie adapter", () => {
       lottieWindow.__hfLottie = [anim];
       const adapter = createLottieAdapter();
       expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+    });
+
+    it("reports a player's own length, ignoring its composition's start and counting removed ones", () => {
+      const { adapter, player } = mountedAt("5");
+      lottieWindow.__hfLottie = [{ ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player }];
+      expect(adapter.getInferredDurationSeconds?.()).toBe(2);
+      const gone = document.body.appendChild(document.createElement("div"));
+      gone.remove();
+      lottieWindow.__hfLottie.push({ ...createLottieWebAnim({ totalFrames: 90 }), wrapper: gone });
+      expect(adapter.getInferredDurationSeconds?.()).toBe(3);
+    });
+  });
+
+  describe("getAnimationCycleEndSeconds", () => {
+    it("ends one loop after the start of the player's composition", () => {
+      const { adapter, player } = mountedAt("5");
+      lottieWindow.__hfLottie = [{ ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player }];
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(7);
+    });
+
+    it("skips a player whose element was removed", () => {
+      const { adapter, player } = mountedAt("0");
+      const gone = document.body.appendChild(document.createElement("div"));
+      gone.remove();
+      lottieWindow.__hfLottie = [
+        { ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player },
+        { ...createLottieWebAnim({ totalFrames: 300 }), wrapper: gone },
+      ];
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(2);
+    });
+
+    it("ends one loop in for a player at the root", () => {
+      const { adapter } = mountedAt("5");
+      const root = document.querySelector('[data-composition-id="root"]')!;
+      const player = root.appendChild(document.createElement("div"));
+      lottieWindow.__hfLottie = [{ ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player }];
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(2);
     });
   });
 });

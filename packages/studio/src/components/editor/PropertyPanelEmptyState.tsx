@@ -1,6 +1,7 @@
 import { Eye, Layers } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
 import { canHideSelections } from "../../utils/timelineInspector";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 function FlatEmptyState() {
   return (
@@ -18,25 +19,25 @@ function FlatEmptyState() {
         </svg>
       </span>
       <div className="text-[13px] font-semibold text-panel-text-0">Nothing selected</div>
-      <div className="max-w-[250px] text-[11px] leading-[1.5] text-panel-text-3">
+      <div className="max-w-[250px] text-[11px] leading-normal text-panel-text-3">
         Click any element on the canvas to edit it, or drag to select several.
       </div>
       <div className="mt-2 flex w-full flex-col gap-1.5">
         <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
           <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-danger">●</span>
+            <span className="text-danger-ink">●</span>
             Record a gesture
           </span>
-          <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
+          <span className="rounded-sm border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
             R
           </span>
         </span>
         <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
           <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-accent">✦</span>
+            <span className="text-accent-ink">✦</span>
             Describe a change to the agent
           </span>
-          <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
+          <span className="rounded-sm border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
             ⌘K
           </span>
         </span>
@@ -50,7 +51,7 @@ function elementKindGlyph(element: DomEditSelection): { glyph: string; className
     return { glyph: "◆", className: "bg-panel-media/10 text-panel-media" };
   }
   if (element.textFields?.length > 0) {
-    return { glyph: "T", className: "bg-panel-accent/10 text-panel-accent" };
+    return { glyph: "T", className: "bg-panel-accent/10 text-accent-ink" };
   }
   return { glyph: "▦", className: "bg-panel-container/10 text-panel-container" };
 }
@@ -71,10 +72,11 @@ function FlatMultiSelectState({
   // One predicate for both actions and for the handler's own refusal, so the
   // button and the refusal cannot disagree about what audio is.
   const hasAudio = !canHideSelections(multiSelectedElements);
+  const trackInput = useTrackDesignInput();
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
       <div className="flex items-center gap-3 rounded-xl border border-panel-border bg-panel-surface p-3">
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-panel-accent/10 text-panel-accent">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel-accent/10 text-accent-ink">
           <Layers size={16} />
         </span>
         <div className="min-w-0 flex-1">
@@ -90,7 +92,7 @@ function FlatMultiSelectState({
           data-flat-multiselect-clear="true"
           aria-label="Clear selection"
           onClick={onClearSelection}
-          className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center text-panel-text-3"
+          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center text-panel-text-3"
         >
           <svg
             width="13"
@@ -113,14 +115,14 @@ function FlatMultiSelectState({
               className="flex items-center gap-2 rounded-lg border border-panel-border bg-panel-bg px-2.5 py-[7px]"
             >
               <span
-                className={`flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded text-[9px] font-bold ${className}`}
+                className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm text-[9px] font-bold ${className}`}
               >
                 {glyph}
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px] text-panel-text-1">
                 {element.label}
               </span>
-              <span className="flex-shrink-0 font-mono text-[9px] text-panel-text-4">
+              <span className="shrink-0 font-mono text-[9px] text-panel-text-4">
                 {element.id ? `#${element.id}` : element.selector}
               </span>
             </span>
@@ -131,17 +133,19 @@ function FlatMultiSelectState({
           an empty frame. Grouping is the LAYOUT grouper — a positioned wrapper
           around a bounding box, and an <audio> clip has none (grouping two
           produced a 0x0 div with inline left/top on elements that are never
-          laid out). Hiding is visibility, which for audio doubles as mute; the
-          timeline already withholds the eye on an audio track
-          (`visible={!isAudioTrack}`) and this panel was the way back to the
-          same write. Both handlers refuse it too — they own keyboard paths no
-          hidden button can gate. */}
+          laid out). Hiding is visibility, which for audio is mute, and the
+          timeline owns that as a mute control. Both handlers refuse it too —
+          they own keyboard paths no hidden button can gate. */}
       {!hasAudio && (
         <div className="flex gap-2">
           <button
             type="button"
             data-flat-multiselect-group="true"
-            onClick={onGroupSelection}
+            onClick={() => {
+              if (!onGroupSelection) return;
+              onGroupSelection();
+              trackInput("button", "group-selection");
+            }}
             className="flex h-[34px] flex-1 items-center justify-center gap-2 rounded-lg bg-panel-hover text-[11px] font-semibold text-panel-text-0"
           >
             <Layers size={13} />
@@ -150,7 +154,11 @@ function FlatMultiSelectState({
           <button
             type="button"
             data-flat-multiselect-hide-all="true"
-            onClick={onHideAllSelected}
+            onClick={() => {
+              if (!onHideAllSelected) return;
+              onHideAllSelected();
+              trackInput("button", "hide-all");
+            }}
             className="flex h-[34px] items-center gap-1.5 rounded-lg border border-panel-border-input bg-panel-input px-3 text-[11px] font-medium text-panel-text-2"
           >
             <Eye size={13} />

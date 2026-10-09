@@ -18,6 +18,18 @@ describe("submitFeedback", () => {
     vi.unstubAllGlobals();
   });
 
+  it("leaves the rating and its scale out of a report that has none", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitFeedback({ comment: "MISSING FEATURE: trim", cliVersion: "1.2.3" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).not.toHaveProperty("rating");
+    expect(body).not.toHaveProperty("rating_scale");
+    expect(body.comment).toBe("MISSING FEATURE: trim");
+  });
+
   it("posts feedback to the backend endpoint", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -46,6 +58,17 @@ describe("submitFeedback", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("sends who wrote it and the attached email, the email capped like the backend's", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitFeedback({ rating: 5, cliVersion: "1", source: "person", email: "e".repeat(300) });
+
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(body.source).toBe("person");
+    expect(body.email).toHaveLength(254);
   });
 
   it.each([0, 10])("serializes the NPS boundary %i without changing it", async (rating) => {

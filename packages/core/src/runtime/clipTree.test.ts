@@ -38,6 +38,17 @@ describe("createClipTree", () => {
     },
   );
 
+  it("leaves out the explicit root when another composition comes first", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="card" data-start="0" data-duration="3" id="card"></div>
+      <div data-composition-id="main" data-root="true" data-start="0" data-duration="10" id="main">
+        <div data-start="0" data-duration="5" id="clip"></div>
+      </div>`;
+    const ids = createClipTree(params).roots.map((node) => node.id);
+    expect(ids).toContain("card");
+    expect(ids).not.toContain("main");
+  });
+
   // Regression: id-less children (root index.html uses data-hf-id, not id) must
   // get their data-hf-id as the node id — not a synthetic `__clip-N` — so the
   // tree aligns with __clipManifest (which also keys on data-hf-id) and inline
@@ -57,6 +68,17 @@ describe("createClipTree", () => {
     expect(child).toBeDefined();
     expect(child!.id).not.toMatch(/^__clip-/);
     expect(child!.parentId).toBe("scene");
+  });
+
+  it("keeps a timed image that starts at the end of the root, since it has its own default length", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="10" data-start="0" id="root">
+        <img id="late" data-start="10" />
+      </div>`;
+    const late = { resolveStartForElement: () => 10 };
+    expect(createClipTree({ ...params, startResolver: late }).roots.map((n) => n.id)).toContain(
+      "late",
+    );
   });
 
   it.each([10, 11])(

@@ -21,6 +21,50 @@ Two consequences you will meet immediately:
   chrome disagrees with the pixels underneath it, the bug is almost always in
   the measurement, in `components/editor/domEditOverlayGeometry.ts`.
 
+## Where a canvas edit goes
+
+Paths are under `src/`; bare file names are in `src/components/editor/`. Each
+line names the owner; read it there.
+
+1. **Gesture.** `DomEditSelectionChrome.tsx` starts it, `domEditOverlayStartGesture.ts`
+   arms it, `useDomEditOverlayGestures.ts` (`onPointerUp`) hands it off. Nudge,
+   crop and inline text enter through `useDomEditNudge.ts`, `DomEditCropHandles.tsx`
+   and `useInlineTextEditing.tsx`. `hooks/useDomEditSession.ts` wires the handlers.
+2. **GSAP or plain.** The predicates `gsapWritesPosition`, `gsapWritesRotation`
+   and `gsapWritesBox` live in `hooks/gsapRuntimeKeyframes.ts`. The router is
+   `hooks/useGsapAwareEditing.ts`. Move and a plain rotation keep the route
+   chosen at press. A GSAP rotation checks ownership again at commit, and resize
+   decides at commit through `hooks/gsapResizeIntercept.ts`.
+3. **Writers.** Plain edits go through `hooks/elementOffsetStager.ts`,
+   `hooks/useDomGeometryCommits.ts` and `hooks/plainRotation.ts`, then
+   `hooks/useDomEditPositionPatchCommit.ts`. GSAP edits: `hooks/gsapRuntimeBridge.ts`
+   (the drag and rotate intercepts), `hooks/gsapDragCommit.ts`,
+   `hooks/gsapDragPositionCommit.ts` (keyframe at the playhead) and
+   `hooks/gsapWholePropertyOffsetCommit.ts`. Styles, text, attributes and groups:
+   `hooks/domStyleCommit.ts`, `hooks/useDomEditTextCommits.ts`,
+   `hooks/useDomEditAttributeCommits.ts`, `hooks/useGroupCommits.ts`.
+4. **Save.** There are three paths. A single DOM edit goes through
+   `hooks/useDomEditPersist.ts`. It first offers the edit to the SDK path
+   (`utils/sdkCutover.ts`, wired in `useDomEditSession.ts`), which writes the
+   file itself. Otherwise it posts studio-server's `file-mutations/patch-element`.
+   Atomic DOM batches go through `hooks/useDomEditCommits.ts` to
+   `patch-element-batches`. Script edits go through `hooks/useGsapScriptCommits.ts`,
+   to `gsap-mutations` or to the SDK path. The routes are in
+   `packages/studio-server/src/routes/files.ts`. The own-write token is in
+   `utils/studioFileVersion.ts`, and `hooks/useExternalFileChangeCoordinator.ts`
+   drops the echo.
+5. **Reload.** Each save path decides its own reload. After a `patch-element`
+   save, `useDomEditPersist.ts` reloads unless `skipRefresh` is set. For script
+   edits, `useGsapScriptCommits.ts` (`applyPreviewSync`) picks one of three: an
+   instant patch, `utils/gsapSoftReload.ts`, or a reload.
+   A reload bumps `refreshKey`, and `refreshPlayer` in
+   `player/hooks/useTimelinePlayer.ts` either swaps the scene or runs
+   `player/hooks/useShadowPreviewReload.ts`, which waits while a gesture or a
+   save is in flight.
+6. **Undo.** `hooks/usePersistentEditHistory.ts` records the edit.
+   `hooks/useEditHistoryActions.ts` steps through history.
+   `utils/gsapUndoRestore.ts` repaints the preview.
+
 ## Driving Studio for verification
 
 A pixel-precise click inside the preview is not something an automated driver
@@ -74,6 +118,26 @@ properties (`rotate`, `scale`, `translate`) into computed style, and it has no
 depends on real layout or real computed style, prove it in a browser and keep
 the unit test on the pure function underneath.
 
+## The edit accuracy bench
+
+`tests/e2e/edit-accuracy/` performs real gestures in the built CLI's Studio and
+checks the saved file, the reloaded preview, undo and a producer frame. It
+needs the built CLI (`packages/cli/dist/cli.js`, from `bun run build`) and
+`chrome-headless-shell` (`npx hyperframes browser ensure`):
+
+```bash
+bun run --cwd packages/studio test:edit-accuracy -- --grid pr --filter '^resize-' --jobs 1
+```
+
+- Case ids come from `grid.mjs`; `--filter` is a regex on them. `--grid pr` is
+  the smaller slice, `full` is what CI runs.
+- Each run writes its results, a table and a candidate baseline to
+  `tests/e2e/evidence/edit-accuracy/<run>/` (git-ignored; `--out` moves it); a
+  failing case also gets its screens and saved files under `cases/<id>/`.
+- CI runs the full grid in shards and `ratchet.mjs` gates the result against the
+  base branch's `baseline.json`; its header states the rules. When cases newly
+  pass, commit the `baseline.json` from the `edit-accuracy-gate` artifact.
+
 ## Gates that will fail your PR
 
 - **600 lines per file.** CI checks only non-test files your PR changed. A file
@@ -82,6 +146,10 @@ the unit test on the pure function underneath.
   function, duplication, unused exports. Adding branches to an already-complex
   function trips it; extract rather than nest.
 - **oxlint and oxfmt**, not eslint or prettier.
+- **Before and After captures.** A PR that changes code under `packages/studio`
+  or `packages/player` needs `## Before` and `## After` sections in its
+  description, each with an image or video. The exemptions (a small change with
+  no visible effect, Markdown, tests) are defined in `scripts/check-pr-captures.mjs`.
 
 ## Traps worth knowing
 

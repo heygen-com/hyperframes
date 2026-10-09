@@ -1,7 +1,10 @@
+// fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import {
   splitElementInHtml,
+  relinkSplitHalvesInHtml,
   unwrapElementsFromHtml,
   wrapElementsInHtml,
 } from "./sourceMutation.js";
@@ -30,6 +33,20 @@ describe("splitElementInHtml", () => {
     expect(result.html).toContain('id="box-split"');
     expect(result.html).toContain('data-start="3"');
     expect(result.html).toContain('data-duration="4"');
+  });
+
+  it("pins both halves to the caller-supplied track so an unauthored clip's split half can't drift to a new row", () => {
+    // #box has no data-track-index/data-layer — this is the common, unauthored
+    // case that relies on the runtime's positional-index fallback. Without an
+    // explicit stamp, splitting only the clone changes DOM sibling order and
+    // the runtime resolves the clone to a different fallback track.
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split", {
+      start: 1,
+      duration: 6,
+      track: 2,
+    });
+    expect(result.matched).toBe(true);
+    expect(result.html.match(/data-track-index="2"/g)).toHaveLength(2);
   });
 
   it("canonicalizes legacy timing attributes on both split halves", () => {
@@ -146,6 +163,32 @@ describe("splitElementInHtml", () => {
     expect(document.getElementById("media-split")?.getAttribute("data-media-start")).toBe("4");
   });
 
+  it("leaves the first half's authored in-point exactly as written", () => {
+    const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><video id="media" class="clip" src="asset.mp4" data-start="1" data-duration="6" data-media-start="3.296375" data-playback-rate="0.25"></video></div></body></html>`;
+
+    const result = splitElementInHtml(mediaSource, { id: "media" }, 3, "media-split");
+    const { document } = parseHTML(result.html);
+
+    expect(document.getElementById("media")?.getAttribute("data-media-start")).toBe("3.296375");
+  });
+
+  it.each([
+    ['data-playback-start="-1" data-media-start="2"', "data-playback-start", 2, 4],
+    ['data-playback-start="abc" data-media-start="2"', "data-playback-start", 2, 4],
+    ['data-media-start="-1"', "data-media-start", 0, 2],
+    ['data-media-start="junk"', "data-media-start", 0, 2],
+    ['data-media-start="1.5s"', "data-media-start", 0, 2],
+  ])("splits %s where playback reads it", (inPoint, attr, left, right) => {
+    const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><video id="media" class="clip" src="asset.mp4" data-start="0" data-duration="6" ${inPoint}></video></div></body></html>`;
+
+    const { document } = parseHTML(splitElementInHtml(mediaSource, { id: "media" }, 2, "b").html);
+    const playbackReads = (id: string) =>
+      readMediaOffsetSeconds((name) => document.getElementById(id)?.getAttribute(name));
+
+    expect([playbackReads("media"), playbackReads("b")]).toEqual([left, right]);
+    expect(document.getElementById("b")?.getAttribute(attr)).toBe(String(right));
+  });
+
   it("does not add a media in-point to non-media elements", () => {
     const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
 
@@ -253,6 +296,19 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     );
   });
 
+  it("stamps each member's resolved track so grouping an unauthored clip can't drift it to a new row", () => {
+    const rebasesWithTrack = [
+      { target: { id: "title" }, left: 0, top: 50, track: 1 },
+      { target: { id: "logo" }, left: 40, top: 150, track: 3 },
+      { target: { id: "badge" }, left: 140, top: 0 },
+    ];
+    const { html } = wrapElementsInHtml(FIXTURE, TARGETS, "Group 1", BBOX, rebasesWithTrack);
+    const { document } = parseHTML(html);
+    expect(requireElement(document, "#title").getAttribute("data-track-index")).toBe("1");
+    expect(requireElement(document, "#logo").getAttribute("data-track-index")).toBe("3");
+    expect(requireElement(document, "#badge").hasAttribute("data-track-index")).toBe(false);
+  });
+
   it("round-trips: unwrap restores original structure and coordinates", () => {
     const wrapped = wrapElementsInHtml(FIXTURE, TARGETS, "Group 1", BBOX, REBASES).html;
     const { html, unwrapped } = unwrapElementsFromHtml(wrapped, {
@@ -279,6 +335,23 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     expect(requireElement(document, "#badge").getAttribute("style")).toContain(
       "--hf-studio-offset: 12px",
     );
+  });
+
+  it("stamps each child's resolved track on ungroup so it can't drift to a new row when it moves back out of the wrapper", () => {
+    const wrapped = wrapElementsInHtml(FIXTURE, TARGETS, "Group 1", BBOX, REBASES).html;
+    const childTracks = [
+      { target: { id: "title" }, track: 1 },
+      { target: { id: "logo" }, track: 3 },
+    ];
+    const { html } = unwrapElementsFromHtml(
+      wrapped,
+      { selector: '[data-hf-group="Group 1"]' },
+      childTracks,
+    );
+    const { document } = parseHTML(html);
+    expect(requireElement(document, "#title").getAttribute("data-track-index")).toBe("1");
+    expect(requireElement(document, "#logo").getAttribute("data-track-index")).toBe("3");
+    expect(requireElement(document, "#badge").hasAttribute("data-track-index")).toBe(false);
   });
 
   it("rejects members that do not share a single parent", () => {
@@ -321,5 +394,38 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     const result = unwrapElementsFromHtml(html, { id: "plain" });
     expect(result.unwrapped).toBe(false);
     expect(result.html).toBe(html);
+  });
+});
+
+describe("relinkSplitHalvesInHtml", () => {
+  it("makes each half of a split linked pair its own pair", () => {
+    const source =
+      '<div data-composition-id="c"><video id="v" src="t.mp4" muted data-link="lk-1" data-start="0" data-duration="4"></video><audio id="a" src="t.mp4" data-link="lk-1" data-start="0" data-duration="4"></audio></div>';
+    const first = splitElementInHtml(source, { id: "v" }, 2, "v-split");
+    const second = splitElementInHtml(first.html, { id: "a" }, 2, "a-split");
+    const html = relinkSplitHalvesInHtml(second.html, ["v-split", "a-split"]);
+    const link = (id: string) => new RegExp(`id="${id}"[^>]*data-link="([^"]+)"`).exec(html)?.[1];
+    expect(link("v")).toBe("lk-1");
+    expect(link("a")).toBe("lk-1");
+    expect(link("v-split")).toBe("lk-2");
+    expect(link("a-split")).toBe("lk-2");
+  });
+
+  it("gives an unlinked pair's right halves their own sync origin", () => {
+    const source =
+      '<div data-composition-id="c"><video id="v" src="t.mp4" muted data-sync-origin="lk-1" data-start="0" data-duration="4"></video><audio id="a" src="t.mp4" data-sync-origin="lk-1" data-start="0" data-duration="4"></audio></div>';
+    const first = splitElementInHtml(source, { id: "v" }, 2, "v-split");
+    const second = splitElementInHtml(first.html, { id: "a" }, 2, "a-split");
+    const html = relinkSplitHalvesInHtml(second.html, ["v-split", "a-split"]);
+    const origin = (id: string) =>
+      new RegExp(`id="${id}"[^>]*data-sync-origin="([^"]+)"`).exec(html)?.[1];
+    expect(origin("v")).toBe("lk-1");
+    expect(origin("v-split")).not.toBe("lk-1");
+    expect(origin("v-split")).toBe(origin("a-split"));
+  });
+
+  it("leaves unlinked splits byte-identical", () => {
+    const source = '<div><img id="i" data-start="0" data-duration="4"></div>';
+    expect(relinkSplitHalvesInHtml(source, ["i"])).toBe(source);
   });
 });

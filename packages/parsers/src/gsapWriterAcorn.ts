@@ -14,17 +14,25 @@ import type {
   ArcPathSegment,
 } from "./gsapSerialize.js";
 import {
+  authorsKeyframes,
   resolveConversionProps,
   extractArcWaypoints,
   buildMotionPathObjectCode,
   mergePercentageKeyframes,
+  plainPercentKey,
 } from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
   type ParsedGsapAcornForWrite,
   type TweenCallInfo,
 } from "./gsapParserAcorn.js";
-import { classifyPropertyGroup } from "./gsapConstants.js";
+import {
+  classifyPropertyGroup,
+  isTweenConfigKey,
+  isXYPositionWrite,
+  holdScope,
+  keyframeHoldForAnimation,
+} from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
 import {
   findObjectArrayKeyframeIndex,
@@ -32,6 +40,9 @@ import {
 } from "./gsapObjectArrayTiming.js";
 import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapSerialize.js";
 import * as acornWalk from "acorn-walk";
+import { clipQueryRoot, clipTweenMatcher, hasExplicitTime } from "./clipTweens.js";
+
+export { clipQueryRoot, clipTweenMatcher, hasExplicitTime };
 
 // acorn ESTree nodes are structurally untyped here; mirror gsapParserAcorn.ts /
 // gsapInline.ts rather than re-deriving the full ESTree union for every access.
@@ -192,38 +203,9 @@ function upsertProp(ms: MagicString, objNode: Node, key: string, value: unknown)
   }
 }
 
-/**
- * Vars keys that are NOT editable transform/style props: builtins
- * (duration/ease/delay), dropped callbacks, and extras (stagger/yoyo/repeat/…).
- * The exact union of recast's BUILTIN_VAR_KEYS + DROPPED_VAR_KEYS + EXTRAS_KEYS,
- * so both writers classify vars keys identically. (Distinct from the keyframe-
- * conversion NON_EDITABLE_VAR_KEYS below, which intentionally omits `ease`
- * because that path re-emits ease separately.)
- */
-const NON_EDITABLE_PROP_KEYS = new Set([
-  "duration",
-  "ease",
-  "delay",
-  "onComplete",
-  "onStart",
-  "onUpdate",
-  "onRepeat",
-  "stagger",
-  "yoyo",
-  "repeat",
-  "repeatDelay",
-  "snap",
-  "overwrite",
-  "immediateRender",
-]);
-
-/**
- * Editable transform/style key test: anything NOT a builtin, dropped callback, or
- * extras key. Mirrors recast's isEditablePropertyKey so both writers classify
- * vars keys identically.
- */
+/** Editable transform/style key test, the same split both parsers make. */
 function isEditableVarKey(key: string): boolean {
-  return !NON_EDITABLE_PROP_KEYS.has(key);
+  return !isTweenConfigKey(key);
 }
 
 /**
@@ -302,19 +284,20 @@ function isTimelineRooted(node: Node, timelineVar: string, script: string): bool
 }
 
 /**
- * Find the byte offset after which to insert a new statement (tween or label).
+ * Byte offset to insert a new tween or label at: never above the timeline declaration.
  * Returns null when no timeline declaration exists in the script — callers must
  * not emit `tl.xxx()` calls in that case as `tl` would be undefined at render.
  */
 function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
+  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   const lastLocated = parsed.located[parsed.located.length - 1];
   if (lastLocated) {
     const lastCall = lastLocated.call;
     const exprStmt = findEnclosingExpressionStatement(lastCall.ancestors);
-    return exprStmt?.end ?? lastCall.node.end;
+    const lastCallEnd = exprStmt?.end ?? lastCall.node.end;
+    return Math.max(lastCallEnd, tlDecl?.end ?? 0);
   }
   if (!parsed.hasTimeline) return null;
-  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   return tlDecl?.end ?? (parsed.ast.end as number);
 }
 
@@ -349,7 +332,7 @@ export function updateAnimationInScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
+  if (!target || (updates.properties && target.animation.hasUnresolvedKeyframes)) return script;
 
   const ms = new MagicString(script);
   const { call }: { call: TweenCallInfo } = target;
@@ -439,12 +422,13 @@ function overwritePosition(ms: MagicString, call: TweenCallInfo, position: numbe
   if (call.positionArg) {
     ms.overwrite(call.positionArg.start, call.positionArg.end, valueToCode(position));
   } else {
-    ms.appendLeft(call.node.end - 1, `, ${valueToCode(position)}`);
+    const last = call.node.arguments.at(-1);
+    ms.appendLeft(last ? last.end : call.node.end - 1, `, ${valueToCode(position)}`);
   }
 }
 
 /**
- * Shift every tween targeting `targetSelector` by `delta` seconds (clamped ≥0),
+ * Shift every tween the clip at `targetSelector` carries by `delta` seconds (clamped ≥0),
  * rewriting each call's position argument. Mirrors recast's shiftPositionsInScript
  * (used by timeline clip-move to keep GSAP positions in sync with the clip start).
  */
@@ -452,23 +436,184 @@ export function shiftPositionsInScript(
   script: string,
   targetSelector: string,
   delta: number,
+  root?: ParentNode,
 ): string {
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return script;
-  const ms = new MagicString(script);
-  let changed = false;
-  for (const entry of parsed.located) {
-    if (entry.animation.targetSelector !== targetSelector) continue;
-    if (typeof entry.animation.position !== "number") continue;
-    const newPos = Math.max(0, Math.round((entry.animation.position + delta) * 1000) / 1000);
-    overwritePosition(ms, entry.call, newPos);
-    changed = true;
+  return retimeClipTweensInScript(script, [{ kind: "shift", targetSelector, delta }], root).script;
+}
+
+export type ClipTweenRetime =
+  | { kind: "shift"; targetSelector: string; delta: number }
+  | {
+      kind: "scale";
+      targetSelector: string;
+      oldStart: number;
+      oldDuration: number;
+      newStart: number;
+      newDuration: number;
+    };
+
+const isLiveRetime = (r: ClipTweenRetime) =>
+  r.kind === "shift" || (r.oldDuration > 0 && r.newDuration > 0);
+
+/** Moves `animation`'s written position and duration for one retime; says which of the two it wrote. */
+function applyRetime(
+  animation: GsapAnimation,
+  retime: ClipTweenRetime,
+): { position: boolean; duration: boolean } {
+  if (retime.kind === "shift") {
+    if (!hasExplicitTime(animation)) return { position: false, duration: false };
+    animation.position = shiftedPosition(animation.position, retime.delta);
+    return { position: true, duration: false };
   }
-  return changed ? ms.toString() : script;
+  const touched = { position: false, duration: false };
+  if (!isLiveRetime(retime) || typeof animation.position !== "number") return touched;
+  const ratio = retime.newDuration / retime.oldDuration;
+  if (hasExplicitTime(animation)) {
+    const scaled = retime.newStart + (animation.position - retime.oldStart) * ratio;
+    animation.position = Math.max(0, Math.round(scaled * 1000) / 1000);
+    touched.position = true;
+  }
+  if (typeof animation.duration === "number" && animation.duration > 0) {
+    animation.duration = Math.max(0.001, Math.round(animation.duration * ratio * 1000) / 1000);
+    touched.duration = true;
+  }
+  return touched;
 }
 
 /**
- * Linearly remap every tween targeting `targetSelector` from the old clip
+ * Applies `retimes` in order with one parse: the bytes equal running shift/scalePositionsInScript once
+ * per retime. `changed[i]` says whether retime i moved a value.
+ */
+export function retimeClipTweensInScript(
+  script: string,
+  retimes: readonly ClipTweenRetime[],
+  root?: ParentNode,
+): { script: string; changed: boolean[] } {
+  const changed = retimes.map(() => false);
+  const parsed = retimes.some(isLiveRetime) ? parseGsapScriptAcornForWrite(script) : null;
+  if (!parsed) return { script, changed };
+  // Matchers share one query cache: each selector is looked up in the DOM once, not once per clip.
+  const queries = new Map<string, Element[]>();
+  const matchers = retimes.map((r) => clipTweenMatcher(r.targetSelector, root, queries));
+  const ms = new MagicString(script);
+  let wrote = false;
+  for (const entry of parsed.located) {
+    const animation = { ...entry.animation };
+    let position = false;
+    let duration = false;
+    retimes.forEach((retime, i) => {
+      if (!matchers[i]!(animation)) return;
+      const before = [animation.position, animation.duration];
+      const touched = applyRetime(animation, retime);
+      position ||= touched.position;
+      duration ||= touched.duration;
+      if (before[0] !== animation.position || before[1] !== animation.duration) changed[i] = true;
+    });
+    if (position) overwritePosition(ms, entry.call, animation.position as number);
+    if (duration) upsertProp(ms, entry.call.varsArg, "duration", animation.duration);
+    wrote ||= position || duration;
+  }
+  return { script: wrote ? ms.toString() : script, changed };
+}
+
+/** Copies each tween on `fromSelector` for `toSelector`, `delta` seconds later, in its own argument text. Exact or
+ *  absent: only a tween at a number, written straight in the timeline's own block, is copied. */
+export function copyAnimationsInScript(
+  script: string,
+  fromSelector: string,
+  toSelector: string,
+  delta: number,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const block = timelineBlock(parsed);
+  const target = JSON.stringify(toSelector);
+  const ms = new MagicString(script);
+  const tweens: string[] = [];
+  for (const { animation, call } of parsed.located) {
+    if (animation.targetSelector !== fromSelector || !copyable(call)) continue;
+    const args = [target, ...argumentText(call, script)];
+    const statement = findEnclosingExpressionStatement(call.ancestors);
+    if (call.global && statement && inBlock(call, statement)) {
+      ms.appendLeft(
+        statement.end,
+        `\n${indentAt(script, statement.start)}gsap.set(${args.join(", ")});`,
+      );
+    } else if (block.body.includes(statement) && typeof call.positionArg?.value === "number") {
+      const position = valueToCode(shiftedPosition(call.positionArg.value, delta));
+      tweens.push(`${parsed.timelineVar}.${call.method}(${[...args, position].join(", ")});`);
+    }
+  }
+  appendAtBlockEnd(ms, script, block, tweens);
+  return ms.toString();
+}
+
+/** A tween in a loop runs once per pass, one on a variable reads a name bound elsewhere, and one inside a callback or a
+ *  guard may never run: none is copied. The statement must be the tween's own chain. */
+function copyable(call: TweenCallInfo): boolean {
+  if (call.node.arguments[0]?.type !== "Literal" || call.ancestors.some(isLoopOrForEach))
+    return false;
+  let link = findEnclosingExpressionStatement(call.ancestors)?.expression;
+  while (link?.type === "CallExpression" && link !== call.node) link = link.callee?.object;
+  return link === call.node;
+}
+
+/** A statement straight in a block or the script: one that is an `if`'s bare body runs only when the `if` does. */
+function inBlock(call: TweenCallInfo, statement: Node): boolean {
+  return Array.isArray(call.ancestors[call.ancestors.indexOf(statement) - 1]?.body);
+}
+
+/** The call's own text for every argument but its target and position. */
+function argumentText(call: TweenCallInfo, script: string): string[] {
+  return call.node.arguments
+    .slice(1)
+    .filter((arg: Node) => arg !== call.positionArg)
+    .map((arg: Node) => script.slice(arg.start, arg.end));
+}
+
+function indentAt(script: string, at: number): string {
+  return /^[ \t]*/.exec(script.slice(script.lastIndexOf("\n", at - 1) + 1))![0];
+}
+
+/** At the end of the timeline's own block, before its return, so nothing that follows in its scope is pushed back. */
+function appendAtBlockEnd(
+  ms: MagicString,
+  script: string,
+  block: { body: Node[]; end: number },
+  lines: string[],
+): void {
+  if (lines.length === 0) return;
+  const last = block.body.at(-1);
+  const indent = last ? indentAt(script, last.start) : "";
+  const code = lines.map((line) => `${indent}${line}`).join("\n");
+  if (last?.type === "ReturnStatement") ms.appendLeft(last.start, `${code.trimStart()}\n${indent}`);
+  else ms.appendLeft(last?.end ?? block.end, `\n${code}`);
+}
+
+function shiftedPosition(position: number, delta: number): number {
+  return Math.max(0, Math.round((position + delta) * 1000) / 1000);
+}
+
+/** The block (or program) whose statements declare the timeline; a timeline with no declaration lives at the top. */
+function timelineBlock(parsed: ParsedGsapAcornForWrite): { body: Node[]; end: number } {
+  const declaration = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
+  let block: Node = parsed.ast;
+  if (declaration) {
+    acornWalk.ancestor(parsed.ast, {
+      VariableDeclaration(node: Node, _state: unknown, ancestors: Node[]) {
+        if (node === declaration) block = ancestors[ancestors.length - 2];
+      },
+    });
+  }
+  return Array.isArray(block?.body) ? block : parsed.ast;
+}
+
+function isLoopOrForEach(node: Node): boolean {
+  return isLoopNode(node) || isForEachStatement(node) || node?.type === "DoWhileStatement";
+}
+
+/**
+ * Linearly remap every tween the clip at `targetSelector` carries from the old clip
  * [oldStart, oldDuration] onto the new [newStart, newDuration] (position and,
  * when present, duration scaled by the duration ratio). Mirrors recast's
  * scalePositionsInScript (used by timeline clip-resize).
@@ -480,28 +625,13 @@ export function scalePositionsInScript(
   oldDuration: number,
   newStart: number,
   newDuration: number,
+  root?: ParentNode,
 ): string {
-  if (oldDuration <= 0 || newDuration <= 0) return script;
-  const ratio = newDuration / oldDuration;
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return script;
-  const ms = new MagicString(script);
-  let changed = false;
-  for (const entry of parsed.located) {
-    if (entry.animation.targetSelector !== targetSelector) continue;
-    if (typeof entry.animation.position !== "number") continue;
-    const newPos = Math.max(
-      0,
-      Math.round((newStart + (entry.animation.position - oldStart) * ratio) * 1000) / 1000,
-    );
-    overwritePosition(ms, entry.call, newPos);
-    if (typeof entry.animation.duration === "number" && entry.animation.duration > 0) {
-      const newDur = Math.max(0.001, Math.round(entry.animation.duration * ratio * 1000) / 1000);
-      upsertProp(ms, entry.call.varsArg, "duration", newDur);
-    }
-    changed = true;
-  }
-  return changed ? ms.toString() : script;
+  return retimeClipTweensInScript(
+    script,
+    [{ kind: "scale", targetSelector, oldStart, oldDuration, newStart, newDuration }],
+    root,
+  ).script;
 }
 
 export function addAnimationToScript(
@@ -583,7 +713,7 @@ export function removeAnimationFromScript(script: string, animationId: string): 
  *
  * Keeps `keepId` (the write the commit just edited); falls back to the LAST
  * position write in source order (the runtime-effective one) if `keepId` is stale.
- * Removes every OTHER pure-position write (`propertyGroup === "position"`, which
+ * Removes every OTHER x/y position write (`isXYPositionWrite`, which
  * covers tl.to/from/fromTo flat-or-keyframed, tl.set, and standalone gsap.set,
  * including degenerate duration:0 tweens). Non-position writes for the same
  * selector (rotation / opacity / size / mixed) are left untouched.
@@ -596,7 +726,7 @@ export function dedupePositionWritesInScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const posWrites = parsed.located.filter(
-    (l) => l.animation.targetSelector === selector && l.animation.propertyGroup === "position",
+    (l) => l.animation.targetSelector === selector && isXYPositionWrite(l.animation),
   );
   if (posWrites.length <= 1) return script;
   const keeper = posWrites.find((l) => l.id === keepId) ?? posWrites[posWrites.length - 1]!;
@@ -694,7 +824,7 @@ function preservedVarsEntries(varsNode: Node, source: string): string[] {
 function buildConvertedVarsCode(animation: GsapAnimation, varsNode: Node, source: string): string {
   const { fromProps, toProps } = conversionEndpoints(animation);
   const easeEach = animation.ease;
-  const easeEachEntry = easeEach ? `, easeEach: ${JSON.stringify(easeEach)}` : "";
+  const easeEachEntry = easeEach ? `, easeEach: ${valueToCode(easeEach)}` : "";
   const kfCode = `{ "0%": ${recordToCode(fromProps)}, "100%": ${recordToCode(toProps)}${easeEachEntry} }`;
   const entries = [`keyframes: ${kfCode}`, ...preservedVarsEntries(varsNode, source)];
   if (easeEach) entries.push(`ease: "none"`);
@@ -951,7 +1081,7 @@ export function updateKeyframeInScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
+  if (!target || target.animation.hasUnresolvedKeyframes) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode) {
@@ -962,8 +1092,8 @@ export function updateKeyframeInScript(
   }
 
   // Array-form keyframes (`keyframes: [{x,y}, ...]`) carry no explicit percentages
-  // — GSAP distributes them evenly, and the runtime read assigns even percentages
-  // (0, 100/(n-1), …). Map the percentage back to an array index and overwrite that
+  // — GSAP ends step i of n at its cumulative share (getObjectArrayKeyframeTiming).
+  // Map the percentage back to an array index and overwrite that
   // element in place (preserving the array form). Without this the function bailed
   // on the ObjectExpression check, so dragging a motion-path node on an array-form
   // tween committed nothing (server no-op).
@@ -1071,7 +1201,7 @@ function locateWithKeyframes(
   const target =
     parsed.located.find((l) => l.id === animationId) ??
     parsed.located.find((l) => l.id === convertedId);
-  if (!target) return null;
+  if (!target || target.animation.hasUnresolvedKeyframes) return null;
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode || kfPropNode.value?.type !== "ObjectExpression") return null;
   return { script, parsed, target, kfNode: kfPropNode.value };
@@ -1096,14 +1226,15 @@ function convertArrayKeyframesToObject(script: string, target: Node): string {
   if (!timing) return script;
   const entries = els.map((el, i) => {
     const { duration: _duration, ...record } = records[i]!;
-    return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recordToCode(record)}`;
+    return `${JSON.stringify(plainPercentKey(timing.percentages[i]!))}: ${recordToCode(record)}`;
   });
   const ms = new MagicString(script);
-  ms.overwrite(kfPropNode.value.start, kfPropNode.value.end, `{ ${entries.join(", ")} }`);
-  if (
-    timing.totalDuration !== undefined &&
-    findPropertyNode(target.call.varsArg, "duration") === undefined
-  ) {
+  ms.overwrite(
+    kfPropNode.value.start,
+    kfPropNode.value.end,
+    `{ ${entries.join(", ")}, easeEach: "none" }`,
+  );
+  if (findPropertyNode(target.call.varsArg, "duration") === undefined) {
     upsertProp(ms, target.call.varsArg, "duration", timing.totalDuration);
   }
   return ms.toString();
@@ -1118,7 +1249,7 @@ function ensureKeyframesNode(
 
   const parsed = parseGsapScriptAcornForWrite(script);
   const target = parsed?.located.find((l) => l.id === animationId);
-  if (!target) return null;
+  if (!target || target.animation.hasUnresolvedKeyframes) return null;
 
   // Array-form keyframes → normalize to object form, then re-locate.
   const kfProp = findPropertyNode(target.call.varsArg, "keyframes");
@@ -1198,7 +1329,13 @@ export function addKeyframeToScript(
       ms.overwrite(existing.prop.value.start, existing.prop.value.end, recordToCode(targetRecord));
     }
   } else {
-    insertNewKeyframe(ms, kfNode, percentage, `${percentage}%`, recordToCode(targetRecord));
+    insertNewKeyframe(
+      ms,
+      kfNode,
+      percentage,
+      plainPercentKey(percentage),
+      recordToCode(targetRecord),
+    );
   }
   for (const [prop, rec] of [...endpointOverwrites, ...backfillOverwrites]) {
     ms.overwrite(prop.value.start, prop.value.end, recordToCode(rec));
@@ -1294,7 +1431,7 @@ export function removeKeyframeFromScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
+  if (!target || target.animation.hasUnresolvedKeyframes) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode) return script;
@@ -1377,9 +1514,14 @@ export function moveKeyframeInScript(
   entries.push({ pct: toPercentage, record: valueNodeToRecord(match.prop.value, src) });
   entries.sort((a, b) => a.pct - b.pct);
 
-  const body = entries
-    .map((e) => `${JSON.stringify(`${e.pct}%`)}: ${recordToCode(e.record)}`)
-    .join(", ");
+  const pctProps = new Set(percentagePropsOf(kfNode));
+  const kept = (kfNode.properties ?? [])
+    .filter((p: Node) => !pctProps.has(p))
+    .map((p: Node) => src.slice(p.start, p.end));
+  const body = [
+    ...entries.map((e) => `${JSON.stringify(plainPercentKey(e.pct))}: ${recordToCode(e.record)}`),
+    ...kept,
+  ].join(", ");
   const ms = new MagicString(src);
   ms.overwrite(kfNode.start, kfNode.end, `{ ${body} }`);
   return ms.toString();
@@ -1424,7 +1566,7 @@ export function resizeKeyframedTweenInScript(
 
   const ms = new MagicString(src);
   for (const { keyNode, to } of edits) {
-    ms.overwrite(keyNode.start, keyNode.end, JSON.stringify(`${to}%`));
+    ms.overwrite(keyNode.start, keyNode.end, JSON.stringify(plainPercentKey(to)));
   }
   overwritePosition(ms, target.call, newPosition);
   // Resizing is an explicit duration-authoring gesture. Promote GSAP's implicit
@@ -1530,7 +1672,7 @@ function buildKeyframesVarsCode(
 ): string {
   const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   const toEntries = Object.entries(toProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-  const easeEntry = animation.ease ? `, easeEach: ${JSON.stringify(animation.ease)}` : "";
+  const easeEntry = animation.ease ? `, easeEach: ${valueToCode(animation.ease)}` : "";
   const kfCode = `{ "0%": { ${fromEntries.join(", ")} }, "100%": { ${toEntries.join(", ")} }${easeEntry} }`;
   // Preserve every non-editable key (duration/delay/callbacks/stagger/yoyo/…)
   // verbatim from source — rebuilding from the animation object alone dropped
@@ -1563,7 +1705,7 @@ export function convertToKeyframesFromScript(
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return script;
   const { animation, call } = target;
-  if (animation.keyframes) return script;
+  if (authorsKeyframes(animation)) return script;
   const isSet = call.method === "set";
 
   const { fromProps, toProps } = resolveConversionProps(animation, resolvedFromValues);
@@ -1621,11 +1763,11 @@ function buildKeyframeObjectCode(
 ): string {
   const entries = mergePercentageKeyframes(keyframes).map((kf) => {
     const props = Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-    if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
+    if (kf.ease) props.push(`ease: ${valueToCode(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
-    return `${JSON.stringify(`${kf.percentage}%`)}: { ${props.join(", ")} }`;
+    return `${JSON.stringify(plainPercentKey(kf.percentage))}: { ${props.join(", ")} }`;
   });
-  if (easeEach) entries.push(`easeEach: ${JSON.stringify(easeEach)}`);
+  if (easeEach) entries.push(`easeEach: ${valueToCode(easeEach)}`);
   return `{ ${entries.join(", ")} }`;
 }
 
@@ -1687,6 +1829,54 @@ export function materializeKeyframesFromScript(
   return ms.toString();
 }
 
+/**
+ * Rewrites a tween as `to()` with these keyframes where it stands: the call keeps its place in the
+ * script and its position argument, so a tween placed after it ('>', '<', '+=', none) stays put.
+ */
+export function replaceTweenWithKeyframesInScript(
+  script: string,
+  animationId: string,
+  edit: {
+    targetSelector: string;
+    position: number;
+    duration: number;
+    keyframes: Array<{
+      percentage: number;
+      properties: Record<string, number | string>;
+      ease?: string;
+      auto?: boolean;
+    }>;
+    ease?: string;
+    easeEach?: string;
+  },
+): string | null {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((l) => l.id === animationId);
+  const call = target?.call;
+  if (!target || call?.varsArg?.type !== "ObjectExpression") return null;
+  const { animation } = target;
+  if (animation.method !== "to" && animation.method !== "from" && animation.method !== "fromTo")
+    return null;
+  const ms = new MagicString(script);
+  const start = animation.resolvedStart ?? animation.position;
+  const moved = typeof start !== "number" || Math.abs(start - edit.position) > 5e-4;
+  const kept = preservedVarsEntries(call.varsArg, script).filter(
+    (e) => !/^\s*duration\s*:/.test(e) && !(moved && /^\s*delay\s*:/.test(e)),
+  );
+  const sorted = [...edit.keyframes].sort((a, b) => a.percentage - b.percentage);
+  const parts = [`keyframes: ${buildKeyframeObjectCode(sorted, edit.easeEach)}`, ...kept];
+  parts.push(`duration: ${valueToCode(edit.duration)}`);
+  if (edit.ease) parts.push(`ease: ${valueToCode(edit.ease)}`);
+  if (animation.hasUnresolvedSelector || animation.targetSelector !== edit.targetSelector) {
+    const selectorArg = call.node.arguments[0];
+    ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(edit.targetSelector));
+  }
+  convertMethodToTo(ms, animation, call, call.varsArg);
+  overwriteVarsArg(ms, call, `{ ${parts.join(", ")} }`);
+  if (moved) overwritePosition(ms, call, edit.position);
+  return ms.toString();
+}
+
 // ── Add animation with keyframes ──────────────────────────────────────────────
 
 /** Insert a new keyframed `to()` call and return the new animation ID. */
@@ -1712,7 +1902,7 @@ export function addAnimationWithKeyframesToScript(
   const sorted = [...keyframes].sort((a, b) => a.percentage - b.percentage);
   const kfObjCode = buildKeyframeObjectCode(sorted, easeEach);
   const varParts = [`keyframes: ${kfObjCode}`, `duration: ${valueToCode(duration)}`];
-  if (ease) varParts.push(`ease: ${JSON.stringify(ease)}`);
+  if (ease) varParts.push(`ease: ${valueToCode(ease)}`);
   const stmtCode = `${parsed.timelineVar}.to(${JSON.stringify(targetSelector)}, { ${varParts.join(", ")} }, ${valueToCode(position)});`;
 
   const ms = new MagicString(script);
@@ -1817,7 +2007,8 @@ function addGroupAnimToScript(
       pos,
       anim.duration ?? 0.5,
       groupKeyframes,
-      anim.keyframes.easeEach ?? anim.ease,
+      anim.keyframes.ease ?? anim.ease,
+      anim.keyframes.easeEach,
     );
   }
   const groupProperties = filterGroupProperties(anim.properties, propSet);
@@ -1852,6 +2043,7 @@ export function splitIntoPropertyGroupsFromScript(
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return { script, ids: [animationId] };
   const { animation } = target;
+  if (animation.hasUnresolvedKeyframes) return { script, ids: [animationId] };
 
   const allPropKeys = collectPropertyKeys(animation);
   const groupProps = partitionPropertyGroups(allPropKeys);
@@ -2284,7 +2476,8 @@ function insertInheritedStateSetInScript(
   const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   const firstLocated = parsed.located[0];
   if (tlDecl) {
-    ms.appendLeft(tlDecl.end, "\n" + code);
+    const ownLineEnd = script[tlDecl.end] === "\n" ? "" : "\n";
+    ms.appendLeft(tlDecl.end, "\n" + code + ownLineEnd);
   } else if (firstLocated) {
     const firstCall = firstLocated.call;
     const exprStmt = findEnclosingExpressionStatement(firstCall.ancestors);
@@ -2310,51 +2503,100 @@ function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): 
   return ms.toString();
 }
 
-function animationStart(animation: GsapAnimation): number {
-  if (animation.resolvedStart !== undefined) return animation.resolvedStart;
-  return typeof animation.position === "number" ? animation.position : 0;
-}
-
-function positionProperties(
-  properties: Record<string, number | string>,
-): Record<string, number | string> {
-  const position: Record<string, number | string> = {};
-  for (const [property, value] of Object.entries(properties)) {
-    if (classifyPropertyGroup(property) === "position" && typeof value === "number") {
-      position[property] = value;
-    }
-  }
-  return position;
-}
-
-function positionHoldForAnimation(
-  animation: GsapAnimation,
-): Record<string, number | string> | null {
-  if (!animation.keyframes) return null;
-  if (!(animationStart(animation) > 0.001)) return null;
-  const first = [...animation.keyframes.keyframes].sort(
-    (left, right) => left.percentage - right.percentage,
-  )[0];
-  if (!first) return null;
-  const position = positionProperties(first.properties);
-  return Object.keys(position).length > 0 ? position : null;
-}
-
 /** Acorn-native, byte-preserving hold synchronization used after mutations. */
-export function syncPositionHoldsBeforeKeyframes(script: string): string {
+export function syncPositionHoldsBeforeKeyframes(script: string, previous?: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
+  const tweensOf = (text: string) =>
+    parseGsapScriptAcornForWrite(text)?.located.map((entry) => entry.animation) ?? null;
+  const scope = holdScope(
+    parsed.located.map((entry) => entry.animation),
+    previous === undefined ? null : tweensOf(previous),
+  );
   let result = removeStudioHoldSets(script, parsed);
   const current = parseGsapScriptAcornForWrite(result);
   if (!current) return result;
-  for (const entry of current.located) {
-    const animation = entry.animation;
-    const position = positionHoldForAnimation(animation);
+  const animations = current.located.map((entry) => entry.animation);
+  for (const animation of animations) {
+    const position = keyframeHoldForAnimation(animation, animations, scope);
     if (!position) continue;
     result = insertInheritedStateSetInScript(result, animation.targetSelector, 0, {
       ...position,
       data: STUDIO_HOLD_MARKER,
     });
+  }
+  return result;
+}
+
+const roundPct = (pct: number) => Math.round(pct * 1000) / 1000;
+
+const LINEAR_RUN = new Set(["none", "linear"]);
+// ponytail: any .add( .duration( repeat: or yoyo: in the script skips the trim, classList.add included.
+const PLACED_BY_TIMELINE =
+  /\.(?:add|addLabel|addPause|call|repeat|yoyo|duration|timeScale)\s*\(|\b(?:repeat|yoyo)\s*:/;
+
+/** A percentage keyframe list whose timing is known and whose run is linear, so a trim keeps its render. */
+function linearPercentageKeys(animation: GsapAnimation) {
+  const data = animation.keyframes;
+  if (data?.format !== "percentage" || data.fromMotionPath || animation.arcPath) return null;
+  if (animation.durationUnresolved || !LINEAR_RUN.has(animation.ease || "none")) return null;
+  return data.keyframes;
+}
+
+const loops = (animation: GsapAnimation) =>
+  Boolean(animation.extras?.repeat || animation.extras?.yoyo);
+
+function trimmableKeyframes(animation: GsapAnimation) {
+  const keyframes = loops(animation) ? null : linearPercentageKeys(animation);
+  const { duration, position } = animation;
+  if (!keyframes || typeof position !== "number" || typeof duration !== "number") return null;
+  return duration > 0 ? { keyframes, duration, position } : null;
+}
+
+/** The keyless tail of a keyframe tween, as the remap that ends it on its last key; null when it has none. */
+function trailingSpanTrim(animation: GsapAnimation) {
+  const tween = trimmableKeyframes(animation);
+  if (!tween) return null;
+  const last = Math.max(...tween.keyframes.map((keyframe) => keyframe.percentage));
+  if (tween.keyframes.length < 2 || !(last > 0) || last >= 99.999) return null;
+  return {
+    position: tween.position,
+    duration: Math.round(tween.duration * last * 10) / 1000,
+    pctRemap: tween.keyframes.map(({ percentage: from }) => ({
+      from,
+      to: roundPct((from / last) * 100),
+    })),
+  };
+}
+
+/** GSAP 3.15 stretches a keyframe tween that stops short of 100% on its first render, unlike once played:
+ *  each tween this mutation wrote or edited ends on its last key instead. Tweens it left alone keep their tail. */
+export function trimTrailingKeyframeSpans(previous: string, script: string): string {
+  if (script === previous) return script;
+  const located = parseGsapScriptAcornForWrite(script)?.located ?? [];
+  // A shorter tween moves what is placed after its end ("+=", ">", no position, add/call/addLabel).
+  const placedAfter = ({ animation: a }: { animation: GsapAnimation }) =>
+    !a.global && (a.implicitPosition || typeof a.position !== "number");
+  if (PLACED_BY_TIMELINE.test(script) || located.some(placedAfter)) return script;
+  const trims = located.flatMap((entry) => {
+    const trim = trailingSpanTrim(entry.animation);
+    return trim ? [{ entry, trim }] : [];
+  });
+  if (!trims.length) return script;
+  const source = (text: string, { call }: { call: TweenCallInfo }) =>
+    `${call.method}${text.slice(call.node.arguments[0]?.start, call.node.end)}`;
+  const previousTweens = parseGsapScriptAcornForWrite(previous)?.located ?? [];
+  const untouched = new Set(previousTweens.map((entry) => source(previous, entry)));
+  let result = script;
+  for (const { entry, trim } of trims) {
+    if (untouched.has(source(script, entry))) continue;
+    result = resizeKeyframedTweenInScript(
+      result,
+      entry.id,
+      trim.position,
+      trim.duration,
+      trim.pctRemap,
+    );
   }
   return result;
 }
@@ -2380,8 +2622,8 @@ function computeForwardBaselines(
     const dur = anim.duration ?? 0;
     const animEnd = pos + dur;
 
-    if (anim.keyframes) {
-      const kfs = anim.keyframes.keyframes;
+    if (authorsKeyframes(anim)) {
+      const kfs = anim.keyframes?.keyframes ?? [];
       if (pos >= splitTime) {
         // Moves wholly to the new element — contributes nothing to the baseline.
       } else if (animEnd > splitTime) {
@@ -2466,6 +2708,24 @@ type SplitCtx = {
   newElementStart: number;
 };
 
+function applyKeyframedTweenSplit(
+  result: string,
+  anim: GsapAnimation,
+  pos: number,
+  animEnd: number,
+  ctx: SplitCtx,
+  skippedSelectors: string[],
+): string {
+  if (pos >= ctx.splitTime)
+    return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
+  if (animEnd > ctx.splitTime) {
+    skippedSelectors.push(`${ctx.originalSelector} (keyframes spanning split)`);
+  } else if (anim.hasUnresolvedKeyframes) {
+    skippedSelectors.push(`${ctx.originalSelector} (unreadable keyframes before split)`);
+  }
+  return result;
+}
+
 // Decide what one matching tween does at the split point: move to the new
 // element (wholly after), stay (wholly before / keyframes before), get skipped
 // (keyframes spanning), or get interpolated in half (spanning). Returns the
@@ -2481,14 +2741,8 @@ function applyTweenSplit(
   const dur = anim.duration ?? 0;
   const animEnd = pos + dur;
 
-  if (anim.keyframes) {
-    if (pos >= ctx.splitTime)
-      return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
-    if (animEnd > ctx.splitTime) {
-      skippedSelectors.push(`${ctx.originalSelector} (keyframes spanning split)`);
-    }
-    // Inherited-state for kf tweens is handled by computeForwardBaselines.
-    return result;
+  if (authorsKeyframes(anim)) {
+    return applyKeyframedTweenSplit(result, anim, pos, animEnd, ctx, skippedSelectors);
   }
   // Wholly before the split — kept on the original element.
   if (animEnd <= ctx.splitTime) return result;
@@ -2661,7 +2915,7 @@ function buildUnrollReplacement(
   const calls = elements.map((el) => {
     const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
     const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
-    return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`;
+    return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
   });
   return calls.join("\n  ");
 }
@@ -2684,7 +2938,7 @@ function buildUnrollCallForElement(
   const posCode = typeof pos === "number" ? String(pos) : JSON.stringify(pos);
   const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
   const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
-  return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`;
+  return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
 }
 
 /** Sentinel: the unroll cannot safely reproduce the loop body — caller no-ops. */

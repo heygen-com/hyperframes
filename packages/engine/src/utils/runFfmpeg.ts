@@ -6,11 +6,12 @@
  * that appears across audioMixer and chunkEncoder into a single helper.
  */
 
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { trackChildProcess } from "./processTracker.js";
 import {
   ManagedChildProcess,
+  type ManagedChildProcessOutcome,
   type ManagedProcessTerminationReason,
 } from "./managedChildProcess.js";
 
@@ -47,6 +48,33 @@ export function isExternalFfmpegInterruption(
   if (result.terminationReason !== "exit" || result.exitCode === 0) return false;
   if (result.signal === "SIGTERM") return true;
   return result.exitCode === 255 && FFMPEG_SIGTERM_EXIT_LINE.test(result.stderr);
+}
+
+/** ffmpeg's stats line as it writes: frames encoded so far and seconds of output written. */
+export interface FfmpegStats {
+  frames?: number;
+  seconds?: number;
+}
+
+/** Reads stderr chunks, which split stats lines anywhere, and reports each complete stats line. */
+export function ffmpegStatsReader(onStats: (stats: FfmpegStats) => void): (chunk: string) => void {
+  let rest = "";
+  return (chunk) => {
+    const lines = (rest + chunk).split(/[\r\n]/);
+    rest = lines.pop() ?? "";
+    for (const line of lines) {
+      const frame = /frame=\s*(\d+)/.exec(line)?.[1];
+      const time = /time=\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line);
+      if (frame === undefined && !time) continue;
+      onStats({
+        frames: frame === undefined ? undefined : Number(frame),
+        seconds: time
+          ? Math.round((Number(time[1]) * 3600 + Number(time[2]) * 60 + Number(time[3])) * 100) /
+            100
+          : undefined,
+      });
+    }
+  };
 }
 
 const DEFAULT_TIMEOUT = 300_000;
@@ -110,25 +138,26 @@ export function formatFfmpegError(
     : `FFmpeg exited with code ${exitCode}`;
 }
 
-export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
-  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+function spawnFfmpeg(args: string[]): ChildProcess {
   // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
   // this Node opens a visible console window per spawn on Windows. A render
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
   const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
   trackChildProcess(ffmpeg);
-  const managed = new ManagedChildProcess(ffmpeg, {
-    signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
-  });
-  const outcome = await managed.wait();
+  return ffmpeg;
+}
+
+function succeeded(outcome: ManagedChildProcessOutcome): boolean {
+  return outcome.reason === "exit" && outcome.exitCode === 0;
+}
+
+function toResult(outcome: ManagedChildProcessOutcome, stderr = outcome.stderr): RunFfmpegResult {
   const result: RunFfmpegResult = {
-    success: outcome.reason === "exit" && outcome.exitCode === 0,
+    success: succeeded(outcome),
     exitCode: outcome.exitCode,
     signal: outcome.signal,
-    stderr: outcome.stderr,
+    stderr,
     durationMs: outcome.durationMs,
     terminationReason: outcome.reason,
     error: outcome.error,
@@ -137,4 +166,55 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
     result.failureReason = "external_interruption";
   }
   return result;
+}
+
+export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
+  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
+    signal: opts?.signal,
+    deadlineAtMs: Date.now() + timeout,
+    onStderr: opts?.onStderr,
+  });
+  return toResult(await managed.wait());
+}
+
+/**
+ * Runs `ffmpeg <producerArgs> | ffmpeg <consumerArgs>`. Fails when either side
+ * fails and reports the first failure, its stderr last so error tails show it.
+ */
+export async function runFfmpegPipeline(
+  producerArgs: string[],
+  consumerArgs: string[],
+  opts?: RunFfmpegOptions,
+): Promise<RunFfmpegResult> {
+  const deadlineAtMs = Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT);
+  const producer = spawnFfmpeg(producerArgs);
+  const consumer = spawnFfmpeg(consumerArgs);
+  // Either side ending early, or failing to start, must release the other from the pipe.
+  consumer.stdin?.on("error", () => {});
+  for (const event of ["close", "error"] as const) {
+    consumer.once(event, () => producer.stdout?.destroy());
+    producer.once(event, () => consumer.stdin?.end());
+  }
+  if (consumer.stdin) producer.stdout?.pipe(consumer.stdin);
+  const settleOrder: ManagedChildProcessOutcome[] = [];
+  const outcomes = await Promise.all(
+    [producer, consumer].map((child) =>
+      new ManagedChildProcess(child, {
+        signal: opts?.signal,
+        deadlineAtMs,
+        onStderr: opts?.onStderr,
+      })
+        .wait()
+        .then((outcome) => {
+          settleOrder.push(outcome);
+          return outcome;
+        }),
+    ),
+  );
+  const reported = settleOrder.find((outcome) => !succeeded(outcome)) ?? outcomes[1]!;
+  const stderr = [...outcomes.filter((outcome) => outcome !== reported), reported]
+    .map((outcome) => outcome.stderr)
+    .join("");
+  return toResult(reported, stderr);
 }

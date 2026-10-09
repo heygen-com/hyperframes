@@ -34,17 +34,46 @@ export function isAudioTimelineElement(
   return Boolean(element.src && AUDIO_SOURCE_EXT_RE.test(element.src));
 }
 
+/** A track whose hide toggle reads as mute: the header button and its undo entry. */
+export function isAudioOnlyTrack(
+  elements: readonly Pick<TimelineElement, "tag" | "src">[],
+): boolean {
+  return elements.length > 0 && elements.every(isAudioTimelineElement);
+}
+
+/** The two tags the property panel lets you put a volume automation lane on.
+ * Single owner: `groupAutomationLanes`, `automationLaneCountOf` and
+ * `TimelineAutomationLaneSlot`'s clip filter all have to agree on this set. */
+export function isAudioOrVideoTimelineElement(
+  element: Pick<TimelineElement, "tag" | "src"> | null | undefined,
+): boolean {
+  if (!element) return false;
+  return isAudioTimelineElement(element) || element.tag.trim().toLowerCase() === "video";
+}
+
+type MusicSourceFacts = Pick<TimelineElement, "tag" | "src" | "hasAudio" | "muted">;
+
+/** Can carry the music: an audio clip, or a video whose own sound plays. Lane zoning is unaffected. */
+export function isMusicSourceElement(element: MusicSourceFacts): boolean {
+  if (isAudioTimelineElement(element)) return true;
+  return (
+    element.tag.trim().toLowerCase() === "video" &&
+    element.hasAudio === true &&
+    element.muted !== true
+  );
+}
+
 /** True for the music track: an audio element with data-timeline-role="music",
  *  or — when no role is set — an id matching the music regex. Voiceover/other
  *  audio (explicit non-music role) is excluded. */
 export function isMusicTrack(
   element:
-    | Pick<TimelineElement, "tag" | "src" | "id" | "domId" | "timelineRole">
+    | Pick<TimelineElement, "tag" | "src" | "id" | "domId" | "timelineRole" | "hasAudio" | "muted">
     | null
     | undefined,
 ): boolean {
   if (!element) return false;
-  if (!isAudioTimelineElement(element)) return false;
+  if (!isMusicSourceElement(element)) return false;
   if (element.timelineRole === "music") return true;
   if (element.timelineRole && element.timelineRole !== "music") return false;
   const id = element.domId ?? element.id ?? "";
@@ -65,7 +94,7 @@ export function isMusicTrack(
 export function resolveBeatSourceTrack(
   elements: readonly Pick<
     TimelineElement,
-    "tag" | "src" | "id" | "domId" | "timelineRole" | "duration"
+    "tag" | "src" | "id" | "domId" | "timelineRole" | "duration" | "hasAudio" | "muted"
   >[],
 ): { element: (typeof elements)[number]; isFallback: boolean } | null {
   const explicit = elements.find(isMusicTrack);
@@ -75,7 +104,7 @@ export function resolveBeatSourceTrack(
   // like "sfx" or "voiceover" to avoid triggering beat analysis on those).
   let best: (typeof elements)[number] | null = null;
   for (const el of elements) {
-    if (!isAudioTimelineElement(el)) continue;
+    if (!isMusicSourceElement(el)) continue;
     if (el.timelineRole && el.timelineRole !== "music") continue;
     if (!best || el.duration > best.duration) best = el;
   }
@@ -86,11 +115,9 @@ export function resolveBeatSourceTrack(
  * May this multi-selection be hidden as one action?
  *
  * Audio has no visual to hide, and `data-hidden` on an audio element is what
- * MUTES it — preview silences it and the render drops it from the mix. The
- * timeline withholds the eye on an audio track for that reason
- * (`visible={!isAudioTrack}`), and the single-selection panel gates the same
- * write on `audioSelection`. The multi-selection "Hide all" was the one path
- * left back to it, on a control whose label promises visibility.
+ * mutes it: preview silences it and the render drops it from the mix. The timeline
+ * and the single-selection panel offer it as a mute; "Hide all" would reach it on a
+ * control whose label promises visibility.
  *
  * A shared predicate rather than a check in the handler so the panel's button
  * and the handler's refusal cannot disagree — the button is not the only caller.

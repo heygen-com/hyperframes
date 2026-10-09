@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
-import { usePlayerStore } from "../store/playerStore";
-import type { TimelineRowGeometry } from "./timelineLayout";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { RULER_H, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
 import {
   isTimelineNavigationKey,
   locateTimelineLogicalTarget,
@@ -14,16 +14,95 @@ interface TimelineKeyboardActorInput {
   rowGeometry: TimelineRowGeometry;
   scrollRef: RefObject<HTMLDivElement | null>;
   onToggleRow: (target: TimelineLogicalRow) => void;
+  onDrillDown?: (element: TimelineElement) => void;
 }
 
-function eventTarget(event: FocusEvent | KeyboardEvent): HTMLElement | null {
-  if (!(event.target instanceof Element)) return null;
+type ClipPickupAction =
+  | { kind: "move"; step: -1 | 1 }
+  | { kind: "commit" }
+  | { kind: "cancel" }
+  | { kind: "focus" }
+  | { kind: "consume" };
+
+function clipPickupKeyboardAction(event: {
+  key: string;
+  repeat: boolean;
+}): ClipPickupAction | null {
+  switch (event.key) {
+    case "ArrowUp":
+      return { kind: "move", step: -1 };
+    case "ArrowDown":
+      return { kind: "move", step: 1 };
+    case "Enter":
+      return { kind: event.repeat ? "focus" : "commit" };
+    case "Escape":
+      return { kind: "cancel" };
+    case " ":
+      return { kind: "consume" };
+    default:
+      return null;
+  }
+}
+
+export function handleClipPickupKeyboardEvent(
+  event: globalThis.KeyboardEvent,
+  actions: {
+    move: (step: -1 | 1) => void;
+    commit: () => void;
+    cancel: () => void;
+    focus: () => void;
+  },
+): void {
+  const action = clipPickupKeyboardAction(event);
+  if (!action) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  switch (action.kind) {
+    case "move":
+      actions.move(action.step);
+      break;
+    case "commit":
+      actions.commit();
+      actions.focus();
+      break;
+    case "cancel":
+      actions.cancel();
+      actions.focus();
+      break;
+    case "focus":
+      actions.focus();
+      break;
+    case "consume":
+      break;
+    default: {
+      const unreachable: never = action;
+      throw new Error(`Unknown pickup action: ${unreachable}`);
+    }
+  }
+}
+
+export function scrollKeyboardInsertRow(
+  viewport: HTMLDivElement,
+  geometry: TimelineRowGeometry,
+  row: number,
+): void {
+  const top = geometry.getRowTop(row);
+  if (top < viewport.scrollTop + RULER_H) viewport.scrollTop = Math.max(0, top - RULER_H);
+  else if (top + TRACK_H > viewport.scrollTop + viewport.clientHeight)
+    viewport.scrollTop = top + TRACK_H - viewport.clientHeight;
+}
+
+export function timelineKeyboardEventTarget(
+  target: EventTarget | null,
+  container: HTMLElement,
+): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
   // Header actions stay native Tab stops because they have no row-level shortcut.
   // The nearest interactive ancestor wins so their events never masquerade as row events.
-  const target = event.target.closest<HTMLElement>(
-    "button, input, select, textarea, a[href], [contenteditable], [data-timeline-focus-id]",
+  const nearest = target.closest<HTMLElement>(
+    "button, input, select, textarea, a[href], [contenteditable], [role='slider'], [data-timeline-focus-id]",
   );
-  return target?.dataset.timelineFocusId && event.currentTarget.contains(target) ? target : null;
+  return nearest?.dataset.timelineFocusId && container.contains(nearest) ? nearest : null;
 }
 
 function viewportPageSize(
@@ -70,6 +149,7 @@ export function useTimelineKeyboardActor({
   rowGeometry,
   scrollRef,
   onToggleRow,
+  onDrillDown,
 }: TimelineKeyboardActorInput) {
   const rovingTargetId =
     (focusedTargetId && locateTimelineLogicalTarget(logicalRows, focusedTargetId)?.target.id) ??
@@ -85,7 +165,8 @@ export function useTimelineKeyboardActor({
 
   const onFocus = useCallback(
     (event: FocusEvent<HTMLElement>) => {
-      const id = eventTarget(event)?.dataset.timelineFocusId;
+      const id = timelineKeyboardEventTarget(event.target, event.currentTarget)?.dataset
+        .timelineFocusId;
       if (id && id !== focusedTargetId) usePlayerStore.getState().requestTimelineFocus(id);
     },
     // ponytail: This closure must see the current id or coordinator-driven focus bumps the nonce twice.
@@ -96,7 +177,7 @@ export function useTimelineKeyboardActor({
     // One handler owns navigation, context-menu, and disclosure keyboard semantics.
     // fallow-ignore-next-line complexity
     (event: KeyboardEvent<HTMLElement>) => {
-      const targetElement = eventTarget(event);
+      const targetElement = timelineKeyboardEventTarget(event.target, event.currentTarget);
       const id = targetElement?.dataset.timelineFocusId;
       if (!targetElement || !id) return;
       const located = locateTimelineLogicalTarget(logicalRows, id);
@@ -130,6 +211,12 @@ export function useTimelineKeyboardActor({
         openContextMenu(targetElement);
         return;
       }
+      const composition = located.target.kind === "clip" && located.target.element;
+      if (event.key === "Enter" && composition && composition.compositionSrc && onDrillDown) {
+        event.preventDefault();
+        onDrillDown(composition);
+        return;
+      }
       if (
         (event.key !== "Enter" && event.key !== " ") ||
         located.target.kind !== "row" ||
@@ -140,7 +227,7 @@ export function useTimelineKeyboardActor({
       event.preventDefault();
       onToggleRow(located.target);
     },
-    [logicalRowCountByTrack, logicalRows, onToggleRow, rowGeometry, scrollRef],
+    [logicalRowCountByTrack, logicalRows, onDrillDown, onToggleRow, rowGeometry, scrollRef],
   );
 
   return { rovingTargetId, onFocus, onKeyDown };

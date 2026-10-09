@@ -71,6 +71,9 @@ npx hyperframes render -o output.mp4
 npx hyperframes render -c ./my-composition.html -o output.mp4
 ```
 
+Set `HYPERFRAMES_RENDER_DETACHED=1` when starting a render with `nohup` or
+`disown` so it keeps running after the invoking shell exits.
+
 ### `publish`
 
 Upload a project directory and get a hosted URL that keeps working after the CLI exits.

@@ -272,12 +272,12 @@
         0,
       );
       tl.to("#camera", { scale: 2.2, x: -44, y: -34, duration: 0.42, ease: "back.out(1.5)" }, 3.18);
-      tl.from(
+      tl.fromTo(
         ".corner",
-        { opacity: 0, scale: 0.72, duration: 0.28, stagger: 0.035, ease: "power3.out" },
+        { opacity: 0, scale: 0.72 },
+        { opacity: 0.72, scale: 1, duration: 0.28, stagger: 0.035, ease: "power3.out" },
         0.42,
       );
-      tl.to(".corner", { opacity: 0.72, duration: 0.18, ease: "power2.out" }, 1.2);
       tl.fromTo(
         "#annotation",
         { opacity: 0, scale: 0.92, x: 4, y: -4 },

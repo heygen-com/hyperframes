@@ -344,16 +344,16 @@ async function fetchImage(url, evidenceName, expectedContentType = null) {
 async function findMountedThumbnailUrl(page, sourceFile, previous = null) {
   await page.waitForFunction(
     ({ source, old }) =>
-      [...document.querySelectorAll('#sidebar-panel-compositions img[src*="/thumbnail/"]')].some(
+      [...document.querySelectorAll('.hf-dock img[src*="/thumbnail/"]')].some(
         (image) => image.src.includes(source) && (!old || image.src !== old),
       ),
     { timeout: RENDER_TIMEOUT_MS },
     { source: sourceFile, old: previous },
   );
   return page.evaluate((source) => {
-    const image = [
-      ...document.querySelectorAll('#sidebar-panel-compositions img[src*="/thumbnail/"]'),
-    ].find((candidate) => candidate.src.includes(source));
+    const image = [...document.querySelectorAll('.hf-dock img[src*="/thumbnail/"]')].find(
+      (candidate) => candidate.src.includes(source),
+    );
     return image?.src ?? null;
   }, sourceFile);
 }

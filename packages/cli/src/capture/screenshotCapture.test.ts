@@ -1,14 +1,29 @@
-import { describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Page } from "puppeteer-core";
+import { TimeoutError, type Page } from "puppeteer-core";
 import {
   captureFullPagePlate,
   captureScrollScreenshots,
   MAX_PLATE_HEIGHT_PX,
   pngHeight,
 } from "./screenshotCapture.js";
+import { CaptureDirRefusedError } from "./captureErrors.js";
+
+function tempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 // A real 1920x800 PNG header, so the produced-height guard sees something valid.
 function pngBuffer(height: number, width = 1920): Buffer {
@@ -29,27 +44,28 @@ function fakePage(
   { docHeight = 8000, plateHeight = 8000 }: { docHeight?: number; plateHeight?: number } = {},
   overrides: Record<string, unknown> = {},
 ) {
-  const evaluate = vi.fn(async (script?: unknown) =>
-    String(script).includes("scrollHeight") ? docHeight : undefined,
-  );
+  const evaluate = vi.fn(async (script?: unknown) => {
+    if (String(script).includes("scrollHeight")) return docHeight;
+    if (script === "window.innerHeight") return 1080;
+  });
   const screenshot = vi.fn(async (_opts?: unknown) => pngBuffer(plateHeight));
   return { page: { evaluate, screenshot, ...overrides } as unknown as Page, evaluate, screenshot };
 }
 
 describe("captureFullPagePlate — the scroll shot's plate", () => {
   it("writes one full-page png and returns its relative path", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     const { page, screenshot } = fakePage({ docHeight: 10962, plateHeight: 10962 });
 
     const out = await captureFullPagePlate(page, dir);
 
-    expect(out).toBe("screenshots/full-page.png");
+    expect(out).toEqual({ kind: "captured", file: "screenshots/full-page.png" });
     expect(screenshot).toHaveBeenCalledWith({ type: "png", fullPage: true });
     expect(pngHeight(readFileSync(join(dir, "full-page.png")))).toBe(10962);
   });
 
   it("stays 1x: it never touches the viewport's deviceScaleFactor", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     const setViewport = vi.fn(async () => undefined);
     const { page } = fakePage({}, { setViewport });
 
@@ -60,18 +76,18 @@ describe("captureFullPagePlate — the scroll shot's plate", () => {
   });
 
   it("skips a page taller than Chrome can capture, instead of writing a clipped plate", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     const { page, screenshot } = fakePage({ docHeight: MAX_PLATE_HEIGHT_PX + 1 });
 
     const out = await captureFullPagePlate(page, dir);
 
-    expect(out).toBeNull();
+    expect(out).toEqual({ kind: "omitted", reason: "height-limit" });
     expect(screenshot).not.toHaveBeenCalled();
     expect(existsSync(join(dir, "full-page.png"))).toBe(false);
   });
 
   it("neutralises sticky/fixed chrome for the shot and restores it afterwards", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     const { page, evaluate, screenshot } = fakePage();
 
     await captureFullPagePlate(page, dir);
@@ -96,7 +112,7 @@ describe("captureFullPagePlate — the scroll shot's plate", () => {
   });
 
   it("restores the page even when the screenshot throws", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     const screenshot = vi.fn(async (_opts?: unknown) => {
       throw new Error("capture failed");
     });
@@ -109,14 +125,160 @@ describe("captureFullPagePlate — the scroll shot's plate", () => {
   });
 });
 
+describe("captureScrollScreenshots limits", () => {
+  it.each([1, 3, 21, 105])("caps all screenshot files at %i including the plate", async (limit) => {
+    vi.useFakeTimers();
+    const dir = tempDir("hf-scroll-limit-");
+    const { page } = fakePage(
+      { docHeight: 16000 },
+      {
+        evaluate: vi.fn(async (expression: unknown) => {
+          if (String(expression).includes("scrollHeight")) return 16000;
+          if (expression === "window.innerHeight") return 100;
+        }),
+      },
+    );
+    try {
+      const capture = captureScrollScreenshots(page, dir, { maxScreenshots: limit });
+      await vi.runAllTimersAsync();
+      const { files } = await capture;
+      expect(files).toHaveLength(limit);
+      expect(readdirSync(join(dir, "screenshots"))).toHaveLength(limit);
+      if (limit === 1) expect(files).toEqual(["screenshots/scroll-000.png"]);
+      else expect(files).toContain("screenshots/full-page.png");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("captureScrollScreenshots interruptions", () => {
+  it.each([
+    [new TimeoutError("protocolTimeout"), "request-timeout"],
+    [new Error("target closed"), "internal-error"],
+  ])("preserves saved files when the next screenshot fails with %s", async (error, reason) => {
+    vi.useFakeTimers();
+    const dir = tempDir("hf-scroll-interrupted-");
+    const screenshot = vi.fn().mockResolvedValueOnce(pngBuffer(1080)).mockRejectedValue(error);
+    const { page } = fakePage(
+      {},
+      {
+        screenshot,
+      },
+    );
+    try {
+      const capture = captureScrollScreenshots(page, dir, { maxScreenshots: 3 });
+      await vi.runAllTimersAsync();
+      const result = await capture;
+      expect(result.files).toEqual(["screenshots/scroll-000.png"]);
+      expect(readdirSync(join(dir, "screenshots"))).toEqual(["scroll-000.png"]);
+      expect(result.interruption).toEqual({ reason, message: error.message });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("publishes written paths while the next native screenshot is still pending", async () => {
+    vi.useFakeTimers();
+    const dir = tempDir("hf-scroll-pending-");
+    const files: string[] = [];
+    let interrupt!: (error: Error) => void;
+    const screenshot = vi
+      .fn()
+      .mockResolvedValueOnce(pngBuffer(1080))
+      .mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            interrupt = reject;
+          }),
+      );
+    const { page } = fakePage(
+      {},
+      {
+        screenshot,
+      },
+    );
+    try {
+      const capture = captureScrollScreenshots(page, dir, { maxScreenshots: 3, files });
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(files).toEqual(["screenshots/scroll-000.png"]);
+      interrupt(new TimeoutError("protocolTimeout"));
+      const result = await capture;
+      expect(result.files).toBe(files);
+      expect(result.interruption?.reason).toBe("request-timeout");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("publishes a written plate before position restoration finishes", async () => {
+    vi.useFakeTimers();
+    const dir = tempDir("hf-plate-pending-");
+    const files: string[] = [];
+    let restore!: () => void;
+    const { page } = fakePage(
+      {},
+      {
+        evaluate: vi.fn(async (script: unknown) => {
+          if (String(script).includes("removeAttribute")) {
+            await new Promise<void>((resolve) => {
+              restore = resolve;
+            });
+          }
+          if (String(script).includes("scrollHeight")) return 1080;
+          if (script === "window.innerHeight") return 1080;
+        }),
+      },
+    );
+    try {
+      const capture = captureScrollScreenshots(page, dir, { maxScreenshots: 3, files });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(files).toEqual(["screenshots/scroll-000.png", "screenshots/full-page.png"]);
+      restore();
+      expect((await capture).files).toBe(files);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("covers a one-pixel viewport without a zero scroll step", async () => {
+    vi.useFakeTimers();
+    const dir = tempDir("hf-scroll-tiny-viewport-");
+    const { page } = fakePage(
+      {},
+      {
+        evaluate: vi.fn(async (script: unknown) => {
+          if (String(script).includes("scrollHeight")) return 20;
+          if (script === "window.innerHeight") return 1;
+        }),
+      },
+    );
+    try {
+      const capture = captureScrollScreenshots(page, dir, { maxScreenshots: 3 });
+      await vi.runAllTimersAsync();
+      const result = await capture;
+      expect(result.files).toEqual([
+        "screenshots/scroll-000.png",
+        "screenshots/scroll-100.png",
+        "screenshots/full-page.png",
+      ]);
+      expect(result.interruption).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("captureScrollScreenshots — capture budget", () => {
   it("does not begin page work when the post-navigation budget is exhausted", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-scroll-budget-"));
+    const dir = tempDir("hf-scroll-budget-");
     const evaluate = vi.fn(async () => 1080);
     const screenshot = vi.fn(async () => pngBuffer(1080));
     const page = { evaluate, screenshot } as unknown as Page;
 
-    const files = await captureScrollScreenshots(page, dir, { remainingMs: () => 0 });
+    const result = await captureScrollScreenshots(page, dir, { remainingMs: () => 0 });
+    const files = result.files;
+    expect(result.interruption?.reason).toBe("budget-exhausted");
 
     expect(files).toEqual([]);
     expect(evaluate).not.toHaveBeenCalled();
@@ -126,7 +288,7 @@ describe("captureScrollScreenshots — capture budget", () => {
   it("re-checks the budget after settling and before each viewport screenshot", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const dir = mkdtempSync(join(tmpdir(), "hf-scroll-expiring-budget-"));
+    const dir = tempDir("hf-scroll-expiring-budget-");
     const evaluate = vi.fn(async (expression: unknown) => {
       const source = String(expression);
       if (source.includes("Math.max(document.body.scrollHeight")) return 1080;
@@ -141,7 +303,7 @@ describe("captureScrollScreenshots — capture budget", () => {
         remainingMs: () => Math.max(0, 600 - Date.now()),
       });
       await vi.runAllTimersAsync();
-      const files = await capture;
+      const { files } = await capture;
 
       expect(files).toEqual([]);
       expect(screenshot).not.toHaveBeenCalled();
@@ -155,7 +317,7 @@ describe("captureFullPagePlate — capture budget", () => {
   it("re-checks the budget immediately before the full-page screenshot", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-expiring-budget-"));
+    const dir = tempDir("hf-plate-expiring-budget-");
     const screenshot = vi.fn(async () => pngBuffer(8000));
     const evaluate = vi.fn(async (expression: unknown) => {
       if (String(expression).includes("scrollHeight")) {
@@ -171,7 +333,7 @@ describe("captureFullPagePlate — capture budget", () => {
         remainingMs: () => Math.max(0, 50 - Date.now()),
       });
 
-      expect(plate).toBeNull();
+      expect(plate).toEqual({ kind: "omitted", reason: "budget-exhausted" });
       expect(screenshot).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -181,27 +343,33 @@ describe("captureFullPagePlate — capture budget", () => {
 
 describe("captureFullPagePlate — guards against a silently clipped plate", () => {
   it("measures the height itself, after lazy content has grown the page", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     // A page that measured 9000 before scrolling but is 20000 once lazy images land: the
     // pre-scroll number would have passed the guard and emitted a clipped plate.
     const { page, screenshot } = fakePage({ docHeight: 20000 });
 
-    expect(await captureFullPagePlate(page, dir)).toBeNull();
+    expect(await captureFullPagePlate(page, dir)).toEqual({
+      kind: "omitted",
+      reason: "height-limit",
+    });
     expect(screenshot).not.toHaveBeenCalled();
   });
 
   it("discards a plate Chrome clipped, even when the measurement passed", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     // Measurement said 16000, but the capture itself triggered more loading and came back
     // over the cap. Emitting it would be undetectable downstream.
     const { page } = fakePage({ docHeight: 16000, plateHeight: MAX_PLATE_HEIGHT_PX + 500 });
 
-    expect(await captureFullPagePlate(page, dir)).toBeNull();
+    expect(await captureFullPagePlate(page, dir)).toEqual({
+      kind: "omitted",
+      reason: "height-limit",
+    });
     expect(existsSync(join(dir, "full-page.png"))).toBe(false);
   });
 
   it("survives a restore that throws — the real error is what propagates", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     let call = 0;
     const evaluate = vi.fn(async (script?: unknown) => {
       call++;
@@ -233,7 +401,7 @@ describe("pngHeight", () => {
 
 describe("captureFullPagePlate — the guard sees the post-neutralisation page (Magi's case)", () => {
   it("skips when the initial height is under the cap but the final height is over it", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    const dir = tempDir("hf-plate-");
     // Pre-traversal the page measured 9000. Lazy content and un-fixing the sticky header push
     // it over the cap by the time the plate would be shot. Probing before either step would
     // have passed the guard and emitted a clipped plate.
@@ -250,10 +418,33 @@ describe("captureFullPagePlate — the guard sees the post-neutralisation page (
     const screenshot = vi.fn(async (_opts?: unknown) => pngBuffer(20000));
     const page = { evaluate, screenshot } as unknown as Page;
 
-    expect(await captureFullPagePlate(page, dir)).toBeNull();
+    expect(await captureFullPagePlate(page, dir)).toEqual({
+      kind: "omitted",
+      reason: "height-limit",
+    });
     expect(screenshot).not.toHaveBeenCalled();
     expect(existsSync(join(dir, "full-page.png"))).toBe(false);
     // Bailing out early must still hand the page back unmodified.
     expect(String(evaluate.mock.calls.at(-1)?.[0])).toContain("removeAttribute");
   });
+});
+
+describe("captureScrollScreenshots — planted screenshots link (#4304)", () => {
+  // Creating symlinks needs elevated rights on Windows.
+  it.skipIf(process.platform === "win32")(
+    "refuses a planted screenshots/ symlink before touching the page",
+    async () => {
+      const dir = tempDir("hf-scroll-planted-");
+      const outside = join(dir, "outside");
+      mkdirSync(outside);
+      symlinkSync(outside, join(dir, "screenshots"));
+      const { page, evaluate, screenshot } = fakePage();
+
+      await expect(captureScrollScreenshots(page, dir)).rejects.toThrow(CaptureDirRefusedError);
+
+      expect(readdirSync(outside)).toEqual([]);
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(screenshot).not.toHaveBeenCalled();
+    },
+  );
 });

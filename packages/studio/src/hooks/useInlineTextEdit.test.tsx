@@ -3,7 +3,9 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PreviewReadOnlyProvider } from "../components/editor/previewReadOnlyContext";
 import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextEdit";
+import { applyUndoRestoreToPreview } from "../utils/gsapUndoRestore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,7 +22,7 @@ function heading(text = "Motion Playground"): HTMLElement {
   return element;
 }
 
-function mount(onCommit = vi.fn(), onPause = vi.fn()) {
+function mount(onCommit = vi.fn(), onPause = vi.fn(), readOnly = false) {
   const controls: { current: InlineTextEditControls | null } = { current: null };
   function Probe() {
     controls.current = useInlineTextEdit({ onCommit, onPause });
@@ -29,7 +31,13 @@ function mount(onCommit = vi.fn(), onPause = vi.fn()) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  act(() => root.render(<Probe />));
+  act(() =>
+    root.render(
+      <PreviewReadOnlyProvider readOnly={readOnly}>
+        <Probe />
+      </PreviewReadOnlyProvider>,
+    ),
+  );
   return { controls: () => controls.current!, root, onCommit, onPause };
 }
 
@@ -161,6 +169,45 @@ describe("useInlineTextEdit", () => {
 
     expect(cancelFrame).toHaveBeenCalledWith(42);
     expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
+  it("saves an open edit when the editor unmounts", () => {
+    const element = heading();
+    const { controls, root, onCommit } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.textContent = "Motion Playground Live";
+    act(() => root.unmount());
+
+    expect(onCommit.mock.calls).toEqual([
+      [{ element, html: "Motion Playground Live", previousHtml: "Motion Playground" }],
+    ]);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
+  it("keeps the edit open when the commit function changes", () => {
+    const element = heading();
+    const controls: { current: InlineTextEditControls | null } = { current: null };
+    function Probe({ onCommit }: { onCommit: () => void }) {
+      controls.current = useInlineTextEdit({ onCommit });
+      return null;
+    }
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const first = vi.fn();
+    const second = vi.fn();
+    act(() => root.render(<Probe onCommit={first} />));
+    act(() => {
+      controls.current!.start(element);
+    });
+    act(() => root.render(<Probe onCommit={second} />));
+
+    expect(controls.current!.session?.element).toBe(element);
+    expect(first).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
   });
 
   it("hands the current text over exactly once when it commits", () => {
@@ -299,7 +346,7 @@ describe("useInlineTextEdit", () => {
       act(() => root.unmount());
     });
 
-    it("cancels on Escape", () => {
+    it("commits on Escape", () => {
       const element = heading("Original");
       const { controls, root, onCommit } = mount();
       act(() => {
@@ -309,8 +356,38 @@ describe("useInlineTextEdit", () => {
       element.textContent = "half-typed";
       press(element, "Escape");
 
-      expect(element.textContent).toBe("Original");
-      expect(onCommit).not.toHaveBeenCalled();
+      expect(element.textContent).toBe("half-typed");
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(controls().session).toBeNull();
+      act(() => root.unmount());
+    });
+
+    // The save carries the styled markup it replaced, which is what undo puts back.
+    it("saves typing ended by Escape once, with the markup it replaced", async () => {
+      const element = heading();
+      element.innerHTML = 'Hello <span style="color: red">world</span>';
+      const { controls, root, onCommit } = mount();
+      act(() => {
+        controls().start(element);
+      });
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      });
+      expect(document.activeElement).toBe(element);
+
+      element.innerHTML = 'Hello <span style="color: red">world</span>!';
+      press(element, "Escape");
+
+      expect(onCommit.mock.calls).toEqual([
+        [
+          {
+            element,
+            html: 'Hello <span style="color: red">world</span>!',
+            previousHtml: 'Hello <span style="color: red">world</span>',
+          },
+        ],
+      ]);
+      expect(element.innerHTML).toBe('Hello <span style="color: red">world</span>!');
       act(() => root.unmount());
     });
 
@@ -550,6 +627,46 @@ describe("useInlineTextEdit with styled runs", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(insertText).toHaveBeenCalledWith("insertText", false, "plain words");
+    act(() => root.unmount());
+  });
+
+  it("refuses to open an edit while the preview is read-only", () => {
+    const element = heading();
+    const { controls, root, onCommit, onPause } = mount(vi.fn(), vi.fn(), true);
+    let opened = true;
+    act(() => {
+      opened = controls().start(element);
+    });
+    expect(opened).toBe(false);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(onPause).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+describe("an undo that lands while a text edit is open", () => {
+  it("marks the edit as drawing nothing, so the undo reverts the move and keeps the edit", () => {
+    const wrap = (body: string) => `<html><body>${body}</body></html>`;
+    const moved = `<h1 id="t" style="translate: 90px 60px">Title</h1>`;
+    document.body.innerHTML = moved;
+    const element = document.getElementById("t")!;
+    const { controls, root } = mount();
+    act(() => {
+      controls().start(element);
+    });
+    const contentWindow = { __player: { seek: vi.fn() }, __hfStudioManualEditsApply: vi.fn() };
+    const iframe = { contentWindow, contentDocument: document } as unknown as HTMLIFrameElement;
+    const files = {
+      "index.html": { previous: wrap(moved), restored: wrap(`<h1 id="t">Title</h1>`) },
+    };
+
+    expect(element.getAttribute("data-hf-studio-manual-edit-gesture")).toMatch(/:edit$/);
+    expect(applyUndoRestoreToPreview(iframe, "index.html", files, 0, vi.fn())).toBe("soft");
+
+    expect(element.style.getPropertyValue("translate")).toBe("");
+    expect(element.getAttribute("contenteditable")).toBe("true");
+    expect(element.style.getPropertyValue("outline")).not.toBe("");
     act(() => root.unmount());
   });
 });

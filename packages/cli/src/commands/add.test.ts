@@ -1,17 +1,24 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { runCommand as runCittyCommand, type CommandDef } from "citty";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import {
+import { lintHyperframeHtml } from "@hyperframes/lint";
+import type { RunAddResult } from "./add.js";
+import addCommand, {
   AddError,
   buildSnippet,
+  compositionRootId,
   describeInstallFailure,
   parseVariableValues,
   remapTarget,
   runAdd,
+  tagAddJson,
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
+import { CliUsageError } from "../utils/commandResult.js";
+import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
 // already false under test (dev mode / no PostHog key), so a real call would
@@ -156,6 +163,14 @@ const ITEM_BY_NAME: Record<string, RegistryItem> = {
   "my-example": EXAMPLE_ITEM,
 };
 
+const DEP_BLOCK_HTML = `<div data-composition-variables='[{ "id": "maths", "type": "boolean", "label": "Maths", "default": false }]'></div>`;
+
+const FILE_BODIES: Record<string, string> = {
+  "dep-block.html": DEP_BLOCK_HTML,
+  "deprecated-block.html": `<div data-composition-id="deprecated-block"></div>`,
+  "my-block.html": `<div data-composition-id="my-block-root" data-width="1080" data-height="1350"></div>`,
+};
+
 function mockFetch(): void {
   vi.stubGlobal(
     "fetch",
@@ -172,7 +187,7 @@ function mockFetch(): void {
       // File fetch — match `/<type-dir>/<name>/<rest>` and serve synthetic content.
       const f = /\/(examples|blocks|components)\/([^/]+)\/(.+)$/.exec(url);
       if (f) {
-        return new Response(`/* ${f[3]} */\n`, { status: 200 });
+        return new Response(FILE_BODIES[f[3]!] ?? `/* ${f[3]} */\n`, { status: 200 });
       }
       return new Response("not found", { status: 404 });
     }),
@@ -250,6 +265,26 @@ describe("add command pure helpers", () => {
       expect(snip).toContain('data-duration="6"');
     });
 
+    it("reads a composition's root id, inside its <template> when it has one", () => {
+      expect(compositionRootId(`<div data-composition-id="plain" data-width="1"></div>`)).toBe(
+        "plain",
+      );
+      expect(
+        compositionRootId(
+          `<html><head><template id="t"><div data-composition-id="templated"></div></template></head><body></body></html>`,
+        ),
+      ).toBe("templated");
+      expect(compositionRootId(`<div>no root</div>`)).toBeUndefined();
+    });
+
+    it("gives the block host the composition id that check requires", async () => {
+      const snip = buildSnippet(BLOCK_ITEM, "compositions/my-block.html", null, "my-block-root");
+      const html = `<!doctype html><html><body><div data-composition-id="root" data-width="1080" data-height="1350">${snip}</div></body></html>`;
+      const { findings } = await lintHyperframeHtml(html);
+      expect(findings.map((f) => f.code)).not.toContain("host_missing_composition_id");
+      expect(snip).toContain('data-composition-id="my-block-root"');
+    });
+
     it("emits a paste hint for components", () => {
       const snip = buildSnippet(COMPONENT_ITEM, "src/fx/my-component/my-component.html");
       expect(snip).toContain("paste from");
@@ -287,8 +322,9 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
       const installed = readFileSync(join(dir, "compositions/my-block.html"), "utf-8");
       expect(installed).toContain("<!-- hyperframes-registry-item: my-block -->");
-      expect(installed).toContain("my-block.html");
+      expect(installed).toContain('data-composition-id="my-block-root"');
       expect(result.snippet).toContain("compositions/my-block.html");
+      expect(result.snippet).toContain('data-composition-id="my-block-root"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -357,6 +393,20 @@ describe("runAdd (integration, mocked registry)", () => {
     }
   });
 
+  it("refuses a wrong-typed --vars before writing any item in the plan", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+      await expect(
+        runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true, vars: '{"maths":1}' }),
+      ).rejects.toThrow(/maths: expected boolean, got number/);
+      expect(existsSync(join(dir, "compositions/components/base-component"))).toBe(false);
+      expect(existsSync(join(dir, "hyperframes.lock.json"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("installs transitive registryDependencies before the requested item", async () => {
     const dir = tmp();
     try {
@@ -373,6 +423,9 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "compositions/dep-block.html"))).toBe(true);
       // Snippet points at the requested block, not the dependency.
       expect(result.snippet).toContain("compositions/dep-block.html");
+      expect(result.warnings).toEqual([
+        expect.stringContaining("compositions/dep-block.html declares no data-composition-id"),
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -392,11 +445,13 @@ describe("runAdd (integration, mocked registry)", () => {
         item: "base-component",
         itemType: "hyperframes:component",
         requested: false,
+        source: "cli",
       });
       expect(trackRegistryItemAdded).toHaveBeenCalledWith({
         item: "dep-block",
         itemType: "hyperframes:block",
         requested: true,
+        source: "cli",
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -470,6 +525,48 @@ describe("variable values in the snippet", () => {
   });
 });
 
+describe("add command run() — extra positional arguments", () => {
+  let dir: string;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    dir = tmp();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function runWrapped(rawArgs: string[]): Promise<void> {
+    const cmd = await trackCommandFailures(() => Promise.resolve(addCommand as CommandDef))();
+    await runCittyCommand(cmd, { rawArgs });
+  }
+
+  it("rejects `add a --dir <dir> b c` through the CLI wrapper, before any registry call", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(runWrapped(["a", "--dir", dir, "b", "c"])).rejects.toThrow(CliUsageError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain(
+      "Unexpected extra arguments for hyperframes add: b, c",
+    );
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain("Run add once per item");
+  });
+
+  it("does not fire on a normal single-item invocation", async () => {
+    mockFetch();
+    writeRegistryConfig(dir);
+
+    await expect(
+      runWrapped(["my-block", "--dir", dir, "--no-clipboard", "--json"]),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("describeInstallFailure", () => {
   it("explains a bare transport failure instead of echoing it", () => {
     // What the user actually sees after copying a command off the catalog page.
@@ -510,5 +607,17 @@ describe("describeInstallFailure", () => {
     const message = describeInstallFailure(new Error('Unsafe target "../x"'));
 
     expect(message).toBe('Install failed: Unsafe target "../x"');
+  });
+});
+
+describe("tagAddJson", () => {
+  it("carries every installed item's warnings", () => {
+    const result = (name: string, warnings: string[]) => ({ name, warnings }) as RunAddResult;
+    expect(tagAddJson("lower-thirds", [result("a", []), result("b", ["no id"])])).toEqual({
+      ok: true,
+      tag: "lower-thirds",
+      installed: ["a", "b"],
+      warnings: ["b: no id"],
+    });
   });
 });

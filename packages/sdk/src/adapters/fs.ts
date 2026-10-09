@@ -1,6 +1,7 @@
 import type { PersistAdapter, PersistVersionEntry } from "./types.js";
 import type { PersistErrorEvent } from "../types.js";
-import { readFile, writeFile, mkdir, readdir, unlink } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, unlink, stat } from "node:fs/promises";
+import { replaceFileAtomically, resolveWritePath } from "@hyperframes/core/atomic-file";
 import { join, dirname } from "node:path";
 
 export interface FsAdapterOptions {
@@ -49,7 +50,15 @@ class FsAdapter implements PersistAdapter {
     try {
       const abs = this.abs(path);
       await mkdir(dirname(abs), { recursive: true });
-      await writeFile(abs, content, "utf8");
+      const target = resolveWritePath(abs);
+      const mode = await stat(target).then(
+        (s) => s.mode,
+        (err: unknown) => {
+          if (isNotFound(err)) return undefined;
+          throw err;
+        },
+      );
+      replaceFileAtomically(target, content, mode);
       await this.appendVersion(path, content);
     } catch (err) {
       for (const h of this.errorHandlers) h({ error: { message: String(err), cause: err } });

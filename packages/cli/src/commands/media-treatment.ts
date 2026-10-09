@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import {
   HF_COLOR_GRADING_ATTR,
+  HF_COLOR_GRADING_HUE_CURVE_KEYS,
   getHfColorGradingCapabilities,
   hasHfColorGradingAuthoredValues,
   isPathInside,
@@ -20,6 +21,7 @@ import {
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
 import { defineCommand } from "citty";
+import { lintHyperframeHtml } from "@hyperframes/lint";
 import { parseHTML } from "linkedom";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
@@ -91,7 +93,7 @@ export function getMediaTreatmentCapabilityDetail(id: string): unknown {
       initial: `style="${property.name}: <start>"`,
       tween: `timeline.to("<selector>", { "${property.name}": <end>, duration: <seconds> })`,
       rules: [
-        "Author the initial value inline on the media element.",
+        "Once set (inline, in a stylesheet or on a parent), the property overrides the payload's value for this control: set it only on media you animate, starting at the tween's first value.",
         "Use finite keyframes on a paused timeline registered in window.__timelines.",
         "Do not use a frame-zero set, timers, random values, or onUpdate callbacks.",
       ],
@@ -317,7 +319,7 @@ export const examples: Example[] = [
   ],
   [
     "Preview the exact mutation without writing",
-    `hyperframes media-treatment --file compositions/scene.html --selector 'video' --grading '{"preset":"warm-daylight"}' --apply --dry-run --json`,
+    `hyperframes media-treatment --file compositions/scene.html --selector 'video' --grading '{"preset":"warm-daylight"}' --dry-run --json`,
   ],
   [
     "Measure one local media source before choosing a correction",
@@ -385,13 +387,28 @@ function mergeGradingPatch(current: unknown, patch: unknown): unknown {
   return merged;
 }
 
+function withoutEmptyHueCurves(grading: unknown): unknown {
+  if (!isRecord(grading) || !isRecord(grading.hueCurves)) return grading;
+  const hueCurves = Object.fromEntries(
+    Object.entries(grading.hueCurves).filter(
+      ([key, curve]) =>
+        !HF_COLOR_GRADING_HUE_CURVE_KEYS.some((knownKey) => knownKey === key) ||
+        !Array.isArray(curve) ||
+        curve.length > 0,
+    ),
+  );
+  return { ...grading, hueCurves };
+}
+
 function serializeGradingPatch(before: unknown, patch: unknown): string | null {
   assertKnownGradingShape(patch);
   if (isColorGradingVariableRef(before) && isRecord(patch)) {
     throw new Error("Cannot merge a grading patch into an unresolved whole-grade variable");
   }
   const current =
-    typeof before === "string" && !isColorGradingVariableRef(before) ? { preset: before } : before;
+    typeof before === "string" && !isColorGradingVariableRef(before)
+      ? { preset: before }
+      : withoutEmptyHueCurves(before);
   const grading = mergeGradingPatch(current, patch);
   assertKnownGradingShape(grading);
   if (containsColorGradingVariableRef(grading)) {
@@ -508,15 +525,20 @@ export function resolveMediaTreatmentSource(
   return asset.resolved;
 }
 
-function parseGrading(raw: string | undefined, apply: boolean, clear: boolean): unknown {
+function parseGrading(
+  raw: string | undefined,
+  apply: boolean,
+  clear: boolean,
+  dryRun: boolean,
+): unknown {
   if (clear) {
     if (raw !== undefined || apply) {
       throw new Error("Use either --apply with --grading or --clear, not both");
     }
     return undefined;
   }
-  if (!apply) {
-    if (raw !== undefined) throw new Error("--grading requires --apply");
+  if (!apply && !dryRun) {
+    if (raw !== undefined) throw new Error("--grading requires --apply or --dry-run");
     throw new Error("Use --apply with --grading <json> or --clear");
   }
   if (raw === undefined) throw new Error("--apply requires --grading <json>");
@@ -613,20 +635,23 @@ function analyzeTarget(args: MediaTreatmentCommandArgs) {
   };
 }
 
-function prepareMutation(args: MediaTreatmentCommandArgs) {
+async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const { project, filePath } = resolveMutationFile(args);
   const selector = readOptionalString(args.selector);
   if (!selector) throw new Error("--selector is required");
   const clear = args.clear === true;
   const apply = args.apply === true;
+  const dryRun = args["dry-run"] === true;
   const selectorIndex = parseSelectorIndex(readOptionalString(args["selector-index"]));
   const result = applyMediaTreatmentToHtml(readFileSync(filePath, "utf8"), {
     selector,
     selectorIndex,
-    grading: parseGrading(readOptionalString(args.grading), apply, clear),
+    grading: parseGrading(readOptionalString(args.grading), apply, clear, dryRun),
     clear,
   });
-  const dryRun = args["dry-run"] === true;
+  const lintResult = await lintHyperframeHtml(result.html);
+  const findings = lintResult.findings.filter(({ code }) => code.startsWith("color_grading_"));
+  const lint = { ok: findings.every(({ severity }) => severity !== "error"), findings };
   if (result.changed && !dryRun) writeFileSync(filePath, result.html);
 
   const action: "clear" | "apply" = result.value === null ? "clear" : "apply";
@@ -645,6 +670,9 @@ function prepareMutation(args: MediaTreatmentCommandArgs) {
       dryRun,
       before: result.before,
       after: result.after,
+      attribute: HF_COLOR_GRADING_ATTR,
+      value: result.value,
+      lint,
     },
   };
 }
@@ -667,8 +695,8 @@ function printAnalysis(args: MediaTreatmentCommandArgs): void {
   console.log(`   suggested patch: ${JSON.stringify(result.suggestedPatch)}`);
 }
 
-function printMutation(args: MediaTreatmentCommandArgs): void {
-  const { action, result, selector, payload } = prepareMutation(args);
+async function printMutation(args: MediaTreatmentCommandArgs): Promise<void> {
+  const { action, result, selector, payload } = await prepareMutation(args);
   if (args.json === true) {
     console.log(JSON.stringify(withMeta(payload), null, 2));
     return;
@@ -681,7 +709,7 @@ function printFailure(error: unknown, json: boolean): void {
   const message = normalizeErrorMessage(error);
   if (json) console.log(JSON.stringify(withMeta({ ok: false, error: message })));
   else console.error(`${c.error("✗")} ${message}`);
-  failCommand();
+  failCommand(1, error);
 }
 
 export const mediaTreatmentCommand = defineCommand({
@@ -731,19 +759,20 @@ export const mediaTreatmentCommand = defineCommand({
     clear: { type: "boolean", description: "Remove color grading from the target", default: false },
     "dry-run": {
       type: "boolean",
-      description: "Validate and report without writing",
+      description:
+        "Preview the normalized grading attribute and color-grading lint verdict without writing",
       default: false,
     },
     json: { type: "boolean", description: "Output an agent-friendly JSON result", default: false },
   },
-  run({ args }) {
+  async run({ args }) {
     try {
       if (isCapabilityQuery(args)) return runCapabilityQuery(args);
       if (args.analyze === true) {
         printAnalysis(args);
         return;
       }
-      printMutation(args);
+      await printMutation(args);
     } catch (error) {
       printFailure(error, args.json === true);
     }

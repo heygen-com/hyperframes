@@ -12,20 +12,17 @@
 // Missing/failed BGM never blocks a render.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, closeSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, closeSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
+import { agentWritePath } from "./media-record.mjs";
 import { pythonInvocation } from "./python.mjs";
 
 const r3 = (x) => Number(x.toFixed(3));
 const lyriaKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 
-// Default BGM level. Under narration music is a bed that must stay under the
-// voice — 0.12 linear ≈ -18 dB. A silent film (no voice) has no voice to duck
-// beneath, so BGM sits forward at 0.9. Callers may override per composition.
-export const BGM_BED_VOLUME = 0.12;
-export const BGM_SILENT_VOLUME = 0.9;
-export const bgmDefaultVolume = (hasVoice) => (hasVoice ? BGM_BED_VOLUME : BGM_SILENT_VOLUME);
+import { bgmDefaultVolume } from "./bgm-volume.mjs";
+export { BGM_BED_VOLUME, BGM_SILENT_VOLUME, bgmDefaultVolume } from "./bgm-volume.mjs";
 
 const BGM_PY_DEPS = ["transformers", "torch", "soundfile", "numpy"];
 const BGM_PY_PROBE =
@@ -49,12 +46,12 @@ function pipInstall(deps) {
 }
 
 // ── retrieval (HeyGen music library) ──────────────────────────────────────────
-export async function retrieveBgm({ query, headers, hyperframesDir, hasVoice }) {
+export async function retrieveBgm({ query, headers, hyperframesDir, hasVoice, anomalies }) {
   const q = query || "calm cinematic underscore";
   const results = await searchSounds(q, "music", headers, { limit: 5 });
   if (!results.length) return null;
   const top = results[0];
-  const rel = "assets/bgm/track.mp3";
+  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.mp3", { anomalies });
   await downloadTo(top.audio_url, join(hyperframesDir, rel));
   return {
     path: rel,
@@ -117,8 +114,9 @@ export function generateBgmDetached({
   lyriaRecipe,
   seedSeconds = 28,
   hasVoice,
+  anomalies,
 }) {
-  const rel = "assets/bgm/track.wav";
+  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.wav", { anomalies });
   const abs = join(hyperframesDir, rel);
   mkdirSync(join(hyperframesDir, "assets", "bgm"), { recursive: true });
   const log = join(hyperframesDir, "assets", "bgm", `bgm-${Date.now()}.log`);
@@ -145,6 +143,7 @@ export function generateBgmDetached({
       "--prompt",
       prompt,
     ]);
+    rmSync(abs, { force: true }); // wait-bgm takes any file here as the finished track
     const proc = spawn(cmd, args, { detached: true, stdio: ["ignore", fd, fd] });
     proc.unref();
     closeSync(fd);
@@ -163,6 +162,7 @@ export function generateBgmDetached({
     const loops = targetS > seedS ? Math.ceil(targetS / seedS) : 1;
     const script = musicgenScript({ prompt, abs, targetS, seedS });
     const { cmd, args } = pythonInvocation(["-c", script]);
+    rmSync(abs, { force: true });
     const proc = spawn(cmd, args, { detached: true, stdio: ["ignore", fd, fd] });
     proc.unref();
     closeSync(fd);

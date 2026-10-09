@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildWaveformCacheKey } from "./waveform.js";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { buildWaveformCacheKey, decodeAudioPeaks } from "./waveform.js";
 
 describe("buildWaveformCacheKey", () => {
   it("is stable for the same file", () => {
@@ -32,5 +37,38 @@ describe("buildWaveformCacheKey", () => {
     expect(buildWaveformCacheKey("a/b.m4a", fp)).not.toBe(buildWaveformCacheKey("a/c.m4a", fp));
     expect(buildWaveformCacheKey("a/b.m4a", fp)).not.toMatch(/[/\\]/);
     expect(buildWaveformCacheKey("a/b.m4a", fp)).toMatch(/\.json$/);
+  });
+});
+
+describe("decodeAudioPeaks on a video file", () => {
+  const ffmpeg = findFfBinary("ffmpeg");
+  it.skipIf(!ffmpeg)("reads the audio track of an .mp4", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-wave-video-"));
+    const file = join(dir, "talk.mp4");
+    try {
+      execFileSync(ffmpeg ?? "ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=32x32:d=1",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=1",
+        "-shortest",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        file,
+      ]);
+      const peaks = await decodeAudioPeaks(file);
+      expect(peaks.length).toBeGreaterThan(0);
+      expect(Math.max(...peaks)).toBeCloseTo(1, 3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

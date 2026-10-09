@@ -3,6 +3,8 @@ name: figma
 description: Import Figma content into a HyperFrames composition — rendered assets, brand tokens, components, storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI), connector-assisted motion when available, and shaders from a connector or native export. Use when the user pastes a figma.com link or asks to bring a Figma design, frame, logo, brand, or animation into a video/composition.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update figma`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Figma → HyperFrames
@@ -92,7 +94,7 @@ No REST equivalent exists. When a compatible connector is available, use it and 
 
 1. Retrieve motion context for the parent frame in one recursive request, not one request per element. Save the raw JSON next to the project (`.media/figma-cache/`) so retranslation is free.
 2. Normalize into `MotionDoc`s with `motionContextToDocs(rawResponse, { selectorFor, repeat })` from `@hyperframes/core/figma` — **never transcribe keyframe numbers by hand**. The helper encodes the field-tested decoding rules mechanically: it parses the motion.dev snippets (the reliable encoding — the CSS snippets stretch durations and can disagree; they are ignored), strips loop-wrap tail keyframes (sub-millisecond segments at times ≈0.9999→1 are the loop's instant reset, not authored motion — the wrap is realized by `repeat` restart), and preserves bezier eases verbatim. `selectorFor` must return the ids from the Phase-3 component import — don't derive selectors from node names.
-   2b. **Validate against ground truth before calling it done — mandatory**: export the cohort's root frame through the available connector and run `node skills/figma/scripts/verify-motion.mjs --reference <export.mp4> --render <render.mp4> --crop WxH+X+Y` — it compares motion-energy deltas (static import fidelity cancels out) and fails below 15dB min motion-PSNR (calibrated: faithful ≈ 20+, diverging ≈ 5). Measure `--crop` from the render's actual card edges, don't guess. FAIL means re-check the translation, not the threshold.
+   2b. **Validate against ground truth before calling it done — mandatory**: export the cohort's root frame through the available connector and run `node <SKILL_DIR>/scripts/verify-motion.mjs --reference <export.mp4> --render <render.mp4> --crop WxH+X+Y` — it compares motion-energy deltas (static import fidelity cancels out) and fails below 15dB min motion-PSNR (calibrated: faithful ≈ 20+, diverging ≈ 5). Measure `--crop` from the render's actual card edges, don't guess. FAIL means re-check the translation, not the threshold.
 3. `motionToGsap(doc)` → `emitTimelineScript(spec)` → inject as a `<script>` after the GSAP + CustomEase CDN tags. Paused, finite, registered on `window.__timelines` with a literal key.
 4. Untranslatable track (shader-driven, unsupported prop, complex masks) → export through the connector, freeze the MP4, then embed it as `<video class="clip">`. Exception: shader-driven tracks — Figma's export path flattens shaders to the base color (see Shaders below), so a bake there silently loses the shader; ask the user for a native Figma export instead. Always say which path you used and why. Named eases outside the mapped set fall back to linear — the mapping table lives in `motionEase.ts`; flag the fallback to the user when it fires.
 5. Run `npx hyperframes check` before calling it done.
@@ -129,4 +131,4 @@ Storyboard files follow a grammar you can parse mechanically — don't eyeball, 
 
 ## Determinism
 
-Never leave a Figma URL in the composition — freeze first. Never emit `repeat: -1`. Timelines paused, finite, literal `window.__timelines` keys. All Figma I/O at import time; render sees local files only.
+Never leave a Figma URL in the composition — freeze first. Never emit `repeat: -1` without a finite root `data-duration`. Timelines paused, finite, literal `window.__timelines` keys. All Figma I/O at import time; render sees local files only.

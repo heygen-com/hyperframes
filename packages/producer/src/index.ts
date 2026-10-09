@@ -10,6 +10,7 @@
 export {
   createRenderJob,
   executeRenderJob,
+  resolveRenderDebugDir,
   RenderCancelledError,
   RenderQualityError,
   applyRenderWarningPolicy,
@@ -23,6 +24,11 @@ export {
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
+export {
+  RENDER_JOB_DIR,
+  createOwnedRenderDir,
+  listAbandonedRenderDirs,
+} from "./services/render/renderDirOwner.js";
 export {
   RENDER_REQUEST_VERSION,
   createRenderRequest,
@@ -108,6 +114,7 @@ export {
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 export { normalizeErrorMessage } from "./utils/errorMessage.js";
+export { collectRenderMedia, type RenderMedia } from "./services/renderMediaCollector.js";
 // Font localization: fetch + embed @font-face rules for requested families
 // (including those declared only via a remote <link>) so a bundled composition
 // renders with the real font instead of a fallback, regardless of network
@@ -122,7 +129,7 @@ export {
   type FontFetchErrorCode,
   type FontFetchRetryPolicy,
   type InjectDeterministicFontFacesOptions,
-} from "./services/deterministicFonts.js";
+} from "@hyperframes/core/fonts/embed";
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
 export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 

@@ -47,6 +47,8 @@ For convenience while writing storyboards: the upstream skill provides 24 effect
 
 For descriptions, durations, easing curves, and the per-library recipes: load `/animate-text` and read its own catalog page.
 
+For `mask-reveal-up` and other line-mask effects, leave room for the font's painted glyphs at rest. Tight line-height plus `overflow: hidden` can cut descenders and accents after the reveal finishes. Follow the [text mask guidance](../techniques.md#12-clip-path-reveal-masks): start with block padding of `0.2em` at the text's font size and a compensating negative margin, or release the clip on the timeline once the entrance settles. Inspect a settled snapshot using the actual font and text; `data-layout-allow-overflow` also waives checks in the resting state.
+
 ## In the storyboard
 
 Every text element in every beat can name an effect by ID, e.g.:

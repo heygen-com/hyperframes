@@ -1,8 +1,7 @@
 // fallow-ignore-file code-duplication
 import { EventEmitter } from "events";
 import { spawnSync } from "child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { createRequire } from "module";
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { basename, resolve } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +11,7 @@ import {
   parseFrameRate,
   pixelFormatHasAlpha,
 } from "./ffprobe.js";
+import { getFfprobeBinary } from "./ffmpegBinaries.js";
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
@@ -75,6 +75,135 @@ describe("extractMediaMetadata", () => {
       colorTransfer: "smpte2084",
       colorSpace: "gbr",
     });
+  });
+});
+
+describe("extractMediaMetadata nb_frames duration cross-check", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it("uses nb_frames to bound video duration when stream duration is absent and audio is longer", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1920,
+              height: 1080,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              nb_frames: "150",
+            },
+            { codec_type: "audio", codec_name: "aac" },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/stock-clip-long-audio.mp4");
+
+    expect(meta.durationSeconds).toBe(10);
+    expect(meta.videoStreamDurationSeconds).toBe(5);
+    expect(meta.frames).toBe(150);
+  });
+
+  it("falls back to container duration when nb_frames is absent", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1280,
+              height: 720,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+            },
+            { codec_type: "audio", codec_name: "aac" },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/no-nb-frames.mp4");
+
+    expect(meta.videoStreamDurationSeconds).toBe(10);
+    expect(meta.frames).toBeUndefined();
+  });
+
+  it("keeps container duration when nb_frames-derived duration is within 10%", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1280,
+              height: 720,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              nb_frames: "285",
+            },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/close-duration.mp4");
+
+    // 285 / 30 = 9.5s, within 10% of container (10s), so keep container
+    expect(meta.videoStreamDurationSeconds).toBe(10);
+  });
+
+  it("prefers stream duration over nb_frames when both are present", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1280,
+              height: 720,
+              duration: "5",
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              nb_frames: "300",
+            },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/stream-duration-present.mp4");
+
+    // stream duration (5s) takes precedence, nb_frames (300 / 30 = 10s) ignored
+    expect(meta.videoStreamDurationSeconds).toBe(5);
   });
 });
 
@@ -464,6 +593,258 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
   };
   return { spawn, calls };
 }
+
+describe("media metadata cache invalidation", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it("refreshes video metadata after an in-place file change", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-video-metadata-change-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "original file");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "video", width: 32, height: 24, avg_frame_rate: "10/1", duration: "1" },
+          ],
+          format: { duration: "1" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "video", width: 64, height: 48, avg_frame_rate: "24/1", duration: "2" },
+          ],
+          format: { duration: "2" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      expect(await extractMediaMetadata(file)).toMatchObject({ width: 32, durationSeconds: 1 });
+      writeFileSync(file, "updated file with different dimensions");
+      const refreshed = await extractMediaMetadata(file);
+      expect(refreshed).toMatchObject({ width: 64, height: 48, fps: 24, durationSeconds: 2 });
+      expect(await extractMediaMetadata(file)).toBe(refreshed);
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes audio metadata after an atomic same-size file replacement", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-audio-metadata-change-"));
+    const file = resolve(dir, "audio.wav");
+    const replacement = resolve(dir, "replacement.wav");
+    writeFileSync(file, "first");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "audio", codec_name: "pcm_s16le", sample_rate: "22050", channels: 1 },
+          ],
+          format: { duration: "1" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            { codec_type: "audio", codec_name: "pcm_s16le", sample_rate: "44100", channels: 2 },
+          ],
+          format: { duration: "2" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    try {
+      expect(await extractAudioMetadata(file)).toMatchObject({
+        durationSeconds: 1,
+        sampleRate: 22050,
+      });
+      writeFileSync(replacement, "other");
+      renameSync(replacement, file);
+      const refreshed = await extractAudioMetadata(file);
+      expect(refreshed).toMatchObject({ durationSeconds: 2, sampleRate: 44100, channels: 2 });
+      expect(await extractAudioMetadata(file)).toBe(refreshed);
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([false, true])(
+    "refreshes final-frame timestamps in signal scope %s",
+    async (useSignal) => {
+      const dir = mkdtempSync(resolve(tmpdir(), "hf-final-frame-change-"));
+      const file = resolve(dir, "video.mp4");
+      writeFileSync(file, "original file");
+      const { spawn, calls } = createSpawnSpy([
+        { kind: "exit", code: 0, stdout: "1.900000\n" },
+        { kind: "exit", code: 0, stdout: "1.950000\n" },
+      ]);
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+      const { extractFinalVideoFrameTimestamp } = await import("./ffprobe.js");
+      const metadata = { videoStreamDurationSeconds: 2, videoStreamStartSeconds: 0 };
+      const signal = useSignal ? new AbortController().signal : undefined;
+      try {
+        expect(await extractFinalVideoFrameTimestamp(file, metadata, signal)).toBe(1.9);
+        writeFileSync(file, "updated file with a different frame rate");
+        expect(await extractFinalVideoFrameTimestamp(file, metadata, signal)).toBe(1.95);
+        expect(await extractFinalVideoFrameTimestamp(file, metadata, signal)).toBe(1.95);
+        expect(calls).toHaveLength(2);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not return successful cached metadata after the file disappears", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-removed-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "original file");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24 }],
+          format: { duration: "1" },
+        }),
+      },
+      { kind: "exit", code: 1, stderr: "input missing" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      await extractMediaMetadata(file);
+      rmSync(file);
+      await expect(extractMediaMetadata(file)).rejects.toThrow(/input missing/);
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not retain completed metadata when file identity is unavailable", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-no-identity-"));
+    const file = resolve(dir, "missing.wav");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "mp3" }],
+          format: { duration: "1" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "mp3" }],
+          format: { duration: "2" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    try {
+      expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 1 });
+      expect(await extractAudioMetadata(file)).toMatchObject({ durationSeconds: 2 });
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the replacement probe cached when an older probe fails", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-probe-race-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "original file");
+    const factory = createSpawnSpy([]);
+    const processes: FakeProc[] = [];
+    vi.resetModules();
+    vi.doMock("child_process", () => ({
+      spawn: (command: string, args: readonly string[]) => {
+        const proc = factory.spawn(command, args);
+        processes.push(proc);
+        return proc;
+      },
+    }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      const failed = expect(extractMediaMetadata(file)).rejects.toThrow(/code 1/);
+      writeFileSync(file, "updated file with different dimensions");
+      const replacement = extractMediaMetadata(file);
+      processes[0]?.emit("close", 1);
+      await failed;
+      const shared = extractMediaMetadata(file);
+      expect(factory.calls).toHaveLength(2);
+      processes[1]?.stdout.emit(
+        "data",
+        Buffer.from(
+          JSON.stringify({
+            streams: [{ codec_type: "video", width: 64, height: 48 }],
+            format: { duration: "2" },
+          }),
+        ),
+      );
+      processes[1]?.emit("close", 0);
+      const [first, second] = await Promise.all([replacement, shared]);
+      expect(second).toBe(first);
+      expect(first).toMatchObject({ width: 64, durationSeconds: 2 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still shares an unchanged file probe between concurrent callers", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-metadata-shared-"));
+    const file = resolve(dir, "video.mp4");
+    writeFileSync(file, "unchanged file");
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24 }],
+          format: { duration: "1" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    try {
+      const [first, second] = await Promise.all([
+        extractMediaMetadata(file),
+        extractMediaMetadata(file),
+      ]);
+      expect(second).toBe(first);
+      expect(calls).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("ffprobe missing-binary fallback", () => {
   const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
@@ -882,6 +1263,139 @@ describe("ffprobe missing-binary fallback", () => {
     expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
   });
 
+  it("analyzeKeyframeIntervals flags a single-keyframe video as problematic, not healthy", async () => {
+    // A single-GOP file (one keyframe at t=0) is the worst case this check exists to catch.
+    // Regression for #3460, where fewer than 2 keyframes short-circuited to isProblematic:false.
+    // Real `csv=p=0` output has a trailing comma per row; parseFloat must tolerate it.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000,\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/single-gop.mp4", {
+        videoStreamDurationSeconds: 6.5,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 6.5,
+      maxIntervalSeconds: 6.5,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+  });
+
+  it("analyzeKeyframeIntervals leaves a single keyframe exactly at the 2s threshold healthy", async () => {
+    // isProblematic compares with a strict `>`, so exactly 2s must stay healthy.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/exactly-two-seconds.mp4", {
+        videoStreamDurationSeconds: 2,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 2,
+      maxIntervalSeconds: 2,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("analyzeKeyframeIntervals normalizes an absolute keyframe pts against a nonzero stream start", async () => {
+    // ffprobe's pts_time is absolute, not relative to stream start. A clip with
+    // start_time=5 and a keyframe at absolute pts 5.0 is still single-GOP end-to-end,
+    // so it must stay flagged, not cleared by subtracting duration from the raw pts.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "5.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/nonzero-start-single-gop.mp4", {
+        videoStreamDurationSeconds: 3,
+        videoStreamStartSeconds: 5,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 3,
+      maxIntervalSeconds: 3,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+  });
+
+  it("analyzeKeyframeIntervals leaves a short single-keyframe video healthy", async () => {
+    // The single-GOP span is measured off the duration the caller passes in, so
+    // a 1s video muxed with 10s of audio has to be probed with its video
+    // stream's duration; the container's would overstate the span and warn.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/short-video-long-audio.mp4", {
+        videoStreamDurationSeconds: 1,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 1,
+      maxIntervalSeconds: 1,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("analyzeKeyframeIntervals treats a single keyframe with an unknown (NaN) duration as healthy, not NaN", async () => {
+    // ffprobe reports "N/A" for duration on some containers, which parses to
+    // NaN upstream in extractMediaMetadata. Without a finite-duration guard,
+    // NaN propagates through Math.max unchanged into the returned interval.
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/unknown-duration.mp4", {
+        videoStreamDurationSeconds: NaN,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("analyzeKeyframeIntervals reports a zero-keyframe video as healthy, ignoring the duration", async () => {
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    await expect(
+      analyzeKeyframeIntervals("/tmp/no-keyframes.mp4", {
+        videoStreamDurationSeconds: 6.5,
+        videoStreamStartSeconds: 0,
+      }),
+    ).resolves.toEqual({
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 0,
+      isProblematic: false,
+    });
+  });
+
   it("analyzeKeyframeIntervals surfaces a ffprobe-missing error verbatim", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
     hidePathBinaries();
@@ -890,9 +1404,12 @@ describe("ffprobe missing-binary fallback", () => {
 
     const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
 
-    await expect(analyzeKeyframeIntervals("/tmp/no-such-video.mp4")).rejects.toThrow(
-      /ffprobe not found/,
-    );
+    await expect(
+      analyzeKeyframeIntervals("/tmp/no-such-video.mp4", {
+        videoStreamDurationSeconds: 10,
+        videoStreamStartSeconds: 0,
+      }),
+    ).rejects.toThrow(/ffprobe not found/);
     expect(calls.length).toBe(1);
     expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
   });
@@ -975,7 +1492,10 @@ describe("ffprobe option separator", () => {
 
     const { extractAudioMetadata, analyzeKeyframeIntervals } = await import("./ffprobe.js");
     await extractAudioMetadata("/tmp/-audio.wav");
-    await analyzeKeyframeIntervals("/tmp/-video.mp4");
+    await analyzeKeyframeIntervals("/tmp/-video.mp4", {
+      videoStreamDurationSeconds: 10,
+      videoStreamStartSeconds: 0,
+    });
 
     // Per call, not a flattened count. A total of 3 is satisfied by one call
     // emitting three `--` and two emitting none — i.e. it cannot fail for
@@ -1279,42 +1799,29 @@ describe("audio duration decode probe never fails the call and needs no profile 
   );
 });
 
-// PRINFRA-380: proves the fix against real files rather than a mocked probe.
-// The two fixtures under `__fixtures__/lying-container/` are a genuine
-// FLAC-in-MP4 — a codec the old AAC-LC-only packet-count refinement never
-// touched — and a byte-identical copy whose mvhd/tkhd/mdhd duration atoms were
-// halved while every real frame stayed intact, which is exactly the reported
-// "container says half, the audio says otherwise" symptom. They're committed
-// rather than generated at test time (as an earlier version of this test did,
-// via a local `ffmpeg` spawn) because the CI job running this suite has no real
-// ffmpeg on PATH — only a stub satisfying ffmpeg-static's postinstall check —
-// so that spawn silently skipped and this real-file proof never ran in CI.
-// `ffprobe-static` supplies the real ffprobe binary the test reads them with.
-describe("extractAudioMetadata recovers a real lying container's true duration", () => {
-  const ffprobeStaticPath: string = createRequire(import.meta.url)("ffprobe-static").path;
-  const honestPath = resolve(__dirname, "__fixtures__/lying-container/honest.mp4");
-  const lyingPath = resolve(__dirname, "__fixtures__/lying-container/lying.mp4");
+// honest.mp4 is FLAC-in-MP4; lying.mp4 is the same bytes with the mvhd/tkhd/mdhd
+// durations halved, every audio frame intact.
+const HAS_FFPROBE = spawnSync(getFfprobeBinary(), ["-version"]).status === 0;
 
-  const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
-  afterEach(() => {
-    if (originalFfprobePath === undefined) delete process.env.HYPERFRAMES_FFPROBE_PATH;
-    else process.env.HYPERFRAMES_FFPROBE_PATH = originalFfprobePath;
-  });
+describe.skipIf(!HAS_FFPROBE)(
+  "extractAudioMetadata recovers a real lying container's true duration",
+  () => {
+    const honestPath = resolve(__dirname, "__fixtures__/lying-container/honest.mp4");
+    const lyingPath = resolve(__dirname, "__fixtures__/lying-container/lying.mp4");
 
-  it("recovers the true duration from a FLAC-in-MP4 file whose container atoms were patched to lie", async () => {
-    process.env.HYPERFRAMES_FFPROBE_PATH = ffprobeStaticPath;
+    it("recovers the true duration from a FLAC-in-MP4 file whose container atoms were patched to lie", async () => {
+      const { extractAudioMetadata } = await import("./ffprobe.js");
+      const trueMeta = await extractAudioMetadata(honestPath);
+      expect(trueMeta.audioCodec).toBe("flac");
+      expect(trueMeta.durationSeconds).toBeGreaterThan(3.9);
 
-    const { extractAudioMetadata } = await import("./ffprobe.js");
-    const trueMeta = await extractAudioMetadata(honestPath);
-    expect(trueMeta.audioCodec).toBe("flac");
-    expect(trueMeta.durationSeconds).toBeGreaterThan(3.9);
+      const lyingMeta = await extractAudioMetadata(lyingPath);
 
-    const lyingMeta = await extractAudioMetadata(lyingPath);
-
-    // Recovers the real duration — not the halved container summary.
-    expect(lyingMeta.durationSeconds).toBeCloseTo(trueMeta.durationSeconds, 1);
-  });
-});
+      // Recovers the real duration — not the halved container summary.
+      expect(lyingMeta.durationSeconds).toBeCloseTo(trueMeta.durationSeconds, 1);
+    });
+  },
+);
 
 describe("final video frame timestamp probes", () => {
   afterEach(() => {

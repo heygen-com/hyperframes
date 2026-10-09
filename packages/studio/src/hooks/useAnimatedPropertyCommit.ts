@@ -18,10 +18,12 @@ import {
   selectorFromSelection,
   computeElementPercentage,
   isInstantHold,
+  keyframeEases,
   writeTargetSelector,
   tweenTargetsElement,
 } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import { progressAtTime, runEaseOf, timeAtProgress } from "../utils/gsapKeyframeEases";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import {
@@ -333,7 +335,7 @@ async function commitKeyframeProps(
     await commit(
       selection,
       { type: "convert-to-keyframes", animationId: anim.id },
-      { label: "Convert to keyframes", skipReload: true },
+      { label: "Convert to keyframes", keyframeTelemetry: false, skipReload: true },
     );
   }
   const ct = usePlayerStore.getState().currentTime;
@@ -365,19 +367,18 @@ async function commitKeyframeProps(
     const newStart = Math.min(ct, ts);
     const newEnd = Math.max(ct, ts + td);
     const newDuration = Math.max(0.01, newEnd - newStart);
+    const runEase = runEaseOf(anim);
+    const toNewPct = (absTime: number) =>
+      Math.round(progressAtTime(runEase, ((absTime - newStart) / newDuration) * 100) * 10) / 10;
     const remapped = kfs.map((kf) => {
-      const absTime = ts + (kf.percentage / 100) * td;
-      const newPct = Math.round(((absTime - newStart) / newDuration) * 1000) / 10;
+      const newPct = toNewPct(ts + (timeAtProgress(runEase, kf.percentage) / 100) * td);
       const p: Record<string, number | string> = { ...kf.properties };
       for (const k of Object.keys(properties)) {
         if (!(k in p) && backfillDefaults[k] != null) p[k] = backfillDefaults[k];
       }
-      return { percentage: newPct, properties: p };
+      return { percentage: newPct, properties: p, ...(kf.ease ? { ease: kf.ease } : {}) };
     });
-    remapped.push({
-      percentage: Math.round(((ct - newStart) / newDuration) * 1000) / 10,
-      properties,
-    });
+    remapped.push({ percentage: toNewPct(ct), properties });
     remapped.sort((a, b) => a.percentage - b.percentage);
     await commit(
       selection,
@@ -388,8 +389,9 @@ async function commitKeyframeProps(
         position: roundTo3(newStart),
         duration: roundTo3(newDuration),
         keyframes: remapped,
+        ...keyframeEases(anim),
       },
-      { label: `Edit ${primaryProp} (extended keyframe)`, softReload: true },
+      { label: `Edit ${primaryProp} (extended keyframe)`, keyframeAction: "add", softReload: true },
     );
     return;
   }
@@ -431,8 +433,12 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const commitAnimatedProperties = useCallback(
     // This is the single routing boundary for set, keyframe, whole-tween, and first-group writes.
     // fallow-ignore-next-line complexity
-    async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
-      if (!gsapCommitMutation) return;
+    async (
+      selection: DomEditSelection,
+      props: Record<string, number | string>,
+      commit: CommitMutation | null = gsapCommitMutation,
+    ): Promise<void> => {
+      if (!commit) return;
       const propEntries = Object.entries(props);
       if (propEntries.length === 0) return;
       const primaryProp = propEntries[0]![0];
@@ -490,7 +496,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
               ),
               pct,
               iframe,
-              { commitMutation: gsapCommitMutation },
+              { commitMutation: commit },
               `Edit ${primaryProp} (whole animation)`,
             );
             return;
@@ -503,7 +509,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
             primaryProp,
             selector,
             iframe,
-            gsapCommitMutation,
+            commit,
           );
           return;
         }
@@ -515,13 +521,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         // must update the position set AND create a size set atomically rather
         // than contaminating the first set with a foreign property group.
         if (!elementHasKeyframes) {
-          await commitStaticSet(
-            selection,
-            propEntries,
-            selector,
-            selectedGsapAnimations,
-            gsapCommitMutation,
-          );
+          await commitStaticSet(selection, propEntries, selector, selectedGsapAnimations, commit);
           return;
         }
 
@@ -534,7 +534,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
             propEntries,
             selector,
             selectedGsapAnimations,
-            gsapCommitMutation,
+            commit,
           );
           return;
         }
@@ -566,7 +566,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
                   { percentage: 0, properties: { ...newProps, _auto: 1 } },
                   { percentage: pct, properties: newProps },
                 ];
-          await gsapCommitMutation(
+          await commit(
             selection,
             {
               type: "add-with-keyframes",

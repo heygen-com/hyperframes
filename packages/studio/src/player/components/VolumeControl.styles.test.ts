@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const studioCss = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
+const studioCss = readFileSync(new URL("../../styles/components.css", import.meta.url), "utf8");
 
 describe("preview volume range styles", () => {
   it("uses the same compact thumb in Chromium and Firefox", () => {

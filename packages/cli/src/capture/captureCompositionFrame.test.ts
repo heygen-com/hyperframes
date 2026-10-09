@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AUDIT_SEEK_OPTIONS,
@@ -14,6 +15,7 @@ import {
   resolveCropRegion,
   runFfmpegOnce,
   seekCompositionTimeline,
+  waitForRuntimeReady,
   type CompositionSeekPage,
 } from "./captureCompositionFrame.js";
 
@@ -48,6 +50,39 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("waitForRuntimeReady", () => {
+  it("waits for the runtime's render-ready flag and reports a timeout as not ready", async () => {
+    const { waitForFunction } = fakeSeekPage();
+
+    await expect(waitForRuntimeReady({ waitForFunction }, 123)).resolves.toBe(true);
+    expect(waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 123 });
+    const ready = waitForFunction.mock.calls[0]![0];
+    vi.stubGlobal("window", { __timelines: {} });
+    expect(ready()).toBe(false);
+    vi.stubGlobal("window", { __timelines: {}, __renderReady: true });
+    expect(ready()).toBe(true);
+
+    waitForFunction.mockRejectedValueOnce(new Error("Waiting failed: 1ms exceeded"));
+    await expect(waitForRuntimeReady({ waitForFunction }, 1)).resolves.toBe(false);
+  });
+
+  it("is what layout, motion-shot and validate wait on before they sample the page", () => {
+    const commands = join(dirname(fileURLToPath(import.meta.url)), "../commands");
+    const firstSample = {
+      layout: "getCompositionDuration(page)",
+      motionShot: "installSeekHelper(page)",
+      validate: "auditClipDurations(page,",
+    };
+    for (const [name, sample] of Object.entries(firstSample)) {
+      const source = readFileSync(join(commands, `${name}.ts`), "utf8");
+      const wait = source.indexOf("await waitForRuntimeReady(page, ");
+      expect(wait, name).toBeGreaterThan(-1);
+      expect(source.indexOf(sample), name).toBeGreaterThan(wait);
+      expect(source, name).not.toContain("__timelines?: unknown }).__timelines");
+    }
+  });
+});
+
 describe("seekCompositionTimeline", () => {
   it("keeps the raced double-frame settle and adds a bounded font wait by default", async () => {
     const { page, evaluate, waitForFunction } = fakeSeekPage();
@@ -56,7 +91,7 @@ describe("seekCompositionTimeline", () => {
 
     expect(waitForFunction).not.toHaveBeenCalled();
     expect(evaluate).toHaveBeenCalledTimes(4);
-    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 1.25, false);
+    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 1.25, false, false);
     expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function));
     expect(evaluate.mock.calls[2]?.[0]).toContain("window.setTimeout(finish, 100)");
     // Post-seek font settle: a seek can reveal glyphs whose unicode-range
@@ -91,6 +126,17 @@ describe("seekCompositionTimeline", () => {
     expect(bridgeSeek).not.toHaveBeenCalled();
     expect(playerSeek).not.toHaveBeenCalled();
     expect(timelineSeek).not.toHaveBeenCalled();
+  });
+
+  it("asks renderSeek for the exact instant when exactTime is set", async () => {
+    const { page, evaluate } = fakeSeekPage();
+    const renderSeek = vi.fn();
+    vi.stubGlobal("window", { __player: { renderSeek } });
+
+    await seekCompositionTimeline(page, 19.019018, { exactTime: true });
+    runBrowserSeek(evaluate);
+
+    expect(renderSeek).toHaveBeenCalledWith(19.019018, { exact: true });
   });
 
   function fakeBridgeOnlySeekPage() {
@@ -150,7 +196,7 @@ describe("seekCompositionTimeline", () => {
 
     expect(waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 500 });
     expect(evaluate).toHaveBeenCalledTimes(2);
-    expect(evaluate).toHaveBeenCalledWith(expect.any(Function), 3, true);
+    expect(evaluate).toHaveBeenCalledWith(expect.any(Function), 3, true, false);
   });
 
   it("supports layout's ordered double-frame, bounded font, and sleep settles", async () => {
@@ -167,7 +213,7 @@ describe("seekCompositionTimeline", () => {
     await pending;
 
     expect(evaluate).toHaveBeenCalledTimes(4);
-    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 4, true);
+    expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 4, true, false);
     expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function));
     expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function));
     expect(evaluate).toHaveBeenNthCalledWith(4, expect.any(Function), 500);
@@ -225,9 +271,9 @@ describe("screenshot Chrome arguments", () => {
     );
     const layoutSource = readFileSync(new URL("../commands/layout.ts", import.meta.url), "utf8");
 
-    expect(captureSource).toContain("resolveCaptureBrowserGpuMode(");
+    expect(captureSource).toContain("resolveManagedGpuMode(");
     expect(captureSource).toContain("{ browserGpuMode: resolvedGpuMode }");
-    expect(layoutSource).toContain("resolveCaptureBrowserGpuMode(");
+    expect(layoutSource).toContain("resolveManagedGpuMode(");
     expect(layoutSource).toContain("{ browserGpuMode: resolvedGpuMode }");
   });
 });

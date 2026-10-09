@@ -4,6 +4,7 @@ import {
   collectTimelineSnapTargets,
   snapMoveToTargets,
   snapTimelineTime,
+  resolveSnapGuide,
 } from "./timelineSnapping";
 
 describe("collectTimelineSnapTargets", () => {
@@ -77,6 +78,35 @@ describe("snapTimelineTime", () => {
   it("returns input unchanged when nothing is within threshold", () => {
     expect(snapTimelineTime(6, targets, 0.1)).toEqual({ time: 6, target: null });
   });
+
+  it("snaps to the nearest ruler line when no target is in range", () => {
+    expect(snapTimelineTime(6.27, targets, 0.08, 0.25)).toEqual({
+      time: 6.25,
+      target: { time: 6.25, type: "grid" },
+    });
+    expect(snapTimelineTime(6.37, targets, 0.08, 0.25)).toEqual({ time: 6.37, target: null });
+  });
+
+  it("prefers a target in range over a nearer ruler line", () => {
+    expect(snapTimelineTime(5.24, targets, 0.08, 0.25).target).toEqual({
+      time: 5.3,
+      type: "playhead",
+    });
+  });
+
+  it("snaps a line at its saved centisecond, and not at all when that is a pixel or more off", () => {
+    // 187.5 px/s: 4.625s saves as 4.63s, under a pixel away, so the guide sits where the clip lands.
+    expect(snapTimelineTime(4.627, [], 8 / 187.5, 0.125).target).toEqual({
+      time: 4.63,
+      type: "grid",
+    });
+    // 1440 px/s: 1.025s would save 7px off its line, so the line does not snap.
+    expect(snapTimelineTime(1.026, [], 8 / 1440, 0.025)).toEqual({ time: 1.026, target: null });
+  });
+
+  it("lands on whole frames for a frame-spaced grid", () => {
+    expect(snapTimelineTime(1.01, [], 0.08, 1 / 30).time).toBe(1);
+  });
 });
 
 describe("snapMoveToTargets", () => {
@@ -107,6 +137,20 @@ describe("snapMoveToTargets", () => {
     expect(snapMoveToTargets(5.5, 2, targets, 1000, 60).snapTime).toBeNull();
   });
 
+  it("snaps a clip edge to the ruler grid when no target is near", () => {
+    expect(snapMoveToTargets(1.02, 2, [], 100, 60, 0.25)).toEqual({
+      start: 1,
+      snapTime: 1,
+      snapType: "grid",
+    });
+  });
+
+  it("prefers the edge on a real target over the other edge nearer a ruler line", () => {
+    // start 2.99 is 1px from the 3s line; the end 4.94 is 6px from the playhead at 5
+    const r = snapMoveToTargets(2.99, 1.95, targets, 100, 60, 0.25);
+    expect(r).toEqual({ start: 3.05, snapTime: 5, snapType: "playhead" });
+  });
+
   it("TIMELINE_SNAP_PX matches the historical beat-snap threshold", () => {
     expect(TIMELINE_SNAP_PX).toBe(8);
   });
@@ -130,5 +174,19 @@ describe("snapMoveToTargets", () => {
     const duration = 10 / 3;
     const r = snapMoveToTargets(5.0, duration, [{ time: 5.05, type: "beat" }], 100, 6);
     expect(r.snapTime).toBeNull();
+  });
+});
+
+describe("resolveSnapGuide", () => {
+  it("prefers a started move, falls back to a trim, and is null when neither snapped", () => {
+    const move = { started: true, snapTime: 2, snapType: "playhead" as const };
+    const trim = { snapTime: 5, snapType: "clip-edge" as const };
+    expect(resolveSnapGuide(move, trim)).toEqual({ time: 2, type: "playhead" });
+    expect(resolveSnapGuide({ ...move, started: false }, trim)).toEqual({
+      time: 5,
+      type: "clip-edge",
+    });
+    expect(resolveSnapGuide(null, { snapTime: null, snapType: null })).toBeNull();
+    expect(resolveSnapGuide(null, null)).toBeNull();
   });
 });

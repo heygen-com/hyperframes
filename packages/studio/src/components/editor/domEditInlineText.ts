@@ -53,17 +53,19 @@ export function canEditElementTextInline(element: HTMLElement | null): boolean {
   return (element.textContent ?? "").trim().length > 0;
 }
 
-function hasOnlyFormattingChildren(element: HTMLElement): boolean {
-  const HTMLElementClass = element.ownerDocument.defaultView?.HTMLElement;
-  if (!HTMLElementClass) return false;
+export function hasOnlyFormattingChildren(element: HTMLElement): boolean {
   for (const child of Array.from(element.children)) {
     if (!isRichTextFormattingTag(child.tagName)) return false;
-    if (!(child instanceof HTMLElementClass)) return false;
+    if (!isHtmlFromAnyWindow(child)) return false;
     // Formatting nests, and a structural child hidden inside a span is still
     // structural.
-    if (!hasOnlyFormattingChildren(child)) return false;
+    if (!hasOnlyFormattingChildren(child as HTMLElement)) return false;
   }
   return true;
+}
+
+function isHtmlFromAnyWindow(node: Element): boolean {
+  return node.namespaceURI === "http://www.w3.org/1999/xhtml";
 }
 
 /** Where and when a press landed, for recognising the next one as a pair. */

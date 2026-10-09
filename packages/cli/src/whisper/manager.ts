@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
@@ -150,6 +150,17 @@ export function findWhisper(): WhisperResult | undefined {
   return findFromEnv() ?? findFromSystem() ?? findBuiltBinary();
 }
 
+export function listWhisperModels(): { model: string; path: string }[] {
+  if (!existsSync(MODELS_DIR)) return [];
+  return readdirSync(MODELS_DIR)
+    .flatMap((file) => {
+      const model = /^ggml-(.+)\.bin$/.exec(file)?.[1];
+      const path = join(MODELS_DIR, file);
+      return model && existsSync(path) ? [{ model, path }] : [];
+    })
+    .sort((a, b) => a.model.localeCompare(b.model));
+}
+
 export function getInstallInstructions(): string {
   if (platform() === "darwin") {
     return "brew install whisper-cpp";
@@ -176,11 +187,17 @@ function hasCmake(): boolean {
 }
 
 export async function ensureWhisper(options?: {
+  installRuntime?: boolean;
   onProgress?: (msg: string) => void;
 }): Promise<WhisperResult> {
   // 1. Already installed?
   const existing = findWhisper();
   if (existing) return existing;
+  if (options?.installRuntime === false) {
+    throw new WhisperUnavailableError(
+      "whisper-cpp not found; runtime installation is disabled by --no-runtime-install.",
+    );
+  }
 
   // 2. Try brew (macOS, fastest — pre-built bottle)
   if (platform() === "darwin" && hasBrew()) {
@@ -212,7 +229,10 @@ export async function ensureWhisper(options?: {
 
 export async function ensureModel(
   model: string = DEFAULT_MODEL,
-  options?: { onProgress?: (message: string) => void },
+  options?: {
+    onProgress?: (message: string) => void;
+    onDownloadProgress?: (receivedBytes: number, totalBytes: number | null) => void;
+  },
 ): Promise<string> {
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
   if (existsSync(modelPath)) return modelPath;
@@ -220,7 +240,7 @@ export async function ensureModel(
   mkdirSync(MODELS_DIR, { recursive: true });
 
   options?.onProgress?.(`Downloading model ${model}...`);
-  await downloadFile(getModelUrl(model), modelPath);
+  await downloadFile(getModelUrl(model), modelPath, { onProgress: options?.onDownloadProgress });
 
   if (!existsSync(modelPath)) {
     throw new Error(`Model download failed: ${model}`);

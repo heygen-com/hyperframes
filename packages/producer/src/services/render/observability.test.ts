@@ -12,6 +12,7 @@ import {
   sanitizeObservationMessage,
   summarizeBrowserDiagnostics,
 } from "./observability.js";
+import { createConsoleLogger } from "../../logger.js";
 
 function makeLog() {
   return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
@@ -415,6 +416,32 @@ describe("RenderObservabilityRecorder", () => {
         status: "error",
       }),
     );
+  });
+});
+
+describe("[Render:trace] on the console", () => {
+  // A plain render parses these lines for progress; --quiet uses the warn level.
+  it("prints at the info level a plain render uses and not at the --quiet warn level", () => {
+    const printed = vi.spyOn(console, "error").mockImplementation(() => {});
+    const traceLines = (level: "info" | "warn") => {
+      printed.mockClear();
+      const recorder = new RenderObservabilityRecorder({
+        pipelineStartMs: Date.now(),
+        log: createConsoleLogger(level),
+        renderJobId: "render-plain",
+      });
+      recorder.stageEnd("capture_streaming", recorder.stageStart("capture_streaming"));
+      return printed.mock.calls.filter(([line]) =>
+        String(line).startsWith("[INFO] [Render:trace] "),
+      );
+    };
+
+    try {
+      expect(traceLines("info")).toHaveLength(2);
+      expect(traceLines("warn")).toHaveLength(0);
+    } finally {
+      printed.mockRestore();
+    }
   });
 });
 

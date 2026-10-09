@@ -31,10 +31,12 @@ When you run Studio from the monorepo, its dev server listens on `http://localho
 
 ## Entry points
 
-| Import                                | Contains                                                   |
-| ------------------------------------- | ---------------------------------------------------------- |
-| `@hyperframes/studio`                 | React components, hooks, utilities, and their public types |
-| `@hyperframes/studio/tailwind-preset` | Tailwind preset used by Studio                             |
+| Import                                | Contains                                                            |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| `@hyperframes/studio`                 | React components, hooks, utilities, and their public types          |
+| `@hyperframes/studio/ui`              | UI primitives (buttons, menus, popovers, fields) without the editor |
+| `@hyperframes/studio/player`          | The `Player` component alone, without the timeline                  |
+| `@hyperframes/studio/tailwind-preset` | Tailwind preset used by Studio                                      |
 
 Peer dependencies are React 19, React DOM 19, and Zustand 4 or 5.
 
@@ -73,6 +75,7 @@ Peer dependencies are React 19, React DOM 19, and Zustand 4 or 5.
 | ----------------------------------------------------------- | ----------------------------------------------------- |
 | `useTimelinePlayer`                                         | Read and control the shared player state              |
 | `usePlayerStore`                                            | Access the Zustand player store                       |
+| `useCompositionStack`                                       | Drill into and back out of nested compositions        |
 | `useElementPicker`                                          | Select and edit an element through the preview iframe |
 | `resolveSourceFile`, `applyPatch`                           | Locate and patch source                               |
 | `parseStyleString`, `mergeStyleIntoTag`, `findElementBlock` | Work with inline source styles and elements           |

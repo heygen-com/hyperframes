@@ -8,6 +8,7 @@ import { generateId } from "../../utils/generateId";
 import { readServerError } from "./serverError";
 import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
 import { requestStudioFeedback, type FeedbackContext } from "../feedback/feedbackTrigger";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export interface RenderJob {
   id: string;
@@ -126,7 +127,7 @@ export function useRenderQueue(
   const loadRenders = useCallback(async () => {
     if (!projectId) return;
     try {
-      const res = await fetch(buildProjectApiPath(projectId, `/renders`));
+      const res = await studioApiFetch(buildProjectApiPath(projectId, `/renders`));
       if (!res.ok) {
         setLoadError(`Couldn't load render history (server error ${res.status}).`);
         return;
@@ -262,7 +263,7 @@ export function useRenderQueue(
       }
       let res: Response;
       try {
-        res = await fetch(buildProjectApiPath(projectId, `/render`), {
+        res = await studioApiFetch(buildProjectApiPath(projectId, `/render`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -376,7 +377,7 @@ export function useRenderQueue(
         ),
       );
       try {
-        const res = await fetch(`/api/render/${jobId}/cancel`, { method: "POST" });
+        const res = await studioApiFetch(`/api/render/${jobId}/cancel`, { method: "POST" });
         if (!res.ok && res.status !== 404) {
           setActionError("Couldn't cancel on the server — the render may still be running.");
           return;
@@ -403,7 +404,7 @@ export function useRenderQueue(
       setActionError(null);
       closeActiveEventSource(jobId);
       try {
-        const res = await fetch(`/api/render/${jobId}`, { method: "DELETE" });
+        const res = await studioApiFetch(`/api/render/${jobId}`, { method: "DELETE" });
         if (!res.ok) {
           setActionError("Couldn't delete the render — it's still on disk.");
           return;

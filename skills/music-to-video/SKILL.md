@@ -3,13 +3,15 @@ name: music-to-video
 description: "Turn a music track (an audio file, a video to pull audio from, or a track generated from a mood brief) into a beat-synced video — lyric video, slideshow, or kinetic promo. The music drives all pacing; any user-supplied images/videos are cut onto the same beat grid, and a complete video needs zero assets. Narrated pieces → the input-matched workflow (see /hyperframes). Unclear → /hyperframes."
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update music-to-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # music-to-video — one music-grounded, beat-synced video workflow
 
 Use this skill to turn a **music track** into a beat-synced HyperFrames video. You analyze the track once, lay out the frames, fill in a per-frame plan, and build each frame as a composition. The input is a music track plus optional user images or videos — there is **no narration and no website capture**. Typography and templates are the floor (a complete video needs zero assets); any media the user supplies is cut in on the same beat grid.
 
-You are the **orchestrator**. Work in `videos/<project>/`. Run the steps in order and pass each **Gate** before moving on. Two steps need the user: **Step 3** (plan approval) and **Step 6** (render approval) — both are checkpoint gates per `../hyperframes/references/brief-contract.md` (read it before Step 0): in autonomous mode, post the summary as a heads-up and proceed instead of waiting. Do every step yourself except **Step 4**, where you dispatch **one sub-agent per frame**. Keep design and motion rules out of this file — they live in `references/` and the `frame-worker` sub-agent.
+You are the **orchestrator**. Work in `videos/<project>/`. Run the steps in order and pass each **Gate** before moving on. Two steps need the user: **Step 3** (plan approval) and **Step 6** (render approval) — both are checkpoint gates per `../hyperframes/references/brief-contract.md` (read it before Step 0): in autonomous mode, post the Step 3 summary as a heads-up and proceed; Step 6 render approval is still asked, as the one kept question. Do every step yourself except **Step 4**, where you dispatch **one sub-agent per frame**. Keep design and motion rules out of this file — they live in `references/` and the `frame-worker` sub-agent.
 
 `SKILL_DIR` = this skill directory. `PROJECT_DIR` = `videos/<project-name>/`.
 
@@ -28,7 +30,7 @@ Goal: Establish the music source, create the HyperFrames project, and note any u
 
 **The brief starts at the intent layer.** Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing it answers — its `flow`/`storyboard` derive the mode (brief contract § 1). **(2)** No `BRIEF.md` but the project exists → resume from what's on disk; never re-interrogate. **(3)** A fresh creation request that arrived here directly → read `/hyperframes` and run its intent layer (`references/intent-interview.md`): it confirms this route's must-haves (the music source, destination → aspect — `../hyperframes/references/routes/music-to-video.md`) and announces what stays deferred — brand and genre are chosen at Step 3 by design. Write `BRIEF.md` immediately after init (never before — `init` refuses a non-empty directory) and record the preference-backed answers (`brief-format.md`). Edit requests skip all of this.
 
-The **music is the spine** — establish one track before anything else. This skill is tuned for **fast, high-energy BGM**: a strong beat grid drives the cuts (calm tracks work, but pace by phrase rather than beat). If the user supplied audio — a music file, or a video to pull audio from — use it. Otherwise choose the mood from the request and generate a track through `/media-use` (`references/bgm.md`). Before the first authenticated provider action, run `npx hyperframes auth status` and relay its output verbatim. If signed out, apply one branch:
+The **music is the spine** — establish one track before anything else. This skill is tuned for **fast, high-energy BGM**: a strong beat grid drives the cuts (calm tracks work, but pace by phrase rather than beat). If the user supplied audio — a music file, or a video to pull audio from — use it. Otherwise choose the mood from the request and generate a track through `/media-use` (`audio/references/bgm.md`); when the host app provides its own music tool, use that. Before the first authenticated provider action, run `npx hyperframes auth status` and relay its output verbatim. If signed out, apply one branch:
 
 - **Collaborative:** wait for sign-in or an explicit choice to continue offline with the local provider.
 - **Autonomous:** state the status and continue through the available local provider.
@@ -98,7 +100,7 @@ node <SKILL_DIR>/scripts/validate-plan.mjs --storyboard "$PROJECT_DIR/STORYBOARD
   --audiomap "$PROJECT_DIR/audiomap.json" --templates <SKILL_DIR>/references/templates
 ```
 
-Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a missing `src`); warnings are best-effort. Then show the user a frame-by-frame summary and iterate until they approve. In autonomous mode this is a checkpoint gate: post the summary as a heads-up and proceed (the `validate-plan.mjs` pass is a quality gate and still blocks).
+Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a missing `src`); warnings are best-effort. Then present the frame-by-frame summary in chat as a proposal (`../hyperframes/references/review-loop.md` § 1) and iterate on the user's replies until they approve; for `storyboard: yes`, also write it as `storyboard.html` (`../hyperframes-creative/references/storyboard-recipe.md` § 3) for them to open. In autonomous mode this is a checkpoint gate: post the summary as a heads-up and proceed (the `validate-plan.mjs` pass is a quality gate and still blocks).
 
 **Gate:** `frame.md` is a verbatim preset copy; `validate-plan.mjs` exits 0; the user approved the plan (autonomous: the summary was posted as a heads-up).
 
@@ -156,7 +158,7 @@ Run the CLI on the **assembled project** — that's the correct unit (the per-fr
 ( cd "$PROJECT_DIR" && npx hyperframes check . --snapshots )
 ```
 
-Inspect at `t=0`, each frame start, the strongest DROP / SURGE, every `hard_stops[].t`, and the final frame. On failure, make the **cheapest safe fix** yourself: edit the offending `compositions/frames/NN-*.html`. Never change duration or audio timing to hide a sync issue. Once the gates pass, pause for user review, then render only on approval (autonomous mode: ask the one kept question — "preview first, or render?" — then deliver the MP4 with the contact sheet):
+Inspect at `t=0`, each frame start, the strongest DROP / SURGE, every `hard_stops[].t`, and the final frame. On failure, make the **cheapest safe fix** yourself: edit the offending `compositions/frames/NN-*.html`. Never change duration or audio timing to hide a sync issue. Once the gates pass, open the final Studio preview (`( cd "$PROJECT_DIR" && npx hyperframes preview --background )`) and pause for user review — render now, or what changes? Render only on approval (autonomous mode: the same, as the one kept question), then deliver the MP4 with the contact sheet:
 
 ```bash
 ( cd "$PROJECT_DIR" && npx hyperframes render . --skill=music-to-video -q draft -o renders/video.mp4 --fps 30 )
@@ -202,7 +204,7 @@ music-to-video/
   references/   frame-skeleton.md · planning.md · storyboard-format.md
                 template-catalog.md · motion-primitive-catalog.md · montage.md
                 templates/<id>/          { index.html (+ assets/ · program.json) }  ← L1 catalog impls
-                motion-primitives/<id>/  { index.html } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
+                motion-primitives/<id>/  { index.html (mounts the scene), scene.html (the sub-composition) } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
   scripts/      analyze-beatgrid.py · assemble-index.mjs · validate-plan.mjs · stage-assets.mjs · lib/storyboard.mjs
   sub-agents/   frame-worker.md   ← the one subagent (one per frame)
 ```

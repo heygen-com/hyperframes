@@ -48,7 +48,7 @@ export function FlatEffectsAccessory({
         track("button", "Reset effects");
         onCommitColorGrading({ ...grading, effects: { ...DEFAULT_EFFECTS }, palette: null });
       }}
-      className="flex-shrink-0 text-panel-text-3 hover:text-panel-text-1"
+      className="shrink-0 text-panel-text-3 hover:text-panel-text-1"
     >
       <RotateCcw size={12} />
     </button>
@@ -186,7 +186,7 @@ export function FlatEffectsSection({
               track("button", "Customize effect palette");
               onCommitColorGrading({ ...grading, palette: fallback });
             }}
-            className="flex min-h-[28px] items-center gap-1 text-[10px] font-medium text-panel-accent hover:text-panel-accent/80"
+            className="flex min-h-[28px] items-center gap-1 text-[10px] font-medium text-accent-ink hover:text-accent-ink/80"
           >
             <Plus size={11} /> Custom palette
           </button>
@@ -215,7 +215,7 @@ export function FlatEffectsSection({
                       nextPalette[index] = event.target.value;
                       onCommitColorGrading({ ...grading, palette: nextPalette });
                     }}
-                    className="h-6 w-6 cursor-pointer rounded-sm border border-panel-border-input bg-transparent p-0"
+                    className="h-6 w-6 cursor-pointer rounded-xs border border-panel-border-input bg-transparent p-0"
                   />
                   {palette.length > 2 && (
                     <button
@@ -227,7 +227,7 @@ export function FlatEffectsSection({
                           palette: palette.filter((_, colorIndex) => colorIndex !== index),
                         })
                       }
-                      className="absolute -right-1 -top-1 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-panel-bg text-panel-text-2 shadow group-hover/swatch:flex"
+                      className="absolute -right-1 -top-1 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-panel-bg text-panel-text-2 shadow-sm group-hover/swatch:flex"
                     >
                       <X size={8} />
                     </button>
@@ -244,7 +244,7 @@ export function FlatEffectsSection({
                       palette: [...palette, palette.at(-1) ?? "#ffffff"],
                     })
                   }
-                  className="flex h-6 w-6 items-center justify-center rounded-sm border border-panel-border-input text-panel-text-4 hover:text-panel-text-1"
+                  className="flex h-6 w-6 items-center justify-center rounded-xs border border-panel-border-input text-panel-text-4 hover:text-panel-text-1"
                 >
                   <Plus size={11} />
                 </button>
@@ -307,7 +307,7 @@ export function FlatEffectsSection({
                 type="button"
                 title={`Remove ${selectedEffect.label}`}
                 onClick={() => removeEffect(selectedEffect)}
-                className="text-panel-text-4 hover:text-red-300"
+                className="text-panel-text-4 hover:text-danger-ink"
               >
                 <X size={11} />
               </button>
@@ -352,7 +352,7 @@ export function FlatEffectsSection({
         data-flat-effects-add-toggle="true"
         aria-expanded={catalogOpen}
         onClick={() => setCatalogOpen((open) => !open)}
-        className="flex min-h-[30px] items-center gap-1 text-[10px] font-medium text-panel-accent hover:text-panel-accent/80"
+        className="flex min-h-[30px] items-center gap-1 text-[10px] font-medium text-accent-ink hover:text-accent-ink/80"
       >
         <Plus size={11} /> Add effect
       </button>
@@ -374,7 +374,7 @@ export function FlatEffectsSection({
                 onClick={() => setCatalogGroup(group.label)}
                 className={`min-h-[25px] min-w-0 truncate bg-panel-bg px-2 text-[9px] ${
                   catalogGroup === group.label
-                    ? "font-medium text-panel-accent"
+                    ? "font-medium text-accent-ink"
                     : "text-panel-text-4 hover:text-panel-text-1"
                 }`}
               >

@@ -17,7 +17,7 @@ import {
 } from "../../utils/globalTimeCompiler";
 import type { TimelinePropertyGroupKeyframeToggle } from "./timelineCallbacks";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
-import { groupLabel, valuesAt, type LaneValues } from "./trackHeaderLaneValues";
+import { groupLabel, valuesAt, valuesBefore, type LaneValues } from "./trackHeaderLaneValues";
 
 export type TimelinePropertyLane = ReturnType<typeof getTimelinePropertyLanes>[number];
 export type KeyframeNavigationState = ReturnType<
@@ -110,7 +110,14 @@ export function resolveLaneHeaderState(
     currentTime,
     clipPercentage,
   );
-  const values = animation ? valuesAt(animation, lane.group, tweenPercentage) : {};
+  const values = animation
+    ? valuesAt(
+        animation,
+        lane.group,
+        tweenPercentage,
+        valuesBefore(animation, lane.elementAnimations),
+      )
+    : {};
 
   return {
     navigation,

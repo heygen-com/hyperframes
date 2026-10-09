@@ -19,7 +19,9 @@ export {
 
 export function ensureHfIds(html: string): string {
   // Wrap fragments so every body element participates in stable ID assignment.
-  const wrapped = !/<!doctype|<html[\s>]/i.test(html);
+  const wrapped = !/^(?:<!doctype|<html[\s>/])/i.test(
+    html.replace(/^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/, ""),
+  );
   const { document } = wrapped
     ? parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`)
     : parseHTML(html);

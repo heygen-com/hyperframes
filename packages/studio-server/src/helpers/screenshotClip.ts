@@ -5,6 +5,7 @@ export interface ScreenshotClip {
   height: number;
 }
 
+// Serialised by page.evaluate, so self-contained; fades everything but the element's own branch.
 export function getElementScreenshotClip(
   selector: string,
   selectorIndex?: number,
@@ -25,6 +26,17 @@ export function getElementScreenshotClip(
   const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)));
   const el = matches[safeIndex] ?? null;
   if (!(el instanceof HTMLElement)) return undefined;
+  // Opacity, not visibility; each prior inline opacity is kept for clearElementScreenshotIsolation.
+  const page = window as Window & { __hfThumbnailFaded?: [CSSStyleDeclaration, string, string][] };
+  const faded = (page.__hfThumbnailFaded ??= []);
+  for (let node: Element = el; node.parentElement; node = node.parentElement) {
+    for (const sibling of Array.from(node.parentElement.children)) {
+      const style = (sibling as HTMLElement).style;
+      if (sibling === node || !style) continue;
+      faded.push([style, style.getPropertyValue("opacity"), style.getPropertyPriority("opacity")]);
+      style.setProperty("opacity", "0", "important");
+    }
+  }
   const rect = el.getBoundingClientRect();
   if (rect.width < 4 || rect.height < 4) return undefined;
   const pad = 8;
@@ -38,4 +50,13 @@ export function getElementScreenshotClip(
     width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
     height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
   };
+}
+
+export function clearElementScreenshotIsolation(): void {
+  const page = window as Window & { __hfThumbnailFaded?: [CSSStyleDeclaration, string, string][] };
+  for (const [style, value, priority] of (page.__hfThumbnailFaded ?? []).reverse()) {
+    if (value) style.setProperty("opacity", value, priority);
+    else style.removeProperty("opacity");
+  }
+  page.__hfThumbnailFaded = [];
 }

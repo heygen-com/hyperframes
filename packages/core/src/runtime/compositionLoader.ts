@@ -1,5 +1,25 @@
-import { planCompositionAssembly } from "../compiler/compositionAssembly";
-import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/compositionScoping";
+import {
+  SVG_REFERENCE_ALIASES_ATTR,
+  readSvgReferenceAliases,
+  refreshSvgSelectorAliases,
+} from "../compiler/svgSelectorAliases";
+import {
+  planCompositionAssembly,
+  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+} from "../compiler/compositionAssembly";
+import {
+  scopeCssToComposition,
+  scopedModulePrelude,
+  wrapScopedCompositionScript,
+} from "../compiler/compositionScoping";
+import { parseImportMap } from "../compiler/importMaps";
+import { hasSameLink } from "../compiler/scriptRuns";
+import {
+  namespaceCollidingSvgIds,
+  rewriteSvgIdReferencesInCss,
+} from "../compiler/svgIdNamespacing";
+import { waitForFonts } from "./afterFonts";
+import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
   applyCssVariables,
@@ -12,7 +32,7 @@ import {
 } from "./getVariables";
 import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
 
-type LoadExternalCompositionsParams = {
+type LoadCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
   injectedScripts: HTMLScriptElement[];
   injectedLinks: HTMLLinkElement[];
@@ -21,6 +41,18 @@ type LoadExternalCompositionsParams = {
     code: string;
     details: Record<string, string | number | boolean | null | string[]>;
   }) => void;
+};
+
+type MountedSvgScope = {
+  host: Element;
+  namespace: string;
+  styles: Array<{ element: HTMLStyleElement; authored: string; applied: string }>;
+  referenceTarget?: "document";
+};
+
+type MountedComposition = MountedSvgScope & {
+  isCurrent: () => boolean;
+  runScripts: () => Promise<void>;
 };
 
 type PendingScript =
@@ -193,7 +225,7 @@ function resetCompositionHost(host: Element) {
  * inline-template path, and mutating it would leave a remount with no styles.
  */
 function stripExtractedCompositionAssets(node: ParentNode): void {
-  for (const el of Array.from(node.querySelectorAll("style, script"))) {
+  for (const el of Array.from(node.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR))) {
     el.remove();
   }
 }
@@ -201,10 +233,10 @@ function stripExtractedCompositionAssets(node: ParentNode): void {
 function prepareFlattenedInnerRoot(innerRoot: HTMLElement): HTMLElement {
   const prepared = document.importNode(innerRoot, true) as HTMLElement;
   markFlattenedInnerRoot(prepared);
-  const w = prepared.getAttribute("data-width");
-  const h = prepared.getAttribute("data-height");
-  prepared.style.width = w ? `${w}px` : "100%";
-  prepared.style.height = h ? `${h}px` : "100%";
+  const w = parseLayoutDimension(prepared.getAttribute("data-width"));
+  const h = parseLayoutDimension(prepared.getAttribute("data-height"));
+  prepared.style.width = w === null ? "100%" : `${w}px`;
+  prepared.style.height = h === null ? "100%" : `${h}px`;
   return prepared;
 }
 
@@ -318,15 +350,28 @@ function cleanupDetachedScopedVariables() {
 
 function assignRuntimeCompositionIds(
   hosts: Element[],
-  hostCountsByCompositionId: Map<string, number> = countAuthoredCompositionIds(hosts),
+  mountedHosts: ReadonlySet<Element>,
 ): Map<Element, HostCompositionIdentity> {
+  const hostCountsByCompositionId = countAuthoredCompositionIds(hosts);
+  const reserved = new Set(
+    hosts.flatMap((host) => {
+      const identity = getHostCompositionIdentity(host);
+      const ids = identity.authoredCompositionId ? [identity.authoredCompositionId] : [];
+      if (
+        (mountedHosts.has(host) || !shouldAssignRuntimeCompositionId(host)) &&
+        identity.runtimeCompositionId
+      )
+        ids.push(identity.runtimeCompositionId);
+      return ids;
+    }),
+  );
   const hostInstanceByCompositionId = new Map<string, number>();
   const hostIdentityByElement = new Map<Element, HostCompositionIdentity>();
 
   for (const host of hosts) {
     const { authoredCompositionId, runtimeCompositionId: previousRuntimeCompositionId } =
       getHostCompositionIdentity(host);
-    const shouldAssign = shouldAssignRuntimeCompositionId(host);
+    const shouldAssign = !mountedHosts.has(host) && shouldAssignRuntimeCompositionId(host);
     if (!authoredCompositionId) {
       hostIdentityByElement.set(host, {
         authoredCompositionId: null,
@@ -338,16 +383,18 @@ function assignRuntimeCompositionIds(
     const duplicateInstance = (hostCountsByCompositionId.get(authoredCompositionId) || 0) > 1;
     let runtimeCompositionId = previousRuntimeCompositionId || authoredCompositionId;
     if (shouldAssign) {
-      const instanceIndex = duplicateInstance
+      let instanceIndex = duplicateInstance
         ? (hostInstanceByCompositionId.get(authoredCompositionId) || 0) + 1
         : 0;
       if (duplicateInstance) {
+        while (reserved.has(uniqueCompositionId(authoredCompositionId, instanceIndex)))
+          instanceIndex += 1;
         hostInstanceByCompositionId.set(authoredCompositionId, instanceIndex);
       }
-
       runtimeCompositionId = duplicateInstance
         ? uniqueCompositionId(authoredCompositionId, instanceIndex)
         : authoredCompositionId;
+      reserved.add(runtimeCompositionId);
 
       if (duplicateInstance) {
         host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
@@ -355,13 +402,6 @@ function assignRuntimeCompositionIds(
         host.removeAttribute("data-hf-original-composition-id");
       }
       host.setAttribute("data-composition-id", runtimeCompositionId);
-      if (
-        previousRuntimeCompositionId &&
-        previousRuntimeCompositionId !== runtimeCompositionId &&
-        window.__hfVariablesByComp
-      ) {
-        delete window.__hfVariablesByComp[previousRuntimeCompositionId];
-      }
     }
 
     hostIdentityByElement.set(host, {
@@ -370,6 +410,7 @@ function assignRuntimeCompositionIds(
     });
   }
 
+  cleanupDetachedScopedVariables();
   return hostIdentityByElement;
 }
 
@@ -397,7 +438,7 @@ async function mountCompositionContent(params: {
    * `<html data-composition-variables="...">` attribute. Layered under the
    * host element's `data-variable-values` to produce the per-instance
    * variables visible inside the sub-comp's scoped `getVariables()`.
-   * Populated only by `loadExternalCompositions`; inline templates have no
+   * Populated only by `loadCompositions`; inline templates have no
    * separate document root so no declared defaults are passed.
    */
   declaredVariableDefaults?: Record<string, unknown>;
@@ -411,7 +452,7 @@ async function mountCompositionContent(params: {
     code: string;
     details: Record<string, string | number | boolean | null | string[]>;
   }) => void;
-}): Promise<void> {
+}): Promise<MountedComposition> {
   // Which node is the composition root, which id its CSS scopes to, which id
   // its scripts scope to, where its assets come from and in what order: the
   // shared assembly module answers all of it, so this path and the compiler's
@@ -448,14 +489,15 @@ async function mountCompositionContent(params: {
     if (!rawHref) continue;
     const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
     if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
-    if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
     const clonedLink = link.cloneNode(true);
     if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
+    if (hasSameLink(document.head, clonedLink)) continue;
     document.head.appendChild(clonedLink);
     params.injectedLinks.push(clonedLink);
   }
 
+  const styles: MountedComposition["styles"] = [];
   const injectScopedStyles = (styleEls: Iterable<Element>): void => {
     for (const style of styleEls) {
       const clonedStyle = style.cloneNode(true);
@@ -475,6 +517,8 @@ async function mountCompositionContent(params: {
       }
       document.head.appendChild(clonedStyle);
       params.injectedStyles.push(clonedStyle);
+      const authored = clonedStyle.textContent || "";
+      styles.push({ element: clonedStyle, authored, applied: authored });
     }
   };
   // Already in injection order: <head> styles from a non-template composition
@@ -533,6 +577,7 @@ async function mountCompositionContent(params: {
     params.host.appendChild(mountedContent);
   } else {
     params.host.innerHTML = params.fallbackBodyInnerHtml;
+    stripExtractedCompositionAssets(params.host);
   }
 
   // Stash the per-instance variables BEFORE running scripts. The scoped
@@ -543,58 +588,87 @@ async function mountCompositionContent(params: {
     stashInstanceVariables(params, contentNode, runtimeScopeCompositionId);
   }
 
-  for (const scriptPayload of scriptPayloads) {
-    const injectedScript = document.createElement("script");
-    if (scriptPayload.type) {
-      injectedScript.type = scriptPayload.type;
-    }
-    // Preserve deterministic script execution order across injected composition scripts.
-    injectedScript.async = false;
-    if (scriptPayload.kind === "external") {
-      injectedScript.src = scriptPayload.src;
-    } else if (scriptPayload.type.toLowerCase() === "module") {
-      injectedScript.textContent = scriptPayload.content;
-    } else if (scriptPayload.scopeCompositionId) {
-      injectedScript.textContent = wrapScopedCompositionScript(
-        scriptPayload.content,
-        scriptPayload.scopeCompositionId,
-        "[HyperFrames] composition script error:",
-        runtimeScopeSelector,
-        runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
-        authoredRootId,
-      );
-    } else {
-      injectedScript.textContent = `(function(){${scriptPayload.content}})();`;
-    }
-    document.body.appendChild(injectedScript);
-    params.injectedScripts.push(injectedScript);
-    if (scriptPayload.kind === "external") {
-      const loadResult = await waitForExternalScriptLoad(injectedScript);
-      if (loadResult.status !== "load") {
-        params.onDiagnostic?.({
-          code: "external_composition_script_load_issue",
-          details: {
-            hostCompositionId: params.authoredCompositionId,
-            runtimeCompositionId: params.runtimeCompositionId,
-            hostCompositionSrc: params.hostCompositionSrc,
-            resolvedScriptSrc: scriptPayload.src,
-            loadStatus: loadResult.status,
-            elapsedMs: loadResult.elapsedMs,
-          },
-        });
+  const mountedNodes = Array.from(params.host.childNodes);
+  const isCurrent = () =>
+    params.host.isConnected &&
+    (mountedNodes.length > 0 || params.host.childNodes.length === 0) &&
+    mountedNodes.every((node) => node.parentNode === params.host);
+  return {
+    host: params.host,
+    namespace: runtimeScopeCompositionId || authoredScopeCompositionId || "",
+    styles,
+    isCurrent,
+    runScripts: async () => {
+      if (scriptPayloads.length > 0) await waitForFonts();
+      if (!isCurrent()) return;
+      for (const scriptPayload of scriptPayloads) {
+        const injectedScript = document.createElement("script");
+        if (scriptPayload.type) {
+          injectedScript.type = scriptPayload.type;
+        }
+        // Preserve deterministic script execution order across injected composition scripts.
+        injectedScript.async = false;
+        if (scriptPayload.kind === "external") {
+          injectedScript.src = scriptPayload.src;
+        } else if (scriptPayload.type.toLowerCase() === "importmap") {
+          const map = parseImportMap(scriptPayload.content, (url) =>
+            resolveScriptSourceUrl(url, params.compositionUrl),
+          );
+          injectedScript.textContent = map ? JSON.stringify(map) : scriptPayload.content;
+        } else if (scriptPayload.type.toLowerCase() === "module") {
+          const prelude = scriptPayload.scopeCompositionId
+            ? scopedModulePrelude(
+                runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
+                params.compositionUrl?.href,
+              )
+            : "";
+          injectedScript.textContent = prelude + scriptPayload.content;
+        } else if (scriptPayload.scopeCompositionId) {
+          injectedScript.textContent = wrapScopedCompositionScript(
+            scriptPayload.content,
+            scriptPayload.scopeCompositionId,
+            "[HyperFrames] composition script error:",
+            runtimeScopeSelector,
+            runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
+            authoredRootId,
+            params.compositionUrl?.href,
+          );
+        } else {
+          injectedScript.textContent = `(function(){${scriptPayload.content}})();`;
+        }
+        document.body.appendChild(injectedScript);
+        params.injectedScripts.push(injectedScript);
+        if (scriptPayload.kind === "external") {
+          const loadResult = await waitForExternalScriptLoad(injectedScript);
+          if (loadResult.status !== "load") {
+            params.onDiagnostic?.({
+              code: "external_composition_script_load_issue",
+              details: {
+                hostCompositionId: params.authoredCompositionId,
+                runtimeCompositionId: params.runtimeCompositionId,
+                hostCompositionSrc: params.hostCompositionSrc,
+                resolvedScriptSrc: scriptPayload.src,
+                loadStatus: loadResult.status,
+                elapsedMs: loadResult.elapsedMs,
+              },
+            });
+          }
+        }
       }
-    }
-  }
+    },
+  };
 }
 
-export async function loadInlineTemplateCompositions(
-  params: LoadExternalCompositionsParams,
-): Promise<void> {
+async function mountInlineTemplateCompositions(
+  params: LoadCompositionsParams,
+  mountedHosts: ReadonlySet<Element>,
+): Promise<MountedComposition[]> {
   const trackedHosts = getTrackedCompositionHosts();
   cleanupDetachedScopedVariables();
-  if (trackedHosts.length === 0) return;
-  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts);
+  if (trackedHosts.length === 0) return [];
+  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, mountedHosts);
   const hosts = trackedHosts.filter((host) => {
+    if (mountedHosts.has(host)) return false;
     if (host.hasAttribute("data-composition-src")) return false;
     if (host.children.length > 0) return false;
     const compId = hostIdentityByElement.get(host)?.authoredCompositionId;
@@ -602,8 +676,7 @@ export async function loadInlineTemplateCompositions(
     return !!document.querySelector(`template#${CSS.escape(compId)}-template`);
   });
 
-  if (hosts.length === 0) return;
-
+  const mounted: MountedComposition[] = [];
   for (const host of hosts) {
     const hostIdentity = hostIdentityByElement.get(host);
     const compId = hostIdentity?.authoredCompositionId;
@@ -613,7 +686,7 @@ export async function loadInlineTemplateCompositions(
     )!;
 
     resetCompositionHost(host);
-    await mountCompositionContent({
+    const composition = await mountCompositionContent({
       host,
       authoredCompositionId: compId,
       runtimeCompositionId: hostIdentity?.runtimeCompositionId || compId,
@@ -628,23 +701,24 @@ export async function loadInlineTemplateCompositions(
       parseDimensionPx: params.parseDimensionPx,
       onDiagnostic: params.onDiagnostic,
     });
+    mounted.push(composition);
   }
+  return mounted;
 }
 
-export async function loadExternalCompositions(
-  params: LoadExternalCompositionsParams,
-): Promise<void> {
+async function mountExternalCompositions(
+  params: LoadCompositionsParams,
+): Promise<MountedComposition[]> {
   const trackedHosts = getTrackedCompositionHosts();
   cleanupDetachedScopedVariables();
-  if (trackedHosts.length === 0) return;
-  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts);
+  if (trackedHosts.length === 0) return [];
+  const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, new Set());
   const hosts = trackedHosts.filter((host) => host.hasAttribute("data-composition-src"));
-  if (hosts.length === 0) return;
 
-  await Promise.all(
-    hosts.map(async (host) => {
+  const mounted = await Promise.all(
+    hosts.map(async (host): Promise<MountedComposition | null> => {
       const src = host.getAttribute("data-composition-src");
-      if (!src) return;
+      if (!src) return null;
       const hostIdentity = hostIdentityByElement.get(host);
       const authoredCompositionId = hostIdentity?.authoredCompositionId || null;
       const runtimeCompositionId =
@@ -656,6 +730,31 @@ export async function loadExternalCompositions(
         compositionUrl = null;
       }
       resetCompositionHost(host);
+      const failed = (error: unknown) => {
+        params.onDiagnostic?.({
+          code: "external_composition_load_failed",
+          details: {
+            hostCompositionId: authoredCompositionId,
+            runtimeCompositionId,
+            hostCompositionSrc: src,
+            errorMessage: error instanceof Error ? error.message : "unknown_error",
+          },
+        });
+        // Keep host empty on load failures to avoid rendering escaped fallback HTML.
+        resetCompositionHost(host);
+      };
+      const mount = async (mountParams: Parameters<typeof mountCompositionContent>[0]) => {
+        const composition = await mountCompositionContent(mountParams);
+        const runScripts = composition.runScripts;
+        composition.runScripts = async () => {
+          try {
+            await runScripts();
+          } catch (error) {
+            failed(error);
+          }
+        };
+        return composition;
+      };
       try {
         const localTemplate =
           authoredCompositionId != null
@@ -664,7 +763,7 @@ export async function loadExternalCompositions(
               )
             : null;
         if (localTemplate) {
-          await mountCompositionContent({
+          return await mount({
             host,
             authoredCompositionId,
             runtimeCompositionId,
@@ -679,7 +778,6 @@ export async function loadExternalCompositions(
             parseDimensionPx: params.parseDimensionPx,
             onDiagnostic: params.onDiagnostic,
           });
-          return;
         }
         const response = await fetch(src);
         if (!response.ok) {
@@ -688,15 +786,7 @@ export async function loadExternalCompositions(
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
-        // Rewrite project-root-traversing (`../`) asset paths against the
-        // sub-composition's URL before extracting any nodes. Without this,
-        // `<video src="../../assets/x.mp4">` authored from
-        // `compositions/frames/scene.html` resolves against the main
-        // document's base (the project preview root) and climbs above it
-        // to 404 — the Studio-preview-vs-render divergence reported by
-        // OSS users. The server-side bundler already does this for the
-        // baked render via `inlineSubCompositions`; this is the runtime
-        // mirror so live preview matches.
+        // Resolve parent-relative assets against the fetched composition before mounting.
         rewriteSubCompositionAssetPaths(doc, compositionUrl);
         const template =
           (authoredCompositionId
@@ -705,7 +795,7 @@ export async function loadExternalCompositions(
               )
             : null) ?? doc.querySelector<HTMLTemplateElement>("template");
         const sourceNode = template ? template.content : doc.body;
-        await mountCompositionContent({
+        return await mount({
           host,
           authoredCompositionId,
           runtimeCompositionId,
@@ -732,20 +822,101 @@ export async function loadExternalCompositions(
           onDiagnostic: params.onDiagnostic,
         });
       } catch (error) {
-        params.onDiagnostic?.({
-          code: "external_composition_load_failed",
-          details: {
-            hostCompositionId: authoredCompositionId,
-            runtimeCompositionId,
-            hostCompositionSrc: src,
-            errorMessage: error instanceof Error ? error.message : "unknown_error",
-          },
-        });
-        // Keep host empty on load failures to avoid rendering escaped fallback HTML.
-        resetCompositionHost(host);
+        failed(error);
+        return null;
       }
     }),
   );
+  return mounted.filter((composition): composition is MountedComposition => composition !== null);
+}
+
+/** Finalize authored DOM before scripts observe ids, then retain script-created inline discovery. */
+export async function loadCompositions(params: LoadCompositionsParams): Promise<void> {
+  const finalizedIds = new Set<Element>();
+  const rootScope: MountedSvgScope = {
+    host: document.documentElement,
+    namespace: "",
+    referenceTarget: "document",
+    styles: [...document.querySelectorAll("style")].map((element) => ({
+      element,
+      authored: element.textContent ?? "",
+      applied: element.textContent ?? "",
+    })),
+  };
+  const external = await mountExternalCompositions(params);
+  const inline = await mountInlineTemplateCompositions(
+    params,
+    new Set(external.map(({ host }) => host)),
+  );
+  const initial = [...external, ...inline];
+  namespaceMountedSvgIds([...initial, rootScope], finalizedIds);
+  await Promise.all(external.map((composition) => composition.runScripts()));
+
+  const activeInline = inline.filter((composition) => {
+    if (composition.isCurrent()) return true;
+    for (const style of composition.styles) style.element.remove();
+    if (window.__hfVariablesByComp) delete window.__hfVariablesByComp[composition.namespace];
+    return false;
+  });
+  const live = [...external.filter((composition) => composition.host.isConnected), ...activeInline];
+  const discovered = await mountInlineTemplateCompositions(
+    params,
+    new Set(live.map(({ host }) => host)),
+  );
+  if (discovered.length) {
+    namespaceMountedSvgIds([...live, ...discovered, rootScope], finalizedIds);
+  }
+  const byHost = new Map(
+    [...activeInline, ...discovered].map((composition) => [composition.host, composition]),
+  );
+  for (const host of getTrackedCompositionHosts()) {
+    const composition = byHost.get(host);
+    if (composition) await composition.runScripts();
+  }
+  // Newly referenced IDs retain the initial-script repair; earlier eligible IDs stay final.
+  const finalScopes = [...live, ...discovered].filter(
+    (composition) => composition.host.isConnected,
+  );
+  namespaceMountedSvgIds([...finalScopes, rootScope], finalizedIds);
+}
+
+/** Reuse one finalization set across authored mounting and initial-script discovery. */
+function namespaceMountedSvgIds(
+  mounted: readonly MountedSvgScope[],
+  finalizedIds: Set<Element>,
+): void {
+  for (const { styles } of mounted) {
+    for (const style of styles) {
+      const current = style.element.textContent ?? "";
+      if (current !== style.applied) {
+        style.authored = current;
+        style.applied = current;
+      }
+    }
+  }
+  const idMaps = namespaceCollidingSvgIds(
+    document,
+    mounted.map(({ host, namespace, styles, referenceTarget }) => ({
+      root: host,
+      namespace,
+      referenceTarget,
+      exclude: mounted
+        .filter((nested) => nested.host !== host && host.contains(nested.host))
+        .map((nested) => nested.host),
+      cssTexts: styles.map((style) => style.authored),
+    })),
+    finalizedIds,
+  );
+  idMaps.forEach((idMap, index) => {
+    const references = readSvgReferenceAliases(mounted[index]!.host, SVG_REFERENCE_ALIASES_ATTR);
+    if (idMap.size === 0 && references.length === 0) return;
+    for (const style of mounted[index]!.styles) {
+      const rewritten = rewriteSvgIdReferencesInCss(style.authored, idMap, references);
+      if (rewritten !== style.applied) style.element.textContent = rewritten;
+      style.applied = rewritten;
+    }
+  });
+  refreshSvgSelectorAliases();
 }
 
 /**

@@ -52,7 +52,7 @@ export function injectPreviewGoogleFont(doc: Document, fontFamilyValue: string):
 }
 
 export function injectPreviewImportedFont(doc: Document, asset: ImportedFontAsset): void {
-  const id = `studio-imported-font-${asset.family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const id = `studio-imported-font-${asset.path.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   if (doc.getElementById(id)) return;
   const style = doc.createElement("style");
   style.id = id;
@@ -60,24 +60,6 @@ export function injectPreviewImportedFont(doc: Document, asset: ImportedFontAsse
   doc.head.appendChild(style);
 }
 
-export function ensureImportedFontFace(
-  html: string,
-  asset: ImportedFontAsset,
-  sourceFile: string,
-): string {
-  const css = importedFontFaceCss(asset, toRelativeProjectAssetPath(sourceFile, asset.path));
-  if (html.includes(css)) return html;
-
-  const styleRe = /<style\b[^>]*data-hf-studio-fonts=(["'])true\1[^>]*>([\s\S]*?)<\/style>/i;
-  const styleMatch = styleRe.exec(html);
-  if (styleMatch) {
-    const nextCss = `${styleMatch[2].trim()}\n${css}`.trim();
-    return html.replace(styleMatch[0], `<style data-hf-studio-fonts="true">\n${nextCss}\n</style>`);
-  }
-
-  const styleTag = `<style data-hf-studio-fonts="true">\n${css}\n</style>`;
-  if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, `  ${styleTag}\n  </head>`);
-  }
-  return `${styleTag}\n${html}`;
+export function importedFontFaceCssFor(asset: ImportedFontAsset, sourceFile: string): string {
+  return importedFontFaceCss(asset, toRelativeProjectAssetPath(sourceFile, asset.path));
 }

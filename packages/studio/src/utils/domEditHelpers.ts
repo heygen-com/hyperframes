@@ -1,5 +1,6 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { getDomEditTargetKey } from "../components/editor/domEditing";
+import { sameData } from "./sameData";
 
 export function domEditSelectionsTargetSame(
   a: DomEditSelection | null,
@@ -8,6 +9,10 @@ export function domEditSelectionsTargetSame(
   if (a === b) return true;
   if (!a || !b) return false;
   return getDomEditTargetKey(a) === getDomEditTargetKey(b);
+}
+
+export function domEditSelectionsEqual(a: DomEditSelection, b: DomEditSelection): boolean {
+  return sameData(a, b);
 }
 
 export function domEditSelectionInGroup(

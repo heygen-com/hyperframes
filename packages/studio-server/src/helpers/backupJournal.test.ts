@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ProjectRootMissingError } from "@hyperframes/core";
 import { backupPathForResponse, snapshotBeforeWrite } from "./backupJournal";
 
 const tempDirs: string[] = [];
@@ -84,5 +85,28 @@ describe("snapshotBeforeWrite", () => {
         .map((name) => readFileSync(join(projectDir, ".hyperframes", "backup", name), "utf-8"))
         .sort(),
     ).toEqual(["space", "underscore"]);
+  });
+});
+
+describe("snapshotBeforeWrite when the project folder is gone", () => {
+  afterEach(() => {
+    vi.doUnmock("./safePath.js");
+    vi.resetModules();
+  });
+
+  it("lets the missing-folder error through instead of reporting a failed backup", async () => {
+    const projectDir = createProjectDir();
+    const file = join(projectDir, "index.html");
+    writeFileSync(file, "before");
+    vi.resetModules();
+    vi.doMock("./safePath.js", async () => ({
+      ...(await vi.importActual<typeof import("./safePath.js")>("./safePath.js")),
+      mkdirWithinProject: (root: string) => {
+        throw new ProjectRootMissingError(root);
+      },
+    }));
+    const { snapshotBeforeWrite: snapshot } = await import("./backupJournal");
+
+    expect(() => snapshot(projectDir, file)).toThrow(/Project folder not found/);
   });
 });

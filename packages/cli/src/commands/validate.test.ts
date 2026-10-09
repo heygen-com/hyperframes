@@ -14,6 +14,7 @@ import {
   auditClipDurations,
   extractCompositionErrorsFromLint,
   navigationTimeoutHint,
+  projectPathOfUrl,
   raceMediaReady,
   resolveNavigationTimeoutMs,
   shouldIgnoreRequestFailure,
@@ -396,5 +397,14 @@ describe("validate command deprecation (U5)", () => {
     const { parsed } = await runAndParseJsonEnvelope(validateCommand);
     expect(parsed.ok).toBe(false);
     expect(parsed._meta.deprecated).toBe(true);
+  });
+});
+
+describe("projectPathOfUrl", () => {
+  it("names a file with a bare percent sign instead of throwing", () => {
+    expect(projectPathOfUrl("http://127.0.0.1:4000/assets/50%.png")).toBe("assets/50%.png");
+    expect(projectPathOfUrl("http://127.0.0.1:4000/assets/50%25%20off.png")).toBe(
+      "assets/50% off.png",
+    );
   });
 });

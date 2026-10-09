@@ -67,13 +67,10 @@ export function resolveProject(
     return resolveProjectOrThrow(dirArg, options);
   } catch (err) {
     if (err instanceof InvalidProjectError) {
-      // Self-exit (not a throw) so the cli.ts wrapper never sees it — report
-      // inline. argv[2] is the running command (info / inspect / render / ...).
-      // This is the dominant failure for read-only commands like `info` run
-      // outside a project; the redaction in trackCliError strips the dir path.
+      // Reported here: several commands catch this failure and never reach the executable boundary.
       trackCommandFailure(process.argv[2] ?? "unknown", err);
       errorBox(err.title, err.hint, err.suggestion);
-      failCommand();
+      failCommand(1, err);
     }
     throw err;
   }

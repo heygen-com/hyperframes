@@ -1,4 +1,8 @@
 import { useCallback } from "react";
+import {
+  serializeStudioFileMutation,
+  type StudioProjectFileWriter,
+} from "../utils/studioFileMutationCoordinator";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { roundTo3 } from "../utils/rounding";
@@ -10,10 +14,9 @@ import {
   cutoverCommittedOrThrow,
   type CutoverDeps,
 } from "../utils/sdkCutover";
-import {
-  assignGsapTargetAutoIdIfNeeded,
-  ensureElementAddressable,
-} from "./gsapScriptCommitHelpers";
+import { ensureElementAddressable } from "./gsapScriptCommitHelpers";
+import { idSelector } from "./gsapShared";
+import { assignGsapTargetAutoIdIfNeeded } from "./useDomEditCommitsHelpers";
 import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 
 interface SdkAnimationDeps {
@@ -27,6 +30,7 @@ interface GsapAnimationOpsParams extends SdkAnimationDeps {
   commitMutation: CommitMutation;
   commitMutationSafely: SafeGsapCommitMutation;
   showToast: (message: string, tone?: "error" | "info") => void;
+  writeProjectFile?: StudioProjectFileWriter;
 }
 
 export function useGsapAnimationOps({
@@ -37,6 +41,7 @@ export function useGsapAnimationOps({
   showToast,
   sdkSession,
   sdkDeps,
+  writeProjectFile,
 }: GsapAnimationOpsParams) {
   const updateGsapMeta = useCallback(
     async (
@@ -116,20 +121,28 @@ export function useGsapAnimationOps({
       method: "to" | "from" | "set" | "fromTo",
       _currentTime?: number,
     ) => {
-      const { selector, autoId } = ensureElementAddressable(selection);
+      const address = ensureElementAddressable(selection);
+      const { autoId } = address;
+      let selector = address.selector;
 
       if (autoId) {
         const pid = projectIdRef.current;
-        const targetPath = selection.sourceFile || activeCompPath || "index.html";
         if (!pid) return;
-        const assigned = await assignGsapTargetAutoIdIfNeeded({
-          projectId: pid,
-          targetPath,
-          selection,
-          autoId,
-          showToast,
-        });
-        if (!assigned) return;
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const assign = () =>
+          assignGsapTargetAutoIdIfNeeded({
+            projectId: pid,
+            targetPath,
+            selection,
+            autoId,
+            showToast,
+          });
+        const savedId = await (writeProjectFile
+          ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
+          : assign());
+        if (!savedId) return;
+        selection.element.setAttribute("id", savedId);
+        selector = idSelector(savedId);
       }
 
       const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
@@ -143,10 +156,8 @@ export function useGsapAnimationOps({
         fromTo: { x: 0, y: 0, opacity: 1 },
       };
 
-      // Skip SDK path when an id was just assigned server-side (autoId): the
-      // SDK session hasn't reloaded that write yet, so persisting its
-      // serialization would clobber the new id — let the server add the tween
-      // atomically with the id it wrote.
+      // After an id write (autoId) the SDK session has not reloaded the file yet,
+      // so persisting its serialization would drop the new id.
       if (!autoId && selection.hfId && sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const spec = {
@@ -181,7 +192,15 @@ export function useGsapAnimationOps({
         { label: `Add GSAP ${method} animation`, softReload: true },
       );
     },
-    [activeCompPath, commitMutation, projectIdRef, showToast, sdkSession, sdkDeps],
+    [
+      activeCompPath,
+      commitMutation,
+      projectIdRef,
+      showToast,
+      sdkSession,
+      sdkDeps,
+      writeProjectFile,
+    ],
   );
 
   type KeyframeEntry = {

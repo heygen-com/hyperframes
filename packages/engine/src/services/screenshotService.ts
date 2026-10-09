@@ -279,43 +279,34 @@ export async function captureScreenshotWithAlpha(
 }
 
 /**
- * Set the page background to transparent once for a dedicated HDR DOM session.
- *
- * Call this once after session initialization. Then use captureAlphaPng() per
- * frame instead of captureScreenshotWithAlpha() to skip the per-frame CDP
- * background override round-trips.
- *
- * Only use on sessions that are exclusively dedicated to transparent capture
- * (e.g., the HDR two-pass DOM layer session) — the background will stay
- * transparent for the lifetime of the session.
- *
- * NOTE on the injected stylesheet: `Emulation.setDefaultBackgroundColorOverride`
- * only replaces the *default* page background. Compositions almost always set
- * `body { background: ... }` and `#root { background: ... }`, which paint over
- * the override and ruin alpha capture for layered HDR compositing — the
- * composition root's full-frame background paints across the entire viewport
- * and wipes out HDR content captured beneath it.
- *
- * We force `html`, `body`, and any element marked as a composition root
- * (`[data-composition-id]`) to transparent. In HDR layered compositing the HDR
- * video itself is the backdrop, so DOM layers must only contribute their
- * foreground UI pixels — never a page-spanning solid backdrop.
+ * Make the page transparent for alpha capture, then use captureAlphaPng() per frame. html/body always clear;
+ * [data-composition-id] roots (nested too) keep their background unless clearCompositionRoot (HDR layered pass).
+ * A repeat call rewrites the rule, so the last call wins.
  */
 const TRANSPARENT_BG_STYLE_ID = "__hf_transparent_bg__";
 
-export async function initTransparentBackground(page: Page): Promise<void> {
+export async function initTransparentBackground(
+  page: Page,
+  { clearCompositionRoot = false }: { clearCompositionRoot?: boolean } = {},
+): Promise<void> {
   const client = await getCdpSession(page);
   await client.send("Emulation.setDefaultBackgroundColorOverride", {
     color: { r: 0, g: 0, b: 0, a: 0 },
   });
-  await page.evaluate((styleId: string) => {
-    if (document.getElementById(styleId)) return;
-    const style = document.createElement("style");
-    style.id = styleId;
-    style.textContent =
-      "html,body,[data-composition-id]{background:transparent !important;background-color:transparent !important;background-image:none !important;}";
-    document.head.appendChild(style);
-  }, TRANSPARENT_BG_STYLE_ID);
+  await page.evaluate(
+    (styleId: string, clearCompositionRoot: boolean) => {
+      const selector = clearCompositionRoot ? "html,body,[data-composition-id]" : "html,body";
+      let style = document.getElementById(styleId);
+      if (!style) {
+        style = document.createElement("style");
+        style.id = styleId;
+        document.head.appendChild(style);
+      }
+      style.textContent = `${selector}{background:transparent !important;background-color:transparent !important;background-image:none !important;}`;
+    },
+    TRANSPARENT_BG_STYLE_ID,
+    clearCompositionRoot,
+  );
 }
 
 /**
@@ -804,11 +795,15 @@ export async function injectVideoFramesBatch(
         img.decoding = "sync";
         if (img.getAttribute("src") !== item.dataUri) {
           img.src = item.dataUri;
+          const source = item.dataUri.startsWith("data:") ? "inline frame" : item.dataUri;
           pendingDecodes.push(
-            img
-              .decode()
-              .catch(() => undefined)
-              .then(() => undefined),
+            img.decode().catch((error: unknown) => {
+              throw new Error(
+                `Video frame for "${item.videoId}" failed to load (${source}): ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }),
           );
         }
         img.style.opacity = String(computedOpacity);

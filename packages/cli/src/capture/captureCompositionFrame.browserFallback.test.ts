@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -6,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   launch: vi.fn(),
   buildChromeArgs: vi.fn(() => []),
   resolveBrowserGpuMode: vi.fn(async () => "software" as const),
+  compositionRequiresWebGpu: vi.fn(() => false),
+  assertWebGpuAdapterAvailable: vi.fn(async () => undefined),
 }));
 
 vi.mock("../browser/manager.js", () => ({
@@ -15,9 +18,14 @@ vi.mock("../browser/manager.js", () => ({
 
 vi.mock("puppeteer-core", () => ({ default: { launch: mocks.launch } }));
 
+// captureCompositionFrame.js imports these two from ../browser/gpuPolicy.js,
+// which re-exports them from this mocked module — unmocked here, they'd read
+// undefined and throw as soon as openSettledCompositionPage calls them.
 vi.mock("@hyperframes/engine", () => ({
   buildChromeArgs: mocks.buildChromeArgs,
   resolveBrowserGpuMode: mocks.resolveBrowserGpuMode,
+  compositionRequiresWebGpu: mocks.compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable: mocks.assertWebGpuAdapterAvailable,
 }));
 
 import { openSettledCompositionPage } from "./captureCompositionFrame.js";
@@ -47,6 +55,7 @@ function fakeBrowser() {
     browser: {
       newPage: vi.fn(async () => page),
       close: vi.fn(async () => undefined),
+      process: vi.fn(() => new EventEmitter()),
     },
     page,
   };

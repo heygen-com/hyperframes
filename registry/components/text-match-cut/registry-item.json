@@ -1,0 +1,79 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "text-match-cut",
+  "type": "hyperframes:component",
+  "title": "Text Match Cut",
+  "description": "One line of text becomes another mid-move: both ride a single 85 % easy-ease curve and hard-swap at the speed peak, as scale, tracking, or a same-direction slide.",
+  "tags": ["motion-primitive", "transition", "typography", "match-cut", "hard-cut", "continuity"],
+  "jobs": ["connect"],
+  "family": "transitions",
+  "profile": "transition",
+  "evidence": "Editing Snapped, The Match Cut Technique Every After Effects User Needs — text workflow measured per frame at 60 fps",
+  "syncPoints": [{ "id": "hard-cut", "phase": "in", "offset": 1.0 }],
+  "files": [
+    {
+      "path": "text-match-cut.html",
+      "target": "compositions/components/text-match-cut.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text_a",
+      "type": "string",
+      "role": "content",
+      "label": "Outgoing text",
+      "description": "The line on screen before the cut.",
+      "default": "Basic Interface Behavior"
+    },
+    {
+      "id": "text_b",
+      "type": "string",
+      "role": "content",
+      "label": "Incoming text",
+      "description": "The line that continues the move after the cut.",
+      "default": "Thoughtful Experience Design"
+    },
+    {
+      "id": "mode",
+      "type": "enum",
+      "role": "style",
+      "label": "Move",
+      "description": "Which property carries the cut. Both texts ride the same curve.",
+      "default": "scale-down",
+      "options": [
+        { "value": "scale-down", "label": "Scale down (tutorial)" },
+        { "value": "scale-up", "label": "Scale up" },
+        { "value": "tracking-in", "label": "Tracking in" },
+        { "value": "slide-left", "label": "Slide left" },
+        { "value": "slide-right", "label": "Slide right" },
+        { "value": "slide-up", "label": "Slide up" },
+        { "value": "slide-down", "label": "Slide down" }
+      ]
+    },
+    {
+      "id": "sweep",
+      "type": "enum",
+      "role": "style",
+      "label": "Gradient sweep",
+      "description": "Cyan-to-blue bar sweeping through the glyphs around the cut.",
+      "default": "on",
+      "options": [
+        { "value": "on", "label": "On" },
+        { "value": "off", "label": "Off" }
+      ]
+    },
+    {
+      "id": "background",
+      "type": "enum",
+      "role": "style",
+      "label": "Background",
+      "description": "The tutorial navy glow, or transparent so the host shows through.",
+      "default": "navy",
+      "options": [
+        { "value": "navy", "label": "Navy glow" },
+        { "value": "transparent", "label": "Transparent" }
+      ]
+    }
+  ]
+}

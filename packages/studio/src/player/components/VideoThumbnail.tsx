@@ -1,9 +1,19 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { memo, useMemo, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
-import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
+import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
+import {
+  createThumbnailKey,
+  type ThumbnailPriority,
+  type ThumbnailSnapshot,
+} from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
-import { computeThumbnailStrip, THUMBNAIL_CLIP_HEIGHT } from "./thumbnailUtils";
+import { ThumbnailTiles } from "./ThumbnailTiles";
+import {
+  computeThumbnailStrip,
+  quantizeThumbnailFrameCount,
+  thumbnailFrameForTile,
+} from "./thumbnailUtils";
+import { useValueAtRest } from "./timelineMotion";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -15,7 +25,77 @@ interface VideoThumbnailProps {
   projectId?: string;
   sessionEpoch?: number;
   priority?: ThumbnailPriority;
-  rich?: boolean;
+}
+
+function createVideoThumbnailRequest(
+  props: Pick<VideoThumbnailProps, "videoSrc" | "sourceStart" | "sourceRangeDuration"> &
+    Required<Pick<VideoThumbnailProps, "duration" | "projectId" | "sessionEpoch" | "priority">>,
+  frameCount: number,
+  rich: boolean,
+) {
+  const {
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  } = props;
+  return {
+    key: createThumbnailKey({
+      kind: "video",
+      source: videoSrc,
+      start: sourceStart,
+      duration: sourceRangeDuration ?? duration,
+      frames: frameCount,
+    }),
+    projectId,
+    sessionEpoch,
+    kind: "video" as const,
+    priority,
+    rich,
+    load: (signal: AbortSignal) =>
+      decodeVideoThumbnail(
+        {
+          source: videoSrc,
+          contentVersion: createThumbnailKey({ project: projectId, session: sessionEpoch }),
+          sourceStart,
+          sourceRangeDuration: sourceRangeDuration ?? duration,
+          frameCount,
+          fit: "cover",
+        },
+        signal,
+      ),
+  };
+}
+
+function selectThumbnailSnapshot(
+  poster: ThumbnailSnapshot,
+  rich: ThumbnailSnapshot,
+  shown: ThumbnailSnapshot,
+): ThumbnailSnapshot {
+  if (rich.status === "ready") return rich;
+  if (shown.status === "ready") return shown;
+  if (poster.status === "ready") return poster;
+  if (rich.status === "loading" || poster.status === "loading") return { status: "loading" };
+  return poster;
+}
+
+type VideoThumbnailRequest = ReturnType<typeof createVideoThumbnailRequest>;
+
+function useVideoThumbnailSnapshot(
+  poster: VideoThumbnailRequest | null,
+  rich: VideoThumbnailRequest | null,
+  media: string,
+): ThumbnailSnapshot {
+  const posterSnapshot = useThumbnailLease(poster);
+  const richSnapshot = useThumbnailLease(rich);
+  const [shown, setShown] = useState({ media, request: rich });
+  const settled = richSnapshot.status === "ready" || rich === null;
+  if (settled && shown.request !== rich) setShown({ media, request: rich });
+  const shownSnapshot = useThumbnailLease(shown.media === media ? shown.request : null);
+  return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
 
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
@@ -29,72 +109,60 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   projectId = videoSrc,
   sessionEpoch = 0,
   priority = "visible",
-  rich = false,
 }: VideoThumbnailProps) {
-  const [containerWidth, setContainerWidth] = useState(0);
-  const observerRef = useRef<ResizeObserver | null>(null);
-  const request = useMemo(
+  const [container, setContainerRef, watchGap] = useThumbnailStripSize();
+  const requestFrameCount = useValueAtRest(
+    quantizeThumbnailFrameCount(
+      computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
+    ),
+  );
+  const requestProps = useMemo(
     () => ({
-      key: createThumbnailKey({
-        kind: "video",
-        source: videoSrc,
-        start: sourceStart,
-        duration: sourceRangeDuration ?? duration,
-        frames: rich ? 6 : 1,
-      }),
+      videoSrc,
+      sourceStart,
+      sourceRangeDuration,
+      duration,
       projectId,
       sessionEpoch,
-      kind: "video" as const,
       priority,
-      rich,
-      load: (signal: AbortSignal) =>
-        decodeVideoThumbnail(
-          {
-            source: videoSrc,
-            sourceStart,
-            sourceRangeDuration: sourceRangeDuration ?? duration,
-            frameCount: rich ? 6 : 1,
-            fit: "cover",
-          },
-          signal,
-        ),
     }),
-    [duration, priority, projectId, rich, sessionEpoch, sourceRangeDuration, sourceStart, videoSrc],
+    [duration, priority, projectId, sessionEpoch, sourceRangeDuration, sourceStart, videoSrc],
   );
-  const snapshot = useThumbnailLease(request);
+  const posterRequest = useMemo(
+    () => createVideoThumbnailRequest(requestProps, 1, false),
+    [requestProps],
+  );
+  const richRequest = useMemo(
+    () => createVideoThumbnailRequest(requestProps, requestFrameCount, true),
+    [requestFrameCount, requestProps],
+  );
+  const measured = useValueAtRest(container.width > 0);
+  const snapshot = useVideoThumbnailSnapshot(
+    measured ? posterRequest : null,
+    measured && requestFrameCount > 1 ? richRequest : null,
+    posterRequest.key,
+  );
   const value = snapshot.status === "ready" ? snapshot.value : null;
   const urls =
     value?.kind === "filmstrip" ? value.urls : value?.kind === "image" ? [value.url] : [];
   const aspect = value?.kind === "image" || value?.kind === "filmstrip" ? value.aspect : 16 / 9;
-  const { frameW, frameCount } = computeThumbnailStrip(
-    containerWidth,
-    aspect,
-    THUMBNAIL_CLIP_HEIGHT,
-  );
-
-  const setContainerRef = useCallback((element: HTMLDivElement | null) => {
-    observerRef.current?.disconnect();
-    if (!element) return;
-    const target = element.parentElement ?? element;
-    setContainerWidth(target.clientWidth);
-    observerRef.current = new ResizeObserver(([entry]) =>
-      setContainerWidth(entry.contentRect.width),
-    );
-    observerRef.current.observe(target);
-  }, []);
-
-  useMountEffect(() => () => observerRef.current?.disconnect());
+  const { frameW, frameCount } = computeThumbnailStrip(container.width, aspect, container.height);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       {urls.length > 0 && (
-        <div className="absolute inset-0 flex">
-          {Array.from({ length: frameCount }, (_, index) => {
-            const src = urls[index % urls.length];
+        <ThumbnailTiles
+          strip={container}
+          frameW={frameW}
+          frameCount={frameCount}
+          watchGap={watchGap}
+        >
+          {(index) => {
+            const src = urls[thumbnailFrameForTile(index, frameCount, urls.length)];
             return (
               <div
                 key={index}
-                className="relative h-full flex-shrink-0 overflow-hidden bg-neutral-900"
+                className="relative h-full shrink-0 overflow-hidden bg-neutral-900"
                 style={{ width: frameW }}
               >
                 <img
@@ -105,34 +173,34 @@ export const VideoThumbnail = memo(function VideoThumbnail({
                 />
               </div>
             );
-          })}
-        </div>
+          }}
+        </ThumbnailTiles>
       )}
       {snapshot.status === "loading" && urls.length === 0 && (
         <div
           className="absolute inset-0 animate-pulse motion-reduce:animate-none"
           style={{
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
+            background: "var(--timeline-thumbnail-shimmer)",
           }}
         />
       )}
       {snapshot.status === "error" && (
         <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/60">
-          <span className="rounded bg-black/50 px-1 text-[8px] text-neutral-500">no preview</span>
+          <span className="rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
+            no preview
+          </span>
         </div>
       )}
       {label && (
         <div
           className="absolute inset-x-0 bottom-0 z-10 px-1.5 pb-0.5 pt-3"
           style={{
-            background:
-              "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)",
+            background: "var(--timeline-thumbnail-label-gradient)",
           }}
         >
           <span
             className="block truncate text-[9px] font-semibold leading-tight"
-            style={{ color: labelColor, textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
+            style={{ color: labelColor, textShadow: "var(--timeline-thumbnail-label-shadow)" }}
           >
             {label}
           </span>

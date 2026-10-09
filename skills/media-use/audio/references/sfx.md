@@ -23,7 +23,7 @@ Each line names the effects it wants: `lines[].sfx: ["whoosh", "ui click"]`. The
 }
 ```
 
-A cue that matches nothing is **skipped** (recorded as an anomaly); SFX never blocks a render.
+A cue that matches nothing is **skipped** (recorded as an anomaly); SFX never blocks a render. Neither route replaces a file of yours already at the output name: the cue gets the next free name (`whoosh-2.mp3`), reported as an anomaly, and `file` carries the real path.
 
 ## HeyGen retrieval (credentialed)
 

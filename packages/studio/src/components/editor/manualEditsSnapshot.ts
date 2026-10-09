@@ -3,6 +3,7 @@ import {
   styleUsesStudioSize,
   styleUsesStudioRotation,
   restoreInlineDisplay,
+  forgetStudioBoxSizeDraftBase,
 } from "./manualEditsDom";
 import {
   STUDIO_OFFSET_X_PROP,
@@ -81,6 +82,8 @@ export function captureStudioBoxSize(element: HTMLElement): StudioBoxSizeSnapsho
 export function captureStudioRotation(element: HTMLElement): StudioRotationSnapshot {
   return {
     rotate: element.style.getPropertyValue("rotate"),
+    transform: element.style.getPropertyValue("transform"),
+    display: element.style.getPropertyValue("display"),
     transformOrigin: element.style.getPropertyValue("transform-origin"),
     studioRotation: element.style.getPropertyValue(STUDIO_ROTATION_PROP),
     marker: element.getAttribute(STUDIO_ROTATION_ATTR),
@@ -114,6 +117,7 @@ function restoreStyleProperty(element: HTMLElement, property: string, value: str
 }
 
 export function restoreStudioBoxSize(element: HTMLElement, previous: StudioBoxSizeSnapshot): void {
+  forgetStudioBoxSizeDraftBase(element);
   restoreStyleProperty(element, "width", previous.width);
   restoreStyleProperty(element, "height", previous.height);
   restoreStyleProperty(element, "min-width", previous.minWidth);
@@ -261,6 +265,7 @@ function restoreOriginalTranslateProperty(element: HTMLElement): void {
 export function clearStudioPathOffset(element: HTMLElement): void {
   if (
     element.hasAttribute(STUDIO_PATH_OFFSET_ATTR) ||
+    element.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR) ||
     styleUsesStudioOffset(element.style.getPropertyValue("translate"))
   ) {
     restoreOriginalTranslateProperty(element);
@@ -290,6 +295,7 @@ export function clearStudioRotation(element: HTMLElement): void {
 }
 
 export function clearStudioBoxSize(element: HTMLElement): void {
+  forgetStudioBoxSizeDraftBase(element);
   if (
     element.hasAttribute(STUDIO_BOX_SIZE_ATTR) ||
     styleUsesStudioSize(element.style.getPropertyValue("width")) ||

@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { tmpdir } from "node:os";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import {
+  cleanupStudioServerRoot,
+  makeStudioServerRoot,
+  writeStudioIndexHtml,
+} from "./studioServerTestFixture.js";
 
 /**
  * Cache policy for the studio bundle, decided by ROUTE. Vite emits only
@@ -15,6 +19,7 @@ const hooks = vi.hoisted(() => ({ studioDir: "" }));
 
 // The bundle directory is resolved from __dirname at server construction, so
 // point that one `resolve(<...>/server, "studio")` call at a temp tree.
+// fallow-ignore-next-line code-duplication
 vi.mock("node:path", async (importOriginal) => {
   const actual = await importOriginal<typeof path>();
   return {
@@ -38,26 +43,19 @@ let root: string;
 let server: StudioServer;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(tmpdir(), "hf-studio-assets-"));
-  hooks.studioDir = path.join(root, "studio");
-  const projectDir = path.join(root, "project");
-  fs.mkdirSync(projectDir);
-  fs.mkdirSync(path.join(hooks.studioDir, "assets"), { recursive: true });
+  const fixture = makeStudioServerRoot("hf-studio-assets-");
+  root = fixture.root;
+  hooks.studioDir = fixture.studioDir;
   fs.mkdirSync(path.join(hooks.studioDir, "icons"), { recursive: true });
   fs.writeFileSync(path.join(hooks.studioDir, "assets", HASHED_BUNDLE), BUNDLE_BYTES);
   fs.writeFileSync(path.join(hooks.studioDir, "icons", PUBLIC_ICON), "<svg/>");
   fs.writeFileSync(path.join(hooks.studioDir, "favicon.svg"), "<svg/>");
-  fs.writeFileSync(
-    path.join(hooks.studioDir, "index.html"),
-    "<html><head></head><body>Studio</body></html>",
-  );
-  server = createStudioServer({ projectDir });
+  writeStudioIndexHtml(hooks.studioDir);
+  server = createStudioServer({ projectDir: fixture.projectDir });
 });
 
 afterEach(() => {
-  server.watcher.close();
-  fs.rmSync(root, { recursive: true, force: true });
-  hooks.studioDir = "";
+  cleanupStudioServerRoot(server, root, () => (hooks.studioDir = ""));
 });
 
 describe("studio bundle cache policy", () => {

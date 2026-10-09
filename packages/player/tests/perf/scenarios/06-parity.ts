@@ -73,7 +73,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Frame, Page } from "puppeteer-core";
-import { loadHostPage } from "../runner.ts";
+import { loadHostPage, waitForPlayerAssetsReady } from "../runner.ts";
 import type { Metric } from "../perf-gate.ts";
 
 export type ParityScenarioOpts = {
@@ -261,6 +261,7 @@ async function runOnce(
   try {
     const page = await ctx.newPage();
     const { duration } = await loadHostPage(page, opts.origin, { fixture });
+    await waitForPlayerAssetsReady(page);
     if (duration < TARGET_TIME_S + 0.1) {
       throw new Error(
         `[scenario:parity] fixture composition is ${duration.toFixed(2)}s but parity target needs >= ${(TARGET_TIME_S + 0.1).toFixed(2)}s`,

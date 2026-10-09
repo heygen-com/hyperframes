@@ -1,4 +1,5 @@
 import type React from "react";
+import { dotRadius } from "./motionPathLayerNode";
 
 // Editor primary color (themeable via --hf-accent). Applied through inline
 // style because CSS var() isn't valid in SVG presentation attributes.
@@ -29,7 +30,7 @@ export function MotionPathNode(props: {
   // Diamond matching the timeline keyframe (a 45°-rotated rounded square).
   // `side` is chosen so the diamond's points reach ~`r` from center, matching the
   // old dot's footprint; selection is shown by enlarging it (no extra shape).
-  const side = (selected ? r * 1.5 : r) * 1.414;
+  const side = dotRadius(r, selected) * 1.414;
   return (
     <g onPointerEnter={props.onEnter} onPointerLeave={props.onLeave}>
       <rect
@@ -95,5 +96,61 @@ export function MotionPathNode(props: {
         </g>
       )}
     </g>
+  );
+}
+
+type Point = { x: number; y: number };
+
+/** The drawn path from GSAP's start (a passive mark) through the nodes, and the add-on-line ghost. */
+export function MotionPathLine(props: {
+  points: string;
+  start?: Point;
+  ghost: Point | null;
+  r: number;
+}) {
+  const { points, start, ghost, r: nodeR } = props;
+  return (
+    <>
+      <polyline
+        points={start ? `${start.x},${start.y} ${points}` : points}
+        fill="none"
+        style={{ stroke: ACCENT }}
+        strokeWidth={1.5}
+        strokeDasharray="5 5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        opacity={0.85}
+      />
+      {start && (
+        <circle
+          data-motion-path-start
+          cx={start.x}
+          cy={start.y}
+          r={nodeR * 0.6}
+          fill="none"
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+          className="pointer-events-none"
+          style={{ stroke: ACCENT }}
+        />
+      )}
+      {ghost && (
+        <rect
+          x={ghost.x - nodeR * 0.707}
+          y={ghost.y - nodeR * 0.707}
+          width={nodeR * 1.414}
+          height={nodeR * 1.414}
+          rx={nodeR * 0.24}
+          transform={`rotate(45 ${ghost.x} ${ghost.y})`}
+          fill="none"
+          strokeWidth={1.5}
+          strokeDasharray="2 2"
+          vectorEffect="non-scaling-stroke"
+          className="pointer-events-none"
+          style={{ stroke: ACCENT }}
+        />
+      )}
+    </>
   );
 }

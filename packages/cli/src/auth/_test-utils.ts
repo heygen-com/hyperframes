@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 const ENV_KEYS = [
   "HEYGEN_API_KEY",
+  "HEYGEN_ACCESS_TOKEN",
   "HYPERFRAMES_API_KEY",
   "HEYGEN_CONFIG_DIR",
   "HEYGEN_API_URL",

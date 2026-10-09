@@ -78,6 +78,56 @@ describe("non-string cache keys", () => {
   });
 });
 
+describe("replaceKeyframeCacheForFile re-reads", () => {
+  it("publishes nothing when a file re-reads to the same entries, and the change when one differs", () => {
+    const write = (x: number) =>
+      replaceKeyframeCacheForFile(
+        "comp.html",
+        new Map([
+          ["box", { format: "percentage", keyframes: [{ percentage: 0, properties: { x } }] }],
+        ]),
+        new Map([["box", [animWithKeyframes("box")]]]),
+      );
+    write(0);
+    let notified = 0;
+    const stop = usePlayerStore.subscribe(() => notified++);
+    write(0);
+    expect(notified).toBe(0);
+    write(5);
+    stop();
+    expect(notified).toBe(1);
+    expect(cache().get("comp.html#box")?.keyframes[0]?.properties).toEqual({ x: 5 });
+  });
+
+  it("leaves a sub-composition's entries alone when index.html re-reads", () => {
+    const one = (id: string) => new Map([[id, entry()]]);
+    const anims = (id: string) => new Map([[id, [animWithKeyframes(id)]]]);
+    replaceKeyframeCacheForFile("comp.html", one("box"), anims("box"));
+    replaceKeyframeCacheForFile("index.html", one("hero"), anims("hero"));
+    let notified = 0;
+    const stop = usePlayerStore.subscribe(() => notified++);
+    replaceKeyframeCacheForFile("index.html", one("hero"), anims("hero"));
+    stop();
+
+    expect(notified).toBe(0);
+    for (const key of ["comp.html#box", "index.html#box", "box", "index.html#hero", "hero"]) {
+      expect(cache().has(key)).toBe(true);
+    }
+  });
+
+  it("still drops index.html's own element that shares an id with a sub-composition", () => {
+    const one = (id: string) => new Map([[id, entry()]]);
+    const anims = (id: string) => new Map([[id, [animWithKeyframes(id)]]]);
+    const own = { format: "percentage", keyframes: [{ percentage: 0, properties: { x: 9 } }] };
+    replaceKeyframeCacheForFile("comp.html", one("title"), anims("title"));
+    replaceKeyframeCacheForFile("index.html", new Map([["title", own]]), anims("title"));
+    replaceKeyframeCacheForFile("index.html", new Map(), new Map());
+
+    expect(cache().has("index.html#title")).toBe(false);
+    expect(cache().has("comp.html#title")).toBe(true);
+  });
+});
+
 describe("clearKeyframeCacheForElement", () => {
   it("drops the prefixed, index.html fallback, and bare key for a non-index source", () => {
     seed("comp.html#box");

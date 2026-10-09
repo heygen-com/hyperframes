@@ -1,0 +1,88 @@
+@font-face {
+  font-family: 'Roboto';
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO5CnqEu92Fr1Mu53ZEC9_Vu3r1gIhOszmUBHMdazTqPu8GDmixiyv7sHsO9kUd_1ZZwvfxd8PedhYMCPK-7KsgrD_GTTHR6jtWpE1QSC-n0tGj5Y0Iea5lPneAWMuTqRLj9_emvoF8BoqCq3MRviSSf0DASiOS6kszpAyy8pOPJOwPd1c&skey=c608c610063635f9&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: italic;
+  font-weight: 700;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO5CnqEu92Fr1Mu53ZEC9_Vu3r1gIhOszmUBHMdazTqPu8GDmixiyv7sHsO9kUd_1ZZwvfxd8PedhYMCPK-7KsgrD_GTTHR6jtWpE1QSC-n0tGj5Y0Iea5lPneAWMuTqRLj9_emvoF8BoqCq3MRviSSf0DASiOS6kszpAyy8pOPJOwPd1c&skey=c608c610063635f9&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 100;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 200;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 300;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 800;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 900;
+  font-stretch: 100%;
+  src: url(https://fonts.gstatic.com/l/font?kit=KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMW36eA1EfUVDRUMYtDGq3jSn5vnUM9EMb_VRH3PXzccXcdBgCCvC46qki0kHETzfX6DlYqk9STiml0M-9548Of6xnMHmCWs2VqxDdyfWkuId-BISMqXEXuCaQYV7CSCWU6Ek9qg6w9JWNuxJ5&skey=a0a0114a1dcab3ac&v=v51) format('woff2');
+  unicode-range: U+9-a, U+20-7e, U+2014;
+}

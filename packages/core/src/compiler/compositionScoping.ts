@@ -1,4 +1,7 @@
+import { getSvgSelectorAliasesScript } from "../generated/svg-selector-aliases-inline";
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
+import { escapeCssIdentifier, replaceSelectorIdTokens } from "./selectorIdTokens";
+import { SCENE_PARTS_META } from "../sceneParts";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
 const INNER_ROOT_ATTR = "data-hf-inner-root";
@@ -11,20 +14,10 @@ function escapeCssAttributeValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function escapeCssIdentifier(value: string): string {
-  if (!value) return value;
-  const escaped = value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
-  return escaped.replace(/^-?\d/, (match) => `\\${match}`);
-}
-
 function getAuthoredRootIdSelectorForms(authoredRootId: string): string[] {
   const trimmed = authoredRootId.trim();
   if (!trimmed) return [];
   return Array.from(new Set([trimmed, escapeCssIdentifier(trimmed)])).filter(Boolean);
-}
-
-function isSelectorNameChar(char: string | undefined): boolean {
-  return !!char && /[\w-]/.test(char);
 }
 
 function replaceAuthoredRootIdSelectors(
@@ -32,59 +25,8 @@ function replaceAuthoredRootIdSelectors(
   authoredRootId: string,
   replacement: string,
 ): string {
-  const forms = getAuthoredRootIdSelectorForms(authoredRootId).sort((a, b) => b.length - a.length);
-  if (forms.length === 0) return selector;
-
-  let result = "";
-  let bracketDepth = 0;
-  let quote: '"' | "'" | null = null;
-
-  for (let index = 0; index < selector.length; index += 1) {
-    const char = selector[index];
-    const previousChar = index > 0 ? selector[index - 1] : "";
-
-    if (quote) {
-      result += char;
-      if (char === quote && previousChar !== "\\") {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      result += char;
-      continue;
-    }
-
-    if (char === "[") {
-      bracketDepth += 1;
-      result += char;
-      continue;
-    }
-
-    if (char === "]") {
-      bracketDepth = Math.max(0, bracketDepth - 1);
-      result += char;
-      continue;
-    }
-
-    if (char === "#" && bracketDepth === 0) {
-      const matchedForm = forms.find((form) => selector.startsWith(form, index + 1));
-      if (matchedForm) {
-        const nextChar = selector[index + 1 + matchedForm.length];
-        if (!isSelectorNameChar(nextChar)) {
-          result += replacement;
-          index += matchedForm.length;
-          continue;
-        }
-      }
-    }
-
-    result += char;
-  }
-
-  return result;
+  const forms = getAuthoredRootIdSelectorForms(authoredRootId);
+  return replaceSelectorIdTokens(selector, forms, () => replacement);
 }
 
 function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: string | null): string {
@@ -256,6 +198,55 @@ export function scopeCssToComposition(
   return root.toResult({ map: false }).css;
 }
 
+function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {
+  return node.type === "atrule" && (node as AtRule).name.toLowerCase() === "font-face";
+}
+
+function fontFaceKey(atRule: AtRule): string {
+  const decls: string[] = [];
+  atRule.walkDecls((decl) => {
+    // Collapse whitespace outside quoted strings only: "A  B" and "A B" name different families.
+    const value = decl.value.replace(
+      /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\s+/g,
+      (_m, str) => str ?? " ",
+    );
+    decls.push(
+      `${decl.prop.trim().toLowerCase()}:${value.trim()}${decl.important ? "!important" : ""}`,
+    );
+  });
+  return decls.join(";");
+}
+
+/** Drops repeats of an identical `@font-face` across the given style texts, keeping the last copy:
+ * the last matching rule is the one the browser uses, so a rule in between never gains precedence. */
+export function dedupeFontFaceRules(styleTexts: string[]): string[] {
+  const seen = new Set<string>();
+  return [...styleTexts]
+    .reverse()
+    .map((css) => {
+      if (!css || !/@font-face/i.test(css)) return css;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(css);
+      } catch {
+        return css; // unparseable text ships as authored and takes no part
+      }
+      let changed = false;
+      for (const node of [...(root.nodes ?? [])].reverse()) {
+        if (!isFontFaceAtRule(node)) continue;
+        const key = fontFaceKey(node);
+        if (seen.has(key)) {
+          node.remove();
+          changed = true;
+        } else {
+          seen.add(key);
+        }
+      }
+      return changed ? root.toResult({ map: false }).css : css;
+    })
+    .reverse();
+}
+
 /**
  * Serialize a value as a JS literal safe to emit inside a `<script>` element.
  *
@@ -276,6 +267,31 @@ function jsonScriptLiteral(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+const SCOPED_HYPERFRAMES_EXPRESSION = `!__hfBaseHyperframes
+    ? __hfBaseHyperframes
+    : Object.assign({}, __hfBaseHyperframes, {
+        assetUrl: function(path) {
+          var page = window.document.baseURI;
+          return new URL(path, __hfCompositionSrc ? new URL(__hfCompositionSrc, page) : page).href;
+        },
+        getVariables: function() {
+          var byComp = window.__hfVariablesByComp;
+          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
+          return scoped ? Object.assign({}, scoped) : {};
+        },
+      })`;
+
+export function scopedModulePrelude(
+  timelineCompositionId: string,
+  compositionSrc?: string | null,
+): string {
+  return `const __hyperframes = (function(__hfBaseHyperframes, __hfTimelineCompId, __hfCompositionSrc) {
+  return ${SCOPED_HYPERFRAMES_EXPRESSION};
+})(window.__hyperframes, ${jsonScriptLiteral(timelineCompositionId)}, ${jsonScriptLiteral(compositionSrc?.trim() || null)});
+${wrapScopedCompositionScript("", timelineCompositionId)}
+`;
+}
+
 export function wrapScopedCompositionScript(
   source: string,
   compositionId: string,
@@ -283,6 +299,7 @@ export function wrapScopedCompositionScript(
   scopeSelectorOverride?: string,
   timelineCompositionId = compositionId,
   authoredRootId?: string | null,
+  compositionSrc?: string | null,
 ): string {
   const compositionIdLiteral = jsonScriptLiteral(compositionId);
   const timelineCompositionIdLiteral = jsonScriptLiteral(timelineCompositionId);
@@ -296,14 +313,14 @@ export function wrapScopedCompositionScript(
   const timingSelectorPatternLiteral = jsonScriptLiteral(
     String.raw`\s*\[\s*data-(?:start|duration)\s*=\s*(?:"[^"]*"|'[^']*')\s*\]`,
   );
-  const authoredRootIdFormsLiteral = jsonScriptLiteral(
-    getAuthoredRootIdSelectorForms(authoredRootId?.trim() || ""),
-  );
+  const aliasInstallerOutsideAuthoredStrictness = `(function(){ ${getSvgSelectorAliasesScript()} })();`;
   return `(function(){
+  ${aliasInstallerOutsideAuthoredStrictness}
   var __hfCompId = ${compositionIdLiteral};
   var __hfTimelineCompId = ${timelineCompositionIdLiteral};
   var __hfErrorLabel = ${errorLabelLiteral};
   var __hfAuthoredRootId = ${authoredRootIdLiteral};
+  var __hfCompositionSrc = ${jsonScriptLiteral(compositionSrc?.trim() || null)};
   var __hfAuthoredRootAttr = ${jsonScriptLiteral(AUTHORED_ROOT_ID_ATTR)};
   var __hfEscapeAttr = function(value) {
     return (value + "").replace(/\\\\/g, "\\\\\\\\").replace(/"/g, "\\\\\\"");
@@ -314,76 +331,18 @@ export function wrapScopedCompositionScript(
   var __hfRoot = null;
   var __hfRootSelectorPattern = ${rootSelectorPatternLiteral};
   var __hfTimingSelectorPattern = ${timingSelectorPatternLiteral};
-  var __hfAuthoredRootIdForms = ${authoredRootIdFormsLiteral};
   var __hfAuthoredRootSelector = __hfAuthoredRootId
     ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]'
     : "";
-  var __hfIsSelectorNameChar = function(char) {
-    return !!char && /[\\w-]/.test(char);
-  };
-  var __hfReplaceAuthoredRootIdSelectors = function(selector) {
-    if (!__hfAuthoredRootSelector || !__hfAuthoredRootIdForms.length || typeof selector !== "string") {
-      return selector;
-    }
-    var result = "";
-    var bracketDepth = 0;
-    var quote = null;
-    for (var index = 0; index < selector.length; index += 1) {
-      var char = selector[index];
-      var previousChar = index > 0 ? selector[index - 1] : "";
-      if (quote) {
-        result += char;
-        if (char === quote && previousChar !== "\\\\") {
-          quote = null;
-        }
-        continue;
-      }
-      if (char === '"' || char === "'") {
-        quote = char;
-        result += char;
-        continue;
-      }
-      if (char === "[") {
-        bracketDepth += 1;
-        result += char;
-        continue;
-      }
-      if (char === "]") {
-        bracketDepth = Math.max(0, bracketDepth - 1);
-        result += char;
-        continue;
-      }
-      if (char === "#" && bracketDepth === 0) {
-        var matchedForm = null;
-        for (var formIndex = 0; formIndex < __hfAuthoredRootIdForms.length; formIndex += 1) {
-          var form = __hfAuthoredRootIdForms[formIndex];
-          if (selector.slice(index + 1, index + 1 + form.length) === form) {
-            matchedForm = form;
-            break;
-          }
-        }
-        if (matchedForm) {
-          var nextChar = selector[index + 1 + matchedForm.length];
-          if (!__hfIsSelectorNameChar(nextChar)) {
-            result += __hfAuthoredRootSelector;
-            index += matchedForm.length;
-            continue;
-          }
-        }
-      }
-      result += char;
-    }
-    return result;
-  };
+  var __hfAuthoredRootEntries = __hfAuthoredRootSelector
+    ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }]
+    : [];
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
     var normalized = selector
       .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
       .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector);
-    if (__hfAuthoredRootSelector) {
-      normalized = __hfReplaceAuthoredRootIdSelectors(normalized);
-    }
-    return normalized;
+    return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
   var __hfFindRoot = function() {
     if (!__hfRoot && __hfRootSelector) {
@@ -524,8 +483,16 @@ export function wrapScopedCompositionScript(
       })
     : window;
   var __hfResolveGsapTarget = function(target) {
-    if (typeof target !== "string") return target;
-    return __hfQueryAll(target);
+    if (typeof target === "string") return __hfQueryAll(target);
+    if (!Array.isArray(target)) return target;
+    return target.reduce(function(resolved, item) {
+      if (typeof item === "string") {
+        return resolved.concat(Array.prototype.slice.call(__hfQueryAll(item)));
+      }
+      resolved.push(item);
+      return resolved;
+    }, []);
+
   };
   var __hfScopeTimeline = function(timeline) {
     if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;
@@ -602,15 +569,7 @@ export function wrapScopedCompositionScript(
         },
       });
   var __hfBaseHyperframes = window.__hyperframes;
-  var __hfScopedHyperframes = !__hfBaseHyperframes
-    ? __hfBaseHyperframes
-    : Object.assign({}, __hfBaseHyperframes, {
-        getVariables: function() {
-          var byComp = window.__hfVariablesByComp;
-          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
-          return scoped ? Object.assign({}, scoped) : {};
-        },
-      });
+  var __hfScopedHyperframes = ${SCOPED_HYPERFRAMES_EXPRESSION};
   var __hfRun = function() {
     try {
       (function(document, gsap, window, __hyperframes) {
@@ -620,8 +579,33 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
   };
+  // What the script started on the global gsap timeline, by any route, for a scene swap to revert.
+  // Only a page with a scene manifest can swap; elsewhere the first script stores null and none records.
+  var __hfRecordAnimations = function(run) {
+    if (window.__hfSceneAnimations === undefined) {
+      window.__hfSceneAnimations = window.document.querySelector(${jsonScriptLiteral(`meta[name="${SCENE_PARTS_META}"]`)})
+        ? {}
+        : null;
+    }
+    var byComp = window.__hfSceneAnimations;
+    var globalTimeline = __hfBaseGsap && __hfBaseGsap.globalTimeline;
+    if (!byComp || !globalTimeline || !__hfTimelineCompId) return run();
+    var before = globalTimeline.getChildren(false);
+    // A set completes as it is made and would leave the timeline before the diff below.
+    var autoRemove = globalTimeline.autoRemoveChildren;
+    globalTimeline.autoRemoveChildren = false;
+    run();
+    globalTimeline.autoRemoveChildren = autoRemove;
+    var recorded = (byComp[__hfTimelineCompId] = byComp[__hfTimelineCompId] || []);
+    globalTimeline.getChildren(false).forEach(function(animation) {
+      if (before.indexOf(animation) >= 0) return;
+      recorded.push(animation);
+      // Dropped as the timeline drops a finished tween (it keeps a paused one); moved back, a tween re-adds itself.
+      if (autoRemove && !animation.getChildren && animation.totalProgress() === 1) globalTimeline.remove(animation);
+    });
+  };
   __hfFindRoot();
-  __hfRun();
+  __hfRecordAnimations(__hfRun);
 })();`;
 }
 

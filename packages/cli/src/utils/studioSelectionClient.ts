@@ -36,10 +36,10 @@ export class PreviewServerPortMismatchError extends Error {
   readonly requestedPort: number;
   readonly ports: number[];
 
-  constructor(requestedPort: number, servers: ActiveServer[]) {
+  constructor(requestedPort: number, servers: ActiveServer[], hint = "") {
     const ports = servers.map((server) => server.port).sort((a, b) => a - b);
     super(
-      `No Studio preview server for this project is running on port ${requestedPort}. Matching server port${ports.length === 1 ? "" : "s"}: ${ports.join(", ")}. Rerun with --port ${ports[0]}${ports.length > 1 ? " or omit --port to see all candidates" : ""}.`,
+      `No Studio preview server for this project is running on port ${requestedPort}. Matching server port${ports.length === 1 ? "" : "s"}: ${ports.join(", ")}. Rerun with --port ${ports[0]}${ports.length > 1 ? " or omit --port to see all candidates" : ""}.${hint}`,
     );
     this.name = "PreviewServerPortMismatchError";
     this.requestedPort = requestedPort;

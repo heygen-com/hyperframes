@@ -3,7 +3,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
-import { resolveZIndexEntries } from "../nle/PreviewOverlays";
+import { resolveZIndexEntries } from "./useDomEditZOrder";
 import { useElementLifecycleOps } from "../../hooks/useElementLifecycleOps";
 import { makeLifecycleOpsParams } from "../../hooks/elementLifecycleOpsTestUtils";
 import type { DomEditPatchBatch } from "../../hooks/domEditCommitTypes";
@@ -138,7 +138,7 @@ describe("CanvasContextMenu — handler gating", () => {
   });
 });
 
-// ── Menu z-action → commit path (wired the way PreviewOverlays wires the app) ──
+// ── Menu z-action → commit path (wired the way ConnectedDomEditOverlay wires the app) ──
 
 function pressMenuItem(label: string) {
   const button = zOrderButtons().find((b) => b.textContent === label);
@@ -193,6 +193,27 @@ function renderCommitHook(captured: CapturedBatchCall[]) {
   return { commit: commit!, cleanup: () => act(() => hookRoot.unmount()) };
 }
 
+describe("resolveZIndexEntries", () => {
+  it("keys a same-class sibling by its index among them, not as the first of its class", () => {
+    const parent = document.body.appendChild(document.createElement("div"));
+    const [first, second, selected] = ["card", "card", "picked"].map((name) => {
+      const child = parent.appendChild(document.createElement("div"));
+      child.className = name;
+      return child;
+    });
+    const { entries } = resolveZIndexEntries(
+      makeSelection("Picked", selected!),
+      [first!, second!].map((element, zIndex) => ({ element, zIndex })),
+      null,
+    );
+    expect(entries.map((entry) => [entry.selector, entry.selectorIndex])).toEqual([
+      [".card", 0],
+      [".card", 1],
+    ]);
+    parent.remove();
+  });
+});
+
 describe("CanvasContextMenu — z-action commit path", () => {
   it("never mutates live styles itself and persists the position patch for a static element", async () => {
     const { target } = makeStaticFamily();
@@ -200,7 +221,7 @@ describe("CanvasContextMenu — z-action commit path", () => {
     const captured: CapturedBatchCall[] = [];
     const { commit, cleanup } = renderCommitHook(captured);
 
-    // Wire onApplyZIndex the way the app does (PreviewOverlays → the commit
+    // Wire onApplyZIndex the way the app does (ConnectedDomEditOverlay → the commit
     // hook), asserting the menu has NOT touched the DOM when it fires — the
     // hook must capture true pre-change styles for its rollback.
     const stylesAtApply: Array<{ zIndex: string; position: string }> = [];
@@ -208,7 +229,7 @@ describe("CanvasContextMenu — z-action commit path", () => {
       selection,
       onApplyZIndex: (patches, action) => {
         stylesAtApply.push({ zIndex: target.style.zIndex, position: target.style.position });
-        const { entries } = resolveZIndexEntries(selection, patches);
+        const { entries } = resolveZIndexEntries(selection, patches, null);
         void commit(entries, undefined, action);
       },
     });

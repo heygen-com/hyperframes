@@ -69,6 +69,7 @@ export interface EditableElementFacts {
   hasTimingStart: boolean;
   /** count of GSAP tweens targeting this element */
   animationCount: number;
+  hasAudio?: boolean;
 }
 
 /**
@@ -218,7 +219,8 @@ export function resolveEditingSections(facts: EditableElementFacts): EditingSect
   return {
     text: facts.hasEditableText && !facts.isCompositionHost && !facts.isInsideLockedComposition,
     media: facts.tag === "video" || facts.tag === "audio" || facts.tag === "img",
-    audioFx: facts.tag === "audio" || isAudioBus,
+    audioFx:
+      facts.tag === "audio" || isAudioBus || (facts.tag === "video" && facts.hasAudio === true),
     colorGrading: facts.tag === "video" || facts.tag === "img",
     // A bus has no clip range at all — no `data-start`, no duration, and its
     // automation clock is composition time — so Start/Duration/End would be

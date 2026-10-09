@@ -100,11 +100,12 @@ function testGsapAdapterPreservesTotalTime(): void {
     calls,
     [
       { method: "pause" },
-      // Nudge to force GSAP 3.x dirty state before the real seek
-      { method: "totalTime", time: seekTime + 0.001, suppressEvents: true },
       { method: "totalTime", time: seekTime, suppressEvents: false },
+      // Silent re-render arriving from below, so same-time steps apply in authored order
+      { method: "totalTime", time: seekTime - 0.001, suppressEvents: true },
+      { method: "totalTime", time: seekTime, suppressEvents: true },
     ],
-    "GSAP adapter should nudge then seek via totalTime() (not downgrade to seek())",
+    "GSAP adapter should seek via totalTime() then re-render from just below",
   );
 }
 

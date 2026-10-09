@@ -2,11 +2,9 @@
 <!--
   Oversized Cursor, standalone demo.
 
-  Mounts oversized-cursor.html as a sub-composition (data-composition-src) into a
-  dark host stage, instead of inlining its markup/style/script. Passing lint and
-  validate here, with the cursor visibly present in mid-motion snapshots, proves
-  the primitive satisfies the sub-composition mount contract (see
-  skills/hyperframes-core/references/sub-compositions.md).
+  A blog editor window on a dark ground. oversized-cursor.html is mounted full frame
+  (data-composition-src) and draws the Comments toggle in the toolbar slot; the big
+  cursor switches it on and the host timeline shows the highlighted comment.
 -->
 <html lang="en">
   <head>
@@ -34,22 +32,217 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #05070c);
-        font-family: var(--font-body, Inter, system-ui, sans-serif);
+        background: #111318;
+        font-family: Inter, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
 
       .demo-frame {
         position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 1280px;
-        height: 720px;
-        border-radius: 24px;
-        border: 1px solid var(--border, rgba(148, 163, 184, 0.25));
-        background: var(--surface, #0b0f16);
-        box-shadow: 0 40px 120px rgba(2, 6, 23, 0.55);
+        left: 280px;
+        top: 150px;
+        width: 1360px;
+        height: 780px;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.06),
+          0 2px 6px rgba(0, 0, 0, 0.3),
+          0 30px 80px rgba(0, 0, 0, 0.45);
         overflow: hidden;
+        color: #1c1c1e;
+      }
+      .app-titlebar {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 52px;
+        padding: 0 20px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        background: #f6f6f7;
+      }
+      .app-titlebar i {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: #ff5f57;
+      }
+      .app-titlebar i:nth-child(2) {
+        background: #febc2e;
+      }
+      .app-titlebar i:nth-child(3) {
+        background: #28c840;
+      }
+      .app-titlebar span {
+        flex: 1;
+        margin-right: 57px;
+        text-align: center;
+        font-size: 15px;
+        font-weight: 600;
+        color: #6e6e73;
+      }
+      .app-body {
+        display: flex;
+        height: 728px;
+      }
+      .app-side {
+        width: 300px;
+        padding: 22px 14px;
+        border-right: 1px solid rgba(0, 0, 0, 0.08);
+        background: #fafafa;
+      }
+      .app-side h4 {
+        margin: 0 10px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #8e8e93;
+      }
+      .app-post {
+        padding: 12px 12px;
+        border-radius: 9px;
+        font-size: 17px;
+        font-weight: 500;
+        line-height: 1.3;
+      }
+      .app-post small {
+        display: block;
+        margin-top: 3px;
+        font-size: 14px;
+        font-weight: 400;
+        color: #8e8e93;
+      }
+      .app-post.is-open {
+        background: rgba(10, 132, 255, 0.1);
+      }
+      .app-main {
+        position: relative;
+        flex: 1;
+      }
+      .app-toolbar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 72px;
+        padding: 0 36px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        font-size: 16px;
+        color: #8e8e93;
+      }
+      .app-toolbar b {
+        margin-left: 8px;
+        font-weight: 500;
+        color: #1c1c1e;
+      }
+      /* Ends left of the Comments toggle, which the cursor mount draws. */
+      .app-actions {
+        position: absolute;
+        right: 220px;
+        top: 50%;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        transform: translateY(-50%);
+      }
+      .app-chip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 34px;
+        padding: 0 14px;
+        border-radius: 17px;
+        font-size: 15px;
+        font-weight: 500;
+        white-space: nowrap;
+        background: #f2f2f3;
+        color: #6e6e73;
+      }
+      .app-chip::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #aeaeb2;
+      }
+      .app-ghost {
+        height: 42px;
+        padding: 0 18px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        font-size: 19px;
+        font-weight: 600;
+        line-height: 40px;
+        color: #1c1c1e;
+      }
+      .app-doc {
+        max-width: 680px;
+        margin: 52px 0 0 84px;
+      }
+      .app-doc h1 {
+        margin: 0;
+        font-size: 44px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+      }
+      .app-meta {
+        margin: 14px 0 30px;
+        font-size: 16px;
+        color: #8e8e93;
+      }
+      .app-doc p {
+        margin: 0 0 20px;
+        font-size: 20px;
+        line-height: 1.6;
+        color: #3a3a3c;
+      }
+      .app-doc mark {
+        border-radius: 3px;
+        background: rgba(255, 204, 0, 0);
+        color: inherit;
+      }
+      .app-comment {
+        position: absolute;
+        left: 785px;
+        top: 372px;
+        width: 236px;
+        padding: 14px 16px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.06),
+          0 8px 24px rgba(0, 0, 0, 0.08);
+        font-size: 16px;
+        line-height: 1.45;
+        color: #3a3a3c;
+        opacity: 0;
+      }
+      .app-comment b {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #1c1c1e;
+      }
+      .app-comment b i {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #ff9f0a;
+        font-size: 11px;
+        font-style: normal;
+        line-height: 24px;
+        text-align: center;
+        color: #ffffff;
+      }
+      .app-comment small {
+        font-size: 14px;
+        font-weight: 400;
+        color: #8e8e93;
       }
     </style>
   </head>
@@ -60,41 +253,84 @@
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="4.2"
+      data-duration="2.6"
     >
       <div
         id="demo-frame"
         class="demo-frame clip"
         data-start="0"
-        data-duration="4.2"
+        data-duration="2.6"
         data-track-index="0"
-      ></div>
+      >
+        <div class="app-titlebar"><i></i><i></i><i></i><span>Field Notes</span></div>
+        <div class="app-body">
+          <aside class="app-side">
+            <h4>Posts</h4>
+            <div class="app-post is-open">
+              Offline mode, one year in<small>Draft · edited 2 min ago</small>
+            </div>
+            <div class="app-post">Why we rewrote sync<small>Published Aug 14</small></div>
+            <div class="app-post">Designing the new inbox<small>Published Jul 30</small></div>
+            <div class="app-post">What broke in the 4.2 release<small>Published Jul 2</small></div>
+            <div class="app-post">
+              Hiring our first support engineer<small>Published Jun 11</small>
+            </div>
+          </aside>
+          <main class="app-main">
+            <div class="app-toolbar">
+              Posts /<b>Offline mode, one year in</b>
+              <div class="app-actions">
+                <span class="app-chip">Draft</span>
+                <span class="app-ghost">Preview</span>
+              </div>
+            </div>
+            <article class="app-doc">
+              <h1>Offline mode, one year in</h1>
+              <div class="app-meta">Priya Raman · 6 min read</div>
+              <p>
+                A year ago we shipped offline mode to every workspace. Since then, 38% of edits have
+                happened on a plane, a train, or a flaky café connection.
+              </p>
+              <p>
+                Most of that traffic lands in the first ten minutes after a device reconnects, so
+                this post walks through how
+                <mark id="comment-mark">the sync queue drains</mark> without locking the editor.
+              </p>
+            </article>
+            <div class="app-comment" id="comment">
+              <b><i>SK</i>Sam Kim <small>2h</small></b>
+              Could this be a diagram? The drain order is the whole point.
+            </div>
+          </main>
+        </div>
+      </div>
 
       <div
         class="clip"
         id="oversized-cursor"
         data-composition-id="oversized-cursor"
         data-composition-src="./oversized-cursor.html"
-        data-variable-values='{"cursor_variant":"light","target_x":66,"target_y":42,"click_label":"Ship it"}'
+        data-variable-values='{"cursor_variant":"light","target_x":79,"target_y":22,"click_label":"Comments"}'
         data-start="0"
-        data-duration="4.2"
+        data-duration="2.6"
         data-track-index="1"
-        data-width="1280"
-        data-height="720"
-        style="
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 1280px;
-          height: 720px;
-        "
+        data-width="1920"
+        data-height="1080"
+        style="position: absolute; inset: 0; width: 1920px; height: 1080px"
       ></div>
     </div>
 
     <script>
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
+      // 0.8s is when the component's click releases: the click moment plus the press.
+      tl.to("#comment-mark", { backgroundColor: "rgba(255, 204, 0, 0.35)", duration: 0.2 }, 0.8);
+      tl.fromTo(
+        "#comment",
+        { opacity: 0, y: 6 },
+        { opacity: 1, y: 0, duration: 0.25, ease: "power2.out" },
+        0.8,
+      );
       window.__timelines["oversized-cursor-demo"] = tl;
     </script>
   </body>

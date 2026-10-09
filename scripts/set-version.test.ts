@@ -145,6 +145,8 @@ describe("changed-path guard", () => {
           "packages/core/package.json",
           "packages/sdk/package.json",
           ".claude-plugin/plugin.json",
+          "plugin.json",
+          "gemini-extension.json",
           "releases/v1.2.3.md",
         ],
         allowed,

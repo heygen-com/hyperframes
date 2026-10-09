@@ -29,7 +29,9 @@ import {
   scalePositionsInScript,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
+import { syncPositionHoldsBeforeKeyframes as syncPositionHoldsBeforeKeyframesAcorn } from "./gsapWriterAcorn.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
+import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import type { Keyframe } from "./types.js";
 import {
   parseAndSerialize,
@@ -1605,9 +1607,8 @@ describe("native GSAP keyframes parsing", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
       tl.to("#hero", {
-        keyframes: { "0%": { x: 0 }, "50%": { x: 100, ease: "back.out(1.7)" }, "100%": { x: 200 } },
+        keyframes: { "0%": { x: 0 }, "50%": { x: 100, ease: "back.out(1.7)" }, "100%": { x: 200 }, easeEach: "power2.out" },
         ease: "none",
-        easeEach: "power2.out",
         duration: 5
       }, 0);
     `;
@@ -1616,7 +1617,7 @@ describe("native GSAP keyframes parsing", () => {
 
     // Tween-level ease
     expect(anim.ease).toBe("none");
-    // easeEach on keyframes data (set from tween-level)
+    // easeEach inside the keyframes object, the only place GSAP reads it
     expect(anim.keyframes!.easeEach).toBe("power2.out");
     // Per-keyframe ease
     expect(anim.keyframes!.keyframes[1].ease).toBe("back.out(1.7)");
@@ -1786,15 +1787,191 @@ describe("keyframe mutations", () => {
       expect((out2.match(/hf-hold/g) ?? []).length).toBe(1); // still just one
     });
 
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: an edit to another element pins no position on a tween it did not touch", (_, sync) => {
+      const before = `${posTweenAt(1.2)}\ntl.to("#q", { x: 10, duration: 1 }, 0);`;
+      const after = before.replace("x: 10", "x: 40");
+      expect(sync(after, before)).toBe(after);
+    });
+
     it("adds no hold for a tween that already starts at t=0", () => {
       expect(syncPositionHoldsBeforeKeyframes(posTweenAt(0))).not.toContain("hf-hold");
     });
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds a lone size keyframe from t=0, wherever its tween starts", (_, sync) => {
+      const timeline = `const tl = gsap.timeline({ paused: true });\n`;
+      for (const start of [0, 1.5]) {
+        const script =
+          `const tl = gsap.timeline({ paused: true });\n` +
+          `tl.to("#s", { keyframes: { "0%": { width: 440, height: 294 } }, duration: 3 }, ${start});`;
+        const hold = parseGsapScript(sync(script, timeline)).animations.find(
+          (a) => a.method === "set",
+        );
+        expect(hold!.position).toBe(0);
+        expect(hold!.properties).toEqual({ width: 440, height: 294, data: "hf-hold" });
+      }
+    });
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])(
+      "%s: pins no size from t=0 for a tween of two size keys or a lone key after a size tween",
+      (_, sync) => {
+        const timeline = `const tl = gsap.timeline({ paused: true });\n`;
+        const keys = `"0%": { width: 100 }, "100%": { width: 400 }`;
+        const twoKeys = `${timeline}tl.to("#s", { keyframes: { ${keys} }, duration: 1 }, 2);`;
+        expect(sync(twoKeys, timeline)).not.toContain("hf-hold");
+        const atLabel = `${timeline}tl.to("#s", { width: 300, duration: 1 }, 1);\ntl.to("#s", { keyframes: { "0%": { width: 500 } }, duration: 1 }, "later");`;
+        expect(sync(atLabel, timeline)).not.toContain("hf-hold");
+      },
+    );
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])(
+      "%s: keeps a size hold when its lone key gains a second, and adds none to a tween left alone",
+      (_, sync) => {
+        const timeline = `const tl = gsap.timeline({ paused: true });\n`;
+        const held = `tl.set("#s", { width: 440, height: 294, data: "hf-hold" }, 0);\n`;
+        const lone = `tl.to("#s", { keyframes: { "0%": { width: 440, height: 294 } }, duration: 2 }, 3);`;
+        const two = `tl.to("#s", { keyframes: { "0%": { width: 380, height: 250 }, "100%": { width: 440, height: 294 } }, duration: 1 }, 2);`;
+        const hold = parseGsapScript(
+          sync(timeline + held + two, timeline + held + lone),
+        ).animations.find((a) => a.method === "set");
+        expect(hold?.properties).toEqual({ width: 380, height: 250, data: "hf-hold" });
+
+        const untouched = `${timeline}tl.to("#u", { keyframes: { "0%": { width: 500 } }, duration: 1 }, 1);\n`;
+        const edited = `${untouched}tl.to("#v", { opacity: 1, duration: 1 }, 0);`;
+        const deleted = `${timeline}${held}tl.to("#s", { keyframes: { "0%": { width: 600 }, "100%": { width: 700 } }, duration: 1 }, 6);`;
+        expect(sync(deleted, deleted + `\n${lone}`)).not.toContain("hf-hold");
+        expect(sync(edited, untouched)).not.toContain("hf-hold");
+      },
+    );
 
     it("adds no hold for an opacity-only keyframed tween (position-scoped)", () => {
       const opacity =
         `const tl = gsap.timeline({ paused: true });\n` +
         `tl.to("#b", { keyframes: { "0%": { opacity: 0 }, "100%": { opacity: 1 } }, duration: 1 }, 2);`;
       expect(syncPositionHoldsBeforeKeyframes(opacity)).not.toContain("hf-hold");
+    });
+
+    // The from() owns x from t=0 until the keyframed tween; only y is left to hold.
+    const afterEarlierFrom =
+      `const tl = gsap.timeline({ paused: true });\n` +
+      `tl.from("#t", { x: -60, duration: 2, ease: "none" }, 0);\n` +
+      `tl.to("#t", { keyframes: { "0%": { x: -50, y: -3.5 }, "100%": { x: 60, y: 30 } }, duration: 1 }, 2);`;
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds no property an earlier tween on the target already writes", (_, sync) => {
+      const hold = parseGsapScript(sync(afterEarlierFrom)).animations.find(
+        (a) => a.method === "set",
+      );
+      expect(hold!.properties).toEqual({ y: -3.5, data: "hf-hold" });
+    });
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: still holds over a global gsap.set base value", (_, sync) => {
+      const script =
+        `gsap.set("#t", { x: 40 });\n` +
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(script)).animations.find(
+        (a) => a.method === "set" && !a.global,
+      );
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: still holds when the other tween sits at a label after the keyframes", (_, sync) => {
+      const script =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.addLabel("later", 5);\n` +
+        `tl.to("#t", { x: 20, duration: 1 }, "later");\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(script)).animations.find((a) => a.method === "set");
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
+    // A step list starts from the element's value before the tween; its first step is an end value.
+    it.each([
+      ["recast", syncPositionHoldsBeforeKeyframes],
+      ["acorn", syncPositionHoldsBeforeKeyframesAcorn],
+    ])("%s: holds nothing for a delayed step list that has no start keyframe", (_, sync) => {
+      for (const tween of [
+        `tl.to("#x", { keyframes: [{ x: 60 }, { x: 120 }] }, 1);`,
+        `tl.to("#x", { keyframes: { "50%": { x: 60 }, "100%": { x: 120 } }, duration: 1 }, 1);`,
+        `tl.fromTo("#x", { x: 10 }, { keyframes: [{ x: 60 }, { x: 120 }] }, 1);`,
+      ]) {
+        expect(sync(`const tl = gsap.timeline({ paused: true });\n${tween}`)).not.toContain(
+          "hf-hold",
+        );
+      }
+      const partial =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.to("#x", { keyframes: { "0%": { x: -50 }, "50%": { y: 30 }, "100%": { x: 60, y: 0 } }, duration: 1 }, 2);`;
+      const hold = parseGsapScript(sync(partial)).animations.find((a) => a.method === "set");
+      expect(hold!.properties).toEqual({ x: -50, data: "hf-hold" });
+    });
+
+    it.each([
+      ["recast", parseGsapScript],
+      ["acorn", parseGsapScriptAcorn],
+    ])(
+      "%s: takes timeline defaults as GSAP 3.15 does, never onto a step list or a keyframed ease",
+      (_, parse) => {
+        const tweens = [
+          `tl.to("#a", { keyframes: [{ x: 1 }, { x: 2 }, { x: 3 }] }, 0);`,
+          `tl.to("#b", { keyframes: { "0%": { x: 0 }, "100%": { x: 1 } } }, 0);`,
+          `tl.to("#c", { motionPath: { path: [{ x: 0, y: 0 }, { x: 9, y: 9 }] } }, 0);`,
+          `tl.to("#d", { keyframes: { "0%": { x: 0 }, "100%": { x: 9 } }, motionPath: { path: [{ x: 0, y: 0 }, { x: 9, y: 9 }] } }, 0);`,
+        ].join("\n");
+        const defaults = `{ defaults: { duration: 2, ease: "power2.in" } }`;
+        const [steps, percentages, motionPath, both] = parse(
+          `const tl = gsap.timeline(${defaults});\n${tweens}`,
+        ).animations;
+        expect([steps!.duration, percentages!.duration, motionPath!.duration]).toEqual([1.5, 2, 2]);
+        expect([steps!.ease, percentages!.ease, motionPath!.ease, both!.ease]).toEqual([
+          undefined,
+          undefined,
+          "power2.in",
+          undefined,
+        ]);
+        expect(parse(`const tl = gsap.timeline();\n${tweens}`).animations[0]!.duration).toBe(1.5);
+      },
+    );
+
+    it("acorn: a step list whose tween duration is a variable leaves its length unresolved", () => {
+      const script = `const tl = gsap.timeline();\ntl.to("#a", { keyframes: [{ x: 1, duration: 1 }, { x: 2, duration: 1 }], duration: D }, 0);`;
+      const anim = parseGsapScriptAcorn(script).animations[0]!;
+      expect([anim.duration, anim.durationUnresolved]).toEqual([undefined, true]);
+    });
+
+    it("acorn: a re-sync of a one-line script is byte-stable", () => {
+      const once = syncPositionHoldsBeforeKeyframesAcorn(
+        `const tl = gsap.timeline({ paused: true });tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`,
+      );
+      expect(syncPositionHoldsBeforeKeyframesAcorn(once)).toBe(once);
+    });
+
+    it("acorn: holds nothing an earlier label-placed tween already writes", () => {
+      const script =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.addLabel("early", 0);\n` +
+        `tl.from("#t", { x: -60, duration: 1 }, "early+=0.5");\n` +
+        `tl.to("#t", { keyframes: { "0%": { x: -50 }, "100%": { x: 60 } }, duration: 1 }, 2);`;
+      expect(syncPositionHoldsBeforeKeyframesAcorn(script)).not.toContain("hf-hold");
     });
 
     it("removes an orphaned hold when its tween is gone", () => {
@@ -1940,15 +2117,14 @@ describe("keyframe mutations", () => {
   });
 
   // Array-form keyframes (`keyframes: [{x,y}, …]`) carry no percentages — GSAP
-  // distributes them evenly. The motion-path overlay drags/adds by percentage,
-  // which used to no-op on array-authored tweens (#puck-b / #shuttle).
+  // ends step i of n at (i+1)/n. The motion-path overlay drags/adds by percentage.
   const ARRAY_KF_SCRIPT =
     "const tl = gsap.timeline();\n" +
     'tl.to("#shuttle", { keyframes: [{ x: 0, y: 0 }, { x: 520, y: 120 }, { x: 1040, y: 0 }, { x: 1480, y: 160 }], duration: 4.4, ease: "none" }, 5.2);';
 
-  it("updateKeyframeInScript — array-form: drags node 2 (pct 33.3) by index", () => {
+  it("updateKeyframeInScript — array-form: drags node 2 (pct 50) by index", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, { x: 503, y: 642 });
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 50, { x: 503, y: 642 });
     expect(updated).not.toBe(ARRAY_KF_SCRIPT);
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
     expect([kf[1]!.properties.x, kf[1]!.properties.y]).toEqual([503, 642]);
@@ -1958,26 +2134,26 @@ describe("keyframe mutations", () => {
 
   it("updateKeyframeInScript — array-form ease-only update preserves existing properties", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, {}, "power2.inOut");
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 50, {}, "power2.inOut");
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
     expect(kf[1]!.properties.x).toBe(520);
     expect(kf[1]!.properties.y).toBe(120);
     expect(kf[1]!.ease).toBe("power2.inOut");
   });
 
-  it("addKeyframeToScript — array-form: normalizes to object form + inserts 50%", () => {
+  it("addKeyframeToScript — array-form: normalizes to object form + inserts 62.5%", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = addKeyframeToScript(ARRAY_KF_SCRIPT, id, 50, { x: 780, y: 60 });
+    const updated = addKeyframeToScript(ARRAY_KF_SCRIPT, id, 62.5, { x: 780, y: 60 });
     expect(updated).not.toBe(ARRAY_KF_SCRIPT);
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
-    expect(kf.length).toBe(5);
-    const at50 = kf.find((k) => Math.abs(k.percentage - 50) < 1)!;
-    expect([at50.properties.x, at50.properties.y]).toEqual([780, 60]);
+    expect(kf.map((k) => k.percentage)).toEqual([25, 50, 62.5, 75, 100]);
+    const added = kf.find((k) => k.percentage === 62.5)!;
+    expect([added.properties.x, added.properties.y]).toEqual([780, 60]);
   });
 
-  it("removeKeyframeFromScript — array-form: drops node 3 (pct 66.7)", () => {
+  it("removeKeyframeFromScript — array-form: drops node 3 (pct 75)", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
-    const updated = removeKeyframeFromScript(ARRAY_KF_SCRIPT, id, 66.7);
+    const updated = removeKeyframeFromScript(ARRAY_KF_SCRIPT, id, 75);
     expect(updated).not.toBe(ARRAY_KF_SCRIPT);
     const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
     expect(kf.length).toBe(3);

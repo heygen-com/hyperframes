@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState } from "react";
 import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "../utils/mediaTypes";
+import { encodeUrlPath } from "@hyperframes/parsers";
 
 function MediaErrorPanel({ name, filePath }: { name: string; filePath: string }) {
   return (
@@ -29,7 +30,7 @@ function MediaErrorPanel({ name, filePath }: { name: string; filePath: string })
 }
 
 export function MediaPreview({ projectId, filePath }: { projectId: string; filePath: string }) {
-  const serveUrl = buildProjectApiPath(projectId, `/preview/${filePath}`);
+  const serveUrl = buildProjectApiPath(projectId, `/preview/${encodeUrlPath(filePath)}`);
   const name = filePath.split("/").pop() ?? filePath;
   // Keyed by path so switching to another file clears a previous failure.
   const [failedPath, setFailedPath] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export function MediaPreview({ projectId, filePath }: { projectId: string; fileP
           src={serveUrl}
           alt={name}
           onError={setFailed}
-          className="max-w-full max-h-[70%] object-contain rounded border border-neutral-800"
+          className="max-w-full max-h-[70%] object-contain rounded-sm border border-neutral-800"
         />
         <span className="mt-3 text-[11px] text-neutral-500 font-mono">{filePath}</span>
       </div>
@@ -59,7 +60,7 @@ export function MediaPreview({ projectId, filePath }: { projectId: string; fileP
           src={serveUrl}
           controls
           onError={setFailed}
-          className="max-w-full max-h-[70%] rounded border border-neutral-800"
+          className="max-w-full max-h-[70%] rounded-sm border border-neutral-800"
         />
         <span className="mt-3 text-[11px] text-neutral-500 font-mono">{filePath}</span>
       </div>

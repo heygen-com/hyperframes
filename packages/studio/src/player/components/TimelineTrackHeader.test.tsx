@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
-import { TimelineTrackHeader } from "./TimelineTrackHeader";
+import { TimelineTrackHeader, gutterFill } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -75,6 +75,7 @@ interface RenderHeaderOptions {
   isAudioTrack?: boolean;
   isGroupMember?: boolean;
   isTrackHidden?: boolean;
+  showAudioEffects?: boolean;
 }
 
 function renderHeader(options: RenderHeaderOptions = {}): {
@@ -119,6 +120,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           isAudioTrack={next.isAudioTrack}
           isGroupMember={next.isGroupMember}
           theme={defaultTimelineTheme}
+          showAudioEffects={next.showAudioEffects}
           onToggleClipExpanded={vi.fn()}
           onToggleTrackHidden={next.onToggleTrackHidden}
           onTogglePropertyGroupKeyframe={next.onTogglePropertyGroupKeyframe}
@@ -207,7 +209,7 @@ describe("TimelineTrackHeader", () => {
       start: 16.5,
       duration: 2,
       track: 0,
-      expandedParentStart: 16,
+      parentCompositionStart: 16,
       sourceFile: "scene.html",
     };
     const local: GsapAnimation = {
@@ -254,43 +256,35 @@ describe("TimelineTrackHeader", () => {
     act(() => view.root.unmount());
   });
 
-  // The visibility control is the old hide eye. On an audio track it silences
-  // rather than hides, and the row already says so with a speaker elsewhere —
-  // so the eye's slot stays empty there. A non-audio track is untouched.
-  it("keeps the visibility control off audio track headers", () => {
+  // `data-hidden` silences an audio track, so its toggle is a mute, offered in
+  // both states: an agent writes alternatives muted and the author flips them.
+  it.each([
+    [false, "Mute track 1"],
+    [true, "Unmute track 1"],
+  ])("offers the audio track toggle when hidden=%s", (isTrackHidden, label) => {
     const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
     const view = renderHeader({
       keyframeClip: audio,
       trackElements: [audio],
       isAudioTrack: true,
+      isTrackHidden,
       animations: [],
     });
-    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
-      b.getAttribute("aria-label"),
-    );
-    expect(labels.some((l) => l && /^(Hide|Show) track/.test(l))).toBe(false);
-    expect(labels).not.toContain("Mute");
+    expect(view.host.querySelector(`button[aria-label="${label}"]`)).not.toBeNull();
     act(() => view.root.unmount());
   });
 
-  // The escape hatch. `data-hidden` on audio silences it in preview and drops it
-  // from the render; the panel's "Muted" is the unrelated HTML `muted`
-  // attribute, and nothing else writes it. Withholding the eye unconditionally
-  // meant a track hidden by "Hide all" (or by hand, or before that rule existed)
-  // was silent with no control anywhere to bring it back.
-  it("offers the eye on an audio track that is already hidden, so it can be restored", () => {
-    const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
+  // Same rule as the undo entry: a track with any visual clip hides, it does not mute.
+  it("offers the eye on a track mixing audio and a visual clip", () => {
+    const audio: TimelineElement = { ...ELEMENT, id: "vo", tag: "audio" };
     const view = renderHeader({
       keyframeClip: audio,
-      trackElements: [audio],
+      trackElements: [audio, ELEMENT],
+      clipCount: 2,
       isAudioTrack: true,
-      isTrackHidden: true,
       animations: [],
     });
-    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
-      b.getAttribute("aria-label"),
-    );
-    expect(labels.some((l) => l && /^Show track/.test(l))).toBe(true);
+    expect(view.host.querySelector('button[aria-label="Hide track 1"]')).not.toBeNull();
     act(() => view.root.unmount());
   });
 
@@ -583,6 +577,31 @@ describe("TimelineTrackHeader", () => {
       }),
     } as TimelineElement;
 
+    it("offers the effect rack from an effect lane only while audio effects are shown", () => {
+      const clip = { ...BED, domId: "bed" } as TimelineElement;
+      const gainLabel = (showAudioEffects?: boolean) => {
+        const { host, root } = renderHeader({
+          keyframeClip: clip,
+          animations: [],
+          showAudioEffects,
+        });
+        const button = host
+          .querySelector('[data-automation-lane-label="Peaking EQ 1.6 kHz · Gain"]')
+          ?.querySelector("button");
+        const state = {
+          label: button?.getAttribute("aria-label") ?? null,
+          disabled: button?.disabled,
+        };
+        act(() => root.unmount());
+        return state;
+      };
+      expect(gainLabel()).toEqual({
+        label: "Show Peaking EQ 1.6 kHz · Gain in the effect rack",
+        disabled: false,
+      });
+      expect(gainLabel(false)).toEqual({ label: null, disabled: true });
+    });
+
     it("names every envelope in the label column", () => {
       const { host, root } = renderHeader({ keyframeClip: BED, animations: [] });
       const rows = Array.from(host.querySelectorAll<HTMLElement>("[data-automation-lane-label]"));
@@ -793,11 +812,7 @@ describe("TimelineTrackHeader", () => {
         isGroupMember: true,
       });
       expect(header()?.style.paddingLeft).toBe("14px");
-      expect(header()?.style.borderLeft).toContain("2px");
-      // And a lighter gutter, so the row reads as sitting INSIDE its group
-      // rather than beside it. Overlaid on the theme's own fill rather than a
-      // hard-coded colour, so it follows whatever the gutter is.
-      expect(header()?.style.background).toContain("linear-gradient");
+      expect(header()?.style.borderLeft).toContain("var(--timeline-accent-rail)");
       act(() => view.root.unmount());
     });
 
@@ -843,6 +858,43 @@ describe("TimelineTrackHeader", () => {
       view.rerender({ ...opts, trackElements: [VOICE], clipCount: 1 });
       expect(pointer(view.host)).toBeNull();
       expect(view.host.querySelector('button[aria-label="Effects"]')).not.toBeNull();
+      act(() => view.root.unmount());
+    });
+
+    it("offers grouping on a track of audible videos, not on muted b-roll", () => {
+      const aRoll: TimelineElement = {
+        ...VOICE,
+        id: "a-roll",
+        domId: "a-roll",
+        tag: "video",
+        hasAudio: true,
+      };
+      const aRoll2: TimelineElement = { ...aRoll, id: "a-roll-2", domId: "a-roll-2" };
+      const bRoll: TimelineElement = {
+        ...aRoll,
+        id: "b-roll",
+        domId: "b-roll",
+        hasAudio: undefined,
+      };
+      const bRoll2: TimelineElement = { ...bRoll, id: "b-roll-2", domId: "b-roll-2" };
+      const opts = {
+        keyframeClip: aRoll,
+        trackElements: [aRoll, aRoll2],
+        clipCount: 2,
+        animations: [],
+        expanded: false,
+      };
+      const pointer = (host: HTMLElement) =>
+        host.querySelector<HTMLButtonElement>(
+          'button[aria-label="Effects — group these clips first"]',
+        );
+      const view = renderHeader(opts);
+      const button = pointer(view.host);
+      expect(button).not.toBeNull();
+      act(() => button?.click());
+      expect(document.body.textContent).not.toContain("can't be grouped");
+      view.rerender({ ...opts, keyframeClip: bRoll, trackElements: [bRoll, bRoll2] });
+      expect(pointer(view.host)).toBeNull();
       act(() => view.root.unmount());
     });
 
@@ -910,5 +962,30 @@ describe("TimelineTrackHeader", () => {
       expect(line?.querySelector('[aria-label="2 clips"]')).not.toBeNull();
       act(() => view.root.unmount());
     });
+  });
+});
+
+// A host themes the timeline by overriding --timeline-* on theme.css, so the
+// rendered gutter must carry the CSS variable, not a baked-in colour.
+describe("theming", () => {
+  it("reads the gutter background and border from timeline theme tokens", () => {
+    const view = renderHeader({});
+    const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
+    expect(header?.style.background).toBe(defaultTimelineTheme.gutterBackground);
+    expect(header?.style.background).toContain("var(--timeline-gutter-bg)");
+    expect(header?.style.borderRight).toContain(defaultTimelineTheme.gutterBorder);
+    act(() => view.root.unmount());
+  });
+
+  // happy-dom's `background` shorthand garbles a `var()` layer next to
+  // `linear-gradient(...)` (verified), so this checks the same value through
+  // the pure function instead of the broken CSSOM roundtrip.
+  it("overlays the group-member tint on the themed gutter, not a hard-coded colour", () => {
+    const filled = gutterFill(defaultTimelineTheme.gutterBackground, true);
+    expect(filled).toContain("linear-gradient");
+    expect(filled.endsWith(defaultTimelineTheme.gutterBackground)).toBe(true);
+    expect(gutterFill(defaultTimelineTheme.gutterBackground, false)).toBe(
+      defaultTimelineTheme.gutterBackground,
+    );
   });
 });

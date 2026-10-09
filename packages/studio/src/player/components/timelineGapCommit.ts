@@ -10,8 +10,11 @@ import {
   resolveAllTrackGaps,
   resolveCloseGapShifts,
   resolveTrackGapAt,
+  round3,
+  TRACK_GAP_EPSILON_S,
   type TrackGapShift,
 } from "./timelineGaps";
+import { isMainTrackElement } from "./timelineZones";
 
 /**
  * Commit layer for the track-gap context menu ("Close gap" / "Close all gaps").
@@ -35,16 +38,29 @@ const keyOf = (e: TimelineElement) => e.key ?? e.id;
 // timelineClipDragCommit.ts.
 let gapCloseGestureSeq = 0;
 
-/** True when every clip named in `shifts` may be time-moved. */
+/** Resolve each shift to its named element, dropping any shift whose key
+ *  matches nothing — the type stays honest without a non-null assertion. */
+export function resolveShiftedElements(
+  elements: readonly TimelineElement[],
+  shifts: readonly TrackGapShift[],
+): Array<{ element: TimelineElement; start: number }> {
+  const byKey = new Map(elements.map((e) => [keyOf(e), e]));
+  return shifts.flatMap((s) => {
+    const element = byKey.get(s.key);
+    return element ? [{ element, start: s.newStart }] : [];
+  });
+}
+
+/** True when every shift names a real clip that may be time-moved. */
 export function canShiftTrackGapClips(
   laneElements: readonly TimelineElement[],
   shifts: readonly TrackGapShift[],
 ): boolean {
-  const byKey = new Map(laneElements.map((e) => [keyOf(e), e]));
-  return shifts.every((s) => {
-    const element = byKey.get(s.key);
-    return element != null && getTimelineEditCapabilities(element).canMove;
-  });
+  const resolved = resolveShiftedElements(laneElements, shifts);
+  return (
+    resolved.length === shifts.length &&
+    resolved.every((r) => getTimelineEditCapabilities(r.element).canMove)
+  );
 }
 
 function buildShiftEdits(
@@ -52,11 +68,10 @@ function buildShiftEdits(
   shifts: readonly TrackGapShift[],
 ): TimelineMoveEdit[] | null {
   if (shifts.length === 0 || !canShiftTrackGapClips(laneElements, shifts)) return null;
-  const byKey = new Map(laneElements.map((e) => [keyOf(e), e]));
-  return shifts.map((s) => {
-    const element = byKey.get(s.key)!;
-    return { element, updates: { start: s.newStart, track: element.track } };
-  });
+  return resolveShiftedElements(laneElements, shifts).map(({ element, start }) => ({
+    element,
+    updates: { start, track: element.track },
+  }));
 }
 
 function commitShifts(
@@ -100,4 +115,34 @@ export function commitCloseAllTrackGaps(
     resolveAllTrackGaps(laneElements, undefined, laneGapFloor(laneElements)),
     deps,
   );
+}
+
+/** What a ripple-edit delete must additionally shift on the main track. Pure
+ *  — no IO; the caller persists the shifts itself. Null means nothing to
+ *  ripple: off, nothing deleted was on the main track, already gapless, or a
+ *  shifting clip is locked (same whole-action refusal as the gap-close menu). */
+export function resolveMainTrackDeleteRippleShifts(
+  survivingElements: readonly TimelineElement[],
+  deletedElements: readonly TimelineElement[],
+  rippleEnabled: boolean,
+): TrackGapShift[] | null {
+  const deletedMainTrack = deletedElements.filter(isMainTrackElement);
+  if (!rippleEnabled || deletedMainTrack.length === 0) return null;
+  const survivors = survivingElements.filter(isMainTrackElement);
+  // Shift each survivor left by the duration of the deleted clips before it —
+  // the removed span itself, not a gap re-resolved on the survivors, which
+  // can't tell an untouched adjacent gap from the one just opened.
+  const shifts: TrackGapShift[] = [];
+  for (const survivor of survivors) {
+    const width = deletedMainTrack
+      .filter((d) => d.start < survivor.start)
+      .reduce((sum, d) => sum + d.duration, 0);
+    if (width <= 0) continue;
+    const newStart = round3(Math.max(laneGapFloor(survivors), survivor.start - width));
+    if (Math.abs(newStart - survivor.start) > TRACK_GAP_EPSILON_S) {
+      shifts.push({ key: keyOf(survivor), newStart });
+    }
+  }
+  if (shifts.length === 0 || !canShiftTrackGapClips(survivors, shifts)) return null;
+  return shifts;
 }

@@ -6,7 +6,7 @@
  * assume all three exist at module scope:
  *   - postcss et al. call top-level `require(...)`
  *   - wawoff2's emscripten build (pulled in unconditionally via
- *     producer → fontCompression) reads `__dirname` at module scope
+ *     producer → core fonts/fontCompression) reads `__dirname` at module scope
  * Without the shims the handler throws "Dynamic require of <X> is not
  * supported" / "__dirname is not defined in ES module scope" at import time,
  * before it can run — which is exactly how a freshly deployed stack crashed

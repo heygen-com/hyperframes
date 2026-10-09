@@ -24,8 +24,8 @@ realization, intra-frame cuts. **Never write millisecond tweens into the storybo
 ## Step A — pick the brand spine (one preset, unmodified)
 
 The whole video shares one type family + palette. Pick **one ready-made preset** from
-`../hyperframes-creative/frame-presets/` using the preset table in
-`../hyperframes-creative/references/design-spec.md` — choose by the track's mood + the brief,
+`../../hyperframes-creative/frame-presets/` using the preset table in
+`../../hyperframes-creative/references/design-spec.md` — choose by the track's mood + the brief,
 and **only its fonts + colors matter** (templates own composition + motion; the preset only
 sets the look). Copy it in **unmodified**:
 
@@ -90,8 +90,8 @@ frame** is owned by the worker on its frame timeline; you only set each group's 
 ## Write + validate
 
 Complete `STORYBOARD.md` ([`storyboard-format.md`](storyboard-format.md)), then run
-`node scripts/validate-plan.mjs` and fix every `✗`. Show the user a frame-by-frame summary and
-iterate until approved.
+`node scripts/validate-plan.mjs` and fix every `✗`. Present the frame-by-frame summary in chat
+and iterate until approved (Step 3 in `SKILL.md` says how).
 
 ## Self-check
 

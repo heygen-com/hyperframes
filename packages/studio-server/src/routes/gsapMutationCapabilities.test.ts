@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   GSAP_MUTATION_CAPABILITIES,
-  acornDefaultBlockers,
+  behavioralParityOps,
   renderGsapMutationCapabilityReport,
   resolveGsapWriter,
 } from "./gsapMutationCapabilities.js";
@@ -50,25 +50,52 @@ describe("GSAP writer capability matrix", () => {
     );
     expect(acornBody).not.toContain("loadGsapParser");
     expect(mutationHelperBody).toContain('writer === "acorn"');
-    expect(mutationHelperBody).toContain("? syncPositionHoldsBeforeKeyframes(newScript)");
+    expect(mutationHelperBody).toContain(
+      "? syncPositionHoldsBeforeKeyframes(newScript, previousScript)",
+    );
     expect(mutationHelperBody).toContain(
       "(await loadGsapParser()).syncPositionHoldsBeforeKeyframes",
     );
     expect(atomicCutHelperBody).toContain('writer === "acorn"');
-    expect(atomicCutHelperBody).toContain("? syncPositionHoldsBeforeKeyframes(script)");
     expect(atomicCutHelperBody).toContain(
-      "(await loadGsapParser()).syncPositionHoldsBeforeKeyframes(script)",
+      "? syncPositionHoldsBeforeKeyframes(script, block.scriptText)",
+    );
+    expect(atomicCutHelperBody).toContain(
+      "(await loadGsapParser()).syncPositionHoldsBeforeKeyframes(script, block.scriptText)",
     );
   });
 
-  it("renders every classified operation and keeps default blocked until parity is differential", () => {
+  it("renders every classified operation and names the behavioral-only ops", () => {
     const report = renderGsapMutationCapabilityReport();
     for (const operation of operations) expect(report).toContain(`| ${operation} |`);
-    expect(acornDefaultBlockers().length).toBeGreaterThan(0);
+    expect(report).toContain("Behavioral-only parity");
+    expect(behavioralParityOps().sort()).toEqual(
+      [
+        "add-with-keyframes",
+        "consolidate-position-writes",
+        "convert-to-keyframes",
+        "delete-all-for-selector",
+        "materialize-keyframes",
+        "move-keyframe",
+        "remove-all-keyframes",
+        "remove-arc-path",
+        "replace-with-keyframes",
+        "resize-keyframed-tween",
+        "scale-positions",
+        "set-arc-path",
+        "shift-positions",
+        "shift-positions-batch",
+        "split-animations",
+        "split-into-property-groups",
+        "unroll-timeline",
+        "update-arc-segment",
+      ].sort(),
+    );
   });
 
-  it("defaults to Recast and requires an explicit Acorn canary selection", () => {
-    expect(resolveGsapWriter({})).toBe("recast");
+  it("defaults to Acorn; recast is an explicit fallback", () => {
+    expect(resolveGsapWriter({})).toBe("acorn");
+    expect(resolveGsapWriter({ HYPERFRAMES_GSAP_WRITER: "recast" })).toBe("recast");
     expect(resolveGsapWriter({ HYPERFRAMES_GSAP_WRITER: "acorn" })).toBe("acorn");
     expect(() => resolveGsapWriter({ HYPERFRAMES_GSAP_WRITER: "unknown" })).toThrow(
       "expected recast or acorn",
