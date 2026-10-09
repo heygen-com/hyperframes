@@ -20,6 +20,7 @@ import {
   assertWebGpuAdapterAvailable,
   compositionRequiresWebGpu,
   resolveLocalBrowserGpuMode,
+  resolveLocalWebGpu,
 } from "../browser/gpuPolicy.js";
 import {
   buildOnionSvg,
@@ -403,19 +404,17 @@ async function openCompositionPage(
   const requestedGpuMode = resolveLocalBrowserGpuMode();
   const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, executablePath);
   const requiresWebGpu = compositionRequiresWebGpu(html);
+  const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
   const browser = await launchManagedBrowser(puppeteer.default, {
     headless: true,
     executablePath,
-    args: buildChromeArgs(
-      { ...size, captureMode: "screenshot", requiresWebGpu },
-      { browserGpuMode: resolvedGpuMode },
-    ),
+    args: buildChromeArgs({ ...size, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
   });
   const page = await browser.newPage();
   const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
   await page.setViewport(size);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
-  await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+  await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
   await waitForRuntimeReady(page, 10000);
   await page
     .evaluate(async () => {

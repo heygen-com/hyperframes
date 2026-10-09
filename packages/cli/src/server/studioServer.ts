@@ -78,6 +78,7 @@ import {
   compositionRequiresWebGpu,
   resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
+  resolveLocalWebGpu,
   type BrowserGpuMode,
   type ResolvedBrowserGpuMode,
 } from "../browser/gpuPolicy.js";
@@ -288,10 +289,16 @@ async function getThumbnailBrowser(
       }
 
       const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
+      const { gpuConfig } = resolveLocalWebGpu(resolvedGpuMode, true);
       const acquired = await acquireBrowser(
         buildChromeArgs(
-          { width: 1920, height: 1080, captureMode: "screenshot" },
-          { browserGpuMode: resolvedGpuMode },
+          {
+            width: 1920,
+            height: 1080,
+            captureMode: "screenshot",
+            requiresWebGpu: gpuConfig.allowSoftwareWebGpu,
+          },
+          gpuConfig,
         ),
         { forceScreenshot: true },
       );
@@ -714,7 +721,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           async (page) => {
             await page.setViewport(viewport);
             await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-            await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+            await assertWebGpuAdapterAvailable(
+              page,
+              requiresWebGpu,
+              resolveLocalWebGpu(session.resolvedGpuMode, requiresWebGpu).softwareWebGpu,
+            );
             await page
               .waitForFunction(
                 () => {

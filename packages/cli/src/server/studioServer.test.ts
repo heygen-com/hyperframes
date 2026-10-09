@@ -135,8 +135,10 @@ describe("Studio thumbnail GPU capture plumbing", () => {
   it("uses the shared auto probe, resolved launch mode, requirement guard, and completion-aware seek", () => {
     const source = readFileSync(new URL("./studioServer.ts", import.meta.url), "utf8");
     expect(source).toContain("resolveCaptureBrowserGpuMode");
-    expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
-    expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu)");
+    expect(source).toContain("resolveLocalWebGpu(resolvedGpuMode, true)");
+    expect(source).toContain(
+      "resolveLocalWebGpu(session.resolvedGpuMode, requiresWebGpu).softwareWebGpu",
+    );
     expect(source).toContain("await seekCompositionTimeline(page, opts.seekTime");
   });
 });
