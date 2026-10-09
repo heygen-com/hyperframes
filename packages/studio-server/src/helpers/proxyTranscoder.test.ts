@@ -548,6 +548,14 @@ describe("resolveProxy", () => {
       );
     }
 
+    async function askThenLeave(ask: (signal: AbortSignal) => Promise<string>): Promise<void> {
+      const leaving = new AbortController();
+      const left = ask(leaving.signal);
+      await flush();
+      leaving.abort();
+      await expect(left).rejects.toBe(leaving.signal.reason);
+    }
+
     async function oneSlot(queue = 8) {
       process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY = "1";
       process.env.HYPERFRAMES_PROXY_MAX_QUEUE = String(queue);
@@ -632,7 +640,6 @@ describe("resolveProxy", () => {
     ])("keeps a shared queued copy while %s still waits", async (_label, withSignal) => {
       const { calls, resolveProxy, projectDir } = await oneSlot();
       const clip = clips(projectDir, ["running", "shared"]);
-      const leaving = new AbortController();
 
       const running = resolveProxy(projectDir, clip.running!);
       const staying = resolveProxy(
@@ -642,12 +649,9 @@ describe("resolveProxy", () => {
         undefined,
         withSignal ? { signal: new AbortController().signal } : {},
       );
-      const left = resolveProxy(projectDir, clip.shared!, "h264", undefined, {
-        signal: leaving.signal,
-      });
-      await flush();
-      leaving.abort();
-      await expect(left).rejects.toBe(leaving.signal.reason);
+      await askThenLeave((signal) =>
+        resolveProxy(projectDir, clip.shared!, "h264", undefined, { signal }),
+      );
 
       succeed(calls[0]!);
       await running;
@@ -657,17 +661,58 @@ describe("resolveProxy", () => {
       await expect(staying).resolves.toBeTruthy();
     });
 
-    it("lets a caller leave a started copy without stopping it", async () => {
+    it("makes the copy when the preview asks in the same moment the last thumbnail leaves", async () => {
       const { calls, resolveProxy, projectDir } = await oneSlot();
-      const clip = clips(projectDir, ["running"]);
+      const clip = clips(projectDir, ["running", "handoff"]);
       const leaving = new AbortController();
 
-      const left = resolveProxy(projectDir, clip.running!, "h264", undefined, {
+      const running = resolveProxy(projectDir, clip.running!);
+      const thumb = resolveProxy(projectDir, clip.handoff!, "h264", undefined, {
         signal: leaving.signal,
       });
       await flush();
       leaving.abort();
-      await expect(left).rejects.toBe(leaving.signal.reason);
+      const preview = resolveProxy(projectDir, clip.handoff!, "h264", undefined, {
+        priority: true,
+      });
+      await expect(thumb).rejects.toBe(leaving.signal.reason);
+
+      succeed(calls[0]!);
+      await running;
+      await flush(12);
+      expect(clipOf(calls[1]!)).toBe("handoff");
+      succeed(calls[1]!);
+      await expect(preview).resolves.toBeTruthy();
+    });
+
+    it("accepts a priority ask in the same moment a normal ask for that clip was refused", async () => {
+      const { calls, resolveProxy, ProxyCapacityError, projectDir } = await oneSlot(1);
+      const clip = clips(projectDir, ["running", "thumb", "late"]);
+
+      const running = resolveProxy(projectDir, clip.running!);
+      const thumb = resolveProxy(projectDir, clip.thumb!);
+      const refused = resolveProxy(projectDir, clip.late!);
+      const preview = resolveProxy(projectDir, clip.late!, "h264", undefined, { priority: true });
+      await expect(refused).rejects.toBeInstanceOf(ProxyCapacityError);
+
+      succeed(calls[0]!);
+      await running;
+      await flush(12);
+      expect(clipOf(calls[1]!)).toBe("late");
+      succeed(calls[1]!);
+      await expect(preview).resolves.toBeTruthy();
+      await flush(12);
+      succeed(calls[2]!);
+      await thumb;
+    });
+
+    it("lets a caller leave a started copy without stopping it", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running"]);
+
+      await askThenLeave((signal) =>
+        resolveProxy(projectDir, clip.running!, "h264", undefined, { signal }),
+      );
 
       succeed(calls[0]!);
       await flush(12);

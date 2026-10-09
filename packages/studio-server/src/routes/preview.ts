@@ -697,7 +697,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       try {
         // A cached copy settles before any timer; a transcode never holds one of
         // the browser's few connections to this host. 202 until the copy lands.
-        servedPath = await waitForProxy(resolveProxy(project.dir, file, proxyVariant, proxyBox), 0);
+        servedPath = await waitForProxy(
+          resolveProxy(project.dir, file, proxyVariant, proxyBox, { priority: true }),
+          0,
+        );
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
           return c.text("media proxy is being made", 202, {

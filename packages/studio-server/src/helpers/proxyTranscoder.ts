@@ -226,11 +226,10 @@ export function getProxyCachePath(
 
 /** One copy per cache key, shared by every caller asking for it. */
 interface ProxyJob {
+  cachePath: string;
   priority: boolean;
-  /** Callers with a signal who have not left yet. */
-  waiting: number;
-  /** A caller without a signal never leaves, so the copy is always made. */
-  kept: boolean;
+  /** Callers still waiting; one without a signal never leaves, so its copy is always made. */
+  callers: number;
   /** Set while the job waits for a slot. */
   queued?: { start: () => void; drop: () => void };
 }
@@ -261,9 +260,6 @@ function acquireSlot(job: ProxyJob): Promise<void> {
     activeTranscodes++;
     return Promise.resolve();
   }
-  if (!job.priority && waitQueue.length >= MAX_QUEUED_TRANSCODES) {
-    return Promise.reject(new ProxyCapacityError());
-  }
   return new Promise((resolveSlot, reject) => {
     job.queued = {
       start: () => {
@@ -274,11 +270,16 @@ function acquireSlot(job: ProxyJob): Promise<void> {
       drop: () => {
         job.queued = undefined;
         dequeue(job);
+        forget(job);
         reject(new ProxyDroppedError());
       },
     };
     enqueue(job);
   });
+}
+
+function queueIsFull(): boolean {
+  return activeTranscodes >= MAX_CONCURRENT_TRANSCODES && waitQueue.length >= MAX_QUEUED_TRANSCODES;
 }
 
 function releaseSlot(): void {
@@ -295,13 +296,17 @@ function prioritize(job: ProxyJob): void {
 }
 
 function leave(job: ProxyJob): void {
-  job.waiting--;
-  if (job.waiting === 0 && !job.kept) job.queued?.drop();
+  job.callers--;
+  if (job.callers === 0) job.queued?.drop();
 }
 
 // --- per-key in-flight dedupe ----------------------------------------------
 
 const inFlight = new Map<string, { promise: Promise<string>; job: ProxyJob }>();
+
+function forget(job: ProxyJob): void {
+  if (inFlight.get(job.cachePath)?.job === job) inFlight.delete(job.cachePath);
+}
 
 function maintainProxyCache(cacheDir: string): void {
   try {
@@ -565,7 +570,7 @@ export async function resolveProxy(
   absoluteSourcePath: string,
   variant: ProxyVariant = "h264",
   box?: PreviewProxyBox,
-  options: ProxyAskOptions = {},
+  options: ResolveProxyOptions = {},
 ): Promise<string> {
   options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
@@ -584,7 +589,12 @@ export async function resolveProxy(
 
   let entry = inFlight.get(cachePath);
   if (!entry) {
-    const job: ProxyJob = { priority: options.priority === true, waiting: 0, kept: false };
+    if (!options.priority && queueIsFull()) throw new ProxyCapacityError();
+    const job: ProxyJob = {
+      cachePath,
+      priority: options.priority === true,
+      callers: 0,
+    };
     const promise = transcodeToCache(
       job,
       source.projectDir,
@@ -594,13 +604,11 @@ export async function resolveProxy(
       box,
     )
       .catch((err: unknown) => {
-        if (!(err instanceof ProxyCapacityError || err instanceof ProxyDroppedError)) {
-          rememberFailure(cachePath, err);
-        }
+        if (!(err instanceof ProxyDroppedError)) rememberFailure(cachePath, err);
         throw err;
       })
       .finally(() => {
-        inFlight.delete(cachePath);
+        forget(job);
         settledProxyCount += 1;
       });
     entry = { promise, job };
@@ -610,32 +618,22 @@ export async function resolveProxy(
   return joinJob(entry.promise, entry.job, options.signal);
 }
 
-export interface ProxyAskOptions {
+export interface ResolveProxyOptions {
   priority?: boolean;
   signal?: AbortSignal;
 }
 
 function joinJob(promise: Promise<string>, job: ProxyJob, signal?: AbortSignal): Promise<string> {
-  if (!signal) {
-    job.kept = true;
-    return promise;
-  }
-  job.waiting++;
+  job.callers++;
+  if (!signal) return promise;
   return new Promise((resolveJoin, rejectJoin) => {
     const onAbort = (): void => {
       leave(job);
       rejectJoin(signal.reason);
     };
     signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (cachePath) => {
-        signal.removeEventListener("abort", onAbort);
-        resolveJoin(cachePath);
-      },
-      (err: unknown) => {
-        signal.removeEventListener("abort", onAbort);
-        rejectJoin(err);
-      },
-    );
+    promise
+      .finally(() => signal.removeEventListener("abort", onAbort))
+      .then(resolveJoin, rejectJoin);
   });
 }
