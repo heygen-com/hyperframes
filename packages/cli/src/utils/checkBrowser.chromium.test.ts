@@ -12,6 +12,7 @@ const PAGE = `<body>
 </style>
 <div id="forever"></div>
 <div id="reverse"></div>
+<div id="held"></div>
 <script>
   const clock = (total, at, reversed = false) => {
     let now = at;
@@ -35,6 +36,10 @@ const PAGE = `<body>
   );
   reverse.playbackRate = -1;
   reverse.finish();
+  // Paused at its end, the way a seek leaves it: never "finished", still done.
+  const held = document.getElementById("held").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 3000, fill: "forwards" });
+  held.pause();
+  held.currentTime = 3000;
 </script>
 </body>`;
 
@@ -74,11 +79,12 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
       [0, true],
       [1000, false],
       [0, true],
+      [3000, true],
     ]);
     const [late, ...rest] = second;
     expect(rest.map(({ id }) => id)).toEqual(first.map(({ id }) => id));
     expect(first.map(({ id }) => id)).not.toContain(late?.id);
-    expect(second.map(({ time }) => time)).toEqual([0, 2, 0.2, 0, 2000, 0]);
+    expect(second.map(({ time }) => time)).toEqual([0, 2, 0.2, 0, 2000, 0, 3000]);
     await page.close();
   });
 
