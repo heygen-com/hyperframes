@@ -60,6 +60,9 @@ const PAGE = `<body>
   window.__timelines.partialEnded = { duration: () => 4, time: () => 4 };
   // Seekable but with no way to read its time: not evidence either way.
   window.__timelines.seekOnly = { duration: () => 4, seek: () => {} };
+  // Plain values where GSAP has methods must not stop the read.
+  window.__timelines.plainDuration = { duration: 4, seek: () => {} };
+  window.__timelines.plainReversed = { totalDuration: () => 4, totalTime: () => 4, reversed: false };
 </script>
 </body>`;
 
@@ -97,6 +100,7 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
       [1, false],
       [1, false],
       [4, true],
+      [4, true],
       [0.2, true],
       [0, true],
       [1000, false],
@@ -108,7 +112,7 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
     const [late, ...rest] = second;
     expect(rest.map(({ id }) => id)).toEqual(first.map(({ id }) => id));
     expect(first.map(({ id }) => id)).not.toContain(late?.id);
-    expect(second.map(({ time }) => time)).toEqual([0, 2, 1, 4, 0.2, 0, 2000, 0, 3000, 3000, 0]);
+    expect(second.map(({ time }) => time)).toEqual([0, 2, 1, 4, 4, 0.2, 0, 2000, 0, 3000, 3000, 0]);
     await page.close();
   });
 

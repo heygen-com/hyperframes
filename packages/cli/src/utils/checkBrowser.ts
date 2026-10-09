@@ -618,14 +618,13 @@ export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
   // Serialized into the page; each optional GSAP read is one branch of one function.
   // fallow-ignore-next-line complexity
   return page.evaluate(() => {
-    type Clock = {
-      duration?: () => unknown;
-      time?: () => unknown;
-      totalDuration?: () => unknown;
-      totalTime?: () => unknown;
-      totalProgress?: () => unknown;
-      reversed?: () => unknown;
-    } | null;
+    const callOrUndefined = (target: unknown, key: string, args: unknown[] = []): unknown => {
+      try {
+        return Reflect.apply(Reflect.get(Object(target), key), target, args);
+      } catch {
+        return undefined;
+      }
+    };
     const known: { ids: WeakMap<object, number>; next: number } = Reflect.get(
       window,
       "__hfSeekClocks",
@@ -642,16 +641,19 @@ export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
     const timelines: unknown = Reflect.get(window, "__timelines");
     const registered = typeof timelines === "object" && timelines ? Object.values(timelines) : [];
     const gsapRoot = Reflect.get(Reflect.get(window, "gsap") ?? {}, "globalTimeline");
-    const unregistered: unknown = gsapRoot?.getChildren?.(false, true, true) ?? [];
-    for (const timeline of [...registered, ...(unregistered as unknown[])] as Clock[]) {
-      const total = Number(timeline?.totalDuration?.() ?? timeline?.duration?.());
-      if (timeline && total > 0) {
-        const time = Number(timeline.totalTime?.() ?? timeline.time?.());
-        if (!Number.isFinite(time)) continue;
-        const progress = Number(timeline.totalProgress?.() ?? time / total);
-        const done = timeline.reversed?.() === true ? progress <= 0 : progress >= 1;
-        clocks.push({ id: idOf(timeline), time, done });
-      }
+    const children = callOrUndefined(gsapRoot, "getChildren", [false, true, true]);
+    for (const timeline of [...registered, ...(Array.isArray(children) ? children : [])]) {
+      const total = Number(
+        callOrUndefined(timeline, "totalDuration") ?? callOrUndefined(timeline, "duration"),
+      );
+      if (typeof timeline !== "object" || !timeline || !(total > 0)) continue;
+      const time = Number(
+        callOrUndefined(timeline, "totalTime") ?? callOrUndefined(timeline, "time"),
+      );
+      if (!Number.isFinite(time)) continue;
+      const progress = Number(callOrUndefined(timeline, "totalProgress") ?? time / total);
+      const done = callOrUndefined(timeline, "reversed") === true ? progress <= 0 : progress >= 1;
+      clocks.push({ id: idOf(timeline), time, done });
     }
     for (const animation of document.getAnimations?.() ?? []) {
       if (typeof animation.currentTime !== "number") continue;
