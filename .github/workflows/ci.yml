@@ -1120,7 +1120,9 @@ jobs:
   studio-edit-accuracy-gate:
     name: "Studio: edit accuracy gate"
     needs: [changes, studio-edit-accuracy]
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.changes.outputs.edit_accuracy == 'true' }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request'
+        && (needs.changes.result != 'success'
+            || needs.changes.outputs.edit_accuracy == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
