@@ -169,8 +169,12 @@ function cachedHeadlessShellExecutable(
 }
 
 function isNonEmptyFile(path: string): boolean {
-  const stat = statSync(path, { throwIfNoEntry: false });
-  return stat?.isFile() === true && stat.size > 0;
+  try {
+    const stat = statSync(path, { throwIfNoEntry: false });
+    return stat?.isFile() === true && stat.size > 0;
+  } catch {
+    return false;
+  }
 }
 
 function findCachedHeadlessShell(baseDir: string): string | undefined {
