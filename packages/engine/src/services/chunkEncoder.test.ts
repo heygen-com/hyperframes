@@ -18,7 +18,7 @@ import {
   SDR_CAPTURE_TO_BT709_FILTER,
   SDR_RGB_TO_TAGGED_BT709_FILTER,
 } from "../utils/sdrCaptureColor.js";
-import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import { getFfmpegBinary, getFfprobeBinary } from "../utils/ffmpegBinaries.js";
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"]).status === 0;
 
@@ -1867,11 +1867,17 @@ describe.skipIf(!HAS_FFMPEG)("buildEncoderArgs SDR colour", () => {
           2,
         );
       }
-      const tags = spawnSync("ffprobe", [
+      // Read the first frame, not the stream: a prores_ks mov's stream-level range depends on
+      // the ffprobe version (7.1 and 8.0 report unknown), while every version tags the frames.
+      const tags = spawnSync(getFfprobeBinary(), [
         "-v",
         "error",
+        "-select_streams",
+        "v:0",
+        "-read_intervals",
+        "%+#1",
         "-show_entries",
-        "stream=color_space,color_primaries,color_transfer,color_range",
+        "frame=color_range,color_space,color_primaries,color_transfer",
         "-of",
         "csv=p=0",
         out,
