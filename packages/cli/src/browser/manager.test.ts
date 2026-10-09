@@ -94,6 +94,8 @@ interface FsMockOptions {
   initialMtimeMs?: number;
   /** what node:os reports; defaults to a Linux host */
   osHost?: { platform: string; release: string };
+  /** paths whose stat reports 0 bytes */
+  emptyFiles?: ReadonlySet<string>;
 }
 
 function installFsMocks({
@@ -102,6 +104,7 @@ function installFsMocks({
   touchError,
   initialMtimeMs = 0,
   osHost = { platform: "linux", release: "24.0.0" },
+  emptyFiles,
 }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
@@ -160,7 +163,7 @@ function installFsMocks({
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
       }
-      return { mtimeMs: mtimes.get(p) ?? 0, size: 1, isFile: () => true };
+      return { mtimeMs: mtimes.get(p) ?? 0, size: emptyFiles?.has(p) ? 0 : 1, isFile: () => true };
     },
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
@@ -463,7 +466,7 @@ describe("findBrowser — cache resolution", () => {
       executablePath: redownloadedBinary,
       source: "download",
     });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary missing"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary unusable"));
     // The partial extract is replaced wholesale, not merged into (install() would
     // otherwise throw "folder exists but exe missing", the bug both feedback reports hit).
     expect(paths.has(staleLeftover)).toBe(false);
@@ -1009,6 +1012,20 @@ describe("findBrowser — cache resolution", () => {
       await expect(findBrowser()).resolves.toBeUndefined();
     },
   );
+
+  it("skips an empty executable in the puppeteer cache", async () => {
+    installFsMocks({
+      existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY]),
+      dirs: { [PUPPETEER_CACHE]: ["linux-148.0.7778.97"] },
+      emptyFiles: new Set([PUPPETEER_BINARY]),
+    });
+    installPuppeteerBrowsersMock();
+
+    const { findBrowser } = await import("./manager.js");
+    const result = await findBrowser();
+
+    expect(result?.executablePath).not.toBe(PUPPETEER_BINARY);
+  });
 
   it("prefers the puppeteer cache over the hyperframes cache when BOTH are populated", async () => {
     // The HF cache is pinned to `CHROME_VERSION` (131-era) which lags upstream

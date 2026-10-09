@@ -568,14 +568,14 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   if (fromCache.result) return fromCache.result;
   if (fromCache.staleHyperframesCachePath) {
     console.warn(
-      `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+      `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
     );
     try {
       return await withInstallLock(() => downloadBrowser());
     } catch (err) {
       const cause = normalizeErrorMessage(err);
       throw new Error(
-        `Cached Chrome binary was missing at ${fromCache.staleHyperframesCachePath}, and re-download failed: ${cause}\n` +
+        `Cached Chrome binary was unusable at ${fromCache.staleHyperframesCachePath}, and re-download failed: ${cause}\n` +
           `Run \`hyperframes browser ensure --force\` to re-download.`,
       );
     }
@@ -662,7 +662,7 @@ async function ensureBrowserInCurrentProcess(
     if (fromCache.result) return fromCache.result;
     if (fromCache.staleHyperframesCachePath) {
       console.warn(
-        `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+        `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
       );
       return withInstallLock(() => downloadBrowser(options));
     }
@@ -853,7 +853,6 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
   }
 }
 
-// install() returns without checking that the unzip produced the executable.
 function executableState(path: string): "usable" | "is missing" | "is empty" | "is not a file" {
   const stat = statSync(path, { throwIfNoEntry: false });
   if (!stat) return "is missing";
@@ -869,6 +868,7 @@ function isUsableExecutable(path: string): boolean {
   }
 }
 
+// install() returns without checking that the unzip produced the executable.
 function assertExecutableUnpacked(stagingDir: string, executablePath: string): void {
   const state = executableState(executablePath);
   if (state === "usable") return;

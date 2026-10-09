@@ -8,7 +8,7 @@
 
 import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
-import { existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { chromeMajorCeiling, exceedsChromeCeiling } from "./chromeHostCeiling.js";
@@ -168,6 +168,11 @@ function cachedHeadlessShellExecutable(
   return CACHED_HEADLESS_SHELL_EXECUTABLES[`${hostPlatform}/${hostArch}`];
 }
 
+function isNonEmptyFile(path: string): boolean {
+  const stat = statSync(path, { throwIfNoEntry: false });
+  return stat?.isFile() === true && stat.size > 0;
+}
+
 function findCachedHeadlessShell(baseDir: string): string | undefined {
   if (!existsSync(baseDir)) return undefined;
   const executable = cachedHeadlessShellExecutable();
@@ -178,7 +183,7 @@ function findCachedHeadlessShell(baseDir: string): string | undefined {
     for (const version of versions) {
       if (exceedsChromeCeiling(version, ceiling)) continue;
       const binary = join(baseDir, version, ...executable);
-      if (existsSync(binary)) return binary;
+      if (isNonEmptyFile(binary)) return binary;
     }
   } catch {
     // Ignore unreadable cache directories and continue browser discovery.

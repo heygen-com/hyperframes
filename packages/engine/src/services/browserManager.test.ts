@@ -696,7 +696,7 @@ describe("resolveHeadlessShellPath", () => {
         for (const [directory, executable] of candidates) {
           const binary = join(cacheVersion, directory, executable);
           mkdirSync(join(binary, ".."), { recursive: true });
-          writeFileSync(binary, "");
+          writeFileSync(binary, "shell");
         }
         const expectedBinary = join(cacheVersion, expectedDirectory, expectedExecutable);
 
@@ -737,7 +737,7 @@ describe("resolveHeadlessShellPath", () => {
         ] as const) {
           const binary = join(cacheVersion, directory, executable);
           mkdirSync(join(binary, ".."), { recursive: true });
-          writeFileSync(binary, "");
+          writeFileSync(binary, "shell");
         }
 
         const env = { ...process.env, HOME: home, USERPROFILE: home };
@@ -770,10 +770,10 @@ describe("resolveHeadlessShellPath", () => {
         "chrome-headless-shell",
       );
       mkdirSync(join(binary, ".."), { recursive: true });
-      writeFileSync(binary, "");
+      writeFileSync(binary, "shell");
       const olderBinary = binary.replace("linux-152.0.7928.2", "linux-99.0.1.1");
       mkdirSync(join(olderBinary, ".."), { recursive: true });
-      writeFileSync(olderBinary, "");
+      writeFileSync(olderBinary, "shell");
 
       // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
       const env = { ...process.env, HOME: home, USERPROFILE: home };
@@ -782,6 +782,38 @@ describe("resolveHeadlessShellPath", () => {
       const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
       expect(stdout).toBe(binary);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("skips an empty cached shell and uses the next older build", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-empty-"));
+    try {
+      const shell = (version: string) =>
+        join(
+          home,
+          ".cache",
+          "hyperframes",
+          "chrome",
+          "chrome-headless-shell",
+          `linux-${version}`,
+          "chrome-headless-shell-linux64",
+          "chrome-headless-shell",
+        );
+      for (const [version, content] of [
+        ["152.0.7977.30", ""],
+        ["150.0.7871.124", "shell"],
+      ]) {
+        mkdirSync(join(shell(version), ".."), { recursive: true });
+        writeFileSync(shell(version), content);
+      }
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
+
+      expect(stdout).toBe(shell("150.0.7871.124"));
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -803,7 +835,7 @@ describe("resolveHeadlessShellPath", () => {
         );
       for (const version of ["152.0.7977.30", "150.0.7871.124"]) {
         mkdirSync(join(shell(version), ".."), { recursive: true });
-        writeFileSync(shell(version), "");
+        writeFileSync(shell(version), "shell");
       }
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
