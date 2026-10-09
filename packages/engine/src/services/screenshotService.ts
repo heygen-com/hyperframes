@@ -735,8 +735,7 @@ export async function injectVideoFramesBatch(
             ? 1
             : opacityParsed;
 
-        // Measure before the <img> exists: until it turns absolute below, a
-        // bordered in-flow sibling can shrink the video's flex box.
+        // Measure first: an in-flow bordered <img> sibling would shrink the video's flex box.
         const videoRect = video.getBoundingClientRect();
         const videoBox = {
           left: Number.isFinite(video.offsetLeft) ? video.offsetLeft : 0,
