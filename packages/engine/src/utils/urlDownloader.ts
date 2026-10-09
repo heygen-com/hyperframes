@@ -13,6 +13,7 @@ import {
   rmdirSync,
   rmSync,
   statSync,
+  type BigIntStats,
   type Stats,
   unlinkSync,
 } from "fs";
@@ -21,6 +22,7 @@ import { BlockList, isIP } from "node:net";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
+import { sameIdentity } from "@hyperframes/core/file-identity";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -284,34 +286,30 @@ function getFilenameFromUrl(url: string, validationScope: string): string {
   return `download_${hash}${ext}`;
 }
 
-function sameFileIdentity(left: Stats, right: Stats): boolean {
-  return left.dev === right.dev && left.ino === right.ino;
-}
-
 const CACHE_LOCK_POLL_MS = 10;
 const CACHE_LOCK_STALE_MS = 5 * 60_000;
 const CACHE_LOCK_RECLAIM_NAME = ".hf-reclaim";
 const CACHE_LOCK_OWNER_PREFIX = ".hf-owner-";
 
 interface CacheLockObservation {
-  stats: Stats;
+  stats: BigIntStats;
   owner?: string;
 }
 
-function sameCacheLockStatGeneration(left: Stats, right: Stats): boolean {
+function sameCacheLockStatGeneration(left: BigIntStats, right: BigIntStats): boolean {
   return (
-    sameFileIdentity(left, right) &&
-    left.mtimeMs === right.mtimeMs &&
-    left.ctimeMs === right.ctimeMs &&
-    left.birthtimeMs === right.birthtimeMs
+    sameIdentity(left, right) &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs &&
+    left.birthtimeNs === right.birthtimeNs
   );
 }
 
 function observeCachePathLock(lockPath: string): CacheLockObservation {
   for (let pass = 0; pass < 3; pass += 1) {
-    const before = lstatSync(lockPath);
+    const before = lstatSync(lockPath, { bigint: true });
     const owner = readdirSync(lockPath).find((name) => name.startsWith(CACHE_LOCK_OWNER_PREFIX));
-    const after = lstatSync(lockPath);
+    const after = lstatSync(lockPath, { bigint: true });
     if (sameCacheLockStatGeneration(before, after)) return { stats: after, owner };
   }
   throw new UrlDownloadError("filesystem", true, "Cache lock changed repeatedly during inspection");
@@ -323,7 +321,7 @@ function sameCachePathLock(left: CacheLockObservation, right: CacheLockObservati
   }
   // Backward-compatible fallback for lock directories created by an older
   // process before ownership markers were introduced.
-  return sameFileIdentity(left.stats, right.stats);
+  return sameIdentity(left.stats, right.stats);
 }
 
 function removeCacheLockDirectoryIfEmpty(lockPath: string): void {
@@ -412,7 +410,7 @@ async function acquireCachePathLock(
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw error;
     }
-    if (Date.now() - observedLock.stats.mtimeMs > CACHE_LOCK_STALE_MS) {
+    if (Date.now() - Number(observedLock.stats.mtimeMs) > CACHE_LOCK_STALE_MS) {
       if (observedLock.owner) {
         // Removing the exact unique marker is an atomic ownership claim.
         // A competing releaser/reclaimer gets ENOENT and must re-observe.
@@ -1205,11 +1203,9 @@ function localInspectionMatchesOptions(
   );
 }
 
-function sameCacheEntry(before: Stats, after: Stats): boolean {
+function sameCacheEntry(before: BigIntStats, after: BigIntStats): boolean {
   return (
-    sameFileIdentity(before, after) &&
-    before.size === after.size &&
-    before.mtimeMs === after.mtimeMs
+    sameIdentity(before, after) && before.size === after.size && before.mtimeNs === after.mtimeNs
   );
 }
 
@@ -1226,14 +1222,14 @@ async function reuseOrInvalidateCachedFile(
   try {
     // Re-inspect when a mixed-version process changes the path while it is open.
     for (let pass = 0; pass < 3; pass += 1) {
-      let before: Stats;
+      let before: BigIntStats;
       try {
-        before = lstatSync(localPath);
+        before = lstatSync(localPath, { bigint: true });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
         throw error;
       }
-      if (!before.isFile() || before.size === 0) {
+      if (!before.isFile() || before.size === 0n) {
         rmSync(localPath, { recursive: before.isDirectory(), force: true });
         return false;
       }
@@ -1245,9 +1241,9 @@ async function reuseOrInvalidateCachedFile(
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
         throw error;
       }
-      let after: Stats;
+      let after: BigIntStats;
       try {
-        after = lstatSync(localPath);
+        after = lstatSync(localPath, { bigint: true });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
         throw error;

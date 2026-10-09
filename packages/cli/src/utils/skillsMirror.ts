@@ -30,12 +30,12 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
-  statSync,
   symlinkSync,
   unlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { sameFile } from "@hyperframes/core/file-identity";
 import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
 
 /**
@@ -106,9 +106,7 @@ function pathsOverlap(left: string, right: string): boolean {
 
 function sameExistingNode(left: string, right: string): boolean {
   try {
-    const leftStat = statSync(left, { bigint: true });
-    const rightStat = statSync(right, { bigint: true });
-    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+    return sameFile(left, right);
   } catch {
     return false;
   }

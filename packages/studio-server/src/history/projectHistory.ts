@@ -15,6 +15,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { sameFile } from "@hyperframes/core/file-identity";
 import {
   DELETED_VERSION,
   fileContentVersion,
@@ -274,9 +275,7 @@ function fileLeftIn(dir: string, at: string, deleted: ReadonlySet<string>): stri
 
 /** Whether the project's disk treats `A` and `a` as one name: its history-id file answers when upper-cased. */
 function ignoresCase(dir: string): boolean {
-  const self = statSync(join(dir, ID_PATH), { throwIfNoEntry: false });
-  const other = statSync(join(dir, ID_PATH.toUpperCase()), { throwIfNoEntry: false });
-  return self !== undefined && other?.ino === self.ino && other.dev === self.dev;
+  return sameFile(join(dir, ID_PATH), join(dir, ID_PATH.toUpperCase()));
 }
 
 const blocks = (removed: string, added: string) =>

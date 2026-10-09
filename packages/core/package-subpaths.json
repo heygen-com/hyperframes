@@ -56,6 +56,12 @@
       "types": "./dist/atomicFile.d.ts",
       "environments": ["bun", "node"]
     },
+    "./file-identity": {
+      "source": "./src/fileIdentity.ts",
+      "runtime": "./dist/fileIdentity.js",
+      "types": "./dist/fileIdentity.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./asset-paths": {
       "source": "./src/compiler/rewriteSubCompPaths.ts",
       "runtime": "./dist/compiler/rewriteSubCompPaths.js",

@@ -1,6 +1,7 @@
 import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { sameIdentity } from "@hyperframes/core/file-identity";
 
 // The records the CLI and the desktop app keep in a project's .hyperframes/. A project can be a clone of someone
 // else's repo, so a link in place of the folder or of a record is never followed, on reading or on writing.
@@ -34,13 +35,13 @@ export function readPlainFile(path: string, maxBytes: number): string {
     return "";
   }
   try {
-    const stats = fstatSync(fd);
-    const named = lstatSync(path);
-    if (!stats.isFile() || !named.isFile() || named.ino !== stats.ino || named.dev !== stats.dev)
-      return "";
-    const length = Math.min(stats.size, maxBytes);
+    const stats = fstatSync(fd, { bigint: true });
+    const named = lstatSync(path, { bigint: true });
+    if (!stats.isFile() || !named.isFile() || !sameIdentity(stats, named)) return "";
+    const size = Number(stats.size);
+    const length = Math.min(size, maxBytes);
     const buffer = Buffer.alloc(length);
-    readSync(fd, buffer, 0, length, stats.size - length);
+    readSync(fd, buffer, 0, length, size - length);
     return buffer.toString("utf8");
   } catch {
     return "";

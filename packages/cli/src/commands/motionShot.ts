@@ -11,8 +11,9 @@ import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.j
 // exactly what it's editing. All geometry + SVG live in ./motionShotLayout.ts
 // (pure, tested); this file only drives the browser and SAMPLES.
 
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { sameFile } from "@hyperframes/core/file-identity";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { waitForRuntimeReady } from "../capture/captureCompositionFrame.js";
@@ -43,9 +44,7 @@ function pathsReferToSameFile(firstPath: string, secondPath: string): boolean {
   const second = resolve(secondPath);
   if (first === second) return true;
   try {
-    const firstStat = statSync(first, { bigint: true });
-    const secondStat = statSync(second, { bigint: true });
-    return firstStat.dev === secondStat.dev && firstStat.ino === secondStat.ino;
+    return sameFile(first, second);
   } catch {
     return false;
   }
