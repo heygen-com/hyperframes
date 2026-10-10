@@ -86,6 +86,12 @@
       "types": "./dist/studioPreviewMark.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./keyframe-defaults": {
+      "source": "./src/keyframeDefaults.ts",
+      "runtime": "./dist/keyframeDefaults.js",
+      "types": "./dist/keyframeDefaults.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./gsap-cdn": {
       "source": "./src/gsapCdn.ts",
       "runtime": "./dist/gsapCdn.js",

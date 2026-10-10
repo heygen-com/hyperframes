@@ -98,6 +98,12 @@
       "import": "./src/studioPreviewMark.ts",
       "types": "./src/studioPreviewMark.ts"
     },
+    "./keyframe-defaults": {
+      "bun": "./src/keyframeDefaults.ts",
+      "node": "./dist/keyframeDefaults.js",
+      "import": "./src/keyframeDefaults.ts",
+      "types": "./src/keyframeDefaults.ts"
+    },
     "./gsap-cdn": {
       "bun": "./src/gsapCdn.ts",
       "node": "./dist/gsapCdn.js",
@@ -577,6 +583,10 @@
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",
         "types": "./dist/studioPreviewMark.d.ts"
+      },
+      "./keyframe-defaults": {
+        "import": "./dist/keyframeDefaults.js",
+        "types": "./dist/keyframeDefaults.d.ts"
       },
       "./gsap-cdn": {
         "import": "./dist/gsapCdn.js",
