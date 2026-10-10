@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -172,6 +172,44 @@ describe("findFfBinary", () => {
 
     expect(findFfBinary("ffmpeg")).toBe(projectBinary);
   });
+
+  it.each(["ffmpeg", "ffprobe"] as const)(
+    "falls back to the project's @%s-installer package",
+    async (name) => {
+      delete process.env.HYPERFRAMES_FFMPEG_PATH;
+      vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "");
+      process.env.PATH = "";
+      const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-ff-installer-")));
+      const packageDir = join(
+        project,
+        "node_modules",
+        `@${name}-installer`,
+        `${process.platform}-${process.arch}`,
+      );
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(join(packageDir, "package.json"), "{}");
+      const binary = join(packageDir, process.platform === "win32" ? `${name}.exe` : name);
+      writeFileSync(binary, "");
+      vi.spyOn(process, "cwd").mockReturnValue(project);
+      vi.resetModules();
+      vi.doMock("node:child_process", () => {
+        const mocked = {
+          execFileSync: () => {
+            throw new Error("not found");
+          },
+        };
+        return { ...mocked, default: mocked };
+      });
+      try {
+        const { findFfBinary } = await importFresh();
+
+        expect(findFfBinary(name)).toBe(binary);
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(project, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("returns undefined when the binary is nowhere, and caches the miss until cleared", async () => {
     delete process.env.HYPERFRAMES_FFMPEG_PATH;

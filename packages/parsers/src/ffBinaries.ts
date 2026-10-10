@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
-import { delimiter, join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { delimiter, dirname, join, resolve } from "node:path";
 
 /**
  * Shared FFmpeg/FFprobe binary resolution for every package that shells out
@@ -101,6 +102,19 @@ function findInProjectLocalBin(name: FfBinaryName): string | undefined {
   return existsSync(candidate) ? candidate : undefined;
 }
 
+// The project's own @ffmpeg-installer / @ffprobe-installer dependency; the binary is located, never run.
+function findInProjectInstallerPackage(name: FfBinaryName): string | undefined {
+  try {
+    const manifest = createRequire(resolve("package.json")).resolve(
+      `@${name}-installer/${process.platform}-${process.arch}/package.json`,
+    );
+    const candidate = join(dirname(manifest), process.platform === "win32" ? `${name}.exe` : name);
+    return existsSync(candidate) ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function lookupOnSystem(name: FfBinaryName): string | undefined {
   if (pathLookupCache.has(name)) return pathLookupCache.get(name);
   let found: string | undefined;
@@ -124,6 +138,7 @@ function lookupOnSystem(name: FfBinaryName): string | undefined {
     }
   }
   found ??= findInProjectLocalBin(name);
+  found ??= findInProjectInstallerPackage(name);
   found ??= findInCommonDirs(name);
   const resolved = found ? resolve(found) : undefined;
   pathLookupCache.set(name, resolved);
@@ -144,8 +159,8 @@ export interface FindFfBinaryOptions {
 /**
  * Resolve an FFmpeg-family binary: env override first, then a native
  * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
- * then a project-local
- * `.hyperframes/bin`, then well-known Unix install dirs. System lookups are
+ * then a project-local `.hyperframes/bin`, then the project's
+ * `@ffmpeg-installer`/`@ffprobe-installer` package, then well-known Unix install dirs. System lookups are
  * cached per binary for the process lifetime; the env override is re-read on
  * every call.
  */
