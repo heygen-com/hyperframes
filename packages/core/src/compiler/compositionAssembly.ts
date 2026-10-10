@@ -269,6 +269,9 @@ export function planCompositionAssembly<
 
 export type NestedHostSkipReason = "circular composition reference" | "nesting depth exceeded";
 
+/** On a compiled head asset: the runtime id of the host it belongs to, so a runtime mount can order around it. */
+export const HEAD_HOST_ATTR = "data-hf-head-host";
+
 /** The one head order for sub-composition assets: host document position, ancestors first. */
 export function hostPositions(root: ParentNode): (host: Element) => number {
   // Indexed, not compareDocumentPosition: linkedom answers that wrongly across nesting levels.

@@ -122,6 +122,22 @@ describe("loadCompositions external hosts", () => {
     expect(document.querySelectorAll("[data-composition-src] p")).toHaveLength(8);
   });
 
+  it("indexes host positions once per mount pass, not once per head insert", async () => {
+    for (let i = 0; i < 10; i++)
+      appendExternalHost(`https://example.com/many-${i}.html`, `many-${i}`);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const name = String(input).match(/many-\d+/)?.[0] ?? "";
+      return new Response(
+        `<html><head><link rel="stylesheet" href="./${name}.css"><style>.${name}{color:red}</style><style media="print">.${name}{color:blue}</style></head><body><p>${name}</p></body></html>`,
+      );
+    });
+    const queries = vi.spyOn(document, "querySelectorAll");
+    await loadFixture();
+    const indexes = queries.mock.calls.filter(([selector]) => selector === "*").length;
+    expect(document.head.querySelectorAll('style, link[rel="stylesheet"]').length).toBe(30);
+    expect(indexes).toBeLessThan(10);
+  });
+
   it("starts a queued load as soon as any earlier load finishes", async () => {
     for (let i = 0; i < 5; i++)
       appendExternalHost(`https://example.com/pool-${i}.html`, `pool-${i}`);

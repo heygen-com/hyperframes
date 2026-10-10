@@ -14,6 +14,7 @@ import {
   nestedCompositionRefusal,
   extractedCompositionAssets,
   hostPositions,
+  HEAD_HOST_ATTR,
 } from "../compiler/compositionAssembly";
 import {
   scopeCssToComposition,
@@ -193,17 +194,24 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
 const headNodeHost = new WeakMap<Element, Element>();
 
 /** Mounts finish in any order; `<head>` keeps their links and styles in host document order. */
-function insertIntoHeadInHostOrder(node: Element, host: Element): void {
-  const at = hostPositions(document);
+type HostPosition = (host: Element) => number;
+
+function headAssetOwner(element: Element): Element | null | undefined {
+  const compiledHost = element.getAttribute(HEAD_HOST_ATTR);
+  if (!compiledHost) return headNodeHost.get(element);
+  return document.querySelector(`[data-composition-id="${CSS.escape(compiledHost)}"]`);
+}
+
+function insertIntoHeadInHostOrder(node: Element, host: Element, at: HostPosition): void {
   const next = Array.from(document.head.children).find((element) => {
-    const owner = headNodeHost.get(element);
+    const owner = headAssetOwner(element);
     return element !== node && !!owner && isLaterHost(owner, host, at);
   });
   headNodeHost.set(node, host);
   document.head.insertBefore(node, next ?? null);
 }
 
-function isLaterHost(owner: Element, host: Element, at = hostPositions(document)): boolean {
+function isLaterHost(owner: Element, host: Element, at: HostPosition): boolean {
   return owner.isConnected && at(owner) > at(host);
 }
 
@@ -368,6 +376,8 @@ async function mountCompositionContent(params: {
   hasTemplate: boolean;
   fallbackBodyInnerHtml: string;
   compositionUrl: URL | null;
+  /** Built once per mount pass; see `hostPositions`. */
+  hostPosition: HostPosition;
   injectedStyles: HTMLStyleElement[];
   injectedScripts: HTMLScriptElement[];
   injectedLinks: HTMLLinkElement[];
@@ -438,12 +448,12 @@ async function mountCompositionContent(params: {
     if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
     const existing = findSameLink(document.head, clonedLink);
-    const existingOwner = existing && headNodeHost.get(existing);
+    const existingOwner = existing && headAssetOwner(existing);
     // A later host's copy moves up to this host's slot, so the first host in the document owns it.
-    if (existing && existingOwner && isLaterHost(existingOwner, params.host))
-      insertIntoHeadInHostOrder(existing, params.host);
+    if (existing && existingOwner && isLaterHost(existingOwner, params.host, params.hostPosition))
+      insertIntoHeadInHostOrder(existing, params.host, params.hostPosition);
     if (existing) continue;
-    insertIntoHeadInHostOrder(clonedLink, params.host);
+    insertIntoHeadInHostOrder(clonedLink, params.host, params.hostPosition);
     params.injectedLinks.push(clonedLink);
   }
 
@@ -465,7 +475,7 @@ async function mountCompositionContent(params: {
           { scopeRootSelectors: true },
         );
       }
-      insertIntoHeadInHostOrder(clonedStyle, params.host);
+      insertIntoHeadInHostOrder(clonedStyle, params.host, params.hostPosition);
       params.injectedStyles.push(clonedStyle);
       const authored = clonedStyle.textContent || "";
       styles.push({ element: clonedStyle, authored, applied: authored });
@@ -619,6 +629,7 @@ async function mountInlineTemplateCompositions(
   assigned: Map<Element, HostCompositionIdentity>,
 ): Promise<MountedComposition[]> {
   const trackedHosts = getTrackedCompositionHosts();
+  const hostPosition = hostPositions(document);
   cleanupDetachedScopedVariables();
   if (trackedHosts.length === 0) return [];
   const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, mountedHosts, assigned);
@@ -654,6 +665,7 @@ async function mountInlineTemplateCompositions(
       injectedScripts: params.injectedScripts,
       injectedLinks: params.injectedLinks,
       parseDimensionPx: params.parseDimensionPx,
+      hostPosition,
       onDiagnostic: params.onDiagnostic,
     });
     mounted.push(composition);
@@ -668,6 +680,7 @@ async function mountExternalCompositions(
   assigned: Map<Element, HostCompositionIdentity>,
 ): Promise<MountedComposition[]> {
   const trackedHosts = getTrackedCompositionHosts();
+  const hostPosition = hostPositions(document);
   cleanupDetachedScopedVariables();
   if (trackedHosts.length === 0) return [];
   const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, mountedHosts, assigned);
@@ -755,6 +768,7 @@ async function mountExternalCompositions(
         injectedScripts: params.injectedScripts,
         injectedLinks: params.injectedLinks,
         parseDimensionPx: params.parseDimensionPx,
+        hostPosition,
         // The shared assembly module decides which head CSS, scripts and webfont links apply.
         head: doc.head,
         // TODO(template-var-carriers): reads `<html>` only, so defaults declared on a template's

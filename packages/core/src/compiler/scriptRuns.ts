@@ -1,4 +1,4 @@
-import { isJavaScriptType } from "./compositionAssembly";
+import { HEAD_HOST_ATTR, isJavaScriptType } from "./compositionAssembly";
 
 export interface InlineScriptRun {
   members: Element[];
@@ -147,7 +147,9 @@ export function adjacentStyleGroups(styles: readonly Element[]): Element[][] {
   const groups: Element[][] = [];
   for (const el of styles) {
     const last = groups.at(-1);
-    if (last && el.previousElementSibling === last.at(-1)) last.push(el);
+    const previous = last?.at(-1);
+    const sameHost = previous?.getAttribute(HEAD_HOST_ATTR) === el.getAttribute(HEAD_HOST_ATTR);
+    if (last && el.previousElementSibling === previous && sameHost) last.push(el);
     else groups.push([el]);
   }
   return groups;

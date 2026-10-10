@@ -70,6 +70,7 @@ import {
   emitHeadAssets,
   inlineSubCompositions,
   refuseSwapsReachedByRootScripts,
+  type HeadAsset,
 } from "./inlineSubCompositions";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -1068,6 +1069,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     },
   });
   refuseSwapsReachedByRootScripts(document, rootScripts);
+  const headAssets: HeadAsset[] = [...subCompResult.headAssets];
   const scriptRuns: PartRun<DeferredScriptChunk>[] = [];
   const compStyleChunks: CompositionStyle[] = [];
   const compScriptChunks: DeferredScriptChunk[] = [];
@@ -1123,6 +1125,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const templateHtml = templateEl.innerHTML || "";
 
     for (const host of hosts) {
+      const firstStyle = compStyleChunks.length;
       host.setAttribute(VARIABLE_HOST_ATTR, "");
       const hostIdentity = hostIdentityByElement.get(host);
       const runtimeCompId = hostIdentity?.runtimeCompositionId || compId;
@@ -1226,6 +1229,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       }
       for (const el of plan.inertScriptsOutsideRoot)
         host.insertAdjacentHTML("beforeend", el.outerHTML);
+      for (const style of compStyleChunks.splice(firstStyle)) headAssets.push({ host, style });
     }
 
     // Remove the template element from the document
@@ -1255,9 +1259,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       document.head.appendChild(style);
     }
   };
-  emitHeadAssets(document, subCompResult.headAssets, appendStyles);
-  // Page template hosts stay last: render mounts them at runtime, after its compiled styles.
-  if (compStyleChunks.length) appendStyles(undefined, compStyleChunks);
+  emitHeadAssets(document, headAssets, appendStyles);
   for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
   const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
   if (variablesByCompScript) {

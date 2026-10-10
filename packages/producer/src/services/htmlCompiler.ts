@@ -43,6 +43,7 @@ import {
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   emitHeadAssets,
+  HEAD_HOST_ATTR,
   ensureExternalScriptTag,
   deferScriptsUntilFonts,
   emitMountedModuleScripts,
@@ -1022,12 +1023,23 @@ function inlineSubCompositions(
     }
   }
 
+  // Tagged with the host's runtime id: page template hosts mount at runtime and order around these.
+  const tagHost = (el: Element, host: Element) => {
+    const id = host.getAttribute("data-composition-id");
+    if (id) el.setAttribute(HEAD_HOST_ATTR, id);
+  };
   if (head) {
-    emitHeadAssets(document as unknown as Document, result.headAssets, (_, styles) => {
-      for (const style of styleElementsFor(document, styles, (css) => css.join("\n\n"))) {
-        head.appendChild(style);
-      }
-    });
+    emitHeadAssets(
+      document as unknown as Document,
+      result.headAssets,
+      (_, styles, host) => {
+        for (const style of styleElementsFor(document, styles, (css) => css.join("\n\n"))) {
+          tagHost(style, host);
+          head.appendChild(style);
+        }
+      },
+      tagHost,
+    );
   }
 
   // CDN and integrity-pinned scripts go first so plugins (e.g. TextPlugin,

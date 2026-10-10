@@ -254,7 +254,7 @@ export interface ExternalLink {
 }
 
 /** Appends a hoisted link unless the document already has a live one it would duplicate. */
-export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
+export function ensureExternalLinkTag(doc: Document, link: ExternalLink): Element | undefined {
   const el = doc.createElement("link");
   el.setAttribute("rel", link.rel);
   el.setAttribute("href", link.href);
@@ -263,29 +263,36 @@ export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
     if (value != null) el.setAttribute(name, value);
   }
   if (link.disabled) el.setAttribute("disabled", "");
-  if (!hasSameLink(doc, el)) doc.head.appendChild(el);
+  if (hasSameLink(doc, el)) return undefined;
+  doc.head.appendChild(el);
+  return el;
 }
 
 /** Writes sub-composition head assets in host document order: each host's links, then its styles. */
 export function emitHeadAssets(
   document: Document,
   assets: readonly HeadAsset[],
-  writeStyles: (scene: string | undefined, styles: CompositionStyle[]) => void,
+  writeStyles: (scene: string | undefined, styles: CompositionStyle[], host: Element) => void,
+  /** Given, each host's styles are written as their own run, and each link is passed here. */
+  onLink?: (link: Element, host: Element) => void,
 ): void {
   let run: CompositionStyle[] = [];
   let runScene: string | undefined;
+  let runHost: Element | undefined;
   const flush = () => {
-    if (run.length) writeStyles(runScene, run);
+    if (run.length && runHost) writeStyles(runScene, run, runHost);
     run = [];
   };
   for (const asset of sortByHostOrder(document, assets)) {
     if (asset.link) {
       flush();
-      ensureExternalLinkTag(document, asset.link);
+      const link = ensureExternalLinkTag(document, asset.link);
+      if (link) onLink?.(link, asset.host);
       continue;
     }
-    if (asset.scene !== runScene) flush();
+    if (asset.scene !== runScene || (onLink && asset.host !== runHost)) flush();
     runScene = asset.scene;
+    runHost = asset.host;
     run.push(asset.style);
   }
   flush();

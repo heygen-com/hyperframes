@@ -75,7 +75,7 @@ export {
   type CompositionStyle,
   type InlineScriptRun,
 } from "./scriptRuns";
-export { isJavaScriptType } from "./compositionAssembly";
+export { HEAD_HOST_ATTR, isJavaScriptType } from "./compositionAssembly";
 
 // Static guard
 export {

@@ -132,6 +132,7 @@ async function contracts(files: Record<string, string>, expectedRefusal?: string
     true,
   );
   return {
+    dir,
     html: { preview, render: servedRender },
     preview: extractCompiledHtmlParityContract(preview),
     render: extractCompiledHtmlParityContract(servedRender),
@@ -616,6 +617,14 @@ describe("mount/compile assembly parity", () => {
       files: { "compositions/a.html": linked("a"), "compositions/b.html": linked("b") },
       order: ["link:a", "style:a", "link:b", "style:b"],
     },
+    {
+      name: "a page template host before an external host",
+      body:
+        '<div data-composition-id="tpl"></div><template id="tpl-template"><div data-composition-id="tpl"><style>.x { --order: tpl; }</style></div></template>' +
+        external("ext"),
+      files: { "compositions/ext.html": linked("ext") },
+      order: ["style:tpl", "link:ext", "style:ext"],
+    },
   ])("orders head assets for $name by host on all three paths", async ({ body, files, order }) => {
     const result = await contracts({
       "index.html": shell(
@@ -633,7 +642,9 @@ describe("mount/compile assembly parity", () => {
       );
     const parsed = (html: string) => new DOMParser().parseFromString(html, "text/html");
     expect(headOrder(parsed(result.html.preview))).toEqual(order);
-    expect(headOrder(parsed(result.html.render))).toEqual(order);
+    expect(headOrder(document)).toEqual(order);
+    // Render leaves page template hosts to its runtime, so read its head after that runtime ran.
+    await mountContract(result.dir, result.html.render);
     expect(headOrder(document)).toEqual(order);
   });
 
