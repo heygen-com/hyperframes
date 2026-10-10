@@ -100,6 +100,7 @@ export interface CreateCapturePlanInput {
 }
 
 export type CapturePlanFailure =
+  | Readonly<{ kind: "disk_headroom" }>
   | Readonly<{ kind: "streaming_unavailable" }>
   | Readonly<{
       kind: "draw_element_verification";
@@ -241,28 +242,26 @@ function replanSegmentedAfterFailure(
   });
 }
 
-export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailure): CapturePlan {
-  // Before the sdr_streaming guard below, which would otherwise throw.
-  if (plan.kind === "sdr_segmented") return replanSegmentedAfterFailure(plan, failure);
-  // Disk-path drawElement self-verification (parallel disk workers under the
-  // explicit fast-capture opt-in) can also trip — the retry stays on the disk
-  // path but forces the screenshot baseline.
-  if (
-    plan.kind === "sdr_disk" &&
-    (failure.kind === "draw_element_verification" || failure.kind === "draw_element_capture")
-  ) {
-    return createCapturePlan({
-      ...plan,
-      forceScreenshot: true,
-      useStreamingEncode: false,
-      useLayeredComposite: false,
-      forceParallelStream: false,
-    });
+/** The disk-headroom degrade: the pre-capture gate rejected a multi-worker disk plan; eligibility
+ * lives in shouldDegradeDiskCaptureToStreaming. Rebuild as the hardened single-worker streaming path. */
+function replanDiskHeadroomAfterFailure(plan: CapturePlan): CapturePlan {
+  if (plan.kind !== "sdr_disk") {
+    throw new Error(`Cannot apply disk_headroom to ${plan.kind} capture plan`);
   }
-  if (plan.kind !== "sdr_streaming") {
-    throw new Error(`Cannot apply ${failure.kind} to ${plan.kind} capture plan`);
-  }
+  return createCapturePlan({
+    ...plan,
+    workerCount: 1,
+    useStreamingEncode: true,
+    useLayeredComposite: false,
+    forceParallelStream: false,
+    routing: revertedRouting(plan.routing),
+  });
+}
 
+function replanStreamingAfterFailure(
+  plan: SdrStreamingCapturePlan,
+  failure: CapturePlanFailure,
+): CapturePlan {
   if (failure.kind === "streaming_unavailable") {
     return createCapturePlan({
       ...plan,
@@ -306,4 +305,31 @@ export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailur
     useLayeredComposite: false,
     routing: revertedRouting(plan.routing),
   });
+}
+
+export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailure): CapturePlan {
+  // Before the sdr_streaming guard below, which would otherwise throw.
+  if (plan.kind === "sdr_segmented") return replanSegmentedAfterFailure(plan, failure);
+  // disk_headroom: the pre-capture gate rejected a multi-worker disk plan;
+  // on any other kind it is a caller bug, not a retryable fallback.
+  if (failure.kind === "disk_headroom") return replanDiskHeadroomAfterFailure(plan);
+  // Disk-path drawElement self-verification (parallel disk workers under the
+  // explicit fast-capture opt-in) can also trip — the retry stays on the disk
+  // path but forces the screenshot baseline.
+  if (
+    plan.kind === "sdr_disk" &&
+    (failure.kind === "draw_element_verification" || failure.kind === "draw_element_capture")
+  ) {
+    return createCapturePlan({
+      ...plan,
+      forceScreenshot: true,
+      useStreamingEncode: false,
+      useLayeredComposite: false,
+      forceParallelStream: false,
+    });
+  }
+  if (plan.kind !== "sdr_streaming") {
+    throw new Error(`Cannot apply ${failure.kind} to ${plan.kind} capture plan`);
+  }
+  return replanStreamingAfterFailure(plan, failure);
 }

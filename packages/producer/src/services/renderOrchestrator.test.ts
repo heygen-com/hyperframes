@@ -63,6 +63,7 @@ import {
   resolveParallelCaptureMode,
   shouldStreamParallelCapture,
   shouldUseStreamingEncode,
+  shouldDegradeDiskCaptureToStreaming,
   resolveObservedCaptureMode,
   createCaptureObservabilityUpdater,
   applyRenderWarningPolicy,
@@ -636,6 +637,74 @@ describe("shouldUseStreamingEncode", () => {
     expect(
       shouldUseStreamingEncode({ ...streamingEnabledConfig, lowMemoryMode: true }, "mp4", 1, 411),
     ).toBe(true);
+  });
+});
+
+describe("shouldDegradeDiskCaptureToStreaming", () => {
+  it("degrades a multi-worker disk plan when disk lacks headroom and streaming is eligible", () => {
+    expect(
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: "sdr_disk",
+        workerCount: 4,
+        diskHeadroomAvailable: false,
+        streamingEligible: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps the disk plan when headroom is sufficient", () => {
+    expect(
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: "sdr_disk",
+        workerCount: 4,
+        diskHeadroomAvailable: true,
+        streamingEligible: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("never degrades streaming or layered plans", () => {
+    expect(
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: "sdr_streaming",
+        workerCount: 4,
+        diskHeadroomAvailable: false,
+        streamingEligible: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: "hdr_layered",
+        workerCount: 4,
+        diskHeadroomAvailable: false,
+        streamingEligible: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps the disk plan when streaming is ineligible for a single worker", () => {
+    // Covers png-sequence/gif outputs, renders past the operator duration
+    // cap, and enableStreamingEncode=false — all surfaced via the eligibility
+    // flag computed by shouldUseStreamingEncode(cfg, format, 1, duration).
+    expect(
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: "sdr_disk",
+        workerCount: 4,
+        diskHeadroomAvailable: false,
+        streamingEligible: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores single-worker disk plans", () => {
+    expect(
+      shouldDegradeDiskCaptureToStreaming({
+        planKind: "sdr_disk",
+        workerCount: 1,
+        diskHeadroomAvailable: false,
+        streamingEligible: true,
+      }),
+    ).toBe(false);
   });
 });
 
