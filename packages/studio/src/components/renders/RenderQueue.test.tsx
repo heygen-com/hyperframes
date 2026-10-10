@@ -142,7 +142,7 @@ describe("RenderQueue controls", () => {
       exportButtonIn(host).dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "landscape-4k", 30);
+    expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "landscape-4k", 30, false);
   });
 
   it("refuses a resolution the composition cannot reach, and says why", async () => {
