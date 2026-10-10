@@ -56,7 +56,11 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
   function renderCompiledCopy(
     name: string,
     videos = [clipElement("_remote_media/clip.mp4")],
-    { deferRangeExtraction = false, subdir = "_remote_media" } = {},
+    {
+      deferRangeExtraction = false,
+      subdir = "_remote_media",
+      config = { extractCacheDir: cacheDir } as { extractCacheDir?: string },
+    } = {},
   ) {
     const compiledDir = join(dir, name, "compiled");
     mkdirSync(join(compiledDir, subdir), { recursive: true });
@@ -70,7 +74,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
         contentKeyedDirs: [join(compiledDir, "_remote_media")],
       },
       undefined,
-      { extractCacheDir: cacheDir },
+      config,
       compiledDir,
     );
   }
@@ -170,20 +174,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
   it("does not hash when the cache is off", async () => {
     source.clip = red;
     hashing.paths = [];
-    const compiledDir = join(dir, "cache-off", "compiled");
-    mkdirSync(join(compiledDir, "_remote_media"), { recursive: true });
-    copyFileSync(source.clip, join(compiledDir, "_remote_media", "clip.mp4"));
-    const result = await extractAllVideoFrames(
-      [clipElement("_remote_media/clip.mp4")],
-      join(dir, "project"),
-      {
-        ...{ fps: 30, outputDir: join(compiledDir, "frames") },
-        contentKeyedDirs: [join(compiledDir, "_remote_media")],
-      },
-      undefined,
-      {},
-      compiledDir,
-    );
+    const result = await renderCompiledCopy("cache-off", undefined, { config: {} });
     expect(result.errors).toEqual([]);
     expect(hashing.paths).toEqual([]);
   });
