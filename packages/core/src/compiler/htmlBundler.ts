@@ -30,7 +30,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync, existsSync, statSync } from "fs";
 import { parse as parseJs } from "acorn";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
-import { extractStandaloneEntryFromIndex } from "./standaloneEntry";
+import { extractStandaloneEntryFromIndex, isTemplateEntry } from "./standaloneEntry";
 import {
   decodeCssEscapes,
   decodeWellFormedEscapes,
@@ -1011,10 +1011,11 @@ function readMountedSceneShell(
   entryFile: string,
   entryHtml: string,
 ): string | null {
-  const projectIndex = resolve(projectDir, "index.html");
-  if (!entryHtml.trimStart().startsWith("<template") || !existsSync(projectIndex)) return null;
-  noteRead(projectIndex);
-  return extractStandaloneEntryFromIndex(readFileSync(projectIndex, "utf-8"), entryFile, entryHtml);
+  if (!isTemplateEntry(entryHtml)) return null;
+  const indexHtml = safeReadFile(resolve(projectDir, "index.html"));
+  return indexHtml === null
+    ? null
+    : extractStandaloneEntryFromIndex(indexHtml, entryFile, entryHtml);
 }
 
 async function bundleProject(projectDir: string, options?: BundleOptions): Promise<string> {

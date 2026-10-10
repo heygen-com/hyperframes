@@ -1,16 +1,14 @@
 import { parseHTML } from "linkedom";
 
+export function isTemplateEntry(html: string): boolean {
+  return html.trimStart().startsWith("<template");
+}
+
 function normalizeCompositionSrcPath(srcPath: string): string {
   return srcPath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-/**
- * Read the `data-duration` off a scene file's `<template>` root — the scene's
- * own authored length. linkedom does not implement inert `<template>` content,
- * so we re-parse `template.innerHTML` (the pattern htmlBundler uses) to reach
- * the composition root inside it. Returns null when the file has no template
- * or the root declares no duration.
- */
+// linkedom has no inert <template> content, so the template's innerHTML is re-parsed.
 function readSceneRootDuration(entryHtml: string | undefined): string | null {
   if (!entryHtml) return null;
   const { document } = parseHTML(entryHtml);
@@ -25,21 +23,14 @@ function createStandaloneEntryRenderClone(
   host: Element,
   sceneDuration: string | null,
 ): Element {
-  // linkedom's cloneNode returns `any` (not `Node`), so the Element cast
-  // is needed to access setAttribute/appendChild without losing type safety.
   const hostClone = host.cloneNode(true) as Element;
   hostClone.setAttribute("data-start", "0");
 
   if (root === host) return hostClone;
 
   const rootClone = root.cloneNode(false) as Element;
-  // The standalone composition IS the mounted scene, not the master shell that
-  // wraps it. A shallow clone of the master root otherwise keeps the master's
-  // data-duration (the whole project's length), so `render -c <scene>` rendered
-  // the scene for the entire project duration — or threw "Composition has zero
-  // duration" when the master derived its length from siblings now removed.
-  // Re-point the wrapper's duration at the scene's own; drop it (derive from the
-  // single child) only when the scene declared none.
+  // The wrapper takes the scene's length, not the whole project's; with none declared
+  // it derives from its single child.
   if (sceneDuration != null) {
     rootClone.setAttribute("data-duration", sceneDuration);
   } else {
@@ -66,9 +57,7 @@ export function extractStandaloneEntryFromIndex(
   const body = document.querySelector("body");
   if (!body) return null;
 
-  // linkedom's querySelectorAll returns `any` on Document and `NodeList` on
-  // the ParentNode mixin. Neither types the elements as `Element`, so the
-  // cast is required to call getAttribute / hasAttribute without `any`.
+  // linkedom types these lists as any/NodeList, hence the Element[] casts.
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]")) as Element[];
   const host = hosts.find(
     (candidate) =>
@@ -77,17 +66,13 @@ export function extractStandaloneEntryFromIndex(
   );
   if (!host) return null;
 
-  // linkedom's `children` is typed as `NodeList` (not `HTMLCollection<Element>`),
-  // so the Element[] cast is needed.
   const root =
     (Array.from(body.children) as Element[]).find((candidate) =>
       candidate.hasAttribute("data-composition-id"),
     ) ?? null;
   if (!root) return null;
 
-  // The scene file is the source of truth for its own duration; fall back to the
-  // mount's data-duration (its window in the master timeline) when the scene
-  // file content isn't supplied.
+  // The scene file owns its duration; the mount's window is the fallback.
   const sceneDuration = readSceneRootDuration(entryHtml) ?? host.getAttribute("data-duration");
 
   const renderClone = createStandaloneEntryRenderClone(root, host, sceneDuration);

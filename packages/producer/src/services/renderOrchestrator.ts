@@ -57,7 +57,7 @@ import {
   toFps,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
-import { extractStandaloneEntryFromIndex } from "@hyperframes/core/compiler";
+import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
 import {
   type EngineConfig,
@@ -2994,7 +2994,7 @@ async function executeRenderPipeline(input: {
     // index.html shell and isolate the matching host instead of fabricating
     // a new standalone document.
     const rawEntry = readFileSync(htmlPath, "utf-8");
-    if (entryFile !== "index.html" && rawEntry.trimStart().startsWith("<template")) {
+    if (entryFile !== "index.html" && isTemplateEntry(rawEntry)) {
       const wrapperPath = join(workDir, "standalone-entry.html");
       const projectIndexPath = join(projectDir, "index.html");
       if (!existsSync(projectIndexPath)) {
