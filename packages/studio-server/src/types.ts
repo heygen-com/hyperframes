@@ -192,6 +192,8 @@ export interface StudioApiAdapter {
      * the same channel `hyperframes render --variables` uses.
      */
     variables?: Record<string, unknown>;
+    /** Encode on the GPU, as `hyperframes render --gpu` does. */
+    useGpu?: boolean;
     /**
      * Telemetry id of the browser user who triggered the render. Lets the
      * adapter attribute the server-emitted render_complete/render_error to

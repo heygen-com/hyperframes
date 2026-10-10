@@ -351,6 +351,7 @@ export function createViteAdapter(
             outputResolution: opts.outputResolution,
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
+            ...(opts.useGpu ? { useGpu: true } : {}),
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;

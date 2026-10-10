@@ -75,8 +75,8 @@ export const StudioLeftPanels = memo(function StudioLeftPanels({
         return;
       }
       await waitForPendingDomEditSaves();
-      const { format, quality, fps } = getPersistedRenderSettings();
-      await renderQueue.startRender({ composition: comp, format, quality, fps });
+      const { format, quality, fps, gpu } = getPersistedRenderSettings();
+      await renderQueue.startRender({ composition: comp, format, quality, fps, gpu });
     },
     [renderQueue, waitForPendingDomEditSaves],
   );

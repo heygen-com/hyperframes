@@ -4,6 +4,8 @@ export interface PersistedRenderSettings {
   format: "mp4" | "webm" | "mov";
   quality: "draft" | "standard" | "high";
   fps: 24 | 30 | 60;
+  /** Encode on the GPU, as `hyperframes render --gpu` does. MP4 only. */
+  gpu: boolean;
 }
 
 export function getPersistedRenderSettings(): PersistedRenderSettings {
@@ -17,21 +19,23 @@ export function getPersistedRenderSettings(): PersistedRenderSettings {
           ? parsed.quality
           : "standard",
         fps: [24, 30, 60].includes(parsed.fps) ? parsed.fps : 30,
+        gpu: parsed.gpu === true,
       };
     }
   } catch {
     /* ignore */
   }
-  return { format: "mp4", quality: "standard", fps: 30 };
+  return { format: "mp4", quality: "standard", fps: 30, gpu: false };
 }
 
 export function persistRenderSettings(
   format: PersistedRenderSettings["format"],
   quality: PersistedRenderSettings["quality"],
   fps: PersistedRenderSettings["fps"],
+  gpu: boolean = getPersistedRenderSettings().gpu,
 ): void {
   try {
-    localStorage.setItem(RENDER_SETTINGS_KEY, JSON.stringify({ format, quality, fps }));
+    localStorage.setItem(RENDER_SETTINGS_KEY, JSON.stringify({ format, quality, fps, gpu }));
   } catch {
     /* ignore */
   }

@@ -106,6 +106,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // Composition-variable overrides ({variableId: value}), injected as
       // window.__hfVariables — same channel as `hyperframes render --variables`.
       variables?: Record<string, unknown>;
+      gpu?: boolean;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -162,6 +163,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       outputResolution,
       composition,
       variables,
+      useGpu: body.gpu === true,
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,

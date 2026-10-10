@@ -172,7 +172,23 @@ describe("RenderQueue controls", () => {
       exportButtonIn(host).dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "auto", 30);
+    expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "auto", 30, false);
+  });
+
+  it("exports with GPU encoding once the box is ticked, and remembers it", () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = mountRenderQueue(onStartRender);
+    const gpu = [...host.querySelectorAll("label")].find((label) =>
+      label.textContent?.includes("Use GPU encoding"),
+    );
+
+    act(() => gpu?.querySelector("input")?.click());
+    act(() => {
+      exportButtonIn(host).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "auto", 30, true);
+    expect(getPersistedRenderSettings().gpu).toBe(true);
   });
 
   it("persists a changed format as the literal union value", async () => {
@@ -185,7 +201,9 @@ describe("RenderQueue controls", () => {
       format: "mov",
       quality: "standard",
       fps: 30,
+      gpu: false,
     });
+    expect(host.textContent).not.toContain("Use GPU encoding");
   });
 });
 
