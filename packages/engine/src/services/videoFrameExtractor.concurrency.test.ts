@@ -1,12 +1,4 @@
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -126,7 +118,9 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg conc
     process.env[FFMPEG_PATH_ENV] = shim;
     try {
       const holder = extract("held", held);
-      await vi.waitFor(() => expect(readdirSync(join(run, "running"))).toHaveLength(1));
+      await vi.waitFor(() => expect(readFileSync(join(run, "alive"), "utf8").trim()).toBe("1"), {
+        timeout: 10_000,
+      });
       const cancel = new AbortController();
       const cancelled = extract("queued", queued, cancel.signal);
       await new Promise(setImmediate);
