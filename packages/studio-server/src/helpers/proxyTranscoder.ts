@@ -504,7 +504,11 @@ async function runFfmpeg(
           ),
         );
       } else {
-        reject(new ProxyTranscodeError(`ffmpeg exited with code ${code}`, code, stderrTail));
+        const lastLine = stderrTail.trim().split("\n").at(-1)?.trim();
+        const detail = lastLine ? `: ${lastLine}` : "";
+        reject(
+          new ProxyTranscodeError(`ffmpeg exited with code ${code}${detail}`, code, stderrTail),
+        );
       }
     });
   });
@@ -617,6 +621,34 @@ export async function resolveProxy(
   }
   if (options.priority) prioritize(entry.job);
   return joinJob(entry.promise, entry.job, options.signal);
+}
+
+/**
+ * Resolves every proxy a whole project needs (check's pre-resolve, publish's bake). Keeps at most
+ * MAX_CONCURRENT_TRANSCODES of its own asks in flight, so a long batch waits for room instead of
+ * being refused with ProxyCapacityError past the queue cap. Each ask waits at most TRANSCODE_TIMEOUT_MS.
+ */
+export async function resolveProxies(
+  projectDir: string,
+  sources: ReadonlyArray<{ sourcePath: string; variant: ProxyVariant }>,
+): Promise<PromiseSettledResult<string>[]> {
+  const results: PromiseSettledResult<string>[] = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let index = next++; index < sources.length; index = next++) {
+      const { sourcePath, variant } = sources[index]!;
+      results[index] = await waitForProxy(
+        resolveProxy(projectDir, sourcePath, variant),
+        TRANSCODE_TIMEOUT_MS,
+      ).then(
+        (value) => ({ status: "fulfilled", value }),
+        (reason: unknown) => ({ status: "rejected", reason }),
+      );
+    }
+  };
+  const workers = Math.min(MAX_CONCURRENT_TRANSCODES, sources.length);
+  await Promise.all(Array.from({ length: workers }, worker));
+  return results;
 }
 
 export interface ResolveProxyOptions {

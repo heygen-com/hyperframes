@@ -29,7 +29,7 @@ import {
   proxyVariantFor,
   scanProjectMediaCodecMap,
 } from "@hyperframes/studio-server/media-codec-map";
-import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
+import { resolveProxies } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
@@ -134,26 +134,29 @@ export async function preResolveHostileMediaProxies(
   if (hostileEntries.length === 0) return [];
 
   const startedAt = Date.now();
-  const failures = (
-    await Promise.all(
-      hostileEntries.map(async ([pathname, facts]): Promise<RuntimeDraft[]> => {
-        const file = pathname.replace(/^\/+/, "");
-        try {
-          await resolveProxy(projectDir, resolve(projectDir, file), proxyVariantFor(facts));
-          return [];
-        } catch (err) {
-          return [
-            {
-              code: "media_proxy_failed",
-              severity: "warning",
-              message: `Could not make a browser-playable copy of ${file}: ${normalizeErrorMessage(err)}. Render reads the original file and is not affected, but publish stops on it (unless run with --no-proxy) and a browser that cannot decode it will not play it in preview.`,
-              time: 0,
-            },
-          ];
-        }
-      }),
-    )
-  ).flat();
+  const sources = hostileEntries.map(([pathname, facts]) => {
+    const file = pathname.replace(/^\/+/, "");
+    return {
+      pathname,
+      file,
+      sourcePath: resolve(projectDir, file),
+      variant: proxyVariantFor(facts),
+    };
+  });
+  const results = await resolveProxies(projectDir, sources);
+  const failures = results.flatMap((result, index): RuntimeDraft[] => {
+    if (result.status === "fulfilled") return [];
+    const { pathname, file } = sources[index]!;
+    return [
+      {
+        code: "media_proxy_failed",
+        severity: "warning",
+        message: `Could not make a browser-playable copy of ${file}: ${normalizeErrorMessage(result.reason)}. A default render decodes the original with ffmpeg and does not need it, but publish stops on it (unless run with --no-proxy) and a browser that cannot decode the original will not play it in preview.`,
+        time: 0,
+        url: pathname,
+      },
+    ];
+  });
   const total = hostileEntries.length;
   console.error(
     `[hyperframes] media proxy pre-resolve: ${total - failures.length}/${total} ready, ${failures.length} failed (${Date.now() - startedAt}ms)`,
@@ -212,7 +215,7 @@ export async function runBrowserCheck(
     return {
       ...result,
       timings: { ...result.timings, launchSettleMs },
-      runtimeFindings: keepBrokenImageAborts(drafts, broken).map((draft) =>
+      runtimeFindings: dropFailedProxyEchoes(keepBrokenImageAborts(drafts, broken)).map((draft) =>
         runtimeFinding(draft, rootAnchor),
       ),
     };
@@ -386,6 +389,29 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
 /** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` shows it and its decode fails. */
 export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string>): RuntimeDraft[] {
   return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
+}
+
+/** One finding per failed proxy: the preview's own 502s and swap notes for that file repeat `media_proxy_failed`. */
+export function dropFailedProxyEchoes(drafts: RuntimeDraft[]): RuntimeDraft[] {
+  const failed = new Set(
+    drafts.filter((draft) => draft.code === "media_proxy_failed").map((draft) => draft.url),
+  );
+  if (failed.size === 0) return drafts;
+  return drafts.filter((draft) => !failed.has(proxyEchoPath(draft)));
+}
+
+function proxyEchoPath(draft: RuntimeDraft): string | undefined {
+  const isHttp = draft.code === "http_error" || draft.code === "request_failed";
+  const isNote = draft.code === "media_proxy_fallback" || draft.code === "media_proxy_unavailable";
+  const target = isHttp ? draft.url : isNote ? /"([^"]+)"/.exec(draft.message)?.[1] : undefined;
+  if (!target) return undefined;
+  try {
+    const url = new URL(target, "http://check.invalid/");
+    if (isHttp && !url.searchParams.has("hf-proxy")) return undefined;
+    return decodeURIComponent(url.pathname);
+  } catch {
+    return undefined;
+  }
 }
 
 const IMAGE_DECODE_CAP_MS = 5000;

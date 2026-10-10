@@ -40,12 +40,7 @@ import {
   scanProjectMediaCodecMap,
   type HtmlSourceLike,
 } from "@hyperframes/studio-server/media-codec-map";
-import {
-  ProxyTranscodeError,
-  resolveProxy,
-  waitForProxy,
-  TRANSCODE_TIMEOUT_MS,
-} from "@hyperframes/studio-server/proxy-transcoder";
+import { ProxyTranscodeError, resolveProxies } from "@hyperframes/studio-server/proxy-transcoder";
 import { rewriteHtmlAttributes } from "./publishProject.js";
 
 /** Archive-path prefix for baked proxy files, mirroring `localizeExternalAssets`'s `_ext/`. */
@@ -109,17 +104,20 @@ export async function bakeMediaProxies(
   // filesystem path.
   const proxyByAbsolutePath = new Map<string, string>();
 
+  const sources = hostileEntries.map(([pathname, facts]) => ({
+    pathname,
+    sourcePath: resolve(absProjectDir, pathname.replace(/^\/+/, "")),
+    variant: proxyVariantFor(facts),
+  }));
+  const results = await resolveProxies(absProjectDir, sources);
   await Promise.all(
-    hostileEntries.map(async ([pathname, facts]) => {
-      const absoluteSourcePath = resolve(absProjectDir, pathname.replace(/^\/+/, ""));
+    sources.map(async ({ pathname, sourcePath }, index) => {
+      const result = results[index]!;
       try {
-        const proxyPath = await waitForProxy(
-          resolveProxy(absProjectDir, absoluteSourcePath, proxyVariantFor(facts)),
-          TRANSCODE_TIMEOUT_MS,
-        );
-        const archivePath = `${PROXY_ARCHIVE_PREFIX}/${basename(proxyPath)}`;
-        fileContents.set(archivePath, await readFile(proxyPath));
-        proxyByAbsolutePath.set(absoluteSourcePath, archivePath);
+        if (result.status === "rejected") throw result.reason;
+        const archivePath = `${PROXY_ARCHIVE_PREFIX}/${basename(result.value)}`;
+        fileContents.set(archivePath, await readFile(result.value));
+        proxyByAbsolutePath.set(sourcePath, archivePath);
         manifest.proxied.push(pathname);
       } catch (err) {
         const reason = err instanceof ProxyTranscodeError ? err.message : String(err);

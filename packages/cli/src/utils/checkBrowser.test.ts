@@ -13,6 +13,7 @@ import {
   captureOverviewShot,
   keepBrokenImageAborts,
   preResolveHostileMediaProxies,
+  dropFailedProxyEchoes,
   runBrowserCheck,
 } from "./checkBrowser.js";
 import type { ProjectDir } from "./project.js";
@@ -20,7 +21,8 @@ import type { ProjectDir } from "./project.js";
 const mocks = vi.hoisted(() => ({
   bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
   serverClose: vi.fn(async () => undefined),
-  resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(),
+  resolveProxy:
+    vi.fn<(projectDir: string, absoluteSourcePath: string, variant?: string) => Promise<string>>(),
   scanProjectMediaCodecMap: vi.fn<
     (...args: unknown[]) => Promise<
       Record<
@@ -74,7 +76,10 @@ vi.mock("@hyperframes/studio-server/media-codec-map", async (importOriginal) => 
   proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
 }));
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
-  resolveProxy: mocks.resolveProxy,
+  resolveProxies: (projectDir: string, sources: Array<{ sourcePath: string; variant: string }>) =>
+    Promise.allSettled(
+      sources.map(({ sourcePath, variant }) => mocks.resolveProxy(projectDir, sourcePath, variant)),
+    ),
 }));
 
 const PROJECT: ProjectDir = {
@@ -648,6 +653,45 @@ describe("keepBrokenImageAborts", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("dropFailedProxyEchoes", () => {
+  it("keeps one finding for a failed proxy and drops the preview's repeats of it", () => {
+    const at = (code: string, message: string, url?: string) =>
+      ({ code, severity: "info", message, time: 0, url }) as const;
+    const failed = at("media_proxy_failed", "Could not make a copy of media/a.mov", "/media/a.mov");
+    const unrelated502 = at(
+      "http_error",
+      "502 loading media/b.mov",
+      "http://127.0.0.1:3000/media/b.mov?hf-proxy=h264",
+    );
+    const originalMissing = at(
+      "http_error",
+      "404 loading media/a.mov",
+      "http://127.0.0.1:3000/media/a.mov",
+    );
+
+    const kept = dropFailedProxyEchoes([
+      failed,
+      at(
+        "http_error",
+        "502 loading media/a.mov",
+        "http://127.0.0.1:3000/media/a.mov?hf-proxy=h264",
+      ),
+      at(
+        "media_proxy_fallback",
+        '[hyperframes] runtime_media_proxy_fallback: "media/a.mov" uses a codec (prores)',
+      ),
+      at(
+        "media_proxy_unavailable",
+        '[hyperframes] runtime_media_proxy_unavailable: "http://127.0.0.1:3000/media/a.mov" (proxy_playback_failed): x',
+      ),
+      unrelated502,
+      originalMissing,
+    ]);
+
+    expect(kept).toEqual([failed, unrelated502, originalMissing]);
   });
 });
 

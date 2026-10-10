@@ -550,6 +550,30 @@ describe("resolveProxy", () => {
     await expect(retry).resolves.toBeTruthy();
   });
 
+  it("resolves a whole project's batch past the queue cap by waiting for room, not refusing", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxies } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sources = Array.from({ length: MAX_CONCURRENT + MAX_QUEUED + 1 }, (_, i) => {
+      const sourcePath = join(projectDir, `batch-${i}.mov`);
+      writeFileSync(sourcePath, `source-${i}`);
+      return { sourcePath, variant: "h264" as const };
+    });
+
+    const batch = resolveProxies(projectDir, sources);
+    for (let done = 0; ; ) {
+      // A finished copy hands its worker the next source through several promise hops.
+      await flush(50);
+      const running = calls.slice(done);
+      if (running.length === 0) break;
+      running.forEach((call) => succeed(call));
+      done += running.length;
+    }
+
+    const results = await batch;
+    expect(results.map((result) => result.status)).toEqual(sources.map(() => "fulfilled"));
+  });
+
   describe("queue order and callers that leave", () => {
     function clipOf(call: SpawnCall): string {
       return basename(call.args[call.args.indexOf("-i") + 1]!, ".mov");
@@ -861,6 +885,7 @@ describe("resolveProxy", () => {
 
     await expect(resultPromise).rejects.toBeInstanceOf(ProxyTranscodeError);
     await expect(resultPromise).rejects.toMatchObject({
+      message: "ffmpeg exited with code 1: ffmpeg: unsupported codec",
       exitCode: 1,
       stderrTail: expect.stringContaining("unsupported codec"),
     });
