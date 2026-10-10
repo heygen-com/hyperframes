@@ -32,7 +32,7 @@ vi.mock("../server/portUtils.js", async (importOriginal) => ({
 
 describe("preview start failure", () => {
   it("stops the startup spinner so a server that cannot listen lets the process exit", async () => {
-    await runEmbeddedMode("/tmp/hf-preview-start-failure", 3056, { noOpen: true });
+    await runEmbeddedMode("start-failure-project", 3056, { noOpen: true });
 
     expect(ui.spinner.start).toHaveBeenCalledOnce();
     expect(ui.spinner.stop).toHaveBeenCalledOnce();
