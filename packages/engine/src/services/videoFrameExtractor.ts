@@ -1348,11 +1348,6 @@ function canHoldFinalFramePastEof(video: TimelineWindowVideo): boolean {
 // one frame, while FFmpeg seeks to the separately probed real frame timestamp.
 const FINAL_FRAME_LOGICAL_DURATION_SECONDS = 1e-6;
 
-/** A clip entirely outside the render timeline is never on screen, so it owes no frames. */
-function clearVideoWindow(video: VideoElement): void {
-  video.end = video.start;
-}
-
 /** Move a clip to its extraction window; a rate lane is shifted so it keeps integrating from the new origin. */
 export function rebaseVideoToWindow(video: VideoElement, window: TimelineExtractionWindow): void {
   if (window.preserveTimelinePhase) return;
@@ -1376,6 +1371,13 @@ export function rebaseVideoToWindow(video: VideoElement, window: TimelineExtract
  * timeline origin separate from the extracted range is what makes both
  * behaviours survive the source-duration cap.
  */
+export function isVideoOutsideTimeline(
+  video: Pick<VideoElement, "start" | "end">,
+  timelineEnd: number,
+): boolean {
+  return video.start >= timelineEnd || video.end <= 0;
+}
+
 export function resolveTimelineExtractionWindow(
   video: TimelineWindowVideo,
   resolvedDuration: number,
@@ -1873,8 +1875,7 @@ export async function extractAllVideoFrames(
   const warnedSrcs = new Set<string>();
   for (const video of videos) {
     if (signal?.aborted) break;
-    if (options.timelineEnd !== undefined && video.start >= options.timelineEnd) {
-      clearVideoWindow(video);
+    if (options.timelineEnd !== undefined && isVideoOutsideTimeline(video, options.timelineEnd)) {
       continue;
     }
     try {
@@ -2460,7 +2461,6 @@ export async function extractAllVideoFrames(
         );
         const videoDuration = window.durationSeconds;
         if (videoDuration <= 0) {
-          clearVideoWindow(video);
           return { skipped: true };
         }
         rebaseVideoToWindow(video, window);

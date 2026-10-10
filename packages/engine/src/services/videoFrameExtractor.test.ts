@@ -2286,31 +2286,28 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     });
 
     expect(result).toMatchObject({ success: true, extracted: [], errors: [] });
-    // Frame coverage reads this window; a clip never on screen owes no frames.
-    expect(video).toMatchObject({ start: -2, end: -2 });
   });
 
-  it("gives a clip starting after the timeline end an empty window, not an error", async () => {
-    const outputDir = join(FIXTURE_DIR, "out-after-timeline");
+  it("never opens the source of a clip outside the timeline", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-outside-missing");
     mkdirSync(outputDir, { recursive: true });
-    const video: VideoElement = {
-      id: "after-timeline",
-      src: VFR_FIXTURE,
-      start: 4,
-      end: 6,
+    const outside = (id: string, start: number, end: number): VideoElement => ({
+      id,
+      src: "missing-source.mp4",
+      start,
+      end,
       mediaStart: 0,
       loop: false,
       hasAudio: false,
-    };
-
-    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
-      fps: 1,
-      outputDir,
-      timelineEnd: 3,
     });
 
+    const result = await extractAllVideoFrames(
+      [outside("before-zero", -2, -1), outside("after-end", 4, 6)],
+      FIXTURE_DIR,
+      { fps: 1, outputDir, timelineEnd: 3 },
+    );
+
     expect(result).toMatchObject({ success: true, extracted: [], errors: [] });
-    expect(video).toMatchObject({ start: 4, end: 4 });
   });
 
   it("preserves loop phase when negative preroll crosses the source boundary", async () => {

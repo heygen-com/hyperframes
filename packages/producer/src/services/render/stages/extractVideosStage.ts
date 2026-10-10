@@ -45,6 +45,7 @@ import {
   detectTransfer,
   extractAllVideoFrames,
   extractMediaMetadata,
+  isVideoOutsideTimeline,
   isHdrColorSpace,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
@@ -389,6 +390,9 @@ export async function runExtractVideosStage(
 
   const stage2Start = Date.now();
   const extractionPolicy = resolveVideoExtractionPolicy();
+  composition.videos = composition.videos.filter(
+    (video) => !isVideoOutsideTimeline(video, composition.duration),
+  );
 
   let frameLookup: FrameLookupTable | null = null;
   let extractionResult: Awaited<ReturnType<typeof extractAllVideoFrames>> | null = null;
