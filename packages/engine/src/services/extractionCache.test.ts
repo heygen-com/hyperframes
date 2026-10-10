@@ -378,6 +378,21 @@ describe("publishCacheEntry", () => {
     expect(statSync(join(cacheEntry.dir, "frame_00001.jpg")).size).toBe("fresh".length);
     expect(existsSync(join(cacheEntry.dir, COMPLETE_SENTINEL))).toBe(true);
   });
+
+  it("replaces a sentineled winner whose frames are gone instead of discarding fresh frames", () => {
+    const cacheEntry = entry();
+    ensureCacheEntryDir(cacheEntry);
+    markCacheEntryComplete(cacheEntry);
+    expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(false);
+    const partialDir = seedPartialDir(cacheEntry, "fresh");
+
+    const result = publishCacheEntry(cacheEntry, partialDir);
+
+    expect(result).toEqual({ dir: cacheEntry.dir, published: true });
+    expect(existsSync(partialDir)).toBe(false);
+    expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(true);
+    expect(statSync(join(cacheEntry.dir, "frame_00001.jpg")).size).toBe("fresh".length);
+  });
 });
 
 describe("gcExtractionCache", () => {

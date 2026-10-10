@@ -235,7 +235,7 @@ function isTargetExistsRenameError(err: unknown): boolean {
  * winner is always correct. Returns null when no winner is present.
  */
 function adoptPublishedWinner(entry: CacheEntry, partialDir: string): CachePublishResult | null {
-  if (!existsSync(join(entry.dir, COMPLETE_SENTINEL))) return null;
+  if (!existsSync(join(entry.dir, COMPLETE_SENTINEL)) || !hasFrameFiles(entry.dir)) return null;
   removeDir(partialDir);
   return { dir: entry.dir, published: true };
 }
