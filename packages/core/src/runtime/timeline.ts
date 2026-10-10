@@ -64,7 +64,6 @@ export function isRuntimeElementVisibleAt(
       !hasAuthoredTiming &&
       (duration == null || duration <= 0) &&
       liveDuration != null &&
-      Number.isFinite(liveDuration) &&
       liveDuration > 0
     ) {
       duration = liveDuration;

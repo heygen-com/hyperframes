@@ -1706,7 +1706,7 @@ async function evaluateHfDiagnostic(page: Page): Promise<HfDiagnostic> {
   return (await page.evaluate(HF_READY_DIAGNOSTIC_EXPR)) as HfDiagnostic;
 }
 
-async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 100): Promise<void> {
+export async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 100): Promise<void> {
   const readyExpr = `!!(window.__hf && typeof window.__hf.seek === "function" && window.__hf.duration > 0)`;
   const FAST_FAIL_AFTER_MS = 10_000;
   // Throttle diagnostic CDP calls to ~1000ms — running evaluateHfDiagnostic on
@@ -1717,6 +1717,8 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
   let lastDiagnosticAt = 0;
 
   while (Date.now() < deadline) {
+    const startupError = await page.evaluate("window.__hfStartupError");
+    if (typeof startupError === "string") throw new Error(startupError);
     const ready = Boolean(await page.evaluate(readyExpr));
     if (ready) return;
 

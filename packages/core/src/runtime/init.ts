@@ -4121,7 +4121,12 @@ export function initSandboxRuntimeModular(): void {
     // Set after any GSAP batching has completed. renderSeek works with or
     // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
     window.__renderReady = true;
-    postTimeline();
+    try {
+      postTimeline();
+    } catch (err) {
+      window.__renderReady = false;
+      throw err;
+    }
     postState(true);
   };
 

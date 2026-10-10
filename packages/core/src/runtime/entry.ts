@@ -68,7 +68,12 @@ function bootstrapHyperframeRuntime(): void {
     return;
   }
   win.__hyperframeRuntimeBootstrapped = true;
-  initSandboxRuntimeModular();
+  try {
+    initSandboxRuntimeModular();
+  } catch (err) {
+    window.__hfStartupError = `HyperFrames runtime failed to start: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`;
+    throw err;
+  }
 }
 
 // Compiled composition scripts wait for web fonts, so what they measure matches every run.

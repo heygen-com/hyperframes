@@ -2425,6 +2425,37 @@ describe("resolveCompositionDurations strict literal timing", () => {
     }
   });
 
+  it("falls back to the authored duration when the registered duration() throws", async () => {
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    globalThis.window = {
+      __timelines: {
+        scene: {
+          duration() {
+            throw new Error("boom");
+          },
+        },
+      },
+    } as any;
+    globalThis.document = {
+      getElementById: () => ({
+        getAttribute: (name: string) => (name === "data-composition-duration" ? "5" : null),
+      }),
+    } as any;
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+      const result = await resolveCompositionDurations(page, [
+        { id: "scene", tagName: "div", start: 0, mediaStart: 0, playbackRate: 1 },
+      ]);
+      expect(result).toEqual([{ id: "scene", duration: 5 }]);
+    } finally {
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
+    }
+  });
+
   it("does not partially parse trailing-garbage composition duration", async () => {
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
