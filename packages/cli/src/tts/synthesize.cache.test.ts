@@ -53,6 +53,14 @@ describe("synthesis script cache", () => {
     fs.rmSync(paths.home, { recursive: true, force: true });
   });
 
+  it("turns off onnxruntime telemetry for the synthesis process", async () => {
+    const { synthesize } = await import("./synthesize.js");
+    await synthesize("Hello", outputPath);
+
+    const options = vi.mocked(execFileSync).mock.calls.at(-1)?.[2];
+    expect(options?.env?.ORT_DISABLE_TELEMETRY).toBe("1");
+  });
+
   it("creates the script, removes only old script versions, and reuses the current cache", async () => {
     fs.writeFileSync(join(cacheDir, "synth-v2.py"), "old script");
     fs.writeFileSync(join(cacheDir, "notes.txt"), "keep");
