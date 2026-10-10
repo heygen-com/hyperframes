@@ -20,10 +20,8 @@ vi.mock("../browser/manager.js", () => ({
 
 vi.mock("puppeteer-core", () => ({ default: { launch: mocks.launch } }));
 
-// captureCompositionFrame.js imports these two from ../browser/gpuPolicy.js,
-// which re-exports them from this mocked module — unmocked here, they'd read
-// undefined and throw as soon as openSettledCompositionPage calls them.
-vi.mock("@hyperframes/engine", () => ({
+vi.mock("@hyperframes/engine", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine")>()),
   buildChromeArgs: mocks.buildChromeArgs,
   resolveBrowserGpuMode: mocks.resolveBrowserGpuMode,
   compositionRequiresWebGpu: mocks.compositionRequiresWebGpu,

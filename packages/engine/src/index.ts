@@ -76,6 +76,7 @@ export {
 } from "./services/systemMemory.js";
 
 // ── Browser management ─────────────────────────────────────────────────────────
+export { resolveChromeProxyArgs } from "./services/chromeProxy.js";
 export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 export {
   acquireBrowser,

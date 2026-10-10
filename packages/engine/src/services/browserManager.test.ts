@@ -379,6 +379,49 @@ describe("resolveBrowserGpuMode", () => {
     _resetAutoBrowserGpuModeCacheForTests();
   });
 
+  it("routes the GPU probe through the shared proxy policy", async () => {
+    const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    vi.stubEnv("http_proxy", "");
+    vi.stubEnv("https_proxy", "http://proxy.test:8080");
+    vi.stubEnv("all_proxy", "");
+    try {
+      await resolveBrowserGpuMode("auto");
+      expect(launch.mock.calls[0]?.[0].args).toContain(
+        "--proxy-server=https=http://proxy.test:8080",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("refuses proxy credentials before the GPU probe without masking the error", async () => {
+    const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    vi.stubEnv("https_proxy", "http://user:password@proxy.test");
+    try {
+      await expect(resolveBrowserGpuMode("auto")).rejects.toThrow(
+        "HTTPS_PROXY contains proxy credentials.",
+      );
+      expect(launch).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("a refused proxy does not poison the next GPU probe after the environment is corrected", async () => {
+    const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    vi.stubEnv("https_proxy", "http://user:password@proxy.test");
+    try {
+      await expect(resolveBrowserGpuMode("auto")).rejects.toThrow(
+        "HTTPS_PROXY contains proxy credentials.",
+      );
+      vi.stubEnv("https_proxy", "http://proxy.test:8080");
+      await expect(resolveBrowserGpuMode("auto")).resolves.toBe("hardware");
+      expect(launch).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("passes 'software' through unchanged without probing", async () => {
     const mode = await resolveBrowserGpuMode("software");
     expect(mode).toBe("software");
@@ -985,6 +1028,29 @@ describe("browser pool", () => {
   afterEach(async () => {
     await drainBrowserPool();
     _setPuppeteerForTests(undefined);
+  });
+
+  it("includes resolved environment proxy flags in the pool identity", async () => {
+    vi.stubEnv("http_proxy", "http://127.0.0.1:18001");
+    vi.stubEnv("https_proxy", "http://127.0.0.1:18001");
+    vi.stubEnv("all_proxy", "");
+    vi.stubEnv("no_proxy", "example.test");
+    try {
+      const first = await acquireBrowser(["--no-sandbox"], poolCfg);
+      vi.stubEnv("https_proxy", "http://127.0.0.1:18002");
+      const second = await acquireBrowser(["--no-sandbox"], poolCfg);
+      expect(launchFn).toHaveBeenCalledTimes(2);
+      expect(launchFn.mock.calls[0]?.[0].args).toContain(
+        "--proxy-server=http=http://127.0.0.1:18001;https=http://127.0.0.1:18001",
+      );
+      expect(launchFn.mock.calls[1]?.[0].args).toContain(
+        "--proxy-server=http=http://127.0.0.1:18001;https=http://127.0.0.1:18002",
+      );
+      await first.release();
+      await second.release();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("sequential acquires with pool enabled return the same browser", async () => {

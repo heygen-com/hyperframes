@@ -1,3 +1,4 @@
+import { resolveChromeProxyArgs } from "@hyperframes/engine";
 import type { Browser, LaunchOptions, PuppeteerNode } from "puppeteer-core";
 import {
   resolveCaptureBrowserGpuMode,
@@ -47,11 +48,13 @@ export async function launchManagedBrowser(
   options: LaunchOptions,
 ): Promise<Browser> {
   if (shutdown) throw new Error("The CLI is stopping; no browser can start.");
+  const args = [...(options.args ?? []), ...resolveChromeProxyArgs(options.env ?? process.env)];
   ownSignals();
   const abort = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal;
   const launch = puppeteer.launch({
     ...options,
+    args,
     signal,
     handleSIGINT: false,
     handleSIGTERM: false,
