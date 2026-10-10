@@ -647,10 +647,8 @@ export async function collectSeekClock(page: Page): Promise<SeekClock[]> {
         callOrUndefined(timeline, "totalDuration") ?? callOrUndefined(timeline, "duration"),
       );
       if (typeof timeline !== "object" || !timeline || !(total > 0)) continue;
-      const time = Number(
-        callOrUndefined(timeline, "totalTime") ?? callOrUndefined(timeline, "time"),
-      );
-      if (!Number.isFinite(time)) continue;
+      const time = callOrUndefined(timeline, "totalTime") ?? callOrUndefined(timeline, "time");
+      if (typeof time !== "number" || !Number.isFinite(time)) continue;
       const progress = Number(callOrUndefined(timeline, "totalProgress") ?? time / total);
       const done = callOrUndefined(timeline, "reversed") === true ? progress <= 0 : progress >= 1;
       clocks.push({ id: idOf(timeline), time, done });
