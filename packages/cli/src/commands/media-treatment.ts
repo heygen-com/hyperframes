@@ -682,7 +682,9 @@ async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const lint = { ok: findings.every(({ severity }) => severity !== "error"), findings };
   if (result.changed && !dryRun) writeFileSync(filePath, result.html);
 
-  const action: "clear" | "apply" = result.value === null ? "clear" : "apply";
+  const action: "clear" | "apply" = result.targets.every(({ value }) => value === null)
+    ? "clear"
+    : "apply";
   return {
     action,
     result,
@@ -773,7 +775,7 @@ export const mediaTreatmentCommand = defineCommand({
     },
     selector: {
       type: "string",
-      description: "CSS selector; every matched <img> or <video> gets the same treatment",
+      description: "CSS selector; every matched <img> or <video> gets the patch",
     },
     "selector-index": {
       type: "string",

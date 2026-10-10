@@ -195,6 +195,26 @@ describe("applyMediaTreatmentToHtml", () => {
     expect(second).toBe(first);
   });
 
+  it("merges the patch into each match's own grading", () => {
+    const warm = applyMediaTreatmentToHtml(SEGMENTS, {
+      selector: "video",
+      selectorIndex: 1,
+      grading: { preset: "warm-daylight" },
+    }).html;
+
+    const result = applyMediaTreatmentToHtml(warm, {
+      selector: "video",
+      grading: { intensity: 0.5 },
+    });
+
+    expect(result.targets.map(({ before }) => before)).toEqual([
+      null,
+      expect.objectContaining({ preset: "warm-daylight" }),
+    ]);
+    expect(result.targets[1]?.value).toContain('"preset":"warm-daylight"');
+    expect(result.targets[0]?.value ?? "").not.toContain("warm-daylight");
+  });
+
   it("clears every match even when the selector depends on the cleared attribute", () => {
     const graded = applyMediaTreatmentToHtml(SEGMENTS, {
       selector: "video",
@@ -551,6 +571,41 @@ describe("applyMediaTreatmentToHtml", () => {
       expect(gradingsOf(readFileSync(join(project, "index.html"), "utf8"))[1]).toContain(
         "warm-daylight",
       );
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports apply when any match keeps a grading after the patch", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-action-"));
+    const html = applyMediaTreatmentToHtml(SEGMENTS, {
+      selector: "video",
+      selectorIndex: 1,
+      grading: { wheels: { shadows: { hue: 205, amount: 0.08, level: 0.02 } } },
+    }).html;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeFileSync(join(project, "index.html"), html);
+    try {
+      await runCommand(mediaTreatmentCommand, {
+        rawArgs: [
+          "--project",
+          project,
+          "--selector",
+          "video",
+          "--grading",
+          '{"preset":"neutral"}',
+          "--apply",
+          "--json",
+        ],
+      });
+
+      const applied = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+      expect(applied.targets.map(({ value }: { value: string | null }) => value === null)).toEqual([
+        true,
+        false,
+      ]);
+      expect(applied.action).toBe("apply");
     } finally {
       log.mockRestore();
       rmSync(project, { recursive: true, force: true });

@@ -162,9 +162,10 @@ drops frames. Do not impose or claim a universal hard cap from one machine.
    hyperframes media-treatment --selector "<selector>" \
      --grading '<nested JSON patch>' --apply --json
    ```
-   A selector that matches several images or videos treats every match alike
-   (the JSON reports `count` and each target); add `--selector-index` to treat
-   only one.
+   A selector that matches several images or videos patches every match, each
+   merged into its own current grading (the JSON reports `count` and each
+   target); run `--clear` first for an identical look, or add
+   `--selector-index` to patch only one.
    For a temporal reveal, use the focused capability result's `animation`
    contract. If it is `null`, the capability is static. Author the starting CSS
    property inline on the real media element and return temporary treatment
