@@ -148,7 +148,7 @@ async function plannedNormalization(
   if (options.reference === undefined) {
     const targetTag = byId(audioTags(html), options.target, "Target");
     const plan = await measuredAbsolutePlan(projectDir, targetTag, parsedLufs(options.lufs));
-    const withinTolerance = Math.abs(plan.changeDb) <= tolerance;
+    const withinTolerance = targetTag.volume > 0 && Math.abs(plan.changeDb) <= tolerance;
     return { targetTag, withinTolerance, plan: { mode: "absolute", ...plan } };
   }
   const { referenceTag, targetTag } = selectedTags(html, options.reference, options.target);
