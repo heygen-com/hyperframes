@@ -13,7 +13,7 @@ export function GpuEncodingToggle({
   if (format !== "mp4") return null;
   return (
     <label
-      className={`flex items-center gap-2 text-step-10 text-text-4 ${disabled ? "opacity-50" : "cursor-pointer"}`}
+      className={`flex items-center gap-2 text-step-10 text-text-4 ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
     >
       <input
         type="checkbox"
