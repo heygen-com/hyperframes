@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { extractTranscript, buildCaptionModel, TranscriptWord } from "./parser";
 import { DEFAULT_STYLE, DEFAULT_CONTAINER, DEFAULT_ANIMATION_SET } from "./types";
 
@@ -154,6 +154,76 @@ describe("extractTranscript", () => {
       expect(words).toHaveLength(2);
       expect(words[0]).toEqual({ text: "We", start: 0.119, end: 0.259 });
     });
+  });
+
+  it.each([
+    ["array delimiter", "'x ]; y'", "x ]; y"],
+    ["trailing-comma text", "'literal ,] and ,}'", "literal ,] and ,}"],
+    ["object-key text", "'{ text: example }'", "{ text: example }"],
+    ["escaped quotes", String.raw`'It\'s "quoted"'`, `It's "quoted"`],
+    ["escaped double quotes", String.raw`'Say \"hello\"'`, 'Say "hello"'],
+    ["escaped backslash", String.raw`'C:\\captions\\'`, "C:\\captions\\"],
+    ["hex and Unicode escapes", String.raw`'\x41\u0042\u{1D11E}'`, "AB\u{1D11E}"],
+    ["control escapes", String.raw`'one\ntwo\tthree'`, "one\ntwo\tthree"],
+  ])("preserves %s in JavaScript strings", (_name, literal, text) => {
+    const source = `<script>const TRANSCRIPT = [{ id: 'word-a', text: ${literal}, start: 0.25, end: 1.5 }];</script>`;
+    expect(extractTranscript(source)).toEqual([{ id: "word-a", text, start: 0.25, end: 1.5 }]);
+  });
+
+  it("preserves JSON values and filters malformed word entries", () => {
+    const source = `const TRANSCRIPT = [
+      null, 42, {"text":"missing timing"}, {"text":"bad timing","start":"0","end":1},
+      {"id":7,"text":"valid","start":-0.25,"end":1e1,"extra":{"items":[true,false,null]}}
+    ];`;
+    expect(extractTranscript(source)).toEqual([{ text: "valid", start: -0.25, end: 10 }]);
+  });
+
+  it("accepts comments around static values", () => {
+    expect(
+      extractTranscript(`const TRANSCRIPT = [
+        // Delimiter in a comment: ];
+        { text: 'hello', start: 0, end: 1, },
+      ] /* trailing comment */;`),
+    ).toEqual([{ text: "hello", start: 0, end: 1 }]);
+  });
+
+  it.each([
+    "[{ text: 'unterminated, start: 0, end: 1 }];",
+    "[{ text: 'hello', start: 0, end: 1 };",
+    String.raw`[{ text: '\xZZ', start: 0, end: 1 }];`,
+    "[{ text: 'hello', start: 0, end: 1 }] garbage;",
+    "[{ text: 'hello', start: 0, end: 1 },,];",
+    "[{ text: getText(), start: 0, end: 1 }];",
+    "[{ text: 'hello', start: offset, end: 1 }];",
+    "[{ text: 'hello', start: 1 + 2, end: 4 }];",
+    "[{ text: 'hello', start: -getTime(), end: 1 }];",
+    "[{ text: 'hello', start: 0, end: 1, extra: /pattern/ }];",
+    "[{ text: 'hello', start: 0, end: 1, extra: 1n }];",
+    "[{ get text() { return 'hello'; }, start: 0, end: 1 }];",
+    "[{ text: 'hello', start: 0, end: 1, extra() {} }];",
+    "[{ ['text']: 'hello', start: 0, end: 1 }];",
+    "[{ text, start: 0, end: 1 }];",
+    "[{ ...word, text: 'hello', start: 0, end: 1 }];",
+    "[...words];",
+    "[{ text: `hello ${getText()}`, start: 0, end: 1 }];",
+    "[{ text: 'hello', start: 0, end: 1, extra: { run: getText() } }];",
+    "[{ text: 'hello', start: 0, end: 1 }].map(transform);",
+    "[{ text: 'hello', start: 0, end: 1 }], run();",
+  ])("rejects malformed or executable initializers: %s", (initializer) => {
+    expect(extractTranscript(`const TRANSCRIPT = ${initializer}`)).toEqual([]);
+  });
+
+  it("never runs code while extracting a transcript", () => {
+    const getCaptionText = vi.fn(() => "hello");
+    vi.stubGlobal("getCaptionText", getCaptionText);
+    try {
+      expect(
+        extractTranscript("const TRANSCRIPT = [{ text: getCaptionText(), start: 0, end: 1 }];"),
+      ).toEqual([]);
+      expect(getCaptionText).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   describe("real-world source samples", () => {
