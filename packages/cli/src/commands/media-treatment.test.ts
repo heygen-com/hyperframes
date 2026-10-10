@@ -143,7 +143,7 @@ describe("applyMediaTreatmentToHtml", () => {
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
-    const listed = /Available families: ([^.]+)\./.exec(message)?.[1].split(", ") ?? [];
+    const listed = /Available families: ([^.]+)\./.exec(message)?.[1]?.split(", ") ?? [];
     const entryPoints = getMediaTreatmentCapabilityOverview().families.map(({ id }) => id);
 
     expect(listed).toEqual(expect.arrayContaining(entryPoints));
