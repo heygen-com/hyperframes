@@ -37,11 +37,13 @@ function copyDir(src, dest) {
   cpSync(src, dest, { recursive: true, force: true });
 }
 
+// Source maps stay out: the CLI ships none of its own (tsup sourcemap: false).
 function copyDirContents(src, dest) {
   for (const entry of readdirSync(src)) {
     cpSync(join(src, entry), join(dest, entry), {
       recursive: true,
       force: true,
+      filter: (path) => !path.endsWith(".map"),
     });
   }
 }

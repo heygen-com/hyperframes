@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { studioEditLifecycle, type StudioWriteResult } from "../../webmcp/writeCoordinator";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
+import { announcePreviewDocumentLoaded } from "../../player/sceneSwap";
 import { TopologyLens } from "./TopologyLens";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -259,7 +260,7 @@ describe("TopologyLens", () => {
     mount();
     begin();
 
-    act(() => iframe?.dispatchEvent(new Event("load")));
+    act(() => announcePreviewDocumentLoaded(iframe!));
     expect(host?.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
 
     begin();
@@ -286,7 +287,7 @@ describe("TopologyLens", () => {
     root = null;
 
     expect(vi.getTimerCount()).toBe(1);
-    expect(removeListener).toHaveBeenCalledWith("load", expect.any(Function));
+    expect(removeListener).toHaveBeenCalledWith("hf-preview-document-loaded", expect.any(Function));
     expect(studioEditLifecycle.getSnapshot()).toMatchObject({ phase: "dispatching" });
     act(() => vi.advanceTimersByTime(0));
     expect(vi.getTimerCount()).toBe(0);
@@ -312,10 +313,10 @@ describe("TopologyLens", () => {
       ref.current = b;
       usePreviewIframeStore.getState().setIframe(b);
     });
-    act(() => a.dispatchEvent(new Event("load")));
+    act(() => announcePreviewDocumentLoaded(a));
     expect(host.querySelector('[data-topology-lens="hidden"]')).toBeNull();
 
-    act(() => b.dispatchEvent(new Event("load")));
+    act(() => announcePreviewDocumentLoaded(b));
     expect(host.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
     usePreviewIframeStore.setState({ iframe: null });
   });

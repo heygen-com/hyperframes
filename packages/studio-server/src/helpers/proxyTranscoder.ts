@@ -201,17 +201,19 @@ function getCanonicalProxyCachePath(
 
 /**
  * Computes the absolute path a proxy for this source would live at, without
- * transcoding anything. Route handlers use this to check cache state (e.g.
- * for ETag/If-None-Match) before deciding whether to await a transcode.
+ * transcoding anything, so a host can check cache state. Pass the request's
+ * preview box (`hf-proxy-box`) to name a boxed copy.
  */
 export function getProxyCachePath(
   projectDir: string,
   absoluteSourcePath: string,
   variant: ProxyVariant = "h264",
+  box?: PreviewProxyBox,
 ): string {
   return getCanonicalProxyCachePath(
     canonicalizeProxySource(projectDir, absoluteSourcePath),
     variant,
+    box,
   );
 }
 

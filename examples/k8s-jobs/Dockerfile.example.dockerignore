@@ -1,0 +1,4 @@
+# Keeps local installs, build output and the LFS test fixtures out of the image.
+**/node_modules
+**/dist
+packages/*/tests

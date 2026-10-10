@@ -627,6 +627,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
+            ...(opts.useGpu ? { useGpu: true } : {}),
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {

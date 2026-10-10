@@ -1816,7 +1816,7 @@ describe("audio duration decode probe never fails the call and needs no profile 
       `/tmp/start-offset-${Object.keys(format).length}.ts`,
     );
     expect(meta.durationSeconds).toBe(600); // 601.3 + 0.1 - 1.4 is within the margin
-    expect(readInterval(calls)).toBe("600.4%");
+    expect(readInterval(calls)).toBe("600.4%+2147483647");
   });
 
   it.each([
@@ -1866,6 +1866,34 @@ describe.skipIf(!HAS_FFPROBE)(
 
       // Recovers the real duration — not the halved container summary.
       expect(lyingMeta.durationSeconds).toBeCloseTo(trueMeta.durationSeconds, 1);
+    });
+
+    // ffprobe reads an open interval's end from uninitialised heap; glibc's MALLOC_PERTURB_
+    // makes that garbage deterministic on Linux, as Windows' heap does at random.
+    it("decodes the tail in one pass when ffprobe's heap is dirty", async () => {
+      const real = await vi.importActual<typeof import("child_process")>("child_process");
+      const probes: string[][] = [];
+      vi.resetModules();
+      vi.doMock("child_process", () => ({
+        ...real,
+        spawn: (command: string, args: string[], options: object) => {
+          probes.push(args);
+          return real.spawn(command, args, options);
+        },
+      }));
+      const previous = process.env.MALLOC_PERTURB_;
+      process.env.MALLOC_PERTURB_ = "1";
+      try {
+        const { extractAudioMetadata } = await import("./ffprobe.js");
+        expect((await extractAudioMetadata(lyingPath)).durationSeconds).toBeCloseTo(4, 3);
+        // The container probe, then the tail decode; a third call is the full-scan fallback.
+        expect(probes).toHaveLength(2);
+      } finally {
+        if (previous === undefined) delete process.env.MALLOC_PERTURB_;
+        else process.env.MALLOC_PERTURB_ = previous;
+        vi.doUnmock("child_process");
+        vi.resetModules();
+      }
     });
 
     // 2 s of AAC in MPEG-TS starting at 1.4 s: last frame 3.448 + 1024/16000 - 1.4.

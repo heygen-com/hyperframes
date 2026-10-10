@@ -53,10 +53,8 @@ import { parentPort } from "node:worker_threads";
 //    fail to resolve. The subpath sidesteps that by pointing the
 //    resolver straight at the import-free file.
 //
-// 2. In the production esbuild bundle (build.mjs entry
-//    `src/services/shaderTransitionWorker.ts`) the workspace alias plugin
-//    redirects `@hyperframes/engine/shader-transitions` to the same TS
-//    source and bundles it inline, so behavior is identical.
+// 2. The published build keeps it external, so it loads from the installed
+//    engine package, the same import-free file.
 import { TRANSITIONS, crossfade } from "@hyperframes/engine/shader-transitions";
 
 interface ShaderJobRequest {

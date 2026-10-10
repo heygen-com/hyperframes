@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Run from the user's project; locate the release from this installed file.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, win32 } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { isMainModule } from "./lib/main-module.mjs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const manifests = [
@@ -71,7 +72,7 @@ export function invocation(
   return { command: node, args: [npx, ...cliArgs], env: childEnv };
 }
 
-if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url) {
+if (isMainModule(import.meta.url)) {
   try {
     const command = invocation(process.argv.slice(2));
     const result = spawnSync(command.command, command.args, {

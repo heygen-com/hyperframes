@@ -192,6 +192,23 @@ describe("resolveProxy", () => {
     expect(cacheDirEntries).toEqual([expectedCachePath.split("/").at(-1)]);
   });
 
+  it("names the boxed preview copy resolveProxy writes when given the same box", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "clip.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const box = { width: 1024, height: 724 };
+
+    const boxedPath = getProxyCachePath(projectDir, sourcePath, "h264", box);
+    const resultPromise = resolveProxy(projectDir, sourcePath, "h264", box);
+    await flush();
+    succeed(calls[0]!);
+
+    expect(await resultPromise).toBe(boxedPath);
+    expect(boxedPath).not.toBe(getProxyCachePath(projectDir, sourcePath, "h264"));
+  });
+
   it("uses Chromium-compatible VP8 alpha args and a distinct WebM cache path", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);

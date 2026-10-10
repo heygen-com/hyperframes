@@ -200,6 +200,7 @@ describe("createColorGradingRuntime", () => {
     runtime?.destroy();
     runtime = null;
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     getContextSpy.mockRestore();
     delete window.__hfVariables;
     delete window.__hfVariablesByComp;
@@ -717,6 +718,82 @@ describe("createColorGradingRuntime", () => {
 
     expect(lastUniform1f).toHaveBeenCalledWith("u_intensity", 1);
     expect(lastUniform1f).toHaveBeenCalledWith("u_kuwahara", 1);
+  });
+
+  describe("a picture served by URL", () => {
+    const uploads = () => texImage2DCalls.map((call) => call[5]);
+
+    /** The graded picture, and the pictures the runtime creates afterwards, still loading. */
+    function servedPicture(): { image: HTMLImageElement; created: HTMLImageElement[] } {
+      const image = makeDrawableImage();
+      Object.defineProperty(image, "currentSrc", { value: "http://127.0.0.1/p/cutout.png" });
+      document.body.appendChild(image);
+      const created: HTMLImageElement[] = [];
+      const createElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation(
+        (tag: string, options?: ElementCreationOptions) => {
+          const element = createElement(tag, options);
+          if (element instanceof HTMLImageElement) {
+            Object.defineProperty(element, "complete", { value: false, configurable: true });
+            created.push(element);
+          }
+          return element;
+        },
+      );
+      return { image, created };
+    }
+
+    function settle(copy: HTMLImageElement | undefined, naturalWidth: number): void {
+      if (!copy) throw new Error("Expected a CORS copy of the picture");
+      Object.defineProperty(copy, "complete", { value: true });
+      Object.defineProperty(copy, "naturalWidth", { value: naturalWidth });
+      copy.dispatchEvent(new Event(naturalWidth > 0 ? "load" : "error"));
+    }
+
+    it("grades the picture itself in a document with an origin", () => {
+      const { image, created } = servedPicture();
+      runtime = createColorGradingRuntime();
+
+      expect(created).toEqual([]);
+      expect(uploads().at(-1)).toBe(image);
+    });
+
+    it("grades a CORS copy in an opaque document, whose own no-cors load WebGL can't read", () => {
+      vi.stubGlobal("origin", "null");
+      const { image, created } = servedPicture();
+      runtime = createColorGradingRuntime();
+
+      const [copy] = created;
+      expect([copy?.src, copy?.crossOrigin]).toEqual([
+        "http://127.0.0.1/p/cutout.png",
+        "anonymous",
+      ]);
+      expect(uploads()).not.toContain(image);
+      for (let tick = 0; tick < 5; tick += 1) runtime.redrawAnimated();
+      settle(copy, 640);
+      expect(uploads().filter((upload) => upload === copy)).toHaveLength(1);
+      expect(uploads()).not.toContain(image);
+    });
+
+    it("redraws a grading started while another's copy was loading", () => {
+      vi.stubGlobal("origin", "null");
+      const { created } = servedPicture();
+      createColorGradingRuntime().destroy();
+      runtime = createColorGradingRuntime();
+
+      expect(created).toHaveLength(1);
+      settle(created[0], 640);
+      expect(uploads().at(-1)).toBe(created[0]);
+    });
+
+    it("grades the picture itself when an opaque document's CORS copy is refused, as before", () => {
+      vi.stubGlobal("origin", "null");
+      const { image, created } = servedPicture();
+      runtime = createColorGradingRuntime();
+
+      settle(created[0], 0);
+      expect(uploads().at(-1)).toBe(image);
+    });
   });
 
   it("redraws animated still images from the transport tick", () => {

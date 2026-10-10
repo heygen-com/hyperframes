@@ -165,6 +165,7 @@ const AUDIO_DURATION_PROBE_MARGIN_SECONDS = 0.05;
 // How far before the container's claimed end the decode probe starts reading,
 // so it decodes only the tail instead of the whole stream.
 const AUDIO_DURATION_PROBE_TAIL_SECONDS = 1;
+const FFPROBE_READ_INTERVAL_EXPLICIT_FAR_END = "+2147483647";
 
 export interface VideoColorSpace {
   /** Color transfer characteristics, e.g. "bt709", "smpte2084", "arib-std-b67" */
@@ -1068,7 +1069,8 @@ async function probeDecodedAudioDuration(
     startSeconds,
     startSeconds + containerDurationSeconds - AUDIO_DURATION_PROBE_TAIL_SECONDS,
   );
-  const lastFrame = (await probe(`${tailStart}%`)) ?? (await probe());
+  const lastFrame =
+    (await probe(`${tailStart}%${FFPROBE_READ_INTERVAL_EXPLICIT_FAR_END}`)) ?? (await probe());
   if (!lastFrame) return null;
   return lastFrame.timestamp + lastFrame.nbSamples / sampleRate - startSeconds;
 }

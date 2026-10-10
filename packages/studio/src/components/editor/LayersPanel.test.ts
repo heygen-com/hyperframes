@@ -9,7 +9,7 @@ import type { DomEditLayerItem } from "./domEditingTypes";
 import { createRafThrottle, LayersPanel, sortLayersByZIndex } from "./LayersPanel";
 import { isLayerDraggable } from "./useLayerDrag";
 import { liveTime } from "../../player";
-import { sceneSwapFor } from "../../player/sceneSwap";
+import { announcePreviewDocumentLoaded, sceneSwapFor } from "../../player/sceneSwap";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -284,12 +284,12 @@ describe("LayersPanel preview promotion", () => {
     mocks.collect.mockClear();
 
     act(() => {
-      a.dispatchEvent(new Event("load"));
+      announcePreviewDocumentLoaded(a);
     });
     expect(mocks.collect).not.toHaveBeenCalled();
 
     act(() => {
-      b.dispatchEvent(new Event("load"));
+      announcePreviewDocumentLoaded(b);
     });
     expect(collectedRootIds()).toEqual(["b"]);
   });
@@ -325,7 +325,7 @@ describe("LayersPanel preview promotion", () => {
     mocks.previewIframeRef.current = iframe;
     usePreviewIframeStore.setState({ iframe });
     act(() => root.render(createElement(LayersPanel)));
-    act(() => void iframe.dispatchEvent(new Event("load")));
+    act(() => void announcePreviewDocumentLoaded(iframe));
 
     const rows = [...host.querySelectorAll("[data-layer-index]")];
     expect(rows).toHaveLength(2);

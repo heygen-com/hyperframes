@@ -7,6 +7,9 @@ import { join } from "node:path";
 const home = mkdtempSync(join(tmpdir(), "hf-test-home-"));
 process.once("exit", () => rmSync(home, { recursive: true, force: true }));
 process.env.HOME = process.env.USERPROFILE = home;
+// bun keeps its transpiler cache under HOME, so each run would rewrite it cold from every spawned CLI; on a
+// congested Windows system disk that write burst held CLI spawns past their timeout. Transpile in memory.
+process.env.BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
 for (const name of [
   "XDG_CACHE_HOME",
   "XDG_CONFIG_HOME",

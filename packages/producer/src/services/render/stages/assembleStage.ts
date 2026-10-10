@@ -46,6 +46,7 @@ export interface AssembleStageInput {
   format?: RenderOutputFormat;
   /** Segment length for `format: "hls"`. Defaults to {@link DEFAULT_HLS_SEGMENT_SECONDS}. */
   hlsSegmentSeconds?: number;
+  ffmpegProcessTimeout: number;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -98,6 +99,7 @@ async function assembleOutput(
     outputPath,
     hasAudio,
     format,
+    ffmpegProcessTimeout,
     abortSignal,
     assertNotAborted,
   } = input;
@@ -116,6 +118,7 @@ async function assembleOutput(
       audioPath: audioOutputPath,
       outputPath: normalizedAudioPath,
       signal: abortSignal,
+      timeoutMs: ffmpegProcessTimeout,
     });
     assertNotAborted();
     if (!normalizeResult.success) {
@@ -132,6 +135,7 @@ async function assembleOutput(
         abortSignal,
         {
           audioCodec: "aac",
+          ffmpegProcessTimeout,
         },
         job.config.fps,
         onSecondsWritten,
@@ -148,7 +152,7 @@ async function assembleOutput(
       videoOnlyPath,
       outputPath,
       abortSignal,
-      undefined,
+      { ffmpegProcessTimeout },
       job.config.fps,
       onSecondsWritten,
     );
@@ -177,6 +181,7 @@ async function runHlsPackaging(
     {
       segmentSeconds: input.hlsSegmentSeconds ?? DEFAULT_HLS_SEGMENT_SECONDS,
       signal: input.abortSignal,
+      ffmpegProcessTimeout: input.ffmpegProcessTimeout,
     },
   );
   input.assertNotAborted();

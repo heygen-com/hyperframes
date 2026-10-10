@@ -1,6 +1,6 @@
 # K8s / Cloud Run / ECS reference Dockerfile
 
-This directory ships a reference `Dockerfile.example` for adopters who want to run HyperFrames distributed renders **outside AWS Lambda**. The image bakes Node 22 + `chrome-headless-shell` + `ffmpeg` + the producer source, and works on Kubernetes Jobs, Argo Workflows, Cloud Run Jobs, ECS Fargate, or plain `docker run`.
+This directory ships a reference `Dockerfile.example` for adopters who want to run HyperFrames distributed renders **outside AWS Lambda**. The image bakes Node 22 + bun + `chrome-headless-shell` + `ffmpeg` + the producer source, and works on Kubernetes Jobs, Argo Workflows, Cloud Run Jobs, ECS Fargate, or plain `docker run`.
 
 We do **not** publish this image to a registry — the OSS contract is that adopters build it themselves so Chrome / ffmpeg / producer versions stay pinned to the source checkout they audited, not a floating tag we'd have to keep in sync with every release.
 
@@ -12,11 +12,11 @@ From the repo root:
 docker build -t hyperframes-chunk-runner:local -f examples/k8s-jobs/Dockerfile.example .
 ```
 
-The build pulls `chrome-headless-shell` via `@puppeteer/browsers` and installs Debian system packages for the Chromium ABI deps. Expect a ~1.2 GB compressed image; ~3 GB unpacked.
+The build pulls `chrome-headless-shell` via `@puppeteer/browsers` and installs Debian system packages for the Chromium ABI deps. Expect about 2.8 GB unpacked.
 
 ## Use
 
-The producer's distributed primitives are pure functions over local paths. Wire them into your orchestrator however you like:
+The producer's distributed primitives are pure functions over local paths. Wire them into your orchestrator however you like. In the image, run them with `bun` from `/app/packages/aws-lambda` (the Dockerfile header shows the `docker run` line):
 
 ```ts
 import { plan, renderChunk, assemble } from "@hyperframes/producer/distributed";

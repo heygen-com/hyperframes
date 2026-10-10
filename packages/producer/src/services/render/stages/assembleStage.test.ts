@@ -44,6 +44,7 @@ function makeInput(overrides: Partial<AssembleStageInput> = {}): AssembleStageIn
     audioOutputPath: "/tmp/audio.m4a",
     outputPath: "/tmp/output.mp4",
     hasAudio: true,
+    ffmpegProcessTimeout: 1_234_000,
     abortSignal: undefined,
     assertNotAborted: () => {},
     ...overrides,
@@ -78,13 +79,27 @@ describe("runAssembleStage audio duration parity", () => {
       audioPath: "/tmp/audio.m4a",
       outputPath: "/tmp/audio.duration-normalized.m4a",
       signal: undefined,
+      timeoutMs: 1_234_000,
     });
     expect(muxVideoWithAudioMock).toHaveBeenCalledWith(
       "/tmp/video-only.mp4",
       "/tmp/audio.duration-normalized.m4a",
       "/tmp/output.mp4",
       undefined,
-      { audioCodec: "aac" },
+      { audioCodec: "aac", ffmpegProcessTimeout: 1_234_000 },
+      { num: 30, den: 1 },
+      expect.any(Function),
+    );
+  });
+
+  it("gives a silent mp4's faststart the render's configured ffmpeg timeout", async () => {
+    await runAssembleStage(makeInput({ hasAudio: false }));
+
+    expect(applyFaststartMock).toHaveBeenCalledWith(
+      "/tmp/video-only.mp4",
+      "/tmp/output.mp4",
+      undefined,
+      { ffmpegProcessTimeout: 1_234_000 },
       { num: 30, den: 1 },
       expect.any(Function),
     );
@@ -98,6 +113,7 @@ describe("runAssembleStage audio duration parity", () => {
       audioPath: "/tmp/audio.m4a",
       outputPath: "/tmp/audio.duration-normalized.m4a",
       signal: undefined,
+      timeoutMs: 1_234_000,
     });
   });
 
@@ -204,12 +220,13 @@ describe("runAssembleStage HLS packaging", () => {
       audioPath: "/tmp/audio.m4a",
       outputPath: "/tmp/audio.duration-normalized.m4a",
       signal: undefined,
+      timeoutMs: 1_234_000,
     });
     expect(packageHlsMock).toHaveBeenCalledWith(
       "/tmp/video-only.mp4",
       "/tmp/audio.duration-normalized.m4a",
       "/tmp/output-hls",
-      { segmentSeconds: 6, signal: undefined },
+      { segmentSeconds: 6, signal: undefined, ffmpegProcessTimeout: 1_234_000 },
     );
     expect(muxVideoWithAudioMock).not.toHaveBeenCalled();
     expect(applyFaststartMock).not.toHaveBeenCalled();
@@ -222,6 +239,7 @@ describe("runAssembleStage HLS packaging", () => {
     expect(packageHlsMock).toHaveBeenCalledWith("/tmp/video-only.mp4", null, "/tmp/output-hls", {
       segmentSeconds: 4,
       signal: undefined,
+      ffmpegProcessTimeout: 1_234_000,
     });
     expect(applyFaststartMock).not.toHaveBeenCalled();
   });
@@ -229,14 +247,22 @@ describe("runAssembleStage HLS packaging", () => {
   it("defaults to 4 s segments", async () => {
     await runAssembleStage(hlsInput());
 
-    expect(packageHlsMock.mock.calls[0]?.[3]).toEqual({ segmentSeconds: 4, signal: undefined });
+    expect(packageHlsMock.mock.calls[0]?.[3]).toEqual({
+      segmentSeconds: 4,
+      signal: undefined,
+      ffmpegProcessTimeout: 1_234_000,
+    });
   });
 
   it("forwards the abort signal to the packager", async () => {
     const abortSignal = new AbortController().signal;
     await runAssembleStage(hlsInput({ abortSignal }));
 
-    expect(packageHlsMock.mock.calls[0]?.[3]).toEqual({ segmentSeconds: 4, signal: abortSignal });
+    expect(packageHlsMock.mock.calls[0]?.[3]).toEqual({
+      segmentSeconds: 4,
+      signal: abortSignal,
+      ffmpegProcessTimeout: 1_234_000,
+    });
   });
 
   it("throws 'HLS packaging failed' with the ffmpeg error appended", async () => {

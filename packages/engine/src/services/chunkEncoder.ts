@@ -33,6 +33,7 @@ import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
 import {
+  describeFfmpegFailure,
   ffmpegStatsReader,
   formatFfmpegError,
   isExternalFfmpegInterruption,
@@ -845,7 +846,7 @@ export async function muxVideoWithAudio(
     success: result.success,
     outputPath,
     durationMs: result.durationMs,
-    error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
+    error: !result.success ? describeFfmpegFailure(result, processTimeout) : undefined,
     failureReason: result.failureReason,
   };
 }
@@ -993,7 +994,7 @@ export async function packageHls(
     success: result.success,
     outputPath: outputDir,
     durationMs: result.durationMs,
-    error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
+    error: !result.success ? describeFfmpegFailure(result, processTimeout) : undefined,
     failureReason: result.failureReason,
   };
 }
@@ -1041,7 +1042,7 @@ export async function applyFaststart(
     success: result.success,
     outputPath,
     durationMs: result.durationMs,
-    error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
+    error: !result.success ? describeFfmpegFailure(result, processTimeout) : undefined,
     failureReason: result.failureReason,
   };
 }

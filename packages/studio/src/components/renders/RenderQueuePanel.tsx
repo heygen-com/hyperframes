@@ -29,7 +29,7 @@ export const RenderQueuePanel = memo(function RenderQueuePanel() {
       ffmpeg={renderQueue.ffmpeg}
       ffmpegChecking={renderQueue.ffmpegChecking}
       onRecheckFfmpeg={renderQueue.recheckFfmpeg}
-      onStartRender={async (format, quality, resolution, fps) => {
+      onStartRender={async (format, quality, resolution, fps, gpu) => {
         await waitForPendingDomEditSaves();
         // No `composition`: startRender targets the active one by default.
         await renderQueue.startRender({
@@ -37,6 +37,7 @@ export const RenderQueuePanel = memo(function RenderQueuePanel() {
           quality,
           format,
           resolution,
+          gpu,
           // Render what the user is previewing: active variable overrides
           // from the Variables panel ride along (undefined = defaults).
           variables: usePreviewVariablesStore.getState().values ?? undefined,
