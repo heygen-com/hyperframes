@@ -190,6 +190,28 @@ describe("timeline edit command", () => {
     }
   });
 
+  it("keeps a sub-composition's place in both halves of a split", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-split-host-"));
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-duration="12"><div id="host" data-composition-src="sub.html" data-start="1" data-duration="4" data-track-index="0"></div></div>`,
+      );
+      writeFileSync(
+        join(dir, "sub.html"),
+        `<div data-composition-id="sub" data-duration="4"><div id="inner" data-start="0" data-duration="4"></div></div>`,
+      );
+      const result = run(dir, "split", "#host", "3");
+      expect(result.status, result.stderr).toBe(0);
+      const html = readFileSync(join(dir, "index.html"), "utf8");
+      const tag = (id: string) => html.match(new RegExp(`<[^>]*\\sid="${id}"[^>]*>`))?.[0];
+      expect(tag("host")).toContain('data-playback-start="0"');
+      expect(tag("host-2")).toContain('data-playback-start="2"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("uses the next free numeric split suffix on repeat", () => {
     const dir = project();
     try {

@@ -18,7 +18,6 @@ interface CutTarget {
   elementDuration: number;
   playbackStart?: number;
   playbackRate?: number;
-  isComposition?: boolean;
   track?: number;
 }
 
@@ -71,7 +70,6 @@ function buildCutTarget(
     elementDuration: element.duration,
     ...(element.playbackStart != null ? { playbackStart: element.playbackStart } : {}),
     ...(element.playbackRate != null ? { playbackRate: element.playbackRate } : {}),
-    ...(element.kind === "composition" ? { isComposition: true } : {}),
     // Pin both halves to the current track: unstamped, the runtime's positional
     // fallback (parseAuthoredTrack) renumbers the new sibling onto a new row.
     track: resolveElementTrack(element),

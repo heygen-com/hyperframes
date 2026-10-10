@@ -114,7 +114,6 @@ function postCutBatch(
       elementDuration: number;
       playbackStart?: number;
       playbackRate?: number;
-      isComposition?: boolean;
     }>;
   }>,
 ): Promise<Response> {

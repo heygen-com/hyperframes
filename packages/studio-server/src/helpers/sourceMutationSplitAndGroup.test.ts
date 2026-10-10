@@ -196,13 +196,26 @@ describe("splitElementInHtml", () => {
     expect(result.html).not.toContain("data-playback-start");
   });
 
+  it.each(['data-composition-src="scene.html"', 'data-composition-id="scene"'])(
+    "stamps an in-point on both halves of a sub-composition host (%s)",
+    (host) => {
+      const hostSource = source.replace('id="box"', `id="box" ${host}`);
+      const { document } = parseHTML(
+        splitElementInHtml(hostSource, { id: "box" }, 3, "box-split").html,
+      );
+
+      expect(document.getElementById("box")?.getAttribute("data-playback-start")).toBe("0");
+      expect(document.getElementById("box-split")?.getAttribute("data-playback-start")).toBe("2");
+    },
+  );
+
   it("stamps a legacy composition offset and advances the second half by playback rate", () => {
-    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split", {
+    const hostSource = source.replace('id="box"', 'id="box" data-composition-src="scene.html"');
+    const result = splitElementInHtml(hostSource, { id: "box" }, 3, "box-split", {
       start: 1,
       duration: 6,
       playbackStart: 1.5,
       playbackRate: 2,
-      stampPlaybackStart: true,
     });
 
     const { document } = parseHTML(result.html);
