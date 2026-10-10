@@ -18,6 +18,7 @@ import {
   type BeforeCaptureHook,
   type HdrTransfer,
   type ElementStackingInfo,
+  type CompositeLayer,
   type HfTransitionMeta,
   captureAlphaPng,
   applyDomLayerMask,
@@ -180,11 +181,11 @@ export function blitHdrVideoLayer(
   sourceTransfer?: HdrTransfer,
   targetTransfer?: HdrTransfer,
   hdrPerf?: HdrPerfCollector,
-): void {
+): "blitted" | "skipped" | "failed" {
   const frameSource = hdrVideoFrameSources.get(el.id);
   const startTime = hdrStartTimes.get(el.id);
   if (!frameSource || startTime === undefined || el.opacity <= 0) {
-    return;
+    return "skipped";
   }
 
   // Frame index within the extracted playable source range. Loops wrap one
@@ -197,7 +198,7 @@ export function blitHdrVideoLayer(
     frameSource.frameCount,
     frameSource.loop,
   );
-  if (effectiveIndex === null) return;
+  if (effectiveIndex === null) return "skipped";
   const frameOffset = effectiveIndex * frameSource.frameSize;
 
   try {
@@ -205,7 +206,7 @@ export function blitHdrVideoLayer(
     const bytesRead = timeHdrPhase(hdrPerf, "hdrVideoReadDecodeMs", () =>
       readSync(frameSource.fd, frameSource.scratch, 0, frameSource.frameSize, frameOffset),
     );
-    if (bytesRead !== frameSource.frameSize) return;
+    if (bytesRead !== frameSource.frameSize) return "failed";
     const hdrRgb = frameSource.scratch;
     const srcW = frameSource.width;
     const srcH = frameSource.height;
@@ -238,7 +239,7 @@ export function blitHdrVideoLayer(
       const cy1 = Math.max(blitY, cr.y);
       const cx2 = Math.min(blitX + blitW, cr.x + cr.width);
       const cy2 = Math.min(blitY + blitH, cr.y + cr.height);
-      if (cx2 <= cx1 || cy2 <= cy1) return;
+      if (cx2 <= cx1 || cy2 <= cy1) return "skipped";
       blitSrcX = cx1 - blitX;
       blitSrcY = cy1 - blitY;
       blitW = cx2 - cx1;
@@ -303,12 +304,14 @@ export function blitHdrVideoLayer(
         );
       }
     });
+    return "blitted";
   } catch (err) {
     if (log) {
       log.debug(`HDR blit failed for ${el.id}`, {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+    return "failed";
   }
 }
 
@@ -465,6 +468,87 @@ export interface HdrCompositeContext {
   hdrPerf?: HdrPerfCollector;
 }
 
+function isIdentityTransform(transform: string): boolean {
+  if (!transform || transform === "none") return true;
+  if (transform.startsWith("matrix3d(")) {
+    const match = transform.match(/^matrix3d\(([^)]+)\)$/);
+    if (!match?.[1]) return false;
+    const parts = match[1].split(",");
+    if (parts.some((part) => !part.trim())) return false;
+    const matrix = parts.map(Number);
+    return (
+      matrix.length === 16 && matrix.every((value, index) => value === (index % 5 === 0 ? 1 : 0))
+    );
+  }
+  const match = transform.match(/^matrix\(([^)]+)\)$/);
+  if (!match?.[1] || match[1].split(",").some((part) => !part.trim())) return false;
+  const matrix = parseTransformMatrix(transform);
+  return !!matrix && matrix.every((value, index) => value === (index === 0 || index === 3 ? 1 : 0));
+}
+
+function findOccludingHdrVideoLayer(
+  ctx: HdrCompositeContext,
+  layers: CompositeLayer[],
+  time: number,
+): number | null {
+  if (ctx.compositeTransfer === "srgb" || layers[0]?.type !== "dom") return null;
+  const index = layers.findIndex((layer, layerIndex) => {
+    if (layerIndex === 0) return false;
+    return (
+      layer.type === "dom" ||
+      (layer.element.opacity > 0 &&
+        (layer.element.visible || layer.element.renderFrameVisible === true))
+    );
+  });
+  const layer = layers[index];
+  if (!layer || layer.type !== "hdr") return null;
+  const el = layer.element;
+  const source = ctx.hdrVideoFrameSources.get(el.id);
+  const startTime = ctx.hdrVideoStartTimes.get(el.id);
+  if (
+    ctx.nativeHdrImageIds.has(el.id) ||
+    !source ||
+    startTime === undefined ||
+    !Number.isFinite(startTime) ||
+    !Number.isFinite(time) ||
+    !Number.isFinite(ctx.fps) ||
+    ctx.fps <= 0 ||
+    !Number.isInteger(ctx.width) ||
+    !Number.isInteger(ctx.height) ||
+    ctx.width <= 0 ||
+    ctx.height <= 0 ||
+    time < startTime ||
+    !Number.isInteger(source.frameCount) ||
+    source.frameCount < 1 ||
+    !Number.isFinite(el.opacity) ||
+    el.opacity < OPAQUE_ALPHA_THRESHOLD ||
+    el.opacity > 1 ||
+    !(el.visible || el.renderFrameVisible === true) ||
+    el.x !== 0 ||
+    el.y !== 0 ||
+    el.width !== ctx.width ||
+    el.height !== ctx.height ||
+    el.layoutWidth !== ctx.width ||
+    el.layoutHeight !== ctx.height ||
+    source.width !== ctx.width ||
+    source.height !== ctx.height ||
+    source.frameSize !== ctx.width * ctx.height * RGB48_BYTES_PER_PIXEL ||
+    source.scratch.byteLength !== source.frameSize ||
+    el.borderRadius.some((radius) => radius !== 0) ||
+    !isIdentityTransform(el.transform)
+  ) {
+    return null;
+  }
+  const clip = el.clipRect;
+  if (
+    clip &&
+    (clip.x !== 0 || clip.y !== 0 || clip.width !== ctx.width || clip.height !== ctx.height)
+  ) {
+    return null;
+  }
+  return index;
+}
+
 // ─── Per-frame compositor ──────────────────────────────────────────────────
 
 /**
@@ -557,7 +641,44 @@ export async function compositeHdrFrame(
     });
   }
 
+  let firstLayerIndex = 0;
+  const occludingLayerIndex =
+    elementFilter || canvas.byteLength !== width * height * RGB48_BYTES_PER_PIXEL
+      ? null
+      : findOccludingHdrVideoLayer(ctx, layers, time);
+  const occludingLayer = occludingLayerIndex === null ? undefined : layers[occludingLayerIndex];
+  if (occludingLayerIndex !== null && occludingLayer?.type === "hdr") {
+    const result = blitHdrVideoLayer(
+      canvas,
+      occludingLayer.element,
+      time,
+      fps,
+      hdrVideoFrameSources,
+      hdrVideoStartTimes,
+      width,
+      height,
+      log,
+      videoTransfers.get(occludingLayer.element.id),
+      compositeTransfer === "srgb" ? undefined : compositeTransfer,
+      hdrPerf,
+    );
+    if (result === "blitted") {
+      firstLayerIndex = occludingLayerIndex + 1;
+      if (shouldLog) {
+        log.info("[diag] leading DOM occluded by HDR video", {
+          frame: debugFrameIndex,
+          id: occludingLayer.element.id,
+          layerIdx: occludingLayerIndex,
+        });
+      }
+    } else {
+      // A failed blit may have written pixels; replay the uncommitted frame from a clean canvas.
+      canvas.fill(0);
+    }
+  }
+
   for (const [layerIdx, layer] of layers.entries()) {
+    if (layerIdx < firstLayerIndex) continue;
     if (layer.type === "hdr") {
       // Skip zero-opacity HDR elements — their parent scene may have faded out.
       if (layer.element.opacity <= 0) continue;
