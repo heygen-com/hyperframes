@@ -423,7 +423,7 @@ export function ColorGradingControls({
                   void actions
                     .importLut(files, onImportAssets, () => track("button", "Import LUT"))
                     .catch(() =>
-                      setLutImportError("LUT import failed — check the .cube file and try again."),
+                      setLutImportError("LUT import failed. Check the .cube file and try again."),
                     )
                     .finally(() => setLutImporting(false));
                   event.currentTarget.value = "";

@@ -489,7 +489,7 @@ export function HotspotTool({
         )}
         {sequences.length === 0 && (
           <p className="text-[10px] text-neutral-500 italic">
-            Create a branch in the Branches section first — hotspots jump to a branch.
+            Create a branch in the Branches section first. Hotspots jump to a branch.
           </p>
         )}
         <label className="text-[11px] text-neutral-400">Hotspot label</label>
@@ -508,7 +508,7 @@ export function HotspotTool({
           onChange={(e) => setTargetSequenceId(e.target.value)}
           aria-label="Target branch sequence"
         >
-          <option value="">— select branch —</option>
+          <option value="">Select branch</option>
           {sequences.map((seq) => (
             <option key={seq.id} value={seq.id}>
               {seq.label}

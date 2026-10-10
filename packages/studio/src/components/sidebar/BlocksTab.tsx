@@ -197,7 +197,7 @@ function formatCompositionContext(ctx: CompositionContext): string {
       `Elements visible at ${formatTime(ctx.currentTime)}:`,
       ...visibleNow.map(
         (el) =>
-          `- ${el.label || el.id} (track ${el.track}, ${formatTime(el.start)}–${formatTime(el.start + el.duration)}${el.compositionSrc ? `, src: ${el.compositionSrc}` : ""})`,
+          `- ${el.label || el.id} (track ${el.track}, ${formatTime(el.start)} to ${formatTime(el.start + el.duration)}${el.compositionSrc ? `, src: ${el.compositionSrc}` : ""})`,
       ),
     );
   }
@@ -232,7 +232,7 @@ function buildAgentPrompt(
     transitions: [
       `Using /hyperframes, add the "${title}" transition (registry: ${name}) between my scenes.`,
       `${description}`,
-      `Place this transition at the cut point between the current scene and the next. Set the duration to 0.5–1s, position it at the scene boundary on the timeline, and make sure the z-index is above both scenes. Adjust colors to match my palette.`,
+      `Place this transition at the cut point between the current scene and the next. Set the duration to 0.5 to 1s, position it at the scene boundary on the timeline, and make sure the z-index is above both scenes. Adjust colors to match my palette.`,
     ].join("\n\n"),
     effects: [
       `Using /hyperframes, add the "${title}" effect (registry: ${name}) as an overlay on my composition.`,

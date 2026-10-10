@@ -23,7 +23,7 @@ function MediaErrorPanel({ name, filePath }: { name: string; filePath: string })
       <span className="text-sm text-neutral-400 font-medium">{name}</span>
       <span className="text-[11px] text-neutral-600 font-mono">{filePath}</span>
       <span className="text-[10px] text-neutral-500">
-        Couldn't load this file — it may be missing or corrupt
+        Couldn't load this file. It may be missing or corrupt
       </span>
     </div>
   );
@@ -110,7 +110,7 @@ export function MediaPreview({ projectId, filePath }: { projectId: string; fileP
       </svg>
       <span className="text-sm text-neutral-400 font-medium">{name}</span>
       <span className="text-[11px] text-neutral-600 font-mono">{filePath}</span>
-      <span className="text-[10px] text-neutral-600">Binary file — preview not available</span>
+      <span className="text-[10px] text-neutral-600">Binary file: preview not available</span>
     </div>
   );
 }

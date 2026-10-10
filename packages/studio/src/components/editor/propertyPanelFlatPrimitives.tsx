@@ -72,7 +72,7 @@ export function FlatRow({
           <button
             type="button"
             data-flat-row-reset="true"
-            title="Remove — fall back to default"
+            title="Remove and fall back to default"
             onClick={() => {
               track("button", `Reset ${label}`);
               onReset();
@@ -556,7 +556,7 @@ export function FlatSlider({
             <button
               type="button"
               data-flat-slider-reset="true"
-              title="Remove — fall back to default"
+              title="Remove and fall back to default"
               disabled={disabled}
               onClick={() => {
                 track("button", `Reset ${label}`);

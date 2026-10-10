@@ -220,7 +220,7 @@ export function VariablesBindElement({
               {existingDecl.default !== undefined && (
                 <span className="font-mono"> ({String(existingDecl.default)})</span>
               )}
-              , not the element's own — binding won't change "{trimmedId}".
+              , not the element's own, so binding won't change "{trimmedId}".
             </p>
           )}
           <div className="flex items-center justify-end gap-2">

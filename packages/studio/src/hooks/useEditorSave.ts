@@ -93,7 +93,7 @@ export function useEditorSave({
       ) {
         lastFailureToastAtRef.current = now;
         showToast(
-          `Couldn't save ${path} — your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
+          `Couldn't save ${path}. Your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
           "error",
         );
       }

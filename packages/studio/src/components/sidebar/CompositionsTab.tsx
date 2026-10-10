@@ -380,8 +380,8 @@ function CompCard({
           <span className="text-[11px] font-medium text-neutral-300 truncate">{name}</span>
           {isRoot && (
             <span
-              aria-label="Root composition — opens automatically on load"
-              title="Root composition — opens automatically on load"
+              aria-label="Root composition: opens automatically on load"
+              title="Root composition: opens automatically on load"
               className="flex-shrink-0 rounded-full bg-neutral-700/60 px-1.5 py-px text-[8px] font-bold uppercase tracking-wide text-neutral-300"
             >
               Root

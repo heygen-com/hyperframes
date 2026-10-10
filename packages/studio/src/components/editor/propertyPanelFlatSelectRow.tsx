@@ -90,7 +90,7 @@ export function FlatSelectRow({
           <button
             type="button"
             data-flat-select-reset="true"
-            title="Remove — fall back to default"
+            title="Remove and fall back to default"
             disabled={disabled}
             onClick={() => {
               track("button", `Reset ${trackName}`);

@@ -49,7 +49,7 @@ export function FxBandRuler({ band, at }: FxBandRulerProps) {
           return (
             <span
               key={range.name}
-              title={`${range.name} — ${range.says}`}
+              title={`${range.name}: ${range.says}`}
               className={
                 range.name === here.name
                   ? "hf-fx-ruler-band bg-panel-accent"
@@ -65,7 +65,7 @@ export function FxBandRuler({ band, at }: FxBandRulerProps) {
         })}
       </div>
       <p className="hf-fx-ruler-label truncate pt-0.5 text-[9px] text-panel-text-2">
-        <span className="hf-fx-ruler-name text-panel-text-1">{here.name}</span> — {here.says}
+        <span className="hf-fx-ruler-name text-panel-text-1">{here.name}</span>: {here.says}
       </p>
     </div>
   );

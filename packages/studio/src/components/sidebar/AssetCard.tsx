@@ -209,7 +209,7 @@ export function AssetCard({
         draggable
         role="button"
         tabIndex={0}
-        aria-label={`${name} — open, drag to timeline, right-click for actions`}
+        aria-label={`${name}: open, drag to timeline, right-click for actions`}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onKeyDown={(e) => {
@@ -337,7 +337,7 @@ export function FontRow({
         draggable
         role="button"
         tabIndex={0}
-        aria-label={`${name} — copy path, drag to timeline, right-click for actions`}
+        aria-label={`${name}: copy path, drag to timeline, right-click for actions`}
         onClick={() => onCopy(asset)}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;

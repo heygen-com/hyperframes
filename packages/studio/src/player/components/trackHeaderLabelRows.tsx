@@ -286,7 +286,7 @@ export function AutomationLaneHeaderRow({
           <span
             data-automation-lane-also=""
             className="truncate text-[9px] text-warning-ink"
-            title={`${alsoAutomatedBy} is also fading this — the two multiply.`}
+            title={`${alsoAutomatedBy} is also fading this. The two multiply.`}
           >
             {alsoAutomatedBy} is also fading this.
           </span>

@@ -352,7 +352,7 @@ export function useColorGradingController({
         const reverted = confirmedGradingRef.current;
         latestGradingRef.current = reverted;
         setGrading(reverted);
-        setRuntimeStatus({ state: "unavailable", message: "Save failed — reverted" });
+        setRuntimeStatus({ state: "unavailable", message: "Save failed, changes reverted" });
       };
       // The callback is the primary result signal; the rejection path supports
       // other setAttributeLive implementations.

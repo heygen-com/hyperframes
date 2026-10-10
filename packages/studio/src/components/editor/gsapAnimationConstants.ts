@@ -8,7 +8,7 @@ export const METHOD_LABELS: Record<string, string> = {
 };
 
 export const METHOD_TOOLTIPS: Record<string, string> = {
-  set: "Instantly snap to these values — no transition",
+  set: "Instantly snap to these values, no transition",
   to: "Smoothly animate the element to these target values",
   from: "Element starts at these values and transitions to its normal state",
   fromTo: "Animate from one state to another",
@@ -83,7 +83,7 @@ export const PROP_TOOLTIPS: Record<string, string> = {
   perspective:
     "3D depth context for child elements; set it on a parent when rotating children in 3D",
   transformPerspective:
-    "3D depth for THIS element's own X/Y rotation — lower = stronger perspective (try 600–1000)",
+    "3D depth for THIS element's own X/Y rotation: lower = stronger perspective (try 600 to 1000)",
   transformOrigin: "Pivot point for transforms, for example center center or 50% 50%",
   width: "Element width",
   height: "Element height",

@@ -235,7 +235,7 @@ function HandoffFooter({
 
 const EMPTY_STATE = (
   <p className="text-[10px] leading-relaxed text-neutral-500">
-    No variables declared. Variables make parts of this composition dynamic — declare them here (or
+    No variables declared. Variables make parts of this composition dynamic. Declare them here (or
     in <code className="font-mono">data-composition-variables</code>), read them with{" "}
     <code className="font-mono">getVariables()</code>, and pass values at render time with{" "}
     <code className="font-mono">--variables</code>.
@@ -437,7 +437,7 @@ export const VariablesPanel = memo(function VariablesPanel({
       const wanted = action.declaration(id).type;
       if (existing && existing.type !== wanted) {
         showToast(
-          `"${id}" is already a ${existing.type} variable — pick another id for this ${wanted} binding`,
+          `"${id}" is already a ${existing.type} variable. Pick another id for this ${wanted} binding`,
           "error",
         );
         return;
@@ -508,7 +508,7 @@ export const VariablesPanel = memo(function VariablesPanel({
         />
         {usage?.scanIncomplete && (
           <p className="text-[9px] text-neutral-600">
-            Scripts access variables dynamically — usage info may be incomplete.
+            Scripts access variables dynamically, so usage info may be incomplete.
           </p>
         )}
         {declarations.length > 0 && (

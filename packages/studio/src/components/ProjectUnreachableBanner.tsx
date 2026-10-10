@@ -82,7 +82,7 @@ export function ProjectUnreachableBanner({ projectId }: ProjectUnreachableBanner
           </button>
         </>
       ) : (
-        <span>Couldn&apos;t open this project — it may have been renamed, moved, or deleted.</span>
+        <span>Couldn&apos;t open this project. It may have been renamed, moved, or deleted.</span>
       )}
     </div>
   );

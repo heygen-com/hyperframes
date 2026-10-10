@@ -131,7 +131,7 @@ function scaleOptionLabel(
   // Explain *why* an option is disabled instead of greying it silently:
   // the preset must be an exact integer upscale of the authored size.
   if (dims && !scaleApplies(scale, dims)) {
-    return `${base} — not an integer scale of ${dims.width}×${dims.height}`;
+    return `${base} (not an integer scale of ${dims.width}×${dims.height})`;
   }
   return base;
 }
@@ -248,7 +248,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
                 .map((f) => (
                   <p key={f} className="text-step-9 text-text-4 leading-relaxed">
                     <span className="text-text-3 font-medium">{FORMAT_INFO[f].label}</span>
-                    {" — "}
+                    {": "}
                     {FORMAT_INFO[f].desc}
                   </p>
                 ))}

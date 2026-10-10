@@ -134,7 +134,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-studio-accent" />
             <span className="text-[11px] font-medium text-neutral-300">
-              {formatTime(start)} — {formatTime(end)}
+              {formatTime(start)} to {formatTime(end)}
             </span>
           </div>
           <span className="text-[10px] text-neutral-600">
@@ -175,7 +175,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
         {/* Action */}
         {copyError && (
           <p className="px-3 pb-2 text-[10px] text-danger-ink" role="alert">
-            Copy failed — check clipboard permissions and try again.
+            Copy failed. Check clipboard permissions and try again.
           </p>
         )}
         <div className="grid grid-cols-2 gap-2 px-3 pb-3">

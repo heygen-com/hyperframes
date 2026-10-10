@@ -208,7 +208,7 @@ export function AudioRow({
         onPointerUp={handlePointerUp}
         role="button"
         tabIndex={0}
-        aria-label={`${name} — open, drag to timeline, right-click for actions`}
+        aria-label={`${name}: open, drag to timeline, right-click for actions`}
         onKeyDown={(e) => {
           // Only when the row itself is focused — keydowns bubbling from the
           // inner controls (play button) must keep their native activation.

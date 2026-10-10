@@ -160,8 +160,8 @@ export const SnapToolbar = memo(function SnapToolbar() {
           }}
           title={
             prefs.gridVisible
-              ? "Grid visible (G) — right-click for spacing options"
-              : "Grid hidden (G) — right-click for spacing options"
+              ? "Grid visible (G). Right-click for spacing options"
+              : "Grid hidden (G). Right-click for spacing options"
           }
           aria-label="Toggle grid"
         >

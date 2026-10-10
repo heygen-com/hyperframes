@@ -50,8 +50,8 @@ export function LinkedSelectionToggle() {
       <Tooltip
         label={
           linkedSelection
-            ? "Linked Selection on — a click selects both halves (⌥-click for one)"
-            : "Linked Selection off — a click selects one clip"
+            ? "Linked Selection on: a click selects both halves (⌥-click for one)"
+            : "Linked Selection off: a click selects one clip"
         }
       >
         <button

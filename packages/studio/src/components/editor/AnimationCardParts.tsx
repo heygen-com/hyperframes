@@ -93,7 +93,7 @@ export function PropertyRow({
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
             className="shrink-0 rounded-full transition-colors duration-200 relative"
             style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
-            title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
+            title={isVisible ? "Visible: click to hide" : "Hidden: click to show"}
           >
             <span
               className="absolute top-[2px] left-0 rounded-full transition-transform duration-200"

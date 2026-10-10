@@ -851,7 +851,7 @@ describe("TimelineTrackHeader", () => {
         isAudioTrack: true,
       };
       const pointer = (host: HTMLElement) =>
-        host.querySelector('button[aria-label="Effects — group these clips first"]');
+        host.querySelector('button[aria-label="Effects: group these clips first"]');
       const view = renderHeader(opts);
       expect(pointer(view.host)).not.toBeNull();
       // One clip needs no grouping — the real FX button takes its place.
@@ -886,7 +886,7 @@ describe("TimelineTrackHeader", () => {
       };
       const pointer = (host: HTMLElement) =>
         host.querySelector<HTMLButtonElement>(
-          'button[aria-label="Effects — group these clips first"]',
+          'button[aria-label="Effects: group these clips first"]',
         );
       const view = renderHeader(opts);
       const button = pointer(view.host);
@@ -955,7 +955,7 @@ describe("TimelineTrackHeader", () => {
       const controls = line?.lastElementChild as HTMLElement | null;
       expect(controls?.className).toContain("ml-auto");
       expect(
-        controls?.querySelector('button[aria-label="Effects — group these clips first"]'),
+        controls?.querySelector('button[aria-label="Effects: group these clips first"]'),
       ).not.toBeNull();
       // And the clip count is beside the name, not out with the controls.
       expect(controls?.querySelector('[aria-label="2 clips"]')).toBeNull();

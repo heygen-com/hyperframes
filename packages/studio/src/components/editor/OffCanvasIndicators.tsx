@@ -127,7 +127,7 @@ export function OffCanvasIndicators({
                 aria-label={`Select off-canvas element ${r.key}`}
                 className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/10 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
                 style={clipOutside ? { clipPath: clipOutside } : undefined}
-                title={`Off-canvas: ${r.key} — click to select`}
+                title={`Off-canvas: ${r.key}. Click to select`}
                 onClick={handleClick}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {

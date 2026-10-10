@@ -182,7 +182,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                       </Tooltip>
                     </>
                   ) : (
-                    <span className="text-[10px] text-neutral-600">—</span>
+                    <span className="text-[10px] text-neutral-600">Not set</span>
                   )}
                 </div>
               </div>
@@ -220,7 +220,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                       </Tooltip>
                     </>
                   ) : (
-                    <span className="text-[10px] text-neutral-600">—</span>
+                    <span className="text-[10px] text-neutral-600">Not set</span>
                   )}
                 </div>
               </div>

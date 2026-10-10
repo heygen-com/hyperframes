@@ -142,7 +142,7 @@ export function KeyframeDiamondContextMenu({
           {copyStatus === "copied"
             ? "Copied!"
             : copyStatus === "failed"
-              ? "Copy failed — check permissions"
+              ? "Copy failed. Check permissions"
               : "Copy Properties"}
         </button>
       )}

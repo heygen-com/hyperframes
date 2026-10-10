@@ -213,7 +213,7 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
           type="button"
           tabIndex={-1}
           ref={buttonRef}
-          aria-label="Effects — group these clips first"
+          aria-label="Effects: group these clips first"
           title="Group these clips to add effects to all of them"
           className="flex h-6 items-center justify-center rounded-sm border-0 bg-transparent px-1 text-[10px] font-semibold text-[var(--timeline-text-faint)] hover:text-[var(--timeline-text-soft)]"
           onPointerDown={(event) => event.stopPropagation()}
@@ -253,7 +253,7 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
         type="button"
         tabIndex={-1}
         ref={buttonRef}
-        aria-label={nodeCount > 0 ? `Effects — ${nodeCount} applied` : "Effects"}
+        aria-label={nodeCount > 0 ? `Effects: ${nodeCount} applied` : "Effects"}
         title="Effects"
         className={`flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[10px] font-semibold transition-colors ${
           open || nodeCount > 0

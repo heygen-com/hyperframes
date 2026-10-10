@@ -113,11 +113,7 @@ export function LintModal({
                     : "bg-accent hover:bg-accent-hover text-on-accent"
               }`}
             >
-              {copied
-                ? "Copied!"
-                : copyFailed
-                  ? "Copy failed — check permissions"
-                  : "Copy to Agent"}
+              {copied ? "Copied!" : copyFailed ? "Copy failed. Check permissions" : "Copy to Agent"}
             </button>
           </div>
         )}

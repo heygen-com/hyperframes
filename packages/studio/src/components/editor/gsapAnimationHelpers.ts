@@ -64,7 +64,7 @@ export function buildTweenSummary(animation: GsapAnimation): string {
       const label = (PROP_LABELS[p] ?? p).toLowerCase();
       return `${label} ${formatPropValue(p, v)}`;
     });
-    const fromText = fromDescs.length > 0 ? fromDescs.join(", ") : "—";
+    const fromText = fromDescs.length > 0 ? fromDescs.join(", ") : "none";
     return `Starting at ${pos}s, over ${dur}s, ${target} animates from [${fromText}] to [${propText}] using a ${ease.toLowerCase()} curve.`;
   }
   return `Starting at ${pos}s, over ${dur}s, animate ${target}'s ${propText} using a ${ease.toLowerCase()} curve.`;

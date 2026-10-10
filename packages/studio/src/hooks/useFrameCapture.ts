@@ -95,7 +95,7 @@ export function useFrameCapture({
         } catch (fetchErr) {
           clearTimeout(timeout);
           if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
-            throw new Error("Capture timed out — the server took too long to respond");
+            throw new Error("Capture timed out: the server took too long to respond");
           }
           throw fetchErr;
         }

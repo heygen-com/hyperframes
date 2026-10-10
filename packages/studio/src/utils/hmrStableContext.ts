@@ -51,7 +51,7 @@ export function createStableContext<T>(name: string, defaultValue: T): Context<T
     // Not on the HMR path: a re-evaluated module hands back the SAME default it
     // registered, which is how a hot reload keeps its context alive.
     console.warn(
-      `[hmrStableContext] "${name}" was registered twice with different defaults — ` +
+      `[hmrStableContext] "${name}" was registered twice with different defaults: ` +
         "two contexts are sharing one identity. Use module path + export name.",
     );
   }

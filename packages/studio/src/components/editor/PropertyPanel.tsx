@@ -240,13 +240,13 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     navigator.clipboard
       .writeText(text)
       .then(() => {
-        showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
+        showToast(`Copied element info for ${element.label}. Paste it into any AI agent`, "info");
         setClipboardCopied(true);
         clearTimeout(clipboardTimerRef.current);
         clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
       })
       .catch(() => {
-        showToast("Couldn't copy to the clipboard — check browser permissions", "error");
+        showToast("Couldn't copy to the clipboard. Check browser permissions", "error");
       });
   };
 

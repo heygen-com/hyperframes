@@ -181,7 +181,7 @@ export async function createAudioGroupAndAssignMembers({
   // then persists `sources: [groupId]` on success, so a quiet no-op leaves the
   // carve aimed at a group that does not exist.
   if (elements.length < 2) {
-    throw new Error(`Cannot group ${elements.length} clip(s) — a group needs at least two`);
+    throw new Error(`Cannot group ${elements.length} clip(s): a group needs at least two`);
   }
   if (!GROUP_ID_PATTERN.test(groupId)) {
     throw new Error(`Invalid audio group id ${JSON.stringify(groupId)}`);

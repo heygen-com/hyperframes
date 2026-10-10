@@ -235,7 +235,7 @@ export function useCaptionSync(projectId: string | null) {
       // File exists but is unreadable — previous edits would silently not load.
       useCaptionStore
         .getState()
-        .setSyncError("caption-overrides.json is corrupt — earlier caption edits didn't load");
+        .setSyncError("caption-overrides.json is corrupt, so earlier caption edits didn't load");
     }
   }, []);
 

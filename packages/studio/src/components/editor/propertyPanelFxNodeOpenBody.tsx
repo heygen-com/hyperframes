@@ -245,11 +245,11 @@ export function FxNodeOpenBody({
           onClick={onToggleDetails}
         >
           <span aria-hidden="true">{details ? "▾" : "▸"}</span>
-          Details — {registryDef.label}
+          Details: {registryDef.label}
         </button>
       ) : (
         <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-          Details — {registryDef.label}
+          Details: {registryDef.label}
         </p>
       )}
       {details || !oneKnob ? (

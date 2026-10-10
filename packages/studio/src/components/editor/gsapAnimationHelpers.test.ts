@@ -109,7 +109,7 @@ describe("buildTweenSummary", () => {
     const s = buildTweenSummary(
       anim({ method: "fromTo", fromProperties: {}, properties: { scale: 2 } }),
     );
-    expect(s).toContain("from [—]");
+    expect(s).toContain("from [none]");
   });
 
   it("handles no properties", () => {

@@ -236,7 +236,7 @@ export function applyTimelineMoveAttributes(
 ): string {
   if (!Number.isFinite(start) || !Number.isFinite(duration)) {
     console.warn(
-      `[Timeline] applyTimelineMoveAttributes: non-finite timing (start=${start}, duration=${duration}) — patch skipped`,
+      `[Timeline] applyTimelineMoveAttributes: non-finite timing (start=${start}, duration=${duration}). Patch skipped`,
     );
     return original;
   }

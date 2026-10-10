@@ -110,7 +110,7 @@ function ClipAutomationLanes({
             // — because "not editable" without that reads as broken.
             readOnlyNote={
               isCarveLane(lane.target, bound.chain)
-                ? "Owned by the voiceover carve — re-derived on every analysis. Change strength in the FX rack, or turn the carve off to edit these by hand."
+                ? "Owned by the voiceover carve and re-derived on every analysis. Change strength in the FX rack, or turn the carve off to edit these by hand."
                 : bound.readOnly
                   ? "Read-only here."
                   : undefined

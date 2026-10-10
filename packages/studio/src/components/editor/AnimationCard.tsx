@@ -217,7 +217,7 @@ export const AnimationCard = memo(function AnimationCard({
           {typeof animation.position === "number"
             ? `${parseFloat(animation.position.toFixed(3))}s`
             : animation.position}{" "}
-          – {typeof endTime === "number" ? `${parseFloat(endTime.toFixed(3))}s` : endTime}
+          to {typeof endTime === "number" ? `${parseFloat(endTime.toFixed(3))}s` : endTime}
         </span>
         <span
           className={`ml-auto text-[10px] ${flat ? "text-panel-text-3" : "text-neutral-500"}`}
@@ -256,7 +256,7 @@ export const AnimationCard = memo(function AnimationCard({
                         clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
                       }}
                     />
-                    Keyframed — click a segment below to edit its curve
+                    Keyframed: click a segment below to edit its curve
                   </p>
                 )}
                 {runEase && runEase !== "none" && (
@@ -273,7 +273,7 @@ export const AnimationCard = memo(function AnimationCard({
                   setTimeout(() => setCopied(false), 1500);
                 }}
                 className="shrink-0 rounded-sm px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-                title="Copy description to clipboard — paste into agent prompts"
+                title="Copy description to clipboard to paste into agent prompts"
               >
                 {copied ? "Copied" : "Copy"}
               </button>

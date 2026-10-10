@@ -35,7 +35,7 @@ const ALIGN_OPTIONS = [
 ];
 
 const CASE_OPTIONS = [
-  { key: "none", label: "none", node: "–" },
+  { key: "none", label: "none", node: "None" },
   { key: "uppercase", label: "uppercase", node: "AG" },
   { key: "lowercase", label: "lowercase", node: "ag" },
   { key: "capitalize", label: "capitalize", node: "Ag" },

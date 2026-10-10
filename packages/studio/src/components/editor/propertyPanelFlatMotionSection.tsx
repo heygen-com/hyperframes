@@ -100,7 +100,7 @@ export function FlatTimingRow({
       {cell("Duration", formatTimingValue(duration), commitDuration)}
       {derived && (
         <p className="col-span-3 mt-1 text-[10px] leading-snug text-panel-text-3">
-          Inferred from this element's animation — edit to pin an explicit clip range.
+          Inferred from this element's animation. Edit to pin an explicit clip range.
         </p>
       )}
     </div>
@@ -150,7 +150,7 @@ export function FlatMotionSection({
           {multipleTimelines && (
             <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-warning-ink">
               This file has multiple GSAP timelines. Animation editing is disabled to prevent data
-              loss — consolidate into a single timeline to enable editing.
+              loss. Consolidate into a single timeline to enable editing.
             </p>
           )}
           {unsupportedTimelinePattern && (
@@ -195,7 +195,7 @@ export function motionSectionLabel(args: {
   if (args.timingOnly) {
     return {
       title: "Timing",
-      summary: `${formatTimingValue(args.start)} – ${formatTimingValue(args.start + args.duration)}`,
+      summary: `${formatTimingValue(args.start)} to ${formatTimingValue(args.start + args.duration)}`,
     };
   }
   return {

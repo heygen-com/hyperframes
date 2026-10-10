@@ -293,7 +293,7 @@ export const FileTree = memo(function FileTree({
           )}
         {children.length === 0 && !inlineInput && (
           <div className="px-3 py-4 text-center text-[11px] text-neutral-600">
-            No files yet{hasFileOps ? " — use + above to create one" : ""}.
+            No files yet{hasFileOps ? ". Use + above to create one" : ""}.
           </div>
         )}
         {children.map((child) =>

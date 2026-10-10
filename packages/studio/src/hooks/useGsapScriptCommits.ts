@@ -81,7 +81,7 @@ async function runMutationRequest(
 ): Promise<MutationResult | undefined> {
   const unsafeFields = mutations.flatMap((mutation) => findUnsafeMutationValues(mutation));
   if (unsafeFields.length > 0) {
-    showToast?.("Couldn't read element layout — try again at a different playhead time", "error");
+    showToast?.("Couldn't read element layout. Try again at a different playhead time", "error");
     if (options.skipReload) return;
     throw markStudioSaveErrorAlreadyToasted(
       new Error(

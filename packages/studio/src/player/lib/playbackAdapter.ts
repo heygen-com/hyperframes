@@ -183,7 +183,7 @@ export function resolveStaticSeekFallback(opts: {
   if (!warned.current) {
     warned.current = true;
     console.warn(
-      `[useTimelinePlayer] Selected adapter duration (${getAdapterDuration(bestAdapter)}s) does not cover the document duration (${docDuration}s); falling back to seek-driven playback, which never starts media elements or WebAudio. Audio will not play in preview — extend the GSAP timeline to cover the declared data-duration.`,
+      `[useTimelinePlayer] Selected adapter duration (${getAdapterDuration(bestAdapter)}s) does not cover the document duration (${docDuration}s); falling back to seek-driven playback, which never starts media elements or WebAudio. Audio will not play in preview. Extend the GSAP timeline to cover the declared data-duration.`,
     );
   }
   const adapter = createStaticSeekPlaybackAdapter(

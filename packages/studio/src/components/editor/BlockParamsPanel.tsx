@@ -58,7 +58,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         if (matches === 0) {
           setCommitState({
             tone: "error",
-            message: `Couldn't find the current value in ${compositionPath} — it may have been edited by hand.`,
+            message: `Couldn't find the current value in ${compositionPath}. It may have been edited by hand.`,
           });
           trackBlockParamCommit({ tone: "error", blockName, key });
           return;
@@ -73,7 +73,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         if (matches > 1) {
           setCommitState({
             tone: "error",
-            message: `"${previous}" appears ${matches}× in ${compositionPath} — the panel can't tell which one belongs to this parameter, so it won't risk changing unrelated content. Edit the file directly to disambiguate.`,
+            message: `"${previous}" appears ${matches}× in ${compositionPath}. The panel can't tell which one belongs to this parameter, so it won't risk changing unrelated content. Edit the file directly to disambiguate.`,
           });
           trackBlockParamCommit({ tone: "error", blockName, key });
           return;
@@ -171,7 +171,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         )}
         {!fileManager && params.length > 0 && (
           <div className="text-[10px] text-warning-ink">
-            Block params can't be edited here — no project file access.
+            Block params can't be edited here: no project file access.
           </div>
         )}
         {params.map((param) => (

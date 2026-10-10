@@ -308,7 +308,7 @@ export function Transform3DCube({
           onClick={onKeyframe}
           title={
             keyframed
-              ? "3D transform is keyframed — click a field diamond to add keyframes"
+              ? "3D transform is keyframed. Click a field diamond to add keyframes"
               : "Keyframe the 3D transform (animate it over time)"
           }
           aria-label="Keyframe 3D transform"

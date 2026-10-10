@@ -50,7 +50,7 @@ export function PromotableControl({
   useEffect(() => {
     if (danglingId != null) {
       console.warn(
-        `[hyperframes] Control is bound to variable "${danglingId}", but no such declaration exists. The element still carries the binding on disk — re-declare the variable or unbind the element.`,
+        `[hyperframes] Control is bound to variable "${danglingId}", but no such declaration exists. The element still carries the binding on disk. Re-declare the variable or unbind the element.`,
       );
     }
   }, [danglingId]);

@@ -174,7 +174,7 @@ export const StudioRightPanels = memo(function StudioRightPanels({
     // timeline offers that write as a mute. Checked here as well as in the panel
     // because the button is not the only caller.
     if (!canHideSelections(domEditGroupSelections)) {
-      showToast("Audio can't be hidden — use the group's own controls", "info");
+      showToast("Audio can't be hidden. Use the group's own controls", "info");
       return;
     }
     const { elements } = usePlayerStore.getState();

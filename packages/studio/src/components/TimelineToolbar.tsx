@@ -235,8 +235,8 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           <Tooltip
             label={
               rippleEditEnabled
-                ? "Ripple on — keeps the main track gapless"
-                : "Ripple off — deleting a main-track clip leaves a gap"
+                ? "Ripple on: keeps the main track gapless"
+                : "Ripple off: deleting a main-track clip leaves a gap"
             }
           >
             <button
@@ -465,16 +465,16 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           <Tooltip
             label={
               thumbnailsVisible
-                ? "Hide thumbnails — labels only"
-                : "Show thumbnails — posters stay visible; richer previews appear on interaction"
+                ? "Hide thumbnails: labels only"
+                : "Show thumbnails: posters stay visible; richer previews appear on interaction"
             }
           >
             <button
               type="button"
               aria-label={
                 thumbnailsVisible
-                  ? "Hide thumbnails — labels only"
-                  : "Show thumbnails — posters stay visible; richer previews appear on interaction"
+                  ? "Hide thumbnails: labels only"
+                  : "Show thumbnails: posters stay visible; richer previews appear on interaction"
               }
               aria-pressed={thumbnailsVisible}
               onClick={() => setThumbnailMode(thumbnailsVisible ? "hidden" : "adaptive")}

@@ -135,7 +135,7 @@ export function ImageFillField({
         commitImage(toProjectRootAssetPath(nextImage), true);
       }
     } catch {
-      setUploadError("Upload failed — check the file and try again.");
+      setUploadError("Upload failed. Check the file and try again.");
     } finally {
       setUploading(false);
     }

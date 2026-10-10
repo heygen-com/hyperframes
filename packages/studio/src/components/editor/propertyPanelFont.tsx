@@ -290,7 +290,7 @@ export function FontFamilyField({
         setFontNotice("No supported font files were imported.");
       }
     } catch {
-      setFontNotice("Font import failed — the files were not added. Try again.");
+      setFontNotice("Font import failed. The files were not added. Try again.");
     } finally {
       setImportingFonts(false);
     }
@@ -389,10 +389,10 @@ export function FontFamilyField({
         } else {
           // Committing an un-imported family would render a silent fallback,
           // so surface the failure and keep the current font instead.
-          setFontNotice(`Couldn't import "${option.family}" — the font was not applied.`);
+          setFontNotice(`Couldn't import "${option.family}", so the font was not applied.`);
         }
       } catch {
-        setFontNotice(`Couldn't import "${option.family}" — the font was not applied.`);
+        setFontNotice(`Couldn't import "${option.family}", so the font was not applied.`);
       } finally {
         setImportingFonts(false);
       }

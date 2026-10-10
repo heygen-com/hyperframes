@@ -382,7 +382,7 @@ export function useRenderQueue(
       try {
         const res = await studioApiFetch(`/api/render/${jobId}/cancel`, { method: "POST" });
         if (!res.ok && res.status !== 404) {
-          setActionError("Couldn't cancel on the server — the render may still be running.");
+          setActionError("Couldn't cancel on the server. The render may still be running.");
           return;
         }
         // Reconcile with the status the route reports: if the render actually
@@ -396,7 +396,7 @@ export function useRenderQueue(
           }
         }
       } catch {
-        setActionError("Couldn't reach the server to cancel — the render may still be running.");
+        setActionError("Couldn't reach the server to cancel. The render may still be running.");
       }
     },
     [closeActiveEventSource, loadRenders],
@@ -409,7 +409,7 @@ export function useRenderQueue(
       try {
         const res = await studioApiFetch(`/api/render/${jobId}`, { method: "DELETE" });
         if (!res.ok) {
-          setActionError("Couldn't delete the render — it's still on disk.");
+          setActionError("Couldn't delete the render. It's still on disk.");
           return;
         }
       } catch {

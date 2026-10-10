@@ -71,7 +71,7 @@ export function createTransformCommitHandlers({
       await commitAnimatedTransformValue(
         axis,
         parsed,
-        "This element's position can't be edited here yet — it is driven by its animation",
+        "This element's position can't be edited here yet: its animation drives it",
       )
     )
       return;
@@ -97,7 +97,7 @@ export function createTransformCommitHandlers({
       return;
     }
     if (hasGsapAnimation) {
-      showToast?.("This element's size can't be edited here yet — it is driven by its animation");
+      showToast?.("This element's size can't be edited here yet: its animation drives it");
       return;
     }
     const current = readStudioBoxSize(element.element);
@@ -124,7 +124,7 @@ export function createTransformCommitHandlers({
       await commitAnimatedTransformValue(
         "rotation",
         parsed,
-        "This element's rotation can't be edited here yet — it is driven by its animation",
+        "This element's rotation can't be edited here yet: its animation drives it",
       )
     )
       return;

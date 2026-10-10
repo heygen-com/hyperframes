@@ -92,7 +92,7 @@ export function useBlockHandlers({
   const runBlockInstall = useCallback(
     async <T>(blockName: string, install: () => Promise<T>): Promise<T | null> => {
       if (installingBlockRef.current) {
-        showToast("A block is already installing — one moment…", "info");
+        showToast("A block is already installing. One moment…", "info");
         return null;
       }
       installingBlockRef.current = true;

@@ -298,7 +298,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               if (!lastUnloaded || attempts > 100) {
                 if (lastUnloaded && attempts > 100) {
                   console.debug(
-                    "[studio] asset readiness poll hit the 10s cap — continuing with unloaded assets",
+                    "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
                   );
                 }
                 if (assetPollRef.current) clearInterval(assetPollRef.current);

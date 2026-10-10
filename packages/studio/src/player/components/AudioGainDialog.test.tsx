@@ -126,7 +126,7 @@ describe("AudioGainDialog", () => {
   it("disables the peak options when the clip cannot be measured", async () => {
     stubPeaks({});
     open([clip("unmeasured")]);
-    await vi.waitFor(() => expect(peakText()).toBe("Peak Amplitude: —"));
+    await vi.waitFor(() => expect(peakText()).toBe("Peak Amplitude: None"));
     expect(row("Normalize Max Peak to")?.querySelector("input")?.disabled).toBe(true);
     expect(row("Adjust Gain by")?.querySelector("input")?.disabled).toBe(false);
   });
