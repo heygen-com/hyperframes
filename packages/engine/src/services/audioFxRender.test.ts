@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 import { defaultAudioFxParams, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { applyAudioFxChain, AudioFxRenderError, readWav, writeWav } from "./audioFxRender.js";
+import { MIXED_AUDIO_FILENAME, parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 
@@ -529,4 +530,170 @@ describe("an empty track", () => {
     ).resolves.toEqual({ path: input, envelopeBaked: false });
     expect(existsSync(output)).toBe(false);
   });
+});
+
+/** Highest sample level of a file in dBFS, as ffmpeg's volumedetect reports it. */
+function maxVolumeDb(path: string): number {
+  const result = spawnSync(
+    getFfmpegBinary(),
+    ["-nostdin", "-hide_banner", "-i", path, "-af", "volumedetect", "-f", "null", "-"],
+    { encoding: "utf-8" },
+  );
+  const match = result.stderr.match(/max_volume:\s*(-?[\d.]+) dB/);
+  if (!match?.[1]) throw new Error(`Could not measure ${path}: ${result.stderr}`);
+  return Number(match[1]);
+}
+
+const chainJson = (node: Record<string, unknown>): string =>
+  JSON.stringify({ version: 1, nodes: [{ id: "n1", enabled: true, ...node }] });
+
+describe("master bus: reading it", () => {
+  const html = (root: string, inner = ""): string =>
+    `<div ${root}>${inner}<audio id="a" src="a.wav" data-start="0" data-duration="1"></audio></div>`;
+  const CHAIN = '{"version":1,"nodes":[]}';
+  const attr = `data-fx-chain='${CHAIN}'`;
+
+  it("hands the root's chain to every element as the master, not as the clip's own", () => {
+    const [a] = parseAudioElements(html(`data-composition-id="main" ${attr}`));
+    expect(a?.masterFxChain).toBe(CHAIN);
+    expect(a?.fxChain).toBeUndefined();
+    expect(a?.groupFxChain).toBeUndefined();
+  });
+
+  it("has none when the root carries none", () => {
+    const [a] = parseAudioElements(html(`data-composition-id="main"`));
+    expect(a?.masterFxChain).toBeUndefined();
+  });
+
+  it("leaves a sub-composition root's chain as it was: not the master, not its clips' chain", () => {
+    const inner = `<div data-composition-id="inner" ${attr}><audio id="b" src="b.wav" data-start="0" data-duration="1"></audio></div>`;
+    const [a, b] = parseAudioElements(html(`data-composition-id="main"`, inner));
+    for (const el of [a, b]) {
+      expect(el?.masterFxChain).toBeUndefined();
+      expect(el?.fxChain).toBeUndefined();
+      expect(el?.groupFxChain).toBeUndefined();
+    }
+  });
+
+  it("takes the master from the top-level root when a sub-composition root carries one too", () => {
+    const MASTER = '{"version":1,"nodes":[{"type":"gain","id":"m","params":{"gain":-3}}]}';
+    const inner = `<div data-composition-id="inner" ${attr}></div>`;
+    const els = parseAudioElements(
+      html(`data-composition-id="main" data-fx-chain='${MASTER}'`, inner),
+    );
+    expect(els.map((e) => e.masterFxChain)).toEqual([MASTER]);
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)("master bus: reporting an unreadable chain", () => {
+  it("fails the mix with a failure instead of throwing", async () => {
+    writeWav(join(dir, "a.wav"), new Float32Array(SR).fill(0.1), SR);
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "a",
+          src: "a.wav",
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+          masterFxChain: "{not json",
+        },
+      ],
+      dir,
+      join(dir, "work"),
+      join(dir, `bad-${MIXED_AUDIO_FILENAME}`),
+      1,
+    );
+    expect(result.success).toBe(false);
+    expect(result.failures?.[0]?.elementId).toBe("master");
+  });
+});
+
+describe.skipIf(!HAS_BROWSER || !HAS_FFMPEG)("master bus: rendering it", () => {
+  const element = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    src: `${id}.wav`,
+    start: 0,
+    end: 1,
+    mediaStart: 0,
+    layer: 0,
+    volume: 1,
+    type: "audio" as const,
+    ...extra,
+  });
+  const steady = (peak: number, freq: number): Float32Array =>
+    Float32Array.from({ length: SR }, (_, i) => peak * Math.sin((2 * Math.PI * freq * i) / SR));
+
+  it("limits the sum of everything that feeds it", async () => {
+    // Two tones at -1 dBFS sum to about +5 dBFS: no clip's own chain can see that.
+    writeWav(join(dir, "a.wav"), steady(0.9, 300), SR, 1, true);
+    writeWav(join(dir, "b.wav"), steady(0.9, 300), SR, 1, true);
+    const master = chainJson({
+      type: "truepeak",
+      params: { ceiling: -6, lookahead: 3, release: 80 },
+    });
+    const out = join(dir, `limited-${MIXED_AUDIO_FILENAME}`);
+    const flat = join(dir, `flat-${MIXED_AUDIO_FILENAME}`);
+    const mix = (path: string, masterFxChain?: string) => {
+      const extra = masterFxChain ? { masterFxChain } : {};
+      return processCompositionAudio(
+        [element("a", extra), element("b", extra)],
+        dir,
+        join(dir, "work"),
+        path,
+        1,
+      );
+    };
+    expect((await mix(flat)).success).toBe(true);
+    expect((await mix(out, master)).success).toBe(true);
+    // The unprocessed sum has nowhere to go but full scale.
+    expect(maxVolumeDb(flat)).toBeGreaterThan(-1);
+    expect(maxVolumeDb(out)).toBeLessThanOrEqual(-5.5);
+  }, 180_000);
+
+  it("applies the root's data-fx-chain once over the sum, from authored HTML", async () => {
+    // Two in-phase tones sum to 0.5 (-6 dBFS); one -6 dB master gain lands at -12.
+    // Per-clip, or twice, it would land at -9 or -18.
+    writeWav(join(dir, "a.wav"), steady(0.25, 300), SR, 1, true);
+    writeWav(join(dir, "b.wav"), steady(0.25, 300), SR, 1, true);
+    const gain = chainJson({ type: "gain", params: { gain: -6 } });
+    const clip = (id: string) =>
+      `<audio id="${id}" src="${id}.wav" data-start="0" data-end="1" data-duration="1"></audio>`;
+    const elements = parseAudioElements(
+      `<div data-composition-id="main" data-fx-chain='${gain}'>${clip("a")}${clip("b")}</div>`,
+    );
+    expect(elements).toHaveLength(2);
+    const out = join(dir, `once-${MIXED_AUDIO_FILENAME}`);
+    const result = await processCompositionAudio(elements, dir, join(dir, "work"), out, 1);
+    expect(result.success).toBe(true);
+    expect(maxVolumeDb(out)).toBeCloseTo(-12, 0);
+  }, 180_000);
+
+  it("runs after each group's own chain and fader", async () => {
+    // The group clamps its tone to -20 dBFS. A +12 dB master gain AFTER that
+    // lands at -8; a master chain ahead of the group would be clamped to -20.
+    writeWav(join(dir, "g.wav"), steady(0.5, 300), SR, 1, true);
+    const result = await processCompositionAudio(
+      [
+        element("g", {
+          groupId: "bus",
+          groupFxChain: chainJson({
+            type: "truepeak",
+            params: { ceiling: -20, lookahead: 3, release: 80 },
+          }),
+          groupVolume: 1,
+          masterFxChain: chainJson({ type: "gain", params: { gain: 12 } }),
+        }),
+      ],
+      dir,
+      join(dir, "work"),
+      join(dir, `ordered-${MIXED_AUDIO_FILENAME}`),
+      1,
+    );
+    expect(result.success).toBe(true);
+    expect(maxVolumeDb(join(dir, `ordered-${MIXED_AUDIO_FILENAME}`))).toBeCloseTo(-8, 0);
+  }, 180_000);
 });

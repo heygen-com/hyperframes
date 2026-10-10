@@ -38,10 +38,9 @@ const NO_AUTOMATION: HfAutomation = { version: 1, lanes: [] };
 function readAutomation(
   el: { getAttribute?(name: string): string | null },
   chain: HfAudioFxChain,
+  attr: string | null = HF_AUDIO_AUTOMATION_ATTR,
 ): HfAutomation {
-  const raw =
-    (typeof el.getAttribute === "function" ? el.getAttribute(HF_AUDIO_AUTOMATION_ATTR) : null) ??
-    "";
+  const raw = (attr && typeof el.getAttribute === "function" ? el.getAttribute(attr) : null) ?? "";
   if (!raw) return NO_AUTOMATION;
   try {
     return resolveAutomation(parseAutomation(raw), chain);
@@ -119,12 +118,22 @@ export interface ElementFxHandle {
   setRate(rate: number): void;
 }
 
+/**
+ * Where a chain's lanes are read from. A track reads its own `data-automation`; the
+ * master bus is the composition root's `data-fx-chain` and reads none, so the
+ * root's `data-automation` is never mistaken for the bus's.
+ */
+export interface FxAttributes {
+  automation: string | null;
+}
+
 export function attachElementFxChain(
   ctx: BaseAudioContext,
   el: { getAttribute?(name: string): string | null },
   source: AudioNode,
   destination: AudioNode,
   timing?: AutomationTiming,
+  attrs: FxAttributes = { automation: HF_AUDIO_AUTOMATION_ATTR },
 ): ElementFxHandle | null {
   const { chain } = readChain(el);
 
@@ -202,7 +211,13 @@ export function attachElementFxChain(
   const scheduleFor = (next: HfAudioFxChain, at: AutomationTiming | null): void => {
     automated =
       at && handle
-        ? scheduleChainAutomation(readAutomation(el, next), next, handle.nodes, at, handle.presets)
+        ? scheduleChainAutomation(
+            readAutomation(el, next, attrs.automation),
+            next,
+            handle.nodes,
+            at,
+            handle.presets,
+          )
         : [];
   };
 
@@ -282,7 +297,7 @@ export function attachElementFxChain(
     });
     observer.observe(target, {
       attributes: true,
-      attributeFilter: [HF_AUDIO_FX_ATTR, HF_AUDIO_AUTOMATION_ATTR],
+      attributeFilter: attrs.automation ? [HF_AUDIO_FX_ATTR, attrs.automation] : [HF_AUDIO_FX_ATTR],
     });
   }
 

@@ -344,6 +344,13 @@ of, so only the filters survive — and a bus and its members are one signal pat
 so the bed then runs through the bus's filters AND its own. The
 `audio_group_carve_attr` lint rule catches it.
 
+**One effect across the whole mix: the master bus.** A clip names exactly one
+group, so a limiter or EQ over everything cannot be a group. Put it in
+`data-fx-chain` on the top-level composition root: it runs once over the sum of all clips and groups, after each
+group's chain and fader. A delivery ceiling is the usual use — `truepeak` last in
+the master chain. Only the top-level root is read as the master bus; a
+sub-composition root's `data-fx-chain` is not applied. No master automation.
+
 **One clip is not a bus.** A group exists to give several tracks one chain, one
 fader and one clock. Wrapping a single clip in a bus buys nothing the clip's own
 `data-fx-chain` does not already do, and it doubles the places a later edit has
