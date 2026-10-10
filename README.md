@@ -43,8 +43,10 @@ claude plugin marketplace add heygen-com/hyperframes
 claude plugin install hyperframes@hyperframes
 ```
 
-Enable auto-update for the **hyperframes** marketplace in `/plugin` → **Marketplaces**,
-then use `/hyperframes:hyperframes`. See the [plugin guide](docs/guides/plugins.mdx)
+To enable auto-update for the **hyperframes** marketplace, run `claude` in a
+terminal in your project. In Claude Code's terminal UI, run `/plugin`, then select
+**Marketplaces** → **hyperframes** → **Enable auto-update**. Afterward, use
+`/hyperframes:hyperframes`. See the [plugin guide](docs/guides/plugins.mdx)
 for Copilot, VS Code, Cursor, Gemini CLI, updates, and migration.
 
 For standalone skills (including OpenCode), use:
