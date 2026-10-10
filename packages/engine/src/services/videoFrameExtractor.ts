@@ -1927,30 +1927,23 @@ export async function extractAllVideoFrames(
   // HDR preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
   // Phase 3 updates mediaStart after trimming any invisible negative preroll.
-  // Downloads and compiled copies are rewritten by every render, so only their content is stable.
+  // Downloads and compiled copies are rewritten by every render, so they are keyed by content.
   const renderOwnedDirs = [options.outputDir, compiledDir].filter((dir) => dir !== undefined);
-  const cacheKeyInputs = await Promise.all(
-    resolvedVideos.map(async ({ video, videoPath }) => {
-      const stat = readKeyStat(videoPath);
-      // Missing files return null — skip the cache path for that entry. The
-      // extractor will surface the real file-not-found error downstream, and we
-      // avoid polluting the cache with a `(mtimeMs: 0, size: 0)` tuple that two
-      // unrelated missing paths would otherwise share.
-      if (!stat) return null;
-      const contentSha256 =
-        config?.extractCacheDir && renderOwnedDirs.some((dir) => isPathInside(videoPath, dir))
-          ? await readContentSha256(videoPath)
-          : undefined;
-      if (contentSha256 === null) return null;
-      return {
-        videoPath,
-        mtimeMs: stat.mtimeMs,
-        size: stat.size,
-        mediaStart: video.mediaStart,
-        contentSha256,
-      };
-    }),
-  );
+  const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
+    const stat = readKeyStat(videoPath);
+    // Missing files return null — skip the cache path for that entry. The
+    // extractor will surface the real file-not-found error downstream, and we
+    // avoid polluting the cache with a `(mtimeMs: 0, size: 0)` tuple that two
+    // unrelated missing paths would otherwise share.
+    if (!stat) return null;
+    return {
+      videoPath,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      mediaStart: video.mediaStart,
+      renderOwned: renderOwnedDirs.some((dir) => isPathInside(videoPath, dir)),
+    };
+  });
 
   // Phase 2: Probe color spaces and normalize if mixed HDR/SDR
   const phase2ProbeStart = Date.now();
@@ -2152,10 +2145,28 @@ export async function extractAllVideoFrames(
     return { ...rehydrated, ownedByLookup: true };
   }
 
+  // Hashed only for works that reach a lookup (deferred ranges never do), once per file.
+  const contentSha256ByPath = new Map<string, string | null>();
+  async function hashRenderOwnedSources(works: PreparedExtraction[]): Promise<void> {
+    if (!cacheRootDir) return;
+    const paths = new Set<string>();
+    for (const work of works) {
+      const keyInput = cacheKeyInputs[work.index];
+      if (keyInput?.renderOwned) paths.add(keyInput.videoPath);
+    }
+    await Promise.all(
+      [...paths].map(async (path) => contentSha256ByPath.set(path, await readContentSha256(path))),
+    );
+  }
+
   function lookupCacheFor(work: PreparedExtraction): ExtractionOutcome | UniqueExtractionMiss {
     if (!cacheRootDir) return { work };
     const keyInput = cacheKeyInputs[work.index];
     if (!keyInput) return { work };
+    const contentSha256 = keyInput.renderOwned
+      ? contentSha256ByPath.get(keyInput.videoPath)
+      : undefined;
+    if (contentSha256 === null) return { work };
     const transformParts = [
       work.sdrToHdrTransfer ? sdrToHdrTransformKey(work.sdrToHdrTransfer) : undefined,
       work.hdrToSdrTransformKey,
@@ -2168,7 +2179,7 @@ export async function extractAllVideoFrames(
       mtimeMs: keyInput.mtimeMs,
       size: keyInput.size,
       mediaStart: keyInput.mediaStart,
-      contentSha256: keyInput.contentSha256,
+      contentSha256,
       duration: work.videoDuration,
       fps: fpsKey,
       format: work.format,
@@ -2486,8 +2497,11 @@ export async function extractAllVideoFrames(
     });
   }
   const cacheMisses: UniqueExtractionMiss[] = [];
-  for (const work of uniqueWorks.values()) {
-    if (uniqueOutcomes.has(work.dedupeKey)) continue;
+  const worksToLookUp = [...uniqueWorks.values()].filter(
+    (work) => !uniqueOutcomes.has(work.dedupeKey),
+  );
+  await hashRenderOwnedSources(worksToLookUp);
+  for (const work of worksToLookUp) {
     const lookup = lookupCacheFor(work);
     if ("work" in lookup) {
       cacheMisses.push(lookup);
