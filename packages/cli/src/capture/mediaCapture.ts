@@ -8,6 +8,7 @@
  */
 
 import type { Browser, Page } from "puppeteer-core";
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
@@ -90,8 +91,7 @@ export async function saveLottieAnimations(
       }
 
       if (jsonData) {
-        // Deduplicate by content hash (first 100 chars of stringified JSON)
-        const hash = jsonData.slice(0, 200);
+        const hash = createHash("sha256").update(jsonData).digest("hex");
         if (savedHashes.has(hash)) continue;
         savedHashes.add(hash);
 
