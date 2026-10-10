@@ -2622,4 +2622,54 @@ ${body}
       expect(result.findings.filter((f) => f.code === "negative_z_index")).toHaveLength(2);
     });
   });
+
+  describe("subcomposition_root_styled_by_class", () => {
+    it("flags when the root class is used as a CSS selector in a sub-composition", async () => {
+      const html = `<!doctype html><html><body>
+        <style>
+          .my-root { background: red; }
+        </style>
+        <div data-composition-id="main" class="my-root" data-start="0" data-duration="5"></div>
+      </body></html>`;
+
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(result.findings).toContainEqual(
+        expect.objectContaining({
+          code: "subcomposition_root_styled_by_class",
+          severity: "error",
+        }),
+      );
+    });
+
+    it("passes when styling via #root and descendant selectors", async () => {
+      const html = `<!doctype html><html><body>
+        <style>
+          #root { background: red; }
+          .child { color: blue; }
+        </style>
+        <div data-composition-id="main" id="root" class="my-root" data-start="0" data-duration="5">
+          <div class="child"></div>
+        </div>
+      </body></html>`;
+
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(result.findings.some((f) => f.code === "subcomposition_root_styled_by_class")).toBe(
+        false,
+      );
+    });
+
+    it("passes if it is not a sub-composition", async () => {
+      const html = `<!doctype html><html><body>
+        <style>
+          .my-root { background: red; }
+        </style>
+        <div data-composition-id="main" class="my-root" data-start="0" data-duration="5"></div>
+      </body></html>`;
+
+      const result = await lintHyperframeHtml(html, { isSubComposition: false });
+      expect(result.findings.some((f) => f.code === "subcomposition_root_styled_by_class")).toBe(
+        false,
+      );
+    });
+  });
 });

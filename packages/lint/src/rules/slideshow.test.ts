@@ -86,4 +86,27 @@ describe("slideshow lint rule", () => {
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0]!.message).toContain("no-such-seq");
   });
+
+  it("flags slideshow_unresolved_ref when a sceneId in the manifest is missing from the document", async () => {
+    const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
+      <div data-composition-id="scene-a" data-start="0" data-duration="5"></div>
+      <script type="application/hyperframes-slideshow+json">{"slides":[{"sceneId":"missing-scene"}]}</script>
+    </div>`;
+    const findings = await findSlideshow(html);
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        code: "slideshow_unresolved_ref",
+        severity: "error",
+      }),
+    );
+  });
+
+  it("passes slideshow_unresolved_ref when all manifest sceneIds exist as data-composition-id", async () => {
+    const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
+      <div data-composition-id="scene-1" data-start="0" data-duration="5"></div>
+      <script type="application/hyperframes-slideshow+json">{"slides":[{"sceneId":"scene-1"}]}</script>
+    </div>`;
+    const findings = await findSlideshow(html);
+    expect(findings.some((f) => f.code === "slideshow_unresolved_ref")).toBe(false);
+  });
 });
