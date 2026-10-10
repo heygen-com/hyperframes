@@ -69,6 +69,15 @@ describe("hasProjectAudio", () => {
     expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, ...fields })])).toBe(true);
   });
 
+  it("counts an audible video when the composition root carries a master chain", () => {
+    const masterChain = '{"version":1,"nodes":[]}';
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, masterChain })])).toBe(true);
+    expect(
+      hasProjectAudio([clip({ tag: "video", muted: true, hasAudio: true, masterChain })]),
+    ).toBe(false);
+    expect(hasProjectAudio([clip({ tag: "video", masterChain })])).toBe(false);
+  });
+
   it("ignores a muted video even when it carries processing", () => {
     expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, muted: true, volume: 2 })])).toBe(
       false,

@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -66,6 +66,7 @@ vi.mock("../utils/ffprobe.js", async (importOriginal) => {
 });
 
 import { RATE_RANGE } from "@hyperframes/core/audio-automation";
+import { AudioFxRenderError } from "./audioFxRender.js";
 import { parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
 describe("parseAudioElements strict literal timing", () => {
@@ -105,6 +106,10 @@ describe("parseAudioElements — <source> children", () => {
 });
 describe("processCompositionAudio", () => {
   const tempDirs: string[] = [];
+  const gainChain = JSON.stringify({
+    version: 1,
+    nodes: [{ type: "gain", id: "g", params: { gain: -3 } }],
+  });
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -578,6 +583,40 @@ describe("processCompositionAudio", () => {
         trackStart: 0,
       },
     });
+  });
+
+  it.each([
+    ["the master pass", { masterFxChain: gainChain }],
+    ["a group bus", { groupId: "bus", groupFxChain: gainChain }],
+  ])("removes its work directory when %s throws a fatal FX error", async (_label, extra) => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bed.wav"), "stub");
+    applyAudioFxChainMock.mockRejectedValueOnce(new AudioFxRenderError("browser would not start"));
+
+    await expect(
+      processCompositionAudio(
+        [
+          {
+            id: "bed",
+            src: "bed.wav",
+            start: 0,
+            end: 2,
+            mediaStart: 0,
+            layer: 0,
+            volume: 1,
+            type: "audio",
+            ...extra,
+          },
+        ],
+        baseDir,
+        workDir,
+        join(baseDir, "out.m4a"),
+        2,
+      ),
+    ).rejects.toThrow(AudioFxRenderError);
+    expect(existsSync(workDir)).toBe(false);
   });
 
   it("lets an FX tail run past the clip, still bounded by the composition", async () => {

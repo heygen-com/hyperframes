@@ -544,8 +544,11 @@ function maxVolumeDb(path: string): number {
   return Number(match[1]);
 }
 
-const chainJson = (node: Record<string, unknown>): string =>
-  JSON.stringify({ version: 1, nodes: [{ id: "n1", enabled: true, ...node }] });
+const chainJson = (...nodes: Record<string, unknown>[]): string =>
+  JSON.stringify({
+    version: 1,
+    nodes: nodes.map((node, i) => ({ id: `n${i + 1}`, enabled: true, ...node })),
+  });
 
 describe("master bus: reading it", () => {
   const html = (root: string, inner = ""): string =>
@@ -654,46 +657,65 @@ describe.skipIf(!HAS_BROWSER || !HAS_FFMPEG)("master bus: rendering it", () => {
     expect(maxVolumeDb(out)).toBeLessThanOrEqual(-5.5);
   }, 180_000);
 
+  /** Mix `elements` for one second and read the file's highest level in dBFS. */
+  const mixedPeakDb = async (
+    name: string,
+    elements: Parameters<typeof processCompositionAudio>[0],
+  ): Promise<number> => {
+    const out = join(dir, `${name}-${MIXED_AUDIO_FILENAME}`);
+    const result = await processCompositionAudio(elements, dir, join(dir, "work"), out, 1);
+    expect(result.success).toBe(true);
+    return maxVolumeDb(out);
+  };
+  const writeTone = (id: string, peak: number): void =>
+    writeWav(join(dir, `${id}.wav`), steady(peak, 300), SR, 1, true);
+
   it("applies the root's data-fx-chain once over the sum, from authored HTML", async () => {
-    // Two in-phase tones sum to 0.5 (-6 dBFS); one -6 dB master gain lands at -12.
-    // Per-clip, or twice, it would land at -9 or -18.
-    writeWav(join(dir, "a.wav"), steady(0.25, 300), SR, 1, true);
-    writeWav(join(dir, "b.wav"), steady(0.25, 300), SR, 1, true);
-    const gain = chainJson({ type: "gain", params: { gain: -6 } });
+    // Two in-phase 0.3 tones sum to -4.4 dBFS. A -6 dBTP limiter then a -6 dB gain
+    // land that at -12. Per clip, neither clip reaches the ceiling and the result is
+    // -10.4; applied twice it is -18. A linear chain alone could not tell these apart.
+    writeTone("a", 0.3);
+    writeTone("b", 0.3);
+    const master = chainJson(
+      { type: "truepeak", params: { ceiling: -6, lookahead: 3, release: 80 } },
+      { type: "gain", params: { gain: -6 } },
+    );
     const clip = (id: string) =>
       `<audio id="${id}" src="${id}.wav" data-start="0" data-end="1" data-duration="1"></audio>`;
     const elements = parseAudioElements(
-      `<div data-composition-id="main" data-fx-chain='${gain}'>${clip("a")}${clip("b")}</div>`,
+      `<div data-composition-id="main" data-fx-chain='${master}'>${clip("a")}${clip("b")}</div>`,
     );
     expect(elements).toHaveLength(2);
-    const out = join(dir, `once-${MIXED_AUDIO_FILENAME}`);
-    const result = await processCompositionAudio(elements, dir, join(dir, "work"), out, 1);
-    expect(result.success).toBe(true);
-    expect(maxVolumeDb(out)).toBeCloseTo(-12, 0);
+    expect(await mixedPeakDb("once", elements)).toBeCloseTo(-12, 0);
+  }, 180_000);
+
+  it("keeps the sum in float until the chain has read it", async () => {
+    // The sum is +5 dBFS. A -6 dB master gain lands it at -1 if the sum is float; a sum
+    // clipped to 16 bits at full scale first would land at -6.
+    writeTone("a", 0.9);
+    writeTone("b", 0.9);
+    const masterFxChain = chainJson({ type: "gain", params: { gain: -6 } });
+    const peak = await mixedPeakDb("float", [
+      element("a", { masterFxChain }),
+      element("b", { masterFxChain }),
+    ]);
+    expect(peak).toBeGreaterThan(-2);
   }, 180_000);
 
   it("runs after each group's own chain and fader", async () => {
-    // The group clamps its tone to -20 dBFS. A +12 dB master gain AFTER that
-    // lands at -8; a master chain ahead of the group would be clamped to -20.
-    writeWav(join(dir, "g.wav"), steady(0.5, 300), SR, 1, true);
-    const result = await processCompositionAudio(
-      [
-        element("g", {
-          groupId: "bus",
-          groupFxChain: chainJson({
-            type: "truepeak",
-            params: { ceiling: -20, lookahead: 3, release: 80 },
-          }),
-          groupVolume: 1,
-          masterFxChain: chainJson({ type: "gain", params: { gain: 12 } }),
-        }),
-      ],
-      dir,
-      join(dir, "work"),
-      join(dir, `ordered-${MIXED_AUDIO_FILENAME}`),
-      1,
-    );
-    expect(result.success).toBe(true);
-    expect(maxVolumeDb(join(dir, `ordered-${MIXED_AUDIO_FILENAME}`))).toBeCloseTo(-8, 0);
+    // The group limits its 0.5 tone to -20 dBFS, then its fader takes 6 dB off: -26. A
+    // +12 dB master gain after both lands at -14. A fader ahead of the limiter would
+    // leave -20 and end at -8; a master ahead of the group would be limited away at -26.
+    writeTone("g", 0.5);
+    const group = {
+      groupId: "bus",
+      groupFxChain: chainJson({
+        type: "truepeak",
+        params: { ceiling: -20, lookahead: 3, release: 80 },
+      }),
+      groupVolume: 0.5,
+      masterFxChain: chainJson({ type: "gain", params: { gain: 12 } }),
+    };
+    expect(await mixedPeakDb("ordered", [element("g", group)])).toBeCloseTo(-14, 0);
   }, 180_000);
 });

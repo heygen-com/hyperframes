@@ -129,9 +129,8 @@ export function isMemberGroupHidden(
 }
 
 /**
- * The top-level composition root, the only element the master bus is read from.
- * A sub-composition's own root sits inside another composition and is skipped,
- * so repeating a sub-composition cannot stack master chains.
+ * The top-level composition root, the only element the master bus is read from;
+ * a sub-composition's root is skipped, so repeating one cannot stack chains.
  */
 export function resolveMasterBusElement(root: ParentNode): Element | null {
   for (const el of root.querySelectorAll("[data-composition-id]")) {
@@ -140,11 +139,7 @@ export function resolveMasterBusElement(root: ParentNode): Element | null {
   return null;
 }
 
-/**
- * The master bus chain: the `data-fx-chain` on the top-level composition root,
- * applied once to the sum of every clip and group. Undefined when the root carries
- * none.
- */
+/** The master bus chain: the top-level root's `data-fx-chain`, if it carries one. */
 export function readMasterFxChain(root: ParentNode): string | undefined {
   return resolveMasterBusElement(root)?.getAttribute(HF_AUDIO_FX_ATTR) || undefined;
 }

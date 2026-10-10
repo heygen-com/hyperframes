@@ -1114,11 +1114,8 @@ async function mixGroupMembers(
 }
 
 /**
- * Sum the tracks to a float WAV, run the composition's master chain over the
- * sum, then AAC-encode. Groups are already folded into `tracks`, so the chain
- * sees every clip and every group exactly once and after each bus's own chain
- * and fader. The sum stays float until the encoder, so a limiter reads the true
- * peak of the unclipped mix.
+ * Sum the tracks to a float WAV, run the master chain over the sum, then AAC-encode.
+ * Groups are already folded into `tracks`, and the sum stays float until the encoder.
  */
 async function mixThroughMasterBus(
   tracks: AudioTrack[],
@@ -1495,12 +1492,15 @@ export async function processCompositionAudio(
   // The producer only surfaces audio failures when `success` is false; mixing
   // the remaining tracks made the omitted cue indistinguishable from a valid
   // render unless someone manually audited that exact audio window.
-  const bail = (): MixResult => {
+  const removeWorkDir = (): void => {
     try {
       rmSync(workDir, { recursive: true, force: true });
     } catch {
       /* ignore */
     }
+  };
+  const bail = (): MixResult => {
+    removeWorkDir();
     return {
       success: false,
       outputPath,
@@ -1640,7 +1640,10 @@ export async function processCompositionAudio(
         ...(bakedEnvelope || !laneKeyframes?.length ? {} : { volumeKeyframes: laneKeyframes }),
       });
     } catch (err: unknown) {
-      if (err instanceof AudioFxRenderError) throw err;
+      if (err instanceof AudioFxRenderError) {
+        removeWorkDir();
+        throw err;
+      }
       failures.push({
         stage: "mix",
         reason: "internal",
@@ -1657,23 +1660,22 @@ export async function processCompositionAudio(
   }
   if (failures.length > 0) return bail();
 
-  const mixResult =
-    masterChain && tracks.length > 0
-      ? await mixThroughMasterBus(
-          tracks,
-          masterChain,
-          outputPath,
-          workDir,
-          totalDuration,
-          signal,
-          config,
-        )
-      : await mixAudioTracks(tracks, outputPath, totalDuration, signal, config);
-
+  let mixResult: MixResult;
   try {
-    rmSync(workDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
+    mixResult =
+      masterChain && tracks.length > 0
+        ? await mixThroughMasterBus(
+            tracks,
+            masterChain,
+            outputPath,
+            workDir,
+            totalDuration,
+            signal,
+            config,
+          )
+        : await mixAudioTracks(tracks, outputPath, totalDuration, signal, config);
+  } finally {
+    removeWorkDir();
   }
 
   // A group whose sub-mix had to drop member automation reports it the same

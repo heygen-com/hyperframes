@@ -118,11 +118,7 @@ export interface ElementFxHandle {
   setRate(rate: number): void;
 }
 
-/**
- * Where a chain's lanes are read from. A track reads its own `data-automation`; the
- * master bus is the composition root's `data-fx-chain` and reads none, so the
- * root's `data-automation` is never mistaken for the bus's.
- */
+/** The attribute a chain's lanes are read from; the master bus has none. */
 export interface FxAttributes {
   automation: string | null;
 }

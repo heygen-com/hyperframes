@@ -625,11 +625,8 @@ export class WebAudioTransport {
   }
 
   /**
-   * The master bus chain, spliced between the sum of every clip and group and
-   * the monitor. Its clock is composition time, like a group's, so a replay or
-   * a seek re-anchors it once per play generation. A composition with no root
-   * yet is retried on the next schedule; one with a root and no chain is still
-   * watched, so adding the attribute is heard without a reload.
+   * The master bus chain, between the sum of every clip and group and the monitor.
+   * A seek re-anchors it once per play generation; no root yet is retried next schedule.
    */
   private ensureMasterBus(doc: Document, timing: AutomationTiming): void {
     if (!this._ctx || !this._masterGain || !this._busOut) return;
@@ -840,22 +837,22 @@ export class WebAudioTransport {
         swallow("webAudioTransport.setRate", err);
       }
     }
-    // Group buses are not in `_activeSources` — they outlive it — so their FX
-    // automation needs re-aiming here too, or a rate change leaves a group's
-    // envelopes running the old plan over audio at the new speed.
-    for (const group of this._groups.values()) {
+    this.setBusRate(safeRate);
+    return true;
+  }
+
+  // Group buses and the master bus are not in `_activeSources` — they outlive it — so
+  // their FX automation needs re-aiming too, or a rate change leaves their envelopes
+  // running the old plan over audio at the new speed.
+  private setBusRate(rate: number): void {
+    const buses = [...this._groups.values(), ...(this._master ? [this._master] : [])];
+    for (const bus of buses) {
       try {
-        group.fx?.setRate(safeRate);
+        bus.fx?.setRate(rate);
       } catch (err) {
-        swallow("webAudioTransport.setRate.group", err);
+        swallow("webAudioTransport.setRate.bus", err);
       }
     }
-    try {
-      this._master?.fx?.setRate(safeRate);
-    } catch (err) {
-      swallow("webAudioTransport.setRate.master", err);
-    }
-    return true;
   }
 
   // A bounded source's wall-clock duration was baked into start()'s duration

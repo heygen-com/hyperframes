@@ -116,7 +116,7 @@ The `data-fx-chain` JSON on the top-level composition root (the element with
 `data-composition-id` that no other composition contains) is the master bus. It
 runs once over the sum of every clip and group, after each group's own chain and
 fader. On a clip or a group `data-fx-chain` keeps its own meaning, and on a
-sub-composition root it is not applied to anything. The master bus has no
+sub-composition root inside a parent composition it is not applied. The master bus has no
 automation lanes.
 
 ## `data-fx-carve` — the carve's settings
