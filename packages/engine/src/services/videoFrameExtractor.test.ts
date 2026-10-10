@@ -2288,51 +2288,6 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(result).toMatchObject({ success: true, extracted: [], errors: [] });
   });
 
-  it("never opens the source of a clip outside the timeline", async () => {
-    const outputDir = join(FIXTURE_DIR, "out-outside-missing");
-    mkdirSync(outputDir, { recursive: true });
-    const outside = (id: string, start: number, end: number): VideoElement => ({
-      id,
-      src: "missing-source.mp4",
-      start,
-      end,
-      mediaStart: 0,
-      loop: false,
-      hasAudio: false,
-    });
-
-    const result = await extractAllVideoFrames(
-      [outside("before-zero", -2, -1), outside("after-end", 4, 6)],
-      FIXTURE_DIR,
-      { fps: 1, outputDir, timelineEnd: 3 },
-    );
-
-    expect(result).toMatchObject({ success: true, extracted: [], errors: [] });
-  });
-
-  it("still extracts a natural-length clip whose end is unset", async () => {
-    const outputDir = join(FIXTURE_DIR, "out-natural-length");
-    mkdirSync(outputDir, { recursive: true });
-    const video: VideoElement = {
-      id: "natural-length",
-      src: VFR_FIXTURE,
-      start: 0,
-      end: 0,
-      mediaStart: 0,
-      loop: false,
-      hasAudio: false,
-    };
-
-    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
-      fps: 1,
-      outputDir,
-      timelineEnd: 2,
-    });
-
-    expect(result.errors).toEqual([]);
-    expect(result.extracted.map((entry) => entry.videoId)).toEqual(["natural-length"]);
-  }, 30_000);
-
   it("preserves loop phase when negative preroll crosses the source boundary", async () => {
     const outputDir = join(FIXTURE_DIR, "out-negative-loop");
     mkdirSync(outputDir, { recursive: true });

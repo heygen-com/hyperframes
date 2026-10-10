@@ -204,7 +204,7 @@ export {
   parseImageElements,
   extractVideoFramesRange,
   extractAllVideoFrames,
-  isVideoOutsideTimeline,
+  isVideoPastTimelineEnd,
   resolveTimelineExtractionWindow,
   resolveVideoExtractionWindow,
   resolveFinalFrameExtractionWindow,

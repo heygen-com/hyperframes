@@ -154,7 +154,7 @@ describe.each([
     expect(toneMapHdrToSdrCalls).toEqual([true]);
   });
 
-  it("drops clips outside the timeline before extraction, keeping natural-length ones", async () => {
+  it("drops clips starting at or after the end before extraction, keeping natural-length ones", async () => {
     requestedVideoIds.splice(0);
     const outside = (id: string, start: number, end: number): VideoElement => ({
       id,
@@ -169,13 +169,14 @@ describe.each([
     const videos = await runStage(2, materializeSymlinks, {
       extraVideos: [
         outside("after-end", 2, 4),
-        outside("before-zero", -3, -1),
         outside("natural-length", 0, 0),
+        outside("negative-natural-length", -1, 0),
       ],
     });
 
-    expect(requestedVideoIds).toEqual([["root-video", "natural-length"]]);
-    expect(videos.map((v) => v.id)).toEqual(["root-video", "natural-length"]);
+    const kept = ["root-video", "natural-length", "negative-natural-length"];
+    expect(requestedVideoIds).toEqual([kept]);
+    expect(videos.map((v) => v.id)).toEqual(kept);
   });
 
   it("caches the compiled remote-media copies by content", async () => {
