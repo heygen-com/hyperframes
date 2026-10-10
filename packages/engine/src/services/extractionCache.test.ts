@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -24,6 +25,7 @@ import {
   markCacheEntryComplete,
   partialCacheEntryDir,
   publishCacheEntry,
+  readContentSha256,
   readKeyStat,
   rehydrateCacheEntry,
   touchCacheDir,
@@ -137,6 +139,28 @@ describe("computeCacheKey", () => {
   it("produces a 64-char hex SHA-256 digest", () => {
     const key = computeCacheKey(base(sourceFile));
     expect(key).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("keys a path-keyed source exactly as before content keys existed", () => {
+    const input = base(sourceFile);
+    const legacyBlob = JSON.stringify({
+      ...{ p: input.videoPath, m: input.mtimeMs, s: input.size },
+      ...{ ms: 0, d: 3, f: "30", fmt: "jpg" },
+    });
+    expect(computeCacheKey(input)).toBe(createHash("sha256").update(legacyBlob).digest("hex"));
+  });
+
+  it("keys a content-addressed source by its bytes, not its path or mtime", () => {
+    const moved = join(tmpRoot, "moved.mp4");
+    writeFileSync(moved, "fake-video-bytes", "utf-8");
+    const original = computeCacheKey({ ...base(sourceFile), contentSha256: "a1" });
+    expect(computeCacheKey({ ...base(moved), mtimeMs: 1, contentSha256: "a1" })).toBe(original);
+    expect(computeCacheKey({ ...base(sourceFile), contentSha256: "b2" })).not.toBe(original);
+  });
+
+  it("hashes a file's bytes for its content key", async () => {
+    const expected = createHash("sha256").update("fake-video-bytes").digest("hex");
+    expect(await readContentSha256(sourceFile)).toBe(expected);
   });
 
   it("changes when path changes (moved files re-extract)", () => {

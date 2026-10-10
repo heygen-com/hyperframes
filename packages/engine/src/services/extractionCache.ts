@@ -34,6 +34,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import {
+  createReadStream,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -88,6 +89,9 @@ export interface CacheKeyInput {
   format: CacheFrameFormat;
   /** Optional source transform applied during extraction. */
   transform?: string;
+  /** SHA-256 of the source bytes. Replaces path and mtime in the key for a source downloaded
+   *  into the render's work dir, whose path and mtime are new on every render. */
+  contentSha256?: string;
 }
 
 export interface CacheEntry {
@@ -110,6 +114,13 @@ export interface CachePublishResult {
   published: boolean;
 }
 
+/** SHA-256 of a file's bytes, read as a stream. */
+export async function readContentSha256(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
 /**
  * Read `(mtimeMs, size)` for a path. Returns `null` if the file is missing —
  * callers should skip the cache path for that entry so the extractor surfaces
@@ -128,18 +139,13 @@ export function readKeyStat(videoPath: string): { mtimeMs: number; size: number 
 
 function canonicalKeyBlob(input: CacheKeyInput): string {
   const durationForKey = Number.isFinite(input.duration) ? input.duration : -1;
-  const blob: {
-    p: string;
-    m: number;
-    s: number;
-    ms: number;
-    d: number;
-    f: string;
-    fmt: CacheFrameFormat;
-    t?: string;
-  } = {
-    p: input.videoPath,
-    m: input.mtimeMs,
+  // Identity first, so keys of path-keyed entries stay byte-identical.
+  const identity: Record<string, string | number> =
+    input.contentSha256 !== undefined
+      ? { c: input.contentSha256 }
+      : { p: input.videoPath, m: input.mtimeMs };
+  const blob: Record<string, string | number> = {
+    ...identity,
     s: input.size,
     ms: input.mediaStart,
     d: durationForKey,

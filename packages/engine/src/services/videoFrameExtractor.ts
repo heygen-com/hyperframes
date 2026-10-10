@@ -67,6 +67,7 @@ import {
   lookupCacheEntry,
   partialCacheEntryDir,
   publishCacheEntry,
+  readContentSha256,
   readKeyStat,
   rehydrateCacheEntry,
   touchCacheEntry,
@@ -1925,20 +1926,27 @@ export async function extractAllVideoFrames(
   // HDR preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
   // Phase 3 updates mediaStart after trimming any invisible negative preroll.
-  const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
-    const stat = readKeyStat(videoPath);
-    // Missing files return null — skip the cache path for that entry. The
-    // extractor will surface the real file-not-found error downstream, and we
-    // avoid polluting the cache with a `(mtimeMs: 0, size: 0)` tuple that two
-    // unrelated missing paths would otherwise share.
-    if (!stat) return null;
-    return {
-      videoPath,
-      mtimeMs: stat.mtimeMs,
-      size: stat.size,
-      mediaStart: video.mediaStart,
-    };
-  });
+  const cacheKeyInputs = await Promise.all(
+    resolvedVideos.map(async ({ video, videoPath }) => {
+      const stat = readKeyStat(videoPath);
+      // Missing files return null — skip the cache path for that entry. The
+      // extractor will surface the real file-not-found error downstream, and we
+      // avoid polluting the cache with a `(mtimeMs: 0, size: 0)` tuple that two
+      // unrelated missing paths would otherwise share.
+      if (!stat) return null;
+      return {
+        videoPath,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+        mediaStart: video.mediaStart,
+        // A download lands in this render's work dir, so only its content is stable across renders.
+        contentSha256:
+          config?.extractCacheDir && isHttpUrl(video.src)
+            ? await readContentSha256(videoPath)
+            : undefined,
+      };
+    }),
+  );
 
   // Phase 2: Probe color spaces and normalize if mixed HDR/SDR
   const phase2ProbeStart = Date.now();
@@ -2156,6 +2164,7 @@ export async function extractAllVideoFrames(
       mtimeMs: keyInput.mtimeMs,
       size: keyInput.size,
       mediaStart: keyInput.mediaStart,
+      contentSha256: keyInput.contentSha256,
       duration: work.videoDuration,
       fps: fpsKey,
       format: work.format,
