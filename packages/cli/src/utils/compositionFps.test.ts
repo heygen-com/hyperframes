@@ -12,6 +12,43 @@ describe("readCompositionFps", () => {
     expect(readCompositionFps(html)).toBe("24");
   });
 
+  it.each(["DATA-FPS", "Data-FpS"])("reads an HTML %s attribute", (attribute) => {
+    const html = wrap(`<div data-composition-id="root" data-root="true" ${attribute}="24">x</div>`);
+    expect(readCompositionFps(html)).toBe("24");
+  });
+
+  it("prefers an explicit root with mixed-case HTML attribute names", () => {
+    const html = wrap(
+      '<div data-composition-id="other" data-root="TRUE" data-fps="60"></div>' +
+        '<div DATA-COMPOSITION-ID="root" Data-Root="true" DATA-FPS="24">x</div>',
+    );
+    expect(readCompositionFps(html)).toBe("24");
+  });
+
+  it("reads the outermost composition with mixed-case HTML attribute names", () => {
+    const html = wrap(
+      '<div DATA-COMPOSITION-ID="root" Data-Fps="48"><div data-composition-id="child" data-fps="12">x</div></div>',
+    );
+    expect(readCompositionFps(html)).toBe("48");
+  });
+
+  it.each([
+    'DATA-FPS="24" data-fps="60"',
+    'Data-FpS="24" DATA-FPS="60"',
+    'data-fps="24" DATA-FPS="60"',
+  ])("keeps the first duplicate HTML attribute in %s", (attributes) => {
+    const html = wrap(`<div data-composition-id="root" ${attributes}>x</div>`);
+    expect(readCompositionFps(html)).toBe("24");
+  });
+
+  it("keeps the first duplicate data-root value when selecting the root", () => {
+    const html = wrap(
+      '<div data-composition-id="other" DATA-ROOT="false" data-root="true" data-fps="60"></div>' +
+        '<div data-composition-id="root" data-root="true" data-fps="24">x</div>',
+    );
+    expect(readCompositionFps(html)).toBe("24");
+  });
+
   it("reads data-fps from the outermost composition when no data-root is marked", () => {
     const html = wrap(
       '<div data-composition-id="root" data-fps="48"><div data-composition-id="child" data-fps="12">x</div></div>',
@@ -69,6 +106,14 @@ describe("readAllowedCompositionFpsFromDir", () => {
   it("uses cloud-allowed data-fps=24 as the default", () => {
     const dir = makeProject(
       '<div data-composition-id="root" data-root="true" data-fps="24">x</div>',
+    );
+
+    expect(readAllowedCompositionFpsFromDir(dir, allowedCloudFps)).toBe(24);
+  });
+
+  it("reads mixed-case HTML attributes before validating the cloud fps", () => {
+    const dir = makeProject(
+      '<div DATA-COMPOSITION-ID="root" DATA-ROOT="true" DATA-FPS="24">x</div>',
     );
 
     expect(readAllowedCompositionFpsFromDir(dir, allowedCloudFps)).toBe(24);
