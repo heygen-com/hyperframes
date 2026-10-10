@@ -825,6 +825,11 @@ describe("a double-quoted src that contains an apostrophe", () => {
     expect(codes).toContain("duplicate_audio_track");
   });
 
+  it("does not read a src out of another attribute's text", async () => {
+    const codes = await lintCodes(`<img id="i1" alt="x src='ghost.png'" />`, []);
+    expect(codes).not.toContain("missing_local_asset");
+  });
+
   it("finds the existing image through the shared src pattern too", async () => {
     const image = "Ann's photo.png";
     const project = makeProject(`<html><body>

@@ -858,7 +858,7 @@ export function truncateSnippet(value: string, maxLength = 220): string | undefi
 
 /**
  * Matches a media tag carrying a real `src` attribute, capturing the tag name in
- * group 1 and the src value, up to the quote that opened it, in group 2.
+ * group 1 and the src value in group 2.
  *
  * The leading whitespace before `src` is load-bearing: `\bsrc\s*=` also matches
  * the tail of `data-var-src="bg"` (a hyphen/`s` boundary is a word boundary), and
@@ -866,14 +866,10 @@ export function truncateSnippet(value: string, maxLength = 220): string | undefi
  * element using a variable binding was therefore reported as referencing a missing
  * file named after the variable id.
  */
-/** The decoded `src` of a tag matched by {@link mediaSrcTagRe}, read by the attribute parser. */
-export function mediaSrcOf(match: RegExpExecArray): string {
-  return readDecodedAttr(match[0], "src") ?? match[2] ?? "";
+export function mediaSrcTagRe(tagAlternation: string): RegExp {
+  return new RegExp(`<(${tagAlternation})\\b[^>]*\\ssrc\\s*=\\s*["']([^"']+)["'][^>]*>`, "gi");
 }
 
-export function mediaSrcTagRe(tagAlternation: string): RegExp {
-  return new RegExp(
-    `<(${tagAlternation})\\b[^>]*\\ssrc\\s*=\\s*["']((?<=")[^"]+(?=")|(?<=')[^']+(?='))["'][^>]*>`,
-    "gi",
-  );
+export function mediaSrcOf(match: RegExpExecArray): string {
+  return readDecodedAttr(match[0], "src") ?? "";
 }
