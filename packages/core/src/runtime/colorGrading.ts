@@ -2497,10 +2497,13 @@ function keepCanvasAboveSource(entry: ColorGradingEntry, source: HTMLImageElemen
 
 const corsCopiesForOpaqueDocuments = new WeakMap<
   HTMLImageElement,
-  { image: HTMLImageElement; waiting: (() => void)[] }
+  { image: HTMLImageElement; waiting: Set<ColorGradingEntry> }
 >();
 
-function readablePixels(source: TexImageSource, redraw: () => void): TexImageSource | null {
+function readablePixels(
+  source: TexImageSource,
+  waiter: ColorGradingEntry | null,
+): TexImageSource | null {
   if (!isImageElement(source) || window.origin !== "null" || source.crossOrigin !== null)
     return source;
   if (!/^https?:/i.test(source.currentSrc)) return source;
@@ -2508,9 +2511,13 @@ function readablePixels(source: TexImageSource, redraw: () => void): TexImageSou
   if (copy?.image.src !== source.currentSrc) {
     const next = {
       image: source.ownerDocument.createElement("img"),
-      waiting: [] as (() => void)[],
+      waiting: new Set<ColorGradingEntry>(),
     };
-    const settle = () => next.waiting.splice(0).forEach((waiter) => waiter());
+    const settle = () => {
+      const waiting = [...next.waiting];
+      next.waiting.clear();
+      waiting.forEach(drawEntry);
+    };
     next.image.crossOrigin = "anonymous";
     next.image.addEventListener("load", settle, { once: true });
     next.image.addEventListener("error", settle, { once: true });
@@ -2518,7 +2525,7 @@ function readablePixels(source: TexImageSource, redraw: () => void): TexImageSou
     corsCopiesForOpaqueDocuments.set(source, (copy = next));
   }
   if (copy.image.complete) return copy.image.naturalWidth > 0 ? copy.image : source;
-  copy.waiting.push(redraw);
+  if (waiter) copy.waiting.add(waiter);
   return null;
 }
 
@@ -3080,7 +3087,7 @@ function bindProgramTextures(
 function drawEntry(entry: ColorGradingEntry): boolean {
   if (entry.destroyed || entry.contextLost) return false;
   const source = getDrawableSource(entry.element);
-  const pixels = source && readablePixels(source, () => drawEntry(entry));
+  const pixels = source && readablePixels(source, entry);
   if (!source || !pixels) {
     if (!entry.hasDrawn) entry.canvas.style.display = "none";
     return false;
@@ -3240,7 +3247,7 @@ function preparePreviewFrame(
   useMediaTime: boolean,
 ): PreviewFrame | null {
   const source = getDrawableSource(element);
-  const pixels = source && readablePixels(source, () => undefined);
+  const pixels = source && readablePixels(source, null);
   if (!source || !pixels) return null;
   const sourceSize = readSourceSize(source);
   if (!sourceSize) return null;

@@ -769,8 +769,9 @@ describe("createColorGradingRuntime", () => {
         "anonymous",
       ]);
       expect(uploads()).not.toContain(image);
+      for (let tick = 0; tick < 5; tick += 1) runtime.redrawAnimated();
       settle(copy, 640);
-      expect(uploads().at(-1)).toBe(copy);
+      expect(uploads().filter((upload) => upload === copy)).toHaveLength(1);
       expect(uploads()).not.toContain(image);
     });
 
