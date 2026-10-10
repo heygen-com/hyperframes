@@ -93,6 +93,7 @@ export interface GestureState {
    * when the corner geometry can't be measured (member creation still succeeded).
    */
   resizeFixedCenterStart?: { x: number; y: number };
+  resizePressFromCorner?: { x: number; y: number };
 }
 
 export interface GroupGestureState {

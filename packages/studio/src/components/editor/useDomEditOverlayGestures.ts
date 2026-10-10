@@ -250,14 +250,15 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     } else {
       // Corner resize scales proportionally about the center, without edge snapping.
+      const grab = g.resizePressFromCorner ?? { x: 0, y: 0 };
       const nextSize = resolveCenterResizeSize({
         baseWidth: g.actualWidth,
         baseHeight: g.actualHeight,
-        pointer: { x: e.clientX, y: e.clientY },
-        pointerStart: { x: g.startX, y: g.startY },
+        pointer: { x: e.clientX - grab.x, y: e.clientY - grab.y },
+        pointerStart: { x: g.startX - grab.x, y: g.startY - grab.y },
         centerStart: { x: g.centerX, y: g.centerY },
       });
-      applyStudioBoxSizeDraft(sel.element, nextSize);
+      const writtenSize = applyStudioBoxSizeDraft(sel.element, nextSize);
 
       const overlayEl = opts.overlayRef.current;
       const iframe = opts.iframeRef.current;
@@ -270,6 +271,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         overlayEl,
         iframe,
         measureOrientedRect,
+        { wanted: nextSize, written: writtenSize },
       );
       logResizeMove({
         pointer: { x: e.clientX, y: e.clientY },

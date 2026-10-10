@@ -53,3 +53,15 @@ describe("render target composition", () => {
     expect(body["composition"]).toBeUndefined();
   });
 });
+
+describe("GPU encoding", () => {
+  it("asks the server for GPU encoding when the export asks for it", async () => {
+    const body = await renderBody(null, { format: "mp4", gpu: true });
+    expect(body["gpu"]).toBe(true);
+  });
+
+  it("leaves GPU encoding off by default", async () => {
+    const body = await renderBody(null, { format: "mp4" });
+    expect(body["gpu"]).toBeUndefined();
+  });
+});

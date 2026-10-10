@@ -19,15 +19,9 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  * project routes (U3/U4) to serve a `?hf-proxy=` request; never used on
  * the render path (render always sees the original file).
  *
- * IMPORTANT — request-lifecycle detachment: nothing here accepts or wires an
- * AbortSignal. `resolveProxy` returns a promise shared by every concurrent
- * caller for the same cache key (in-flight dedupe below); if a route handler
- * killed the ffmpeg child on client abort (page reload, HMR), every other
- * caller waiting on that same promise would fail too, and the next request
- * would restart a transcode that may have been minutes into a long asset.
- * Callers MUST let the child run to completion regardless of request
- * cancellation and simply let the held response also abort — the cache
- * entry still lands for the next request.
+ * A started ffmpeg child is never killed for one caller: every caller of a cache
+ * key shares it (in-flight dedupe below). A caller's `signal` only detaches that
+ * caller, and drops the copy while it is still queued with no caller left.
  */
 
 export const PROXY_PARAMS_VERSION = "v5";
@@ -207,55 +201,110 @@ function getCanonicalProxyCachePath(
 
 /**
  * Computes the absolute path a proxy for this source would live at, without
- * transcoding anything. Route handlers use this to check cache state (e.g.
- * for ETag/If-None-Match) before deciding whether to await a transcode.
+ * transcoding anything, so a host can check cache state. Pass the request's
+ * preview box (`hf-proxy-box`) to name a boxed copy.
  */
 export function getProxyCachePath(
   projectDir: string,
   absoluteSourcePath: string,
   variant: ProxyVariant = "h264",
+  box?: PreviewProxyBox,
 ): string {
   return getCanonicalProxyCachePath(
     canonicalizeProxySource(projectDir, absoluteSourcePath),
     variant,
+    box,
   );
 }
 
 // --- global concurrency limiter -------------------------------------------
-// ponytail: a bare counter + FIFO wait queue is the whole semaphore; no
-// dependency pulled in for this. Both element-triggered and pre-warm calls
-// go through the same `resolveProxy` entry point, so both queue here.
+// ponytail: a counter + one wait queue is the whole semaphore. Priority copies
+// queue ahead of the rest and are never refused for a full queue, so a few
+// priority asks (the copy a viewer is waiting on) can exceed the cap.
+
+/** One copy per cache key, shared by every caller asking for it. */
+interface ProxyJob {
+  cachePath: string;
+  priority: boolean;
+  /** Callers still waiting; one without a signal never leaves, so its copy is always made. */
+  callers: number;
+  /** Set while the job waits for a slot. */
+  queued?: { start: () => void; drop: () => void };
+}
+
+class ProxyDroppedError extends ProxyTranscodeError {
+  constructor() {
+    super("media proxy copy dropped: every caller left before it started", null, "");
+    this.name = "ProxyDroppedError";
+  }
+}
 
 let activeTranscodes = 0;
-const waitQueue: Array<() => void> = [];
+const waitQueue: ProxyJob[] = [];
 
-function acquireSlot(): Promise<void> {
+function enqueue(job: ProxyJob): void {
+  const firstNormal = job.priority ? waitQueue.findIndex((queued) => !queued.priority) : -1;
+  if (firstNormal === -1) waitQueue.push(job);
+  else waitQueue.splice(firstNormal, 0, job);
+}
+
+function dequeue(job: ProxyJob): void {
+  const index = waitQueue.indexOf(job);
+  if (index !== -1) waitQueue.splice(index, 1);
+}
+
+function acquireSlot(job: ProxyJob): Promise<void> {
+  if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
+    activeTranscodes++;
+    return Promise.resolve();
+  }
   return new Promise((resolveSlot, reject) => {
-    const tryAcquire = (): void => {
-      if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
+    job.queued = {
+      start: () => {
+        job.queued = undefined;
         activeTranscodes++;
         resolveSlot();
-      } else {
-        if (waitQueue.length >= MAX_QUEUED_TRANSCODES) {
-          reject(new ProxyCapacityError());
-          return;
-        }
-        waitQueue.push(tryAcquire);
-      }
+      },
+      drop: () => {
+        job.queued = undefined;
+        dequeue(job);
+        forget(job);
+        reject(new ProxyDroppedError());
+      },
     };
-    tryAcquire();
+    enqueue(job);
   });
+}
+
+function queueIsFull(): boolean {
+  return activeTranscodes >= MAX_CONCURRENT_TRANSCODES && waitQueue.length >= MAX_QUEUED_TRANSCODES;
 }
 
 function releaseSlot(): void {
   activeTranscodes--;
-  const next = waitQueue.shift();
-  if (next) next();
+  waitQueue.shift()?.queued?.start();
+}
+
+function prioritize(job: ProxyJob): void {
+  if (job.priority) return;
+  job.priority = true;
+  if (!job.queued) return;
+  dequeue(job);
+  enqueue(job);
+}
+
+function leave(job: ProxyJob): void {
+  job.callers--;
+  if (job.callers === 0) job.queued?.drop();
 }
 
 // --- per-key in-flight dedupe ----------------------------------------------
 
-const inFlight = new Map<string, Promise<string>>();
+const inFlight = new Map<string, { promise: Promise<string>; job: ProxyJob }>();
+
+function forget(job: ProxyJob): void {
+  if (inFlight.get(job.cachePath)?.job === job) inFlight.delete(job.cachePath);
+}
 
 function maintainProxyCache(cacheDir: string): void {
   try {
@@ -462,13 +511,14 @@ async function runFfmpeg(
 }
 
 async function transcodeToCache(
+  job: ProxyJob,
   projectDir: string,
   absoluteSourcePath: string,
   cachePath: string,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
 ): Promise<string> {
-  await acquireSlot();
+  await acquireSlot(job);
   try {
     // Another caller may have finished (or a pre-warm beat us) while queued.
     if (existsSync(cachePath)) return cachePath;
@@ -491,14 +541,14 @@ async function transcodeToCache(
   }
 }
 
-let settledProxyCount = 0;
+let proxyActivity = 0;
 
-/** Null while a copy for this project is being made; otherwise a mark that moves when any copy finishes. */
+/** Null while this project has a copy in progress; otherwise a mark that moves when any copy finishes or is refused. */
 export function proxyActivityMark(projectDir: string): string | null {
-  if (!existsSync(projectDir)) return String(settledProxyCount);
+  if (!existsSync(projectDir)) return String(proxyActivity);
   const cacheDir = join(realpath(projectDir), CACHE_DIR_NAME) + sep;
   for (const cachePath of inFlight.keys()) if (cachePath.startsWith(cacheDir)) return null;
-  return String(settledProxyCount);
+  return String(proxyActivity);
 }
 
 /**
@@ -510,13 +560,17 @@ export function proxyActivityMark(projectDir: string): string | null {
  * nonzero exit) — callers (route handlers) decide how to surface that (502).
  * A `box` makes a smaller preview-only copy with its own cache entry; without
  * one the copy keeps the source size (CLI play, static servers, publish).
+ * `priority` moves the copy ahead of every normal queued copy; a `signal`
+ * lets this caller leave (see the detachment note at the top of this file).
  */
 export async function resolveProxy(
   projectDir: string,
   absoluteSourcePath: string,
   variant: ProxyVariant = "h264",
   box?: PreviewProxyBox,
+  options: ResolveProxyOptions = {},
 ): Promise<string> {
+  options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const cachePath = getCanonicalProxyCachePath(source, variant, box);
   if (existsSync(cachePath)) {
@@ -531,18 +585,56 @@ export async function resolveProxy(
     failedTranscodes.delete(cachePath);
   }
 
-  const existing = inFlight.get(cachePath);
-  if (existing) return existing;
+  let entry = inFlight.get(cachePath);
+  if (!entry) {
+    if (!options.priority && queueIsFull()) {
+      proxyActivity += 1;
+      throw new ProxyCapacityError();
+    }
+    const job: ProxyJob = {
+      cachePath,
+      priority: options.priority === true,
+      callers: 0,
+    };
+    const promise = transcodeToCache(
+      job,
+      source.projectDir,
+      source.sourcePath,
+      cachePath,
+      variant,
+      box,
+    )
+      .catch((err: unknown) => {
+        if (!(err instanceof ProxyDroppedError)) rememberFailure(cachePath, err);
+        throw err;
+      })
+      .finally(() => {
+        forget(job);
+        proxyActivity += 1;
+      });
+    entry = { promise, job };
+    inFlight.set(cachePath, entry);
+  }
+  if (options.priority) prioritize(entry.job);
+  return joinJob(entry.promise, entry.job, options.signal);
+}
 
-  const promise = transcodeToCache(source.projectDir, source.sourcePath, cachePath, variant, box)
-    .catch((err: unknown) => {
-      if (!(err instanceof ProxyCapacityError)) rememberFailure(cachePath, err);
-      throw err;
-    })
-    .finally(() => {
-      inFlight.delete(cachePath);
-      settledProxyCount += 1;
-    });
-  inFlight.set(cachePath, promise);
-  return promise;
+export interface ResolveProxyOptions {
+  priority?: boolean;
+  signal?: AbortSignal;
+}
+
+function joinJob(promise: Promise<string>, job: ProxyJob, signal?: AbortSignal): Promise<string> {
+  job.callers++;
+  if (!signal) return promise;
+  return new Promise((resolveJoin, rejectJoin) => {
+    const onAbort = (): void => {
+      leave(job);
+      rejectJoin(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise
+      .finally(() => signal.removeEventListener("abort", onAbort))
+      .then(resolveJoin, rejectJoin);
+  });
 }

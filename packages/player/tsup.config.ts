@@ -12,7 +12,6 @@ export default defineConfig({
   dts: true,
   clean: true,
   minify: true,
-  sourcemap: true,
   define: {
     __HYPERFRAMES_RUNTIME_CDN_URL__: JSON.stringify(
       `https://cdn.jsdelivr.net/npm/@hyperframes/core@${packageVersion}/dist/hyperframe.runtime.iife.js`,

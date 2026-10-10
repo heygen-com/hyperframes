@@ -1,6 +1,7 @@
-import type { CommandDef } from "citty";
+import { parseArgs } from "citty";
+import type { ArgsDef, CommandContext, CommandDef } from "citty";
 import { resolveExtraPositionals } from "./reject-extra-positionals.js";
-import { assertKnownFlags } from "./reject-unknown-flags.js";
+import { assertKnownFlags, guardSwallowedFlagValues } from "./reject-unknown-flags.js";
 
 // citty types subcommands as `CommandDef<any>` (SubCommandsDef); mirror that so
 // each command's specific args type is accepted without per-command generics.
@@ -59,7 +60,7 @@ function wrapCommand(cmd: AnyCommandDef, path: string): AnyCommandDef {
         cmd.subCommands != null &&
         firstPositional != null &&
         Object.prototype.hasOwnProperty.call(cmd.subCommands, firstPositional);
-      if (!delegatesToSub) assertKnownFlags(cmd, rawArgs);
+      if (!delegatesToSub) guardLeafFlags(cmd, path, ctx, rawArgs);
       // Groups read `args._[0]` to pick fallback help, so only leaves get the count check.
       if (!cmd.subCommands) resolveExtraPositionals(cmd, path, ctx?.args);
       return await run(ctx);
@@ -78,6 +79,20 @@ function wrapCommand(cmd: AnyCommandDef, path: string): AnyCommandDef {
     wrapped.subCommands = wrappedSubs;
   }
   return wrapped;
+}
+
+// citty built ctx.args before this ran; re-parse when the swallow guard rewrites rawArgs.
+function guardLeafFlags(
+  cmd: AnyCommandDef,
+  path: string,
+  ctx: CommandContext<any>,
+  rawArgs: string[],
+): void {
+  assertKnownFlags(cmd, rawArgs);
+  const guarded = guardSwallowedFlagValues(cmd, path, rawArgs);
+  if (!guarded.rewritten) return;
+  ctx.rawArgs = guarded.rawArgs;
+  ctx.args = parseArgs(guarded.rawArgs, (cmd.args ?? {}) as ArgsDef);
 }
 
 /**

@@ -38,8 +38,10 @@ import { dirname, join } from "node:path";
 import {
   appendRenderProvenanceArgs,
   applyFaststart,
+  describeFfmpegFailure,
   MIXED_AUDIO_FILENAME,
   muxVideoWithAudio,
+  resolveConfig,
   runFfmpeg,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg } from "@hyperframes/core";
@@ -122,6 +124,7 @@ export async function assemble(
   const log = options?.logger ?? defaultLogger;
   const abortSignal = options?.abortSignal;
   const cfr = options?.cfr === true;
+  const { ffmpegProcessTimeout } = resolveConfig();
 
   // ── 1. Validate planDir manifest matches chunkPaths shape ──────────────
   const planJsonPath = join(planDir, "plan.json");
@@ -181,10 +184,13 @@ export async function assemble(
       const remuxArgs = ["-i", chunkPaths[0]!, "-c", "copy", "-r", fpsArg];
       appendRenderProvenanceArgs(remuxArgs, concatOutputPath);
       remuxArgs.push("-y", concatOutputPath);
-      const remuxResult = await runFfmpeg(remuxArgs, { signal: abortSignal });
+      const remuxResult = await runFfmpeg(remuxArgs, {
+        signal: abortSignal,
+        timeout: ffmpegProcessTimeout,
+      });
       if (!remuxResult.success) {
         throw encoderFailureError("[assemble] ffmpeg single-chunk remux failed", {
-          error: `exit ${remuxResult.exitCode}: ${remuxResult.stderr.slice(-400)}`,
+          error: describeFfmpegFailure(remuxResult, ffmpegProcessTimeout),
           failureReason: remuxResult.failureReason,
         });
       }
@@ -216,10 +222,13 @@ export async function assemble(
       ];
       appendRenderProvenanceArgs(concatArgs, concatOutputPath);
       concatArgs.push("-y", concatOutputPath);
-      const concatResult = await runFfmpeg(concatArgs, { signal: abortSignal });
+      const concatResult = await runFfmpeg(concatArgs, {
+        signal: abortSignal,
+        timeout: ffmpegProcessTimeout,
+      });
       if (!concatResult.success) {
         throw encoderFailureError("[assemble] ffmpeg concat-copy failed", {
-          error: `exit ${concatResult.exitCode}: ${concatResult.stderr.slice(-400)}`,
+          error: describeFfmpegFailure(concatResult, ffmpegProcessTimeout),
           failureReason: concatResult.failureReason,
         });
       }
@@ -286,10 +295,13 @@ export async function assemble(
       ];
       appendRenderProvenanceArgs(cfrArgs, cfrOutputPath);
       cfrArgs.push("-y", cfrOutputPath);
-      const cfrResult = await runFfmpeg(cfrArgs, { signal: abortSignal });
+      const cfrResult = await runFfmpeg(cfrArgs, {
+        signal: abortSignal,
+        timeout: ffmpegProcessTimeout,
+      });
       if (!cfrResult.success) {
         throw encoderFailureError("[assemble] ffmpeg cfr re-encode failed", {
-          error: `exit ${cfrResult.exitCode}: ${cfrResult.stderr.slice(-400)}`,
+          error: describeFfmpegFailure(cfrResult, ffmpegProcessTimeout),
           failureReason: cfrResult.failureReason,
         });
       }
@@ -310,6 +322,7 @@ export async function assemble(
         audioPath,
         outputPath: paddedAudioPath,
         signal: abortSignal,
+        timeoutMs: ffmpegProcessTimeout,
       });
       if (!padTrimResult.success) {
         throw encoderFailureError("[assemble] audio pad/trim failed", padTrimResult);
@@ -336,9 +349,7 @@ export async function assemble(
         normalizedAudioPath,
         muxOutputPath,
         abortSignal,
-        {
-          audioCodec: "aac",
-        },
+        { audioCodec: "aac", ffmpegProcessTimeout },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
       if (!muxResult.success) {
@@ -352,7 +363,7 @@ export async function assemble(
       muxOutputPath,
       outputPath,
       abortSignal,
-      undefined,
+      { ffmpegProcessTimeout },
       {
         num: plan.dimensions.fpsNum,
         den: plan.dimensions.fpsDen,

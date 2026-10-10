@@ -22,6 +22,7 @@ export default defineConfig({
     subCompositionValidity: "src/subCompositionValidity.ts",
     ffBinaries: "src/ffBinaries.ts",
     assetResolution: "src/assetResolution.ts",
+    htmlAttributeSpans: "src/htmlAttributeSpans.ts",
   },
   format: ["esm"],
   outDir: "dist",
@@ -29,7 +30,6 @@ export default defineConfig({
   platform: "node",
   bundle: true,
   splitting: false,
-  sourcemap: true,
   clean: true,
   dts: true,
 });

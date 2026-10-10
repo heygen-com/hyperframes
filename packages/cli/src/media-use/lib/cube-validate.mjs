@@ -5,8 +5,7 @@
 // parser cases to catch drift in accepted .cube files before freezing them.
 
 import { readFileSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "./main-module.mjs";
 
 export const DEFAULT_MAX_CUBE_LUT_SIZE = 64;
 
@@ -193,6 +192,6 @@ function main(argv) {
   console.log(`ok: LUT_3D_SIZE ${result.size}`);
 }
 
-if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   main(process.argv);
 }

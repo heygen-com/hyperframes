@@ -32,6 +32,7 @@ export interface StartRenderOptions {
   format?: "mp4" | "webm" | "mov";
   /** `"auto"` (default) renders at the composition's authored dimensions. */
   resolution?: ResolutionPreset | "auto";
+  gpu?: boolean;
   /**
    * Render a specific composition file. Omit it to render the composition the
    * user currently has open — only the sidebar's per-composition Render button
@@ -234,6 +235,7 @@ export function useRenderQueue(
         resolution?: string;
         composition?: string;
         variables?: Record<string, unknown>;
+        gpu?: boolean;
         telemetryDistinctId?: string;
         telemetryOptOut?: boolean;
       } = {
@@ -258,6 +260,7 @@ export function useRenderQueue(
       }
       if (resolution && resolution !== "auto") body.resolution = resolution;
       if (composition) body.composition = composition;
+      if (opts.gpu) body.gpu = true;
       if (opts.variables && Object.keys(opts.variables).length > 0) {
         body.variables = opts.variables;
       }

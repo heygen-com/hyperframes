@@ -170,6 +170,11 @@ function tweenUsesScaleLonghands(anim: GsapAnimation | null): boolean {
 
 // ── Resize intercept ──────────────────────────────────────────────────────
 
+// The resize is centre-anchored, so a scale that cannot reproduce the dragged size splits the gap evenly.
+function rectCentre(rect: DOMRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
 // fallow-ignore-next-line complexity
 export async function tryGsapResizeIntercept(
   selection: DomEditSelection,
@@ -371,15 +376,10 @@ export async function tryGsapResizeIntercept(
     committedScale = useScaleLonghands
       ? { x: newScaleX, y: newScaleY }
       : { x: newScaleX, y: newScaleX };
-    // Where the user DROPPED the box: the draft (anchor-pinned to the
-    // gesture-start top-left) is still applied here, so this rect is exactly
-    // what the preview showed at release. The committed scale renders around
-    // the element CENTER instead — the finalize step below measures that
-    // difference and compensates, so release matches the drop pixel-for-pixel
-    // regardless of live scale or repeat resizes.
+    // Where the user DROPPED the box: the draft is still applied, so this is what the preview showed
+    // at release. The finalize step below moves the committed scale's box onto it.
     if (el) {
-      const dropRect = draw(() => el.getBoundingClientRect());
-      scaleDraftDropPoint = { x: dropRect.x, y: dropRect.y };
+      scaleDraftDropPoint = draw(() => rectCentre(el.getBoundingClientRect()));
     }
   } else {
     resizeProps = {
@@ -396,8 +396,8 @@ export async function tryGsapResizeIntercept(
   // position (a `tl.set` hold or none) — a keyframed position path has no
   // single anchor to preserve, so it keeps the plain center-scale behavior.
   // The size route hands its draft to GSAP itself (handOverDraftSize).
-  // ponytail: for a 3D-rotated element the rects are AABBs, so the anchor is
-  // approximate rather than corner-exact.
+  // ponytail: the centre of an AABB is exact for any 2D transform; under
+  // perspective it is approximate.
   // fallow-ignore-next-line complexity
   const finalizeScaleResizeCommit = async (): Promise<boolean> => {
     // Only the scale route captures the element, so a null draft means this
@@ -428,15 +428,9 @@ export async function tryGsapResizeIntercept(
       );
       const base = { x: baseGsapX, y: baseGsapY };
       setElementGsapPosition(draftEl, base.x, base.y);
-      const post = draftEl.getBoundingClientRect();
+      const post = rectCentre(draftEl.getBoundingClientRect());
       const residual = { x: dropPoint.x - post.x, y: dropPoint.y - post.y };
       if (!Number.isFinite(residual.x) || !Number.isFinite(residual.y)) return null;
-      if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
-        logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
-        // Settled, with nothing to write. Still ours: forwarding the drag offset
-        // on top would move the box off the point it is already sitting on.
-        return "settled" as const;
-      }
       // The ONE corrected position — rounded once so the live runtime and the
       // persisted file agree exactly (commitStaticGsapPosition composes the same
       // rounded value from this delta).
@@ -444,9 +438,15 @@ export async function tryGsapResizeIntercept(
         x: roundTo3(base.x + residual.x),
         y: roundTo3(base.y + residual.y),
       };
+      if (corrected.x === roundTo3(base.x) && corrected.y === roundTo3(base.y)) {
+        logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
+        // Settled, with nothing to write. Still ours: forwarding the drag offset
+        // on top would move the box off the point it is already sitting on.
+        return "settled" as const;
+      }
       logResize("scale-finalize", {
         dropPoint,
-        post: { x: post.x, y: post.y },
+        post,
         residual,
         gsapPos,
         base,
@@ -455,11 +455,11 @@ export async function tryGsapResizeIntercept(
       // Correct the live box in the same task as the measurement, so no frame shows it off the drop
       // point while the position write is in flight.
       setElementGsapPosition(draftEl, corrected.x, corrected.y);
-      return { base, corrected };
+      return { base, corrected, residual };
     });
     if (measured === null) return false;
     if (measured === "settled") return true;
-    const { base, corrected } = measured;
+    const { base, corrected, residual } = measured;
     // Re-fetch: the scale commit above just rewrote the script, so the caller's
     // animation list (and its ids) may be stale for the position lookup.
     const currentAnimations = fetchFallbackAnimations
@@ -482,6 +482,11 @@ export async function tryGsapResizeIntercept(
       moment.time,
     );
     if (positionTween) {
+      // A sub-pixel correction is not worth a keyframe in an authored tween.
+      if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
+        draw(() => setElementGsapPosition(draftEl, base.x, base.y));
+        return true;
+      }
       logResize("scale-finalize", { route: "position-keyframe", tweenId: positionTween.id });
       assertGsapEditPersisted(
         await commitGsapPositionFromDrag(selection, positionTween, delta, base, iframe, {

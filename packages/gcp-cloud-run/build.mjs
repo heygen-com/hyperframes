@@ -30,7 +30,6 @@ const sharedOpts = {
   target: "node22",
   format: "esm",
   minify: false,
-  sourcemap: true,
   external: [
     "@google-cloud/storage",
     "@google-cloud/workflows",

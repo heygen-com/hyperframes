@@ -23,8 +23,9 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  DEFAULT_CONFIG,
+  describeFfmpegFailure,
   extractAudioMetadata,
-  formatFfmpegError,
   getFfprobeBinary,
   ManagedChildProcess,
   runFfmpeg,
@@ -73,6 +74,8 @@ export interface PadTrimAudioInput {
   /** Path the helper writes the duration-corrected audio to. */
   outputPath: string;
   signal?: AbortSignal;
+  /** Deadline for each ffmpeg process; defaults to the engine's `ffmpegProcessTimeout`. */
+  timeoutMs?: number;
   /**
    * Optional injectables for unit tests. Production callers omit them and
    * get the real `ffprobe`/`ffmpeg`-backed implementations.
@@ -291,12 +294,18 @@ export async function padOrTrimAudioToVideoFrameCount(
     input.probeVideoFrameInfo ??
     ((videoPath: string) => defaultProbeVideoFrameInfo(videoPath, input.signal));
   const probeAudio = input.probeAudioInfo ?? defaultProbeAudioInfo;
-  const runner = input.runFfmpeg ?? ((args: string[]) => defaultRunFfmpeg(args, input.signal));
+  const timeoutMs = input.timeoutMs ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+  const runner =
+    input.runFfmpeg ?? ((args: string[]) => defaultRunFfmpeg(args, timeoutMs, input.signal));
   // Injected runners usually do not materialize media. Tests that exercise
   // peak correction opt in with a matching probe; production always uses the
   // real post-codec measurement.
   const probeTruePeak =
-    input.probeAudioTruePeakDbfs ?? (input.runFfmpeg ? undefined : defaultProbeAudioTruePeakDbfs);
+    input.probeAudioTruePeakDbfs ??
+    (input.runFfmpeg
+      ? undefined
+      : (audioPath: string, signal?: AbortSignal) =>
+          defaultProbeAudioTruePeakDbfs(audioPath, timeoutMs, signal));
 
   // Probe video and audio in parallel — the two ffprobe invocations are
   // independent and account for most of this function's wall-clock time.
@@ -594,7 +603,7 @@ async function defaultProbeAudioInfo(
   audioPath: string,
   signal?: AbortSignal,
 ): Promise<AudioProbeInfo> {
-  // The shared ffprobe wrapper derives AAC-LC duration from packet count so
+  // The shared ffprobe wrapper corrects for a lying container duration so
   // every consumer sees the same VBR-safe metadata while preserving cancellation.
   const metadata: AudioMetadata = await extractAudioMetadata(audioPath, { signal });
   return {
@@ -607,14 +616,15 @@ async function defaultProbeAudioInfo(
 
 async function defaultProbeAudioTruePeakDbfs(
   audioPath: string,
+  timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<number> {
   const result = await runFfmpeg(
     ["-i", audioPath, "-map", "0:a:0", "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"],
-    { signal },
+    { signal, timeout: timeoutMs },
   );
   if (!result.success) {
-    throw new Error(`[audioPadTrim] ${formatFfmpegError(result.exitCode, result.stderr)}`);
+    throw new Error(`[audioPadTrim] ${describeFfmpegFailure(result, timeoutMs)}`);
   }
   const matches = [...result.stderr.matchAll(/^\s*Peak:\s*([+-]?(?:[\d.]+|inf)) dBFS$/gim)];
   const token = matches.at(-1)?.[1]?.toLowerCase();
@@ -627,17 +637,18 @@ async function defaultProbeAudioTruePeakDbfs(
 
 async function defaultRunFfmpeg(
   args: string[],
+  timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<{
   success: boolean;
   error?: string;
   failureReason?: "external_interruption";
 }> {
-  const result = await runFfmpeg(args, { signal });
+  const result = await runFfmpeg(args, { signal, timeout: timeoutMs });
   if (result.success) return { success: true };
   return {
     success: false,
-    error: `[audioPadTrim] ${formatFfmpegError(result.exitCode, result.stderr)}`,
+    error: `[audioPadTrim] ${describeFfmpegFailure(result, timeoutMs)}`,
     failureReason: result.failureReason,
   };
 }

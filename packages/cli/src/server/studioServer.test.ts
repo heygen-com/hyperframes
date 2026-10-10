@@ -62,6 +62,10 @@ vi.mock("../browser/gpuPolicy.js", () => ({
   resolveLocalBrowserGpuMode: () => "software",
   compositionRequiresWebGpu: () => false,
   assertWebGpuAdapterAvailable: async () => {},
+  resolveLocalWebGpu: (browserGpuMode: string) => ({
+    gpuConfig: { browserGpuMode, allowSoftwareWebGpu: false },
+    softwareWebGpu: false,
+  }),
 }));
 vi.mock("../browser/preflight.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../browser/preflight.js")>()),
@@ -135,8 +139,8 @@ describe("Studio thumbnail GPU capture plumbing", () => {
   it("uses the shared auto probe, resolved launch mode, requirement guard, and completion-aware seek", () => {
     const source = readFileSync(new URL("./studioServer.ts", import.meta.url), "utf8");
     expect(source).toContain("resolveCaptureBrowserGpuMode");
-    expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
-    expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu)");
+    expect(source).toContain("resolveLocalWebGpu(resolvedGpuMode, true)");
+    expect(source).toContain("requiresWebGpu && session.softwareWebGpu");
     expect(source).toContain("await seekCompositionTimeline(page, opts.seekTime");
   });
 });

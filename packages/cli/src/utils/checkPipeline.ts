@@ -56,6 +56,7 @@ import type {
   OffPivotFrame,
   OffPivotRotationSample,
   RotationSample,
+  SeekClock,
 } from "./checkTypes.js";
 
 export type {
@@ -217,8 +218,8 @@ interface GridSamples {
   contrastEntries: ContrastAuditEntry[];
   screenshots: CheckScreenshot[];
   contrastMs: number;
-  /** One visible-state fingerprint per layout sample (#U10 frozen-sweep guard). */
-  layoutStateSignatures: { time: number; signature: string }[];
+  /** One visible-state fingerprint and seek clock per layout sample (#U10 frozen-sweep guard). */
+  layoutStateSignatures: { time: number; signature: string; clock: SeekClock[] }[];
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
@@ -404,6 +405,7 @@ async function collectGridSamples(
       collected.layoutStateSignatures.push({
         time,
         signature: await driver.collectLayoutGeometry(),
+        clock: await driver.collectSeekClock(),
       });
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
@@ -486,21 +488,39 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
  * verdict from this run is meaningless, not just a missed defect. Skips
  * short (<3s) compositions, single-sample runs (nothing to compare), and
  * runs where a `motion_frozen` finding already reported the same underlying
- * symptom (no double-reporting the one thing that's wrong).
+ * symptom (no double-reporting the one thing that's wrong). A frame that never
+ * changes is an error only when an animation it can see is stuck and never finished.
  */
 function detectSweepStatic(
   duration: number,
-  layoutStateSignatures: string[],
+  samples: { signature: string; clock: SeekClock[] }[],
   motionIssues: AnchoredLayoutIssue[],
   hasNoTimelineDeclaration: boolean,
 ): AnchoredLayoutIssue[] {
   if (hasNoTimelineDeclaration) return [];
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
-  if (layoutStateSignatures.length < 2) return [];
+  if (samples.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
-  if (allSame(layoutStateSignatures)) return [sweepStaticIssue("error")];
-  if (allSame(layoutStateSignatures.map(seenPart))) return [sweepStaticIssue("warning")];
+  const signatures = samples.map((sample) => sample.signature);
+  if (allSame(signatures))
+    return [sweepStaticIssue(anAnimationIsStuck(samples) ? "error" : "still")];
+  if (allSame(signatures.map(seenPart))) return [sweepStaticIssue("audio")];
   return [];
+}
+
+function anAnimationIsStuck(samples: { clock: SeekClock[] }[]): boolean {
+  const seenById = new Map<number, SeekClock[]>();
+  for (const sample of samples) {
+    for (const clock of new Map(sample.clock.map((clock) => [clock.id, clock])).values()) {
+      seenById.set(clock.id, [...(seenById.get(clock.id) ?? []), clock]);
+    }
+  }
+  return [...seenById.values()].some(
+    (seen) =>
+      seen.length > 1 &&
+      allSame(seen.map((clock) => clock.time)) &&
+      seen.every((clock) => !clock.done),
+  );
 }
 
 // motion-signature.browser.js appends audio time after this; a signature without it is all "seen".
@@ -510,26 +530,34 @@ function seenPart(signature: string): string {
   return signature.split(AUDIO_TIME_SEPARATOR)[0] ?? signature;
 }
 
-function allSame(values: string[]): boolean {
+function allSame(values: readonly unknown[]): boolean {
   return values.every((value) => value === values[0]);
 }
 
-function sweepStaticIssue(severity: "error" | "warning"): AnchoredLayoutIssue {
+const STILL_FIX_HINT =
+  "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.";
+
+const SWEEP_STATIC_MESSAGES = {
+  error: "Timeline did not advance under seek; every green verdict on this run is unreliable.",
+  still: "Nothing on screen moved under seek.",
+  audio: "Only the audio advanced under seek; nothing on screen moved.",
+};
+
+function sweepStaticIssue(kind: keyof typeof SWEEP_STATIC_MESSAGES): AnchoredLayoutIssue {
   return {
     code: "sweep_static",
-    severity,
+    severity: kind === "error" ? "error" : "warning",
     time: 0,
     selector: "[data-composition-id]",
     dataAttributes: {},
     sourceFile: "index.html",
     bbox: ZERO_BBOX,
     rect: ZERO_LAYOUT_RECT,
-    message:
-      severity === "error"
-        ? "Timeline did not advance under seek; every green verdict on this run is unreliable."
-        : "Only the audio advanced under seek; nothing on screen moved.",
+    message: SWEEP_STATIC_MESSAGES[kind],
     fixHint:
-      "If the composition is meant to be still, add `data-no-timeline` to the element with `data-composition-id`. Otherwise confirm it seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
+      kind === "error"
+        ? "An animation on the page never moved under seek. Build it on the paused GSAP timeline registered in `window.__timelines[compositionId]`, or as a CSS animation, so the seek drives it."
+        : STILL_FIX_HINT,
   };
 }
 
@@ -1087,9 +1115,7 @@ export async function runAuditGrid(
   const userPicked = new Set(grid.userPickedSamples);
   const sweepFindings = detectSweepStatic(
     grid.duration,
-    collected.layoutStateSignatures
-      .filter((sample) => !userPicked.has(sample.time))
-      .map((sample) => sample.signature),
+    collected.layoutStateSignatures.filter((sample) => !userPicked.has(sample.time)),
     motionIssues,
     await driver.hasNoTimelineDeclaration(),
   );

@@ -1368,7 +1368,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
 
   afterAll(() => {
     if (existsSync(FIXTURE_DIR)) rmSync(FIXTURE_DIR, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   function fixtureVideo(): VideoElement {
     return {
@@ -1835,7 +1835,7 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
 
   afterAll(() => {
     rmSync(FIXTURE_DIR, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   function sourceIndexes(extracted: ExtractedFrames): number[] {
     const decoded = spawnSync("ffmpeg", [
@@ -2098,7 +2098,7 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
 
   afterAll(() => {
     rmSync(fixtureDir, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   it.each([
     {
@@ -2264,7 +2264,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
 
   afterAll(() => {
     if (existsSync(FIXTURE_DIR)) rmSync(FIXTURE_DIR, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   it("skips a clip entirely before time zero without reporting an extraction error", async () => {
     const outputDir = join(FIXTURE_DIR, "out-before-timeline");
@@ -3315,7 +3315,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
 
   afterAll(() => {
     rmSync(fixtureDir, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   async function synthesizeHlgClip(
     path: string,

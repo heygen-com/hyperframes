@@ -61,6 +61,7 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
       raw: style.content,
       index: -1,
       file: style.file ?? style.href,
+      rootRelativePath: style.rootRelativePath,
     })),
   ];
   const scripts = structure.scripts;

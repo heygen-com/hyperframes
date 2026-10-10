@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import {
   listPackedExportContracts,
+  listPackageSizeIssues,
   listPackedJavaScriptImportIssues,
   packageExportSpecifier,
   renderBrowserConsumer,
@@ -13,6 +14,45 @@ import {
 } from "./verify-packed-manifests.mjs";
 
 describe("packed manifest verifier", () => {
+  it("passes a package inside its size budget", () => {
+    const budget = { packed: 1000, unpacked: 4000 };
+    assert.deepEqual(listPackageSizeIssues("pkg", { packed: 950, unpacked: 3900 }, budget), []);
+  });
+
+  it("fails a package over its size budget", () => {
+    const issues = listPackageSizeIssues(
+      "pkg",
+      { packed: 1001, unpacked: 3900 },
+      { packed: 1000, unpacked: 4000 },
+    );
+    assert.equal(issues.length, 1);
+    assert.match(issues[0], /pkg packed size 1001 bytes is over its budget of 1000/);
+  });
+
+  it("makes a budget follow a package down once it shrinks", () => {
+    const issues = listPackageSizeIssues(
+      "pkg",
+      { packed: 500, unpacked: 3900 },
+      { packed: 1000, unpacked: 4000 },
+    );
+    assert.equal(issues.length, 1);
+    assert.match(issues[0], /lower it to 525/);
+  });
+
+  it("fails a malformed budget instead of skipping the metric", () => {
+    const sizes = { packed: 100, unpacked: 400 };
+    for (const budget of [{}, { paked: 100, unpacked: 400 }, { packed: "NaN", unpacked: 400 }]) {
+      assert.match(listPackageSizeIssues("pkg", sizes, budget).join("\n"), /invalid packed budget/);
+    }
+  });
+
+  it("asks for a budget for a new published package", () => {
+    assert.match(
+      listPackageSizeIssues("pkg", { packed: 100, unpacked: 400 }, undefined)[0],
+      /"pkg": \{ "packed": 105, "unpacked": 420 \}/,
+    );
+  });
+
   it("requires the CLI package and tarball to declare Apache-2.0", () => {
     assert.throws(
       () => verifyCliLicense("packages/cli", {}, {}),

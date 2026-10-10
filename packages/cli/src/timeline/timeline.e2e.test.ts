@@ -17,6 +17,31 @@ function project(): string {
   return dir;
 }
 
+function batchProject() {
+  const dir = project();
+  mkdirSync(join(dir, "compositions"));
+  writeFileSync(
+    join(dir, "index.html"),
+    `<div data-composition-id="main" data-duration="12"><div id="clip" data-hf-id="clip" data-start="1" data-duration="2" data-track-index="0"></div><div id="scene" data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="4" data-track-index="1"></div></div>`,
+  );
+  writeFileSync(
+    join(dir, "compositions/scene.html"),
+    `<div data-composition-id="scene"><div id="nested" data-hf-id="nested" data-start="0" data-duration="2" data-track-index="0"></div></div>`,
+  );
+  const files = ["index.html", "compositions/scene.html"];
+  const sources = () => files.map((file) => readFileSync(join(dir, file), "utf8"));
+  const before = sources();
+  const planPath = join(dir, "edits.json");
+  writeFileSync(
+    planPath,
+    JSON.stringify([
+      { verb: "set", ref: "#clip", volume: "0.25" },
+      { verb: "set", ref: "#nested", volume: "0.5" },
+    ]),
+  );
+  return { dir, files, sources, before, planPath };
+}
+
 function run(dir: string, ...args: string[]) {
   return spawnSync(
     "bun",
@@ -160,6 +185,28 @@ describe("timeline edit command", () => {
       const result = run(dir, "split", "hf:clip", "2");
       expect(result.status, result.stderr).toBe(0);
       expect(readFileSync(indexPath, "utf8")).toContain('id="clip-2"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a sub-composition's place in both halves of a split", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-split-host-"));
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-duration="12"><div id="host" data-composition-src="sub.html" data-start="1" data-duration="4" data-track-index="0"></div></div>`,
+      );
+      writeFileSync(
+        join(dir, "sub.html"),
+        `<div data-composition-id="sub" data-duration="4"><div id="inner" data-start="0" data-duration="4"></div></div>`,
+      );
+      const result = run(dir, "split", "#host", "3");
+      expect(result.status, result.stderr).toBe(0);
+      const html = readFileSync(join(dir, "index.html"), "utf8");
+      const tag = (id: string) => html.match(new RegExp(`<[^>]*\\sid="${id}"[^>]*>`))?.[0];
+      expect(tag("host")).toContain('data-playback-start="0"');
+      expect(tag("host-2")).toContain('data-playback-start="2"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -564,6 +611,108 @@ describe("timeline edit command", () => {
       expect(readFileSync(join(dir, "index.html"), "utf8")).toContain('data-volume="0.25"');
       const undone = run(dir, "undo", JSON.stringify(appliedJson.receipt[0]));
       expect(undone.status, undone.stderr).toBe(0);
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["response", "array", "file"])(
+    "undoes all files in an apply receipt passed as a %s and returns a redo receipt",
+    (format) => {
+      const { dir, files, sources, before, planPath } = batchProject();
+      try {
+        const applied = run(dir, "apply", planPath);
+        expect(applied.status, applied.stderr).toBe(0);
+        const appliedJson: { receipt: Array<Record<string, unknown>> } = JSON.parse(applied.stdout);
+        expect(appliedJson.receipt).toHaveLength(2);
+        const after = sources();
+        expect(after[0]).toContain('data-volume="0.25"');
+        expect(after[1]).toContain('data-volume="0.5"');
+        let input = format === "array" ? JSON.stringify(appliedJson.receipt) : applied.stdout;
+        if (format === "file") {
+          input = join(dir, "receipt.json");
+          writeFileSync(input, applied.stdout);
+        }
+
+        const undone = run(dir, "undo", input);
+        expect(undone.status, undone.stderr).toBe(0);
+        expect(JSON.parse(undone.stdout)).toMatchObject({ ok: true, file: files });
+        expect(sources()).toEqual(before);
+
+        const redone = run(dir, "undo", undone.stdout);
+        expect(redone.status, redone.stderr).toBe(0);
+        expect(sources()).toEqual(after);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["stale", "invalid"])(
+    "leaves the whole undo batch untouched when a later receipt is %s",
+    (failure) => {
+      const { dir, sources, planPath } = batchProject();
+      try {
+        const applied = run(dir, "apply", planPath);
+        expect(applied.status, applied.stderr).toBe(0);
+        const appliedJson: { receipt: Array<Record<string, unknown>> } = JSON.parse(applied.stdout);
+        if (failure === "stale") {
+          const childPath = join(dir, "compositions/scene.html");
+          writeFileSync(childPath, readFileSync(childPath, "utf8") + "<!-- newer edit -->");
+        }
+        const current = sources();
+        const input =
+          failure === "stale"
+            ? applied.stdout
+            : JSON.stringify([appliedJson.receipt[0], { file: "bad" }]);
+
+        const undone = run(dir, "undo", input);
+        expect(undone.status).toBe(2);
+        expect(JSON.parse(undone.stderr)).toMatchObject({
+          ok: false,
+          reason:
+            failure === "stale"
+              ? "file changed since the timeline was read"
+              : "timeline undo: undo receipt is missing file, version, or backupPath",
+        });
+        expect(sources()).toEqual(current);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("undoes a complete timeline ids response", () => {
+    const dir = project();
+    try {
+      const indexPath = join(dir, "index.html");
+      const before = readFileSync(indexPath, "utf8").replace(/ data-hf-id="[^"]*"/g, "");
+      writeFileSync(indexPath, before);
+      const stamped = run(dir, "ids");
+      expect(stamped.status, stamped.stderr).toBe(0);
+      expect(readFileSync(indexPath, "utf8")).toContain("data-hf-id=");
+
+      const undone = run(dir, "undo", stamped.stdout);
+      expect(undone.status, undone.stderr).toBe(0);
+      expect(readFileSync(indexPath, "utf8")).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts an empty receipt from an unchanged apply", () => {
+    const dir = project();
+    try {
+      const before = readFileSync(join(dir, "index.html"), "utf8");
+      const planPath = join(dir, "edits.json");
+      writeFileSync(planPath, "[]");
+      const applied = run(dir, "apply", planPath);
+      expect(applied.status, applied.stderr).toBe(0);
+
+      const undone = run(dir, "undo", applied.stdout);
+      expect(undone.status, undone.stderr).toBe(0);
+      expect(JSON.parse(undone.stdout)).toMatchObject({ ok: true, receipt: [], file: [] });
       expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });

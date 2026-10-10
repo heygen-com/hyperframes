@@ -59,6 +59,7 @@ export interface ClipManifest {
 
 export type IframeWindow = Window & {
   __player?: RuntimePlaybackAdapter;
+  __playerReady?: boolean;
   __timeline?: TimelineLike;
   __timelines?: Record<string, TimelineLike>;
   __clipManifest?: ClipManifest;

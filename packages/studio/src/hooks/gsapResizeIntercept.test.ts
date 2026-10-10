@@ -455,10 +455,31 @@ it("does not mix the scale shorthand into a tween that speaks longhands", async 
  * The fixture models the geometry the browser reported: a 630x252 element
  * dragged from x=432 to x=587 with its box drafted down to 320x128, dropped at
  * a committed scale of 0.837. Scaling about the centre puts it back on the drop
- * point at its pre-gesture position, so the correct persisted correction is
- * NONE.
+ * point at its pre-gesture position, so the persisted correction is only the
+ * drop's sub-pixel offset.
  */
-it("does not move a statically positioned element when a scale resize lands", async () => {
+it.each([
+  {
+    name: "does not move a statically positioned element when a scale resize lands",
+    shift: { x: 0, y: 0 },
+  },
+  {
+    name: "puts a statically positioned element on a sub-pixel drop point",
+    shift: { x: 0.3, y: -0.2 },
+    writes: true,
+  },
+  {
+    name: "leaves a static position alone when the drop is off by less than the file's precision",
+    shift: { x: 0.0003, y: 0 },
+    writes: false,
+  },
+  {
+    name: "leaves an animated position alone for a sub-pixel drop point",
+    shift: { x: 0.3, y: -0.2 },
+    animated: true,
+    writes: false,
+  },
+])("$name", async ({ shift, animated, writes }) => {
   document.body.innerHTML = "";
   const el = document.createElement("div");
   el.id = "clip";
@@ -476,7 +497,7 @@ it("does not move a statically positioned element when a scale resize lands", as
   el.style.height = "128px";
   document.body.append(el);
 
-  const pos = { x: 587, y: 235 };
+  const pos = { x: 587 + shift.x, y: 235 + shift.y };
   const scale = { x: 1.648, y: 1.648 };
   const [LEFT, TOP] = [120, 520];
   el.getBoundingClientRect = () => {
@@ -517,6 +538,15 @@ it("does not move a statically positioned element when a scale resize lands", as
     duration: 0,
     global: true,
   } as unknown as GsapAnimation;
+  const positionTween = {
+    ...positionHold,
+    id: "#clip-to-0-position",
+    method: "to",
+    properties: { x: 500 },
+    duration: 4,
+    global: false,
+  } as unknown as GsapAnimation;
+  const position = animated ? positionTween : positionHold;
   const selection = { id: "clip", selector: "#clip", element: el } as DomEditSelection;
   usePlayerStore.setState({ currentTime: 0.5 });
   const commitMutation = vi.fn();
@@ -524,22 +554,27 @@ it("does not move a statically positioned element when a scale resize lands", as
   await tryGsapResizeIntercept(
     selection,
     { width: 320, height: 128 },
-    [keyframedScaleFixture(), positionHold],
+    [keyframedScaleFixture(), position],
     iframe,
     commitMutation,
-    async () => [keyframedScaleFixture(), positionHold],
+    async () => [keyframedScaleFixture(), position],
   );
 
   const positionWrites = commitMutation.mock.calls
     .map((call) => call[1] as { properties?: Record<string, number> })
     .filter((mutation) => mutation.properties?.x != null || mutation.properties?.y != null);
-  // Either it left the position alone, or it rewrote the same value.
+  // No position write, or one that moves the hold by exactly the drop's sub-pixel offset.
+  if (writes === false) expect(positionWrites).toEqual([]);
+  if (writes) expect(positionWrites.length).toBeGreaterThan(0);
   for (const write of positionWrites) {
-    expect(write.properties?.x).toBe(432);
-    expect(write.properties?.y).toBe(173);
+    expect(write.properties?.x).toBeCloseTo(432 + shift.x, 3);
+    expect(write.properties?.y).toBeCloseTo(173 + shift.y, 3);
   }
-  // And the live element ends on the drop point, not a drag away from it.
-  expect(el.getBoundingClientRect().x).toBeCloseTo(603.3, 0);
+  // And the live box is centred where it was dropped (left 120 + 587 + 160, top 520 + 235 + 64).
+  const landed = animated ? { x: 0, y: 0 } : shift;
+  const box = el.getBoundingClientRect();
+  expect(box.x + box.width / 2).toBeCloseTo(867 + landed.x, 3);
+  expect(box.y + box.height / 2).toBeCloseTo(819 + landed.y, 3);
 });
 
 function titleSelection(): DomEditSelection {

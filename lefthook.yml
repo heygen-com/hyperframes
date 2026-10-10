@@ -33,11 +33,8 @@ pre-commit:
       # The prune keeps one audit base cache per checkout; the commit gets the audit's own status.
       run: env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE sh -c 'bunx fallow audit --base origin/main --fail-on-issues; status=$?; bun scripts/prune-fallow-audit-caches.mjs origin/main; exit $status'
     largefiles:
-      # Reject large binaries committed straight into the git pack instead of
-      # LFS. The script reads the staged set itself (via `git diff --cached`)
-      # rather than taking lefthook's `{staged_files}` expansion, which would
-      # split paths containing spaces. It skips files under the limit, anything
-      # routed through LFS, and registry/ assets. Tune via HF_MAX_NONLFS_KB.
+      # Rejects staged binaries over the limit that are not LFS pointers; see
+      # the script header. CI runs the same script with --range.
       run: ./scripts/check-large-files.sh
     tracked-artifacts:
       # Keep ignored dependency trees and platform metadata out of commits.

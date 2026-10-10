@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.142",
+  "version": "0.8.145",
   "description": "",
   "repository": {
     "type": "git",
@@ -10,8 +10,6 @@
   "files": [
     "dist/**/*.js",
     "dist/**/*.d.ts",
-    "dist/**/*.d.ts.map",
-    "dist/**/*.js.map",
     "!dist/hyperframe.runtime.mjs",
     "docs",
     "schemas",
@@ -902,6 +900,7 @@
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
+    "acorn": "^8.17.0",
     "bpm-detective": "^2.0.5",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",

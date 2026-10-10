@@ -48,6 +48,13 @@ function clickWithMouse(target: Element): void {
   });
 }
 
+function rightClick(target: Element): void {
+  const init = { bubbles: true, cancelable: true, composed: true };
+  act(() => {
+    target.dispatchEvent(new MouseEvent("contextmenu", init));
+  });
+}
+
 function key(k: string, target: Element | null = document.activeElement): void {
   const init = { key: k, bubbles: true, cancelable: true, composed: true };
   act(() => {
@@ -241,11 +248,7 @@ describe("ContextMenu", () => {
     expect(trigger().textContent).toBe("clip");
     expect(popup()).toBeNull();
 
-    act(() => {
-      trigger().dispatchEvent(
-        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true }),
-      );
-    });
+    rightClick(trigger());
     await settle();
     expect(popup()).not.toBeNull();
 
@@ -254,6 +257,65 @@ describe("ContextMenu", () => {
 
     expect(activated).toEqual(["split"]);
     expect(popup()).toBeNull();
+  });
+});
+
+describe("container={null}", () => {
+  /** Rendered inline means inside the trigger's own parent, not a portal on the body. */
+  function expectInlineBeside(menu: HTMLElement | null): void {
+    expect(menu).not.toBeNull();
+    expect(trigger().parentElement?.contains(menu)).toBe(true);
+  }
+
+  it("opens a Menu inline, next to its trigger, and closes on Escape", async () => {
+    render(
+      <div>
+        <Menu container={null} trigger={<button data-testid="trigger">Actions</button>}>
+          <MenuItem>Bring to front</MenuItem>
+        </Menu>
+      </div>,
+    );
+    clickWithMouse(trigger());
+    await settle();
+    expectInlineBeside(popup());
+
+    key("Escape");
+    await settle();
+    expect(popup()).toBeNull();
+  });
+
+  it("opens a ContextMenu inline, next to its area", async () => {
+    render(
+      <div>
+        <ContextMenu container={null} trigger={<div data-testid="trigger">clip</div>}>
+          <MenuItem>Split</MenuItem>
+        </ContextMenu>
+      </div>,
+    );
+    rightClick(trigger());
+    await settle();
+    expectInlineBeside(popup());
+  });
+
+  it("opens a Popover inline on its first render", async () => {
+    render(
+      <div>
+        <Popover
+          container={null}
+          defaultOpen
+          trigger={<button data-testid="trigger">Speed</button>}
+        >
+          <span>1x</span>
+        </Popover>
+      </div>,
+    );
+    await settle();
+    expectInlineBeside(document.querySelector<HTMLElement>("[role=dialog]"));
+  });
+
+  it("still portals to the body when no container is passed", async () => {
+    await openActionMenu();
+    expect(trigger().parentElement?.contains(popup())).toBe(false);
   });
 });
 

@@ -1,12 +1,63 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 
 const SCRIPT = join(import.meta.dirname, "check-large-files.sh");
 const OVER_LIMIT_BYTES = 2 * 1024 * 1024;
+
+/** Commit files into a throwaway repo with no global or system git config (so no LFS filter). */
+function withRepo(run) {
+  const dir = mkdtempSync(join(tmpdir(), "hf-largefiles-repo-"));
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+  const git = (...args) =>
+    spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd: dir,
+      env,
+      encoding: "utf-8",
+    });
+  const write = (files) => {
+    for (const [name, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), contents);
+    }
+  };
+  const commit = (files) => {
+    write(files);
+    git("add", "-A");
+    git("commit", "-q", "-m", "c");
+    return git("rev-parse", "HEAD").stdout.trim();
+  };
+  // `files` null checks the index as it stands (git add -A would drop a gitlink with no checkout).
+  const staged = (files) => {
+    if (files) {
+      write(files);
+      git("add", "-A");
+    }
+    const result = spawnSync(SCRIPT, [], { cwd: dir, env, encoding: "utf-8" });
+    return { ok: result.status === 0, stderr: result.stderr ?? "" };
+  };
+  const range = (base, head) => {
+    const result = spawnSync(SCRIPT, ["--range", base, head], { cwd: dir, env, encoding: "utf-8" });
+    return { ok: result.status === 0, stderr: result.stderr ?? "" };
+  };
+  try {
+    git("init", "-q");
+    run({ commit, staged, range, dir, git });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /** Run the checker over explicit paths. Exit 0 means "nothing to complain about". */
 function check(...paths) {
@@ -29,6 +80,8 @@ function withFiles(files, run) {
 }
 
 const bigBinary = Buffer.alloc(OVER_LIMIT_BYTES);
+/** A NUL-filled (so binary) buffer that differs from bigBinary by its first byte. */
+const binaryVariant = (first) => Buffer.concat([Buffer.from([first]), bigBinary.subarray(1)]);
 const bigText = "the quick brown fox jumps over the lazy dog\n".repeat(50_000);
 
 describe("check-large-files", () => {
@@ -63,6 +116,166 @@ describe("check-large-files", () => {
       assert.equal(ok, false);
       assert.match(stderr, /a\.bin/);
       assert.match(stderr, /b\.bin/);
+    });
+  });
+
+  it("--range rejects a binary the range adds, and ignores text and untouched files", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "old.bin": bigBinary });
+      const head = commit({ "big.bin": bigBinary, "big.txt": bigText });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /big\.bin/);
+      assert.doesNotMatch(stderr, /big\.txt|old\.bin/);
+    });
+  });
+
+  it("--range rejects a raw blob even when .gitattributes routes it through LFS", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ ".gitattributes": "*.mp4 filter=lfs diff=lfs merge=lfs -text\n" });
+      const head = commit({ "clip.mp4": bigBinary });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /clip\.mp4 .*stored raw/);
+    });
+  });
+
+  it("--range rejects binaries whose names git would quote", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "seed.txt": "x" });
+      const head = commit({
+        "café.bin": bigBinary,
+        'quo"te.bin': bigBinary,
+        "tab\tname.bin": bigBinary,
+      });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /café\.bin/);
+      assert.match(stderr, /quo"te\.bin/);
+      assert.match(stderr, /tab\tname\.bin/);
+    });
+  });
+
+  it("--range fails on a ref git cannot resolve instead of passing", () => {
+    withRepo(({ commit, range }) => {
+      const head = commit({ "seed.txt": "x" });
+      assert.equal(range("no-such-ref", head).ok, false);
+    });
+  });
+
+  it("--range refuses a file name with a newline instead of checking the wrong files", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ left: "l", right: "r" });
+      const head = commit({ "left\nright": bigBinary });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /newline/);
+    });
+  });
+
+  it("--range rejects a symlink replaced by a large binary", () => {
+    withRepo(({ commit, range, dir }) => {
+      writeFileSync(join(dir, "target"), "t");
+      symlinkSync("target", join(dir, "clip.bin"));
+      const base = commit({});
+      rmSync(join(dir, "clip.bin"));
+      const head = commit({ "clip.bin": bigBinary });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /clip\.bin/);
+    });
+  });
+
+  it("--range fails when a blob cannot be read", () => {
+    withRepo(({ commit, range, dir, git }) => {
+      const base = commit({ "seed.txt": "x" });
+      const head = commit({ "big.bin": bigBinary });
+      const id = git("rev-parse", `${head}:big.bin`).stdout.trim();
+      const object = join(dir, ".git", "objects", id.slice(0, 2), id.slice(2));
+      chmodSync(object, 0o644);
+      truncateSync(object, 64);
+      assert.equal(range(base, head).ok, false);
+    });
+  });
+
+  it("staged mode rejects a large binary and passes text", () => {
+    withRepo(({ commit, staged }) => {
+      commit({ "seed.txt": "x" });
+      const { ok, stderr } = staged({ "big.bin": bigBinary, "big.txt": bigText });
+      assert.equal(ok, false);
+      assert.match(stderr, /big\.bin/);
+      assert.doesNotMatch(stderr, /big\.txt/);
+    });
+  });
+
+  it("staged mode sizes a file named like revision syntax, not the file it aliases", () => {
+    withRepo(({ commit, staged }) => {
+      commit({ "clip.bin": "small" });
+      const { ok, stderr } = staged({ "0:clip.bin": bigBinary });
+      assert.equal(ok, false);
+      assert.match(stderr, /0:clip\.bin/);
+    });
+  });
+
+  it("staged mode checks modified and type-changed files", () => {
+    withRepo(({ commit, staged, dir }) => {
+      writeFileSync(join(dir, "target"), "t");
+      symlinkSync("target", join(dir, "link.bin"));
+      commit({ "clip.bin": "small" });
+      rmSync(join(dir, "link.bin"));
+      const { ok, stderr } = staged({ "clip.bin": bigBinary, "link.bin": bigBinary });
+      assert.equal(ok, false);
+      assert.match(stderr, /clip\.bin/);
+      assert.match(stderr, /link\.bin/);
+    });
+  });
+
+  it("skips a submodule whose commit is not in this repository", () => {
+    withRepo(({ commit, staged, range, git }) => {
+      const base = commit({ "seed.txt": "x" });
+      const child = "1234567890abcdef1234567890abcdef12345678";
+      git("update-index", "--add", "--cacheinfo", `160000,${child},sub`);
+      assert.equal(staged(null).ok, true);
+      git("commit", "-q", "-m", "sub");
+      const head = git("rev-parse", "HEAD").stdout.trim();
+      assert.equal(range(base, head).ok, true);
+    });
+  });
+
+  it("staged mode exempts a new registry asset staged with its catalog copy", () => {
+    withRepo(({ commit, staged }) => {
+      commit({ "seed.txt": "x" });
+      const { ok, stderr } = staged({
+        "registry/a/bg.png": bigBinary,
+        "docs/public/catalog/a/bg.png": bigBinary,
+        "docs/public/catalog/c/random.mp4": binaryVariant(2),
+      });
+      assert.equal(ok, false);
+      assert.match(stderr, /catalog\/c\/random\.mp4/);
+      assert.doesNotMatch(stderr, /registry\/|catalog\/a\/bg\.png/);
+    });
+  });
+
+  it("exempts registry/ binaries and catalog copies of them, but not other catalog files", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "registry/a/bg.png": bigBinary });
+      const head = commit({
+        "registry/b/new.png": binaryVariant(1),
+        "docs/public/catalog/a/bg.png": bigBinary,
+        "docs/public/catalog/c/random.mp4": binaryVariant(2),
+      });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /docs\/public\/catalog\/c\/random\.mp4/);
+      assert.doesNotMatch(stderr, /registry\/|catalog\/a\/bg\.png|HF_MAX_NONLFS_KB/);
+    });
+  });
+
+  it("prints file names with backslashes intact", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "seed.txt": "x" });
+      const head = commit({ "a\\cb.bin": bigBinary });
+      assert.match(range(base, head).stderr, /a\\cb\.bin/);
     });
   });
 });

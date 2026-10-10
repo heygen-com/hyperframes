@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111;
+        font: 600 64px sans-serif;
+        color: #fff;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+      }
+      .lyric {
+        position: absolute;
+        will-change: transform;
+      }
+      #wrap {
+        position: absolute;
+        left: 200px;
+        top: 700px;
+        width: 400px;
+        height: 200px;
+        will-change: transform;
+      }
+      #fixed {
+        position: fixed;
+        left: 10px;
+        top: 10px;
+        width: 50px;
+        height: 50px;
+        background: #f80;
+      }
+      #stack {
+        position: absolute;
+        left: 900px;
+        top: 700px;
+        width: 200px;
+        height: 200px;
+        will-change: transform;
+      }
+      #lifted {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        background: #0af;
+      }
+      #cover {
+        position: absolute;
+        left: 950px;
+        top: 750px;
+        width: 100px;
+        height: 100px;
+        z-index: 1;
+        background: #a0f;
+      }
+      #stage3d {
+        position: absolute;
+        left: 1400px;
+        top: 700px;
+        width: 200px;
+        height: 200px;
+        perspective: 600px;
+      }
+      #card {
+        width: 200px;
+        height: 200px;
+        will-change: transform;
+        transform-style: preserve-3d;
+        transform: rotateY(180deg);
+      }
+      #front {
+        position: absolute;
+        inset: 0;
+        backface-visibility: hidden;
+        background: #f00;
+      }
+      #blurred {
+        position: absolute;
+        left: 1700px;
+        top: 100px;
+        width: 100px;
+        height: 100px;
+        will-change: transform;
+        filter: blur(2px);
+        background: #0f0;
+      }
+      #stripes {
+        position: absolute;
+        left: 1660px;
+        top: 570px;
+        width: 240px;
+        height: 120px;
+        background: repeating-linear-gradient(90deg, #fff 0 12px, #000 12px 24px);
+      }
+      #glass-wrap {
+        position: absolute;
+        left: 1680px;
+        top: 590px;
+        width: 200px;
+        height: 80px;
+        will-change: transform;
+      }
+      #glass {
+        position: absolute;
+        inset: 0;
+        backdrop-filter: blur(8px);
+      }
+      #tilt-wrap {
+        position: absolute;
+        left: 640px;
+        top: 930px;
+        width: 200px;
+        height: 120px;
+        will-change: transform;
+      }
+      #tilted {
+        width: 200px;
+        height: 120px;
+        transform: rotateY(50deg);
+        background: #fc0;
+      }
+      #glow {
+        position: absolute;
+        left: 1300px;
+        top: 950px;
+        width: 120px;
+        height: 80px;
+        will-change: transform;
+        background: #333;
+      }
+      #glow::before {
+        content: "";
+        position: absolute;
+        inset: -10px;
+        z-index: -1;
+        background: #f0f;
+      }
+      #mixed {
+        position: absolute;
+        left: 1500px;
+        top: 950px;
+        width: 120px;
+        height: 80px;
+        will-change: transform, opacity;
+        background: #444;
+      }
+    </style>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+    <script src="/vendor/gsap.min.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <div id="lyrics"></div>
+      <div id="wrap"><div id="fixed"></div></div>
+      <div id="stack"><div id="lifted"></div></div>
+      <div id="cover"></div>
+      <div id="stage3d">
+        <div id="card"><div id="front"></div></div>
+      </div>
+      <div id="blurred"></div>
+      <div id="stripes"></div>
+      <div id="glass-wrap"><div id="glass"></div></div>
+      <div id="tilt-wrap"><div id="tilted"></div></div>
+      <div id="glow"></div>
+      <div id="mixed"></div>
+      <div style="display: none"><h2 class="lyric">Hidden</h2></div>
+    </div>
+    <script>
+      const words = ["HEY", "LOUD", "OVER", "WALL", "SAY", "YEAH", "NOW", "AGAIN"];
+      const lyrics = document.getElementById("lyrics");
+      const tl = gsap.timeline({ paused: true });
+      for (let i = 0; i < 24; i++) {
+        const word = document.createElement("div");
+        word.className = "lyric";
+        word.textContent = words[i % words.length];
+        word.style.left = `${80 + (i % 6) * 280}px`;
+        word.style.top = `${60 + Math.floor(i / 6) * 140}px`;
+        lyrics.append(word);
+        tl.fromTo(
+          word,
+          { x: -40, scale: 0.9 },
+          { x: 40, scale: 1.1, duration: 6, ease: "none" },
+          0,
+        );
+      }
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

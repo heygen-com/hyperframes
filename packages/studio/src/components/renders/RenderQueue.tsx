@@ -11,6 +11,7 @@ import { Tooltip } from "../ui/Tooltip";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "../editor/floatingPanel";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
+import { GpuEncodingToggle } from "./GpuEncodingToggle";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 
 export interface CompositionDimensions {
@@ -23,6 +24,7 @@ export type StartRenderHandler = (
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",
   fps: 24 | 30 | 60,
+  gpu?: boolean,
 ) => void | Promise<void>;
 
 export interface RenderQueueProps {
@@ -303,6 +305,7 @@ function FormatExportButton({
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
   const [resolution, setResolution] = useState<RenderScale>("auto");
   const [fps, setFps] = useState<24 | 30 | 60>(persisted.fps);
+  const [gpu, setGpu] = useState(persisted.gpu);
 
   // Only a definite "not installed" blocks Export. A null status means the
   // probe gave no answer, and refusing to export on no answer would break
@@ -385,6 +388,15 @@ function FormatExportButton({
           </div>
         )}
       </div>
+      <GpuEncodingToggle
+        format={format}
+        checked={gpu}
+        disabled={isRendering}
+        onToggle={() => {
+          setGpu(!gpu);
+          persistRenderSettings(format, quality, fps, !gpu);
+        }}
+      />
       <Button
         variant="primary"
         size="md"
@@ -398,7 +410,7 @@ function FormatExportButton({
           if (isRendering || missingFfmpeg) return;
           const outputResolution = resolveResolution(resolution, compositionDimensions);
           trackStudioEvent("render_start", { format, quality, resolution: outputResolution, fps });
-          void onStartRender(format, quality, outputResolution, fps);
+          void onStartRender(format, quality, outputResolution, fps, gpu);
         }}
         // Width only. A type size or a weight here would win the merge against
         // the size recipe and leave this Export a step away from the header's

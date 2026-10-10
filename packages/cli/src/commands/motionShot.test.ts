@@ -84,8 +84,8 @@ describe("motion-shot adapter seeking", () => {
 
     expect(source).toContain("resolveManagedGpuMode");
     expect(source).toContain("compositionRequiresWebGpu(html)");
-    expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu)");
-    expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
+    expect(source).toContain("resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu)");
+    expect(source).toContain("assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu)");
     expect(source).not.toContain('"--disable-gpu"');
   });
 

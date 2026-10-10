@@ -6,6 +6,7 @@ import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
+import { swallowedFlagUsageError } from "../utils/reject-unknown-flags.js";
 import { formatLayoutIssue } from "../utils/layoutAudit.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -162,7 +163,7 @@ export function createCheckCommand(
     },
     args: CHECK_COMMAND_ARGS,
     async run({ rawArgs }) {
-      const args = parseArgs(normalizeFrameCheckRawArgs(rawArgs), CHECK_COMMAND_ARGS);
+      const args = parseArgs(rawArgs, CHECK_COMMAND_ARGS);
       const asJson = args.json === true;
 
       try {
@@ -223,14 +224,6 @@ async function executeCheck(
   const ok = checkExitCode(report) === 0 && (golden?.ok ?? true);
   emitCheckReport(dependencies, report, golden, ok, asJson);
   return ok ? 0 : 1;
-}
-
-function normalizeFrameCheckRawArgs(rawArgs: string[]): string[] {
-  return rawArgs.map((arg, index) => {
-    if (arg !== "--frame-check") return arg;
-    const next = rawArgs[index + 1];
-    return next === undefined || next.startsWith("-") ? "--frame-check=" : arg;
-  });
 }
 
 function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
@@ -298,7 +291,7 @@ export function parseFrameCheck(value: unknown): FrameCheckOptions | undefined {
   if (value === undefined || value === null || value === false) return undefined;
   if (value === true || value === "") return {};
   if (typeof value !== "string") throw frameCheckError();
-  if (value.startsWith("-")) throw swallowedOptionError("frame-check", value);
+  if (value.startsWith("-")) throw swallowedFlagUsageError("frame-check", value);
   const fields = parseFrameCheckFields(value);
   const severity = captionSeverity(fields.get("severity"), frameCheckError);
   const seek = captionSeeks(fields.get("seek"), frameCheckError);
@@ -330,12 +323,6 @@ function parseFrameCheckTolerance(raw: string | undefined): number | undefined {
 function frameCheckError(): Error {
   return new Error(
     'Invalid --frame-check: use bare --frame-check or "severity=warning|error;seek=.25,.75;tol=4" (all fields optional)',
-  );
-}
-
-function swallowedOptionError(flag: string, value: string): Error {
-  return new Error(
-    `Invalid --${flag}: value "${value}" appears to have swallowed the next option; use --${flag}= or move --${flag} to the end`,
   );
 }
 

@@ -289,7 +289,6 @@ interface AtomicCutTarget {
   elementDuration: number;
   playbackStart?: number;
   playbackRate?: number;
-  isComposition?: boolean;
   track?: number;
 }
 
@@ -2606,7 +2605,6 @@ async function foldAtomicCutFile(
       duration: cut.elementDuration,
       playbackStart: cut.playbackStart,
       playbackRate: cut.playbackRate,
-      stampPlaybackStart: cut.isComposition,
       track: cut.track,
     });
     if (!split.matched || !split.newId) {

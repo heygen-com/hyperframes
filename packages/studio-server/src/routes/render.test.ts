@@ -826,6 +826,41 @@ describe("POST /projects/:id/render — variables forwarding", () => {
   });
 });
 
+describe("POST /projects/:id/render — GPU encoding", () => {
+  it("passes gpu: true on an MP4 export to the adapter as useGpu, and anything else as off", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const requests = [
+        { format: "mp4", gpu: true },
+        { format: "mp4" },
+        { format: "mp4", gpu: "true" },
+        { format: "mp4", gpu: 1 },
+        { format: "webm", gpu: true },
+        { format: "mov", gpu: true },
+      ];
+      for (const body of requests) {
+        const res = await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(200);
+      }
+      expect(spy.mock.calls.map(([opts]) => opts.useGpu)).toEqual([
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("audioLoweredDb — the limiter's attenuation reaches the host", () => {
   async function completedJobProgress(audioLoweredDb: number | undefined): Promise<string> {
     const spy = vi.fn();

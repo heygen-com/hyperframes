@@ -57,4 +57,19 @@ describe("Windows orphan-cleanup child-process options", () => {
       expect.objectContaining({ windowsHide: true }),
     );
   });
+
+  it("keeps a Windows parent created in the same tick as its child", () => {
+    execFileSyncMock.mockImplementation(() => "400 300 333\n300 200 333\n200 1 222\n");
+
+    expect(processAncestorSnapshot(400).map((ancestor) => ancestor.pid)).toEqual([300, 200]);
+  });
+
+  it("stops the Windows ancestor chain at a parent pid reused by a later process", () => {
+    execFileSyncMock.mockImplementation(() => "400 300 444\n300 200 333\n200 999 222\n999 5 555\n");
+
+    expect(processAncestorSnapshot(400)).toEqual([
+      { pid: 300, identity: "windows:333" },
+      { pid: 200, identity: "windows:222" },
+    ]);
+  });
 });

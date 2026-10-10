@@ -71,8 +71,12 @@ function useRealCacheHome(): string {
   return home;
 }
 
+function stagedVersionDir(cacheDir: string, buildId: string): string {
+  return join(cacheDir, "chrome-headless-shell", `linux-${buildId}`);
+}
+
 function writeStagedInstall(cacheDir: string, buildId: string, content: string) {
-  const path = join(cacheDir, "chrome-headless-shell", `linux-${buildId}`);
+  const path = stagedVersionDir(cacheDir, buildId);
   const executablePath = join(path, "chrome-headless-shell-linux64", "chrome-headless-shell");
   mkdirSync(dirname(executablePath), { recursive: true });
   writeFileSync(executablePath, content);
@@ -90,6 +94,8 @@ interface FsMockOptions {
   initialMtimeMs?: number;
   /** what node:os reports; defaults to a Linux host */
   osHost?: { platform: string; release: string };
+  /** paths whose stat reports 0 bytes */
+  emptyFiles?: ReadonlySet<string>;
 }
 
 function installFsMocks({
@@ -98,6 +104,7 @@ function installFsMocks({
   touchError,
   initialMtimeMs = 0,
   osHost = { platform: "linux", release: "24.0.0" },
+  emptyFiles,
 }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
@@ -149,13 +156,14 @@ function installFsMocks({
         paths.add(to + p.slice(from.length));
       }
     },
-    statSync: (p: string) => {
+    statSync: (p: string, opts?: { throwIfNoEntry?: boolean }) => {
       if (!paths.has(p)) {
+        if (opts?.throwIfNoEntry === false) return undefined;
         const err = new Error(`ENOENT: no such file or directory, stat '${p}'`);
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
       }
-      return { mtimeMs: mtimes.get(p) ?? 0 };
+      return { mtimeMs: mtimes.get(p) ?? 0, size: emptyFiles?.has(p) ? 0 : 1, isFile: () => true };
     },
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
@@ -189,6 +197,12 @@ function installFsMocks({
   return paths;
 }
 
+interface InstallMockOptions {
+  buildId: string;
+  cacheDir: string;
+  logger?: (prefix: string) => ((...args: unknown[]) => void) | undefined;
+}
+
 function installPuppeteerBrowsersMock(
   opts: {
     installedInHfCache?: Array<{
@@ -201,16 +215,15 @@ function installPuppeteerBrowsersMock(
     browserPlatform?: string;
     installedInHfCacheError?: Error;
     installResult?: { executablePath: string; path?: string };
-    installImpl?: (options: {
-      buildId: string;
-      cacheDir: string;
-    }) => Promise<{ executablePath: string; path?: string }>;
+    installImpl?: (
+      options: InstallMockOptions,
+    ) => Promise<{ executablePath: string; path?: string }>;
   } = {},
 ) {
   const impl =
     opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY });
   // Fixtures name the binary where it lands in HF_CACHE; install() really writes it under its own cacheDir.
-  const stagedInstall = async (options: { buildId: string; cacheDir: string }) => {
+  const stagedInstall = async (options: InstallMockOptions) => {
     const result = await impl(options);
     if (result.path || !result.executablePath.startsWith(HF_CACHE + sep)) return result;
     const rel = relative(HF_CACHE, result.executablePath);
@@ -425,7 +438,7 @@ describe("findBrowser — cache resolution", () => {
       "chrome-headless-shell-linux64",
       "redownloaded-chrome-headless-shell",
     );
-    const staleInstallDir = join(HF_CACHE, "chrome-headless-shell", "linux-131.0.6778.85");
+    const staleInstallDir = stagedVersionDir(HF_CACHE, "131.0.6778.85");
     // The stale install DIR is present (extraction got partway through, e.g. an
     // ABOUT/LICENSE-only extract) even though the exe itself is missing —
     // exercises the purge-before-redownload fix, not just the redownload path.
@@ -453,7 +466,7 @@ describe("findBrowser — cache resolution", () => {
       executablePath: redownloadedBinary,
       source: "download",
     });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary missing"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary unusable"));
     // The partial extract is replaced wholesale, not merged into (install() would
     // otherwise throw "folder exists but exe missing", the bug both feedback reports hit).
     expect(paths.has(staleLeftover)).toBe(false);
@@ -461,7 +474,7 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("ensureBrowser({force: true}) re-downloads without purging the cache, bypassing any cache/system shortcut", async () => {
-    const staleInstallDir = join(HF_CACHE, "chrome-headless-shell", "linux-131.0.6778.85");
+    const staleInstallDir = stagedVersionDir(HF_CACHE, "131.0.6778.85");
     const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "force-downloaded");
     // A HEALTHY cached binary AND system Chrome are both present — force must
     // ignore both shortcuts and always re-download, which is the whole point
@@ -506,7 +519,7 @@ describe("findBrowser — cache resolution", () => {
     });
     try {
       const { ensureBrowser, CACHE_DIR } = await import("./manager.js");
-      const otherVersion = join(CACHE_DIR, "chrome-headless-shell", "linux-1.0.0", "marker");
+      const otherVersion = join(stagedVersionDir(CACHE_DIR, "1.0.0"), "marker");
       mkdirSync(dirname(otherVersion), { recursive: true });
       writeFileSync(otherVersion, "other");
 
@@ -523,14 +536,50 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  it("installs again instead of reusing an empty cached executable", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId }) => writeStagedInstall(cacheDir, buildId, "fresh"),
+    });
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+      const cached = await ensureBrowser({ force: true });
+      writeFileSync(cached.executablePath, "");
+      const { getInstalledBrowsers } = await import("@puppeteer/browsers");
+      vi.mocked(getInstalledBrowsers).mockResolvedValue([
+        {
+          browser: "chrome-headless-shell",
+          buildId: CHROME_VERSION,
+          platform: "linux",
+          executablePath: cached.executablePath,
+        } as never,
+      ]);
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const again = await ensureBrowser({ preferManagedChrome: true });
+
+      expect(again.source).toBe("download");
+      expect(readFileSync(again.executablePath, "utf8")).toBe("fresh");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("restores the previous version when the staged install cannot be moved in", async () => {
     const home = useRealCacheHome();
     let stageNothing = false;
     installPuppeteerBrowsersMock({
-      installImpl: async ({ cacheDir, buildId }) => {
-        const staged = writeStagedInstall(cacheDir, buildId, "old");
-        if (stageNothing) rmSync(staged.path, { recursive: true, force: true });
-        return staged;
+      installImpl: async ({ cacheDir, buildId, logger }) => {
+        if (!stageNothing) return writeStagedInstall(cacheDir, buildId, "old");
+        logger?.("puppeteer:browsers:fileUtil")?.(
+          "tar.exe extraction failed: before PowerShell worked",
+        );
+        // A real executable passes the unzip check, but its version dir is gone, so only the move fails.
+        const elsewhere = writeStagedInstall(join(cacheDir, "elsewhere"), buildId, "new");
+        return {
+          executablePath: elsewhere.executablePath,
+          path: stagedVersionDir(cacheDir, buildId),
+        };
       },
     });
     try {
@@ -538,8 +587,90 @@ describe("findBrowser — cache resolution", () => {
       const liveBinary = (await ensureBrowser({ force: true })).executablePath;
       stageNothing = true;
 
-      await expect(ensureBrowser({ force: true })).rejects.toThrow("HYPERFRAMES_BROWSER_PATH");
+      const failure = await ensureBrowser({ force: true }).catch((err: unknown) => String(err));
+      expect(failure).toContain("HYPERFRAMES_BROWSER_PATH");
+      expect(failure).not.toContain("Unzip errors");
       expect(readFileSync(liveBinary, "utf8")).toBe("old");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { label: "missing", unpacked: "none", state: "is missing" },
+    { label: "empty", unpacked: "file", state: "is empty" },
+    { label: "a folder", unpacked: "folder", state: "is not a file" },
+  ])("fails instead of reporting a browser the unzip left $label", async ({ unpacked, state }) => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId, logger }) => {
+        const staged = writeStagedInstall(cacheDir, buildId, "");
+        rmSync(staged.executablePath);
+        if (unpacked === "file") writeFileSync(staged.executablePath, "");
+        if (unpacked === "folder")
+          mkdirSync(join(staged.executablePath, "inside"), { recursive: true });
+        logger?.("puppeteer:browsers:fileUtil")?.("tar.exe extraction failed: Error: boom");
+        return staged;
+      },
+    });
+    try {
+      const { ensureBrowser, CACHE_DIR } = await import("./manager.js");
+
+      const ensured = ensureBrowser({ preferManagedChrome: true });
+
+      await expect(ensured).rejects.toThrow(`chrome-headless-shell ${state} after unzipping`);
+      await expect(ensured).rejects.toThrow("tar.exe extraction failed: Error: boom");
+      expect(existsSync(CACHE_DIR)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("names the unzip errors when every unzip tool failed", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ logger }) => {
+        logger?.("puppeteer:browsers:fileUtil")?.("tar.exe extraction failed: Error: tar boom");
+        logger?.("puppeteer:browsers:fileUtil")?.(
+          "powershell.exe extraction failed: Error: ps boom",
+        );
+        throw new Error("Extraction failed: no zip archiver is available.");
+      },
+    });
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+
+      const ensured = ensureBrowser({ force: true });
+
+      await expect(ensured).rejects.toThrow(
+        "no zip archiver is available. Unzip errors: tar.exe extraction failed: Error: tar boom; powershell.exe extraction failed: Error: ps boom",
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("reports only the last attempt's unzip errors after a corrupt-archive retry", async () => {
+    const home = useRealCacheHome();
+    let attempt = 0;
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId, logger }) => {
+        attempt += 1;
+        logger?.("puppeteer:browsers:fileUtil")?.(`tar.exe extraction failed: attempt ${attempt}`);
+        if (attempt === 1) throw new Error("invalid end of central directory");
+        const staged = writeStagedInstall(cacheDir, buildId, "");
+        rmSync(staged.executablePath);
+        return staged;
+      },
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+
+      const error = await ensureBrowser({ force: true }).catch((err: unknown) => err);
+
+      expect(String(error)).toContain("tar.exe extraction failed: attempt 2");
+      expect(String(error)).not.toContain("attempt 1");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -881,6 +1012,20 @@ describe("findBrowser — cache resolution", () => {
       await expect(findBrowser()).resolves.toBeUndefined();
     },
   );
+
+  it("skips an empty executable in the puppeteer cache", async () => {
+    installFsMocks({
+      existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY]),
+      dirs: { [PUPPETEER_CACHE]: ["linux-148.0.7778.97"] },
+      emptyFiles: new Set([PUPPETEER_BINARY]),
+    });
+    installPuppeteerBrowsersMock();
+
+    const { findBrowser } = await import("./manager.js");
+    const result = await findBrowser();
+
+    expect(result?.executablePath).not.toBe(PUPPETEER_BINARY);
+  });
 
   it("prefers the puppeteer cache over the hyperframes cache when BOTH are populated", async () => {
     // The HF cache is pinned to `CHROME_VERSION` (131-era) which lags upstream

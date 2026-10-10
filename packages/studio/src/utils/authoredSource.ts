@@ -1,7 +1,7 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import {
+  PREVIEW_ONLY_ATTRS,
   STUDIO_PREVIEW_LAZY_ATTR,
-  STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
 
 // Stamped as the preview stamps the files it serves, so a live element's hf-id finds its source.
@@ -98,10 +98,8 @@ export function authoredMarkup(authored: Element, live: Element, sourceFile: str
 export function liveMarkupWithoutPreviewMarks(live: Element): string {
   const copy = live.cloneNode(true) as Element;
   for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
-    el.removeAttribute(STUDIO_PREVIEW_UPCOMING_ATTR);
-    if (!el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) continue;
-    el.removeAttribute("loading");
-    el.removeAttribute(STUDIO_PREVIEW_LAZY_ATTR);
+    if (el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) el.removeAttribute("loading");
+    for (const attr of PREVIEW_ONLY_ATTRS) el.removeAttribute(attr);
   }
   return copy.outerHTML;
 }

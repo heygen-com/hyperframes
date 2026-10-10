@@ -137,9 +137,8 @@ export interface ShaderTransitionWorkerPool {
  *      sibling probe lands in the wrong directory.
  *   2. `HF_SHADER_WORKER_ENTRY` env var — test/dev infra override (file
  *      path or `file://` URL).
- *   3. Same-directory `.js` sibling — works when both pool source and
- *      worker source compile into the same `dist/services/` directory
- *      (in-tree dev builds and the colocated tsc emit).
+ *   3. Same-directory `.js` sibling — the published build emits the worker
+ *      beside the bundles that contain this pool (buildEntries.mjs).
  *   4. Same-directory `.ts` sibling — vitest/bun raw-TS execution path.
  */
 function resolveWorkerEntry(explicit: string | undefined): { path: string; isTs: boolean } {

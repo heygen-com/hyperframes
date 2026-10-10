@@ -17,11 +17,15 @@ import { invocation, pluginVersion } from "./plugin-cli.mjs";
 function fixture(t, manifest = "plugin.json", version = "1.2.3") {
   const root = mkdtempSync(join(tmpdir(), "hf-plugin-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  mkdirSync(join(root, "skills/hyperframes/scripts"), { recursive: true });
+  mkdirSync(join(root, "skills/hyperframes/scripts/lib"), { recursive: true });
   mkdirSync(join(root, manifest, ".."), { recursive: true });
   writeFileSync(join(root, manifest), JSON.stringify({ name: "hyperframes", version }));
   const launcher = join(root, "skills/hyperframes/scripts/plugin-cli.mjs");
   copyFileSync(new URL("./plugin-cli.mjs", import.meta.url), launcher);
+  copyFileSync(
+    new URL("./lib/main-module.mjs", import.meta.url),
+    join(root, "skills/hyperframes/scripts/lib/main-module.mjs"),
+  );
   return { root, launcher };
 }
 

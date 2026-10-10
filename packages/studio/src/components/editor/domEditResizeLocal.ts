@@ -14,6 +14,7 @@
  * rendered center, feeding the center-pin translate through the manual-offset
  * channel) lives in useDomEditOverlayGestures.ts.
  */
+import type { FixedCorner } from "./domEditOverlayGeometry";
 import type { ResizeHandle } from "./domEditOverlayGestures";
 
 /** Minimum element edge in LOCAL px — mirrors the old MIN_RESIZE_EDGE_PX clamp
@@ -21,11 +22,11 @@ import type { ResizeHandle } from "./domEditOverlayGestures";
 const MIN_RESIZE_LOCAL_PX = 1;
 
 /**
- * Below this pointer-to-center distance (overlay px) the gesture started at (or
+ * Below this start-to-center distance (overlay px) the gesture started at (or
  * effectively at) the center, so the ratio is degenerate (division by ~0). Bail to
- * scale 1 rather than blow up.
+ * scale 1 rather than blow up. A handle starts from its corner, so a pick a few px across still resizes.
  */
-const DEGENERATE_START_DIST_PX = 3;
+const DEGENERATE_START_DIST_PX = 0.5;
 
 /**
  * The proportional scale factor for a center-anchored resize: the ratio of the
@@ -110,6 +111,29 @@ export function resolveRotatedResizeCursor(handle: ResizeHandle, rotationDeg: nu
   const normalized = ((angle % 360) + 360) % 360;
   const bucket = Math.round(normalized / 45) % 8;
   return CURSORS_8[bucket]!;
+}
+
+type Size = { width: number; height: number };
+/** The size the pointer asks for and the whole-px size written for it. */
+export type ResizeDraftSizes = { wanted: Size; written: Size };
+
+/** Overlay shift of the pinned center that puts the grabbed corner where the wanted size would: the
+ *  written size is whole px, so half the remainder moves along the element's own rendered edges. */
+export function resizeRemainderShift(
+  corners: Record<FixedCorner, { x: number; y: number }>,
+  grab: { x: number; y: number },
+  { wanted, written }: ResizeDraftSizes,
+): { x: number; y: number } {
+  const u = { x: corners.ne.x - corners.nw.x, y: corners.ne.y - corners.nw.y };
+  const v = { x: corners.sw.x - corners.nw.x, y: corners.sw.y - corners.nw.y };
+  // `grab` in edge coordinates: which side of each edge the grabbed corner is, even on a skewed box.
+  const det = u.x * v.y - u.y * v.x;
+  if (!det) return { x: 0, y: 0 };
+  const su = Math.sign((grab.x * v.y - grab.y * v.x) / det);
+  const sv = Math.sign((u.x * grab.y - u.y * grab.x) / det);
+  const kw = (su * (wanted.width - written.width)) / (2 * written.width);
+  const kh = (sv * (wanted.height - written.height)) / (2 * written.height);
+  return { x: u.x * kw + v.x * kh, y: u.y * kw + v.y * kh };
 }
 
 /** Per-frame anchored-resize center accumulator: ADD the residual center correction

@@ -439,17 +439,15 @@ async function validateInBrowser(
     const puppeteer = await import("puppeteer-core");
     const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
     const requestedGpuMode = resolveCliChromeGpuMode();
-    const { assertWebGpuAdapterAvailable, compositionRequiresWebGpu } =
+    const { assertWebGpuAdapterAvailable, compositionRequiresWebGpu, resolveLocalWebGpu } =
       await import("../browser/gpuPolicy.js");
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
+    const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
     const chromeBrowser = await launchManagedBrowser(puppeteer.default, {
       headless: true,
       executablePath: browser.executablePath,
-      args: buildChromeArgs(
-        { ...viewport, captureMode: "screenshot", requiresWebGpu },
-        { browserGpuMode: resolvedGpuMode },
-      ),
+      args: buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
     });
 
     const page = await chromeBrowser.newPage();
@@ -508,7 +506,7 @@ async function validateInBrowser(
       if (hinted) throw hinted;
       throw err;
     }
-    await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+    await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
     await waitForRuntimeReady(page, opts.timeout ?? 3000);
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
 

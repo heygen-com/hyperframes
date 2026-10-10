@@ -43,7 +43,7 @@ import {
 import {
   enumerateNestedCompositionHosts,
   planCompositionAssembly,
-  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+  extractedCompositionAssets,
 } from "./compositionAssembly";
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 
@@ -610,8 +610,7 @@ export function inlineSubCompositions(
     // Inject content into the host element
     if (innerRoot) {
       innerRoot.setAttribute("data-composition-file", src);
-      for (const child of [...innerRoot.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR)])
-        child.remove();
+      for (const child of extractedCompositionAssets(innerRoot)) child.remove();
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
         if (!compId && scopeCompId) {
@@ -635,14 +634,15 @@ export function inlineSubCompositions(
         }
       }
     } else {
-      for (const child of [...contentDoc.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR)])
-        child.remove();
+      for (const child of extractedCompositionAssets(contentDoc)) child.remove();
       // linkedom fragment parsing: when content is `<div data-composition-id="X">...</div>`,
       // the div becomes documentElement and body is empty. Fall back to documentElement.outerHTML
       // to preserve the composition wrapper.
       const bodyHtml = contentDoc.body?.innerHTML || "";
       hostEl.innerHTML = bodyHtml || contentDoc.documentElement?.outerHTML || "";
     }
+    for (const el of plan.inertScriptsOutsideRoot)
+      hostEl.insertAdjacentHTML("beforeend", el.outerHTML);
 
     hostEl.setAttribute("data-composition-file", src);
     hostEl.removeAttribute("data-composition-src");

@@ -154,5 +154,8 @@ export function prepareHyperframeLintBody(
 export async function runHyperframeLint(
   prepared: PreparedHyperframeLintInput,
 ): Promise<HyperframeLintResult> {
-  return lintHyperframeHtml(prepared.html, { filePath: prepared.entryFile });
+  return lintHyperframeHtml(prepared.html, {
+    filePath: prepared.entryFile,
+    compSrcPath: prepared.entryFile,
+  });
 }

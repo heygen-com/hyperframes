@@ -691,6 +691,13 @@ describe("__hfSwapScenes", () => {
       },
     ],
     ["the opacity stamp", '<video src="clip.mp4"></video>', () => {}, "data-hf-authored-opacity"],
+    [
+      "the preview raster mark",
+      '<video src="clip.mp4"></video>',
+      () => {},
+      "data-hf-preview-raster",
+    ],
+    ["the upcoming mark", '<video src="clip.mp4"></video>', () => {}, "data-hf-upcoming"],
   ])("keeps a video on which the runtime wrote %s", async (_, video, arrange, stamp?: string) => {
     quietMedia();
     arrange();

@@ -26,9 +26,10 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isMainModule } from "./lib/main-module.mjs";
 
 /** Sample rate the analysis runs at. Matches Studio's own decode rate, so the
  *  bands and envelopes come out the same either way. */
@@ -554,19 +555,6 @@ async function main() {
 
 // Only run as a CLI. Guarded so the pure helpers above can be unit-tested by
 // importing this module (`skills/**/*.test.mjs`, run by `bun run test:skills`).
-//
-// realpath both sides: on macOS /tmp → /private/tmp, and node resolves the main
-// module's symlinks in import.meta.url while argv[1] keeps the invoked spelling —
-// a raw compare silently skips main() when invoked through any symlinked path.
-function isMainModule(importMetaUrl) {
-  if (!process.argv[1]) return false;
-  try {
-    return pathToFileURL(realpathSync(process.argv[1])).href === importMetaUrl;
-  } catch {
-    return false;
-  }
-}
-
 if (isMainModule(import.meta.url)) {
   await main();
 }

@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -166,6 +174,71 @@ describe("applyFileMutations", () => {
       expect(readFileSync(first, "utf8")).toBe("first-before");
       expect(readFileSync(second, "utf8")).toBe("second-before");
       expect(identifyFileWrite(first, fileContentVersion("first-after"))).toBeNull();
+    } finally {
+      resetFileWriteReceipts();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "reports the write error, not a failed rollback, when a later file was never written",
+    () => {
+      resetFileWriteReceipts();
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-readonly-"));
+      const first = join(projectDir, "first.html");
+      const lockedDir = join(projectDir, "locked");
+      const second = join(lockedDir, "second.html");
+      try {
+        mkdirSync(lockedDir);
+        writeFileSync(first, "first-before", "utf8");
+        writeFileSync(second, "second-before", "utf8");
+        chmodSync(lockedDir, 0o555);
+        let thrown: unknown;
+        try {
+          applyFileMutations(projectDir, [
+            { sourceFile: "first.html", absPath: first, after: "first-after" },
+            { sourceFile: "locked/second.html", absPath: second, after: "second-after" },
+          ]);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).not.toBeInstanceOf(AggregateError);
+        expect(thrown).toMatchObject({ code: "EACCES" });
+        expect(readFileSync(first, "utf8")).toBe("first-before");
+        expect(readFileSync(second, "utf8")).toBe("second-before");
+        expect(identifyFileWrite(first, fileContentVersion("first-after"))).toBeNull();
+      } finally {
+        if (existsSync(lockedDir)) chmodSync(lockedDir, 0o755);
+        resetFileWriteReceipts();
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("still reports an incomplete rollback when a written file cannot be restored", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-restore-"));
+    try {
+      for (const name of ["first", "second"])
+        writeFileSync(join(projectDir, `${name}.html`), `${name}-before`, "utf8");
+      let writes = 0;
+      expect(() =>
+        applyFileMutations(
+          projectDir,
+          ["first", "second"].map((name) => ({
+            sourceFile: `${name}.html`,
+            absPath: join(projectDir, `${name}.html`),
+            after: `${name}-after`,
+          })),
+          undefined,
+          (path, content, encoding) => {
+            writes += 1;
+            if (writes === 2) throw new Error("second write failed");
+            if (writes === 3) throw new Error("first restore failed");
+            writeFileSync(path, content, encoding);
+          },
+        ),
+      ).toThrow("File mutation failed and rollback did not complete");
+      expect(readFileSync(join(projectDir, "first.html"), "utf8")).toBe("first-after");
     } finally {
       resetFileWriteReceipts();
       rmSync(projectDir, { recursive: true, force: true });

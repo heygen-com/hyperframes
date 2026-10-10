@@ -78,6 +78,7 @@ import {
   compositionRequiresWebGpu,
   resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
+  resolveLocalWebGpu,
   type BrowserGpuMode,
   type ResolvedBrowserGpuMode,
 } from "../browser/gpuPolicy.js";
@@ -241,12 +242,14 @@ let _thumbnailBrowserInitializing: Promise<ThumbnailBrowserSession | null> | nul
 let _thumbnailBrowserModes: {
   requested: BrowserGpuMode;
   resolved: ResolvedBrowserGpuMode;
+  softwareWebGpu: boolean;
 } | null = null;
 
 interface ThumbnailBrowserSession {
   browser: import("puppeteer-core").Browser;
   requestedGpuMode: BrowserGpuMode;
   resolvedGpuMode: ResolvedBrowserGpuMode;
+  softwareWebGpu: boolean;
 }
 
 async function getThumbnailBrowser(
@@ -262,6 +265,7 @@ async function getThumbnailBrowser(
       browser: _thumbnailBrowserLease.browser,
       requestedGpuMode: _thumbnailBrowserModes.requested,
       resolvedGpuMode: _thumbnailBrowserModes.resolved,
+      softwareWebGpu: _thumbnailBrowserModes.softwareWebGpu,
     };
   }
   if (_thumbnailBrowserInitializing) {
@@ -288,22 +292,32 @@ async function getThumbnailBrowser(
       }
 
       const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
+      const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, true);
       const acquired = await acquireBrowser(
         buildChromeArgs(
-          { width: 1920, height: 1080, captureMode: "screenshot" },
-          { browserGpuMode: resolvedGpuMode },
+          {
+            width: 1920,
+            height: 1080,
+            captureMode: "screenshot",
+            requiresWebGpu: softwareWebGpu,
+          },
+          gpuConfig,
         ),
         { forceScreenshot: true },
       );
       _thumbnailBrowserLease = acquired;
-      _thumbnailBrowserModes = { requested: requestedGpuMode, resolved: resolvedGpuMode };
+      _thumbnailBrowserModes = {
+        requested: requestedGpuMode,
+        resolved: resolvedGpuMode,
+        softwareWebGpu,
+      };
       acquired.browser.on("disconnected", () => {
         if (_thumbnailBrowserLease !== acquired) return;
         _thumbnailBrowserLease = null;
         _thumbnailBrowserModes = null;
         _thumbnailBrowserInitializing = null;
       });
-      return { browser: acquired.browser, requestedGpuMode, resolvedGpuMode };
+      return { browser: acquired.browser, requestedGpuMode, resolvedGpuMode, softwareWebGpu };
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
@@ -534,7 +548,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       if (resolve(dir) === resolve(projectDir)) cachedProjectSignature = null;
     },
 
-    async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
+    async lint(html, opts) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
       return await lintHyperframeHtml(html, { ...opts, host: "studio" });
     },
@@ -613,6 +627,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
+            ...(opts.useGpu ? { useGpu: true } : {}),
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {
@@ -714,7 +729,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           async (page) => {
             await page.setViewport(viewport);
             await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-            await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+            await assertWebGpuAdapterAvailable(
+              page,
+              requiresWebGpu,
+              requiresWebGpu && session.softwareWebGpu,
+            );
             await page
               .waitForFunction(
                 () => {

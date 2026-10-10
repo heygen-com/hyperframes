@@ -320,3 +320,26 @@ describe("ffmpegStatsReader", () => {
     expect(stats).toEqual([{ frames: undefined, seconds: 68.04 }]);
   });
 });
+
+describe("a run whose signal already aborted", () => {
+  afterEach(() => {
+    vi.doUnmock("child_process");
+    vi.resetModules();
+  });
+
+  it("starts no ffmpeg, alone or as a pipeline", async () => {
+    const spawn = vi.fn();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { runFfmpeg, runFfmpegPipeline } = await import("./runFfmpeg.js");
+    const signal = AbortSignal.abort();
+
+    const single = await runFfmpeg(["-version"], { signal });
+    const piped = await runFfmpegPipeline(["-i", "in"], ["-i", "pipe:0"], { signal });
+
+    expect(spawn).not.toHaveBeenCalled();
+    for (const result of [single, piped]) {
+      expect(result).toMatchObject({ success: false, terminationReason: "abort" });
+    }
+  });
+});

@@ -430,6 +430,80 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
   });
 });
 
+describe("final mux and faststart ffmpegProcessTimeout", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("reports a mux killed at the configured timeout as a timeout", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.aac",
+      "/tmp/output.mp4",
+      undefined,
+      { ffmpegProcessTimeout: 1000 },
+    );
+
+    await flushMuxCodecResolution();
+    const proc = calls[0]!.proc;
+    vi.advanceTimersByTime(999);
+    expect(proc.kill).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    proc.stderr.emit("data", Buffer.from("frame= 9000 time=00:05:00.00\n"));
+    emitClose(proc, 255);
+
+    const result = await muxPromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/^FFmpeg timed out after 1000 ms/);
+    expect(result.error).toContain("FFMPEG_PROCESS_TIMEOUT_MS");
+    expect(result.error).toContain("frame= 9000");
+  });
+
+  it("reports a faststart killed at the configured timeout as a timeout", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { applyFaststart } = await import("./chunkEncoder.js");
+    const faststartPromise = applyFaststart("/tmp/video-only.mp4", "/tmp/output.mp4", undefined, {
+      ffmpegProcessTimeout: 2000,
+    });
+
+    const proc = calls[0]!.proc;
+    vi.advanceTimersByTime(1999);
+    expect(proc.kill).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    emitClose(proc, 255);
+
+    const result = await faststartPromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/^FFmpeg timed out after 2000 ms/);
+  });
+
+  it("leaves an ordinary mux failure's message as it was", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio("/tmp/video-only.mp4", "/tmp/audio.aac", "/tmp/out.mp4");
+    await flushMuxCodecResolution();
+    calls[0]!.proc.stderr.emit("data", Buffer.from("Invalid data found when processing input\n"));
+    emitClose(calls[0]!.proc, 1);
+
+    const result = await muxPromise;
+    expect(result.error).toMatch(/^FFmpeg exited with code 1/);
+    expect(result.error).not.toContain("timed out");
+  });
+});
+
 describe("muxVideoWithAudio audio codec handling", () => {
   it("preserves an external interruption from mux", async () => {
     const { spawn, calls } = createSpawnSpy();

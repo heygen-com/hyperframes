@@ -157,8 +157,15 @@ interface MediaProbeCacheEntry<T = FFProbeOutput> {
 const mediaProbeOutputCache = new Map<string, MediaProbeCacheEntry>();
 const mediaProbeOutputSignalCaches = new WeakMap<AbortSignal, Map<string, MediaProbeCacheEntry>>();
 const MEDIA_PROBE_OUTPUT_CACHE_MAX_ENTRIES = 128;
-// FFmpeg's built-in AAC encoder emits AAC-LC, which has 1024 samples per packet.
-const AAC_LC_SAMPLES_PER_PACKET = 1024;
+// Ignore decoded-vs-container duration differences below this: ffprobe's
+// container summary is edit-list-corrected (encoder priming delay trimmed) while
+// a decoded final frame's own timestamp + sample count is not, so the two differ
+// by a few milliseconds even on an honest file.
+const AUDIO_DURATION_PROBE_MARGIN_SECONDS = 0.05;
+// How far before the container's claimed end the decode probe starts reading,
+// so it decodes only the tail instead of the whole stream.
+const AUDIO_DURATION_PROBE_TAIL_SECONDS = 1;
+const FFPROBE_READ_INTERVAL_EXPLICIT_FAR_END = "+2147483647";
 
 export interface VideoColorSpace {
   /** Color transfer characteristics, e.g. "bt709", "smpte2084", "arib-std-b67" */
@@ -236,6 +243,7 @@ interface FFProbeStream {
 
 interface FFProbeFormat {
   duration?: string;
+  start_time?: string;
   bit_rate?: string;
   format_name?: string;
 }
@@ -959,59 +967,18 @@ export async function extractAudioMetadata(
     const streamDuration = audioStream.duration ? parseFloat(audioStream.duration) : undefined;
     const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100;
     const audioCodec = audioStream.codec_name || "unknown";
-    // AAC-LC container durations are often slightly wrong, so the packet
-    // count gives a better one. Three constraints on that refinement:
-    //
-    // 1. It must never fail the call. durationSeconds is ALREADY correct from
-    //    format.duration at this point. `-count_packets` demuxes the whole
-    //    container against runFfprobe's fixed 30s deadline, so a long file on
-    //    slow or network storage times out — and the caller in htmlCompiler
-    //    catches that under "Source file has no audio stream", returns
-    //    duration 0, drops the audio element and ships a silent render.
-    // 2. It must honour the caller's AbortSignal. Only the first probe
-    //    received it, so aborting during this one was ignored and the call
-    //    resolved with full metadata long after cancellation.
-    // 3. It must apply ONLY to profiles whose 1024-sample framing is
-    //    established. ffprobe reports codec_name "aac" for every AAC
-    //    variant — the framing lives in the profile:
-    //
-    //      LC            1024 samples/frame   <- the only one this maths fits
-    //      HE-AAC v1/v2  2048 output samples against a doubled sample_rate
-    //      LD            512
-    //      ELD           480
-    //      Main/SSR/LTP  1024 nominally, but not verified here
-    //      xHE-AAC (USAC) variable
-    //
-    //    An ALLOWLIST, not a HE-AAC denylist. The denylist form let LD/ELD
-    //    through (halving to a third of the true duration), and let an
-    //    unknown or missing profile through too — so an unrecognised HE
-    //    spelling preserved the exact truncation this is meant to close.
-    //    A skipped refinement is harmless: format.duration is already correct.
-    const isAacLc = /^\s*LC\s*$/i.test(audioStream.profile ?? "");
-    if (audioCodec === "aac" && isAacLc && sampleRate > 0) {
-      try {
-        const packetStdout = await runFfprobe(
-          filePath,
-          [
-            "-select_streams",
-            "a:0",
-            "-count_packets",
-            "-show_entries",
-            "stream=nb_read_packets",
-            "-print_format",
-            "json",
-          ],
-          options?.signal,
-        );
-        const packetOutput = parseProbeJson(packetStdout);
-        const packetCount = Number(packetOutput.streams[0]?.nb_read_packets);
-        if (Number.isFinite(packetCount) && packetCount > 0) {
-          durationSeconds = (packetCount * AAC_LC_SAMPLES_PER_PACKET) / sampleRate;
-        }
-      } catch (error) {
-        // An abort is the caller's intent, not a refinement failure — let it
-        // through. Anything else keeps the container duration we already have.
-        if (options?.signal?.aborted) throw error;
+    // Container summaries can undercount intact audio, so the decoded last frame wins.
+    // The probe returns null instead of throwing: a throw here drops the audio element.
+    if (sampleRate > 0) {
+      const decoded = await probeDecodedAudioDuration(
+        filePath,
+        sampleRate,
+        audioStartSeconds(audioStream, output.format),
+        durationSeconds,
+        options?.signal,
+      );
+      if (decoded !== null) {
+        durationSeconds = reconcileAudioDuration(durationSeconds, decoded, output.format);
       }
     }
 
@@ -1028,6 +995,84 @@ export async function extractAudioMetadata(
   if (options?.signal) return probePromise;
   writeMetadataCache(audioMetadataCache, filePath, identity, probePromise);
   return probePromise;
+}
+
+function audioStartSeconds(stream: FFProbeStream, format: FFProbeFormat): number {
+  const start = parseFloat(stream.start_time ?? format.start_time ?? "");
+  return Number.isFinite(start) ? start : 0;
+}
+
+// Raw ADTS durations are bitrate estimates that overclaim after a quiet opening, so a shorter
+// decode wins there. Elsewhere a shorter decode can be an edit-list trim, so only longer wins.
+function reconcileAudioDuration(
+  containerSeconds: number,
+  decodedSeconds: number,
+  format: FFProbeFormat,
+): number {
+  const difference = decodedSeconds - containerSeconds;
+  const trustShorter = format.format_name === "aac";
+  if (difference > AUDIO_DURATION_PROBE_MARGIN_SECONDS) return decodedSeconds;
+  if (trustShorter && difference < -AUDIO_DURATION_PROBE_MARGIN_SECONDS) return decodedSeconds;
+  return containerSeconds;
+}
+
+/**
+ * True audio duration from the last decoded frame (timestamp + nb_samples - stream start): tail
+ * first, then the whole file if a bad seek finds nothing. Null, never a throw, except on abort.
+ */
+async function probeDecodedAudioDuration(
+  filePath: string,
+  sampleRate: number,
+  startSeconds: number,
+  containerDurationSeconds: number,
+  signal?: AbortSignal,
+): Promise<number | null> {
+  const probe = async (
+    readInterval?: string,
+  ): Promise<{ timestamp: number; nbSamples: number } | undefined> => {
+    const args = [
+      "-select_streams",
+      "a:0",
+      "-show_entries",
+      "frame=best_effort_timestamp_time,nb_samples",
+      "-of",
+      "csv=p=0",
+    ];
+    if (readInterval) args.unshift("-read_intervals", readInterval);
+    try {
+      const stdout = await runFfprobe(
+        filePath,
+        args,
+        signal,
+        // CSV, not JSON: a tail truncated under the size cap still parses.
+        { retainTail: true, maxChars: 64 * 1024 },
+      );
+      return stdout
+        .split("\n")
+        .map((line) => {
+          const [timestampText, samplesText] = line.trim().split(",");
+          const timestamp = Number(timestampText);
+          const nbSamples = Number(samplesText);
+          return Number.isFinite(timestamp) && Number.isFinite(nbSamples)
+            ? { timestamp, nbSamples }
+            : undefined;
+        })
+        .filter((frame) => frame !== undefined)
+        .at(-1);
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      return undefined;
+    }
+  };
+
+  const tailStart = Math.max(
+    startSeconds,
+    startSeconds + containerDurationSeconds - AUDIO_DURATION_PROBE_TAIL_SECONDS,
+  );
+  const lastFrame =
+    (await probe(`${tailStart}%${FFPROBE_READ_INTERVAL_EXPLICIT_FAR_END}`)) ?? (await probe());
+  if (!lastFrame) return null;
+  return lastFrame.timestamp + lastFrame.nbSamples / sampleRate - startSeconds;
 }
 
 export interface KeyframeAnalysis {

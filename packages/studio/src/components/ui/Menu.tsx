@@ -5,6 +5,7 @@
 
 import { ContextMenu as BaseContextMenu } from "@base-ui/react/context-menu";
 import { Menu as BaseMenu } from "@base-ui/react/menu";
+import { useRef } from "react";
 import type { ComponentPropsWithoutRef, ElementType, ReactElement, ReactNode } from "react";
 import { cn } from "./cn";
 
@@ -20,7 +21,19 @@ type StyledProps<T extends ElementType> = Omit<ComponentPropsWithoutRef<T>, "cla
 export type PopupPreviewState = "open";
 
 /** Where the portal puts the popup. `null` keeps it inline, next to its trigger. */
-type PortalContainer = ComponentPropsWithoutRef<typeof BaseMenu.Portal>["container"];
+export type PortalContainer = ComponentPropsWithoutRef<typeof BaseMenu.Portal>["container"];
+
+const CONTENTS = { display: "contents" } as const;
+
+/** Base UI reads a `null` container as "not resolved yet" and renders nothing, so give `null` a host by the trigger. */
+export function useInlinePortal(container: PortalContainer) {
+  const host = useRef<HTMLSpanElement>(null);
+  if (container !== null) return { host: null, portal: { container } };
+  return {
+    host: <span ref={host} style={CONTENTS} />,
+    portal: { container: host, style: CONTENTS },
+  };
+}
 
 /** Matches Tooltip's gap from its trigger, and its viewport margin. */
 const SIDE_OFFSET = 6;
@@ -77,7 +90,7 @@ interface PositionedProps {
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
   sideOffset?: number;
-  /** Portal target. Pass the shadow root when the trigger lives in one. */
+  /** Portal target. Pass the shadow root when the trigger lives in one; `null` keeps it inline. */
   container?: PortalContainer;
   /** Names the popup for assistive tech. A menu with no name is unlabelled. */
   "aria-label"?: string;
@@ -109,10 +122,12 @@ export function Menu({
   "data-preview-state": previewState,
   ...root
 }: MenuProps) {
+  const inline = useInlinePortal(container);
   return (
     <BaseMenu.Root {...root}>
       <BaseMenu.Trigger render={trigger} />
-      <BaseMenu.Portal container={container}>
+      {inline.host}
+      <BaseMenu.Portal {...inline.portal}>
         <BaseMenu.Positioner
           side={side}
           align={align}
@@ -153,10 +168,12 @@ export function ContextMenu({
   "data-preview-state": previewState,
   ...root
 }: Omit<ContextMenuProps, "side" | "align" | "sideOffset">) {
+  const inline = useInlinePortal(container);
   return (
     <BaseContextMenu.Root {...root}>
       <BaseContextMenu.Trigger render={trigger} />
-      <BaseContextMenu.Portal container={container}>
+      {inline.host}
+      <BaseContextMenu.Portal {...inline.portal}>
         <BaseContextMenu.Positioner collisionPadding={VIEWPORT_MARGIN} className={POPUP_LAYER}>
           <BaseContextMenu.Popup
             aria-label={ariaLabel}

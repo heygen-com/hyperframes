@@ -43,7 +43,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function startStudioRender() {
+function startStudioRender(extra: Record<string, unknown> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "hf-studio-render-browser-"));
   dirs.push(dir);
   server = createStudioServer({ projectDir: dir });
@@ -54,6 +54,7 @@ function startStudioRender() {
     fps: { num: 30, den: 1 },
     quality: "draft",
     jobId: "job",
+    ...extra,
   } as never);
 }
 
@@ -84,5 +85,21 @@ describe("Studio render browser resolution", () => {
     });
 
     expect(process.env.PRODUCER_HEADLESS_SHELL_PATH).toBe("/opt/chrome");
+  });
+});
+
+describe("Studio render GPU encoding", () => {
+  it("creates the job with useGpu when the request asks for GPU encoding", async () => {
+    mocks.resolveRenderBrowser.mockResolvedValue({
+      executablePath: "/opt/chrome",
+      source: "cache",
+    });
+
+    startStudioRender({ useGpu: true });
+    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1), {
+      timeout: 10_000,
+    });
+
+    expect(mocks.createRenderJob).toHaveBeenCalledWith(expect.objectContaining({ useGpu: true }));
   });
 });

@@ -259,6 +259,42 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     expect(offset.y).toBeCloseTo(-(size.height - ORIGIN.height) / 2, 0);
   });
 
+  it("puts the grabbed corner on the pointer when the size rounds to whole px", () => {
+    const { handlers, commits } = buildHarness();
+    const grabbed = { x: ORIGIN_CENTER.x + 100, y: ORIGIN_CENTER.y + 50 };
+    handlers.startGesture("resize", evt(grabbed.x, grabbed.y), {
+      resizeHandle: "se",
+      resizeCorner: grabbed,
+    });
+    // Radial scale 1.503: the pointer asks for 300.6 x 150.3, Studio writes 301 x 150.
+    for (let i = 0; i < 5; i++)
+      handlers.onPointerMove(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y + 75.15));
+    handlers.onPointerUp(evt(ORIGIN_CENTER.x + 150.3, ORIGIN_CENTER.y + 75.15));
+
+    const { size, offset } = commits[0]!;
+    expect(size).toEqual({ width: 301, height: 150 });
+    const corner = {
+      x: ORIGIN_CENTER.x + (size.width - ORIGIN.width) / 2 + offset!.x + size.width / 2,
+      y: ORIGIN_CENTER.y + (size.height - ORIGIN.height) / 2 + offset!.y + size.height / 2,
+    };
+    expect(corner.x).toBeCloseTo(ORIGIN_CENTER.x + 300.6 / 2, 6);
+    expect(corner.y).toBeCloseTo(ORIGIN_CENTER.y + 150.3 / 2, 6);
+  });
+
+  it("moves the grabbed corner with the cursor when the press lands beside it", () => {
+    const { handlers, commits } = buildHarness();
+    handlers.startGesture("resize", evt(ORIGIN_CENTER.x + 106, ORIGIN_CENTER.y), {
+      resizeHandle: "se",
+      resizeCorner: { x: ORIGIN_CENTER.x + 100, y: ORIGIN_CENTER.y },
+    });
+    handlers.onPointerMove(evt(ORIGIN_CENTER.x + 156, ORIGIN_CENTER.y));
+    handlers.onPointerUp(evt(ORIGIN_CENTER.x + 156, ORIGIN_CENTER.y));
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]!.size.width).toBeCloseTo(300, 1);
+    expect(commits[0]!.size.height).toBeCloseTo(150, 1);
+  });
+
   it("keeps the centre on the first frame when the authored translate is a percent", async () => {
     const { orientedOverlayRect } = await import("./domEditOverlayGeometry");
     authored.percent = 0.25;

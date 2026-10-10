@@ -11,6 +11,7 @@ const extractionCalls = vi.hoisted(
   () => new Array<{ timelineEnd: number | undefined; durationSeconds: number }>(),
 );
 const toneMapHdrToSdrCalls = vi.hoisted(() => new Array<boolean | undefined>());
+const contentKeyedDirsCalls = vi.hoisted(() => new Array<readonly string[] | undefined>());
 const fixtureState = vi.hoisted(() => ({ sourceDurationSeconds: 60 }));
 
 vi.mock("@hyperframes/engine", async (importOriginal) => {
@@ -20,7 +21,11 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
     extractAllVideoFrames: async (
       videos: VideoElement[],
       _baseDir: string,
-      options: { timelineEnd?: number; toneMapHdrToSdr?: boolean },
+      options: {
+        timelineEnd?: number;
+        toneMapHdrToSdr?: boolean;
+        contentKeyedDirs?: readonly string[];
+      },
     ): Promise<ExtractionResult> => {
       const sourceDurationSeconds = fixtureState.sourceDurationSeconds;
       const video = videos[0];
@@ -38,6 +43,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
       video.end = video.start + durationSeconds;
       extractionCalls.push({ timelineEnd: options.timelineEnd, durationSeconds });
       toneMapHdrToSdrCalls.push(options.toneMapHdrToSdr);
+      contentKeyedDirsCalls.push(options.contentKeyedDirs);
       return {
         success: true,
         extracted: [],
@@ -66,6 +72,8 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
   };
 });
 
+import { join } from "node:path";
+import { REMOTE_MEDIA_SUBDIR } from "../../htmlCompiler.js";
 import { createRenderJob } from "../../renderOrchestrator.js";
 import { runExtractVideosStage } from "./extractVideosStage.js";
 
@@ -140,6 +148,16 @@ describe.each([
     await runStage(2, materializeSymlinks);
 
     expect(toneMapHdrToSdrCalls).toEqual([true]);
+  });
+
+  it("caches the compiled remote-media copies by content", async () => {
+    contentKeyedDirsCalls.splice(0);
+
+    await runStage(2, materializeSymlinks);
+
+    expect(contentKeyedDirsCalls).toEqual([
+      [join("/tmp/hf-timeline-bound-compiled", REMOTE_MEDIA_SUBDIR)],
+    ]);
   });
 });
 
