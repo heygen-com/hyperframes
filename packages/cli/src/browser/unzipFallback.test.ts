@@ -3,7 +3,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { Browser, computeExecutablePath, detectBrowserPlatform, install } from "@puppeteer/browsers";
+import {
+  Browser,
+  computeExecutablePath,
+  detectBrowserPlatform,
+  install,
+} from "@puppeteer/browsers";
 import AdmZip from "adm-zip";
 import { afterEach, expect, it, vi } from "vitest";
 

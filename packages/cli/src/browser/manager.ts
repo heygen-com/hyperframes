@@ -713,6 +713,16 @@ async function ensureBrowserInOwnedProcess(options: EnsureBrowserOptions): Promi
   }
 }
 
+/** The message and every `cause` message: the yauzl unzip path wraps its real error in a cause. */
+function messageWithCauses(err: unknown): string {
+  const parts: string[] = [];
+  for (let current = err, depth = 0; current != null && depth < 5; depth++) {
+    parts.push(normalizeErrorMessage(current));
+    current = typeof current === "object" ? (current as { cause?: unknown }).cause : undefined;
+  }
+  return parts.join(": ");
+}
+
 /**
  * True when `err` is a corrupt/truncated-archive extraction failure, as opposed
  * to a network error or a genuine platform problem. A partially-downloaded or
@@ -722,7 +732,7 @@ async function ensureBrowserInOwnedProcess(options: EnsureBrowserOptions): Promi
  * until the user manually clears the cache — so we detect it and re-download.
  */
 export function isCorruptArchiveError(err: unknown): boolean {
-  const msg = normalizeErrorMessage(err).toLowerCase();
+  const msg = messageWithCauses(err).toLowerCase();
   return (
     msg.includes("end of central directory") ||
     msg.includes("end-of-central-directory") ||
@@ -783,7 +793,7 @@ function wrapDownloadFailureWithBrowserPathHint(
   cause: unknown,
   unzipLog: readonly string[],
 ): Error {
-  const original = normalizeErrorMessage(cause);
+  const original = messageWithCauses(cause);
   const unzipErrors = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
   const example = browserPathHintForPlatform();
   const message =

@@ -650,6 +650,26 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  it("names the unzip error a wrapping extraction failure carries as its cause", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async () => {
+        throw new Error("Extraction failed: /tmp/a.zip", {
+          cause: new Error("invalid relative path: ../escape"),
+        });
+      },
+    });
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+
+      await expect(ensureBrowser({ force: true })).rejects.toThrow(
+        "Extraction failed: /tmp/a.zip: invalid relative path: ../escape",
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("reports only the last attempt's unzip errors after a corrupt-archive retry", async () => {
     const home = useRealCacheHome();
     let attempt = 0;
@@ -1235,6 +1255,15 @@ describe("isCorruptArchiveError", () => {
     ]) {
       expect(isCorruptArchiveError(new Error(msg))).toBe(true);
     }
+  });
+
+  it("matches a corrupt archive reported in the error's cause", async () => {
+    const { isCorruptArchiveError } = await import("./manager.js");
+    const unzipError = new Error("end of central directory record signature not found");
+
+    expect(
+      isCorruptArchiveError(new Error("Extraction failed: /tmp/a.zip", { cause: unzipError })),
+    ).toBe(true);
   });
 
   it("does not match network or unrelated errors", async () => {
