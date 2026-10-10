@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -173,41 +181,78 @@ describe("findFfBinary", () => {
     expect(findFfBinary("ffmpeg")).toBe(projectBinary);
   });
 
+  function installerProject(
+    name: "ffmpeg" | "ffprobe",
+    { viaInstaller = false, mode = 0o755 } = {},
+  ) {
+    const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-ff-installer-")));
+    const platformPackage = `@${name}-installer/${process.platform}-${process.arch}`;
+    const packageDir = viaInstaller
+      ? join(project, "store", "node_modules", platformPackage)
+      : join(project, "node_modules", platformPackage);
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(join(packageDir, "package.json"), "{}");
+    if (viaInstaller) {
+      const installerDir = join(project, "store", "node_modules", `@${name}-installer`, name);
+      mkdirSync(installerDir, { recursive: true });
+      writeFileSync(join(installerDir, "package.json"), "{}");
+      mkdirSync(join(project, "node_modules", `@${name}-installer`), { recursive: true });
+      symlinkSync(
+        installerDir,
+        join(project, "node_modules", `@${name}-installer`, name),
+        "junction",
+      );
+    }
+    const binary = join(packageDir, process.platform === "win32" ? `${name}.exe` : name);
+    writeFileSync(binary, "");
+    chmodSync(binary, mode);
+    return { project, binary };
+  }
+
+  async function findInProjectDir(project: string, name: "ffmpeg" | "ffprobe") {
+    vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", "");
+    vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "");
+    process.env.PATH = "";
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+    vi.resetModules();
+    vi.doMock("node:child_process", () => {
+      const mocked = {
+        execFileSync: () => {
+          throw new Error("not found");
+        },
+      };
+      return { ...mocked, default: mocked };
+    });
+    try {
+      const { findFfBinary } = await importFresh();
+      return findFfBinary(name);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
+
   it.each(["ffmpeg", "ffprobe"] as const)(
     "falls back to the project's @%s-installer package",
     async (name) => {
-      delete process.env.HYPERFRAMES_FFMPEG_PATH;
-      vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "");
-      process.env.PATH = "";
-      const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-ff-installer-")));
-      const packageDir = join(
-        project,
-        "node_modules",
-        `@${name}-installer`,
-        `${process.platform}-${process.arch}`,
-      );
-      mkdirSync(packageDir, { recursive: true });
-      writeFileSync(join(packageDir, "package.json"), "{}");
-      const binary = join(packageDir, process.platform === "win32" ? `${name}.exe` : name);
-      writeFileSync(binary, "");
-      vi.spyOn(process, "cwd").mockReturnValue(project);
-      vi.resetModules();
-      vi.doMock("node:child_process", () => {
-        const mocked = {
-          execFileSync: () => {
-            throw new Error("not found");
-          },
-        };
-        return { ...mocked, default: mocked };
-      });
-      try {
-        const { findFfBinary } = await importFresh();
+      const { project, binary } = installerProject(name);
 
-        expect(findFfBinary(name)).toBe(binary);
-      } finally {
-        vi.unstubAllEnvs();
-        rmSync(project, { recursive: true, force: true });
-      }
+      expect(await findInProjectDir(project, name)).toBe(binary);
+    },
+  );
+
+  it("finds the platform package next to the installer package (pnpm layout)", async () => {
+    const { project, binary } = installerProject("ffprobe", { viaInstaller: true });
+
+    expect(await findInProjectDir(project, "ffprobe")).toBe(binary);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "skips an installer binary that is not executable",
+    async () => {
+      const { project } = installerProject("ffprobe", { mode: 0o644 });
+
+      expect(await findInProjectDir(project, "ffprobe")).toBeUndefined();
     },
   );
 

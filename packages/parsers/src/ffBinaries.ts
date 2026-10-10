@@ -96,23 +96,33 @@ function findInCommonDirs(name: FfBinaryName): string | undefined {
   return undefined;
 }
 
-function findInProjectLocalBin(name: FfBinaryName): string | undefined {
-  const extension = process.platform === "win32" ? ".exe" : "";
-  const candidate = resolve(".hyperframes", "bin", `${name}${extension}`);
-  return existsSync(candidate) ? candidate : undefined;
+function binaryFileName(name: FfBinaryName): string {
+  return process.platform === "win32" ? `${name}.exe` : name;
 }
 
-// The project's own @ffmpeg-installer / @ffprobe-installer dependency; the binary is located, never run.
-function findInProjectInstallerPackage(name: FfBinaryName): string | undefined {
+function findInProject(name: FfBinaryName): string | undefined {
+  const candidate = resolve(".hyperframes", "bin", binaryFileName(name));
+  return existsSync(candidate) ? candidate : findInInstallerPackage(name);
+}
+
+function tryResolve(fromFile: string, request: string): string | undefined {
   try {
-    const manifest = createRequire(resolve("package.json")).resolve(
-      `@${name}-installer/${process.platform}-${process.arch}/package.json`,
-    );
-    const candidate = join(dirname(manifest), process.platform === "win32" ? `${name}.exe` : name);
-    return existsSync(candidate) ? candidate : undefined;
+    return createRequire(fromFile).resolve(request);
   } catch {
     return undefined;
   }
+}
+
+// The project's @ffmpeg-installer / @ffprobe-installer dependency, located but never loaded. The
+// platform package is resolved from the installer package first, so pnpm's isolated layout works.
+function findInInstallerPackage(name: FfBinaryName): string | undefined {
+  const project = resolve("package.json");
+  const platformManifest = `@${name}-installer/${process.platform}-${process.arch}/package.json`;
+  const installer = tryResolve(project, `@${name}-installer/${name}/package.json`);
+  const manifest =
+    (installer && tryResolve(installer, platformManifest)) ?? tryResolve(project, platformManifest);
+  const candidate = manifest && join(dirname(manifest), binaryFileName(name));
+  return candidate && isExecutablePathCandidate(candidate) ? candidate : undefined;
 }
 
 function lookupOnSystem(name: FfBinaryName): string | undefined {
@@ -137,8 +147,7 @@ function lookupOnSystem(name: FfBinaryName): string | undefined {
       found = scanPath(name);
     }
   }
-  found ??= findInProjectLocalBin(name);
-  found ??= findInProjectInstallerPackage(name);
+  found ??= findInProject(name);
   found ??= findInCommonDirs(name);
   const resolved = found ? resolve(found) : undefined;
   pathLookupCache.set(name, resolved);
