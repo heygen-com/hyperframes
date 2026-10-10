@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTimelineLike } from "./types";
+import { AFTER_FONTS_SCRIPT_TYPE } from "../compiler/scriptRuns";
 
 // Its own file: a start-up that throws never installs its teardown, so what it started would leak into later tests.
 async function evaluateRuntime(): Promise<void> {
@@ -29,6 +30,8 @@ describe("runtime start-up failure", () => {
     vi.doUnmock("./init");
     vi.doUnmock("./clipTree");
     vi.doUnmock("./timeline");
+    vi.doUnmock("../compiler/svgSelectorAliases");
+    vi.doUnmock("./afterFonts");
     document.body.innerHTML = "";
     window.__timelines = {};
     delete window.__renderReady;
@@ -37,6 +40,32 @@ describe("runtime start-up failure", () => {
     window.__hfRuntimeTeardown?.();
     delete (window as { __hyperframeRuntimeBootstrapped?: boolean })
       .__hyperframeRuntimeBootstrapped;
+  });
+
+  it("records a named error when the step before runtime start-up throws", async () => {
+    vi.doMock("../compiler/svgSelectorAliases", () => ({
+      refreshSvgSelectorAliases: () => {
+        throw new Error("aliases");
+      },
+    }));
+
+    await expect(evaluateRuntime()).rejects.toThrow("aliases");
+    expect(window.__hfStartupError).toContain("HyperFrames runtime failed: Error: aliases");
+  });
+
+  it("records a named error when running the font-gated scripts fails", async () => {
+    document.body.innerHTML = `<script type="${AFTER_FONTS_SCRIPT_TYPE}"></script>`;
+    const failed = Promise.reject(new Error("after fonts"));
+    failed.catch(() => {});
+    vi.doMock("./afterFonts", () => ({ runScriptsAfterFonts: () => failed }));
+    const reportError = vi.fn();
+    vi.stubGlobal("reportError", reportError);
+
+    await evaluateRuntime();
+    await vi.waitFor(() =>
+      expect(window.__hfStartupError).toContain("HyperFrames runtime failed: Error: after fonts"),
+    );
+    expect(reportError).toHaveBeenCalledWith(expect.objectContaining({ message: "after fonts" }));
   });
 
   it("records a named start-up error when runtime start-up throws", async () => {
