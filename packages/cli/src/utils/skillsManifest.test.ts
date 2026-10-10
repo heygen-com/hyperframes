@@ -33,10 +33,10 @@ import {
 // `canonical: true` network path (see resolveLatestManifest) instead of an
 // explicit local `source` — that's the whole point (it must NOT read a stale
 // local repo manifest). Stub the two network boundaries it can reach so those
-// tests stay fast and offline: `git ls-remote` (remoteHeadSha) always "fails"
+// tests stay fast and offline: `git ls-remote` (remoteHeadSha) "fails" by default
 // so it falls back to the branch URL, and `fetch` is stubbed per-test. `vi.mock`
-// is hoisted above these imports regardless of source position. No existing
-// test in this file omits `source`, so nothing else touches this mock.
+// is hoisted above these imports regardless of source position. Tests that need
+// ls-remote to answer queue their own `mockImplementationOnce`.
 vi.mock("node:child_process", () => ({
   execFile: vi.fn(
     (
@@ -810,6 +810,77 @@ describe("checkSkills canonical bypass of the in-repo manifest shortcut", () => 
     const res = await checkSkills({ source: explicitSource, cwd: project, home, canonical: true });
     expect(res.skills.map((s) => s.name)).toEqual(["from-explicit-source"]);
   });
+});
+
+describe("checkSkills remote HEAD lookup", () => {
+  beforeEach(() => {
+    // mockClear would keep a queued mockImplementationOnce; mockReset drops it.
+    vi.mocked(execFile).mockReset();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            json: async () => ({ source: "owner/repo", skills: {} }),
+          }) as unknown as Response,
+      ),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("asks git for main without any credential helper or askpass prompt", async () => {
+    await checkSkills({ source: "owner/repo", cwd: root, home: root });
+    expect(vi.mocked(execFile)).toHaveBeenCalledWith(
+      "git",
+      [
+        "-c",
+        "credential.helper=",
+        "ls-remote",
+        "https://github.com/owner/repo.git",
+        "refs/heads/main",
+      ],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_ASKPASS: "",
+          GCM_INTERACTIVE: "never",
+        }),
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it("pins a valid slug's manifest to the commit ls-remote reports", async () => {
+    const sha = "a".repeat(40);
+    // execFile is overloaded; this stub models only the callback form promisify calls.
+    const lsRemote = ((
+      _cmd: string,
+      _args: readonly string[],
+      _opts: unknown,
+      callback: (err: Error | null, out: { stdout: string; stderr: string }) => void,
+    ) =>
+      callback(null, {
+        stdout: `${sha}\trefs/heads/main\n`,
+        stderr: "",
+      })) as unknown as typeof execFile;
+    vi.mocked(execFile).mockImplementationOnce(lsRemote);
+    await checkSkills({ source: "owner/repo", cwd: root, home: root });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      `https://raw.githubusercontent.com/owner/repo/${sha}/${MANIFEST_FILE}`,
+      expect.anything(),
+    );
+  });
+
+  it.each(["--source owner/repo", "owner", "owner/repo/extra", "owner/repo?x=1"])(
+    "never runs git for the malformed slug %j",
+    async (source) => {
+      await checkSkills({ source, cwd: root, home: root });
+      expect(vi.mocked(execFile)).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("pruneOrphanedLockEntries", () => {

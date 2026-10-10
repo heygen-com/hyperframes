@@ -110,6 +110,7 @@ export interface SkillsCheckResult {
 }
 
 const DEFAULT_REPO_SLUG = "heygen-com/hyperframes";
+const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 /** Manifest filename, published at the repo root. */
 export const MANIFEST_FILE = "skills-manifest.json";
 const FETCH_TIMEOUT_MS = 4000;
@@ -654,19 +655,35 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
 }
 
 /**
- * Resolve main's live HEAD sha via `git ls-remote`. GitHub's branch-raw CDN
- * (raw.githubusercontent.com/<owner>/<repo>/main/...) can serve stale content
- * for minutes after a push; a SHA-pinned raw URL is immediately consistent.
- * Returns null when git/network is unavailable so callers fall back to main.
+ * Resolve main's live HEAD sha via `git ls-remote`: the branch-raw CDN can serve
+ * stale content for minutes after a push, a SHA-pinned raw URL cannot. Returns
+ * null for a slug that is not `owner/repo`, or when git/network is unavailable.
+ *
+ * GIT_TERMINAL_PROMPT=0 does not stop credential helpers or askpass, and Git
+ * Credential Manager (the Git for Windows default) answers a private or missing
+ * repo's auth challenge with a blocking sign-in window. An empty credential.helper
+ * clears every helper; an empty GIT_ASKPASS also skips core.askPass and SSH_ASKPASS.
  */
 async function remoteHeadSha(repoSlug: string): Promise<string | null> {
+  if (!REPO_SLUG_PATTERN.test(repoSlug)) return null;
   try {
     const { stdout } = await execFileAsync(
       "git",
-      ["ls-remote", `https://github.com/${repoSlug}.git`, "refs/heads/main"],
+      [
+        "-c",
+        "credential.helper=",
+        "ls-remote",
+        `https://github.com/${repoSlug}.git`,
+        "refs/heads/main",
+      ],
       {
         timeout: FETCH_TIMEOUT_MS,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_ASKPASS: "",
+          GCM_INTERACTIVE: "never",
+        },
         windowsHide: true,
       },
     );
