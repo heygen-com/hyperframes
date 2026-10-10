@@ -88,21 +88,22 @@ const COMMON_BIN_DIRS =
     ? []
     : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/snap/bin"];
 
-function findInCommonDirs(name: FfBinaryName): string | undefined {
+// The npm installer package comes last: its binaries are old builds, so any system install wins.
+function findInCommonDirsOrInstallerPackage(name: FfBinaryName): string | undefined {
   for (const dir of COMMON_BIN_DIRS) {
     const candidate = `${dir}/${name}`;
     if (existsSync(candidate)) return candidate;
   }
-  return undefined;
+  return findInInstallerPackage(name);
 }
 
 function binaryFileName(name: FfBinaryName): string {
   return process.platform === "win32" ? `${name}.exe` : name;
 }
 
-function findInProject(name: FfBinaryName): string | undefined {
+function findInProjectLocalBin(name: FfBinaryName): string | undefined {
   const candidate = resolve(".hyperframes", "bin", binaryFileName(name));
-  return existsSync(candidate) ? candidate : findInInstallerPackage(name);
+  return existsSync(candidate) ? candidate : undefined;
 }
 
 function tryResolve(fromFile: string, request: string): string | undefined {
@@ -113,8 +114,8 @@ function tryResolve(fromFile: string, request: string): string | undefined {
   }
 }
 
-// The project's @ffmpeg-installer / @ffprobe-installer dependency, located but never loaded. The
-// platform package is resolved from the installer package first, so pnpm's isolated layout works.
+// An @ffmpeg-installer / @ffprobe-installer package reachable from the current folder, located
+// but never loaded. The platform package is resolved via the installer package first (pnpm layout).
 function findInInstallerPackage(name: FfBinaryName): string | undefined {
   const project = resolve("package.json");
   const platformManifest = `@${name}-installer/${process.platform}-${process.arch}/package.json`;
@@ -147,8 +148,8 @@ function lookupOnSystem(name: FfBinaryName): string | undefined {
       found = scanPath(name);
     }
   }
-  found ??= findInProject(name);
-  found ??= findInCommonDirs(name);
+  found ??= findInProjectLocalBin(name);
+  found ??= findInCommonDirsOrInstallerPackage(name);
   const resolved = found ? resolve(found) : undefined;
   pathLookupCache.set(name, resolved);
   return resolved;
@@ -168,8 +169,8 @@ export interface FindFfBinaryOptions {
 /**
  * Resolve an FFmpeg-family binary: env override first, then a native
  * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
- * then a project-local `.hyperframes/bin`, then the project's
- * `@ffmpeg-installer`/`@ffprobe-installer` package, then well-known Unix install dirs. System lookups are
+ * then a project-local `.hyperframes/bin`, then well-known Unix install dirs, then an
+ * `@ffmpeg-installer`/`@ffprobe-installer` package reachable from the current folder. System lookups are
  * cached per binary for the process lifetime; the env override is re-read on
  * every call.
  */

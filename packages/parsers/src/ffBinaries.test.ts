@@ -1,4 +1,5 @@
 import {
+  type PathLike,
   chmodSync,
   mkdirSync,
   mkdtempSync,
@@ -209,12 +210,23 @@ describe("findFfBinary", () => {
     return { project, binary };
   }
 
-  async function findInProjectDir(project: string, name: "ffmpeg" | "ffprobe") {
+  async function findInProjectDir(
+    project: string,
+    name: "ffmpeg" | "ffprobe",
+    systemBinaries: string[] = [],
+  ) {
     vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", "");
     vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "");
     process.env.PATH = "";
     vi.spyOn(process, "cwd").mockReturnValue(project);
     vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      const existsSync = (candidate: PathLike) =>
+        systemBinaries.includes(String(candidate)) ||
+        (String(candidate).startsWith(project) && actual.existsSync(candidate));
+      return { ...actual, existsSync, default: { ...actual, existsSync } };
+    });
     vi.doMock("node:child_process", () => {
       const mocked = {
         execFileSync: () => {
@@ -246,6 +258,17 @@ describe("findFfBinary", () => {
 
     expect(await findInProjectDir(project, "ffprobe")).toBe(binary);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "prefers a system install in a common dir over the installer package",
+    async () => {
+      const { project } = installerProject("ffprobe");
+
+      expect(await findInProjectDir(project, "ffprobe", ["/usr/bin/ffprobe"])).toBe(
+        "/usr/bin/ffprobe",
+      );
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "skips an installer binary that is not executable",
