@@ -128,6 +128,7 @@ import type {
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
+import { readTimelineDurationSeconds } from "./timelineDuration";
 import {
   CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS,
   MEDIA_BIND_INTERVAL_FRAMES,
@@ -1012,14 +1013,8 @@ export function initSandboxRuntimeModular(): void {
   let externalCompositionsReady = !hasExternalCompositions && !hasInlineTemplateCompositions;
 
   const getTimelineDurationSeconds = (timeline: RuntimeTimelineLike | null): number | null => {
-    if (!timeline || typeof timeline.duration !== "function") return null;
-    try {
-      const raw = Number(timeline.duration());
-      if (!Number.isFinite(raw)) return null;
-      return Math.max(0, raw);
-    } catch {
-      return null;
-    }
+    const raw = readTimelineDurationSeconds(timeline);
+    return raw == null ? null : Math.max(0, raw);
   };
 
   const isUsableTimelineDuration = (durationSeconds: number | null): durationSeconds is number =>

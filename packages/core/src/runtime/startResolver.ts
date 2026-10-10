@@ -1,5 +1,5 @@
 import type { RuntimeTimelineLike } from "./types";
-import { swallow } from "./diagnostics";
+import { readTimelineDurationSeconds } from "./timelineDuration";
 import { resolveAuthoredTimingWindow } from "./authoredTiming";
 // Straight from playbackRate, not through media.ts's re-export: media.ts
 // imports mediaVolumeEnvelope, which needs this resolver, and the round trip
@@ -84,18 +84,8 @@ export function createRuntimeStartTimeResolver(params: {
     if (resolved == null || resolved <= 0) {
       const compositionId = element.getAttribute("data-composition-id");
       if (compositionId) {
-        const timeline = timelineRegistry[compositionId] ?? null;
-        if (timeline && typeof timeline.duration === "function") {
-          try {
-            const timelineDuration = Number(timeline.duration());
-            if (Number.isFinite(timelineDuration) && timelineDuration > 0) {
-              resolved = timelineDuration;
-            }
-          } catch (err) {
-            // ignore broken timeline impls
-            swallow("runtime.startResolver.site1", err);
-          }
-        }
+        const timelineDuration = readTimelineDurationSeconds(timelineRegistry[compositionId]);
+        if (timelineDuration != null && timelineDuration > 0) resolved = timelineDuration;
       }
     }
     if (resolved != null && Number.isFinite(resolved) && resolved > 0) {

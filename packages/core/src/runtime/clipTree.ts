@@ -17,6 +17,7 @@ import {
   resolveTimedImageDurationSeconds,
 } from "./playbackRate";
 import { isMediaElement } from "./domRealm";
+import { readTimelineDurationSeconds } from "./timelineDuration";
 import { findRootCompositionElement } from "./compositionDimension";
 
 export interface ClipNode {
@@ -67,14 +68,8 @@ function durationFromTimeline(
 ): number | null {
   const compId = el.getAttribute("data-composition-id");
   if (!compId) return null;
-  const timeline = registry[compId];
-  if (typeof timeline?.duration !== "function") return null;
-  try {
-    const d = Number(timeline.duration());
-    return Number.isFinite(d) && d > 0 ? d : null;
-  } catch {
-    return null;
-  }
+  const d = readTimelineDurationSeconds(registry[compId]);
+  return d != null && d > 0 ? d : null;
 }
 
 function durationFromMedia(el: Element): number | null {

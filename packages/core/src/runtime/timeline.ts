@@ -12,6 +12,7 @@ import {
   resolveAuthoredTimingWindow,
 } from "./authoredTiming";
 import { swallow } from "./diagnostics";
+import { readTimelineDurationSeconds } from "./timelineDuration";
 import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
 import {
   parseStrictFiniteTimingNumber,
@@ -53,10 +54,7 @@ export function isRuntimeElementVisibleAt(
   const compId = rawNode.getAttribute("data-composition-id");
   if (compId) {
     const compTimeline = options.timelineRegistry[compId];
-    const liveDuration =
-      compTimeline && typeof compTimeline.duration === "function"
-        ? Number(compTimeline.duration())
-        : null;
+    const liveDuration = readTimelineDurationSeconds(compTimeline);
     const hasAuthoredTiming =
       rawNode.hasAttribute("data-duration") ||
       rawNode.hasAttribute("data-end") ||
@@ -261,14 +259,8 @@ export function collectRuntimeTimelinePayload(params: {
   });
   const resolveTimelineDurationSeconds = (compositionId: string | null): number | null => {
     if (!compositionId) return null;
-    const timeline = timelineRegistry[compositionId] ?? null;
-    if (!timeline || typeof timeline.duration !== "function") return null;
-    try {
-      const duration = Number(timeline.duration());
-      return Number.isFinite(duration) && duration > 0 ? duration : null;
-    } catch {
-      return null;
-    }
+    const duration = readTimelineDurationSeconds(timelineRegistry[compositionId]);
+    return duration != null && duration > 0 ? duration : null;
   };
   const resolveMediaWindowEndSeconds = (): number | null => {
     const mediaNodes = Array.from(
