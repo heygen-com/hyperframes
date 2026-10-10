@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, createReadStream, renameSync } from "node:fs";
+import { constants, createReadStream, createWriteStream, renameSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
 import { dirname, join } from "node:path";
 import { atomicTempPath } from "@hyperframes/core/atomic-file";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
-  /** Copies the file in (a clone where the file system can) and returns the copy's hash. */
-  put(absPath: string): Promise<string>;
+  /** Archives the file and returns its hash; a signal makes copy and hash cancellable. */
+  put(absPath: string, signal?: AbortSignal): Promise<string>;
   has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
   /** Writes the blob's bytes to `absPath` by clone-or-copy and rename, so a reader never sees half a file. */
@@ -19,9 +20,9 @@ export interface BlobStore {
 
 const BLOB_HASH = /^[0-9a-f]{64}$/;
 
-async function hashFile(path: string): Promise<string> {
+async function hashFile(path: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
   return hash.digest("hex");
 }
 
@@ -52,23 +53,30 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
   let total = [...sizes.values()].reduce((sum, size) => sum + size, 0);
 
   return {
-    async put(absPath) {
+    async put(absPath, signal) {
       // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
       const temp = join(dir, `incoming-${randomUUID()}`);
       // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
       await mkdir(dir, { recursive: true });
-      await copyFile(absPath, temp, constants.COPYFILE_FICLONE);
-      const hash = await hashFile(temp);
-      if (sizes.has(hash)) {
-        await rm(temp, { force: true });
+      try {
+        if (signal) {
+          await pipeline(createReadStream(absPath), createWriteStream(temp), { signal });
+        } else {
+          await copyFile(absPath, temp, constants.COPYFILE_FICLONE);
+        }
+        const hash = await hashFile(temp, signal);
+        signal?.throwIfAborted();
+        if (sizes.has(hash)) return hash;
+        await mkdir(dirname(pathOf(hash)), { recursive: true });
+        const size = (await stat(temp)).size;
+        signal?.throwIfAborted();
+        await rename(temp, pathOf(hash));
+        sizes.set(hash, size);
+        total += size;
         return hash;
+      } finally {
+        await rm(temp, { force: true });
       }
-      await mkdir(dirname(pathOf(hash)), { recursive: true });
-      const size = (await stat(temp)).size;
-      await rename(temp, pathOf(hash));
-      sizes.set(hash, size);
-      total += size;
-      return hash;
     },
     has: (hash) => sizes.has(hash),
     read: async (hash) => readFile(pathOf(hash)),

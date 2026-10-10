@@ -14,6 +14,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { once } from "node:events";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
@@ -29,6 +30,7 @@ const mediaCopy = vi.hoisted(() => ({
   held: null as Promise<void> | null,
   stored: null as (() => Promise<unknown>) | null,
   copies: [] as string[],
+  entered: 0,
   fails: null as ((copy: number) => boolean) | null,
 }));
 vi.mock("./blobStore", async (importOriginal) => {
@@ -39,13 +41,22 @@ vi.mock("./blobStore", async (importOriginal) => {
       const store = await real.openBlobStore(dir);
       return {
         ...store,
-        put: async (path: string) => {
+        put: async (path: string, signal?: AbortSignal) => {
           if (path.endsWith(".mp4")) {
-            await mediaCopy.held;
+            mediaCopy.entered++;
+            if (signal && mediaCopy.held) {
+              signal.throwIfAborted();
+              await Promise.race([
+                mediaCopy.held,
+                once(signal, "abort").then(() => {
+                  throw signal.reason;
+                }),
+              ]);
+            } else await mediaCopy.held;
             mediaCopy.copies.push(basename(path));
             if (mediaCopy.fails?.(mediaCopy.copies.length)) throw new Error("The disk is full.");
           }
-          const hash = await store.put(path);
+          const hash = await store.put(path, signal);
           if (path.endsWith(".mp4")) await mediaCopy.stored?.();
           return hash;
         },
@@ -61,7 +72,7 @@ const cleanup: Array<() => unknown> = [];
 
 afterEach(async () => {
   for (const step of cleanup.splice(0).reverse()) await step();
-  Object.assign(mediaCopy, { held: null, stored: null, copies: [], fails: null });
+  Object.assign(mediaCopy, { held: null, stored: null, copies: [], entered: 0, fails: null });
 });
 
 const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
@@ -372,7 +383,7 @@ describe("openProjectHistory", () => {
     expect(mediaCopy.copies).toEqual(["a.mp4"]);
   });
 
-  it("undoes a clip replaced while closed, though the history closed before its copy finished", async () => {
+  it("undoes an archived clip replaced while closed", async () => {
     const clip = Buffer.alloc(2 * 1024 ** 2, 7);
     let release = () => {};
     mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
@@ -380,9 +391,9 @@ describe("openProjectHistory", () => {
       { "index.html": "A", "clip.mp4": clip },
       { quietMs: 30 },
     );
-    const closed = history.close();
     release();
-    await closed;
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]));
+    await history.close();
     write("clip.mp4", Buffer.alloc(2 * 1024 ** 2, 9));
     const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
     await reopened.flush();
@@ -393,18 +404,88 @@ describe("openProjectHistory", () => {
     expect(readFileSync(join(projectDir, "clip.mp4")).equals(clip)).toBe(true);
   });
 
-  it("adopts media whose copy a process exit cut short, rather than log it as added", async () => {
+  it("adopts interrupted legacy media with an explicit unavailable-original entry", async () => {
     const { history, write, projectDir, historyRoot } = await project({ "index.html": "A" });
     await history.close();
     // What an exit mid-copy leaves: the clip on disk, named as still being copied, not in the baseline.
     write("clip.mp4", Buffer.alloc(2 * 1024 ** 2, 7));
     writeFileSync(join(historyRoot, history.projectId, "adopting.json"), '["clip.mp4"]');
     const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
-    await vi.waitFor(() => expect(reopened.peek(START)).toHaveProperty(["clip.mp4"]), {
+    await vi.waitFor(() => expect(reopened.list()[0]?.unavailableBefore).toEqual(["clip.mp4"]), {
       timeout: 10_000,
     });
+    expect(reopened.peek(reopened.list()[0]!.id)).toHaveProperty(["clip.mp4"]);
     await reopened.flush();
-    expect(reopened.list()).toEqual([]);
+    expect(reopened.list()).toMatchObject([
+      { unavailableBefore: ["clip.mp4"], label: "Original media version is unavailable" },
+    ]);
+  });
+
+  it("a saved API predecessor is not mistaken for the original media replaced while closed", async () => {
+    mediaCopy.held = new Promise<void>(() => {});
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": Buffer.alloc(2 * 1024 ** 2, 7) },
+      { quietMs: 30 },
+    );
+    await vi.waitFor(() => expect(mediaCopy.entered).toBe(1));
+    await history.close();
+    const previous = Buffer.alloc(2 * 1024 ** 2, 9);
+    write("clip.mp4", previous);
+    let release = () => {};
+    mediaCopy.held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await vi.waitFor(() => expect(mediaCopy.entered).toBe(2));
+    const current = Buffer.alloc(2 * 1024 ** 2, 11);
+    write("clip.mp4", current);
+    recordFileWriteReceipt(join(projectDir, "clip.mp4"), {
+      path: "clip.mp4",
+      version: fileContentVersion(current),
+      writeToken: "media-write",
+      overwrote: previous,
+    });
+    await reopened.flush();
+    release();
+    await vi.waitFor(() =>
+      expect(reopened.list().some((entry) => entry.unavailableBefore?.includes("clip.mp4"))).toBe(
+        true,
+      ),
+    );
+    await reopened.flush();
+    expect((await reopened.step("back", you)).ok).toBe(true);
+    expect(readFileSync(join(projectDir, "clip.mp4")).equals(previous)).toBe(true);
+    await expect(reopened.step("back", you)).rejects.toThrow(
+      "original media version is unavailable",
+    );
+    await expect(reopened.restore(START, you)).rejects.toThrow(
+      "original media version is unavailable",
+    );
+  });
+
+  it("close cancels adoption's prune-triggered recopy and preserves it for reopening", async () => {
+    const clip = Buffer.alloc(2 * 1024 ** 2, 7);
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A", "clip.mp4": clip },
+      { budgetBytes: 1, quietMs: 30 },
+    );
+    mediaCopy.stored = async () => {
+      mediaCopy.stored = null;
+      mediaCopy.held = new Promise<void>(() => {});
+      await change(history, you, "Color", () => write("index.html", "B"));
+    };
+    await vi.waitFor(() => expect(mediaCopy.entered).toBe(2));
+    await history.close();
+    const home = join(historyRoot, history.projectId);
+    expect(JSON.parse(readFileSync(join(home, "adopting.json"), "utf8"))).toEqual(["clip.mp4"]);
+    expect(readdirSync(join(home, "blobs")).some((name) => name.startsWith("incoming-"))).toBe(
+      false,
+    );
+    expect(readFileSync(join(home, "log.jsonl"), "utf8")).toContain("Color");
+    mediaCopy.held = null;
+    const reopened = await open(projectDir, historyRoot, { quietMs: 30 });
+    await vi.waitFor(() => expect(reopened.peek(START)).toHaveProperty(["clip.mp4"]));
+    expect(readFileSync(join(projectDir, "clip.mp4")).equals(clip)).toBe(true);
   });
 
   it("keeps a media copy that a budget prune ran into before history recorded it", async () => {

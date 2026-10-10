@@ -8,7 +8,7 @@ export interface HistoryWho {
   name: string;
 }
 
-/** A file's sha256 before and after; null is "did not exist", so a create or delete undoes like any edit. */
+/** A file's sha256 before and after; null is "did not exist" unless the entry names an unavailable original. */
 export interface HistoryFileChange {
   path: string;
   before: string | null;
@@ -24,6 +24,7 @@ export interface HistoryEntry {
   startedAt: number;
   endedAt: number;
   files: HistoryFileChange[];
+  unavailableBefore?: string[];
   /** Set on an undo: the entry it reverted. Redo is undoing the undo. */
   undoes?: string;
   /** Set on a restore: the point (an entry id, or START) the files were made equal to. */

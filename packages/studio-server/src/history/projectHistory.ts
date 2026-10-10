@@ -180,6 +180,16 @@ interface Tracked {
   stat: string;
 }
 
+type CachedFile = Tracked | { hash: null; stat: string | null };
+
+function cachedFile(value: unknown): CachedFile | null {
+  if (!value || typeof value !== "object") return null;
+  const { hash, stat } = value as Record<string, unknown>;
+  if (typeof hash === "string" && typeof stat === "string") return { hash, stat };
+  if (hash === null && (typeof stat === "string" || stat === null)) return { hash, stat };
+  return null;
+}
+
 interface Group {
   id: string;
   who: HistoryWho;
@@ -323,6 +333,8 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Promise<void>>();
+  readonly adoptionController = new AbortController();
+  adoptionStats = new Map<string, string | null>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
   stopHearing: (() => void) | undefined;
@@ -417,13 +429,29 @@ class Engine {
       const cached = cache.get(path);
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
-    const left = this.readAdopting();
-    const unadopted = (file: { path: string }) =>
-      left.has(file.path) && !this.tracked.has(file.path);
-    this.adoptMediaInBackground(historyFiles(this.dir).filter(unadopted), this.now());
+    await this.resumeAdoption(cache);
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
+  }
+
+  async resumeAdoption(cache: Map<string, CachedFile>): Promise<void> {
+    const left = this.readAdopting();
+    for (const path of left) {
+      const pending = cache.get(path);
+      this.adoptionStats.set(path, pending?.hash === null ? pending.stat : null);
+    }
+    const unadopted = (file: { path: string }) =>
+      left.has(file.path) && !this.tracked.has(file.path);
+    const files = historyFiles(this.dir);
+    const present = new Set(files.map((file) => file.path));
+    for (const path of left) {
+      if (!present.has(path) && !this.tracked.has(path)) {
+        await this.recordUnavailableMedia(path, null);
+        this.adoptionStats.delete(path);
+      }
+    }
+    this.adoptMediaInBackground(files.filter(unadopted), this.now());
   }
 
   hearWrites(): void {
@@ -510,8 +538,11 @@ class Engine {
     for (const file of files) {
       copied = copied.then(() => this.adopt(file, sweptAt));
       this.adopting.set(file.path, copied);
+      if (!this.adoptionStats.has(file.path))
+        this.adoptionStats.set(file.path, statKey(file, Infinity));
     }
     this.saveAdopting();
+    this.saveStatCache();
   }
 
   saveAdopting(): void {
@@ -523,42 +554,79 @@ class Engine {
 
   async adopt(file: ListedFile, sweptAt: number) {
     try {
+      this.adoptionController.signal.throwIfAborted();
       if (this.whereFolder() !== "here") return;
-      const stored = await this.storeIfPresent(file.path);
+      const stored = await this.storeIfPresent(file.path, this.adoptionController.signal);
       await this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         await this.recordAdopted(file, sweptAt, stored);
         this.adopting.delete(file.path);
+        this.adoptionStats.delete(file.path);
+        this.saveStatCache();
         this.saveAdopting();
       });
     } catch (error) {
-      if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
+      if (error instanceof HistoryClosedError) return;
+      if (this.adoptionController.signal.aborted) {
+        if ((error as Error).name === "AbortError") return;
+        throw error;
+      }
+      this.options.onError?.(error);
     }
   }
 
   async recordAdopted(file: ListedFile, sweptAt: number, stored: string | null) {
-    if (stored === null || this.whereFolder() !== "here") return;
+    this.adoptionController.signal.throwIfAborted();
+    if (this.whereFolder() !== "here") return;
+    if (stored === null) return this.recordUnavailableMedia(file.path, null);
     // A prune that ran while this copy waited for the queue may have taken its bytes.
-    const hash = this.blobs.has(stored) ? stored : await this.storeIfPresent(file.path);
-    if (hash === null) return;
+    const hash = this.blobs.has(stored)
+      ? stored
+      : await this.storeIfPresent(file.path, this.adoptionController.signal);
+    this.adoptionController.signal.throwIfAborted();
+    if (hash === null) return this.recordUnavailableMedia(file.path, null);
+    await this.recordMediaBaseline(file, sweptAt, hash);
+  }
+
+  async recordMediaBaseline(file: ListedFile, sweptAt: number, hash: string): Promise<void> {
     const change = { path: file.path, before: null, after: hash };
     const found = this.overwrittenBy(change, undefined, new Set());
     const start = found && this.blobs.has(found) ? found : hash;
     this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
-    this.log.baseline.set(file.path, start);
+    const originalStat = this.adoptionStats.get(file.path);
+    const current = statSync(join(this.dir, file.path), { throwIfNoEntry: false });
+    const unavailable =
+      originalStat == null || !current || originalStat !== statKey(current, Infinity);
+    if (unavailable) {
+      await this.recordUnavailableMedia(file.path, start);
+    } else {
+      this.log.baseline.set(file.path, start);
+      this.persistLog(baselineRecord(this.log));
+    }
     if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
-    this.persistLog(baselineRecord(this.log));
     this.saveStatCache();
+  }
+
+  async recordUnavailableMedia(path: string, after: string | null): Promise<void> {
+    const group = this.newGroup(OUTSIDE, "Original media version is unavailable");
+    group.changes.set(path, { path, before: null, after });
+    await this.commit(group, { unavailableBefore: [path] });
   }
 
   manifest(): Manifest {
     return new Map([...this.tracked].map(([path, file]) => [path, file.hash]));
   }
 
-  readStatCache(): Map<string, Tracked> {
+  readStatCache(): Map<string, CachedFile> {
     try {
-      const files = JSON.parse(readFileSync(join(this.home, "stat.json"), "utf-8"));
-      return new Map(Object.entries(files as Record<string, Tracked>));
+      const files: unknown = JSON.parse(readFileSync(join(this.home, "stat.json"), "utf-8"));
+      const cache = new Map<string, CachedFile>();
+      if (!files || typeof files !== "object") return cache;
+      for (const [path, value] of Object.entries(files)) {
+        const cached = cachedFile(value);
+        if (cached) cache.set(path, cached);
+      }
+      return cache;
     } catch {
       return new Map();
     }
@@ -575,7 +643,10 @@ class Engine {
   }
 
   saveStatCache(): void {
-    const files = JSON.stringify(Object.fromEntries(this.tracked));
+    const pending = [...this.adoptionStats].map(
+      ([path, stat]) => [path, { hash: null, stat }] as const,
+    );
+    const files = JSON.stringify(Object.fromEntries([...pending, ...this.tracked]));
     mkdirSync(this.home, { recursive: true });
     replaceFileAtomically(join(this.home, "stat.json"), files, 0o644);
   }
@@ -627,9 +698,9 @@ class Engine {
   }
 
   /** The file's hash once copied in; null when it was removed before the copy (the next sweep records that). */
-  async storeIfPresent(path: string): Promise<string | null> {
+  async storeIfPresent(path: string, signal?: AbortSignal): Promise<string | null> {
     try {
-      return await this.blobs.put(join(this.dir, path));
+      return await this.blobs.put(join(this.dir, path), signal);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
@@ -1070,6 +1141,7 @@ class Engine {
 
   async undoNow(id: string, who: HistoryWho, mode?: UndoMode): Promise<HistoryResult> {
     const entry = this.entry(id);
+    this.assertArchivedBefore([entry]);
     const changed = this.movedOn(entry);
     if (changed.length && !mode) return { ok: false, conflict: this.conflict(entry, changed) };
     if (mode === "back-to-before") {
@@ -1129,7 +1201,22 @@ class Engine {
     return { files: [...paths], newer: newer.map((later) => later.id) };
   }
 
+  assertArchivedBefore(entries: readonly HistoryEntry[]): void {
+    const paths = entries.flatMap((entry) => entry.unavailableBefore ?? []);
+    if (paths.length)
+      throw new Error(
+        `Cannot restore ${paths.join(", ")}: the original media version is unavailable in this history.`,
+      );
+  }
+
+  assertArchivedAt(point: string, side: HistoryEntrySide = "after"): void {
+    const index = point === START ? -1 : this.log.entries.findIndex((entry) => entry.id === point);
+    if (point !== START && index === -1) return;
+    this.assertArchivedBefore(this.log.entries.slice(index + (side === "after" ? 1 : 0)));
+  }
+
   async restoreNow(point: string, who: HistoryWho, label: string): Promise<HistoryEntry | null> {
+    this.assertArchivedAt(point);
     const files = manifestAt(this.log, point);
     if (!files) throw new Error("That point is no longer kept in this project's history.");
     const target = new Map<string, string | null>(
@@ -1190,12 +1277,14 @@ class Engine {
         ),
       peek: (point) => {
         this.assertOpen();
+        this.assertArchivedAt(point);
         const files = manifestAt(this.log, point);
         return files && Object.fromEntries(files);
       },
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
           this.entry(entryId);
+          this.assertArchivedAt(entryId, side);
           if (!existsSync(this.dir)) throw new Error(`The project folder is gone: ${this.dir}`);
           const dest = resolve(emptyDir);
           if (isWithin(this.dir, dest))
@@ -1234,13 +1323,16 @@ class Engine {
       replacedAtPath: () => this.whereFolder() === "replaced",
       close: () =>
         (this.closing ??= (async () => {
-          // A copy cut short would leave its media out of the baseline, so a change made while closed is lost.
-          await Promise.all(this.adopting.values());
+          // Stop resumable archives and clean their partial copies before releasing ownership.
+          this.adoptionController.abort();
+          const adoption = await Promise.allSettled(this.adopting.values());
           if (this.notedTimer) clearTimeout(this.notedTimer);
           this.stopHearing?.();
           const settled = this.queue(() => this.settleAll());
           this.closed = true;
           await settled;
+          const failed = adoption.find((result) => result.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
         })()),
     };
   }
@@ -1290,7 +1382,7 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
     const api = engine.api();
     return {
       ...api,
-      close: () => api.close().finally(release),
+      close: () => api.close().then(release),
     };
   } catch (error) {
     release();
