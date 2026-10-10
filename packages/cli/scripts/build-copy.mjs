@@ -67,7 +67,7 @@ async function main() {
   // Only the SPA studioServer.ts serves (index.html, /assets, /icons, /favicon.svg);
   // the rest of studio/dist is the npm library build.
   for (const entry of ["index.html", "assets", "icons", "favicon.svg"]) {
-    cpSync(join(studioDist, entry), join(DIST, "studio", entry), { recursive: true, force: true });
+    copyDir(join(studioDist, entry), join(DIST, "studio", entry));
   }
 
   for (const tmpl of ["blank", "from-file", "_shared"]) {

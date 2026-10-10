@@ -85,10 +85,6 @@ jobs:
       - name: Reject accidental file deletions
         if: github.event_name == 'pull_request'
         run: node scripts/check-no-main-deletions.mjs --base origin/main
-      # HEAD^1 is the base tip of the pull request merge commit; sizes the blobs git stores.
-      - name: Reject large binaries outside LFS
-        if: github.event_name == 'pull_request'
-        run: sh scripts/check-large-files.sh --range HEAD^1 HEAD
       # HEAD is the PR merge ref; its first parent is the current base tip, unlike the payload's
       # base.sha, which goes stale and would count the base's newer commits as the PR's changes.
       - name: Find the pull request's current base
@@ -98,6 +94,11 @@ jobs:
           git rev-parse --verify -q HEAD^2 > /dev/null || { echo "::error::HEAD is not the pull request merge commit"; exit 1; }
           sha="$(git rev-parse --verify HEAD^1)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Reject large binaries outside LFS
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: sh scripts/check-large-files.sh --range "$BASE_SHA" HEAD
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
@@ -123,6 +124,11 @@ jobs:
             code:
               - "registry/**"
               - "packages/**"
+              # Skills packages/cli/scripts/build-copy.mjs bundles into the CLI tarball.
+              - "skills/hyperframes/**"
+              - "skills/hyperframes-cli/**"
+              - "skills/gsap/**"
+              - "skills/media-use/**"
               - "scripts/**"
               - "package.json"
               - "bun.lock"

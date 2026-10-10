@@ -505,7 +505,11 @@ export function listPackageSizeIssues(name, sizes, budget) {
 function verifyPackageSizes(packedWorkspaces) {
   const budgets = JSON.parse(readFileSync(join(ROOT, SIZE_BUDGETS_FILE), "utf8"));
   const issues = packedWorkspaces.flatMap(({ filename, packedPackage }) =>
-    listPackageSizeIssues(packedPackage.name, measurePackedSize(filename), budgets[packedPackage.name]),
+    listPackageSizeIssues(
+      packedPackage.name,
+      measurePackedSize(filename),
+      budgets[packedPackage.name],
+    ),
   );
   if (issues.length > 0) throw new Error(`Package size budgets:\n${issues.join("\n")}`);
   console.log(`Verified ${packedWorkspaces.length} packages are within their size budgets.`);
@@ -529,8 +533,8 @@ function main() {
     const packedWorkspaces = listWorkspacePackageDirs()
       .map((workspace) => packAndVerifyWorkspace(workspace, packDir))
       .filter(Boolean);
-    verifyPackageSizes(packedWorkspaces);
     verifyPackedConsumer(packDir, packedWorkspaces);
+    verifyPackageSizes(packedWorkspaces);
   } finally {
     rmSync(packDir, { force: true, recursive: true });
   }

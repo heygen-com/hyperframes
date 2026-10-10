@@ -114,4 +114,27 @@ describe("check-large-files", () => {
       assert.match(stderr, /clip\.mp4 .*stored raw/);
     });
   });
+
+  it("--range rejects binaries whose names git would quote", () => {
+    withRepo(({ commit, range }) => {
+      const base = commit({ "seed.txt": "x" });
+      const head = commit({
+        "café.bin": bigBinary,
+        'quo"te.bin': bigBinary,
+        "tab\tname.bin": bigBinary,
+      });
+      const { ok, stderr } = range(base, head);
+      assert.equal(ok, false);
+      assert.match(stderr, /café\.bin/);
+      assert.match(stderr, /quo"te\.bin/);
+      assert.match(stderr, /tab\tname\.bin/);
+    });
+  });
+
+  it("--range fails on a ref git cannot resolve instead of passing", () => {
+    withRepo(({ commit, range }) => {
+      const head = commit({ "seed.txt": "x" });
+      assert.equal(range("no-such-ref", head).ok, false);
+    });
+  });
 });

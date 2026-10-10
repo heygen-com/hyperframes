@@ -46,7 +46,6 @@ describe("packed manifest verifier", () => {
     );
   });
 
-
   it("requires the CLI package and tarball to declare Apache-2.0", () => {
     assert.throws(
       () => verifyCliLicense("packages/cli", {}, {}),

@@ -33,24 +33,26 @@ MAX_KB="${HF_MAX_NONLFS_KB:-500}"
 # means read the file on disk.
 BLOB_REV=""
 RANGE_BASE=""
+RANGE_HEAD=""
 if [ "${1:-}" = "--range" ]; then
   [ "$#" -eq 3 ] || { echo "usage: $0 --range <base> <head>" >&2; exit 2; }
   RANGE_BASE="$2"
+  RANGE_HEAD="$3"
   BLOB_REV="$3:"
   shift 3
 elif [ "$#" -eq 0 ]; then
   BLOB_REV=":"
 fi
 
-# Emit the list of paths to check, one per line.
-# Added/Copied/Modified/Renamed only (skip Deleted — nothing to size).
+# Emit the paths to check, NUL-separated and unquoted (git quotes non-ASCII,
+# quotes and tabs otherwise). Added/Copied/Modified/Renamed only.
 list_files() {
   if [ -n "$RANGE_BASE" ]; then
-    git diff --name-only --diff-filter=ACMR "$RANGE_BASE" "${BLOB_REV%:}"
+    git diff -z --name-only --diff-filter=ACMR "$RANGE_BASE" "$RANGE_HEAD"
   elif [ -n "$BLOB_REV" ]; then
-    git diff --cached --name-only --diff-filter=ACMR
+    git diff -z --cached --name-only --diff-filter=ACMR
   else
-    printf '%s\n' "$@"
+    printf '%s\0' "$@"
   fi
 }
 
@@ -59,15 +61,20 @@ read_bytes() {
 }
 
 violations="$(mktemp)"
-trap 'rm -f "$violations"' EXIT INT TERM
+errors="$(mktemp)"
+paths="$(mktemp)"
+trap 'rm -f "$violations" "$errors" "$paths"' EXIT INT TERM
 
-list_files "$@" | while IFS= read -r f; do
+# A git error (bad ref, not a repo) must fail the check, not pass an empty list.
+list_files "$@" > "$paths" || { echo "ERROR: could not list the files to check." >&2; exit 2; }
+
+tr '\0' '\n' < "$paths" | while IFS= read -r f; do
   [ -n "$f" ] || continue
 
   if [ -n "$BLOB_REV" ]; then
-    # A symlink's blob is its target path and a submodule is not a blob; neither
-    # is the bloat we're hunting.
-    [ "$(git cat-file -t "$BLOB_REV$f" 2>/dev/null)" = "blob" ] || continue
+    # A submodule is not a blob; a symlink's blob is its short target path.
+    kind="$(git cat-file -t "$BLOB_REV$f")" || { printf '%s\n' "$f" >> "$errors"; continue; }
+    [ "$kind" = "blob" ] || continue
   else
     # Skip symlinks: `wc -c` would measure the link *target's* bytes, so a symlink
     # to a large LFS-tracked asset could be flagged even though the real blob is a
@@ -79,7 +86,8 @@ list_files "$@" | while IFS= read -r f; do
   # registry/ intentionally ships raw binary assets (block backgrounds, avatar
   # PNGs, .glb models, audio) so installed blocks stay portable without an LFS
   # round-trip. Those are the product, not accidental bloat — skip them here.
-  case "$f" in registry/*) continue ;; esac
+  # docs/public/catalog/ mirrors those same assets for the docs site.
+  case "$f" in registry/* | docs/public/catalog/*) continue ;; esac
 
   # Text is exempt, whatever its size, because the cost this hook exists to stop
   # is a binary one. Git delta-compresses text, so a file that grows by a few KB
@@ -113,6 +121,12 @@ list_files "$@" | while IFS= read -r f; do
 
   printf '%s\t%s\n' "$kb" "$f$note" >> "$violations"
 done
+
+if [ -s "$errors" ]; then
+  echo "ERROR: could not read these files from git:" >&2
+  sed 's/^/  • /' "$errors" >&2
+  exit 2
+fi
 
 # `while` ran in a pipeline subshell, so it couldn't set a parent-shell flag —
 # the violations file is the durable signal.
