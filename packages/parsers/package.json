@@ -243,7 +243,7 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
-    "@babel/parser": "^7.27.0",
+    "@babel/parser": "^7.29.9",
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
     "entities": "^7.0.1",
