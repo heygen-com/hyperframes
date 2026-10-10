@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -680,6 +680,32 @@ describe("background preview lifecycle", () => {
     expect(kill).toHaveBeenCalledWith(4321);
     expect(spawn).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ type: "started", port: 3002, pid: 5432 });
+  });
+
+  it("stops waiting when the detached child exits and reports its exit and log", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    const kill = vi.fn();
+    const scan = vi.fn(async () => []);
+    let onExit: ((code: number | null, signal: string | null) => void) | undefined;
+
+    await expect(
+      startBackgroundPreview(projectDir, 3002, {
+        scan,
+        spawn: (_command, _args, options) => {
+          writeSync(
+            options.stdio[1],
+            "Error: listen EPERM: operation not permitted 127.0.0.1:3002\n",
+          );
+          return { pid: 4321, unref: vi.fn(), once: (_event, listener) => (onExit = listener) };
+        },
+        sleep: async () => onExit?.(1, null),
+        kill,
+        stateHome,
+      }),
+    ).rejects.toThrow(/exited \(exit code 1\) before it was ready[\s\S]*listen EPERM/);
+
+    expect(kill).not.toHaveBeenCalled();
+    expect(scan.mock.calls.length).toBeLessThan(5);
   });
 
   it("reaps a detached child that never becomes reachable without recording ownership", async () => {
