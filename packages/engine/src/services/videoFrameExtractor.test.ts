@@ -71,6 +71,13 @@ const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 const HAS_ZSCALE =
   HAS_FFMPEG &&
   /\szscale\s/.test(spawnSync("ffmpeg", ["-hide_banner", "-filters"]).stdout.toString());
+const FFMPEG_ENCODERS = HAS_FFMPEG
+  ? spawnSync("ffmpeg", ["-hide_banner", "-encoders"]).stdout.toString()
+  : "";
+// Homebrew's ffmpeg has libsvtav1 but not libaom-av1. Either one writes an untagged AV1 stream.
+const AV1_ENCODER = ["libaom-av1", "libsvtav1"].find((name) =>
+  new RegExp(`\\s${name}\\s`).test(FFMPEG_ENCODERS),
+);
 
 describe("resolveVideoExtractionDuration", () => {
   const metadata = (
@@ -1528,7 +1535,9 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     { codec: "libx264", height: 720, matrix: "bt709", format: "png" },
     { codec: "libx264", height: 720, matrix: "bt709", format: "jpg" },
     { codec: "libvpx-vp9", height: 720, matrix: "bt601", format: "png" },
-    { codec: "libaom-av1", height: 720, matrix: "bt601", format: "png" },
+    ...(AV1_ENCODER
+      ? [{ codec: AV1_ENCODER, height: 720, matrix: "bt601", format: "png" } as const]
+      : []),
   ] as const)(
     "reads an untagged $height-line $codec source as $matrix like Chrome's own playback ($format)",
     async ({ codec, height, matrix, format }) => {
