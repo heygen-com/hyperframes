@@ -1601,7 +1601,6 @@ export async function runEmbeddedMode(
     );
   } catch (err: unknown) {
     watcher.close();
-    // A running spinner's timer would keep this process alive after the failure.
     if (!options?.json) s.stop(c.error("Could not start studio"));
     reportPreviewFailure(
       Boolean(options?.json),
