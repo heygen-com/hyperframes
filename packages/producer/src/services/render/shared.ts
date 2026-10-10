@@ -47,6 +47,8 @@ export interface CompositionMetadata {
   videos: VideoElement[];
   audios: AudioElement[];
   images: ImageElement[];
+  /** Serialised master bus chain from the compiled document; no clip carries it. */
+  masterFxChain?: string;
   width: number;
   height: number;
 }

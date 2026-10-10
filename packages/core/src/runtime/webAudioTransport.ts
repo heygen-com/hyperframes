@@ -1,4 +1,9 @@
-import { attachElementFxChain, readElementAutomation, type ElementFxHandle } from "./audioFx.js";
+import {
+  attachElementFxChain,
+  readElementAutomation,
+  type ElementFxHandle,
+  type FxAttributes,
+} from "./audioFx.js";
 import {
   clearParamLane,
   scheduleParamLane,
@@ -6,13 +11,20 @@ import {
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
-import { audioGroupOf, readAudioGroupVolume, resolveGroupElement } from "../audioGroups.js";
+import {
+  audioGroupOf,
+  readAudioGroupVolume,
+  resolveGroupElement,
+  resolveMasterBusElement,
+} from "../audioGroups.js";
 import { swallow } from "./diagnostics";
 import { createLevelTap, type LevelTap, type StereoLevel } from "./levelTap.js";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
 import { readElementPlaybackRate } from "./media.js";
 import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
+
+const MASTER_FX_ATTRS: FxAttributes = { automation: null };
 
 function normalizeRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
@@ -144,6 +156,10 @@ export class WebAudioTransport {
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
+  /** Where the master bus chain lands; the program meter taps here. */
+  private _busOut: GainNode | null = null;
+  /** The chain on the composition root, built on first schedule and kept for the session. */
+  private _master: { fx: ElementFxHandle | null; generation: number } | null = null;
   /** Preview volume and mute. Downstream of `_masterGain`; meters tap the program. */
   private _monitorGain: GainNode | null = null;
   private _masterVolume = 1;
@@ -195,8 +211,10 @@ export class WebAudioTransport {
       this._ctx = new AudioContext();
       this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
+      this._busOut = this._ctx.createGain();
       this._monitorGain = this._ctx.createGain();
-      this._masterGain.connect(this._monitorGain);
+      this._masterGain.connect(this._busOut);
+      this._busOut.connect(this._monitorGain);
       this._monitorGain.connect(this._ctx.destination);
       this.applyMasterGain();
       if (this._metering) this.attachMasterTap();
@@ -578,7 +596,7 @@ export class WebAudioTransport {
 
   private attachMasterTap(): void {
     if (this._ctx && this._masterGain && !this._masterTap) {
-      this._masterTap = createLevelTap(this._ctx, this._masterGain);
+      this._masterTap = createLevelTap(this._ctx, this._busOut ?? this._masterGain);
     }
   }
 
@@ -606,6 +624,36 @@ export class WebAudioTransport {
     }
   }
 
+  /**
+   * The master bus chain, between the sum of every clip and group and the monitor.
+   * A seek re-anchors it once per play generation; no root yet is retried next schedule.
+   */
+  private ensureMasterBus(doc: Document, timing: AutomationTiming): void {
+    if (!this._ctx || !this._masterGain || !this._busOut) return;
+    if (this._master) {
+      if (this._master.generation === this._playGeneration) return;
+      try {
+        this._master.fx?.reanchor(timing);
+        this._master.generation = this._playGeneration;
+      } catch (err) {
+        swallow("webAudioTransport.masterReanchor", err);
+      }
+      return;
+    }
+    const root = resolveMasterBusElement(doc);
+    if (!root) return;
+    this._masterGain.disconnect(this._busOut);
+    const fx = attachElementFxChain(
+      this._ctx,
+      root,
+      this._masterGain,
+      this._busOut,
+      timing,
+      MASTER_FX_ATTRS,
+    );
+    this._master = { fx, generation: this._playGeneration };
+  }
+
   /** Master, unless `el` belongs to a group — then that group's bus (built on
    *  first use, per `groupInput`). */
   private resolveDestination(
@@ -615,9 +663,10 @@ export class WebAudioTransport {
     safeRate: number,
   ): GainNode | null {
     if (!this._masterGain) return null;
+    const groupTiming: AutomationTiming = { scheduledAt, elapsed: compositionTime, rate: safeRate };
+    this.ensureMasterBus(el.ownerDocument, groupTiming);
     const groupId = audioGroupOf(el);
     if (!groupId) return this._masterGain;
-    const groupTiming: AutomationTiming = { scheduledAt, elapsed: compositionTime, rate: safeRate };
     return this.groupInput(groupId, el.ownerDocument, groupTiming) ?? this._masterGain;
   }
 
@@ -788,17 +837,22 @@ export class WebAudioTransport {
         swallow("webAudioTransport.setRate", err);
       }
     }
-    // Group buses are not in `_activeSources` — they outlive it — so their FX
-    // automation needs re-aiming here too, or a rate change leaves a group's
-    // envelopes running the old plan over audio at the new speed.
-    for (const group of this._groups.values()) {
+    this.setBusRate(safeRate);
+    return true;
+  }
+
+  // Group buses and the master bus are not in `_activeSources` — they outlive it — so
+  // their FX automation needs re-aiming too, or a rate change leaves their envelopes
+  // running the old plan over audio at the new speed.
+  private setBusRate(rate: number): void {
+    const buses = [...this._groups.values(), ...(this._master ? [this._master] : [])];
+    for (const bus of buses) {
       try {
-        group.fx?.setRate(safeRate);
+        bus.fx?.setRate(rate);
       } catch (err) {
-        swallow("webAudioTransport.setRate.group", err);
+        swallow("webAudioTransport.setRate.bus", err);
       }
     }
-    return true;
   }
 
   // A bounded source's wall-clock duration was baked into start()'s duration
@@ -890,6 +944,8 @@ export class WebAudioTransport {
     this.stopMetering();
     for (const group of this._groups.values()) group.dispose();
     this._groups.clear();
+    this._master?.fx?.dispose();
+    this._master = null;
     this._bufferCache.clear();
     this._failedSrcs.clear();
     this._mediaElementSources = new WeakMap();
@@ -906,6 +962,7 @@ export class WebAudioTransport {
     }
     this._ctx = null;
     this._masterGain = null;
+    this._busOut = null;
     this._monitorGain = null;
     this._masterVolume = 1;
     this._masterMuted = false;

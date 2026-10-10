@@ -128,6 +128,22 @@ export function isMemberGroupHidden(
   return resolveGroupElement(doc, groupId)?.hasAttribute("data-hidden") ?? false;
 }
 
+/**
+ * The top-level composition root, the only element the master bus is read from;
+ * a sub-composition's root is skipped, so repeating one cannot stack chains.
+ */
+export function resolveMasterBusElement(root: ParentNode): Element | null {
+  for (const el of root.querySelectorAll("[data-composition-id]")) {
+    if (!el.parentElement?.closest("[data-composition-id]")) return el;
+  }
+  return null;
+}
+
+/** The master bus chain: the top-level root's `data-fx-chain`, if it carries one. */
+export function readMasterFxChain(root: ParentNode): string | undefined {
+  return resolveMasterBusElement(root)?.getAttribute(HF_AUDIO_FX_ATTR) || undefined;
+}
+
 export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
   const membersByGroup = new Map<string, string[]>();
   const candidates = root.querySelectorAll(

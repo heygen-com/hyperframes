@@ -254,6 +254,7 @@ export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 export {
   MIXED_AUDIO_FILENAME,
   parseAudioElements,
+  parseMasterFxChain,
   processCompositionAudio,
 } from "./services/audioMixer.js";
 export { cloneCaptureWarning, cloneCaptureWarnings } from "./services/captureWarning.js";

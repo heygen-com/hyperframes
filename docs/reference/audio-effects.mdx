@@ -180,6 +180,41 @@ dangles.
   preview never lays it out.
 - Group ids and element ids share one namespace.
 
+### The master bus: `data-fx-chain` on the composition root
+
+```html
+<div id="root" data-composition-id="main" data-width="1920" data-height="1080"
+  data-fx-chain="{&quot;version&quot;:1,&quot;nodes&quot;:[
+    {&quot;type&quot;:&quot;truepeak&quot;,&quot;id&quot;:&quot;m1&quot;,&quot;label&quot;:&quot;Delivery ceiling&quot;,
+     &quot;params&quot;:{&quot;ceiling&quot;:-1.5,&quot;lookahead&quot;:3,&quot;release&quot;:80}}
+  ]}"
+>
+```
+
+The master bus is the `data-fx-chain` on the top-level composition root. It runs
+once over the sum of every clip and every group, after each group's own chain and
+fader, so a limiter here sees the peak of the whole mix. A clip can belong to
+only one group, so this is the way to put one effect across everything.
+
+- Only the **top-level** composition root is read as the master bus. On a clip or
+  a group `data-fx-chain` keeps its own meaning, and on a sub-composition's root
+  it is not applied while a parent composition contains it. A sub-composition file
+  previewed or rendered on its own is the top-level root, so its chain is the
+  master bus there.
+- There is no master automation: `data-automation` on the root is not read as
+  the master's.
+- The render sums the tracks to a float WAV, runs the chain, and only then
+  encodes AAC, so the chain reads unclipped samples. Preview inserts the chain
+  between the clips' sum and the monitor.
+- With a master chain on the root, preview plays every audible `<video>` through
+  that bus too, as the render does. Without one, a video at volume 1 with no
+  chain, group or automation of its own stays on native output.
+- An unreadable master chain **fails the whole mix**: the render stops with an
+  `audio_processing_failed` error under every strictness setting, and exports
+  nothing. Preview plays dry with no message, and no lint rule checks a chain's
+  contents, so one typo on the root blocks every export of that composition.
+  Check a master chain in preview before rendering.
+
 ## Effect registry
 
 Sixteen effects. Values outside a range are clamped on read. **AUTO** marks a
@@ -223,7 +258,7 @@ the peak arrives, and holds that estimate at `ceiling`. Channels share one
 gain. It delays its output by `lookahead` plus about 0.3 ms (3.3 to 10.3 ms across
 the range): the offline render trims that delay, live preview plays it, so the
 sound is that much behind the picture. A seek clears the limiter's delay line and
-held gain on a group bus. Changing `lookahead` rebuilds the node.
+held gain on a group or master bus. Changing `lookahead` rebuilds the node.
 
 The ceiling is held against that 4x estimate, not against the waveform itself. A
 4x interpolator cannot see the peaks of content close to Nyquist, so the true peak

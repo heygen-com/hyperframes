@@ -18,8 +18,10 @@ export function audibleVideoNeedsWebAudio(fields: {
   fxChain?: string | null;
   automation?: string | null;
   audioGroup?: string | null;
+  masterChain?: string | null;
 }): boolean {
   return (
-    (fields.volume ?? 1) > 1 || Boolean(fields.fxChain || fields.automation || fields.audioGroup)
+    (fields.volume ?? 1) > 1 ||
+    Boolean(fields.fxChain || fields.automation || fields.audioGroup || fields.masterChain)
   );
 }

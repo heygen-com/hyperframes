@@ -288,7 +288,8 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     id: "limiter",
     label: "Limiter",
     group: "dynamics",
-    description: "Hard ceiling — nothing gets past the limit.",
+    description:
+      "Peak limiter that follows the signal's level. It has no lookahead, so a fast peak or an inter-sample peak can pass the ceiling; use the true-peak limiter for a delivery limit.",
     params: [
       {
         kind: "number",

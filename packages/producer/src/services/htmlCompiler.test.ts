@@ -744,6 +744,25 @@ describe("detectRenderModeHints", () => {
     expect(document.querySelector("#root")?.getAttribute("src")).toBe("root.png");
   });
 
+  it("reads the root's data-fx-chain as the composition's master chain, apart from any clip", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-master-chain-"));
+    const chain = '{"version":1,"nodes":[]}';
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body>
+  <div data-composition-id="main" data-width="100" data-height="100" data-duration="1" data-fx-chain='${chain}'>
+    <video id="talk" src="talk.mp4" data-start="0" data-duration="1"></video>
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.masterFxChain).toBe(chain);
+    expect(compiled.audios.map((audio) => audio.id)).toEqual(["talk-audio"]);
+    expect(compiled.audios[0]).not.toHaveProperty("fxChain");
+  });
+
   // Shared fixture builder for the assertSubCompositionsUsable / EmptyCompositionError
   // pre-flight tests below. `subCompFiles` is a map of compositions/-relative
   // filename to raw file content (empty string / malformed text / valid HTML).

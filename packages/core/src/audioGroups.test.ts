@@ -4,6 +4,7 @@ import {
   ensureAudioGroupInertStyle,
   HF_AUDIO_GROUP_ATTR,
   isMemberGroupHidden,
+  readMasterFxChain,
   resolveAudioGroups,
   resolveCarveSourceIds,
   resolveGroupElement,
@@ -303,5 +304,29 @@ describe("ensureAudioGroupInertStyle", () => {
     ensureAudioGroupInertStyle(document);
     ensureAudioGroupInertStyle(document);
     expect(document.querySelectorAll("#__hf-audio-group-inert")).toHaveLength(1);
+  });
+});
+
+describe("readMasterFxChain", () => {
+  const CHAIN = `{&quot;version&quot;:1,&quot;nodes&quot;:[]}`;
+
+  it("reads the chain off the top-level composition root", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-fx-chain="${CHAIN}"></div>`;
+    expect(readMasterFxChain(document)).toBe('{"version":1,"nodes":[]}');
+  });
+
+  it("is undefined when the root carries none", () => {
+    document.body.innerHTML = `<div data-composition-id="main"><audio id="a"></audio></div>`;
+    expect(readMasterFxChain(document)).toBeUndefined();
+  });
+
+  it("ignores a chain on a nested composition root", () => {
+    document.body.innerHTML = `<div data-composition-id="main"><div data-composition-id="inner" data-fx-chain="${CHAIN}"></div></div>`;
+    expect(readMasterFxChain(document)).toBeUndefined();
+  });
+
+  it("ignores a chain on a clip", () => {
+    document.body.innerHTML = `<div data-composition-id="main"><audio id="a" data-fx-chain="${CHAIN}"></audio></div>`;
+    expect(readMasterFxChain(document)).toBeUndefined();
   });
 });

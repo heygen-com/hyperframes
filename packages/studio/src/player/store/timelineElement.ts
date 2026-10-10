@@ -62,9 +62,10 @@ export interface TimelineElement {
   /** Clip-edge fades from `data-fade-in` / `data-fade-out`, seconds; absent means none. */
   fadeIn?: number;
   fadeOut?: number;
-  /** Verbatim `data-fx-chain` / `data-automation`; see automationLaneData. */
+  /** Verbatim `data-fx-chain` / `data-automation` (`masterChain`: the root's); see automationLaneData. */
   fxChain?: string;
   automation?: string;
+  masterChain?: string;
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;
   /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */

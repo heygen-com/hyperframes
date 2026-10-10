@@ -33,7 +33,11 @@ import type {
   MixResult,
 } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
-import { HF_AUDIO_FX_ATTR, parseAudioFxChain } from "@hyperframes/core/audio-fx";
+import {
+  HF_AUDIO_FX_ATTR,
+  parseAudioFxChain,
+  type HfAudioFxChain,
+} from "@hyperframes/core/audio-fx";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
   parseAutomation,
@@ -55,7 +59,7 @@ import {
   timeAtSourceTime,
   type RateSpec,
 } from "@hyperframes/core";
-import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { readMasterFxChain, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -551,6 +555,15 @@ export function volumeLaneKeyframes(
   return out;
 }
 
+/**
+ * The top-level root's `data-fx-chain`. It belongs to the composition, not to a clip,
+ * so `processCompositionAudio` takes it beside the tracks: a track the render adds
+ * itself has no parsed element to carry it.
+ */
+export function parseMasterFxChain(html: string): string | undefined {
+  return readMasterFxChain(parseHTML(unwrapTemplate(html)).document);
+}
+
 export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
@@ -826,6 +839,7 @@ async function mixAudioTracks(
   totalDuration: number,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
+  floatWav = false,
 ): Promise<MixResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const masterOutputGain = config?.audioGain ?? DEFAULT_CONFIG.audioGain;
@@ -889,10 +903,7 @@ async function mixAudioTracks(
       scriptPath,
       "-map",
       "[out]",
-      "-acodec",
-      "aac",
-      "-b:a",
-      "192k",
+      ...(floatWav ? ["-acodec", "pcm_f32le", "-ar", "48000"] : ["-acodec", "aac", "-b:a", "192k"]),
       "-t",
       String(totalDuration),
       "-y",
@@ -1109,6 +1120,56 @@ async function mixGroupMembers(
   return { success: true, degradedAutomation };
 }
 
+/**
+ * Sum the tracks to a float WAV, run the master chain over the sum, then AAC-encode.
+ * Groups are already folded into `tracks`, and the sum stays float until the encoder.
+ */
+async function mixThroughMasterBus(
+  tracks: AudioTrack[],
+  masterChain: HfAudioFxChain,
+  outputPath: string,
+  workDir: string,
+  totalDuration: number,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
+): Promise<MixResult> {
+  const sumPath = join(workDir, "master-sum.wav");
+  const sum = await mixAudioTracks(tracks, sumPath, totalDuration, signal, config, true);
+  if (!sum.success) return { ...sum, outputPath };
+
+  const fx = await applyAudioFxChain(sumPath, masterChain, join(workDir, "master-fx.wav"), {
+    trackId: "master",
+    signal,
+  });
+  const encoded = await runFfmpeg(
+    [
+      "-i",
+      fx.path,
+      "-t",
+      String(totalDuration),
+      "-acodec",
+      "aac",
+      "-b:a",
+      "192k",
+      "-y",
+      outputPath,
+    ],
+    { signal, timeout: config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout },
+  );
+  if (!encoded.success) {
+    const failure = ffmpegFailure("mix", encoded);
+    return {
+      success: false,
+      outputPath,
+      durationMs: sum.durationMs + encoded.durationMs,
+      tracksProcessed: 0,
+      error: failure.detail,
+      failures: [failure],
+    };
+  }
+  return { ...sum, outputPath, durationMs: sum.durationMs + encoded.durationMs };
+}
+
 export async function processCompositionAudio(
   elements: AudioElement[],
   baseDir: string,
@@ -1116,7 +1177,10 @@ export async function processCompositionAudio(
   outputPath: string,
   totalDuration: number,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
+    /** Serialised master bus chain, from `parseMasterFxChain`. */
+    masterFxChain?: string;
+  },
   compiledDir?: string,
 ): Promise<MixResult> {
   const startMs = Date.now();
@@ -1438,12 +1502,15 @@ export async function processCompositionAudio(
   // The producer only surfaces audio failures when `success` is false; mixing
   // the remaining tracks made the omitted cue indistinguishable from a valid
   // render unless someone manually audited that exact audio window.
-  const bail = (): MixResult => {
+  const removeWorkDir = (): void => {
     try {
       rmSync(workDir, { recursive: true, force: true });
     } catch {
       /* ignore */
     }
+  };
+  const bail = (): MixResult => {
+    removeWorkDir();
     return {
       success: false,
       outputPath,
@@ -1456,6 +1523,28 @@ export async function processCompositionAudio(
     };
   };
   if (failures.length > 0) return bail();
+
+  // Parsed before any group is mixed, so a malformed master chain fails fast and
+  // as a failure, the way an unreadable group chain does.
+  let masterChain: HfAudioFxChain | undefined;
+  const masterFxJson = config?.masterFxChain;
+  if (masterFxJson) {
+    try {
+      masterChain = parseAudioFxChain(masterFxJson);
+    } catch (err: unknown) {
+      failures.push({
+        stage: "mix",
+        reason: "internal",
+        owner: "user",
+        retryable: false,
+        elementId: "master",
+        detail: boundedDetail(
+          `Master bus chain is unreadable: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      });
+      return bail();
+    }
+  }
 
   // Sub-mix each group into one processed bus (design doc §1.3), then fold it
   // into the flat track list as a single AudioTrack — everything downstream
@@ -1561,7 +1650,10 @@ export async function processCompositionAudio(
         ...(bakedEnvelope || !laneKeyframes?.length ? {} : { volumeKeyframes: laneKeyframes }),
       });
     } catch (err: unknown) {
-      if (err instanceof AudioFxRenderError) throw err;
+      if (err instanceof AudioFxRenderError) {
+        removeWorkDir();
+        throw err;
+      }
       failures.push({
         stage: "mix",
         reason: "internal",
@@ -1578,12 +1670,22 @@ export async function processCompositionAudio(
   }
   if (failures.length > 0) return bail();
 
-  const mixResult = await mixAudioTracks(tracks, outputPath, totalDuration, signal, config);
-
+  let mixResult: MixResult;
   try {
-    rmSync(workDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
+    mixResult =
+      masterChain && tracks.length > 0
+        ? await mixThroughMasterBus(
+            tracks,
+            masterChain,
+            outputPath,
+            workDir,
+            totalDuration,
+            signal,
+            config,
+          )
+        : await mixAudioTracks(tracks, outputPath, totalDuration, signal, config);
+  } finally {
+    removeWorkDir();
   }
 
   // A group whose sub-mix had to drop member automation reports it the same

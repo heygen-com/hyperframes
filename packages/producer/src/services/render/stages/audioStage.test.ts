@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { AudioElement } from "@hyperframes/engine";
+import { parseMasterFxChain, type AudioElement, type VideoElement } from "@hyperframes/engine";
 
 const { processCompositionAudioMock } = vi.hoisted(() => ({
   processCompositionAudioMock: vi.fn(),
@@ -14,6 +14,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
 });
 
 import { runAudioStage } from "./audioStage.js";
+import { appendAutoDetectedVideoAudio } from "./extractVideosStage.js";
 import { EncoderInterruptedError } from "../encoderInterruption.js";
 
 // Regression: hasAudio flipping to false used to be indistinguishable from
@@ -83,6 +84,55 @@ describe("runAudioStage", () => {
       5,
       undefined,
       { ffmpegProcessTimeout: 3_600_000, audioGain: 1 },
+      expect.any(String),
+    );
+  });
+
+  it("hands the master chain to the mixer when the only track is the one the render added for a plain video", async () => {
+    // A plain <video> has no audio entry at compile time; the render adds one after probing
+    // its file. That track is not parsed from HTML, so the chain cannot ride on it.
+    const chain = '{"version":1,"nodes":[]}';
+    const html = `<div data-composition-id="main" data-fx-chain='${chain}'><video id="talk" src="talk.mp4" data-start="0" data-duration="5"></video></div>`;
+    const video: VideoElement = {
+      id: "talk",
+      src: "talk.mp4",
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: true,
+    };
+    const composition = {
+      videos: [video],
+      audios: [] as AudioElement[],
+      masterFxChain: parseMasterFxChain(html),
+    };
+    appendAutoDetectedVideoAudio(composition, [
+      {
+        videoId: "talk",
+        metadata: { hasAudio: true },
+      } as Parameters<typeof appendAutoDetectedVideoAudio>[1][number],
+    ]);
+    expect(composition.audios.map((audio) => audio.id)).toEqual(["talk-audio"]);
+    processCompositionAudioMock.mockResolvedValue({
+      success: true,
+      outputPath: "audio.m4a",
+      durationMs: 1,
+      tracksProcessed: 1,
+    });
+
+    await runAudioStage(
+      makeInput({ audios: composition.audios, masterFxChain: composition.masterFxChain }),
+    );
+
+    expect(processCompositionAudioMock).toHaveBeenCalledWith(
+      composition.audios,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      5,
+      undefined,
+      { ffmpegProcessTimeout: 3_600_000, audioGain: 1, masterFxChain: chain },
       expect.any(String),
     );
   });

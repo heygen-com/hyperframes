@@ -12,6 +12,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip, IframeWindow, TimelineLike } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import { readMasterFxChain } from "@hyperframes/core/audio-groups";
 import { linkScopeOf } from "@hyperframes/core/media-link";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import { groupInfoFor } from "./timelineGroupInfo";
@@ -167,6 +168,8 @@ export function createTimelineElementFromManifestClip(params: {
       if (info.fxChain) entry.audioGroupFxChain = info.fxChain;
       if (info.automation) entry.audioGroupAutomation = info.automation;
     }
+    const masterChain = readMasterFxChain(doc ?? hostEl.ownerDocument);
+    if (masterChain) entry.masterChain = masterChain;
     const fxChain = hostEl.getAttribute("data-fx-chain");
     if (fxChain) entry.fxChain = fxChain;
     const automation = hostEl.getAttribute("data-automation");
@@ -330,6 +333,8 @@ export function parseTimelineFromDOM(
     // Read from the element, like the manifest path does: without these an audio
     // clip parsed straight from the DOM reserved no automation height and drew no
     // lanes, while the property panel still showed its chain.
+    const domMasterChain = readMasterFxChain(doc);
+    if (domMasterChain) entry.masterChain = domMasterChain;
     const domFxChain = el.getAttribute("data-fx-chain");
     if (domFxChain) entry.fxChain = domFxChain;
     const domAutomation = el.getAttribute("data-automation");

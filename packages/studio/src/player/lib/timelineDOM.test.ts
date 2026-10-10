@@ -632,6 +632,61 @@ describe("audio FX attributes on parsed elements", () => {
   });
 });
 
+describe("the master chain on parsed elements", () => {
+  const CHAIN = '{"version":1,"nodes":[{"type":"truepeak","id":"m1","params":{}}]}';
+  const parseVideo = (rootAttrs: string, inner = ""): TimelineElement | undefined => {
+    const doc = new DOMParser().parseFromString(
+      `<div data-composition-id="main" data-start="0" data-duration="10" ${rootAttrs}>
+         <video id="talk" data-start="0" data-duration="10" data-has-audio="true"></video>${inner}
+       </div>`,
+      "text/html",
+    );
+    return parseTimelineFromDOM(doc, 10).find((e) => e.domId === "talk");
+  };
+
+  it("copies the root's data-fx-chain onto an element that has none of its own", () => {
+    const talk = parseVideo(`data-fx-chain='${CHAIN}'`);
+    expect(talk?.masterChain).toBe(CHAIN);
+    expect(talk?.fxChain).toBeUndefined();
+  });
+
+  it("leaves it unset when the root carries none", () => {
+    expect(parseVideo("")?.masterChain).toBeUndefined();
+  });
+
+  it("ignores a sub-composition root's chain", () => {
+    const inner = `<div data-composition-id="inner" data-fx-chain='${CHAIN}'></div>`;
+    expect(parseVideo("", inner)?.masterChain).toBeUndefined();
+  });
+
+  it("carries it on the manifest path too", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-fx-chain='${CHAIN}'>
+        <video id="talk" data-has-audio="true"></video>
+      </div>
+    `);
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "talk",
+        label: "Talk",
+        kind: "video",
+        tagName: "video",
+        start: 0,
+        duration: 10,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: "main",
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("talk"),
+    });
+    expect(element.masterChain).toBe(CHAIN);
+  });
+});
+
 // A composition clip trimmed by 30 px collapsed to its first nested video's 1.77 s: that length capped the trim.
 describe("a composition clip's source length", () => {
   const scene = `

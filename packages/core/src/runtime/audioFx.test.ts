@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { attachElementFxChain } from "./audioFx.js";
+import { attachElementFxChain, type FxAttributes } from "./audioFx.js";
 import { defaultAudioFxParams, HF_AUDIO_FX, HF_AUDIO_FX_ATTR } from "../audioFx.js";
 
 /**
@@ -435,7 +435,7 @@ describe("attachElementFxChain", () => {
       ],
     });
 
-    const build = () => {
+    const build = (attrs?: FxAttributes) => {
       const clock = { currentTime: 0 };
       const made: { frequency: TimedParam }[] = [];
       class TimedNode extends Node {
@@ -461,6 +461,7 @@ describe("attachElementFxChain", () => {
         new Node() as never,
         new Node() as never,
         { scheduledAt: 0, elapsed: 0, rate: 1 },
+        attrs,
       );
       return { clock, node, handle, param: () => made[0]?.frequency as unknown as TimedParam };
     };
@@ -493,6 +494,14 @@ describe("attachElementFxChain", () => {
       node.setAttribute("data-automation", lane);
       await new Promise((r) => setTimeout(r, 0));
       expect(param().last()).toEqual({ time: 4, duration: 1 });
+    });
+
+    it("books no lane for a chain told its element carries none (the master bus)", () => {
+      // The root's `data-automation` belongs to the composition, not to the bus.
+      const { param } = build({ automation: null });
+      expect(param().last()).toBeUndefined();
+      const { param: ownParam } = build();
+      expect(ownParam().last()).toEqual({ time: 0, duration: 8 });
     });
 
     it("ignores a rate that is not a rate", () => {

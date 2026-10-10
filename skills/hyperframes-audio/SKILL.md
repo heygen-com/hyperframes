@@ -197,9 +197,9 @@ for rumble; a low-pass darkens or muffles deliberately.
 
 **Dynamics** (`gain`, `compressor`, `limiter`, `truepeak`, `gate`) decide how a track's level
 behaves over time. Compression narrows the distance between loud and quiet so the
-quiet parts can come up. A limiter is a ceiling — it does not shape anything, it
-guarantees nothing gets past. `limiter` follows the level, so for a delivery
-ceiling use `truepeak`, which looks ahead and measures the inter-sample peak. It
+quiet parts can come up. A limiter pulls peaks down toward a ceiling and does not
+shape anything else. `limiter` follows the level and has no lookahead, so a fast
+or inter-sample peak can pass its ceiling; for a delivery ceiling use `truepeak`, which looks ahead and measures the inter-sample peak. It
 holds a 4x estimate at the ceiling, not the waveform itself, so full-band noise can
 end up to 1.7 dB over: under a hard delivery limit set the ceiling at least 2 dB
 below it. A gate removes what is below a threshold, which is
@@ -343,6 +343,13 @@ applied twice: the level half measures the bed's own audio, which a bus has none
 of, so only the filters survive — and a bus and its members are one signal path,
 so the bed then runs through the bus's filters AND its own. The
 `audio_group_carve_attr` lint rule catches it.
+
+**One effect across the whole mix: the master bus.** A clip names exactly one
+group, so a limiter or EQ over everything cannot be a group. Put it in
+`data-fx-chain` on the top-level composition root: it runs once over the sum of all clips and groups, after each
+group's chain and fader. A delivery ceiling is the usual use — `truepeak` last in
+the master chain. Only the top-level root is read as the master bus; a
+sub-composition root's `data-fx-chain` is not applied inside a parent composition. No master automation.
 
 **One clip is not a bus.** A group exists to give several tracks one chain, one
 fader and one clock. Wrapping a single clip in a bus buys nothing the clip's own
