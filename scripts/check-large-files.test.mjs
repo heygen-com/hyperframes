@@ -242,6 +242,20 @@ describe("check-large-files", () => {
     });
   });
 
+  it("staged mode exempts a new registry asset staged with its catalog copy", () => {
+    withRepo(({ commit, staged }) => {
+      commit({ "seed.txt": "x" });
+      const { ok, stderr } = staged({
+        "registry/a/bg.png": bigBinary,
+        "docs/public/catalog/a/bg.png": bigBinary,
+        "docs/public/catalog/c/random.mp4": binaryVariant(2),
+      });
+      assert.equal(ok, false);
+      assert.match(stderr, /catalog\/c\/random\.mp4/);
+      assert.doesNotMatch(stderr, /registry\/|catalog\/a\/bg\.png/);
+    });
+  });
+
   it("exempts registry/ binaries and catalog copies of them, but not other catalog files", () => {
     withRepo(({ commit, range }) => {
       const base = commit({ "registry/a/bg.png": bigBinary });
@@ -253,7 +267,7 @@ describe("check-large-files", () => {
       const { ok, stderr } = range(base, head);
       assert.equal(ok, false);
       assert.match(stderr, /docs\/public\/catalog\/c\/random\.mp4/);
-      assert.doesNotMatch(stderr, /registry\/|catalog\/a\/bg\.png/);
+      assert.doesNotMatch(stderr, /registry\/|catalog\/a\/bg\.png|HF_MAX_NONLFS_KB/);
     });
   });
 

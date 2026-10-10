@@ -155,7 +155,11 @@ fi
 # the violations file is the durable signal.
 if [ -s "$violations" ]; then
   echo "ERROR: large binaries are being committed to git instead of LFS." >&2
-  echo "       (limit: ${MAX_KB} KB — override per-commit with HF_MAX_NONLFS_KB)" >&2
+  if [ "$MODE" = range ]; then
+    echo "       (limit: ${MAX_KB} KB)" >&2
+  else
+    echo "       (limit: ${MAX_KB} KB — override per-commit with HF_MAX_NONLFS_KB)" >&2
+  fi
   echo >&2
   while IFS='	' read -r kb f; do
     printf '  • %s (%s KB)\n' "$f" "$kb" >&2
