@@ -1,9 +1,39 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
+
+vi.mock("node:child_process", () => ({ spawn: spawnMock }));
+
 import {
   buildBrowserArgs,
+  openBrowser,
   parseRemoteDebuggingPort,
   validateRemoteDebuggingPortDeps,
 } from "./openBrowser.js";
+
+describe("openBrowser", () => {
+  it("launches the custom browser detached with its Windows console hidden", () => {
+    const unref = vi.fn();
+    spawnMock.mockReturnValue({ on: vi.fn(), unref });
+
+    openBrowser("http://localhost:3002", {
+      browserPath: "C:\\Program Files\\Chromium\\chrome.exe",
+      userDataDir: "C:\\Users\\Example\\Profile",
+      remoteDebuggingPort: 9222,
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "C:\\Program Files\\Chromium\\chrome.exe",
+      [
+        "--user-data-dir=C:\\Users\\Example\\Profile",
+        "--remote-debugging-port=9222",
+        "http://localhost:3002",
+      ],
+      expect.objectContaining({ detached: true, stdio: "ignore", windowsHide: true }),
+    );
+    expect(unref).toHaveBeenCalledOnce();
+  });
+});
 
 describe("buildBrowserArgs", () => {
   it("returns only the URL when no options are given", () => {
