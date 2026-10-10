@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Init-only gate classification over the full 500. The gate decision is logged at init
-# ("drawElement canvas injected" OR "falling back to ... — <reason>"), so launch the fast
+# ("drawElement canvas injected" OR "falls back to ... capture: <reason>"), so launch the fast
 # render, wait for that line, kill before frames render. Writes /tmp/gatecheck/<pre>.txt.
 # Resumable. PAR workers. Usage: PAR=4 bash de-gatecheck.sh
 set -euo pipefail
@@ -20,7 +20,7 @@ worker(){
   local t=0
   while kill -0 "$p" 2>/dev/null; do
     sleep 1; t=$((t+1))
-    if grep -qE "drawElement canvas injected|falling back to (screenshot|beginframe) capture —|Fast capture: composition uses|render-mode compatibility hint" "$log" 2>/dev/null; then break; fi
+    if grep -qE "drawElement canvas injected|falls back to (screenshot|beginframe) capture:|Fast capture: composition uses|render-mode compatibility hint" "$log" 2>/dev/null; then break; fi
     [ "$t" -ge "${CAP:-120}" ] && break
   done
   # kill the render tree (don't need full render)
