@@ -9,6 +9,33 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.145"
+  description="Released - 2026-10-10"
+  tags={["Release", "Producer", "Examples", "Studio Server"]}
+>
+Studio can export on the GPU, and the producer package on npm is a fraction of its old size. Long exports no longer stall at 90%, and previews recover from a stalled font or asset.
+
+## Features
+
+- **Studio:** Export can encode on the GPU, like render --gpu ([91f9c9eb0](https://github.com/heygen-com/hyperframes/commit/91f9c9eb04619bfe5c43ccee1c87cad2f8a2f65a), [#5397](https://github.com/heygen-com/hyperframes/pull/5397)).
+
+## Fixes
+
+- **Producer:** The npm package ships only its own code and no source maps ([affa4d53c](https://github.com/heygen-com/hyperframes/commit/affa4d53cf86334c18d0476955fce3f4f73f6a06), [#5398](https://github.com/heygen-com/hyperframes/pull/5398)).
+- **Examples:** The k8s chunk-runner image installs and loads the producer again ([6f3f86a9c](https://github.com/heygen-com/hyperframes/commit/6f3f86a9c9824c8ad5b7bf760375e243466e5ee0), [#5373](https://github.com/heygen-com/hyperframes/pull/5373)).
+- **Studio Server:** The public proxy cache path names boxed preview copies too ([e158c73a9](https://github.com/heygen-com/hyperframes/commit/e158c73a9eb1215616b6498474968ac8f813f8d9), [#5407](https://github.com/heygen-com/hyperframes/pull/5407)).
+- **CLI:** Keyframes --shot on a compositions/ file mounts the scene in its project ([4225fba3a](https://github.com/heygen-com/hyperframes/commit/4225fba3a4fee7f41fc8e8e4219e9e40e39f5915), [#5401](https://github.com/heygen-com/hyperframes/pull/5401)).
+- **Skills:** Skill scripts run through a symlinked skills dir and agents keep long renders alive ([f46033d04](https://github.com/heygen-com/hyperframes/commit/f46033d048983e914e98d9ed834b51b0c448bb16), [#5396](https://github.com/heygen-com/hyperframes/pull/5396)).
+- **Runtime:** Graded pictures stay graded in sandboxed players ([684c03848](https://github.com/heygen-com/hyperframes/commit/684c038483cdf9f6f25ea518b7fd446596fb4fab), [#5383](https://github.com/heygen-com/hyperframes/pull/5383)).
+- **Engine:** Audio duration probe reads to the end on Windows; cli tests skip bun's disk cache ([3d6de0581](https://github.com/heygen-com/hyperframes/commit/3d6de0581ed9161fb8578222b3ec270413aebbab), [#5395](https://github.com/heygen-com/hyperframes/pull/5395)).
+- **Engine:** Long exports with many clips no longer stall at 90% or hide a timeout ([4b68f73fe](https://github.com/heygen-com/hyperframes/commit/4b68f73fe76b14934d38504b55735070807f5927), [#5375](https://github.com/heygen-com/hyperframes/pull/5375)).
+- **Studio:** A stalled font or asset no longer leaves the preview empty or drops reloads ([d93b76976](https://github.com/heygen-com/hyperframes/commit/d93b7697635ca5327fbceb67325c578a70c5b7fc), [#5370](https://github.com/heygen-com/hyperframes/pull/5370)).
+- **Studio Server:** A failed save reports its real error when a later file was never written ([063c2f8d6](https://github.com/heygen-com/hyperframes/commit/063c2f8d61b4e989274b6526b370edc588b37e4a), [#5364](https://github.com/heygen-com/hyperframes/pull/5364)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.144...v0.8.145).
+</Update>
+
+<Update
   label="HyperFrames v0.8.144"
   description="Released - 2026-10-10"
   tags={["Release", "Core", "Engine", "CLI"]}
