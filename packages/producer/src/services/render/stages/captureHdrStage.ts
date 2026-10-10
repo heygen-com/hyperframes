@@ -267,6 +267,7 @@ export async function runCaptureHdrStage(
         width,
         height,
         codec: preset.codec,
+        useGpu: job.config.useGpu,
         preset: preset.preset,
         quality: effectiveQuality,
         bitrate: effectiveBitrate,
