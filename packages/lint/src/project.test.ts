@@ -796,6 +796,35 @@ describe("a double-quoted src that contains an apostrophe", () => {
     expect(codes).not.toContain("audio_src_not_found");
   });
 
+  async function lintCodes(body: string, files: string[]): Promise<string[]> {
+    const project = makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  ${body}
+</body></html>`);
+    mkdirSync(join(project, "assets"), { recursive: true });
+    for (const file of files) writeFileSync(join(project, "assets", file), "");
+    const { results } = await lintProject(project);
+    return results.flatMap((entry) => entry.result.findings).map((f) => f.code);
+  }
+
+  it("finds an existing audio file whose apostrophe is written as a character reference", async () => {
+    const codes = await lintCodes(
+      `<audio id="a1" class="clip" data-start="0" data-duration="3" data-track-index="10" src="assets/Narrator&#39;s take.mp3"></audio>`,
+      ["Narrator's take.mp3"],
+    );
+    expect(codes).not.toContain("audio_src_not_found");
+  });
+
+  it("tells two layered files apart when their names share text up to an apostrophe", async () => {
+    const audio = (id: string, file: string) =>
+      `<audio id="${id}" class="clip" data-start="0" data-duration="5" data-track-index="10" src="assets/${file}"></audio>`;
+    const codes = await lintCodes(
+      audio("a1", "Narrator's take 1.mp3") + audio("a2", "Narrator's take 2.mp3"),
+      ["Narrator's take 1.mp3", "Narrator's take 2.mp3"],
+    );
+    expect(codes).toContain("duplicate_audio_track");
+  });
+
   it("finds the existing image through the shared src pattern too", async () => {
     const image = "Ann's photo.png";
     const project = makeProject(`<html><body>

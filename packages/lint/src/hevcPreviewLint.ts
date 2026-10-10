@@ -13,7 +13,7 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { parseHTML } from "linkedom";
 import type { HyperframeLintFinding } from "./types.js";
-import { mediaSrcTagRe } from "./utils";
+import { mediaSrcOf, mediaSrcTagRe } from "./utils";
 
 /** Structurally compatible with `project.ts`'s (unexported) `HtmlSource` —
  * duplicated as a shape, not imported, to avoid a circular import between
@@ -126,7 +126,7 @@ export function collectLocalVideoCandidates(
     const re = new RegExp(videoSrcRe.source, videoSrcRe.flags);
     let match: RegExpExecArray | null;
     while ((match = re.exec(scannable)) !== null) {
-      const rawSrc = match[2] ?? "";
+      const rawSrc = mediaSrcOf(match);
       const reference = resolveLocalVideoReference(projectDir, rawSrc, compSrcPath);
       if (!reference || candidates.has(reference.resolved)) continue;
       candidates.set(reference.resolved, reference.src);

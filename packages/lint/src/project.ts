@@ -29,7 +29,7 @@ import type {
   HyperframeLinterOptions,
 } from "./types.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
-import { isAudibleVideoTag, mediaSrcTagRe } from "./utils";
+import { isAudibleVideoTag, mediaSrcOf, mediaSrcTagRe, readAttr, readDecodedAttr } from "./utils";
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtml(html: string): ParsableDocumentLike {
@@ -372,7 +372,7 @@ function lintAudioSrcNotFound(
   for (const { html, compSrcPath } of htmlSources) {
     let match: RegExpExecArray | null;
     while ((match = audioSrcRe.exec(html)) !== null) {
-      const src = match[2]!;
+      const src = mediaSrcOf(match);
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
       if (isUnresolvedAssetPlaceholder(src)) continue;
       const rootRelative = compSrcPath
@@ -422,7 +422,7 @@ function lintMissingLocalAsset(
     let match: RegExpExecArray | null;
     while ((match = re.exec(scannable)) !== null) {
       const tagName = (match[1] ?? "").toLowerCase();
-      const rawSrc = match[2] ?? "";
+      const rawSrc = mediaSrcOf(match);
       // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
       if (isUnresolvedAssetPlaceholder(rawSrc)) continue;
       const src = cleanAssetUrl(rawSrc);
@@ -544,12 +544,6 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
 
 function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
-  function extractAttr(tag: string, name: string): string | null {
-    const re = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i");
-    const m = tag.match(re);
-    return m?.[1] ?? null;
-  }
-
   const tracks: Array<{ trackIndex: number; start: number; end: number; src: string }> = [];
   const seen = new Set<string>();
 
@@ -559,10 +553,10 @@ function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFind
     while ((match = soundTagRe.exec(html)) !== null) {
       const tag = match[0];
       if (/^<video/i.test(tag) && !isAudibleVideoTag(tag)) continue;
-      const trackStr = extractAttr(tag, "data-track-index");
-      const startStr = extractAttr(tag, "data-start");
-      const durStr = extractAttr(tag, "data-duration");
-      const src = extractAttr(tag, "src") ?? "unknown";
+      const trackStr = readAttr(tag, "data-track-index");
+      const startStr = readAttr(tag, "data-start");
+      const durStr = readAttr(tag, "data-duration");
+      const src = readDecodedAttr(tag, "src") || "unknown";
       if (!trackStr || !startStr) continue;
 
       const trackIndex = parseInt(trackStr, 10);

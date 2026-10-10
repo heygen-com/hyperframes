@@ -866,9 +866,14 @@ export function truncateSnippet(value: string, maxLength = 220): string | undefi
  * element using a variable binding was therefore reported as referencing a missing
  * file named after the variable id.
  */
+/** The decoded `src` of a tag matched by {@link mediaSrcTagRe}, read by the attribute parser. */
+export function mediaSrcOf(match: RegExpExecArray): string {
+  return readDecodedAttr(match[0], "src") ?? match[2] ?? "";
+}
+
 export function mediaSrcTagRe(tagAlternation: string): RegExp {
   return new RegExp(
-    `<(${tagAlternation})\\b[^>]*\\ssrc\\s*=\\s*["']((?<=")[^"]+|(?<=')[^']+)["'][^>]*>`,
+    `<(${tagAlternation})\\b[^>]*\\ssrc\\s*=\\s*["']((?<=")[^"]+(?=")|(?<=')[^']+(?='))["'][^>]*>`,
     "gi",
   );
 }
