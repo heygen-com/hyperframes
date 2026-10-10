@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import {
   assertPublicHttpsUrl,
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   UrlDownloadError,
 } from "./urlDownloader.js";
@@ -329,6 +330,42 @@ describe("fetchPublicHttpsText", () => {
         timeoutMs: 20,
       }),
     ).rejects.toMatchObject({ kind: "timeout", retryable: true });
+  });
+});
+
+describe("fetchPublicHttpsBytes", () => {
+  it("returns the exact bytes a caller can hash for subresource integrity", async () => {
+    const bytes = Buffer.from("\ufeffwindow.witness = true;");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(bytes)));
+
+    const result = await fetchPublicHttpsBytes("https://cdn.example/script.js", { maxBytes: 1024 });
+
+    expect(Buffer.from(result)).toEqual(bytes);
+  });
+
+  it("rejects a private host with a policy error before issuing the request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchPublicHttpsBytes("https://169.254.169.254/latest/meta-data/", { maxBytes: 1024 }),
+    ).rejects.toMatchObject({ kind: "http_rejected", retryable: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a public URL that redirects into a private host before the second request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://169.254.169.254/latest/meta-data/" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchPublicHttpsBytes("https://cdn.example/redirect.js", { maxBytes: 1024 }),
+    ).rejects.toMatchObject({ kind: "http_rejected", retryable: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -478,6 +478,75 @@ describe("inlineExternalScripts", () => {
     }
   });
 
+  it("does not fetch a script whose HTTPS URL targets a private host, and drops the tag", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => new Response("var evil = {};", { status: 200 }));
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const html = `<html><body><script src="https://169.254.169.254/latest/meta-data/"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).not.toContain("169.254.169.254");
+      expect(result).not.toContain("var evil");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not fetch an http:// external script, and drops the tag", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => new Response("var insecure = {};", { status: 200 }));
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const html = `<html><body><script src="http://cdn.example.com/gsap.min.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).not.toContain("http://cdn.example.com/gsap.min.js");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("drops a script when its public URL redirects into a private host", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://169.254.169.254/latest/meta-data/" },
+        }),
+    );
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/evil.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result).not.toContain("cdn.example.com/evil.js");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps the tag on an ordinary HTTP error (4xx), so a server answer is not treated as a policy refusal", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response("nope", { status: 403 })) as any;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/forbidden.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+
+      expect(result).toContain('src="https://cdn.example.com/forbidden.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("handles multiple CDN scripts with mixed success/failure", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async (url: string) => {
